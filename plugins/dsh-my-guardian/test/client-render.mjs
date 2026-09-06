@@ -157,6 +157,68 @@ test('running entry without a failure type renders no category badge', () => {
   assert.ok(!joined.includes('依赖缺失') && !joined.includes('代码错误'), 'no category badge for a running entry')
 })
 
+test('startup roster issues block renders pinned with fix command and removal hint', () => {
+  const texts = renderTexts({
+    safeMode: false,
+    staged: [],
+    promoted: [],
+    events: [],
+    startupIssues: [
+      {
+        type: 'unresolvable',
+        entryId: 'ghost',
+        name: 'dsh-ghost',
+        message: '插件包 dsh-ghost 无法解析（profile node_modules 中不存在），启动 import 将失败',
+        fix: 'dsh plugin add dsh-ghost',
+        remove: '从启动名册（cordis.patch.yml / profile）中删除该条目行，或标记 disabled: true 暂缓加载',
+      },
+      {
+        type: 'dependency',
+        entryId: 'needy',
+        name: 'dsh-needy',
+        message: '缺少依赖 dsh-shared（请先安装）',
+        missingDeps: ['dsh-shared'],
+        installHint: 'dsh plugin add dsh-shared',
+        fix: 'dsh plugin add dsh-shared',
+        remove: '从启动名册（cordis.patch.yml / profile）中删除该条目行，或标记 disabled: true 暂缓加载',
+      },
+      {
+        type: 'duplicate-id',
+        entryId: 'dup',
+        name: 'dsh-first',
+        message: '名册存在重复条目 id "dup"（2 处：dsh-first、dsh-second），加载时将抛 duplicate loader entry id',
+        fix: null,
+        remove: '从名册中删除重复的条目行（每个 id 保留一条）',
+      },
+    ],
+    startupCheckedAt: 1756000000000,
+    loaded: true,
+  })
+  const joined = texts.join('|')
+  assert.ok(joined.includes('启动区问题'), 'startup-issues block title rendered')
+  assert.ok(joined.includes('dsh-ghost') && joined.includes('包不可解析'), 'unresolvable badge + name rendered')
+  assert.ok(joined.includes('dsh plugin add dsh-ghost'), 'repair command rendered')
+  assert.ok(joined.includes('dsh plugin add dsh-shared'), 'dependency repair command rendered')
+  assert.ok(joined.includes('缺少依赖 dsh-shared'), 'dependency message rendered')
+  assert.ok(joined.includes('重复 id') && joined.includes('dsh-first'), 'duplicate-id badge + name rendered')
+  assert.ok(joined.includes('从启动名册（cordis.patch.yml / profile）中删除该条目行'), 'removal hint rendered')
+  assert.ok(joined.includes('修复') && joined.includes('移除'), 'fix/remove labels rendered')
+})
+
+test('startup issues block is absent when the roster is healthy', () => {
+  const texts = renderTexts({
+    safeMode: false,
+    staged: [],
+    promoted: [],
+    events: [],
+    startupIssues: [],
+    startupCheckedAt: 1756000000000,
+    loaded: true,
+  })
+  const joined = texts.join('|')
+  assert.ok(!joined.includes('启动区问题'), 'no startup-issues block when empty')
+})
+
 console.log('ALL GUARDIAN CLIENT RENDER-PATH TESTS PASSED')
 
 test('script-style suite (assertions ran at module load)', () => {})

@@ -49,6 +49,13 @@ const strings = {
   failureCode: () => (isZh() ? '代码错误' : 'Code error'),
   failureOther: () => (isZh() ? '其他' : 'Other'),
   installHint: () => (isZh() ? '安装建议' : 'Install'),
+  // ── startup-roster issues (issue #144) ─────────────────────────────────
+  startupIssues: () => (isZh() ? '启动区问题' : 'Startup roster issues'),
+  startupIssueFix: () => (isZh() ? '修复' : 'Fix'),
+  startupIssueRemove: () => (isZh() ? '移除' : 'Remove'),
+  startupIssueUnresolvable: () => (isZh() ? '包不可解析' : 'Unresolvable'),
+  startupIssueDependency: () => (isZh() ? '依赖缺失' : 'Dependency'),
+  startupIssueDuplicate: () => (isZh() ? '重复 id' : 'Duplicate id'),
 }
 
 // ── api ───────────────────────────────────────────────────────────────
@@ -116,6 +123,7 @@ const EVENT_LABELS = {
   safe: () => (isZh() ? '安全模式' : 'Safe mode'),
   'safe-mode': () => (isZh() ? '安全模式' : 'Safe mode'),
   skip: () => (isZh() ? '跳过' : 'Skipped'),
+  'startup-issue': () => (isZh() ? '启动区问题' : 'Startup issue'),
 }
 
 /** Badge color variant for an event type; unknown types fall back to the
@@ -128,6 +136,7 @@ function eventVariant(type) {
       return 'accent'
     case 'quarantine':
     case 'update-failed':
+    case 'startup-issue':
       return 'danger'
     case 'freeze':
     case 'safe':
@@ -135,6 +144,20 @@ function eventVariant(type) {
       return 'warn'
     default:
       return 'neutral'
+  }
+}
+
+/** Startup-issue badge label (issue #144): unresolvable / dependency / dup. */
+function startupIssueLabel(type) {
+  switch (type) {
+    case 'unresolvable':
+      return strings.startupIssueUnresolvable()
+    case 'dependency':
+      return strings.startupIssueDependency()
+    case 'duplicate-id':
+      return strings.startupIssueDuplicate()
+    default:
+      return type
   }
 }
 

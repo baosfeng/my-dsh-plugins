@@ -182,6 +182,33 @@ const STYLES = `
 .dsh-my-guardian-event-message { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-secondary); }
 .dsh-my-guardian-event-time { flex:none; font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); white-space:nowrap; }
+/* ── startup-roster issues (issue #144): pinned block above the list ────── */
+.dsh-my-guardian-startup-issues { display:flex; flex-direction:column; gap:2px; margin-top:4px; padding:6px 8px; border-radius:8px;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
+  background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);
+  animation:dsh-my-guardian-row-in 150ms var(--ds-ease-in-out); }
+.dsh-my-guardian-startup-issues-title { display:flex; align-items:center; gap:5px; padding:0 2px 3px;
+  font:var(--dsw-font-xxs-strong-12); color:var(--dsw-alias-state-error-primary); }
+.dsh-my-guardian-startup-issues-title svg { display:block; flex:none; }
+.dsh-my-guardian-startup-issues-count { display:inline-flex; align-items:center; justify-content:center; min-width:17px; height:17px; padding:0 5px; border-radius:4px;
+  font:var(--dsw-font-xxxs-strong-11); color:var(--dsw-alias-label-primary-foreground); background:var(--dsw-alias-state-error-primary); }
+.dsh-my-guardian-startup-issues-time { flex:1; text-align:right; font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); }
+.dsh-my-guardian-startup-issue { display:flex; flex-direction:column; gap:2px; padding:5px 6px; border-radius:6px;
+  border:1px solid var(--dsw-alias-border-l1); background:transparent; }
+.dsh-my-guardian-startup-issue:hover { background:var(--dsw-alias-interactive-bg-hover); }
+.dsh-my-guardian-startup-issue-head { display:flex; align-items:center; gap:6px; min-width:0; }
+.dsh-my-guardian-startup-issue-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
+.dsh-my-guardian-startup-issue-badge-unresolvable { color:var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
+.dsh-my-guardian-startup-issue-badge-duplicate-id { color:var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
+.dsh-my-guardian-startup-issue-badge-dependency { color:var(--dsw-alias-state-warn-primary); background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
+.dsh-my-guardian-startup-issue-message { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-secondary); line-height:1.6; }
+.dsh-my-guardian-startup-issue-line { display:flex; align-items:flex-start; gap:5px; padding:2px 0;
+  font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); line-height:1.6; min-width:0; }
+.dsh-my-guardian-startup-issue-label { flex:none; color:var(--dsw-alias-label-tertiary); }
+.dsh-my-guardian-startup-issue-line code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:var(--dsw-font-xxxs-11);
+  color:var(--dsw-alias-state-success-primary); word-break:break-all; }
+.dsh-my-guardian-startup-issue-remove { min-width:0; word-break:break-all; }
 @keyframes dsh-my-guardian-row-in { from { opacity:0; transform:translateY(1px); } to { opacity:1; transform:none; } }
 @keyframes dsh-my-guardian-spin { to { transform:rotate(360deg); } }
 `
@@ -237,6 +264,13 @@ const strings = {
   failureCode: () => (isZh() ? '代码错误' : 'Code error'),
   failureOther: () => (isZh() ? '其他' : 'Other'),
   installHint: () => (isZh() ? '安装建议' : 'Install'),
+  // ── startup-roster issues (issue #144) ─────────────────────────────────
+  startupIssues: () => (isZh() ? '启动区问题' : 'Startup roster issues'),
+  startupIssueFix: () => (isZh() ? '修复' : 'Fix'),
+  startupIssueRemove: () => (isZh() ? '移除' : 'Remove'),
+  startupIssueUnresolvable: () => (isZh() ? '包不可解析' : 'Unresolvable'),
+  startupIssueDependency: () => (isZh() ? '依赖缺失' : 'Dependency'),
+  startupIssueDuplicate: () => (isZh() ? '重复 id' : 'Duplicate id'),
 }
 
 // ── api ───────────────────────────────────────────────────────────────
@@ -304,6 +338,7 @@ const EVENT_LABELS = {
   safe: () => (isZh() ? '安全模式' : 'Safe mode'),
   'safe-mode': () => (isZh() ? '安全模式' : 'Safe mode'),
   skip: () => (isZh() ? '跳过' : 'Skipped'),
+  'startup-issue': () => (isZh() ? '启动区问题' : 'Startup issue'),
 }
 
 /** Badge color variant for an event type; unknown types fall back to the
@@ -316,6 +351,7 @@ function eventVariant(type) {
       return 'accent'
     case 'quarantine':
     case 'update-failed':
+    case 'startup-issue':
       return 'danger'
     case 'freeze':
     case 'safe':
@@ -323,6 +359,20 @@ function eventVariant(type) {
       return 'warn'
     default:
       return 'neutral'
+  }
+}
+
+/** Startup-issue badge label (issue #144): unresolvable / dependency / dup. */
+function startupIssueLabel(type) {
+  switch (type) {
+    case 'unresolvable':
+      return strings.startupIssueUnresolvable()
+    case 'dependency':
+      return strings.startupIssueDependency()
+    case 'duplicate-id':
+      return strings.startupIssueDuplicate()
+    default:
+      return type
   }
 }
 
@@ -1007,6 +1057,62 @@ function EventList({ events }) {
   )
 }
 
+/** 启动区问题（issue #144）：启动名册静态预检发现的问题条目，置顶展示
+ *  修复命令与移除提示——名册中的坏条目是 all-or-nothing 启动失败的源头。 */
+function StartupIssuesBlock({ issues, checkedAt }) {
+  if (!Array.isArray(issues) || issues.length === 0) return null
+  return createElement(
+    'div',
+    { className: 'dsh-my-guardian-startup-issues' },
+    createElement(
+      'div',
+      { className: 'dsh-my-guardian-startup-issues-title' },
+      icon.alert(14),
+      strings.startupIssues(),
+      createElement('span', { className: 'dsh-my-guardian-startup-issues-count' }, String(issues.length)),
+      typeof checkedAt === 'number' && Number.isFinite(checkedAt)
+        ? createElement('span', { className: 'dsh-my-guardian-startup-issues-time' }, formatTime(checkedAt))
+        : null,
+    ),
+    issues.map((issue, index) =>
+      createElement(
+        'div',
+        { className: 'dsh-my-guardian-startup-issue', key: index },
+        createElement(
+          'div',
+          { className: 'dsh-my-guardian-startup-issue-head' },
+          createElement(
+            'span',
+            {
+              className: `dsh-my-guardian-event-badge dsh-my-guardian-startup-issue-badge-${issue.type}`,
+              title: issue.entryId,
+            },
+            startupIssueLabel(issue.type),
+          ),
+          createElement('span', { className: 'dsh-my-guardian-startup-issue-name' }, issue.name),
+        ),
+        createElement('div', { className: 'dsh-my-guardian-startup-issue-message' }, issue.message),
+        typeof issue.fix === 'string' && issue.fix !== ''
+          ? createElement(
+              'div',
+              { className: 'dsh-my-guardian-startup-issue-line' },
+              createElement('span', { className: 'dsh-my-guardian-startup-issue-label' }, strings.startupIssueFix()),
+              createElement('code', null, issue.fix),
+            )
+          : null,
+        typeof issue.remove === 'string' && issue.remove !== ''
+          ? createElement(
+              'div',
+              { className: 'dsh-my-guardian-startup-issue-line' },
+              createElement('span', { className: 'dsh-my-guardian-startup-issue-label' }, strings.startupIssueRemove()),
+              createElement('span', { className: 'dsh-my-guardian-startup-issue-remove' }, issue.remove),
+            )
+          : null,
+      ),
+    ),
+  )
+}
+
 function GuardianView({ visible }) {
   const { state, loadFailed, reload, onAction, onSafeMode } = useGuardianState(visible)
 
@@ -1028,6 +1134,10 @@ function GuardianView({ visible }) {
     'div',
     { className: 'dsh-my-guardian-root' },
     createElement(SafeModeBar, { safeMode: state.safeMode, onSafeMode }),
+    createElement(StartupIssuesBlock, {
+      issues: state.startupIssues,
+      checkedAt: state.startupCheckedAt,
+    }),
     loadFailed
       ? createElement(
           'div',

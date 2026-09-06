@@ -155,6 +155,62 @@ function EventList({ events }) {
   )
 }
 
+/** 启动区问题（issue #144）：启动名册静态预检发现的问题条目，置顶展示
+ *  修复命令与移除提示——名册中的坏条目是 all-or-nothing 启动失败的源头。 */
+function StartupIssuesBlock({ issues, checkedAt }) {
+  if (!Array.isArray(issues) || issues.length === 0) return null
+  return createElement(
+    'div',
+    { className: 'dsh-my-guardian-startup-issues' },
+    createElement(
+      'div',
+      { className: 'dsh-my-guardian-startup-issues-title' },
+      icon.alert(14),
+      strings.startupIssues(),
+      createElement('span', { className: 'dsh-my-guardian-startup-issues-count' }, String(issues.length)),
+      typeof checkedAt === 'number' && Number.isFinite(checkedAt)
+        ? createElement('span', { className: 'dsh-my-guardian-startup-issues-time' }, formatTime(checkedAt))
+        : null,
+    ),
+    issues.map((issue, index) =>
+      createElement(
+        'div',
+        { className: 'dsh-my-guardian-startup-issue', key: index },
+        createElement(
+          'div',
+          { className: 'dsh-my-guardian-startup-issue-head' },
+          createElement(
+            'span',
+            {
+              className: `dsh-my-guardian-event-badge dsh-my-guardian-startup-issue-badge-${issue.type}`,
+              title: issue.entryId,
+            },
+            startupIssueLabel(issue.type),
+          ),
+          createElement('span', { className: 'dsh-my-guardian-startup-issue-name' }, issue.name),
+        ),
+        createElement('div', { className: 'dsh-my-guardian-startup-issue-message' }, issue.message),
+        typeof issue.fix === 'string' && issue.fix !== ''
+          ? createElement(
+              'div',
+              { className: 'dsh-my-guardian-startup-issue-line' },
+              createElement('span', { className: 'dsh-my-guardian-startup-issue-label' }, strings.startupIssueFix()),
+              createElement('code', null, issue.fix),
+            )
+          : null,
+        typeof issue.remove === 'string' && issue.remove !== ''
+          ? createElement(
+              'div',
+              { className: 'dsh-my-guardian-startup-issue-line' },
+              createElement('span', { className: 'dsh-my-guardian-startup-issue-label' }, strings.startupIssueRemove()),
+              createElement('span', { className: 'dsh-my-guardian-startup-issue-remove' }, issue.remove),
+            )
+          : null,
+      ),
+    ),
+  )
+}
+
 function GuardianView({ visible }) {
   const { state, loadFailed, reload, onAction, onSafeMode } = useGuardianState(visible)
 
@@ -176,6 +232,10 @@ function GuardianView({ visible }) {
     'div',
     { className: 'dsh-my-guardian-root' },
     createElement(SafeModeBar, { safeMode: state.safeMode, onSafeMode }),
+    createElement(StartupIssuesBlock, {
+      issues: state.startupIssues,
+      checkedAt: state.startupCheckedAt,
+    }),
     loadFailed
       ? createElement(
           'div',

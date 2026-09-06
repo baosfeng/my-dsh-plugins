@@ -32,6 +32,26 @@ function guardianDir() {
   return join(homedir(), '.dsh', 'guardian')
 }
 
+/**
+ * Persist the startup-roster pre-check report (issue #144) atomically at
+ * $DSH_HOME/guardian/startup-issues.json. The report is written even when
+ * the roster is healthy (empty issues + checkedAt) so the file doubles as a
+ * "last checked" marker; missing/corrupt file only means "never written".
+ * Never throws to callers — the guardian must not take the process down.
+ */
+export async function writeStartupIssuesFile(payload) {
+  const dir = guardianDir()
+  const file = join(dir, 'startup-issues.json')
+  const tmp = `${file}.tmp-${uniqueSuffix()}`
+  try {
+    await mkdir(dir, { recursive: true })
+    await writeFile(tmp, JSON.stringify(payload), 'utf8')
+    await rename(tmp, file)
+  } catch {
+    // the report is diagnostic-only: a write failure must not break boot
+  }
+}
+
 /** Empty state document. */
 export function createState() {
   return { version: 1, safeMode: false, staged: {}, promoted: {}, events: [] }

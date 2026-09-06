@@ -28,14 +28,9 @@
 - `docs/` 模块文档引用插件截图用 `../../plugins/<name>/assets/xxx.png`；
 - `package.json` 的 `description` 建议中英双语（中文在前，英文在后）——npm 列表/包页面头部优先显示中文。
 
-## 已对齐现状（2026-08-25）
+## 相关链接
 
-| 插件                | 截图 | 功能 | 配置 | 依赖 | 相关文档 |
-| ------------------- | ---- | ---- | ---- | ---- | -------- |
-| dsh-file-activity   | ✅ 2 | ✅   | ✅   | ✅   | ✅       |
-| dsh-think-zh-expand | ✅ 1 | ✅   | ✅   | ✅   | ✅       |
-| dsh-mermaid-render  | ✅ 1 | ✅   | ✅   | ✅   | ✅       |
-| dsh-my-notify       | ✅ 1 | ✅   | ✅   | ✅   | ✅       |
-| dsh-my-guardian     | ✅ 2 | ✅   | ✅   | ✅   | ✅       |
+- 各插件现有 README 均为按本模板对齐的实例（见 `plugins/<name>/README.md`）。
+- 新插件脚手架可参考 [插件开发技能](../../skills/dsh-plugin-development/SKILL.md)。
 
-> 表格中显示名沿用模块名（dsh-file-activity 等），npm 包名与插件目录名一致（`dsh-*` / `dsh-my-*`，无额外前缀）。
+> **README 模板维护**：本文件是插件 README 的唯一模板定义，修改模板后需同步检查各插件 README 是否仍对齐。

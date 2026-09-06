@@ -5,9 +5,9 @@
  * 检查（任一失败 exit 1，CI 强制）：
  *   1. 每个 plugins/<name>/package.json 的插件必须出现在：
  *      - 根 README.md 插件表（`| [<name>](plugins/<name>/README.md) | <version> |`）
- *      - AGENTS.md（`plugins/<name>/` 路径引用 + 版本行 `<name> v<version>`）
  *      - docs/索引.md（模块条目）与 docs/<模块>/概述.md（模块目录）
- *   2. 根 README 插件表版本 / AGENTS.md 版本行 与 package.json version 一致
+ *      （AGENTS.md 精简后不再承载插件清单/版本行，插件↔文档一致性由 docs/索引.md 承担）
+ *   2. 根 README 插件表版本与 package.json version 一致
  *   3. 每个 DSH 插件 README 安装章节含 npm 安装方式
  *      （`dsh plugin --profile web add <npm包名>`；agent preset 除外）
  *
@@ -62,7 +62,6 @@ const MODULES = {
 }
 
 const readme = readFileSync(join(root, 'README.md'), 'utf8')
-const agents = readFileSync(join(root, 'AGENTS.md'), 'utf8')
 const index = readFileSync(join(root, 'docs', '索引.md'), 'utf8')
 
 for (const entry of readdirSync(join(root, 'plugins'))) {
@@ -84,18 +83,7 @@ for (const entry of readdirSync(join(root, 'plugins'))) {
   if (!rowRe.test(readme)) {
     errors.push(`✗ 根 README.md 插件表缺少 ${entry} 行（或版本不是 ${version}）`)
   }
-  // 1b. AGENTS.md 路径引用 + 版本行
-  if (!agents.includes(`plugins/${entry}/`)) {
-    errors.push(`✗ AGENTS.md 缺少 plugins/${entry}/ 引用（功能模块表/文档映射）`)
-  }
-  const verRe = new RegExp(`${entry} v\\d+\\.\\d+\\.\\d+`)
-  const verMatch = agents.match(verRe)
-  if (!verMatch) {
-    errors.push(`✗ AGENTS.md 版本行缺少 ${entry} v…`)
-  } else if (verMatch[0] !== `${entry} v${version}`) {
-    errors.push(`✗ AGENTS.md 版本行 ${verMatch[0]} ≠ package.json ${version}`)
-  }
-  // 1c. docs/索引.md + 模块目录
+  // 1b. docs/索引.md + 模块目录
   if (!index.includes(`→ [${display}]`)) {
     errors.push(`✗ docs/索引.md 缺少「${display}」条目`)
   }

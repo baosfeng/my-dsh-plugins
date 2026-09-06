@@ -1,6 +1,6 @@
 {
   "name": "dsh-mermaid-render",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "DSH 对话 Mermaid 图表渲染插件：mermaid/mmd 代码块自动渲染为图表卡片（预览/代码切换），引擎内联完全离线。DSH web plugin: render mermaid/mmd code blocks into diagram cards, vendored offline engine, no CDN.",
   "type": "module",
   "main": "lib/index.js",

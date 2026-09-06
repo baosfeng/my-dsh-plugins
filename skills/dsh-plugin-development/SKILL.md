@@ -25,6 +25,16 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 - **开发工具型插件**（agent 可调用的函数）：读 [references/dsh-tools-api.md](references/dsh-tools-api.md) 的官方 `defineTool` 权威 API
 - **调研生态/分发渠道**（npm、GitHub topic、插件市场收录）：读 [references/dsh-ecosystem.md](references/dsh-ecosystem.md)
 
+## 相关 skill（交叉引用）
+
+- `plugin-write`（skills/plugin-write/）：写新插件 + 命名规范/查重（结构化命名清单 + 离线/在线校验，见「命名阶段」增量）
+- `plugin-runtime-debug`（skills/plugin-runtime-debug/）：运行时故障排查（读宿主源码契约，见「运行时故障排查」增量）
+- `plugin-upgrade`（skills/plugin-upgrade/）：DSH 版本升级/插件兼容性迁移（三模式 + 版本走廊 + 宿主升级纪律）
+- `dsh-upgrade-audit`（skills/dsh-upgrade-audit/）：两 DSH 版本间兼容性审计（npm 模式物化 + playbook 输出契约）
+- `plugin-test`（skills/plugin-test/）：测试 + docker 冒烟（发布前对打包产物冷启动验证）
+- `plugin-release`（skills/plugin-release/）：打包发布 + 发布前自动检查（5 层 gate + 语义 gate）
+- `plugin-workflow`（skills/plugin-workflow/）：插件生命周期统一入口（检查/升级/测试/发布选择 + 阶段账本）
+
 ## 插件形态（先决策）
 
 | 形态                                           | 面向                                              | 关键 API                                                                                              |
@@ -53,6 +63,8 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 
 3. **被占用 → 改名**：统一加 `my-` 前缀为 `dsh-my-<功能>`，参考本仓库改名先例 `dsh-my-skill-manager`（原 `dsh-skill-manager` 被占）、`dsh-my-plugin-manager`（原 `dsh-plugin-manager` 被占）。改名后重新执行第 2 步确认新名可用再继续。
 4. **记录检索结果（强制）**：候选名 + 占用情况记入插件需求清单 `docs/<模块>/需求清单.md`（如 `R1 包名 dsh-my-xxx：候选 dsh-xxx 已被 maintainer xxx 占用（2026-xx 检索）`），发布前复查一次。
+
+> **命名查重增量（plugin-write skill）**：对方提供结构化命名清单 + 离线/在线双重校验，可补充到本流程——① 新建插件时声明 `dsh-plugin.naming.json`（结构化命名清单：包名/显示名/标识符）；② 用 `skills/plugin-write/scripts/validate-names.mjs --manifest ./dsh-plugin.naming.json` 离线校验（兼容性错误 = 目标契约失败，前缀警告 = 社区建议）；③ 网络可用时用 `skills/plugin-write/scripts/query-registry.mjs --manifest ./dsh-plugin.naming.json --harness-version <精确版本>` 查中央注册表（无匹配只算"无已审匹配"，超时/网络失败算"未检查"，绝不把自动发现候选当预留）。本仓库 npm 检索（上面 1-4 步）与对方注册表查询互补：npm 查包名占用，注册表查生态标识符冲突。
 
 ## 目录结构规范
 
@@ -265,6 +277,17 @@ export function apply(ctx) {
 | 双 Cordis / 类型分裂                                                       | 同时引用 unscoped 与 scoped cordis                                                            | 全链统一一个 cordis（本仓库用 `cordis` peer + link 安装）                                                                                                                               |
 | HMR 后状态错乱                                                             | disposer 没被 fiber 持有                                                                      | `ctx.effect(() => register(...))`，绝不裸调                                                                                                                                             |
 | 页签偶发"纯文字无样式"                                                     | 样式注入放在服务判空早退（`if (service === undefined) return`）之后，HMR/服务重载瞬间跳过注入 | **样式注入必须放 `apply` 最前、无条件执行**（不依赖任何服务），每个 fiber 持自己的 `<style>`、disposer 只删自己的（详见 [踩坑：插件页签样式丢失](../../docs/踩坑/插件页签样式丢失.md)） |
+
+## 运行时故障排查（plugin-runtime-debug 增量）
+
+> 插件在浏览器运行时行为异常（粘贴/附件/合成器"第一次成功后续失败"、chips/面板陈旧占位、版本芯片报错）时，**先读宿主源码契约，不要按 API 名字猜**——对方 skill 的排查方法补充到本仓库调试场景：
+
+1. **读宿主源码契约**（`~/.dsh/source/current` 或 vendored 副本）：打开插件调用的宿主 API 实现，读 doc 注释、guards、比较的类型。三个问题覆盖多数事故：
+   - **offset 数的是哪个字符串**？发布快照字段与内部编辑器投影不一定是同一个字符串，喂错表示会静默失败（返回 false/no-op，不抛错）。
+   - **每个"单位"在各表示中占多宽**？chips/tokens/attachments 等不透明内联单位在发布字段与 verb guard 的投影中宽度不同时，offset 只在无单位时正确。
+   - **verb 拒绝时谁发现**？布尔返回的 verb 静默失败会变成下游状态 bug（调用方照删自己的簿记，UI 渲染"缺失"占位符）——审计每个调用点的"fire, ignore result, clean up anyway"形态。
+2. **症状族定位**：首次成功后续失败 → 前次调用写入了状态改变了映射（修正推导后应用到**每个**传 offset 的调用点）；删除按钮留行 + 占位标签 → verb 拒绝但簿记已删（确认返回值后再退役簿记）；陈旧/幻影条目 → 从权威源派生视图，缓存只当加速器；版本芯片报错 latest → CDN 缓存滞后，用运行版本判定"当前 vs 更新"；整个 slot 静默消失 → slot 组件内 throw 被错误边界卸载（console-only），用防御性读取（`x?.items ?? []`）加固。
+3. **修复纪律**：先精确陈述不匹配（哪个表示/哪个 guard/哪些调用点）再写修复；修**所有**传表示相关值的调用点，不只报错那个；用失败交互序列复现证明（连续两次操作行为一致 + 删除路径清空所有视图）。
 
 ## 需要避免的坑
 

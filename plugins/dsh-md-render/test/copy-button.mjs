@@ -198,6 +198,23 @@ try {
   assert.equal(clipboardCalls.length, 1, 'clipboard.writeText called once')
   assert.equal(clipboardCalls[0], 'const x = 1', 'copies code text only (no language marker, no button label)')
 
+  // 1.5 默认位置 bottom-right（issue #146）：代码块按钮是 md-code-block 直接子元素
+  // （右下角绝对定位），不在头部 head 内（与语言标签同排是 header 位置的行为）
+  const mdBlockEl = mdCodeBlock.querySelector('div.md-code-block')
+  assert.ok(mdBlockEl, 'md-code-block element found under tzx-md')
+  assert.equal(
+    mdBlockEl.children.filter((c) => c.tagName === 'BUTTON' && c.className.includes('dsh-md-render-copy')).length,
+    1,
+    'code copy button is a direct md-code-block child (bottom-right default)',
+  )
+  const headEl = mdBlockEl.children.find((c) => c.tagName === 'DIV' && c.className === 'dsh-md-render-code-head')
+  assert.ok(headEl, 'code head rendered')
+  assert.equal(
+    headEl.children.filter((c) => c.tagName === 'BUTTON' && c.className.includes('dsh-md-render-copy')).length,
+    0,
+    'copy button NOT in header by default (issue #146)',
+  )
+
   // 2. 内容按钮：点击复制整段纯文本（不含按钮文案）
   const tzxMd = makeElement('div', { className: 'tzx-md' })
   const innerTzx = materialize(exportsObj.MarkdownView({ text: '第一段\n\n```js\nconst y = 2\n```\n\n第二段' }), tzxMd)
@@ -299,6 +316,17 @@ try {
     'streaming rule hides copy buttons',
   )
   assert.ok(styleTags[0].textContent.includes('.dsh-md-render-copy-done'), 'copied-state style present')
+  // issue #146：代码块按钮右下角定位规则 + 代码主题色板（含深浅自适应）在样式表中
+  assert.ok(
+    styleTags[0].textContent.includes('.md-code-block>.dsh-md-render-copy{position:absolute;right:8px;bottom:8px}'),
+    'bottom-right positioning rule present',
+  )
+  assert.ok(
+    styleTags[0].textContent.includes('.dsh-md-render-code-head>.dsh-md-render-copy{margin-left:auto}'),
+    'header positioning rule retained',
+  )
+  assert.ok(styleTags[0].textContent.includes('.md-code-block[data-theme]'), 'theme palette variables present')
+  assert.ok(styleTags[0].textContent.includes('prefers-color-scheme:dark'), 'dark-mode variant retained')
 
   console.log('ALL COPY-BUTTON TESTS PASSED')
 } finally {

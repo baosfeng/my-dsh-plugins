@@ -158,6 +158,18 @@ test('buildOptions：显式 false 关闭、非法值回退默认', () => {
   assert.equal(options.syntaxHighlight, true, 'missing key defaults on')
 })
 
+test('buildOptions：选择项默认值 + 合法值生效 + 非法值回退默认（issue #146）', () => {
+  const def = buildOptions(undefined)
+  assert.equal(def.copyButtonPosition, 'bottom-right', 'copy button position defaults to bottom-right (#74 原始诉求)')
+  assert.equal(def.codeTheme, 'bright', 'code theme defaults to bright（明亮高对比）')
+  const picked = buildOptions({ copyButtonPosition: 'header', codeTheme: 'one-dark' })
+  assert.equal(picked.copyButtonPosition, 'header', 'valid position picked')
+  assert.equal(picked.codeTheme, 'one-dark', 'valid theme picked')
+  const bad = buildOptions({ copyButtonPosition: 'left', codeTheme: 'neon' })
+  assert.equal(bad.copyButtonPosition, 'bottom-right', 'invalid position falls back to default')
+  assert.equal(bad.codeTheme, 'bright', 'invalid theme falls back to default')
+})
+
 test('GET /md/api/config：返回全部开关默认开启', async () => {
   const api = boot({})
   try {
@@ -166,6 +178,8 @@ test('GET /md/api/config：返回全部开关默认开启', async () => {
     assert.equal(body.ok, true, 'ok flag')
     assert.equal(body.value.copyButton, true, 'copyButton default on')
     assert.equal(body.value.tableFold, true, 'tableFold default on')
+    assert.equal(body.value.copyButtonPosition, 'bottom-right', 'position default returned (issue #146)')
+    assert.equal(body.value.codeTheme, 'bright', 'theme default returned (issue #146)')
   } finally {
     api.restore()
   }
@@ -199,13 +213,60 @@ test('PUT /md/api/config：写入 patch 文件（持久化）+ 更新内存', as
   }
 })
 
+test('PUT 选择项（合法值）→ 200 + patch 持久化 + 内存更新（issue #146）', async () => {
+  const dir = tempDir()
+  const api = boot({}, dir)
+  try {
+    const payload = JSON.stringify({ copyButtonPosition: 'header', codeTheme: 'one-dark' })
+    const { status } = await call(
+      api.registration,
+      mockRequest({ url: '/md/api/config', method: 'PUT', body: payload }),
+    )
+    assert.equal(status, 200, 'PUT select config status')
+    const file = patchFileOf('web')
+    const saved = extractConfig(readFileSync(file, 'utf8'), 'md-render')
+    assert.equal(saved.copyButtonPosition, 'header', 'position persisted to patch file')
+    assert.equal(saved.codeTheme, 'one-dark', 'theme persisted to patch file')
+    const { body } = await call(api.registration, mockRequest({ url: '/md/api/config' }))
+    assert.equal(body.value.copyButtonPosition, 'header', 'in-memory position updated')
+    assert.equal(body.value.codeTheme, 'one-dark', 'in-memory theme updated')
+  } finally {
+    api.restore()
+  }
+})
+
+test('PUT 选择项非法值 → 400，配置未被修改（issue #146）', async () => {
+  const api = boot({})
+  try {
+    const { status } = await call(
+      api.registration,
+      mockRequest({ url: '/md/api/config', method: 'PUT', body: JSON.stringify({ codeTheme: 'neon' }) }),
+    )
+    assert.equal(status, 400, 'invalid select value rejected')
+    const { status: badPos } = await call(
+      api.registration,
+      mockRequest({ url: '/md/api/config', method: 'PUT', body: JSON.stringify({ copyButtonPosition: 'left' }) }),
+    )
+    assert.equal(badPos, 400, 'invalid position rejected')
+    const { body } = await call(api.registration, mockRequest({ url: '/md/api/config' }))
+    assert.equal(body.value.codeTheme, 'bright', 'config unchanged')
+    assert.equal(body.value.copyButtonPosition, 'bottom-right', 'config unchanged')
+  } finally {
+    api.restore()
+  }
+})
+
 test('配置持久化：重新 apply（模拟重启）后配置生效', async () => {
   const dir = tempDir()
   const api = boot({ copyButton: false }, dir)
   try {
     await call(
       api.registration,
-      mockRequest({ url: '/md/api/config', method: 'PUT', body: JSON.stringify({ tableFold: false }) }),
+      mockRequest({
+        url: '/md/api/config',
+        method: 'PUT',
+        body: JSON.stringify({ tableFold: false, copyButtonPosition: 'header', codeTheme: 'nord' }),
+      }),
     )
     // patch 文件路径需在 restore（恢复 DSH_HOME）前计算
     const file = join(dir, 'profiles/web/cordis.patch.yml')
@@ -220,6 +281,8 @@ test('配置持久化：重新 apply（模拟重启）后配置生效', async ()
       assert.equal(body.value.copyButton, false, 'copyButton restored after restart-like apply')
       assert.equal(body.value.tableFold, false, 'tableFold restored after restart-like apply')
       assert.equal(body.value.lineNumbers, true, 'unset keys restored to default on')
+      assert.equal(body.value.copyButtonPosition, 'header', 'position restored after restart-like apply (issue #146)')
+      assert.equal(body.value.codeTheme, 'nord', 'theme restored after restart-like apply (issue #146)')
     } finally {
       api2.restore()
     }

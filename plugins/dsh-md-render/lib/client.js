@@ -372,6 +372,16 @@ const fileIconByExt = (ext, size = 14) => {
 // 全开，随后异步经 GET /md/api/config 拉取真实配置应用（client 端不能
 // 访问 ctx.config——Cordis inject 限制）；设置页保存后 setRenderOptions
 // 立即应用新开关，渲染管线（代码块 / 行内 / DOM 表格）读取模块级状态。
+// issue #146：选择型配置（非布尔）加入同一 options 状态——
+// copyButtonPosition（代码块复制按钮位置，默认 bottom-right 与 #74
+// 原始诉求一致）与 codeTheme（代码块主题，默认 bright 明亮高对比）。
+
+/** 代码块复制按钮位置（issue #146）：header=头部右上角 | bottom-right=右下角。 */
+const COPY_BUTTON_POSITIONS = ['header', 'bottom-right']
+
+/** 代码块主题 id 列表（issue #146）：色板定义见 styles.part.js。 */
+const CODE_THEMES = ['bright', 'github-light', 'github-dark', 'one-dark', 'nord']
+
 const DEFAULT_RENDER_OPTIONS = {
   copyButton: true,
   syntaxHighlight: true,
@@ -384,6 +394,8 @@ const DEFAULT_RENDER_OPTIONS = {
   mathStructures: true,
   tableSort: true,
   tableFold: true,
+  copyButtonPosition: COPY_BUTTON_POSITIONS[1],
+  codeTheme: CODE_THEMES[0],
 }
 
 let renderOptions = { ...DEFAULT_RENDER_OPTIONS }
@@ -391,13 +403,15 @@ function setRenderOptions(next) {
   renderOptions = { ...renderOptions, ...(next || {}) }
 }
 
-/** 从应用层配置提取显式布尔开关（缺失/非法值保持默认，不覆盖）。 */
+/** 从应用层配置提取显式配置值（布尔开关仅接受布尔，选择项仅接受合法枚举；缺失/非法值保持默认，不覆盖）。 */
 function pickRenderOptions(config) {
   const out = {}
   const cfg = config ?? {}
   for (const key of Object.keys(DEFAULT_RENDER_OPTIONS)) {
     if (typeof cfg[key] === 'boolean') out[key] = cfg[key]
   }
+  if (COPY_BUTTON_POSITIONS.includes(cfg.copyButtonPosition)) out.copyButtonPosition = cfg.copyButtonPosition
+  if (CODE_THEMES.includes(cfg.codeTheme)) out.codeTheme = cfg.codeTheme
   return out
 }
 
@@ -426,6 +440,8 @@ function initConfigFromServer() {
 exports.setRenderOptions = setRenderOptions
 exports.pickRenderOptions = pickRenderOptions
 exports.initConfigFromServer = initConfigFromServer
+exports.COPY_BUTTON_POSITIONS = COPY_BUTTON_POSITIONS
+exports.CODE_THEMES = CODE_THEMES
 
 
     // ── 复制按钮（issue #74）：CopyButton + 复制工具函数 ──────────
@@ -911,6 +927,12 @@ exports.langLabel = langLabel
 // syntaxHighlight / languageLabel / lineNumbers），apply(ctx) 从配置
 // 读取，测试可用 setRenderOptions 切换。模块级变量，MarkdownView 渲染
 // 代码块时读取。
+// issue #146：复制按钮位置可配置（copyButtonPosition：header=头部右上
+// 角 | bottom-right=右下角默认，与 #74 原始诉求一致——按钮作为
+// md-code-block 直接子元素绝对定位右下角）；代码主题经 data-theme 属性
+// 选择色板（styles.part.js），仅实际高亮的代码块携带主题（syntaxHighlight
+// 关闭/未知语言/超长跳过高亮时无 data-theme → 保持 DSH 默认样式，
+// 主题不影响纯文本代码块，开关语义不回归）。
 
 // token 类型 → 高亮类名（其余类型渲染为纯文本）。
 const TOKEN_CLASS = {
@@ -952,33 +974,45 @@ function renderCodeCells(code, lang, lines, highlight, lineNumbers) {
   return nodes
 }
 
+/** 代码块头部：语言标签 + （header 位置时）复制按钮；两元素都关闭时无头部。 */
+function renderCodeHead(lang, bottomCopy) {
+  const withHead = renderOptions.languageLabel || (renderOptions.copyButton && !bottomCopy)
+  if (!withHead) return null
+  return createElement(
+    'div',
+    { className: 'dsh-md-render-code-head' },
+    renderOptions.languageLabel
+      ? createElement('span', { className: 'dsh-md-render-code-lang' }, langLabel(lang))
+      : null,
+    !bottomCopy && renderOptions.copyButton ? createElement(CopyButton, { kind: 'code' }) : null,
+  )
+}
+
 /** 渲染完整代码块：头部（语言名 + 复制按钮）+ pre > code（高亮/行号）。 */
 function renderCodeBlock({ key, lang, code }) {
   const lines = String(code).split('\n')
   // issue #84：syntaxHighlight 关闭 → 不做 token 高亮（回退纯文本）。
   const highlight = renderOptions.syntaxHighlight && shouldHighlight(lang, lines)
-  // issue #84：copyButton / languageLabel 关闭 → 头部对应元素不渲染。
-  const head =
-    renderOptions.copyButton || renderOptions.languageLabel
-      ? createElement(
-          'div',
-          { className: 'dsh-md-render-code-head' },
-          renderOptions.languageLabel
-            ? createElement('span', { className: 'dsh-md-render-code-lang' }, langLabel(lang))
-            : null,
-          renderOptions.copyButton ? createElement(CopyButton, { kind: 'code' }) : null,
-        )
-      : null
+  // issue #146：复制按钮位置默认右下角（bottom-right，与 #74 原始诉求
+  // 一致）——按钮作为 md-code-block 直接子元素绝对定位；header 位置时
+  // 按钮仍在头部（与语言标签同排，issue #80 布局）。
+  const bottomCopy = renderOptions.copyButton && renderOptions.copyButtonPosition !== 'header'
   const body = renderCodeCells(code, lang, lines, highlight, renderOptions.lineNumbers)
+  // issue #146：主题仅作用于实际高亮的代码块——关闭 syntaxHighlight
+  // / 未知语言 / 超长跳过高亮时无 data-theme，保持 DSH 语义 token 默认
+  // 样式（主题不影响纯文本代码块，开关语义不回归）。
+  const blockProps = { key, className: 'md-code-block' }
+  if (highlight) blockProps['data-theme'] = renderOptions.codeTheme
   return createElement(
     'div',
-    { key, className: 'md-code-block' },
-    head,
+    blockProps,
+    renderCodeHead(lang, bottomCopy),
     createElement(
       'pre',
       { className: 'tzx-pre' },
       createElement('code', { className: lang ? 'language-' + lang : '' }, ...body),
     ),
+    bottomCopy ? createElement(CopyButton, { kind: 'code' }) : null,
   )
 }
 
@@ -2463,7 +2497,7 @@ const STYLES = `
 .tzx-md h1,.tzx-md h2,.tzx-md h3,.tzx-md h4{margin:0;font-weight:600;line-height:1.35}
 .tzx-md ul,.tzx-md ol{margin:0;padding-left:26px}
 .tzx-md li{margin:2px 0}
-.tzx-md .tzx-pre{margin:0;background:var(--dsw-alias-markdown-code-block);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:12px 16px;overflow:auto;font:var(--dsw-font-markdown-code-block-small);transition:border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
+.tzx-md .tzx-pre{margin:0;background:var(--dsh-md-render-code-bg,var(--dsw-alias-markdown-code-block));border:1px solid var(--dsh-md-render-code-border,var(--dsw-alias-border-l1));border-radius:8px;padding:12px 16px;overflow:auto;font:var(--dsw-font-markdown-code-block-small);transition:border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .tzx-md .tzx-pre:hover{border-color:var(--dsw-alias-border-l2)}
 .tzx-md code{background:var(--dsw-alias-markdown-code-block);border-radius:4px;padding:0 4px;font:var(--dsw-font-markdown-code-block-small)}
 .tzx-md .tzx-pre code{background:none;padding:0}
@@ -2519,14 +2553,17 @@ div.dsh-md-render-math-error{margin:0;text-align:center;justify-content:center;p
 .dsh-md-render-scroll-hint{display:flex;align-items:center;gap:4px;padding:2px 8px;font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary)}
 .dsh-md-render-scroll-hint svg{display:block;flex:none}
 .dsh-md-render-prefix,.dsh-md-render-suffix{margin:0}
-/* ── 复制按钮（issue #74）：代码块 / 整段内容右下角一键复制 ──
-   绝对定位右下角、hover 才显示（不干扰阅读）；DSH 语义 token 深浅
-   主题自适应；流式渲染中（[data-streaming] 祖先）隐藏，避免复制到
-   半截内容。 */
+/* ── 复制按钮（issue #74）：代码块 / 整段内容一键复制 ──
+   整段内容按钮绝对定位右下角；代码块按钮位置可配置（issue #146）：
+   bottom-right（默认，与 #74 原始诉求一致）= md-code-block 直接子元素
+   绝对定位右下角，header = 头部与语言标签同排（issue #80 布局）。
+   hover 才显示（不干扰阅读）；DSH 语义 token 深浅主题自适应；流式渲染
+   中（[data-streaming] 祖先）隐藏，避免复制到半截内容。 */
 .md-code-block{position:relative}
 .tzx-md{position:relative}
 .dsh-md-render-copy{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;cursor:pointer;opacity:0;transition:opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out),color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .dsh-md-render-code-head>.dsh-md-render-copy{margin-left:auto}
+.md-code-block>.dsh-md-render-copy{position:absolute;right:8px;bottom:8px}
 .tzx-md>.dsh-md-render-copy{position:absolute;right:8px;bottom:8px}
 .md-code-block:hover .dsh-md-render-copy,.tzx-md:hover>.dsh-md-render-copy{opacity:1}
 .dsh-md-render-copy:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2)}
@@ -2536,19 +2573,32 @@ div.dsh-md-render-math-error{margin:0;text-align:center;justify-content:center;p
    header 行与复制按钮（#74）同排；行号用 CSS counter 伪元素（不污染
    pre/code 文本内容，mermaid/复制读取原文本不受影响）；token 类走
    固定色板 + prefers-color-scheme 深浅两套，随 activation 注入/卸载。 */
-.dsh-md-render-code-head{display:flex;align-items:center;gap:8px;padding:4px 8px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 55%,transparent);border:1px solid var(--dsw-alias-border-l1);border-bottom:none;border-radius:8px 8px 0 0}
+.dsh-md-render-code-head{display:flex;align-items:center;gap:8px;padding:4px 8px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:var(--dsh-md-render-code-bg,color-mix(in srgb,var(--dsw-alias-bg-layer-2) 55%,transparent));border:1px solid var(--dsh-md-render-code-border,var(--dsw-alias-border-l1));border-bottom:none;border-radius:8px 8px 0 0}
 .dsh-md-render-code-lang{text-transform:lowercase;letter-spacing:.02em;user-select:none}
 .md-code-block .tzx-pre{border-top:none;border-radius:0 0 8px 8px}
 .tzx-md .tzx-pre code{display:block;white-space:normal;counter-reset:dsh-md-render-line}
 .dsh-md-render-code-line{display:block;white-space:pre;position:relative;padding-left:3.5em;counter-increment:dsh-md-render-line}
 .dsh-md-render-code-line::before{content:counter(dsh-md-render-line);position:absolute;left:0;width:3em;text-align:right;color:var(--dsw-alias-label-tertiary);user-select:none}
-.md-code-block{--dsh-md-render-c-kw:#7c3aed;--dsh-md-render-c-str:#16a34a;--dsh-md-render-c-com:#94a3b8;--dsh-md-render-c-num:#dc2626;--dsh-md-render-c-fn:#2563eb}
+/* ── 代码主题（issue #146）：内置 5 套可配置色板，经 data-theme 选择 ──
+   每套定义 5 个 token 色（kw/str/com/num/fn）+ 代码块背景/边框色；
+   bright（默认）= 明亮高对比：柔和白底 + 深色 token，解决白底刺眼观感
+   （不用高饱和青色系）；github-light / github-dark / one-dark / nord 为
+   知名编辑器色板。深浅色自适应保留：每套主题均有 prefers-color-scheme
+   暗色变体（github-light 暗色变体 = github-dark 官方色板；github-dark /
+   one-dark / nord 本身为暗色主题，两套相同）。仅实际高亮的代码块携带
+   data-theme（syntaxHighlight 关闭 / 未知语言 / 超长跳过高亮时无
+   data-theme → 保持 DSH 语义 token 默认样式，主题不影响纯文本代码块）。 */
+.md-code-block[data-theme]{--dsh-md-render-c-kw:#6d28d9;--dsh-md-render-c-str:#15803d;--dsh-md-render-c-com:#78716c;--dsh-md-render-c-num:#b45309;--dsh-md-render-c-fn:#1d4ed8;--dsh-md-render-code-bg:#fafaf9;--dsh-md-render-code-border:#d6d3d1}
+.md-code-block[data-theme="github-light"]{--dsh-md-render-c-kw:#cf222e;--dsh-md-render-c-str:#0a3069;--dsh-md-render-c-com:#6e7781;--dsh-md-render-c-num:#0550ae;--dsh-md-render-c-fn:#8250df;--dsh-md-render-code-bg:#ffffff;--dsh-md-render-code-border:#d0d7de}
+.md-code-block[data-theme="github-dark"]{--dsh-md-render-c-kw:#ff7b72;--dsh-md-render-c-str:#a5d6ff;--dsh-md-render-c-com:#8b949e;--dsh-md-render-c-num:#79c0ff;--dsh-md-render-c-fn:#d2a8ff;--dsh-md-render-code-bg:#0d1117;--dsh-md-render-code-border:#30363d}
+.md-code-block[data-theme="one-dark"]{--dsh-md-render-c-kw:#c678dd;--dsh-md-render-c-str:#98c379;--dsh-md-render-c-com:#5c6370;--dsh-md-render-c-num:#d19a66;--dsh-md-render-c-fn:#61afef;--dsh-md-render-code-bg:#282c34;--dsh-md-render-code-border:#3e4451}
+.md-code-block[data-theme="nord"]{--dsh-md-render-c-kw:#b48ead;--dsh-md-render-c-str:#a3be8c;--dsh-md-render-c-com:#616e88;--dsh-md-render-c-num:#d08770;--dsh-md-render-c-fn:#81a1c1;--dsh-md-render-code-bg:#2e3440;--dsh-md-render-code-border:#434c5e}
+@media (prefers-color-scheme:dark){.md-code-block[data-theme]{--dsh-md-render-c-kw:#c4b5fd;--dsh-md-render-c-str:#86efac;--dsh-md-render-c-com:#64748b;--dsh-md-render-c-num:#f87171;--dsh-md-render-c-fn:#93c5fd;--dsh-md-render-code-bg:#1e1f26;--dsh-md-render-code-border:#3a3b45}.md-code-block[data-theme="github-light"]{--dsh-md-render-c-kw:#ff7b72;--dsh-md-render-c-str:#a5d6ff;--dsh-md-render-c-com:#8b949e;--dsh-md-render-c-num:#79c0ff;--dsh-md-render-c-fn:#d2a8ff;--dsh-md-render-code-bg:#0d1117;--dsh-md-render-code-border:#30363d}}
 .dsh-md-render-tok-keyword{color:var(--dsh-md-render-c-kw)}
 .dsh-md-render-tok-string{color:var(--dsh-md-render-c-str)}
 .dsh-md-render-tok-comment{color:var(--dsh-md-render-c-com);font-style:italic}
 .dsh-md-render-tok-number{color:var(--dsh-md-render-c-num)}
 .dsh-md-render-tok-function{color:var(--dsh-md-render-c-fn)}
-@media (prefers-color-scheme:dark){.md-code-block{--dsh-md-render-c-kw:#c4b5fd;--dsh-md-render-c-str:#86efac;--dsh-md-render-c-com:#64748b;--dsh-md-render-c-num:#f87171;--dsh-md-render-c-fn:#93c5fd}}
 /* ── 语法补全（issue #81）：任务列表 / 删除线 / 图片 ──
    任务列表：checkbox 与文本同排、状态色走 accent；删除线 <del>
    line-through 弱化次级字色；图片块级自适应、失败占位。 */
@@ -2563,9 +2613,11 @@ div.dsh-md-render-math-error{margin:0;text-align:center;justify-content:center;p
     // ── 设置页视图（issue #84）：各增强功能开关可视化 ──────────────────
 // 官方 slots 扩展点：设置 → 插件 → 渲染 页签。开关列表与 server 端
 // （lib/index.js buildOptions + lib/routes.js SWITCH_KEYS）一一对应；
-// 保存经 PUT /md/api/config 写入 profile patch 文件（持久化），DSH 的
+// issue #146 起支持选择型配置（复制按钮位置 / 代码主题，server 端
+// SELECT_KEYS）——新增「代码块外观」区块，枚举下拉保存同走
+// PUT /md/api/config。保存写入 profile patch 文件（持久化），DSH 的
 // watchUserPatches 热重载后 client 重新 apply（保存即生效）；保存成功
-// 后立即 setRenderOptions 应用新开关（当前页面无需等待重载）。
+// 后立即 setRenderOptions 应用新配置（当前页面无需等待重载）。
 const SETTINGS_STYLES = `
 .dsh-md-render-settings{display:flex;flex-direction:column;gap:10px;padding:12px}
 .dsh-md-render-settings-section{display:flex;flex-direction:column;gap:8px}
@@ -2578,6 +2630,9 @@ const SETTINGS_STYLES = `
 .dsh-md-render-settings-toggle[data-on="true"]{background:var(--dsw-alias-state-success-primary);border-color:transparent}
 .dsh-md-render-settings-toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-primary);transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .dsh-md-render-settings-toggle[data-on="true"]::after{transform:translateX(12px);background:var(--dsw-alias-label-primary-foreground)}
+.dsh-md-render-settings-select{flex:none;height:28px;min-width:150px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);cursor:pointer}
+.dsh-md-render-settings-select:hover{border-color:var(--dsw-alias-border-l3)}
+.dsh-md-render-settings-select:focus{outline:none;border-color:var(--dsw-alias-accent-primary)}
 .dsh-md-render-settings-actions{display:flex;align-items:center;gap:8px}
 .dsh-md-render-settings-btn{height:28px;padding:0 14px;border-radius:6px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}
 .dsh-md-render-settings-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -2588,7 +2643,7 @@ const SETTINGS_STYLES = `
 
 /** 开关定义（key 与 server 端 SWITCH_KEYS / config.part.js 一致）。 */
 const SETTINGS_SWITCHES = [
-  { key: 'copyButton', label: '复制按钮', hint: '代码块头部与整段内容右下角的复制按钮（issue #74）' },
+  { key: 'copyButton', label: '复制按钮', hint: '代码块与整段内容一键复制（位置/外观见下方配置，issue #74）' },
   { key: 'syntaxHighlight', label: '语法高亮', hint: '代码块关键字/字符串/注释等着色（issue #80）' },
   { key: 'languageLabel', label: '语言标签', hint: '代码块头部显示语言名（issue #80）' },
   { key: 'lineNumbers', label: '行号', hint: '代码块左侧行号（issue #80）' },
@@ -2599,6 +2654,21 @@ const SETTINGS_SWITCHES = [
   { key: 'mathStructures', label: '公式结构', hint: '行内 $...$ 与块级 $$...$$ 公式渲染（issue #82）' },
   { key: 'tableSort', label: '表头排序', hint: '点击表头按列排序（issue #83）' },
   { key: 'tableFold', label: '长表格折叠', hint: '超过 20 行的表格默认折叠（issue #83）' },
+]
+
+/** 代码块复制按钮位置选项（issue #146）：key 与 server 端 SELECT_KEYS 一致。 */
+const COPY_POSITION_OPTIONS = [
+  { id: 'bottom-right', label: '右下角', hint: '按钮浮在代码块右下角（hover 显示，issue #74 原始诉求）' },
+  { id: 'header', label: '头部', hint: '按钮固定在代码块头部、与语言标签同排（issue #80 布局）' },
+]
+
+/** 代码主题选项（issue #146）：id 与 server 端 SELECT_KEYS / styles.part.js 色板一致。 */
+const CODE_THEME_OPTIONS = [
+  { id: 'bright', label: '明亮高对比', hint: '默认主题：柔和白底 + 深色 token，白底清晰不刺眼' },
+  { id: 'github-light', label: 'GitHub Light', hint: 'GitHub 官方亮色配色' },
+  { id: 'github-dark', label: 'GitHub Dark', hint: 'GitHub 官方暗色配色' },
+  { id: 'one-dark', label: 'One Dark', hint: 'Atom One Dark 编辑器配色' },
+  { id: 'nord', label: 'Nord', hint: '北极清新配色调（暗色）' },
 ]
 
 /** 开关行（布尔配置项）。 */
@@ -2637,6 +2707,58 @@ function renderSwitchesSection(draft, patch) {
         onChange: (v) => patch(item.key, v),
       }),
     ),
+  )
+}
+
+/** 选择行（枚举配置项，issue #146：复制按钮位置 / 代码主题）。 */
+function SettingsSelectRow({ label, hint, value, options, onChange }) {
+  return createElement(
+    'div',
+    { className: 'dsh-md-render-settings-row' },
+    createElement(
+      'div',
+      { className: 'dsh-md-render-settings-info' },
+      createElement('div', { className: 'dsh-md-render-settings-label' }, label),
+      createElement('div', { className: 'dsh-md-render-settings-hint' }, hint),
+    ),
+    createElement(
+      'select',
+      {
+        className: 'dsh-md-render-settings-select',
+        value: value,
+        onChange: (e) => onChange(e.target.value),
+      },
+      ...options.map((o) => createElement('option', { key: o.id, value: o.id }, o.label)),
+    ),
+  )
+}
+
+/** 代码块外观区块（issue #146：复制按钮位置 + 代码主题选择）。 */
+function renderAppearanceSection(draft, patch) {
+  return createElement(
+    'div',
+    { className: 'dsh-md-render-settings-section' },
+    createElement('div', { className: 'dsh-md-render-settings-section-title' }, '代码块外观'),
+    createElement(SettingsSelectRow, {
+      label: '复制按钮位置',
+      hint: COPY_POSITION_OPTIONS.find((o) => o.id === draft.copyButtonPosition)?.hint ?? COPY_POSITION_OPTIONS[0].hint,
+      value:
+        draft.copyButtonPosition && COPY_POSITION_OPTIONS.some((o) => o.id === draft.copyButtonPosition)
+          ? draft.copyButtonPosition
+          : COPY_POSITION_OPTIONS[0].id,
+      options: COPY_POSITION_OPTIONS,
+      onChange: (v) => patch('copyButtonPosition', v),
+    }),
+    createElement(SettingsSelectRow, {
+      label: '代码主题',
+      hint: CODE_THEME_OPTIONS.find((o) => o.id === draft.codeTheme)?.hint ?? CODE_THEME_OPTIONS[0].hint,
+      value:
+        draft.codeTheme && CODE_THEME_OPTIONS.some((o) => o.id === draft.codeTheme)
+          ? draft.codeTheme
+          : CODE_THEME_OPTIONS[0].id,
+      options: CODE_THEME_OPTIONS,
+      onChange: (v) => patch('codeTheme', v),
+    }),
   )
 }
 
@@ -2731,6 +2853,7 @@ function MdRenderSettingsView() {
     'div',
     { className: 'dsh-md-render-settings' },
     renderSwitchesSection(draft, patch),
+    renderAppearanceSection(draft, patch),
     createElement(
       'div',
       { className: 'dsh-md-render-settings-actions' },

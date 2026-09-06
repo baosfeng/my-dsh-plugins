@@ -59,7 +59,38 @@ function renderBlock(config) {
   const copyButtons = []
   const codeLangs = []
   const codeElements = []
+  const mdCodeBlockThemes = []
+  const codeCopyInHead = []
+  const codeCopyBottom = []
   let mdCodeBlockWrappers = 0
+  /** 展开函数组件（CopyButton 等），返回最终 DOM 元素节点或 null。 */
+  function expand(node) {
+    let cur = node
+    while (cur && typeof cur === 'object' && typeof cur.type === 'function') cur = cur.type(cur.props)
+    return cur
+  }
+  /** 收集某容器直接子元素中的代码块复制按钮（展开后）。 */
+  function directCopyButtons(container) {
+    const kids = Array.isArray(container.props.children)
+      ? container.props.children
+      : container.props.children !== undefined && container.props.children !== null
+        ? [container.props.children]
+        : []
+    const out = []
+    for (const k of kids) {
+      const el = expand(k)
+      if (
+        el &&
+        typeof el === 'object' &&
+        el.type === 'button' &&
+        typeof el.props?.className === 'string' &&
+        el.props.className.includes('dsh-md-render-copy')
+      ) {
+        out.push(el)
+      }
+    }
+    return out
+  }
   function walk(node) {
     if (node === null || node === undefined || typeof node === 'boolean') return
     if (typeof node === 'string' || typeof node === 'number') return
@@ -69,7 +100,14 @@ function renderBlock(config) {
     }
     const props = node.props ?? {}
     if (typeof node.type === 'string') {
-      if (node.type === 'div' && props.className === 'md-code-block') mdCodeBlockWrappers += 1
+      if (node.type === 'div' && props.className === 'md-code-block') {
+        mdCodeBlockWrappers += 1
+        if (typeof props['data-theme'] === 'string') mdCodeBlockThemes.push(props['data-theme'])
+        for (const btn of directCopyButtons(node)) codeCopyBottom.push(btn)
+      }
+      if (node.type === 'div' && props.className === 'dsh-md-render-code-head') {
+        for (const btn of directCopyButtons(node)) codeCopyInHead.push(btn)
+      }
       if (node.type === 'code' && typeof props.className === 'string') {
         codeLangs.push(props.className)
         codeElements.push(node)
@@ -113,6 +151,9 @@ function renderBlock(config) {
     copyButtons,
     codeLangs,
     mdCodeBlockWrappers,
+    mdCodeBlockThemes,
+    codeCopyInHead,
+    codeCopyBottom,
   }
 }
 
@@ -188,10 +229,59 @@ test('未知语言回退纯文本（无 token span，仍有语言标签 + 行号
   assert.equal(r.codeRawText, 'flowchart TD\n    A --> B', 'raw mermaid source preserved')
 })
 
-test('与 #74 复制按钮共存（头部同排，复制按钮仍渲染）', () => {
+test('与 #74 复制按钮共存（默认右下角，复制按钮仍渲染）', () => {
   const r = renderBlock({ text: JS_CODE })
-  assert.ok(r.copyButtons.length >= 1, 'copy button still rendered in header')
+  assert.ok(r.copyButtons.length >= 1, 'copy button still rendered')
+  assert.equal(r.codeCopyBottom.length, 1, 'copy button at block bottom-right by default (issue #146)')
+  assert.equal(r.codeCopyInHead.length, 0, 'not in header by default')
   assert.ok(r.tokenSpanClasses.length > 0, 'highlighting coexists with copy button')
+})
+
+// ── issue #146：代码主题（data-theme）与复制按钮位置配置 ────────────
+
+test('默认主题 bright：高亮代码块携带 data-theme', () => {
+  exportsObj.setRenderOptions({ codeTheme: 'bright' })
+  const r = renderBlock({ text: JS_CODE })
+  assert.deepEqual(r.mdCodeBlockThemes, ['bright'], 'highlighted block carries default theme')
+  assert.ok(r.tokenSpanClasses.length > 0, 'highlight on')
+})
+
+test('主题切换：data-theme 跟随配置', () => {
+  exportsObj.setRenderOptions({ codeTheme: 'github-dark' })
+  try {
+    const r = renderBlock({ text: JS_CODE })
+    assert.deepEqual(r.mdCodeBlockThemes, ['github-dark'], 'data-theme follows codeTheme')
+  } finally {
+    exportsObj.setRenderOptions({ codeTheme: 'bright' })
+  }
+})
+
+test('syntaxHighlight 关闭 → 无 data-theme（主题不影响纯文本代码块）', () => {
+  exportsObj.setRenderOptions({ codeTheme: 'bright', syntaxHighlight: false })
+  try {
+    const r = renderBlock({ text: JS_CODE })
+    assert.equal(r.tokenSpanClasses.length, 0, 'no token spans')
+    assert.deepEqual(r.mdCodeBlockThemes, [], 'no theme marker on plain code block')
+  } finally {
+    exportsObj.setRenderOptions({ syntaxHighlight: true })
+  }
+})
+
+test('未知语言（mermaid）→ 无 data-theme', () => {
+  const r = renderBlock({ text: '```mermaid\nflowchart TD\n    A --> B\n```' })
+  assert.equal(r.tokenSpanClasses.length, 0, 'no highlight')
+  assert.deepEqual(r.mdCodeBlockThemes, [], 'no theme marker without highlight')
+})
+
+test('copyButtonPosition=header：复制按钮回到头部（与语言标签同排）', () => {
+  exportsObj.setRenderOptions({ copyButtonPosition: 'header' })
+  try {
+    const r = renderBlock({ text: JS_CODE })
+    assert.equal(r.codeCopyInHead.length, 1, 'copy button in header for header position')
+    assert.equal(r.codeCopyBottom.length, 0, 'no bottom-right button')
+  } finally {
+    exportsObj.setRenderOptions({ copyButtonPosition: 'bottom-right' })
+  }
 })
 
 test('多反引号/无语言代码块：无语言类，代码块仍可渲染', () => {

@@ -13,7 +13,7 @@
  *    按新开关渲染（保存即生效，无需重启）。
  */
 import { currentProfile, patchFileOf, writePatchConfig } from 'dsh-shared'
-import { registerConfigRoutes, SWITCH_KEYS } from './routes.js'
+import { registerConfigRoutes, SWITCH_KEYS, SELECT_KEYS, SELECT_DEFAULTS } from './routes.js'
 
 export const name = 'dsh-md-render'
 
@@ -35,10 +35,16 @@ export function apply(ctx, config) {
   registerConfigRoutes(ctx, options, onConfigChange)
 }
 
-/** 应用层配置 → options（全部开关默认开启；仅布尔值生效）。 */
+/**
+ * 应用层配置 → options（开关默认开启、选择项默认值兜底；
+ * 开关仅布尔值生效，选择项非法值回退默认）。
+ */
 export function buildOptions(config) {
   const c = config ?? {}
   const options = {}
   for (const key of SWITCH_KEYS) options[key] = c[key] !== false
+  for (const [key, allowed] of Object.entries(SELECT_KEYS)) {
+    options[key] = allowed.includes(c[key]) ? c[key] : SELECT_DEFAULTS[key]
+  }
   return options
 }

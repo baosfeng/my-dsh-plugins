@@ -28,14 +28,4 @@
 - `docs/` 模块文档引用插件截图用 `../../plugins/<name>/assets/xxx.png`；
 - `package.json` 的 `description` 建议中英双语（中文在前，英文在后）——npm 列表/包页面头部优先显示中文。
 
-## 已对齐现状（2026-08-25）
-
-| 插件                | 截图 | 功能 | 配置 | 依赖 | 相关文档 |
-| ------------------- | ---- | ---- | ---- | ---- | -------- |
-| dsh-file-activity   | ✅ 2 | ✅   | ✅   | ✅   | ✅       |
-| dsh-think-zh-expand | ✅ 1 | ✅   | ✅   | ✅   | ✅       |
-| dsh-mermaid-render  | ✅ 1 | ✅   | ✅   | ✅   | ✅       |
-| dsh-my-notify       | ✅ 1 | ✅   | ✅   | ✅   | ✅       |
-| dsh-my-guardian     | ✅ 2 | ✅   | ✅   | ✅   | ✅       |
-
-> 表格中显示名沿用模块名（dsh-file-activity 等），npm 包名与插件目录名一致（`dsh-*` / `dsh-my-*`，无额外前缀）。
+> 仓库内全部插件（含此后新增）均按此模板对齐编写；新插件 / 修改 README 时照上文章节结构对齐。npm 包名与插件目录名一致（`dsh-*` / `dsh-my-*`，无额外前缀）。

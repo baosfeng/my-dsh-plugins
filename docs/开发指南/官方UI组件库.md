@@ -26,6 +26,25 @@
 createElement(uiPrimitives.Pill, { active: true, onClick: handler }, '文本')
 ```
 
+### 试点实证的 API 用法（issue #143：dsh-my-memory / dsh-my-skill-manager 已落地）
+
+```js
+// Button：variant（primary/ghost/outline/toolbar）+ size（sm 适配侧边栏）+ icon
+createElement(ui.Button, { variant: 'outline', size: 'sm', onClick: retry, icon: createElement(ui.IconRefreshOutline14) }, '重试')
+
+// Input：className 在 wrapper，原生属性（value/onChange/placeholder）在内部 input
+createElement(ui.Input, { className: 'dsh-my-memory-input', value, onChange, placeholder })
+
+// Pill：徽标/分段控制（active 选中态；onClick 渲染为 button）
+createElement(ui.Pill, { active: scope === 'global', onClick: () => setScope('global') }, '全局')
+
+// 图标：命名规则 Icon<名称><Outline|Fill><尺寸>，props 透传（className 可加旋转等）
+createElement(ui.IconRefreshOutline14, { className: loading ? 'spin' : undefined })
+```
+
+- 测试 stub：client-render / client-session 测试中 stub 官方组件库（`if (spec === '@deepseek-ai/dsh-client-ui-primitives') return uiPrimitives`），stub 组件带 `data-ui` 标记供「官方组件被使用」断言（见 dsh-my-memory/test/client-render.mjs）。
+- eslint：`import/no-unresolved` 需将 `@deepseek-ai/dsh-client-ui-primitives` 加入 ignore（staticModules 注入，node_modules 无对应包，见 eslint.config.js）。
+
 ## 插件内使用方式
 
 ```js

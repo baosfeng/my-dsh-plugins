@@ -55,6 +55,7 @@
 │   ├── dsh-mermaid-render/
 │   ├── dsh-md-render/
 │   ├── dsh-my-notify/
+│   ├── dsh-my-remote/         # 远程控制（issue #75）
 │   ├── dsh-my-guardian/
 │   ├── dsh-task-reliability/
 │   ├── dsh-my-skill-manager/
@@ -63,8 +64,10 @@
 │   ├── dsh-my-observability/
 │   ├── dsh-my-guard/
 │   ├── dsh-my-context/
+│   ├── dsh-session-title-gen/ # 会话标题自动生成（issue #160）
 │   ├── dsh-plugin-dev-mode/   # agent preset 资产包（非运行时插件）
-│   └── dsh-ts-example/        # TypeScript 插件开发示例（issue #47）
+│   ├── dsh-ts-example/        # TypeScript 插件开发示例（issue #47）
+│   └── dsh-shared/            # 共享工具包（issue #45）
 ├── skills/           # 本仓库的开发技能（SKILL.md 格式，可安装到 ~/.dsh/skills/）
 │   └── dsh-plugin-development/
 ├── docs/             # 通用文档与设计文档

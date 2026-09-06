@@ -11,7 +11,7 @@ const STYLES = `
 .tzx-md h1,.tzx-md h2,.tzx-md h3,.tzx-md h4{margin:0;font-weight:600;line-height:1.35}
 .tzx-md ul,.tzx-md ol{margin:0;padding-left:26px}
 .tzx-md li{margin:2px 0}
-.tzx-md .tzx-pre{margin:0;background:var(--dsw-alias-markdown-code-block);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:12px 16px;overflow:auto;font:var(--dsw-font-markdown-code-block-small);transition:border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
+.tzx-md .tzx-pre{margin:0;background:var(--dsh-md-render-code-bg,var(--dsw-alias-markdown-code-block));border:1px solid var(--dsh-md-render-code-border,var(--dsw-alias-border-l1));border-radius:8px;padding:12px 16px;overflow:auto;font:var(--dsw-font-markdown-code-block-small);transition:border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .tzx-md .tzx-pre:hover{border-color:var(--dsw-alias-border-l2)}
 .tzx-md code{background:var(--dsw-alias-markdown-code-block);border-radius:4px;padding:0 4px;font:var(--dsw-font-markdown-code-block-small)}
 .tzx-md .tzx-pre code{background:none;padding:0}
@@ -67,14 +67,17 @@ div.dsh-md-render-math-error{margin:0;text-align:center;justify-content:center;p
 .dsh-md-render-scroll-hint{display:flex;align-items:center;gap:4px;padding:2px 8px;font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary)}
 .dsh-md-render-scroll-hint svg{display:block;flex:none}
 .dsh-md-render-prefix,.dsh-md-render-suffix{margin:0}
-/* ── 复制按钮（issue #74）：代码块 / 整段内容右下角一键复制 ──
-   绝对定位右下角、hover 才显示（不干扰阅读）；DSH 语义 token 深浅
-   主题自适应；流式渲染中（[data-streaming] 祖先）隐藏，避免复制到
-   半截内容。 */
+/* ── 复制按钮（issue #74）：代码块 / 整段内容一键复制 ──
+   整段内容按钮绝对定位右下角；代码块按钮位置可配置（issue #146）：
+   bottom-right（默认，与 #74 原始诉求一致）= md-code-block 直接子元素
+   绝对定位右下角，header = 头部与语言标签同排（issue #80 布局）。
+   hover 才显示（不干扰阅读）；DSH 语义 token 深浅主题自适应；流式渲染
+   中（[data-streaming] 祖先）隐藏，避免复制到半截内容。 */
 .md-code-block{position:relative}
 .tzx-md{position:relative}
 .dsh-md-render-copy{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;cursor:pointer;opacity:0;transition:opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out),color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .dsh-md-render-code-head>.dsh-md-render-copy{margin-left:auto}
+.md-code-block>.dsh-md-render-copy{position:absolute;right:8px;bottom:8px}
 .tzx-md>.dsh-md-render-copy{position:absolute;right:8px;bottom:8px}
 .md-code-block:hover .dsh-md-render-copy,.tzx-md:hover>.dsh-md-render-copy{opacity:1}
 .dsh-md-render-copy:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2)}
@@ -84,19 +87,32 @@ div.dsh-md-render-math-error{margin:0;text-align:center;justify-content:center;p
    header 行与复制按钮（#74）同排；行号用 CSS counter 伪元素（不污染
    pre/code 文本内容，mermaid/复制读取原文本不受影响）；token 类走
    固定色板 + prefers-color-scheme 深浅两套，随 activation 注入/卸载。 */
-.dsh-md-render-code-head{display:flex;align-items:center;gap:8px;padding:4px 8px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 55%,transparent);border:1px solid var(--dsw-alias-border-l1);border-bottom:none;border-radius:8px 8px 0 0}
+.dsh-md-render-code-head{display:flex;align-items:center;gap:8px;padding:4px 8px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:var(--dsh-md-render-code-bg,color-mix(in srgb,var(--dsw-alias-bg-layer-2) 55%,transparent));border:1px solid var(--dsh-md-render-code-border,var(--dsw-alias-border-l1));border-bottom:none;border-radius:8px 8px 0 0}
 .dsh-md-render-code-lang{text-transform:lowercase;letter-spacing:.02em;user-select:none}
 .md-code-block .tzx-pre{border-top:none;border-radius:0 0 8px 8px}
 .tzx-md .tzx-pre code{display:block;white-space:normal;counter-reset:dsh-md-render-line}
 .dsh-md-render-code-line{display:block;white-space:pre;position:relative;padding-left:3.5em;counter-increment:dsh-md-render-line}
 .dsh-md-render-code-line::before{content:counter(dsh-md-render-line);position:absolute;left:0;width:3em;text-align:right;color:var(--dsw-alias-label-tertiary);user-select:none}
-.md-code-block{--dsh-md-render-c-kw:#7c3aed;--dsh-md-render-c-str:#16a34a;--dsh-md-render-c-com:#94a3b8;--dsh-md-render-c-num:#dc2626;--dsh-md-render-c-fn:#2563eb}
+/* ── 代码主题（issue #146）：内置 5 套可配置色板，经 data-theme 选择 ──
+   每套定义 5 个 token 色（kw/str/com/num/fn）+ 代码块背景/边框色；
+   bright（默认）= 明亮高对比：柔和白底 + 深色 token，解决白底刺眼观感
+   （不用高饱和青色系）；github-light / github-dark / one-dark / nord 为
+   知名编辑器色板。深浅色自适应保留：每套主题均有 prefers-color-scheme
+   暗色变体（github-light 暗色变体 = github-dark 官方色板；github-dark /
+   one-dark / nord 本身为暗色主题，两套相同）。仅实际高亮的代码块携带
+   data-theme（syntaxHighlight 关闭 / 未知语言 / 超长跳过高亮时无
+   data-theme → 保持 DSH 语义 token 默认样式，主题不影响纯文本代码块）。 */
+.md-code-block[data-theme]{--dsh-md-render-c-kw:#6d28d9;--dsh-md-render-c-str:#15803d;--dsh-md-render-c-com:#78716c;--dsh-md-render-c-num:#b45309;--dsh-md-render-c-fn:#1d4ed8;--dsh-md-render-code-bg:#fafaf9;--dsh-md-render-code-border:#d6d3d1}
+.md-code-block[data-theme="github-light"]{--dsh-md-render-c-kw:#cf222e;--dsh-md-render-c-str:#0a3069;--dsh-md-render-c-com:#6e7781;--dsh-md-render-c-num:#0550ae;--dsh-md-render-c-fn:#8250df;--dsh-md-render-code-bg:#ffffff;--dsh-md-render-code-border:#d0d7de}
+.md-code-block[data-theme="github-dark"]{--dsh-md-render-c-kw:#ff7b72;--dsh-md-render-c-str:#a5d6ff;--dsh-md-render-c-com:#8b949e;--dsh-md-render-c-num:#79c0ff;--dsh-md-render-c-fn:#d2a8ff;--dsh-md-render-code-bg:#0d1117;--dsh-md-render-code-border:#30363d}
+.md-code-block[data-theme="one-dark"]{--dsh-md-render-c-kw:#c678dd;--dsh-md-render-c-str:#98c379;--dsh-md-render-c-com:#5c6370;--dsh-md-render-c-num:#d19a66;--dsh-md-render-c-fn:#61afef;--dsh-md-render-code-bg:#282c34;--dsh-md-render-code-border:#3e4451}
+.md-code-block[data-theme="nord"]{--dsh-md-render-c-kw:#b48ead;--dsh-md-render-c-str:#a3be8c;--dsh-md-render-c-com:#616e88;--dsh-md-render-c-num:#d08770;--dsh-md-render-c-fn:#81a1c1;--dsh-md-render-code-bg:#2e3440;--dsh-md-render-code-border:#434c5e}
+@media (prefers-color-scheme:dark){.md-code-block[data-theme]{--dsh-md-render-c-kw:#c4b5fd;--dsh-md-render-c-str:#86efac;--dsh-md-render-c-com:#64748b;--dsh-md-render-c-num:#f87171;--dsh-md-render-c-fn:#93c5fd;--dsh-md-render-code-bg:#1e1f26;--dsh-md-render-code-border:#3a3b45}.md-code-block[data-theme="github-light"]{--dsh-md-render-c-kw:#ff7b72;--dsh-md-render-c-str:#a5d6ff;--dsh-md-render-c-com:#8b949e;--dsh-md-render-c-num:#79c0ff;--dsh-md-render-c-fn:#d2a8ff;--dsh-md-render-code-bg:#0d1117;--dsh-md-render-code-border:#30363d}}
 .dsh-md-render-tok-keyword{color:var(--dsh-md-render-c-kw)}
 .dsh-md-render-tok-string{color:var(--dsh-md-render-c-str)}
 .dsh-md-render-tok-comment{color:var(--dsh-md-render-c-com);font-style:italic}
 .dsh-md-render-tok-number{color:var(--dsh-md-render-c-num)}
 .dsh-md-render-tok-function{color:var(--dsh-md-render-c-fn)}
-@media (prefers-color-scheme:dark){.md-code-block{--dsh-md-render-c-kw:#c4b5fd;--dsh-md-render-c-str:#86efac;--dsh-md-render-c-com:#64748b;--dsh-md-render-c-num:#f87171;--dsh-md-render-c-fn:#93c5fd}}
 /* ── 语法补全（issue #81）：任务列表 / 删除线 / 图片 ──
    任务列表：checkbox 与文本同排、状态色走 accent；删除线 <del>
    line-through 弱化次级字色；图片块级自适应、失败占位。 */

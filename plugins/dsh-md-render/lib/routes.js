@@ -25,6 +25,24 @@ export const SWITCH_KEYS = [
   'tableFold',
 ]
 
+/**
+ * 选择型配置键（issue #146）：非布尔枚举值，键 → 合法值列表。
+ *  - copyButtonPosition：代码块复制按钮位置（header=头部右上角 |
+ *    bottom-right=右下角，默认与 #74 原始诉求一致）；
+ *  - codeTheme：代码块主题（token 色 + 背景/边框色板，与
+ *    lib/parts/styles.part.js CODE_THEMES 同序）。
+ */
+export const SELECT_KEYS = {
+  copyButtonPosition: ['header', 'bottom-right'],
+  codeTheme: ['bright', 'github-light', 'github-dark', 'one-dark', 'nord'],
+}
+
+/** 选择型配置默认值（缺失/非法值回退）。 */
+export const SELECT_DEFAULTS = {
+  copyButtonPosition: 'bottom-right',
+  codeTheme: 'bright',
+}
+
 /** 注册 /md/api 路由（一个 effect，返回 disposer）。 */
 export function registerConfigRoutes(ctx, options, onConfigChange) {
   const webRuntime = ctx.get ? ctx.get('webRuntime') : undefined
@@ -84,16 +102,17 @@ async function dispatchMethod(method, request, response, options, onConfigChange
   return false
 }
 
-/** 配置查询：当前生效开关（设置页表单回填；全部为布尔值）。 */
+/** 配置查询：当前生效开关与选择项（设置页表单回填）。 */
 function configValue(options) {
   const value = {}
   for (const key of SWITCH_KEYS) value[key] = options[key]
+  for (const key of Object.keys(SELECT_KEYS)) value[key] = options[key]
   return value
 }
 
 /**
- * 校验并规整配置 payload：全部开关必须为布尔值（缺失字段跳过校验）；
- * 非法输入返回 undefined（调用方回 400）。
+ * 校验并规整配置 payload：开关必须为布尔值、选择项必须为合法枚举值
+ * （缺失字段跳过校验）；非法输入返回 undefined（调用方回 400）。
  */
 function normalizeConfig(payload) {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return undefined
@@ -101,6 +120,11 @@ function normalizeConfig(payload) {
   for (const key of SWITCH_KEYS) {
     if (payload[key] === undefined) continue
     if (typeof payload[key] !== 'boolean') return undefined
+    result[key] = payload[key]
+  }
+  for (const [key, allowed] of Object.entries(SELECT_KEYS)) {
+    if (payload[key] === undefined) continue
+    if (!allowed.includes(payload[key])) return undefined
     result[key] = payload[key]
   }
   return result

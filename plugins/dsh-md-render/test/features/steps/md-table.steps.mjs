@@ -226,6 +226,7 @@ class World {
     const tags = []
     const texts = []
     const codeLangs = []
+    const mdCodeBlockDataThemes = []
     let mdCodeBlockWrappers = 0
     let mathSpans = 0
     let mathErrorSpans = 0
@@ -238,6 +239,36 @@ class World {
     let tokenSpans = 0
     let langLabels = 0
     let checkboxes = 0
+    let codeCopyInHead = 0
+    let codeCopyBottom = 0
+    /** 展开函数组件（CopyButton 等），返回最终 DOM 元素节点或 null。 */
+    const expand = (node) => {
+      let cur = node
+      while (cur && typeof cur === 'object' && typeof cur.type === 'function') cur = cur.type(cur.props)
+      return cur
+    }
+    /** 统计某容器直接子元素中的代码块复制按钮（展开后）。 */
+    const countDirectCopyButtons = (container) => {
+      const kids = Array.isArray(container.props.children)
+        ? container.props.children
+        : container.props.children !== undefined && container.props.children !== null
+          ? [container.props.children]
+          : []
+      let n = 0
+      for (const k of kids) {
+        const el = expand(k)
+        if (
+          el &&
+          typeof el === 'object' &&
+          el.type === 'button' &&
+          typeof el.props?.className === 'string' &&
+          el.props.className.includes('dsh-md-render-copy')
+        ) {
+          n += 1
+        }
+      }
+      return n
+    }
     function walk(node) {
       if (node === null || node === undefined || typeof node === 'boolean') return
       if (typeof node === 'string' || typeof node === 'number') {
@@ -251,7 +282,14 @@ class World {
       const props = node.props ?? {}
       if (typeof node.type === 'string') {
         tags.push(node.type)
-        if (node.type === 'div' && props.className === 'md-code-block') mdCodeBlockWrappers += 1
+        if (node.type === 'div' && props.className === 'md-code-block') {
+          mdCodeBlockWrappers += 1
+          if (typeof props['data-theme'] === 'string') mdCodeBlockDataThemes.push(props['data-theme'])
+          codeCopyBottom += countDirectCopyButtons(node)
+        }
+        if (node.type === 'div' && props.className === 'dsh-md-render-code-head') {
+          codeCopyInHead += countDirectCopyButtons(node)
+        }
         if (node.type === 'code' && typeof props.className === 'string') codeLangs.push(props.className)
         if (node.type === 'span' && props.className === 'dsh-md-render-math') mathSpans += 1
         // issue #82：公式结构计数（分数/根号/上下标/大符号）。
@@ -295,6 +333,9 @@ class World {
       texts,
       codeLangs,
       mdCodeBlockWrappers,
+      mdCodeBlockDataThemes,
+      codeCopyInHead,
+      codeCopyBottom,
       mathSpans,
       mathErrorSpans,
       mathErrorBlocks,
@@ -725,12 +766,40 @@ Then('输出不包含语法高亮 token span', async function () {
   assert.equal(this.lastMarkdown.tokenSpans, 0, 'no syntax highlight token spans')
 })
 
+Then('输出包含语法高亮 token span', async function () {
+  assert.ok(this.lastMarkdown.tokenSpans > 0, 'syntax highlight token spans rendered')
+})
+
 Then('语言标签仍渲染', async function () {
   assert.ok(this.lastMarkdown.langLabels >= 1, 'language label still rendered')
 })
 
 Then('输出不包含复制按钮', async function () {
   assert.equal(this.lastMarkdown.copyButtons, 0, 'no copy buttons')
+})
+
+// ── issue #146：代码块复制按钮位置 + 代码主题 ───────────────────────
+Then('代码块复制按钮位于代码块右下角', async function () {
+  assert.ok(this.lastMarkdown.codeCopyBottom >= 1, 'copy button is a direct md-code-block child (bottom-right)')
+})
+
+Then('代码块复制按钮位于头部', async function () {
+  assert.ok(this.lastMarkdown.codeCopyInHead >= 1, 'copy button in header (with language label)')
+})
+
+Then('代码块复制按钮不在头部', async function () {
+  assert.equal(this.lastMarkdown.codeCopyInHead, 0, 'copy button not in header by default')
+})
+
+Then('代码块携带对应主题标记 data-theme={string}', async function (theme) {
+  assert.ok(
+    this.lastMarkdown.mdCodeBlockDataThemes.includes(theme),
+    `md-code-block carries data-theme="${theme}" (got ${this.lastMarkdown.mdCodeBlockDataThemes.join(',')})`,
+  )
+})
+
+Then('代码块不携带主题标记', async function () {
+  assert.equal(this.lastMarkdown.mdCodeBlockDataThemes.length, 0, 'no data-theme on plain-text code block')
 })
 
 Then('输出不包含 checkbox', async function () {
@@ -767,12 +836,16 @@ Then('表格不渲染展开按钮', async function () {
   assert.equal(btn, null, 'no fold button')
 })
 
-/** 解析开关描述字符串（如 "syntaxHighlight=false" → ['syntaxHighlight', false]）。 */
+/**
+ * 解析开关描述字符串（如 "syntaxHighlight=false" → ['syntaxHighlight',
+ * false]）。issue #146：选择项（如 "codeTheme=one-dark"）传字符串原值。
+ */
 function parseSwitch(spec) {
   const eq = spec.indexOf('=')
   if (eq === -1) throw new Error(`bad switch spec: ${spec}`)
   const key = spec.slice(0, eq)
   const value = spec.slice(eq + 1)
-  if (value !== 'true' && value !== 'false') throw new Error(`bad switch value: ${spec}`)
-  return [key, value === 'true']
+  if (value === 'true') return [key, true]
+  if (value === 'false') return [key, false]
+  return [key, value]
 }

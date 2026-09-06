@@ -13,6 +13,7 @@ import { test } from 'vitest'
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { SELECT_KEYS } from '../lib/routes.js'
 
 function createElement(type, props, ...children) {
   const p = props ? { ...props } : {}
@@ -198,6 +199,38 @@ function renderTree(text) {
   const dels = []
   const imgs = []
   const uls = []
+  // issue #146：代码块主题（data-theme）与复制按钮位置收集。
+  const mdCodeBlockThemes = []
+  const codeCopyInHead = []
+  const codeCopyBottom = []
+  /** 展开函数组件（CopyButton 等），返回最终 DOM 元素节点或 null。 */
+  function expand(node) {
+    let cur = node
+    while (cur && typeof cur === 'object' && typeof cur.type === 'function') cur = cur.type(cur.props)
+    return cur
+  }
+  /** 收集某容器的直接子元素中的代码块复制按钮（展开后）。 */
+  function directCopyButtons(container) {
+    const kids = Array.isArray(container.props.children)
+      ? container.props.children
+      : container.props.children !== undefined && container.props.children !== null
+        ? [container.props.children]
+        : []
+    const out = []
+    for (const k of kids) {
+      const el = expand(k)
+      if (
+        el &&
+        typeof el === 'object' &&
+        el.type === 'button' &&
+        typeof el.props?.className === 'string' &&
+        el.props.className.includes('dsh-md-render-copy')
+      ) {
+        out.push(el)
+      }
+    }
+    return out
+  }
   function walk(node) {
     if (node === null || node === undefined || typeof node === 'boolean') return
     if (typeof node === 'string' || typeof node === 'number') {
@@ -211,6 +244,13 @@ function renderTree(text) {
     const props = node.props ?? {}
     if (typeof node.type === 'string') {
       tags.push(node.type)
+      if (node.type === 'div' && props.className === 'md-code-block') {
+        if (typeof props['data-theme'] === 'string') mdCodeBlockThemes.push(props['data-theme'])
+        for (const btn of directCopyButtons(node)) codeCopyBottom.push(btn)
+      }
+      if (node.type === 'div' && props.className === 'dsh-md-render-code-head') {
+        for (const btn of directCopyButtons(node)) codeCopyInHead.push(btn)
+      }
       if (
         node.type === 'span' &&
         typeof props.className === 'string' &&
@@ -260,6 +300,9 @@ function renderTree(text) {
     dels,
     imgs,
     uls,
+    mdCodeBlockThemes,
+    codeCopyInHead,
+    codeCopyBottom,
   }
 }
 
@@ -279,6 +322,9 @@ function reset() {
     mathStructures: true,
     tableSort: true,
     tableFold: true,
+    // issue #146：选择项也复位（setRenderOptions 合并语义，避免测试间串扰）
+    copyButtonPosition: 'bottom-right',
+    codeTheme: 'bright',
   })
 }
 
@@ -479,4 +525,79 @@ test('tableFold 关闭 → 长表格不折叠、不渲染展开按钮', () => {
 
 test('开关列表完整（11 个增强项与 server 端一致）', () => {
   assert.equal(CONFIG_SWITCHES.length, 11, '11 switches')
+})
+
+// ── issue #146：代码块复制按钮位置 + 代码主题 ──────────────────────
+
+test('默认主题 bright：高亮代码块携带 data-theme（明亮高对比）', () => {
+  reset()
+  const r = renderTree('```js\nconst a = 1 // c\n```')
+  assert.deepEqual(r.mdCodeBlockThemes, ['bright'], 'highlighted block gets default theme marker')
+  assert.ok(r.tokenSpans.length > 0, 'highlight on')
+})
+
+test('codeTheme 切换：data-theme 跟随配置（github-dark / one-dark / nord）', () => {
+  reset()
+  for (const theme of ['github-dark', 'one-dark', 'nord', 'github-light']) {
+    setup({ codeTheme: theme })
+    try {
+      const r = renderTree('```py\ndef f(x):\n    return x\n```')
+      assert.deepEqual(r.mdCodeBlockThemes, [theme], `data-theme=${theme}`)
+    } finally {
+      reset()
+    }
+  }
+})
+
+test('syntaxHighlight 关闭 → 无 data-theme（主题不影响纯文本代码块）', () => {
+  reset()
+  setup({ syntaxHighlight: false })
+  try {
+    const r = renderTree('```js\nconst x = "hi" // comment\n```')
+    assert.equal(r.tokenSpans.length, 0, 'no token spans when disabled')
+    assert.deepEqual(r.mdCodeBlockThemes, [], 'no theme marker on plain-text code block')
+  } finally {
+    reset()
+  }
+})
+
+test('未知语言（mermaid）→ 无 data-theme（跳过高亮即无主题）', () => {
+  reset()
+  const r = renderTree('```mermaid\nflowchart TD\n    A --> B\n```')
+  assert.equal(r.tokenSpans.length, 0, 'no highlight for unknown language')
+  assert.deepEqual(r.mdCodeBlockThemes, [], 'no theme marker without highlight')
+})
+
+test('复制按钮默认位于代码块右下角（md-code-block 直接子元素）', () => {
+  reset()
+  const r = renderTree('```js\nconst a = 1\n```')
+  assert.ok(r.copyButtons.length >= 1, 'code copy button rendered')
+  assert.equal(r.codeCopyInHead.length, 0, 'button NOT in header by default')
+  assert.equal(r.codeCopyBottom.length, 1, 'button is a direct md-code-block child (bottom-right)')
+})
+
+test('copyButtonPosition=header：复制按钮回到头部（与语言标签同排）', () => {
+  reset()
+  setup({ copyButtonPosition: 'header' })
+  try {
+    const r = renderTree('```js\nconst a = 1\n```')
+    assert.ok(r.copyButtons.length >= 1, 'code copy button rendered')
+    assert.equal(r.codeCopyInHead.length, 1, 'button in header')
+    assert.equal(r.codeCopyBottom.length, 0, 'no bottom-right button')
+  } finally {
+    reset()
+  }
+})
+
+test('选择项跨端一致性：client CODE_THEMES / COPY_BUTTON_POSITIONS 与 server SELECT_KEYS 一致', () => {
+  assert.deepEqual(
+    [...exportsObj.CODE_THEMES].sort(),
+    [...SELECT_KEYS.codeTheme].sort(),
+    'code theme ids match server SELECT_KEYS',
+  )
+  assert.deepEqual(
+    [...exportsObj.COPY_BUTTON_POSITIONS].sort(),
+    [...SELECT_KEYS.copyButtonPosition].sort(),
+    'copy button positions match server SELECT_KEYS',
+  )
 })

@@ -1,9 +1,11 @@
 // ── 设置页视图（issue #84）：各增强功能开关可视化 ──────────────────
 // 官方 slots 扩展点：设置 → 插件 → 渲染 页签。开关列表与 server 端
 // （lib/index.js buildOptions + lib/routes.js SWITCH_KEYS）一一对应；
-// 保存经 PUT /md/api/config 写入 profile patch 文件（持久化），DSH 的
+// issue #146 起支持选择型配置（复制按钮位置 / 代码主题，server 端
+// SELECT_KEYS）——新增「代码块外观」区块，枚举下拉保存同走
+// PUT /md/api/config。保存写入 profile patch 文件（持久化），DSH 的
 // watchUserPatches 热重载后 client 重新 apply（保存即生效）；保存成功
-// 后立即 setRenderOptions 应用新开关（当前页面无需等待重载）。
+// 后立即 setRenderOptions 应用新配置（当前页面无需等待重载）。
 const SETTINGS_STYLES = `
 .dsh-md-render-settings{display:flex;flex-direction:column;gap:10px;padding:12px}
 .dsh-md-render-settings-section{display:flex;flex-direction:column;gap:8px}
@@ -16,6 +18,9 @@ const SETTINGS_STYLES = `
 .dsh-md-render-settings-toggle[data-on="true"]{background:var(--dsw-alias-state-success-primary);border-color:transparent}
 .dsh-md-render-settings-toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-primary);transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .dsh-md-render-settings-toggle[data-on="true"]::after{transform:translateX(12px);background:var(--dsw-alias-label-primary-foreground)}
+.dsh-md-render-settings-select{flex:none;height:28px;min-width:150px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);cursor:pointer}
+.dsh-md-render-settings-select:hover{border-color:var(--dsw-alias-border-l3)}
+.dsh-md-render-settings-select:focus{outline:none;border-color:var(--dsw-alias-accent-primary)}
 .dsh-md-render-settings-actions{display:flex;align-items:center;gap:8px}
 .dsh-md-render-settings-btn{height:28px;padding:0 14px;border-radius:6px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}
 .dsh-md-render-settings-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -26,7 +31,7 @@ const SETTINGS_STYLES = `
 
 /** 开关定义（key 与 server 端 SWITCH_KEYS / config.part.js 一致）。 */
 const SETTINGS_SWITCHES = [
-  { key: 'copyButton', label: '复制按钮', hint: '代码块头部与整段内容右下角的复制按钮（issue #74）' },
+  { key: 'copyButton', label: '复制按钮', hint: '代码块与整段内容一键复制（位置/外观见下方配置，issue #74）' },
   { key: 'syntaxHighlight', label: '语法高亮', hint: '代码块关键字/字符串/注释等着色（issue #80）' },
   { key: 'languageLabel', label: '语言标签', hint: '代码块头部显示语言名（issue #80）' },
   { key: 'lineNumbers', label: '行号', hint: '代码块左侧行号（issue #80）' },
@@ -37,6 +42,21 @@ const SETTINGS_SWITCHES = [
   { key: 'mathStructures', label: '公式结构', hint: '行内 $...$ 与块级 $$...$$ 公式渲染（issue #82）' },
   { key: 'tableSort', label: '表头排序', hint: '点击表头按列排序（issue #83）' },
   { key: 'tableFold', label: '长表格折叠', hint: '超过 20 行的表格默认折叠（issue #83）' },
+]
+
+/** 代码块复制按钮位置选项（issue #146）：key 与 server 端 SELECT_KEYS 一致。 */
+const COPY_POSITION_OPTIONS = [
+  { id: 'bottom-right', label: '右下角', hint: '按钮浮在代码块右下角（hover 显示，issue #74 原始诉求）' },
+  { id: 'header', label: '头部', hint: '按钮固定在代码块头部、与语言标签同排（issue #80 布局）' },
+]
+
+/** 代码主题选项（issue #146）：id 与 server 端 SELECT_KEYS / styles.part.js 色板一致。 */
+const CODE_THEME_OPTIONS = [
+  { id: 'bright', label: '明亮高对比', hint: '默认主题：柔和白底 + 深色 token，白底清晰不刺眼' },
+  { id: 'github-light', label: 'GitHub Light', hint: 'GitHub 官方亮色配色' },
+  { id: 'github-dark', label: 'GitHub Dark', hint: 'GitHub 官方暗色配色' },
+  { id: 'one-dark', label: 'One Dark', hint: 'Atom One Dark 编辑器配色' },
+  { id: 'nord', label: 'Nord', hint: '北极清新配色调（暗色）' },
 ]
 
 /** 开关行（布尔配置项）。 */
@@ -75,6 +95,58 @@ function renderSwitchesSection(draft, patch) {
         onChange: (v) => patch(item.key, v),
       }),
     ),
+  )
+}
+
+/** 选择行（枚举配置项，issue #146：复制按钮位置 / 代码主题）。 */
+function SettingsSelectRow({ label, hint, value, options, onChange }) {
+  return createElement(
+    'div',
+    { className: 'dsh-md-render-settings-row' },
+    createElement(
+      'div',
+      { className: 'dsh-md-render-settings-info' },
+      createElement('div', { className: 'dsh-md-render-settings-label' }, label),
+      createElement('div', { className: 'dsh-md-render-settings-hint' }, hint),
+    ),
+    createElement(
+      'select',
+      {
+        className: 'dsh-md-render-settings-select',
+        value: value,
+        onChange: (e) => onChange(e.target.value),
+      },
+      ...options.map((o) => createElement('option', { key: o.id, value: o.id }, o.label)),
+    ),
+  )
+}
+
+/** 代码块外观区块（issue #146：复制按钮位置 + 代码主题选择）。 */
+function renderAppearanceSection(draft, patch) {
+  return createElement(
+    'div',
+    { className: 'dsh-md-render-settings-section' },
+    createElement('div', { className: 'dsh-md-render-settings-section-title' }, '代码块外观'),
+    createElement(SettingsSelectRow, {
+      label: '复制按钮位置',
+      hint: COPY_POSITION_OPTIONS.find((o) => o.id === draft.copyButtonPosition)?.hint ?? COPY_POSITION_OPTIONS[0].hint,
+      value:
+        draft.copyButtonPosition && COPY_POSITION_OPTIONS.some((o) => o.id === draft.copyButtonPosition)
+          ? draft.copyButtonPosition
+          : COPY_POSITION_OPTIONS[0].id,
+      options: COPY_POSITION_OPTIONS,
+      onChange: (v) => patch('copyButtonPosition', v),
+    }),
+    createElement(SettingsSelectRow, {
+      label: '代码主题',
+      hint: CODE_THEME_OPTIONS.find((o) => o.id === draft.codeTheme)?.hint ?? CODE_THEME_OPTIONS[0].hint,
+      value:
+        draft.codeTheme && CODE_THEME_OPTIONS.some((o) => o.id === draft.codeTheme)
+          ? draft.codeTheme
+          : CODE_THEME_OPTIONS[0].id,
+      options: CODE_THEME_OPTIONS,
+      onChange: (v) => patch('codeTheme', v),
+    }),
   )
 }
 
@@ -169,6 +241,7 @@ function MdRenderSettingsView() {
     'div',
     { className: 'dsh-md-render-settings' },
     renderSwitchesSection(draft, patch),
+    renderAppearanceSection(draft, patch),
     createElement(
       'div',
       { className: 'dsh-md-render-settings-actions' },

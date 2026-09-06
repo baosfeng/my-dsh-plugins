@@ -28,22 +28,23 @@
 - **兼容 dsh-think-zh-expand**：think-zh-expand 跨插件 require 本插件 MarkdownView（`dsh.client.external`）；识别其渲染器产出的 `div.tzx-md` 容器；已渲染的表格（`table.tzx-table`）不重复处理。
 - **兼容内置 MarkdownText**：识别内置渲染器的 `div.md-table-wide` 宽表格容器，不干扰已渲染表格。
 - **流式兼容**：MutationObserver 跟随消息流式渲染；流式中的容器（`[data-streaming]` 祖先）等内容稳定后再处理。
-- **一键复制**（issue #74）：每个代码块头部（与语言标签同排）+ 整段 markdown 内容右下角有复制按钮（hover 才显示，不遮挡内容），点击一键复制代码内容（不含语言标记）/ 整段纯文本（不含按钮文案）；复制成功按钮短暂显示「已复制」；流式渲染中不显示按钮，避免复制到半截内容。
-- **代码块语法高亮**（issue #80）：常见语言（javascript/typescript/python/json/bash/markdown/yaml 等）的关键字/字符串/注释/数字/函数名着色（CSS 类 `dsh-md-render-tok-*` + 固定色板，深浅主题自适应）；自实现轻量 tokenizer（零依赖）；未知语言（如 mermaid）回退纯文本；超长代码块（>500 行）跳过高亮防卡顿。
+- **一键复制**（issue #74）：每个代码块（按钮默认右下角 hover 显示，可配置为头部与语言标签同排）+ 整段 markdown 内容右下角有复制按钮（hover 才显示，不遮挡内容），点击一键复制代码内容（不含语言标记）/ 整段纯文本（不含按钮文案）；复制成功按钮短暂显示「已复制」；流式渲染中不显示按钮，避免复制到半截内容。
+- **代码块语法高亮**（issue #80）：常见语言（javascript/typescript/python/json/bash/markdown/yaml 等）的关键字/字符串/注释/数字/函数名着色（CSS 类 `dsh-md-render-tok-*` + 可配置主题色板，深浅主题自适应）；自实现轻量 tokenizer（零依赖）；未知语言（如 mermaid）回退纯文本；超长代码块（>500 行）跳过高亮防卡顿。
+- **代码主题**（issue #146）：内置 5 套代码主题色板（token 色 + 代码块背景/边框色）——`bright`（默认，明亮高对比：柔和白底 + 深色 token，解决白底刺眼观感）/ `github-light` / `github-dark` / `one-dark` / `nord`；设置页下拉选择，保存即生效、重启不丢；深浅色自适应保留（暗色系统下每套主题有暗色变体）。
 - **代码块语言标签**（issue #80）：从 `code.language-*` 类提取语言名，渲染在代码块头部（与复制按钮同排），别名归一（js→javascript、py→python、sh→bash）。
 - **代码块行号**（issue #80，可配置开关）：代码块左侧显示行号（CSS counter 伪元素，不污染 code/pre 文本——mermaid/复制读取原代码不受影响）；默认开，可经设置页或 `config.lineNumbers: false` 关闭。
-- **增强功能配置化**（issue #84）：全部增强功能独立配置开关（默认开启），设置页（设置 → 插件 → 渲染）可视化编辑，保存即生效、重启不丢（写入 profile patch 文件），配置变更热生效（无需重启）。
+- **增强功能配置化**（issue #84 / #146）：全部增强功能独立配置开关（默认开启）+ 选择型配置（复制按钮位置 / 代码主题），设置页（设置 → 插件 → 渲染）可视化编辑（开关 + 下拉），保存即生效、重启不丢（写入 profile patch 文件），配置变更热生效（无需重启）。
 - **零依赖**：表格检测与渲染全部自实现，无第三方库、无 CDN。
 
 ## 工作原理
 
 - **统一 MarkdownView**（`lib/parts/markdown.part.js`）：从 dsh-think-zh-expand 迁移的轻量 Markdown 渲染管线（`mdInline` + 块级 `tryXxx`），输出结构保持迁移前约定（`div.tzx-md` / `p.tzx-p` / `table.tzx-table` / `div.md-code-block`）；新增行内/块级公式渲染；`exports.MarkdownView` 供 think-zh-expand 跨 bundle require。
-- **复制按钮**（`lib/parts/copy.part.js`）：MarkdownView 在每个 `div.md-code-block` 头部（与语言标签同排，issue #80）与 `div.tzx-md` 容器右下角渲染 `button.dsh-md-render-copy`；点击时从 DOM 取文本——代码块取 `code` 元素文本、内容块递归收集纯文本并跳过按钮文案；`navigator.clipboard.writeText` 优先、失败回退 `document.execCommand('copy')`（textarea 中转）；流式渲染中由 CSS（`[data-streaming] .dsh-md-render-copy{display:none}`）隐藏。
+- **复制按钮**（`lib/parts/copy.part.js` + `codeblock.part.js`，issue #74 / #146）：MarkdownView 在每个 `div.md-code-block`（默认右下角、`header` 位置为头部与语言标签同排）与 `div.tzx-md` 容器右下角渲染 `button.dsh-md-render-copy`；点击时从 DOM 取文本——代码块取 `code` 元素文本、内容块递归收集纯文本并跳过按钮文案；`navigator.clipboard.writeText` 优先、失败回退 `document.execCommand('copy')`（textarea 中转）；流式渲染中由 CSS（`[data-streaming] .dsh-md-render-copy{display:none}`）隐藏。
 - **公式结构解析器**（`lib/parts/math.part.js` + `math-symbols.part.js` + `math-render.part.js`，issue #82）：轻量 LaTeX 子集自实现（tokenize `\命令` / `{组}` / `^` `_` + 递归下降）——`\frac{a}{b}` → `span.dsh-md-render-frac`（num/den 上下 + 分数线）、`\sqrt{x}` → `-sqrt`（√ + 顶部根号线）、`x^2` / `x_i` → `-supsub`（base + 上下标）、`\sum_{i=1}^{n}` / `\int_0^1` → `-big`（∑/∫ + 上下限）、`\alpha` 等命令 → Unicode 符号；**回退**：结构命令参数不完整（`\frac{a}{b`）→ 整个公式保持原文（不报错、不误伤），未知命令当文本保留；受 `mathStructures` 开关门控（#84），关闭时公式结构不渲染（退回轻量样式/原文）。
-- **代码块增强**（`lib/parts/highlight.part.js` tokenizer + `codeblock.part.js` 渲染，issue #80）：tokenizer 为纯函数单遍扫描，按语言规则拆分 token 输出 `<span class="dsh-md-render-tok-*">`；`div.md-code-block` 内新增头部 `div.dsh-md-render-code-head`（语言名 + 复制按钮），`code` 内按行输出 `div.dsh-md-render-code-line`（行号经 CSS counter `::before` 显示，不进入文本内容）；未知语言/超长代码块（>500 行）跳过高亮；行号开关 `config.lineNumbers` 经 `apply(ctx)` 读取，`setRenderOptions` 可编程切换。
+- **代码块增强**（`lib/parts/highlight.part.js` tokenizer + `codeblock.part.js` 渲染，issue #80 / #146）：tokenizer 为纯函数单遍扫描，按语言规则拆分 token 输出 `<span class="dsh-md-render-tok-*">`；`div.md-code-block` 内新增头部 `div.dsh-md-render-code-head`（语言名 + 复制按钮位），`code` 内按行输出 `div.dsh-md-render-code-line`（行号经 CSS counter `::before` 显示，不进入文本内容）；未知语言/超长代码块（>500 行）跳过高亮；行号开关 `config.lineNumbers` 经 `apply(ctx)` 读取，`setRenderOptions` 可编程切换。代码主题（issue #146）：高亮代码块携带 `data-theme` 属性选择 `styles.part.js` 内置色板（5 套主题 × 深浅变体），关闭高亮/未知语言/超长时无 `data-theme`（保持 DSH 默认样式）。
 - **DOM 层表格增强**（`lib/parts/detect|render|scanner.part.js`）：扫描 `[data-conversation-scroll]` 内的 `div.tzx-md`（MarkdownView 输出）与 `div.md-table-wide`（内置 MarkdownText 的宽表格容器）容器；对容器内以纯文本段落（`p.tzx-p`）形式存在的表格文本，用增强检测规则解析（表头 + 分隔行 + 数据行 + 对齐），将段落替换为 `div.dsh-md-render-table-scroll > table.dsh-md-render-table`（thead/tbody/逐列对齐）；单元格内的 `**bold**` / `` `code` `` / `*em*` / `[link]` 行内格式重新渲染。
 - **构建**（`scripts/build.mjs`）：把 `lib/parts/*.part.js` 片段拼接进 `lib/client.src.js` 模板，生成 `lib/client.js`（DSH 实际服务的单一 `__ModuleLoader__` bundle）。
-- **Server 端**（`lib/index.js` + `lib/routes.js`）：提供应用层配置（issue #84）——`apply(ctx, config)` 读取全部增强开关（默认开启）；`GET/PUT /md/api/config` 配置读写（loopback 信任围栏），保存写入 profile patch 文件（复用 dsh-shared 配置持久化），DSH watchUserPatches 热重载。
+- **Server 端**（`lib/index.js` + `lib/routes.js`）：提供应用层配置（issue #84 / #146）——`apply(ctx, config)` 读取全部增强开关（默认开启）+ 选择项（`copyButtonPosition` / `codeTheme`，`SELECT_KEYS` 校验合法枚举）；`GET/PUT /md/api/config` 配置读写（loopback 信任围栏），保存写入 profile patch 文件（复用 dsh-shared 配置持久化），DSH watchUserPatches 热重载。
 
 ## 安装
 
@@ -95,21 +96,23 @@ npm test
 
 全部增强功能独立配置开关，**默认开启**（issue #84）。设置 → 插件 → 渲染 页签内可视化编辑，保存即生效、重启不丢；也可在 `cordis.patch.yml` 直接配置：
 
-| 配置              | 默认   | 说明                               |
-| ----------------- | ------ | ---------------------------------- |
-| `copyButton`      | `true` | 复制按钮（issue #74，代码块/整段） |
-| `syntaxHighlight` | `true` | 代码块语法高亮（issue #80）        |
-| `languageLabel`   | `true` | 代码块语言标签（issue #80）        |
-| `lineNumbers`     | `true` | 代码块行号（issue #80）            |
-| `taskList`        | `true` | 任务列表 checkbox（issue #81）     |
-| `strikethrough`   | `true` | 删除线（issue #81）                |
-| `image`           | `true` | 图片渲染（issue #81）              |
-| `nestedList`      | `true` | 嵌套列表（issue #81）              |
-| `mathStructures`  | `true` | 公式结构（issue #82）              |
-| `tableSort`       | `true` | 表头排序（issue #83）              |
-| `tableFold`       | `true` | 长表格折叠（issue #83）            |
+| 配置                 | 默认           | 说明                                                                                                       |
+| -------------------- | -------------- | ---------------------------------------------------------------------------------------------------------- |
+| `copyButton`         | `true`         | 复制按钮（issue #74，代码块/整段）                                                                         |
+| `syntaxHighlight`    | `true`         | 代码块语法高亮（issue #80）                                                                                |
+| `languageLabel`      | `true`         | 代码块语言标签（issue #80）                                                                                |
+| `lineNumbers`        | `true`         | 代码块行号（issue #80）                                                                                    |
+| `taskList`           | `true`         | 任务列表 checkbox（issue #81）                                                                             |
+| `strikethrough`      | `true`         | 删除线（issue #81）                                                                                        |
+| `image`              | `true`         | 图片渲染（issue #81）                                                                                      |
+| `nestedList`         | `true`         | 嵌套列表（issue #81）                                                                                      |
+| `mathStructures`     | `true`         | 公式结构（issue #82）                                                                                      |
+| `tableSort`          | `true`         | 表头排序（issue #83）                                                                                      |
+| `tableFold`          | `true`         | 长表格折叠（issue #83）                                                                                    |
+| `copyButtonPosition` | `bottom-right` | 代码块复制按钮位置（issue #146）：`bottom-right` 右下角 / `header` 头部（与语言标签同排）                  |
+| `codeTheme`          | `bright`       | 代码主题（issue #146）：`bright`（明亮高对比，默认）/ `github-light` / `github-dark` / `one-dark` / `nord` |
 
-> 示例 patch：`lineNumbers: false` 关闭行号、`syntaxHighlight: false` 关闭语法高亮。开关需以布尔值提供，非法/缺省保持默认。设置页保存后无需重启（DSH watchUserPatches 热重载）；issue #80 的 `lineNumbers` 单开关写法保持兼容。
+> 示例 patch：`lineNumbers: false` 关闭行号、`syntaxHighlight: false` 关闭语法高亮、`codeTheme: one-dark` 切换代码主题。开关需以布尔值提供、选择项需为枚举合法值，非法/缺省保持默认。设置页保存后无需重启（DSH watchUserPatches 热重载）；issue #80 的 `lineNumbers` 单开关写法保持兼容。
 
 ## 依赖
 

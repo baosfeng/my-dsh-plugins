@@ -139,6 +139,29 @@ if (bump !== '') {
 // 1. version from package.json
 console.log(`✓ plugin ${name} version ${version}`)
 
+// 1a. 语义 gate（plugin-release 增量）：stable 版本发布前查 npm latest 防降级。
+// 当前版本低于 npm 已发布 latest 时拒绝发布（防止 latest 回退到更低版本）；
+// 首次发布（404）跳过；查询失败（网络/限流）只警告不阻断。
+const isStable = /^\d+\.\d+\.\d+$/.test(version)
+if (isStable) {
+  try {
+    const latest = execFileSync('npm', ['view', pkg.name, 'dist-tags.latest'], { encoding: 'utf8' }).trim()
+    if (latest && !versionGte(version, latest)) {
+      console.error(
+        `✗ ${name} 版本 ${version} 低于 npm latest ${latest} — 拒绝发布（防止 latest 回退，plugin-release 语义 gate）`,
+      )
+      process.exit(1)
+    }
+    console.log(`✓ npm latest ${latest} ≤ 当前版本 ${version}（无降级）`)
+  } catch (err) {
+    if (isNpmNotFound(err?.stderr)) {
+      console.log(`- ${pkg.name} 尚未发布到 npm（首次发布，跳过 latest 防降级检查）`)
+    } else {
+      console.log(`- npm latest 查询失败（${String(err?.stderr || err?.message).split('\n')[0]}）— 跳过防降级检查`)
+    }
+  }
+}
+
 // 1b. peer dependencies: DSH 插件必须声明 cordis peer（npm 分发后缺失会导致
 // dsh plugin add 安装失败），且 cordis major 与仓库内其他插件保持一致。
 const peers = pkg.peerDependencies || {}

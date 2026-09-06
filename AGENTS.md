@@ -22,7 +22,7 @@
 - **命令超时**：shell 命令必须设 timeoutMs（快速 ≤15s，长任务 run_in_background 后台运行；禁止无超时前台跑可能超 1 分钟的命令）。
 - **代码查询走知识图谱**：查符号/调用链/影响/架构用 `mcp__codebase-memory__*` 工具（细节见 skill `codebase-memory`），图外事实才 grep/read。
 - **发版门禁**：发版用 `node scripts/release.mjs <插件名> [--push]`，必须过 #67 功能级验证门禁（verifying-dsh-plugins skill），跳过须带 `--skip-reason`。
-- **AGENTS.md 保持精简**（≤50 行）：可按需加载的内容（skill/docs/插件子目录）不写入，只保留协作原则/强制规则/入口（规范见 docs/开发指南/文档规范.md）。
+- **AGENTS.md 保持精简**（≤50 行）：推荐只保留协作原则/强制规则/入口，其余内容放 skill/docs 按需加载（规范见 docs/开发指南/文档规范.md）。
 
 ## 📚 入口
 

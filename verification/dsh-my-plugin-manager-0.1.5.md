@@ -1,6 +1,6 @@
-# 发版前功能级验证清单 — dsh-think-zh-expand@0.4.7
+# 发版前功能级验证清单 — dsh-my-plugin-manager@0.1.5
 
-验证时间：2026-09-06T13:18:25.277Z
+验证时间：2026-09-06T13:40:38.964Z
 验证环境：隔离实例（端口 3087，复用生产 profile 配置组合，独立 DSH_HOME）
 
 ## 自动验证项（verify-real-profile.mjs 自动执行）

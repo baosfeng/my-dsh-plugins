@@ -159,7 +159,7 @@ git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # 从远程�
 | 子 agent 在主工作区/他人 fork 操作       | 只允许操作自己被分配的 fork 目录；修复类子任务严禁碰主工作区                                                                                     |
 | 乱序派发（未按编号从小到大）             | 清单按编号升序，主 agent 按序推进、按序验收                                                                                                      |
 | 子 agent 自报完成即推进                  | 主 agent 必须按验收标准独立核查（变更范围/本地测试/CI），未达标退回修或重派                                                                      |
-| 子 agent 失败后自己动手/派新 agent       | 用 `send_message` 续接原子 agent（保留上下文与进度，可续接状态）；仅彻底失效才重派新 agent                                                          |
+| 子 agent 失败后自己动手/派新 agent       | 用 `send_message` 续接原子 agent（保留上下文与进度，可续接状态）；仅彻底失效才重派新 agent                                                       |
 | 把 [需求] issue 当 BUG 派子 agent 修     | 需求转 development-lifecycle，本 skill 只处理 BUG/告警/CI/PR/workflow                                                                            |
 | 等所有子任务完成才统一提交               | 验收达标即独立提交（分支+PR），各自独立                                                                                                          |
 | 一个 PR 混多个问题                       | 一子任务一分支一 PR，标题带编号                                                                                                                  |

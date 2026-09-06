@@ -31,3 +31,15 @@ package-lock.json
 .dsh/
 .reasonix/
 .DS_Store
+
+# 外部引入的升级 skill 体系（源码: oh-my-dsh/dsh-plugin-upgrade-skill，保持原样
+# 不格式化；后续统一格式时移除本排除并 prettier --write）
+skills/dsh-upgrade-audit/
+skills/plugin-release/
+skills/plugin-runtime-debug/
+skills/plugin-test/
+skills/plugin-upgrade/
+skills/plugin-workflow/
+skills/plugin-write/
+skills/README.md
+skills/README.en.md

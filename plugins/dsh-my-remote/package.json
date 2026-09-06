@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-remote",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DSH 远程控制插件：ask/approval/end 事件下发到外部通道（手机/IM webhook），远程回答 ask、批准 approval、查询状态、继续会话；适配器接口可扩展微信/QQ/飞书机器人。DSH web plugin: push ask/approval/end events to external channels, remote answer + approve with token auth and audited commands.",
   "type": "module",
   "main": "lib/index.js",

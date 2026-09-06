@@ -8,17 +8,9 @@ const STYLES = `
   font:var(--dsw-font-s-14); color:var(--dsw-alias-label-primary); }
 .dsh-my-memory-toolbar { display:flex; flex-direction:column; gap:4px; }
 .dsh-my-memory-pathbar { display:flex; gap:6px; align-items:center; }
-.dsh-my-memory-path-input { flex:1; min-width:0; height:28px; padding:0 8px; border-radius:6px;
-  border:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-2);
-  color:var(--dsw-alias-label-primary); font:var(--dsw-font-s-14); }
-.dsh-my-memory-path-input:focus { outline:none; border-color:var(--dsw-alias-accent); }
-.dsh-my-memory-btn { display:inline-flex; align-items:center; gap:5px; flex:none; height:28px; padding:0 10px; border-radius:6px; cursor:pointer;
-  border:1px solid var(--dsw-alias-border-l1); background:transparent; color:var(--dsw-alias-label-secondary);
-  font:var(--dsw-font-xxs-12);
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out), border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-memory-btn svg { display:block; flex:none; }
-.dsh-my-memory-btn:hover:not(:disabled) { background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-primary); }
-.dsh-my-memory-btn:disabled { opacity:.4; cursor:default; }
+/* 路径输入/加载/刷新按钮由官方 Input/Button 提供视觉（issue #143 试点）；
+   仅保留布局微调：路径输入 wrapper 撑满剩余宽度。 */
+.dsh-my-memory-path-input { flex:1; min-width:0; }
 .dsh-my-memory-iconbtn { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0;
   border:none; border-radius:50%; background:transparent; color:var(--dsw-alias-label-secondary); cursor:pointer; flex:none;
   transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
@@ -44,15 +36,8 @@ const STYLES = `
 .dsh-my-memory-section-project { border-color:color-mix(in srgb, var(--dsw-alias-accent) 28%, transparent); }
 .dsh-my-memory-section-head { display:flex; align-items:center; gap:8px; }
 .dsh-my-memory-section-title { font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
-.dsh-my-memory-badge { flex:none; display:inline-flex; align-items:center; height:17px; padding:0 5px; border-radius:4px;
-  font:var(--dsw-font-xxxs-strong-11); color:var(--dsw-alias-accent);
-  background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent); }
-.dsh-my-memory-sort { display:inline-flex; align-items:center; gap:4px; flex:none; height:20px; padding:0 6px; border-radius:4px;
-  margin-left:auto; cursor:pointer; border:none; background:transparent; color:var(--dsw-alias-label-tertiary);
-  font:var(--dsw-font-xxxs-11);
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-memory-sort svg { display:block; flex:none; }
-.dsh-my-memory-sort:hover { background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-primary); }
+/* 分区徽标由官方 Pill 提供视觉（issue #143 试点）；排序 Pill 仅保留靠右布局。 */
+.dsh-my-memory-sort { margin-left:auto; }
 .dsh-my-memory-note { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); line-height:1.7; }
 .dsh-my-memory-empty { display:flex; align-items:flex-start; gap:8px; padding:12px 10px;
   font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-tertiary); }
@@ -86,10 +71,8 @@ const STYLES = `
 .dsh-my-memory-addbar-wrap { display:flex; flex-direction:column; gap:3px; }
 .dsh-my-memory-entry-hint { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-state-warn-primary);
   line-height:1.7; padding:0 2px; }
-.dsh-my-memory-add-input { flex:1; min-width:0; height:28px; padding:0 8px; border-radius:6px;
-  border:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-2);
-  color:var(--dsw-alias-label-primary); font:var(--dsw-font-s-14); }
-.dsh-my-memory-add-input:focus { outline:none; border-color:var(--dsw-alias-accent); }
+/* 新增/编辑输入由官方 Input 提供视觉（issue #143 试点）；仅保留撑满布局。 */
+.dsh-my-memory-add-input { flex:1; min-width:0; }
 .dsh-my-memory-btn-save { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 12px; border-radius:6px; cursor:pointer;
   border:1px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, transparent);
   background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);

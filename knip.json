@@ -27,6 +27,12 @@
       "project": ["src/**", "scripts/**", "test/**", "*.mjs"]
     }
   },
-  "ignoreDependencies": ["dsh-shared", "@stryker-mutator/html-reporter", "react", "dsh-better-sidebar"],
+  "ignoreDependencies": [
+    "dsh-shared",
+    "@stryker-mutator/html-reporter",
+    "react",
+    "dsh-better-sidebar",
+    "@deepseek-ai/dsh-client-ui-primitives"
+  ],
   "ignoreBinaries": ["dsh"]
 }

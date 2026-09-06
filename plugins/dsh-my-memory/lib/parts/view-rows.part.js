@@ -1,16 +1,18 @@
 // ── view-rows: row/entry widgets for the Memory tab ─────────────────────
 // 拆分自 view.part.js（issue #110 视觉重设计）：条目卡片、空状态、排序开关、
 // 新增栏与确认面板。纯渲染组件，共用 view 工厂作用域内的 strings/icon/utils。
-/** 排序开关：按更新时间切换最新/最旧优先（每分区独立）。 */
+/** 排序开关：按更新时间切换最新/最旧优先（每分区独立）。官方 Pill 承载
+ *  （issue #143 试点）：active 表示当前排序方向，点击切换。 */
 function SortToggle({ scope, order, onSort }) {
   return createElement(
-    'button',
+    ui.Pill,
     {
       className: 'dsh-my-memory-sort',
+      active: order === 'desc',
       'aria-label': `${strings.sortLabel()} ${scope}`,
       onClick: () => onSort(scope),
     },
-    icon.clock(12),
+    createElement(ui.IconChevronDownOutline14),
     order === 'desc' ? strings.sortNewest() : strings.sortOldest(),
   )
 }
@@ -30,7 +32,8 @@ function EmptyState({ hint }) {
   )
 }
 
-/** 新增条目的输入 + 保存按钮；超长时给出精简提示（issue #105）。 */
+/** 新增条目的输入 + 保存按钮；超长时给出精简提示（issue #105）。
+ *  输入用官方 Input（issue #143 试点）；保存按钮保留自研（语义绿）。 */
 function AddBar({ scope, value, onChange, onAdd, entryLimit }) {
   return createElement(
     'div',
@@ -38,7 +41,7 @@ function AddBar({ scope, value, onChange, onAdd, entryLimit }) {
     createElement(
       'div',
       { className: 'dsh-my-memory-addbar' },
-      createElement('input', {
+      createElement(ui.Input, {
         className: 'dsh-my-memory-add-input',
         placeholder: strings.addPlaceholder(),
         'aria-label': strings.addInputAria(scope),
@@ -90,12 +93,13 @@ function IconButton({ className, label, onClick, children }) {
   return createElement('button', { className, 'aria-label': label, onClick }, children)
 }
 
-/** 编辑态：输入 + 保存/取消，保留卡片底与操作/内容分离。 */
+/** 编辑态：输入 + 保存/取消，保留卡片底与操作/内容分离。输入用官方
+ *  Input、取消用官方 Button（issue #143 试点）；保存保留自研（语义绿）。 */
 function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit }) {
   return createElement(
     'div',
     { className: 'dsh-my-memory-row dsh-my-memory-row-editing' },
-    createElement('input', {
+    createElement(ui.Input, {
       className: 'dsh-my-memory-add-input',
       value: editingDesc,
       onChange: (event) => onEditDesc(event.target.value),
@@ -110,9 +114,13 @@ function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit }) {
         strings.save(),
       ),
       createElement(
-        'button',
-        { className: 'dsh-my-memory-btn', onClick: onCancelEdit },
-        icon.close(14),
+        ui.Button,
+        {
+          variant: 'ghost',
+          size: 'sm',
+          onClick: onCancelEdit,
+          icon: createElement(ui.IconCloseOutline16),
+        },
         strings.cancel(),
       ),
     ),
@@ -239,7 +247,8 @@ const CONFIRM_TEXTS = {
   delete: () => strings.confirmDelete(),
 }
 
-/** Path input + load/refresh buttons + consent note. */
+/** Path input + load/refresh buttons + consent note. 路径输入用官方 Input、
+ *  加载/刷新用官方 Button（size sm，issue #143 试点）。 */
 function Toolbar({ pathInput, onInput, onLoad, onRefresh }) {
   return createElement(
     'div',
@@ -247,8 +256,9 @@ function Toolbar({ pathInput, onInput, onLoad, onRefresh }) {
     createElement(
       'div',
       { className: 'dsh-my-memory-pathbar' },
-      createElement('input', {
+      createElement(ui.Input, {
         className: 'dsh-my-memory-path-input',
+        icon: createElement(ui.IconFolderOpenOutline16),
         placeholder: strings.projectHint(),
         'aria-label': strings.pathInputAria(),
         title: strings.pathInputAria(),
@@ -259,15 +269,25 @@ function Toolbar({ pathInput, onInput, onLoad, onRefresh }) {
         },
       }),
       createElement(
-        'button',
-        { className: 'dsh-my-memory-btn', 'aria-label': strings.loadProject(), onClick: () => onLoad(pathInput) },
-        icon.folder(14),
+        ui.Button,
+        {
+          variant: 'outline',
+          size: 'sm',
+          'aria-label': strings.loadProject(),
+          onClick: () => onLoad(pathInput),
+          icon: createElement(ui.IconFolderOpenOutline16),
+        },
         strings.loadProject(),
       ),
       createElement(
-        'button',
-        { className: 'dsh-my-memory-btn', 'aria-label': strings.refresh(), onClick: () => onRefresh(pathInput) },
-        icon.refresh(14),
+        ui.Button,
+        {
+          variant: 'outline',
+          size: 'sm',
+          'aria-label': strings.refresh(),
+          onClick: () => onRefresh(pathInput),
+          icon: createElement(ui.IconRefreshOutline14),
+        },
         strings.refresh(),
       ),
     ),

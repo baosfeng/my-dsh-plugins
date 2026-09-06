@@ -65,6 +65,21 @@ function renderView() {
   return capturedTab.component({})
 }
 
+// ── stubbed official UI primitives (issue #143 试点) ───────────────────────
+// 官方组件库由宿主 staticModules 提供，测试用最小 stub 渲染（data-ui 标记
+// 供「官方组件被使用」断言）。Button → <button data-ui=button>；Pill → 有
+// onClick 渲染 button、否则 span（data-ui=pill，className 透传）；图标 →
+// <svg data-icon=.../>。
+const uiPrimitives = {
+  Button: ({ variant: _variant, size: _size, icon, className, children, ...rest }) =>
+    createElement('button', { type: 'button', 'data-ui': 'button', className, ...rest }, icon, children),
+  Pill: ({ active: _active, className, children, onClick, ...rest }) =>
+    onClick
+      ? createElement('button', { type: 'button', 'data-ui': 'pill', className, onClick, ...rest }, children)
+      : createElement('span', { 'data-ui': 'pill', className }, children),
+  IconRefreshOutline14: (props) => createElement('svg', { 'data-icon': 'refresh', ...props }),
+}
+
 // ── browser globals ────────────────────────────────────────────────────────
 let registered = null
 global.window = {
@@ -100,6 +115,7 @@ eval(fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8'))
 assert.ok(registered, 'bundle registered')
 const exportsObj = registered.factory((spec) => {
   if (spec === 'react') return stubbed
+  if (spec === '@deepseek-ai/dsh-client-ui-primitives') return uiPrimitives
   throw new Error('unexpected require: ' + spec)
 })
 assert.equal(typeof exportsObj.apply, 'function')
@@ -481,16 +497,12 @@ function countSections(node) {
 function collectByClass(node, className, out) {
   if (node === null || typeof node !== 'object') return
   const props = node.props ?? {}
-  if (
-    String(props.className ?? '')
-      .split(' ')
-      .includes(className)
-  )
-    out.push(node)
   if (Array.isArray(node)) {
     for (const c of node) collectByClass(c, className, out)
     return
   }
+  // 函数组件（含官方 Pill/Button stub）：不收集自身——展开结果会透传
+  // className，收集展开后的元素即可，避免同一元素被收集两次。
   if (typeof node.type === 'function') {
     const saved = hookIndex
     hookIndex = VIEW_HOOK_COUNT
@@ -498,6 +510,12 @@ function collectByClass(node, className, out) {
     hookIndex = saved
     return
   }
+  if (
+    String(props.className ?? '')
+      .split(' ')
+      .includes(className)
+  )
+    out.push(node)
   collectByClass(props.children, className, out)
 }
 

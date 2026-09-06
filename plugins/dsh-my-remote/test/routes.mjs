@@ -52,7 +52,7 @@ function boot(config) {
   const routes = []
   const disposers = []
   const ctx = {
-    logger: { warn() {} },
+    logger: { info() {}, warn() {} },
     on() {
       return () => {}
     },

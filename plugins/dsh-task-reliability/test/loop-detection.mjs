@@ -50,7 +50,7 @@ function boot(config = {}) {
   const disposers = []
   const mainAgent = makeAgent('session-main')
   const ctx = {
-    logger: { warn() {} },
+    logger: { info() {}, warn() {} },
     on(name, handler) {
       ;(listeners[name] ??= []).push(handler)
       return () => {}

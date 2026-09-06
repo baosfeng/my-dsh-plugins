@@ -44,7 +44,7 @@ function cwdOf(url) {
   return cwd !== '' ? cwd : undefined
 }
 
-export function createApiHandler({ globalStore, getProjectStore, candidatesStore, fence, sessions, config }) {
+export function createApiHandler({ globalStore, getProjectStore, candidatesStore, fence, sessions, config, logger }) {
   return async (request, response) => {
     if (!fence(request)) {
       writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
@@ -52,7 +52,14 @@ export function createApiHandler({ globalStore, getProjectStore, candidatesStore
     }
     const url = new URL(request.url ?? '/', 'http://dsh.internal')
     try {
-      await routeRequest(url, request, response, { globalStore, getProjectStore, candidatesStore, sessions, config })
+      await routeRequest(url, request, response, {
+        globalStore,
+        getProjectStore,
+        candidatesStore,
+        sessions,
+        config,
+        logger,
+      })
     } catch (error) {
       writeError(response, error)
     }
@@ -64,9 +71,9 @@ async function routeRequest(
   url,
   request,
   response,
-  { globalStore, getProjectStore, candidatesStore, sessions, config },
+  { globalStore, getProjectStore, candidatesStore, sessions, config, logger },
 ) {
-  if (await routeCandidates(url, request, response, { candidatesStore, globalStore, getProjectStore })) return
+  if (await routeCandidates(url, request, response, { candidatesStore, globalStore, getProjectStore, logger })) return
   if (url.pathname.endsWith('/config') && request.method === 'GET') {
     handleConfig(config, response)
     return
@@ -80,20 +87,20 @@ async function routeRequest(
     return
   }
   if (url.pathname.endsWith('/memory') && request.method === 'POST') {
-    await handleWrite(request, response, globalStore, getProjectStore)
+    await handleWrite(request, response, globalStore, getProjectStore, logger)
     return
   }
   writeJson(response, 404, { ok: false, error: { message: 'unknown my-memory API method' } })
 }
 
 /** 候选相关路由分发（issue #78）；已处理返回 true。 */
-async function routeCandidates(url, request, response, { candidatesStore, globalStore, getProjectStore }) {
+async function routeCandidates(url, request, response, { candidatesStore, globalStore, getProjectStore, logger }) {
   if (url.pathname.endsWith('/candidates') && request.method === 'GET') {
     await handleCandidatesList(candidatesStore, url, response)
     return true
   }
   if (url.pathname.endsWith('/candidates/confirm') && request.method === 'POST') {
-    await handleCandidateConfirm(request, response, candidatesStore, globalStore, getProjectStore)
+    await handleCandidateConfirm(request, response, candidatesStore, globalStore, getProjectStore, logger)
     return true
   }
   if (url.pathname.endsWith('/candidates/dismiss') && request.method === 'POST') {
@@ -115,7 +122,7 @@ async function handleCandidatesList(candidatesStore, url, response) {
 
 /** POST /candidates/confirm — accept one candidate into the target scope
  *  (user-confirmed write; memory never changes silently). */
-async function handleCandidateConfirm(request, response, candidatesStore, globalStore, getProjectStore) {
+async function handleCandidateConfirm(request, response, candidatesStore, globalStore, getProjectStore, logger) {
   if (candidatesStore === null || candidatesStore === undefined) {
     writeJson(response, 400, { ok: false, error: { message: 'candidate store unavailable' } })
     return
@@ -132,6 +139,9 @@ async function handleCandidateConfirm(request, response, candidatesStore, global
     return
   }
   await candidatesStore.remove(resolved.candidate.id)
+  logger?.info(
+    `[dsh-my-memory] 候选已确认并入记忆（candidateId=${resolved.candidate.id}，scope=${outcome.scope}，outcome=${outcome.outcome}）`,
+  )
   writeJson(response, 200, {
     ok: true,
     value: { scope: outcome.scope, cwd: outcome.cwd, item: outcome.item, outcome: outcome.outcome },
@@ -260,7 +270,7 @@ async function handleList(url, response, globalStore, getProjectStore) {
 }
 
 /** POST /memory — add / update / delete, gated on the user-consent marker. */
-async function handleWrite(request, response, globalStore, getProjectStore) {
+async function handleWrite(request, response, globalStore, getProjectStore, logger) {
   const payload = await readJsonBody(request)
   const gate = writeGate(payload)
   if (gate !== null) {
@@ -273,6 +283,9 @@ async function handleWrite(request, response, globalStore, getProjectStore) {
     writeJson(response, outcome.status, { ok: false, error: { message: outcome.message } })
     return
   }
+  logger?.info(
+    `[dsh-my-memory] API 写操作完成（action=${payload.action}，scope=${payload.scope}，itemId=${payload.id ?? ''}）`,
+  )
   writeJson(response, 200, { ok: true, value: { items: store.list() } })
 }
 

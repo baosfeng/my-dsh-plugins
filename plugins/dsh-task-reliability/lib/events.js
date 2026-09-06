@@ -97,7 +97,15 @@ async function handleRequestError(payload, next, shared) {
   if (bucket.count >= shared.options.retryMax) return next()
   bucket.count += 1
   if (await retryWait(payload, bucket, shared)) return next()
+  logRetry(shared, agent.id, code, bucket.count)
   return { kind: 'retry' }
+}
+
+/** 重试动作日志（统一 [dsh-task-reliability] 前缀，issue #155）。 */
+function logRetry(shared, sessionId, code, attempt) {
+  shared.ctx.logger?.info(
+    `[dsh-task-reliability] 请求失败自动重试（sessionId=${sessionId}，错误码=${code}，第 ${attempt}/${shared.options.retryMax} 次）`,
+  )
 }
 
 /** 指数退避等待：中途 abort 则放弃本次重试。 */
@@ -135,6 +143,9 @@ function repeatBreak(repeat, agent, shared) {
   }
   agent.steer(userMessage(REPEAT_BREAK_TEXT(repeat.count, repeat.pendingBreak)))
   void loopNotify(shared, repeat.pendingBreak, agent.id)
+  shared.ctx.logger?.info(
+    `[dsh-task-reliability] 循环打断已注入（sessionId=${agent.id}，类型=${repeat.pendingBreak}，第 ${repeat.count} 次）`,
+  )
   repeat.pendingBreak = null
   repeat.pendingBreakTurn = null
   return true
@@ -147,10 +158,16 @@ function escalateLoop(repeat, shared, agent, kind) {
   if (repeat.count > shared.options.repeatMaxPerSession) {
     repeat.gaveUp = true
     repeat.notified = false
+    shared.ctx.logger?.warn(
+      `[dsh-task-reliability] 循环打断达上限放弃（sessionId=${agent.id}，类型=${kind}，上限=${shared.options.repeatMaxPerSession}）`,
+    )
     return false
   }
   agent.steer(userMessage(REPEAT_BREAK_TEXT(repeat.count, kind)))
   void loopNotify(shared, kind, agent.id)
+  shared.ctx.logger?.info(
+    `[dsh-task-reliability] 循环升级打断已注入（sessionId=${agent.id}，类型=${kind}，第 ${repeat.count} 次）`,
+  )
   return true
 }
 
@@ -158,6 +175,9 @@ function atLoopLimit(task, shared) {
   if (task.loopCount < shared.options.maxLoop) return false
   finishTask(shared.store, task.id, 'failed')
   shared.save()
+  shared.ctx.logger?.warn(
+    `[dsh-task-reliability] 任务循环达上限标记失败（taskId=${task.id}，上限=${shared.options.maxLoop}）`,
+  )
   return true
 }
 
@@ -167,6 +187,9 @@ function steerContinue(task, agent, shared) {
   task.lastSteerAt = Date.now()
   task.updatedAt = Date.now()
   shared.save()
+  shared.ctx.logger?.info(
+    `[dsh-task-reliability] 任务自动继续已注入（taskId=${task.id}，sessionId=${agent.id}，第 ${task.loopCount} 次）`,
+  )
 }
 
 /** 无进展命中即注入打断指令；无需继续时返回 false。 */
@@ -223,12 +246,18 @@ async function handleStatus(agent, status, shared) {
   if (task.verifyCount >= shared.options.maxVerify) {
     finishTask(shared.store, task.id, 'failed')
     shared.save()
+    shared.ctx.logger?.warn(
+      `[dsh-task-reliability] 校验次数达上限标记任务失败（taskId=${task.id}，上限=${shared.options.maxVerify}）`,
+    )
     return
   }
   if (Date.now() - task.lastSteerAt < shared.options.steerCooldownMs) return
   task.status = 'checking'
   task.updatedAt = Date.now()
   shared.save()
+  shared.ctx.logger?.info(
+    `[dsh-task-reliability] 完成度校验触发（taskId=${task.id}，sessionId=${agent.id}，第 ${task.verifyCount + 1} 次）`,
+  )
   return runVerification(shared.ctx, shared.store, task, agent, shared.save)
 }
 
@@ -268,6 +297,7 @@ async function handlePreExecute(exec, next, shared) {
   if (shared.options.autopilotGraceMs > 0) return next()
   addQuestion(shared.store, agent.id, askNoteOf(exec.arguments))
   shared.save()
+  shared.ctx.logger?.info(`[dsh-task-reliability] 自主决策拦截 ask（sessionId=${agent.id}，deny 并记录待确认）`)
   return { kind: 'deny', reason: AUTOPILOT_DENY_REASON }
 }
 
@@ -290,7 +320,11 @@ async function handleToolExecute(exec, next, shared) {
   // 工具调用序列循环检测：命中立即抛错中断回合（与 reasoning 循环一致）。
   if (recordToolLoop(sessionId, exec, shared)) {
     void loopNotify(shared, 'tool', sessionId)
-    const error = new Error(`tool loop detected (count=${repeatStateOf(sessionId, shared).count})`)
+    const count = repeatStateOf(sessionId, shared).count
+    shared.ctx.logger?.warn(
+      `[dsh-task-reliability] 工具循环检测命中（sessionId=${sessionId}，工具=${exec.name}，第 ${count} 次，中断回合）`,
+    )
+    const error = new Error(`tool loop detected (count=${count})`)
     error.code = 'TOOL_LOOP'
     throw error
   }

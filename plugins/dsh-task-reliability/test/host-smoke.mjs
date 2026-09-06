@@ -110,6 +110,7 @@ function boot(config = {}, services = {}, dirOverride) {
   const routes = []
   const disposers = []
   const policies = []
+  const logs = []
   const calls = { create: [], resume: [], read: [] }
   const verifyAgent = makeAgent('verify-mock', { origin: 'subagent' })
   const mainAgent = services.mainAgent ?? makeAgent('session-main')
@@ -143,7 +144,7 @@ function boot(config = {}, services = {}, dirOverride) {
     },
   }
   const ctx = {
-    logger: { warn() {} },
+    logger: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
     on(name, handler) {
       ;(listeners[name] ??= []).push(handler)
       return () => {}
@@ -192,6 +193,7 @@ function boot(config = {}, services = {}, dirOverride) {
     agents,
     policies,
     calls,
+    logs,
     dir,
     disposeAll,
     store: shared.store,
@@ -1397,6 +1399,83 @@ test('tracking 关闭不自动登记', async () => {
   await dispatchOne(env.listeners, 'agent/status', { agent: env.mainAgent, status: 'idle' })
   const { body } = await callApi(env.api, mockRequest({ url: '/task-reliability/api/tasks', method: 'GET' }))
   assert.equal(body.value.length, 0)
+})
+
+// ── 干预/救场动作日志（issue #155 日志体系）──────────────────────────────
+test('请求失败自动重试输出 [dsh-task-reliability] info 日志', async () => {
+  const env = boot()
+  await dispatchOne(
+    env.listeners,
+    'agent/request-error',
+    {
+      agent: env.mainAgent,
+      failure: { code: 'TIMEOUT', message: 'stream idle' },
+      signal: { aborted: false },
+    },
+    () => Promise.resolve(undefined),
+  )
+  const retryLog = env.logs.find((line) => line.includes('请求失败自动重试'))
+  assert.ok(retryLog !== undefined, 'retry info log emitted')
+  assert.ok(retryLog.startsWith('[dsh-task-reliability]'), 'log carries the unified plugin prefix')
+  assert.ok(retryLog.includes('session-main'), 'log carries the session id')
+  assert.ok(retryLog.includes('TIMEOUT'), 'log carries the error code')
+})
+
+test('任务自动继续注入输出 info 日志（含 taskId）', async () => {
+  const env = boot()
+  await registerTask(env)
+  await dispatchOne(env.listeners, 'agent/turn-stopping', {
+    agent: env.mainAgent,
+    signal: { aborted: false },
+  })
+  const steerLog = env.logs.find((line) => line.includes('任务自动继续已注入'))
+  assert.ok(steerLog !== undefined, 'steer info log emitted')
+  assert.ok(steerLog.startsWith('[dsh-task-reliability]'), 'log carries the unified plugin prefix')
+  assert.ok(steerLog.includes('taskId='), 'log carries the task id')
+  assert.ok(steerLog.includes('session-main'), 'log carries the session id')
+})
+
+test('循环打断注入输出 info 日志（含类型）', async () => {
+  const env = boot()
+  const long = '反复推敲同一段思考内容及其潜在影响与后续步骤的详细规划与执行细节安排。'.repeat(8)
+  const wrapped = await dispatchOne(env.listeners, 'llm/stream', { sessionId: 'session-main' }, () => {
+    return (async function* () {
+      for (const chunk of reasoningChunks(long)) yield chunk
+    })()
+  })
+  await collect(wrapped)
+  await dispatchOne(env.listeners, 'agent/turn-stopping', {
+    agent: env.mainAgent,
+    signal: { aborted: false },
+  })
+  const breakLog = env.logs.find((line) => line.includes('循环打断已注入'))
+  assert.ok(breakLog !== undefined, 'break info log emitted')
+  assert.ok(breakLog.startsWith('[dsh-task-reliability]'), 'log carries the unified plugin prefix')
+  assert.ok(breakLog.includes('类型='), 'log carries the break kind')
+})
+
+test('看门狗唤醒停滞任务输出 info 日志', async () => {
+  const env = boot({ watchdogIntervalMs: 20, stallTimeoutMs: 1000 })
+  await registerTask(env)
+  env.store.tasks[0].updatedAt = Date.now() - 60000 // 模拟停滞 60 秒
+  await tick(60) // 等看门狗触发
+  const wakeLog = env.logs.find((line) => line.includes('看门狗唤醒停滞任务'))
+  assert.ok(wakeLog !== undefined, 'watchdog wake info log emitted')
+  assert.ok(wakeLog.startsWith('[dsh-task-reliability]'), 'log carries the unified plugin prefix')
+  assert.ok(wakeLog.includes('taskId='), 'log carries the task id')
+})
+
+test('重启恢复任务输出 info 日志', async () => {
+  const env = boot({ resumeGraceMs: 60000 })
+  await registerTask(env)
+  await tick()
+  env.disposeAll()
+  const env2 = boot({ resumeGraceMs: 0 }, {}, env.dir)
+  await tick(30)
+  const resumeLog = env2.logs.find((line) => line.includes('重启恢复任务'))
+  assert.ok(resumeLog !== undefined, 'resume info log emitted')
+  assert.ok(resumeLog.startsWith('[dsh-task-reliability]'), 'log carries the unified plugin prefix')
+  assert.ok(resumeLog.includes('session-main'), 'log carries the session id')
 })
 
 // ── 卸载清理 ──────────────────────────────────────────────────────────────

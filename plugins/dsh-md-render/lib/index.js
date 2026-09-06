@@ -28,11 +28,22 @@ export function apply(ctx, config) {
   // 热重载 patch 文件（保存即生效）。
   const onConfigChange = async (next) => {
     const merged = { ...options, ...next }
-    await writePatchConfig(patchFileOf(currentProfile()), 'md-render', merged)
+    try {
+      await writePatchConfig(patchFileOf(currentProfile()), 'md-render', merged)
+    } catch (error) {
+      ctx.logger?.warn(
+        `[dsh-md-render] 配置保存失败（操作=config/save，原因=${error instanceof Error ? error.message : String(error)}）`,
+      )
+      throw error
+    }
     Object.assign(options, next)
+    ctx.logger?.info(`[dsh-md-render] 配置已保存（变更键=${Object.keys(next).join(',')}）`)
   }
 
   registerConfigRoutes(ctx, options, onConfigChange)
+  ctx.logger?.info(
+    `[dsh-md-render] 已启用（开关=${SWITCH_KEYS.length} 项，选择项=${Object.keys(SELECT_KEYS).length} 项）`,
+  )
 }
 
 /**

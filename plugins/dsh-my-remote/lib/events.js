@@ -48,6 +48,7 @@ function attachEndListener(ctx, shared) {
     shared.approvalRegistry.cleanSession(agent.id)
     if (shared.isTopLevelAgent(agent)) {
       shared.channels.dispatch(buildEndEvent(shared, agent))
+      shared.logger?.info(`[dsh-my-remote] 会话结束事件已下行（sessionId=${agent.id}）`)
     }
   })
 }
@@ -78,6 +79,7 @@ function attachAskInterceptor(ctx, shared) {
     const entry = shared.askRegistry.register(sessionId, questions, exec.arguments)
     if (entry === undefined) return next()
     shared.channels.dispatch(buildAskEvent(shared, agent, questions))
+    shared.logger?.info(`[dsh-my-remote] ask 事件已下行（sessionId=${sessionId}，问题数=${questions.length}）`)
     const races = [next(), entry.waitFor.then(() => entry)]
     if (shared.options.askTimeoutMs > 0) {
       races.push(sleep(shared.options.askTimeoutMs).then(() => ASK_TIMEOUT))
@@ -86,6 +88,9 @@ function attachAskInterceptor(ctx, shared) {
     if (result === entry) return remoteAskResult(shared, sessionId, entry)
     if (result === ASK_TIMEOUT) {
       shared.askRegistry.cleanSession(sessionId)
+      shared.logger?.warn(
+        `[dsh-my-remote] ask 等待远程回答超时（sessionId=${sessionId}，超时=${shared.options.askTimeoutMs}ms，返回空回答由模型自行决策）`,
+      )
       return { value: { answers: [] } }
     }
     shared.askRegistry.cleanSession(sessionId)
@@ -136,6 +141,9 @@ function attachApprovalInterceptor(ctx, shared) {
     const entry = shared.approvalRegistry.register(sessionId, req)
     if (entry === undefined) return next()
     shared.channels.dispatch(buildApprovalEvent(shared, agent, req))
+    shared.logger?.info(
+      `[dsh-my-remote] approval 事件已下行（sessionId=${sessionId}，tool=${typeof req.toolName === 'string' ? req.toolName : ''}）`,
+    )
     const raceRunners = approvalRaceRunners(shared, req, sessionId, entry, next)
     const result = await Promise.race(raceRunners)
     return approvalRaceResult(shared, sessionId, entry, result)
@@ -168,7 +176,12 @@ function approvalRaceResult(shared, sessionId, entry, result) {
     return outcome
   }
   shared.approvalRegistry.cleanSession(sessionId)
-  if (result === APPROVAL_TIMEOUT) return 'rejected'
+  if (result === APPROVAL_TIMEOUT) {
+    shared.logger?.warn(
+      `[dsh-my-remote] approval 等待远程批准超时（sessionId=${sessionId}，超时=${shared.options.approvalTimeoutMs}ms，fail-closed 拒绝）`,
+    )
+    return 'rejected'
+  }
   return result === ABORTED ? 'cancelled' : result
 }
 

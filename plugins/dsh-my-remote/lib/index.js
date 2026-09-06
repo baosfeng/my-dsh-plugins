@@ -46,10 +46,11 @@ export function apply(ctx, config) {
   const shared = {
     ctx,
     options,
+    logger: ctx.logger,
     askRegistry: createAskRegistry(),
     approvalRegistry: createApprovalRegistry(),
     audit: createAuditLog(),
-    channels: createChannels(options),
+    channels: createChannels(options, { logger: ctx.logger }),
     titleOf,
     isTopLevelAgent,
   }
@@ -59,6 +60,10 @@ export function apply(ctx, config) {
 
   // ── 路由（/remote/api：command/status/audit/info + fence + token）────
   registerRemoteRoutes(ctx, shared)
+
+  ctx.logger?.info(
+    `[dsh-my-remote] 远程控制已启用（end=${options.end ? 'on' : 'off'}，ask=${options.ask ? 'on' : 'off'}，approval=${options.approval ? 'on' : 'off'}，webhooks=${(options.webhooks ?? []).length}）`,
+  )
 }
 
 /** 应用层配置 → options（默认值 + 类型规整）。 */

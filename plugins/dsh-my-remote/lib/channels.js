@@ -62,7 +62,12 @@ export function createChannels(options, deps = {}) {
       if (!matchesEvents(webhook, event?.kind)) continue
       void pushEvent(webhook, event, deps).then(
         (result) => {
-          if (!result.ok) addFailure(result.failure)
+          if (!result.ok) {
+            addFailure(result.failure)
+            deps.logger?.warn(
+              `[dsh-my-remote] webhook 推送失败（webhook=${result.failure?.webhookName ?? ''}，url=${result.failure?.url ?? ''}，原因=${result.failure?.error ?? ''}）`,
+            )
+          }
         },
         () => {
           addFailure({
@@ -71,6 +76,9 @@ export function createChannels(options, deps = {}) {
             url: typeof webhook.url === 'string' ? webhook.url : '',
             error: 'unexpected push failure',
           })
+          deps.logger?.warn(
+            `[dsh-my-remote] webhook 推送异常失败（webhook=${typeof webhook.name === 'string' ? webhook.name : ''}，url=${typeof webhook.url === 'string' ? webhook.url : ''}）`,
+          )
         },
       )
     }

@@ -37,4 +37,5 @@ export function apply(ctx) {
     order: -90,
     text: PROMPT_TEXT,
   })
+  ctx.logger?.info('[dsh-think-zh-expand] 中文思考/回复增强已启用（system-prompt section 注册）')
 }

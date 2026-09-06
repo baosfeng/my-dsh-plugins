@@ -18,6 +18,7 @@ export default defineConfig({
         'lib/api.js',
         'lib/dep-version.js',
         'lib/dep-precheck.js',
+        'lib/startup-check.js',
       ],
     },
   },

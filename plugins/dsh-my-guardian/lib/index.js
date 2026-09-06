@@ -37,6 +37,7 @@ import { createPersister, createState } from './state.js'
 import { findRootTree, createMountOps, initialScan } from './mount.js'
 import { createApi } from './api.js'
 import { attachEventListeners, logEvent } from './events.js'
+import { runStartupCheck } from './startup-check.js'
 
 export const name = 'dsh-my-guardian'
 
@@ -84,6 +85,9 @@ function createShared({ tree, profileDir }) {
     tree,
     profileDir,
     stagedFile: join(profileDir, 'cordis.staged.json'),
+    // startup-roster pre-check (issue #144): filled by runStartupCheck
+    startupIssues: [],
+    startupCheckedAt: null,
   }
 }
 
@@ -99,7 +103,14 @@ function wireServices(ctx, shared) {
 // ── run after boot settles ──────────────────────────────────────────────
 function scheduleInitialScan(ctx, shared) {
   void Promise.resolve().then(() => {
-    initialScan(shared).catch((error) => {
+    // Startup-roster static pre-check (issue #144): best-effort, MUST never
+    // block or break the boot — a pre-check failure only records a report.
+    void runStartupCheck(ctx, shared).catch((error) => {
+      ctx.logger?.warn(
+        `[dsh-my-guardian] startup pre-check failed (recorded only): ${error instanceof Error ? error.message : String(error)}`,
+      )
+    })
+    void initialScan(shared).catch((error) => {
       // the scan must never take the process down
       ctx.logger?.warn(
         `[dsh-my-guardian] initial scan failed: ${error instanceof Error ? error.message : String(error)}`,

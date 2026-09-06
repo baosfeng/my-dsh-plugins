@@ -14,7 +14,9 @@ import { satisfies } from './dep-version.js'
 
 // Locate a package directory below a node_modules root, following symlinks
 // (pnpm store / npm link both expose package.json through the mirrored dir).
-function findModuleDir(nmRoot, packageName) {
+// Exported for the startup-roster pre-check (issue #144): resolvability of a
+// roster plugin's own package is verified before peer dependencies.
+export function findModuleDir(nmRoot, packageName) {
   const dir = join(nmRoot, packageName)
   return existsSync(join(dir, 'package.json')) ? dir : null
 }

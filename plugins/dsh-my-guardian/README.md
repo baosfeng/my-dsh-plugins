@@ -86,6 +86,16 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-guardian
 
 失败条目额外带**失败类型徽标**（依赖缺失 / 代码错误 / 其他），依赖缺失时并展示安装建议命令（如 `dsh plugin add dsh-shared`）。
 
+### 启动名册静态预检（issue #144）
+
+候选区只兜住"走候选区"的插件；**直接写进启动名册（`cordis.patch.yml` / profile / bundles）的插件仍由 DSH 启动时 all-or-nothing 加载**。守护在每次启动时对名册做静态预检（不实际加载插件）：
+
+- **包可解析**：名册中 `dsh-*` 插件的包必须在 profile node_modules 中存在
+- **peerDependencies 满足**：复用候选挂载的依赖预检
+- **无重复 entry id**：名册中同一 id 出现多次（加载时 `EntryGroup.update` 会抛 `duplicate loader entry id`）
+
+发现的问题写入 `$DSH_HOME/guardian/startup-issues.json`（原子写，名册健康也写空报告 + 检查时间），面板「最近事件」顶部**置顶**展示启动区问题，每条给出修复命令（`dsh plugin add ...`）与移除提示。**预检失败不阻断启动**——只记录、只告警，最坏情况是为启动失败留下排查记录。
+
 ### 效果截图（真实 DSH 实例验证）
 
 侧边栏"插件守护"诊断面板（独立 3081 端口隔离 DSH 实例实测）：

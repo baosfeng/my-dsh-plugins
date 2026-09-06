@@ -315,3 +315,31 @@ Then('状态记录包含冲突提示', async function () {
 Then('响应状态码为 {int}', async function (status) {
   assert.equal(this.lastResponse.status, status)
 })
+
+// ── startup-roster pre-check (issue #144) ─────────────────────────────────
+
+Given('loader 名册已有条目 {string} 名为 {string}', async function (id, name) {
+  this.fake.store[id] = { options: { id, name } }
+})
+
+Given('名册插件 {string} 声明缺失的 peer 依赖 {string}', async function (name, dep) {
+  const pkgDir = join(this.dir, 'node_modules', name)
+  mkdirSync(pkgDir, { recursive: true })
+  writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name, peerDependencies: { [dep]: '^0.1.0' } }), 'utf8')
+})
+
+Then('预检报告写入启动区问题', async function () {
+  const report = JSON.parse(readFileSync(join(this.dir, 'guardian', 'startup-issues.json'), 'utf8'))
+  assert.equal(report.version, 1)
+  assert.ok(report.issues.length >= 1, 'report carries at least one issue')
+  assert.equal(report.issues[0].type, 'dependency')
+  assert.ok(report.issues[0].fix.includes('dsh plugin add'), 'fix command present')
+})
+
+Then('状态记录包含启动区问题事件', async function () {
+  const state = this.readState()
+  assert.ok(
+    state.events.some((e) => e.type === 'startup-issue'),
+    'startup-issue event logged',
+  )
+})

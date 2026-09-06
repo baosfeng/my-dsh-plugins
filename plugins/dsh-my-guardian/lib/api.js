@@ -191,5 +191,8 @@ function snapshot(shared) {
     staged: stagedList,
     promoted: promotedList,
     events: shared.state.events.slice(-10),
+    // startup-roster pre-check report (issue #144): empty array = healthy
+    startupIssues: Array.isArray(shared.startupIssues) ? shared.startupIssues : [],
+    startupCheckedAt: typeof shared.startupCheckedAt === 'number' ? shared.startupCheckedAt : null,
   }
 }

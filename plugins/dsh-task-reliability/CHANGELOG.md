@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-09-06
+
+### 变更
+
+- fix(task-reliability,observability): #165 Session.events 迁移——snapshotEvents 优先 + 旧 API 兜底 (#166)
+- feat(observability,task-reliability): #154 插件关键行为纳入事件审计（干预/ask 决策/救场/verify/恢复）+ 文件体积控制 (#158)
+- feat(observability): #155 插件日志体系补齐——7 插件关键行为/异常结构化日志（基础层） (#159)
+- fix(task-reliability): #153 循环检测误报——pendingBreak 绑定命中回合跨回合失效 + 只读工具轮询豁免 (#156)
+- feat(task-reliability): #147 输出未完成自动救场——普通对话回合截断自动补完 (#152)
+- fix(task-reliability): #145 缓冲超时后迟到回答不静默丢弃——回答优先竞速 + 迟到回答记录待确认 + 「用户已回答」文案区分 (#149)
+
 ## [0.4.5] - 2026-09-04
 
 ### 变更

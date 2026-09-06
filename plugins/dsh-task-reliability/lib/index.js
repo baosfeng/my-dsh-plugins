@@ -77,6 +77,8 @@ import {
   TOOL_LOOP_CONSECUTIVE,
   TOOL_LOOP_WINDOW,
   NO_PROGRESS_ROUNDS,
+  RESCUE_MAX_PER_SESSION,
+  RESCUE_COOLDOWN_MS,
 } from './constants.js'
 
 export const name = 'dsh-task-reliability'
@@ -157,6 +159,10 @@ function buildOptionsFrom(c) {
     noProgressRounds: nonNegInt(c.noProgressRounds, NO_PROGRESS_ROUNDS),
     notifyOnLoop: c.notifyOnLoop === true,
     notifyUrl: strOption(c.notifyUrl, ''),
+    // —— 输出未完成自动救场（issue #147）——
+    rescueOnTruncation: c.rescueOnTruncation !== false,
+    rescueMaxPerSession: positiveInt(c.rescueMaxPerSession, RESCUE_MAX_PER_SESSION),
+    rescueCooldownMs: nonNegInt(c.rescueCooldownMs, RESCUE_COOLDOWN_MS),
   }
 }
 
@@ -210,6 +216,8 @@ function createShared(ctx, options) {
     fence: (request) => isTrustedApiRequest(request, trustedHosts),
     retryBuckets: new Map(),
     repeatStates: new Map(),
+    rescueStates: new Map(),
+    errorMarks: new Map(),
     actionLog: [],
     resumeTimer: null,
     watchdogTimer: null,

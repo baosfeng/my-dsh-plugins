@@ -22,6 +22,7 @@ export default defineConfig({
         'lib/store.js',
         'lib/verify.js',
         'lib/events.js',
+        'lib/rescue.js',
         'lib/api.js',
         'lib/ask.js',
 

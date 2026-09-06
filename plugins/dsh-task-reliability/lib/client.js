@@ -102,6 +102,13 @@ window.__ModuleLoader__.load({
       settingsSecurity: () => (isZh() ? '安全' : 'Security'),
       settingsApiToken: () => (isZh() ? '远程触发 Token' : 'Remote trigger token'),
       settingsApiTokenHint: () => (isZh() ? '配置后远程触发需携带 x-task-reliability-token 头' : 'Remote triggers must send x-task-reliability-token when set'),
+      settingsRescue: () => (isZh() ? '截断救场' : 'Truncation rescue'),
+      settingsRescueOnTruncation: () => (isZh() ? '输出截断自动补完' : 'Auto-complete truncated output'),
+      settingsRescueOnTruncationHint: () => (isZh() ? '回合因输出上限/异常中断且输出不完整时，自动注入继续指令补完（普通对话同样生效）' : 'Auto-inject a continue prompt when a turn ends truncated/errored with incomplete output (plain chats too)'),
+      settingsRescueMaxPerSession: () => (isZh() ? '每会话救场上限' : 'Max rescues per session'),
+      settingsRescueMaxPerSessionHint: () => (isZh() ? '每会话自动补完次数上限，防无限循环' : 'Cap of auto-completes per session (anti-loop)'),
+      settingsRescueCooldownMs: () => (isZh() ? '救场冷却（毫秒）' : 'Rescue cooldown (ms)'),
+      settingsRescueCooldownMsHint: () => (isZh() ? '两次自动补完之间的最小间隔' : 'Min interval between auto-completes'),
       save: () => (isZh() ? '保存' : 'Save'),
       saved: () => (isZh() ? '已保存' : 'Saved'),
       saveFailed: () => (isZh() ? '保存失败' : 'Save failed'),
@@ -458,6 +465,14 @@ window.__ModuleLoader__.load({
           { label: () => strings.settingsAutopilot(), hint: () => strings.settingsAutopilotHint(), key: 'autopilot', fallback: false, switch: true },
           { label: () => strings.settingsAutopilotGraceMs(), hint: () => strings.settingsAutopilotGraceMsHint(), key: 'autopilotGraceMs', fallback: 20000, numeric: true },
           { label: () => strings.settingsApiToken(), hint: () => strings.settingsApiTokenHint(), key: 'apiToken', fallback: '' },
+        ],
+      },
+      {
+        title: () => strings.settingsRescue(),
+        rows: [
+          { label: () => strings.settingsRescueOnTruncation(), hint: () => strings.settingsRescueOnTruncationHint(), key: 'rescueOnTruncation', fallback: true, switch: true },
+          { label: () => strings.settingsRescueMaxPerSession(), hint: () => strings.settingsRescueMaxPerSessionHint(), key: 'rescueMaxPerSession', fallback: 2, numeric: true },
+          { label: () => strings.settingsRescueCooldownMs(), hint: () => strings.settingsRescueCooldownMsHint(), key: 'rescueCooldownMs', fallback: 30000, numeric: true },
         ],
       },
     ]

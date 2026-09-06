@@ -31,6 +31,8 @@ export const ASK_TIMEOUT_MS = 30 * 60 * 1000
 export const AUTOPILOT_GRACE_MS = 20 * 1000
 export const WATCHDOG_INTERVAL_MS = 5 * 60 * 1000
 export const STALL_TIMEOUT_MS = 10 * 60 * 1000
+export const RESCUE_MAX_PER_SESSION = 2
+export const RESCUE_COOLDOWN_MS = 30 * 1000
 
 export const RETRYABLE_CODES = new Set([
   'TIMEOUT',
@@ -90,3 +92,7 @@ export const ASK_TIMEOUT_CONTINUE_TEXT =
 export const WAKE_CONTINUE_TEXT = (desc) =>
   `【系统唤醒恢复】系统此前因锁屏/休眠/网络中断而停滞，请继续完成之前的任务：${desc}。` +
   '先回顾当前进度，然后继续执行剩余部分，直到任务完成。'
+
+export const RESCUE_CONTINUE_TEXT =
+  '【回合输出未完成】你上一回合的输出因达到输出长度上限或异常中断而未完成。' +
+  '请从上次中断处继续，补完剩余输出并给出最终结论。如果输出其实已经完整，请明确说明并结束。'

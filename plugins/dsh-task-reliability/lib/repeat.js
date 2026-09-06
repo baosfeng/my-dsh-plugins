@@ -134,6 +134,8 @@ function handleBlockEnd(buffer, segments, repeatState, opts) {
  * 包装模型流：透传全部 chunk，检测 reasoning 段落重复；命中抛错中断回合。
  * 同时更新 repeatState.progress（seenOutput / productCount）供无进展检测，
  * 并记录 reasoning block 的类型序列用于思考-工具交替观察。
+ * finish chunk 的 reason（FinishReason）记录到 repeatState.lastFinish，
+ * 供 turn-stopping 救场判定 max-tokens 截断（issue #147）。
  */
 export function wrapStreamForLoop(stream, repeatState, opts = {}) {
   const buffers = new Map()
@@ -150,6 +152,8 @@ export function wrapStreamForLoop(stream, repeatState, opts = {}) {
         const buffer = buffers.get(chunk.index)
         buffers.delete(chunk.index)
         if (buffer !== undefined) handleBlockEnd(buffer, segments, repeatState, opts)
+      } else if (chunk.type === 'finish') {
+        repeatState.lastFinish = chunk.reason
       }
     }
   })()

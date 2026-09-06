@@ -237,6 +237,9 @@ test('client bundle registers settings tab via slots and renders the config form
     autopilotGraceMs: 15000,
     watchdogIntervalMs: 120000,
     stallTimeoutMs: 300000,
+    rescueOnTruncation: true,
+    rescueMaxPerSession: 2,
+    rescueCooldownMs: 30000,
   }
   hookValues.set(0, [configValue, () => {}])
   hookValues.set(1, [{ ...configValue, retryableCodesText: 'TIMEOUT, SERVER' }, () => {}])
@@ -278,5 +281,9 @@ test('client bundle registers settings tab via slots and renders the config form
   assert.ok(joined.includes('Autopilot (default on)'), 'autopilot switch rendered')
   assert.ok(joined.includes('Autopilot grace (ms)'), 'autopilotGraceMs field rendered (issue #79)')
   assert.ok(joined.includes('Remote trigger token'), 'apiToken field rendered')
+  assert.ok(joined.includes('Truncation rescue'), 'rescue section rendered (issue #147)')
+  assert.ok(joined.includes('Auto-complete truncated output'), 'rescueOnTruncation switch rendered (issue #147)')
+  assert.ok(joined.includes('Max rescues per session'), 'rescueMaxPerSession field rendered (issue #147)')
+  assert.ok(joined.includes('Rescue cooldown (ms)'), 'rescueCooldownMs field rendered (issue #147)')
   assert.ok(joined.includes('Save'), 'save button rendered')
 })

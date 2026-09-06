@@ -51,5 +51,8 @@ export function configToPlain(options) {
     autopilotGraceMs: options.autopilotGraceMs,
     watchdogIntervalMs: options.watchdogIntervalMs,
     stallTimeoutMs: options.stallTimeoutMs,
+    rescueOnTruncation: options.rescueOnTruncation,
+    rescueMaxPerSession: options.rescueMaxPerSession,
+    rescueCooldownMs: options.rescueCooldownMs,
   }
 }

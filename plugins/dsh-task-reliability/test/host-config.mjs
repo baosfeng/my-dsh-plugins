@@ -170,6 +170,9 @@ const DEFAULTS = {
   autopilotGraceMs: 20000,
   watchdogIntervalMs: 300000,
   stallTimeoutMs: 600000,
+  rescueOnTruncation: true,
+  rescueMaxPerSession: 2,
+  rescueCooldownMs: 30000,
 }
 
 test('config API suite', async () => {
@@ -213,6 +216,9 @@ test('config API suite', async () => {
         autopilotGraceMs: 15000,
         watchdogIntervalMs: 120000,
         stallTimeoutMs: 300000,
+        rescueOnTruncation: true,
+        rescueMaxPerSession: 2,
+        rescueCooldownMs: 30000,
       }
       const put = mockResponse()
       await invoke(
@@ -250,6 +256,9 @@ test('config API suite', async () => {
         autopilotGraceMs: 20000,
         watchdogIntervalMs: 300000,
         stallTimeoutMs: 600000,
+        rescueOnTruncation: true,
+        rescueMaxPerSession: 2,
+        rescueCooldownMs: 30000,
       }
       const put = mockResponse()
       await invoke(
@@ -299,6 +308,9 @@ test('config API suite', async () => {
         autopilotGraceMs: 30000,
         watchdogIntervalMs: 60000,
         stallTimeoutMs: 120000,
+        rescueOnTruncation: true,
+        rescueMaxPerSession: 2,
+        rescueCooldownMs: 30000,
       }
       const put = mockResponse()
       await invoke(
@@ -355,6 +367,70 @@ test('config API suite', async () => {
         evil,
       )
       assert.equal(evil.writeHeadStatus, 403, 'cross-authority host rejected')
+    }
+
+    // ── 8. 保存 rescueOnTruncation=false 后救场立即关闭（issue #147） ───
+    {
+      const { api, listeners } = boot({})
+      const saved = {
+        apiToken: '',
+        retryMax: 3,
+        maxLoop: 8,
+        maxVerify: 3,
+        retryableCodes: ['TIMEOUT'],
+        retryBaseMs: 0,
+        autopilot: false,
+        steerCooldownMs: 0,
+        saveDebounceMs: 0,
+        resumeGraceMs: 60000,
+        rateMaxActions: 12,
+        askTimeoutMs: 1800000,
+        autopilotGraceMs: 20000,
+        watchdogIntervalMs: 300000,
+        stallTimeoutMs: 600000,
+        rescueOnTruncation: false,
+        rescueMaxPerSession: 2,
+        rescueCooldownMs: 30000,
+      }
+      const put = mockResponse()
+      await invoke(
+        api,
+        mockRequest({
+          url: '/task-reliability/api/config',
+          method: 'PUT',
+          body: JSON.stringify(saved),
+        }),
+        put,
+      )
+      assert.equal(put.writeHeadStatus, 200, 'save ok')
+      // 保存后立即生效：无任务 + 截断 + 输出不完整 → 不注入（救场已关闭）
+      const agent = {
+        id: 's1',
+        options: { provider: 'p', model: 'm' },
+        session: {
+          header: { cwd: '/work' },
+          events: [
+            {
+              type: 'assistant/message',
+              data: { message: { content: [{ type: 'text', text: '```js\nconst x = 1' }] } },
+            },
+          ],
+        },
+        steered: [],
+        steer(message) {
+          this.steered.push(message)
+        },
+      }
+      const wrapped = listeners['llm/stream'][0]({ sessionId: 's1' }, () =>
+        (async function* () {
+          yield { type: 'finish', reason: { kind: 'max-tokens' } }
+        })(),
+      )
+      for await (const chunk of wrapped) {
+        void chunk
+      }
+      await listeners['agent/turn-stopping'][0]({ agent, signal: { aborted: false } })
+      assert.equal(agent.steered.length, 0, 'rescueOnTruncation=false 保存后救场关闭')
     }
 
     // 清理

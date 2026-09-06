@@ -12,6 +12,7 @@ import { isTopLevelAgent } from './text.js'
 import { wrapStreamForLoop } from './repeat.js'
 import { loopNotify, detectNoProgress, recordToolLoop, repeatStateOf } from './loop.js'
 import { runVerification } from './verify.js'
+import { markAgentError, rescueAfterError, rescueTurn } from './rescue.js'
 import {
   ASK_TIMEOUT_CONTINUE_TEXT,
   AUTOPILOT_DENY_REASON,
@@ -182,7 +183,11 @@ async function handleTurnStopping(agent, signal, shared) {
   if (signalAborted(signal)) return
   const task = activeTaskOf(shared.store, agent.id)
   const repeat = shared.repeatStates.get(agent.id)
-  if (!shouldSteer(task, repeat)) return
+  if (!shouldSteer(task, repeat)) {
+    // 无任务无循环：普通对话截断救场（issue #147，受开关/上限/冷却约束）。
+    rescueTurn(agent, shared)
+    return
+  }
   if (!rateAllowed(shared)) return
   // 1. 思考/工具循环打断优先（立即中断后自动继续由打断指令驱动）。
   if (repeatBreak(repeat, agent, shared)) return
@@ -199,7 +204,12 @@ async function handleStatus(agent, status, shared) {
   if (!isTopLevelAgent(agent)) return
   maybeAutoTrack(agent, shared)
   const task = activeTaskOf(shared.store, agent.id)
-  if (task === undefined || task.mode !== 'verify') return
+  if (task === undefined) {
+    // 无任务：回合 error 结束的事后救场（issue #147）。
+    rescueAfterError(agent, shared)
+    return
+  }
+  if (task.mode !== 'verify') return
   if (task.verifyCount >= shared.options.maxVerify) {
     finishTask(shared.store, task.id, 'failed')
     shared.save()
@@ -353,6 +363,7 @@ export function registerListeners(ctx, shared) {
   ctx.on('agent/request-error', (payload, next) => handleRequestError(payload, next, shared))
   ctx.on('agent/turn-stopping', ({ agent, signal }) => handleTurnStopping(agent, signal, shared))
   ctx.on('agent/status', ({ agent, status }) => handleStatus(agent, status, shared))
+  ctx.on('agent/error', ({ agent }) => markAgentError(agent, shared))
   ctx.on('llm/stream', (options, next) => handleStream(options, next, shared))
   ctx.on('tools/pre-execute', (exec, next) => handlePreExecute(exec, next, shared))
   ctx.on('tools/execute', (exec, next) => handleToolExecute(exec, next, shared))

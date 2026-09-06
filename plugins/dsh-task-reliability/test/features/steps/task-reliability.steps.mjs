@@ -265,6 +265,45 @@ Then('插件不注入任何指令', function () {
   assert.equal(this.mainAgent.steered.length, 0)
 })
 
+// ── issue #147：输出未完成自动救场 ───────────────────────────────────────
+Given('代理 {string} 的最后输出不完整', function (_sessionId) {
+  this.mainAgent.session.events = [
+    {
+      type: 'assistant/message',
+      data: { message: { content: [{ type: 'text', text: '```js\nconst x = 1' }] } },
+    },
+  ]
+})
+
+Given('代理 {string} 的最后输出完整', function (_sessionId) {
+  this.mainAgent.session.events = [
+    {
+      type: 'assistant/message',
+      data: { message: { content: [{ type: 'text', text: '分析完成，结论如下。' }] } },
+    },
+  ]
+})
+
+When('代理 {string} 的模型流以 max-tokens 结束', async function (_sessionId) {
+  const wrapped = this.dispatch('llm/stream', { sessionId: 's-1' }, () => {
+    return (async function* () {
+      yield { type: 'finish', reason: { kind: 'max-tokens' } }
+    })()
+  })
+  for await (const chunk of wrapped) {
+    void chunk
+  }
+})
+
+When('代理 {string} 的回合即将结束且信号已中止', async function (_sessionId) {
+  await this.dispatch('agent/turn-stopping', { agent: this.mainAgent, signal: { aborted: true } })
+})
+
+Then('插件向代理注入补完指令（steer）', function () {
+  assert.equal(this.mainAgent.steered.length, 1)
+  assert.ok(this.mainAgent.steered[0].content[0].text.includes('回合输出未完成'))
+})
+
 Then('任务状态变为 failed', async function () {
   await new Promise((resolve) => setTimeout(resolve, 20))
   const store = JSON.parse(readFileSync(join(this.dir, 'task-reliability.json'), 'utf8'))

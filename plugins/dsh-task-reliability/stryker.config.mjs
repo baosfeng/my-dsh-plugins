@@ -17,6 +17,7 @@ export default {
     'lib/store.js',
     'lib/verify.js',
     'lib/events.js',
+    'lib/rescue.js',
     'lib/api.js',
     'lib/config-store.js',
     'lib/command.js',

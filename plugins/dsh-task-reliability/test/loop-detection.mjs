@@ -184,6 +184,18 @@ test('内容重复：中断后 turn-stopping 注入打断指令继续', async ()
   assert.ok(env.mainAgent.steered[0].content[0].text.includes('思考重复'))
 })
 
+test('内容重复：打断指令一次性消费，后续回合不再注入（issue #153）', async () => {
+  const env = boot()
+  const wrapped = dispatchOne(env.listeners, 'llm/stream', { sessionId: 'session-main' }, () =>
+    streamOf(Array.from({ length: 5 }, () => ({ blockType: 'reasoning', text: REPEATING }))),
+  )
+  await collect(wrapped)
+  await dispatchOne(env.listeners, 'agent/turn-stopping', { agent: env.mainAgent, signal: { aborted: false } })
+  assert.equal(env.mainAgent.steered.length, 1)
+  await dispatchOne(env.listeners, 'agent/turn-stopping', { agent: env.mainAgent, signal: { aborted: false } })
+  assert.equal(env.mainAgent.steered.length, 1, '跨回合不重复注入')
+})
+
 test('内容重复：正常差异化 reasoning 不误触发（阈值默认 0.8）', async () => {
   const env = boot()
   const wrapped = dispatchOne(env.listeners, 'llm/stream', { sessionId: 'session-main' }, () =>
@@ -208,7 +220,7 @@ test('工具循环 A→A→A：相同工具+参数连续 3 次触发 TOOL_LOOP �
 test('工具循环 A→B→A→B：周期重复触发 TOOL_LOOP 中断', async () => {
   const env = boot()
   const A = { name: 'bash', arguments: { command: 'ls' } }
-  const B = { name: 'read', arguments: { path: '/tmp/a.txt' } }
+  const B = { name: 'bash', arguments: { command: 'pwd' } }
   await runTool(env, A.name, A.arguments)
   await runTool(env, B.name, B.arguments)
   await runTool(env, A.name, A.arguments)
@@ -232,6 +244,59 @@ test('工具循环：中断后 turn-stopping 注入工具循环打断指令', as
   await dispatchOne(env.listeners, 'agent/turn-stopping', { agent: env.mainAgent, signal: { aborted: false } })
   assert.equal(env.mainAgent.steered.length, 1)
   assert.ok(env.mainAgent.steered[0].content[0].text.includes('工具调用循环'))
+})
+
+test('工具循环：连续相同只读工具调用（轮询）不误判（issue #153）', async () => {
+  const env = boot()
+  for (let i = 0; i < 4; i++) {
+    const result = await runTool(env, 'browser_snapshot', {})
+    assert.deepEqual(result, { ok: true }, `第 ${i + 1} 次只读轮询不判循环`)
+  }
+})
+
+test('工具循环：只读轮询穿插写操作，写操作死循环仍命中（issue #153）', async () => {
+  const env = boot()
+  await runTool(env, 'browser_snapshot', {})
+  await runTool(env, 'bash', { command: 'ls' })
+  await runTool(env, 'browser_snapshot', {})
+  await runTool(env, 'bash', { command: 'ls' })
+  await runTool(env, 'browser_snapshot', {})
+  await assert.rejects(runTool(env, 'bash', { command: 'ls' }), (error) => error.code === 'TOOL_LOOP')
+})
+
+test('工具循环：打断指令一次性消费，后续回合不再注入（issue #153）', async () => {
+  const env = boot()
+  await runTool(env, 'bash', { command: 'ls' })
+  await runTool(env, 'bash', { command: 'ls' })
+  await assert.rejects(runTool(env, 'bash', { command: 'ls' }), (error) => error.code === 'TOOL_LOOP')
+  // 回合 A：命中回合的 turn-stopping 注入一次打断指令。
+  await dispatchOne(env.listeners, 'agent/turn-stopping', { agent: env.mainAgent, signal: { aborted: false } })
+  assert.equal(env.mainAgent.steered.length, 1)
+  assert.ok(env.mainAgent.steered[0].content[0].text.includes('工具调用循环'))
+  // 回合 B：无任何工具调用，turn-stopping 不得再次注入循环提示。
+  await dispatchOne(env.listeners, 'agent/turn-stopping', { agent: env.mainAgent, signal: { aborted: false } })
+  assert.equal(env.mainAgent.steered.length, 1, '跨回合不重复注入')
+})
+
+test('工具循环：命中回合未消费的 pendingBreak 跨回合失效（issue #153）', async () => {
+  const env = boot({ rateMaxActions: 1 })
+  registerActiveTask(env)
+  // 先消耗速率配额（turn-stopping #1 注入任务继续指令）。
+  await dispatchOne(env.listeners, 'agent/turn-stopping', { agent: env.mainAgent, signal: { aborted: false } })
+  // 回合 A：命中工具循环（pendingBreak 产生）。
+  await runTool(env, 'bash', { command: 'ls' })
+  await runTool(env, 'bash', { command: 'ls' })
+  await assert.rejects(runTool(env, 'bash', { command: 'ls' }), (error) => error.code === 'TOOL_LOOP')
+  // 回合 A 的 turn-stopping：速率限制拒绝 → pendingBreak 未被消费。
+  await dispatchOne(env.listeners, 'agent/turn-stopping', { agent: env.mainAgent, signal: { aborted: false } })
+  // 模拟时间流逝，速率配额恢复。
+  env.shared.actionLog.length = 0
+  // 回合 B：无任何工具调用，turn-stopping 不得注入回合 A 残留的循环提示。
+  await dispatchOne(env.listeners, 'agent/turn-stopping', { agent: env.mainAgent, signal: { aborted: false } })
+  assert.ok(
+    !env.mainAgent.steered.some((m) => m.content[0].text.includes('工具调用循环')),
+    '跨回合残留的 pendingBreak 失效，不注入',
+  )
 })
 
 test('工具循环每会话次数上限（repeatMaxPerSession）后放弃干预', async () => {

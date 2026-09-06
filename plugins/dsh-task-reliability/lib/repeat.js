@@ -104,6 +104,8 @@ function raiseLoop(repeatState, opts, kind) {
   }
   repeatState.lastKind = kind
   repeatState.pendingBreak = kind
+  // issue #153：pendingBreak 绑定命中回合，跨回合由 events.js 消费时校验失效。
+  repeatState.pendingBreakTurn = repeatState.turnSeq
   return true
 }
 

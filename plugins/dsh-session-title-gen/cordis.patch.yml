@@ -1,0 +1,9 @@
+# dsh-session-title-gen bundle patch: inserts the plugin row into the profile
+# roster. The row mounts the server half (session/event listener + LLM title
+# generation + session/title append). Install with:
+#
+#   git clone https://github.com/baosfeng/my-dsh-plugins.git
+#   dsh plugin --profile web add link:<仓库路径>/plugins/dsh-session-title-gen
+- insert:
+    - id: session-title-gen
+      name: 'dsh-session-title-gen'

@@ -56,6 +56,7 @@ jobs:
           - dsh-task-reliability
           - dsh-ts-example
           - dsh-my-remote
+          - dsh-session-title-gen
     steps:
       - uses: actions/checkout@v7
 

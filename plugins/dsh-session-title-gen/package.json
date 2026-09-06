@@ -1,0 +1,45 @@
+{
+  "name": "dsh-session-title-gen",
+  "version": "0.1.0",
+  "description": "DSH 会话标题自动生成插件：监听会话首条人类消息，用 LLM 生成类似 git commit 的结构化标题（先标明归属工作区，再写简要描述），经核心 session/title 事件写入（重启保留），失败自动回退核心标题机制。DSH web plugin: structured session titles like git commit messages (workspace first, then description), written through the core session/title event.",
+  "type": "module",
+  "main": "lib/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/baosfeng/my-dsh-plugins"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "npx vitest run --coverage && cucumber-js test/features --import 'test/features/steps/*.mjs'"
+  },
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "cordis": "^4.0.0-rc.8",
+    "dsh-shared": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "cordis": {
+      "optional": true
+    }
+  },
+  "license": "MIT"
+}

@@ -12,7 +12,7 @@ function SortToggle({ scope, order, onSort }) {
       'aria-label': `${strings.sortLabel()} ${scope}`,
       onClick: () => onSort(scope),
     },
-    createElement(ui.IconClockOutline16),
+    createElement(ui.IconChevronDownOutline14),
     order === 'desc' ? strings.sortNewest() : strings.sortOldest(),
   )
 }

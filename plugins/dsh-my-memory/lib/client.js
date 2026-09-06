@@ -819,7 +819,7 @@ function SortToggle({ scope, order, onSort }) {
       'aria-label': `${strings.sortLabel()} ${scope}`,
       onClick: () => onSort(scope),
     },
-    createElement(ui.IconClockOutline16),
+    createElement(ui.IconChevronDownOutline14),
     order === 'desc' ? strings.sortNewest() : strings.sortOldest(),
   )
 }
@@ -1284,8 +1284,7 @@ function createActions({ setData, setLoading, setError, setSaved, setCandidates,
   return { load: run, refresh: run, loadCandidates, refreshCandidates }
 }
 
-/** 候选确认 / 拒弃处理器（issue #78）：写入或丢弃都要用户显式动作
- *  （服务端强制 confirmed 标记），操作成功后刷新候选列表与分区数据。 */
+/** 候选确认 / 拒弃处理器（issue #78）：写入/丢弃都要用户显式动作（服务端强制 confirmed），成功后刷新候选与分区。 */
 function createCandidateHandlers({ candidateBusy, setCandidateBusy, setSaved, setError, actions, pathInput }) {
   const busy = () => {
     if (candidateBusy) return true
@@ -1343,8 +1342,7 @@ function MemoryView() {
   const actions = createActions({ setData, setLoading, setError, setSaved, setCandidates, setCandidateBusy })
 
   useEffect(() => {
-    // 面板打开即拉取服务端精简引导配置（issue #105；失败回落默认值），
-    // 再解析当前会话 cwd 自动加载记忆（issue #104）。
+    // 面板打开拉取引导配置（issue #105；失败回落默认值），再解析 cwd 加载记忆（issue #104）。
     fetchConfig()
       .then((value) => setEntryLimit(value.maxEntryLength))
       .catch(() => {})
@@ -1460,8 +1458,7 @@ function renderRoot({
   )
 }
 
-/** Load-failure banner with a retry entry; write-failure banner without.
- *  重试按钮用官方 Button（size sm，issue #143 试点）。 */
+/** Load-failure banner with a retry entry; write-failure banner without. */
 function ErrorBanner({ kind, onRetry }) {
   if (kind === 'load') {
     return createElement(
@@ -1507,8 +1504,7 @@ function createCommitHandler({ data, setData, setSaved, setError, setDrafts, set
   }
 }
 
-/** The two scopes side by side (global default + project accented), plus the
- *  pending auto-learned candidates block (issue #78). */
+/** Two scopes side by side (global + project), plus pending candidates (issue #78). */
 function Sections({
   data,
   saved,
@@ -1601,8 +1597,7 @@ function SectionBlock({
   onCommit,
 }) {
   const isProject = scope === 'project'
-  // 徽标：数量（标题本身已含"全局记忆/项目记忆"，徽标不再重复 scope 标签；
-  // 项目加载后附带项目根路径信息）。官方 Pill 承载（issue #143 试点）。
+  // 徽标：数量（标题已含 scope 标签）；项目加载后附带项目根路径信息。
   const badge =
     scope === 'global'
       ? strings.countOnly(data.items.length)

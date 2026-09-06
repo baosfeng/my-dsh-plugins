@@ -69,7 +69,7 @@ const uiPrimitives = {
   IconFolderOpenOutline16: (props) => createElement('svg', { 'data-icon': 'folder', ...props }),
   IconCheckOutline16: (props) => createElement('svg', { 'data-icon': 'check', ...props }),
   IconPlusOutline16: (props) => createElement('svg', { 'data-icon': 'plus', ...props }),
-  IconClockOutline16: (props) => createElement('svg', { 'data-icon': 'clock', ...props }),
+  IconChevronDownOutline14: (props) => createElement('svg', { 'data-icon': 'chevron-down', ...props }),
   IconCloseOutline16: (props) => createElement('svg', { 'data-icon': 'close', ...props }),
 }
 

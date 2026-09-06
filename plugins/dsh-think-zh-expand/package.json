@@ -1,6 +1,6 @@
 {
   "name": "dsh-think-zh-expand",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "description": "DSH 思考增强插件：思考与回复强制中文（system-prompt 注入），思考内容默认展开显示，界面硬编码英文中文化。DSH web plugin: force Chinese in agent thinking/replies, expand reasoning blocks by default, localize hard-coded UI labels.",
   "type": "module",
   "main": "lib/index.js",

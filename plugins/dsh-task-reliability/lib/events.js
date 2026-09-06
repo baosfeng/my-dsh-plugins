@@ -8,21 +8,18 @@
 
 import { sleep, userMessage } from './util.js'
 import { activeTaskOf, finishTask, addQuestion, registerTask } from './store.js'
+import { askNoteOf, raceAskAnswer } from './ask.js'
 import { isTopLevelAgent } from './text.js'
 import { wrapStreamForLoop } from './repeat.js'
 import { loopNotify, detectNoProgress, recordToolLoop, repeatStateOf } from './loop.js'
 import { runVerification } from './verify.js'
 import {
-  ASK_TIMEOUT_CONTINUE_TEXT,
   AUTOPILOT_DENY_REASON,
   DIRECT_CONTINUE_TEXT,
   REPEAT_BREAK_TEXT,
   RETRY_MAX_DELAY_MS,
   RATE_WINDOW_MS,
 } from './constants.js'
-
-/** ask 超时竞争标记（Promise.race 胜出方）。 */
-const ASK_TIMEOUT = Symbol('dsh-task-reliability.ask-timeout')
 
 // ── 状态辅助 ───────────────────────────────────────────────────────────────
 
@@ -232,33 +229,6 @@ function handleStream(options, next, shared) {
 
 // ── 7. 自主决策：拦截 ask（deny，不调 next）；收集待确认问题 ─────────────
 
-/** ask 参数摘要：取第一个问题的 header/question 首行（尽力而为）。 */
-function askNoteOf(argumentsValue) {
-  try {
-    const first = firstQuestion(argumentsValue)
-    if (first === undefined) return ''
-    if (typeof first.header === 'string' && first.header !== '') return first.header
-    return questionLine(first)
-  } catch {
-    // ignore
-  }
-  return ''
-}
-
-function firstQuestion(argumentsValue) {
-  const questions = argumentsValue?.questions
-  if (!Array.isArray(questions) || questions.length === 0) return undefined
-  const first = questions[0]
-  if (first === null || typeof first !== 'object') return undefined
-  return first
-}
-
-function questionLine(first) {
-  if (typeof first.question !== 'string' || first.question === '') return ''
-  const line = first.question.split('\n')[0]
-  return line.length > 80 ? `${line.slice(0, 80)}…` : line
-}
-
 /**
  * 拦截 `tools/pre-execute` 的 ask_user_question（autopilot 模式）。
  *
@@ -278,47 +248,11 @@ async function handlePreExecute(exec, next, shared) {
   return { kind: 'deny', reason: AUTOPILOT_DENY_REASON }
 }
 
-// ── ask 超时自动继续（issue #34）──────────────────────────────────────────
-
-/** 超时后的模拟回答：有推荐选项（第一个）则选中，否则空回答由模型自行决策。 */
-function simulatedAskAnswer(argumentsValue) {
-  const questions = argumentsValue?.questions
-  if (!Array.isArray(questions)) return { value: { answers: [] } }
-  const answers = []
-  for (const question of questions) {
-    if (question === null || typeof question !== 'object' || typeof question.id !== 'string') continue
-    const options = Array.isArray(question.options)
-      ? question.options.filter(
-          (option) => option !== null && typeof option === 'object' && typeof option.label === 'string',
-        )
-      : []
-    answers.push(
-      options.length > 0 ? { id: question.id, selected: [options[0].label] } : { id: question.id, selected: [] },
-    )
-  }
-  return { value: { answers } }
-}
-
 /**
- * 超时后的自动决策：记录待确认问题 + 注入继续指令 + 返回回答。
- * autopilot 返回空回答（由模型自行决策，语义与 pre-execute deny 一致）；
- * askTimeout 返回模拟回答（有推荐选项则选中第一个）。
- */
-function timeoutDecision(autopilot, exec, agent, shared) {
-  addQuestion(shared.store, agent.id, askNoteOf(exec.arguments))
-  shared.save()
-  try {
-    agent.followup(userMessage(autopilot ? AUTOPILOT_DENY_REASON : ASK_TIMEOUT_CONTINUE_TEXT))
-  } catch {
-    // followup is best-effort; the simulated answer still unblocks the turn
-  }
-  return autopilot ? { value: { answers: [] } } : simulatedAskAnswer(exec.arguments)
-}
-
-/**
- * 包装 `tools/execute`：ask_user_question 启动空闲计时器（Promise.race），
+ * 包装 `tools/execute`：ask_user_question 启动空闲计时器竞速（issue #145
+ * 修复 Promise.race 的回答丢失：竞速中回答优先、超时后迟到回答不静默丢弃），
  * 超时后记录待确认问题 + 注入继续指令 + 返回模拟回答，任务不挂起；用户
- * 回答时 next() 先 resolve，真实结果透传。
+ * 回答时真实结果透传。
  *
  * issue #79：autopilot 模式下用 `autopilotGraceMs`（默认 20s）作为缓冲期
  * 超时——缓冲期内用户可正常回答（透传），超时后才自动决策（记录待确认 +
@@ -341,9 +275,7 @@ async function handleToolExecute(exec, next, shared) {
   const autopilot = autopilotFor(sessionId, shared)
   const timeoutMs = autopilot ? shared.options.autopilotGraceMs : shared.options.askTimeoutMs
   if (timeoutMs <= 0) return next()
-  const result = await Promise.race([next(), sleep(timeoutMs).then(() => ASK_TIMEOUT)])
-  if (result !== ASK_TIMEOUT) return result
-  return timeoutDecision(autopilot, exec, agent, shared)
+  return raceAskAnswer(exec, next, timeoutMs, autopilot, shared)
 }
 
 // ── 注册 ───────────────────────────────────────────────────────────────────

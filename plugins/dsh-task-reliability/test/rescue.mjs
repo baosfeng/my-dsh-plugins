@@ -30,7 +30,7 @@ function makeAgent(id, opts = {}) {
   return {
     id,
     options: { provider: 'deepseek', model: 'deepseek-chat' },
-    session: {
+    session: opts.session ?? {
       header: { cwd: '/work', ...(opts.origin !== undefined ? { origin: opts.origin } : {}) },
       events: opts.events ?? [],
     },
@@ -244,6 +244,39 @@ test('无任务 + max-tokens 截断 + 输出完整 → 不救场', async () => {
   await runStream(env, 'session-main', 'max-tokens')
   await dispatchOne(env.listeners, 'agent/turn-stopping', { agent, signal: { aborted: false } })
   assert.equal(agent.steered.length, 0)
+})
+
+// ── issue #165：Session.events 迁移三场景（snapshotEvents 优先 / events 兜底 / 都没有）──
+test('todo-pending 救场：snapshotEvents 优先（新 API，issue #165）', async () => {
+  const env = boot()
+  const agent = makeAgent('session-main', {
+    session: {
+      header: { cwd: '/work' },
+      snapshotEvents: () => [todoEvent([{ content: '写测试', status: 'pending' }])],
+      events: [],
+    },
+  })
+  await runStream(env, 'session-main', 'max-tokens')
+  await dispatchOne(env.listeners, 'agent/turn-stopping', { agent, signal: { aborted: false } })
+  assert.equal(agent.steered.length, 1, 'snapshotEvents 提供 todo 快照 → 救场触发')
+})
+
+test('todo-pending 救场：events 兜底（旧 API，issue #165）', async () => {
+  const env = boot()
+  const agent = makeAgent('session-main', {
+    events: [todoEvent([{ content: '写测试', status: 'pending' }])],
+  })
+  await runStream(env, 'session-main', 'max-tokens')
+  await dispatchOne(env.listeners, 'agent/turn-stopping', { agent, signal: { aborted: false } })
+  assert.equal(agent.steered.length, 1, 'events 提供 todo 快照 → 救场触发')
+})
+
+test('todo-pending 救场：都没有 → 不救场（不崩溃，issue #165）', async () => {
+  const env = boot()
+  const agent = makeAgent('session-main', { session: { header: { cwd: '/work' } } })
+  await runStream(env, 'session-main', 'max-tokens')
+  await dispatchOne(env.listeners, 'agent/turn-stopping', { agent, signal: { aborted: false } })
+  assert.equal(agent.steered.length, 0, '无 todo 快照 → 不救场')
 })
 
 test('无任务 + 无截断信号 + 输出不完整 → 启发式兜底救场', async () => {

@@ -27,7 +27,7 @@
  *    即使文本完整也救场。
  */
 
-import { lastAssistantText, isTopLevelAgent } from './text.js'
+import { lastAssistantText, isTopLevelAgent, sessionEvents } from './text.js'
 import { userMessage } from './util.js'
 import { RESCUE_CONTINUE_TEXT } from './constants.js'
 import { PLUGIN_EVENTS } from './emit.js'
@@ -127,7 +127,7 @@ export function rescueTurn(agent, shared) {
   const repeat = shared.repeatStates.get(agent.id)
   const truncated = repeat?.lastFinish?.kind === 'max-tokens'
   const incomplete = isOutputTruncated(lastAssistantText(agent.session))
-  if (!incomplete && !(truncated && todoHasPending(agent.session?.events))) return
+  if (!incomplete && !(truncated && todoHasPending(sessionEvents(agent.session)))) return
   try {
     agent.steer(userMessage(RESCUE_CONTINUE_TEXT))
   } catch {
@@ -155,7 +155,7 @@ export function rescueAfterError(agent, shared) {
   const state = rescueStateOf(agent.id, shared)
   if (!rescueAllowed(state, shared.options)) return
   const incomplete = isOutputTruncated(lastAssistantText(agent.session))
-  if (!incomplete && !todoHasPending(agent.session?.events)) return
+  if (!incomplete && !todoHasPending(sessionEvents(agent.session))) return
   try {
     agent.followup(userMessage(RESCUE_CONTINUE_TEXT))
   } catch {

@@ -22,8 +22,9 @@ export function formatTitle(template, workspace, description) {
   const ws = String(workspace ?? '').trim()
   let tpl = String(template ?? DEFAULT_TEMPLATE)
   if (ws === '') {
-    // 无工作区时移除 `[{workspace}]` 前缀（含周围空白），避免 `[] 描述`
-    tpl = tpl.replace(/\s*\[\{workspace\}\]\s*/, ' ')
+    // 无工作区时移除 `[{workspace}]` 占位（split/join 无正则回溯，避免
+    // 用户配置的 template 含大量空白时触发 ReDoS；`\s+` 规范化是线性匹配）
+    tpl = tpl.split('[{workspace}]').join(' ')
   }
   const title = tpl.replaceAll('{workspace}', ws).replaceAll('{description}', desc)
   return title.replace(/\s+/g, ' ').trim()

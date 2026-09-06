@@ -24,6 +24,17 @@ describe('formatTitle', () => {
   it('workspace 为空时仅保留 description', () => {
     expect(formatTitle('[{workspace}] {description}', '', '修复问题')).toBe('修复问题')
   })
+
+  it('大量空格的 template 不触发 ReDoS（快速完成且结果正确）', () => {
+    // 防复发（CodeQL ReDoS）：原实现 `\s*\[\{workspace\}\]\s*` 在用户配置的
+    // template 含大量空白且无 `[{workspace}]` 时灾难性回溯；split/join 无回溯。
+    const spaces = ' '.repeat(100000)
+    const template = `${spaces}{description}${spaces}`
+    const start = Date.now()
+    const result = formatTitle(template, '', '修复问题')
+    expect(Date.now() - start).toBeLessThan(1000)
+    expect(result).toBe('修复问题')
+  })
 })
 
 describe('isStructuredTitle', () => {

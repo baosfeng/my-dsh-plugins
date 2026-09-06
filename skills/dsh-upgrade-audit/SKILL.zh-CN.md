@@ -1,5 +1,3 @@
-[English](SKILL.md) | 简体中文
-
 # dsh-upgrade-audit
 
 审计两个 DSH 版本之间**仓库外消费者**可观察的一切变化，并写出用户期望的报告集。这个问题的固定形态是：*相对 from 而言，to 是否有更多的改动或者回滚？*——"更多改动"指外部可见的破坏（导出删除、线上错误码改名、数据格式拒读）；"回滚"指 `from` 中存在的行为在区间内被 revert 蓄意撤回。两者都要证据：commit message 和子代理摘要只是主张，只有对两棵树（源码文件或已发布包）读过之后的结论才是证据。
@@ -32,14 +30,15 @@
 
 ## Phase 1 — 物化两棵树
 
-**源码模式**——先验纯度，merge base 不是 `from` 本身意味着基漂移，必须停下报告，不能对着移动的基线做 diff：
+**源码模式**（有 DSH 源码检出时）——先验纯度，merge base 不是 `from` 本身意味着基漂移，必须停下报告，不能对着移动的基线做 diff：
 
 ```sh
 git merge-base <from> <to>   # 必须等于 <from> 的 commit
-node <skill-dir>/scripts/gen-artifacts.mjs <from> <to> tmp/<pair>
 ```
 
-**npm 模式**：
+> 注：本仓库裁剪了源码模式物化脚本（gen-artifacts.mjs），无 DSH 源码检出时直接用 npm 模式（下方）。
+
+**npm 模式**（默认，无源码检出时）：
 
 ```sh
 node <skill-dir>/scripts/materialize-npm.mjs <from> <to> tmp/<pair>

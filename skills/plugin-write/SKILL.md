@@ -1,121 +1,86 @@
 ---
 name: plugin-write
-description: Use when creating a DeepSeek Harness plugin, choosing public names for a new external DSH plugin, validating a dsh-plugin.naming.json manifest, checking reviewed central registrations for known conflicts, or creating a workspace package inside the deepseek-harness repository. Covers the full workflow from repository-mode and plugin-form selection through separate offline naming validation, optional online registry lookup, and package validation. Routes tool, LLM adapter, hook, service, and configuration forms to their corresponding references while separating upstream-monorepo rules from external-package rules. For an existing plugin crossing Harness versions, use this Skill's built-in version-adaptation workflow before implementing against the exact target contract.
+description: 使用当 需要新建 DSH 插件、为外部 DSH 插件选择公开命名、校验 dsh-plugin.naming.json 清单、查询中央注册表已知冲突，或把现有插件适配到新 DSH 宿主版本时。覆盖从仓库模式/插件形态选择、离线命名校验、在线注册表查询到包校验的完整流程。
 ---
 
-# Write DeepSeek Harness Plugins
+# 编写 DSH 插件（plugin-write）
 
-Create a plugin package. First classify the repository mode and plugin form, then read the matching reference files, and finally validate the published entry with the smallest set of gates that covers the change.
+创建插件包。先分类仓库模式与插件形态，再读对应参考文件，最后用覆盖变更的最小门禁集校验发布入口。
 
-## Select the Repository Mode First
+## 先选仓库模式
 
-| Target | Rules to apply |
+| 目标 | 适用规则 |
 |---|---|
-| A package inside the official `deepseek-harness` monorepo | Use the in-repository package, tsconfig, documentation, and root-gate rules below. |
-| An externally installable DSH plugin | Preserve that repository's package layout and scripts. Use only packages and exports published by the exact target DSH version. Do not copy `private`, workspace versions, root tsconfig registration, or monorepo-only README gates. |
-| An existing plugin being adapted to a new DSH host | Read [`references/version-adaptation.md`](references/version-adaptation.md), build the complete version corridor, and run the seven-class touchpoint preflight. If a change is `breaking` and the user has not yet authorized implementation, present the migration plan and wait for confirmation. After authorization, complete the version adaptation before using this Skill's form references. Form examples must never override target source, type declarations, or release notes. |
+| 官方 `deepseek-harness` monorepo 内的包 | 用仓库内 package/tsconfig/文档与根门禁规则 |
+| 外部可安装的 DSH 插件 | 保留该仓库的包布局与脚本；只用精确目标 DSH 版本已发布的包与导出；不复制 `private`、workspace 版本、根 tsconfig 注册或 monorepo 专属 README 门禁 |
+| 现有插件适配新 DSH 宿主 | 读 [references/version-adaptation.md](references/version-adaptation.md)，建完整版本走廊并跑七类触点 preflight；`breaking` 变更且用户未授权实施时，先展示迁移计划等确认 |
 
-Derive Cordis, Schemastery, and DSH package names and version ranges from the manifest of the exact target version. Current examples use scoped `@deepseek-ai/*` identifiers. Older targets may differ and must follow their own published contracts.
+Cordis/Schemastery/DSH 包名与版本范围从精确目标版本的 manifest 推导（当前示例用 `@deepseek-ai/*` 标识符；旧目标按各自发布契约）。
 
-For every new external plugin, read [`references/naming-conventions.md`](references/naming-conventions.md) before choosing public identifiers. Create `dsh-plugin.naming.json` at the plugin repository root and run the bundled read-only validator before final package validation. Treat compatibility errors as target-contract failures and prefix warnings as community recommendations; use `--strict` only when the plugin adopts the collision-resistant profile. This is not an official Harness manifest or a global reservation. For an existing external plugin, report naming deviations but preserve published names unless the user explicitly authorizes a compatibility-breaking rename. Packages inside the official monorepo follow the exact target checkout instead of this external naming profile.
+**每个新外部插件**：读 [references/naming-conventions.md](references/naming-conventions.md) 再选公开标识符；在插件仓库根创建 `dsh-plugin.naming.json`，跑只读校验器（见下）。兼容性错误 = 目标契约失败；前缀警告 = 社区建议；`--strict` 仅当插件采用防撞名 profile。这不是官方 manifest 也不是全局预留。现有外部插件：报告命名偏差但保留已发布名（用户明确授权兼容性破坏改名除外）。
 
-After the offline declaration passes, read [`references/registry-check.md`](references/registry-check.md) and run the separate central lookup when public network access is available. Supply the exact target Harness version. Treat a completed no-match result only as “no reviewed match”; treat timeout, malformed data, unsupported contract, or network failure as “unknown/not checked.” Never let the online lookup modify the local manifest, automatically rename a published surface, or turn an automated discovery candidate into a reservation. A formal reservation exists only after a source-backed entry is reviewed and merged in the central registry.
+离线声明通过后，读 [references/registry-check.md](references/registry-check.md)，网络可用时跑独立中央查询（带精确目标 DSH 版本）。无匹配只算"无已审匹配"；超时/畸形数据/不支持契约/网络失败算"未检查"。在线查询绝不修改本地 manifest、不自动改名、不把自动发现候选当预留——正式预留只存在于中央注册表审阅合并后。
 
-## Then Classify the Plugin Form
+## 再分类插件形态
 
-| Required capability | Form | Reference |
+| 能力需求 | 形态 | 参考 |
 |---|---|---|
-| Model-callable tools for reading files, running commands, or searching the Web | Tool plugin | `references/tool-plugin.md` |
-| A new model provider | LLM adapter plugin | `references/llm-adapter-plugin.md` |
-| Request, tool, or turn interception for permissions, policy, metrics, or telemetry | Hook plugin | `references/hook-plugin.md` |
-| A capability consumed by other plugins through `ctx` | Service plugin | `references/service-plugin.md` |
-| User-configurable behavior supplied through `cordis.yml` | Config plugin | `references/config-plugin.md` |
+| 模型可调用的工具（读文件/跑命令/搜网页） | 工具插件 | `references/tool-plugin.md`（已裁剪，见 dsh-plugin-development 工具型速览） |
+| 新模型 provider | LLM 适配器插件 | `references/llm-adapter-plugin.md`（已裁剪） |
+| 请求/工具/回合拦截（权限/策略/指标/遥测） | Hook 插件 | `references/hook-plugin.md`（已裁剪） |
+| 被其他插件经 `ctx` 消费的能力 | Service 插件 | `references/service-plugin.md`（已裁剪） |
+| 经 `cordis.yml` 提供的用户可配置行为 | Config 插件 | `references/config-plugin.md`（已裁剪） |
 
-A plugin may combine forms freely, such as a configurable tool plugin or a service that also registers tools. Every included form still has to satisfy its own contract. When a requirement does not match one of the five forms above, map it to an existing extension point and write a plugin that registers there. Never modify the Agent loop directly.
+> 本仓库裁剪了 5 个形态参考文件（形态覆盖见 `dsh-plugin-development` skill 的「插件形态」表）；形态可自由组合，每个包含的形态仍须满足自身契约。需求不匹配五形态时，映射到既有扩展点注册，**绝不直接改 agent loop**。
 
-| Goal | Mechanism |
+| 目标 | 机制 |
 |---|---|
-| Add a model-callable capability | Register it on `ctx.tools` |
-| Add a model provider | Register an adapter on `ctx.llm` |
-| Provide a different capability set for one session | Assemble it in an Agent preset |
-| Add Shell execution | Implement and register a `ctx.bash` backend |
-| Add persistent terminal execution | Register a `ctx.pty` backend and load `dsh-tool-pty` |
-| Add human commands | Register them on `ctx.commands` |
-| Add background tasks | Register them on `ctx.tasks` |
-| Add filesystem access or policy | Implement a `ctx.fs` provider or listen for `fs/*` policy events |
-| Constrain launched processes | Use a `ctx.sandbox` backend |
-| Intercept requests, tools, or turns | Use `agent/*` or `tools/*` events; `agent/turn-stopping` is the turn-stopping event |
-| Add model-visible context | Call `agent.inject()` |
-| Add UI or editor integration | Drive `ctx.agents` and render from `session/event` |
-| Add Web-client conversation nodes | Register a `ConversationNodeDefinition` and keyed renderers |
-| Add persistent session state | Extend `SessionEventMap`, then render and replay from the log |
-| Fork a live session | Call `ctx.sessions.fork(source, boundary?, childSessionId?)` |
-| Scope registrations to one Agent | Use that Agent's `agent.ctx` |
+| 加模型可调用能力 | 注册到 `ctx.tools` |
+| 加模型 provider | 注册 adapter 到 `ctx.llm` |
+| 单会话不同能力集 | 组装进 Agent preset |
+| 加 Shell 执行 | 实现并注册 `ctx.bash` 后端 |
+| 加持久终端执行 | 注册 `ctx.pty` 后端并加载 `dsh-tool-pty` |
+| 加人类命令 | 注册到 `ctx.commands` |
+| 加后台任务 | 注册到 `ctx.tasks` |
+| 加文件系统访问/策略 | 实现 `ctx.fs` provider 或监听 `fs/*` 策略事件 |
+| 约束启动的进程 | 用 `ctx.sandbox` 后端 |
+| 拦截请求/工具/回合 | 用 `agent/*` 或 `tools/*` 事件；`agent/turn-stopping` 是回合停止事件 |
+| 加模型可见上下文 | 调 `agent.inject()` |
+| 加 UI/编辑器集成 | 驱动 `ctx.agents` 并从 `session/event` 渲染 |
+| 加 Web 客户端会话节点 | 注册 `ConversationNodeDefinition` 与 keyed renderers |
+| 加持久会话状态 | 扩展 `SessionEventMap`，从日志渲染与回放 |
+| 分叉活动会话 | 调 `ctx.sessions.fork(source, boundary?, childSessionId?)` |
+| 注册限定到某 Agent | 用该 Agent 的 `agent.ctx` |
 
-## Package Checklist
+## 包检查清单
 
-1. **Create an in-repository package** — Only in the official monorepo, create `packages/<group>/<pkg>/` with `package.json`, `tsconfig.json`, `src/index.ts`, and `README.md`. Copy `packages/core/tools/package.json` from the target checkout, then adjust its name, description, and dependencies. Preserve target-version invariants: `private: true`; the root package `version`; `type: module`; `main: "lib/index.js"`; `types: "lib/types/index.d.ts"`; both `types` and `default` in `exports["."]` pointing to `lib`; the same target Cordis range in peer and development dependencies; every DSH peer dependency mirrored in development dependencies; the target Schemastery package declared in `dependencies`; and the target `files` layout plus package-specific runtime artifacts. CLI application packages must include the built `bin`. Do not publish undeclared source or stale artifacts. Follow relative-import conventions from the target checkout. Prefer an existing group with the matching role. A new group is only a container, and the package must sit exactly one level below it.
+1. **外部包**：保留现有包管理器与构建系统；新插件应用外部命名策略并带校验过的 `dsh-plugin.naming.json`；`main`/`types`/`exports`/`files`/可选 `bin`/打包 composition 或 Profile 元数据/打包 tarball 保持一致；每个运行时依赖显式声明，编译所需 DSH peer 依赖镜像到 devDependencies；可发布的插件不设 `private`、不用 workspace 版本范围。
+2. **拓扑**：可替换能力仅在独立演进时拆包（service 定义/provider/consumer 分开）；单一用途插件保持单包。
+3. **校验**：新外部插件先 `node <plugin-write-skill>/scripts/validate-names.mjs --manifest ./dsh-plugin.naming.json`（`--strict` 仅防撞名 profile）；通过后网络可用时跑 `node <plugin-write-skill>/scripts/query-registry.mjs --manifest ./dsh-plugin.naming.json --harness-version <精确semver>`（不可用报 unknown 而非 available）；再按变更面跑适用校验块与覆盖率门禁。
 
-2. **Register an in-repository package** — Only in the official monorepo, add the package to the Host or Client aggregate exactly as required by the development guide in the target checkout. A normal package belongs to one aggregate only. Do not copy historical exceptions or file lists without checking the target version. External plugins must never modify Harness root configuration.
+## 编写规则
 
-3. **Create an external package** — Preserve the existing package manager and build system. For a new plugin, apply the external naming policy and include a validated `dsh-plugin.naming.json`; for an existing plugin, do not silently rename public surfaces. Keep `main`, `types`, `exports`, `files`, optional `bin`, packaged-composition or Profile metadata, and the packed tarball consistent. Declare every runtime dependency explicitly and mirror the DSH peer dependencies needed for compilation in development dependencies. Do not make a publishable external plugin `private` or give it workspace version ranges merely because an in-repository template does so.
+- 每个注册都是 effect：经 `ctx` 助手或 `ctx.effect()` 注册并带 disposer，插件卸载清理每个事件监听/工具/定时器/资源。
+- 新行为加在文档化扩展点，不修改 `agent-loop`。
+- 公共 service 方法与类型化事件写 JSDoc（`@param`/`@returns`）；类型化事件经目标 Cordis `Events` 接口声明合并定义，注明 `@mode` 分发模式。
+- 不硬编码可调值：跨部署可能不同的值必须是可经 `cordis.yml` 改的校验过的 `Config` 字段。
+- 模型看到的一切必须能从会话日志重建。
+- 配置错误显式失败：不静默跳过缺失引用对象；在 parser/配置/接线/进程边界校验，不信任进程内类型化调用者。
 
-4. **Choose the package topology** — For a replaceable capability, split service definition, provider, and consumer into separate packages only when they will evolve independently. Keep a single-purpose plugin in one package.
+## 验证
 
-5. **Write the in-repository package README** — Only when required by the target monorepo, put package-specific service APIs, configuration, events, extension points, and design notes first. End the README with the canonical "Model Experience" ordering and "Known Limitations" section from the target checkout. Describe each direct, conditional, capped, lifecycle, or auxiliary-model surface in its own H3 with the following three H4 sections, each containing a prose paragraph. Quote stable text owned by the package. For a tool Schema surface, describe only differences not already present in the generated tool catalog. Under "KV Cache Impact," distinguish append-only growth, stable repeated prefixes, replacement of earlier request tokens, and independent model requests. Then list the package changes that invalidate reuse.
+外部插件用自己的 install/typecheck/test/static-check/build 命令；打包可发布 artifact、检查内容、装入运行精确目标 DSH 的隔离 Profile；升级场景冷启动并完成一次 消息 → 工具 → 回复 或等价核心流。报告每个未覆盖的 provider/OS/UI/凭据边界。
 
-   ````markdown
-   ## Model Experience
+按变更面选测试：纯逻辑跑单测；跑仓库覆盖率门禁；有 provider 凭据且授权时跑真实 API e2e；模型/协议/用户可见行为用免凭据快照；用户可见插件用真实 composition 测试；`bin` 入口还要原生 Node 的 built-artifact 冒烟。
 
-   ### Request Surface and Activation Conditions
+## 参考材料
 
-   #### What the Model Sees
-
-   Name the exact data-dependent field, link to the generated catalog with an anchor, or introduce the verbatim text below.
-
-   ##### Place the Verbatim Field Text Here When Needed
-
-   ```markdown
-   Copy any stable system-prompt body or other long nongenerated literal exactly from source.
-   ```
-
-   #### Token Impact
-
-   State whether the impact is fixed, conditional, retained, replaced, capped, or has zero direct token impact.
-
-   #### KV Cache Impact
-
-   Describe append-only, prefix-stable, replacement, or independent behavior, including exact conditions that may invalidate reuse.
-
-   ## Known Limitations and Deferred Work
-
-   - **Consumer-visible gap** — State the exact missing operation or condition, its consequence, and any maintainer constraint.
-   ````
-
-6. **Validate** — For a new external plugin, first run `node <plugin-write-skill>/scripts/validate-names.mjs --manifest ./dsh-plugin.naming.json`; add `--strict` only for the collision-resistant community profile. After it passes, run `node <plugin-write-skill>/scripts/query-registry.mjs --manifest ./dsh-plugin.naming.json --harness-version <exact-semver>` when network access is available, and report an unavailable query as unknown rather than available. Then run the applicable validation block below, focused checks, and coverage gate required by the changed behavior.
-
-## Rules While Writing
-
-- Treat every registration as an effect. Register through `ctx` helpers or `ctx.effect()` with a disposer, and make plugin unload clean up every event listener, tool, timer, and other resource.
-- Add new behavior at documented extension points. Do not modify `agent-loop`.
-- Give public service methods and typed events JSDoc with `@param` and `@returns`. Define typed events through declaration merging on the target Cordis `Events` interface, and document the dispatch mode with `@mode`.
-- Do not hard-code tunable values. Any value that may differ across deployments must be a validated `Config` field changeable through `cordis.yml`.
-- Everything the model sees must be reconstructible from the session log.
-- Fail explicitly on configuration errors. Never silently skip a missing referenced object. Validate at parser, configuration, wiring, and process boundaries instead of trusting an in-process typed caller.
-
-## Validation
-
-For packages inside the official Harness monorepo, use current root commands from the target checkout. The names below are examples only; confirm they exist before running them:
-
-```sh
-pnpm install            # Register the workspace
-pnpm run doc-sync
-pnpm run constraints && pnpm run typecheck && pnpm run lint
-pnpm run build && pnpm run hygiene
-```
-
-For an external plugin, use its own install, typecheck, test, static-check, and build commands. Pack the publishable artifact, inspect its contents, and load it into an isolated Profile running the exact target DSH. For an upgrade, cold-start it and complete one message → tool → reply flow or an equivalent core flow. Report every provider, operating-system, UI, or credential boundary that remains uncovered.
-
-Select tests from the changed surface: unit-test logic; run the repository's coverage gate; run real-API end-to-end tests when provider credentials are available and execution is authorized; use credential-free snapshots for model-, protocol-, or user-visible behavior; and use a real-composition test for user-visible plugins. A package `bin` entry also needs a built-artifact smoke test under native Node. Complete the minimum sufficient test set under these rules without loading another Skill.
-
-See [`references/README.md`](references/README.md) for the reference index.
+| 文件 | 内容 |
+|---|---|
+| [references/naming-conventions.md](references/naming-conventions.md) | 公开标识符命名规范 |
+| [references/plugin-naming.schema.json](references/plugin-naming.schema.json) | dsh-plugin.naming.json 的 JSON Schema |
+| [references/naming-policy.v1.json](references/naming-policy.v1.json) | 命名策略（防撞名 profile） |
+| [references/registry-check.md](references/registry-check.md) | 中央注册表查询契约 |
+| [references/version-adaptation.md](references/version-adaptation.md) | 现有插件跨 DSH 版本适配流程 |
+| [scripts/validate-names.mjs](scripts/validate-names.mjs) | 离线命名校验器 |
+| [scripts/query-registry.mjs](scripts/query-registry.mjs) | 中央注册表查询器 |

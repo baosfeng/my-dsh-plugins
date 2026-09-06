@@ -1,5 +1,3 @@
-[English](SKILL.md) | 简体中文
-
 # plugin-upgrade
 
 安全完成三类任务：只读更新检查、已安装插件升级、DSH 宿主版本兼容迁移。若用户意图
@@ -143,8 +141,9 @@
 | [references/api-migration-0.1.2-alpha.2.md](references/api-migration-0.1.2-alpha.2.md) | rc.2→alpha.2 精确接口 ledger；命中 API、Remote、Settings、事件、Headless、打包或 composition 时读取；含 client runtime 移除与 keyed chat snapshot（API-10） |
 | [references/rollup-0.1.2.md](references/rollup-0.1.2.md) | 0.1.1 → 0.1.2 走廊（rollup）：跨 cohort 共存、未发布 cohort 安装、`RemoteResult` 错误流、迁移前 baseline 归因、boot race 有界重试、base-only preset 前置、类型面导出漂移、宿主自身安全边界、安装通道三坑（镜像延迟、pnpm 11 供应链规则、peer 下限 prerelease 语义）、分层验证清单；基于 rc.1，正式版需复核 |
 
-| [scripts/README.md](scripts/README.md) | 只读 migration planner：扫描目标仓库、连接卡片走廊并输出候选迁移计划 |
-| [examples/legacy-plugin/](examples/legacy-plugin/) | 七类触点静态夹具（不得执行） |
+| [scripts/plan-migration.mjs](scripts/plan-migration.mjs) | 只读 migration planner：扫描目标仓库、连接卡片走廊并输出候选迁移计划 |
+| [scripts/verify-runtime.mjs](scripts/verify-runtime.mjs) | 隔离 profile 端到端运行时验证（失败归因：plugin-code / dependency-resolution / profile-config / dsh-runtime） |
+| [scripts/ghost-host-check.mjs](scripts/ghost-host-check.mjs) | 宿主幽灵进程检查（升级前确认无残留 dsh 进程） |
 | [examples/08-real-web-client-alpha2-migration.md](examples/08-real-web-client-alpha2-migration.md) | 从更早 unsupported 走廊迁移 Host + Web Client 源码的真实样本 |
 
 规范背景：[dsh-community-standard](https://github.com/oh-my-dsh/dsh-community-standard)

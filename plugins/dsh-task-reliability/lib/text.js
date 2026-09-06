@@ -47,10 +47,15 @@ function scanEvents(events) {
   return ''
 }
 
+/** 会话事件快照：新 API snapshotEvents() 优先，旧 API events 兜底（issue #165）。 */
+export function sessionEvents(session) {
+  return session?.snapshotEvents?.() ?? session?.events
+}
+
 /** 会话最后一条 assistant 文本消息（校验 agent 结论读取）。 */
 export function lastAssistantText(session) {
   try {
-    const events = session?.events
+    const events = sessionEvents(session)
     if (!Array.isArray(events)) return ''
     return scanEvents(events)
   } catch {
@@ -74,7 +79,7 @@ function eventText(event) {
 export function summarizeSession(session, desc) {
   const parts = []
   try {
-    const events = session?.events
+    const events = sessionEvents(session)
     if (Array.isArray(events)) {
       const tail = events.slice(-40)
       for (const event of tail) {

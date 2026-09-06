@@ -127,9 +127,14 @@ function extractJsonBlock(text) {
   return match !== null ? match[1].trim() : undefined
 }
 
+/** 会话事件快照：新 API snapshotEvents() 优先，旧 API events 兜底（issue #165）。 */
+function sessionEvents(session) {
+  return session?.snapshotEvents?.() ?? session?.events
+}
+
 function lastAssistantText(session) {
   try {
-    const events = session?.events
+    const events = sessionEvents(session)
     if (!Array.isArray(events)) return ''
     for (let i = events.length - 1; i >= 0; i--) {
       const text = assistantTextOf(events[i])

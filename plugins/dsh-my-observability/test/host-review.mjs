@@ -250,10 +250,20 @@ test('POST /review validates repoPath', async () => {
 function agentsMock({
   followup = () => {},
   sessionText = '{"verdict":"changes","summary":"有密钥","topIssues":["a"]}',
+  sessionMode = 'events', // 'snapshot'（新 API）| 'events'（旧 API）| 'none'（都没有）
   createThrows = false,
   idleThrows = false,
   onCreate = () => {},
 } = {}) {
+  const events =
+    sessionText === ''
+      ? []
+      : [
+          {
+            type: 'assistant/message',
+            data: { message: { content: [{ type: 'text', text: sessionText }] } },
+          },
+        ]
   return {
     create: async (opts) => {
       onCreate(opts)
@@ -264,17 +274,12 @@ function agentsMock({
           whenIdle: async () => {
             if (idleThrows) throw new Error('idle failed')
           },
-          session: {
-            events:
-              sessionText === ''
-                ? []
-                : [
-                    {
-                      type: 'assistant/message',
-                      data: { message: { content: [{ type: 'text', text: sessionText }] } },
-                    },
-                  ],
-          },
+          session:
+            sessionMode === 'snapshot'
+              ? { snapshotEvents: () => events, events: [] }
+              : sessionMode === 'none'
+                ? {}
+                : { events },
         },
         dispose: async () => {},
       }
@@ -329,6 +334,49 @@ test('AI failure degrades without breaking the rule report', async () => {
   assert.equal(value.value.ai.failed, true, 'failure flagged')
   assert.equal(value.value.summary.errors, 0, 'no rule errors')
   assert.equal(value.value.summary.warnings, 0, 'no rule warnings')
+})
+
+// ── issue #165：Session.events 迁移三场景（snapshotEvents 优先 / events 兜底 / 都没有）──
+test('AI 审查上下文：snapshotEvents 优先（新 API，issue #165）', async () => {
+  const repo = createRepo()
+  writeFileSync(join(repo, 'src/a.js'), 'const x = 1\n')
+  git(repo, 'add', 'src/a.js')
+  git(repo, 'commit', '-m', 'chore: seed')
+  writeFileSync(join(repo, 'src/a.js'), 'const x = 1\nconsole.log("debug")\n')
+  const { api } = boot({}, { agents: agentsMock({ sessionMode: 'snapshot' }) })
+  await settle()
+  const { status, value } = await postReview(api, { repoPath: repo, aiReview: true })
+  assert.equal(status, 200)
+  assert.equal(value.value.ai.enabled, true)
+  assert.equal(value.value.ai.verdict, 'changes', 'snapshotEvents 提供会话快照 → AI 结论解析成功')
+})
+
+test('AI 审查上下文：events 兜底（旧 API，issue #165）', async () => {
+  const repo = createRepo()
+  writeFileSync(join(repo, 'src/a.js'), 'const x = 1\n')
+  git(repo, 'add', 'src/a.js')
+  git(repo, 'commit', '-m', 'chore: seed')
+  writeFileSync(join(repo, 'src/a.js'), 'const x = 1\nconsole.log("debug")\n')
+  const { api } = boot({}, { agents: agentsMock({ sessionMode: 'events' }) })
+  await settle()
+  const { status, value } = await postReview(api, { repoPath: repo, aiReview: true })
+  assert.equal(status, 200)
+  assert.equal(value.value.ai.verdict, 'changes', 'events 提供会话快照 → AI 结论解析成功')
+})
+
+test('AI 审查上下文：都没有 → 降级不崩溃（issue #165）', async () => {
+  const repo = createRepo()
+  writeFileSync(join(repo, 'src/a.js'), 'const x = 1\n')
+  git(repo, 'add', 'src/a.js')
+  git(repo, 'commit', '-m', 'chore: seed')
+  writeFileSync(join(repo, 'src/a.js'), 'const x = 1\nconsole.log("debug")\n')
+  const { api } = boot({}, { agents: agentsMock({ sessionMode: 'none' }) })
+  await settle()
+  const { status, value } = await postReview(api, { repoPath: repo, aiReview: true })
+  assert.equal(status, 200)
+  assert.equal(value.value.ai.enabled, true)
+  assert.equal(value.value.ai.failed, true, '无会话快照 → AI 结论解析失败降级')
+  assert.equal(value.value.summary.errors, 0, '规则引擎结果不受影响')
 })
 
 test('AI unavailable (no agents service) degrades gracefully', async () => {

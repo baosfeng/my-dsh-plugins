@@ -71,6 +71,17 @@ test('lastAssistantText: 取最后一条非空 assistant 文本（从后向前�
   assert.equal(lastAssistantText({ events: [textEvent('assistant/message', '')] }), '')
 })
 
+test('lastAssistantText: snapshotEvents 优先（新 API），events 兜底（旧 API），都没有 → 空串（issue #165）', () => {
+  const events = [textEvent('assistant/message', 'snapshot-answer')]
+  // 有 snapshotEvents（0.1.2-rc.1 新 API）：优先使用，events 被忽略
+  assert.equal(lastAssistantText({ snapshotEvents: () => events, events: [] }), 'snapshot-answer')
+  // 只有 events（旧 API）：兜底使用
+  assert.equal(lastAssistantText({ events }), 'snapshot-answer')
+  // 都没有：返回空串（不崩溃）
+  assert.equal(lastAssistantText({}), '')
+  assert.equal(lastAssistantText(undefined), '')
+})
+
 test('lastAssistantText: 多文本块按换行拼接', () => {
   const events = [
     {

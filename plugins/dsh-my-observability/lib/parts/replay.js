@@ -22,17 +22,21 @@ function typeLabel(event) {
       return strings.typeToolCall()
     case 'tool_result':
       return strings.typeToolResult()
+    case 'plugin_event':
+      return strings.typePluginEvent()
     default:
       return event.type
   }
 }
 
 /** 事件类型 → 视觉类别（徽标/图标/节点共用，颜色语义一致）：
- *  status=info / llm=warn / call=accent / result=success / fail=danger。 */
+ *  status=info / llm=warn / call=accent / result=success / fail=danger /
+ *  plugin=info（插件事件复用 info 色，图标区分）。 */
 function typeKind(event) {
   if (event.type === 'agent_status') return 'status'
   if (event.type === 'llm_stream') return 'llm'
   if (event.type === 'tool_call') return 'call'
+  if (event.type === 'plugin_event') return 'plugin'
   return event.data?.ok === false ? 'fail' : 'result'
 }
 
@@ -42,6 +46,7 @@ function typeIcon(event) {
   if (kind === 'status') return icon.clock(15)
   if (kind === 'llm') return icon.file(15)
   if (kind === 'call') return icon.external(15)
+  if (kind === 'plugin') return icon.alert(15)
   if (kind === 'fail') return icon.close(15)
   return icon.check(15)
 }
@@ -96,6 +101,12 @@ function toolResultMeta(data) {
   return `${data.name} · ${result} · ${data.ms}ms`
 }
 
+/** 插件事件摘要（插件名 · 事件名 · 动作；issue #154）。 */
+function pluginEventMeta(data) {
+  const action = typeof data.action === 'string' && data.action !== '' ? data.action : data.event
+  return `${data.plugin} · ${data.event} · ${action}`
+}
+
 /** 事件 → 摘要文本（单行，尽力而为）。 */
 function eventMeta(event) {
   const data = event.data || {}
@@ -103,17 +114,55 @@ function eventMeta(event) {
   if (event.type === 'llm_stream') return llmMeta(data)
   if (event.type === 'tool_call') return toolCallMeta(data)
   if (event.type === 'tool_result') return toolResultMeta(data)
+  if (event.type === 'plugin_event') return pluginEventMeta(data)
   return ''
 }
 
+/** 插件事件详情行（原因 + 参数键值对；非插件事件返回 null 不可展开）。 */
+function eventDetail(event) {
+  if (event?.type !== 'plugin_event') return null
+  const data = event.data || {}
+  const rows = []
+  if (typeof data.reason === 'string' && data.reason !== '') {
+    rows.push(
+      createElement(
+        'div',
+        { key: 'reason', className: 'dsh-my-observability-detail-row' },
+        createElement('span', { className: 'dsh-my-observability-detail-key' }, strings.detailReason()),
+        createElement('span', { className: 'dsh-my-observability-detail-value' }, data.reason),
+      ),
+    )
+  }
+  if (data.params !== null && typeof data.params === 'object') {
+    for (const [key, value] of Object.entries(data.params)) {
+      rows.push(
+        createElement(
+          'div',
+          { key, className: 'dsh-my-observability-detail-row' },
+          createElement('span', { className: 'dsh-my-observability-detail-key' }, key),
+          createElement('span', { className: 'dsh-my-observability-detail-value' }, String(value)),
+        ),
+      )
+    }
+  }
+  return rows.length > 0 ? rows : null
+}
+
 /** 单条事件行：节点圆点 + 类型图标 + 徽标/时间 + 摘要（hover/active 反馈）。
- *  摘要命中关键词时以 mark 高亮。 */
+ *  摘要命中关键词时以 mark 高亮；插件事件可点击展开详情（原因/参数）。 */
 function EventRow({ event, keyword }) {
   const meta = eventMeta(event)
   const kind = typeKind(event)
+  const detail = eventDetail(event)
+  const [open, setOpen] = useState(false)
   return createElement(
     'button',
-    { className: 'dsh-my-observability-event', type: 'button' },
+    {
+      className: 'dsh-my-observability-event',
+      type: 'button',
+      'aria-expanded': detail !== null ? open : undefined,
+      onClick: detail !== null ? () => setOpen(!open) : undefined,
+    },
     createElement('span', { className: `dsh-my-observability-node dsh-my-observability-node-${kind}` }),
     createElement(
       'span',
@@ -140,17 +189,19 @@ function EventRow({ event, keyword }) {
             createElement(HighlightText, { text: meta, keyword }),
           )
         : null,
+      detail !== null && open ? createElement('div', { className: 'dsh-my-observability-event-detail' }, detail) : null,
     ),
   )
 }
 
-/** 类型过滤按钮组（aria-pressed 选中态）。 */
+/** 类型过滤按钮组（aria-pressed 选中态；plugin 过滤插件事件，issue #154）。 */
 function TypeFilter({ filter, onFilter }) {
   const options = [
     ['', strings.filterAll()],
     ['agent_status', strings.filterStatus()],
     ['llm_stream', strings.filterLlm()],
     ['tool', strings.filterTools()],
+    ['plugin', strings.filterPlugin()],
   ]
   return createElement(
     'div',

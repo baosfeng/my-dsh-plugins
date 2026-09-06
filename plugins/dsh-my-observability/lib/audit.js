@@ -7,12 +7,27 @@
  *                            waterfall，包装流透传全部 chunk）
  *  - `tools/pre-execute`   → `tool_call`（工具调用开始 + 参数摘要；透传 next）
  *  - `tools/execute`       → `tool_result`（工具结果 ok/失败 + 耗时；透传 next）
+ *  - 插件事件（issue #154）→ `plugin_event`（插件关键行为：干预/ask 决策/
+ *                            救场/校验/恢复，含插件名/事件名/动作/原因/参数）
  *
  * ⚠️ llm/stream 监听器必须保持同步函数：cordis waterfall 不 await listener
  * 返回值，next() 同步返回流；async listener 会让消费方（vision-toolkit 等
  * yield* 委托）拿到 Promise 而崩溃。tools/* 同理必须调用 next()。
  */
 import { MAX_ARG_KEYS, MAX_TEXT_LEN } from './constants.js'
+
+/**
+ * 采集的插件事件名（按插件前缀显式注册，不依赖 cordis 通配符行为）。
+ * 与 dsh-task-reliability/lib/emit.js 的 PLUGIN_EVENTS 保持一致；
+ * 未来推广到其他插件（dsh-my-guardian 等）在此追加。
+ */
+const PLUGIN_EVENT_NAMES = [
+  'task-reliability/intervention',
+  'task-reliability/ask-decision',
+  'task-reliability/rescue',
+  'task-reliability/verify',
+  'task-reliability/resume',
+]
 
 /** 注册全部审计监听；返回 disposer 数组（全部经 ctx.on 注册）。 */
 export function attachAuditListeners(ctx, record) {
@@ -22,7 +37,51 @@ export function attachAuditListeners(ctx, record) {
     ctx.on('llm/stream', (options, next) => handleStream(options, next, record)),
     ctx.on('tools/pre-execute', (exec, next) => handlePreExecute(exec, next, record)),
     ctx.on('tools/execute', (exec, next) => handleExecute(exec, next, record)),
+    ...PLUGIN_EVENT_NAMES.map((name) => ctx.on(name, (payload) => handlePluginEvent(name, payload, record))),
   ]
+}
+
+/** 插件事件名 → 插件名（前缀补 dsh-，如 task-reliability → dsh-task-reliability）。 */
+function pluginNameOf(name) {
+  const prefix = name.split('/')[0]
+  return prefix === '' ? name : `dsh-${prefix}`
+}
+
+/** 插件事件名 → 事件名（去掉前缀，如 task-reliability/intervention → intervention）。 */
+function eventNameOf(name) {
+  const parts = name.split('/')
+  return parts.length > 1 ? parts.slice(1).join('/') : name
+}
+
+/** 插件事件 payload → 参数摘要（除 sessionId/action/reason 外的字段；字符串截断防膨胀）。 */
+function summarizeParams(payload) {
+  const params = {}
+  for (const [key, value] of Object.entries(payload ?? {})) {
+    if (key === 'sessionId' || key === 'action' || key === 'reason') continue
+    if (typeof value === 'string') params[key] = truncate(value)
+    else if (typeof value === 'number' || typeof value === 'boolean') params[key] = value
+  }
+  return params
+}
+
+/**
+ * 插件事件 → plugin_event 审计事件（与现有事件同时间线/同过滤/同导出）。
+ * 无 sessionId 的插件事件不记录（与 agent_status 等一致）。
+ */
+function handlePluginEvent(name, payload, record) {
+  const sessionId = payload?.sessionId
+  if (typeof sessionId !== 'string' || sessionId === '') return
+  record({
+    type: 'plugin_event',
+    sessionId,
+    data: {
+      plugin: pluginNameOf(name),
+      event: eventNameOf(name),
+      action: truncate(String(payload?.action ?? '')),
+      reason: truncate(String(payload?.reason ?? '')),
+      params: summarizeParams(payload),
+    },
+  })
 }
 
 /**

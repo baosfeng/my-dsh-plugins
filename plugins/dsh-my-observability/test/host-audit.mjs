@@ -394,5 +394,106 @@ test('audit suite', async () => {
     assert.equal(single.length, 1, 'single-session query unaffected by *')
   }
 
+  // ── 19. 插件事件采集（issue #154）：task-reliability/* → plugin_event ──
+  {
+    const { listeners, api } = boot({})
+    await settle()
+    await dispatchEvent(listeners, 'task-reliability/intervention', {
+      sessionId: 's1',
+      action: 'repeat-break',
+      reason: 'reason',
+      count: 1,
+    })
+    await dispatchEvent(listeners, 'task-reliability/ask-decision', {
+      sessionId: 's1',
+      action: 'ask-timeout',
+      reason: 'ask-timeout',
+      question: 'A 还是 B？',
+      autopilot: false,
+    })
+    await dispatchEvent(listeners, 'task-reliability/rescue', {
+      sessionId: 's1',
+      action: 'rescue-turn',
+      reason: 'truncation',
+      count: 1,
+    })
+    const events = await eventsOf(api, '?sessionId=s1&type=plugin_event')
+    assert.equal(events.length, 3, 'three plugin events recorded')
+    assert.equal(events[0].type, 'plugin_event')
+    assert.equal(events[0].data.plugin, 'dsh-task-reliability', 'plugin name derived from prefix')
+    assert.equal(events[0].data.event, 'intervention', 'event name without prefix')
+    assert.equal(events[0].data.action, 'repeat-break')
+    assert.equal(events[0].data.reason, 'reason')
+    assert.deepEqual(events[0].data.params, { count: 1 }, 'extra params kept')
+    assert.equal(events[1].data.event, 'ask-decision')
+    assert.equal(events[1].data.params.question, 'A 还是 B？')
+    assert.equal(events[1].data.params.autopilot, false)
+    assert.equal(events[2].data.event, 'rescue', 'rescue event collected')
+    assert.equal(events[2].data.action, 'rescue-turn')
+  }
+
+  // ── 20. 插件事件：无 sessionId 不记录；参数长文本截断 ────────────────
+  {
+    const { listeners, api } = boot({})
+    await settle()
+    await dispatchEvent(listeners, 'task-reliability/rescue', { action: 'wake-stalled' })
+    const longReason = `${'x'.repeat(300)} tail`
+    await dispatchEvent(listeners, 'task-reliability/verify', {
+      sessionId: 's1',
+      action: 'verify-done',
+      reason: longReason,
+    })
+    const events = await eventsOf(api, '?sessionId=s1&type=plugin_event')
+    assert.equal(events.length, 1, 'no sessionId → not recorded')
+    assert.ok(events[0].data.reason.length <= 201, 'reason truncated')
+    assert.ok(events[0].data.reason.endsWith('…'), 'truncation marker')
+  }
+
+  // ── 21. 插件事件持久化 + 重启恢复（与现有审计一致）──────────────────
+  {
+    const sharedHome = createTempHome()
+    try {
+      const first = bootPlugin({}, { home: sharedHome })
+      await settle()
+      await dispatchEvent(first.listeners, 'task-reliability/intervention', {
+        sessionId: 'persist-plugin',
+        action: 'steer-continue',
+        reason: 'turn-stopping',
+        taskId: 'task-1',
+      })
+      await settle()
+      first.disposeAll() // flush
+      await settle()
+
+      const second = bootPlugin({}, { home: sharedHome })
+      await settle()
+      const events = await eventsOf(second.api, '?sessionId=persist-plugin')
+      assert.equal(events.length, 1, 'plugin event survives restart')
+      assert.equal(events[0].type, 'plugin_event')
+      assert.equal(events[0].data.action, 'steer-continue')
+      assert.equal(events[0].data.params.taskId, 'task-1')
+      second.disposeAll()
+    } finally {
+      cleanupHome(sharedHome)
+    }
+  }
+
+  // ── 22. 插件事件受每会话上限约束（与现有事件同一 FIFO 桶）───────────
+  {
+    const { listeners, api } = boot({})
+    await settle()
+    for (let i = 0; i < 2050; i += 1) {
+      await dispatchEvent(listeners, 'task-reliability/intervention', {
+        sessionId: 'cap-plugin',
+        action: 'steer-continue',
+        reason: `r${i}`,
+      })
+    }
+    const events = await eventsOf(api, '?sessionId=cap-plugin')
+    assert.equal(events.length, 2000, 'per-session cap enforced for plugin events')
+    assert.equal(events[0].data.reason, 'r50', 'oldest dropped (FIFO)')
+    assert.equal(events[1999].data.reason, 'r2049', 'newest kept')
+  }
+
   console.log('ALL AUDIT TESTS PASSED')
 })

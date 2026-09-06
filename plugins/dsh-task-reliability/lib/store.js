@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomId } from './util.js'
-import { STORE_FILE, MAX_DESC } from './constants.js'
+import { STORE_FILE, MAX_DESC, MAX_QUESTIONS, QUESTION_TTL_MS } from './constants.js'
 
 function defaultStore() {
   return {
@@ -135,6 +135,34 @@ export function addQuestion(store, sessionId, question) {
     createdAt: Date.now(),
     answeredAt: undefined,
   })
+  pruneQuestions(store)
+}
+
+/**
+ * 待确认问题列表清理（issue #154：文件不无限膨胀）：
+ *  - 过期未答问题（createdAt 超过 QUESTION_TTL_MS）删除；
+ *  - 总数超 MAX_QUESTIONS 时按「已答优先、最旧优先」淘汰（未答问题保留）。
+ * 返回清理条数（0 = 无需清理；调用方据此决定是否落盘）。
+ */
+export function pruneQuestions(store, now = Date.now()) {
+  const before = store.questions.length
+  const fresh = store.questions.filter((q) => {
+    if (q.answer !== undefined) return true
+    // 旧数据无 createdAt 时间戳：视为未过期保留（不误删历史问题）。
+    if (typeof q.createdAt !== 'number') return true
+    return now - q.createdAt < QUESTION_TTL_MS
+  })
+  if (fresh.length > MAX_QUESTIONS) {
+    const answered = fresh
+      .filter((q) => q.answer !== undefined)
+      .sort((a, b) => (a.answeredAt ?? 0) - (b.answeredAt ?? 0))
+    const unanswered = fresh.filter((q) => q.answer === undefined)
+    const room = MAX_QUESTIONS - unanswered.length
+    store.questions = room > 0 ? [...unanswered, ...answered.slice(-room)] : unanswered.slice(-MAX_QUESTIONS)
+  } else {
+    store.questions = fresh
+  }
+  return before - store.questions.length
 }
 
 export function answerQuestion(store, id, answer) {

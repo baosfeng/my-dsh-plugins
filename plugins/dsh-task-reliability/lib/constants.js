@@ -64,6 +64,10 @@ export const WATCHDOG_INTERVAL_MS = 5 * 60 * 1000
 export const STALL_TIMEOUT_MS = 10 * 60 * 1000
 export const RESCUE_MAX_PER_SESSION = 2
 export const RESCUE_COOLDOWN_MS = 30 * 1000
+/** 待确认问题列表总上限（含已答；超出按已答优先、最旧优先淘汰，issue #154）。 */
+export const MAX_QUESTIONS = 200
+/** 未答问题过期时间（超过后清理，文件不无限膨胀，issue #154）。 */
+export const QUESTION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 export const RETRYABLE_CODES = new Set([
   'TIMEOUT',

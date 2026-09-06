@@ -11,6 +11,7 @@
 import { userMessage } from './util.js'
 import { addQuestion, answerQuestionByNote } from './store.js'
 import { ASK_TIMEOUT_CONTINUE_TEXT, AUTOPILOT_DENY_REASON, AUTOPILOT_LATE_ANSWER_TEXT } from './constants.js'
+import { PLUGIN_EVENTS } from './emit.js'
 
 // ── ask 参数摘要 ──────────────────────────────────────────────────────────
 
@@ -70,6 +71,13 @@ function simulatedAskAnswer(argumentsValue) {
 function timeoutDecision(autopilot, exec, agent, shared) {
   addQuestion(shared.store, agent.id, askNoteOf(exec.arguments))
   shared.save()
+  shared.emit(PLUGIN_EVENTS.ASK_DECISION, {
+    sessionId: agent.id,
+    action: 'ask-timeout',
+    reason: autopilot ? 'autopilot-grace' : 'ask-timeout',
+    question: askNoteOf(exec.arguments),
+    autopilot,
+  })
   try {
     agent.followup(userMessage(autopilot ? AUTOPILOT_DENY_REASON : ASK_TIMEOUT_CONTINUE_TEXT))
   } catch {
@@ -107,6 +115,13 @@ function recordLateAnswer(shared, agent, argumentsValue, value) {
   const result = answerQuestionByNote(shared.store, agent.id, askNoteOf(argumentsValue), answer)
   if (!result.ok) return
   shared.save()
+  shared.emit(PLUGIN_EVENTS.ASK_DECISION, {
+    sessionId: agent.id,
+    action: 'ask-late-answer',
+    reason: 'late-answer',
+    question: askNoteOf(argumentsValue),
+    answer,
+  })
   try {
     agent.followup(userMessage(AUTOPILOT_LATE_ANSWER_TEXT(answer)))
   } catch {

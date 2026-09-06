@@ -75,12 +75,28 @@ function toolResultParts(data) {
   return parts
 }
 
+/** 插件事件（issue #154）的搜索片段（插件名/事件名/动作/原因/参数值）。 */
+function pluginEventParts(data) {
+  const parts = []
+  if (typeof data.plugin === 'string') parts.push(data.plugin)
+  if (typeof data.event === 'string') parts.push(data.event)
+  if (typeof data.action === 'string') parts.push(data.action)
+  if (typeof data.reason === 'string') parts.push(data.reason)
+  if (data.params !== null && typeof data.params === 'object') {
+    for (const value of Object.values(data.params)) {
+      if (typeof value === 'string' && value !== '') parts.push(value)
+    }
+  }
+  return parts
+}
+
 /** 事件类型 → 搜索片段收集函数（查表消分支）。 */
 const PARTS_COLLECTORS = {
   agent_status: agentStatusParts,
   llm_stream: llmParts,
   tool_call: toolCallParts,
   tool_result: toolResultParts,
+  plugin_event: pluginEventParts,
 }
 
 /** 提取事件可用于关键词匹配的文本（工具名/参数摘要/错误信息/状态/阶段等）。 */
@@ -119,10 +135,11 @@ function normalizeCriteria(criteria) {
   return { type: criteria.type ?? '', keyword: criteria.keyword ?? '', result: criteria.result ?? '', start, end }
 }
 
-/** 类型过滤（'tool' 表示 tool_call + tool_result）。 */
+/** 类型过滤（'tool' 表示 tool_call + tool_result；'plugin' 表示 plugin_event）。 */
 function passType(type, filterType) {
   if (filterType === '') return true
   if (filterType === 'tool') return type === 'tool_call' || type === 'tool_result'
+  if (filterType === 'plugin') return type === 'plugin_event'
   return type === filterType
 }
 

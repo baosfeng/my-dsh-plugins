@@ -1,9 +1,9 @@
 /**
  * dsh-task-reliability — event listeners.
  *
- * 依赖 util/store/text/repeat/verify/constants。注册 5 类事件监听：
- * 重试 waterfall、turn-stopping 自动继续 + 重复打断、会话结束校验、
- * llm/stream 包装、自主决策拦截。所有回调均接收 shared（index.js 构建）。
+ * 依赖 util/store/text/repeat/verify/constants。注册 5 类事件监听（重试
+ * waterfall、turn-stopping 继续+打断、会话校验、llm/stream 包装、自主决策拦截）。
+ * 所有回调均接收 shared（index.js 构建）。
  */
 
 import { sleep, userMessage } from './util.js'
@@ -14,6 +14,7 @@ import { wrapStreamForLoop } from './repeat.js'
 import { loopNotify, detectNoProgress, recordToolLoop, repeatStateOf } from './loop.js'
 import { runVerification } from './verify.js'
 import { markAgentError, rescueAfterError, rescueTurn } from './rescue.js'
+import { PLUGIN_EVENTS } from './emit.js'
 import {
   AUTOPILOT_DENY_REASON,
   DIRECT_CONTINUE_TEXT,
@@ -21,7 +22,6 @@ import {
   RETRY_MAX_DELAY_MS,
   RATE_WINDOW_MS,
 } from './constants.js'
-
 // ── 状态辅助 ───────────────────────────────────────────────────────────────
 
 /** 请求级重试计数（按会话 + 时间窗）。 */
@@ -101,7 +101,6 @@ async function handleRequestError(payload, next, shared) {
   return { kind: 'retry' }
 }
 
-/** 重试动作日志（统一 [dsh-task-reliability] 前缀，issue #155）。 */
 function logRetry(shared, sessionId, code, attempt) {
   shared.ctx.logger?.info(
     `[dsh-task-reliability] 请求失败自动重试（sessionId=${sessionId}，错误码=${code}，第 ${attempt}/${shared.options.retryMax} 次）`,
@@ -146,6 +145,12 @@ function repeatBreak(repeat, agent, shared) {
   shared.ctx.logger?.info(
     `[dsh-task-reliability] 循环打断已注入（sessionId=${agent.id}，类型=${repeat.pendingBreak}，第 ${repeat.count} 次）`,
   )
+  shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+    sessionId: agent.id,
+    action: 'repeat-break',
+    reason: repeat.pendingBreak,
+    count: repeat.count,
+  })
   repeat.pendingBreak = null
   repeat.pendingBreakTurn = null
   return true
@@ -161,6 +166,13 @@ function escalateLoop(repeat, shared, agent, kind) {
     shared.ctx.logger?.warn(
       `[dsh-task-reliability] 循环打断达上限放弃（sessionId=${agent.id}，类型=${kind}，上限=${shared.options.repeatMaxPerSession}）`,
     )
+    shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+      sessionId: agent.id,
+      action: 'loop-give-up',
+      reason: kind,
+      count: repeat.count,
+      max: shared.options.repeatMaxPerSession,
+    })
     return false
   }
   agent.steer(userMessage(REPEAT_BREAK_TEXT(repeat.count, kind)))
@@ -168,6 +180,12 @@ function escalateLoop(repeat, shared, agent, kind) {
   shared.ctx.logger?.info(
     `[dsh-task-reliability] 循环升级打断已注入（sessionId=${agent.id}，类型=${kind}，第 ${repeat.count} 次）`,
   )
+  shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+    sessionId: agent.id,
+    action: 'loop-escalate',
+    reason: kind,
+    count: repeat.count,
+  })
   return true
 }
 
@@ -178,6 +196,13 @@ function atLoopLimit(task, shared) {
   shared.ctx.logger?.warn(
     `[dsh-task-reliability] 任务循环达上限标记失败（taskId=${task.id}，上限=${shared.options.maxLoop}）`,
   )
+  shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+    sessionId: task.sessionId,
+    action: 'loop-limit',
+    reason: 'max-loop',
+    taskId: task.id,
+    loopCount: task.loopCount,
+  })
   return true
 }
 
@@ -190,6 +215,13 @@ function steerContinue(task, agent, shared) {
   shared.ctx.logger?.info(
     `[dsh-task-reliability] 任务自动继续已注入（taskId=${task.id}，sessionId=${agent.id}，第 ${task.loopCount} 次）`,
   )
+  shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+    sessionId: task.sessionId,
+    action: 'steer-continue',
+    reason: 'turn-stopping',
+    taskId: task.id,
+    loopCount: task.loopCount,
+  })
 }
 
 /** 无进展命中即注入打断指令；无需继续时返回 false。 */
@@ -249,6 +281,13 @@ async function handleStatus(agent, status, shared) {
     shared.ctx.logger?.warn(
       `[dsh-task-reliability] 校验次数达上限标记任务失败（taskId=${task.id}，上限=${shared.options.maxVerify}）`,
     )
+    shared.emit(PLUGIN_EVENTS.VERIFY, {
+      sessionId: task.sessionId,
+      action: 'verify-limit',
+      reason: 'max-verify',
+      taskId: task.id,
+      verifyCount: task.verifyCount,
+    })
     return
   }
   if (Date.now() - task.lastSteerAt < shared.options.steerCooldownMs) return
@@ -258,7 +297,7 @@ async function handleStatus(agent, status, shared) {
   shared.ctx.logger?.info(
     `[dsh-task-reliability] 完成度校验触发（taskId=${task.id}，sessionId=${agent.id}，第 ${task.verifyCount + 1} 次）`,
   )
-  return runVerification(shared.ctx, shared.store, task, agent, shared.save)
+  return runVerification(shared.ctx, shared.store, task, agent, shared.save, shared.emit)
 }
 
 // ── 5. 思考重复检测（llm/stream 包装） ───────────────────────────────────
@@ -298,6 +337,12 @@ async function handlePreExecute(exec, next, shared) {
   addQuestion(shared.store, agent.id, askNoteOf(exec.arguments))
   shared.save()
   shared.ctx.logger?.info(`[dsh-task-reliability] 自主决策拦截 ask（sessionId=${agent.id}，deny 并记录待确认）`)
+  shared.emit(PLUGIN_EVENTS.ASK_DECISION, {
+    sessionId: agent.id,
+    action: 'ask-deny',
+    reason: 'autopilot',
+    question: askNoteOf(exec.arguments),
+  })
   return { kind: 'deny', reason: AUTOPILOT_DENY_REASON }
 }
 
@@ -325,6 +370,13 @@ async function handleToolExecute(exec, next, shared) {
       `[dsh-task-reliability] 工具循环检测命中（sessionId=${sessionId}，工具=${exec.name}，第 ${count} 次，中断回合）`,
     )
     const error = new Error(`tool loop detected (count=${count})`)
+    shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+      sessionId,
+      action: 'tool-loop',
+      reason: 'tool-sequence',
+      count,
+      tool: String(exec.name ?? ''),
+    })
     error.code = 'TOOL_LOOP'
     throw error
   }
@@ -336,7 +388,6 @@ async function handleToolExecute(exec, next, shared) {
 }
 
 // ── 注册 ───────────────────────────────────────────────────────────────────
-
 /** 注册全部事件监听（每个事件一个 handler，全部经 shared 共享状态）。 */
 export function registerListeners(ctx, shared) {
   ctx.on('agent/request-error', (payload, next) => handleRequestError(payload, next, shared))

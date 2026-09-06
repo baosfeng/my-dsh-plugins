@@ -1,130 +1,35 @@
 # my-dsh-plugins — 个人 DSH（DeepSeek Harness）插件集合仓库
 
-> ⚠️ **修改代码前必须按顺序执行：定位→读取→理解→编码**
->
-> 1. **定位** — 在下方「操作前必读规范」表中找到需求对应的文档
-> 2. **读取** — `read_file` 读取对应模块文档或规范文档
-> 3. **理解** — 确认核心文件路径和关键流程后再编码
->
-> ❌ **代码查询一律走知识图谱（禁 explore/grep）：** 项目 `Users-bsfeng-IdeaProjects-my-dsh-plugins` 已索引。查符号/调用链/影响/架构用 `search_graph`/`trace_path`/`query_graph` 等 `mcp__codebase-memory__*` 工具；先 `list_projects`/`index_status` 确认索引，未索引先 `index_repository`，图外事实才 grep/read。细节见 skill `codebase-memory`。
-
-> ⚠️ **副作用操作必须先 ask 用户：** git 提交/推送、删除文件/目录、覆盖已有内容，都须用 `ask` 确认后执行。同一会话内同类操作首次确认后自动授权（提交豁免≠删除豁免）。
+> 17 个插件（plugins/）+ 4 个 skill（skills/）+ 文档（docs/）。技术栈：Node.js + Cordis 4 + React 18/19 + dsh-better-sidebar。
 
 ## 🤝 协作与项目管理原则（所有 agent 必读）
 
 > 用户只提出需求和想法，**主 agent 是项目管理者（leader）**，全权负责进度与质量。以下原则对主 agent 与所有子 agent 生效：
 
-1. **Leader 主动管理**：leader 不是"只知道干活的人"——要主动发现不足（可观测性盲区、质量缺口、流程缺陷）、主动提出方案、主动修改文件（包括本文件 AGENTS.md 与 skill），不等用户指出问题。用户一侧只提需求和想法。
-2. **分配优先，不事事自己来**：leader 最重要的职责是**分配工作**。开发、修复、验证、排查、复现等一切可独立的任务，优先派给子 agent（fork 池隔离，见 dsh-github-triage skill），leader 只做决策、验收、合并。**验证工作尤其要分配出去**——亲自验证会污染 leader 上下文（大量可丢弃的中间过程），子 agent 完成后只回报结论。
-3. **上下文管理**：leader 上下文是稀缺资源，只保留决策所需信息（子 agent id、fork 路径、验收标准、进度）。可丢弃的中间过程（浏览器操作、日志排查、重复尝试）一律由子 agent 承担。
+1. **Leader 主动管理**：主动发现不足（可观测性盲区、质量缺口、流程缺陷）、主动提方案、主动改文件（含本文件与 skill），不等用户指出。用户一侧只提需求和想法。
+2. **分配优先**：一切可独立任务（开发/修复/验证/排查/复现）优先派子 agent（fork 池隔离，见 dsh-github-triage skill），leader 只决策/验收/合并；**验证尤其要派出去**（亲自验证污染 leader 上下文），子 agent 只回报结论。
+3. **上下文管理**：leader 只保留决策信息（agent id、fork 路径、验收标准、进度），中间过程由子 agent 承担。
 4. **并行上限 3**：最多 3 个子 agent 并行；派发前找用户确认数量。
-5. **续接原子 agent**：任务失败或验收发现新问题，用 `send_message` 续接原原子 agent（它保留任务上下文），不自己动手、不另派新 agent。
-6. **严格验收**：可靠性类插件必须严格验收——防回归测试（先写失败测试复现）+ 全量测试 + CI 绿 + 真实环境验证（隔离实例 + 浏览器），不允许只修症状。
+5. **续接原子 agent**：任务失败/验收发现新问题，用 `send_message` 续接原 agent（保留任务上下文），不自己动手、不另派。
+6. **严格验收**：可靠性插件必须防回归测试（先写失败测试复现）+ 全量测试 + CI 绿 + 真实环境验证（隔离实例 + 浏览器），不允许只修症状。
 7. **从小到大**：issue 按编号升序派发/推进/验收。
-8. **外部能力吸纳**：引入外部能力（skill/工具/方法论/组件）时遵循四条：
-   - **引入通用的**——只引入对项目有长期、普遍价值的能力；无场景的非通用能力不引入（如无 benchmark 体系就不引入 benchmark 考题体系）
-   - **对方更好就采纳**——即使我们已有类似能力，对方有更好的增量（架构/可扩展性/可测试性/可开发性/可观测性等维度）也要接受，不因"已有"而拒绝
-   - **引入后确保发挥作用**——不能只是放着：AGENTS.md 引用 + 现有 skill 交叉引用 + 实际流程触发，让引入的能力真正被使用
-   - **接纳有条件**——引入必须符合项目风格：精简（去冗余、只留核心价值）、风格统一（中文、结构化）、体积控制（质量门禁：文件 ≤400 行）、核心价值保留（如升级卡、安全纪律等不可丢）
+8. **外部能力吸纳**：引入外部能力（skill/工具/方法论/组件）遵循四条——**引入通用的**（无场景的不引入）；**对方更好就采纳**（即使已有类似，更好的增量也要接受）；**引入后确保发挥作用**（引用 + 交叉引用 + 实际流程触发，不放在那里）；**接纳有条件**（符合项目风格：精简/风格统一/体积控制/核心价值保留）。
 
-## 📁 文档体系
+## ⚠️ 强制规则
 
-```
-docs/
-├── 索引.md                   ← 完整文档导航（所有文档的入口）
-├── 概览/                     ← 项目全景（项目简介/架构总览/快速上手）
-├── 文件活动追踪/             ← dsh-file-activity 插件模块文档（源码: plugins/dsh-file-activity/）
-├── 思考增强/                 ← dsh-think-zh-expand 插件模块文档（源码: plugins/dsh-think-zh-expand/）
-├── mermaid渲染/              ← dsh-mermaid-render 插件模块文档（源码: plugins/dsh-mermaid-render/）
-├── md渲染/                   ← dsh-md-render 插件模块文档（源码: plugins/dsh-md-render/）
-├── 通知提醒/                 ← dsh-my-notify 插件模块文档（源码: plugins/dsh-my-notify/）
-├── 远程控制/                 ← dsh-my-remote 插件模块文档（源码: plugins/dsh-my-remote/）
-├── 插件治理/                 ← dsh-my-guardian 插件模块文档（源码: plugins/dsh-my-guardian/）
-├── 任务可靠性/               ← dsh-task-reliability 插件模块文档（源码: plugins/dsh-task-reliability/）
-├── Skill管理/                ← dsh-my-skill-manager 插件模块文档（源码: plugins/dsh-my-skill-manager/）
-├── 记忆/                     ← dsh-my-memory 插件模块文档（源码: plugins/dsh-my-memory/）
-├── 插件管理/                 ← dsh-my-plugin-manager 插件模块文档（源码: plugins/dsh-my-plugin-manager/）
-├── 可观测性/                 ← dsh-my-observability 插件模块文档（源码: plugins/dsh-my-observability/）
-├── 安全护栏/                 ← dsh-my-guard 插件模块文档（源码: plugins/dsh-my-guard/）
-├── 上下文透镜/               ← dsh-my-context 插件模块文档（源码: plugins/dsh-my-context/）
-├── 插件开发技能/             ← 插件开发技能说明（源码: skills/dsh-plugin-development/）
-├── 插件开发模式/             ← dsh-plugin-dev-mode agent preset 说明（源码: plugins/dsh-plugin-dev-mode/）
-├── TS示例/                   ← dsh-ts-example 插件模块文档（TS 插件开发说明，源码: plugins/dsh-ts-example/）
-├── 共享工具包/               ← dsh-shared 共享工具包文档（多插件共用实现，源码: plugins/dsh-shared/）
-├── 快速集成/                 ← 插件安装与快速开始
-├── 开发指南/                 ← 文档规范/构建与测试/lint 配置建议/插件资源安全规范
-├── adr/                      ← 架构决策记录（ADR 模板 + 已采纳决策，如 dsh-my-* 改名）
-└── 踩坑/                     ← 已知问题与解决方案
-```
+- **副作用操作先 ask 用户**：git 提交/推送、删除文件/目录、覆盖已有内容，须确认后执行（同一会话内同类操作首次确认后自动授权；提交豁免≠删除豁免）。
+- **测试必跑**：`cd plugins/<插件名> && npm test`（CI 遍历 plugins/*/ 执行 node --check + 冒烟测试）；提交前全量测试并修复失败。
+- **命令超时**：shell 命令必须设 timeoutMs（快速 ≤15s，长任务 run_in_background 后台运行；禁止无超时前台跑可能超 1 分钟的命令）。
+- **代码查询走知识图谱**：查符号/调用链/影响/架构用 `mcp__codebase-memory__*` 工具（细节见 skill `codebase-memory`），图外事实才 grep/read。
+- **发版门禁**：发版用 `node scripts/release.mjs <插件名> [--push]`，必须过 #67 功能级验证门禁（verifying-dsh-plugins skill），跳过须带 `--skip-reason`。
 
-> 本项目所有文档位于 `docs/`。首次接触请先读 [索引.md](docs/索引.md)。
-> 文档↔源码映射: `docs/文件活动追踪/` → `plugins/dsh-file-activity/`、`docs/思考增强/` → `plugins/dsh-think-zh-expand/`、`docs/mermaid渲染/` → `plugins/dsh-mermaid-render/`、`docs/md渲染/` → `plugins/dsh-md-render/`、`docs/通知提醒/` → `plugins/dsh-my-notify/`、`docs/插件治理/` → `plugins/dsh-my-guardian/`、`docs/任务可靠性/` → `plugins/dsh-task-reliability/`、`docs/Skill管理/` → `plugins/dsh-my-skill-manager/`、`docs/记忆/` → `plugins/dsh-my-memory/`、`docs/插件管理/` → `plugins/dsh-my-plugin-manager/`、`docs/可观测性/` → `plugins/dsh-my-observability/`、`docs/远程控制/` → `plugins/dsh-my-remote/`、`docs/安全护栏/` → `plugins/dsh-my-guard/`、`docs/上下文透镜/` → `plugins/dsh-my-context/`，各核心文件的精确路径见对应模块文档。
+## 📚 入口
 
-> 📌 **文档定位原则：** 能被自动化流程加载的内容（skill、脚本、工具）**不写进 docs/ 文档**——流程/方法优先沉淀为 skill 或脚本（如 `development-lifecycle` skill、`scripts/release.mjs`），文档不重复。docs/ 只记录**必须依靠外部才能实现、真的会踩坑**的内容（如 GitHub Release 校验 bug、CDN 不可达等踩坑与外部依赖说明）。新增文档前先问：这个能被 skill/脚本自动化吗？能 → 沉淀为 skill/脚本；不能且会踩坑 → 才写文档。
-
-## 项目简介
-
-- **版本:** 各插件独立 semver（当前主插件 dsh-file-activity v0.5.6；dsh-think-zh-expand v0.4.8；dsh-mermaid-render v0.1.6；dsh-md-render v0.1.6；dsh-my-notify v0.3.8；dsh-my-remote v0.1.1；dsh-my-guardian v0.3.6；dsh-task-reliability v0.4.5；dsh-my-skill-manager v0.1.5；dsh-my-memory v0.1.5；dsh-my-plugin-manager v0.1.4；dsh-my-observability v0.1.6；dsh-my-guard v0.1.4；dsh-my-context v0.1.3；dsh-plugin-dev-mode v0.1.0；dsh-ts-example v0.1.0；dsh-shared v0.1.2） **语言:** JavaScript/TypeScript (Node ≥ 20, ESM；TS 插件见 [docs/TS示例/概述.md](docs/TS示例/概述.md)) **类型:** 基础服务（DSH 插件集合） **技术栈:** Node.js + Cordis 4 + React 18/19 兼容（client 渲染，实际版本由 DSH 运行时决定，当前 18.3.1；评估见 [docs/开发指南/React19兼容性评估.md](docs/开发指南/React19兼容性评估.md)） + dsh-better-sidebar
-
-> 🧪 测试命令: `cd plugins/<插件名> && npm test`（CI 遍历 `plugins/*/` 执行 `node --check` + 冒烟测试） — 提交前必跑全部测试并修复失败
-
-> ⏱️ 命令执行约定: 任何 shell 命令必须设置 `timeoutMs`（惯例快速命令 ≤15s，预期更长的任务一律 `run_in_background` 后台运行，完成时会有通知；禁止无超时前台执行可能超过 1 分钟的命令——如 npm 发布/全量测试/发版脚本/变异测试）
-
-- [项目简介](docs/概览/项目简介.md) | [架构总览](docs/概览/架构总览.md) | [快速上手](docs/概览/快速上手.md)
-
-> ⚠️ **操作前必读规范（按场景查找）：**
->
-> | 当你需要...                               | 先读此文档                                                                                                                                                                                                                                                                                                                           |
-> | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-> | **开发/发版插件（完整流程）**             | → **[开发生命周期（全局 skill）](~/.dsh/skills/development-lifecycle/SKILL.md)** — 需求→确认→梳理→开发→验证→再验证→确认→发版→文档→release 全流程；发版用 `node scripts/release.mjs <插件名> [--push]`（发版前必须过 **#67 功能级验证门禁**，见下行）                                                                                 |
-> | **发版前功能级验证（强制，issue #67）**   | → **[verifying-dsh-plugins](~/.dsh/skills/verifying-dsh-plugins/SKILL.md)** + [构建与测试.md](docs/开发指南/构建与测试.md) — 隔离实例先装先测：真实浏览器走通核心功能/易碎场景/client UI/插件联动，勾选 `verification/<插件>-<版本>.md` 清单；release.mjs 3c 门禁校验功能级项未全勾选即阻断发版；跳过必须带 `--skip-reason` 显式理由 |
-> | 修改/理解插件代码（server/client 任一端） | → **[文件活动追踪](docs/文件活动追踪/概述.md)** 或对应模块文档                                                                                                                                                                                                                                                                       |
-> | **开发/修改插件功能（含新功能）**         | → **[需求清单 + 回归检查](docs/开发指南/构建与测试.md#需求回归强制要求)** — 先读插件需求清单，开发后对照既有功能逐条回归；重启恢复/会话隔离/持久化等易碎需求必须有测试断言                                                                                                                                                           |
-> | **评估持续逻辑的资源预算**                | → **[resource-budget-review](skills/resource-budget-review/SKILL.md)** + [插件资源安全规范](docs/开发指南/插件资源安全规范.md) — 持久化/监听器/轮询涉及 IO/CPU/内存/网络/磁盘存量五维评审（写放大判定）：设计期填「资源影响」栏、开发期写放大复现测试、验证期「资源曲线平稳」项；规范含高频写路径选型/降级模板（issue #127）         |
-> | **开发任何功能/修复 BUG/提交前**          | → **[质量门禁（强制）](.reasonix/skills/quality-gates/SKILL.md)** — 10 项门禁：TDD 单元测试、Gherkin 验收、QA 流程、圈复杂度 ≤10、函数 ≤70 行/文件 ≤400 行（issue #44 引入 prettier 后调整，见 eslint.config.js 注释）、依赖无环、变异 ≥70%、覆盖率 85/75、bug 复现测试防复发、真实环境验证                                          |
-> | **验证/调试插件后**                       | → **[清理验证环境（强制）](docs/开发指南/构建与测试.md#需求回归强制要求)** — 停后台实例、删 `/tmp/dsh-<port>` 临时目录、关验证浏览器、释放端口；多插件并行开发时残留会互相干扰                                                                                                                                                       |
-> | 新建/修改/调试/发布插件                   | → **[插件开发技能](skills/dsh-plugin-development/SKILL.md)** — 插件形态、目录结构、发布流程                                                                                                                                                                                                                                          |
-> | 修改/新增代码文件                         | → **[代码规范](.reasonix/skills/coding-standards/SKILL.md)** — 编码风格、命名约定                                                                                                                                                                                                                                                    |
-> | 创建/修改/删除文档                        | → **[文档规范](docs/开发指南/文档规范.md)** — 文档结构、命名规则                                                                                                                                                                                                                                                                     |
-> | 提交代码到 Git                            | → **[提交规范](.reasonix/skills/commit-standards/SKILL.md)** — 提交信息格式                                                                                                                                                                                                                                                          |
-> | 构建项目或运行测试                        | → **[构建与测试](docs/开发指南/构建与测试.md)** — 构建/测试命令                                                                                                                                                                                                                                                                      |
-> | 安装插件到 DSH                            | → **[安装与导入](docs/快速集成/安装与导入.md)** — 安装方式                                                                                                                                                                                                                                                                           |
-> | 了解插件提供的功能                        | → **[快速开始](docs/快速集成/快速开始.md)** — 功能一览                                                                                                                                                                                                                                                                               |
-> | 配置 lint 工具                            | → **[lint 配置建议](docs/开发指南/lint配置建议.md)** — lint 工具建议                                                                                                                                                                                                                                                                 |
-> | 排查已知问题                              | → **[踩坑记录](docs/踩坑/README.md)** — 已知问题与解决方案                                                                                                                                                                                                                                                                           |
-> | 沟通业务概念/术语含义                     | → **[术语表](docs/术语表.md)** — 项目共享语言（词汇权威定义）                                                                                                                                                                                                                                                                        |
-
-## 功能模块
-
-| 模块         | 业务关键词                                                                                                         | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 源码位置                                                                                                                                                                         |
-| ------------ | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 文件活动追踪 | 文件活动、最近访问、文件统计、访问历史、浮窗预览、LRU、会话隔离、重启恢复                                          | DSH 侧边栏文件活动页签：记录 agent 工具与侧边栏的文件读取/新增/修改事件，按会话隔离、重启后恢复（需求清单见 [docs/文件活动追踪/需求清单.md](docs/文件活动追踪/需求清单.md)）                                                                                                                                                                                                                                                                                                                       | `plugins/dsh-file-activity/lib/index.js`（server）`plugins/dsh-file-activity/lib/client.js`（client）                                                                            |
-| 思考增强     | 思考中文、中文提示、思考展开、Think 展开、思考折叠                                                                 | 思考与回复强制中文（system-prompt 注入）；对话思考内容默认展开显示、可交互折叠（需求清单见 [docs/思考增强/需求清单.md](docs/思考增强/需求清单.md)）                                                                                                                                                                                                                                                                                                                                                | `plugins/dsh-think-zh-expand/lib/index.js`（server）`plugins/dsh-think-zh-expand/lib/client.js`（client）                                                                        |
-| Mermaid 渲染 | mermaid、图表、流程图、时序图、mmd、离线渲染                                                                       | 对话 mermaid/mmd 代码块自动渲染为图表卡片（预览/代码切换），引擎内联离线可用（需求清单见 [docs/mermaid渲染/需求清单.md](docs/mermaid渲染/需求清单.md)）                                                                                                                                                                                                                                                                                                                                            | `plugins/dsh-mermaid-render/lib/client.src.js`（client 源码）`plugins/dsh-mermaid-render/lib/client.js`（构建产物）                                                              |
-| md 渲染      | markdown 表格、表格渲染、非思考模式、宽表格                                                                        | 非思考模式 markdown 表格渲染增强：模型输出的表格（含不标准格式）自动识别并渲染为表格，宽表格横向滚动（需求清单见 [docs/md渲染/需求清单.md](docs/md渲染/需求清单.md)）                                                                                                                                                                                                                                                                                                                              | `plugins/dsh-md-render/lib/client.src.js`（client 源码）`plugins/dsh-md-render/lib/client.js`（构建产物）                                                                        |
-| 插件开发技能 | 插件开发、新建插件、发布插件、注册冲突、HMR、Release                                                               | 仓库内置插件开发规范：插件形态、目录结构、开发流程、发布流程                                                                                                                                                                                                                                                                                                                                                                                                                                       | `skills/dsh-plugin-development/SKILL.md`                                                                                                                                         |
-| 插件开发模式 | 插件开发模式、Cordis 工具集、agent preset、plugin-dev                                                              | 唯一启用 Cordis 工具集的 Agent 预设：精简工具组合 + 随包技能 + 一键安装（需求见 [docs/插件开发模式/概述.md](docs/插件开发模式/概述.md)）                                                                                                                                                                                                                                                                                                                                                           | `plugins/dsh-plugin-dev-mode/agent.cordis.yml`（preset）`plugins/dsh-plugin-dev-mode/scripts/install.mjs`（安装）                                                                |
-| 通知提醒     | 会话结束提醒、询问提醒、ask 提醒、审批提醒、浏览器通知、提示音、远程 hook                                          | 会话（本轮）结束 / agent 询问 / 等待批准时弹浏览器通知 + 滴声，点击跳转会话；`POST /notify/api/trigger` 远程触发接口（loopback 围栏 + 可选 token）；SSE 实时通道（需求清单见 [docs/通知提醒/需求清单.md](docs/通知提醒/需求清单.md)）                                                                                                                                                                                                                                                              | `plugins/dsh-my-notify/lib/index.js`（server）`plugins/dsh-my-notify/lib/client.js`（client）                                                                                    |
-| 远程控制     | 远程控制、事件下发、远程回答 ask、远程批准 approval、状态查询、继续会话、指令白名单、操作审计、通道适配器          | ask / approval / 会话结束事件实时下行到外部通道（手机 / IM / 中转服务）；外部经受鉴权入站 API 回答 ask（`agent.steer`/工具结果注入）、批准 approval（`allowed-once`）、查询会话状态、继续任务；apiToken + 指令白名单 + 操作审计；适配器契约支持微信/QQ/飞书机器人扩展（需求清单见 [docs/远程控制/需求清单.md](docs/远程控制/需求清单.md)）                                                                                                                                                         | `plugins/dsh-my-remote/lib/index.js`（server）                                                                                                                                   |
-| 插件治理     | 插件隔离、两段式加载、失败自动禁用、安全模式、候选区、冻结、诊断面板                                               | 新装/更新插件先进候选区（cordis.staged.json），启动完成后由守护插件逐个热挂载：成功自动转正，失败自动禁用+记录+通知，连续失败冻结，可一键安全模式（需求清单见 [docs/插件治理/需求清单.md](docs/插件治理/需求清单.md)）                                                                                                                                                                                                                                                                             | `plugins/dsh-my-guardian/lib/index.js`（server）`plugins/dsh-my-guardian/lib/client.js`（client）                                                                                |
-| 任务可靠性   | 任务可靠性、超时重试、自动继续、校验 agent、思考重复、重启恢复、自主决策、出行模式、远程触发                       | 任务保障：模型超时/请求失败自动重试、任务未完成自动继续（turn-stopping 注入）、独立完成度校验 agent（会话结束后判断，未完成唤醒继续）、思考重复检测与打断、休眠/重启后任务自动恢复、自主决策模式（出行防 ask 中断，问题收集待确认）、远程触发接口（需求清单见 [docs/任务可靠性/需求清单.md](docs/任务可靠性/需求清单.md)）                                                                                                                                                                         | `plugins/dsh-task-reliability/lib/index.js`（server）`plugins/dsh-task-reliability/lib/client.js`（client）                                                                      |
-| Skill 管理   | skill 管理、全局/项目、启用/禁用、禁用注入、settings 页签、slots                                                   | 分「全局 / 项目」查看 skill 列表，按项目启用/禁用：禁用的 skill 被 rank-0 占位 provider 覆盖（模型不可见、不可加载）；全局配置 `$DSH_HOME`、项目配置随仓库版本化；设置页签走官方 slots 扩展点（需求清单见 [docs/Skill管理/需求清单.md](docs/Skill管理/需求清单.md)）                                                                                                                                                                                                                               | `plugins/dsh-my-skill-manager/lib/index.js`（server）`plugins/dsh-my-skill-manager/lib/client.js`（client）                                                                      |
-| 记忆         | 记忆、全局记忆、项目记忆、系统提示词注入、memory_query、memory_save、记忆面板、确认 UI                             | 全局/项目两级记忆持久化（全局 `$DSH_HOME/memory.json` + 项目 `$DSH_HOME/memory/projects/<项目 id>.json`（issue #108 集中存储 + 旧数据自动迁移），原子写 + 防抖 + 重启恢复）；会话开始时全局记忆注入系统提示词（条数/长度上限防膨胀）；设置页可视化面板（全局/项目分区 + 自定义确认 UI：删除红色、保存绿色，写操作必须用户确认）；`memory_query` 只读查询工具、`memory_save` 保存工具（经 `tools/pre-execute` 用户确认门，绝不静默变更；需求清单见 [docs/记忆/需求清单.md](docs/记忆/需求清单.md)） | `plugins/dsh-my-memory/lib/index.js`（server）`plugins/dsh-my-memory/lib/client.js`（client）                                                                                    |
-| 插件管理     | 插件市场、市场搜索、一键安装/卸载、更新检查、已安装清单、plugin manager                                            | 公共插件管理面板：市场浏览/搜索（npm registry）、一键安装/卸载（`dsh plugin` CLI 同一数据源，自动维护 patch）、更新检查（pnpm outdated）、已安装清单（官方 pluginInventory + 版本解析）；设置页签走官方 slots 扩展点（需求清单见 [docs/插件管理/需求清单.md](docs/插件管理/需求清单.md)）                                                                                                                                                                                                          | `plugins/dsh-my-plugin-manager/lib/index.js`（server）`plugins/dsh-my-plugin-manager/lib/client.js`（client）                                                                    |
-| 可观测性     | 事件审计、轨迹回放、时间轴、搜索过滤、导出、审计统计、类型化提交、Conventional Commits、增量 diff 审查、提交前审查 | 事件审计（监听 agent/status、llm/stream、tools/*，按会话隔离、重启后恢复）+ 侧边栏轨迹回放时间轴面板（关键词搜索 + 组合过滤 + 命中高亮 + JSON/CSV 导出 + 工具统计）+ 结构化 Git 类型化提交（Conventional Commits）+ 提交前增量 diff 审查（规则引擎 + 可选 AI 审查）（需求清单见 [docs/可观测性/需求清单.md](docs/可观测性/需求清单.md)）                                                                                                                                                           | `plugins/dsh-my-observability/lib/index.js`（server）`plugins/dsh-my-observability/lib/client.js`（client）                                                                      |
-| 安全护栏     | 执行前护栏、破坏性命令、投毒扫描、可疑脚本、密钥、恶意依赖、提示注入、prompt injection、jailbreak、告警确认        | 安全护栏三件套：执行前护栏（监听 tools/pre-execute，破坏性命令 rm -rf / 等执行前拦截/确认，observe/ask/deny 三模式）+ 安装前投毒扫描（`dsh plugin add` 自动扫描包内容：可疑脚本/密钥/恶意依赖告警，绝不执行包内代码）+ 提示注入检测（监听 user/message，规则 + 启发式检测 prompt injection / jailbreak，命中告警）；告警持久化 + 侧边栏安全护栏面板（用户确认机制）（需求清单见 [docs/安全护栏/需求清单.md](docs/安全护栏/需求清单.md)）                                                           | `plugins/dsh-my-guard/lib/index.js`（server）`plugins/dsh-my-guard/lib/client.js`（client）                                                                                      |
-| 上下文透镜   | 上下文透镜、token 用量、上下文构成、KV 缓存命中率、成本治理、预算控制、超限提醒、超限拦截                          | 上下文透镜 + 成本治理：监听 session/event 统计每次请求的 token 用量与上下文构成（request/header 估算 system/tools、assistant/message 真实 usage input/output/cacheRead/cacheWrite、user/message 注入分类、tool/result），KV 缓存命中率可视化，按会话隔离、重启后恢复；每轮/每会话预算配置（token 上限），超限提醒（warn）/拦截（deny，agent/pre-step 返回 { kind: 'reject' } 结束本轮）（需求清单见 [docs/上下文透镜/需求清单.md](docs/上下文透镜/需求清单.md)）                                   | `plugins/dsh-my-context/lib/index.js`（server）`plugins/dsh-my-context/lib/client.js`（client）                                                                                  |
-| TS 示例插件  | TypeScript、TS 插件、tsc 编译、类型检查、TS2307、TS 7                                                              | TypeScript 插件开发示例（issue #47）：server 端 TS 源码 + tsc 编译（`lib/index.js` 产物）、client 端 TS 源码 + 构建时编译（`__ModuleLoader__` bundle）、CI 强制 `tsc --noEmit` 类型检查——编译期发现模块不存在（TS2307）/类型不匹配/未定义变量；新 TS 插件照抄本插件结构（说明见 [docs/TS示例/概述.md](docs/TS示例/概述.md)）                                                                                                                                                                       | `plugins/dsh-ts-example/src/*.ts`（TS 源码）`plugins/dsh-ts-example/lib/index.js`（server 产物）`plugins/dsh-ts-example/lib/client.js`（client 产物）                            |
-| 共享工具包   | 共享工具包、dsh-shared、信任围栏、HTTP JSON、配置持久化、原子写、findProjectRoot、withTimeout、userMessage         | 多插件共用的 server 端工具包（issue #45）：Host-header 信任围栏（isTrustedApiRequest）、HTTP JSON 读写（readJsonBody/writeJson/writeError）、配置持久化（cordis.patch.yml YAML 子集读写）、项目根解析（findProjectRoot）、异步与消息工具（withTimeout/userMessage）、原子写（atomicWriteJson）；依赖方在 dependencies 声明（npm 自动安装，依赖先发版，说明见 [docs/共享工具包/概述.md](docs/共享工具包/概述.md)）                                                                                  | `plugins/dsh-shared/lib/index.js`（入口）`plugins/dsh-shared/lib/fence.js`（围栏）`plugins/dsh-shared/lib/http.js`（HTTP）`plugins/dsh-shared/lib/config-store.js`（配置持久化） |
-
-## 共享语言
-
-- [术语表](docs/术语表.md) — 项目领域术语权威定义，沟通业务概念前先查阅，避免黑话歧义
-
-## 开发指南
-
-- [代码规范](.reasonix/skills/coding-standards/SKILL.md) · [文档规范](docs/开发指南/文档规范.md) · [提交规范](.reasonix/skills/commit-standards/SKILL.md)
-- [构建与测试](docs/开发指南/构建与测试.md) · [测试规范](.reasonix/skills/testing-standards/SKILL.md) · [工程规范](.reasonix/skills/engineering-standards/SKILL.md) · [lint 配置建议](docs/开发指南/lint配置建议.md)
-- [质量门禁差距分析](docs/开发指南/质量门禁差距分析.md) · **[P2 模块拆分交接](docs/开发指南/P2模块拆分交接.md)** — 接手剩余工作（G9-G12 拆分 / G3 尺寸门禁）必读
-
-## 踩坑记录 → [踩坑记录](docs/踩坑/README.md)
+- **文档**：docs/索引.md（完整导航）；各插件文档在 docs/<模块>/，源码在 plugins/<插件名>/。
+- **开发/发版**：development-lifecycle skill（全局，需求→确认→梳理→开发→验证→发版→文档→release 全流程）。
+- **插件开发**：skills/dsh-plugin-development/（插件形态/目录结构/发布流程）。
+- **质量**：quality-gates skill（10 项门禁：TDD/Gherkin/复杂度 ≤10/函数 ≤70 行/文件 ≤400 行/依赖无环/变异 ≥70%/覆盖率 85-75/防复发/真实环境验证）；资源预算见 skills/resource-budget-review/。
+- **仓库健康**：skills/dsh-github-triage/（issue/PR/CI 处理 + fork 池隔离）。
+- **升级兼容**：skills/plugin-upgrade/ + skills/dsh-upgrade-audit/（DSH 版本升级/兼容性审计，58 张升级卡）。
+- **验证**：verifying-dsh-plugins skill（隔离实例 + 浏览器，验证后清理环境）。
+- **踩坑**：docs/踩坑/README.md；术语见 docs/术语表.md。

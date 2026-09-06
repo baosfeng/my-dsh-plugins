@@ -32,7 +32,7 @@ class World {
 
   boot(config) {
     const ctx = {
-      logger: { warn: () => {} },
+      logger: { info: () => {}, warn: () => {} },
       webRuntime: { trustedHosts: [] },
       webServer: {
         register: (route) => {

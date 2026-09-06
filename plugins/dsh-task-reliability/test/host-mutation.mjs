@@ -107,7 +107,7 @@ function boot(config = {}, services = {}, dirOverride) {
     },
   }
   const ctx = {
-    logger: { warn() {} },
+    logger: { info() {}, warn() {} },
     on(name, handler) {
       ;(listeners[name] ??= []).push(handler)
       return () => {}

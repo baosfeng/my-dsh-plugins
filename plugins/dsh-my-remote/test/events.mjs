@@ -27,6 +27,7 @@ function makeShared(overrides = {}) {
     askRegistry: createAskRegistry(),
     approvalRegistry: createApprovalRegistry(),
     channels: { dispatch: () => {} },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
     titleOf: () => 'T',
     isTopLevelAgent,
     ...overrides,
@@ -308,5 +309,70 @@ describe('attachEvents respects options', () => {
     expect(shared.listeners['tools/execute']).toBeUndefined()
     expect(shared.listeners['approval/request']).toBeUndefined()
     expect(disposers).toHaveLength(0)
+  })
+})
+
+describe('event logging (issue #155)', () => {
+  it('end dispatch logs an info line with sessionId and [dsh-my-remote] prefix', () => {
+    const logs = []
+    const shared = makeShared({ logger: { info: (m) => logs.push(m), warn: () => {} } })
+    const disposers = attachEvents(shared.ctx, shared)
+    const handler = handlerOf(shared.listeners, 'agent/status')
+    handler({ agent: topAgent('sess-1'), status: 'idle' })
+    expect(logs.length).toBe(1)
+    expect(logs[0]).toContain('[dsh-my-remote]')
+    expect(logs[0]).toContain('会话结束事件已下行')
+    expect(logs[0]).toContain('sess-1')
+    for (const dispose of disposers) dispose()
+  })
+
+  it('ask dispatch logs an info line with question count', async () => {
+    const logs = []
+    const shared = makeShared({ logger: { info: (m) => logs.push(m), warn: () => {} } })
+    const disposers = attachEvents(shared.ctx, shared)
+    const handler = handlerOf(shared.listeners, 'tools/execute')
+    const exec = { name: 'ask_user_question', agent: topAgent('sess-2'), arguments: { question: 'q?' } }
+    await handler(exec, async () => ({ value: { answers: [] } }))
+    expect(logs.some((m) => m.includes('ask 事件已下行') && m.includes('sess-2'))).toBe(true)
+    for (const dispose of disposers) dispose()
+  })
+
+  it('ask timeout logs a warn line with sessionId', async () => {
+    const warns = []
+    const shared = makeShared({
+      options: { end: true, ask: true, approval: true, askTimeoutMs: 5, approvalTimeoutMs: 0 },
+      logger: { info: () => {}, warn: (m) => warns.push(m) },
+    })
+    const disposers = attachEvents(shared.ctx, shared)
+    const handler = handlerOf(shared.listeners, 'tools/execute')
+    const exec = { name: 'ask_user_question', agent: topAgent('sess-3'), arguments: { question: 'q?' } }
+    const result = await handler(exec, neverNext)
+    expect(result).toEqual({ value: { answers: [] } })
+    expect(warns.some((m) => m.includes('ask 等待远程回答超时') && m.includes('sess-3'))).toBe(true)
+    for (const dispose of disposers) dispose()
+  })
+
+  it('approval dispatch logs an info line with tool name', async () => {
+    const logs = []
+    const shared = makeShared({ logger: { info: (m) => logs.push(m), warn: () => {} } })
+    const disposers = attachEvents(shared.ctx, shared)
+    const handler = handlerOf(shared.listeners, 'approval/request')
+    await handler({ agent: topAgent('sess-4'), toolName: 'bash', reason: 'r' }, async () => 'allowed-once')
+    expect(logs.some((m) => m.includes('approval 事件已下行') && m.includes('sess-4') && m.includes('bash'))).toBe(true)
+    for (const dispose of disposers) dispose()
+  })
+
+  it('approval timeout logs a warn line (fail-closed)', async () => {
+    const warns = []
+    const shared = makeShared({
+      options: { end: true, ask: true, approval: true, askTimeoutMs: 0, approvalTimeoutMs: 5 },
+      logger: { info: () => {}, warn: (m) => warns.push(m) },
+    })
+    const disposers = attachEvents(shared.ctx, shared)
+    const handler = handlerOf(shared.listeners, 'approval/request')
+    const result = await handler({ agent: topAgent('sess-5'), toolName: 'bash', reason: 'r' }, neverNext)
+    expect(result).toBe('rejected')
+    expect(warns.some((m) => m.includes('approval 等待远程批准超时') && m.includes('sess-5'))).toBe(true)
+    for (const dispose of disposers) dispose()
   })
 })

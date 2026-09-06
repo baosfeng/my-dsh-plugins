@@ -73,7 +73,7 @@ class World {
     const listeners = this.listeners
     const disposers = this.disposers
     const ctx = {
-      logger: { warn() {} },
+      logger: { info() {}, warn() {} },
       on(name, handler) {
         ;(listeners[name] ??= []).push(handler)
         return () => {

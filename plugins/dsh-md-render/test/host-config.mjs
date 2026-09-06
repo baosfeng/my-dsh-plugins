@@ -81,8 +81,12 @@ function boot(config, dir) {
   process.env.DSH_HOME = home
   const routes = []
   const disposers = []
+  const logs = []
   const ctx = {
-    logger: { warn() {} },
+    logger: {
+      info: (message) => logs.push(message),
+      warn: (message) => logs.push(message),
+    },
     get() {
       return undefined
     },
@@ -110,6 +114,7 @@ function boot(config, dir) {
   return {
     registration,
     disposers,
+    logs,
     restore() {
       for (const dispose of disposers.splice(0)) dispose()
       if (oldHome === undefined) delete process.env.DSH_HOME
@@ -321,6 +326,33 @@ test('未知方法 → 404', async () => {
   try {
     const { status } = await call(api.registration, mockRequest({ url: '/md/api/unknown' }))
     assert.equal(status, 404, 'unknown method rejected')
+  } finally {
+    api.restore()
+  }
+})
+
+test('apply 输出 [dsh-md-render] 前缀的启用日志（issue #155）', async () => {
+  const api = boot({})
+  try {
+    assert.ok(api.logs.length >= 1, 'at least one log line emitted')
+    assert.ok(api.logs[0].startsWith('[dsh-md-render]'), 'log line carries the unified plugin prefix')
+    assert.ok(api.logs[0].includes('已启用'), 'log line describes the enabled behavior')
+  } finally {
+    api.restore()
+  }
+})
+
+test('PUT 配置保存输出 info 日志（含变更键，issue #155）', async () => {
+  const api = boot({})
+  try {
+    await call(
+      api.registration,
+      mockRequest({ url: '/md/api/config', method: 'PUT', body: JSON.stringify({ copyButton: false }) }),
+    )
+    const saveLog = api.logs.find((line) => line.includes('配置已保存'))
+    assert.ok(saveLog !== undefined, 'config-save info log emitted')
+    assert.ok(saveLog.startsWith('[dsh-md-render]'), 'save log carries the unified plugin prefix')
+    assert.ok(saveLog.includes('copyButton'), 'save log lists the changed key')
   } finally {
     api.restore()
   }

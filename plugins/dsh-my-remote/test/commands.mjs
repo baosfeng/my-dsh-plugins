@@ -16,6 +16,7 @@ function makeShared(overrides = {}) {
     askRegistry,
     approvalRegistry,
     audit,
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
     titleOf: () => 'T',
     ...overrides,
   }
@@ -179,5 +180,29 @@ describe('continue command', () => {
     const shared = makeShared()
     expect(processCommand(shared, 'continue', { sessionId: 's1' }).ok).toBe(false)
     expect(processCommand(shared, 'continue', { sessionId: '', message: 'x' }).ok).toBe(false)
+  })
+})
+
+describe('command logging (issue #155)', () => {
+  it('successful command logs an info line with action/sessionId/ok', () => {
+    const logs = []
+    const shared = makeShared({ logger: { info: (m) => logs.push(m), warn: () => {} } })
+    const result = processCommand(shared, 'continue', { sessionId: 's1', message: 'hi' }, { source: 'test' })
+    expect(result.ok).toBe(false) // no live agent → still logged
+    expect(logs.length).toBe(1)
+    expect(logs[0]).toContain('[dsh-my-remote]')
+    expect(logs[0]).toContain('action=continue')
+    expect(logs[0]).toContain('sessionId=s1')
+    expect(logs[0]).toContain('ok=false')
+  })
+
+  it('unknown command logs a warn line', () => {
+    const warns = []
+    const shared = makeShared({ logger: { info: () => {}, warn: (m) => warns.push(m) } })
+    processCommand(shared, 'hack', {}, { source: 'test' })
+    expect(warns.length).toBe(1)
+    expect(warns[0]).toContain('[dsh-my-remote]')
+    expect(warns[0]).toContain('未知远程指令')
+    expect(warns[0]).toContain('action=hack')
   })
 })

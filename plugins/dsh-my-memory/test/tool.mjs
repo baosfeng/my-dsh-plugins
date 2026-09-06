@@ -216,7 +216,7 @@ test('the tool render produces text blocks', () => {
 // ── memory_save 写工具 + 用户确认门（issue #107）──────────────────────
 
 /** A save tool bound to real stores (temp dirs) so writes can be verified. */
-function realSaveTool() {
+function realSaveTool(logger) {
   const globalStore = createStore({ file: join(dir, 'memory.json') })
   const projectDir = join(dir, 'proj')
   mkdirSync(join(projectDir, '.git'), { recursive: true })
@@ -233,7 +233,7 @@ function realSaveTool() {
     return store
   }
   return {
-    tool: createMemorySaveTool({ globalStore, getProjectStore, config: {} }),
+    tool: createMemorySaveTool({ globalStore, getProjectStore, config: {}, logger }),
     queryTool: createMemoryQueryTool({ globalStore, getProjectStore }),
     stores,
     projectDir,
@@ -376,6 +376,26 @@ test('the save tool render produces text blocks', () => {
   assert.equal(blocks.length, 1)
   assert.equal(blocks[0].type, 'text')
   assert.ok(blocks[0].text.includes('用户偏好用 pnpm'))
+})
+
+test('memory_save logs an info line with [dsh-my-memory] prefix (issue #155)', async () => {
+  const logs = []
+  const { tool } = realSaveTool({ info: (m) => logs.push(m), warn: () => {} })
+  const value = await tool.execute({ scope: 'global', desc: '用户偏好用 pnpm' }, { agent: { id: 'sess-1' } })
+  assert.ok(value.item.id, 'item saved')
+  assert.ok(logs.length >= 1, 'at least one log line emitted')
+  assert.ok(logs[0].startsWith('[dsh-my-memory]'), 'log line carries the unified plugin prefix')
+  assert.ok(logs[0].includes('记忆已保存'), 'log line describes the save')
+  assert.ok(logs[0].includes('sess-1'), 'log line carries the session id')
+})
+
+test('memory_save logs a warn when desc is empty (issue #155)', async () => {
+  const warns = []
+  const { tool } = realSaveTool({ info: () => {}, warn: (m) => warns.push(m) })
+  await assert.rejects(() => tool.execute({ scope: 'global', desc: '   ' }, { agent: { id: 'sess-2' } }))
+  assert.ok(warns.length >= 1, 'warn emitted for empty desc')
+  assert.ok(warns[0].startsWith('[dsh-my-memory]'), 'warn carries the unified plugin prefix')
+  assert.ok(warns[0].includes('sess-2'), 'warn carries the session id')
 })
 
 test('cleanup', () => {

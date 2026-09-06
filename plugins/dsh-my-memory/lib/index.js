@@ -145,7 +145,7 @@ async function storeCandidates(candidatesStore, candidates) {
 
 /** agent/status 会话结束处理器（issue #78）：顶层 agent idle 时对本次会话
  *  收集到的用户消息运行提取器，候选进「待确认」区（绝不静默写入）。 */
-function createSessionEndHandler({ collector, candidatesStore, autoLearn, extractor }) {
+function createSessionEndHandler({ collector, candidatesStore, autoLearn, extractor, logger }) {
   return ({ agent, status }) => {
     if (!autoLearn || status !== 'idle' || !isTopLevelAgent(agent)) return
     const sessionId = typeof agent?.id === 'string' ? agent.id : ''
@@ -158,7 +158,12 @@ function createSessionEndHandler({ collector, candidatesStore, autoLearn, extrac
       now: Date.now(),
       extractor,
     })
-    if (candidates.length > 0) void storeCandidates(candidatesStore, candidates)
+    if (candidates.length > 0) {
+      void storeCandidates(candidatesStore, candidates)
+      logger?.info(
+        `[dsh-my-memory] 会话结束自动提取候选（sessionId=${sessionId}，候选数=${candidates.length}，extractor=${extractor}）`,
+      )
+    }
   }
 }
 
@@ -213,7 +218,7 @@ export function apply(ctx, config) {
   // 工具本身写 store；`tools/pre-execute` 门对每次 memory_save 调用返回
   // `{ kind: 'ask' }` 触发 DSH 原生审批——用户确认后才真正写入，绝不静默变更。
   ctx.effect(
-    () => ctx.tools.register(createMemorySaveTool({ globalStore, getProjectStore, config })),
+    () => ctx.tools.register(createMemorySaveTool({ globalStore, getProjectStore, config, logger: ctx.logger })),
     'dsh-my-memory: memory_save tool',
   )
   ctx.effect(() => ctx.on('tools/pre-execute', createMemorySaveGate()), 'dsh-my-memory: memory_save approval gate')
@@ -225,27 +230,37 @@ export function apply(ctx, config) {
     () => ctx.on('session/event', createMessageCollectorListener({ collector, autoLearn })),
     'dsh-my-memory: user-message collector',
   )
-  ctx.effect(
-    () => ctx.on('agent/status', createSessionEndHandler({ collector, candidatesStore, autoLearn, extractor })),
-    'dsh-my-memory: auto-extract on session end',
-  )
+  const sessionEndHandler = createSessionEndHandler({
+    collector,
+    candidatesStore,
+    autoLearn,
+    extractor,
+    logger: ctx.logger,
+  })
+  ctx.effect(() => ctx.on('agent/status', sessionEndHandler), 'dsh-my-memory: auto-extract on session end')
 
   // ── 写操作 API（需用户同意标记）──────────────────────────────────────
   const fence = (request) => isTrustedApiRequest(request, ctx.webRuntime.trustedHosts)
+  const apiHandler = createApiHandler({
+    globalStore,
+    getProjectStore,
+    candidatesStore,
+    fence,
+    sessions: ctx.sessions,
+    logger: ctx.logger,
+    config: { ...config, maxEntryLength: maxEntryLengthOf(config) },
+  })
   ctx.effect(
-    () =>
-      ctx.webServer.register({
-        kind: 'prefix',
-        path: '/my-memory/api',
-        handler: createApiHandler({
-          globalStore,
-          getProjectStore,
-          candidatesStore,
-          fence,
-          sessions: ctx.sessions,
-          config: { ...config, maxEntryLength: maxEntryLengthOf(config) },
-        }),
-      }),
+    () => ctx.webServer.register({ kind: 'prefix', path: '/my-memory/api', handler: apiHandler }),
     'dsh-my-memory: /my-memory/api routes',
+  )
+
+  logStartup(ctx.logger, autoLearn, extractor, config)
+}
+
+/** 启动日志（issue #155）：统一 [dsh-my-memory] 前缀 + 关键配置摘要。 */
+function logStartup(logger, autoLearn, extractor, config) {
+  logger?.info(
+    `[dsh-my-memory] 记忆插件已启用（autoLearn=${autoLearn ? 'on' : 'off'}，extractor=${extractor}，maxEntryLength=${maxEntryLengthOf(config)}）`,
   )
 }

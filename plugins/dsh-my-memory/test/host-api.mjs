@@ -72,8 +72,9 @@ async function boot(overrides) {
   homes.push(home)
   process.env.DSH_HOME = home
   const apiHolder = captureRoute('/my-memory/api')
+  const logs = []
   const ctx = {
-    logger: { warn: () => {} },
+    logger: { info: (m) => logs.push(m), warn: () => {} },
     webRuntime: { trustedHosts: [] },
     systemPrompt: { section: () => () => {} },
     tools: { register: () => () => {} },
@@ -100,7 +101,7 @@ async function boot(overrides) {
     ...(overrides ?? {}),
   }
   apply(ctx)
-  return { ctx, getRoute: () => apiHolder.get() }
+  return { ctx, logs, getRoute: () => apiHolder.get() }
 }
 
 async function callRoute(getRoute, method, url, body, overrides) {
@@ -126,7 +127,7 @@ test('apply registers memory_save and its pre-execute user-consent gate (issue #
   homes.push(home)
   process.env.DSH_HOME = home
   const ctx = {
-    logger: { warn: () => {} },
+    logger: { info: () => {}, warn: () => {} },
     webRuntime: { trustedHosts: [] },
     systemPrompt: { section: () => () => {} },
     tools: {
@@ -472,7 +473,7 @@ test('fence: missing origin is allowed, unparseable origin is refused', async ()
 test('fence: explicitly trusted hosts are allowed', async () => {
   const holder = captureRoute('/my-memory/api')
   const ctx = {
-    logger: { warn: () => {} },
+    logger: { info: () => {}, warn: () => {} },
     webRuntime: { trustedHosts: ['dsh.internal:3080'] },
     systemPrompt: { section: () => () => {} },
     tools: { register: () => () => {} },
@@ -503,4 +504,26 @@ test('fence: explicitly trusted hosts are allowed', async () => {
     res,
   )
   assert.equal(res._status, 200, 'trusted host allowed')
+})
+
+test('apply logs an info line with the [dsh-my-memory] prefix (issue #155)', async () => {
+  const { logs } = await boot()
+  assert.ok(logs.length >= 1, 'at least one log line emitted')
+  assert.ok(logs[0].startsWith('[dsh-my-memory]'), 'log line carries the unified plugin prefix')
+  assert.ok(logs[0].includes('已启用'), 'log line describes the enabled behavior')
+})
+
+test('API write logs an info line with action/scope (issue #155)', async () => {
+  const { getRoute, logs } = await boot()
+  const res = makeResponse()
+  await getRoute().handler(
+    makeRequest('POST', '/my-memory/api/memory', { action: 'add', scope: 'global', desc: 'x', confirmed: true }),
+    res,
+  )
+  assert.equal(res._status, 200, 'write accepted')
+  const writeLog = logs.find((line) => line.includes('API 写操作完成'))
+  assert.ok(writeLog !== undefined, 'write info log emitted')
+  assert.ok(writeLog.startsWith('[dsh-my-memory]'), 'write log carries the unified plugin prefix')
+  assert.ok(writeLog.includes('action=add'), 'write log carries the action')
+  assert.ok(writeLog.includes('scope=global'), 'write log carries the scope')
 })

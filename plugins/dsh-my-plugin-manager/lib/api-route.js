@@ -15,21 +15,22 @@ import { installedVersionOf, installPlugin, uninstallPlugin, outdatedPlugins } f
 import { fetchPackageDetail, searchNpmPlugins } from './registry.js'
 
 export function createApiHandler({ ctx, profile, profileDir, fence }) {
+  const logger = ctx.logger
   const handlers = {
     installed: {
       method: 'GET',
       run: (url, request, response) => handleInstalled(ctx, profileDir, response),
     },
     search: { method: 'GET', run: (url, request, response) => handleSearch(url, response) },
-    detail: { method: 'GET', run: (url, request, response) => handleDetail(url, response) },
-    updates: { method: 'GET', run: (url, request, response) => handleUpdates(profile, response) },
+    detail: { method: 'GET', run: (url, request, response) => handleDetail(url, response, logger) },
+    updates: { method: 'GET', run: (url, request, response) => handleUpdates(profile, response, logger) },
     install: {
       method: 'POST',
-      run: (url, request, response) => handleInstall(profile, request, response),
+      run: (url, request, response) => handleInstall(profile, request, response, logger),
     },
     uninstall: {
       method: 'POST',
-      run: (url, request, response) => handleUninstall(profile, request, response),
+      run: (url, request, response) => handleUninstall(profile, request, response, logger),
     },
   }
   return async (request, response) => {
@@ -102,7 +103,7 @@ async function handleSearch(url, response) {
 }
 
 /** GET /detail?name=…&version=… — package detail (README/versions/deps). */
-async function handleDetail(url, response) {
+async function handleDetail(url, response, logger) {
   const name = url.searchParams.get('name') ?? ''
   const version = url.searchParams.get('version') ?? ''
   if (name.trim() === '') {
@@ -113,6 +114,9 @@ async function handleDetail(url, response) {
     const detail = await fetchPackageDetail(name.trim(), version.trim())
     writeJson(response, 200, { ok: true, value: detail })
   } catch (error) {
+    logger?.warn(
+      `[dsh-my-plugin-manager] 插件详情加载失败（name=${name.trim()}，原因=${error instanceof Error ? error.message : String(error)}）`,
+    )
     writeJson(response, 200, {
       ok: false,
       error: { message: String(error?.message ?? 'failed to load plugin detail') },
@@ -121,17 +125,19 @@ async function handleDetail(url, response) {
 }
 
 /** GET /updates — pnpm outdated --json parsed into a flat list. */
-async function handleUpdates(profile, response) {
+async function handleUpdates(profile, response, logger) {
   const result = await outdatedPlugins(profile)
   if (!result.ok) {
+    logger?.warn(`[dsh-my-plugin-manager] 更新检查失败（原因=${result.error}）`)
     writeJson(response, 200, { ok: true, value: { outdated: [], error: result.error } })
     return
   }
+  logger?.info(`[dsh-my-plugin-manager] 更新检查完成（可更新=${result.outdated.length} 个）`)
   writeJson(response, 200, { ok: true, value: { outdated: result.outdated } })
 }
 
 /** POST /install { source } — install a npm package or link: path. */
-async function handleInstall(profile, request, response) {
+async function handleInstall(profile, request, response, logger) {
   const payload = await readJsonBody(request)
   const source = typeof payload.source === 'string' ? payload.source.trim() : ''
   if (source === '') {
@@ -139,14 +145,15 @@ async function handleInstall(profile, request, response) {
     return
   }
   const result = await installPlugin(profile, source)
+  logInstallResult(logger, result, source, profile)
   writeJson(response, 200, {
     ok: result.ok,
-    error: result.ok ? undefined : { message: result.stderr.trim() || result.stdout.trim() || `exit ${result.code}` },
+    error: result.ok ? undefined : { message: cliErrorText(result) },
   })
 }
 
 /** POST /uninstall { name } — remove an installed package. */
-async function handleUninstall(profile, request, response) {
+async function handleUninstall(profile, request, response, logger) {
   const payload = await readJsonBody(request)
   const name = typeof payload.name === 'string' ? payload.name.trim() : ''
   if (name === '') {
@@ -154,10 +161,34 @@ async function handleUninstall(profile, request, response) {
     return
   }
   const result = await uninstallPlugin(profile, name)
+  logUninstallResult(logger, result, name, profile)
   writeJson(response, 200, {
     ok: result.ok,
-    error: result.ok ? undefined : { message: result.stderr.trim() || result.stdout.trim() || `exit ${result.code}` },
+    error: result.ok ? undefined : { message: cliErrorText(result) },
   })
+}
+
+/** CLI 失败文本（stderr 优先，回退 stdout / exit code）。 */
+function cliErrorText(result) {
+  return result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`
+}
+
+/** 安装结果日志（统一 [dsh-my-plugin-manager] 前缀，issue #155）。 */
+function logInstallResult(logger, result, source, profile) {
+  if (result.ok) {
+    logger?.info(`[dsh-my-plugin-manager] 插件安装成功（source=${source}，profile=${profile}）`)
+  } else {
+    logger?.warn(`[dsh-my-plugin-manager] 插件安装失败（source=${source}，原因=${cliErrorText(result)}）`)
+  }
+}
+
+/** 卸载结果日志（统一 [dsh-my-plugin-manager] 前缀，issue #155）。 */
+function logUninstallResult(logger, result, name, profile) {
+  if (result.ok) {
+    logger?.info(`[dsh-my-plugin-manager] 插件卸载成功（name=${name}，profile=${profile}）`)
+  } else {
+    logger?.warn(`[dsh-my-plugin-manager] 插件卸载失败（name=${name}，原因=${cliErrorText(result)}）`)
+  }
 }
 
 /** Clamp the search size to 1..50. */

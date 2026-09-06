@@ -27,7 +27,7 @@ test('apply registers the /md/api config routes', async () => {
   const routes = []
   const disposers = []
   const ctx = {
-    logger: { warn() {} },
+    logger: { info() {}, warn() {} },
     get() {
       return undefined
     },

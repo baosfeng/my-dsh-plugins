@@ -211,7 +211,7 @@ export function saveToolDescription(proactivePropose) {
 }
 
 /** The memory_save tool definition (write; gated by the approval listener). */
-export function createMemorySaveTool({ globalStore, getProjectStore, config }) {
+export function createMemorySaveTool({ globalStore, getProjectStore, config, logger }) {
   return {
     name: 'memory_save',
     description: saveToolDescription(config?.proactivePropose),
@@ -221,24 +221,50 @@ export function createMemorySaveTool({ globalStore, getProjectStore, config }) {
       render: (_args, value) => [{ type: 'text', text: renderSaveResult(value) }],
     },
     async execute(args, exec) {
-      return executeSave(args, exec, { globalStore, getProjectStore })
+      return executeSave(args, exec, { globalStore, getProjectStore, logger })
     },
   }
 }
 
 /** Run one memory_save call; lands only after the pre-execute approval gate. */
-async function executeSave(args, exec, { globalStore, getProjectStore }) {
+async function executeSave(args, exec, { globalStore, getProjectStore, logger }) {
   const scope = args.scope === 'project' ? 'project' : 'global'
   const desc = typeof args.desc === 'string' ? args.desc.trim() : ''
-  if (desc === '') throw new Error('memory_save: desc is required and must not be empty')
+  const sessionId = sessionIdOf(exec)
+  if (desc === '') {
+    warnSave(logger, `memory_save 拒绝空内容（sessionId=${sessionId}，操作=save）`)
+    throw new Error('memory_save: desc is required and must not be empty')
+  }
   if (scope === 'global') {
-    return { scope, cwd: '', projectRoot: '', item: await globalStore.add(desc) }
+    const item = await globalStore.add(desc)
+    infoSave(logger, `记忆已保存（scope=global，itemId=${item.id}，sessionId=${sessionId}）`)
+    return { scope, cwd: '', projectRoot: '', item }
   }
   const cwd = typeof args.cwd === 'string' && args.cwd !== '' ? args.cwd : sessionCwdOf(exec)
-  if (cwd === '') throw new Error('memory_save: project scope requires a cwd (explicit or from the session)')
+  if (cwd === '') {
+    warnSave(logger, `memory_save 项目范围缺少 cwd（sessionId=${sessionId}，操作=save）`)
+    throw new Error('memory_save: project scope requires a cwd (explicit or from the session)')
+  }
   const store = await getProjectStore(cwd)
   const projectRoot = await findProjectRoot(cwd)
-  return { scope, cwd, projectRoot, item: await store.add(desc) }
+  const item = await store.add(desc)
+  infoSave(logger, `记忆已保存（scope=project，itemId=${item.id}，sessionId=${sessionId}，cwd=${cwd}）`)
+  return { scope, cwd, projectRoot, item }
+}
+
+/** 调用 agent 的会话 id（无则空串）。 */
+function sessionIdOf(exec) {
+  return exec?.agent?.id ?? ''
+}
+
+/** 记忆写操作 warn 日志（统一 [dsh-my-memory] 前缀，issue #155）。 */
+function warnSave(logger, message) {
+  logger?.warn(`[dsh-my-memory] ${message}`)
+}
+
+/** 记忆写操作 info 日志（统一 [dsh-my-memory] 前缀，issue #155）。 */
+function infoSave(logger, message) {
+  logger?.info(`[dsh-my-memory] ${message}`)
 }
 
 /**

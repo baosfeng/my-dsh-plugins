@@ -83,7 +83,7 @@ function boot(config, dir) {
   const routes = []
   const disposers = []
   const ctx = {
-    logger: { warn() {} },
+    logger: { info() {}, warn() {} },
     on(name, handler) {
       ;(listeners[name] ??= []).push(handler)
       return () => {

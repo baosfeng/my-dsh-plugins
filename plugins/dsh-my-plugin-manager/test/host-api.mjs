@@ -108,8 +108,9 @@ function captureRoute(prefix) {
 
 async function boot(overrides) {
   const apiHolder = captureRoute('/my-plugin-manager/api')
+  const logs = []
   const ctx = {
-    logger: { warn: () => {} },
+    logger: { info: (m) => logs.push(m), warn: () => {} },
     webRuntime: { trustedHosts: [] },
     pluginInventory: {
       list: () => ({
@@ -143,7 +144,7 @@ async function boot(overrides) {
   }
   process.env.DSH_HOME = dir
   apply(ctx)
-  return { ctx, getRoute: () => apiHolder.get() }
+  return { ctx, logs, getRoute: () => apiHolder.get() }
 }
 
 async function callRoute(getRoute, method, url, body, overrides) {
@@ -330,7 +331,7 @@ test('fence: non-loopback hosts, origin mismatch and trusted hosts', async () =>
 
   const holder = captureRoute('/my-plugin-manager/api')
   const ctx = {
-    logger: { warn: () => {} },
+    logger: { info: () => {}, warn: () => {} },
     webRuntime: { trustedHosts: ['dsh.internal:3080'] },
     pluginInventory: { list: () => ({ entries: [] }) },
     webServer: {
@@ -402,4 +403,33 @@ test('updates failure and uninstall failure carry error details', async () => {
   })
   assert.equal(un.json.ok, false)
   assert.ok(un.json.error.message.includes('EBADPKG'))
+})
+
+test('apply logs an info line with the [dsh-my-plugin-manager] prefix (issue #155)', async () => {
+  const { logs } = await boot()
+  assert.ok(logs.length >= 1, 'at least one log line emitted')
+  assert.ok(logs[0].startsWith('[dsh-my-plugin-manager]'), 'log line carries the unified plugin prefix')
+  assert.ok(logs[0].includes('已启用'), 'log line describes the enabled behavior')
+})
+
+test('install success logs an info line with source (issue #155)', async () => {
+  const { getRoute, logs } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/install', { source: 'dsh-x' })
+  assert.equal(r.json.ok, true, 'install ok')
+  const installLog = logs.find((line) => line.includes('插件安装成功'))
+  assert.ok(installLog !== undefined, 'install info log emitted')
+  assert.ok(installLog.startsWith('[dsh-my-plugin-manager]'), 'install log carries the unified plugin prefix')
+  assert.ok(installLog.includes('dsh-x'), 'install log carries the source')
+})
+
+test('install failure logs a warn line with reason (issue #155)', async () => {
+  const warns = []
+  manageMock.installPlugin.mockResolvedValueOnce({ ok: false, code: 1, stdout: '', stderr: 'EACCES' })
+  const { getRoute } = await boot({ logger: { info: () => {}, warn: (m) => warns.push(m) } })
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/install', { source: 'dsh-bad' })
+  assert.equal(r.json.ok, false, 'install failed')
+  assert.ok(warns.length >= 1, 'warn emitted for failed install')
+  assert.ok(warns[0].startsWith('[dsh-my-plugin-manager]'), 'warn carries the unified plugin prefix')
+  assert.ok(warns[0].includes('dsh-bad'), 'warn carries the source')
+  assert.ok(warns[0].includes('EACCES'), 'warn carries the reason')
 })

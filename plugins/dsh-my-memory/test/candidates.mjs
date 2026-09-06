@@ -83,7 +83,7 @@ function boot(config, seed) {
   const apiHolder = captureRoute('/my-memory/api')
   const events = []
   const ctx = {
-    logger: { warn: () => {} },
+    logger: { info: () => {}, warn: () => {} },
     webRuntime: { trustedHosts: [] },
     webServer: {
       register: (route) => {

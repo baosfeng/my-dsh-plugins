@@ -29,12 +29,15 @@ function verifyServiceReady(agents) {
 }
 
 /** 校验失败/不可用时的降级路径：直接以继续文本唤醒主 agent。 */
-function continueDirect(task, agent, save) {
+function continueDirect(ctx, task, agent, save) {
   task.status = 'active'
   agent.followup(userMessage(DIRECT_CONTINUE_TEXT(task.description)))
   task.loopCount += 1
   task.updatedAt = Date.now()
   save()
+  ctx.logger?.warn(
+    `[dsh-task-reliability] 完成度校验降级为直接继续（taskId=${task.id}，sessionId=${agent.id}，原因=校验服务不可用或校验失败）`,
+  )
 }
 
 async function sessionSummary(ctx, agent, task) {
@@ -100,10 +103,10 @@ function continueWithConclusion(task, agent, save, conclusion) {
 /** 完整校验流程：创建校验 agent → 收集结论 → done 结案或唤醒继续。 */
 export async function runVerification(ctx, store, task, agent, save) {
   const agents = ctx.get('agents')
-  if (!verifyServiceReady(agents)) return continueDirect(task, agent, save)
+  if (!verifyServiceReady(agents)) return continueDirect(ctx, task, agent, save)
   const summary = await sessionSummary(ctx, agent, task)
   const handle = await spawnVerifier(agents, task, agent)
-  if (handle === undefined) return continueDirect(task, agent, save)
+  if (handle === undefined) return continueDirect(ctx, task, agent, save)
   const conclusion = await collectConclusion(handle, task, summary)
   await disposeHandle(handle)
   task.verifyCount += 1
@@ -111,8 +114,14 @@ export async function runVerification(ctx, store, task, agent, save) {
   if (conclusion?.done === true) {
     task.status = 'done'
     save()
+    ctx.logger?.info(
+      `[dsh-task-reliability] 完成度校验通过，任务结案（taskId=${task.id}，sessionId=${agent.id}，原因=${conclusion.reason || '无'}）`,
+    )
     return
   }
+  ctx.logger?.info(
+    `[dsh-task-reliability] 完成度校验未完成，唤醒继续（taskId=${task.id}，sessionId=${agent.id}，原因=${conclusion?.reason || '无结论'}）`,
+  )
   continueWithConclusion(task, agent, save, conclusion)
 }
 
@@ -176,6 +185,9 @@ export async function resumeActiveTasks(ctx, store, save) {
     const agent = await tryResumeAgent(agents, task)
     if (agent === undefined) continue
     wakeAgent(task, agent)
+    ctx.logger?.info(
+      `[dsh-task-reliability] 重启恢复任务（taskId=${task.id}，sessionId=${task.sessionId}，注入继续指令）`,
+    )
   }
   save()
 }
@@ -214,6 +226,9 @@ export async function wakeStalledTask(ctx, task, save) {
     return false
   }
   save()
+  ctx.logger?.info(
+    `[dsh-task-reliability] 看门狗唤醒停滞任务（taskId=${task.id}，sessionId=${task.sessionId}，注入继续指令）`,
+  )
   return true
 }
 

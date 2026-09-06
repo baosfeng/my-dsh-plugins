@@ -30,12 +30,28 @@ export function processCommand(shared, action, payload, meta = {}) {
   const audit = (extra = {}) => shared.audit.record({ action, ...meta, ...extra })
   if (typeof action !== 'string' || !COMMANDS.has(action)) {
     audit({ ok: false, sessionId: payload?.sessionId ?? '', detail: 'unknown command' })
+    shared.logger?.warn(`[dsh-my-remote] 收到未知远程指令（action=${String(action)}，source=${sourceOf(meta)}）`)
     return { ok: false, error: `unknown command: ${action}` }
   }
   const body = payload ?? {}
-  if (action === 'answer') return answerCommand(shared, body, audit)
-  if (action === 'approve') return approveCommand(shared, body, audit)
-  return continueCommand(shared, body, audit)
+  let result
+  if (action === 'answer') result = answerCommand(shared, body, audit)
+  else if (action === 'approve') result = approveCommand(shared, body, audit)
+  else result = continueCommand(shared, body, audit)
+  logCommand(shared, action, body, result, meta)
+  return result
+}
+
+/** 指令来源（meta.source 回退 'local'）。 */
+function sourceOf(meta) {
+  return meta.source ?? 'local'
+}
+
+/** 指令处理日志（统一 [dsh-my-remote] 前缀，issue #155）。 */
+function logCommand(shared, action, body, result, meta) {
+  shared.logger?.info(
+    `[dsh-my-remote] 远程指令已处理（action=${action}，sessionId=${body?.sessionId ?? ''}，ok=${result.ok}，source=${sourceOf(meta)}）`,
+  )
 }
 
 /** answer：按 sessionId 决议 ask（answers 参数规整后交注册表）。 */

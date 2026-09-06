@@ -30,4 +30,5 @@ export function apply(ctx) {
       }),
     'dsh-my-plugin-manager: /my-plugin-manager/api routes',
   )
+  ctx.logger?.info(`[dsh-my-plugin-manager] 插件管理器已启用（profile=${profile}）`)
 }

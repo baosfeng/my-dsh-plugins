@@ -26,6 +26,9 @@ window.__ModuleLoader__.load({
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
+    // 官方 UI 组件库（宿主 staticModules 提供，零安装零体积；组件表见
+    // docs/开发指南/官方UI组件库.md）：Pill/Button + 官方线性图标。
+    const ui = require('@deepseek-ai/dsh-client-ui-primitives')
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────
@@ -439,22 +442,13 @@ const STYLES = `
 .dsh-my-skill-manager-header { display:flex; align-items:center; gap:8px; min-height:28px; }
 .dsh-my-skill-manager-header-title { flex:1; min-width:0; font:var(--dsw-font-m-strong-16); color:var(--dsw-alias-label-primary); }
 .dsh-my-skill-manager-header-hint { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-tertiary); }
-.dsh-my-skill-manager-iconbtn { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0;
-  border:none; border-radius:50%; background:transparent; color:var(--dsw-alias-label-secondary); cursor:pointer; flex:none;
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-skill-manager-iconbtn svg { display:block; }
-.dsh-my-skill-manager-iconbtn:hover:not(:disabled) { background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-primary); }
-.dsh-my-skill-manager-iconbtn:disabled { opacity:.4; cursor:default; }
-.dsh-my-skill-manager-iconbtn-spin svg { animation:dsh-my-skill-manager-spin 900ms linear infinite; }
+/* 刷新按钮由官方 Button 提供视觉（issue #143 试点）；加载时图标旋转。 */
+.dsh-my-skill-manager-spin { animation:dsh-my-skill-manager-spin 900ms linear infinite; }
 @keyframes dsh-my-skill-manager-spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
-/* ── view switch: segmented control (全局 | 当前项目) ───────────────────── */
+/* ── view switch: segmented control (全局 | 当前项目) ─────────────────────
+   分段按钮由官方 Pill 提供视觉（issue #143 试点）；容器保留。 */
 .dsh-my-skill-manager-switchseg { display:inline-flex; gap:2px; padding:2px; border-radius:8px;
   background:var(--dsw-alias-interactive-bg-hover); align-self:flex-start; }
-.dsh-my-skill-manager-seg { height:24px; padding:0 12px; border:none; border-radius:6px; background:transparent;
-  font:var(--dsw-font-xxs-strong-12); color:var(--dsw-alias-label-secondary); cursor:pointer;
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-skill-manager-seg:hover { color:var(--dsw-alias-label-primary); }
-.dsh-my-skill-manager-seg-on { background:var(--dsw-alias-surface-1); color:var(--dsw-alias-label-primary); }
 .dsh-my-skill-manager-status { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-tertiary); padding:4px 6px; }
 .dsh-my-skill-manager-saved { color:var(--dsw-alias-state-success-primary); }
 .dsh-my-skill-manager-error { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-state-error-primary); padding:4px 6px; white-space:pre-wrap; }
@@ -463,14 +457,10 @@ const STYLES = `
   font:var(--dsw-font-xxxs-strong-11); color:var(--dsw-alias-label-tertiary); text-transform:uppercase; letter-spacing:.04em; }
 .dsh-my-skill-manager-section-title { font:var(--dsw-font-xxxs-strong-11); color:var(--dsw-alias-label-tertiary);
   text-transform:uppercase; letter-spacing:.04em; }
-/* ── sort + unused filter bar (issue #91; size/hit-area raised for visibility) */
+/* ── sort + unused filter bar (issue #91) ────────────────────────────────
+   排序分段由官方 Pill 提供视觉（issue #143 试点）；「未使用」开启态经
+   className 覆写为 warn 语义色（官方 Pill active 为 accent，过滤语义用 warn）。 */
 .dsh-my-skill-manager-sortbar { display:inline-flex; align-items:center; gap:2px; }
-.dsh-my-skill-manager-sortseg, .dsh-my-skill-manager-unused { height:22px; padding:0 8px; border:none; border-radius:4px;
-  background:transparent; font:var(--dsw-font-xxs-strong-12); color:var(--dsw-alias-label-secondary); cursor:pointer;
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-skill-manager-sortseg:hover, .dsh-my-skill-manager-unused:hover { color:var(--dsw-alias-label-primary);
-  background:var(--dsw-alias-interactive-bg-hover); }
-.dsh-my-skill-manager-sortseg-on { background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-primary); }
 .dsh-my-skill-manager-unused-on { color:var(--dsw-alias-state-warn-primary);
   background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
 .dsh-my-skill-manager-hint { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); padding:0 6px 4px; line-height:1.7; }
@@ -487,9 +477,9 @@ const STYLES = `
 .dsh-my-skill-manager-row-head { display:flex; align-items:center; gap:6px; min-width:0; }
 .dsh-my-skill-manager-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
-/* ── not-cataloged badge (warn chip in the row head) ─────────────────────── */
-.dsh-my-skill-manager-chip-warn { flex:none; display:inline-flex; align-items:center; height:17px; padding:0 6px; border-radius:4px;
-  font:var(--dsw-font-xxxs-strong-11); color:var(--dsw-alias-state-warn-primary);
+/* ── not-cataloged badge (warn chip in the row head) ───────────────────────
+   官方 Pill 承载（issue #143 试点）；仅覆写 warn 语义色（官方 Pill 中性底）。 */
+.dsh-my-skill-manager-chip-warn { color:var(--dsw-alias-state-warn-primary);
   background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
 .dsh-my-skill-manager-desc { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-secondary); }
 .dsh-my-skill-manager-row-source { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); margin-top:2px; }
@@ -717,7 +707,8 @@ function SkillManagerView() {
   )
 }
 
-/** Title row with the single refresh action (icon button, spins while loading). */
+/** Title row with the single refresh action (official Button, spins while
+ *  loading — issue #143 试点）。 */
 function Header({ loading, error, saved, onRefresh }) {
   return createElement(
     'div',
@@ -731,28 +722,29 @@ function Header({ loading, error, saved, onRefresh }) {
           strings.saved(),
         )
       : null,
-    createElement(
-      'button',
-      {
-        className: `dsh-my-skill-manager-iconbtn${loading ? ' dsh-my-skill-manager-iconbtn-spin' : ''}`,
-        'aria-label': strings.refresh(),
-        title: strings.refresh(),
-        disabled: loading,
-        onClick: onRefresh,
-      },
-      icon.refresh(14),
-    ),
+    createElement(ui.Button, {
+      variant: 'ghost',
+      size: 'sm',
+      'aria-label': strings.refresh(),
+      title: strings.refresh(),
+      disabled: loading,
+      onClick: onRefresh,
+      icon: createElement(ui.IconRefreshOutline14, {
+        className: loading ? 'dsh-my-skill-manager-spin' : undefined,
+      }),
+    }),
   )
 }
 
-/** Segmented control: 全局 / 当前项目 (project tab only when cwd detected). */
+/** Segmented control: 全局 / 当前项目 (project tab only when cwd detected).
+ *  官方 Pill 承载（issue #143 试点）：active = 当前视图。 */
 function ViewSwitch({ view, hasProject, onSwitch }) {
   const seg = (scope, label) =>
     createElement(
-      'button',
+      ui.Pill,
       {
-        type: 'button',
-        className: `dsh-my-skill-manager-seg${view === scope ? ' dsh-my-skill-manager-seg-on' : ''}`,
+        className: 'dsh-my-skill-manager-seg',
+        active: view === scope,
         'aria-pressed': view === scope,
         onClick: () => onSwitch(scope),
       },
@@ -876,14 +868,16 @@ function SectionBlock({
   )
 }
 
-/** 排序 + 未使用过滤控件（issue #91）：名称 / 次数 / 最近 + 只看未使用。 */
+/** 排序 + 未使用过滤控件（issue #91）：名称 / 次数 / 最近 + 只看未使用。
+ *  官方 Pill 承载（issue #143 试点）：active = 当前排序/过滤；「未使用」
+ *  开启态经 className 覆写为 warn 语义色。 */
 function SortControls({ sortBy, unusedOnly, onSort, onToggleUnused }) {
   const seg = (key, label) =>
     createElement(
-      'button',
+      ui.Pill,
       {
-        type: 'button',
-        className: `dsh-my-skill-manager-sortseg${sortBy === key ? ' dsh-my-skill-manager-sortseg-on' : ''}`,
+        className: 'dsh-my-skill-manager-sortseg',
+        active: sortBy === key,
         'aria-pressed': sortBy === key,
         onClick: () => onSort(key),
       },
@@ -891,10 +885,10 @@ function SortControls({ sortBy, unusedOnly, onSort, onToggleUnused }) {
     )
   return createElement('div', { className: 'dsh-my-skill-manager-sortbar' }, [
     createElement(
-      'button',
+      ui.Pill,
       {
-        type: 'button',
         className: `dsh-my-skill-manager-unused${unusedOnly ? ' dsh-my-skill-manager-unused-on' : ''}`,
+        active: unusedOnly,
         'aria-pressed': unusedOnly,
         title: strings.unusedOnlyHint(),
         onClick: onToggleUnused,
@@ -954,8 +948,11 @@ function SkillRow({ skill, disabled, onToggle, usage }) {
       createElement('span', { className: 'dsh-my-skill-manager-name', title: skill.name }, skill.name),
       skill.cataloged === false
         ? createElement(
-            'span',
-            { className: 'dsh-my-skill-manager-chip-warn', title: strings.notCatalogedHint() },
+            ui.Pill,
+            {
+              className: 'dsh-my-skill-manager-chip-warn',
+              title: strings.notCatalogedHint(),
+            },
             strings.notCataloged(),
           )
         : null,

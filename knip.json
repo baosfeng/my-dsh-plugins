@@ -2,73 +2,29 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
     ".": {
-      "entry": [
-        "scripts/*.mjs",
-        "scripts/lib/*.mjs",
-        "scripts/test/*.mjs"
-      ],
-      "project": [
-        "scripts/**",
-        "*.js",
-        "*.mjs"
-      ]
+      "entry": ["scripts/*.mjs", "scripts/lib/*.mjs", "scripts/test/*.mjs"],
+      "project": ["scripts/**", "*.js", "*.mjs"]
     },
     "plugins/*": {
-      "entry": [
-        "lib/parts/*.js",
-        "test/*.mjs",
-        "test/features/steps/*.mjs"
-      ],
-      "project": [
-        "lib/**",
-        "scripts/**",
-        "test/**",
-        "*.mjs"
-      ],
-      "ignore": [
-        "lib/client.src.js"
-      ]
+      "entry": ["lib/parts/*.js", "test/*.mjs", "test/features/steps/*.mjs"],
+      "project": ["lib/**", "scripts/**", "test/**", "*.mjs"],
+      "ignore": ["lib/client.src.js"]
     },
     "plugins/dsh-plugin-dev-mode": {
       "entry": [],
-      "project": [
-        "scripts/**",
-        "skills/**"
-      ]
+      "project": ["scripts/**", "skills/**"]
     },
     "plugins/dsh-shared": {
-      "entry": [
-        "test/*.mjs",
-        "test/features/steps/*.mjs"
-      ],
-      "project": [
-        "lib/**",
-        "test/**",
-        "*.mjs"
-      ]
+      "entry": ["test/*.mjs", "test/features/steps/*.mjs"],
+      "project": ["lib/**", "test/**", "*.mjs"]
     },
     "plugins/dsh-task-reliability": {
-      "entry": [
-        "test/*.mjs",
-        "test/features/steps/*.mjs"
-      ],
-      "project": [
-        "lib/**",
-        "test/**",
-        "*.mjs"
-      ]
+      "entry": ["test/*.mjs", "test/features/steps/*.mjs"],
+      "project": ["lib/**", "test/**", "*.mjs"]
     },
     "plugins/dsh-ts-example": {
-      "entry": [
-        "src/client/index.ts",
-        "test/*.mjs"
-      ],
-      "project": [
-        "src/**",
-        "scripts/**",
-        "test/**",
-        "*.mjs"
-      ]
+      "entry": ["src/client/index.ts", "test/*.mjs"],
+      "project": ["src/**", "scripts/**", "test/**", "*.mjs"]
     }
   },
   "ignoreDependencies": [
@@ -78,7 +34,5 @@
     "dsh-better-sidebar",
     "@deepseek-ai/dsh-client-ui-primitives"
   ],
-  "ignoreBinaries": [
-    "dsh"
-  ]
+  "ignoreBinaries": ["dsh"]
 }

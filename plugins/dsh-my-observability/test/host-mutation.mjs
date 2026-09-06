@@ -451,14 +451,18 @@ test('dispose before store load flushes buffered events', async () => {
       agent: topAgent('early'),
       status: 'running',
     })
-    first.disposeAll() // 未 ready 时回放 pending + 落盘
-    await settle()
+    await first.disposeAll() // 未 ready 时回放 pending + 落盘（await 保证冲刷完成）
     const second = bootPlugin({}, { home })
     disposeAlls.push(second.disposeAll)
-    await settle()
-    const events = jsonOf(
-      await invoke(second.api, mockRequest({ url: '/observability/api/events?sessionId=early' }), mockResponse()),
-    ).value
+    // 确定性等待 second 的 store 加载完成（不赌固定延时；超时后断言自然失败）
+    let events = []
+    for (let tries = 0; tries < 200; tries += 1) {
+      events = jsonOf(
+        await invoke(second.api, mockRequest({ url: '/observability/api/events?sessionId=early' }), mockResponse()),
+      ).value
+      if (events.length > 0) break
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
     assert.equal(events.length, 1, 'buffered event survives dispose')
   } finally {
     cleanupHome(home)

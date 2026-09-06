@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-plugin-manager",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "DSH 公共插件管理面板：市场浏览/搜索、一键安装/卸载、更新检查、已安装插件管理（官方插件清单 + pnpm/dsh CLI）。DSH web plugin: plugin market browser, install/uninstall, update check and installed-plugin management in Web Settings.",
   "type": "module",
   "main": "lib/index.js",

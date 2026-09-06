@@ -30,7 +30,11 @@ createElement(uiPrimitives.Pill, { active: true, onClick: handler }, '文本')
 
 ```js
 // Button：variant（primary/ghost/outline/toolbar）+ size（sm 适配侧边栏）+ icon
-createElement(ui.Button, { variant: 'outline', size: 'sm', onClick: retry, icon: createElement(ui.IconRefreshOutline14) }, '重试')
+createElement(
+  ui.Button,
+  { variant: 'outline', size: 'sm', onClick: retry, icon: createElement(ui.IconRefreshOutline14) },
+  '重试',
+)
 
 // Input：className 在 wrapper，原生属性（value/onChange/placeholder）在内部 input
 createElement(ui.Input, { className: 'dsh-my-memory-input', value, onChange, placeholder })
@@ -53,7 +57,7 @@ const uiPrimitives = require('@deepseek-ai/dsh-client-ui-primitives')
 ```
 
 - **不需要** `dsh.client.inject` 声明（staticModules 全局提供；`inject` 仍是 跨插件 bundle（如 `require('dsh-md-render')` 走 `dsh.client.external`）的机制）。
-- 样式跟随 DSH 主题 token（`--dsw-alias-*`），深浅主题自适应；需覆写时用我们既有的 `<插件>-*` 前缀类名 + DSH token（见 [UI规范.md](UI规范.md)）。
+- 样式跟随 DSH 主题 token（`--dsw-alias-*`），深浅主题自适应；需覆写时用我们既有的 `<插件>-*` 前缀类名 + DSH token（见 [UI规范.md](../UI规范.md)）。
 
 ## 与其他方案的对比
 

@@ -38,9 +38,6 @@
     },
     "client": {
       "platform": "web",
-      "inject": [
-        "@deepseek-ai/dsh-client-runtime"
-      ],
       "external": [
         "dsh-md-render"
       ]

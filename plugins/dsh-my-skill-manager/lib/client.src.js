@@ -26,6 +26,9 @@ window.__ModuleLoader__.load({
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
+    // 官方 UI 组件库（宿主 staticModules 提供，零安装零体积；组件表见
+    // docs/开发指南/官方UI组件库.md）：Pill/Button + 官方线性图标。
+    const ui = require('@deepseek-ai/dsh-client-ui-primitives')
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────

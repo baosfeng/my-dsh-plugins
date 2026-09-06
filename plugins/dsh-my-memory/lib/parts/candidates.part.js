@@ -114,7 +114,7 @@ function CandidatesBlock({ candidates, busy, onConfirmCandidate, onDismissCandid
       { className: 'dsh-my-memory-section-head' },
       createElement('span', { className: 'dsh-my-memory-section-title' }, strings.candidatesSection()),
       createElement(
-        'span',
+        ui.Pill,
         { className: 'dsh-my-memory-badge' },
         strings.countBadge(strings.candidatesSection(), list.length),
       ),

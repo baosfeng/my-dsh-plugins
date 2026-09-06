@@ -107,7 +107,8 @@ function SkillManagerView() {
   )
 }
 
-/** Title row with the single refresh action (icon button, spins while loading). */
+/** Title row with the single refresh action (official Button, spins while
+ *  loading — issue #143 试点）。 */
 function Header({ loading, error, saved, onRefresh }) {
   return createElement(
     'div',
@@ -121,28 +122,29 @@ function Header({ loading, error, saved, onRefresh }) {
           strings.saved(),
         )
       : null,
-    createElement(
-      'button',
-      {
-        className: `dsh-my-skill-manager-iconbtn${loading ? ' dsh-my-skill-manager-iconbtn-spin' : ''}`,
-        'aria-label': strings.refresh(),
-        title: strings.refresh(),
-        disabled: loading,
-        onClick: onRefresh,
-      },
-      icon.refresh(14),
-    ),
+    createElement(ui.Button, {
+      variant: 'ghost',
+      size: 'sm',
+      'aria-label': strings.refresh(),
+      title: strings.refresh(),
+      disabled: loading,
+      onClick: onRefresh,
+      icon: createElement(ui.IconRefreshOutline14, {
+        className: loading ? 'dsh-my-skill-manager-spin' : undefined,
+      }),
+    }),
   )
 }
 
-/** Segmented control: 全局 / 当前项目 (project tab only when cwd detected). */
+/** Segmented control: 全局 / 当前项目 (project tab only when cwd detected).
+ *  官方 Pill 承载（issue #143 试点）：active = 当前视图。 */
 function ViewSwitch({ view, hasProject, onSwitch }) {
   const seg = (scope, label) =>
     createElement(
-      'button',
+      ui.Pill,
       {
-        type: 'button',
-        className: `dsh-my-skill-manager-seg${view === scope ? ' dsh-my-skill-manager-seg-on' : ''}`,
+        className: 'dsh-my-skill-manager-seg',
+        active: view === scope,
         'aria-pressed': view === scope,
         onClick: () => onSwitch(scope),
       },
@@ -266,14 +268,16 @@ function SectionBlock({
   )
 }
 
-/** 排序 + 未使用过滤控件（issue #91）：名称 / 次数 / 最近 + 只看未使用。 */
+/** 排序 + 未使用过滤控件（issue #91）：名称 / 次数 / 最近 + 只看未使用。
+ *  官方 Pill 承载（issue #143 试点）：active = 当前排序/过滤；「未使用」
+ *  开启态经 className 覆写为 warn 语义色。 */
 function SortControls({ sortBy, unusedOnly, onSort, onToggleUnused }) {
   const seg = (key, label) =>
     createElement(
-      'button',
+      ui.Pill,
       {
-        type: 'button',
-        className: `dsh-my-skill-manager-sortseg${sortBy === key ? ' dsh-my-skill-manager-sortseg-on' : ''}`,
+        className: 'dsh-my-skill-manager-sortseg',
+        active: sortBy === key,
         'aria-pressed': sortBy === key,
         onClick: () => onSort(key),
       },
@@ -281,10 +285,10 @@ function SortControls({ sortBy, unusedOnly, onSort, onToggleUnused }) {
     )
   return createElement('div', { className: 'dsh-my-skill-manager-sortbar' }, [
     createElement(
-      'button',
+      ui.Pill,
       {
-        type: 'button',
         className: `dsh-my-skill-manager-unused${unusedOnly ? ' dsh-my-skill-manager-unused-on' : ''}`,
+        active: unusedOnly,
         'aria-pressed': unusedOnly,
         title: strings.unusedOnlyHint(),
         onClick: onToggleUnused,
@@ -344,8 +348,11 @@ function SkillRow({ skill, disabled, onToggle, usage }) {
       createElement('span', { className: 'dsh-my-skill-manager-name', title: skill.name }, skill.name),
       skill.cataloged === false
         ? createElement(
-            'span',
-            { className: 'dsh-my-skill-manager-chip-warn', title: strings.notCatalogedHint() },
+            ui.Pill,
+            {
+              className: 'dsh-my-skill-manager-chip-warn',
+              title: strings.notCatalogedHint(),
+            },
             strings.notCataloged(),
           )
         : null,

@@ -99,11 +99,15 @@ export default [
       'max-lines-per-function': ['error', 70],
       'no-undef': 'off',
       'no-unused-vars': 'off',
-      // client 端：require 的模块必须存在。react / react-dom 由 DSH 运行时
-      // 注入（node_modules 无对应包），ignore 豁免；dsh-* 跨插件模块经
-      // moduleDirectory: plugins/ 映射到仓库内真实检查（require 不存在的
-      // dsh-* 包 → lint 报错）
-      'import/no-unresolved': ['error', { commonjs: true, ignore: ['^react$', '^react-dom(/.*)?$'] }],
+      // client 端：require 的模块必须存在。react / react-dom 与官方 UI 组件库
+      // @deepseek-ai/dsh-client-ui-primitives 由 DSH 运行时注入（staticModules
+      // 静态模块表，node_modules 无对应包，见 docs/开发指南/官方UI组件库.md），
+      // ignore 豁免；dsh-* 跨插件模块经 moduleDirectory: plugins/ 映射到仓库内
+      // 真实检查（require 不存在的 dsh-* 包 → lint 报错）
+      'import/no-unresolved': [
+        'error',
+        { commonjs: true, ignore: ['^react$', '^react-dom(/.*)?$', '^@deepseek-ai/dsh-client-ui-primitives$'] },
+      ],
     },
   },
   {

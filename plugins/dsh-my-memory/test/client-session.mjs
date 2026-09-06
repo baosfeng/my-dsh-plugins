@@ -55,6 +55,25 @@ function renderView() {
   return capturedTab.component({})
 }
 
+// ── 官方 UI 组件库 stub（issue #143 试点）：与 client-render.mjs 一致，
+//    data-ui 标记供「官方组件被使用」断言。 ────────────────────────────────
+const uiPrimitives = {
+  Button: ({ variant: _variant, size: _size, icon, className, children, ...rest }) =>
+    createElement('button', { type: 'button', 'data-ui': 'button', className, ...rest }, icon, children),
+  Input: ({ icon: _icon, className, ...rest }) =>
+    createElement('span', { 'data-ui': 'input', className }, createElement('input', rest)),
+  Pill: ({ active: _active, className, children, onClick, ...rest }) =>
+    onClick
+      ? createElement('button', { type: 'button', 'data-ui': 'pill', className, onClick, ...rest }, children)
+      : createElement('span', { 'data-ui': 'pill', className }, children),
+  IconRefreshOutline14: (props) => createElement('svg', { 'data-icon': 'refresh', ...props }),
+  IconFolderOpenOutline16: (props) => createElement('svg', { 'data-icon': 'folder', ...props }),
+  IconCheckOutline16: (props) => createElement('svg', { 'data-icon': 'check', ...props }),
+  IconPlusOutline16: (props) => createElement('svg', { 'data-icon': 'plus', ...props }),
+  IconClockOutline16: (props) => createElement('svg', { 'data-icon': 'clock', ...props }),
+  IconCloseOutline16: (props) => createElement('svg', { 'data-icon': 'close', ...props }),
+}
+
 // ── browser globals: current session → localStorage; project cwd on /session ─
 let registered = null
 global.window = {
@@ -84,6 +103,7 @@ eval(fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8'))
 assert.ok(registered, 'bundle registered')
 const exportsObj = registered.factory((spec) => {
   if (spec === 'react') return stubbed
+  if (spec === '@deepseek-ai/dsh-client-ui-primitives') return uiPrimitives
   throw new Error('unexpected require: ' + spec)
 })
 assert.equal(typeof exportsObj.apply, 'function')

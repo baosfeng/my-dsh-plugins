@@ -50,6 +50,29 @@ const stubbed = {
   })(),
 }
 
+// ── 官方组件库 stub（issue #143 试点：模拟真实渲染结构）──────────────────
+// Button → <button type=button data-ui=button className=... {...rest}>（icon
+// 与 children 直接作为子节点）；Input → <span data-ui=input className=...>
+// <input {...rest}/></span>（className 在 wrapper，原生属性在内部 input）；
+// Pill → 有 onClick 渲染 button、否则 span（data-ui=pill，className 透传）；
+// 图标 → <svg data-icon=.../>。data-ui 标记供「官方组件被使用」断言。
+const uiPrimitives = {
+  Button: ({ variant: _variant, size: _size, icon, className, children, ...rest }) =>
+    createElement('button', { type: 'button', 'data-ui': 'button', className, ...rest }, icon, children),
+  Input: ({ icon: _icon, className, ...rest }) =>
+    createElement('span', { 'data-ui': 'input', className }, createElement('input', rest)),
+  Pill: ({ active: _active, className, children, onClick, ...rest }) =>
+    onClick
+      ? createElement('button', { type: 'button', 'data-ui': 'pill', className, onClick, ...rest }, children)
+      : createElement('span', { 'data-ui': 'pill', className }, children),
+  IconRefreshOutline14: (props) => createElement('svg', { 'data-icon': 'refresh', ...props }),
+  IconFolderOpenOutline16: (props) => createElement('svg', { 'data-icon': 'folder', ...props }),
+  IconCheckOutline16: (props) => createElement('svg', { 'data-icon': 'check', ...props }),
+  IconPlusOutline16: (props) => createElement('svg', { 'data-icon': 'plus', ...props }),
+  IconClockOutline16: (props) => createElement('svg', { 'data-icon': 'clock', ...props }),
+  IconCloseOutline16: (props) => createElement('svg', { 'data-icon': 'close', ...props }),
+}
+
 /** Render the tab component once (hooks restart at index 0 each render). */
 function renderView() {
   hookIndex = 0
@@ -86,6 +109,7 @@ eval(fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8'))
 assert.ok(registered, 'bundle registered')
 const exportsObj = registered.factory((spec) => {
   if (spec === 'react') return stubbed
+  if (spec === '@deepseek-ai/dsh-client-ui-primitives') return uiPrimitives
   throw new Error('unexpected require: ' + spec)
 })
 assert.equal(typeof exportsObj.apply, 'function')
@@ -147,7 +171,19 @@ function collectButtons(node, out) {
 function collectInputs(node, out) {
   if (node === null || typeof node !== 'object') return
   const props = node.props ?? {}
-  if (props.className === 'dsh-my-memory-add-input' || props.className === 'dsh-my-memory-path-input') out.push(props)
+  const cls = props.className
+  if (
+    typeof cls === 'string' &&
+    (cls.includes('dsh-my-memory-add-input') || cls.includes('dsh-my-memory-path-input'))
+  ) {
+    // 官方 Input 的 className 在 wrapper span 上（issue #143 试点），
+    // onChange/value/placeholder 在内部 input 上——返回内部 input 的 props，
+    // 并附 wrapperClass 供断言定位。
+    const kids = Array.isArray(props.children) ? props.children : [props.children]
+    const inner = kids.find((c) => c !== null && typeof c === 'object' && c.type === 'input')
+    out.push(inner ? { ...inner.props, wrapperClass: cls } : { ...props, wrapperClass: cls })
+    return
+  }
   if (Array.isArray(node)) {
     for (const c of node) collectInputs(c, out)
     return
@@ -166,6 +202,32 @@ function hasIcon(node) {
   if (Array.isArray(node)) return node.some(hasIcon)
   if (typeof node.type === 'function') return hasIcon(node.type(node.props))
   return hasIcon(node.props.children)
+}
+
+/** Count official-component markers (data-ui) in the tree (issue #143 试点). */
+function countUi(node, marker) {
+  if (node === null || typeof node !== 'object') return 0
+  const props = node.props ?? {}
+  let count = props['data-ui'] === marker ? 1 : 0
+  if (Array.isArray(node)) {
+    for (const c of node) count += countUi(c, marker)
+    return count
+  }
+  if (typeof node.type === 'function') return count + countUi(node.type(node.props), marker)
+  return count + countUi(props.children, marker)
+}
+
+/** Count official-icon markers (data-icon) in the tree (issue #143 试点). */
+function countIcon(node, name) {
+  if (node === null || typeof node !== 'object') return 0
+  const props = node.props ?? {}
+  let count = props['data-icon'] === name ? 1 : 0
+  if (Array.isArray(node)) {
+    for (const c of node) count += countIcon(c, name)
+    return count
+  }
+  if (typeof node.type === 'function') return count + countIcon(node.type(node.props), name)
+  return count + countIcon(props.children, name)
 }
 
 function countSections(node) {
@@ -256,6 +318,12 @@ assert.ok(
 )
 assert.ok(joined.includes('新增'), 'add bar rendered')
 assert.ok(hasIcon(tree2), 'view renders inline svg icons')
+// ── issue #143 试点：官方组件使用断言（Input/Pill/Button + 官方图标）────
+assert.ok(countUi(tree2, 'input') >= 3, 'official Input used (path + both add inputs)')
+assert.ok(countUi(tree2, 'pill') >= 2, 'official Pill used (section badges + sort)')
+assert.ok(countUi(tree2, 'button') >= 2, 'official Button used (load + refresh)')
+assert.ok(countIcon(tree2, 'refresh') >= 1, 'official refresh icon used')
+assert.ok(countIcon(tree2, 'folder') >= 1, 'official folder icon used')
 
 const listCalls = fetchCalls.filter((c) => c.url.startsWith('/my-memory/api/memory') && c.options === undefined)
 assert.equal(listCalls.length, 1, 'initial load fetches only the global scope')
@@ -264,7 +332,7 @@ assert.ok(listCalls[0].url.includes('scope=global'), 'global fetch')
 // ── load a project path: project memory + root badge appear ────────────────
 const pathInputs0 = []
 collectInputs(tree2, pathInputs0)
-const pathInput0 = pathInputs0.find((i) => i.className === 'dsh-my-memory-path-input')
+const pathInput0 = pathInputs0.find((i) => i.wrapperClass.includes('dsh-my-memory-path-input'))
 assert.ok(pathInput0, 'project path input rendered')
 pathInput0.onChange({ target: { value: '/work/proj' } })
 const tree2b = renderView()
@@ -331,7 +399,9 @@ assert.equal(deletePayload.confirmed, true, 'write carries the user-consent mark
 const tree5 = renderView()
 const inputs = []
 collectInputs(tree5, inputs)
-const globalAddInput = inputs.find((i) => i.className === 'dsh-my-memory-add-input' && i.placeholder.includes('记住'))
+const globalAddInput = inputs.find(
+  (i) => i.wrapperClass.includes('dsh-my-memory-add-input') && i.placeholder.includes('记住'),
+)
 assert.ok(globalAddInput, 'global add input found')
 globalAddInput.onChange({ target: { value: '新记忆内容' } })
 const tree6 = renderView()
@@ -386,7 +456,9 @@ walkText(tree9, texts9)
 assert.ok(texts9.join('|').includes('保存'), 'edit mode shows the save button')
 const editInputs = []
 collectInputs(tree9, editInputs)
-const editInput = editInputs.find((i) => i.className === 'dsh-my-memory-add-input' && i.value === '回复使用中文')
+const editInput = editInputs.find(
+  (i) => i.wrapperClass.includes('dsh-my-memory-add-input') && i.value === '回复使用中文',
+)
 assert.ok(editInput, 'edit input prefilled with the current desc')
 editInput.onChange({ target: { value: '回复必须使用中文' } })
 const tree10 = renderView()
@@ -428,7 +500,7 @@ assert.equal(updatePayload.confirmed, true, 'update carries the user-consent mar
 const tree12 = renderView()
 const pathInputs = []
 collectInputs(tree12, pathInputs)
-const pathInput = pathInputs.find((i) => i.className === 'dsh-my-memory-path-input')
+const pathInput = pathInputs.find((i) => i.wrapperClass.includes('dsh-my-memory-path-input'))
 assert.ok(pathInput, 'project path input rendered')
 pathInput.onChange({ target: { value: '/work/other' } })
 const tree13 = renderView()
@@ -498,7 +570,7 @@ const freshGlobal = {
 }
 const reloadInputs = []
 collectInputs(renderView(), reloadInputs)
-const reloadInput = reloadInputs.find((i) => i.className === 'dsh-my-memory-path-input')
+const reloadInput = reloadInputs.find((i) => i.wrapperClass.includes('dsh-my-memory-path-input'))
 reloadInput.onChange({ target: { value: '' } })
 const reloadTree = renderView()
 const reloadButtons = []
@@ -574,7 +646,7 @@ const multiSentenceValue = {
 }
 const reloadInputs105 = []
 collectInputs(renderView(), reloadInputs105)
-reloadInputs105.find((i) => i.className === 'dsh-my-memory-path-input').onChange({ target: { value: '' } })
+reloadInputs105.find((i) => i.wrapperClass.includes('dsh-my-memory-path-input')).onChange({ target: { value: '' } })
 const reloadTree105 = renderView()
 const reloadButtons105 = []
 collectButtons(reloadTree105, reloadButtons105)
@@ -607,7 +679,7 @@ assert.ok(
 const longDraftInputs = []
 collectInputs(renderView(), longDraftInputs)
 const longDraftInput = longDraftInputs.find(
-  (i) => i.className === 'dsh-my-memory-add-input' && i.placeholder.includes('记住'),
+  (i) => i.wrapperClass.includes('dsh-my-memory-add-input') && i.placeholder.includes('记住'),
 )
 assert.ok(longDraftInput, 'global add input found')
 longDraftInput.onChange({ target: { value: 'x'.repeat(51) } })

@@ -27,6 +27,9 @@ window.__ModuleLoader__.load({
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
+    // 官方 UI 组件库（宿主 staticModules 提供，零安装零体积；组件表见
+    // docs/开发指南/官方UI组件库.md）：Input/Pill/Button + 官方线性图标。
+    const ui = require('@deepseek-ai/dsh-client-ui-primitives')
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────
@@ -159,17 +162,9 @@ const STYLES = `
   font:var(--dsw-font-s-14); color:var(--dsw-alias-label-primary); }
 .dsh-my-memory-toolbar { display:flex; flex-direction:column; gap:4px; }
 .dsh-my-memory-pathbar { display:flex; gap:6px; align-items:center; }
-.dsh-my-memory-path-input { flex:1; min-width:0; height:28px; padding:0 8px; border-radius:6px;
-  border:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-2);
-  color:var(--dsw-alias-label-primary); font:var(--dsw-font-s-14); }
-.dsh-my-memory-path-input:focus { outline:none; border-color:var(--dsw-alias-accent); }
-.dsh-my-memory-btn { display:inline-flex; align-items:center; gap:5px; flex:none; height:28px; padding:0 10px; border-radius:6px; cursor:pointer;
-  border:1px solid var(--dsw-alias-border-l1); background:transparent; color:var(--dsw-alias-label-secondary);
-  font:var(--dsw-font-xxs-12);
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out), border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-memory-btn svg { display:block; flex:none; }
-.dsh-my-memory-btn:hover:not(:disabled) { background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-primary); }
-.dsh-my-memory-btn:disabled { opacity:.4; cursor:default; }
+/* 路径输入/加载/刷新按钮由官方 Input/Button 提供视觉（issue #143 试点）；
+   仅保留布局微调：路径输入 wrapper 撑满剩余宽度。 */
+.dsh-my-memory-path-input { flex:1; min-width:0; }
 .dsh-my-memory-iconbtn { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0;
   border:none; border-radius:50%; background:transparent; color:var(--dsw-alias-label-secondary); cursor:pointer; flex:none;
   transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
@@ -195,15 +190,8 @@ const STYLES = `
 .dsh-my-memory-section-project { border-color:color-mix(in srgb, var(--dsw-alias-accent) 28%, transparent); }
 .dsh-my-memory-section-head { display:flex; align-items:center; gap:8px; }
 .dsh-my-memory-section-title { font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
-.dsh-my-memory-badge { flex:none; display:inline-flex; align-items:center; height:17px; padding:0 5px; border-radius:4px;
-  font:var(--dsw-font-xxxs-strong-11); color:var(--dsw-alias-accent);
-  background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent); }
-.dsh-my-memory-sort { display:inline-flex; align-items:center; gap:4px; flex:none; height:20px; padding:0 6px; border-radius:4px;
-  margin-left:auto; cursor:pointer; border:none; background:transparent; color:var(--dsw-alias-label-tertiary);
-  font:var(--dsw-font-xxxs-11);
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-memory-sort svg { display:block; flex:none; }
-.dsh-my-memory-sort:hover { background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-primary); }
+/* 分区徽标由官方 Pill 提供视觉（issue #143 试点）；排序 Pill 仅保留靠右布局。 */
+.dsh-my-memory-sort { margin-left:auto; }
 .dsh-my-memory-note { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); line-height:1.7; }
 .dsh-my-memory-empty { display:flex; align-items:flex-start; gap:8px; padding:12px 10px;
   font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-tertiary); }
@@ -237,10 +225,8 @@ const STYLES = `
 .dsh-my-memory-addbar-wrap { display:flex; flex-direction:column; gap:3px; }
 .dsh-my-memory-entry-hint { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-state-warn-primary);
   line-height:1.7; padding:0 2px; }
-.dsh-my-memory-add-input { flex:1; min-width:0; height:28px; padding:0 8px; border-radius:6px;
-  border:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-2);
-  color:var(--dsw-alias-label-primary); font:var(--dsw-font-s-14); }
-.dsh-my-memory-add-input:focus { outline:none; border-color:var(--dsw-alias-accent); }
+/* 新增/编辑输入由官方 Input 提供视觉（issue #143 试点）；仅保留撑满布局。 */
+.dsh-my-memory-add-input { flex:1; min-width:0; }
 .dsh-my-memory-btn-save { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 12px; border-radius:6px; cursor:pointer;
   border:1px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, transparent);
   background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
@@ -822,16 +808,18 @@ exports.DEFAULT_ENTRY_LIMIT = DEFAULT_ENTRY_LIMIT
     // ── view-rows: row/entry widgets for the Memory tab ─────────────────────
 // 拆分自 view.part.js（issue #110 视觉重设计）：条目卡片、空状态、排序开关、
 // 新增栏与确认面板。纯渲染组件，共用 view 工厂作用域内的 strings/icon/utils。
-/** 排序开关：按更新时间切换最新/最旧优先（每分区独立）。 */
+/** 排序开关：按更新时间切换最新/最旧优先（每分区独立）。官方 Pill 承载
+ *  （issue #143 试点）：active 表示当前排序方向，点击切换。 */
 function SortToggle({ scope, order, onSort }) {
   return createElement(
-    'button',
+    ui.Pill,
     {
       className: 'dsh-my-memory-sort',
+      active: order === 'desc',
       'aria-label': `${strings.sortLabel()} ${scope}`,
       onClick: () => onSort(scope),
     },
-    icon.clock(12),
+    createElement(ui.IconClockOutline16),
     order === 'desc' ? strings.sortNewest() : strings.sortOldest(),
   )
 }
@@ -851,7 +839,8 @@ function EmptyState({ hint }) {
   )
 }
 
-/** 新增条目的输入 + 保存按钮；超长时给出精简提示（issue #105）。 */
+/** 新增条目的输入 + 保存按钮；超长时给出精简提示（issue #105）。
+ *  输入用官方 Input（issue #143 试点）；保存按钮保留自研（语义绿）。 */
 function AddBar({ scope, value, onChange, onAdd, entryLimit }) {
   return createElement(
     'div',
@@ -859,7 +848,7 @@ function AddBar({ scope, value, onChange, onAdd, entryLimit }) {
     createElement(
       'div',
       { className: 'dsh-my-memory-addbar' },
-      createElement('input', {
+      createElement(ui.Input, {
         className: 'dsh-my-memory-add-input',
         placeholder: strings.addPlaceholder(),
         'aria-label': strings.addInputAria(scope),
@@ -911,12 +900,13 @@ function IconButton({ className, label, onClick, children }) {
   return createElement('button', { className, 'aria-label': label, onClick }, children)
 }
 
-/** 编辑态：输入 + 保存/取消，保留卡片底与操作/内容分离。 */
+/** 编辑态：输入 + 保存/取消，保留卡片底与操作/内容分离。输入用官方
+ *  Input、取消用官方 Button（issue #143 试点）；保存保留自研（语义绿）。 */
 function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit }) {
   return createElement(
     'div',
     { className: 'dsh-my-memory-row dsh-my-memory-row-editing' },
-    createElement('input', {
+    createElement(ui.Input, {
       className: 'dsh-my-memory-add-input',
       value: editingDesc,
       onChange: (event) => onEditDesc(event.target.value),
@@ -931,9 +921,13 @@ function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit }) {
         strings.save(),
       ),
       createElement(
-        'button',
-        { className: 'dsh-my-memory-btn', onClick: onCancelEdit },
-        icon.close(14),
+        ui.Button,
+        {
+          variant: 'ghost',
+          size: 'sm',
+          onClick: onCancelEdit,
+          icon: createElement(ui.IconCloseOutline16),
+        },
         strings.cancel(),
       ),
     ),
@@ -1060,7 +1054,8 @@ const CONFIRM_TEXTS = {
   delete: () => strings.confirmDelete(),
 }
 
-/** Path input + load/refresh buttons + consent note. */
+/** Path input + load/refresh buttons + consent note. 路径输入用官方 Input、
+ *  加载/刷新用官方 Button（size sm，issue #143 试点）。 */
 function Toolbar({ pathInput, onInput, onLoad, onRefresh }) {
   return createElement(
     'div',
@@ -1068,8 +1063,9 @@ function Toolbar({ pathInput, onInput, onLoad, onRefresh }) {
     createElement(
       'div',
       { className: 'dsh-my-memory-pathbar' },
-      createElement('input', {
+      createElement(ui.Input, {
         className: 'dsh-my-memory-path-input',
+        icon: createElement(ui.IconFolderOpenOutline16),
         placeholder: strings.projectHint(),
         'aria-label': strings.pathInputAria(),
         title: strings.pathInputAria(),
@@ -1080,15 +1076,25 @@ function Toolbar({ pathInput, onInput, onLoad, onRefresh }) {
         },
       }),
       createElement(
-        'button',
-        { className: 'dsh-my-memory-btn', 'aria-label': strings.loadProject(), onClick: () => onLoad(pathInput) },
-        icon.folder(14),
+        ui.Button,
+        {
+          variant: 'outline',
+          size: 'sm',
+          'aria-label': strings.loadProject(),
+          onClick: () => onLoad(pathInput),
+          icon: createElement(ui.IconFolderOpenOutline16),
+        },
         strings.loadProject(),
       ),
       createElement(
-        'button',
-        { className: 'dsh-my-memory-btn', 'aria-label': strings.refresh(), onClick: () => onRefresh(pathInput) },
-        icon.refresh(14),
+        ui.Button,
+        {
+          variant: 'outline',
+          size: 'sm',
+          'aria-label': strings.refresh(),
+          onClick: () => onRefresh(pathInput),
+          icon: createElement(ui.IconRefreshOutline14),
+        },
         strings.refresh(),
       ),
     ),
@@ -1212,7 +1218,7 @@ function CandidatesBlock({ candidates, busy, onConfirmCandidate, onDismissCandid
       { className: 'dsh-my-memory-section-head' },
       createElement('span', { className: 'dsh-my-memory-section-title' }, strings.candidatesSection()),
       createElement(
-        'span',
+        ui.Pill,
         { className: 'dsh-my-memory-badge' },
         strings.countBadge(strings.candidatesSection(), list.length),
       ),
@@ -1454,7 +1460,8 @@ function renderRoot({
   )
 }
 
-/** Load-failure banner with a retry entry; write-failure banner without. */
+/** Load-failure banner with a retry entry; write-failure banner without.
+ *  重试按钮用官方 Button（size sm，issue #143 试点）。 */
 function ErrorBanner({ kind, onRetry }) {
   if (kind === 'load') {
     return createElement(
@@ -1462,9 +1469,14 @@ function ErrorBanner({ kind, onRetry }) {
       { className: 'dsh-my-memory-error' },
       strings.loadError(),
       createElement(
-        'button',
-        { className: 'dsh-my-memory-btn dsh-my-memory-btn-retry', onClick: onRetry },
-        icon.refresh(14),
+        ui.Button,
+        {
+          variant: 'outline',
+          size: 'sm',
+          className: 'dsh-my-memory-btn-retry',
+          onClick: onRetry,
+          icon: createElement(ui.IconRefreshOutline14),
+        },
         strings.retry(),
       ),
     )
@@ -1590,7 +1602,7 @@ function SectionBlock({
 }) {
   const isProject = scope === 'project'
   // 徽标：数量（标题本身已含"全局记忆/项目记忆"，徽标不再重复 scope 标签；
-  // 项目加载后附带项目根路径信息）。
+  // 项目加载后附带项目根路径信息）。官方 Pill 承载（issue #143 试点）。
   const badge =
     scope === 'global'
       ? strings.countOnly(data.items.length)
@@ -1609,7 +1621,7 @@ function SectionBlock({
       'div',
       { className: 'dsh-my-memory-section-head' },
       createElement('span', { className: 'dsh-my-memory-section-title' }, title),
-      createElement('span', { className: 'dsh-my-memory-badge' }, badge),
+      createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, badge),
       createElement(SortToggle, { scope, order, onSort }),
     ),
     createElement('div', { className: 'dsh-my-memory-note' }, note),

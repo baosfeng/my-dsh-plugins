@@ -120,8 +120,8 @@ export function bootPlugin(config, opts = {}) {
     listeners,
     api,
     home,
-    disposeAll() {
-      for (const dispose of disposers.splice(0)) dispose()
+    async disposeAll() {
+      for (const dispose of disposers.splice(0)) await dispose()
       if (oldHome !== undefined) process.env.DSH_HOME = oldHome
       else delete process.env.DSH_HOME
       if (ownsHome) cleanupHome(home)

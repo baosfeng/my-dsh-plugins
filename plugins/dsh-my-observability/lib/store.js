@@ -281,7 +281,9 @@ function compactNow(handle) {
     })
 }
 
-/** 卸载冲刷：清定时器 + 回放未就绪缓冲 + 立即落盘（迁移兜底）。 */
+/** 卸载冲刷：清定时器 + 回放未就绪缓冲 + 立即落盘（迁移兜底）。
+ *  返回落盘链 promise：调用方 await 可保证冲刷完成（卸载/退出时事件
+ *  不丢）；fire-and-forget 调用亦兼容（触发后异步落盘）。 */
 function dispose(handle) {
   if (handle.flushTimer !== null) {
     clearTimeout(handle.flushTimer)
@@ -297,5 +299,5 @@ function dispose(handle) {
   }
   flushNow(handle)
   if (handle.migrated || handle.queuedLines >= COMPACT_LINES) compactNow(handle)
-  void handle.dirtyChain
+  return handle.dirtyChain
 }

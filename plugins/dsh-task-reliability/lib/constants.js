@@ -22,6 +22,37 @@ export const REPEAT_BUFFER = 6
 export const TOOL_LOOP_BUFFER = 20
 export const TOOL_LOOP_CONSECUTIVE = 3
 export const TOOL_LOOP_WINDOW = 4
+/**
+ * 只读工具集合（issue #153）：无副作用的查询/读取类工具，连续调用（轮询）
+ * 不纳入工具序列循环检测——轮询页面状态/读取文件是「有进展的重复读取」，
+ * 与「无进展的死循环」不同。写操作类工具保持现有检测。
+ */
+export const TOOL_LOOP_READONLY_TOOLS = [
+  'browser_snapshot',
+  'browser_eval',
+  'browser_tabs',
+  'read',
+  'glob',
+  'grep',
+  'memory_query',
+  'web_search',
+  'job_output',
+  'job_list',
+  'list_agents',
+  'get_goal',
+  'read_image',
+  'skill',
+  'vision_glance',
+  'vision_ground',
+  'vision_detect',
+  'vision_trace',
+  'vision_crop',
+  'vision_pixel_diff',
+  'vision_long_screenshot_ocr',
+  'vision_extract_foreground',
+  'vision_dominant_colors',
+  'vision_html_screenshot',
+]
 export const NO_PROGRESS_ROUNDS = 3
 export const VERIFY_TIMEOUT_MS = 60000
 export const RESUME_GRACE_MS = 2000

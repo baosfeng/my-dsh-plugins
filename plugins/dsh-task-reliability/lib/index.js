@@ -76,6 +76,7 @@ import {
   TOOL_LOOP_BUFFER,
   TOOL_LOOP_CONSECUTIVE,
   TOOL_LOOP_WINDOW,
+  TOOL_LOOP_READONLY_TOOLS,
   NO_PROGRESS_ROUNDS,
   RESCUE_MAX_PER_SESSION,
   RESCUE_COOLDOWN_MS,
@@ -128,6 +129,13 @@ function codeSet(value) {
   return Array.isArray(value) && value.length > 0 ? new Set(value) : RETRYABLE_CODES
 }
 
+/** 只读工具集合：默认集合 ∪ 用户追加（issue #153，轮询读取不判循环）。 */
+function readonlyToolSet(value) {
+  const set = new Set(TOOL_LOOP_READONLY_TOOLS)
+  if (Array.isArray(value)) for (const name of value) if (typeof name === 'string' && name !== '') set.add(name)
+  return set
+}
+
 function buildOptions(config) {
   return buildOptionsFrom(config ?? {})
 }
@@ -156,6 +164,7 @@ function buildOptionsFrom(c) {
     toolLoopConsecutive: positiveInt(c.toolLoopConsecutive, TOOL_LOOP_CONSECUTIVE),
     toolLoopWindow: positiveInt(c.toolLoopWindow, TOOL_LOOP_WINDOW),
     toolLoopBuffer: positiveInt(c.toolLoopBuffer, TOOL_LOOP_BUFFER),
+    toolLoopReadonlyTools: readonlyToolSet(c.toolLoopReadonlyTools),
     noProgressRounds: nonNegInt(c.noProgressRounds, NO_PROGRESS_ROUNDS),
     notifyOnLoop: c.notifyOnLoop === true,
     notifyUrl: strOption(c.notifyUrl, ''),

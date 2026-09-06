@@ -22,6 +22,9 @@ export function repeatStateOf(sessionId, shared) {
       notified: false,
       lastKind: null,
       pendingBreak: null,
+      // issue #153：pendingBreak 绑定命中回合（turnSeq），跨回合自动失效。
+      pendingBreakTurn: null,
+      turnSeq: 0,
       toolCalls: [],
       progress: { seenOutput: false, productCount: 0, lastProduct: null, stallCount: 0 },
     }
@@ -65,6 +68,9 @@ function argSummaryOf(exec) {
  * 记录一次工具调用并检测循环。每次工具请求都作为「有效产出」推进 progress，
  * 因此工具循环由工具序列检测负责、无进展检测只针对「既无结论也无工具」的
  * 空转。命中循环时更新计数/打断标记并返回 true（调用方决定如何中断）。
+ *
+ * issue #153：只读工具（轮询类重复读取）不纳入序列检测；pendingBreak 绑定
+ * 命中回合（pendingBreakTurn），跨回合由 events.js 消费时校验失效。
  */
 export function recordToolLoop(sessionId, exec, shared) {
   const repeat = repeatStateOf(sessionId, shared)
@@ -73,6 +79,9 @@ export function recordToolLoop(sessionId, exec, shared) {
   // 交互式询问（ask_user_question）不是「死循环」式的工作执行，且重复询问由
   // ask 超时自动决策 + 待确认去重机制处理，不纳入工具序列循环检测。
   if (exec.name === 'ask_user_question') return false
+  // 只读工具（snapshot/eval/read 等无副作用工具）的连续调用是「有进展的重复
+  // 读取」（轮询等待变化），不纳入「连续同工具同参」检测，避免误判死循环。
+  if (shared.options.toolLoopReadonlyTools.has(exec.name)) return false
   repeat.toolCalls.push({ name: exec.name, arg: argSummaryOf(exec) })
   if (repeat.toolCalls.length > TOOL_LOOP_BUFFER) repeat.toolCalls.shift()
   if (repeat.gaveUp) return false
@@ -85,6 +94,7 @@ export function recordToolLoop(sessionId, exec, shared) {
   }
   repeat.lastKind = 'tool'
   repeat.pendingBreak = 'tool'
+  repeat.pendingBreakTurn = repeat.turnSeq
   return true
 }
 

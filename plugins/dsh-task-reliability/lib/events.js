@@ -120,13 +120,23 @@ function shouldSteer(task, repeat) {
  * 循环打断（reason/tool/progress）优先于任务继续（避免指令混杂）。
  * 采用一次性消费：只在「刚检测到循环」（pendingBreak 非空）时注入打断指令，
  * 避免在后续回合反复注入同一打断。命中返回 true（占用本次 turn-stopping）。
+ *
+ * issue #153：pendingBreak 绑定命中回合（pendingBreakTurn，turn-stopping 开头
+ * 已推进 turnSeq，命中回合 = turnSeq - 1）；跨回合残留自动失效清理，不注入——
+ * 解决「回合 A 命中循环 → 回合 B 无工具调用也注入提示」的误报。
  */
 function repeatBreak(repeat, agent, shared) {
   if (repeat === undefined || repeat.count === 0 || repeat.gaveUp) return false
   if (repeat.pendingBreak === null) return false
+  if (repeat.pendingBreakTurn !== repeat.turnSeq - 1) {
+    repeat.pendingBreak = null
+    repeat.pendingBreakTurn = null
+    return false
+  }
   agent.steer(userMessage(REPEAT_BREAK_TEXT(repeat.count, repeat.pendingBreak)))
   void loopNotify(shared, repeat.pendingBreak, agent.id)
   repeat.pendingBreak = null
+  repeat.pendingBreakTurn = null
   return true
 }
 
@@ -177,9 +187,12 @@ function continueTask(task, agent, shared) {
 
 async function handleTurnStopping(agent, signal, shared) {
   if (!isTopLevelAgent(agent)) return
+  const repeat = shared.repeatStates.get(agent.id)
+  // issue #153：回合边界推进——turn-stopping 是回合结束事件，递增回合序号，
+  // 使上一回合产生的 pendingBreak 在后续回合消费时校验失效（跨回合不注入）。
+  if (repeat !== undefined) repeat.turnSeq += 1
   if (signalAborted(signal)) return
   const task = activeTaskOf(shared.store, agent.id)
-  const repeat = shared.repeatStates.get(agent.id)
   if (!shouldSteer(task, repeat)) {
     // 无任务无循环：普通对话截断救场（issue #147，受开关/上限/冷却约束）。
     rescueTurn(agent, shared)

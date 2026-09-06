@@ -57,7 +57,7 @@ const uiPrimitives = require('@deepseek-ai/dsh-client-ui-primitives')
 ```
 
 - **不需要** `dsh.client.inject` 声明（staticModules 全局提供；`inject` 仍是 跨插件 bundle（如 `require('dsh-md-render')` 走 `dsh.client.external`）的机制）。
-- 样式跟随 DSH 主题 token（`--dsw-alias-*`），深浅主题自适应；需覆写时用我们既有的 `<插件>-*` 前缀类名 + DSH token（见 [UI规范.md](UI规范.md)）。
+- 样式跟随 DSH 主题 token（`--dsw-alias-*`），深浅主题自适应；需覆写时用我们既有的 `<插件>-*` 前缀类名 + DSH token（见 [UI规范.md](../UI规范.md)）。
 
 ## 与其他方案的对比
 

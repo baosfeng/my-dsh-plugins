@@ -144,3 +144,14 @@ export function answerQuestion(store, id, answer) {
   question.answeredAt = Date.now()
   return { ok: true, question }
 }
+
+/** 按会话 + 问题摘要记录迟到回答（issue #145：超时后 GUI 回答不静默丢弃）。 */
+export function answerQuestionByNote(store, sessionId, note, answer) {
+  const question = store.questions.find(
+    (q) => q.sessionId === sessionId && q.question === note && q.answer === undefined,
+  )
+  if (question === undefined) return { ok: false, error: 'question not found' }
+  question.answer = typeof answer === 'string' ? answer.slice(0, 1000) : ''
+  question.answeredAt = Date.now()
+  return { ok: true, question }
+}

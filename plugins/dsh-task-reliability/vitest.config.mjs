@@ -23,6 +23,7 @@ export default defineConfig({
         'lib/verify.js',
         'lib/events.js',
         'lib/api.js',
+        'lib/ask.js',
 
         'lib/command.js',
       ],

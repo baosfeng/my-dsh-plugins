@@ -959,6 +959,156 @@ test('ask 超时后无推荐选项时返回空回答由模型自行决策', asyn
   assert.equal(env.mainAgent.followed.length, 1)
 })
 
+// ── issue #145：竞速边界 + 超时后迟到回答不静默丢弃 ─────────────────────
+test('缓冲超时后迟到回答不被静默丢弃：记录到待确认列表（issue #145）', async () => {
+  const env = boot({ autopilot: true, autopilotGraceMs: 20 })
+  let resolveNext
+  const next = () =>
+    new Promise((resolve) => {
+      resolveNext = resolve
+    })
+  // 缓冲超时先触发（用户未在缓冲期内回答），自动决策返回
+  await dispatchOne(
+    env.listeners,
+    'tools/execute',
+    {
+      name: 'ask_user_question',
+      agent: env.mainAgent,
+      arguments: { questions: [{ id: 'q1', question: 'A 还是 B？' }] },
+    },
+    next,
+  )
+  // 用户在超时后提交回答（迟到回答，模拟 GUI ask 卡片/待确认列表提交）
+  resolveNext({ value: { answers: [{ id: 'q1', selected: ['B'] }] } })
+  await tick(10)
+  const { body } = await callApi(env.api, mockRequest({ url: '/task-reliability/api/questions', method: 'GET' }))
+  assert.equal(body.value.length, 1, '超时已记录问题到待确认列表')
+  assert.equal(body.value[0].answer, 'B', '迟到回答被记录，不静默丢弃')
+  assert.ok(body.value[0].answeredAt !== undefined, '回答时间已记录')
+})
+
+test('竞速边界：缓冲期边界提交回答 → 回答优先不被超时覆盖（issue #145）', async () => {
+  const env = boot({ autopilot: true, autopilotGraceMs: 30 })
+  let resolveNext
+  const next = () =>
+    new Promise((resolve) => {
+      resolveNext = resolve
+    })
+  const pending = dispatchOne(
+    env.listeners,
+    'tools/execute',
+    {
+      name: 'ask_user_question',
+      agent: env.mainAgent,
+      arguments: { questions: [{ id: 'q1', question: 'A 还是 B？' }] },
+    },
+    next,
+  )
+  // 恰在超时边界前提交回答（20ms < 30ms 缓冲）
+  await tick(20)
+  resolveNext({ value: { answers: [{ id: 'q1', selected: ['B'] }] } })
+  const result = await pending
+  assert.deepEqual(result.value.answers[0].selected, ['B'], '回答优先透传，不被超时覆盖')
+  assert.equal(env.mainAgent.followed.length, 0, '回答优先时不注入「不在线」指令')
+  const { body } = await callApi(env.api, mockRequest({ url: '/task-reliability/api/questions', method: 'GET' }))
+  assert.equal(body.value.length, 0, '回答优先不记录问题')
+})
+
+test('迟到回答注入「用户已回答」提示，文案区分状态（issue #145）', async () => {
+  const env = boot({ autopilot: true, autopilotGraceMs: 20 })
+  let resolveNext
+  const next = () =>
+    new Promise((resolve) => {
+      resolveNext = resolve
+    })
+  await dispatchOne(
+    env.listeners,
+    'tools/execute',
+    {
+      name: 'ask_user_question',
+      agent: env.mainAgent,
+      arguments: { questions: [{ id: 'q1', question: 'A 还是 B？' }] },
+    },
+    next,
+  )
+  assert.equal(env.mainAgent.followed.length, 1, '超时注入自动决策指令')
+  resolveNext({ value: { answers: [{ id: 'q1', selected: ['B'] }] } })
+  await tick(10)
+  assert.equal(env.mainAgent.followed.length, 2, '迟到回答追加「用户已回答」提示')
+  const late = env.mainAgent.followed[1].content[0].text
+  assert.ok(late.includes('用户已回答'), '文案区分「已回答」而非默认「不在线」')
+  assert.ok(late.includes('B'), '提示包含回答内容')
+  assert.ok(late.includes('已记录'), '提示明确回答已记录，不静默丢弃')
+})
+
+test('迟到回答无有效答案/无对应记录时不误记录（issue #145 防御）', async () => {
+  const env = boot({ autopilot: true, autopilotGraceMs: 20 })
+  let resolveNext
+  const next = () =>
+    new Promise((resolve) => {
+      resolveNext = resolve
+    })
+  await dispatchOne(
+    env.listeners,
+    'tools/execute',
+    {
+      name: 'ask_user_question',
+      agent: env.mainAgent,
+      arguments: { questions: [{ id: 'q1', question: 'A 还是 B？' }] },
+    },
+    next,
+  )
+  resolveNext({ value: { answers: [{ id: 'q1', selected: [] }] } }) // 空选择/取消
+  await tick(10)
+  const { body } = await callApi(env.api, mockRequest({ url: '/task-reliability/api/questions', method: 'GET' }))
+  assert.equal(body.value[0].answer, undefined, '空回答不写入')
+  // 场景 2：问题无有效参数（超时未记录待确认），迟到回答不崩溃也不新增
+  const env2 = boot({ autopilot: true, autopilotGraceMs: 20 })
+  let resolveNext2
+  const next2 = () =>
+    new Promise((resolve) => {
+      resolveNext2 = resolve
+    })
+  await dispatchOne(
+    env2.listeners,
+    'tools/execute',
+    {
+      name: 'ask_user_question',
+      agent: env2.mainAgent,
+      arguments: { questions: [] },
+    },
+    next2,
+  )
+  resolveNext2({ value: { answers: [{ id: 'q9', selected: ['X'] }] } })
+  await tick(10)
+  const after = await callApi(env2.api, mockRequest({ url: '/task-reliability/api/questions', method: 'GET' }))
+  assert.equal(after.body.value.length, 0, '无对应记录时迟到回答不新增、不崩溃')
+})
+
+test('ask 超时后的迟到回答同样记录（issue #145 覆盖 askTimeout 路径）', async () => {
+  const env = boot({ askTimeoutMs: 20 })
+  let resolveNext
+  const next = () =>
+    new Promise((resolve) => {
+      resolveNext = resolve
+    })
+  const result = await dispatchOne(
+    env.listeners,
+    'tools/execute',
+    {
+      name: 'ask_user_question',
+      agent: env.mainAgent,
+      arguments: { questions: [{ id: 'q1', question: 'A 还是 B？', options: [{ label: '甲' }, { label: '乙' }] }] },
+    },
+    next,
+  )
+  assert.ok(result.value.answers.length === 1 && result.value.answers[0].selected[0] === '甲', 'ask 超时返回模拟回答')
+  resolveNext({ value: { answers: [{ id: 'q1', selected: ['乙'] }] } })
+  await tick(10)
+  const { body } = await callApi(env.api, mockRequest({ url: '/task-reliability/api/questions', method: 'GET' }))
+  assert.equal(body.value[0].answer, '乙', 'ask 超时后的迟到回答也记录')
+})
+
 test('ask 用户回答后返回真实结果不超时', async () => {
   const env = boot({ askTimeoutMs: 60000 })
   const result = await dispatchOne(

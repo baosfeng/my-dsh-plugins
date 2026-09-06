@@ -2,6 +2,14 @@
 
 本文件记录 dsh-my-observability 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.7] - 2026-09-06
+
+### 变更
+
+- fix(task-reliability,observability): #165 Session.events 迁移——snapshotEvents 优先 + 旧 API 兜底 (#166)
+- feat(observability,task-reliability): #154 插件关键行为纳入事件审计（干预/ask 决策/救场/verify/恢复）+ 文件体积控制 (#158)
+- fix(observability): #142 dispose 落盘链可等待，修复 release 门禁 flaky 测试 (#148)
+
 ## [0.1.6] - 2026-09-04
 
 ### 变更

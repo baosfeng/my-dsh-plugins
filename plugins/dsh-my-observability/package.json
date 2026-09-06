@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-observability",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "DSH 可观测性 + Git 工程工具插件：会话轨迹回放（时间轴）、事件审计（agent 行为记录）、结构化 Git 提交（Conventional Commits）、增量 diff 审查（提交前审查）。DSH web plugin: trajectory replay timeline, event audit log, structured git commits, pre-commit incremental diff review.",
   "type": "module",
   "main": "lib/index.js",

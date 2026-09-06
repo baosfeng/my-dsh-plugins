@@ -9,6 +9,7 @@
 import { withTimeout, userMessage } from './util.js'
 import { lastAssistantText, summarizeSession } from './text.js'
 import { DIRECT_CONTINUE_TEXT, RESUME_CONTINUE_TEXT, VERIFY_TIMEOUT_MS, WAKE_CONTINUE_TEXT } from './constants.js'
+import { PLUGIN_EVENTS } from './emit.js'
 
 function verifyPrompt(task, summary) {
   return `你是一个任务完成度校验员。请阅读以下任务与当前会话进展，判断任务是否已经真正完成。
@@ -29,7 +30,7 @@ function verifyServiceReady(agents) {
 }
 
 /** 校验失败/不可用时的降级路径：直接以继续文本唤醒主 agent。 */
-function continueDirect(ctx, task, agent, save) {
+function continueDirect(ctx, task, agent, save, emit) {
   task.status = 'active'
   agent.followup(userMessage(DIRECT_CONTINUE_TEXT(task.description)))
   task.loopCount += 1
@@ -38,6 +39,12 @@ function continueDirect(ctx, task, agent, save) {
   ctx.logger?.warn(
     `[dsh-task-reliability] 完成度校验降级为直接继续（taskId=${task.id}，sessionId=${agent.id}，原因=校验服务不可用或校验失败）`,
   )
+  emit?.(PLUGIN_EVENTS.VERIFY, {
+    sessionId: task.sessionId,
+    action: 'verify-degrade',
+    reason: 'verifier-unavailable',
+    taskId: task.id,
+  })
 }
 
 async function sessionSummary(ctx, agent, task) {
@@ -86,7 +93,7 @@ async function disposeHandle(handle) {
 }
 
 /** 校验未完成：携带结论（若有）唤醒主 agent 继续。 */
-function continueWithConclusion(task, agent, save, conclusion) {
+function continueWithConclusion(task, agent, save, conclusion, emit) {
   task.status = 'active'
   const reason = conclusion?.reason !== undefined && conclusion.reason !== '' ? conclusion.reason : ''
   agent.followup(
@@ -98,31 +105,61 @@ function continueWithConclusion(task, agent, save, conclusion) {
   )
   task.loopCount += 1
   save()
+  emit?.(PLUGIN_EVENTS.VERIFY, {
+    sessionId: task.sessionId,
+    action: 'verify-continue',
+    reason: reason !== '' ? reason : 'not-done',
+    taskId: task.id,
+    verifyCount: task.verifyCount,
+  })
+}
+
+/** 校验通过结案：标记 done + 日志 + 事件（issue #155/#154）。 */
+function concludeDone(ctx, task, agent, save, emit, conclusion) {
+  task.status = 'done'
+  save()
+  ctx.logger?.info(
+    `[dsh-task-reliability] 完成度校验通过，任务结案（taskId=${task.id}，sessionId=${agent.id}，原因=${conclusion.reason || '无'}）`,
+  )
+  emit?.(PLUGIN_EVENTS.VERIFY, {
+    sessionId: task.sessionId,
+    action: 'verify-done',
+    reason: conclusion.reason !== '' ? conclusion.reason : 'done',
+    taskId: task.id,
+    verifyCount: task.verifyCount,
+  })
+}
+
+/** 校验未完成日志（issue #155）。 */
+function logVerifyContinue(ctx, task, agent, conclusion) {
+  ctx.logger?.info(
+    `[dsh-task-reliability] 完成度校验未完成，唤醒继续（taskId=${task.id}，sessionId=${agent.id}，原因=${conclusion?.reason || '无结论'}）`,
+  )
 }
 
 /** 完整校验流程：创建校验 agent → 收集结论 → done 结案或唤醒继续。 */
-export async function runVerification(ctx, store, task, agent, save) {
+export async function runVerification(ctx, store, task, agent, save, emit) {
   const agents = ctx.get('agents')
-  if (!verifyServiceReady(agents)) return continueDirect(ctx, task, agent, save)
+  if (!verifyServiceReady(agents)) return continueDirect(ctx, task, agent, save, emit)
   const summary = await sessionSummary(ctx, agent, task)
   const handle = await spawnVerifier(agents, task, agent)
-  if (handle === undefined) return continueDirect(ctx, task, agent, save)
+  if (handle === undefined) return continueDirect(ctx, task, agent, save, emit)
+  emit?.(PLUGIN_EVENTS.VERIFY, {
+    sessionId: task.sessionId,
+    action: 'verify-start',
+    reason: 'session-idle',
+    taskId: task.id,
+  })
   const conclusion = await collectConclusion(handle, task, summary)
   await disposeHandle(handle)
   task.verifyCount += 1
   task.updatedAt = Date.now()
   if (conclusion?.done === true) {
-    task.status = 'done'
-    save()
-    ctx.logger?.info(
-      `[dsh-task-reliability] 完成度校验通过，任务结案（taskId=${task.id}，sessionId=${agent.id}，原因=${conclusion.reason || '无'}）`,
-    )
+    concludeDone(ctx, task, agent, save, emit, conclusion)
     return
   }
-  ctx.logger?.info(
-    `[dsh-task-reliability] 完成度校验未完成，唤醒继续（taskId=${task.id}，sessionId=${agent.id}，原因=${conclusion?.reason || '无结论'}）`,
-  )
-  continueWithConclusion(task, agent, save, conclusion)
+  logVerifyContinue(ctx, task, agent, conclusion)
+  continueWithConclusion(task, agent, save, conclusion, emit)
 }
 
 function parseConclusion(text) {
@@ -176,7 +213,7 @@ function wakeAgent(task, agent) {
 }
 
 /** 扫描活动任务并恢复（resumeAt 幂等，已恢复过的任务跳过）。 */
-export async function resumeActiveTasks(ctx, store, save) {
+export async function resumeActiveTasks(ctx, store, save, emit) {
   const agents = ctx.get('agents')
   if (!resumeServiceReady(agents)) return
   for (const task of store.tasks) {
@@ -188,6 +225,12 @@ export async function resumeActiveTasks(ctx, store, save) {
     ctx.logger?.info(
       `[dsh-task-reliability] 重启恢复任务（taskId=${task.id}，sessionId=${task.sessionId}，注入继续指令）`,
     )
+    emit?.(PLUGIN_EVENTS.RESUME, {
+      sessionId: task.sessionId,
+      action: 'resume-task',
+      reason: 'restart',
+      taskId: task.id,
+    })
   }
   save()
 }
@@ -199,7 +242,7 @@ export async function resumeActiveTasks(ctx, store, save) {
  * 刷新活动时间。与重启恢复不同，唤醒失败不标记 failed（网络/会话暂时不可用
  * 时留给下一次看门狗轮询重试）。返回是否成功唤醒（/task continue 复用）。
  */
-export async function wakeStalledTask(ctx, task, save) {
+export async function wakeStalledTask(ctx, task, save, emit) {
   const agents = ctx.get('agents')
   if (!resumeServiceReady(agents)) return false
   let agent
@@ -229,14 +272,25 @@ export async function wakeStalledTask(ctx, task, save) {
   ctx.logger?.info(
     `[dsh-task-reliability] 看门狗唤醒停滞任务（taskId=${task.id}，sessionId=${task.sessionId}，注入继续指令）`,
   )
+  emit?.(PLUGIN_EVENTS.RESCUE, {
+    sessionId: task.sessionId,
+    action: 'wake-stalled',
+    reason: 'stall-timeout',
+    taskId: task.id,
+  })
   return true
 }
 
-/** 扫描停滞的活动任务（最后活动时间超过阈值）并逐个唤醒。 */
-export async function runWatchdog(ctx, store, save, options, now = Date.now()) {
+/**
+ * 扫描停滞的活动任务（最后活动时间超过阈值）并逐个唤醒。
+ * 第 5 参数兼容两种调用：函数 = emit（index.js 传入），数字 = now（测试直调）。
+ */
+export async function runWatchdog(ctx, store, save, options, emitOrNow, now) {
+  const emit = typeof emitOrNow === 'function' ? emitOrNow : undefined
+  const at = typeof emitOrNow === 'number' ? emitOrNow : (now ?? Date.now())
   for (const task of store.tasks) {
     if (task.status !== 'active') continue
-    if (now - task.updatedAt < options.stallTimeoutMs) continue
-    await wakeStalledTask(ctx, task, save)
+    if (at - task.updatedAt < options.stallTimeoutMs) continue
+    await wakeStalledTask(ctx, task, save, emit)
   }
 }

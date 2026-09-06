@@ -85,6 +85,66 @@ test('applyAuditFilter: 类型过滤（含 tool 合并 tc+tr）', () => {
   assert.equal(applyAuditFilter(EVENTS, { type: '' }).length, 7, 'empty type = all')
 })
 
+test('applyAuditFilter: 插件事件过滤（issue #154）', () => {
+  const pluginEvents = [
+    {
+      id: 8,
+      time: 8000,
+      sessionId: 's1',
+      type: 'plugin_event',
+      data: {
+        plugin: 'dsh-task-reliability',
+        event: 'intervention',
+        action: 'repeat-break',
+        reason: 'reason',
+        params: { count: 1 },
+      },
+    },
+    {
+      id: 9,
+      time: 9000,
+      sessionId: 's1',
+      type: 'plugin_event',
+      data: {
+        plugin: 'dsh-task-reliability',
+        event: 'ask-decision',
+        action: 'ask-timeout',
+        reason: 'ask-timeout',
+        params: { question: 'A 还是 B？' },
+      },
+    },
+  ]
+  const all = [...EVENTS, ...pluginEvents]
+  assert.equal(applyAuditFilter(all, { type: 'plugin' }).length, 2, 'plugin filter keeps plugin_event only')
+  assert.equal(applyAuditFilter(all, { type: 'plugin' })[0].type, 'plugin_event')
+  assert.equal(applyAuditFilter(all, { type: 'tool' }).length, 4, 'tool filter unaffected by plugin events')
+  assert.equal(applyAuditFilter(all, { type: '' }).length, 9, 'empty type includes plugin events')
+})
+
+test('searchableText: 插件事件纳入搜索（插件名/事件名/动作/原因/参数）', () => {
+  const plugin = {
+    id: 8,
+    time: 8000,
+    sessionId: 's1',
+    type: 'plugin_event',
+    data: {
+      plugin: 'dsh-task-reliability',
+      event: 'intervention',
+      action: 'repeat-break',
+      reason: 'reason',
+      params: { count: 1, question: '选哪个方案' },
+    },
+  }
+  const text = searchableText(plugin)
+  assert.equal(text.includes('dsh-task-reliability'), true, 'plugin name searchable')
+  assert.equal(text.includes('intervention'), true, 'event name searchable')
+  assert.equal(text.includes('repeat-break'), true, 'action searchable')
+  assert.equal(text.includes('reason'), true, 'reason searchable')
+  assert.equal(text.includes('选哪个方案'), true, 'param value searchable')
+  assert.equal(matchesKeyword(plugin, 'repeat-break'), true, 'keyword hits action')
+  assert.equal(matchesKeyword(plugin, '选哪个方案'), true, 'keyword hits param value')
+})
+
 test('applyAuditFilter: 时间范围闭区间', () => {
   const ranged = applyAuditFilter(EVENTS, { timeStart: 2000, timeEnd: 5000 })
   assert.deepEqual(

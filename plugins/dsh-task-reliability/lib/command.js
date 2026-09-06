@@ -106,7 +106,7 @@ async function runContinue(invocation, shared) {
       text: '当前会话没有活动任务。使用 /task register <描述> 注册任务，或 /task 查看状态。',
     }
   }
-  const ok = await wakeStalledTask(shared.ctx, task, shared.save)
+  const ok = await wakeStalledTask(shared.ctx, task, shared.save, shared.emit)
   return ok
     ? { kind: 'success', text: `已唤醒任务继续执行：${task.description}` }
     : { kind: 'error', text: '唤醒任务失败（agent 服务不可用或会话无法恢复），请稍后重试。' }

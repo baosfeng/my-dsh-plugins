@@ -48,7 +48,7 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
-import { loadStore, saveStore } from './store.js'
+import { loadStore, saveStore, pruneQuestions } from './store.js'
 import { isTrustedApiRequest } from 'dsh-shared'
 import { resumeActiveTasks, runWatchdog } from './verify.js'
 import { registerListeners } from './events.js'
@@ -56,6 +56,7 @@ import { createApi } from './api.js'
 import { registerTaskCommand } from './command.js'
 import { currentProfile, patchFileOf, writePatchConfig } from 'dsh-shared'
 import { configToPlain } from './util.js'
+import { emitPluginEvent } from './emit.js'
 import {
   RETRYABLE_CODES,
   RETRY_MAX,
@@ -215,6 +216,8 @@ function createShared(ctx, options) {
       ? webRuntime.trustedHosts
       : []
   const saver = createSaver(dir, store, options, ctx.logger)
+  // 加载时清理待确认问题（已答/过期），有清理则防抖落盘（文件体积有界）。
+  if (pruneQuestions(store) > 0) saver.save()
   return {
     ctx,
     options,
@@ -223,6 +226,8 @@ function createShared(ctx, options) {
     save: saver.save,
     saver,
     fence: (request) => isTrustedApiRequest(request, trustedHosts),
+    /** 结构化插件事件出口（best-effort，见 emit.js）。 */
+    emit: (name, payload) => emitPluginEvent(ctx, name, payload),
     retryBuckets: new Map(),
     repeatStates: new Map(),
     rescueStates: new Map(),
@@ -251,7 +256,7 @@ function registerApi(ctx, shared) {
 function scheduleResume(ctx, shared) {
   shared.resumeTimer = setTimeout(() => {
     shared.resumeTimer = null
-    void resumeActiveTasks(ctx, shared.store, shared.save)
+    void resumeActiveTasks(ctx, shared.store, shared.save, shared.emit)
   }, shared.options.resumeGraceMs)
 }
 
@@ -259,7 +264,7 @@ function scheduleResume(ctx, shared) {
 function scheduleWatchdog(ctx, shared) {
   if (shared.options.watchdogIntervalMs <= 0) return
   shared.watchdogTimer = setInterval(() => {
-    void runWatchdog(ctx, shared.store, shared.save, shared.options)
+    void runWatchdog(ctx, shared.store, shared.save, shared.options, shared.emit)
   }, shared.options.watchdogIntervalMs)
 }
 

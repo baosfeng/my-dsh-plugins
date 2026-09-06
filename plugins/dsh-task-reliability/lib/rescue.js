@@ -30,6 +30,7 @@
 import { lastAssistantText, isTopLevelAgent } from './text.js'
 import { userMessage } from './util.js'
 import { RESCUE_CONTINUE_TEXT } from './constants.js'
+import { PLUGIN_EVENTS } from './emit.js'
 
 // ── 输出完整度启发式（纯规则，零成本）────────────────────────────────────
 
@@ -133,6 +134,13 @@ export function rescueTurn(agent, shared) {
     return
   }
   recordRescue(state)
+  shared.emit(PLUGIN_EVENTS.RESCUE, {
+    sessionId: agent.id,
+    action: 'rescue-turn',
+    reason: truncated ? 'truncation' : 'incomplete',
+    count: state.count,
+    max: shared.options.rescueMaxPerSession,
+  })
 }
 
 /**
@@ -154,6 +162,13 @@ export function rescueAfterError(agent, shared) {
     return
   }
   recordRescue(state)
+  shared.emit(PLUGIN_EVENTS.RESCUE, {
+    sessionId: agent.id,
+    action: 'rescue-after-error',
+    reason: 'error',
+    count: state.count,
+    max: shared.options.rescueMaxPerSession,
+  })
 }
 
 /** agent/error 监听：仅顶层会话标记（子代理错误不救场）。 */

@@ -25,6 +25,9 @@ const strings = {
   filterStatus: () => (isZh() ? '状态' : 'Status'),
   filterLlm: () => (isZh() ? '模型流' : 'LLM'),
   filterTools: () => (isZh() ? '工具' : 'Tools'),
+  filterPlugin: () => (isZh() ? '插件' : 'Plugins'),
+  typePluginEvent: () => (isZh() ? '插件事件' : 'plugin event'),
+  detailReason: () => (isZh() ? '原因' : 'reason'),
   emptyEvents: () => (isZh() ? '暂无审计事件' : 'No audit events yet'),
   emptyEventsHint: () =>
     isZh()

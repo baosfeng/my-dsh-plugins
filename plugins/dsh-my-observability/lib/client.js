@@ -57,6 +57,9 @@ const strings = {
   filterStatus: () => (isZh() ? '状态' : 'Status'),
   filterLlm: () => (isZh() ? '模型流' : 'LLM'),
   filterTools: () => (isZh() ? '工具' : 'Tools'),
+  filterPlugin: () => (isZh() ? '插件' : 'Plugins'),
+  typePluginEvent: () => (isZh() ? '插件事件' : 'plugin event'),
+  detailReason: () => (isZh() ? '原因' : 'reason'),
   emptyEvents: () => (isZh() ? '暂无审计事件' : 'No audit events yet'),
   emptyEventsHint: () =>
     isZh()
@@ -534,12 +537,28 @@ function toolResultParts(data) {
   return parts
 }
 
+/** 插件事件（issue #154）的搜索片段（插件名/事件名/动作/原因/参数值）。 */
+function pluginEventParts(data) {
+  const parts = []
+  if (typeof data.plugin === 'string') parts.push(data.plugin)
+  if (typeof data.event === 'string') parts.push(data.event)
+  if (typeof data.action === 'string') parts.push(data.action)
+  if (typeof data.reason === 'string') parts.push(data.reason)
+  if (data.params !== null && typeof data.params === 'object') {
+    for (const value of Object.values(data.params)) {
+      if (typeof value === 'string' && value !== '') parts.push(value)
+    }
+  }
+  return parts
+}
+
 /** 事件类型 → 搜索片段收集函数（查表消分支）。 */
 const PARTS_COLLECTORS = {
   agent_status: agentStatusParts,
   llm_stream: llmParts,
   tool_call: toolCallParts,
   tool_result: toolResultParts,
+  plugin_event: pluginEventParts,
 }
 
 /** 提取事件可用于关键词匹配的文本（工具名/参数摘要/错误信息/状态/阶段等）。 */
@@ -578,10 +597,11 @@ function normalizeCriteria(criteria) {
   return { type: criteria.type ?? '', keyword: criteria.keyword ?? '', result: criteria.result ?? '', start, end }
 }
 
-/** 类型过滤（'tool' 表示 tool_call + tool_result）。 */
+/** 类型过滤（'tool' 表示 tool_call + tool_result；'plugin' 表示 plugin_event）。 */
 function passType(type, filterType) {
   if (filterType === '') return true
   if (filterType === 'tool') return type === 'tool_call' || type === 'tool_result'
+  if (filterType === 'plugin') return type === 'plugin_event'
   return type === filterType
 }
 
@@ -738,17 +758,21 @@ function typeLabel(event) {
       return strings.typeToolCall()
     case 'tool_result':
       return strings.typeToolResult()
+    case 'plugin_event':
+      return strings.typePluginEvent()
     default:
       return event.type
   }
 }
 
 /** 事件类型 → 视觉类别（徽标/图标/节点共用，颜色语义一致）：
- *  status=info / llm=warn / call=accent / result=success / fail=danger。 */
+ *  status=info / llm=warn / call=accent / result=success / fail=danger /
+ *  plugin=info（插件事件复用 info 色，图标区分）。 */
 function typeKind(event) {
   if (event.type === 'agent_status') return 'status'
   if (event.type === 'llm_stream') return 'llm'
   if (event.type === 'tool_call') return 'call'
+  if (event.type === 'plugin_event') return 'plugin'
   return event.data?.ok === false ? 'fail' : 'result'
 }
 
@@ -758,6 +782,7 @@ function typeIcon(event) {
   if (kind === 'status') return icon.clock(15)
   if (kind === 'llm') return icon.file(15)
   if (kind === 'call') return icon.external(15)
+  if (kind === 'plugin') return icon.alert(15)
   if (kind === 'fail') return icon.close(15)
   return icon.check(15)
 }
@@ -812,6 +837,12 @@ function toolResultMeta(data) {
   return `${data.name} · ${result} · ${data.ms}ms`
 }
 
+/** 插件事件摘要（插件名 · 事件名 · 动作；issue #154）。 */
+function pluginEventMeta(data) {
+  const action = typeof data.action === 'string' && data.action !== '' ? data.action : data.event
+  return `${data.plugin} · ${data.event} · ${action}`
+}
+
 /** 事件 → 摘要文本（单行，尽力而为）。 */
 function eventMeta(event) {
   const data = event.data || {}
@@ -819,17 +850,55 @@ function eventMeta(event) {
   if (event.type === 'llm_stream') return llmMeta(data)
   if (event.type === 'tool_call') return toolCallMeta(data)
   if (event.type === 'tool_result') return toolResultMeta(data)
+  if (event.type === 'plugin_event') return pluginEventMeta(data)
   return ''
 }
 
+/** 插件事件详情行（原因 + 参数键值对；非插件事件返回 null 不可展开）。 */
+function eventDetail(event) {
+  if (event?.type !== 'plugin_event') return null
+  const data = event.data || {}
+  const rows = []
+  if (typeof data.reason === 'string' && data.reason !== '') {
+    rows.push(
+      createElement(
+        'div',
+        { key: 'reason', className: 'dsh-my-observability-detail-row' },
+        createElement('span', { className: 'dsh-my-observability-detail-key' }, strings.detailReason()),
+        createElement('span', { className: 'dsh-my-observability-detail-value' }, data.reason),
+      ),
+    )
+  }
+  if (data.params !== null && typeof data.params === 'object') {
+    for (const [key, value] of Object.entries(data.params)) {
+      rows.push(
+        createElement(
+          'div',
+          { key, className: 'dsh-my-observability-detail-row' },
+          createElement('span', { className: 'dsh-my-observability-detail-key' }, key),
+          createElement('span', { className: 'dsh-my-observability-detail-value' }, String(value)),
+        ),
+      )
+    }
+  }
+  return rows.length > 0 ? rows : null
+}
+
 /** 单条事件行：节点圆点 + 类型图标 + 徽标/时间 + 摘要（hover/active 反馈）。
- *  摘要命中关键词时以 mark 高亮。 */
+ *  摘要命中关键词时以 mark 高亮；插件事件可点击展开详情（原因/参数）。 */
 function EventRow({ event, keyword }) {
   const meta = eventMeta(event)
   const kind = typeKind(event)
+  const detail = eventDetail(event)
+  const [open, setOpen] = useState(false)
   return createElement(
     'button',
-    { className: 'dsh-my-observability-event', type: 'button' },
+    {
+      className: 'dsh-my-observability-event',
+      type: 'button',
+      'aria-expanded': detail !== null ? open : undefined,
+      onClick: detail !== null ? () => setOpen(!open) : undefined,
+    },
     createElement('span', { className: `dsh-my-observability-node dsh-my-observability-node-${kind}` }),
     createElement(
       'span',
@@ -856,17 +925,19 @@ function EventRow({ event, keyword }) {
             createElement(HighlightText, { text: meta, keyword }),
           )
         : null,
+      detail !== null && open ? createElement('div', { className: 'dsh-my-observability-event-detail' }, detail) : null,
     ),
   )
 }
 
-/** 类型过滤按钮组（aria-pressed 选中态）。 */
+/** 类型过滤按钮组（aria-pressed 选中态；plugin 过滤插件事件，issue #154）。 */
 function TypeFilter({ filter, onFilter }) {
   const options = [
     ['', strings.filterAll()],
     ['agent_status', strings.filterStatus()],
     ['llm_stream', strings.filterLlm()],
     ['tool', strings.filterTools()],
+    ['plugin', strings.filterPlugin()],
   ]
   return createElement(
     'div',
@@ -1871,12 +1942,14 @@ const STYLES = `
 .dsh-my-observability-node-status{border-color:var(--dsw-alias-state-info-primary)}
 .dsh-my-observability-node-llm{border-color:var(--dsw-alias-state-warn-primary)}
 .dsh-my-observability-node-call{border-color:var(--dsw-alias-accent)}
+.dsh-my-observability-node-plugin{border-color:var(--dsw-alias-state-info-primary)}
 .dsh-my-observability-node-result{border-color:var(--dsw-alias-state-success-primary)}
 .dsh-my-observability-node-fail{border-color:var(--dsw-alias-state-error-primary)}
 .dsh-my-observability-event-icon{flex:none;display:flex;align-items:center;margin-top:1px}
 .dsh-my-observability-icon-status{color:var(--dsw-alias-state-info-primary)}
 .dsh-my-observability-icon-llm{color:var(--dsw-alias-state-warn-primary)}
 .dsh-my-observability-icon-call{color:var(--dsw-alias-accent)}
+.dsh-my-observability-icon-plugin{color:var(--dsw-alias-state-info-primary)}
 .dsh-my-observability-icon-result{color:var(--dsw-alias-state-success-primary)}
 .dsh-my-observability-icon-fail{color:var(--dsw-alias-state-error-primary)}
 .dsh-my-observability-event-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
@@ -1885,10 +1958,17 @@ const STYLES = `
 .dsh-my-observability-badge-status{color:var(--dsw-alias-state-info-primary);background:color-mix(in srgb, var(--dsw-alias-state-info-primary) 14%, transparent)}
 .dsh-my-observability-badge-llm{color:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 14%, transparent)}
 .dsh-my-observability-badge-call{color:var(--dsw-alias-accent);background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent)}
+.dsh-my-observability-badge-plugin{color:var(--dsw-alias-state-info-primary);background:color-mix(in srgb, var(--dsw-alias-state-info-primary) 14%, transparent)}
 .dsh-my-observability-badge-result{color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent)}
 .dsh-my-observability-badge-fail{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent)}
 .dsh-my-observability-time{flex:none;font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary);white-space:nowrap}
 .dsh-my-observability-event-meta{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.6;word-break:break-word}
+/* ── 插件事件详情展开（issue #154：原因/参数可查）── */
+.dsh-my-observability-event-detail{display:flex;flex-direction:column;gap:2px;margin-top:4px;padding:6px 8px;
+  border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1)}
+.dsh-my-observability-detail-row{display:flex;gap:8px;font:var(--dsw-font-xxs-12);line-height:1.5;word-break:break-word}
+.dsh-my-observability-detail-key{flex:none;font:var(--dsw-font-xxxs-strong-11);color:var(--dsw-alias-label-tertiary);min-width:56px}
+.dsh-my-observability-detail-value{color:var(--dsw-alias-label-primary)}
 /* ── 状态区：loading / 空 / 错误 ── */
 .dsh-my-observability-state{display:flex;align-items:center;gap:6px;padding:8px 6px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
 .dsh-my-observability-state svg{flex:none;animation:dsh-my-observability-spin 1s linear infinite}

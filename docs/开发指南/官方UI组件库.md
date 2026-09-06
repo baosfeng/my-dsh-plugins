@@ -30,7 +30,11 @@ createElement(uiPrimitives.Pill, { active: true, onClick: handler }, '文本')
 
 ```js
 // Button：variant（primary/ghost/outline/toolbar）+ size（sm 适配侧边栏）+ icon
-createElement(ui.Button, { variant: 'outline', size: 'sm', onClick: retry, icon: createElement(ui.IconRefreshOutline14) }, '重试')
+createElement(
+  ui.Button,
+  { variant: 'outline', size: 'sm', onClick: retry, icon: createElement(ui.IconRefreshOutline14) },
+  '重试',
+)
 
 // Input：className 在 wrapper，原生属性（value/onChange/placeholder）在内部 input
 createElement(ui.Input, { className: 'dsh-my-memory-input', value, onChange, placeholder })

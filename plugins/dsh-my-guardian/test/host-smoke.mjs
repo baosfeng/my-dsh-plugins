@@ -85,7 +85,10 @@ function makeCtx(fake, opts = {}) {
     get(name) {
       return services[name]
     },
-    on() {},
+    _handlers: {},
+    on(event, handler) {
+      ;(this._handlers[event] ??= []).push(handler)
+    },
     effect(callback, label) {
       const disposer = callback()
       effects.push({ label, disposer })
@@ -441,6 +444,23 @@ test('host smoke suite', async () => {
       }
       assert.equal(threw, false, 'apply must not throw on a broken loader tree')
       await shutdown(ctx11)
+    }
+
+    // ── 11b. plugin:status-query returns guardian state ──────────────────────
+    {
+      const fake11b = makeLoaderAndTree()
+      const ctx11b = makeCtx(fake11b)
+      apply(ctx11b)
+      await sleep(60)
+      const handlers = ctx11b._handlers['plugin:status-query'] ?? []
+      assert.ok(handlers.length > 0, 'status-query handler registered')
+      const result = handlers[0]({ plugin: 'dsh-my-guardian' })
+      assert.equal(result?.ok, true)
+      assert.equal(result?.value?.plugin, 'dsh-my-guardian')
+      assert.equal(typeof result?.value?.running, 'boolean')
+      // wrong plugin name returns undefined
+      assert.equal(handlers[0]({ plugin: 'other' }), undefined)
+      await shutdown(ctx11b)
     }
 
     // ── 12. no unhandled rejection leaked across every scenario above ───────

@@ -343,6 +343,19 @@ test('host smoke suite', async () => {
       'duplicate path deduped on load',
     )
 
+    // ── plugin:status-query returns file-activity state ──────────────────────
+    {
+      const { ctx: ctxStatus } = await boot()
+      const ev = ctxStatus.events.find((e) => e.name === 'plugin:status-query')
+      assert.ok(ev, 'status-query handler registered')
+      const result = ev.listener({ plugin: 'dsh-file-activity' })
+      assert.equal(result?.ok, true)
+      assert.equal(result?.value?.plugin, 'dsh-file-activity')
+      assert.equal(typeof result?.value?.stats?.totalFiles, 'number')
+      // wrong plugin name returns undefined
+      assert.equal(ev.listener({ plugin: 'other' }), undefined)
+    }
+
     console.log('ALL HOST SMOKE TESTS PASSED')
   } finally {
     rmSync(dir, { recursive: true, force: true })

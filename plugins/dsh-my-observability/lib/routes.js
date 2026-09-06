@@ -102,6 +102,10 @@ async function dispatchMethod(method, request, response, url, ctx, store, monito
     await handleReview(ctx, request, response, options)
     return true
   }
+  if (isMethod(method, request, 'plugin-status', 'GET')) {
+    await handlePluginStatus(ctx, response)
+    return true
+  }
   return false
 }
 
@@ -115,6 +119,39 @@ function statusValue(store, options) {
     aiReview: options.aiReview !== false,
     gitEnabled: true,
   }
+}
+
+/**
+ * 插件状态聚合：广播 plugin:status-query 事件，收集所有插件状态。
+ * 每个插件返回 { plugin, config, running, lastActions }（config 脱敏，lastActions ≤5）。
+ * 超时 3s 未响应的插件标记为 { plugin, running: false, error: 'timeout' }。
+ */
+async function handlePluginStatus(ctx, response) {
+  const TIMEOUT_MS = 3000
+  const results = []
+  try {
+    // 广播查询事件，带超时
+    const statuses = await Promise.allSettled(
+      (ctx.bundler?.plugins ?? []).map(async (p) => {
+        const name = p.name ?? p.constructor?.name ?? 'unknown'
+        try {
+          const result = await Promise.race([
+            ctx.emit('plugin:status-query', { plugin: name }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)),
+          ])
+          return result ?? { plugin: name, running: true, config: {}, lastActions: [] }
+        } catch {
+          return { plugin: name, running: false, error: 'timeout' }
+        }
+      }),
+    )
+    for (const s of statuses) {
+      results.push(s.status === 'fulfilled' ? s.value : { plugin: 'unknown', running: false, error: 'rejected' })
+    }
+  } catch {
+    // bundler 不可用时返回空列表
+  }
+  writeJson(response, 200, { ok: true, value: results })
 }
 
 /** git status：非仓库路径 400。 */

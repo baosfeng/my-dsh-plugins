@@ -255,6 +255,23 @@ export function apply(ctx, config) {
     'dsh-my-memory: /my-memory/api routes',
   )
 
+  // ── 插件状态查询（#155 聚合层）───────────────────────────────────────
+  ctx.on('plugin:status-query', ({ plugin }) => {
+    if (plugin !== 'dsh-my-memory') return undefined
+    const globalCount = globalStore.state?.items?.length ?? 0
+    const projectCount = [...projectStores.values()].reduce((n, s) => n + (s.state?.items?.length ?? 0), 0)
+    return {
+      ok: true,
+      value: {
+        plugin: 'dsh-my-memory',
+        config: { keys: ['autoLearn', 'extractor', 'maxEntryLength'] },
+        running: true,
+        stats: { globalEntries: globalCount, projectEntries: projectCount },
+        lastActions: [],
+      },
+    }
+  })
+
   logStartup(ctx.logger, autoLearn, extractor, config)
 }
 

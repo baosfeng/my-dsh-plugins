@@ -103,6 +103,7 @@ export function apply(ctx, config) {
   scheduleResume(ctx, shared)
   scheduleWatchdog(ctx, shared)
   registerTeardown(ctx, shared)
+  registerStatusQuery(ctx, shared)
   // 返回 shared 供测试/宿主检查（Cordis 忽略普通对象返回值）。
   return shared
 }
@@ -289,4 +290,24 @@ function registerTeardown(ctx, shared) {
     },
     'dsh-task-reliability: teardown',
   )
+}
+
+/** 插件状态查询（#155 聚合层）：返回任务注册表概要 + 最近动作。 */
+function registerStatusQuery(ctx, shared) {
+  ctx.on('plugin:status-query', ({ plugin }) => {
+    if (plugin !== 'dsh-task-reliability') return undefined
+    const tasks = shared.store.tasks ?? []
+    const active = tasks.filter((t) => t.status === 'active').length
+    const lastActions = (shared.actionLog ?? []).slice(-5).map((t) => ({ time: t, type: 'action' }))
+    return {
+      ok: true,
+      value: {
+        plugin: 'dsh-task-reliability',
+        config: { keys: Object.keys(shared.options) },
+        running: true,
+        stats: { totalTasks: tasks.length, activeTasks: active },
+        lastActions,
+      },
+    }
+  })
 }

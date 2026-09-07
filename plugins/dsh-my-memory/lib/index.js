@@ -255,7 +255,11 @@ export function apply(ctx, config) {
     'dsh-my-memory: /my-memory/api routes',
   )
 
-  // ── 插件状态查询（#155 聚合层）───────────────────────────────────────
+  registerMemoryStatusQuery(ctx, globalStore, projectStores); logStartup(ctx.logger, autoLearn, extractor, config)
+}
+
+/** 插件状态查询（#155 聚合层）：返回全局/项目记忆条目数。 */
+function registerMemoryStatusQuery(ctx, globalStore, projectStores) {
   ctx.on('plugin:status-query', ({ plugin }) => {
     if (plugin !== 'dsh-my-memory') return undefined
     const globalCount = globalStore.state?.items?.length ?? 0
@@ -271,8 +275,6 @@ export function apply(ctx, config) {
       },
     }
   })
-
-  logStartup(ctx.logger, autoLearn, extractor, config)
 }
 
 /** 启动日志（issue #155）：统一 [dsh-my-memory] 前缀 + 关键配置摘要。 */

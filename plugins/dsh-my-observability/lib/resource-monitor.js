@@ -14,7 +14,9 @@
  * 采样自身开销：15s 一次 process.cpuUsage/memoryUsage + fs.stat（<0.01% CPU、
  * 零分配大对象），远低于「监控不能放大被监控对象」的护栏（resource-budget-review）。
  */
-import { statSync } from 'node:fs'
+import { statSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { evaluateResourceAlerts, shouldEnterDegrade, shouldExitDegrade, DEFAULT_LIMITS } from './resource-rules.js'
 import { jsonlFile } from './store-persist.js'
 
@@ -31,6 +33,7 @@ export function createResourceMonitor(ctx, options = {}) {
   const state = {
     timer: null,
     file: jsonlFile(),
+    dshHome: process.env.DSH_HOME || join(homedir(), '.dsh'),
     lastSample: null,
     lastCpu: process.cpuUsage(),
     history: [],
@@ -59,6 +62,12 @@ function sample(state, limits, onDegrade, onRecover) {
   } catch {
     // 审计文件尚未创建：字节为 0
   }
+  let homeBytes = 0
+  try {
+    homeBytes = dshHomeSize(state.dshHome)
+  } catch {
+    // $DSH_HOME 不可达
+  }
   const prev = state.lastSample
   if (prev !== null) {
     const deltaMs = Math.max(now - prev.time, 1)
@@ -66,7 +75,7 @@ function sample(state, limits, onDegrade, onRecover) {
     const cpuPercent = (cpuDelta / 1000 / deltaMs) * 100
     const byteDelta = fileBytes - prev.fileBytes
     const writeRateBytesPerHour = byteDelta > 0 ? (byteDelta / deltaMs) * 3600 * 1000 : 0
-    const sample = { time: now, cpuPercent, memoryBytes, fileBytes, writeRateBytesPerHour }
+    const sample = { time: now, cpuPercent, memoryBytes, fileBytes, writeRateBytesPerHour, homeBytes }
     state.history.push(sample)
     if (state.history.length > MAX_HISTORY) state.history.splice(0, state.history.length - MAX_HISTORY)
     state.lastSample = sample
@@ -78,7 +87,7 @@ function sample(state, limits, onDegrade, onRecover) {
       degraded: state.degraded,
     }
   }
-  state.lastSample = { time: now, fileBytes, memoryBytes, cpuPercent: 0, writeRateBytesPerHour: 0 }
+  state.lastSample = { time: now, fileBytes, memoryBytes, cpuPercent: 0, writeRateBytesPerHour: 0, homeBytes }
   return { ...state.lastSample, history: [...state.history], alerts: [], degraded: state.degraded }
 }
 
@@ -115,4 +124,26 @@ function stopMonitor(state) {
     clearInterval(state.timer)
     state.timer = null
   }
+}
+
+/** 递归计算目录总字节（best-effort，跳过不可达文件）。 */
+function dshHomeSize(dir) {
+  let total = 0
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        total += dshHomeSize(full)
+      } else if (entry.isFile()) {
+        try {
+          total += statSync(full).size
+        } catch {
+          // 文件不可达
+        }
+      }
+    }
+  } catch {
+    // 目录不可达
+  }
+  return total
 }

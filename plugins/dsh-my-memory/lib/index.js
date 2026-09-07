@@ -255,11 +255,11 @@ export function apply(ctx, config) {
     'dsh-my-memory: /my-memory/api routes',
   )
 
-  registerMemoryStatusQuery(ctx, globalStore, projectStores); logStartup(ctx.logger, autoLearn, extractor, config)
+  registerMemoryStatusQuery(ctx, globalStore, projectStores, { autoLearn, extractor, config })
 }
 
-/** 插件状态查询（#155 聚合层）：返回全局/项目记忆条目数。 */
-function registerMemoryStatusQuery(ctx, globalStore, projectStores) {
+/** 插件状态查询（#155 聚合层）：返回全局/项目记忆条目数 + 启动日志。 */
+function registerMemoryStatusQuery(ctx, globalStore, projectStores, startup) {
   ctx.on('plugin:status-query', ({ plugin }) => {
     if (plugin !== 'dsh-my-memory') return undefined
     const globalCount = globalStore.state?.items?.length ?? 0
@@ -275,6 +275,7 @@ function registerMemoryStatusQuery(ctx, globalStore, projectStores) {
       },
     }
   })
+  logStartup(ctx.logger, startup.autoLearn, startup.extractor, startup.config)
 }
 
 /** 启动日志（issue #155）：统一 [dsh-my-memory] 前缀 + 关键配置摘要。 */

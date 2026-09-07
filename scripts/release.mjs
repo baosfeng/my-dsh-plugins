@@ -451,7 +451,9 @@ if (push) {
     if (tagSha === headSha) {
       console.log(`- tag ${tag} 已存在且指向当前 HEAD——跳过打 tag（仅推送，幂等重试）`)
     } else {
-      console.error(`✗ tag ${tag} 已存在但指向 ${tagSha.slice(0, 7)}（当前 HEAD 为 ${headSha.slice(0, 7)}），拒绝覆盖。`)
+      console.error(
+        `✗ tag ${tag} 已存在但指向 ${tagSha.slice(0, 7)}（当前 HEAD 为 ${headSha.slice(0, 7)}），拒绝覆盖。`,
+      )
       console.error('  可选处理：')
       console.error(`  a. 当前 HEAD 即为本次发版内容，删除旧 tag 并重打（远程已存在时需 force 覆盖）：`)
       console.error(`     git tag -d ${tag} && git tag ${tag} && git push origin -f ${tag}`)

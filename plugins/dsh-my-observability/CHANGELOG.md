@@ -2,6 +2,24 @@
 
 本文件记录 dsh-my-observability 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-09-07
+
+### 变更
+
+- feat(observability): #155 错误上报统一——plugin_error 事件类型 + /errors API (#177)
+- feat(observability): #155 资源监控扩展——新增 $DSH_HOME 目录总大小监控 (#176)
+- feat(observability): #155 插件状态查询聚合——统一 status-query 事件 + /plugin-status API (#170)
+- chore(plugins): #165 清理失效的 dsh.client.inject 声明（13 插件） (#167)
+
+## [0.2.0] - 2026-09-07
+
+### 变更
+
+- feat(observability): #155 错误上报统一——plugin_error 事件类型 + /errors API (#177)
+- feat(observability): #155 资源监控扩展——新增 $DSH_HOME 目录总大小监控 (#176)
+- feat(observability): #155 插件状态查询聚合——统一 status-query 事件 + /plugin-status API (#170)
+- chore(plugins): #165 清理失效的 dsh.client.inject 声明（13 插件） (#167)
+
 ## [0.1.7] - 2026-09-06
 
 ### 变更

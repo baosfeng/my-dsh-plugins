@@ -67,6 +67,13 @@ function isMethod(method, request, name, verb) {
 
 /** 按 method 分派到具体 handler；未识别返回 false（调用方回 404）。 */
 async function dispatchMethod(method, request, response, url, ctx, store, monitor, options) {
+  const handled = await dispatchCore(method, request, response, url, ctx, store, monitor, options)
+  if (handled) return true
+  return dispatchExtended(method, request, response, url, ctx, store)
+}
+
+/** 核心路由（复杂度 ≤10）。 */
+async function dispatchCore(method, request, response, url, ctx, store, monitor, options) {
   if (isMethod(method, request, 'sessions', 'GET')) {
     writeJson(response, 200, { ok: true, value: store.sessions() })
     return true
@@ -102,8 +109,17 @@ async function dispatchMethod(method, request, response, url, ctx, store, monito
     await handleReview(ctx, request, response, options)
     return true
   }
+  return false
+}
+
+/** 扩展路由（#154/#155 新增）。 */
+function dispatchExtended(method, request, response, url, ctx, store) {
   if (isMethod(method, request, 'plugin-status', 'GET')) {
-    await handlePluginStatus(ctx, response)
+    void handlePluginStatus(ctx, response)
+    return true
+  }
+  if (isMethod(method, request, 'errors', 'GET')) {
+    handleErrors(store, url, response)
     return true
   }
   return false
@@ -152,6 +168,11 @@ async function handlePluginStatus(ctx, response) {
     // bundler 不可用时返回空列表
   }
   writeJson(response, 200, { ok: true, value: results })
+}
+
+/** 错误事件查询（#155 错误上报统一）：返回 plugin_error 类型事件。 */
+function handleErrors(store, url, response) {
+  writeJson(response, 200, { ok: true, value: store.events(null, 'plugin_error', limitOf(url)) })
 }
 
 /** git status：非仓库路径 400。 */

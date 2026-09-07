@@ -106,6 +106,10 @@ async function dispatchMethod(method, request, response, url, ctx, store, monito
     await handlePluginStatus(ctx, response)
     return true
   }
+  if (isMethod(method, request, 'errors', 'GET')) {
+    writeJson(response, 200, { ok: true, value: store.events(null, 'plugin_error', limitOf(url)) })
+    return true
+  }
   return false
 }
 

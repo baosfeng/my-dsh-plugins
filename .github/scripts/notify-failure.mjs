@@ -28,7 +28,18 @@ const body = [
   `- **run**: https://github.com/baosfeng/my-dsh-plugins/actions/runs/${runId}`,
   '- **失败步骤**: 见上方 run 日志',
   '',
-  '请排查 workflow 失败原因并补发（修复后重新打 tag 或手动触发）。',
+  '## 常见失败原因与处理',
+  '',
+  '1. **npm ci 失败（root package-lock.json 与 package.json 不同步）**',
+  '   - 处理：`git fetch` 后 `npm install` 更新 package-lock.json 并提交，再重新打 tag。',
+  '2. **tag 指向错误的 commit（非当前 HEAD）**',
+  '   - 处理：`git tag -d <tag> && git tag <tag> && git push origin -f <tag>`（远程 tag 指向旧 commit 时用 `-f` 覆盖，确认后再执行）。',
+  '3. **测试失败（Smoke test）**',
+  '   - 处理：修复插件问题后重新打 tag：`git tag -d <tag> && git tag <tag> && git push origin -f <tag>`。',
+  '4. **npm publish 失败（包名被占用 / 版本已存在）**',
+  '   - 处理：GitHub Release 是主交付物，npm 失败仅警告；如需补发请先确认包名与版本号后重试。',
+  '5. **其他**：见上方 run 日志；修复后重新打 tag 触发 release.yml，或手动触发 Release (auto)。',
+  '',
 ].join('\n')
 
 const payload = JSON.stringify({
@@ -36,6 +47,28 @@ const payload = JSON.stringify({
   body,
   labels: ['bug'],
 })
+
+// 去重：同一 tag 已存在 open 的 [发版失败] issue 时不重复创建（避免重跑重复上报）。
+const issueListRes = await fetch(
+  'https://api.github.com/repos/baosfeng/my-dsh-plugins/issues?state=open&labels=bug&per_page=100',
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+    },
+  },
+)
+if (!issueListRes.ok) {
+  // 查询失败不阻断建 issue（宁可重复也不漏报）
+  console.error(`::warning::failed to list open issues: HTTP ${issueListRes.status}，继续创建 issue`)
+} else {
+  const issues = await issueListRes.json()
+  const dup = issues.find((i) => i.title.includes(`[发版失败] ${tag}`))
+  if (dup) {
+    console.log(`::notice::已存在 open 的失败 issue #${dup.number}（${dup.title}），跳过重复创建`)
+    process.exit(0)
+  }
+}
 
 const res = await fetch('https://api.github.com/repos/baosfeng/my-dsh-plugins/issues', {
   method: 'POST',

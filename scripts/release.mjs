@@ -427,7 +427,38 @@ if (push) {
     execSync('git push origin main', { cwd: root, stdio: 'inherit' })
   }
   const tag = `${name}@v${version}`
-  execSync(`git tag ${tag}`, { cwd: root, stdio: 'inherit' })
+  // Tag 管理防护（事故：release commit 已推 main 但 tag 缺失/指向旧 commit）：
+  // 打 tag 前先检查 refs/tags/<tag> 是否存在——
+  //   不存在           → 正常打 tag；
+  //   存在且指向 HEAD  → 跳过打 tag（仅推送，幂等重试）；
+  //   存在但指向其他 commit → 明确报错并给出手动处理选项，绝不自动 force
+  //   （删除/覆盖 tag 属破坏性操作，由人确认后手动执行）。
+  let tagSha = null
+  try {
+    // CodeQL js/shell-command-injection-from-environment 修复：tag 由外部输入
+    // （name/version）拼接，execFileSync 参数数组不经过 shell。
+    tagSha = execFileSync('git', ['rev-parse', '-q', '--verify', `${tag}^{commit}`], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim()
+  } catch {
+    tagSha = null
+  }
+  if (tagSha === null) {
+    execSync(`git tag ${tag}`, { cwd: root, stdio: 'inherit' })
+  } else {
+    const headSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+    if (tagSha === headSha) {
+      console.log(`- tag ${tag} 已存在且指向当前 HEAD——跳过打 tag（仅推送，幂等重试）`)
+    } else {
+      console.error(`✗ tag ${tag} 已存在但指向 ${tagSha.slice(0, 7)}（当前 HEAD 为 ${headSha.slice(0, 7)}），拒绝覆盖。`)
+      console.error('  可选处理：')
+      console.error(`  a. 当前 HEAD 即为本次发版内容，删除旧 tag 并重打（远程已存在时需 force 覆盖）：`)
+      console.error(`     git tag -d ${tag} && git tag ${tag} && git push origin -f ${tag}`)
+      console.error('  b. 不重打本次：等下一个版本再发（tag 指向旧 commit，本流程不提供 --force-tag 自动覆盖）')
+      process.exit(1)
+    }
+  }
   execSync(`git push origin ${tag}`, { cwd: root, stdio: 'inherit' })
   console.log(`✓ tag ${tag} pushed — GitHub Actions will build the release`)
   console.log(`  watch: https://github.com/baosfeng/my-dsh-plugins/actions`)

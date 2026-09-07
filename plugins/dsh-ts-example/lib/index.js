@@ -15,7 +15,7 @@ import { buildGreeting } from './greeting.js';
 export const name = 'dsh-ts-example';
 export const inject = ['webServer'];
 export function apply(ctx, config) {
-    const language = config.language ?? 'en';
+    const language = config?.language ?? 'en';
     let sessionCount = 0;
     // ── 事件监听：会话开始计数（演示 ctx.on）──────────────────────────
     ctx.on('session/start', () => {

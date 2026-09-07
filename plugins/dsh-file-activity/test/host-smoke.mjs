@@ -345,7 +345,7 @@ test('host smoke suite', async () => {
 
     // ── plugin:status-query returns file-activity state ──────────────────────
     {
-      const { ctx: ctxStatus, getRoute: getRouteS } = await boot()
+      const { ctx: ctxStatus } = await boot()
       const sid = 'status-query-session'
       // record some activity so stats are non-trivial
       emitObserved(ctxStatus, 'create_file', sid, '/work/status-query.txt')

@@ -71,19 +71,21 @@ function summarizeParams(payload) {
 function handlePluginEvent(name, payload, record) {
   const sessionId = payload?.sessionId
   if (typeof sessionId !== 'string' || sessionId === '') return
-  const hasError = typeof payload?.error === 'string' && payload.error !== ''
-  record({
-    type: hasError ? 'plugin_error' : 'plugin_event',
-    sessionId,
-    data: {
-      plugin: pluginNameOf(name),
-      event: eventNameOf(name),
-      action: truncate(String(payload?.action ?? '')),
-      reason: truncate(String(payload?.reason ?? '')),
-      params: summarizeParams(payload),
-      ...(hasError ? { error: truncate(payload.error) } : {}),
-    },
-  })
+  const { type, data } = buildPluginEventData(name, payload)
+  record({ type, sessionId, data })
+}
+
+function buildPluginEventData(name, payload) {
+  const data = {
+    plugin: pluginNameOf(name),
+    event: eventNameOf(name),
+    action: truncate(String(payload?.action ?? '')),
+    reason: truncate(String(payload?.reason ?? '')),
+    params: summarizeParams(payload),
+  }
+  const error = typeof payload?.error === 'string' && payload.error !== '' ? truncate(payload.error) : null
+  if (error !== null) data.error = error
+  return { type: error !== null ? 'plugin_error' : 'plugin_event', data }
 }
 
 /**

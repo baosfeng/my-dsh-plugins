@@ -30,7 +30,8 @@
     ]
   },
   "dependencies": {
-    "dsh-shared": "file:plugins/dsh-shared"
+    "dsh-shared": "file:plugins/dsh-shared",
+    "dsh-better-sidebar": ">=0.14.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.2",

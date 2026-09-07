@@ -41,7 +41,7 @@
     }
   },
   "dependencies": {
-    "dsh-better-sidebar": ">=0.14.0 <0.18.0",
+    "dsh-better-sidebar": ">=0.14.0",
     "dsh-shared": "^0.1.0"
   },
   "peerDependencies": {

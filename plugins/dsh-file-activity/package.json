@@ -1,6 +1,6 @@
 {
   "name": "dsh-file-activity",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "DSH 侧边栏文件活动插件：按 LRU 记录文件读取/新增/修改事件（最近访问），按绝对路径树形统计（文件统计），点击文件浮窗预览（代码高亮/Markdown/图片/PDF）。DSH web plugin: file activity tracker — LRU recent-access list plus per-file read/create/modify counts in a folder tree, with floating preview.",
   "type": "module",
   "main": "lib/index.js",

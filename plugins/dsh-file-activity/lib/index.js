@@ -91,6 +91,26 @@ export function apply(ctx) {
     'dsh-file-activity: /file-activity/file media route',
   )
 
+  // 插件状态查询（#155 聚合层）
+  ctx.on('plugin:status-query', ({ plugin }) => {
+    if (plugin !== 'dsh-file-activity') return undefined
+    const sessions = store.state?.sessions ?? {}
+    const totalFiles = Object.values(sessions).reduce((n, s) => n + Object.keys(s.known ?? {}).length, 0)
+    const allRecent = Object.values(sessions).flatMap((s) => s.recent ?? [])
+    allRecent.sort((a, b) => (b.time ?? 0) - (a.time ?? 0))
+    const lastActions = allRecent.slice(0, 5).map((e) => ({ time: e.time, type: e.op ?? 'activity', detail: e.path }))
+    return {
+      ok: true,
+      value: {
+        plugin: 'dsh-file-activity',
+        config: { keys: [] },
+        running: true,
+        stats: { sessions: Object.keys(sessions).length, totalFiles },
+        lastActions,
+      },
+    }
+  })
+
   // Tear down on unload: flush pending persistence.
   ctx.effect(() => store.dispose, 'dsh-file-activity: persistence teardown')
 }

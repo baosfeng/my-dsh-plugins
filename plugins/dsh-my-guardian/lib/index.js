@@ -70,6 +70,7 @@ function applyInner(ctx) {
   scheduleInitialScan(ctx, shared)
   startWatchers(ctx, shared)
   registerTeardown(ctx, shared)
+  registerStatusQuery(ctx, shared)
 }
 
 /** Mutable per-instance runtime context shared by every sub-module. */
@@ -135,6 +136,28 @@ function startWatchers(ctx, shared) {
     shared.ensureApi()
     void shared.scanStaged().catch(() => {})
   }, POLL_MS)
+}
+
+/** 插件状态查询（#155 聚合层）：返回 guardian 加载状态 + 最近事件。 */
+function registerStatusQuery(ctx, shared) {
+  ctx.on('plugin:status-query', ({ plugin }) => {
+    if (plugin !== 'dsh-my-guardian') return undefined
+    const lastActions = (shared.state.events ?? []).slice(-5).map((e) => ({
+      time: e.time ?? e.timestamp ?? Date.now(),
+      type: e.type ?? 'event',
+      detail: e.message ?? e.detail ?? '',
+    }))
+    return {
+      ok: true,
+      value: {
+        plugin: 'dsh-my-guardian',
+        config: { keys: ['safeMode', 'stagedFile'] },
+        running: shared.ready,
+        stats: { mounted: shared.mounted.size, safeMode: shared.state.safeMode === true },
+        lastActions,
+      },
+    }
+  })
 }
 
 /** teardown: unmount everything the guardian mounted, then persist. */

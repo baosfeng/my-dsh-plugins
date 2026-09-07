@@ -2,6 +2,12 @@
 
 本文件记录 dsh-md-render 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.7] - 2026-09-07
+
+### 变更
+
+- chore(plugins): #165 清理失效的 dsh.client.inject 声明（13 插件） (#167)
+
 ## [0.1.6] - 2026-09-06
 
 ### 变更

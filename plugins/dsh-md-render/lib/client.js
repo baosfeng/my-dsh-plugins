@@ -2497,7 +2497,7 @@ const STYLES = `
 .tzx-md h1,.tzx-md h2,.tzx-md h3,.tzx-md h4{margin:0;font-weight:600;line-height:1.35}
 .tzx-md ul,.tzx-md ol{margin:0;padding-left:26px}
 .tzx-md li{margin:2px 0}
-.tzx-md .tzx-pre{margin:0;background:var(--dsh-md-render-code-bg,var(--dsw-alias-markdown-code-block));border:1px solid var(--dsh-md-render-code-border,var(--dsw-alias-border-l1));border-radius:8px;padding:12px 16px;overflow:auto;font:var(--dsw-font-markdown-code-block-small);transition:border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
+.tzx-md .tzx-pre{margin:0;background:var(--dsh-md-render-code-bg,var(--dsw-alias-markdown-code-block));border:1px solid var(--dsh-md-render-code-border,var(--dsw-alias-border-l1));border-radius:8px;padding:12px 16px 12px 12px;overflow:auto;font:var(--dsw-font-markdown-code-block-small);color:var(--dsh-md-render-code-fg,var(--dsw-alias-label-primary));transition:border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .tzx-md .tzx-pre:hover{border-color:var(--dsw-alias-border-l2)}
 .tzx-md code{background:var(--dsw-alias-markdown-code-block);border-radius:4px;padding:0 4px;font:var(--dsw-font-markdown-code-block-small)}
 .tzx-md .tzx-pre code{background:none;padding:0}
@@ -2577,8 +2577,8 @@ div.dsh-md-render-math-error{margin:0;text-align:center;justify-content:center;p
 .dsh-md-render-code-lang{text-transform:lowercase;letter-spacing:.02em;user-select:none}
 .md-code-block .tzx-pre{border-top:none;border-radius:0 0 8px 8px}
 .tzx-md .tzx-pre code{display:block;white-space:normal;counter-reset:dsh-md-render-line}
-.dsh-md-render-code-line{display:block;white-space:pre;position:relative;padding-left:3.5em;counter-increment:dsh-md-render-line}
-.dsh-md-render-code-line::before{content:counter(dsh-md-render-line);position:absolute;left:0;width:3em;text-align:right;color:var(--dsw-alias-label-tertiary);user-select:none}
+.dsh-md-render-code-line{display:block;white-space:pre;position:relative;padding-left:2.25em;counter-increment:dsh-md-render-line}
+.dsh-md-render-code-line::before{content:counter(dsh-md-render-line);position:absolute;left:0;width:1.75em;text-align:right;color:var(--dsw-alias-label-tertiary);user-select:none}
 /* ── 代码主题（issue #146）：内置 5 套可配置色板，经 data-theme 选择 ──
    每套定义 5 个 token 色（kw/str/com/num/fn）+ 代码块背景/边框色；
    bright（默认）= 明亮高对比：柔和白底 + 深色 token，解决白底刺眼观感
@@ -2588,12 +2588,18 @@ div.dsh-md-render-math-error{margin:0;text-align:center;justify-content:center;p
    one-dark / nord 本身为暗色主题，两套相同）。仅实际高亮的代码块携带
    data-theme（syntaxHighlight 关闭 / 未知语言 / 超长跳过高亮时无
    data-theme → 保持 DSH 语义 token 默认样式，主题不影响纯文本代码块）。 */
-.md-code-block[data-theme]{--dsh-md-render-c-kw:#6d28d9;--dsh-md-render-c-str:#15803d;--dsh-md-render-c-com:#78716c;--dsh-md-render-c-num:#b45309;--dsh-md-render-c-fn:#1d4ed8;--dsh-md-render-code-bg:#fafaf9;--dsh-md-render-code-border:#d6d3d1}
-.md-code-block[data-theme="github-light"]{--dsh-md-render-c-kw:#cf222e;--dsh-md-render-c-str:#0a3069;--dsh-md-render-c-com:#6e7781;--dsh-md-render-c-num:#0550ae;--dsh-md-render-c-fn:#8250df;--dsh-md-render-code-bg:#ffffff;--dsh-md-render-code-border:#d0d7de}
-.md-code-block[data-theme="github-dark"]{--dsh-md-render-c-kw:#ff7b72;--dsh-md-render-c-str:#a5d6ff;--dsh-md-render-c-com:#8b949e;--dsh-md-render-c-num:#79c0ff;--dsh-md-render-c-fn:#d2a8ff;--dsh-md-render-code-bg:#0d1117;--dsh-md-render-code-border:#30363d}
-.md-code-block[data-theme="one-dark"]{--dsh-md-render-c-kw:#c678dd;--dsh-md-render-c-str:#98c379;--dsh-md-render-c-com:#5c6370;--dsh-md-render-c-num:#d19a66;--dsh-md-render-c-fn:#61afef;--dsh-md-render-code-bg:#282c34;--dsh-md-render-code-border:#3e4451}
-.md-code-block[data-theme="nord"]{--dsh-md-render-c-kw:#b48ead;--dsh-md-render-c-str:#a3be8c;--dsh-md-render-c-com:#616e88;--dsh-md-render-c-num:#d08770;--dsh-md-render-c-fn:#81a1c1;--dsh-md-render-code-bg:#2e3440;--dsh-md-render-code-border:#434c5e}
-@media (prefers-color-scheme:dark){.md-code-block[data-theme]{--dsh-md-render-c-kw:#c4b5fd;--dsh-md-render-c-str:#86efac;--dsh-md-render-c-com:#64748b;--dsh-md-render-c-num:#f87171;--dsh-md-render-c-fn:#93c5fd;--dsh-md-render-code-bg:#1e1f26;--dsh-md-render-code-border:#3a3b45}.md-code-block[data-theme="github-light"]{--dsh-md-render-c-kw:#ff7b72;--dsh-md-render-c-str:#a5d6ff;--dsh-md-render-c-com:#8b949e;--dsh-md-render-c-num:#79c0ff;--dsh-md-render-c-fn:#d2a8ff;--dsh-md-render-code-bg:#0d1117;--dsh-md-render-code-border:#30363d}}
+/* 每个主题含自洽前景色 --dsh-md-render-code-fg（init：#146 只改了背景/
+   token 色，文字色继承宿主 .tzx-md → 系统暗色 + 宿主浅色时深背景黑字
+   不可见）。现在背景与前景色同源于主题，代码块内文字恒可见（修复）。 */
+.md-code-block[data-theme]{--dsh-md-render-c-kw:#6d28d9;--dsh-md-render-c-str:#15803d;--dsh-md-render-c-com:#78716c;--dsh-md-render-c-num:#b45309;--dsh-md-render-c-fn:#1d4ed8;--dsh-md-render-code-bg:#fafaf9;--dsh-md-render-code-border:#d6d3d1;--dsh-md-render-code-fg:#1f2328}
+.md-code-block[data-theme="github-light"]{--dsh-md-render-c-kw:#cf222e;--dsh-md-render-c-str:#0a3069;--dsh-md-render-c-com:#6e7781;--dsh-md-render-c-num:#0550ae;--dsh-md-render-c-fn:#8250df;--dsh-md-render-code-bg:#ffffff;--dsh-md-render-code-border:#d0d7de;--dsh-md-render-code-fg:#1f2328}
+.md-code-block[data-theme="github-dark"]{--dsh-md-render-c-kw:#ff7b72;--dsh-md-render-c-str:#a5d6ff;--dsh-md-render-c-com:#8b949e;--dsh-md-render-c-num:#79c0ff;--dsh-md-render-c-fn:#d2a8ff;--dsh-md-render-code-bg:#0d1117;--dsh-md-render-code-border:#30363d;--dsh-md-render-code-fg:#e6edf3}
+.md-code-block[data-theme="one-dark"]{--dsh-md-render-c-kw:#c678dd;--dsh-md-render-c-str:#98c379;--dsh-md-render-c-com:#5c6370;--dsh-md-render-c-num:#d19a66;--dsh-md-render-c-fn:#61afef;--dsh-md-render-code-bg:#282c34;--dsh-md-render-code-border:#3e4451;--dsh-md-render-code-fg:#abb2bf}
+.md-code-block[data-theme="nord"]{--dsh-md-render-c-kw:#b48ead;--dsh-md-render-c-str:#a3be8c;--dsh-md-render-c-com:#616e88;--dsh-md-render-c-num:#d08770;--dsh-md-render-c-fn:#81a1c1;--dsh-md-render-code-bg:#2e3440;--dsh-md-render-code-border:#434c5e;--dsh-md-render-code-fg:#d8dee9}
+/* 暗色系统：bright / github-light 背景被反转成深色 → 前景色同步变浅
+   （保持主题内自洽可见）；github-dark / one-dark / nord 本身深色背景，基础
+   规则的前景色已是浅色，无需重复覆盖。 */
+@media (prefers-color-scheme:dark){.md-code-block[data-theme]{--dsh-md-render-c-kw:#c4b5fd;--dsh-md-render-c-str:#86efac;--dsh-md-render-c-com:#64748b;--dsh-md-render-c-num:#f87171;--dsh-md-render-c-fn:#93c5fd;--dsh-md-render-code-bg:#1e1f26;--dsh-md-render-code-border:#3a3b45;--dsh-md-render-code-fg:#cbd5e1}.md-code-block[data-theme="github-light"]{--dsh-md-render-c-kw:#ff7b72;--dsh-md-render-c-str:#a5d6ff;--dsh-md-render-c-com:#8b949e;--dsh-md-render-c-num:#79c0ff;--dsh-md-render-c-fn:#d2a8ff;--dsh-md-render-code-bg:#0d1117;--dsh-md-render-code-border:#30363d;--dsh-md-render-code-fg:#c9d1d9}}
 .dsh-md-render-tok-keyword{color:var(--dsh-md-render-c-kw)}
 .dsh-md-render-tok-string{color:var(--dsh-md-render-c-str)}
 .dsh-md-render-tok-comment{color:var(--dsh-md-render-c-com);font-style:italic}

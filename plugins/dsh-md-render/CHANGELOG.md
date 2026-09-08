@@ -2,6 +2,17 @@
 
 本文件记录 dsh-md-render 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- **代码块主题前景色自洽**：代码主题（codeTheme）此前只定义背景/边框/token 色，代码块文字色继承宿主 `.tzx-md` 的 `--dsw-alias-label-primary`。当系统 `prefers-color-scheme: dark` 而宿主 DSH 为浅色主题时，暗色变体把代码块背景反转成深色（如 `github-light` → `#0d1117`），文字仍是浅色主题的黑字 → **深背景黑字，代码内容不可见**。修复：为每个主题（含暗色变体）定义自洽前景色 `--dsh-md-render-code-fg`，`.tzx-pre` 的 `color` 使用它（fallback 宿主 primary），代码块内文字恒可见、不受宿主主题影响。
+- **代码块行号贴边**：行号列由 `3.5em` 缩窄到 `2.25em`、`::before` 宽由 `3em` 缩到 `1.75em`，`pre` 左内边距由 `16px` 收紧到 `12px`，行号更贴近代码块左边缘、与代码内容间距更紧凑。
+
+### 测试
+
+- 新增 `test/codeblock-theme-css.mjs`：静态断言主题契约——`.tzx-pre` 的 `color` 使用 `--dsh-md-render-code-fg`、每个 `data-theme`（含暗色变体的 bright/github-light）定义前景色、浅色/深色主题前景与背景亮度互补（自洽可见）。
+
 ## [0.1.7] - 2026-09-07
 
 ### 变更

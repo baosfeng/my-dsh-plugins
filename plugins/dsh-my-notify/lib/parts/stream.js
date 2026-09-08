@@ -137,7 +137,11 @@ function subscribeStream(sessionsSvc) {
 
 // ── 插件体 ──────────────────────────────────────────────────────────
 exports.apply = function apply(ctx) {
-  const sessionsSvc = ctx.get('sessions')
+  // strict=false：首屏加载时 sessions 服务的提供者 fiber 可能尚未 active，
+  // cordis 的 ctx.get(name, strict = true) 在 strict 模式下会返回 undefined，
+  // 导致点击通知无法跳转会话（降级为仅聚焦窗口，直到 HMR/重启才恢复）；
+  // 取到实例即可——openSessionFor 内部仍按 typeof open === 'function' 判空降级。
+  const sessionsSvc = ctx.get('sessions', false)
 
   // 样式注入（与 fiber 同生命周期）。
   ctx.effect(() => injectStyles(), 'dsh-my-notify: styles')

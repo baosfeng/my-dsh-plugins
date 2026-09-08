@@ -976,7 +976,11 @@ function subscribeStream(sessionsSvc) {
 
 // ── 插件体 ──────────────────────────────────────────────────────────
 exports.apply = function apply(ctx) {
-  const sessionsSvc = ctx.get('sessions')
+  // strict=false：首屏加载时 sessions 服务的提供者 fiber 可能尚未 active，
+  // cordis 的 ctx.get(name, strict = true) 在 strict 模式下会返回 undefined，
+  // 导致点击通知无法跳转会话（降级为仅聚焦窗口，直到 HMR/重启才恢复）；
+  // 取到实例即可——openSessionFor 内部仍按 typeof open === 'function' 判空降级。
+  const sessionsSvc = ctx.get('sessions', false)
 
   // 样式注入（与 fiber 同生命周期）。
   ctx.effect(() => injectStyles(), 'dsh-my-notify: styles')
@@ -1543,7 +1547,12 @@ function NotifySettingsView() {
 
 /** 设置页 tab 注册（官方 slots 扩展点；服务缺省时静默跳过）。 */
 function attachSettingsTab(ctx) {
-  const slots = ctx.get('slots')
+  // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer
+  // 提供）的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true)
+  // 在 strict 模式下会返回 undefined，注册代码会静默 return（设置页看不到
+  // tab，HMR 重载后才出现）；取到实例即可——注册本身由 slots.inject 等待
+  // 槽位声明，实际渲染发生在之后，安全。
+  const slots = ctx.get('slots', false)
   if (slots === undefined) return
   ctx.effect(() => {
     if (typeof document === 'undefined' || typeof document.head === 'undefined') return () => {}

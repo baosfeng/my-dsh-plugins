@@ -34,7 +34,7 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-plugin-manager
 1. 打开 DSH Web 设置 → 插件 → **插件管理**；
 2. **已安装**区块：查看插件清单（名称 / 版本 / 状态），逐行「卸载」，顶部「检查更新」显示可更新项（`旧版 → 新版`）；
 3. **市场**区块：输入关键词搜索 npm 插件（如 `dsh-file-activity`），点「安装」即写入 profile；
-4. 安装/卸载**落盘即时生效**（profile package.json / cordis.patch.yml），新插件在下次重启 DSH 后加载（候选区热挂载由 dsh-guardian 负责）。
+4. 安装/卸载**落盘即时生效**（profile package.json / cordis.patch.yml），新插件在下次重启 DSH 后加载（候选区热挂载由 dsh-my-guardian 负责）。
 
 ## 实现要点
 

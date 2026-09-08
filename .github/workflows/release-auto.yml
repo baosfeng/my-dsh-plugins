@@ -7,18 +7,22 @@ name: Release (auto)
 #   3. 打 tag <插件>@v<新版本> 并推送 → 触发 release.yml
 #      （自动测试 + GitHub Release + npm 发布，NPM_TOKEN 已配置）
 # 等价手动命令：node scripts/release.mjs <插件> --bump <类型> --push
+#
+# 批量发版：选择多个插件时，所有插件统一 bump 类型，一次提交 + 逐个打 tag
 
 on:
   workflow_dispatch:
     inputs:
-      plugin:
+      plugins:
         # 选项与 scripts/release.mjs 的插件名校验一致（[a-zA-Z0-9._-]，首字符字母/数字）。
         # 列表来源：`ls plugins/`（17 个 DSH 插件 + 1 个共享库）。
         # 注意：dsh-notify / dsh-guardian 已改名 dsh-my-notify / dsh-my-guardian
         # （撞名统一 dsh-my-* 前缀，见 release.yml 注释），旧名不再存在。
         # dsh-shared 是共享库（package.json dsh.kind=library）：release.mjs 对其
         # 有专门豁免（cordis peer / 效果图 / 真实环境验证），支持发版，故保留。
-        description: 插件目录名
+        #
+        # 批量发版：选择多个插件时，所有插件统一 bump 类型，一次提交 + 逐个打 tag
+        description: 插件目录名（可多选，批量发版）
         required: true
         type: choice
         options:
@@ -71,4 +75,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          node scripts/release.mjs "${{ inputs.plugin }}" --bump "${{ inputs.bump }}" --push
+          # 批量发版：将多选插件转换为空格分隔的参数
+          PLUGINS="${{ inputs.plugins }}"
+          # 将换行符转换为空格（GitHub Actions 多选会用换行分隔）
+          PLUGINS=$(echo "$PLUGINS" | tr '\n' ' ')
+          node scripts/release.mjs $PLUGINS --bump "${{ inputs.bump }}" --push

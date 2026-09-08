@@ -15,7 +15,12 @@ exports.apply = function apply(ctx) {
     }
   }, 'dsh-my-memory: styles')
 
-  const slots = ctx.get('slots')
+  // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer
+  // 提供）的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true)
+  // 在 strict 模式下会返回 undefined，注册代码会静默 return（设置页看不到
+  // tab，HMR 重载后才出现）；取到实例即可——注册本身由 slots.inject 等待
+  // 槽位声明，实际渲染发生在之后，安全。
+  const slots = ctx.get('slots', false)
   if (slots === undefined) return
 
   ctx.effect(

@@ -131,7 +131,10 @@ const mockSlots = {
   register: (options, component) => ({ options, component }),
 }
 const ctx = {
-  get: (name) => (name === 'slots' ? mockSlots : undefined),
+  // 严格模拟 cordis 的 ctx.get(name, strict = true)：服务提供者 fiber 未
+  // active 时 strict 取法返回 undefined、strict=false 才返回服务对象。
+  // 防回归（首屏时序）：设置页 tab 注册不得依赖 slots 提供者已 active。
+  get: (name, strict = true) => (name === 'slots' ? (strict ? undefined : mockSlots) : undefined),
   effect: (fn) => fn(),
 }
 exportsObj.apply(ctx)

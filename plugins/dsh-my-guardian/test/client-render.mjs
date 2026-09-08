@@ -76,9 +76,15 @@ const mockService = {
     return () => {}
   },
 }
-const ctx = { effect: (fn) => fn(), get: (name) => (name === 'betterSidebar' ? mockService : undefined) }
+const ctx = {
+  effect: (fn) => fn(),
+  // 严格模拟 cordis 的 ctx.get(name, strict = true)：服务提供者 fiber 未
+  // active 时 strict 取法返回 undefined、strict=false 才返回服务对象。
+  // 防回归（首屏时序）：侧边栏页签注册不得依赖 betterSidebar 提供者已 active。
+  get: (name, strict = true) => (name === 'betterSidebar' ? (strict ? undefined : mockService) : undefined),
+}
 exportsObj.apply(ctx)
-assert.ok(capturedTab, 'tab registered')
+assert.ok(capturedTab, 'tab registered while the betterSidebar provider fiber is not active yet')
 assert.equal(capturedTab.id, 'dsh-my-guardian:panel')
 
 const scope = { sessionId: 'sess-test', cwd: '/work' }

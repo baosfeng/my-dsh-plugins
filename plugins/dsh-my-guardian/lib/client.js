@@ -1177,7 +1177,12 @@ exports.apply = function apply(ctx) {
     }
   }, 'dsh-my-guardian: styles')
 
-  const service = ctx.get('betterSidebar')
+  // strict=false：首屏加载时 betterSidebar 服务（由 dsh-better-sidebar 提供）
+  // 的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true) 在
+  // strict 模式下会返回 undefined，注册代码会静默 return（侧边栏看不到本
+  // 插件页签，HMR 重载后才出现）；取到实例即可——未安装 better-sidebar 时
+  // 仍返回 undefined（下面的判空降级不变），实际渲染发生在注册之后，安全。
+  const service = ctx.get('betterSidebar', false)
   if (service === undefined) return
 
   ctx.effect(

@@ -12,16 +12,34 @@ on:
   workflow_dispatch:
     inputs:
       plugin:
+        # 选项与 scripts/release.mjs 的插件名校验一致（[a-zA-Z0-9._-]，首字符字母/数字）。
+        # 列表来源：`ls plugins/`（17 个 DSH 插件 + 1 个共享库）。
+        # 注意：dsh-notify / dsh-guardian 已改名 dsh-my-notify / dsh-my-guardian
+        # （撞名统一 dsh-my-* 前缀，见 release.yml 注释），旧名不再存在。
+        # dsh-shared 是共享库（package.json dsh.kind=library）：release.mjs 对其
+        # 有专门豁免（cordis peer / 效果图 / 真实环境验证），支持发版，故保留。
         description: 插件目录名
         required: true
         type: choice
         options:
           - dsh-file-activity
-          - dsh-think-zh-expand
+          - dsh-md-render
           - dsh-mermaid-render
-          - dsh-notify
-          - dsh-guardian
+          - dsh-my-context
+          - dsh-my-guard
+          - dsh-my-guardian
+          - dsh-my-memory
+          - dsh-my-notify
+          - dsh-my-observability
+          - dsh-my-plugin-manager
+          - dsh-my-remote
+          - dsh-my-skill-manager
+          - dsh-plugin-dev-mode
+          - dsh-session-title-gen
+          - dsh-shared
           - dsh-task-reliability
+          - dsh-think-zh-expand
+          - dsh-ts-example
       bump:
         description: 版本类型（patch=补丁 / minor=次要 / major=主版本）
         required: true

@@ -92,7 +92,10 @@ const mockSlots = {
   register: (options, component) => ({ options, component }),
 }
 const ctx = {
-  get: (name) => (name === 'slots' ? mockSlots : undefined),
+  // 模拟 cordis `ctx.get(name, strict = true)` 的严格语义：服务提供者的 fiber
+  // 未 active 时返回 undefined。插件必须传 strict = false 才能在首屏拿到
+  // slots，否则设置页页签静默不注册（本断言即该缺陷的防复发测试）。
+  get: (name, strict = true) => (name === 'slots' && strict === false ? mockSlots : undefined),
   effect: (fn) => fn(),
 }
 exportsObj.apply(ctx)

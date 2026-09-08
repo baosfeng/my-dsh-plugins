@@ -1245,7 +1245,12 @@ exports.apply = function apply(ctx) {
     }
   }, 'dsh-my-plugin-manager: styles')
 
-  const slots = ctx.get('slots')
+  // ctx.get(name, strict = true) 默认是严格模式：服务提供者 fiber 未 active 时
+  // 返回 undefined（cordis `_getImpl`: `if (strict && impl.fiber.state !== 2)
+  // return`）。首屏加载时 slots 可能尚未 active，严格模式会静默跳过注册 →
+  // 设置页看不到「插件管理」页签。传 strict = false 只按「服务是否已提供」
+  // 判断，首屏也能拿到 slots；服务确实不存在时才降级跳过。
+  const slots = ctx.get('slots', false)
   if (slots === undefined) return
 
   ctx.effect(

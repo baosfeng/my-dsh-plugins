@@ -19,7 +19,7 @@ export function createApiHandler({ ctx, profile, profileDir, fence }) {
   const handlers = {
     installed: {
       method: 'GET',
-      run: (url, request, response) => handleInstalled(ctx, profileDir, response),
+      run: async (url, request, response) => handleInstalled(ctx, profileDir, response),
     },
     search: { method: 'GET', run: (url, request, response) => handleSearch(url, response) },
     detail: { method: 'GET', run: (url, request, response) => handleDetail(url, response, logger) },
@@ -75,9 +75,17 @@ export function isOfficialModule(moduleName) {
   return OFFICIAL_PREFIXES.some((prefix) => moduleName.startsWith(prefix))
 }
 
-/** GET /installed — user-installed loader entries with resolved versions. */
-function handleInstalled(ctx, profileDir, response) {
-  const inventory = ctx.pluginInventory.list()
+/**
+ * GET /installed — user-installed loader entries with resolved versions.
+ *
+ * `pluginInventory.list()` 是 async（宿主 dsh-host-plugin-inventory 0.1.2-rc.1
+ * `async list()` 返回 Promise<{ entries }>），必须 await 后再读 entries——
+ * 同步解引用会得到 undefined.entries 而抛错，路由返回 400（已安装列表
+ * 显示「加载失败」）。createApiHandler 已 `await spec.run(...)` 并 catch，
+ * 因此这里的 async 异常仍会被统一转成 JSON 错误响应。
+ */
+async function handleInstalled(ctx, profileDir, response) {
+  const inventory = await ctx.pluginInventory.list()
   const entries = inventory.entries
     .map((entry) => ({
       moduleName: entry.moduleName,

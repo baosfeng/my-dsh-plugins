@@ -58,7 +58,8 @@ class World {
     const ctx = {
       logger: { warn: () => {} },
       webRuntime: { trustedHosts: [] },
-      pluginInventory: { list: () => ({ entries: this.entries }) },
+      // 宿主 list() 是 async（0.1.2-rc.1）；桩返回 Promise 才与真实语义一致。
+      pluginInventory: { list: async () => ({ entries: this.entries }) },
     }
     const handler = createApiHandler({
       ctx,

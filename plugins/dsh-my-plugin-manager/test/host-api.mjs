@@ -113,7 +113,10 @@ async function boot(overrides) {
     logger: { info: (m) => logs.push(m), warn: () => {} },
     webRuntime: { trustedHosts: [] },
     pluginInventory: {
-      list: () => ({
+      // 宿主 @deepseek-ai/dsh-host-plugin-inventory 的 list() 是 async
+      // （0.1.2-rc.1 lib/index.js: `async list()`），桩必须返回 Promise。
+      // 同步桩会掩盖「未 await 就解引用 .entries」的缺陷（已安装列表 400）。
+      list: async () => ({
         entries: [
           { moduleName: 'dsh-a', enabled: true, fiberPhase: 'ready' },
           { moduleName: '@scope/dsh-b', enabled: false, fiberPhase: null },
@@ -181,6 +184,26 @@ test('GET /installed merges inventory + versions', async () => {
   assert.equal(entries[0].moduleName, 'dsh-a')
   assert.equal(entries[0].enabled, true)
   assert.equal(entries[0].version, '0.1.0', 'version resolved via manage.installedVersionOf')
+})
+
+test('GET /installed awaits the async pluginInventory.list()', async () => {
+  // 回归测试：宿主 list() 是 async（0.1.2-rc.1），实现必须 await 后再读
+  // entries——同步解引用会让响应变成 400（真实环境实测症状）。
+  let listSettled = false
+  const { getRoute } = await boot({
+    pluginInventory: {
+      list: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        listSettled = true
+        return { entries: [{ moduleName: 'dsh-a', enabled: true, fiberPhase: 'active' }] }
+      },
+    },
+  })
+  const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/installed')
+  assert.equal(r.status, 200, 'async list() must be awaited, not read synchronously')
+  assert.equal(listSettled, true, 'list() promise settled before the response was written')
+  assert.equal(r.json.value.entries.length, 1)
+  assert.equal(r.json.value.entries[0].moduleName, 'dsh-a')
 })
 
 test('GET /installed filters official modules and marks user entries', async () => {
@@ -333,7 +356,7 @@ test('fence: non-loopback hosts, origin mismatch and trusted hosts', async () =>
   const ctx = {
     logger: { info: () => {}, warn: () => {} },
     webRuntime: { trustedHosts: ['dsh.internal:3080'] },
-    pluginInventory: { list: () => ({ entries: [] }) },
+    pluginInventory: { list: async () => ({ entries: [] }) },
     webServer: {
       register: (route) => {
         holder.set(route)

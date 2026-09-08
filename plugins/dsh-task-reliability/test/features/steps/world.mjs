@@ -72,6 +72,24 @@ class World {
     }
     const ctx = {
       logger: { info() {}, warn() {} },
+      // 可选依赖局部等待（cordis ctx.inject）：commands 在本 World 中始终可用，
+      // 立即执行回调并注册 /task 命令（与真实 ctx.inject 就绪即执行语义一致）。
+      inject(names, callback) {
+        const needed = Array.isArray(names) ? names : Object.keys(names ?? {})
+        if (needed.every((n) => n === 'commands'))
+          callback(
+            {
+              commands,
+              effect: (fn) => {
+                const dispose = fn()
+                disposers.push(dispose)
+                return dispose
+              },
+            },
+            undefined,
+          )
+        return { dispose() {} }
+      },
       on(name, handler) {
         ;(listeners[name] ??= []).push(handler)
         return () => {}

@@ -144,6 +144,11 @@ function boot(config = {}, services = {}, dirOverride) {
     },
   }
   const ctx = {
+    // 可选依赖局部等待（cordis ctx.inject）：这些用例不提供 commands 服务，
+    // 等待态即不注册 /task 命令（与 ctx.get('commands') 返回 undefined 等价）。
+    inject() {
+      return { dispose() {} }
+    },
     logger: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
     on(name, handler) {
       ;(listeners[name] ??= []).push(handler)

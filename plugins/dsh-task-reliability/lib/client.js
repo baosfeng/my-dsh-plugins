@@ -571,7 +571,12 @@ window.__ModuleLoader__.load({
 
     /** 设置页 tab 注册（官方 slots 扩展点；服务缺省时静默跳过）。 */
     function attachSettingsTab(ctx) {
-      const slots = ctx.get('slots')
+      // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer
+      // 提供）的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true)
+      // 在 strict 模式下会返回 undefined，注册代码会静默 return（设置页看不到
+      // tab，HMR 重载后才出现）；取到实例即可——注册本身由 slots.inject 等待
+      // 槽位声明，实际渲染发生在之后，安全。
+      const slots = ctx.get('slots', false)
       if (slots === undefined) return
       ctx.effect(() => {
         if (typeof document === 'undefined' || typeof document.head === 'undefined') return () => {}
@@ -604,7 +609,10 @@ window.__ModuleLoader__.load({
         }
       }, 'dsh-task-reliability: styles')
 
-      const betterSidebar = ctx.get('betterSidebar')
+      // strict=false：同理，首屏时 betterSidebar 服务的提供者 fiber 可能尚未
+      // active，strict 取法返回 undefined 会让侧边栏页签静默不注册；取到实例
+      // 后仍按下面的 typeof 判断降级（未安装 better-sidebar 时为 undefined）。
+      const betterSidebar = ctx.get('betterSidebar', false)
       if (betterSidebar !== undefined && betterSidebar !== null && typeof betterSidebar.registerTab === 'function') {
         ctx.effect(() => betterSidebar.registerTab({
           id: TAB_ID,

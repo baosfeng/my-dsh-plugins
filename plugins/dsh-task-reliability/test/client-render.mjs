@@ -67,8 +67,11 @@ test('client bundle registers sidebar tab and renders panel structure', () => {
   const ctx = {
     betterSidebar: mockService,
     effect: (fn) => fn(),
-    get(name) {
-      if (name === 'betterSidebar') return mockService
+    // 严格模拟 cordis 的 ctx.get(name, strict = true)：服务提供者 fiber 未
+    // active 时 strict 取法返回 undefined、strict=false 才返回服务对象。
+    // 防回归（首屏时序）：侧边栏 tab 注册不得依赖 betterSidebar 提供者已 active。
+    get(name, strict = true) {
+      if (name === 'betterSidebar') return strict ? undefined : mockService
       return undefined
     },
   }
@@ -148,8 +151,11 @@ test('task status badge shows the correct label per status (regression: statusLa
   const ctx = {
     betterSidebar: mockService,
     effect: (fn) => fn(),
-    get(name) {
-      if (name === 'betterSidebar') return mockService
+    // 严格模拟 cordis 的 ctx.get(name, strict = true)：服务提供者 fiber 未
+    // active 时 strict 取法返回 undefined、strict=false 才返回服务对象。
+    // 防回归（首屏时序）：侧边栏 tab 注册不得依赖 betterSidebar 提供者已 active。
+    get(name, strict = true) {
+      if (name === 'betterSidebar') return strict ? undefined : mockService
       return undefined
     },
   }
@@ -210,8 +216,11 @@ test('client bundle registers settings tab via slots and renders the config form
   }
   const ctx = {
     effect: (fn) => fn(),
-    get(name) {
-      if (name === 'slots') return mockSlots
+    // 严格模拟 cordis 的 ctx.get(name, strict = true)：服务提供者 fiber 未
+    // active 时 strict 取法返回 undefined、strict=false 才返回服务对象。
+    // 防回归（首屏时序）：设置页 tab 注册不得依赖 slots 提供者已 active。
+    get(name, strict = true) {
+      if (name === 'slots') return strict ? undefined : mockSlots
       return undefined
     },
   }

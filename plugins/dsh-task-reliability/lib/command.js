@@ -163,18 +163,25 @@ export async function handleTaskCommand(invocation, shared) {
   }
 }
 
-/** 注册 /task 命令（commands 服务可选，判空降级；disposer 由 effect 持有）。 */
+/** 注册 /task 命令（commands 服务可选：用 cordis 局部等待注册，服务未安装时
+ *  不影响插件其它功能，一旦可用即注册）。 */
 export function registerTaskCommand(ctx, shared) {
-  const commands = ctx.get('commands')
-  if (commands === undefined || commands === null || typeof commands.register !== 'function') return
-  ctx.effect(
-    () =>
-      commands.register({
-        name: 'task',
-        description: '查看或继续任务：/task [status|continue|answer <id> <text>|autopilot on|off|register <描述>]',
-        input: { hint: '[status|continue|answer <id> <text>|autopilot on|off|register <描述>]' },
-        handler: (invocation) => handleTaskCommand(invocation, shared),
-      }),
-    'dsh-task-reliability: /task command',
-  )
+  // 不能用 ctx.get('commands') 一次性取值：commands 服务若在本插件 apply 之后
+  // 才 active，strict 取法返回 undefined → 命令永久不注册（用户敲 `/` 的补全
+  // 里看不到 task）。ctx.inject(['commands'], cb) 创建子 fiber 等待服务就绪，
+  // 就绪后执行 cb；服务缺失时只是不注册，不阻塞插件其它能力（与官方
+  // @deepseek-ai/dsh-command-compact 的 ctx.commands.register 写法同源）。
+  // 注册 disposer 由子 fiber 持有，父 fiber 卸载时链式清理。
+  ctx.inject(['commands'], (scope) => {
+    scope.effect(
+      () =>
+        scope.commands.register({
+          name: 'task',
+          description: '查看或继续任务：/task [status|continue|answer <id> <text>|autopilot on|off|register <描述>]',
+          input: { hint: '[status|continue|answer <id> <text>|autopilot on|off|register <描述>]' },
+          handler: (invocation) => handleTaskCommand(invocation, shared),
+        }),
+      'dsh-task-reliability: /task command',
+    )
+  })
 }

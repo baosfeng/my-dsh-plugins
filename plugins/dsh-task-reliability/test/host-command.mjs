@@ -94,6 +94,10 @@ function boot(config = {}, services = {}) {
       return () => {}
     },
   }
+  /** 未就绪的 ctx.inject 等待回调（deferredCommands 用例用 activateCommands 触发）。 */
+  const pendingInjects = []
+  /** 模拟 cordis 子 fiber 的 ctx：注入服务 + effect。 */
+  const commandsScope = () => ({ commands, effect: (fn) => fn() })
   const ctx = {
     logger: { info() {}, warn() {} },
     on(name, handler) {
@@ -112,11 +116,26 @@ function boot(config = {}, services = {}) {
         return () => {}
       },
     },
-    get(name) {
+    get(name, strict = true) {
       if (name === 'agents') return services.noAgents ? undefined : agents
-      if (name === 'commands') return services.noCommands ? undefined : commands
+      if (name === 'commands') {
+        if (services.noCommands) return undefined
+        // 严格模拟 cordis 的 ctx.get(name, strict = true)：commands 提供者
+        // fiber 尚未 active 时 strict 取法返回 undefined（启动时序防回归）。
+        if (services.deferredCommands) return strict ? undefined : commands
+        return commands
+      }
       if (name === 'webRuntime') return { trustedHosts: [] }
       return undefined
+    },
+    // 可选依赖的局部等待（cordis ctx.inject(['commands'], cb)）：服务就绪时
+    // 立即执行 cb，否则挂起等待 activateCommands()（deferredCommands 用例）。
+    inject(names, callback) {
+      const needed = Array.isArray(names) ? names : Object.keys(names ?? {})
+      const ready = needed.every((n) => n !== 'commands' || (!services.noCommands && !services.deferredCommands))
+      if (ready) callback(commandsScope(), undefined)
+      else if (!services.noCommands) pendingInjects.push(callback)
+      return { dispose() {} }
     },
   }
   const shared = apply(ctx, {
@@ -132,6 +151,10 @@ function boot(config = {}, services = {}) {
     process.env.DSH_HOME = oldHome
   }
   disposeAlls.push(disposeAll)
+  /** 模拟 commands 服务随后变为 active：唤醒所有挂起的 ctx.inject 等待。 */
+  const activateCommands = () => {
+    for (const callback of pendingInjects.splice(0)) callback(commandsScope(), undefined)
+  }
   return {
     ctx,
     listeners,
@@ -141,6 +164,7 @@ function boot(config = {}, services = {}) {
     commandDefs,
     dir,
     disposeAll,
+    activateCommands,
     store: shared.store,
   }
 }
@@ -211,6 +235,22 @@ test('commands 服务缺失时插件正常启动（判空降级）', () => {
   const env = boot({}, { noCommands: true })
   assert.equal(env.commandDefs.length, 0)
   assert.ok(env.store, 'plugin still boots without commands service')
+})
+
+test('/task 命令：commands 服务在 apply 时尚未 active，稍后 active 仍注册（启动时序防回归）', async () => {
+  // 复现用户可见缺陷：DSH 启动时 commands 服务若晚于本插件 active，修复前
+  // ctx.get('commands') 在 strict 模式下返回 undefined → registerTaskCommand
+  // 静默 return → 输入框敲 `/` 的补全里没有 task（用户实测只有 compact/goal）。
+  const env = boot({}, { deferredCommands: true })
+  assert.equal(env.commandDefs.length, 0, 'commands 未 active 时 apply 阶段不注册（复现启动时序）')
+
+  env.activateCommands()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  assert.equal(env.commandDefs.length, 1, 'commands 变为 active 后 /task 自动注册')
+  assert.equal(env.commandDefs[0].name, 'task')
+  const result = await runCommand(env, 'status')
+  assert.ok(result !== undefined && result !== null, 'registered /task handler still executes')
 })
 
 // ── 命令解析 ─────────────────────────────────────────────────────────────

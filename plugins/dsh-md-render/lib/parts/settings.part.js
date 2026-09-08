@@ -255,7 +255,12 @@ function MdRenderSettingsView() {
 /** 设置页 tab 注册（官方 slots 扩展点；服务缺省时静默跳过）。 */
 function attachSettingsTab(ctx) {
   // ctx.get 缺省（测试桩/精简上下文）时静默跳过，不影响渲染能力。
-  const slots = typeof ctx.get === 'function' ? ctx.get('slots') : undefined
+  // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer
+  // 提供）的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true)
+  // 在 strict 模式下会返回 undefined，导致注册代码静默 return（设置页看不到
+  // tab，HMR 重载后才出现）；取到实例即可——注册本身由 slots.inject 等待
+  // 槽位声明，实际渲染发生在之后，安全。
+  const slots = typeof ctx.get === 'function' ? ctx.get('slots', false) : undefined
   if (slots === undefined) return
   ctx.effect(() => {
     if (typeof document === 'undefined' || typeof document.head === 'undefined') return () => {}

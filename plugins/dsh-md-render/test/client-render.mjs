@@ -374,6 +374,29 @@ try {
   assert.ok(code, 'code cell rendered as <code>')
   assert.equal(code.textContent, '0.2.0', 'code cell text')
 
+  // 10. 设置页 tab 注册：首屏 slots 提供者 fiber 尚未 active 时也必须注册。
+  // 防回归背景：cordis 的 ctx.get(name, strict = true) 在 strict 模式下要求
+  // 服务提供者 fiber 已 active（impl.fiber.state !== 2 → 返回 undefined）。
+  // 首屏加载时本插件 apply 早于 @deepseek-ai/dsh-client-ui-renderer 提供
+  // slots 的 fiber 变 active，strict 取法拿到 undefined → 注册代码静默
+  // return，设置页「插件」里看不到本插件 tab（HMR 重载后才出现，刷新又消失）。
+  // 桩严格模拟 cordis 语义：strict 调用返回 undefined、strict=false 返回
+  // 服务对象，断言 tab 仍然注册。
+  let capturedTab = null
+  const bootSlots = {
+    inject: (name, register) => {
+      capturedTab = register()
+      return () => {}
+    },
+    register: (options, component) => ({ options, component }),
+  }
+  exportsObj.apply({
+    effect: (fn) => fn(),
+    get: (name, strict = true) => (name === 'slots' ? (strict ? undefined : bootSlots) : undefined),
+  })
+  assert.ok(capturedTab, 'settings tab registered while the slots provider fiber is not active yet')
+  assert.equal(capturedTab.options.id, 'md-render-settings', 'settings tab id')
+
   console.log('ALL CLIENT RENDER-PATH TESTS PASSED')
 } finally {
   delete global.window

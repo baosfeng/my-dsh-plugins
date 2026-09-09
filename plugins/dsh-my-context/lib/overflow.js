@@ -15,19 +15,16 @@
  *
  * 纯函数、无副作用、可单测。
  */
-
 /** 固定临界阈值：≥95% 建议开启新会话（不可配置）。 */
-export const CRITICAL_THRESHOLD = 0.95
-
+export const CRITICAL_THRESHOLD = 0.95;
 /** 阈值配置校验：非法值回退默认（0.8/0.9），夹到 [0,1]。 */
 export function normalizeOverflowConfig(config) {
-  const source = config !== null && typeof config === 'object' ? config : {}
-  return {
-    warnThreshold: ratioOf(source.warnThreshold, 0.8),
-    alertThreshold: ratioOf(source.alertThreshold, 0.9),
-  }
+    const source = config !== null && typeof config === 'object' ? config : {};
+    return {
+        warnThreshold: ratioOf(source.warnThreshold, 0.8),
+        alertThreshold: ratioOf(source.alertThreshold, 0.9),
+    };
 }
-
 /**
  * 溢出分级：返回 { ratio, used, window, level, threshold }。
  *  - used = **当前上下文长度**（最近一次请求的 prompt token 数，非历史累计）；
@@ -36,28 +33,31 @@ export function normalizeOverflowConfig(config) {
  *    （warn→warnThreshold / alert→alertThreshold / critical→CRITICAL_THRESHOLD）。
  */
 export function overflowLevel(contextLength, contextWindow, config) {
-  const overflow = normalizeOverflowConfig(config)
-  const used =
-    typeof contextLength === 'number' && Number.isFinite(contextLength) && contextLength > 0 ? contextLength : 0
-  const window = typeof contextWindow === 'number' && contextWindow > 0 ? contextWindow : 0
-  if (window <= 0) return { ratio: 0, used, window: 0, level: 'normal', threshold: 0 }
-  const ratio = used / window
-  if (ratio >= CRITICAL_THRESHOLD) return { ratio, used, window, level: 'critical', threshold: CRITICAL_THRESHOLD }
-  if (ratio >= overflow.alertThreshold)
-    return { ratio, used, window, level: 'alert', threshold: overflow.alertThreshold }
-  if (ratio >= overflow.warnThreshold) return { ratio, used, window, level: 'warn', threshold: overflow.warnThreshold }
-  return { ratio, used, window, level: 'normal', threshold: 0 }
+    const overflow = normalizeOverflowConfig(config);
+    const used = typeof contextLength === 'number' && Number.isFinite(contextLength) && contextLength > 0 ? contextLength : 0;
+    const window = typeof contextWindow === 'number' && contextWindow > 0 ? contextWindow : 0;
+    if (window <= 0)
+        return { ratio: 0, used, window: 0, level: 'normal', threshold: 0 };
+    const ratio = used / window;
+    if (ratio >= CRITICAL_THRESHOLD)
+        return { ratio, used, window, level: 'critical', threshold: CRITICAL_THRESHOLD };
+    if (ratio >= overflow.alertThreshold)
+        return { ratio, used, window, level: 'alert', threshold: overflow.alertThreshold };
+    if (ratio >= overflow.warnThreshold)
+        return { ratio, used, window, level: 'warn', threshold: overflow.warnThreshold };
+    return { ratio, used, window, level: 'normal', threshold: 0 };
 }
-
 /** 是否达到预警级别（warn/alert/critical，非 normal）。 */
 export function isOverflowing(level) {
-  return level === 'warn' || level === 'alert' || level === 'critical'
+    return level === 'warn' || level === 'alert' || level === 'critical';
 }
-
 /** 非负有限比例，夹到 [0,1]。 */
 function ratioOf(value, fallback) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
-  if (value < 0) return 0
-  if (value > 1) return 1
-  return value
+    if (typeof value !== 'number' || !Number.isFinite(value))
+        return fallback;
+    if (value < 0)
+        return 0;
+    if (value > 1)
+        return 1;
+    return value;
 }

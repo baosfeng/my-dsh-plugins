@@ -10,145 +10,127 @@
  *  - POST /budget                  — 更新预算配置（body { perTurn, perSession, mode }）
  *  - POST /overflow                — 更新溢出阈值（body { warnThreshold, alertThreshold }）
  */
-import { isTrustedApiRequest, readJsonBody, writeError, writeJson } from 'dsh-shared'
-import { normalizeBudgetConfig } from './budget.js'
-import { normalizeOverflowConfig } from './overflow.js'
-
+import { isTrustedApiRequest, readJsonBody, writeError, writeJson } from 'dsh-shared';
+import { normalizeBudgetConfig } from './budget.js';
+import { normalizeOverflowConfig } from './overflow.js';
 /** 注册 /context/api 路由（effect 持有 disposer）。 */
 export function registerContextRoutes(ctx, store, options) {
-  const webRuntime = ctx.get ? ctx.get('webRuntime') : undefined
-  const trustedHosts =
-    webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
-      ? webRuntime.trustedHosts
-      : []
-  const fence = (request) => isTrustedApiRequest(request, trustedHosts)
-
-  ctx.effect(
-    () =>
-      ctx.webServer.register({
+    const webRuntime = ctx.get ? ctx.get('webRuntime') : undefined;
+    const trustedHosts = webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
+        ? webRuntime.trustedHosts
+        : [];
+    const fence = (request) => isTrustedApiRequest(request, trustedHosts);
+    ctx.effect(() => ctx.webServer.register({
         kind: 'prefix',
         path: '/context/api',
         handler: apiHandler(fence, store, options),
-      }),
-    'dsh-my-context: /context/api routes',
-  )
+    }), 'dsh-my-context: /context/api routes');
 }
-
 /** 统一 handler：fence → 方法分派 → 404/错误兜底。 */
 function apiHandler(fence, store, options) {
-  return async (request, response) => {
-    if (!fence(request)) {
-      writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
-      return
-    }
-    const url = new URL(request.url ?? '/', 'http://dsh.internal')
-    const pathname = url.pathname
-    const method = pathname.startsWith('/context/api/') ? pathname.slice('/context/api/'.length) : undefined
-    try {
-      const handled = await dispatchMethod(method, request, response, url, store, options)
-      if (!handled) {
-        writeJson(response, 404, {
-          ok: false,
-          error: { message: 'unknown dsh-my-context API method' },
-        })
-      }
-    } catch (error) {
-      writeError(response, error)
-    }
-  }
+    return async (request, response) => {
+        if (!fence(request)) {
+            writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } });
+            return;
+        }
+        const url = new URL(request.url ?? '/', 'http://dsh.internal');
+        const pathname = url.pathname;
+        const method = pathname.startsWith('/context/api/') ? pathname.slice('/context/api/'.length) : undefined;
+        try {
+            const handled = await dispatchMethod(method, request, response, url, store, options);
+            if (!handled) {
+                writeJson(response, 404, {
+                    ok: false,
+                    error: { message: 'unknown dsh-my-context API method' },
+                });
+            }
+        }
+        catch (error) {
+            writeError(response, error);
+        }
+    };
 }
-
 /** 方法 + 请求动词匹配。 */
 function isMethod(method, request, name, verb) {
-  return method === name && request.method === verb
+    return method === name && request.method === verb;
 }
-
 /** 按 method 分派到具体 handler；未识别返回 false（调用方回 404）。 */
 async function dispatchMethod(method, request, response, url, store, options) {
-  if (isMethod(method, request, 'status', 'GET')) {
-    writeJson(response, 200, { ok: true, value: statusValue(store, options) })
-    return true
-  }
-  if (isMethod(method, request, 'sessions', 'GET')) {
-    writeJson(response, 200, { ok: true, value: store.sessions() })
-    return true
-  }
-  if (isMethod(method, request, 'session', 'GET')) {
-    await handleSession(response, store, queryOf(url, 'sessionId'))
-    return true
-  }
-  if (isMethod(method, request, 'alerts', 'GET')) {
-    writeJson(response, 200, { ok: true, value: alertsOf(store, queryOf(url, 'sessionId')) })
-    return true
-  }
-  if (isMethod(method, request, 'overflows', 'GET')) {
-    writeJson(response, 200, { ok: true, value: overflowsOf(store, queryOf(url, 'sessionId')) })
-    return true
-  }
-  if (isMethod(method, request, 'budget', 'POST')) {
-    await handleBudget(request, response, options)
-    return true
-  }
-  if (isMethod(method, request, 'overflow', 'POST')) {
-    await handleOverflow(request, response, options)
-    return true
-  }
-  return false
+    if (isMethod(method, request, 'status', 'GET')) {
+        writeJson(response, 200, { ok: true, value: statusValue(store, options) });
+        return true;
+    }
+    if (isMethod(method, request, 'sessions', 'GET')) {
+        writeJson(response, 200, { ok: true, value: store.sessions() });
+        return true;
+    }
+    if (isMethod(method, request, 'session', 'GET')) {
+        await handleSession(response, store, queryOf(url, 'sessionId'));
+        return true;
+    }
+    if (isMethod(method, request, 'alerts', 'GET')) {
+        writeJson(response, 200, { ok: true, value: alertsOf(store, queryOf(url, 'sessionId')) });
+        return true;
+    }
+    if (isMethod(method, request, 'overflows', 'GET')) {
+        writeJson(response, 200, { ok: true, value: overflowsOf(store, queryOf(url, 'sessionId')) });
+        return true;
+    }
+    if (isMethod(method, request, 'budget', 'POST')) {
+        await handleBudget(request, response, options);
+        return true;
+    }
+    if (isMethod(method, request, 'overflow', 'POST')) {
+        await handleOverflow(request, response, options);
+        return true;
+    }
+    return false;
 }
-
 // ── handlers ───────────────────────────────────────────────────────────────
-
 /** 状态：会话数 + 预算配置 + 溢出阈值配置。 */
 function statusValue(store, options) {
-  return {
-    sessions: store.sessions().length,
-    budget: { ...options.current },
-    overflow: { ...options.overflow },
-  }
+    return {
+        sessions: store.sessions().length,
+        budget: { ...options.current },
+        overflow: { ...options.overflow },
+    };
 }
-
 /** 会话统计详情：sessionId 缺失 400。 */
 async function handleSession(response, store, sessionId) {
-  if (sessionId === '') {
-    writeJson(response, 400, { ok: false, error: { message: 'sessionId query param required' } })
-    return
-  }
-  const session = store.session(sessionId)
-  if (session === undefined) {
-    writeJson(response, 404, { ok: false, error: { message: 'session not found' } })
-    return
-  }
-  writeJson(response, 200, { ok: true, value: session })
+    if (sessionId === '') {
+        writeJson(response, 400, { ok: false, error: { message: 'sessionId query param required' } });
+        return;
+    }
+    const session = store.session(sessionId);
+    if (session === undefined) {
+        writeJson(response, 404, { ok: false, error: { message: 'session not found' } });
+        return;
+    }
+    writeJson(response, 200, { ok: true, value: session });
 }
-
 /** 告警列表（最新在前）。 */
 function alertsOf(store, sessionId) {
-  const list = store.session(sessionId)?.alerts ?? []
-  return [...list].reverse()
+    const list = store.session(sessionId)?.alerts ?? [];
+    return [...list].reverse();
 }
-
 /** 溢出预警列表（最新在前）。 */
 function overflowsOf(store, sessionId) {
-  const list = store.session(sessionId)?.overflows ?? []
-  return [...list].reverse()
+    const list = store.session(sessionId)?.overflows ?? [];
+    return [...list].reverse();
 }
-
 /** 更新预算配置：body { perTurn, perSession, mode }（非法值回退默认）。 */
 async function handleBudget(request, response, options) {
-  const payload = await readJsonBody(request)
-  options.current = normalizeBudgetConfig(payload)
-  writeJson(response, 200, { ok: true, value: { budget: { ...options.current } } })
+    const payload = await readJsonBody(request);
+    options.current = normalizeBudgetConfig(payload);
+    writeJson(response, 200, { ok: true, value: { budget: { ...options.current } } });
 }
-
 /** 更新溢出阈值：body { warnThreshold, alertThreshold }（非法值回退默认）。 */
 async function handleOverflow(request, response, options) {
-  const payload = await readJsonBody(request)
-  options.overflow = normalizeOverflowConfig(payload)
-  writeJson(response, 200, { ok: true, value: { overflow: { ...options.overflow } } })
+    const payload = await readJsonBody(request);
+    options.overflow = normalizeOverflowConfig(payload);
+    writeJson(response, 200, { ok: true, value: { overflow: { ...options.overflow } } });
 }
-
 // ── HTTP helpers ───────────────────────────────────────────────────────────
-
 function queryOf(url, name) {
-  return url.searchParams.get(name) ?? ''
+    return url.searchParams.get(name) ?? '';
 }

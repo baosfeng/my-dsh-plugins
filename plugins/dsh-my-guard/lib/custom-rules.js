@@ -15,114 +15,109 @@
  *  - 最终 severity = 命中的全部规则中最严重者（high > medium > low）；
  *  - 自定义规则自身的 mode（缺省继承全局 mode）与 severity 参与该合并。
  */
-import { GUARD_MODES, SEVERITY_LEVELS, DESTRUCTIVE_PATTERNS } from './constants.js'
-
+import { GUARD_MODES, SEVERITY_LEVELS, DESTRUCTIVE_PATTERNS } from './constants.js';
 /** 模式严格度排序（越大越严格）。 */
-const MODE_RANK = { observe: 0, ask: 1, deny: 2 }
-
+const MODE_RANK = { observe: 0, ask: 1, deny: 2 };
 /** 严重度排序（越大越严重）。 */
-const SEVERITY_RANK = { low: 0, medium: 1, high: 2 }
-
+const SEVERITY_RANK = { low: 0, medium: 1, high: 2 };
 /** 编译单条自定义规则；非法返回 null（缺 pattern / 非法正则）。 */
 export function compileRule(raw, index) {
-  const pattern = patternOf(raw)
-  if (pattern === '') return null
-  const regex = regexOf(pattern)
-  if (regex === null) return null
-  return {
-    id: idOf(raw, index),
-    pattern,
-    regex,
-    mode: modeOf(raw),
-    severity: severityOf(raw),
-    description: descriptionOf(raw),
-    message: messageOf(raw, pattern),
-    custom: true,
-  }
+    const pattern = patternOf(raw);
+    if (pattern === '')
+        return null;
+    const regex = regexOf(pattern);
+    if (regex === null)
+        return null;
+    return {
+        id: idOf(raw, index),
+        pattern,
+        regex,
+        mode: modeOf(raw),
+        severity: severityOf(raw),
+        description: descriptionOf(raw),
+        message: messageOf(raw, pattern),
+        custom: true,
+    };
 }
-
 /** 提取 pattern；非字符串/空 → 空串（视为非法）。 */
 function patternOf(raw) {
-  if (raw === null || typeof raw !== 'object') return ''
-  return typeof raw.pattern === 'string' ? raw.pattern.trim() : ''
+    if (raw === null || typeof raw !== 'object')
+        return '';
+    return typeof raw.pattern === 'string' ? raw.pattern.trim() : '';
 }
-
 /** 编译正则；非法返回 null。 */
 function regexOf(pattern) {
-  try {
-    return new RegExp(pattern)
-  } catch {
-    return null
-  }
+    try {
+        return new RegExp(pattern);
+    }
+    catch {
+        return null;
+    }
 }
-
 /** 规则 id；缺省 `custom-<index>`。 */
 function idOf(raw, index) {
-  return typeof raw.id === 'string' && raw.id !== '' ? raw.id : `custom-${index}`
+    return typeof raw.id === 'string' && raw.id !== '' ? raw.id : `custom-${index}`;
 }
-
 /** 模式；非法值置空（继承全局模式）。 */
 function modeOf(raw) {
-  return GUARD_MODES.includes(raw.mode) ? raw.mode : ''
+    return GUARD_MODES.includes(raw.mode) ? raw.mode : '';
 }
-
 /** 严重级；非法值回退 medium。 */
 function severityOf(raw) {
-  return SEVERITY_LEVELS.includes(raw.severity) ? raw.severity : 'medium'
+    return SEVERITY_LEVELS.includes(raw.severity) ? raw.severity : 'medium';
 }
-
 /** 描述；非字符串视为 ''。 */
 function descriptionOf(raw) {
-  return typeof raw.description === 'string' ? raw.description.trim() : ''
+    return typeof raw.description === 'string' ? raw.description.trim() : '';
 }
-
 /** 展示消息；缺描述时用 pattern。 */
 function messageOf(raw, pattern) {
-  const description = descriptionOf(raw)
-  return description !== '' ? description : pattern
+    const description = descriptionOf(raw);
+    return description !== '' ? description : pattern;
 }
-
 /** 编译自定义规则列表（逐条校验，非法丢弃）。 */
 export function compileCustomRules(input) {
-  if (!Array.isArray(input) || input.length === 0) return []
-  const out = []
-  for (let i = 0; i < input.length; i += 1) {
-    const rule = compileRule(input[i], i + 1)
-    if (rule !== null) out.push(rule)
-  }
-  return out
+    if (!Array.isArray(input) || input.length === 0)
+        return [];
+    const out = [];
+    for (let i = 0; i < input.length; i += 1) {
+        const rule = compileRule(input[i], i + 1);
+        if (rule !== null)
+            out.push(rule);
+    }
+    return out;
 }
-
 /** 剥离 regex 等运行时字段，回退为可持久化的原始形态。 */
 export function rawRulesOf(compiledRules) {
-  if (!Array.isArray(compiledRules) || compiledRules.length === 0) return []
-  return compiledRules.map((rule) => ({
-    id: rule.id,
-    pattern: rule.pattern,
-    mode: rule.mode,
-    severity: rule.severity,
-    description: rule.description,
-  }))
+    if (!Array.isArray(compiledRules) || compiledRules.length === 0)
+        return [];
+    return compiledRules.map((rule) => ({
+        id: rule.id,
+        pattern: rule.pattern,
+        mode: rule.mode,
+        severity: rule.severity,
+        description: rule.description,
+    }));
 }
-
 /** 命中的自定义规则列表（已编译，带 regex）。 */
 export function matchCustomRules(command, compiledRules) {
-  if (!Array.isArray(compiledRules) || compiledRules.length === 0) return []
-  const hits = []
-  for (const rule of compiledRules) {
-    if (rule.regex.test(command)) hits.push(rule)
-  }
-  return hits
+    if (!Array.isArray(compiledRules) || compiledRules.length === 0)
+        return [];
+    const hits = [];
+    for (const rule of compiledRules) {
+        if (rule.regex.test(command))
+            hits.push(rule);
+    }
+    return hits;
 }
-
 /** 首个内置破坏性命令命中（无命中返回 null）。 */
 export function firstBuiltinMatch(command) {
-  for (const pattern of DESTRUCTIVE_PATTERNS) {
-    if (pattern.re.test(command)) return pattern
-  }
-  return null
+    for (const pattern of DESTRUCTIVE_PATTERNS) {
+        if (pattern.re.test(command))
+            return pattern;
+    }
+    return null;
 }
-
 /**
  * 破坏性命令决策：合并内置 + 自定义规则。
  * 返回 { mode, severity, primary, matched }；无命中返回 null。
@@ -130,35 +125,36 @@ export function firstBuiltinMatch(command) {
  *  - primary = 内置命中优先，否则首个自定义命中（用于告警消息/详情）。
  */
 export function decideDestructive(command, options) {
-  const builtinHit = firstBuiltinMatch(command)
-  const customHits = matchCustomRules(command, options?.customRules)
-  const matched = buildMatched(builtinHit, customHits, options)
-  if (matched.length === 0) return null
-  const { mode, severity } = mostRestrictive(matched)
-  const primary = builtinHit !== null ? builtinHit : customHits[0]
-  return { mode, severity, primary, matched }
+    const builtinHit = firstBuiltinMatch(command);
+    const customHits = matchCustomRules(command, options?.customRules);
+    const matched = buildMatched(builtinHit, customHits, options);
+    if (matched.length === 0)
+        return null;
+    const { mode, severity } = mostRestrictive(matched);
+    const primary = builtinHit !== null ? builtinHit : customHits[0];
+    return { mode, severity, primary, matched };
 }
-
 /** 构建命中项列表（内置 + 自定义，各带 mode/severity）。 */
 function buildMatched(builtinHit, customHits, options) {
-  const matched = []
-  if (builtinHit !== null) {
-    matched.push({ rule: builtinHit, mode: options?.mode ?? 'observe', severity: 'high' })
-  }
-  for (const rule of customHits) {
-    const mode = rule.mode !== '' ? rule.mode : (options?.mode ?? 'observe')
-    matched.push({ rule, mode, severity: rule.severity })
-  }
-  return matched
+    const matched = [];
+    if (builtinHit !== null) {
+        matched.push({ rule: builtinHit, mode: options?.mode ?? 'observe', severity: 'high' });
+    }
+    for (const rule of customHits) {
+        const mode = rule.mode !== '' ? rule.mode : (options?.mode ?? 'observe');
+        matched.push({ rule, mode, severity: rule.severity });
+    }
+    return matched;
 }
-
 /** 最严格 mode + 最严重 severity（deny > ask > observe；high > medium > low）。 */
 function mostRestrictive(matched) {
-  let mode = matched[0].mode
-  let severity = matched[0].severity
-  for (const entry of matched) {
-    if (MODE_RANK[entry.mode] > MODE_RANK[mode]) mode = entry.mode
-    if (SEVERITY_RANK[entry.severity] > SEVERITY_RANK[severity]) severity = entry.severity
-  }
-  return { mode, severity }
+    let mode = matched[0].mode;
+    let severity = matched[0].severity;
+    for (const entry of matched) {
+        if ((MODE_RANK[entry.mode] ?? 0) > (MODE_RANK[mode] ?? 0))
+            mode = entry.mode;
+        if ((SEVERITY_RANK[entry.severity] ?? 0) > (SEVERITY_RANK[severity] ?? 0))
+            severity = entry.severity;
+    }
+    return { mode, severity };
 }

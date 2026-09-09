@@ -9,29 +9,30 @@
  * 写入、无定时器、内存上界 = 缓冲上限条数。
  */
 /** 默认审计缓冲上限。 */
-export const AUDIT_LIMIT = 100
+export const AUDIT_LIMIT = 100;
 /** 创建审计缓冲。 */
 export function createAuditLog(limit = AUDIT_LIMIT) {
-  const entries = []
-  /** 记录一条审计（字段规整，尽力而为）。 */
-  function record(entry) {
-    entries.unshift({
-      time: typeof entry?.time === 'number' ? entry.time : Date.now(),
-      action: strField(entry, 'action'),
-      sessionId: strField(entry, 'sessionId'),
-      source: strField(entry, 'source'),
-      ok: entry?.ok === true,
-      detail: strField(entry, 'detail'),
-    })
-    if (entries.length > limit) entries.length = limit
-  }
-  /** 只读审计快照（最新在前；深拷贝防外部篡改）。 */
-  function list() {
-    return entries.map((entry) => ({ ...entry }))
-  }
-  return { record, list, limit }
+    const entries = [];
+    /** 记录一条审计（字段规整，尽力而为）。 */
+    function record(entry) {
+        entries.unshift({
+            time: typeof entry?.time === 'number' ? entry.time : Date.now(),
+            action: strField(entry, 'action'),
+            sessionId: strField(entry, 'sessionId'),
+            source: strField(entry, 'source'),
+            ok: entry?.ok === true,
+            detail: strField(entry, 'detail'),
+        });
+        if (entries.length > limit)
+            entries.length = limit;
+    }
+    /** 只读审计快照（最新在前；深拷贝防外部篡改）。 */
+    function list() {
+        return entries.map((entry) => ({ ...entry }));
+    }
+    return { record, list, limit };
 }
 /** 字符串字段规整：非字符串回退空串。 */
 function strField(entry, key) {
-  return typeof entry?.[key] === 'string' ? entry[key] : ''
+    return typeof entry?.[key] === 'string' ? entry[key] : '';
 }

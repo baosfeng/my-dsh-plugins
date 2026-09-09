@@ -15,66 +15,69 @@
  */
 /** 当前总 token：inputTokens + outputTokens（消费口径，不含缓存命中注入）。 */
 function totalOf(usage) {
-  return usage.inputTokens + usage.outputTokens
+    return usage.inputTokens + usage.outputTokens;
 }
 /** 创建会话 token 计量器：track / summary / drop。 */
 export function createTokenMeter() {
-  const bySession = new Map()
-  /**
-   * 观察一次 session/event：assistant/message 且带真实 usage 时累加。
-   * 首次记录会话活动时间（会话耗时的 start 参考点）。
-   */
-  function track(sessionId, event) {
-    if (typeof sessionId !== 'string' || sessionId === '') return
-    const e = event
-    const usage = e?.type === 'assistant/message' ? e?.data?.usage : undefined
-    if (usage === null || typeof usage !== 'object') return
-    const u = usage
-    const bucket = bySession.get(sessionId) ?? initBucket()
-    bucket.usage.inputTokens += numberOr(u.inputTokens, 0)
-    bucket.usage.outputTokens += numberOr(u.outputTokens, 0)
-    bucket.usage.cacheReadTokens += numberOr(u.cacheReadTokens, 0)
-    bucket.usage.cacheWriteTokens += numberOr(u.cacheWriteTokens, 0)
-    bucket.usage.reasoningTokens += numberOr(u.reasoningTokens, 0)
-    bucket.requests += 1
-    bySession.set(sessionId, bucket)
-  }
-  /** 会话 token 摘要：{ input, output, cacheRead, total, requests, startedAt }。 */
-  function summary(sessionId) {
-    const bucket = bySession.get(sessionId)
-    if (bucket === undefined) return undefined
-    const usage = bucket.usage
-    return {
-      input: usage.inputTokens,
-      output: usage.outputTokens,
-      cacheRead: usage.cacheReadTokens,
-      cacheWrite: usage.cacheWriteTokens,
-      total: totalOf(usage),
-      requests: bucket.requests,
-      startedAt: bucket.startedAt,
+    const bySession = new Map();
+    /**
+     * 观察一次 session/event：assistant/message 且带真实 usage 时累加。
+     * 首次记录会话活动时间（会话耗时的 start 参考点）。
+     */
+    function track(sessionId, event) {
+        if (typeof sessionId !== 'string' || sessionId === '')
+            return;
+        const e = event;
+        const usage = e?.type === 'assistant/message' ? e?.data?.usage : undefined;
+        if (usage === null || typeof usage !== 'object')
+            return;
+        const u = usage;
+        const bucket = bySession.get(sessionId) ?? initBucket();
+        bucket.usage.inputTokens += numberOr(u.inputTokens, 0);
+        bucket.usage.outputTokens += numberOr(u.outputTokens, 0);
+        bucket.usage.cacheReadTokens += numberOr(u.cacheReadTokens, 0);
+        bucket.usage.cacheWriteTokens += numberOr(u.cacheWriteTokens, 0);
+        bucket.usage.reasoningTokens += numberOr(u.reasoningTokens, 0);
+        bucket.requests += 1;
+        bySession.set(sessionId, bucket);
     }
-  }
-  /** 删除会话桶（end 通知构造后调用，释放内存）。 */
-  function drop(sessionId) {
-    bySession.delete(sessionId)
-  }
-  return { track, summary, drop }
+    /** 会话 token 摘要：{ input, output, cacheRead, total, requests, startedAt }。 */
+    function summary(sessionId) {
+        const bucket = bySession.get(sessionId);
+        if (bucket === undefined)
+            return undefined;
+        const usage = bucket.usage;
+        return {
+            input: usage.inputTokens,
+            output: usage.outputTokens,
+            cacheRead: usage.cacheReadTokens,
+            cacheWrite: usage.cacheWriteTokens,
+            total: totalOf(usage),
+            requests: bucket.requests,
+            startedAt: bucket.startedAt,
+        };
+    }
+    /** 删除会话桶（end 通知构造后调用，释放内存）。 */
+    function drop(sessionId) {
+        bySession.delete(sessionId);
+    }
+    return { track, summary, drop };
 }
 /** 新建会话桶（记录首次活动时间）。 */
 function initBucket() {
-  return {
-    usage: {
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      reasoningTokens: 0,
-    },
-    requests: 0,
-    startedAt: Date.now(),
-  }
+    return {
+        usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
+        },
+        requests: 0,
+        startedAt: Date.now(),
+    };
 }
 /** 非有限负数不累加（与 dsh-my-context numberOr 一致）。 */
 function numberOr(value, fallback) {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
 }

@@ -18,29 +18,22 @@
  *  - events.js   — 事件监听（session/event 统计 + agent/pre-step 预算拦截）
  *  - routes.js   — /context/api 路由
  */
-import { createStore } from './store.js'
-import { attachContextListeners } from './events.js'
-import { registerContextRoutes } from './routes.js'
-import { normalizeBudgetConfig } from './budget.js'
-import { normalizeOverflowConfig } from './overflow.js'
-
-export const name = 'dsh-my-context'
-
-export const inject = ['webServer']
-
+import { createStore } from './store.js';
+import { attachContextListeners } from './events.js';
+import { registerContextRoutes } from './routes.js';
+import { normalizeBudgetConfig } from './budget.js';
+import { normalizeOverflowConfig } from './overflow.js';
+export const name = 'dsh-my-context';
+export const inject = ['webServer'];
 export function apply(ctx, config) {
-  // ── 配置（应用层 config 覆盖，默认全部关闭；POST /budget / /overflow 可动态更新）──
-  const options = { current: normalizeBudgetConfig(config), overflow: normalizeOverflowConfig(config) }
-
-  // ── 上下文统计存储：会话隔离 + 持久化 + 重启恢复 ──────────────────────
-  const store = createStore(ctx)
-
-  // ── 事件监听（只读观察 + 预算拦截）───────────────────────────────────
-  attachContextListeners(ctx, store, options)
-
-  // ── 路由（查询 / 预算配置）────────────────────────────────────────────
-  registerContextRoutes(ctx, store, options)
-
-  // ── 卸载冲刷：清防抖定时器 + 立即落盘 ────────────────────────────────
-  ctx.effect(() => store.dispose, 'dsh-my-context: persistence teardown')
+    // ── 配置（应用层 config 覆盖，默认全部关闭；POST /budget / /overflow 可动态更新）──
+    const options = { current: normalizeBudgetConfig(config), overflow: normalizeOverflowConfig(config) };
+    // ── 上下文统计存储：会话隔离 + 持久化 + 重启恢复 ──────────────────────
+    const store = createStore(ctx);
+    // ── 事件监听（只读观察 + 预算拦截）───────────────────────────────────
+    attachContextListeners(ctx, store, options);
+    // ── 路由（查询 / 预算配置）────────────────────────────────────────────
+    registerContextRoutes(ctx, store, options);
+    // ── 卸载冲刷：清防抖定时器 + 立即落盘 ────────────────────────────────
+    ctx.effect(() => store.dispose, 'dsh-my-context: persistence teardown');
 }

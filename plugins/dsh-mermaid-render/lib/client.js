@@ -554,7 +554,7 @@ function renderNotice(notice) {
     return (0, react_1.createElement)('div', { className: 'dsh-mermaid-render-notice dsh-mermaid-render-notice-' + notice.type }, notice.text);
 }
 /** 导出按钮组：下载 PNG / 下载 SVG / 复制代码（issue #85）。 */
-function ExportButtons({ status, onPng, onSvg, onCopy }) {
+function ExportButtons({ status, onPng, onSvg, onCopy, }) {
     const ready = status === 'ok';
     return (0, react_1.createElement)('div', { className: 'dsh-mermaid-render-export', role: 'group', 'aria-label': 'export' }, (0, react_1.createElement)('button', {
         type: 'button',
@@ -593,7 +593,7 @@ function ViewToggle({ mode, setMode }) {
     }, icon.code(14), (0, react_1.createElement)('span', null, '代码')));
 }
 /** Card body: loading / error banner / code / rendered svg. */
-function CardBody({ status, mode, error, source, svg }) {
+function CardBody({ status, mode, error, source, svg, }) {
     if (status === 'loading') {
         return (0, react_1.createElement)('div', { className: 'dsh-mermaid-render-loading' }, icon.refresh(14), (0, react_1.createElement)('span', null, '渲染中…'));
     }

@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "typecheck": "npx tsc --noEmit -p tsconfig.json && npx tsc --noEmit -p tsconfig.client.json",
     "test": "npx vitest run --coverage && cucumber-js test/features --import 'test/features/steps/*.mjs'"
   },
   "exports": {

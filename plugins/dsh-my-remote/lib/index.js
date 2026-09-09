@@ -27,59 +27,57 @@
  *
  * 可选服务一律经 ctx.get 读取（agents / sessionTitle / webRuntime）。
  */
-import { attachEvents } from './events.js'
-import { createAskRegistry, createApprovalRegistry } from './registries.js'
-import { createChannels } from './channels.js'
-import { registerRemoteRoutes } from './routes.js'
-import { createAuditLog } from './audit.js'
-import { titleOf, isTopLevelAgent } from './session.js'
-export const name = 'dsh-my-remote'
-export const inject = ['webServer']
+import { attachEvents } from './events.js';
+import { createAskRegistry, createApprovalRegistry } from './registries.js';
+import { createChannels } from './channels.js';
+import { registerRemoteRoutes } from './routes.js';
+import { createAuditLog } from './audit.js';
+import { titleOf, isTopLevelAgent } from './session.js';
+export const name = 'dsh-my-remote';
+export const inject = ['webServer'];
 export function apply(ctx, config) {
-  // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
-  const options = buildOptions(config)
-  // ── 共享上下文：注册表 + 审计 + 渠道（监听与路由共享）───────────────
-  const shared = {
-    ctx,
-    options,
-    logger: ctx.logger,
-    askRegistry: createAskRegistry(),
-    approvalRegistry: createApprovalRegistry(),
-    audit: createAuditLog(),
-    channels: createChannels(options, { logger: ctx.logger }),
-    titleOf,
-    isTopLevelAgent,
-  }
-  // ── 事件层（end/ask/approval 监听 + 远程回答/批准 race）──────────────
-  attachEvents(ctx, shared)
-  // ── 路由（/remote/api：command/status/audit/info + fence + token）────
-  registerRemoteRoutes(ctx, shared)
-  ctx.logger?.info(
-    `[dsh-my-remote] 远程控制已启用（end=${options.end ? 'on' : 'off'}，ask=${options.ask ? 'on' : 'off'}，approval=${options.approval ? 'on' : 'off'}，webhooks=${(options.webhooks ?? []).length}）`,
-  )
+    // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
+    const options = buildOptions(config);
+    // ── 共享上下文：注册表 + 审计 + 渠道（监听与路由共享）───────────────
+    const shared = {
+        ctx,
+        options,
+        logger: ctx.logger,
+        askRegistry: createAskRegistry(),
+        approvalRegistry: createApprovalRegistry(),
+        audit: createAuditLog(),
+        channels: createChannels(options, { logger: ctx.logger }),
+        titleOf,
+        isTopLevelAgent,
+    };
+    // ── 事件层（end/ask/approval 监听 + 远程回答/批准 race）──────────────
+    attachEvents(ctx, shared);
+    // ── 路由（/remote/api：command/status/audit/info + fence + token）────
+    registerRemoteRoutes(ctx, shared);
+    ctx.logger?.info(`[dsh-my-remote] 远程控制已启用（end=${options.end ? 'on' : 'off'}，ask=${options.ask ? 'on' : 'off'}，approval=${options.approval ? 'on' : 'off'}，webhooks=${(options.webhooks ?? []).length}）`);
 }
 /** 应用层配置 → options（默认值 + 类型规整）。 */
 function buildOptions(config) {
-  const c = config ?? {}
-  return {
-    end: notFalse(c.end),
-    ask: notFalse(c.ask),
-    approval: notFalse(c.approval),
-    apiToken: str(c.apiToken),
-    webhooks: Array.isArray(c.webhooks) ? c.webhooks : [],
-    askTimeoutMs: nonNegInt(c.askTimeoutMs, 0),
-    approvalTimeoutMs: nonNegInt(c.approvalTimeoutMs, 0),
-  }
+    const c = config ?? {};
+    return {
+        end: notFalse(c.end),
+        ask: notFalse(c.ask),
+        approval: notFalse(c.approval),
+        apiToken: str(c.apiToken),
+        webhooks: Array.isArray(c.webhooks) ? c.webhooks : [],
+        askTimeoutMs: nonNegInt(c.askTimeoutMs, 0),
+        approvalTimeoutMs: nonNegInt(c.approvalTimeoutMs, 0),
+    };
 }
 /** 布尔开关默认开启：缺省/true → true，false → false。 */
 function notFalse(value) {
-  return value !== false
+    return value !== false;
 }
 /** 字符串字段规整：缺失/非字符串回退空串。 */
 function str(value) {
-  return typeof value === 'string' ? value : ''
+    return typeof value === 'string' ? value : '';
 }
 /** 非负整数规整：非法/负数回退 fallback。 */
 function nonNegInt(value, fallback) {
-  return Number.isInteger(value) && value >= 0 ? value : fallback
+    return Number.isInteger(value) && value >= 0 ? value : fallback;
 }

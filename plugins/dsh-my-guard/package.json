@@ -12,7 +12,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "npx tsc -p tsconfig.json && node scripts/build.mjs",
+    "typecheck": "npx tsc --noEmit -p tsconfig.json",
     "test": "npx vitest run --coverage && cucumber-js test/features --import 'test/features/steps/*.mjs'"
   },
   "exports": {

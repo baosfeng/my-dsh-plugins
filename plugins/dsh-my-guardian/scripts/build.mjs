@@ -1,5 +1,6 @@
 /**
- * Build: splice the `lib/parts/*.part.js` pieces into the __PART_*__
+ * Build: compile the server TypeScript sources (src/*.ts → lib/*.js via tsc),
+ * then splice the `lib/parts/*.part.js` pieces into the __PART_*__
  * placeholders of lib/client.src.js and write lib/client.js — the single
  * __ModuleLoader__ bundle DSH actually serves.
  *
@@ -13,11 +14,17 @@
  * lib/client.js is the build artifact and MUST be committed (CI runs
  * node --check + tests against it; it does not run this build).
  */
+import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+
+// 1. tsc 编译 server TS → lib/*.js
+execSync('npx tsc -p tsconfig.json', { cwd: root, stdio: 'inherit' })
+
+// 2. 拼接 client parts
 const partsDir = join(root, 'lib/parts')
 // Shared client parts live in the dsh-shared package (issue #54 阶段 0):
 // single source of truth for the icon set, spliced by every plugin's build.

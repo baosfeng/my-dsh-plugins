@@ -37,100 +37,102 @@
  *    （formatMessage / sign）、pusher.ts 推送调度（超时/重试/失败记录）
  *  - webhook-store.ts — webhooks 配置持久化（JSON 文件）+ 失败记录
  */
-import { createNoticeBus } from './notice.js'
-import { attachListeners } from './listeners.js'
-import { createTokenMeter } from './token-meter.js'
-import { registerNotifyRoutes } from './routes.js'
-import { createWebhookStore } from './webhook-store.js'
-import { dispatchWebhooks } from './webhook/pusher.js'
-import { currentProfile, patchFileOf, profileDirOf, writePatchConfig } from 'dsh-shared'
-import { join } from 'node:path'
-export const name = 'dsh-my-notify'
-export const inject = ['webServer']
+import { createNoticeBus } from './notice.js';
+import { attachListeners } from './listeners.js';
+import { createTokenMeter } from './token-meter.js';
+import { registerNotifyRoutes } from './routes.js';
+import { createWebhookStore } from './webhook-store.js';
+import { dispatchWebhooks } from './webhook/pusher.js';
+import { currentProfile, patchFileOf, profileDirOf, writePatchConfig } from 'dsh-shared';
+import { join } from 'node:path';
+export const name = 'dsh-my-notify';
+export const inject = ['webServer'];
 export function apply(ctx, config) {
-  // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
-  const options = buildOptions(config)
-  // ── 出站 webhook 存储：JSON 文件持久化 + 失败记录（issue #92）──────
-  const webhookStore = createWebhookStore({
-    file: join(profileDirOf(currentProfile()), 'notify-webhooks.json'),
-    logger: ctx.logger,
-  })
-  // 应用层 config（cordis.patch.yml）优先；否则从 JSON 文件加载
-  // （设置页保存的 webhooks，重启恢复）。
-  options.webhooks = Array.isArray(config?.webhooks) ? config.webhooks : webhookStore.load()
-  // ── 会话 token 计量：跨配置重载共享，end 通知取全量 usage（issue #109）───
-  const tokenMeter = createTokenMeter()
-  // ── 通知总线：客户端集合 + 去重 + 心跳，监听与路由共享 ──────────────
-  const bus = createNoticeBus(options)
-  // 通知出口：广播 SSE 的同时按配置分发到出站 webhook（异步推送，
-  // 不阻塞事件路径；失败记录进 store，设置页可见）。
-  //
-  // 子代理通知统一过滤（issue #112）：`agentType: 'subagent'` 的通知帧仅在
-  // `subagentEnd` 开启时才广播。过滤集中在这个出口做，SSE（bus.emitNotice）
-  // 与 webhook（dispatchWebhooks）两条通道行为一致，都继承全局开关——即使
-  // 上游误判把子代理当顶层产生子代理标记帧，也无法绕过开关双通道轰炸。
-  const emitNotice = (notice) => {
-    if (notice?.agentType === 'subagent' && !options.subagentEnd) return
-    bus.emitNotice(notice)
-    dispatchWebhooks(options.webhooks, notice, {
-      onFailure: (failure) => webhookStore.failures.add(failure),
-      formatOpts: { askFull: options.askMode !== 'summary' },
-    })
-  }
-  // ── 事件监听（只读观察；waterfall 一律透传 next()）──────────────────
-  let listenerDisposers = attachListeners(ctx, options, emitNotice, tokenMeter)
-  // 配置保存：持久化到 profile patch 文件 + 更新内存 + 重载监听器。
-  // patch 文件写入完整配置（当前值 + 新值合并），重启后完整恢复；
-  // DSH 的 watchUserPatches 会热重载 patch 文件（保存即生效）。
-  // webhooks 是对象数组（patch YAML 子集无法表达），单独写 JSON 文件。
-  const onConfigChange = async (next) => {
-    const merged = { ...options, ...next }
-    await writePatchConfig(patchFileOf(currentProfile()), 'notify', patchConfigOf(merged))
-    if (next.webhooks !== undefined) {
-      options.webhooks = next.webhooks
-      await webhookStore.save(next.webhooks)
-    }
-    Object.assign(options, next)
-    for (const dispose of listenerDisposers.splice(0)) dispose()
-    listenerDisposers = attachListeners(ctx, options, emitNotice, tokenMeter)
-  }
-  // ── 路由（SSE / trigger / info / config / webhooks + 心跳清理）──────
-  registerNotifyRoutes(ctx, options, bus, onConfigChange, emitNotice, webhookStore)
+    // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
+    const options = buildOptions(config);
+    // ── 出站 webhook 存储：JSON 文件持久化 + 失败记录（issue #92）──────
+    const webhookStore = createWebhookStore({
+        file: join(profileDirOf(currentProfile()), 'notify-webhooks.json'),
+        logger: ctx.logger,
+    });
+    // 应用层 config（cordis.patch.yml）优先；否则从 JSON 文件加载
+    // （设置页保存的 webhooks，重启恢复）。
+    options.webhooks = Array.isArray(config?.webhooks) ? config.webhooks : webhookStore.load();
+    // ── 会话 token 计量：跨配置重载共享，end 通知取全量 usage（issue #109）───
+    const tokenMeter = createTokenMeter();
+    // ── 通知总线：客户端集合 + 去重 + 心跳，监听与路由共享 ──────────────
+    const bus = createNoticeBus(options);
+    // 通知出口：广播 SSE 的同时按配置分发到出站 webhook（异步推送，
+    // 不阻塞事件路径；失败记录进 store，设置页可见）。
+    //
+    // 子代理通知统一过滤（issue #112）：`agentType: 'subagent'` 的通知帧仅在
+    // `subagentEnd` 开启时才广播。过滤集中在这个出口做，SSE（bus.emitNotice）
+    // 与 webhook（dispatchWebhooks）两条通道行为一致，都继承全局开关——即使
+    // 上游误判把子代理当顶层产生子代理标记帧，也无法绕过开关双通道轰炸。
+    const emitNotice = (notice) => {
+        if (notice?.agentType === 'subagent' && !options.subagentEnd)
+            return;
+        bus.emitNotice(notice);
+        dispatchWebhooks(options.webhooks, notice, {
+            onFailure: (failure) => webhookStore.failures.add(failure),
+            formatOpts: { askFull: options.askMode !== 'summary' },
+        });
+    };
+    // ── 事件监听（只读观察；waterfall 一律透传 next()）──────────────────
+    let listenerDisposers = attachListeners(ctx, options, emitNotice, tokenMeter);
+    // 配置保存：持久化到 profile patch 文件 + 更新内存 + 重载监听器。
+    // patch 文件写入完整配置（当前值 + 新值合并），重启后完整恢复；
+    // DSH 的 watchUserPatches 会热重载 patch 文件（保存即生效）。
+    // webhooks 是对象数组（patch YAML 子集无法表达），单独写 JSON 文件。
+    const onConfigChange = async (next) => {
+        const merged = { ...options, ...next };
+        await writePatchConfig(patchFileOf(currentProfile()), 'notify', patchConfigOf(merged));
+        if (next.webhooks !== undefined) {
+            options.webhooks = next.webhooks;
+            await webhookStore.save(next.webhooks);
+        }
+        Object.assign(options, next);
+        for (const dispose of listenerDisposers.splice(0))
+            dispose();
+        listenerDisposers = attachListeners(ctx, options, emitNotice, tokenMeter);
+    };
+    // ── 路由（SSE / trigger / info / config / webhooks + 心跳清理）──────
+    registerNotifyRoutes(ctx, options, bus, onConfigChange, emitNotice, webhookStore);
 }
 /** 应用层配置 → options（默认值 + 类型规整）。 */
 function buildOptions(config) {
-  const c = config ?? {}
-  return {
-    end: notFalse(c.end),
-    ask: notFalse(c.ask),
-    approval: notFalse(c.approval),
-    subagentEnd: whenTrue(c.subagentEnd),
-    askMode: c.askMode === 'summary' ? 'summary' : 'full',
-    webBaseUrl: str(c.webBaseUrl),
-    apiToken: str(c.apiToken),
-    dedupeMs: num(c.dedupeMs, 3000),
-    webhooks: [],
-  }
+    const c = config ?? {};
+    return {
+        end: notFalse(c.end),
+        ask: notFalse(c.ask),
+        approval: notFalse(c.approval),
+        subagentEnd: whenTrue(c.subagentEnd),
+        askMode: c.askMode === 'summary' ? 'summary' : 'full',
+        webBaseUrl: str(c.webBaseUrl),
+        apiToken: str(c.apiToken),
+        dedupeMs: num(c.dedupeMs, 3000),
+        webhooks: [],
+    };
 }
 /** 布尔开关默认开启：缺省/true → true，false → false。 */
 function notFalse(value) {
-  return value !== false
+    return value !== false;
 }
 /** 仅显式 true 才开启（subagentEnd/子代理）。 */
 function whenTrue(value) {
-  return value === true
+    return value === true;
 }
 /** 字符串字段规整：缺失/非字符串回退空串。 */
 function str(value) {
-  return typeof value === 'string' ? value : ''
+    return typeof value === 'string' ? value : '';
 }
 /** 数值字段规整：非有限回退 fallback。 */
 function num(value, fallback) {
-  return Number.isFinite(value) ? value : fallback
+    return Number.isFinite(value) ? value : fallback;
 }
 /** 从 patch 配置中剥离 webhooks（对象数组无法 YAML 子集序列化）。 */
 function patchConfigOf(merged) {
-  const rest = { ...merged }
-  delete rest.webhooks
-  return rest
+    const rest = { ...merged };
+    delete rest.webhooks;
+    return rest;
 }

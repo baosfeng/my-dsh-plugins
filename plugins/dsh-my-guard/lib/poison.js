@@ -12,261 +12,259 @@
  *
  * 扫描只读包内容，绝不执行包内脚本/代码。
  */
-import { readFile, readdir, stat, mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join, basename, extname } from 'node:path'
-import { execFile } from 'node:child_process'
-import {
-  SUSPICIOUS_SCRIPT_PATTERNS,
-  SECRET_PATTERNS,
-  SUSPICIOUS_FILES,
-  MALICIOUS_DEPENDENCIES,
-  SCAN_IGNORE,
-  MAX_SCAN_FILE_BYTES,
-  MAX_SCAN_FILES,
-} from './constants.js'
-
+import { readFile, readdir, stat, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, basename, extname } from 'node:path';
+import { execFile } from 'node:child_process';
+import { SUSPICIOUS_SCRIPT_PATTERNS, SECRET_PATTERNS, SUSPICIOUS_FILES, MALICIOUS_DEPENDENCIES, SCAN_IGNORE, MAX_SCAN_FILE_BYTES, MAX_SCAN_FILES, } from './constants.js';
 /** 扫描本地包目录；返回 { ok, findings, scannedFiles, scannedBytes }。 */
 export async function scanPackage(dir) {
-  const handle = { findings: [], files: 0, bytes: 0 }
-  try {
-    await scanDir(dir, dir, handle)
-    return {
-      ok: true,
-      findings: handle.findings,
-      scannedFiles: handle.files,
-      scannedBytes: handle.bytes,
+    const handle = { findings: [], files: 0, bytes: 0 };
+    try {
+        await scanDir(dir, dir, handle);
+        return {
+            ok: true,
+            findings: handle.findings,
+            scannedFiles: handle.files,
+            scannedBytes: handle.bytes,
+        };
     }
-  } catch (error) {
-    return { ok: false, error: errorMessage(error) }
-  }
+    catch (error) {
+        return { ok: false, error: errorMessage(error) };
+    }
 }
-
 /** 解压 tarball 到临时目录后扫描（不执行包内代码）；返回扫描结果。 */
 export async function scanTarball(tarballPath) {
-  const tmp = await mkdtemp(join(tmpdir(), 'dsh-guard-scan-'))
-  try {
-    await execFileAsync('tar', ['-xzf', tarballPath, '-C', tmp])
-    return await scanPackage(tmp)
-  } catch (error) {
-    return { ok: false, error: errorMessage(error) }
-  } finally {
-    await rm(tmp, { recursive: true, force: true })
-  }
+    const tmp = await mkdtemp(join(tmpdir(), 'dsh-guard-scan-'));
+    try {
+        await execFileAsync('tar', ['-xzf', tarballPath, '-C', tmp]);
+        return await scanPackage(tmp);
+    }
+    catch (error) {
+        return { ok: false, error: errorMessage(error) };
+    }
+    finally {
+        await rm(tmp, { recursive: true, force: true });
+    }
 }
-
 /**
  * 从包名/路径触发扫描（guard.js 联动；fire-and-forget 调用方负责 void）。
  * 发现可疑内容时逐条回调 onAlert({ type:'poison', severity, message, detail })。
  */
 export async function scanPackageTarget(pkg, onAlert) {
-  const result = await resolveAndScan(pkg)
-  if (!result.ok) return
-  for (const finding of result.findings) {
-    onAlert({
-      type: 'poison',
-      severity: finding.severity,
-      message: finding.message,
-      detail: { file: finding.file, pattern: finding.pattern, target: pkg },
-    })
-  }
+    const result = await resolveAndScan(pkg);
+    if (!result.ok)
+        return;
+    for (const finding of result.findings ?? []) {
+        onAlert({
+            type: 'poison',
+            severity: finding.severity,
+            message: finding.message,
+            detail: { file: finding.file, pattern: finding.pattern, target: pkg },
+        });
+    }
 }
-
 /** 解析目标（本地路径/包名）并扫描；返回扫描结果。 */
 export async function resolveAndScan(pkg) {
-  const local = localPathOf(pkg)
-  if (local !== '') return scanPackage(local)
-  const tarball = await fetchTarball(pkg)
-  if (tarball === '') return { ok: false, error: 'unable to resolve package tarball' }
-  return scanTarball(tarball)
+    const local = localPathOf(pkg);
+    if (local !== '')
+        return scanPackage(local);
+    const tarball = await fetchTarball(pkg);
+    if (tarball === '')
+        return { ok: false, error: 'unable to resolve package tarball' };
+    return scanTarball(tarball);
 }
-
 /** 本地路径解析：link: 前缀或已存在的路径 → 路径；否则空串。 */
 export function localPathOf(pkg) {
-  const candidate = pkg.startsWith('link:') ? pkg.slice(5) : pkg
-  if (candidate === '') return ''
-  if (candidate.startsWith('/') || candidate.startsWith('.')) return candidate
-  return ''
+    const candidate = pkg.startsWith('link:') ? pkg.slice(5) : pkg;
+    if (candidate === '')
+        return '';
+    if (candidate.startsWith('/') || candidate.startsWith('.'))
+        return candidate;
+    return '';
 }
-
 /** 从 npm registry 获取并下载 tarball 到临时文件；失败返回空串。 */
 async function fetchTarball(pkg) {
-  try {
-    const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}/latest`, {
-      headers: { accept: 'application/json' },
-    })
-    if (!response.ok) return ''
-    const meta = await response.json()
-    const tarballUrl = meta?.dist?.tarball
-    if (typeof tarballUrl !== 'string' || tarballUrl === '') return ''
-    const tarballResponse = await fetch(tarballUrl)
-    if (!tarballResponse.ok) return ''
-    const buffer = Buffer.from(await tarballResponse.arrayBuffer())
-    const file = join(tmpdir(), `dsh-guard-${Date.now()}-${Math.random().toString(36).slice(2)}.tgz`)
-    const { writeFile } = await import('node:fs/promises')
-    await writeFile(file, buffer)
-    return file
-  } catch {
-    return ''
-  }
+    try {
+        const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}/latest`, {
+            headers: { accept: 'application/json' },
+        });
+        if (!response.ok)
+            return '';
+        const meta = await response.json();
+        const dist = meta?.dist;
+        const tarballUrl = dist?.tarball;
+        if (typeof tarballUrl !== 'string' || tarballUrl === '')
+            return '';
+        const tarballResponse = await fetch(tarballUrl);
+        if (!tarballResponse.ok)
+            return '';
+        const buffer = Buffer.from(await tarballResponse.arrayBuffer());
+        const file = join(tmpdir(), `dsh-guard-${Date.now()}-${Math.random().toString(36).slice(2)}.tgz`);
+        await writeFile(file, buffer);
+        return file;
+    }
+    catch {
+        return '';
+    }
 }
-
 /** 递归扫描目录（跳过 SCAN_IGNORE；文件数/大小上限）。 */
 async function scanDir(root, dir, handle) {
-  const entries = await readdir(dir, { withFileTypes: true })
-  for (const entry of entries) {
-    if (handle.files >= MAX_SCAN_FILES) return
-    if (SCAN_IGNORE.has(entry.name)) continue
-    const full = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      await scanDir(root, full, handle)
-    } else if (entry.isFile()) {
-      await scanFile(root, full, handle)
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        if (handle.files >= MAX_SCAN_FILES)
+            return;
+        if (SCAN_IGNORE.has(entry.name))
+            continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+            await scanDir(root, full, handle);
+        }
+        else if (entry.isFile()) {
+            await scanFile(root, full, handle);
+        }
     }
-  }
 }
-
 /** 扫描单个文件：package.json 特殊检查 + 文件名/内容模式。 */
 async function scanFile(root, full, handle) {
-  handle.files += 1
-  const name = basename(full)
-  const rel = full.slice(root.length + 1)
-  checkSuspiciousFileNames(name, rel, handle)
-  const text = await readText(full, handle)
-  if (text === null) return
-  if (name === 'package.json') {
-    for (const finding of inspectPackageJson(text, rel)) handle.findings.push(finding)
-    return
-  }
-  checkSecrets(text, rel, handle)
-  checkShellScripts(name, text, rel, handle)
+    handle.files += 1;
+    const name = basename(full);
+    const rel = full.slice(root.length + 1);
+    checkSuspiciousFileNames(name, rel, handle);
+    const text = await readText(full, handle);
+    if (text === null)
+        return;
+    if (name === 'package.json') {
+        for (const finding of inspectPackageJson(text, rel))
+            handle.findings.push(finding);
+        return;
+    }
+    checkSecrets(text, rel, handle);
+    checkShellScripts(name, text, rel, handle);
 }
-
 /** 文件名可疑扩展名检测。 */
 function checkSuspiciousFileNames(name, rel, handle) {
-  for (const pattern of SUSPICIOUS_FILES) {
-    if (pattern.re.test(name)) {
-      handle.findings.push({
-        id: 'suspicious-file',
-        severity: 'low',
-        message: pattern.message,
-        file: rel,
-        pattern: pattern.id,
-      })
+    for (const pattern of SUSPICIOUS_FILES) {
+        if (pattern.re.test(name)) {
+            handle.findings.push({
+                id: 'suspicious-file',
+                severity: 'low',
+                message: pattern.message,
+                file: rel,
+                pattern: pattern.id,
+            });
+        }
     }
-  }
 }
-
 /** 文件内容密钥模式检测。 */
 function checkSecrets(text, rel, handle) {
-  for (const pattern of SECRET_PATTERNS) {
-    if (pattern.re.test(text)) {
-      handle.findings.push({
-        id: 'secret',
-        severity: 'high',
-        message: pattern.message,
-        file: rel,
-        pattern: pattern.id,
-      })
+    for (const pattern of SECRET_PATTERNS) {
+        if (pattern.re.test(text)) {
+            handle.findings.push({
+                id: 'secret',
+                severity: 'high',
+                message: pattern.message,
+                file: rel,
+                pattern: pattern.id,
+            });
+        }
     }
-  }
 }
-
 /** shell 脚本内容可疑命令检测。 */
 function checkShellScripts(name, text, rel, handle) {
-  if (!isShellFile(name)) return
-  for (const pattern of SUSPICIOUS_SCRIPT_PATTERNS) {
-    if (pattern.re.test(text)) {
-      handle.findings.push({
-        id: 'suspicious-script',
-        severity: 'medium',
-        message: pattern.message,
-        file: rel,
-        pattern: pattern.id,
-      })
+    if (!isShellFile(name))
+        return;
+    for (const pattern of SUSPICIOUS_SCRIPT_PATTERNS) {
+        if (pattern.re.test(text)) {
+            handle.findings.push({
+                id: 'suspicious-script',
+                severity: 'medium',
+                message: pattern.message,
+                file: rel,
+                pattern: pattern.id,
+            });
+        }
     }
-  }
 }
-
 /** 读取文件文本（大小上限内；不可读/超限返回 null）。 */
 async function readText(full, handle) {
-  const info = await stat(full)
-  if (!info.isFile() || info.size > MAX_SCAN_FILE_BYTES) return null
-  handle.bytes += info.size
-  try {
-    return await readFile(full, 'utf8')
-  } catch {
-    return null
-  }
+    const info = await stat(full);
+    if (!info.isFile() || info.size > MAX_SCAN_FILE_BYTES)
+        return null;
+    handle.bytes += info.size;
+    try {
+        return await readFile(full, 'utf8');
+    }
+    catch {
+        return null;
+    }
 }
-
 /** 是否为 shell 脚本文件（.sh/.bash）。 */
 export function isShellFile(name) {
-  const ext = extname(name).toLowerCase()
-  return ext === '.sh' || ext === '.bash'
+    const ext = extname(name).toLowerCase();
+    return ext === '.sh' || ext === '.bash';
 }
-
 /** 解析 package.json：scripts 可疑命令 + 恶意依赖名。 */
 export function inspectPackageJson(text, file) {
-  const findings = []
-  let pkg
-  try {
-    pkg = JSON.parse(text)
-  } catch {
-    return findings
-  }
-  if (pkg !== null && typeof pkg === 'object') {
-    inspectScripts(pkg.scripts, file, findings)
-    inspectDependencies(pkg.dependencies, file, findings)
-    inspectDependencies(pkg.devDependencies, file, findings)
-    inspectDependencies(pkg.peerDependencies, file, findings)
-    inspectDependencies(pkg.optionalDependencies, file, findings)
-  }
-  return findings
+    const findings = [];
+    let pkg;
+    try {
+        pkg = JSON.parse(text);
+    }
+    catch {
+        return findings;
+    }
+    if (pkg !== null && typeof pkg === 'object') {
+        inspectScripts(pkg.scripts, file, findings);
+        inspectDependencies(pkg.dependencies, file, findings);
+        inspectDependencies(pkg.devDependencies, file, findings);
+        inspectDependencies(pkg.peerDependencies, file, findings);
+        inspectDependencies(pkg.optionalDependencies, file, findings);
+    }
+    return findings;
 }
-
 /** scripts 字段可疑命令检测。 */
 function inspectScripts(scripts, file, findings) {
-  if (scripts === null || typeof scripts !== 'object') return
-  for (const [name, script] of Object.entries(scripts)) {
-    if (typeof script !== 'string') continue
-    for (const pattern of SUSPICIOUS_SCRIPT_PATTERNS) {
-      if (pattern.re.test(script)) {
-        findings.push({
-          id: 'suspicious-script',
-          severity: 'medium',
-          message: pattern.message,
-          file,
-          pattern: pattern.id,
-          script: name,
-        })
-      }
+    if (scripts === null || typeof scripts !== 'object')
+        return;
+    for (const [name, script] of Object.entries(scripts)) {
+        if (typeof script !== 'string')
+            continue;
+        for (const pattern of SUSPICIOUS_SCRIPT_PATTERNS) {
+            if (pattern.re.test(script)) {
+                findings.push({
+                    id: 'suspicious-script',
+                    severity: 'medium',
+                    message: pattern.message,
+                    file,
+                    pattern: pattern.id,
+                    script: name,
+                });
+            }
+        }
     }
-  }
 }
-
 /** 依赖名恶意包检测。 */
 function inspectDependencies(deps, file, findings) {
-  if (deps === null || typeof deps !== 'object') return
-  for (const name of Object.keys(deps)) {
-    if (MALICIOUS_DEPENDENCIES.includes(name)) {
-      findings.push({
-        id: 'malicious-dependency',
-        severity: 'high',
-        message: `已知被投毒/恶意依赖：${name}`,
-        file,
-        pattern: 'malicious-dependency',
-      })
+    if (deps === null || typeof deps !== 'object')
+        return;
+    for (const name of Object.keys(deps)) {
+        if (MALICIOUS_DEPENDENCIES.includes(name)) {
+            findings.push({
+                id: 'malicious-dependency',
+                severity: 'high',
+                message: `已知被投毒/恶意依赖：${name}`,
+                file,
+                pattern: 'malicious-dependency',
+            });
+        }
     }
-  }
 }
-
 function errorMessage(error) {
-  return error instanceof Error ? error.message : String(error)
+    return error instanceof Error ? error.message : String(error);
 }
-
 function execFileAsync(command, args) {
-  return new Promise((resolve, reject) => {
-    execFile(command, args, (error) => (error === null ? resolve() : reject(error)))
-  })
+    return new Promise((resolve, reject) => {
+        execFile(command, args, (error) => (error === null ? resolve() : reject(error)));
+    });
 }

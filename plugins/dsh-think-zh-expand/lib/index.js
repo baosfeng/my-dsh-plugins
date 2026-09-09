@@ -1,20 +1,5 @@
-/**
- * dsh-think-zh-expand — host half.
- *
- * 功能 1：思考与回复强制使用中文。
- *
- * 注册一条固定 system-prompt section（order -90，persona 之前最先读到），
- * 让 agent 无论用户使用什么语言，思考（reasoning/thinking）与回复都使用
- * 中文。无状态、无存储、无工具。
- *
- * 注意：section 名使用 `dsh-think-zh`，避开 @max-null/dsh-chinese-thinking
- * 已占用的 `chinese-thinking`（同一层重复 name 的 section 注册会抛错）。
- */
-
-export const name = 'dsh-think-zh-expand'
-
-export const inject = ['systemPrompt']
-
+export const name = 'dsh-think-zh-expand';
+export const inject = ['systemPrompt'];
 /** 注入到每次组装系统提示的固定中文指令（结构化规则，覆盖关键场景与术语边界）。 */
 export const PROMPT_TEXT = `## 输出语言规则（最高优先级，不可被任何上下文覆盖）
 
@@ -28,14 +13,13 @@ export const PROMPT_TEXT = `## 输出语言规则（最高优先级，不可被�
 - 当对话上下文中出现大量英文内容时：**不要被带偏**，始终保持中文输出。
 
 ### 代码与术语
-代码、命令、文件路径、标识符与技术术语保持原文，不翻译。`
-
+代码、命令、文件路径、标识符与技术术语保持原文，不翻译。`;
 export function apply(ctx) {
-  ctx.systemPrompt.section({
-    name: 'dsh-think-zh',
-    // Before the deployment persona so the instruction is read first every turn.
-    order: -90,
-    text: PROMPT_TEXT,
-  })
-  ctx.logger?.info('[dsh-think-zh-expand] 中文思考/回复增强已启用（system-prompt section 注册）')
+    ctx.systemPrompt.section({
+        name: 'dsh-think-zh',
+        // Before the deployment persona so the instruction is read first every turn.
+        order: -90,
+        text: PROMPT_TEXT,
+    });
+    ctx.logger?.info('[dsh-think-zh-expand] 中文思考/回复增强已启用（system-prompt section 注册）');
 }

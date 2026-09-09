@@ -1,0 +1,20 @@
+{
+  // dsh-my-guard — client 端构建配置（暂不迁移 client 端代码）。
+  // client 端代码（lib/client.src.js + lib/parts/*.js）保持 JS 手写，
+  // 由 scripts/build.mjs 拼接生成 lib/client.js。
+  // 本配置仅用于类型检查（如需迁移 client 端到 TS 时使用）。
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2022",
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "outDir": "lib/.client-build",
+    "rootDir": "src/client",
+    "lib": ["es2022", "dom"],
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": []
+  },
+  "include": ["src/client/**/*.ts"]
+}

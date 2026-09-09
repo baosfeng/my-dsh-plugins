@@ -22,72 +22,94 @@
  * 无磁盘写入、无定时器、内存上界 = 并发 pending 条目数（通常 ≤ 会话数）。
  */
 import { randomUUID } from 'node:crypto'
+
 /** 未知会话或已消费的决议错误码。 */
 export const NOT_FOUND = 'not-found'
+
 /** 会话结束时对未决议 approval 的 fail-closed 决议。 */
 export const SESSION_END_OUTCOME = 'rejected'
+
 /** 会话结束时对未决议 ask 的回答标记（事件层据此 deny 而不继续执行）。 */
-export const SESSION_END_ANSWER = { expired: true }
+export const SESSION_END_ANSWER: Record<string, boolean> = { expired: true }
+
 /** 创建单次决议信号：waitFor promise + settle 函数（settle 只能触发一次）。 */
-function createSignal() {
-  let settle
-  const waitFor = new Promise((resolve) => {
+function createSignal<T>(): { waitFor: Promise<T>; settle: (value: T) => void } {
+  let settle!: (value: T) => void
+  const waitFor = new Promise<T>((resolve) => {
     settle = resolve
   })
   return { waitFor, settle }
 }
+
 /**
  * 创建 ask 注册表。
  */
 export function createAskRegistry() {
   /** sessionId → ask 条目（仅 pending，决议即删除）。 */
-  const entries = new Map()
+  const entries = new Map<
+    string,
+    {
+      id: string
+      sessionId: string
+      questions: unknown[]
+      payload: unknown
+      answer: unknown
+      at: number
+      waitFor: Promise<any>
+      settle: (value: any) => void
+    }
+  >()
+
   /**
    * 登记新 ask。
    * @returns 条目（含 waitFor），同会话已有 pending 时返回 undefined。
    */
-  function register(sessionId, questions, payload) {
+  function register(sessionId: string, questions: unknown[], payload: unknown) {
     if (typeof sessionId !== 'string' || sessionId === '') return undefined
     if (entries.has(sessionId)) return undefined
-    const signal = createSignal()
+    const signal = createSignal<any>()
     const entry = {
       id: randomUUID(),
       sessionId,
       questions: Array.isArray(questions) ? questions : [],
       payload,
-      answer: undefined,
+      answer: undefined as unknown,
       at: Date.now(),
       ...signal,
     }
     entries.set(sessionId, entry)
     return entry
   }
+
   /**
    * 远程回答：按 sessionId 决议 ask（answers 为裸数组，settle waitFor 并
    * 删除条目）。
    */
-  function resolve(sessionId, answers) {
+  function resolve(sessionId: string, answers: unknown[]) {
     const entry = entries.get(sessionId)
-    if (entry === undefined) return { ok: false, code: NOT_FOUND }
+    if (entry === undefined) return { ok: false as const, code: NOT_FOUND }
     entry.answer = answers
     entries.delete(sessionId)
     entry.settle(entry)
-    return { ok: true, answer: answers }
+    return { ok: true as const, answer: answers }
   }
+
   /** 只读查看某会话当前 pending ask（未决议才返回条目，拷贝）。 */
-  function peek(sessionId) {
+  function peek(sessionId: string) {
     const entry = entries.get(sessionId)
     if (entry === undefined) return undefined
     return { id: entry.id, sessionId: entry.sessionId, at: entry.at }
   }
+
   /** 会话结束清理：未决议 ask 按 expired 语义 settle（事件层据此 deny）。 */
-  function cleanSession(sessionId) {
+  function cleanSession(sessionId: string) {
     const entry = entries.get(sessionId)
     if (entry === undefined) return
     entry.answer = SESSION_END_ANSWER
     entries.delete(sessionId)
     entry.settle(entry)
   }
+
   /** 全部 pending ask（状态查询用；拷贝防外部篡改）。 */
   function listPending() {
     return [...entries.values()].map((entry) => ({
@@ -96,55 +118,73 @@ export function createAskRegistry() {
       at: entry.at,
     }))
   }
+
   return { register, resolve, peek, cleanSession, listPending }
 }
+
 /**
  * 创建 approval 注册表。
  */
 export function createApprovalRegistry() {
   /** sessionId → approval 条目（仅 pending，决议即删除）。 */
-  const entries = new Map()
+  const entries = new Map<
+    string,
+    {
+      id: string
+      sessionId: string
+      request: unknown
+      outcome: string | undefined
+      at: number
+      waitFor: Promise<any>
+      settle: (value: any) => void
+    }
+  >()
+
   /** 登记新 approval；同会话已有 pending 时返回 undefined。 */
-  function register(sessionId, request) {
+  function register(sessionId: string, request: unknown) {
     if (typeof sessionId !== 'string' || sessionId === '') return undefined
     if (entries.has(sessionId)) return undefined
-    const signal = createSignal()
+    const signal = createSignal<any>()
     const entry = {
       id: randomUUID(),
       sessionId,
       request,
-      outcome: undefined,
+      outcome: undefined as string | undefined,
       at: Date.now(),
       ...signal,
     }
     entries.set(sessionId, entry)
     return entry
   }
+
   /**
    * 远程批准/拒绝：按 sessionId 决议（settle waitFor 并删除条目）。
    */
-  function decide(sessionId, outcome) {
+  function decide(sessionId: string, outcome: string) {
     const entry = entries.get(sessionId)
-    if (entry === undefined) return { ok: false, code: NOT_FOUND }
+    if (entry === undefined) return { ok: false as const, code: NOT_FOUND }
     entry.outcome = outcome
     entries.delete(sessionId)
     entry.settle(entry)
-    return { ok: true, outcome }
+    return { ok: true as const, outcome }
   }
+
   /** 只读查看某会话当前 pending approval（拷贝）。 */
-  function peek(sessionId) {
+  function peek(sessionId: string) {
     const entry = entries.get(sessionId)
     if (entry === undefined) return undefined
     return { id: entry.id, sessionId: entry.sessionId, at: entry.at }
   }
+
   /** 会话结束清理：未决议 approval 按 fail-closed（rejected）决议。 */
-  function cleanSession(sessionId) {
+  function cleanSession(sessionId: string) {
     const entry = entries.get(sessionId)
     if (entry === undefined) return
     entry.outcome = SESSION_END_OUTCOME
     entries.delete(sessionId)
     entry.settle(entry)
   }
+
   /** 全部 pending approval（状态查询用；拷贝防外部篡改）。 */
   function listPending() {
     return [...entries.values()].map((entry) => ({
@@ -153,5 +193,6 @@ export function createApprovalRegistry() {
       at: entry.at,
     }))
   }
+
   return { register, decide, peek, cleanSession, listPending }
 }

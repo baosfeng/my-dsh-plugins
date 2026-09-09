@@ -17,17 +17,19 @@
  */
 import { isTrustedApiRequest, header, readJsonBody, writeJson, writeError } from 'dsh-shared'
 import { processCommand, statusSnapshot } from './commands.js'
+import type { DshContext, ServerRequest, ServerResponse, SharedContext } from './types.js'
+
 /** 注册 /remote/api 路由（ctx.effect 持有 disposer）。 */
-export function registerRemoteRoutes(ctx, shared) {
-  const webRuntime = ctx.get?.('webRuntime')
+export function registerRemoteRoutes(ctx: DshContext, shared: SharedContext): void {
+  const webRuntime = ctx.get?.('webRuntime') as { trustedHosts?: string[] } | undefined
   const trustedHosts =
     webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
       ? webRuntime.trustedHosts
       : []
-  const fence = (request) => isTrustedApiRequest(request, trustedHosts)
+  const fence = (request: ServerRequest) => isTrustedApiRequest(request, trustedHosts)
   ctx.effect(
     () =>
-      ctx.webServer.register({
+      ctx.webServer!.register({
         kind: 'prefix',
         path: '/remote/api',
         handler: apiHandler(fence, shared),
@@ -35,9 +37,10 @@ export function registerRemoteRoutes(ctx, shared) {
     'dsh-my-remote: /remote/api routes',
   )
 }
+
 /** 统一 handler：fence → 方法/动词分派 → 404/异常兜底。 */
-function apiHandler(fence, shared) {
-  return async (request, response) => {
+function apiHandler(fence: (request: ServerRequest) => boolean, shared: SharedContext) {
+  return async (request: ServerRequest, response: ServerResponse) => {
     if (!fence(request)) {
       writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
       return
@@ -58,8 +61,14 @@ function apiHandler(fence, shared) {
     }
   }
 }
+
 /** 按 method + 请求动词分派到具体 handler；未识别返回 false。 */
-async function dispatchMethod(method, request, response, shared) {
+async function dispatchMethod(
+  method: string | undefined,
+  request: ServerRequest,
+  response: ServerResponse,
+  shared: SharedContext,
+): Promise<boolean> {
   if (method === undefined) return false
   if (request.method === 'GET') return dispatchGet(method, response, shared)
   if (request.method === 'POST' && method === 'command') {
@@ -68,8 +77,9 @@ async function dispatchMethod(method, request, response, shared) {
   }
   return false
 }
+
 /** GET 端点分派（info/status/audit）。 */
-function dispatchGet(method, response, shared) {
+function dispatchGet(method: string, response: ServerResponse, shared: SharedContext): boolean {
   if (method === 'info') {
     writeJson(response, 200, { ok: true, value: infoValue(shared) })
     return true
@@ -84,8 +94,9 @@ function dispatchGet(method, response, shared) {
   }
   return false
 }
+
 /** 插件信息：开关 + apiToken 是否启用（绝不暴露值）。 */
-function infoValue(shared) {
+function infoValue(shared: SharedContext): Record<string, unknown> {
   return {
     end: shared.options.end,
     ask: shared.options.ask,
@@ -96,8 +107,9 @@ function infoValue(shared) {
     approvalTimeoutMs: shared.options.approvalTimeoutMs,
   }
 }
+
 /** 远程指令：token 校验 → 读取 body → 指令处理（含审计）。 */
-async function handleCommand(request, response, shared) {
+async function handleCommand(request: ServerRequest, response: ServerResponse, shared: SharedContext): Promise<void> {
   const token = header(request.headers, 'x-remote-token')
   if (shared.options.apiToken !== '' && token !== shared.options.apiToken) {
     shared.audit.record({
@@ -113,9 +125,9 @@ async function handleCommand(request, response, shared) {
     })
     return
   }
-  let body
+  let body: Record<string, unknown>
   try {
-    body = await readJsonBody(request)
+    body = (await readJsonBody(request)) as Record<string, unknown>
   } catch {
     shared.audit.record({ action: 'command', source: sourceOf(request), ok: false, detail: 'invalid json body' })
     writeJson(response, 400, { ok: false, error: { message: 'invalid json body' } })
@@ -131,8 +143,9 @@ async function handleCommand(request, response, shared) {
   }
   writeJson(response, 200, { ok: true, value: result.result })
 }
+
 /** 审计来源：x-forwarded-for 优先（经代理时真实客户端），回退 'local'。 */
-function sourceOf(request) {
+function sourceOf(request: ServerRequest): string {
   const forwarded = header(request.headers, 'x-forwarded-for')
   if (forwarded !== undefined && forwarded !== '') return forwarded.split(',')[0].trim()
   return 'local'

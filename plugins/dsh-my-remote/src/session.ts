@@ -1,24 +1,38 @@
+/**
+ * dsh-my-remote — 会话信息 helper（纯函数，尽力而为）。
+ *
+ * 从 agent/session 结构提取远程控制所需信息：顶层会话判定（只远程控制
+ * 顶层会话，子代理由宿主自行控制，复用 notify 的黑名单化判定：header
+ * origin/delegationDepth、运行时 subagentDepth、派生父会话 parentSession
+ * 任一命中即子代理）、会话标题（sessionTitle 快照 → cwd 末段 → 空串）、
+ * ask 问题结构化（questions → 带 id/header/question/options 的列表，
+ * 供外部通道渲染与远程回答按 id 匹配）。
+ */
+import type { DshContext } from './types.js'
+
 /** 顶层会话判定：只有明确无任何子代理标记的会话才视为顶层。 */
-export function isTopLevelAgent(agent) {
+export function isTopLevelAgent(agent: unknown): boolean {
   if (agent === null || typeof agent !== 'object') return false
-  const a = agent
-  const session = a.session
-  const header = session?.header
+  const a = agent as Record<string, unknown>
+  const session = a.session as Record<string, unknown> | undefined
+  const header = session?.header as Record<string, unknown> | undefined
   if (header === undefined || header === null) return false
-  return !hasSubagentMarker(header, a.options)
+  return !hasSubagentMarker(header, a.options as Record<string, unknown> | undefined)
 }
+
 /** 任一子代理标记命中即子代理（持久化标记 + 运行时深度 + 派生父会话）。 */
-function hasSubagentMarker(header, options) {
+function hasSubagentMarker(header: Record<string, unknown>, options: Record<string, unknown> | undefined): boolean {
   if (header.origin === 'subagent') return true
   if (typeof header.delegationDepth === 'number' && header.delegationDepth > 0) return true
   if (typeof options?.subagentDepth === 'number' && options.subagentDepth > 0) return true
   return typeof header.parentSession === 'string' && header.parentSession !== ''
 }
+
 /** 会话标题：sessionTitle 快照优先，回退 cwd 末段，再回退空串。 */
-export function titleOf(ctx, agent) {
+export function titleOf(ctx: DshContext, agent: unknown): string {
   try {
-    const a = agent
-    const session = a?.session
+    const a = agent as Record<string, unknown> | undefined
+    const session = a?.session as Record<string, unknown> | undefined
     const snapshotTitle = titleSnapshot(ctx, session)
     if (snapshotTitle !== '') return snapshotTitle
     return cwdName(session)
@@ -27,18 +41,20 @@ export function titleOf(ctx, agent) {
     return ''
   }
 }
+
 /** sessionTitle 快照标题（可选服务必须经 ctx.get 读取；失败返回空串）。 */
-function titleSnapshot(ctx, session) {
-  const titleService = ctx.get?.('sessionTitle')
+function titleSnapshot(ctx: DshContext, session: Record<string, unknown> | undefined): string {
+  const titleService = ctx.get?.('sessionTitle') as { get?: (session: unknown) => { title?: string } } | undefined
   const snapshot = titleService?.get?.(session)
   if (snapshot !== undefined && snapshot !== null && typeof snapshot.title === 'string' && snapshot.title !== '') {
     return snapshot.title
   }
   return ''
 }
+
 /** cwd 末段作为标题回退（去尾斜杠；无 cwd 返回空串）。 */
-function cwdName(session) {
-  const header = session?.header
+function cwdName(session: Record<string, unknown> | undefined): string {
+  const header = session?.header as Record<string, unknown> | undefined
   const cwd = header?.cwd
   if (typeof cwd === 'string' && cwd !== '') {
     const norm = cwd.replace(/\/+$/, '')
@@ -48,26 +64,42 @@ function cwdName(session) {
   }
   return ''
 }
+
 /**
  * ask 问题结构化：questions 参数 → 外部通道可渲染、远程回答可匹配的列表。
  * 每题保留 id/header/question/options（label 列表），丢弃无关字段。
  */
-export function askQuestionsOf(argumentsValue) {
+export function askQuestionsOf(argumentsValue: Record<string, unknown>): Array<{
+  id: string
+  header: string
+  question: string
+  options: string[]
+}> {
   const questions = argumentsValue?.questions
   if (!Array.isArray(questions) || questions.length === 0) return []
-  return questions.map(structuredQuestion).filter((q) => q !== null)
+  return questions
+    .map(structuredQuestion)
+    .filter((q): q is NonNullable<ReturnType<typeof structuredQuestion>> => q !== null)
 }
+
 /** 单个问题结构化：id + header/question 全文 + options 标签（尽力而为）。 */
-function structuredQuestion(question) {
+function structuredQuestion(
+  question: unknown,
+): { id: string; header: string; question: string; options: string[] } | null {
   if (question === null || typeof question !== 'object') return null
-  const q = question
+  const q = question as Record<string, unknown>
   const id = typeof q.id === 'string' && q.id !== '' ? q.id : ''
   const header = typeof q.header === 'string' ? q.header : ''
   const text = typeof q.question === 'string' ? q.question : ''
   const options = Array.isArray(q.options)
     ? q.options
-        .filter((option) => option !== null && typeof option === 'object' && typeof option.label === 'string')
-        .map((option) => option.label)
+        .filter(
+          (option: unknown) =>
+            option !== null &&
+            typeof option === 'object' &&
+            typeof (option as Record<string, unknown>).label === 'string',
+        )
+        .map((option: unknown) => (option as Record<string, string>).label)
     : []
   if (id === '' && text === '') return null
   return { id, header, question: text, options }

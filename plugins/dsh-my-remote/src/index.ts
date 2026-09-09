@@ -33,13 +33,18 @@ import { createChannels } from './channels.js'
 import { registerRemoteRoutes } from './routes.js'
 import { createAuditLog } from './audit.js'
 import { titleOf, isTopLevelAgent } from './session.js'
+import type { DshContext, PluginConfig, ResolvedOptions, SharedContext } from './types.js'
+
 export const name = 'dsh-my-remote'
+
 export const inject = ['webServer']
-export function apply(ctx, config) {
+
+export function apply(ctx: DshContext, config: PluginConfig): void {
   // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
   const options = buildOptions(config)
+
   // ── 共享上下文：注册表 + 审计 + 渠道（监听与路由共享）───────────────
-  const shared = {
+  const shared: SharedContext = {
     ctx,
     options,
     logger: ctx.logger,
@@ -50,16 +55,20 @@ export function apply(ctx, config) {
     titleOf,
     isTopLevelAgent,
   }
+
   // ── 事件层（end/ask/approval 监听 + 远程回答/批准 race）──────────────
   attachEvents(ctx, shared)
+
   // ── 路由（/remote/api：command/status/audit/info + fence + token）────
   registerRemoteRoutes(ctx, shared)
+
   ctx.logger?.info(
     `[dsh-my-remote] 远程控制已启用（end=${options.end ? 'on' : 'off'}，ask=${options.ask ? 'on' : 'off'}，approval=${options.approval ? 'on' : 'off'}，webhooks=${(options.webhooks ?? []).length}）`,
   )
 }
+
 /** 应用层配置 → options（默认值 + 类型规整）。 */
-function buildOptions(config) {
+function buildOptions(config: PluginConfig): ResolvedOptions {
   const c = config ?? {}
   return {
     end: notFalse(c.end),
@@ -71,15 +80,18 @@ function buildOptions(config) {
     approvalTimeoutMs: nonNegInt(c.approvalTimeoutMs, 0),
   }
 }
+
 /** 布尔开关默认开启：缺省/true → true，false → false。 */
-function notFalse(value) {
+function notFalse(value: boolean | undefined): boolean {
   return value !== false
 }
+
 /** 字符串字段规整：缺失/非字符串回退空串。 */
-function str(value) {
+function str(value: string | undefined): string {
   return typeof value === 'string' ? value : ''
 }
+
 /** 非负整数规整：非法/负数回退 fallback。 */
-function nonNegInt(value, fallback) {
-  return Number.isInteger(value) && value >= 0 ? value : fallback
+function nonNegInt(value: number | undefined, fallback: number): number {
+  return Number.isInteger(value) && (value as number) >= 0 ? (value as number) : fallback
 }

@@ -9,13 +9,10 @@
  * 可选 options 护栏：minIntervalMs（节流窗口，超频跳过）、maxBytes（巨型
  * 对象拒绝），超限均 warn 并返回 false。
  */
-
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-
 /** 最近一次成功写盘时间（按文件）；minIntervalMs 节流窗口用。 */
 const lastWriteAt = new Map()
-
 /** 护栏检查：节流窗口被拦或内容超限时 warn 并返回 true（调用方跳过写盘）。 */
 function gatesBlocked(file, text, options, logger, prefix, now) {
   const { minIntervalMs = 0, maxBytes = Infinity } = options
@@ -29,7 +26,6 @@ function gatesBlocked(file, text, options, logger, prefix, now) {
   }
   return false
 }
-
 /**
  * 原子写 JSON 快照（tmp+rename，自动建目录）；失败仅告警不抛出。
  * 调用方负责串行化（dirtyChain）与防抖调度。

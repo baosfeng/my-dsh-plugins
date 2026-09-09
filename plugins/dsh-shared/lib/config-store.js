@@ -18,7 +18,6 @@
 import { readFile, rename, writeFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-
 /** Profile 名：进程参数 --profile 优先，否则默认 web（与 dsh-my-plugin-manager 同契约）。 */
 export function currentProfile() {
   const argv = process.argv
@@ -26,21 +25,17 @@ export function currentProfile() {
   if (idx !== -1 && typeof argv[idx + 1] === 'string' && argv[idx + 1] !== '') return argv[idx + 1]
   return 'web'
 }
-
 /** Profile 目录：$DSH_HOME/profiles/<profile>（fallback ~/.dsh/profiles/…）。 */
 export function profileDirOf(profile) {
   const home = process.env.DSH_HOME
   const base = typeof home === 'string' && home !== '' ? `${home}/profiles` : `${homedir()}/.dsh/profiles`
   return join(base, profile)
 }
-
 /** 用户层 patch 文件路径（watchUserPatches 监听的 profile 层文件）。 */
 export function patchFileOf(profile) {
   return join(profileDirOf(profile), 'cordis.patch.yml')
 }
-
 // ── 读取：YAML 子集解析 ────────────────────────────────────────────────────
-
 /** 从 patch 文件文本提取指定行 id 的 config 块；无条目/无 config 返回 undefined。 */
 export function extractConfig(text, rowId) {
   const lines = text.split('\n')
@@ -53,7 +48,6 @@ export function extractConfig(text, rowId) {
   }
   return undefined
 }
-
 /** 解析 config 块（缩进 4 空格的 `key: value` 行，直到缩进不足/顶层条目）。 */
 function parseConfigBlock(lines, from) {
   const config = {}
@@ -70,7 +64,6 @@ function parseConfigBlock(lines, from) {
   }
   return config
 }
-
 /** 解析 YAML 标量子集：布尔 / 整数 / 数组（flow）/ 引号字符串 / 裸字符串。 */
 function parseYamlScalar(raw) {
   const value = raw.trim()
@@ -82,15 +75,12 @@ function parseYamlScalar(raw) {
   if (isFlowArray(value)) return parseFlowArray(value)
   return parseStringScalar(value)
 }
-
 function isNumeric(value) {
   return /^-?\d+(\.\d+)?$/.test(value)
 }
-
 function isFlowArray(value) {
   return value.startsWith('[') && value.endsWith(']')
 }
-
 function parseFlowArray(value) {
   return value
     .slice(1, -1)
@@ -98,15 +88,12 @@ function parseFlowArray(value) {
     .map((item) => parseYamlScalar(item))
     .filter((item) => item !== undefined)
 }
-
 function parseStringScalar(value) {
   if (value.startsWith("'") && value.endsWith("'")) return value.slice(1, -1).replace(/''/g, "'")
   if (value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1)
   return value
 }
-
 // ── 写入：删除旧条目 + 追加新条目（原子写） ───────────────────────────────
-
 /** 把 config 写入 patch 文件：删除同 id 旧条目，追加新条目，原子写。 */
 export async function writePatchConfig(file, rowId, config) {
   let text = ''
@@ -136,17 +123,14 @@ export async function writePatchConfig(file, rowId, config) {
   await writeFile(tmp, next, 'utf8')
   await rename(tmp, file)
 }
-
 /** 该行是否为指定行 id 的顶层条目起始行。 */
 function isEntryStart(line, rowId) {
   return line === `- id: ${rowId}`
 }
-
 /** 顶层条目判断：行首 `- `（无缩进；嵌套 `- item` 有缩进，不算）。 */
 function isTopLevelEntry(line) {
   return line.startsWith('- ')
 }
-
 /** 渲染 `- id: <rowId>` + `config:` 块（YAML 子集序列化）。 */
 function renderEntry(rowId, config) {
   const lines = [`- id: ${rowId}`, '  config:']
@@ -155,7 +139,6 @@ function renderEntry(rowId, config) {
   }
   return lines.join('\n')
 }
-
 /** YAML 标量序列化：字符串单引号（`'` → `''`），数组 flow 风格。 */
 function yamlValue(value) {
   if (typeof value === 'string') return `'${value.replace(/'/g, "''")}'`

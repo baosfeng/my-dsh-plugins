@@ -12,10 +12,13 @@
     "node": ">=20"
   },
   "scripts": {
+    "build": "npx tsc -p tsconfig.json",
+    "typecheck": "npx tsc --noEmit -p tsconfig.json",
     "test": "npx vitest run --coverage && cucumber-js test/features --import 'test/features/steps/*.mjs'"
   },
   "exports": {
     ".": {
+      "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
     "./package.json": "./package.json"

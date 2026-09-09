@@ -13,31 +13,35 @@
  */
 import { readFileSync } from 'node:fs'
 import { atomicWriteJson } from 'dsh-shared'
+import type { FailureLog, Logger, WebhookConfig, WebhookFailure, WebhookStore } from './types.js'
+
 /** 失败记录环形缓冲上限。 */
 export const FAILURE_LOG_LIMIT = 50
+
 /** 创建 webhook 存储：load（同步，apply 时调用）+ save（原子写 JSON）。 */
-export function createWebhookStore({ file, logger }) {
+export function createWebhookStore({ file, logger }: { file: string; logger: Logger }): WebhookStore {
   return {
     failures: createFailureLog(FAILURE_LOG_LIMIT),
     load() {
       try {
         const parsed = JSON.parse(readFileSync(file, 'utf8'))
-        return Array.isArray(parsed) ? parsed : []
+        return Array.isArray(parsed) ? (parsed as WebhookConfig[]) : []
       } catch {
         // 文件不存在/损坏 → 空列表（尽力而为，不打断启动）
         return []
       }
     },
-    async save(webhooks) {
+    async save(webhooks: WebhookConfig[]) {
       await atomicWriteJson(file, webhooks, logger, 'dsh-my-notify webhooks')
     },
   }
 }
+
 /** 失败记录环形缓冲：add 追加（超限丢最旧），list 返回副本。 */
-export function createFailureLog(limit) {
-  const entries = []
+export function createFailureLog(limit: number): FailureLog {
+  const entries: WebhookFailure[] = []
   return {
-    add(failure) {
+    add(failure: WebhookFailure) {
       entries.push(failure)
       if (entries.length > limit) entries.splice(0, entries.length - limit)
     },

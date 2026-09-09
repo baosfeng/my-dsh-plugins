@@ -8,30 +8,62 @@
  * webhooks 返回出站 webhook 列表 + 失败记录（设置页可见）。
  */
 import { isTrustedApiRequest, header, readJsonBody, writeJson, writeError } from 'dsh-shared'
+import type {
+  DshContext,
+  NoticeBus,
+  NoticeFrame,
+  NotifyOptions,
+  ServerRequest,
+  ServerResponse,
+  WebhookConfig,
+  WebhookStore,
+} from './types.js'
+
+/** 配置变更回调。 */
+type OnConfigChange = (next: Partial<NotifyOptions>) => Promise<void>
+
 /** 注册 /notify/api 路由与心跳清理（两个 effect，各自返回 disposer）。 */
-export function registerNotifyRoutes(ctx, options, bus, onConfigChange, emitNotice, webhookStore) {
-  const webRuntime = ctx.get ? ctx.get('webRuntime') : undefined
+export function registerNotifyRoutes(
+  ctx: DshContext,
+  options: NotifyOptions,
+  bus: NoticeBus,
+  onConfigChange: OnConfigChange,
+  emitNotice: (notice: NoticeFrame) => void,
+  webhookStore: WebhookStore,
+): void {
+  const webRuntime = ctx.get ? (ctx.get('webRuntime') as { trustedHosts?: string[] } | undefined) : undefined
   const trustedHosts =
     webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
       ? webRuntime.trustedHosts
       : []
-  const fence = (request) => isTrustedApiRequest(request, trustedHosts)
+  const fence = (request: ServerRequest) => isTrustedApiRequest(request, trustedHosts)
+
   ctx.effect(
     () =>
-      ctx.webServer.register({
+      ctx.webServer!.register({
         kind: 'prefix',
         path: '/notify/api',
         handler: apiHandler(fence, options, bus, onConfigChange, emitNotice, webhookStore),
       }),
     'dsh-my-notify: /notify/api routes',
   )
+
   // 卸载时清理心跳（客户端集合随各 response close 自动清空）。
   ctx.effect(() => bus.stopHeartbeat, 'dsh-my-notify: heartbeat teardown')
 }
+
 // ── 路由分派 ─────────────────────────────────────────────────────────────
+
 /** 构造 /notify/api 统一 handler：fence → 方法分派 → 404/错误兜底。 */
-function apiHandler(fence, options, bus, onConfigChange, emitNotice, webhookStore) {
-  return async (request, response) => {
+function apiHandler(
+  fence: (request: ServerRequest) => boolean,
+  options: NotifyOptions,
+  bus: NoticeBus,
+  onConfigChange: OnConfigChange,
+  emitNotice: (notice: NoticeFrame) => void,
+  webhookStore: WebhookStore,
+) {
+  return async (request: ServerRequest, response: ServerResponse): Promise<void> => {
     if (!fence(request)) {
       writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
       return
@@ -62,13 +94,25 @@ function apiHandler(fence, options, bus, onConfigChange, emitNotice, webhookStor
     }
   }
 }
+
 // ── 各路由 handler ──────────────────────────────────────────────────────
+
 /** 方法 + 请求动词匹配（降低 dispatchMethod 分支复杂度）。 */
-function isMethod(method, request, name, verb) {
+function isMethod(method: string | undefined, request: ServerRequest, name: string, verb: string): boolean {
   return method === name && request.method === verb
 }
+
 /** 按 method 分派到具体 handler；未识别返回 false（调用方回 404）。 */
-async function dispatchMethod(method, request, response, options, bus, onConfigChange, emitNotice, webhookStore) {
+async function dispatchMethod(
+  method: string | undefined,
+  request: ServerRequest,
+  response: ServerResponse,
+  options: NotifyOptions,
+  bus: NoticeBus,
+  onConfigChange: OnConfigChange,
+  emitNotice: (notice: NoticeFrame) => void,
+  webhookStore: WebhookStore,
+): Promise<boolean> {
   if (isMethod(method, request, 'stream', 'GET')) {
     handleStream(response, bus)
     return true
@@ -95,8 +139,9 @@ async function dispatchMethod(method, request, response, options, bus, onConfigC
   }
   return false
 }
+
 /** SSE 长连接：EventSource 消费；断开清理订阅集合；首次订阅启动心跳。 */
-function handleStream(response, bus) {
+function handleStream(response: ServerResponse, bus: NoticeBus): void {
   response.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
@@ -113,8 +158,14 @@ function handleStream(response, bus) {
   response.on('close', onClose)
   bus.startHeartbeat()
 }
+
 /** 远程 hook：任意进程/webhook 触发通知（apiToken 校验 + JSON body）。 */
-async function handleTrigger(request, response, options, emitNotice) {
+async function handleTrigger(
+  request: ServerRequest,
+  response: ServerResponse,
+  options: NotifyOptions,
+  emitNotice: (notice: NoticeFrame) => void,
+): Promise<void> {
   const token = header(request.headers, 'x-notify-token')
   if (options.apiToken !== '' && token !== options.apiToken) {
     writeJson(response, 403, {
@@ -123,7 +174,7 @@ async function handleTrigger(request, response, options, emitNotice) {
     })
     return
   }
-  const payload = await readJsonBody(request)
+  const payload = await readJsonBody(request as unknown as AsyncIterable<string>)
   emitNotice({
     kind: 'remote',
     sessionId: typeof payload.sessionId === 'string' ? payload.sessionId : '',
@@ -132,8 +183,9 @@ async function handleTrigger(request, response, options, emitNotice) {
   })
   writeJson(response, 200, { ok: true })
 }
+
 /** 信息查询：当前触发开关（apiToken 只暴露是否启用，绝不暴露值）。 */
-function infoValue(options) {
+function infoValue(options: NotifyOptions) {
   return {
     end: options.end,
     ask: options.ask,
@@ -145,8 +197,9 @@ function infoValue(options) {
     askMode: options.askMode,
   }
 }
+
 /** 配置查询：当前生效配置（设置页表单回填；apiToken 为明文，仅本机可读）。 */
-function configValue(options) {
+function configValue(options: NotifyOptions) {
   return {
     end: options.end,
     ask: options.ask,
@@ -159,26 +212,31 @@ function configValue(options) {
     webhooks: options.webhooks,
   }
 }
+
 /** 出站 webhook 状态：当前配置列表 + 失败记录（设置页可见）。 */
-function webhooksValue(options, webhookStore) {
+function webhooksValue(options: NotifyOptions, webhookStore: WebhookStore) {
   return {
     webhooks: options.webhooks,
     failures: webhookStore?.failures?.list() ?? [],
   }
 }
+
 /** 渠道白名单。 */
 const CHANNELS = new Set(['wecom', 'feishu', 'dingtalk', 'generic'])
+
 /** 事件白名单。 */
 const EVENT_KINDS = new Set(['end', 'ask', 'approval', 'remote'])
+
 /** 非空字符串判定。 */
-function isNonEmptyString(value) {
+function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value !== ''
 }
+
 /** 校验并规整配置 payload（部分字段合法，缺失字段不校验）；非法输入返回 undefined。 */
-function normalizeConfig(payload) {
+function normalizeConfig(payload: unknown): Partial<NotifyOptions> | undefined {
   if (payload === null || typeof payload !== 'object') return undefined
-  const p = payload
-  const result = {}
+  const p = payload as Record<string, unknown>
+  const result: Record<string, unknown> = {}
   const booleans = normalizeBooleans(p, ['end', 'ask', 'approval', 'subagentEnd'])
   if (booleans === undefined) return undefined
   Object.assign(result, booleans)
@@ -197,17 +255,19 @@ function normalizeConfig(payload) {
   const webhooks = normalizeWebhooksField(p)
   if (webhooks === undefined) return undefined
   Object.assign(result, webhooks)
-  return result
+  return result as Partial<NotifyOptions>
 }
+
 /** 规整 askMode（full/summary）；缺失跳过；非法返回 undefined。 */
-function normalizeAskMode(payload) {
+function normalizeAskMode(payload: Record<string, unknown>): Record<string, unknown> | undefined {
   if (payload.askMode === undefined) return {}
   if (payload.askMode !== 'full' && payload.askMode !== 'summary') return undefined
   return { askMode: payload.askMode }
 }
+
 /** 规整布尔字段组（缺失跳过；任一非法返回 undefined）。 */
-function normalizeBooleans(payload, keys) {
-  const result = {}
+function normalizeBooleans(payload: Record<string, unknown>, keys: string[]): Record<string, unknown> | undefined {
+  const result: Record<string, unknown> = {}
   for (const key of keys) {
     if (payload[key] === undefined) continue
     if (typeof payload[key] !== 'boolean') return undefined
@@ -215,29 +275,33 @@ function normalizeBooleans(payload, keys) {
   }
   return result
 }
+
 /** 规整字符串字段（缺失返回空对象；非法返回 undefined）。 */
-function normalizeStringField(payload, key) {
+function normalizeStringField(payload: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
   if (payload[key] === undefined) return {}
   if (typeof payload[key] !== 'string') return undefined
   return { [key]: payload[key] }
 }
+
 /** 规整 dedupeMs（缺失返回空对象；非法返回 undefined）。 */
-function normalizeDedupeMs(payload) {
+function normalizeDedupeMs(payload: Record<string, unknown>): Record<string, unknown> | undefined {
   if (payload.dedupeMs === undefined) return {}
   if (!Number.isFinite(payload.dedupeMs)) return undefined
   return { dedupeMs: payload.dedupeMs }
 }
+
 /** 规整 webhooks 字段（缺失返回空对象；非法返回 undefined）。 */
-function normalizeWebhooksField(payload) {
+function normalizeWebhooksField(payload: Record<string, unknown>): Record<string, unknown> | undefined {
   if (payload.webhooks === undefined) return {}
   const webhooks = normalizeWebhooks(payload.webhooks)
   if (webhooks === undefined) return undefined
   return { webhooks }
 }
+
 /** 校验 webhooks 数组（对象数组，逐项规整）；任一非法返回 undefined。 */
-function normalizeWebhooks(value) {
+function normalizeWebhooks(value: unknown): WebhookConfig[] | undefined {
   if (!Array.isArray(value)) return undefined
-  const result = []
+  const result: WebhookConfig[] = []
   for (const item of value) {
     const webhook = normalizeWebhook(item)
     if (webhook === undefined) return undefined
@@ -245,43 +309,51 @@ function normalizeWebhooks(value) {
   }
   return result
 }
+
 /** 校验单个 webhook：名称/URL 必填，渠道/事件白名单，缺省补默认值。 */
-function normalizeWebhook(item) {
+function normalizeWebhook(item: unknown): WebhookConfig | undefined {
   if (item === null || typeof item !== 'object') return undefined
-  const w = item
+  const w = item as Record<string, unknown>
   if (!isNonEmptyString(w.name)) return undefined
   if (!isNonEmptyString(w.url)) return undefined
-  const channel = w.channel ?? 'generic'
+  const channel = (w.channel as string) ?? 'generic'
   if (!CHANNELS.has(channel)) return undefined
   const events = normalizeEvents(w.events)
   if (events === undefined) return undefined
   return {
     name: w.name,
-    channel: channel,
+    channel: channel as WebhookConfig['channel'],
     url: w.url,
     secret: typeof w.secret === 'string' ? w.secret : '',
     events,
     enabled: w.enabled !== false,
-    msgType: ['markdown', 'post'].includes(w.msgType) ? w.msgType : 'text',
+    msgType: (['markdown', 'post'].includes(w.msgType as string) ? w.msgType : 'text') as WebhookConfig['msgType'],
     template: strOrEmpty(w.template),
   }
 }
+
 /** 字符串字段规整：缺失/非字符串回退空串。 */
-function strOrEmpty(value) {
+function strOrEmpty(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
+
 /** 校验事件选择（end/ask/approval/remote 子集，去重）；缺省空数组 = 全部。 */
-function normalizeEvents(value) {
+function normalizeEvents(value: unknown): string[] | undefined {
   if (value === undefined) return []
   if (!Array.isArray(value)) return undefined
   for (const event of value) {
-    if (!EVENT_KINDS.has(event)) return undefined
+    if (!EVENT_KINDS.has(event as string)) return undefined
   }
-  return [...new Set(value)]
+  return [...new Set(value as string[])]
 }
+
 /** 保存配置：校验 → 持久化 + 更新内存 + 重载监听器（onConfigChange）。 */
-async function handleConfigPut(request, response, onConfigChange) {
-  const payload = await readJsonBody(request)
+async function handleConfigPut(
+  request: ServerRequest,
+  response: ServerResponse,
+  onConfigChange: OnConfigChange,
+): Promise<void> {
+  const payload = await readJsonBody(request as unknown as AsyncIterable<string>)
   const next = normalizeConfig(payload)
   if (next === undefined) {
     writeJson(response, 400, { ok: false, error: { message: 'invalid config' } })
@@ -290,4 +362,5 @@ async function handleConfigPut(request, response, onConfigChange) {
   await onConfigChange(next)
   writeJson(response, 200, { ok: true })
 }
+
 // ── HTTP helpers（与仓库其它插件的路由写法一致）─────────────────────────

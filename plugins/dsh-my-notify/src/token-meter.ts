@@ -13,23 +13,28 @@
  * 全部为纯状态函数（无需 ctx）；`track` 幂等、`summary` 只读、`drop`
  * 在 end 通知后释放桶避免内存膨胀。
  */
+
+import type { TokenBucket, TokenMeter, TokenSummary } from './types.js'
+
 /** 当前总 token：inputTokens + outputTokens（消费口径，不含缓存命中注入）。 */
-function totalOf(usage) {
+function totalOf(usage: TokenBucket['usage']): number {
   return usage.inputTokens + usage.outputTokens
 }
+
 /** 创建会话 token 计量器：track / summary / drop。 */
-export function createTokenMeter() {
-  const bySession = new Map()
+export function createTokenMeter(): TokenMeter {
+  const bySession = new Map<string, TokenBucket>()
+
   /**
    * 观察一次 session/event：assistant/message 且带真实 usage 时累加。
    * 首次记录会话活动时间（会话耗时的 start 参考点）。
    */
-  function track(sessionId, event) {
+  function track(sessionId: string, event: unknown): void {
     if (typeof sessionId !== 'string' || sessionId === '') return
-    const e = event
-    const usage = e?.type === 'assistant/message' ? e?.data?.usage : undefined
+    const e = event as Record<string, unknown> | undefined
+    const usage = e?.type === 'assistant/message' ? (e?.data as Record<string, unknown> | undefined)?.usage : undefined
     if (usage === null || typeof usage !== 'object') return
-    const u = usage
+    const u = usage as Record<string, unknown>
     const bucket = bySession.get(sessionId) ?? initBucket()
     bucket.usage.inputTokens += numberOr(u.inputTokens, 0)
     bucket.usage.outputTokens += numberOr(u.outputTokens, 0)
@@ -39,8 +44,9 @@ export function createTokenMeter() {
     bucket.requests += 1
     bySession.set(sessionId, bucket)
   }
+
   /** 会话 token 摘要：{ input, output, cacheRead, total, requests, startedAt }。 */
-  function summary(sessionId) {
+  function summary(sessionId: string): TokenSummary | undefined {
     const bucket = bySession.get(sessionId)
     if (bucket === undefined) return undefined
     const usage = bucket.usage
@@ -54,14 +60,17 @@ export function createTokenMeter() {
       startedAt: bucket.startedAt,
     }
   }
+
   /** 删除会话桶（end 通知构造后调用，释放内存）。 */
-  function drop(sessionId) {
+  function drop(sessionId: string): void {
     bySession.delete(sessionId)
   }
+
   return { track, summary, drop }
 }
+
 /** 新建会话桶（记录首次活动时间）。 */
-function initBucket() {
+function initBucket(): TokenBucket {
   return {
     usage: {
       inputTokens: 0,
@@ -74,7 +83,8 @@ function initBucket() {
     startedAt: Date.now(),
   }
 }
+
 /** 非有限负数不累加（与 dsh-my-context numberOr 一致）。 */
-function numberOr(value, fallback) {
+function numberOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback
 }

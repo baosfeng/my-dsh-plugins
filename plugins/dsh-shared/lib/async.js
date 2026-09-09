@@ -2,7 +2,6 @@
  * dsh-shared — async / message helpers（由 dsh-task-reliability / dsh-my-observability
  * 的 util.js、ai.js 抽取合并，issue #45）。
  */
-
 /** 超时包装：ms 内未 settle 则 resolve undefined（不 reject）。 */
 export function withTimeout(promise, ms) {
   return new Promise((resolve) => {
@@ -19,7 +18,6 @@ export function withTimeout(promise, ms) {
     )
   })
 }
-
 /** 构造 user 角色消息（agent.steer / followup 用）。 */
 export function userMessage(text) {
   return {

@@ -17,7 +17,6 @@
  */
 import { mkdir, rename, writeFile, appendFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-
 /**
  * 创建 jsonl 追加器句柄（file 为绝对/相对路径）。
  * options: flushMs（防抖，默认 500）、compactLines（阈值，默认 5000）、
@@ -50,7 +49,6 @@ export function jsonlAppender(file, options = {}) {
     stats: () => ({ total: handle.total, bytesWritten: handle.bytesWritten, writes: handle.writes }),
   }
 }
-
 /** 追加一个可序列化对象（行入队；防抖批量落盘；达阈值调度 compact 回调）。 */
 function append(handle, value) {
   handle.queue.push(JSON.stringify(value))
@@ -59,7 +57,6 @@ function append(handle, value) {
   scheduleFlush(handle)
   if (handle.queued >= handle.compactLines) scheduleCompact(handle)
 }
-
 /** 防抖批量追加落盘：一次 append 全部待写行（写放大=增量）。 */
 function scheduleFlush(handle) {
   if (handle.flushTimer !== null) return
@@ -68,7 +65,6 @@ function scheduleFlush(handle) {
     flushNow(handle)
   }, handle.flushMs)
 }
-
 function flushNow(handle) {
   if (handle.queue.length === 0) return
   const text = `${handle.queue.join('\n')}\n`
@@ -84,7 +80,6 @@ function flushNow(handle) {
       handle.logger?.warn(`${handle.prefix} append failed: ${error instanceof Error ? error.message : String(error)}`),
     )
 }
-
 /** 紧凑调度（防抖合并；回调由宿主决定快照内容）。 */
 function scheduleCompact(handle) {
   if (handle.compactTimer !== null || handle.compacting) return
@@ -98,7 +93,6 @@ function scheduleCompact(handle) {
     }
   }, 0)
 }
-
 /** 宿主快照：原子重写全量行（tmp+rename），并清挂起队列/计数（防重复）。 */
 async function snapshot(handle, lines) {
   const tmp = `${handle.file}.tmp-${process.pid}`
@@ -120,7 +114,6 @@ async function snapshot(handle, lines) {
     )
   return handle.dirtyChain
 }
-
 /** 卸载冲刷：清定时器 + 立即落盘 + 挂起 compact 兜底。 */
 function dispose(handle) {
   if (handle.flushTimer !== null) {
@@ -142,7 +135,6 @@ function dispose(handle) {
   }
   return handle.dirtyChain
 }
-
 /** 解析 jsonl 文本为行数组（空行/非 JSON 行跳过）。 */
 export function parseJsonlLines(text) {
   const lines = []

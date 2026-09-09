@@ -15,33 +15,49 @@
  */
 import { isTopLevelAgent, titleOf, subagentTitleOf, askNoteOf, askQuestionsOf, askFullNoteOf } from './session.js'
 import { createTokenMeter } from './token-meter.js'
+import type { Agent, DshContext, NoticeFrame, NotifyOptions, TokenMeter, TokenSummary } from './types.js'
+
 /**
  * 注册三类事件监听 + 会话 token 计量，通知统一交给 emitNotice。
  * tokenMeter 由调用方（index.js）创建并跨配置重载共享，保证 end 通知能取到
  * 全量累计 usage。返回 disposer 数组。
  */
-export function attachListeners(ctx, options, emitNotice, tokenMeter = createTokenMeter()) {
-  const disposers = []
+export function attachListeners(
+  ctx: DshContext,
+  options: NotifyOptions,
+  emitNotice: (notice: NoticeFrame) => void,
+  tokenMeter: TokenMeter = createTokenMeter(),
+): Array<() => void> {
+  const disposers: Array<() => void> = []
   disposers.push(attachTokenMeterListener(ctx, tokenMeter))
   if (options.end) disposers.push(attachEndListener(ctx, options, emitNotice, tokenMeter))
   if (options.ask) disposers.push(attachAskListener(ctx, emitNotice))
   if (options.approval) disposers.push(attachApprovalListener(ctx, emitNotice))
   return disposers
 }
+
 /** session/event 计量：assistant/message 真实 usage 按会话累加（只读观察）。 */
-function attachTokenMeterListener(ctx, tokenMeter) {
-  return ctx.on('session/event', (session, event) => tokenMeter.track(session?.id ?? '', event))
+function attachTokenMeterListener(ctx: DshContext, tokenMeter: TokenMeter): () => void {
+  return ctx.on('session/event', (session: unknown, event: unknown) =>
+    tokenMeter.track((session as { id?: string })?.id ?? '', event),
+  )
 }
+
 /** agent/status idle → end 通知（顶层无条件；子代理由 emitNotice 按 subagentEnd 过滤）。 */
-function attachEndListener(ctx, options, emitNotice, tokenMeter) {
-  return ctx.on('agent/status', (payload) => {
-    const p = payload
+function attachEndListener(
+  ctx: DshContext,
+  options: NotifyOptions,
+  emitNotice: (notice: NoticeFrame) => void,
+  tokenMeter: TokenMeter,
+): () => void {
+  return ctx.on('agent/status', (payload: unknown) => {
+    const p = payload as { agent?: Agent; status?: string }
     if (p.status !== 'idle') return
     const agent = p.agent
     if (!agent) return
     const sessionId = agent.id
     const summary = tokenMeter.summary(sessionId)
-    const notice = {
+    const notice: NoticeFrame = {
       kind: 'end',
       sessionId,
       title: isTopLevelAgent(agent) ? titleOf(ctx, agent) : subagentTitleOf(ctx, agent),
@@ -54,10 +70,11 @@ function attachEndListener(ctx, options, emitNotice, tokenMeter) {
     emitNotice(notice)
   })
 }
+
 /** tools/pre-execute 命中 ask_user_question → ask 通知（透传 next）。 */
-function attachAskListener(ctx, emitNotice) {
-  return ctx.on('tools/pre-execute', async (exec, next) => {
-    const e = exec
+function attachAskListener(ctx: DshContext, emitNotice: (notice: NoticeFrame) => void): () => void {
+  return ctx.on('tools/pre-execute', async (exec: unknown, next: () => Promise<void>) => {
+    const e = exec as { name?: string; agent?: Agent; arguments?: unknown } | undefined
     if (e !== undefined && e !== null && e.name === 'ask_user_question') {
       const agent = e.agent
       if (agent && isTopLevelAgent(agent)) {
@@ -75,14 +92,15 @@ function attachAskListener(ctx, emitNotice) {
     return next()
   })
 }
+
 /** approval/request → approval 通知（透传 next）。 */
-function attachApprovalListener(ctx, emitNotice) {
-  return ctx.on('approval/request', async (req, next) => {
-    const r = req
+function attachApprovalListener(ctx: DshContext, emitNotice: (notice: NoticeFrame) => void): () => void {
+  return ctx.on('approval/request', async (req: unknown, next: () => Promise<void>) => {
+    const r = req as { agent?: Agent; reason?: string; toolName?: string } | undefined
     if (r !== undefined && r !== null && isTopLevelAgent(r.agent)) {
       emitNotice({
         kind: 'approval',
-        sessionId: r.agent.id,
+        sessionId: r.agent!.id,
         title: titleOf(ctx, r.agent),
         note: typeof r.reason === 'string' ? r.reason : '',
         toolName: typeof r.toolName === 'string' ? r.toolName : '',
@@ -92,8 +110,9 @@ function attachApprovalListener(ctx, emitNotice) {
     return next()
   })
 }
+
 /** token 计量 → token 消耗字段（全 0 / 无数据 → null，标注「不可用」不硬造）。 */
-function summaryToTokens(summary) {
+function summaryToTokens(summary: TokenSummary | undefined): NoticeFrame['tokens'] {
   if (summary === undefined) return null
   const input = nonNegative(summary.input)
   const output = nonNegative(summary.output)
@@ -101,24 +120,27 @@ function summaryToTokens(summary) {
   if (input === 0 && output === 0 && total === 0) return null
   return { input, output, total }
 }
+
 /** token 计量 → 会话耗时（秒；无起点参考 → null）。 */
-function summaryToDuration(summary) {
+function summaryToDuration(summary: TokenSummary | undefined): number | null {
   if (summary === undefined || typeof summary.startedAt !== 'number') return null
   const seconds = (Date.now() - summary.startedAt) / 1000
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : null
 }
+
 /**
  * 会话链接：配置了 webBaseUrl 时拼 `/sessions/<id>`，否则空串（模板变量可回退）。
  * 去尾斜杠用一次遍历定位（无正则回溯，CodeQL js/polynomial-redos，issue 修复）。
  */
-function sessionUrlOf(sessionId, webBaseUrl) {
+function sessionUrlOf(sessionId: string, webBaseUrl: string | undefined): string {
   if (typeof webBaseUrl !== 'string' || webBaseUrl === '') return ''
   let end = webBaseUrl.length
   while (end > 0 && webBaseUrl[end - 1] === '/') end--
   const base = end === webBaseUrl.length ? webBaseUrl : webBaseUrl.slice(0, end)
   return `${base}/sessions/${sessionId}`
 }
+
 /** 非负数值，非法回退 0。 */
-function nonNegative(value) {
+function nonNegative(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0
 }

@@ -9,36 +9,49 @@
  * 无需真实网络与等待；生产默认 global fetch + setTimeout。
  */
 import { formatMessage, sign } from './adapters.js'
+import type { NoticeFrame, WebhookConfig, WebhookFailure, PusherDeps } from '../types.js'
+
 /** 单次请求超时（毫秒）。 */
 export const TIMEOUT_MS = 5000
+
 /** 失败后最大重试次数（共 1 + RETRY_MAX 次尝试）。 */
 export const RETRY_MAX = 3
+
 /** 退避基数（毫秒）：第 n 次重试等待 base * 2^(n-1)。 */
 const BACKOFF_BASE_MS = 1000
+
 /** 默认退避等待（真实 setTimeout）。 */
-function defaultSleep(ms) {
+function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
 /** 第 attempt 次重试的退避时长（attempt 从 1 开始）。 */
-export function backoffMs(attempt) {
+export function backoffMs(attempt: number): number {
   return BACKOFF_BASE_MS * 2 ** (attempt - 1)
 }
+
 /** webhook 是否启用（enabled 缺省视为启用）。 */
-function isEnabled(webhook) {
+function isEnabled(webhook: WebhookConfig): boolean {
   return webhook?.enabled !== false
 }
+
 /** 事件是否匹配：events 为空视为匹配全部。 */
-function matchesEvents(webhook, kind) {
+function matchesEvents(webhook: WebhookConfig, kind: string): boolean {
   const events = webhook?.events
   if (!Array.isArray(events) || events.length === 0) return true
   return events.includes(kind)
 }
+
 /**
  * 按配置分发通知到所有匹配 webhook（异步推送，不阻塞事件路径）。
  * 返回 Promise.allSettled 结果（调用方 fire-and-forget 或 await 测试）。
  */
-export function dispatchWebhooks(webhooks, notice, deps = {}) {
-  const tasks = []
+export function dispatchWebhooks(
+  webhooks: WebhookConfig[],
+  notice: NoticeFrame,
+  deps: PusherDeps = {},
+): Promise<PromiseSettledResult<unknown>[]> {
+  const tasks: Promise<unknown>[] = []
   for (const webhook of webhooks ?? []) {
     if (!isEnabled(webhook)) continue
     if (!matchesEvents(webhook, notice?.kind)) continue
@@ -46,11 +59,16 @@ export function dispatchWebhooks(webhooks, notice, deps = {}) {
   }
   return Promise.allSettled(tasks)
 }
+
 /**
  * 推送单条 webhook：成功返回 { ok: true, attempts }；重试耗尽返回
  * { ok: false, ...failure } 并回调 onFailure（失败记录）。
  */
-export async function pushWebhook(webhook, notice, deps = {}) {
+export async function pushWebhook(
+  webhook: WebhookConfig,
+  notice: NoticeFrame,
+  deps: PusherDeps = {},
+): Promise<Record<string, unknown>> {
   const fetchImpl = deps.fetchImpl ?? fetch
   const now = deps.now ?? Date.now
   const sleep = deps.sleep ?? defaultSleep
@@ -58,7 +76,7 @@ export async function pushWebhook(webhook, notice, deps = {}) {
   const body = formatMessage(webhook, notice, deps.formatOpts)
   const { query, body: finalBody } = sign(webhook, webhook?.secret, body, now())
   const url = buildUrl(webhook?.url ?? '', query)
-  let lastError = null
+  let lastError: Error | unknown = null
   for (let attempt = 0; attempt <= RETRY_MAX; attempt += 1) {
     if (attempt > 0) await sleep(backoffMs(attempt))
     try {
@@ -69,12 +87,14 @@ export async function pushWebhook(webhook, notice, deps = {}) {
       lastError = error
     }
   }
-  const failure = {
+  const failure: WebhookFailure = {
     time: now(),
     webhookName: typeof webhook?.name === 'string' ? webhook.name : '',
     channel:
       (typeof webhook?.channel === 'string' ? webhook.channel : '') ||
-      (typeof webhook?.type === 'string' ? String(webhook.type) : ''),
+      (typeof (webhook as unknown as Record<string, unknown>)?.type === 'string'
+        ? String((webhook as unknown as Record<string, unknown>).type)
+        : ''),
     url,
     error: lastError instanceof Error ? lastError.message : String(lastError),
     attempts: RETRY_MAX + 1,
@@ -82,8 +102,14 @@ export async function pushWebhook(webhook, notice, deps = {}) {
   onFailure?.(failure)
   return { ok: false, ...failure }
 }
+
 /** POST JSON 到目标 URL（AbortController 超时；res.ok 为成功判定）。 */
-async function postWithTimeout(fetchImpl, url, body, timeoutMs) {
+async function postWithTimeout(
+  fetchImpl: typeof fetch,
+  url: string,
+  body: unknown,
+  timeoutMs: number,
+): Promise<boolean> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -93,16 +119,17 @@ async function postWithTimeout(fetchImpl, url, body, timeoutMs) {
       body: JSON.stringify(body),
       signal: controller.signal,
     })
-    return response.ok
+    return (response as Response).ok
   } finally {
     clearTimeout(timer)
   }
 }
+
 /** 把签名 query 参数追加到 URL（保留已有 query）。 */
-export function buildUrl(base, query) {
+export function buildUrl(base: string, query: Record<string, string>): string {
   const keys = Object.keys(query ?? {})
   if (keys.length === 0) return base
   const url = new URL(base)
-  for (const key of keys) url.searchParams.set(key, query[key])
+  for (const key of keys) url.searchParams.set(key, query[key]!)
   return url.toString()
 }

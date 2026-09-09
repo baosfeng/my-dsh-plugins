@@ -512,7 +512,7 @@ function CopyButton({ kind }) {
         let text;
         if (kind === 'code') {
             const codeEl = host.querySelector('code');
-            text = codeEl ? codeEl.textContent ?? '' : '';
+            text = codeEl ? (codeEl.textContent ?? '') : '';
         }
         else {
             const out = [];
@@ -1155,7 +1155,16 @@ const MATH_FUNC_TEXT = {
     sup: 'sup',
 };
 /** 文本命令：参数组内容按普通文本内联（\text{if} → if）。 */
-const MATH_TEXT_CMDS = ['text', 'textrm', 'mathrm', 'mathbf', 'mathit', 'mathsf', 'mathtt', 'operatorname'];
+const MATH_TEXT_CMDS = [
+    'text',
+    'textrm',
+    'mathrm',
+    'mathbf',
+    'mathit',
+    'mathsf',
+    'mathtt',
+    'operatorname',
+];
 
     "use strict";
 // ── 公式结构渲染（issue #82）：轻量 LaTeX 子集解析器 ─────────────────
@@ -2197,7 +2206,7 @@ function sortTable(scroll, th) {
     scroll.dataset.sortDir = dir;
     const cellText = (tr) => {
         const tds = tr.querySelectorAll('td');
-        return tds[col] ? tds[col].textContent ?? '' : '';
+        return tds[col] ? (tds[col].textContent ?? '') : '';
     };
     const trs = Array.from(tbody.querySelectorAll('tr'));
     trs.sort((a, b) => {
@@ -2339,7 +2348,9 @@ function scanContainer(seen, container) {
 }
 /** 扫描一个节点：自身是目标容器则处理，否则找其内部的目标容器。 */
 function scanNode(seen, node) {
-    if (node && typeof node.matches === 'function' && (node.matches('div.tzx-md') || node.matches('div.md-table-wide'))) {
+    if (node &&
+        typeof node.matches === 'function' &&
+        (node.matches('div.tzx-md') || node.matches('div.md-table-wide'))) {
         scanContainer(seen, node);
         return;
     }
@@ -2568,7 +2579,7 @@ const CODE_THEME_OPTIONS = [
     { id: 'nord', label: 'Nord', hint: '北极清新配色调（暗色）' },
 ];
 /** 开关行（布尔配置项）。 */
-function SettingsSwitchRow({ label, hint, on, onChange }) {
+function SettingsSwitchRow({ label, hint, on, onChange, }) {
     return createElement('div', { className: 'dsh-md-render-settings-row' }, createElement('div', { className: 'dsh-md-render-settings-info' }, createElement('div', { className: 'dsh-md-render-settings-label' }, label), createElement('div', { className: 'dsh-md-render-settings-hint' }, hint)), createElement('div', {
         className: 'dsh-md-render-settings-toggle',
         'data-on': String(on),
@@ -2588,7 +2599,7 @@ function renderSwitchesSection(draft, patch) {
     })));
 }
 /** 选择行（枚举配置项，issue #146：复制按钮位置 / 代码主题）。 */
-function SettingsSelectRow({ label, hint, value, options, onChange }) {
+function SettingsSelectRow({ label, hint, value, options, onChange, }) {
     return createElement('div', { className: 'dsh-md-render-settings-row' }, createElement('div', { className: 'dsh-md-render-settings-info' }, createElement('div', { className: 'dsh-md-render-settings-label' }, label), createElement('div', { className: 'dsh-md-render-settings-hint' }, hint)), createElement('select', {
         className: 'dsh-md-render-settings-select',
         value: value,
@@ -2706,6 +2717,7 @@ function attachSettingsTab(ctx) {
         };
     }, 'dsh-md-render: settings styles');
     ctx.effect(() => {
+        ;
         slots.inject('settings.plugins.tab', () => slots.register({
             name: 'settings.plugins.tab',
             id: 'md-render-settings',

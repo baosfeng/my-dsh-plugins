@@ -13,6 +13,7 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "lib": ["es2022", "dom"],
+    "types": ["node"],
     "noEmit": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -21,5 +22,5 @@
     "noImplicitOverride": true
   },
   "include": ["plugins/**/*.ts", "plugins/**/*.d.ts"],
-  "exclude": ["node_modules", "**/.stryker-tmp/**", "**/lib/.client-build/**"]
+  "exclude": ["node_modules", "**/.stryker-tmp/**", "**/lib/.client-build/**", "plugins/*/src/client/**"]
 }

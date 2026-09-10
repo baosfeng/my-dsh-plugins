@@ -12,6 +12,44 @@
 import js from '@eslint/js'
 import globals from 'globals'
 import importPlugin from 'eslint-plugin-import'
+import { existsSync, readdirSync } from 'node:fs'
+import { join, relative } from 'node:path'
+
+/**
+ * TS 迁移插件的 tsc 编译产物（src/*.ts → lib/*.js + lib/*.d.ts）。
+ *
+ * 为什么动态枚举：迁移是一个逐插件推进的过程，产物文件名随插件而异
+ * （lib/index.js、lib/webhook/adapters.js、lib/*.d.ts …）。写死列表必然
+ * 漏项（曾漏掉 dsh-my-guardian/lib/index.js 与 dsh-my-memory/lib/store.js，
+ * 导致 CI 的 eslint 对生成物报 max-lines / no-unused-vars）。判定规则：
+ * 有 src/ 的插件（已 TS 迁移）的 lib/ 下，除手写的 parts/ 片段、
+ * lib/client.src.js 模板与 .client-build/ 临时目录外，.js/.d.ts 均为产物。
+ * 尺寸与风格规则只应作用于手写源码。
+ */
+function tscArtifacts() {
+  const out = []
+  for (const plugin of readdirSync('plugins')) {
+    if (!existsSync(join('plugins', plugin, 'src'))) continue
+    const libDir = join('plugins', plugin, 'lib')
+    if (!existsSync(libDir)) continue
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) {
+          if (entry.name === 'parts' || entry.name === '.client-build') continue
+          walk(full)
+          continue
+        }
+        if (entry.name === 'client.src.js') continue
+        if (entry.name.endsWith('.js') || entry.name.endsWith('.d.ts')) {
+          out.push(relative('.', full).replaceAll('\\', '/'))
+        }
+      }
+    }
+    walk(libDir)
+  }
+  return out
+}
 
 // import/no-unresolved 的 resolver 设置（server + client + 测试共用）：
 // node resolver 默认查找 node_modules；moduleDirectory 追加 plugins/ 使
@@ -41,20 +79,10 @@ export default [
       // client.js 构建产物（由 client.src.js 模板 + lib/parts/ 片段经
       // scripts/build.mjs 拼接生成）：产物行数 = 源码总和，尺寸规则只查源；
       // mermaid 产物内嵌 8.9MB base64，ESLint 正则规则会崩溃
-      'plugins/dsh-mermaid-render/lib/client.js',
-      'plugins/dsh-file-activity/lib/client.js',
-      'plugins/dsh-my-notify/lib/client.js',
-      'plugins/dsh-think-zh-expand/lib/client.js',
-      'plugins/dsh-my-guardian/lib/client.js',
-      'plugins/dsh-my-skill-manager/lib/client.js',
-      'plugins/dsh-my-memory/lib/client.js',
-      'plugins/dsh-my-observability/lib/client.js',
-      'plugins/dsh-my-guard/lib/client.js',
-      'plugins/dsh-my-context/lib/client.js',
-      // TS 插件（issue #47）：tsc 编译产物（src/*.ts → lib/*.js），格式由
-      // tsc 生成（分号/缩进与 prettier 不一致），尺寸规则只查 TS 源码
-      'plugins/dsh-ts-example/lib/index.js',
-      'plugins/dsh-ts-example/lib/greeting.js',
+      'plugins/*/lib/client.js',
+      // TS 插件（issue #47 / TS 全量迁移）：tsc 编译产物（见 tscArtifacts），
+      // 尺寸与风格规则只查 TS 源码
+      ...tscArtifacts(),
     ],
   },
   {

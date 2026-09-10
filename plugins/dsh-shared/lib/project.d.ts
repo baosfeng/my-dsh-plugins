@@ -6,4 +6,4 @@
  * Find the project root for a cwd: nearest ancestor containing a `.git`
  * directory; falls back to cwd itself. Returns cwd when nothing is found.
  */
-export declare function findProjectRoot(cwd: string): Promise<string>
+export declare function findProjectRoot(cwd: string): Promise<string>;

@@ -2,7 +2,7 @@
 title: 踩坑记录
 description: 项目已知问题与解决方案总索引
 created: 2026-08-22
-updated: 2026-08-26
+updated: 2026-09-10
 ---
 
 # 踩坑记录
@@ -20,6 +20,7 @@ updated: 2026-08-26
 - [插件集成 / llm 流](llm流async处理器误用.md) — `llm/stream` handler 误用 async function 导致 waterfall 返回 Promise，vision-toolkit `yield*` 委托流崩溃（已解决，2026-08-26，dsh-task-reliability）
 - [客户端 UI / React 版本](DSH运行时React版本决定实际渲染.md) — 浏览器端实际渲染的 React 版本由 DSH 运行时（dsh-web-frontend 打包的 seed word）决定，与插件自身 node_modules 无关；peer 声明需与运行时匹配（issue #49，2026-08-28）
 - [插件资源 / 写放大](插件资源占用事故复盘.md) — 事件流型持久化误用全量快照原语导致 #126 高 CPU/内存/300GB 磁盘写入事故；DSH 官方 session_projcache.json 全量重写同模式；防护：增量 append + 自监测降级 + CI 资源冒烟（issue #127，2026-09-04）
+- [协作 / 并行开发](多agent并行测试资源冲突.md) — 两个进程同时跑同一插件 Vitest 时 coverage 目录被另一进程占用、`npm test` 退出 1，易被误判为真实回归；全量遍历须避开并发开发窗口（2026-09-10）
 
 ## 维护规则
 

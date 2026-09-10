@@ -6,25 +6,18 @@
       "project": ["scripts/**", "*.js", "*.mjs"]
     },
     "plugins/*": {
-      "entry": ["lib/parts/*.js", "test/*.mjs", "test/features/steps/*.mjs"],
-      "project": ["lib/**", "scripts/**", "test/**", "*.mjs"],
-      "ignore": ["lib/client.src.js"]
+      "entry": [
+        "src/index.ts",
+        "src/client/**/*.ts",
+        "test/*.mjs",
+        "test/features/steps/*.mjs",
+        "vitest.stryker.config.mjs"
+      ],
+      "project": ["src/**", "scripts/**", "test/**", "*.mjs"]
     },
     "plugins/dsh-plugin-dev-mode": {
       "entry": [],
       "project": ["scripts/**", "skills/**"]
-    },
-    "plugins/dsh-shared": {
-      "entry": ["test/*.mjs", "test/features/steps/*.mjs"],
-      "project": ["lib/**", "test/**", "*.mjs"]
-    },
-    "plugins/dsh-task-reliability": {
-      "entry": ["test/*.mjs", "test/features/steps/*.mjs"],
-      "project": ["lib/**", "test/**", "*.mjs"]
-    },
-    "plugins/dsh-ts-example": {
-      "entry": ["src/client/index.ts", "test/*.mjs"],
-      "project": ["src/**", "scripts/**", "test/**", "*.mjs"]
     }
   },
   "ignoreDependencies": [
@@ -34,5 +27,8 @@
     "dsh-better-sidebar",
     "@deepseek-ai/dsh-client-ui-primitives"
   ],
-  "ignoreBinaries": ["dsh"]
+  "ignoreBinaries": ["dsh"],
+  "rules": {
+    "types": "warn"
+  }
 }

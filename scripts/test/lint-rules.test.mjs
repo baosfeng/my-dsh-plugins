@@ -20,7 +20,10 @@ import { dirname, join } from 'node:path'
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
-const eslint = new ESLint({ overrideConfigFile: join(repoRoot, 'eslint.config.js') })
+// ignore: false —— lintText 不读磁盘，filePath 只用于匹配配置块；而 TS 全量
+// 迁移后 plugins/*/lib/*.js 是 tsc 产物、已被 eslint.config.js 的 tscArtifacts()
+// 全局忽略，若保留 ignores 过滤这些路径会被判为"已忽略"而拿不到任何规则。
+const eslint = new ESLint({ overrideConfigFile: join(repoRoot, 'eslint.config.js'), ignore: false })
 
 /** 对 code 跑 lint（filePath 决定匹配哪个配置块），返回 ruleId 列表。 */
 async function lintRules(code, filePath) {

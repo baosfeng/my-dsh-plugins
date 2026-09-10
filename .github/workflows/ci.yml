@@ -32,8 +32,9 @@ jobs:
         run: npm audit --audit-level=high
 
   # 质量门禁：单元测试 + 覆盖率（行≥85 / 分支≥75，低于阈值即失败）
-  # matrix 并行：每个插件一个独立 job（11 个并行），墙钟时间 ≈ 单个插件测试时长
+  # matrix 并行：每个插件一个独立 job，墙钟时间 ≈ 单个插件测试时长
   # 新增插件时在此列表追加（check-docs.mjs 会强制提醒文档同步）
+  # 注意：dsh-shared 此前漏登记（它有完整测试却从不在 CI 跑），已补入
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -57,6 +58,7 @@ jobs:
           - dsh-ts-example
           - dsh-my-remote
           - dsh-session-title-gen
+          - dsh-shared
     steps:
       - uses: actions/checkout@v7
 
@@ -137,8 +139,16 @@ jobs:
 
       # 类型检查（issue #47：TS 插件开发——tsc --noEmit 编译期发现模块
       # 不存在 TS2307 / 类型不匹配 / 未定义变量；TS 7 原生编译器）
+      # 根配置 exclude plugins/*/src/client/**：client parts 是拼接片段
+      # （无 import/export，靠 factory 全局作用域共享符号），在根配置的
+      # nodenext 模块模式下会被当成独立模块而全量报错（TS2304/TS2552）。
+      # client 端类型检查由下一步按插件跑 tsconfig.client.json 承担。
       - name: Type check (tsc --noEmit)
         run: npx tsc --noEmit
+
+      # 逐插件类型检查（server 端 tsconfig.json + client 端 tsconfig.client.json）
+      - name: Type check (per-plugin server + client)
+        run: bash scripts/typecheck-all.sh
 
       # 代码质量规则 + 尺寸规则（complexity≤10 / 函数≤70行 / 文件≤400行，
       # issue #44 引入 prettier 后调整，见 eslint.config.js 注释）。

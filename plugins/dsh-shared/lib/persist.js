@@ -9,22 +9,22 @@
  * 可选 options 护栏：minIntervalMs（节流窗口，超频跳过）、maxBytes（巨型
  * 对象拒绝），超限均 warn 并返回 false。
  */
-import { mkdir, rename, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 /** 最近一次成功写盘时间（按文件）；minIntervalMs 节流窗口用。 */
-const lastWriteAt = new Map()
+const lastWriteAt = new Map();
 /** 护栏检查：节流窗口被拦或内容超限时 warn 并返回 true（调用方跳过写盘）。 */
 function gatesBlocked(file, text, options, logger, prefix, now) {
-  const { minIntervalMs = 0, maxBytes = Infinity } = options
-  if (minIntervalMs > 0 && now - (lastWriteAt.get(file) ?? 0) < minIntervalMs) {
-    logger?.warn(`${prefix} write throttled (minIntervalMs=${minIntervalMs}): ${file}`)
-    return true
-  }
-  if (text.length > maxBytes) {
-    logger?.warn(`${prefix} write rejected (${text.length}B > maxBytes=${maxBytes}): ${file}`)
-    return true
-  }
-  return false
+    const { minIntervalMs = 0, maxBytes = Infinity } = options;
+    if (minIntervalMs > 0 && now - (lastWriteAt.get(file) ?? 0) < minIntervalMs) {
+        logger?.warn(`${prefix} write throttled (minIntervalMs=${minIntervalMs}): ${file}`);
+        return true;
+    }
+    if (text.length > maxBytes) {
+        logger?.warn(`${prefix} write rejected (${text.length}B > maxBytes=${maxBytes}): ${file}`);
+        return true;
+    }
+    return false;
 }
 /**
  * 原子写 JSON 快照（tmp+rename，自动建目录）；失败仅告警不抛出。
@@ -32,17 +32,19 @@ function gatesBlocked(file, text, options, logger, prefix, now) {
  * 返回 true=已写盘；false=被护栏拒绝（节流/超限）。
  */
 export async function atomicWriteJson(file, value, logger, prefix, options = {}) {
-  const text = JSON.stringify(value)
-  if (gatesBlocked(file, text, options, logger, prefix, Date.now())) return false
-  const tmp = `${file}.tmp-${process.pid}`
-  try {
-    await mkdir(dirname(file), { recursive: true })
-    await writeFile(tmp, text, 'utf8')
-    await rename(tmp, file)
-    lastWriteAt.set(file, Date.now())
-    return true
-  } catch (error) {
-    logger?.warn(`${prefix} persist failed: ${error instanceof Error ? error.message : String(error)}`)
-    return false
-  }
+    const text = JSON.stringify(value);
+    if (gatesBlocked(file, text, options, logger, prefix, Date.now()))
+        return false;
+    const tmp = `${file}.tmp-${process.pid}`;
+    try {
+        await mkdir(dirname(file), { recursive: true });
+        await writeFile(tmp, text, 'utf8');
+        await rename(tmp, file);
+        lastWriteAt.set(file, Date.now());
+        return true;
+    }
+    catch (error) {
+        logger?.warn(`${prefix} persist failed: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
+    }
 }

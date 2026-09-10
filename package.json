@@ -15,7 +15,8 @@
     "verify": "node scripts/verify-local.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "typecheck:plugins": "bash scripts/typecheck-all.sh"
   },
   "lint-staged": {
     "*.{js,mjs}": [

@@ -15,11 +15,15 @@ build/
 # ignores 保持一致——只格式化 client.src.js 模板与 parts 片段源码。
 plugins/*/lib/client.js
 
-# TS 插件（issue #47）：tsc 编译产物（src/*.ts → lib/*.js）与 client 构建
-# 临时目录（lib/.client-build/），格式由 tsc 生成，下次构建即覆盖
-plugins/dsh-ts-example/lib/index.js
-plugins/dsh-ts-example/lib/greeting.js
-plugins/dsh-ts-example/lib/.client-build/
+# TS 插件（issue #47 / TS 全量迁移）：tsc 编译产物（src/*.ts → lib/*.js +
+# lib/*.d.ts）与 client 构建临时目录（lib/.client-build/），格式由编译器决定，
+# 下次构建即覆盖——对手写源码做 prettier --check 才有意义。手写的
+# lib/parts/*.js 片段与 lib/client.src.js 模板仍照常检查（! 否定规则）。
+plugins/*/lib/**/*.js
+plugins/*/lib/**/*.d.ts
+plugins/*/lib/.client-build/
+!plugins/*/lib/parts/**
+!plugins/*/lib/client.src.js
 
 # 第三方压缩产物（vendor 内嵌引擎）
 plugins/dsh-mermaid-render/vendor/mermaid.min.js

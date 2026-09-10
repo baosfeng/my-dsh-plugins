@@ -1,10 +1,6 @@
 // ── view: Memory settings tab ─────────────────────────────────────────
-// 导入其他 part 文件导出的内容
-const { strings } = require('./i18n.js')
-const { TRUNCATE_LEN, DEFAULT_ENTRY_LIMIT, truncateText, relativeTime, sortMemories, isOverEntryLimit } = require('./utils.js')
-const { fetchMemory, writeMemory, fetchCandidates, confirmCandidate, dismissCandidate, currentSessionId, fetchSessionCwd, fetchConfig } = require('./api.js')
-const { SortToggle, EmptyState, AddBar, buildRows, IconButton, MemoryRow, SummaryPreview, ConfirmPanel, Toolbar } = require('./view-rows.js')
-const { CandidateRow, HistoryControl, MetadataRow, CandidatesBlock } = require('./candidates.js')
+// 跨 part 引用（strings/utils/api/view-rows/candidates）由拼接作用域解析，
+// 无需 require——浏览器 ModuleLoader 不支持 factory 内相对路径 require。
 
 /** 记忆数据类型 */
 interface MemoryData {
@@ -110,7 +106,7 @@ function createCandidateHandlers({
   const settle = () => setCandidateBusy(false)
   const refreshScope = (value: MemoryValue, pathInput: string) => {
     actions.loadCandidates()
-    if (value?.scope === 'project' && value?.cwd !== '') actions.load(value.cwd ?? '')
+    if (value?.scope === 'project' && value?.cwd !== '') actions.load(value.cwd)
     else actions.refresh(pathInput)
   }
   const onConfirmCandidate = (id: string) => {
@@ -151,7 +147,10 @@ function MemoryView(): ReactNode {
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [confirming, setConfirming] = useState<ConfirmingState | null>(null)
   const [expanded, setExpanded] = useState(() => new Set<string>())
-  const [sortOrder, setSortOrder] = useState<{ global: 'desc' | 'asc'; project: 'desc' | 'asc' }>({ global: 'desc', project: 'desc' })
+  const [sortOrder, setSortOrder] = useState<{ global: 'desc' | 'asc'; project: 'desc' | 'asc' }>({
+    global: 'desc',
+    project: 'desc',
+  })
   const [entryLimit, setEntryLimit] = useState(DEFAULT_ENTRY_LIMIT)
   const [candidates, setCandidates] = useState<MemoryItem[]>([])
   const [candidateBusy, setCandidateBusy] = useState(false)
@@ -290,7 +289,11 @@ function renderRoot({
                 else next.add(key)
                 return next
               }),
-            onSort: (scope: string) => setSortOrder((prev) => ({ ...prev, [scope]: prev[scope as keyof typeof prev] === 'desc' ? 'asc' : 'desc' })),
+            onSort: (scope: string) =>
+              setSortOrder((prev) => ({
+                ...prev,
+                [scope]: prev[scope as keyof typeof prev] === 'desc' ? 'asc' : 'desc',
+              })),
             onCommit: commit,
             onConfirmCandidate,
             onDismissCandidate,
@@ -299,10 +302,7 @@ function renderRoot({
 }
 
 /** Load-failure banner with a retry entry; write-failure banner without. */
-function ErrorBanner({ kind, onRetry }: {
-  kind: 'load' | 'save'
-  onRetry: () => void
-}): ReactNode {
+function ErrorBanner({ kind, onRetry }: { kind: 'load' | 'save'; onRetry: () => void }): ReactNode {
   if (kind === 'load') {
     return createElement(
       'div',
@@ -348,7 +348,7 @@ function createCommitHandler({
     writeMemory({
       action: confirm.kind,
       scope: confirm.scope,
-      cwd: confirm.scope === 'project' ? data?.project.cwd ?? '' : '',
+      cwd: confirm.scope === 'project' ? data.project.cwd : '',
       id: confirm.id,
       desc: confirm.desc,
     })
@@ -357,7 +357,7 @@ function createCommitHandler({
         setDrafts((d) => ({ ...d, [confirm.scope]: '' }))
         setEditing(null)
         setConfirming(null)
-        setData((d) => d ? mergeScope(d, confirm.scope, value) : d)
+        setData((d) => mergeScope(d, confirm.scope, value))
       })
       .catch(() => setError('save'))
   }
@@ -541,4 +541,3 @@ function SectionBlock({
 }
 
 // 导出给 apply.ts 使用
-exports.MemoryView = MemoryView

@@ -36,69 +36,16 @@ import { homedir } from 'node:os'
 import { dirname, join, normalize, resolve } from 'node:path'
 import { findProjectRoot } from 'dsh-shared'
 import { mergeCandidate, withDefaults } from './memory-scoring.js'
+import type {
+  MemoryItem,
+  CandidateItem,
+  MemoryStore,
+  CandidateStore,
+  StoreInstance,
+  CandidateStoreInstance,
+} from './memory-types.js'
 
-/** 内存条目接口。 */
-export interface MemoryItem {
-  id: string
-  desc: string
-  createdAt: number
-  updatedAt: number
-  category?: string
-  source?: string
-  confidence?: number
-  relatedIds?: string[]
-  history?: Array<{
-    desc: string
-    updatedAt: number
-    category?: string
-  }>
-  status?: 'active' | 'archived' | 'pending'
-}
-
-/** 候选记忆条目接口。 */
-export interface CandidateItem {
-  id: string
-  desc: string
-  category: string
-  scope: 'global' | 'project'
-  source: Record<string, unknown>
-  createdAt: number
-  cwd?: string
-}
-
-/** 记忆存储结构。 */
-export interface MemoryStore {
-  items: MemoryItem[]
-}
-
-/** 候选存储结构。 */
-export interface CandidateStore {
-  items: CandidateItem[]
-}
-
-/** 存储实例接口。 */
-export interface StoreInstance {
-  state: MemoryStore | null
-  load(): Promise<void>
-  flush(): Promise<void>
-  list(): MemoryItem[]
-  add(item: Omit<MemoryItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryItem>
-  addRaw(item: unknown): Promise<unknown>
-  mergeAdd(candidate: unknown, now?: number): Promise<{ item: unknown; outcome: string }>
-  update(id: string, changes: Partial<MemoryItem>): Promise<MemoryItem | null>
-  remove(id: string): Promise<boolean>
-}
-
-/** 候选存储实例接口。 */
-export interface CandidateStoreInstance {
-  state: CandidateStore | null
-  load(): Promise<void>
-  flush(): Promise<void>
-  list(): CandidateItem[]
-  addRaw(item: Omit<CandidateItem, 'id' | 'createdAt'>): Promise<CandidateItem>
-  confirm(id: string): Promise<MemoryItem | null>
-  dismiss(id: string): Promise<boolean>
-}
+export type { MemoryItem, CandidateItem, MemoryStore, CandidateStore, StoreInstance, CandidateStoreInstance }
 
 /** The DSH home directory: $DSH_HOME, or ~/.dsh when unset (shared by the
  *  global memory file and the centralized project memory directory). */
@@ -190,6 +137,7 @@ export async function migrateProjectMemory({
   }
   const legacy = await readMemoryFile(legacyFile)
   if (legacy.items.length === 0) return false
+  await mkdir(dirname(file), { recursive: true })
   await writeMemoryFile(file, legacy)
   try {
     await rm(legacyFile, { force: true })
@@ -200,8 +148,18 @@ export async function migrateProjectMemory({
   return true
 }
 
-/** Empty memory document. */
-function emptyMemory(): MemoryStore {
+/** Read one file through a normalizer (missing/corrupt → empty items). */
+async function readNormalizedFile<T>(
+  file: string,
+  normalize: (raw: unknown) => { items: T[] },
+): Promise<{ items: T[] }> {
+  try {
+    const raw = await readFile(file, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (parsed !== null && typeof parsed === 'object') return normalize(parsed)
+  } catch {
+    // first run or unreadable file: empty document
+  }
   return { items: [] }
 }
 
@@ -210,14 +168,7 @@ export async function readMemoryFile(
   file: string,
   normalizeFn: (memory: unknown) => MemoryStore = normalizeMemory,
 ): Promise<MemoryStore> {
-  try {
-    const raw = await readFile(file, 'utf8')
-    const parsed = JSON.parse(raw)
-    if (parsed !== null && typeof parsed === 'object') return normalizeFn(parsed)
-  } catch {
-    // first run or unreadable file: empty memory
-  }
-  return emptyMemory()
+  return readNormalizedFile(file, normalizeFn)
 }
 
 /** Keep only well-formed items; anything else is ignored defensively.
@@ -283,28 +234,99 @@ function normalizeCandidates(memory: unknown): CandidateStore {
   }
 }
 
-/** Empty candidate document. */
-function emptyCandidates(): CandidateStore {
-  return { items: [] }
-}
-
-/** Read one candidate file (missing/corrupt → empty document). */
-export async function readCandidateFile(file: string): Promise<CandidateStore> {
-  try {
-    const raw = await readFile(file, 'utf8')
-    const parsed = JSON.parse(raw)
-    if (parsed !== null && typeof parsed === 'object') return normalizeCandidates(parsed)
-  } catch {
-    // first run or unreadable file: empty candidates
-  }
-  return emptyCandidates()
-}
-
-/** Atomic write: write to tmp file, then rename (crash-safe). */
+/** Atomic write: write to tmp file, then rename (crash-safe); the parent
+ *  directory is created on demand (first write into $DSH_HOME/memory). */
 async function atomicWrite(file: string, data: unknown): Promise<void> {
+  await mkdir(dirname(file), { recursive: true })
   const tmp = `${file}.tmp.${process.pid}`
   await writeFile(tmp, JSON.stringify(data, null, 2), 'utf8')
   await rename(tmp, file)
+}
+
+/** Item timestamp for sorting: updatedAt, falling back to createdAt. */
+function tsOf(item: { updatedAt?: unknown; createdAt?: unknown }): number {
+  if (Number.isFinite(item?.updatedAt)) return item.updatedAt as number
+  return Number.isFinite(item?.createdAt) ? (item.createdAt as number) : 0
+}
+
+/** Shared debounced-store core (pre-migration createGenericStore): in-memory
+ *  cache + idempotent startup restore + debounced atomic writes, reused by the
+ *  memory store and the candidate store so both share one code path. */
+function createDebouncedStore<T extends { id: string; createdAt?: number; updatedAt?: number }>(
+  file: string,
+  debounceMs: number,
+  normalize: (raw: unknown) => { items: T[] },
+): {
+  state: { items: T[] }
+  load(): Promise<void>
+  flush(): Promise<void>
+  list(): T[]
+  dispose(): void
+  push(item: T): void
+  scheduleWrite(): void
+  removeById(id: string): Promise<boolean>
+} {
+  const state = {
+    items: [] as T[],
+    timer: null as ReturnType<typeof setTimeout> | null,
+    writing: Promise.resolve(),
+    ready: Promise.resolve(),
+  }
+  state.ready = readNormalizedFile(file, normalize).then((document) => {
+    state.items = document.items
+  })
+
+  /** Restore the cache from disk exactly once (idempotent): every caller reuses
+   *  the same promise, so a late load() can never overwrite in-memory mutations
+   *  that have not been flushed yet (pre-migration ready semantics). */
+  function load(): Promise<void> {
+    return state.ready
+  }
+
+  function scheduleWrite(): void {
+    if (state.timer !== null) clearTimeout(state.timer)
+    state.timer = setTimeout(() => {
+      state.timer = null
+      state.writing = writeMemoryFile(file, { items: state.items }).catch(() => {})
+    }, debounceMs)
+  }
+
+  async function flush(): Promise<void> {
+    if (state.timer !== null) {
+      clearTimeout(state.timer)
+      state.timer = null
+    }
+    await state.ready
+    await writeMemoryFile(file, { items: state.items })
+    await state.writing
+  }
+
+  function list(): T[] {
+    return state.items.slice().sort((a, b) => tsOf(b) - tsOf(a))
+  }
+
+  function dispose(): void {
+    if (state.timer !== null) {
+      clearTimeout(state.timer)
+      state.timer = null
+    }
+  }
+
+  function push(item: T): void {
+    state.items.push(item)
+    scheduleWrite()
+  }
+
+  async function removeById(id: string): Promise<boolean> {
+    await state.ready
+    const index = state.items.findIndex((item) => item.id === id)
+    if (index === -1) return false
+    state.items.splice(index, 1)
+    scheduleWrite()
+    return true
+  }
+
+  return { state, load, flush, list, dispose, push, scheduleWrite, removeById }
 }
 
 /**
@@ -314,90 +336,57 @@ async function atomicWrite(file: string, data: unknown): Promise<void> {
  */
 export function createStore(options: { file: string; debounceMs?: number }): StoreInstance {
   const { file, debounceMs = 300 } = options
-  let state: MemoryStore | null = null
-  let dirty = false
-  let timer: ReturnType<typeof setTimeout> | null = null
-
-  async function load(): Promise<void> {
-    state = await readMemoryFile(file)
-    dirty = false
-  }
-
-  async function flush(): Promise<void> {
-    if (timer !== null) {
-      clearTimeout(timer)
-      timer = null
-    }
-    if (dirty && state !== null) {
-      await atomicWrite(file, state)
-      dirty = false
-    }
-  }
-
-  function scheduleWrite(): void {
-    dirty = true
-    if (timer !== null) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = null
-      if (dirty && state !== null) {
-        atomicWrite(file, state).catch(() => {})
-        dirty = false
-      }
-    }, debounceMs)
-  }
-
-  function list(): MemoryItem[] {
-    return state?.items ?? []
-  }
+  const core = createDebouncedStore<MemoryItem>(file, debounceMs, normalizeMemory)
 
   async function add(
-    item: Omit<MemoryItem, 'id' | 'createdAt' | 'updatedAt'>,
+    item: string | Omit<MemoryItem, 'id' | 'createdAt' | 'updatedAt'>,
+    now: number = Date.now(),
   ): Promise<MemoryItem> {
-    if (state === null) await load()
-    const now = Date.now()
+    await core.load()
+    const baseItem = typeof item === 'string' ? { desc: item } : item
     const newItem: MemoryItem = {
-      ...item,
-      id: `mem_${now}_${Math.random().toString(36).slice(2, 8)}`,
+      ...withDefaults(baseItem, now),
+      id: `mem-${now}-${Math.random().toString(36).slice(2, 8)}`,
       createdAt: now,
       updatedAt: now,
     }
-    state!.items.push(newItem)
-    scheduleWrite()
+    core.push(newItem)
     return newItem
   }
 
   async function update(
     id: string,
-    changes: Partial<MemoryItem>,
+    changes: string | Partial<MemoryItem>,
+    now: number = Date.now(),
   ): Promise<MemoryItem | null> {
-    if (state === null) await load()
-    const index = state!.items.findIndex((item) => item.id === id)
+    await core.load()
+    const index = core.state.items.findIndex((item) => item.id === id)
     if (index === -1) return null
-    const updated = { ...state!.items[index], ...changes, updatedAt: Date.now() }
-    state!.items[index] = updated
-    scheduleWrite()
+    const changesObj = typeof changes === 'string' ? { desc: changes } : changes
+    const updated = { ...core.state.items[index], ...changesObj, updatedAt: now }
+    core.state.items[index] = updated
+    core.scheduleWrite()
     return updated
   }
 
-  async function remove(id: string): Promise<boolean> {
-    if (state === null) await load()
-    const index = state!.items.findIndex((item) => item.id === id)
-    if (index === -1) return false
-    state!.items.splice(index, 1)
-    scheduleWrite()
-    return true
+  async function mergeAdd(candidate: unknown, now: number = Date.now()): Promise<{ item: unknown; outcome: string }> {
+    await core.load()
+    const { items, outcome } = mergeCandidate(core.state.items, candidate as Partial<MemoryItem>, now)
+    core.state.items = items
+    core.scheduleWrite()
+    return { item: items[items.length - 1], outcome }
   }
 
   return {
-    get state() {
-      return state
-    },
-    load,
-    flush,
-    list,
+    state: core.state,
+    load: core.load,
+    flush: core.flush,
+    dispose: core.dispose,
+    list: core.list,
     add,
+    mergeAdd,
     update,
-    remove,
+    remove: core.removeById,
   }
 }
 
@@ -406,111 +395,34 @@ export function createStore(options: { file: string; debounceMs?: number }): Sto
  * @param options.file The JSON file path.
  * @param options.debounceMs Write coalescing window (default 300ms).
  */
-export function createCandidatesStore(options: {
-  file: string
-  debounceMs?: number
-}): CandidateStoreInstance {
+export function createCandidatesStore(options: { file: string; debounceMs?: number }): CandidateStoreInstance {
   const { file, debounceMs = 300 } = options
-  let state: CandidateStore | null = null
-  let dirty = false
-  let timer: ReturnType<typeof setTimeout> | null = null
+  const core = createDebouncedStore<CandidateItem>(file, debounceMs, normalizeCandidates)
 
-  async function load(): Promise<void> {
-    state = await readCandidateFile(file)
-    dirty = false
-  }
-
-  async function flush(): Promise<void> {
-    if (timer !== null) {
-      clearTimeout(timer)
-      timer = null
-    }
-    if (dirty && state !== null) {
-      await atomicWrite(file, state)
-      dirty = false
-    }
-  }
-
-  function scheduleWrite(): void {
-    dirty = true
-    if (timer !== null) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = null
-      if (dirty && state !== null) {
-        atomicWrite(file, state).catch(() => {})
-        dirty = false
-      }
-    }, debounceMs)
-  }
-
-  function list(): CandidateItem[] {
-    return state?.items ?? []
-  }
-
-  async function addRaw(
-    item: Omit<CandidateItem, 'id' | 'createdAt'>,
-  ): Promise<CandidateItem> {
-    if (state === null) await load()
-    const now = Date.now()
-    const newItem: CandidateItem = {
-      ...item,
-      id: `cand_${now}_${Math.random().toString(36).slice(2, 8)}`,
-      createdAt: now,
-    }
-    state!.items.push(newItem)
-    scheduleWrite()
-    return newItem
-  }
-
-  async function confirm(id: string): Promise<MemoryItem | null> {
-    if (state === null) await load()
-    const index = state!.items.findIndex((item) => item.id === id)
-    if (index === -1) return null
-    const candidate = state!.items[index]
-    state!.items.splice(index, 1)
-    scheduleWrite()
-    return {
-      id: candidate.id,
-      desc: candidate.desc,
-      category: candidate.category,
-      source: typeof candidate.source === 'string' ? candidate.source : 'auto-extract',
-      createdAt: candidate.createdAt,
-      updatedAt: Date.now(),
-    }
-  }
-
-  async function dismiss(id: string): Promise<boolean> {
-    if (state === null) await load()
-    const index = state!.items.findIndex((item) => item.id === id)
-    if (index === -1) return false
-    state!.items.splice(index, 1)
-    scheduleWrite()
-    return true
+  /** Append an already-shaped candidate: the passed id/createdAt are preserved
+   *  (the extractor owns candidate ids), malformed shapes are dropped
+   *  defensively (undefined) — pre-migration addRawItem semantics. */
+  async function addRaw(item: unknown): Promise<CandidateItem | undefined> {
+    await core.load()
+    if (!isCandidateItem(item)) return undefined
+    core.push(item)
+    return { ...item }
   }
 
   return {
-    get state() {
-      return state
-    },
-    load,
-    flush,
-    list,
+    state: core.state,
+    load: core.load,
+    flush: core.flush,
+    dispose: core.dispose,
+    list: core.list,
     addRaw,
-    confirm,
-    dismiss,
+    remove: core.removeById,
   }
 }
 
 /**
  * Write one memory file (atomic).
  */
-export async function writeMemoryFile(file: string, data: MemoryStore): Promise<void> {
-  await atomicWrite(file, data)
-}
-
-/**
- * Write one candidate file (atomic).
- */
-export async function writeCandidateFile(file: string, data: CandidateStore): Promise<void> {
+async function writeMemoryFile(file: string, data: { items: unknown[] }): Promise<void> {
   await atomicWrite(file, data)
 }

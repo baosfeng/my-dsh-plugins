@@ -20,7 +20,7 @@
  * it may propose saving memories it notices; off, the agent saves on request.
  */
 import { findProjectRoot } from 'dsh-shared'
-import type { MemoryItem, StoreInstance } from './store.js'
+import type { MemoryItem, StoreInstance } from './memory-types.js'
 
 /** 查询结果接口。 */
 export interface QueryResult {
@@ -157,7 +157,7 @@ export function createMemoryQueryTool({ globalStore, getProjectStore }: StoreDep
 async function executeQuery(
   args: { scope: string; keyword?: string; cwd?: string },
   exec: ExecContext,
-  { globalStore, getProjectStore }: StoreDeps
+  { globalStore, getProjectStore }: StoreDeps,
 ): Promise<QueryResult> {
   const scope = args.scope === 'project' ? 'project' : 'global'
   if (scope === 'global') {
@@ -261,7 +261,12 @@ export function saveToolDescription(proactivePropose?: boolean): string {
 }
 
 /** The memory_save tool definition (write; gated by the approval listener). */
-export function createMemorySaveTool({ globalStore, getProjectStore, config, logger }: StoreDeps & { config?: ToolConfig; logger?: Logger }) {
+export function createMemorySaveTool({
+  globalStore,
+  getProjectStore,
+  config,
+  logger,
+}: StoreDeps & { config?: ToolConfig; logger?: Logger }) {
   return {
     name: 'memory_save',
     description: saveToolDescription(config?.proactivePropose),
@@ -280,7 +285,7 @@ export function createMemorySaveTool({ globalStore, getProjectStore, config, log
 async function executeSave(
   args: { scope: string; desc: string; cwd?: string },
   exec: ExecContext,
-  { globalStore, getProjectStore, logger }: StoreDeps & { logger?: Logger }
+  { globalStore, getProjectStore, logger }: StoreDeps & { logger?: Logger },
 ): Promise<SaveResult> {
   const scope = args.scope === 'project' ? 'project' : 'global'
   const desc = typeof args.desc === 'string' ? args.desc.trim() : ''
@@ -332,7 +337,10 @@ function infoSave(logger: Logger | undefined, message: string): void {
  * gate never changes unrelated tool flows (memory never changes silently).
  */
 export function createMemorySaveGate() {
-  return async (exec: { name?: string; arguments?: { scope?: string; desc?: string } }, next: () => Promise<unknown>) => {
+  return async (
+    exec: { name?: string; arguments?: { scope?: string; desc?: string } },
+    next: () => Promise<unknown>,
+  ) => {
     const decision = await next()
     if (exec?.name !== 'memory_save') return decision
     const scope = scopeLabelOf(exec?.arguments ?? {})

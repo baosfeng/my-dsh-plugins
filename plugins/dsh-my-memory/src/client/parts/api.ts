@@ -48,21 +48,33 @@ function fetchMemory(scope: string, cwd: string): Promise<Required<MemoryValue>>
     .then((res) => res.json())
     .then((body: ApiResponse<MemoryValue>) => {
       if (body === null || body.ok !== true) throw new Error('bad memory response')
-      return normalizeMemory(body.value ?? {})
+      return normalizeMemory(body.value)
     })
 }
 
 /** POST /my-memory/api/memory — a write gated on the user-consent marker. */
-function writeMemory(params: { action: string; scope: string; cwd: string; id?: string; desc?: string }): Promise<Required<MemoryValue>> {
+function writeMemory({
+  action,
+  scope,
+  cwd,
+  id,
+  desc,
+}: {
+  action: string
+  scope: string
+  cwd: string
+  id?: string
+  desc?: string
+}): Promise<Required<MemoryValue>> {
   return fetch(`${API_BASE}/memory`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ...params, confirmed: true }),
+    body: JSON.stringify({ action, scope, cwd, id, desc, confirmed: true }),
   })
     .then((res) => res.json())
     .then((body: ApiResponse<MemoryValue>) => {
       if (body === null || body.ok !== true) throw new Error('write failed')
-      return normalizeMemory({ ...body.value, scope: params.scope })
+      return normalizeMemory({ ...body.value, scope })
     })
 }
 
@@ -88,7 +100,7 @@ function confirmCandidate(id: string): Promise<MemoryValue> {
     .then((res) => res.json())
     .then((body: ApiResponse<MemoryValue>) => {
       if (body === null || body.ok !== true) throw new Error('candidate confirm failed')
-      return body.value ?? {}
+      return body.value
     })
 }
 
@@ -103,7 +115,7 @@ function dismissCandidate(id: string): Promise<MemoryValue> {
     .then((res) => res.json())
     .then((body: ApiResponse<MemoryValue>) => {
       if (body === null || body.ok !== true) throw new Error('candidate dismiss failed')
-      return body.value ?? {}
+      return body.value
     })
 }
 
@@ -137,7 +149,7 @@ function fetchSessionCwd(sessionId: string): Promise<string> {
 function fetchConfig(): Promise<{ maxEntryLength: number }> {
   return fetch(`${API_BASE}/config`)
     .then((res) => res.json())
-    .then((body: ApiResponse<{ maxEntryLength?: number }>) => {
+    .then((body: ApiResponse<{ maxEntryLength?: number }>): { maxEntryLength: number } => {
       if (body === null || body.ok !== true) return { maxEntryLength: DEFAULT_ENTRY_LIMIT }
       const limit = body.value?.maxEntryLength
       return { maxEntryLength: Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_ENTRY_LIMIT }
@@ -146,13 +158,3 @@ function fetchConfig(): Promise<{ maxEntryLength: number }> {
 }
 
 // 导出给其他 part 文件使用
-exports.API_BASE = API_BASE
-exports.normalizeMemory = normalizeMemory
-exports.fetchMemory = fetchMemory
-exports.writeMemory = writeMemory
-exports.fetchCandidates = fetchCandidates
-exports.confirmCandidate = confirmCandidate
-exports.dismissCandidate = dismissCandidate
-exports.currentSessionId = currentSessionId
-exports.fetchSessionCwd = fetchSessionCwd
-exports.fetchConfig = fetchConfig

@@ -1,5 +1,5 @@
 /**
- * dsh-my-memory — memory text helpers (issue #105).
+ * dsh-my-memory — memory text helpers (issue #105, TypeScript 源码)。
  *
  * 记忆内容精简的共享纯函数，服务手动保存引导、面板概要/详情两级展示与
  * 系统提示词注入的语义截断——同时为 #78（自动提取记忆）预留同一套
@@ -11,30 +11,27 @@
  * 句子边界：中英文句号、感叹号、问号、分号、换行（含连续省略号），
  * 保证概要/注入截断尽量停在句子边界、不截断在句子中间。
  */
-
 /** 建议单条记忆长度上限（字符）。超过即提示精简（issue #105，「>50 字提示」）。 */
-export const DEFAULT_MAX_ENTRY_LENGTH = 50
-
+export const DEFAULT_MAX_ENTRY_LENGTH = 50;
 /** 单条记忆注入系统提示词的长度上限（字符，issue #38 原有默认）。 */
-export const DEFAULT_MAX_DESC_LENGTH = 200
-
+export const DEFAULT_MAX_DESC_LENGTH = 200;
 /** 句子边界字符（中英文句末标点 + 分号 + 换行；省略号吸收入前一句）。 */
-const SENTENCE_BOUNDARY = /[。！？!?；;\n….]+/u
-
+const SENTENCE_BOUNDARY = /[。！？!?；;\n….]+/u;
 /**
  * 取一段文本的首句（含边界标点；连续省略号/标点并入前一句）。
  * 无任何句子边界时返回整段文本。
  */
 export function firstSentence(text) {
-  const value = String(text ?? '')
-  const match = SENTENCE_BOUNDARY.exec(value)
-  if (match === null) return value
-  let end = match.index + 1
-  // 吸收连续的省略号/标点（「……」「！！！」）——仍属于同一句
-  while (end < value.length && SENTENCE_BOUNDARY.test(value[end])) end += 1
-  return value.slice(0, end)
+    const value = String(text ?? '');
+    const match = SENTENCE_BOUNDARY.exec(value);
+    if (match === null)
+        return value;
+    let end = match.index + 1;
+    // 吸收连续的省略号/标点（「……」「！！！」）——仍属于同一句
+    while (end < value.length && SENTENCE_BOUNDARY.test(value[end]))
+        end += 1;
+    return value.slice(0, end);
 }
-
 /**
  * 语义截断 desc 到长度上限（issue #105 概要优先）：
  *  - 单句且不超限 → 原样返回；
@@ -44,17 +41,18 @@ export function firstSentence(text) {
  *  任何分支都不截断在句子中间（句子边界完整保留）。
  */
 export function summarizeDesc(desc, maxLength) {
-  const value = String(desc ?? '')
-  const first = firstSentence(value)
-  if (first === value) {
-    if (value.length <= maxLength) return value
-    return `${value.slice(0, maxLength)}…`
-  }
-  if (first.length <= maxLength) return first
-  return `${first.slice(0, maxLength)}…`
+    const value = String(desc ?? '');
+    const first = firstSentence(value);
+    if (first === value) {
+        if (value.length <= maxLength)
+            return value;
+        return `${value.slice(0, maxLength)}…`;
+    }
+    if (first.length <= maxLength)
+        return first;
+    return `${first.slice(0, maxLength)}…`;
 }
-
 /** 是否超过建议长度上限（用于保存/输入时的精简提示）。 */
 export function isOverEntryLimit(desc, maxLength = DEFAULT_MAX_ENTRY_LENGTH) {
-  return String(desc ?? '').length > maxLength
+    return String(desc ?? '').length > maxLength;
 }

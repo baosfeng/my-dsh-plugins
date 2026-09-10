@@ -45,7 +45,8 @@ const strings = {
   delete: (): string => (isZh() ? '删除' : 'Delete'),
   confirmAdd: (): string => (isZh() ? '确认新增这条记忆？' : 'Add this memory?'),
   confirmUpdate: (): string => (isZh() ? '确认保存这条记忆的修改？' : 'Save this memory change?'),
-  confirmDelete: (): string => (isZh() ? '确定删除这条记忆？此操作不可撤销。' : 'Delete this memory? This cannot be undone.'),
+  confirmDelete: (): string =>
+    isZh() ? '确定删除这条记忆？此操作不可撤销。' : 'Delete this memory? This cannot be undone.',
   confirmSave: (): string => (isZh() ? '确认保存' : 'Confirm save'),
   confirmDeleteBtn: (): string => (isZh() ? '确认删除' : 'Confirm delete'),
   saved: (): string => (isZh() ? '已保存' : 'Saved'),
@@ -61,13 +62,15 @@ const strings = {
       : 'Project memories are scoped to this project only; stored under $DSH_HOME/memory/projects/ (one file per project-root hash)',
   confirmHint: (): string =>
     isZh() ? '所有新增 / 修改 / 删除都需要你确认' : 'Every add / edit / delete needs your confirmation',
-  updatedAt: (ts: number): string => (isZh() ? `更新于 ${new Date(ts).toLocaleString()}` : `Updated ${new Date(ts).toLocaleString()}`),
+  updatedAt: (ts: number): string =>
+    isZh() ? `更新于 ${new Date(ts).toLocaleString()}` : `Updated ${new Date(ts).toLocaleString()}`,
   // ── issue #110 视觉重设计：徽标分类/数量、相对时间、排序、截断展开 ──
   globalScope: (): string => (isZh() ? '全局' : 'Global'),
   projectScope: (): string => (isZh() ? '项目' : 'Project'),
   countBadge: (label: string, n: number): string => (isZh() ? `${label} · ${n} 条` : `${label} · ${n}`),
   countOnly: (n: number): string => (isZh() ? `${n} 条` : `${n}`),
-  projectBadge: (root: string, n: number): string => (isZh() ? `项目根：${root} · ${n} 条` : `Project root: ${root} · ${n}`),
+  projectBadge: (root: string, n: number): string =>
+    isZh() ? `项目根：${root} · ${n} 条` : `Project root: ${root} · ${n}`,
   pathInputAria: (): string => (isZh() ? '项目根路径' : 'Project root path'),
   addInputAria: (scope: string): string =>
     isZh() ? `新增记忆内容（${scope === 'project' ? '项目' : '全局'}）` : `New memory (${scope})`,
@@ -118,4 +121,3 @@ const strings = {
 }
 
 // 导出给其他 part 文件使用
-exports.strings = strings

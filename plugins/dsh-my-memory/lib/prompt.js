@@ -1,5 +1,5 @@
 /**
- * dsh-my-memory — system-prompt injection.
+ * dsh-my-memory — system-prompt injection (TypeScript 源码)。
  *
  * Registers one section (`dsh-my-memory`, order -95 — before the deployment
  * persona at 0 and before dsh-think-zh's -90) whose text is a provider
@@ -14,12 +14,10 @@
  * saved mid-session is visible to the agent on the very next turn without a
  * restart.
  */
-import { DEFAULT_MAX_DESC_LENGTH, summarizeDesc } from './memory-text.js'
-import { decayConfidence, pickForInjection } from './memory-scoring.js'
-
+import { DEFAULT_MAX_DESC_LENGTH, summarizeDesc } from './memory-text.js';
+import { decayConfidence, pickForInjection } from './memory-scoring.js';
 /** Default cap on how many global memories are injected. */
-const DEFAULT_MAX_ITEMS = 5
-
+const DEFAULT_MAX_ITEMS = 5;
 /**
  * Truncate one desc to the length cap, preferring the full first sentence
  * (semantic truncation — never cuts mid-sentence when a sentence boundary
@@ -27,41 +25,40 @@ const DEFAULT_MAX_ITEMS = 5
  * the implementation now lives in memory-text.js.
  */
 export function truncateDesc(desc, maxLength) {
-  return summarizeDesc(desc, maxLength)
+    return summarizeDesc(desc, maxLength);
 }
-
 /** Render the injected section text for a picked list of global memories. */
 export function renderMemorySection(items, { maxItems, maxDescLength }) {
-  const picked = items.slice(0, maxItems)
-  if (picked.length === 0) return ''
-  const lines = picked.map((item) => `- ${truncateDesc(item.desc, maxDescLength)}`)
-  return `## 用户记忆（全局）
+    const picked = items.slice(0, maxItems);
+    if (picked.length === 0)
+        return '';
+    const lines = picked.map((item) => `- ${truncateDesc(item.desc, maxDescLength)}`);
+    return `## 用户记忆（全局）
 以下是你需要始终携带的用户长期偏好与关键约定（来自 dsh-my-memory 插件）：
-${lines.join('\n')}`
+${lines.join('\n')}`;
 }
-
 /** The current-session context handed to the smart picker (keywords only). */
 function contextOf() {
-  // 未来可扩展：从当前会话标题/首条消息提取关键词（#78 相关性维度）。
-  // 现为空的上下文 → 相关性权重不生效，score 退化为 时效性 + 置信度。
-  return { keywords: [] }
+    // 未来可扩展：从当前会话标题/首条消息提取关键词（#78 相关性维度）。
+    // 现为空的上下文 → 相关性权重不生效，score 退化为 时效性 + 置信度。
+    return { keywords: [] };
 }
-
 /** Build the system-prompt section registration for a global store. */
 export function createMemorySection(globalStore, config) {
-  const maxItems = Number.isInteger(config?.maxItems) && config.maxItems > 0 ? config.maxItems : DEFAULT_MAX_ITEMS
-  const maxDescLength =
-    Number.isInteger(config?.maxDescLength) && config.maxDescLength > 0 ? config.maxDescLength : DEFAULT_MAX_DESC_LENGTH
-  const decayMs = Number.isInteger(config?.decayMs) && config.decayMs > 0 ? config.decayMs : undefined
-  return {
-    name: 'dsh-my-memory',
-    order: -95,
-    text: () => {
-      // issue #78 智能注入：先做长期未用降权（时效性），再按 相关性 +
-      // 时效性 + 置信度 评分选 top-N（替代简单按 updatedAt 取最新 N 条）。
-      const decayed = decayConfidence(globalStore.list(), Date.now(), decayMs)
-      const picked = pickForInjection(decayed.items, contextOf(), { maxItems }).picked
-      return renderMemorySection(picked, { maxItems, maxDescLength })
-    },
-  }
+    const maxItems = Number.isInteger(config?.maxItems) && config.maxItems > 0 ? config.maxItems : DEFAULT_MAX_ITEMS;
+    const maxDescLength = Number.isInteger(config?.maxDescLength) && config.maxDescLength > 0
+        ? config.maxDescLength
+        : DEFAULT_MAX_DESC_LENGTH;
+    const decayMs = Number.isInteger(config?.decayMs) && config.decayMs > 0 ? config.decayMs : undefined;
+    return {
+        name: 'dsh-my-memory',
+        order: -95,
+        text: () => {
+            // issue #78 智能注入：先做长期未用降权（时效性），再按 相关性 +
+            // 时效性 + 置信度 评分选 top-N（替代简单按 updatedAt 取最新 N 条）。
+            const decayed = decayConfidence(globalStore.list(), Date.now(), decayMs);
+            const picked = pickForInjection(decayed.items, contextOf(), { maxItems }).picked;
+            return renderMemorySection(picked, { maxItems, maxDescLength });
+        },
+    };
 }

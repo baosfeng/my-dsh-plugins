@@ -136,5 +136,3 @@ const STYLES: string = `
 const STYLE_TAG: string = 'data-dsh-my-memory'
 
 // 导出给其他 part 文件使用
-exports.STYLES = STYLES
-exports.STYLE_TAG = STYLE_TAG

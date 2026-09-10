@@ -15,8 +15,8 @@
  * restart.
  */
 import { DEFAULT_MAX_DESC_LENGTH, summarizeDesc } from './memory-text.js'
-import { decayConfidence, pickForInjection, type MemoryItem } from './memory-scoring.js'
-import type { StoreInstance } from './store.js'
+import { decayConfidence, pickForInjection } from './memory-scoring.js'
+import type { MemoryItem, StoreInstance } from './memory-types.js'
 
 /** Default cap on how many global memories are injected. */
 const DEFAULT_MAX_ITEMS = 5
@@ -70,10 +70,12 @@ export function createMemorySection(
   order: number
   text: () => string
 } {
-  const maxItems = Number.isInteger(config?.maxItems) && config.maxItems! > 0 ? config.maxItems! : DEFAULT_MAX_ITEMS
+  const maxItems = Number.isInteger(config?.maxItems) && config!.maxItems! > 0 ? config!.maxItems! : DEFAULT_MAX_ITEMS
   const maxDescLength =
-    Number.isInteger(config?.maxDescLength) && config.maxDescLength! > 0 ? config.maxDescLength! : DEFAULT_MAX_DESC_LENGTH
-  const decayMs = Number.isInteger(config?.decayMs) && config.decayMs! > 0 ? config.decayMs! : undefined
+    Number.isInteger(config?.maxDescLength) && config!.maxDescLength! > 0
+      ? config!.maxDescLength!
+      : DEFAULT_MAX_DESC_LENGTH
+  const decayMs = Number.isInteger(config?.decayMs) && config!.decayMs! > 0 ? config!.decayMs! : undefined
   return {
     name: 'dsh-my-memory',
     order: -95,

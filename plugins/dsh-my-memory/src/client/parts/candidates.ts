@@ -23,7 +23,12 @@ interface MemoryItemWithMeta {
 }
 
 /** 一条待确认候选（issue #78）：分类徽标 + 描述 + 范围 + 来源 + 确认/拒弃。 */
-function CandidateRow({ candidate, busy, onConfirm, onDismiss }: {
+function CandidateRow({
+  candidate,
+  busy,
+  onConfirm,
+  onDismiss,
+}: {
   candidate: CandidateItem
   busy: boolean
   onConfirm: () => void
@@ -38,7 +43,7 @@ function CandidateRow({ candidate, busy, onConfirm, onDismiss }: {
       createElement(
         'div',
         { className: 'dsh-my-memory-row-desc-wrap' },
-        createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(candidate.category ?? '')),
+        createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(candidate.category)),
         createElement('span', { className: 'dsh-my-memory-desc' }, candidate.desc),
       ),
       createElement(
@@ -68,18 +73,22 @@ function CandidateRow({ candidate, busy, onConfirm, onDismiss }: {
       'div',
       { className: 'dsh-my-memory-meta' },
       createElement('span', { className: 'dsh-my-memory-meta-icon' }, icon.clock(11)),
-      relativeTime(candidate.createdAt ?? 0),
+      relativeTime(candidate.createdAt),
       createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'),
-      strings.candidateScopeBadge(candidate.scope ?? 'global'),
+      strings.candidateScopeBadge(candidate.scope),
       createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'),
-      strings.candidateSource(candidate.source?.sessionId ?? ''),
+      strings.candidateSource(candidate.source?.sessionId),
     ),
     busy ? createElement('div', { className: 'dsh-my-memory-entry-hint' }, strings.loading()) : null,
   )
 }
 
 /** 演进历史控件：展开/收起按钮 + 历史条目列表（有 history 才渲染）。 */
-function HistoryControl({ item, isExpanded, onToggle }: {
+function HistoryControl({
+  item,
+  isExpanded,
+  onToggle,
+}: {
   item: MemoryItemWithMeta
   isExpanded: boolean
   onToggle: () => void
@@ -100,7 +109,7 @@ function HistoryControl({ item, isExpanded, onToggle }: {
       isExpanded ? strings.collapse() : strings.historyLabel(),
     ),
     isExpanded
-      ? item.history!.map((entry, index) =>
+      ? item.history.map((entry, index) =>
           createElement(
             'span',
             { key: `${entry.at}-${index}`, className: 'dsh-my-memory-history-entry' },
@@ -114,7 +123,11 @@ function HistoryControl({ item, isExpanded, onToggle }: {
 /** 记忆条目元数据行（issue #78）：分类徽标 + 置信度 + 矛盾标记 + 演进历史
  *  （展开时显示 history 列表）。confidence 缺失/非数字时不渲染置信度徽标
  *  （之前直接拼 "置信度 ${n}"，缺失时出现"置信度 undefined"）。 */
-function MetadataRow({ item, isExpanded, onToggle }: {
+function MetadataRow({
+  item,
+  isExpanded,
+  onToggle,
+}: {
   item: MemoryItemWithMeta
   isExpanded: boolean
   onToggle: () => void
@@ -123,23 +136,28 @@ function MetadataRow({ item, isExpanded, onToggle }: {
   return createElement(
     'div',
     { className: 'dsh-my-memory-meta' },
-    createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(item.category ?? '')),
+    createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(item.category)),
     hasConfidence
-      ? createElement('span', { className: 'dsh-my-memory-conf-badge' }, strings.confidenceLabel(item.confidence!))
+      ? createElement('span', { className: 'dsh-my-memory-conf-badge' }, strings.confidenceLabel(item.confidence))
       : null,
     item.status === 'conflict-pending'
       ? createElement('span', { className: 'dsh-my-memory-conflict-badge' }, strings.statusConflict())
       : null,
     createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'),
     createElement('span', { className: 'dsh-my-memory-meta-icon' }, icon.clock(11)),
-    relativeTime(item.updatedAt ?? 0),
+    relativeTime(item.updatedAt),
     createElement(HistoryControl, { item, isExpanded, onToggle }),
   )
 }
 
 /** 待确认候选区块（issue #78）：自动提取的记忆候选，确认后写入（渐进
  *  合并）、拒弃则丢弃——记忆绝不静默变更。 */
-function CandidatesBlock({ candidates, busy, onConfirmCandidate, onDismissCandidate }: {
+function CandidatesBlock({
+  candidates,
+  busy,
+  onConfirmCandidate,
+  onDismissCandidate,
+}: {
   candidates: CandidateItem[]
   busy: boolean
   onConfirmCandidate: (id: string) => void
@@ -175,7 +193,3 @@ function CandidatesBlock({ candidates, busy, onConfirmCandidate, onDismissCandid
 }
 
 // 导出给其他 part 文件使用
-exports.CandidateRow = CandidateRow
-exports.HistoryControl = HistoryControl
-exports.MetadataRow = MetadataRow
-exports.CandidatesBlock = CandidatesBlock

@@ -3,6 +3,9 @@
  *
  * 定义 API 路由处理器相关的类型。
  */
+import type { MemoryStore, StoreInstance, CandidateStoreInstance } from './memory-types.js'
+
+export type { MemoryStore, StoreInstance, CandidateStoreInstance }
 
 /** DSH HTTP 请求（node:http IncomingMessage 的最小契约）。 */
 export interface ServerRequest {
@@ -16,27 +19,6 @@ export interface ServerRequest {
 export interface ServerResponse {
   writeHead(statusCode: number, headers?: Record<string, string>): void
   end(chunk?: string): void
-}
-
-/** 记忆存储接口。 */
-export interface MemoryStore {
-  load(): Promise<void>
-  list(): unknown[]
-  add(desc: string, now?: number, meta?: Record<string, unknown>): Promise<unknown>
-  mergeAdd(candidate: unknown, now?: number): Promise<{ item: unknown; outcome: string }>
-  addRaw(item: unknown): Promise<void>
-  update(id: string, desc: string, now?: number): Promise<unknown | undefined>
-  remove(id: string): Promise<boolean>
-  flush(): Promise<void>
-  dispose(): void
-}
-
-/** 候选存储接口。 */
-export interface CandidatesStore {
-  load(): Promise<void>
-  list(): unknown[]
-  addRaw(item: unknown): Promise<void>
-  remove(id: string): Promise<boolean>
 }
 
 /** 会话信息接口。 */
@@ -71,9 +53,9 @@ export type FenceFunction = (request: ServerRequest) => boolean
 
 /** API 处理器参数接口。 */
 export interface ApiHandlerParams {
-  globalStore: MemoryStore
-  getProjectStore: (cwd: string) => Promise<MemoryStore>
-  candidatesStore: CandidatesStore | null | undefined
+  globalStore: StoreInstance
+  getProjectStore: (cwd: string) => Promise<StoreInstance>
+  candidatesStore: CandidateStoreInstance | null | undefined
   fence: FenceFunction
   sessions?: SessionsService
   config?: ApiConfig
@@ -82,9 +64,9 @@ export interface ApiHandlerParams {
 
 /** 路由请求参数接口。 */
 export interface RouteRequestParams {
-  globalStore: MemoryStore
-  getProjectStore: (cwd: string) => Promise<MemoryStore>
-  candidatesStore: CandidatesStore | null | undefined
+  globalStore: StoreInstance
+  getProjectStore: (cwd: string) => Promise<StoreInstance>
+  candidatesStore: CandidateStoreInstance | null | undefined
   sessions?: SessionsService
   config?: ApiConfig
   logger?: LoggerService
@@ -92,9 +74,9 @@ export interface RouteRequestParams {
 
 /** 候选路由参数接口。 */
 export interface CandidateRouteParams {
-  candidatesStore: CandidatesStore | null | undefined
-  globalStore: MemoryStore
-  getProjectStore: (cwd: string) => Promise<MemoryStore>
+  candidatesStore: CandidateStoreInstance | null | undefined
+  globalStore: StoreInstance
+  getProjectStore: (cwd: string) => Promise<StoreInstance>
   logger?: LoggerService
 }
 

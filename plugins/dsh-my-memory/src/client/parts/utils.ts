@@ -53,7 +53,7 @@ function relativeTime(ts: number | string): string {
 }
 
 /** 按更新时间排序（dir: 'desc' 最新在顶 / 'asc' 最旧在顶）；返回新数组，不改原列表。 */
-function sortMemories<T extends { updatedAt: number }>(items: T[], dir: 'desc' | 'asc' = 'desc'): T[] {
+function sortMemories<T extends { updatedAt?: number }>(items: T[], dir: 'desc' | 'asc' = 'desc'): T[] {
   const copy = items.slice()
   copy.sort((a, b) => (dir === 'asc' ? a.updatedAt - b.updatedAt : b.updatedAt - a.updatedAt))
   return copy
@@ -71,4 +71,3 @@ exports.relativeTime = relativeTime
 exports.sortMemories = sortMemories
 exports.isOverEntryLimit = isOverEntryLimit
 exports.DEFAULT_ENTRY_LIMIT = DEFAULT_ENTRY_LIMIT
-exports.TRUNCATE_LEN = TRUNCATE_LEN

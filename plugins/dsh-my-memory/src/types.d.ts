@@ -10,7 +10,7 @@
  */
 
 /** Cordis 事件监听器（DSH 事件如 session/start、agent/status）。 */
-export type EventHandler = (...args: unknown[]) => void
+export type EventHandler = (...args: any[]) => void
 
 /** DSH server 端 Context（cordis Context 的最小契约）。 */
 export interface DshContext {
@@ -48,15 +48,26 @@ export interface WebRuntimeService {
   trustedHosts: string[]
 }
 
+/** 会话信息接口。 */
+export interface SessionInfo {
+  header?: {
+    cwd?: string
+    [key: string]: unknown
+  }
+  [key: string]: unknown
+}
+
 /** sessions 服务（会话管理）。 */
 export interface SessionsService {
-  get(id: string): unknown
+  get(id: string): SessionInfo | undefined
 }
 
 /** systemPrompt 服务（系统提示词管理）。 */
 export interface SystemPromptService {
   /** 添加系统提示词片段；返回 disposer。 */
   add(content: string, priority?: number): () => void
+  /** 注册一个系统提示词 section（provider 模式）。 */
+  section(options: { name: string; order: number; text: () => string }): () => void
 }
 
 /** tools 服务（工具管理）。 */
@@ -66,10 +77,10 @@ export interface ToolsService {
     name: string
     description: string
     parameters?: unknown
-    execute: (params: unknown) => Promise<unknown>
+    execute: (params: any, exec: any) => Promise<any>
   }): () => void
   /** 注册工具执行前钩子。 */
-  on(event: 'tools/pre-execute', handler: (params: unknown) => unknown): () => void
+  on(event: 'tools/pre-execute', handler: (exec: any, next: () => Promise<any>) => any): () => void
 }
 
 /** logger 服务（日志）。 */
@@ -84,6 +95,7 @@ export interface ServerRequest {
   url?: string
   headers: Record<string, string | string[] | undefined>
   method?: string
+  [Symbol.asyncIterator](): AsyncIterator<string>
 }
 
 /** DSH HTTP 响应（node:http ServerResponse 的最小契约）。 */

@@ -13,12 +13,17 @@
  *  - 记忆绝不静默变更由调用方保证：自动提取只产生「候选」（待确认），
  *    本模块的合并只在用户确认写入时执行。
  */
+import type * as MemoryTypes from './memory-types.js'
+
+export type MemoryItem = MemoryTypes.MemoryItem
+export type CandidateItem = MemoryTypes.CandidateItem
+export type Category = MemoryTypes.Category
+export type InjectionScore = MemoryTypes.InjectionScore
+export type InjectionOptions = MemoryTypes.InjectionOptions
+export type InjectionContext = MemoryTypes.InjectionContext
 
 /** 记忆分类（issue #78 结构化索引）。 */
 export const CATEGORIES = ['preference', 'fact', 'project', 'stack', 'workflow'] as const
-
-/** 分类类型。 */
-export type Category = (typeof CATEGORIES)[number]
 
 /** 默认分类（旧数据/未标注候选回退）。 */
 export const DEFAULT_CATEGORY: Category = 'fact'
@@ -35,60 +40,6 @@ export const DEFAULT_DECAY_MS = 90 * 24 * 60 * 60 * 1000
 /** 默认时效半衰期：7 天（issue #78「时效性」语义）。 */
 export const DEFAULT_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000
 
-/** 记忆条目接口。 */
-export interface MemoryItem {
-  id: string
-  desc: string
-  createdAt: number
-  updatedAt: number
-  category: Category
-  source: { sessionId: string; at: number }
-  confidence: number
-  relatedIds: string[]
-  history: Array<{
-    at: number
-    action: string
-    desc: string
-  }>
-  status: 'active' | 'conflict-pending'
-}
-
-/** 候选记忆条目接口。 */
-export interface CandidateItem {
-  id: string
-  desc: string
-  category: Category
-  scope: 'global' | 'project'
-  source: { sessionId: string; at: number }
-  createdAt: number
-  cwd?: string
-}
-
-/** 注入评分结果接口。 */
-export interface InjectionScore {
-  id: string
-  item: MemoryItem
-  score: number
-}
-
-/** 注入选项接口。 */
-export interface InjectionOptions {
-  now?: number
-  halfLifeMs?: number
-  maxConfidence?: number
-  maxItems?: number
-  weights?: {
-    relevance?: number
-    recency?: number
-    confidence?: number
-  }
-}
-
-/** 注入上下文接口。 */
-export interface InjectionContext {
-  keywords: string[]
-}
-
 /** 同主题大意描述（供主题归一化比较）。 */
 function normalizeText(text: unknown): string {
   return String(text ?? '')
@@ -102,12 +53,12 @@ export function themeKeyOf(item: Partial<MemoryItem>): string {
 }
 
 /** 取条目的分类（缺省回退默认）。 */
-function categoryOf(item: Partial<MemoryItem>): Category {
-  return CATEGORIES.includes(item.category as Category) ? (item.category as Category) : DEFAULT_CATEGORY
+function categoryOf(item: Partial<MemoryItem> | null | undefined): Category {
+  return CATEGORIES.includes(item?.category as Category) ? (item?.category as Category) : DEFAULT_CATEGORY
 }
 
 /** 取条目的 desc（容错）。 */
-function descOf(item: Partial<MemoryItem>): string {
+function descOf(item: Partial<MemoryItem> | null | undefined): string {
   return typeof item?.desc === 'string' ? item.desc : ''
 }
 
@@ -125,31 +76,32 @@ function descOf(item: Partial<MemoryItem>): string {
 export function sameTheme(a: Partial<MemoryItem>, b: Partial<MemoryItem>): boolean {
   const na = normalizeText(descOf(a))
   const nb = normalizeText(descOf(b))
-  if (na === '' || nb === '') return false
-  if (na === nb) {
-    const ca = categoryOf(a)
-    const cb = categoryOf(b)
-    if (ca === cb) return true
-    return ca === DEFAULT_CATEGORY || cb === DEFAULT_CATEGORY
-  }
-  if (categoryOf(a) !== categoryOf(b)) return false
-  if (na.includes(nb) || nb.includes(na)) return true
-  return isSubsequence(na, nb) || isSubsequence(nb, na)
+  const ca = categoryOf(a)
+  const cb = categoryOf(b)
+  const nonEmpty = na !== '' && nb !== ''
+  const sameText = na === nb
+  const sameCategory = ca === cb
+  const defaultCategory = ca === DEFAULT_CATEGORY || cb === DEFAULT_CATEGORY
+  const contains = na.includes(nb) || nb.includes(na)
+  const subsequence = isSubsequence(na, nb) || isSubsequence(nb, na)
+  const equalTextMatch = sameCategory || defaultCategory
+  const similarTextMatch = sameCategory && (contains || subsequence)
+  return nonEmpty && (sameText ? equalTextMatch : similarTextMatch)
 }
 
 /** a 是否为 b 的子序列（保持顺序；短论文本按字符逐个匹配）。 */
 function isSubsequence(a: string, b: string): boolean {
-  if (a === '' || a.length > b.length * 2 + 2) return false
+  const usable = a !== '' && a.length <= b.length * 2 + 2
   let index = 0
   for (const char of b) {
-    if (char === a[index]) index += 1
-    if (index === a.length) return true
+    if (usable && char === a[index]) index += 1
+    if (index === a.length) return usable
   }
-  return index === a.length
+  return usable && index === a.length
 }
 
 /** 补齐条目元数据默认值（兼容旧数据；不修改原对象）。 */
-export function withDefaults(item: Partial<MemoryItem>, now: number = Date.now()): MemoryItem {
+export function withDefaults(item: Partial<MemoryItem> | null | undefined, now: number = Date.now()): MemoryItem {
   return {
     id: stringOr(item?.id, ''),
     desc: descOf(item),
@@ -175,12 +127,12 @@ function finiteOr(value: unknown, fallback: number): number {
 }
 
 /** 置信度容错：≥1 的有限数保留，否则 1。 */
-function confidenceOf(item: Partial<MemoryItem>): number {
-  return Number.isFinite(item?.confidence) && item.confidence! >= 1 ? item.confidence! : 1
+function confidenceOf(item: Partial<MemoryItem> | null | undefined): number {
+  return Number.isFinite(item?.confidence) && item!.confidence! >= 1 ? item!.confidence! : 1
 }
 
 /** 状态容错：仅 'conflict-pending' 被识别，其余一律 active。 */
-function statusOf(item: Partial<MemoryItem>): 'active' | 'conflict-pending' {
+function statusOf(item: Partial<MemoryItem> | null | undefined): 'active' | 'conflict-pending' {
   return item?.status === 'conflict-pending' ? 'conflict-pending' : 'active'
 }
 
@@ -354,12 +306,10 @@ export function pickForInjection(
   opts?: InjectionOptions & { maxItems?: number },
 ): { picked: MemoryItem[] } {
   const options = opts ?? {}
-  const maxItems = Number.isInteger(options.maxItems) && options.maxItems > 0 ? options.maxItems : 5
+  const maxItems = Number.isInteger(options.maxItems) && options.maxItems! > 0 ? options.maxItems! : 5
   const list = Array.isArray(items) ? items : []
   // 只考虑格式良好的条目（id + desc 齐全）——junk 输入（null/字符串）直接跳过
-  const wellFormed = list.filter(
-    (item) => item !== null && typeof item === 'object' && descOf(item) !== '',
-  )
+  const wellFormed = list.filter((item) => item !== null && typeof item === 'object' && descOf(item) !== '')
   const maxConfidence = Math.max(
     1,
     ...wellFormed.map((item) => (Number.isFinite(item?.confidence) ? item.confidence! : 1)),

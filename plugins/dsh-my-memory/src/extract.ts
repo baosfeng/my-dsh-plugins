@@ -128,10 +128,8 @@ function newCandidateId(now: number): string {
 /** 候选 desc：整句保留（首句语义），超长截断（不截断在句子中间）。 */
 function candidateDescOf(sentence: string): string {
   const trimmed = String(sentence ?? '').trim()
-  if (trimmed === '') return ''
   const first = firstSentence(trimmed)
-  if (first.length <= MAX_CANDIDATE_LENGTH) return first
-  return `${first.slice(0, MAX_CANDIDATE_LENGTH)}…`
+  return trimmed === '' ? '' : first.length <= MAX_CANDIDATE_LENGTH ? first : `${first.slice(0, MAX_CANDIDATE_LENGTH)}…`
 }
 
 /** 消息是否含项目性关键词（建议 scope=project；否则 global）。 */
@@ -146,7 +144,7 @@ function candidateOfSentence(
   rule: Rule,
   now: number,
   sessionId: string,
-  cwd: string
+  cwd: string,
 ): Candidate {
   const scope: Scope = suggestsProject(sentence) && cwd !== '' ? 'project' : 'global'
   return {
@@ -166,7 +164,7 @@ function candidatesOfSentence(
   desc: string,
   now: number,
   sessionId: string,
-  cwd: string
+  cwd: string,
 ): Candidate[] {
   const hits: Candidate[] = []
   for (const rule of RULES) {
@@ -178,12 +176,7 @@ function candidatesOfSentence(
 }
 
 /** 将候选去重并入列表；达到上限返回 true（提取应停止）。 */
-function pushCandidate(
-  candidates: Candidate[],
-  seen: Set<string>,
-  candidate: Candidate,
-  max: number
-): boolean {
+function pushCandidate(candidates: Candidate[], seen: Set<string>, candidate: Candidate, max: number): boolean {
   const fingerprint = candidateFingerprint(candidate)
   if (seen.has(fingerprint)) return candidates.length >= max
   seen.add(fingerprint)
@@ -204,11 +197,10 @@ interface CollectContext {
 /** 对消息列表做双层循环收集候选（已达上限返回 true → 提前结束）。 */
 function collectCandidates(texts: string[], ctx: CollectContext): boolean {
   for (const text of texts) {
-    if (text === '') continue
-    for (const sentence of splitSentences(text)) {
+    const sentences = text === '' ? [] : splitSentences(text)
+    for (const sentence of sentences) {
       const desc = candidateDescOf(sentence)
-      if (desc === '') continue
-      const hits = candidatesOfSentence(sentence, desc, ctx.now, ctx.sessionId, ctx.cwd)
+      const hits = desc === '' ? [] : candidatesOfSentence(sentence, desc, ctx.now, ctx.sessionId, ctx.cwd)
       for (const candidate of hits) {
         if (pushCandidate(ctx.candidates, ctx.seen, candidate, ctx.max)) return true
       }

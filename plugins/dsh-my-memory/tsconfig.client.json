@@ -1,11 +1,15 @@
 {
-  // dsh-my-memory — client 端构建配置：src/client/index.ts →
-  // lib/.client-build/index.js（CommonJS 单文件，scripts/build.mjs 注入模板）。
-  // CommonJS 产物内联进 __ModuleLoader__ factory 作用域后，
-  // require / exports / module 均为 factory 作用域变量，可直接运行。
-  // 类型检查由根 tsconfig.json（tsc --noEmit）统一负责；本配置只负责 emit。
+  // dsh-my-memory — client 端构建配置：src/client/parts/*.ts →
+  // lib/.client-build/parts/*.js（CommonJS 片段，scripts/build.mjs 注入模板）。
+  // client 端 TS 源码为片段文件（无 import/export，共享 factory 作用域），
+  // 编译后保持纯函数/变量声明文本，注入 lib/client.src.js 模板后
+  // 产出 lib/client.js（DSH 实际提供的 __ModuleLoader__ bundle）。
+  //
+  // strict=false：片段文件共享 factory 作用域（跨文件变量引用），
+  // TypeScript 无法感知拼接后的运行时作用域，严格模式会产生大量
+  // 跨文件类型推断错误。类型安全由 globals.d.ts 的声明保证。
   "compilerOptions": {
-    "strict": true,
+    "strict": false,
     "target": "es2022",
     "module": "commonjs",
     "moduleResolution": "bundler",
@@ -15,7 +19,9 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "types": []
+    "types": [],
+    "declaration": false,
+    "sourceMap": false
   },
   "include": ["src/client/**/*.ts"]
 }

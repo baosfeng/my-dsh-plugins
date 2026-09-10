@@ -13,10 +13,11 @@
  * (server half). Writes carry `confirmed: true` — the server refuses any
  * write without the user-consent marker.
  *
- * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs splices
- * the `lib/parts/*.part.js` pieces into the PART placeholder markers below
- * (each piece is plain function-declaration text sharing this factory scope;
- * the browser ModuleLoader does not support relative-path require) and writes
+ * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs compiles
+ * `src/client/parts/*.ts` to `lib/.client-build/parts/*.js` and splices those
+ * fragments into the PART placeholder markers below (each piece is plain
+ * function-declaration text sharing this factory scope; the browser
+ * ModuleLoader does not support relative-path require) and writes
  * lib/client.js — the file actually served by DSH, which MUST be committed
  * (CI runs node --check + tests against it, not against this template).
  */

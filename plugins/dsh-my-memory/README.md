@@ -57,7 +57,7 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-memory
 ## 实现要点
 
 - **持久化**：`lib/store.js` 双作用域存储（全局 `$DSH_HOME/memory.json` + 项目 `$DSH_HOME/memory/projects/<项目 id>.json`，issue #108 集中位置，项目 id = 项目根路径 sha256 前 12 位；旧 `<项目根>/.dsh/memory.json` 首次访问自动迁移到新位置并清理旧文件），原子写（tmp+rename）+ 防抖（300ms 合并写盘）+ 启动 `load()` 恢复缓存；写操作 await 恢复完成，避免重启竞态覆盖；待确认候选独立存 `$DSH_HOME/memory/candidates.json`（`createCandidatesStore`，与正式记忆完全隔离——正式记忆文件只含用户确认过的条目）。
-- **记忆内容精简**（issue #105）：`lib/memory-text.js` 纯函数（`firstSentence`/`summarizeDesc`/`isOverEntryLimit`，句子边界截断、概要优先，为 #78 自动提取预留）；client 同款逻辑在 `lib/parts/utils.part.js`；`GET /my-memory/api/config` 暴露 `maxEntryLength`/`maxDescLength` 供面板提示；面板列表显示首句概要、点击展开完整详情；存储保留完整 desc、不硬拒绝超长保存（引导而非限制）。
+- **记忆内容精简**（issue #105）：`lib/memory-text.js` 纯函数（`firstSentence`/`summarizeDesc`/`isOverEntryLimit`，句子边界截断、概要优先，为 #78 自动提取预留）；client 同款逻辑在 `src/client/parts/utils.ts`；`GET /my-memory/api/config` 暴露 `maxEntryLength`/`maxDescLength` 供面板提示；面板列表显示首句概要、点击展开完整详情；存储保留完整 desc、不硬拒绝超长保存（引导而非限制）。
 - **自动提取**（issue #78）：`lib/extract.js` 规则提取器（`extractCandidates`：偏好/事实/项目/技术栈/工作流 5 类句式模式 + 项目性关键词 → scope 建议 全局/项目 + 单会话上限 + 去重；`splitSentences` 句子边界拆分）；`index.js` 监听 `session/event`（user/message，过滤插件注入）只读收集本次会话用户消息，`agent/status` idle（仅顶层 agent）触发提取——候选进待确认区，`autoLearn` 默认关、`extractor: 'rule' | 'llm'`（llm 预留占位）。
 - **渐进式更新 + 智能注入**（issue #78）：`lib/memory-scoring.js` 纯函数——`mergeCandidate`（同主题判定：分类 + 归一文本包含/子序列；新增/置信度+1（上限 5）/内容更新/矛盾标记；跨明确分类不坍缩）、`decayConfidence`（默认 90 天未用降权、下限 1）、`scoreForInjection`/`pickForInjection`（相关性：上下文关键词命中占比；时效性：exp 衰减 7 天半衰期；置信度：归一化因子；默认权重 0.5/0.3/0.2）；确认写入走 `store.mergeAdd`；`lib/prompt.js` 的 section 先降权再按评分选 `maxItems` 条（替代简单 top-N），配合语义截断。
 - **系统提示词注入**：`lib/prompt.js` 注册 `dsh-my-memory` section（order -95），text 为 provider 函数——每次组装系统提示词时读取全局记忆缓存，智能评分选 `maxItems` 条、每条**按语义截断** `maxDescLength` 字符（优先概要/首句，不截断句子中间）；空记忆渲染空 section（renderPrompt 自动丢弃，零成本）。
@@ -68,7 +68,7 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-memory
 ## 开发
 
 ```bash
-npm run build   # 拼接 lib/parts/*.part.js → lib/client.js
+npm run build   # tsc 编译 src + 拼接 src/client/parts/*.ts 编译产物 → lib/client.js
 npm test        # vitest（server + client 渲染路径）+ cucumber（Gherkin 验收）
 ```
 

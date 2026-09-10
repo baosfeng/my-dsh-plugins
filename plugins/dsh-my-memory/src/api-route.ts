@@ -37,16 +37,15 @@ import { readJsonBody, writeError, writeJson } from 'dsh-shared'
 import { findProjectRoot } from 'dsh-shared'
 import { DEFAULT_MAX_DESC_LENGTH, DEFAULT_MAX_ENTRY_LENGTH } from './memory-text.js'
 import { makeSource } from './memory-scoring.js'
+import type { StoreInstance, CandidateStoreInstance } from './memory-types.js'
 import type {
   ApiConfig,
   ApiHandlerParams,
   ApiResponse,
   ApplyWriteResult,
   CandidateRouteParams,
-  CandidatesStore,
   FenceFunction,
   LoggerService,
-  MemoryStore,
   MergeCandidateOutcome,
   ResolveCandidateOutcome,
   RouteRequestParams,
@@ -144,7 +143,7 @@ async function routeCandidates(
 
 /** GET /candidates — the pending auto-extracted learning candidates (issue #78). */
 async function handleCandidatesList(
-  candidatesStore: CandidatesStore | null | undefined,
+  candidatesStore: CandidateStoreInstance | null | undefined,
   url: URL,
   response: ServerResponse,
 ): Promise<void> {
@@ -161,9 +160,9 @@ async function handleCandidatesList(
 async function handleCandidateConfirm(
   request: ServerRequest,
   response: ServerResponse,
-  candidatesStore: CandidatesStore | null | undefined,
-  globalStore: MemoryStore,
-  getProjectStore: (cwd: string) => Promise<MemoryStore>,
+  candidatesStore: CandidateStoreInstance | null | undefined,
+  globalStore: StoreInstance,
+  getProjectStore: (cwd: string) => Promise<StoreInstance>,
   logger?: LoggerService,
 ): Promise<void> {
   if (candidatesStore === null || candidatesStore === undefined) {
@@ -195,7 +194,7 @@ async function handleCandidateConfirm(
  *  返回 { ok:false, status, message } 或 { ok:true, candidate, id }。 */
 async function resolveCandidate(
   payload: Record<string, unknown>,
-  candidatesStore: CandidatesStore,
+  candidatesStore: CandidateStoreInstance,
   action: string,
 ): Promise<ResolveCandidateOutcome> {
   if (payload?.confirmed !== true) {
@@ -208,7 +207,7 @@ async function resolveCandidate(
   await candidatesStore.load()
   const candidate = candidatesStore.list().find((c: any) => c.id === id)
   if (candidate === undefined) {
-    return { ok: false, status: 400, message: 'candidate not found' }
+    return { ok: false, status: 404, message: 'candidate not found' }
   }
   return { ok: true, candidate, id }
 }
@@ -217,8 +216,8 @@ async function resolveCandidate(
  *  { ok:false, status, message } 或 { ok:true, scope, cwd, item, outcome }。 */
 async function mergeCandidateIntoStore(
   candidate: any,
-  globalStore: MemoryStore,
-  getProjectStore: (cwd: string) => Promise<MemoryStore>,
+  globalStore: StoreInstance,
+  getProjectStore: (cwd: string) => Promise<StoreInstance>,
 ): Promise<MergeCandidateOutcome> {
   const scope = candidate.scope === 'project' ? 'project' : 'global'
   if (scope === 'global') {
@@ -253,7 +252,7 @@ function candidateForMerge(candidate: any, now: number): Record<string, unknown>
 async function handleCandidateDismiss(
   request: ServerRequest,
   response: ServerResponse,
-  candidatesStore: CandidatesStore | null | undefined,
+  candidatesStore: CandidateStoreInstance | null | undefined,
 ): Promise<void> {
   if (candidatesStore === null || candidatesStore === undefined) {
     writeJson(response, 400, { ok: false, error: { message: 'candidate store unavailable' } })
@@ -294,11 +293,7 @@ function handleConfig(config: ApiConfig | undefined, response: ServerResponse): 
 /** GET /session — the session's working directory ('' when none). The settings
  *  panel auto-loads the current project memory from it (issue #104), the same
  *  session-cwd resolution the memory_query tool uses. */
-async function handleSession(
-  sessions: SessionsService | undefined,
-  url: URL,
-  response: ServerResponse,
-): Promise<void> {
+async function handleSession(sessions: SessionsService | undefined, url: URL, response: ServerResponse): Promise<void> {
   const sessionId = url.searchParams.get('sessionId')
   const session = typeof sessionId === 'string' && sessionId !== '' ? sessions?.get(sessionId) : undefined
   const cwd = session?.header?.cwd
@@ -309,8 +304,8 @@ async function handleSession(
 async function handleList(
   url: URL,
   response: ServerResponse,
-  globalStore: MemoryStore,
-  getProjectStore: (cwd: string) => Promise<MemoryStore>,
+  globalStore: StoreInstance,
+  getProjectStore: (cwd: string) => Promise<StoreInstance>,
 ): Promise<void> {
   const scope = url.searchParams.get('scope') ?? 'global'
   const cwd = cwdOf(url)
@@ -337,8 +332,8 @@ async function handleList(
 async function handleWrite(
   request: ServerRequest,
   response: ServerResponse,
-  globalStore: MemoryStore,
-  getProjectStore: (cwd: string) => Promise<MemoryStore>,
+  globalStore: StoreInstance,
+  getProjectStore: (cwd: string) => Promise<StoreInstance>,
   logger?: LoggerService,
 ): Promise<void> {
   const payload = await readJsonBody(request)
@@ -347,7 +342,8 @@ async function handleWrite(
     writeJson(response, gate.status, { ok: false, error: { message: gate.message } })
     return
   }
-  const store = payload.scope === 'global' ? globalStore : await getProjectStore(typeof payload.cwd === 'string' ? payload.cwd : '')
+  const store =
+    payload.scope === 'global' ? globalStore : await getProjectStore(typeof payload.cwd === 'string' ? payload.cwd : '')
   const outcome = await applyWrite(store, payload)
   if (outcome !== null) {
     writeJson(response, outcome.status, { ok: false, error: { message: outcome.message } })
@@ -376,7 +372,7 @@ function writeGate(payload: WritePayload): WriteGateResult | null {
 }
 
 /** Apply one write action to a store; returns a rejection or null on success. */
-async function applyWrite(store: MemoryStore, payload: WritePayload): Promise<ApplyWriteResult | null> {
+async function applyWrite(store: StoreInstance, payload: WritePayload): Promise<ApplyWriteResult | null> {
   if (payload.action === 'add') return applyAdd(store, payload)
   if (payload.action === 'update') return applyUpdate(store, payload)
   if (payload.action === 'delete') return applyDelete(store, payload)
@@ -384,7 +380,7 @@ async function applyWrite(store: MemoryStore, payload: WritePayload): Promise<Ap
 }
 
 /** Add one memory item (desc required). */
-async function applyAdd(store: MemoryStore, payload: WritePayload): Promise<ApplyWriteResult | null> {
+async function applyAdd(store: StoreInstance, payload: WritePayload): Promise<ApplyWriteResult | null> {
   const desc = typeof payload.desc === 'string' ? payload.desc.trim() : ''
   if (desc === '') return { status: 400, message: 'add requires a non-empty desc' }
   await store.add(desc)
@@ -392,18 +388,18 @@ async function applyAdd(store: MemoryStore, payload: WritePayload): Promise<Appl
 }
 
 /** Update one memory item (id + desc required). */
-async function applyUpdate(store: MemoryStore, payload: WritePayload): Promise<ApplyWriteResult | null> {
+async function applyUpdate(store: StoreInstance, payload: WritePayload): Promise<ApplyWriteResult | null> {
   const id = typeof payload.id === 'string' ? payload.id : ''
   const desc = typeof payload.desc === 'string' ? payload.desc.trim() : ''
   if (id === '' || desc === '') return { status: 400, message: 'update requires id and a non-empty desc' }
-  if ((await store.update(id, desc)) === undefined) return { status: 400, message: 'memory item not found' }
+  if ((await store.update(id, desc)) === null) return { status: 404, message: 'memory item not found' }
   return null
 }
 
 /** Delete one memory item (id required). */
-async function applyDelete(store: MemoryStore, payload: WritePayload): Promise<ApplyWriteResult | null> {
+async function applyDelete(store: StoreInstance, payload: WritePayload): Promise<ApplyWriteResult | null> {
   const id = typeof payload.id === 'string' ? payload.id : ''
   if (id === '') return { status: 400, message: 'delete requires an id' }
-  if (!(await store.remove(id))) return { status: 400, message: 'memory item not found' }
+  if (!(await store.remove(id))) return { status: 404, message: 'memory item not found' }
   return null
 }

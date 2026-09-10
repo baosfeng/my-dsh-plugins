@@ -13,12 +13,15 @@ interface ClientContext {
 /** slots 服务（官方设置页扩展点）。 */
 interface SlotsService {
   inject(slot: string, factory: () => () => void): void
-  register(options: {
-    name: string
-    id: string
-    order: number
-    label: () => string
-  }, component: () => ReactNode): () => void
+  register(
+    options: {
+      name: string
+      id: string
+      order: number
+      label: () => string
+    },
+    component: () => ReactNode,
+  ): () => void
 }
 
 exports.apply = function apply(ctx: ClientContext): void {

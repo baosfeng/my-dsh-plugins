@@ -13,10 +13,11 @@
  * (server half). Writes carry `confirmed: true` — the server refuses any
  * write without the user-consent marker.
  *
- * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs splices
- * the `lib/parts/*.part.js` pieces into the PART placeholder markers below
- * (each piece is plain function-declaration text sharing this factory scope;
- * the browser ModuleLoader does not support relative-path require) and writes
+ * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs compiles
+ * `src/client/parts/*.ts` to `lib/.client-build/parts/*.js` and splices those
+ * fragments into the PART placeholder markers below (each piece is plain
+ * function-declaration text sharing this factory scope; the browser
+ * ModuleLoader does not support relative-path require) and writes
  * lib/client.js — the file actually served by DSH, which MUST be committed
  * (CI runs node --check + tests against it, not against this template).
  */
@@ -33,126 +34,115 @@ window.__ModuleLoader__.load({
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────
-    // ── i18n ──────────────────────────────────────────────────────────────
+    "use strict";
+// ── i18n ──────────────────────────────────────────────────────────────
 function isZh() {
-  try {
-    const lang = (navigator.language || 'en').toLowerCase()
-    return lang.startsWith('zh')
-  } catch {
-    return false
-  }
+    try {
+        const lang = (navigator.language || 'en').toLowerCase();
+        return lang.startsWith('zh');
+    }
+    catch {
+        return false;
+    }
 }
-
 const strings = {
-  title: () => (isZh() ? '记忆' : 'Memory'),
-  globalSection: () => (isZh() ? '全局记忆' : 'Global memory'),
-  projectSection: () => (isZh() ? '项目记忆' : 'Project memory'),
-  projectHint: () =>
-    isZh()
-      ? '输入项目根路径以查看 / 编辑该项目记忆（存储于 $DSH_HOME/memory/projects/）'
-      : 'Enter a project root to view/edit its project memory (stored under $DSH_HOME/memory/projects/)',
-  loadProject: () => (isZh() ? '加载' : 'Load'),
-  refresh: () => (isZh() ? '刷新' : 'Refresh'),
-  retry: () => (isZh() ? '重试' : 'Retry'),
-  loading: () => (isZh() ? '加载中…' : 'Loading…'),
-  loadError: () => (isZh() ? '加载失败' : 'Load failed'),
-  empty: () => (isZh() ? '暂无记忆' : 'No memories yet'),
-  emptyHint: () => (isZh() ? '点击下方输入框添加第一条记忆' : 'Add your first memory below'),
-  projectEmptyHint: () =>
-    isZh()
-      ? '当前无项目会话，请在上方输入项目根路径加载项目记忆'
-      : 'No active project session; enter a project root above to load its memory',
-  addPlaceholder: () =>
-    isZh()
-      ? '输入要记住的内容（建议 1-2 句话概括，如：回复使用中文）'
-      : 'Type what to remember (keep it to 1-2 sentences, e.g. reply in Chinese)',
-  // ── issue #105 记忆内容精简：超长提示 / 概要预览 ──
-  entryTooLongHint: (current, limit) =>
-    isZh()
-      ? `内容过长（${current} 字，建议 ≤ ${limit} 字），建议精简为 1-2 句`
-      : `Entry too long (${current} chars, suggested ≤ ${limit}); keep it to 1-2 sentences`,
-  summaryPreview: () =>
-    isZh() ? '将保存完整内容；列表与注入显示概要：' : 'Full content is saved; list & injection show the summary: ',
-  add: () => (isZh() ? '新增' : 'Add'),
-  save: () => (isZh() ? '保存' : 'Save'),
-  cancel: () => (isZh() ? '取消' : 'Cancel'),
-  edit: () => (isZh() ? '编辑' : 'Edit'),
-  delete: () => (isZh() ? '删除' : 'Delete'),
-  confirmAdd: () => (isZh() ? '确认新增这条记忆？' : 'Add this memory?'),
-  confirmUpdate: () => (isZh() ? '确认保存这条记忆的修改？' : 'Save this memory change?'),
-  confirmDelete: () => (isZh() ? '确定删除这条记忆？此操作不可撤销。' : 'Delete this memory? This cannot be undone.'),
-  confirmSave: () => (isZh() ? '确认保存' : 'Confirm save'),
-  confirmDeleteBtn: () => (isZh() ? '确认删除' : 'Confirm delete'),
-  saved: () => (isZh() ? '已保存' : 'Saved'),
-  saveFailed: () => (isZh() ? '操作失败' : 'Operation failed'),
-  projectRoot: () => (isZh() ? '项目根：' : 'Project root: '),
-  globalNote: () =>
-    isZh()
-      ? '全局记忆在会话开始时注入系统提示词（agent 始终携带）；存于 $DSH_HOME/memory.json'
-      : 'Global memories are injected into the system prompt at session start; stored in $DSH_HOME/memory.json',
-  projectNote: () =>
-    isZh()
-      ? '项目记忆按项目隔离，仅该项目会话可见；存于 $DSH_HOME/memory/projects/（按项目根路径哈希分文件）'
-      : 'Project memories are scoped to this project only; stored under $DSH_HOME/memory/projects/ (one file per project-root hash)',
-  confirmHint: () =>
-    isZh() ? '所有新增 / 修改 / 删除都需要你确认' : 'Every add / edit / delete needs your confirmation',
-  updatedAt: (ts) => (isZh() ? `更新于 ${new Date(ts).toLocaleString()}` : `Updated ${new Date(ts).toLocaleString()}`),
-  // ── issue #110 视觉重设计：徽标分类/数量、相对时间、排序、截断展开 ──
-  globalScope: () => (isZh() ? '全局' : 'Global'),
-  projectScope: () => (isZh() ? '项目' : 'Project'),
-  countBadge: (label, n) => (isZh() ? `${label} · ${n} 条` : `${label} · ${n}`),
-  countOnly: (n) => (isZh() ? `${n} 条` : `${n}`),
-  projectBadge: (root, n) => (isZh() ? `项目根：${root} · ${n} 条` : `Project root: ${root} · ${n}`),
-  pathInputAria: () => (isZh() ? '项目根路径' : 'Project root path'),
-  addInputAria: (scope) =>
-    isZh() ? `新增记忆内容（${scope === 'project' ? '项目' : '全局'}）` : `New memory (${scope})`,
-  justNow: () => (isZh() ? '刚刚' : 'just now'),
-  minutesAgo: (n) => (isZh() ? `${n} 分钟前` : `${n} min ago`),
-  hoursAgo: (n) => (isZh() ? `${n} 小时前` : `${n} hr ago`),
-  daysAgo: (n) => (isZh() ? `${n} 天前` : `${n} d ago`),
-  sortLabel: () => (isZh() ? '按更新时间排序' : 'Sort by updated'),
-  sortNewest: () => (isZh() ? '最新优先' : 'Newest first'),
-  sortOldest: () => (isZh() ? '最旧优先' : 'Oldest first'),
-  expand: () => (isZh() ? '展开' : 'Expand'),
-  collapse: () => (isZh() ? '收起' : 'Collapse'),
-  // ── issue #78 渐进式索引记忆：待确认候选 + 元数据展示 ──
-  candidatesSection: () => (isZh() ? '自动学习候选（待确认）' : 'Auto-learned candidates (pending)'),
-  candidatesNote: () =>
-    isZh()
-      ? '会话结束后自动从对话提取的记忆候选（autoLearn 开启时）。确认后写入记忆（同主题自动提升置信度），拒绝则丢弃——记忆绝不静默变更'
-      : 'Memory candidates auto-extracted from conversations (when autoLearn is on). Confirm to store them (same themes gain confidence), dismiss to drop — memories never change silently',
-  candidatesEmpty: () => (isZh() ? '暂无待确认候选' : 'No pending candidates'),
-  confirmCandidate: () => (isZh() ? '确认写入' : 'Confirm'),
-  dismissCandidate: () => (isZh() ? '拒弃' : 'Dismiss'),
-  candidateSource: (sessionId) =>
-    isZh()
-      ? `来源会话：${sessionId === '' ? '(无)' : sessionId}`
-      : `Source session: ${sessionId === '' ? '(none)' : sessionId}`,
-  candidateScopeBadge: (scope) =>
-    isZh() ? (scope === 'project' ? '项目候选' : '全局候选') : scope === 'project' ? 'Project' : 'Global',
-  categoryLabel: (category) =>
-    ({
-      preference: isZh() ? '偏好' : 'Preference',
-      fact: isZh() ? '事实' : 'Fact',
-      project: isZh() ? '项目' : 'Project',
-      stack: isZh() ? '技术栈' : 'Stack',
-      workflow: isZh() ? '工作流' : 'Workflow',
+    title: () => (isZh() ? '记忆' : 'Memory'),
+    globalSection: () => (isZh() ? '全局记忆' : 'Global memory'),
+    projectSection: () => (isZh() ? '项目记忆' : 'Project memory'),
+    projectHint: () => isZh()
+        ? '输入项目根路径以查看 / 编辑该项目记忆（存储于 $DSH_HOME/memory/projects/）'
+        : 'Enter a project root to view/edit its project memory (stored under $DSH_HOME/memory/projects/)',
+    loadProject: () => (isZh() ? '加载' : 'Load'),
+    refresh: () => (isZh() ? '刷新' : 'Refresh'),
+    retry: () => (isZh() ? '重试' : 'Retry'),
+    loading: () => (isZh() ? '加载中…' : 'Loading…'),
+    loadError: () => (isZh() ? '加载失败' : 'Load failed'),
+    empty: () => (isZh() ? '暂无记忆' : 'No memories yet'),
+    emptyHint: () => (isZh() ? '点击下方输入框添加第一条记忆' : 'Add your first memory below'),
+    projectEmptyHint: () => isZh()
+        ? '当前无项目会话，请在上方输入项目根路径加载项目记忆'
+        : 'No active project session; enter a project root above to load its memory',
+    addPlaceholder: () => isZh()
+        ? '输入要记住的内容（建议 1-2 句话概括，如：回复使用中文）'
+        : 'Type what to remember (keep it to 1-2 sentences, e.g. reply in Chinese)',
+    // ── issue #105 记忆内容精简：超长提示 / 概要预览 ──
+    entryTooLongHint: (current, limit) => isZh()
+        ? `内容过长（${current} 字，建议 ≤ ${limit} 字），建议精简为 1-2 句`
+        : `Entry too long (${current} chars, suggested ≤ ${limit}); keep it to 1-2 sentences`,
+    summaryPreview: () => isZh() ? '将保存完整内容；列表与注入显示概要：' : 'Full content is saved; list & injection show the summary: ',
+    add: () => (isZh() ? '新增' : 'Add'),
+    save: () => (isZh() ? '保存' : 'Save'),
+    cancel: () => (isZh() ? '取消' : 'Cancel'),
+    edit: () => (isZh() ? '编辑' : 'Edit'),
+    delete: () => (isZh() ? '删除' : 'Delete'),
+    confirmAdd: () => (isZh() ? '确认新增这条记忆？' : 'Add this memory?'),
+    confirmUpdate: () => (isZh() ? '确认保存这条记忆的修改？' : 'Save this memory change?'),
+    confirmDelete: () => isZh() ? '确定删除这条记忆？此操作不可撤销。' : 'Delete this memory? This cannot be undone.',
+    confirmSave: () => (isZh() ? '确认保存' : 'Confirm save'),
+    confirmDeleteBtn: () => (isZh() ? '确认删除' : 'Confirm delete'),
+    saved: () => (isZh() ? '已保存' : 'Saved'),
+    saveFailed: () => (isZh() ? '操作失败' : 'Operation failed'),
+    projectRoot: () => (isZh() ? '项目根：' : 'Project root: '),
+    globalNote: () => isZh()
+        ? '全局记忆在会话开始时注入系统提示词（agent 始终携带）；存于 $DSH_HOME/memory.json'
+        : 'Global memories are injected into the system prompt at session start; stored in $DSH_HOME/memory.json',
+    projectNote: () => isZh()
+        ? '项目记忆按项目隔离，仅该项目会话可见；存于 $DSH_HOME/memory/projects/（按项目根路径哈希分文件）'
+        : 'Project memories are scoped to this project only; stored under $DSH_HOME/memory/projects/ (one file per project-root hash)',
+    confirmHint: () => isZh() ? '所有新增 / 修改 / 删除都需要你确认' : 'Every add / edit / delete needs your confirmation',
+    updatedAt: (ts) => isZh() ? `更新于 ${new Date(ts).toLocaleString()}` : `Updated ${new Date(ts).toLocaleString()}`,
+    // ── issue #110 视觉重设计：徽标分类/数量、相对时间、排序、截断展开 ──
+    globalScope: () => (isZh() ? '全局' : 'Global'),
+    projectScope: () => (isZh() ? '项目' : 'Project'),
+    countBadge: (label, n) => (isZh() ? `${label} · ${n} 条` : `${label} · ${n}`),
+    countOnly: (n) => (isZh() ? `${n} 条` : `${n}`),
+    projectBadge: (root, n) => isZh() ? `项目根：${root} · ${n} 条` : `Project root: ${root} · ${n}`,
+    pathInputAria: () => (isZh() ? '项目根路径' : 'Project root path'),
+    addInputAria: (scope) => isZh() ? `新增记忆内容（${scope === 'project' ? '项目' : '全局'}）` : `New memory (${scope})`,
+    justNow: () => (isZh() ? '刚刚' : 'just now'),
+    minutesAgo: (n) => (isZh() ? `${n} 分钟前` : `${n} min ago`),
+    hoursAgo: (n) => (isZh() ? `${n} 小时前` : `${n} hr ago`),
+    daysAgo: (n) => (isZh() ? `${n} 天前` : `${n} d ago`),
+    sortLabel: () => (isZh() ? '按更新时间排序' : 'Sort by updated'),
+    sortNewest: () => (isZh() ? '最新优先' : 'Newest first'),
+    sortOldest: () => (isZh() ? '最旧优先' : 'Oldest first'),
+    expand: () => (isZh() ? '展开' : 'Expand'),
+    collapse: () => (isZh() ? '收起' : 'Collapse'),
+    // ── issue #78 渐进式索引记忆：待确认候选 + 元数据展示 ──
+    candidatesSection: () => (isZh() ? '自动学习候选（待确认）' : 'Auto-learned candidates (pending)'),
+    candidatesNote: () => isZh()
+        ? '会话结束后自动从对话提取的记忆候选（autoLearn 开启时）。确认后写入记忆（同主题自动提升置信度），拒绝则丢弃——记忆绝不静默变更'
+        : 'Memory candidates auto-extracted from conversations (when autoLearn is on). Confirm to store them (same themes gain confidence), dismiss to drop — memories never change silently',
+    candidatesEmpty: () => (isZh() ? '暂无待确认候选' : 'No pending candidates'),
+    confirmCandidate: () => (isZh() ? '确认写入' : 'Confirm'),
+    dismissCandidate: () => (isZh() ? '拒弃' : 'Dismiss'),
+    candidateSource: (sessionId) => isZh()
+        ? `来源会话：${sessionId === '' ? '(无)' : sessionId}`
+        : `Source session: ${sessionId === '' ? '(none)' : sessionId}`,
+    candidateScopeBadge: (scope) => isZh() ? (scope === 'project' ? '项目候选' : '全局候选') : scope === 'project' ? 'Project' : 'Global',
+    categoryLabel: (category) => ({
+        preference: isZh() ? '偏好' : 'Preference',
+        fact: isZh() ? '事实' : 'Fact',
+        project: isZh() ? '项目' : 'Project',
+        stack: isZh() ? '技术栈' : 'Stack',
+        workflow: isZh() ? '工作流' : 'Workflow',
     })[category] ?? (isZh() ? '事实' : 'Fact'),
-  confidenceLabel: (n) => (isZh() ? `置信度 ${n}` : `Confidence ${n}`),
-  statusConflict: () => (isZh() ? '待处理矛盾' : 'Conflict'),
-  historyLabel: () => (isZh() ? '演进历史' : 'History'),
-  historyEntry: (action) =>
-    isZh()
-      ? action === 'reinforce'
-        ? '多次出现，置信度提升'
-        : action === 'conflict'
-          ? '内容更新（可能矛盾）'
-          : '新增'
-      : action,
-  noHistory: () => (isZh() ? '暂无演进历史' : 'No history yet'),
-}
+    confidenceLabel: (n) => (isZh() ? `置信度 ${n}` : `Confidence ${n}`),
+    statusConflict: () => (isZh() ? '待处理矛盾' : 'Conflict'),
+    historyLabel: () => (isZh() ? '演进历史' : 'History'),
+    historyEntry: (action) => isZh()
+        ? action === 'reinforce'
+            ? '多次出现，置信度提升'
+            : action === 'conflict'
+                ? '内容更新（可能矛盾）'
+                : '新增'
+        : action,
+    noHistory: () => (isZh() ? '暂无演进历史' : 'No history yet'),
+};
+// 导出给其他 part 文件使用
 
-    // ── styles (DSH semantic tokens, injected on activate, removed on teardown) ──
+    "use strict";
+// ── styles (DSH semantic tokens, injected on activate, removed on teardown) ──
 // Mirrors the dsh-file-activity design language (issue #54): tight 2px 6px 8px
 // body, 26px rows with hover fills, 24px circular icon buttons, two-line empty
 // states, and motion on every state change. All colors ride the DSH semantic
@@ -285,126 +275,128 @@ const STYLES = `
 .dsh-my-memory-history-entry { display:inline-flex; font:var(--dsw-font-xxxs-11);
   color:var(--dsw-alias-label-tertiary); }
 .dsh-my-memory-iconbtn-confirm:hover:not(:disabled) { color:var(--dsw-alias-state-success-primary); }
-`.trim()
+`.trim();
+const STYLE_TAG = 'data-dsh-my-memory';
+// 导出给其他 part 文件使用
 
-const STYLE_TAG = 'data-dsh-my-memory'
-
-    // ── api: fetch helpers for the Memory views ────────────────────────────
-const API_BASE = '/my-memory/api'
-
+    "use strict";
+// ── api: fetch helpers for the Memory views ────────────────────────────
+const API_BASE = '/my-memory/api';
 /** One GET memory payload into { scope, cwd, projectRoot, items }. */
 function normalizeMemory(value) {
-  return {
-    scope: value.scope ?? 'global',
-    cwd: value.cwd ?? '',
-    projectRoot: value.projectRoot ?? '',
-    items: Array.isArray(value.items) ? value.items : [],
-  }
+    return {
+        scope: value.scope ?? 'global',
+        cwd: value.cwd ?? '',
+        projectRoot: value.projectRoot ?? '',
+        items: Array.isArray(value.items) ? value.items : [],
+    };
 }
-
 /** GET /my-memory/api/memory?scope=…&cwd=… → normalized value; rejects on bad responses. */
 function fetchMemory(scope, cwd) {
-  const query = cwd.trim() === '' ? `?scope=${scope}` : `?scope=${scope}&cwd=${encodeURIComponent(cwd.trim())}`
-  return fetch(`${API_BASE}/memory${query}`)
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) throw new Error('bad memory response')
-      return normalizeMemory(body.value)
-    })
+    const query = cwd.trim() === '' ? `?scope=${scope}` : `?scope=${scope}&cwd=${encodeURIComponent(cwd.trim())}`;
+    return fetch(`${API_BASE}/memory${query}`)
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('bad memory response');
+        return normalizeMemory(body.value);
+    });
 }
-
 /** POST /my-memory/api/memory — a write gated on the user-consent marker. */
-function writeMemory({ action, scope, cwd, id, desc }) {
-  return fetch(`${API_BASE}/memory`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action, scope, cwd, id, desc, confirmed: true }),
-  })
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) throw new Error('write failed')
-      return normalizeMemory({ ...body.value, scope })
+function writeMemory({ action, scope, cwd, id, desc, }) {
+    return fetch(`${API_BASE}/memory`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action, scope, cwd, id, desc, confirmed: true }),
     })
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('write failed');
+        return normalizeMemory({ ...body.value, scope });
+    });
 }
-
 /** GET /my-memory/api/candidates → the pending auto-extracted candidates
  *  (issue #78; read-only — candidates never touch memory before confirm). */
 function fetchCandidates() {
-  return fetch(`${API_BASE}/candidates`)
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) throw new Error('bad candidates response')
-      return Array.isArray(body.value?.items) ? body.value.items : []
-    })
+    return fetch(`${API_BASE}/candidates`)
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('bad candidates response');
+        return Array.isArray(body.value?.items) ? body.value.items : [];
+    });
 }
-
 /** POST /my-memory/api/candidates/confirm — accept one candidate (user
  *  consent marker; progressive-merged into the target scope on the server). */
 function confirmCandidate(id) {
-  return fetch(`${API_BASE}/candidates/confirm`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id, confirmed: true }),
-  })
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) throw new Error('candidate confirm failed')
-      return body.value
+    return fetch(`${API_BASE}/candidates/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, confirmed: true }),
     })
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('candidate confirm failed');
+        return body.value;
+    });
 }
-
 /** POST /my-memory/api/candidates/dismiss — reject one candidate (drop it;
  *  gated on the user-consent marker, never touches any memory). */
 function dismissCandidate(id) {
-  return fetch(`${API_BASE}/candidates/dismiss`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id, confirmed: true }),
-  })
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) throw new Error('candidate dismiss failed')
-      return body.value
+    return fetch(`${API_BASE}/candidates/dismiss`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, confirmed: true }),
     })
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('candidate dismiss failed');
+        return body.value;
+    });
 }
-
 /** Current session id from localStorage ('dsh.sessions.current' → { sessionId }). */
 function currentSessionId() {
-  try {
-    const raw = localStorage.getItem('dsh.sessions.current')
-    const parsed = raw === null ? null : JSON.parse(raw)
-    return typeof parsed?.sessionId === 'string' ? parsed.sessionId : ''
-  } catch {
-    return ''
-  }
+    try {
+        const raw = localStorage.getItem('dsh.sessions.current');
+        const parsed = raw === null ? null : JSON.parse(raw);
+        return typeof parsed?.sessionId === 'string' ? parsed.sessionId : '';
+    }
+    catch {
+        return '';
+    }
 }
-
 /** GET /my-memory/api/session → the session's working directory ('' if none).
  *  The panel uses it to auto-load the current project memory on open (issue #104). */
 function fetchSessionCwd(sessionId) {
-  if (sessionId === '') return Promise.resolve('')
-  return fetch(`${API_BASE}/session?sessionId=${encodeURIComponent(sessionId)}`)
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) return ''
-      return typeof body.value?.cwd === 'string' ? body.value.cwd : ''
+    if (sessionId === '')
+        return Promise.resolve('');
+    return fetch(`${API_BASE}/session?sessionId=${encodeURIComponent(sessionId)}`)
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            return '';
+        return typeof body.value?.cwd === 'string' ? body.value.cwd : '';
     })
-    .catch(() => '')
+        .catch(() => '');
 }
-
 /** GET /my-memory/api/config → the entry-length guidance (issue #105):
  *  `maxEntryLength` (concise-input hint threshold) and `maxDescLength`
  *  (injection cap). Falls back to the client-side default on failure. */
 function fetchConfig() {
-  return fetch(`${API_BASE}/config`)
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) return { maxEntryLength: DEFAULT_ENTRY_LIMIT }
-      const limit = body.value?.maxEntryLength
-      return { maxEntryLength: Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_ENTRY_LIMIT }
+    return fetch(`${API_BASE}/config`)
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            return { maxEntryLength: DEFAULT_ENTRY_LIMIT };
+        const limit = body.value?.maxEntryLength;
+        return { maxEntryLength: Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_ENTRY_LIMIT };
     })
-    .catch(() => ({ maxEntryLength: DEFAULT_ENTRY_LIMIT }))
+        .catch(() => ({ maxEntryLength: DEFAULT_ENTRY_LIMIT }));
 }
+// 导出给其他 part 文件使用
 
     // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──
 // Single source of truth for the plugin UI icon set (issue #54 阶段 0).
@@ -731,339 +723,199 @@ const fileIconByExt = (ext, size = 14) => {
   return spec === undefined ? icon.file(size) : badgeIcon(spec, size)
 }
 
-    // ── utils: pure display helpers (summary / relative time / sort) ──────────
+    "use strict";
+// ── utils: pure display helpers (summary / relative time / sort) ──────────
 // 纯展示层辅助函数：不触碰服务端状态，供客户端视图使用并可被单测直接调用。
 // 概要/详情两级展示为纯展示层（issue #105）：列表显示概要（首句/语义截断），
 // 点击展开查看完整详情——存储保留完整 desc，展示层只做概要计算。
 // 服务端同款逻辑见 lib/memory-text.js（summarizeDesc / firstSentence）。
-const TRUNCATE_LEN = 60
-
+const TRUNCATE_LEN = 60;
 /** 默认建议单条记忆长度（字符，与服务端 maxEntryLength 默认一致；面板实际
  *  值来自 GET /my-memory/api/config，取不到时回落此默认）。 */
-const DEFAULT_ENTRY_LIMIT = 50
-
+const DEFAULT_ENTRY_LIMIT = 50;
 /** 句子边界：中英文句末标点 + 分号 + 换行（省略号吸收入前一句）。 */
-const SENTENCE_BOUNDARY = /[。！？!?；;\n….]+/u
-
+const SENTENCE_BOUNDARY = /[。！？!?；;\n….]+/u;
 /** 取一段文本的首句（含边界标点；连续省略号/标点并入前一句）；无边界时整段。 */
 function firstSentence(text) {
-  const value = String(text ?? '')
-  const match = SENTENCE_BOUNDARY.exec(value)
-  if (match === null) return value
-  let end = match.index + 1
-  while (end < value.length && SENTENCE_BOUNDARY.test(value[end])) end += 1
-  return value.slice(0, end)
+    const value = String(text ?? '');
+    const match = SENTENCE_BOUNDARY.exec(value);
+    if (match === null)
+        return value;
+    let end = match.index + 1;
+    while (end < value.length && SENTENCE_BOUNDARY.test(value[end]))
+        end += 1;
+    return value.slice(0, end);
 }
-
 /** 语义截断长条目（issue #105 概要/详情两级展示）：多句条目列表**总是**显示
  *  概要（首句），不截断在句子中间；单句条目仅在超长时退化为字符截断。
  *  返回 { text, truncated }——truncated 为 true 表示有可展开的详情（多句或超长）。 */
 function truncateText(text, max = TRUNCATE_LEN) {
-  const value = String(text ?? '').trim()
-  const first = firstSentence(value)
-  if (first === value) {
-    if (value.length <= max) return { text: value, truncated: false }
-    return { text: `${value.slice(0, max)}…`, truncated: true }
-  }
-  if (first.length <= max) return { text: first, truncated: true }
-  return { text: `${first.slice(0, max)}…`, truncated: true }
+    const value = String(text ?? '').trim();
+    const first = firstSentence(value);
+    if (first === value) {
+        if (value.length <= max)
+            return { text: value, truncated: false };
+        return { text: `${value.slice(0, max)}…`, truncated: true };
+    }
+    if (first.length <= max)
+        return { text: first, truncated: true };
+    return { text: `${first.slice(0, max)}…`, truncated: true };
 }
-
 /** 更新时间相对化：「刚刚」「n 分钟前」「n 小时前」「n 天前」，超过 30 天回退绝对时间。 */
 function relativeTime(ts) {
-  const time = Number(ts)
-  if (!Number.isFinite(time)) return ''
-  const diff = Date.now() - time
-  if (diff < 0) return strings.updatedAt(time) // 未来时间（时钟偏移）回退绝对时间
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return strings.justNow()
-  if (minutes < 60) return strings.minutesAgo(minutes)
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return strings.hoursAgo(hours)
-  const days = Math.floor(hours / 24)
-  if (days < 30) return strings.daysAgo(days)
-  return strings.updatedAt(time)
+    const time = Number(ts);
+    if (!Number.isFinite(time))
+        return '';
+    const diff = Date.now() - time;
+    if (diff < 0)
+        return strings.updatedAt(time); // 未来时间（时钟偏移）回退绝对时间
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1)
+        return strings.justNow();
+    if (minutes < 60)
+        return strings.minutesAgo(minutes);
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24)
+        return strings.hoursAgo(hours);
+    const days = Math.floor(hours / 24);
+    if (days < 30)
+        return strings.daysAgo(days);
+    return strings.updatedAt(time);
 }
-
 /** 按更新时间排序（dir: 'desc' 最新在顶 / 'asc' 最旧在顶）；返回新数组，不改原列表。 */
 function sortMemories(items, dir = 'desc') {
-  const copy = items.slice()
-  copy.sort((a, b) => (dir === 'asc' ? a.updatedAt - b.updatedAt : b.updatedAt - a.updatedAt))
-  return copy
+    const copy = items.slice();
+    copy.sort((a, b) => (dir === 'asc' ? a.updatedAt - b.updatedAt : b.updatedAt - a.updatedAt));
+    return copy;
 }
-
 /** 是否超过建议长度上限（保存/输入时的精简提示用）。 */
 function isOverEntryLimit(text, max = DEFAULT_ENTRY_LIMIT) {
-  return String(text ?? '').length > max
+    return String(text ?? '').length > max;
 }
-
 // 导出纯函数供单测直接断言（插件只消费 apply，多余导出在 client 端无副作用）。
-exports.truncateText = truncateText
-exports.firstSentence = firstSentence
-exports.relativeTime = relativeTime
-exports.sortMemories = sortMemories
-exports.isOverEntryLimit = isOverEntryLimit
-exports.DEFAULT_ENTRY_LIMIT = DEFAULT_ENTRY_LIMIT
+exports.truncateText = truncateText;
+exports.firstSentence = firstSentence;
+exports.relativeTime = relativeTime;
+exports.sortMemories = sortMemories;
+exports.isOverEntryLimit = isOverEntryLimit;
+exports.DEFAULT_ENTRY_LIMIT = DEFAULT_ENTRY_LIMIT;
 
-    // ── view-rows: row/entry widgets for the Memory tab ─────────────────────
+    "use strict";
+// ── view-rows: row/entry widgets for the Memory tab ─────────────────────
 // 拆分自 view.part.js（issue #110 视觉重设计）：条目卡片、空状态、排序开关、
 // 新增栏与确认面板。纯渲染组件，共用 view 工厂作用域内的 strings/icon/utils。
 /** 排序开关：按更新时间切换最新/最旧优先（每分区独立）。官方 Pill 承载
  *  （issue #143 试点）：active 表示当前排序方向，点击切换。 */
-function SortToggle({ scope, order, onSort }) {
-  return createElement(
-    ui.Pill,
-    {
-      className: 'dsh-my-memory-sort',
-      active: order === 'desc',
-      'aria-label': `${strings.sortLabel()} ${scope}`,
-      onClick: () => onSort(scope),
-    },
-    createElement(ui.IconChevronDownOutline14),
-    order === 'desc' ? strings.sortNewest() : strings.sortOldest(),
-  )
+function SortToggle({ scope, order, onSort, }) {
+    return createElement(ui.Pill, {
+        className: 'dsh-my-memory-sort',
+        active: order === 'desc',
+        'aria-label': `${strings.sortLabel()} ${scope}`,
+        onClick: () => onSort(scope),
+    }, createElement(ui.IconChevronDownOutline14), order === 'desc' ? strings.sortNewest() : strings.sortOldest());
 }
-
 /** 空状态：无条目时的引导（hint 优先，如无会话项目提示输入项目根路径）。 */
 function EmptyState({ hint }) {
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-empty' },
-    createElement('span', { className: 'dsh-my-memory-empty-icon' }, icon.file(16)),
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-empty-body' },
-      createElement('span', { className: 'dsh-my-memory-empty-main' }, strings.empty()),
-      createElement('span', { className: 'dsh-my-memory-empty-hint' }, hint ?? strings.emptyHint()),
-    ),
-  )
+    return createElement('div', { className: 'dsh-my-memory-empty' }, createElement('span', { className: 'dsh-my-memory-empty-icon' }, icon.file(16)), createElement('div', { className: 'dsh-my-memory-empty-body' }, createElement('span', { className: 'dsh-my-memory-empty-main' }, strings.empty()), createElement('span', { className: 'dsh-my-memory-empty-hint' }, hint ?? strings.emptyHint())));
 }
-
 /** 新增条目的输入 + 保存按钮；超长时给出精简提示（issue #105）。
  *  输入用官方 Input（issue #143 试点）；保存按钮保留自研（语义绿）。 */
-function AddBar({ scope, value, onChange, onAdd, entryLimit }) {
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-addbar-wrap' },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-addbar' },
-      createElement(ui.Input, {
+function AddBar({ scope, value, onChange, onAdd, entryLimit, }) {
+    return createElement('div', { className: 'dsh-my-memory-addbar-wrap' }, createElement('div', { className: 'dsh-my-memory-addbar' }, createElement(ui.Input, {
         className: 'dsh-my-memory-add-input',
         placeholder: strings.addPlaceholder(),
         'aria-label': strings.addInputAria(scope),
         value,
         onChange: (event) => onChange(event.target.value),
-      }),
-      createElement(
-        'button',
-        {
-          className: 'dsh-my-memory-btn-save',
-          'aria-label': `${strings.add()} ${scope}`,
-          onClick: onAdd,
-        },
-        icon.plus(14),
-        strings.add(),
-      ),
-    ),
-    isOverEntryLimit(value, entryLimit)
-      ? createElement(
-          'div',
-          { className: 'dsh-my-memory-entry-hint' },
-          strings.entryTooLongHint(value.length, entryLimit),
-        )
-      : null,
-  )
+    }), createElement('button', {
+        className: 'dsh-my-memory-btn-save',
+        'aria-label': `${strings.add()} ${scope}`,
+        onClick: onAdd,
+    }, icon.plus(14), strings.add())), isOverEntryLimit(value, entryLimit)
+        ? createElement('div', { className: 'dsh-my-memory-entry-hint' }, strings.entryTooLongHint(value.length, entryLimit))
+        : null);
 }
-
 function buildRows(items, scope, editing, onEdit, onEditDesc, onCancelEdit, onConfirm, expanded, onToggle) {
-  return items.map((item) => {
-    const isEditing = editing !== null && editing.scope === scope && editing.id === item.id
-    const key = `${scope}/${item.id}`
-    return createElement(MemoryRow, {
-      key,
-      item,
-      isEditing,
-      isExpanded: expanded.has(key),
-      editingDesc: isEditing ? editing.desc : '',
-      onEdit: () => onEdit(scope, item.id, item.desc),
-      onEditDesc,
-      onCancelEdit,
-      onSaveEdit: () => onConfirm({ kind: 'update', scope, id: item.id, desc: editing.desc }),
-      onDelete: () => onConfirm({ kind: 'delete', scope, id: item.id, desc: item.desc }),
-      onToggle: () => onToggle(key),
-    })
-  })
+    return items.map((item) => {
+        const isEditing = editing !== null && editing.scope === scope && editing.id === item.id;
+        const key = `${scope}/${item.id}`;
+        return createElement(MemoryRow, {
+            key,
+            item,
+            isEditing,
+            isExpanded: expanded.has(key),
+            editingDesc: isEditing ? editing.desc : '',
+            onEdit: () => onEdit(scope, item.id, item.desc),
+            onEditDesc,
+            onCancelEdit,
+            onSaveEdit: () => onConfirm({ kind: 'update', scope, id: item.id, desc: editing.desc }),
+            onDelete: () => onConfirm({ kind: 'delete', scope, id: item.id, desc: item.desc }),
+            onToggle: () => onToggle(key),
+        });
+    });
 }
-
-function IconButton({ className, label, onClick, children }) {
-  return createElement('button', { className, 'aria-label': label, onClick }, children)
+function IconButton({ className, label, onClick, children, }) {
+    return createElement('button', { className, 'aria-label': label, onClick }, children);
 }
-
 /** 编辑态：输入 + 保存/取消，保留卡片底与操作/内容分离。输入用官方
  *  Input、取消用官方 Button（issue #143 试点）；保存保留自研（语义绿）。 */
-function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit }) {
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-row dsh-my-memory-row-editing' },
-    createElement(ui.Input, {
-      className: 'dsh-my-memory-add-input',
-      value: editingDesc,
-      onChange: (event) => onEditDesc(event.target.value),
-    }),
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-actions' },
-      createElement(
-        'button',
-        { className: 'dsh-my-memory-btn-save', onClick: onSaveEdit },
-        icon.check(14),
-        strings.save(),
-      ),
-      createElement(
-        ui.Button,
-        {
-          variant: 'ghost',
-          size: 'sm',
-          onClick: onCancelEdit,
-          icon: createElement(ui.IconCloseOutline16),
-        },
-        strings.cancel(),
-      ),
-    ),
-  )
+function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit, }) {
+    return createElement('div', { className: 'dsh-my-memory-row dsh-my-memory-row-editing' }, createElement(ui.Input, {
+        className: 'dsh-my-memory-add-input',
+        value: editingDesc,
+        onChange: (event) => onEditDesc(event.target.value),
+    }), createElement('div', { className: 'dsh-my-memory-actions' }, createElement('button', { className: 'dsh-my-memory-btn-save', onClick: onSaveEdit }, icon.check(14), strings.save()), createElement(ui.Button, {
+        variant: 'ghost',
+        size: 'sm',
+        onClick: onCancelEdit,
+        icon: createElement(ui.IconCloseOutline16),
+    }, strings.cancel())));
 }
-
 /** 一条记忆卡片：描述（+截断/展开）+ 操作图标组 + 元数据（分类/置信度/
  *  冲突/演进历史，issue #78）+ 更新时间。 */
-function MemoryRow({
-  item,
-  isEditing,
-  isExpanded,
-  editingDesc,
-  onEdit,
-  onEditDesc,
-  onCancelEdit,
-  onSaveEdit,
-  onDelete,
-  onToggle,
-}) {
-  if (isEditing) return createElement(MemoryRowEdit, { editingDesc, onEditDesc, onSaveEdit, onCancelEdit })
-  const cut = truncateText(item.desc)
-  const shown = isExpanded ? item.desc : cut.text
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-row' },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-row-head' },
-      createElement(
-        'div',
-        { className: 'dsh-my-memory-row-desc-wrap' },
-        createElement('span', { className: 'dsh-my-memory-desc' }, shown),
-        cut.truncated
-          ? createElement(
-              'button',
-              {
-                className: `dsh-my-memory-expand${isExpanded ? ' dsh-my-memory-expand-open' : ''}`,
-                'aria-label': isExpanded ? strings.collapse() : strings.expand(),
-                onClick: onToggle,
-              },
-              icon.chevronDown(14),
-              isExpanded ? strings.collapse() : strings.expand(),
-            )
-          : null,
-      ),
-      createElement(
-        'div',
-        { className: 'dsh-my-memory-actions' },
-        createElement(
-          IconButton,
-          { className: 'dsh-my-memory-iconbtn', label: `${strings.edit()} ${item.id}`, onClick: onEdit },
-          icon.pencil(14),
-        ),
-        createElement(
-          IconButton,
-          {
-            className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
-            label: `${strings.delete()} ${item.id}`,
-            onClick: onDelete,
-          },
-          icon.trash(14),
-        ),
-      ),
-    ),
-    createElement(MetadataRow, { item, isExpanded, onToggle }),
-  )
+function MemoryRow({ item, isEditing, isExpanded, editingDesc, onEdit, onEditDesc, onCancelEdit, onSaveEdit, onDelete, onToggle, }) {
+    if (isEditing)
+        return createElement(MemoryRowEdit, { editingDesc, onEditDesc, onSaveEdit, onCancelEdit });
+    const cut = truncateText(item.desc);
+    const shown = isExpanded ? item.desc : cut.text;
+    return createElement('div', { className: 'dsh-my-memory-row' }, createElement('div', { className: 'dsh-my-memory-row-head' }, createElement('div', { className: 'dsh-my-memory-row-desc-wrap' }, createElement('span', { className: 'dsh-my-memory-desc' }, shown), cut.truncated
+        ? createElement('button', {
+            className: `dsh-my-memory-expand${isExpanded ? ' dsh-my-memory-expand-open' : ''}`,
+            'aria-label': isExpanded ? strings.collapse() : strings.expand(),
+            onClick: onToggle,
+        }, icon.chevronDown(14), isExpanded ? strings.collapse() : strings.expand())
+        : null), createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: `${strings.edit()} ${item.id}`, onClick: onEdit }, icon.pencil(14)), createElement(IconButton, {
+        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
+        label: `${strings.delete()} ${item.id}`,
+        onClick: onDelete,
+    }, icon.trash(14)))), createElement(MetadataRow, { item, isExpanded, onToggle }));
 }
-
 /** 概要预览行（issue #105）：add/update 内容超长时提示「完整内容保存 + 显示概要」。 */
 function SummaryPreview({ desc }) {
-  const summary = truncateText(desc, TRUNCATE_LEN)
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-confirm-summary' },
-    createElement('span', { className: 'dsh-my-memory-confirm-summary-label' }, strings.summaryPreview()),
-    createElement('span', { className: 'dsh-my-memory-confirm-summary-text' }, summary.text),
-  )
+    const summary = truncateText(desc, TRUNCATE_LEN);
+    return createElement('div', { className: 'dsh-my-memory-confirm-summary' }, createElement('span', { className: 'dsh-my-memory-confirm-summary-label' }, strings.summaryPreview()), createElement('span', { className: 'dsh-my-memory-confirm-summary-text' }, summary.text));
 }
-
 /** 自定义确认面板（ask 模式，非原生 confirm）：删除红、保存绿。
  *  add/update 时若内容超长，显示概要预览（完整内容仍保存，issue #105）。 */
-function ConfirmPanel({ confirm, onCancel, onOk, entryLimit }) {
-  const isDelete = confirm.kind === 'delete'
-  const text = CONFIRM_TEXTS[confirm.kind]()
-  const showSummary = !isDelete && isOverEntryLimit(confirm.desc, entryLimit)
-  return createElement(
-    'div',
-    { className: `dsh-my-memory-confirm dsh-my-memory-confirm-${isDelete ? 'delete' : 'save'}` },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-confirm-head' },
-      isDelete ? icon.trash(15) : icon.check(15),
-      createElement('div', { className: 'dsh-my-memory-confirm-text' }, text),
-    ),
-    createElement('div', { className: 'dsh-my-memory-confirm-desc' }, confirm.desc),
-    showSummary ? createElement(SummaryPreview, { desc: confirm.desc }) : null,
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-confirm-actions' },
-      createElement(
-        'button',
-        {
-          className: `dsh-my-memory-confirm-ok dsh-my-memory-confirm-ok-${isDelete ? 'delete' : 'save'}`,
-          onClick: onOk,
-        },
-        isDelete ? icon.trash(14) : icon.check(14),
-        isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
-      ),
-      createElement(
-        'button',
-        { className: 'dsh-my-memory-confirm-cancel', onClick: onCancel },
-        icon.close(14),
-        strings.cancel(),
-      ),
-    ),
-  )
+function ConfirmPanel({ confirm, onCancel, onOk, entryLimit, }) {
+    const isDelete = confirm.kind === 'delete';
+    const text = CONFIRM_TEXTS[confirm.kind]();
+    const showSummary = !isDelete && isOverEntryLimit(confirm.desc, entryLimit);
+    return createElement('div', { className: `dsh-my-memory-confirm dsh-my-memory-confirm-${isDelete ? 'delete' : 'save'}` }, createElement('div', { className: 'dsh-my-memory-confirm-head' }, isDelete ? icon.trash(15) : icon.check(15), createElement('div', { className: 'dsh-my-memory-confirm-text' }, text)), createElement('div', { className: 'dsh-my-memory-confirm-desc' }, confirm.desc), showSummary ? createElement(SummaryPreview, { desc: confirm.desc }) : null, createElement('div', { className: 'dsh-my-memory-confirm-actions' }, createElement('button', {
+        className: `dsh-my-memory-confirm-ok dsh-my-memory-confirm-ok-${isDelete ? 'delete' : 'save'}`,
+        onClick: onOk,
+    }, isDelete ? icon.trash(14) : icon.check(14), isDelete ? strings.confirmDeleteBtn() : strings.confirmSave()), createElement('button', { className: 'dsh-my-memory-confirm-cancel', onClick: onCancel }, icon.close(14), strings.cancel())));
 }
-
 /** 确认面板标题文案（按 kind 取；未知 kind 回落删除文案）。 */
 const CONFIRM_TEXTS = {
-  add: () => strings.confirmAdd(),
-  update: () => strings.confirmUpdate(),
-  delete: () => strings.confirmDelete(),
-}
-
+    add: () => strings.confirmAdd(),
+    update: () => strings.confirmUpdate(),
+    delete: () => strings.confirmDelete(),
+};
 /** Path input + load/refresh buttons + consent note. 路径输入用官方 Input、
  *  加载/刷新用官方 Button（size sm，issue #143 试点）。 */
-function Toolbar({ pathInput, onInput, onLoad, onRefresh }) {
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-toolbar' },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-pathbar' },
-      createElement(ui.Input, {
+function Toolbar({ pathInput, onInput, onLoad, onRefresh, }) {
+    return createElement('div', { className: 'dsh-my-memory-toolbar' }, createElement('div', { className: 'dsh-my-memory-pathbar' }, createElement(ui.Input, {
         className: 'dsh-my-memory-path-input',
         icon: createElement(ui.IconFolderOpenOutline16),
         placeholder: strings.projectHint(),
@@ -1072,614 +924,411 @@ function Toolbar({ pathInput, onInput, onLoad, onRefresh }) {
         value: pathInput,
         onChange: (event) => onInput(event.target.value),
         onKeyDown: (event) => {
-          if (event.key === 'Enter') onLoad(pathInput)
+            if (event.key === 'Enter')
+                onLoad(pathInput);
         },
-      }),
-      createElement(
-        ui.Button,
-        {
-          variant: 'outline',
-          size: 'sm',
-          'aria-label': strings.loadProject(),
-          onClick: () => onLoad(pathInput),
-          icon: createElement(ui.IconFolderOpenOutline16),
-        },
-        strings.loadProject(),
-      ),
-      createElement(
-        ui.Button,
-        {
-          variant: 'outline',
-          size: 'sm',
-          'aria-label': strings.refresh(),
-          onClick: () => onRefresh(pathInput),
-          icon: createElement(ui.IconRefreshOutline14),
-        },
-        strings.refresh(),
-      ),
-    ),
-    createElement('div', { className: 'dsh-my-memory-note' }, strings.confirmHint()),
-  )
+    }), createElement(ui.Button, {
+        variant: 'outline',
+        size: 'sm',
+        'aria-label': strings.loadProject(),
+        onClick: () => onLoad(pathInput),
+        icon: createElement(ui.IconFolderOpenOutline16),
+    }, strings.loadProject()), createElement(ui.Button, {
+        variant: 'outline',
+        size: 'sm',
+        'aria-label': strings.refresh(),
+        onClick: () => onRefresh(pathInput),
+        icon: createElement(ui.IconRefreshOutline14),
+    }, strings.refresh())), createElement('div', { className: 'dsh-my-memory-note' }, strings.confirmHint()));
 }
+// 导出给其他 part 文件使用
 
-    // ── candidates: 待确认候选 / 元数据行 / 演进历史（issue #78）────────────────
+    "use strict";
+// ── candidates: 待确认候选 / 元数据行 / 演进历史（issue #78）────────────────
 // 拆分自 view-rows.part.js：与条目卡片解耦，控制单文件行数（≤400 门禁）。
 /** 一条待确认候选（issue #78）：分类徽标 + 描述 + 范围 + 来源 + 确认/拒弃。 */
-function CandidateRow({ candidate, busy, onConfirm, onDismiss }) {
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-row dsh-my-memory-row-candidate' },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-row-head' },
-      createElement(
-        'div',
-        { className: 'dsh-my-memory-row-desc-wrap' },
-        createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(candidate.category)),
-        createElement('span', { className: 'dsh-my-memory-desc' }, candidate.desc),
-      ),
-      createElement(
-        'div',
-        { className: 'dsh-my-memory-actions' },
-        createElement(
-          IconButton,
-          {
-            className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-confirm',
-            label: `${strings.confirmCandidate()} ${candidate.id}`,
-            onClick: onConfirm,
-          },
-          icon.check(14),
-        ),
-        createElement(
-          IconButton,
-          {
-            className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
-            label: `${strings.dismissCandidate()} ${candidate.id}`,
-            onClick: onDismiss,
-          },
-          icon.close(14),
-        ),
-      ),
-    ),
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-meta' },
-      createElement('span', { className: 'dsh-my-memory-meta-icon' }, icon.clock(11)),
-      relativeTime(candidate.createdAt),
-      createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'),
-      strings.candidateScopeBadge(candidate.scope),
-      createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'),
-      strings.candidateSource(candidate.source?.sessionId),
-    ),
-    busy ? createElement('div', { className: 'dsh-my-memory-entry-hint' }, strings.loading()) : null,
-  )
+function CandidateRow({ candidate, busy, onConfirm, onDismiss, }) {
+    return createElement('div', { className: 'dsh-my-memory-row dsh-my-memory-row-candidate' }, createElement('div', { className: 'dsh-my-memory-row-head' }, createElement('div', { className: 'dsh-my-memory-row-desc-wrap' }, createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(candidate.category)), createElement('span', { className: 'dsh-my-memory-desc' }, candidate.desc)), createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, {
+        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-confirm',
+        label: `${strings.confirmCandidate()} ${candidate.id}`,
+        onClick: onConfirm,
+    }, icon.check(14)), createElement(IconButton, {
+        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
+        label: `${strings.dismissCandidate()} ${candidate.id}`,
+        onClick: onDismiss,
+    }, icon.close(14)))), createElement('div', { className: 'dsh-my-memory-meta' }, createElement('span', { className: 'dsh-my-memory-meta-icon' }, icon.clock(11)), relativeTime(candidate.createdAt), createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'), strings.candidateScopeBadge(candidate.scope), createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'), strings.candidateSource(candidate.source?.sessionId)), busy ? createElement('div', { className: 'dsh-my-memory-entry-hint' }, strings.loading()) : null);
 }
-
 /** 演进历史控件：展开/收起按钮 + 历史条目列表（有 history 才渲染）。 */
-function HistoryControl({ item, isExpanded, onToggle }) {
-  const hasHistory = Array.isArray(item.history) && item.history.length > 0
-  if (!hasHistory) return null
-  return createElement(
-    'span',
-    null,
-    createElement(
-      'button',
-      {
+function HistoryControl({ item, isExpanded, onToggle, }) {
+    const hasHistory = Array.isArray(item.history) && item.history.length > 0;
+    if (!hasHistory)
+        return null;
+    return createElement('span', null, createElement('button', {
         className: 'dsh-my-memory-expand',
         'aria-label': isExpanded ? strings.collapse() : strings.historyLabel(),
         onClick: onToggle,
-      },
-      icon.chevronDown(14),
-      isExpanded ? strings.collapse() : strings.historyLabel(),
-    ),
-    isExpanded
-      ? item.history.map((entry, index) =>
-          createElement(
-            'span',
-            { key: `${entry.at}-${index}`, className: 'dsh-my-memory-history-entry' },
-            `${strings.historyEntry(entry.action)} · ${relativeTime(entry.at)}`,
-          ),
-        )
-      : null,
-  )
+    }, icon.chevronDown(14), isExpanded ? strings.collapse() : strings.historyLabel()), isExpanded
+        ? item.history.map((entry, index) => createElement('span', { key: `${entry.at}-${index}`, className: 'dsh-my-memory-history-entry' }, `${strings.historyEntry(entry.action)} · ${relativeTime(entry.at)}`))
+        : null);
 }
-
 /** 记忆条目元数据行（issue #78）：分类徽标 + 置信度 + 矛盾标记 + 演进历史
  *  （展开时显示 history 列表）。confidence 缺失/非数字时不渲染置信度徽标
  *  （之前直接拼 "置信度 ${n}"，缺失时出现"置信度 undefined"）。 */
-function MetadataRow({ item, isExpanded, onToggle }) {
-  const hasConfidence = typeof item.confidence === 'number' && Number.isFinite(item.confidence) && item.confidence >= 0
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-meta' },
-    createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(item.category)),
-    hasConfidence
-      ? createElement('span', { className: 'dsh-my-memory-conf-badge' }, strings.confidenceLabel(item.confidence))
-      : null,
-    item.status === 'conflict-pending'
-      ? createElement('span', { className: 'dsh-my-memory-conflict-badge' }, strings.statusConflict())
-      : null,
-    createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'),
-    createElement('span', { className: 'dsh-my-memory-meta-icon' }, icon.clock(11)),
-    relativeTime(item.updatedAt),
-    createElement(HistoryControl, { item, isExpanded, onToggle }),
-  )
+function MetadataRow({ item, isExpanded, onToggle, }) {
+    const hasConfidence = typeof item.confidence === 'number' && Number.isFinite(item.confidence) && item.confidence >= 0;
+    return createElement('div', { className: 'dsh-my-memory-meta' }, createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(item.category)), hasConfidence
+        ? createElement('span', { className: 'dsh-my-memory-conf-badge' }, strings.confidenceLabel(item.confidence))
+        : null, item.status === 'conflict-pending'
+        ? createElement('span', { className: 'dsh-my-memory-conflict-badge' }, strings.statusConflict())
+        : null, createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'), createElement('span', { className: 'dsh-my-memory-meta-icon' }, icon.clock(11)), relativeTime(item.updatedAt), createElement(HistoryControl, { item, isExpanded, onToggle }));
 }
-
 /** 待确认候选区块（issue #78）：自动提取的记忆候选，确认后写入（渐进
  *  合并）、拒弃则丢弃——记忆绝不静默变更。 */
-function CandidatesBlock({ candidates, busy, onConfirmCandidate, onDismissCandidate }) {
-  const list = Array.isArray(candidates) ? candidates : []
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-candidates' },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-section-head' },
-      createElement('span', { className: 'dsh-my-memory-section-title' }, strings.candidatesSection()),
-      createElement(
-        ui.Pill,
-        { className: 'dsh-my-memory-badge' },
-        strings.countBadge(strings.candidatesSection(), list.length),
-      ),
-    ),
-    createElement('div', { className: 'dsh-my-memory-note' }, strings.candidatesNote()),
-    list.length === 0
-      ? createElement('div', { className: 'dsh-my-memory-empty' }, strings.candidatesEmpty())
-      : list.map((candidate) =>
-          createElement(CandidateRow, {
+function CandidatesBlock({ candidates, busy, onConfirmCandidate, onDismissCandidate, }) {
+    const list = Array.isArray(candidates) ? candidates : [];
+    return createElement('div', { className: 'dsh-my-memory-candidates' }, createElement('div', { className: 'dsh-my-memory-section-head' }, createElement('span', { className: 'dsh-my-memory-section-title' }, strings.candidatesSection()), createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, strings.countBadge(strings.candidatesSection(), list.length))), createElement('div', { className: 'dsh-my-memory-note' }, strings.candidatesNote()), list.length === 0
+        ? createElement('div', { className: 'dsh-my-memory-empty' }, strings.candidatesEmpty())
+        : list.map((candidate) => createElement(CandidateRow, {
             key: candidate.id,
             candidate,
             busy,
             onConfirm: () => onConfirmCandidate(candidate.id),
             onDismiss: () => onDismissCandidate(candidate.id),
-          }),
-        ),
-  )
+        })));
 }
+// 导出给其他 part 文件使用
 
-    // ── view: Memory settings tab ─────────────────────────────────────────
+    "use strict";
+// ── view: Memory settings tab ─────────────────────────────────────────
+// 跨 part 引用（strings/utils/api/view-rows/candidates）由拼接作用域解析，
+// 无需 require——浏览器 ModuleLoader 不支持 factory 内相对路径 require。
 /** Load both scopes: global always; project only when a cwd is given. */
 function fetchAll(cwd) {
-  const projectCwd = cwd.trim()
-  const globalP = fetchMemory('global', '')
-  const projectP =
-    projectCwd === ''
-      ? Promise.resolve({ scope: 'project', cwd: '', projectRoot: '', items: [] })
-      : fetchMemory('project', projectCwd)
-  return Promise.all([globalP, projectP]).then(([global, project]) => ({ global, project }))
+    const projectCwd = cwd.trim();
+    const globalP = fetchMemory('global', '');
+    const projectP = projectCwd === ''
+        ? Promise.resolve({ scope: 'project', cwd: '', projectRoot: '', items: [] })
+        : fetchMemory('project', projectCwd);
+    return Promise.all([globalP, projectP]).then(([global, project]) => ({ global, project }));
 }
-
 function mergeScope(data, scope, value) {
-  return scope === 'global' ? { ...data, global: value } : { ...data, project: value }
+    return scope === 'global' ? { ...data, global: value } : { ...data, project: value };
 }
-
 /** Data actions bound to the state setters; error: null | 'load' | 'save'. */
-function createActions({ setData, setLoading, setError, setSaved, setCandidates, setCandidateBusy }) {
-  const applyValue = (value) => {
-    setData(value)
-    setLoading(false)
-  }
-  const refreshWith = (fetcher, cwd) => {
-    setLoading(true)
-    setError(null)
-    setSaved(false)
-    fetcher(cwd)
-      .then(applyValue)
-      .catch(() => {
-        setLoading(false)
-        setError('load')
-      })
-  }
-  const loadCandidates = () => {
-    fetchCandidates()
-      .then((items) => setCandidates(items))
-      .catch(() => setCandidates([]))
-  }
-  const run = (cwd) => refreshWith(fetchAll, cwd)
-  const refreshCandidates = () => {
-    setCandidateBusy(false)
-    loadCandidates()
-  }
-  return { load: run, refresh: run, loadCandidates, refreshCandidates }
+function createActions({ setData, setLoading, setError, setSaved, setCandidates, setCandidateBusy, }) {
+    const applyValue = (value) => {
+        setData(value);
+        setLoading(false);
+    };
+    const refreshWith = (fetcher, cwd) => {
+        setLoading(true);
+        setError(null);
+        setSaved(false);
+        fetcher(cwd)
+            .then(applyValue)
+            .catch(() => {
+            setLoading(false);
+            setError('load');
+        });
+    };
+    const loadCandidates = () => {
+        fetchCandidates()
+            .then((items) => setCandidates(items))
+            .catch(() => setCandidates([]));
+    };
+    const run = (cwd) => refreshWith(fetchAll, cwd);
+    const refreshCandidates = () => {
+        setCandidateBusy(false);
+        loadCandidates();
+    };
+    return { load: run, refresh: run, loadCandidates, refreshCandidates };
 }
-
 /** 候选确认 / 拒弃处理器（issue #78）：写入/丢弃都要用户显式动作（服务端强制 confirmed），成功后刷新候选与分区。 */
-function createCandidateHandlers({ candidateBusy, setCandidateBusy, setSaved, setError, actions, pathInput }) {
-  const busy = () => {
-    if (candidateBusy) return true
-    setCandidateBusy(true)
-    return false
-  }
-  const settle = () => setCandidateBusy(false)
-  const refreshScope = (value, pathInput) => {
-    actions.loadCandidates()
-    if (value?.scope === 'project' && value?.cwd !== '') actions.load(value.cwd)
-    else actions.refresh(pathInput)
-  }
-  const onConfirmCandidate = (id) => {
-    if (busy()) return
-    confirmCandidate(id)
-      .then((value) => {
-        settle()
-        setSaved(true)
-        refreshScope(value, pathInput)
-      })
-      .catch(() => {
-        settle()
-        setError('save')
-      })
-  }
-  const onDismissCandidate = (id) => {
-    if (busy()) return
-    dismissCandidate(id)
-      .then(() => {
-        settle()
-        actions.loadCandidates()
-      })
-      .catch(() => {
-        settle()
-        setError('save')
-      })
-  }
-  return { onConfirmCandidate, onDismissCandidate }
+function createCandidateHandlers({ candidateBusy, setCandidateBusy, setSaved, setError, actions, pathInput, }) {
+    const busy = () => {
+        if (candidateBusy)
+            return true;
+        setCandidateBusy(true);
+        return false;
+    };
+    const settle = () => setCandidateBusy(false);
+    const refreshScope = (value, pathInput) => {
+        actions.loadCandidates();
+        if (value?.scope === 'project' && value?.cwd !== '')
+            actions.load(value.cwd);
+        else
+            actions.refresh(pathInput);
+    };
+    const onConfirmCandidate = (id) => {
+        if (busy())
+            return;
+        confirmCandidate(id)
+            .then((value) => {
+            settle();
+            setSaved(true);
+            refreshScope(value, pathInput);
+        })
+            .catch(() => {
+            settle();
+            setError('save');
+        });
+    };
+    const onDismissCandidate = (id) => {
+        if (busy())
+            return;
+        dismissCandidate(id)
+            .then(() => {
+            settle();
+            actions.loadCandidates();
+        })
+            .catch(() => {
+            settle();
+            setError('save');
+        });
+    };
+    return { onConfirmCandidate, onDismissCandidate };
 }
-
 function MemoryView() {
-  const [data, setData] = useState(null)
-  const [pathInput, setPathInput] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [saved, setSaved] = useState(false)
-  const [drafts, setDrafts] = useState({ global: '', project: '' })
-  const [editing, setEditing] = useState(null)
-  const [confirming, setConfirming] = useState(null)
-  const [expanded, setExpanded] = useState(() => new Set())
-  const [sortOrder, setSortOrder] = useState({ global: 'desc', project: 'desc' })
-  const [entryLimit, setEntryLimit] = useState(DEFAULT_ENTRY_LIMIT)
-  const [candidates, setCandidates] = useState([])
-  const [candidateBusy, setCandidateBusy] = useState(false)
-  const actions = createActions({ setData, setLoading, setError, setSaved, setCandidates, setCandidateBusy })
-
-  useEffect(() => {
-    // 面板打开拉取引导配置（issue #105；失败回落默认值），再解析 cwd 加载记忆（issue #104）。
-    fetchConfig()
-      .then((value) => setEntryLimit(value.maxEntryLength))
-      .catch(() => {})
-    fetchSessionCwd(currentSessionId()).then((cwd) => actions.load(cwd))
-    actions.loadCandidates()
-  }, [])
-
-  const commit = createCommitHandler({ data, setData, setSaved, setError, setDrafts, setEditing, setConfirming })
-  const { onConfirmCandidate, onDismissCandidate } = createCandidateHandlers({
-    candidateBusy,
-    setCandidateBusy,
-    setSaved,
-    setError,
-    actions,
-    pathInput,
-  })
-  return renderRoot({
-    data,
-    loading,
-    error,
-    pathInput,
-    saved,
-    drafts,
-    editing,
-    confirming,
-    expanded,
-    sortOrder,
-    entryLimit,
-    candidates,
-    candidateBusy,
-    actions,
-    setDrafts,
-    setEditing,
-    setExpanded,
-    setSortOrder,
-    setConfirming,
-    setPathInput,
-    commit,
-    onConfirmCandidate,
-    onDismissCandidate,
-  })
+    const [data, setData] = useState(null);
+    const [pathInput, setPathInput] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [saved, setSaved] = useState(false);
+    const [drafts, setDrafts] = useState({ global: '', project: '' });
+    const [editing, setEditing] = useState(null);
+    const [confirming, setConfirming] = useState(null);
+    const [expanded, setExpanded] = useState(() => new Set());
+    const [sortOrder, setSortOrder] = useState({
+        global: 'desc',
+        project: 'desc',
+    });
+    const [entryLimit, setEntryLimit] = useState(DEFAULT_ENTRY_LIMIT);
+    const [candidates, setCandidates] = useState([]);
+    const [candidateBusy, setCandidateBusy] = useState(false);
+    const actions = createActions({ setData, setLoading, setError, setSaved, setCandidates, setCandidateBusy });
+    useEffect(() => {
+        // 面板打开拉取引导配置（issue #105；失败回落默认值），再解析 cwd 加载记忆（issue #104）。
+        fetchConfig()
+            .then((value) => setEntryLimit(value.maxEntryLength))
+            .catch(() => { });
+        fetchSessionCwd(currentSessionId()).then((cwd) => actions.load(cwd));
+        actions.loadCandidates();
+    }, []);
+    const commit = createCommitHandler({ data, setData, setSaved, setError, setDrafts, setEditing, setConfirming });
+    const { onConfirmCandidate, onDismissCandidate } = createCandidateHandlers({
+        candidateBusy,
+        setCandidateBusy,
+        setSaved,
+        setError,
+        actions,
+        pathInput,
+    });
+    return renderRoot({
+        data,
+        loading,
+        error,
+        pathInput,
+        saved,
+        drafts,
+        editing,
+        confirming,
+        expanded,
+        sortOrder,
+        entryLimit,
+        candidates,
+        candidateBusy,
+        actions,
+        setDrafts,
+        setEditing,
+        setExpanded,
+        setSortOrder,
+        setConfirming,
+        setPathInput,
+        commit,
+        onConfirmCandidate,
+        onDismissCandidate,
+    });
 }
-
 /** 根视图渲染（保持 MemoryView 简洁；全部状态经 props 传入）。 */
-function renderRoot({
-  data,
-  loading,
-  error,
-  pathInput,
-  saved,
-  drafts,
-  editing,
-  confirming,
-  expanded,
-  sortOrder,
-  entryLimit,
-  candidates,
-  candidateBusy,
-  actions,
-  setDrafts,
-  setEditing,
-  setExpanded,
-  setSortOrder,
-  setConfirming,
-  setPathInput,
-  commit,
-  onConfirmCandidate,
-  onDismissCandidate,
-}) {
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-root' },
-    createElement(Toolbar, { pathInput, onInput: setPathInput, onLoad: actions.load, onRefresh: actions.refresh }),
-    error === null ? null : createElement(ErrorBanner, { kind: error, onRetry: () => actions.load(pathInput) }),
-    loading
-      ? createElement(
-          'div',
-          { className: 'dsh-my-memory-status dsh-my-memory-loading' },
-          createElement('span', { className: 'dsh-my-memory-spinner' }),
-          strings.loading(),
-        )
-      : data === null
-        ? null
-        : createElement(Sections, {
-            data,
-            saved,
-            drafts,
-            editing,
-            confirming,
-            expanded,
-            sortOrder,
-            entryLimit,
-            candidates,
-            candidateBusy,
-            onDraft: (scope, value) => setDrafts({ ...drafts, [scope]: value }),
-            onEdit: (scope, id, desc) => setEditing({ scope, id, desc }),
-            onEditDesc: (value) => setEditing({ ...editing, desc: value }),
-            onCancelEdit: () => setEditing(null),
-            onConfirm: (confirm) => setConfirming(confirm),
-            onCancelConfirm: () => setConfirming(null),
-            onToggle: (key) =>
-              setExpanded((prev) => {
-                const next = new Set(prev)
-                if (next.has(key)) next.delete(key)
-                else next.add(key)
-                return next
-              }),
-            onSort: (scope) => setSortOrder((prev) => ({ ...prev, [scope]: prev[scope] === 'desc' ? 'asc' : 'desc' })),
-            onCommit: commit,
-            onConfirmCandidate,
-            onDismissCandidate,
-          }),
-  )
+function renderRoot({ data, loading, error, pathInput, saved, drafts, editing, confirming, expanded, sortOrder, entryLimit, candidates, candidateBusy, actions, setDrafts, setEditing, setExpanded, setSortOrder, setConfirming, setPathInput, commit, onConfirmCandidate, onDismissCandidate, }) {
+    return createElement('div', { className: 'dsh-my-memory-root' }, createElement(Toolbar, { pathInput, onInput: setPathInput, onLoad: actions.load, onRefresh: actions.refresh }), error === null ? null : createElement(ErrorBanner, { kind: error, onRetry: () => actions.load(pathInput) }), loading
+        ? createElement('div', { className: 'dsh-my-memory-status dsh-my-memory-loading' }, createElement('span', { className: 'dsh-my-memory-spinner' }), strings.loading())
+        : data === null
+            ? null
+            : createElement(Sections, {
+                data,
+                saved,
+                drafts,
+                editing,
+                confirming,
+                expanded,
+                sortOrder,
+                entryLimit,
+                candidates,
+                candidateBusy,
+                onDraft: (scope, value) => setDrafts({ ...drafts, [scope]: value }),
+                onEdit: (scope, id, desc) => setEditing({ scope, id, desc }),
+                onEditDesc: (value) => setEditing({ ...editing, desc: value }),
+                onCancelEdit: () => setEditing(null),
+                onConfirm: (confirm) => setConfirming(confirm),
+                onCancelConfirm: () => setConfirming(null),
+                onToggle: (key) => setExpanded((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(key))
+                        next.delete(key);
+                    else
+                        next.add(key);
+                    return next;
+                }),
+                onSort: (scope) => setSortOrder((prev) => ({
+                    ...prev,
+                    [scope]: prev[scope] === 'desc' ? 'asc' : 'desc',
+                })),
+                onCommit: commit,
+                onConfirmCandidate,
+                onDismissCandidate,
+            }));
 }
-
 /** Load-failure banner with a retry entry; write-failure banner without. */
 function ErrorBanner({ kind, onRetry }) {
-  if (kind === 'load') {
-    return createElement(
-      'div',
-      { className: 'dsh-my-memory-error' },
-      strings.loadError(),
-      createElement(
-        ui.Button,
-        {
-          variant: 'outline',
-          size: 'sm',
-          className: 'dsh-my-memory-btn-retry',
-          onClick: onRetry,
-          icon: createElement(ui.IconRefreshOutline14),
-        },
-        strings.retry(),
-      ),
-    )
-  }
-  return kind === 'save' ? createElement('div', { className: 'dsh-my-memory-error' }, strings.saveFailed()) : null
+    if (kind === 'load') {
+        return createElement('div', { className: 'dsh-my-memory-error' }, strings.loadError(), createElement(ui.Button, {
+            variant: 'outline',
+            size: 'sm',
+            className: 'dsh-my-memory-btn-retry',
+            onClick: onRetry,
+            icon: createElement(ui.IconRefreshOutline14),
+        }, strings.retry()));
+    }
+    return kind === 'save' ? createElement('div', { className: 'dsh-my-memory-error' }, strings.saveFailed()) : null;
 }
-
 /** One confirmed write (add / update / delete) → POST + refresh the scope. */
-function createCommitHandler({ data, setData, setSaved, setError, setDrafts, setEditing, setConfirming }) {
-  return (confirm) => {
-    setSaved(false)
-    setError(null)
-    writeMemory({
-      action: confirm.kind,
-      scope: confirm.scope,
-      cwd: confirm.scope === 'project' ? data.project.cwd : '',
-      id: confirm.id,
-      desc: confirm.desc,
-    })
-      .then((value) => {
-        setSaved(true)
-        setDrafts((d) => ({ ...d, [confirm.scope]: '' }))
-        setEditing(null)
-        setConfirming(null)
-        setData((d) => mergeScope(d, confirm.scope, value))
-      })
-      .catch(() => setError('save'))
-  }
-}
-
-/** Two scopes side by side (global + project), plus pending candidates (issue #78). */
-function Sections({
-  data,
-  saved,
-  drafts,
-  editing,
-  confirming,
-  expanded,
-  sortOrder,
-  entryLimit,
-  candidates,
-  candidateBusy,
-  onDraft,
-  onEdit,
-  onEditDesc,
-  onCancelEdit,
-  onConfirm,
-  onCancelConfirm,
-  onToggle,
-  onSort,
-  onCommit,
-  onConfirmCandidate,
-  onDismissCandidate,
-}) {
-  const blockProps = {
-    drafts,
-    editing,
-    confirming,
-    expanded,
-    sortOrder,
-    entryLimit,
-    onDraft,
-    onEdit,
-    onEditDesc,
-    onCancelEdit,
-    onConfirm,
-    onCancelConfirm,
-    onToggle,
-    onSort,
-    onCommit,
-  }
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-sections' },
-    createElement(SectionBlock, {
-      scope: 'global',
-      title: strings.globalSection(),
-      note: strings.globalNote(),
-      data: data.global,
-      ...blockProps,
-    }),
-    createElement(SectionBlock, {
-      scope: 'project',
-      title: strings.projectSection(),
-      note: strings.projectNote(),
-      data: data.project,
-      ...blockProps,
-    }),
-    createElement(CandidatesBlock, {
-      candidates,
-      busy: candidateBusy,
-      onConfirmCandidate,
-      onDismissCandidate,
-    }),
-    saved
-      ? createElement('div', { className: 'dsh-my-memory-status dsh-my-memory-saved' }, icon.check(14), strings.saved())
-      : null,
-  )
-}
-
-/** One scope's section: 区块标题 / 徽标 / 排序开关 / 列表 / 新增栏 / 确认面板。 */
-function SectionBlock({
-  scope,
-  title,
-  note,
-  data,
-  drafts,
-  editing,
-  confirming,
-  expanded,
-  sortOrder,
-  entryLimit,
-  onDraft,
-  onEdit,
-  onEditDesc,
-  onCancelEdit,
-  onConfirm,
-  onCancelConfirm,
-  onToggle,
-  onSort,
-  onCommit,
-}) {
-  const isProject = scope === 'project'
-  // 徽标：数量（标题已含 scope 标签）；项目加载后附带项目根路径信息。
-  const badge =
-    scope === 'global'
-      ? strings.countOnly(data.items.length)
-      : data.cwd !== ''
-        ? strings.projectBadge(data.projectRoot, data.items.length)
-        : strings.countOnly(data.items.length)
-  const order = sortOrder[scope]
-  const items = sortMemories(data.items, order)
-  const rows = buildRows(items, scope, editing, onEdit, onEditDesc, onCancelEdit, onConfirm, expanded, onToggle)
-  // 空状态：无会话项目时提示输入项目根路径（issue #104），否则提示新增（issue #110 视觉统一）。
-  const emptyHint = isProject && data.cwd === '' ? strings.projectEmptyHint() : undefined
-  return createElement(
-    'div',
-    { className: `dsh-my-memory-section${isProject ? ' dsh-my-memory-section-project' : ''}` },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-section-head' },
-      createElement('span', { className: 'dsh-my-memory-section-title' }, title),
-      createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, badge),
-      createElement(SortToggle, { scope, order, onSort }),
-    ),
-    createElement('div', { className: 'dsh-my-memory-note' }, note),
-    rows.length === 0 ? createElement(EmptyState, { hint: emptyHint }) : rows,
-    createElement(AddBar, {
-      scope,
-      value: drafts[scope],
-      entryLimit,
-      onChange: (value) => onDraft(scope, value),
-      onAdd: () => onConfirm({ kind: 'add', scope, desc: drafts[scope] }),
-    }),
-    confirming !== null && confirming.scope === scope
-      ? createElement(ConfirmPanel, {
-          confirm: confirming,
-          entryLimit,
-          onCancel: onCancelConfirm,
-          onOk: () => onCommit(confirming),
+function createCommitHandler({ data, setData, setSaved, setError, setDrafts, setEditing, setConfirming, }) {
+    return (confirm) => {
+        setSaved(false);
+        setError(null);
+        writeMemory({
+            action: confirm.kind,
+            scope: confirm.scope,
+            cwd: confirm.scope === 'project' ? data.project.cwd : '',
+            id: confirm.id,
+            desc: confirm.desc,
         })
-      : null,
-  )
+            .then((value) => {
+            setSaved(true);
+            setDrafts((d) => ({ ...d, [confirm.scope]: '' }));
+            setEditing(null);
+            setConfirming(null);
+            setData((d) => mergeScope(d, confirm.scope, value));
+        })
+            .catch(() => setError('save'));
+    };
 }
+/** Two scopes side by side (global + project), plus pending candidates (issue #78). */
+function Sections({ data, saved, drafts, editing, confirming, expanded, sortOrder, entryLimit, candidates, candidateBusy, onDraft, onEdit, onEditDesc, onCancelEdit, onConfirm, onCancelConfirm, onToggle, onSort, onCommit, onConfirmCandidate, onDismissCandidate, }) {
+    const blockProps = {
+        drafts,
+        editing,
+        confirming,
+        expanded,
+        sortOrder,
+        entryLimit,
+        onDraft,
+        onEdit,
+        onEditDesc,
+        onCancelEdit,
+        onConfirm,
+        onCancelConfirm,
+        onToggle,
+        onSort,
+        onCommit,
+    };
+    return createElement('div', { className: 'dsh-my-memory-sections' }, createElement(SectionBlock, {
+        scope: 'global',
+        title: strings.globalSection(),
+        note: strings.globalNote(),
+        data: data.global,
+        ...blockProps,
+    }), createElement(SectionBlock, {
+        scope: 'project',
+        title: strings.projectSection(),
+        note: strings.projectNote(),
+        data: data.project,
+        ...blockProps,
+    }), createElement(CandidatesBlock, {
+        candidates,
+        busy: candidateBusy,
+        onConfirmCandidate,
+        onDismissCandidate,
+    }), saved
+        ? createElement('div', { className: 'dsh-my-memory-status dsh-my-memory-saved' }, icon.check(14), strings.saved())
+        : null);
+}
+/** One scope's section: 区块标题 / 徽标 / 排序开关 / 列表 / 新增栏 / 确认面板。 */
+function SectionBlock({ scope, title, note, data, drafts, editing, confirming, expanded, sortOrder, entryLimit, onDraft, onEdit, onEditDesc, onCancelEdit, onConfirm, onCancelConfirm, onToggle, onSort, onCommit, }) {
+    const isProject = scope === 'project';
+    // 徽标：数量（标题已含 scope 标签）；项目加载后附带项目根路径信息。
+    const badge = scope === 'global'
+        ? strings.countOnly(data.items.length)
+        : data.cwd !== ''
+            ? strings.projectBadge(data.projectRoot, data.items.length)
+            : strings.countOnly(data.items.length);
+    const order = sortOrder[scope];
+    const items = sortMemories(data.items, order);
+    const rows = buildRows(items, scope, editing, onEdit, onEditDesc, onCancelEdit, onConfirm, expanded, onToggle);
+    // 空状态：无会话项目时提示输入项目根路径（issue #104），否则提示新增（issue #110 视觉统一）。
+    const emptyHint = isProject && data.cwd === '' ? strings.projectEmptyHint() : undefined;
+    return createElement('div', { className: `dsh-my-memory-section${isProject ? ' dsh-my-memory-section-project' : ''}` }, createElement('div', { className: 'dsh-my-memory-section-head' }, createElement('span', { className: 'dsh-my-memory-section-title' }, title), createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, badge), createElement(SortToggle, { scope, order, onSort })), createElement('div', { className: 'dsh-my-memory-note' }, note), rows.length === 0 ? createElement(EmptyState, { hint: emptyHint }) : rows, createElement(AddBar, {
+        scope,
+        value: drafts[scope],
+        entryLimit,
+        onChange: (value) => onDraft(scope, value),
+        onAdd: () => onConfirm({ kind: 'add', scope, desc: drafts[scope] }),
+    }), confirming !== null && confirming.scope === scope
+        ? createElement(ConfirmPanel, {
+            confirm: confirming,
+            entryLimit,
+            onCancel: onCancelConfirm,
+            onOk: () => onCommit(confirming),
+        })
+        : null);
+}
+// 导出给 apply.ts 使用
 
-    // ── plugin body ───────────────────────────────────────────────────────
+    "use strict";
+// ── plugin body ───────────────────────────────────────────────────────
 // 零第三方依赖：面板挂在官方 slots 扩展点（设置 → 插件 → 记忆），
 // 不依赖 dsh-better-sidebar。slots 服务是官方 client 服务，通过
 // ctx.get 动态获取——服务缺省时静默跳过（不注册 tab，server 端记忆
 // 能力不受影响）。
 exports.apply = function apply(ctx) {
-  ctx.effect(() => {
-    if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined') return () => {}
-    const style = document.createElement('style')
-    style.setAttribute(STYLE_TAG, 'styles')
-    style.textContent = STYLES
-    document.head.appendChild(style)
-    return () => {
-      if (style.parentNode) style.parentNode.removeChild(style)
-    }
-  }, 'dsh-my-memory: styles')
-
-  // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer
-  // 提供）的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true)
-  // 在 strict 模式下会返回 undefined，注册代码会静默 return（设置页看不到
-  // tab，HMR 重载后才出现）；取到实例即可——注册本身由 slots.inject 等待
-  // 槽位声明，实际渲染发生在之后，安全。
-  const slots = ctx.get('slots', false)
-  if (slots === undefined) return
-
-  ctx.effect(
-    () =>
-      slots.inject('settings.plugins.tab', () =>
-        slots.register(
-          {
-            name: 'settings.plugins.tab',
-            id: 'my-memory',
-            order: 92,
-            label: () => strings.title(),
-          },
-          MemoryView,
-        ),
-      ),
-    'dsh-my-memory: settings tab registration',
-  )
-}
+    ctx.effect(() => {
+        if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined')
+            return () => { };
+        const style = document.createElement('style');
+        style.setAttribute(STYLE_TAG, 'styles');
+        style.textContent = STYLES;
+        document.head.appendChild(style);
+        return () => {
+            if (style.parentNode)
+                style.parentNode.removeChild(style);
+        };
+    }, 'dsh-my-memory: styles');
+    // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer
+    // 提供）的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true)
+    // 在 strict 模式下会返回 undefined，注册代码会静默 return（设置页看不到
+    // tab，HMR 重载后才出现）；取到实例即可——注册本身由 slots.inject 等待
+    // 槽位声明，实际渲染发生在之后，安全。
+    const slots = ctx.get('slots', false);
+    if (slots === undefined)
+        return;
+    ctx.effect(() => slots.inject('settings.plugins.tab', () => slots.register({
+        name: 'settings.plugins.tab',
+        id: 'my-memory',
+        order: 92,
+        label: () => strings.title(),
+    }, MemoryView)), 'dsh-my-memory: settings tab registration');
+};
 
 
     return module.exports

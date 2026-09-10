@@ -26,6 +26,7 @@
  */
 import { createApiHandler } from './api-route.js'
 import { isTrustedApiRequest } from 'dsh-shared'
+import type { IncomingRequest } from 'dsh-shared'
 import { DEFAULT_MAX_ENTRY_LENGTH } from './memory-text.js'
 import { createMemorySection } from './prompt.js'
 import { extractCandidates } from './extract.js'
@@ -39,6 +40,7 @@ import {
 } from './store.js'
 import { createMemoryQueryTool, createMemorySaveGate, createMemorySaveTool } from './tool.js'
 import type { DshContext, LoggerService } from './types.js'
+import type { StoreInstance, CandidateStoreInstance, Category } from './memory-types.js'
 
 export const name = 'dsh-my-memory'
 
@@ -54,13 +56,28 @@ export interface MemoryConfig {
   maxEntryLength?: number
   /** 每个会话最大消息数（默认 60）。 */
   maxMessagesPerSession?: number
+  /** 最大注入条目数（默认 5）。 */
+  maxItems?: number
+  /** 单条描述最大长度（默认 200）。 */
+  maxDescLength?: number
+  /** 降权阈值（毫秒，默认 90 天）。 */
+  decayMs?: number
+  /** 主动提议开关（默认关闭）。 */
+  proactivePropose?: boolean
 }
 
 /** maxEntryLength 配置（issue #105 精简引导）；非法值回落默认 50。 */
 function maxEntryLengthOf(config: MemoryConfig | undefined): number {
-  return Number.isInteger(config?.maxEntryLength) && config.maxEntryLength! > 0
-    ? config.maxEntryLength!
+  return Number.isInteger(config?.maxEntryLength) && config!.maxEntryLength! > 0
+    ? config!.maxEntryLength!
     : DEFAULT_MAX_ENTRY_LENGTH
+}
+
+/** maxMessagesPerSession 配置；非法值回落默认 60。 */
+function maxMessagesPerSessionOf(config: MemoryConfig | undefined): number {
+  return Number.isInteger(config?.maxMessagesPerSession) && config!.maxMessagesPerSession! > 0
+    ? config!.maxMessagesPerSession!
+    : 60
 }
 
 /** 全局 + 项目（按 cwd 懒创建并缓存；首次访问自动迁移旧集中前文件）stores。 */
@@ -84,23 +101,22 @@ function createMemoryStores() {
 /** 本次会话的用户消息暂存（sessionId → 文本数组；有上限防膨胀）。 */
 function createMessageCollector(options: MemoryConfig | undefined) {
   const messages = new Map<string, string[]>()
-  const maxPerSession =
-    Number.isInteger(options?.maxMessagesPerSession) && options.maxMessagesPerSession! > 0
-      ? options.maxMessagesPerSession!
-      : 60
+  const maxPerSession = maxMessagesPerSessionOf(options)
   return {
     push: (sessionId: string, text: string) => {
-      if (typeof sessionId !== 'string' || sessionId === '' || typeof text !== 'string' || text.trim() === '') return
-      const list = messages.get(sessionId) ?? []
-      list.push(text.trim())
-      messages.set(sessionId, list.slice(-maxPerSession))
+      const trimmed = typeof text === 'string' ? text.trim() : ''
+      const collectable = typeof sessionId === 'string' && sessionId !== '' && trimmed !== ''
+      if (collectable) {
+        const list = messages.get(sessionId) ?? []
+        list.push(trimmed)
+        messages.set(sessionId, list.slice(-maxPerSession))
+      }
     },
     take: (sessionId: string) => {
       const list = messages.get(sessionId) ?? []
       messages.delete(sessionId)
       return list
     },
-    drop: (sessionId: string) => messages.delete(sessionId),
   }
 }
 
@@ -112,39 +128,35 @@ function isPluginInjected(message: unknown): boolean {
 
 /** 从 user/message 的 data 提取文本（content 中全部 text block 拼接）。 */
 function extractUserText(message: unknown): string {
-  if (message === null || typeof message !== 'object') return ''
-  const content = (message as Record<string, unknown>).content
-  if (!Array.isArray(content)) return ''
+  const messageObj = message !== null && typeof message === 'object' ? (message as Record<string, unknown>) : undefined
+  const blocks = Array.isArray(messageObj?.content) ? (messageObj!.content as unknown[]) : []
   const parts: string[] = []
-  for (const block of content) {
-    if (
-      block !== null &&
-      typeof block === 'object' &&
-      (block as Record<string, unknown>).type === 'text' &&
-      typeof (block as Record<string, unknown>).text === 'string'
-    ) {
-      parts.push((block as Record<string, string>).text)
-    }
+  for (const block of blocks) {
+    const blockObj = block !== null && typeof block === 'object' ? (block as Record<string, unknown>) : undefined
+    const isTextBlock = blockObj?.type === 'text' && typeof blockObj.text === 'string'
+    if (isTextBlock) parts.push(blockObj!.text as string)
   }
   return parts.join(' ')
 }
 
 /** 顶层 agent 判定（子代理结束不触发提取）。 */
 function isTopLevelAgent(agent: unknown): boolean {
-  if (agent === null || typeof agent !== 'object') return false
-  const header = (agent as Record<string, unknown>)?.session?.header
-  if (header === undefined || header === null) return false
-  return !hasSubagentMarker(header, (agent as Record<string, unknown>).options)
+  const agentObj = agent !== null && typeof agent === 'object' ? (agent as Record<string, unknown>) : undefined
+  const session = agentObj?.session as Record<string, unknown> | undefined
+  const header = session?.header
+  const hasHeader = header !== undefined && header !== null
+  return hasHeader && !hasSubagentMarker(header, agentObj?.options)
 }
 
 /** 任一子代理标记命中即子代理（header 持久化标记 + 运行时深度 + 派生父会话）。 */
 function hasSubagentMarker(header: unknown, options: unknown): boolean {
   const headerObj = header as Record<string, unknown>
   const optionsObj = options as Record<string, unknown> | undefined
-  if (headerObj.origin === 'subagent') return true
-  if (typeof headerObj.delegationDepth === 'number' && headerObj.delegationDepth > 0) return true
-  if (typeof optionsObj?.subagentDepth === 'number' && optionsObj.subagentDepth > 0) return true
-  return typeof headerObj.parentSession === 'string' && headerObj.parentSession !== ''
+  const byOrigin = headerObj.origin === 'subagent'
+  const byDepth = typeof headerObj.delegationDepth === 'number' && headerObj.delegationDepth > 0
+  const byOptions = typeof optionsObj?.subagentDepth === 'number' && optionsObj.subagentDepth > 0
+  const byParentSession = typeof headerObj.parentSession === 'string' && headerObj.parentSession !== ''
+  return byOrigin || byDepth || byOptions || byParentSession
 }
 
 /** 候选指纹（category + 归一化的 desc）——去重用。 */
@@ -154,11 +166,16 @@ function fingerprintOf(candidate: { category: string; desc: string }): string {
 
 /** 把提取出的候选并入候选存储（按指纹去重，避免同会话重复候选）。 */
 async function storeCandidates(
-  candidatesStore: ReturnType<typeof createCandidatesStore>,
-  candidates: Array<{ category: string; desc: string }>,
+  candidatesStore: CandidateStoreInstance,
+  candidates: Array<{
+    category: Category
+    desc: string
+    scope: 'global' | 'project'
+    source: { sessionId: string; at: number }
+  }>,
 ) {
   const existing = await candidatesStore.load().then(() => candidatesStore.list())
-  const known = new Set(existing.map((c: { category: string; desc: string }) => fingerprintOf(c)))
+  const known = new Set(existing.map((c) => fingerprintOf(c)))
   const fresh = candidates.filter((c) => !known.has(fingerprintOf(c)))
   for (const candidate of fresh) {
     await candidatesStore.addRaw(candidate)
@@ -183,7 +200,8 @@ function createSessionEndHandler({
 }) {
   return ({ agent, status }: { agent: unknown; status: string }) => {
     if (!autoLearn || status !== 'idle' || !isTopLevelAgent(agent)) return
-    const sessionId = typeof (agent as Record<string, unknown>)?.id === 'string' ? (agent as Record<string, string>).id : ''
+    const sessionId =
+      typeof (agent as Record<string, unknown>)?.id === 'string' ? (agent as Record<string, string>).id : ''
     const cwd = cwdOfAgent(agent)
     const messages = collector.take(sessionId)
     if (messages.length === 0) return
@@ -194,19 +212,22 @@ function createSessionEndHandler({
       extractor,
     })
     if (candidates.length > 0) {
-      void storeCandidates(candidatesStore, candidates)
-      logger?.info(
-        `[dsh-my-memory] 会话结束自动提取候选（sessionId=${sessionId}，候选数=${candidates.length}，extractor=${extractor}）`,
-      )
+      storeCandidates(candidatesStore, candidates).then(() => {
+        logger?.info(
+          `[dsh-my-memory] 会话结束自动提取候选（sessionId=${sessionId}，候选数=${candidates.length}，extractor=${extractor}）`,
+        )
+      })
     }
   }
 }
 
 /** agent 的会话工作目录（无则空串）。 */
 function cwdOfAgent(agent: unknown): string {
-  const header = (agent as Record<string, unknown>)?.session?.header
-  if (header === null || typeof header !== 'object') return ''
-  return typeof (header as Record<string, unknown>).cwd === 'string' ? (header as Record<string, string>).cwd : ''
+  const agentObj = agent !== null && typeof agent === 'object' ? (agent as Record<string, unknown>) : undefined
+  const session = agentObj?.session as Record<string, unknown> | undefined
+  const header = session?.header
+  const cwd = header !== null && typeof header === 'object' ? (header as Record<string, unknown>).cwd : undefined
+  return typeof cwd === 'string' ? cwd : ''
 }
 
 /** session/event 用户消息收集器（issue #78，autoLearn 开启时只读收集）。 */
@@ -218,15 +239,16 @@ function createMessageCollectorListener({
   autoLearn: boolean
 }) {
   return (session: unknown, event: unknown) => {
-    if (!autoLearn) return
-    if (event === null || typeof event !== 'object' || (event as Record<string, unknown>).type !== 'user/message') return
-    if (isPluginInjected((event as Record<string, unknown>).data)) return
-    const text = extractUserText((event as Record<string, unknown>).data)
-    const sessionId =
-      session !== null && typeof session === 'object' && typeof (session as Record<string, unknown>).id === 'string'
-        ? (session as Record<string, string>).id
-        : ''
-    collector.push(sessionId, text)
+    const eventObj = event !== null && typeof event === 'object' ? (event as Record<string, unknown>) : undefined
+    const data = eventObj?.data
+    const collectable = autoLearn && eventObj?.type === 'user/message' && !isPluginInjected(data)
+    if (collectable) {
+      const sessionId =
+        session !== null && typeof session === 'object' && typeof (session as Record<string, unknown>).id === 'string'
+          ? (session as Record<string, string>).id
+          : ''
+      collector.push(sessionId, extractUserText(data))
+    }
   }
 }
 
@@ -237,11 +259,13 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
   const autoLearn = config?.autoLearn === true
   const extractor = config?.extractor === 'llm' ? 'llm' : 'rule'
 
+  const loadPromise = Promise.all([globalStore.load(), candidatesStore.load()]).catch(() => {})
+
   ctx.effect(() => {
-    Promise.all([globalStore.load(), candidatesStore.load()]).catch(() => {})
+    loadPromise
     return () => {
       Promise.all([globalStore.flush(), candidatesStore.flush()]).catch(() => {})
-      for (const store of projectStores.values()) store.flush().catch(() => {})
+      ;[...projectStores.values()].forEach((store) => store.flush().catch(() => {}))
     }
   }, 'dsh-my-memory: store lifecycle')
 
@@ -261,14 +285,10 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
   // 工具本身写 store；`tools/pre-execute` 门对每次 memory_save 调用返回
   // `{ kind: 'ask' }` 触发 DSH 原生审批——用户确认后才真正写入，绝不静默变更。
   ctx.effect(
-    () =>
-      ctx.tools?.register(createMemorySaveTool({ globalStore, getProjectStore, config, logger: ctx.logger })),
+    () => ctx.tools?.register(createMemorySaveTool({ globalStore, getProjectStore, config, logger: ctx.logger })),
     'dsh-my-memory: memory_save tool',
   )
-  ctx.effect(
-    () => ctx.on('tools/pre-execute', createMemorySaveGate()),
-    'dsh-my-memory: memory_save approval gate',
-  )
+  ctx.effect(() => ctx.on('tools/pre-execute', createMemorySaveGate()), 'dsh-my-memory: memory_save approval gate')
 
   // ── 自动提取（issue #78，autoLearn 默认关）───────────────────────────
   // 只读收集本次会话的用户消息（session/event），会话结束（agent/status
@@ -284,14 +304,11 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
     extractor,
     logger: ctx.logger,
   })
-  ctx.effect(
-    () => ctx.on('agent/status', sessionEndHandler),
-    'dsh-my-memory: auto-extract on session end',
-  )
+  ctx.effect(() => ctx.on('agent/status', sessionEndHandler), 'dsh-my-memory: auto-extract on session end')
 
   // ── 写操作 API（需用户同意标记）──────────────────────────────────────
   const fence = (request: unknown) =>
-    isTrustedApiRequest(request, ctx.webRuntime?.trustedHosts ?? [])
+    isTrustedApiRequest(request as IncomingRequest, ctx.webRuntime?.trustedHosts ?? [])
   const apiHandler = createApiHandler({
     globalStore,
     getProjectStore,
@@ -302,8 +319,7 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
     config: { ...config, maxEntryLength: maxEntryLengthOf(config) },
   })
   ctx.effect(
-    () =>
-      ctx.webServer?.register({ kind: 'prefix', path: '/my-memory/api', handler: apiHandler }),
+    () => ctx.webServer?.register({ kind: 'prefix', path: '/my-memory/api', handler: apiHandler }),
     'dsh-my-memory: /my-memory/api routes',
   )
 
@@ -320,10 +336,7 @@ function registerMemoryStatusQuery(
   ctx.on('plugin:status-query', ({ plugin }: { plugin: string }) => {
     if (plugin !== 'dsh-my-memory') return undefined
     const globalCount = globalStore.state?.items?.length ?? 0
-    const projectCount = [...projectStores.values()].reduce(
-      (n, s) => n + (s.state?.items?.length ?? 0),
-      0,
-    )
+    const projectCount = [...projectStores.values()].reduce((n, s) => n + (s.state?.items?.length ?? 0), 0)
     return {
       ok: true,
       value: {

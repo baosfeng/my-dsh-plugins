@@ -4,7 +4,11 @@
 
 /** 排序开关：按更新时间切换最新/最旧优先（每分区独立）。官方 Pill 承载
  *  （issue #143 试点）：active 表示当前排序方向，点击切换。 */
-function SortToggle({ scope, order, onSort }: {
+function SortToggle({
+  scope,
+  order,
+  onSort,
+}: {
   scope: string
   order: 'desc' | 'asc'
   onSort: (scope: string) => void
@@ -39,7 +43,13 @@ function EmptyState({ hint }: { hint?: string }): ReactNode {
 
 /** 新增条目的输入 + 保存按钮；超长时给出精简提示（issue #105）。
  *  输入用官方 Input（issue #143 试点）；保存按钮保留自研（语义绿）。 */
-function AddBar({ scope, value, onChange, onAdd, entryLimit }: {
+function AddBar({
+  scope,
+  value,
+  onChange,
+  onAdd,
+  entryLimit,
+}: {
   scope: string
   value: string
   onChange: (value: string) => void
@@ -131,14 +141,19 @@ function buildRows(
       onEdit: () => onEdit(scope, item.id, item.desc),
       onEditDesc,
       onCancelEdit,
-      onSaveEdit: () => onConfirm({ kind: 'update', scope, id: item.id, desc: editing?.desc ?? '' }),
+      onSaveEdit: () => onConfirm({ kind: 'update', scope, id: item.id, desc: editing.desc }),
       onDelete: () => onConfirm({ kind: 'delete', scope, id: item.id, desc: item.desc }),
       onToggle: () => onToggle(key),
     })
   })
 }
 
-function IconButton({ className, label, onClick, children }: {
+function IconButton({
+  className,
+  label,
+  onClick,
+  children,
+}: {
   className: string
   label: string
   onClick: () => void
@@ -149,7 +164,12 @@ function IconButton({ className, label, onClick, children }: {
 
 /** 编辑态：输入 + 保存/取消，保留卡片底与操作/内容分离。输入用官方
  *  Input、取消用官方 Button（issue #143 试点）；保存保留自研（语义绿）。 */
-function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit }: {
+function MemoryRowEdit({
+  editingDesc,
+  onEditDesc,
+  onSaveEdit,
+  onCancelEdit,
+}: {
   editingDesc: string
   onEditDesc: (value: string) => void
   onSaveEdit: () => void
@@ -273,7 +293,12 @@ function SummaryPreview({ desc }: { desc: string }): ReactNode {
 
 /** 自定义确认面板（ask 模式，非原生 confirm）：删除红、保存绿。
  *  add/update 时若内容超长，显示概要预览（完整内容仍保存，issue #105）。 */
-function ConfirmPanel({ confirm, onCancel, onOk, entryLimit }: {
+function ConfirmPanel({
+  confirm,
+  onCancel,
+  onOk,
+  entryLimit,
+}: {
   confirm: ConfirmingState
   onCancel: () => void
   onOk: () => void
@@ -281,7 +306,7 @@ function ConfirmPanel({ confirm, onCancel, onOk, entryLimit }: {
 }): ReactNode {
   const isDelete = confirm.kind === 'delete'
   const text = CONFIRM_TEXTS[confirm.kind]()
-  const showSummary = !isDelete && isOverEntryLimit(confirm.desc ?? '', entryLimit)
+  const showSummary = !isDelete && isOverEntryLimit(confirm.desc, entryLimit)
   return createElement(
     'div',
     { className: `dsh-my-memory-confirm dsh-my-memory-confirm-${isDelete ? 'delete' : 'save'}` },
@@ -292,7 +317,7 @@ function ConfirmPanel({ confirm, onCancel, onOk, entryLimit }: {
       createElement('div', { className: 'dsh-my-memory-confirm-text' }, text),
     ),
     createElement('div', { className: 'dsh-my-memory-confirm-desc' }, confirm.desc),
-    showSummary ? createElement(SummaryPreview, { desc: confirm.desc ?? '' }) : null,
+    showSummary ? createElement(SummaryPreview, { desc: confirm.desc }) : null,
     createElement(
       'div',
       { className: 'dsh-my-memory-confirm-actions' },
@@ -324,7 +349,12 @@ const CONFIRM_TEXTS: Record<string, () => string> = {
 
 /** Path input + load/refresh buttons + consent note. 路径输入用官方 Input、
  *  加载/刷新用官方 Button（size sm，issue #143 试点）。 */
-function Toolbar({ pathInput, onInput, onLoad, onRefresh }: {
+function Toolbar({
+  pathInput,
+  onInput,
+  onLoad,
+  onRefresh,
+}: {
   pathInput: string
   onInput: (value: string) => void
   onLoad: (path: string) => void
@@ -376,14 +406,3 @@ function Toolbar({ pathInput, onInput, onLoad, onRefresh }: {
 }
 
 // 导出给其他 part 文件使用
-exports.SortToggle = SortToggle
-exports.EmptyState = EmptyState
-exports.AddBar = AddBar
-exports.buildRows = buildRows
-exports.IconButton = IconButton
-exports.MemoryRowEdit = MemoryRowEdit
-exports.MemoryRow = MemoryRow
-exports.SummaryPreview = SummaryPreview
-exports.ConfirmPanel = ConfirmPanel
-exports.Toolbar = Toolbar
-exports.CONFIRM_TEXTS = CONFIRM_TEXTS

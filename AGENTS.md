@@ -18,7 +18,7 @@
 ## ⚠️ 强制规则
 
 - **leader 自主决策**：git 提交/推送、删除、覆盖等副作用操作由 leader 自主判断执行（用户已全权委托）；破坏性/公开 API 变更须汇报用户。
-- **测试必跑**：`cd plugins/<插件名> && npm test`（CI 遍历 plugins/*/ 执行 node --check + 冒烟测试）；提交前全量测试并修复失败。
+- **测试必跑**：`cd plugins/<插件名> && npm test`（CI 遍历 plugins/*/ 执行 node --check + 冒烟测试）；提交前全量测试并修复失败。**pre-push 默认跑快速通道**（`scripts/verify-local.mjs --fast`：按本次推送变更裁剪插件测试，无证据时安全退化全量）；要 CI 等价全量用 `npm run verify`（详见 docs/开发指南/构建与测试.md「本地一键校验」）。
 - **命令超时**：shell 命令必须设 timeoutMs（快速 ≤15s，长任务 run_in_background 后台运行；禁止无超时前台跑可能超 1 分钟的命令）。
 - **代码查询走知识图谱**：查符号/调用链/影响/架构用 `mcp__codebase-memory__*` 工具（细节见 skill `codebase-memory`），图外事实才 grep/read。
 - **发版门禁**：发版用 `node scripts/release.mjs <插件名> [--push]`，必须过 #67 功能级验证门禁（verifying-dsh-plugins skill），跳过须带 `--skip-reason`。

@@ -44,6 +44,7 @@ import { registerNotifyRoutes } from './routes.js'
 import { createWebhookStore } from './webhook-store.js'
 import { dispatchWebhooks } from './webhook/pusher.js'
 import { currentProfile, patchFileOf, profileDirOf, writePatchConfig } from 'dsh-shared'
+import type { ConfigDict } from 'dsh-shared'
 import { join } from 'node:path'
 import type { DshContext, NoticeFrame, NotifyOptions, PluginConfig, TokenMeter, WebhookConfig } from './types.js'
 
@@ -95,7 +96,7 @@ export function apply(ctx: DshContext, config: PluginConfig): void {
   // webhooks 是对象数组（patch YAML 子集无法表达），单独写 JSON 文件。
   const onConfigChange = async (next: Partial<NotifyOptions>): Promise<void> => {
     const merged = { ...options, ...next }
-    await writePatchConfig(patchFileOf(currentProfile()), 'notify', patchConfigOf(merged))
+    await writePatchConfig(patchFileOf(currentProfile()), 'notify', patchConfigOf(merged) as ConfigDict)
     if (next.webhooks !== undefined) {
       options.webhooks = next.webhooks
       await webhookStore.save(next.webhooks)

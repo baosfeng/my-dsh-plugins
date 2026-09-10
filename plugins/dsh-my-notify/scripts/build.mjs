@@ -1,49 +1,90 @@
 /**
- * Build: assemble lib/client.js from lib/client.src.js + part fragments.
- *
- * DSH 浏览器端 ModuleLoader 不支持相对路径 require，client 拆分必须走
- * 方案 B（子文件拼接，参考 dsh-mermaid-render 模式）：lib/parts/*.js 是
- * 无 import/export 的纯函数声明文本，build 将每个片段经 __PART_*__ 占位符
- * 拼接进 factory 作用域，写出 lib/client.js —— 仍是单一 ModuleLoader
- * bundle，运行时形态不变。
+ * Build: compile the client TypeScript parts (src/client/parts/*.ts →
+ * lib/.client-build/parts/*.js), publish them as the committed
+ * lib/parts/<name>.js artifacts, then splice those pieces into the
+ * PART placeholders of lib/client.src.js and write lib/client.js — the single
+ * __ModuleLoader__ bundle DSH actually serves.
  *
  *   node scripts/build.mjs
  *
- * 占位符替换必须用函数式 replacer（src.replaceAll(ph, () => part)）：
- * 字符串 replacer 会把片段中的 $& / $1 等当作替换模式特殊解释而损坏源码。
+ * Why splicing: the DSH browser ModuleLoader does not support relative-path
+ * require inside a factory (`require('./x.js')` misses the module table), so
+ * the client half must ship as ONE bundle; the parts are plain function
+ * declaration texts sharing the factory scope (no import/export).
  *
- * lib/client.js 是构建产物且必须提交（CI 只对产物执行 node --check +
- * 测试，不运行本 build）。
+ * The published lib/parts/*.js keep their historical names (test/client-parts.mjs,
+ * test/client-dedupe.mjs, test/volume.mjs and test/settings-styles.mjs eval them
+ * directly) and are formatted with the repo prettier config — they are checked
+ * by `prettier --check` (.prettierignore re-includes plugins/.../lib/parts/**)
+ * and the SAME formatted text is spliced into lib/client.js.
+ *
+ * lib/client.js is a build artifact and MUST be committed (CI runs
+ * node --check + tests against it; it does not run this build). Source and
+ * artifact must stay in sync: only changing lib/client.js loses the fix on the
+ * next build.
  */
-import { readFileSync, writeFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
+import { readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const partsDir = join(root, 'lib/parts')
-// Shared client parts live in the dsh-shared package (issue #54 阶段 0):
-// single source of truth for the icon set, spliced by every plugin's build.
+const buildDir = join(root, 'lib/.client-build')
+const buildPartsDir = join(buildDir, 'parts')
+const outPartsDir = join(root, 'lib/parts')
+// 共享 client parts 位于 dsh-shared 包（issue #54 阶段 0）：图标集单一来源，
+// 各插件构建时按文件系统路径拼接（不经过 package exports / require 解析）。
 const sharedPartsDir = join(root, '..', 'dsh-shared', 'client-parts')
 
-const PARTS = [
-  ['/*__PART_I18N__*/', 'i18n.js'],
-  ['/*__PART_ICONS__*/', 'icons.part.js', { shared: true }],
-  ['/*__PART_NOTIFY_RENDER__*/', 'render.js'],
-  ['/*__PART_STREAM__*/', 'stream.js'],
-  // 顺序重要：webhook-settings.js 必须先于 settings.js（顶层引用 WEBHOOK_STYLES，见 client.src.js 注释）。
-  ['/*__PART_WEBHOOK_SETTINGS__*/', 'webhook-settings.js'],
-  ['/*__PART_SETTINGS__*/', 'settings.js'],
+// 1. 编译 client 端 TS 片段 → lib/.client-build/parts/*.js
+execSync('npx tsc -p tsconfig.client.json', { cwd: root, stdio: 'inherit' })
+
+/** (占位符, 片段文件名, opts?) —— 数组顺序即拼接顺序，const 初始化有依赖：
+ *  i18n 先于 render（strings/LS/prefOn），render 先于 stream（STYLES/
+ *  fireSystemNotification），webhook-settings 必须先于 settings
+ *  （settings 顶层 `SETTINGS_STYLES = ... + WEBHOOK_STYLES` 引用前者声明的
+ *  WEBHOOK_STYLES，颠倒会 TDZ，见 client.src.js 注释）。
+ *  opts.shared: true 从 dsh-shared/client-parts 读取（不经本插件 TS 编译）。 */
+const pieces = [
+  ['/*__PART_I18N__*/', 'i18n'],
+  ['/*__PART_ICONS__*/', 'icons.part', { shared: true }],
+  ['/*__PART_NOTIFY_RENDER__*/', 'render'],
+  ['/*__PART_STREAM__*/', 'stream'],
+  ['/*__PART_WEBHOOK_SETTINGS__*/', 'webhook-settings'],
+  ['/*__PART_SETTINGS__*/', 'settings'],
 ]
 
-let src = readFileSync(join(root, 'lib/client.src.js'), 'utf8')
-for (const [placeholder, file, opts = {}] of PARTS) {
-  if (!src.includes(placeholder)) {
+// 2. 发布编译后的片段为提交进仓库的 lib/parts/<name>.js
+for (const [, name, opts = {}] of pieces) {
+  if (opts.shared) continue
+  writeFileSync(join(outPartsDir, `${name}.js`), readFileSync(join(buildPartsDir, `${name}.js`), 'utf8'))
+}
+execSync('npx prettier --write lib/parts', { cwd: root, stdio: 'inherit' })
+
+// 3. 把片段拼接进 lib/client.src.js 模板
+let out = readFileSync(join(root, 'lib/client.src.js'), 'utf8')
+for (const [placeholder, name, opts = {}] of pieces) {
+  if (!out.includes(placeholder)) {
     throw new Error(`client.src.js is missing the ${placeholder} placeholder`)
   }
-  const dir = opts.shared ? sharedPartsDir : partsDir
-  const part = readFileSync(join(dir, file), 'utf8')
-  // 函数式替换：片段内容作为字面文本返回，$&/$1 不会被特殊解释。
-  src = src.replaceAll(placeholder, () => part)
+  const dir = opts.shared ? sharedPartsDir : outPartsDir
+  const part = readFileSync(join(dir, `${name}.js`), 'utf8')
+  // 函数式替换：片段内容作为字面文本返回，$&/$1 不会被特殊解释（字符串
+  // replacer 会把它们当替换模式而损坏源码）。
+  out = out.replaceAll(placeholder, () => part)
 }
-writeFileSync(join(root, 'lib/client.js'), src)
-console.log(`built lib/client.js (${src.length} bytes, from client.src.js + ${PARTS.length} fragments)`)
+
+// 未解析占位符检查：只查本次拼接的真实占位符（模板注释里出现的
+// `__PART_*__` 说明文字不算未解析）。
+const unresolved = pieces.map(([placeholder]) => placeholder).filter((placeholder) => out.includes(placeholder))
+if (unresolved.length > 0) {
+  throw new Error(`client.src.js has unresolved placeholders: ${unresolved.join(', ')}`)
+}
+
+writeFileSync(join(root, 'lib/client.js'), out)
+
+// 4. 清理临时编译目录（.gitignore 已忽略，残留会让 depcruise ENOENT）
+rmSync(buildDir, { recursive: true, force: true })
+
+const lines = out.split('\n').length
+console.log(`built lib/client.js (${out.length} bytes, ${lines} lines, ${pieces.length} fragments)`)

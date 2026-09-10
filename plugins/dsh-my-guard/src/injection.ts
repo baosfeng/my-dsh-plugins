@@ -12,21 +12,14 @@ import { INJECTION_RULES } from './constants.js'
 import type { DshContext, Alert, InjectionHit } from './types.js'
 
 /** 注册提示注入检测监听器；返回 disposer。 */
-export function attachInjectionListener(
-  ctx: DshContext,
-  recordAlert: (alert: Alert) => Alert
-): () => void {
+export function attachInjectionListener(ctx: DshContext, recordAlert: (alert: Alert) => Alert): () => void {
   return ctx.on('session/event', (session: unknown, event: unknown) => {
     handleSessionEvent(session, event, recordAlert)
   })
 }
 
 /** 处理单个 session/event：user/message 命中规则时逐条记录告警。 */
-function handleSessionEvent(
-  session: unknown,
-  event: unknown,
-  recordAlert: (alert: Alert) => Alert
-): void {
+function handleSessionEvent(session: unknown, event: unknown, recordAlert: (alert: Alert) => Alert): void {
   if (event === null || typeof event !== 'object' || (event as Record<string, unknown>).type !== 'user/message') return
   const message = (event as Record<string, unknown>).data
   if (isPluginInjected(message)) return
@@ -38,12 +31,7 @@ function handleSessionEvent(
 }
 
 /** 逐条记录命中告警（detail 带规则 id、命中原文与规则说明，供面板展示）。 */
-function recordHits(
-  hits: InjectionHit[],
-  sessionId: string,
-  text: string,
-  recordAlert: (alert: Alert) => Alert
-): void {
+function recordHits(hits: InjectionHit[], sessionId: string, text: string, recordAlert: (alert: Alert) => Alert): void {
   for (const hit of hits) {
     recordAlert({
       type: 'injection',
@@ -76,7 +64,12 @@ export function extractUserText(message: unknown): string {
   if (!Array.isArray(content)) return ''
   const parts: string[] = []
   for (const block of content) {
-    if (block !== null && typeof block === 'object' && (block as Record<string, unknown>).type === 'text' && typeof (block as Record<string, unknown>).text === 'string') {
+    if (
+      block !== null &&
+      typeof block === 'object' &&
+      (block as Record<string, unknown>).type === 'text' &&
+      typeof (block as Record<string, unknown>).text === 'string'
+    ) {
       parts.push((block as Record<string, unknown>).text as string)
     }
   }

@@ -1,4 +1,3 @@
-'use strict'
 // ── 样式（DSH 语义 token，随 activation 注入 / teardown 卸载）──────
 // 前缀 dsh-my-guard-（issue #54：与 dsh-my-observability- 前缀分离，消除跨插件类名冲突）。
 const STYLES = `
@@ -106,7 +105,8 @@ const STYLES = `
 .dsh-my-guard-notify-hint{font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary)}
 .dsh-my-guard-effective{color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxxs-strong-11)}
 `
-function injectStyles() {
+
+function injectStyles(): () => void {
   if (typeof document === 'undefined' || typeof document.head === 'undefined') return () => {}
   const style = document.createElement('style')
   style.setAttribute('data-dsh-my-guard', 'styles')

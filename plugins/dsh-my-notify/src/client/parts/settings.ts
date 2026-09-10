@@ -1,6 +1,5 @@
-'use strict'
 // ── 设置页视图：配置可视化（issue #27，官方 slots 扩展点）──────────
-const SETTINGS_STYLES =
+const SETTINGS_STYLES: string =
   `
 .dsh-my-notify-settings{display:flex;flex-direction:column;gap:10px;padding:12px}
 .dsh-my-notify-section{display:flex;flex-direction:column;gap:8px}
@@ -27,8 +26,9 @@ const SETTINGS_STYLES =
 .dsh-my-notify-error{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}
 .dsh-my-notify-status{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
 ` + WEBHOOK_STYLES
+
 /** 开关行（布尔配置项）。 */
-function SwitchRow({ label, hint, on, onChange }) {
+function SwitchRow({ label, hint, on, onChange }: SwitchRowProps) {
   return createElement(
     'div',
     { className: 'dsh-my-notify-row' },
@@ -47,8 +47,9 @@ function SwitchRow({ label, hint, on, onChange }) {
     }),
   )
 }
+
 /** 输入行（文本/数字配置项）。 */
-function TextRow({ label, hint, value, onChange, type }) {
+function TextRow({ label, hint, value, onChange, type }: TextRowProps) {
   return createElement(
     'div',
     { className: 'dsh-my-notify-row' },
@@ -66,8 +67,9 @@ function TextRow({ label, hint, value, onChange, type }) {
     }),
   )
 }
+
 /** 音量滑杆行（0~1，issue #71：音量走 localStorage，不走 server config）。 */
-function VolumeRow({ label, hint, value, onChange }) {
+function VolumeRow({ label, hint, value, onChange }: VolumeRowProps) {
   return createElement(
     'div',
     { className: 'dsh-my-notify-row' },
@@ -90,8 +92,14 @@ function VolumeRow({ label, hint, value, onChange }) {
     createElement('div', { className: 'dsh-my-notify-range-value' }, `${Math.round(value * 100)}%`),
   )
 }
+
 /** 触发开关区块（end/ask/approval/subagentEnd + 音量）。 */
-function renderTriggersSection(draft, patch, volume, onVolumeChange) {
+function renderTriggersSection(
+  draft: NotifyConfig,
+  patch: PatchFn,
+  volume: number,
+  onVolumeChange: (v: number) => void,
+) {
   return createElement(
     'div',
     { className: 'dsh-my-notify-section' },
@@ -128,8 +136,9 @@ function renderTriggersSection(draft, patch, volume, onVolumeChange) {
     }),
   )
 }
+
 /** 高级区块（apiToken + dedupeMs）。 */
-function renderAdvancedSection(draft, patch) {
+function renderAdvancedSection(draft: NotifyConfig, patch: PatchFn) {
   return createElement(
     'div',
     { className: 'dsh-my-notify-section' },
@@ -149,8 +158,18 @@ function renderAdvancedSection(draft, patch) {
     }),
   )
 }
+
 /** 设置表单渲染（触发开关 + 出站 webhook + 高级项 + 保存动作）。 */
-function renderSettingsForm(draft, patch, save, saved, error, volume, onVolumeChange, webhookProps) {
+function renderSettingsForm(
+  draft: NotifyConfig,
+  patch: PatchFn,
+  save: () => void,
+  saved: boolean,
+  error: boolean,
+  volume: number,
+  onVolumeChange: (v: number) => void,
+  webhookProps: { failures: WebhookFailure[] },
+) {
   return createElement(
     'div',
     { className: 'dsh-my-notify-settings' },
@@ -170,8 +189,9 @@ function renderSettingsForm(draft, patch, save, saved, error, volume, onVolumeCh
     ),
   )
 }
+
 /** 保存配置（PUT /notify/api/config），成功/失败更新状态。 */
-function saveConfig(draft, setSaved, setError) {
+function saveConfig(draft: NotifyConfig, setSaved: SetBool, setError: SetBool): void {
   setSaved(false)
   setError(false)
   fetch('/notify/api/config', {
@@ -186,17 +206,19 @@ function saveConfig(draft, setSaved, setError) {
     })
     .catch(() => setError(true))
 }
+
 /** 设置页主视图：加载当前配置 → 表单编辑 → 保存（PUT /notify/api/config）。 */
 function NotifySettingsView() {
-  const [config, setConfig] = useState(null)
-  const [draft, setDraft] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [config, setConfig] = useState<NotifyConfig | null>(null)
+  const [draft, setDraft] = useState<NotifyConfig | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState(false)
   const [saved, setSaved] = useState(false)
   // issue #92: 出站 webhook 推送失败记录（GET /notify/api/webhooks）
-  const [failures, setFailures] = useState([])
+  const [failures, setFailures] = useState<WebhookFailure[]>([])
   // issue #71: 音量走 localStorage（纯 client 端偏好，不随 server config 保存）
   const [volume, setVolume] = useState(() => prefVolume())
+
   useEffect(() => {
     fetch('/notify/api/config')
       .then((res) => res.json())
@@ -211,6 +233,7 @@ function NotifySettingsView() {
         setError(true)
       })
   }, [])
+
   // 出站 webhook 失败记录（issue #92：面板可见）
   useEffect(() => {
     fetch('/notify/api/webhooks')
@@ -223,6 +246,7 @@ function NotifySettingsView() {
         // failures are best-effort; the section renders empty
       })
   }, [])
+
   if (loading) {
     return createElement(
       'div',
@@ -249,8 +273,9 @@ function NotifySettingsView() {
   }
   return renderSettingsForm(draft, patch, save, saved, error, volume, onVolumeChange, { failures })
 }
+
 /** 设置页 tab 注册（官方 slots 扩展点；服务缺省时静默跳过）。 */
-function attachSettingsTab(ctx) {
+function attachSettingsTab(ctx: ClientContext): void {
   // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer
   // 提供）的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true)
   // 在 strict 模式下会返回 undefined，注册代码会静默 return（设置页看不到

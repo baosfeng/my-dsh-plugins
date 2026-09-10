@@ -15,10 +15,10 @@
  *  - dsh-notify:toast   = '0' 关闭页面内 toast（默认开）
  *  - dsh-notify:volume  = 0~1 提示音音量（默认 0.6，issue #71）
  *
- * BUILD NOTE: 本文件是模板源码，不是 DSH 实际服务的文件。scripts/build.mjs
- * 将三个片段文件（lib/parts/i18n.js / render.js / stream.js，均为无
- * import/export 的纯函数声明文本）经下方 __PART_*__ 占位符（函数式
- * replaceAll，避免 $&/$1 特殊解释）拼接进 factory 作用域，写出
+ * BUILD NOTE: 本文件是模板源码，不是 DSH 实际服务的文件。scripts/build.mjs 先用
+ * tsconfig.client.json 把 src/client/parts/*.ts 编译成 lib/parts/*.js（无
+ * import/export 的纯函数声明文本，共享 factory 作用域），再经下方 __PART_*__
+ * 占位符（函数式 replaceAll，避免 $&/$1 特殊解释）拼接进 factory 作用域，写出
  * lib/client.js —— 即 DSH 实际服务的产物。产物必须提交；CI 只对产物执行
  * node --check（见 scripts/test-all.sh / .github/workflows/ci.yml）。
  *
@@ -33,8 +33,9 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
 
-    // ── i18n 文案与本地偏好（lib/parts/i18n.js）────────────────────────
-    // ── i18n（浏览器语言判定）──────────────────────────────────────────
+    // ── i18n 文案与本地偏好（src/client/parts/i18n.ts）──────────────────
+    'use strict'
+// ── i18n（浏览器语言判定）──────────────────────────────────────────
 function isZh() {
   try {
     const lang = (navigator.language || 'en').toLowerCase()
@@ -43,7 +44,6 @@ function isZh() {
     return false
   }
 }
-
 const strings = {
   kindEnd: () => (isZh() ? '会话已结束' : 'Session finished'),
   kindAsk: () => (isZh() ? '需要你回答' : 'Needs your answer'),
@@ -114,7 +114,6 @@ const strings = {
   loading: () => (isZh() ? '加载中…' : 'Loading…'),
   loadError: () => (isZh() ? '加载失败' : 'Load failed'),
 }
-
 // ── 本地开关（localStorage 覆盖，默认全开）──────────────────────────
 const LS = {
   notify: 'dsh-notify:notify',
@@ -122,7 +121,6 @@ const LS = {
   toast: 'dsh-notify:toast',
   volume: 'dsh-notify:volume',
 }
-
 function prefOn(key, def) {
   try {
     const v = window.localStorage.getItem(key)
@@ -132,7 +130,6 @@ function prefOn(key, def) {
     return def
   }
 }
-
 /** 提示音音量（0~1，默认 0.6；issue #71：0.18 太小听不见）。 */
 function prefVolume() {
   try {
@@ -475,12 +472,13 @@ const fileIconByExt = (ext, size = 14) => {
 
 
     // ── 通知渲染：内容构造 / 提示音 / toast / 系统通知 / 样式 ───────────
-    // ── 通知内容构造 ────────────────────────────────────────────────────
+    // （src/client/parts/render.ts）
+    'use strict'
+// ── 通知内容构造 ────────────────────────────────────────────────────
 function shortId(id) {
   if (typeof id !== 'string' || id === '') return ''
   return id.length > 8 ? id.slice(0, 8) : id
 }
-
 function kindLabel(kind) {
   switch (kind) {
     case 'end':
@@ -493,12 +491,10 @@ function kindLabel(kind) {
       return strings.kindRemote()
   }
 }
-
 function noticeTitle(notice) {
   if (typeof notice.title === 'string' && notice.title !== '') return notice.title
   return strings.untitled(shortId(notice.sessionId))
 }
-
 function noticeBody(notice) {
   const parts = []
   if (notice.kind !== 'remote') parts.push(kindLabel(notice.kind))
@@ -506,7 +502,6 @@ function noticeBody(notice) {
   if (typeof notice.note === 'string' && notice.note !== '') parts.push(notice.note)
   return parts.join(' · ')
 }
-
 function faviconOf() {
   try {
     const link = document.querySelector('link[rel="icon"]')
@@ -515,10 +510,8 @@ function faviconOf() {
     return ''
   }
 }
-
 // ── 提示音（Web Audio 合成短促滴声）────────────────────────────────
 let audioCtx = null
-
 function baseAudio() {
   const AC = window.AudioContext || window.webkitAudioContext
   if (typeof AC !== 'function') return null
@@ -531,7 +524,6 @@ function baseAudio() {
   }
   return audioCtx
 }
-
 function beep() {
   const ac = baseAudio()
   if (ac === null) return
@@ -557,7 +549,6 @@ function beep() {
       // autoplay policy / audio hardware: sound is best-effort
     })
 }
-
 /** 浏览器自动播放策略：首次用户交互后解锁 AudioContext。 */
 function armAudioUnlock() {
   if (typeof document === 'undefined') return () => {}
@@ -578,7 +569,6 @@ function armAudioUnlock() {
     document.removeEventListener('keydown', unlock)
   }
 }
-
 // ── 页面内 toast（通知权限关闭/被拒时的兜底）────────────────────────
 /** 共享图标是 React 元素树（icon.* 返回 createElement 树），toast 是命令式
  *  DOM 构建：把元素树转成 SVG DOM 节点复用同一套图标（stroke=currentColor
@@ -587,21 +577,17 @@ function svgAttrName(key) {
   if (key === 'viewBox') return 'viewBox'
   return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
-
 function isVoidNode(node) {
   return node === null || node === undefined || typeof node === 'boolean'
 }
-
 function isTextNode(node) {
   return typeof node === 'string' || typeof node === 'number'
 }
-
 function toChildList(children) {
   if (Array.isArray(children)) return children
   if (children === undefined || children === null) return []
   return [children]
 }
-
 function elementToDom(node) {
   if (isVoidNode(node)) return null
   if (isTextNode(node)) return document.createTextNode(String(node))
@@ -616,7 +602,6 @@ function elementToDom(node) {
   }
   return el
 }
-
 /** 通知类型 → 共享图标（stroke=currentColor，颜色语义由 CSS 类区分）。 */
 function kindIcon(kind) {
   switch (kind) {
@@ -630,7 +615,6 @@ function kindIcon(kind) {
       return icon.external(16)
   }
 }
-
 /** 通知类型 → 图标颜色语义类（end/remote=品牌色信息、ask=警告、approval=成功）。 */
 function kindIconClass(kind) {
   switch (kind) {
@@ -644,7 +628,6 @@ function kindIconClass(kind) {
       return 'dsh-my-notify-toast-icon-remote'
   }
 }
-
 function ensureToastBox() {
   let box = document.getElementById('dsh-my-notify-toast-box')
   if (box === null) {
@@ -655,7 +638,6 @@ function ensureToastBox() {
   }
   return box
 }
-
 function buildToastItem(notice) {
   const item = document.createElement('div')
   item.className = 'dsh-my-notify-toast'
@@ -700,7 +682,6 @@ function buildToastItem(notice) {
   // 只允许 textContent 渲染：note/远程 body 不受信任，禁止 innerHTML。
   return item
 }
-
 function attachToastEvents(item, onOpen) {
   let timer = null
   const dismiss = () => {
@@ -747,7 +728,6 @@ function attachToastEvents(item, onOpen) {
   }
   timer = setTimeout(dismiss, 6000)
 }
-
 function showToast(notice, onOpen) {
   if (!prefOn(LS.toast, true)) return
   if (typeof document === 'undefined') return
@@ -757,7 +737,6 @@ function showToast(notice, onOpen) {
   box.appendChild(item)
   if (box.children.length > 4) box.removeChild(box.firstChild)
 }
-
 function removeToastBox() {
   try {
     const box = document.getElementById('dsh-my-notify-toast-box')
@@ -766,7 +745,6 @@ function removeToastBox() {
     // ignore
   }
 }
-
 // ── 系统通知（Notification API）────────────────────────────────────
 function fireSystemNotification(notice, sessionId, openSession) {
   try {
@@ -789,7 +767,6 @@ function fireSystemNotification(notice, sessionId, openSession) {
     showToast(notice, openSession)
   }
 }
-
 // ── 样式（DSH 语义 token，随 activation 注入）───────────────────────
 const STYLES = `
 .dsh-my-notify-toast-box{position:fixed;right:16px;bottom:16px;z-index:3000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
@@ -823,7 +800,6 @@ const STYLES = `
 .dsh-my-notify-toast-out{opacity:0;transform:translateY(6px);transition:opacity 150ms var(--ds-ease-in-out),transform 150ms var(--ds-ease-in-out)}
 @keyframes dsh-my-notify-toast-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 `
-
 function injectStyles() {
   if (typeof document === 'undefined' || typeof document.head === 'undefined') return () => {}
   const style = document.createElement('style')
@@ -837,11 +813,12 @@ function injectStyles() {
 
 
     // ── SSE 客户端：通知分发 / EventSource 订阅 / 插件体 ─────────────────
-    // ── 通知分发（SSE 帧 → 渲染入口）───────────────────────────────────
+    // （src/client/parts/stream.ts）
+    'use strict'
+// ── 通知分发（SSE 帧 → 渲染入口）───────────────────────────────────
 function isNoticeKind(kind) {
   return kind === 'end' || kind === 'ask' || kind === 'approval' || kind === 'remote'
 }
-
 // ── 通知去重（issue #70）：本地窗口 + 跨标签页协调 ─────────────────
 // 服务端已按 kind:sessionId 在 dedupeMs（默认 3000ms）内去重；客户端再做
 // 双保险：① 本标签页内存窗口（快速路径 + localStorage 不可用时的兜底）；
@@ -858,7 +835,6 @@ function isNoticeKind(kind) {
 const CLIENT_DEDUPE_MS = 2000
 const DEDUPE_LS_PREFIX = 'dsh-notify:dedupe:'
 const localRecent = new Map() // `${kind}:${sessionId}` -> lastTime
-
 /** 锁内检查窗口并登记；返回 true = 本标签页应处理（调用方需已持有锁或降级）。 */
 function claimLocked(key, now) {
   try {
@@ -880,7 +856,6 @@ function claimLocked(key, now) {
   }
   return true
 }
-
 /** 通知帧是否在去重窗口内已处理（本标签页或其他标签页）；未处理则登记并返回 true。
  *  返回 Promise（Web Locks 互斥异步；无 Web Locks 时立即 resolve，接口统一）。 */
 function claimNotice(key) {
@@ -895,7 +870,6 @@ function claimNotice(key) {
   // 降级：无 Web Locks（旧浏览器）→ 原 localStorage 快速路径。
   return Promise.resolve(claimLocked(key, now))
 }
-
 function openSessionFor(sessionId, sessionsSvc) {
   return () => {
     try {
@@ -917,7 +891,6 @@ function openSessionFor(sessionId, sessionsSvc) {
     }
   }
 }
-
 function dispatchByPermission(notice, sessionId, openSession) {
   if (prefOn(LS.notify, true) && typeof window !== 'undefined' && typeof Notification !== 'undefined') {
     if (Notification.permission === 'granted') {
@@ -942,7 +915,6 @@ function dispatchByPermission(notice, sessionId, openSession) {
   }
   showToast(notice, openSession)
 }
-
 function handleNotice(notice, sessionsSvc) {
   if (notice === null || typeof notice !== 'object' || notice.type !== 'notice') return Promise.resolve()
   if (!isNoticeKind(notice.kind)) return Promise.resolve()
@@ -955,7 +927,6 @@ function handleNotice(notice, sessionsSvc) {
     if (prefOn(LS.sound, true)) beep()
   })
 }
-
 // ── SSE 订阅（server 事件 → 浏览器通知）─────────────────────────────
 function subscribeStream(sessionsSvc) {
   if (typeof window === 'undefined' || typeof EventSource !== 'function') return () => {}
@@ -973,7 +944,6 @@ function subscribeStream(sessionsSvc) {
     removeToastBox()
   }
 }
-
 // ── 插件体 ──────────────────────────────────────────────────────────
 exports.apply = function apply(ctx) {
   // strict=false：首屏加载时 sessions 服务的提供者 fiber 可能尚未 active，
@@ -981,27 +951,25 @@ exports.apply = function apply(ctx) {
   // 导致点击通知无法跳转会话（降级为仅聚焦窗口，直到 HMR/重启才恢复）；
   // 取到实例即可——openSessionFor 内部仍按 typeof open === 'function' 判空降级。
   const sessionsSvc = ctx.get('sessions', false)
-
   // 样式注入（与 fiber 同生命周期）。
   ctx.effect(() => injectStyles(), 'dsh-my-notify: styles')
-
   // 音频解锁：首次用户交互后 resume（浏览器自动播放策略）。
   ctx.effect(() => armAudioUnlock(), 'dsh-my-notify: audio unlock')
-
   // SSE 订阅：server 事件 → 浏览器通知。
   ctx.effect(() => subscribeStream(sessionsSvc), 'dsh-my-notify: event stream')
-
   // 设置页 tab（官方 slots 扩展点，issue #27 配置可视化）。
   attachSettingsTab(ctx)
 }
 
 
     // ── 设置页：出站 webhook 可视化编辑（issue #92）────────────────────
-    // 拼接顺序：webhook-settings.js 必须先于 settings.js——settings.js 顶层
-    // `SETTINGS_STYLES = ... + WEBHOOK_STYLES` 引用 webhook-settings.js 声明的
+    // （src/client/parts/webhook-settings.ts）
+    // 拼接顺序：webhook-settings.ts 必须先于 settings.ts——settings.ts 顶层
+    // `SETTINGS_STYLES = ... + WEBHOOK_STYLES` 引用 webhook-settings.ts 声明的
     // WEBHOOK_STYLES，顺序颠倒会 TDZ（#92 引入，0.3.6 客户端在真实浏览器
     // 挂载失败：Cannot access 'WEBHOOK_STYLES' before initialization）。
-    // ── 出站 Webhook 设置（issue #92）：列表 + 编辑表单 + 失败记录 ──────
+    'use strict'
+// ── 出站 Webhook 设置（issue #92）：列表 + 编辑表单 + 失败记录 ──────
 const WEBHOOK_STYLES = `
 .dsh-my-notify-webhook-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .dsh-my-notify-webhook-editor{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
@@ -1016,21 +984,18 @@ const WEBHOOK_STYLES = `
 .dsh-my-notify-webhook-failure-time{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
 .dsh-my-notify-webhook-failure-msg{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}
 `
-
 const CHANNEL_OPTIONS = [
   { value: 'wecom', label: () => strings.channelWecom() },
   { value: 'feishu', label: () => strings.channelFeishu() },
   { value: 'dingtalk', label: () => strings.channelDingtalk() },
   { value: 'generic', label: () => strings.channelGeneric() },
 ]
-
 const EVENT_OPTIONS = [
   { value: 'end', label: () => strings.eventEnd() },
   { value: 'ask', label: () => strings.eventAsk() },
   { value: 'approval', label: () => strings.eventApproval() },
   { value: 'remote', label: () => strings.eventRemote() },
 ]
-
 /** 空 webhook 模板（添加时使用）。 */
 function emptyWebhook() {
   return {
@@ -1044,13 +1009,11 @@ function emptyWebhook() {
     template: '',
   }
 }
-
 /** 渠道中文标签。 */
 function channelLabel(channel) {
   const option = CHANNEL_OPTIONS.find((o) => o.value === channel)
   return option !== undefined ? option.label() : channel
 }
-
 /** 事件选择中文标签（空数组 = 全部）。 */
 function eventsLabel(events) {
   if (!Array.isArray(events) || events.length === 0) return strings.eventAll()
@@ -1061,7 +1024,6 @@ function eventsLabel(events) {
     })
     .join(' / ')
 }
-
 /** 消息类型选项（按渠道：wecom/dingtalk → text/markdown，feishu → text/post）。 */
 function msgTypeOptions(channel) {
   if (channel === 'feishu') {
@@ -1075,7 +1037,6 @@ function msgTypeOptions(channel) {
     { value: 'markdown', label: () => strings.msgTypeMarkdown() },
   ]
 }
-
 /** 单条 webhook 显示行：名称/渠道/事件 + 启用开关 + 编辑/删除。 */
 function WebhookRow({ webhook, onEdit, onDelete, onToggle }) {
   const enabled = webhook.enabled !== false
@@ -1107,7 +1068,6 @@ function WebhookRow({ webhook, onEdit, onDelete, onToggle }) {
     ),
   )
 }
-
 /** 编辑表单字段容器（label + control）。 */
 function editorField(label, control) {
   return createElement(
@@ -1117,7 +1077,6 @@ function editorField(label, control) {
     control,
   )
 }
-
 /** 文本输入控件。 */
 function textInput(value, placeholder, onChange) {
   return createElement('input', {
@@ -1127,7 +1086,6 @@ function textInput(value, placeholder, onChange) {
     onChange: (event) => onChange(event.target.value),
   })
 }
-
 /** 下拉选择控件。 */
 function selectInput(value, options, onChange) {
   return createElement(
@@ -1136,7 +1094,6 @@ function selectInput(value, options, onChange) {
     options.map((option) => createElement('option', { key: option.value, value: option.value }, option.label())),
   )
 }
-
 /** 编辑表单：名称/渠道/URL/secret/事件多选/消息类型 + 保存/取消。 */
 function WebhookEditor({ draft, onChange, onSave, onCancel }) {
   const patch = (key, value) => onChange({ ...draft, [key]: value })
@@ -1204,7 +1161,6 @@ function WebhookEditor({ draft, onChange, onSave, onCancel }) {
     ),
   )
 }
-
 /** 失败记录条目。 */
 function FailureRow({ failure }) {
   const time = new Date(failure.time).toLocaleString()
@@ -1219,7 +1175,6 @@ function FailureRow({ failure }) {
     createElement('div', { className: 'dsh-my-notify-webhook-failure-msg' }, failure.error),
   )
 }
-
 /** 出站 Webhook 区块：列表 + 添加/编辑 + 失败记录。 */
 function WebhookSection({ webhooks, failures, onPatchWebhooks }) {
   const [editing, setEditing] = useState(-1)
@@ -1283,7 +1238,9 @@ function WebhookSection({ webhooks, failures, onPatchWebhooks }) {
 
 
     // ── 设置页视图：配置可视化（issue #27，官方 slots 扩展点）───────────
-    // ── 设置页视图：配置可视化（issue #27，官方 slots 扩展点）──────────
+    // （src/client/parts/settings.ts）
+    'use strict'
+// ── 设置页视图：配置可视化（issue #27，官方 slots 扩展点）──────────
 const SETTINGS_STYLES =
   `
 .dsh-my-notify-settings{display:flex;flex-direction:column;gap:10px;padding:12px}
@@ -1311,7 +1268,6 @@ const SETTINGS_STYLES =
 .dsh-my-notify-error{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}
 .dsh-my-notify-status{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
 ` + WEBHOOK_STYLES
-
 /** 开关行（布尔配置项）。 */
 function SwitchRow({ label, hint, on, onChange }) {
   return createElement(
@@ -1332,7 +1288,6 @@ function SwitchRow({ label, hint, on, onChange }) {
     }),
   )
 }
-
 /** 输入行（文本/数字配置项）。 */
 function TextRow({ label, hint, value, onChange, type }) {
   return createElement(
@@ -1352,7 +1307,6 @@ function TextRow({ label, hint, value, onChange, type }) {
     }),
   )
 }
-
 /** 音量滑杆行（0~1，issue #71：音量走 localStorage，不走 server config）。 */
 function VolumeRow({ label, hint, value, onChange }) {
   return createElement(
@@ -1377,7 +1331,6 @@ function VolumeRow({ label, hint, value, onChange }) {
     createElement('div', { className: 'dsh-my-notify-range-value' }, `${Math.round(value * 100)}%`),
   )
 }
-
 /** 触发开关区块（end/ask/approval/subagentEnd + 音量）。 */
 function renderTriggersSection(draft, patch, volume, onVolumeChange) {
   return createElement(
@@ -1416,7 +1369,6 @@ function renderTriggersSection(draft, patch, volume, onVolumeChange) {
     }),
   )
 }
-
 /** 高级区块（apiToken + dedupeMs）。 */
 function renderAdvancedSection(draft, patch) {
   return createElement(
@@ -1438,7 +1390,6 @@ function renderAdvancedSection(draft, patch) {
     }),
   )
 }
-
 /** 设置表单渲染（触发开关 + 出站 webhook + 高级项 + 保存动作）。 */
 function renderSettingsForm(draft, patch, save, saved, error, volume, onVolumeChange, webhookProps) {
   return createElement(
@@ -1460,7 +1411,6 @@ function renderSettingsForm(draft, patch, save, saved, error, volume, onVolumeCh
     ),
   )
 }
-
 /** 保存配置（PUT /notify/api/config），成功/失败更新状态。 */
 function saveConfig(draft, setSaved, setError) {
   setSaved(false)
@@ -1477,7 +1427,6 @@ function saveConfig(draft, setSaved, setError) {
     })
     .catch(() => setError(true))
 }
-
 /** 设置页主视图：加载当前配置 → 表单编辑 → 保存（PUT /notify/api/config）。 */
 function NotifySettingsView() {
   const [config, setConfig] = useState(null)
@@ -1489,7 +1438,6 @@ function NotifySettingsView() {
   const [failures, setFailures] = useState([])
   // issue #71: 音量走 localStorage（纯 client 端偏好，不随 server config 保存）
   const [volume, setVolume] = useState(() => prefVolume())
-
   useEffect(() => {
     fetch('/notify/api/config')
       .then((res) => res.json())
@@ -1504,7 +1452,6 @@ function NotifySettingsView() {
         setError(true)
       })
   }, [])
-
   // 出站 webhook 失败记录（issue #92：面板可见）
   useEffect(() => {
     fetch('/notify/api/webhooks')
@@ -1517,7 +1464,6 @@ function NotifySettingsView() {
         // failures are best-effort; the section renders empty
       })
   }, [])
-
   if (loading) {
     return createElement(
       'div',
@@ -1544,7 +1490,6 @@ function NotifySettingsView() {
   }
   return renderSettingsForm(draft, patch, save, saved, error, volume, onVolumeChange, { failures })
 }
-
 /** 设置页 tab 注册（官方 slots 扩展点；服务缺省时静默跳过）。 */
 function attachSettingsTab(ctx) {
   // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer

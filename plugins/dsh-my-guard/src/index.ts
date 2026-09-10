@@ -34,6 +34,7 @@ import { compileCustomRules, rawRulesOf } from './custom-rules.js'
 import { createNotifier } from './notify.js'
 import { DEFAULT_NOTIFY_COOLDOWN_MS } from './constants.js'
 import { currentProfile, patchFileOf, writePatchConfig } from 'dsh-shared'
+import type { ConfigDict } from 'dsh-shared'
 import type { DshContext, GuardOptions, GuardMode, CompiledRule } from './types.js'
 
 export const name = 'dsh-my-guard'
@@ -76,7 +77,13 @@ export function apply(ctx: DshContext, config?: Config): void {
   })
 
   // 统一记录出口：入库 + 高严重级尝试通知（通知异步、失败静默）。
-  const recordAlert = (alert: { type: string; sessionId?: string; severity: string; message: string; detail?: Record<string, unknown> }) => {
+  const recordAlert = (alert: {
+    type: string
+    sessionId?: string
+    severity: string
+    message: string
+    detail?: Record<string, unknown>
+  }) => {
     const item = store.record(alert)
     notifier.notify(alert)
     return item
@@ -97,7 +104,7 @@ export function apply(ctx: DshContext, config?: Config): void {
       notifyBaseUrl: options.notifyBaseUrl,
     }
     // 持久化到 profile patch
-    await writePatchConfig(patchFileOf(currentProfile()), 'guard', patchConfigOf(merged))
+    await writePatchConfig(patchFileOf(currentProfile()), 'guard', patchConfigOf(merged) as ConfigDict)
     Object.assign(options, merged)
     const dropped = next.customRules === undefined ? 0 : rawCountOf(next.customRules) - customRules.length
     return {

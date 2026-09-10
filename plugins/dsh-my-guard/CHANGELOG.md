@@ -28,6 +28,11 @@
 - feat(guard): 高严重级告警经 dsh-my-notify 推送通知（可选 `notifyEnabled` 开关）+ 同类型告警冷却（`notifyCooldownMs`）防刷屏（issue #88）
 - feat(guard): 面板「规则测试」入口——输入命令实时预览命中规则与合并决策（issue #88）
 
+### 变更
+
+- **refactor(client): client 端迁移到 TypeScript**（TS升级规范 形态 A「parts 拼接」）——手写 JS 片段 `lib/parts/{i18n,panel,states,rules-panel,styles}.js` 迁到 `src/client/parts/*.ts`（含 `src/client/globals.d.ts` DSH 运行时最小契约：React hooks / `icon` / CJS exports / ClientContext / 组件 props 与告警-规则数据契约），新增 `tsconfig.client.json`（strict:false，outDir `lib/.client-build`）；`scripts/build.mjs` 改为 tsc 编译 → 发布 `lib/parts/*.js` → prettier → 按 `__PART_*__` 占位符函数式拼接 → 写 `lib/client.js` → 清理临时目录；`npm run typecheck` 追加 client 检查。**行为零变化**：新产物与迁移前手写产物在「去空行 + 去 `'use strict'` + 去行首缩进」归一化后逐字节相同（`'use strict'` 位于 factory 体中部、非 directive prologue，语义无影响）。
+- **test(client): 补 client 端防回归测试 `test/client-contract.mjs`（27 例）**——此前 client 端零覆盖（9 个测试文件无一引用 client）。含：产物同步契约（`lib/client.js` == `client.src.js` 模板 + `lib/parts/*.js` 拼接、零未解析占位符、每个片段都有 `src/client/parts/*.ts` 且顶层声明一致、片段无 import/export、拼接顺序锁定）；真实产物上的渲染与交互（页签注册 + 样式注入/teardown、告警行徽标与详情、确认与重试、轮询可见性、投毒扫描/注入检测/规则测试三类工具的空输入拦截与请求回传体、规则面板增/删/改与保存）；i18n zh/en 与回退；样式表契约（语义 token/关键选择器/视觉类别族/keyframes/无 `!important`/无跨插件前缀）。已做 10 项变异验证（改产物、删 TS 源、加 export、改声明、换顺序、5 类行为漂移）全部被捕获。
+
 ## [0.1.2] - 2026-09-01
 
 ### 变更

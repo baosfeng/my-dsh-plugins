@@ -16,7 +16,14 @@
  *  - 自定义规则自身的 mode（缺省继承全局 mode）与 severity 参与该合并。
  */
 import { GUARD_MODES, SEVERITY_LEVELS, DESTRUCTIVE_PATTERNS } from './constants.js'
-import type { GuardMode, Severity, CompiledRule, DestructivePattern, DestructiveDecision, GuardOptions } from './types.js'
+import type {
+  GuardMode,
+  Severity,
+  CompiledRule,
+  DestructivePattern,
+  DestructiveDecision,
+  GuardOptions,
+} from './types.js'
 
 /** 模式严格度排序（越大越严格）。 */
 const MODE_RANK: Record<string, number> = { observe: 0, ask: 1, deny: 2 }
@@ -95,7 +102,9 @@ export function compileCustomRules(input: unknown): CompiledRule[] {
 }
 
 /** 剥离 regex 等运行时字段，回退为可持久化的原始形态。 */
-export function rawRulesOf(compiledRules: unknown): Array<{ id: string; pattern: string; mode: string; severity: string; description: string }> {
+export function rawRulesOf(
+  compiledRules: unknown,
+): Array<{ id: string; pattern: string; mode: string; severity: string; description: string }> {
   if (!Array.isArray(compiledRules) || compiledRules.length === 0) return []
   return (compiledRules as CompiledRule[]).map((rule) => ({
     id: rule.id,
@@ -144,7 +153,7 @@ export function decideDestructive(command: string, options: GuardOptions | undef
 function buildMatched(
   builtinHit: DestructivePattern | null,
   customHits: CompiledRule[],
-  options: GuardOptions | undefined
+  options: GuardOptions | undefined,
 ): Array<{ rule: DestructivePattern | CompiledRule; mode: GuardMode; severity: Severity }> {
   const matched: Array<{ rule: DestructivePattern | CompiledRule; mode: GuardMode; severity: Severity }> = []
   if (builtinHit !== null) {
@@ -158,7 +167,9 @@ function buildMatched(
 }
 
 /** 最严格 mode + 最严重 severity（deny > ask > observe；high > medium > low）。 */
-function mostRestrictive(matched: Array<{ rule: DestructivePattern | CompiledRule; mode: GuardMode; severity: Severity }>): { mode: GuardMode; severity: Severity } {
+function mostRestrictive(
+  matched: Array<{ rule: DestructivePattern | CompiledRule; mode: GuardMode; severity: Severity }>,
+): { mode: GuardMode; severity: Severity } {
   let mode: GuardMode = matched[0].mode
   let severity: Severity = matched[0].severity
   for (const entry of matched) {

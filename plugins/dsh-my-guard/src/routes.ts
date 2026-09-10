@@ -32,7 +32,7 @@ export function registerGuardRoutes(
   ctx: DshContext,
   store: AlertStore,
   options: GuardOptions,
-  control?: SaveControl
+  control?: SaveControl,
 ): void {
   const webRuntime = ctx.get ? ctx.get<{ trustedHosts?: string[] }>('webRuntime') : undefined
   const trustedHosts =
@@ -74,7 +74,7 @@ function apiHandler(
   fence: (request: ServerRequest) => boolean,
   store: AlertStore,
   options: GuardOptions,
-  control?: SaveControl
+  control?: SaveControl,
 ) {
   return async (request: ServerRequest, response: ServerResponse): Promise<void> => {
     if (!fence(request)) {
@@ -111,7 +111,7 @@ async function dispatchMethod(
   url: URL,
   store: AlertStore,
   options: GuardOptions,
-  control?: SaveControl
+  control?: SaveControl,
 ): Promise<boolean> {
   if (isMethod(method, request, 'status', 'GET')) {
     writeJson(response, 200, { ok: true, value: statusValue(store, options) })
@@ -296,7 +296,11 @@ function limitOf(url: URL): number {
 /** 读取 JSON 请求体。 */
 async function readJsonBody(request: ServerRequest): Promise<Record<string, unknown>> {
   const chunks: string[] = []
-  const req = request as unknown as { [key: string]: unknown; [Symbol.asyncIterator]?: () => AsyncIterator<string>; on?: (event: string, handler: (chunk: Buffer) => void) => void }
+  const req = request as unknown as {
+    [key: string]: unknown
+    [Symbol.asyncIterator]?: () => AsyncIterator<string>
+    on?: (event: string, handler: (chunk: Buffer) => void) => void
+  }
   // 支持 async iterator（测试 mock）或 Node.js 可读流
   if (typeof req[Symbol.asyncIterator] === 'function') {
     const iterator = req[Symbol.asyncIterator]!()

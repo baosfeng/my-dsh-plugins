@@ -1,20 +1,22 @@
-'use strict'
 // ── 自定义护栏规则 + 告警通知（issue #88）─────────────────────────
 // 依赖：strings（i18n）、icon（共享图标）、apiJson/severityLabel（panel.js）、
 // busyState/cleanFeedback/errorFeedback（states.js）；本片段在 STATES 之后拼接。
+
 /** 模式 → 中文标签。 */
-function modeLabel(mode) {
+function modeLabel(mode: string): string {
   if (mode === 'ask') return strings.modeAsk()
   if (mode === 'deny') return strings.modeDeny()
   return strings.modeObserve()
 }
+
 /** 规则来源 → 中文标签。 */
-function ruleSourceLabel(source) {
+function ruleSourceLabel(source: string): string {
   return strings.ruleHitSource(source)
 }
+
 /** 单条自定义规则行（pattern + mode + severity + description + 删除）。 */
-function RuleEntry({ rule, index, onChange, onRemove }) {
-  const update = (patch) => onChange(index, patch)
+function RuleEntry({ rule, index, onChange, onRemove }: GuardRuleEntryProps) {
+  const update = (patch: Partial<GuardCustomRule>) => onChange(index, patch)
   return createElement(
     'div',
     { className: 'dsh-my-guard-rule-row' },
@@ -67,8 +69,9 @@ function RuleEntry({ rule, index, onChange, onRemove }) {
     ),
   )
 }
+
 /** 规则测试结果：命中列表（来源/模式/严重级）+ 合并决策。 */
-function RuleTestResult({ result }) {
+function RuleTestResult({ result }: GuardRuleTestResultProps) {
   const hits = result?.hits || []
   const decision = result?.decision
   return createElement(
@@ -99,10 +102,11 @@ function RuleTestResult({ result }) {
         ),
   )
 }
+
 /** 规则测试：输入命令 → 实时预览命中规则 + 合并决策。 */
 function RuleTest() {
   const [command, setCommand] = useState('')
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState<GuardRuleTestResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const run = async () => {
@@ -163,14 +167,16 @@ function RuleTest() {
     result !== null ? createElement(RuleTestResult, { result }) : null,
   )
 }
+
 /** 自定义护栏规则设置：列表编辑 + 保存（持久化 profile patch）+ 通知开关。 */
-function RuleSettings() {
-  const [customRules, setCustomRules] = useState([])
+function RuleSettings(): unknown {
+  const [customRules, setCustomRules] = useState<GuardCustomRule[]>([])
   const [notifyEnabled, setNotifyEnabled] = useState(false)
   const [notifyCooldownSec, setNotifyCooldownSec] = useState(60)
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [error, setError] = useState('')
+
   useEffect(() => {
     let alive = true
     void apiJson('/guard/api/rules')
@@ -187,12 +193,14 @@ function RuleSettings() {
       alive = false
     }
   }, [])
-  const changeRule = (index, patch) =>
+
+  const changeRule = (index: number, patch: Partial<GuardCustomRule>) =>
     setCustomRules((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)))
   const addRule = () =>
     setCustomRules((prev) => [...prev, { pattern: '', mode: 'observe', severity: 'medium', description: '' }])
-  const removeRule = (index) => setCustomRules((prev) => prev.filter((_, i) => i !== index))
-  const save = async () => {
+  const removeRule = (index: number) => setCustomRules((prev) => prev.filter((_, i) => i !== index))
+
+  const save = async (): Promise<void> => {
     setBusy(true)
     setFeedback('')
     setError('')
@@ -212,6 +220,7 @@ function RuleSettings() {
       setBusy(false)
     }
   }
+
   return ruleSettingsView({
     customRules,
     notifyEnabled,
@@ -227,7 +236,8 @@ function RuleSettings() {
     setNotifyCooldownSec,
   })
 }
-function ruleSettingsView(view) {
+
+function ruleSettingsView(view: GuardRuleSettingsView): unknown {
   return createElement(
     'div',
     { className: 'dsh-my-guard-section dsh-my-guard-rules-section' },

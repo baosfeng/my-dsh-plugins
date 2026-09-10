@@ -1,16 +1,17 @@
-'use strict'
 // ── 安全护栏面板 ────────────────────────────────────────────────────
 const GUARD_POLL_MS = 5000
+
 /** 请求插件 API（非 2xx 抛错；返回响应 JSON 的 value 字段）。 */
-function apiJson(path, options) {
+function apiJson(path: string, options?: RequestInit): Promise<any> {
   return fetch(path, options).then(async (res) => {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`)
     return data.value
   })
 }
+
 /** 时间戳 → HH:MM:SS。 */
-function timeText(time) {
+function timeText(time: number | string): string {
   try {
     const date = new Date(time)
     const pad = (n) => String(n).padStart(2, '0')
@@ -19,33 +20,38 @@ function timeText(time) {
     return ''
   }
 }
+
 /** 告警类型 → 中文标签。 */
-function alertTypeLabel(type) {
+function alertTypeLabel(type: string): string {
   if (type === 'destructive') return strings.typeDestructive()
   if (type === 'poison') return strings.typePoison()
   if (type === 'injection') return strings.typeInjection()
   return type
 }
+
 /** 严重度 → 中文标签。 */
-function severityLabel(severity) {
+function severityLabel(severity: string): string {
   if (severity === 'high') return strings.sevHigh()
   if (severity === 'medium') return strings.sevMedium()
   return strings.sevLow()
 }
+
 /** 告警类型 → 视觉类别（类型图标/徽章/颜色共用，语义一致）：
  *  destructive=danger（trash 图标）/ poison=warn（alert 图标）/ injection=info（alert 图标）。 */
-function alertKind(alert) {
+function alertKind(alert: GuardAlert): string {
   if (alert.type === 'destructive') return 'danger'
   if (alert.type === 'poison') return 'warn'
   return 'info'
 }
+
 /** 告警类型 → 类型图标（共享线性图标集，stroke=currentColor）。 */
-function alertTypeIcon(alert) {
+function alertTypeIcon(alert: GuardAlert): unknown {
   if (alert.type === 'destructive') return icon.trash(15)
   return icon.alert(15)
 }
+
 /** 告警 meta 行：命令/文件/规则 id + 会话短标识。 */
-function AlertMeta({ alert }) {
+function AlertMeta({ alert }: GuardAlertProps) {
   const detail = alert.detail || {}
   const meta =
     detail.command !== undefined
@@ -57,8 +63,9 @@ function AlertMeta({ alert }) {
           : ''
   return meta !== '' ? createElement('div', { className: 'dsh-my-guard-alert-meta' }, meta) : null
 }
+
 /** 告警详情行：规则说明 + 命中原文（可读性）。 */
-function AlertDetails({ alert }) {
+function AlertDetails({ alert }: GuardAlertProps) {
   const detail = alert.detail || {}
   return createElement(
     'div',
@@ -72,11 +79,12 @@ function AlertDetails({ alert }) {
       : null,
   )
 }
+
 /** 单条告警行：类型图标 + 类型徽章 + 严重度徽章 + 时间 + 消息 + 详情 + 确认操作。
  *  已确认告警弱化显示（已处理=不再打扰），确认按钮带 check 图标与 aria-label。
  *  提示注入告警补：规则说明（explain）+ 命中原文（snippet）+ 会话 id +
  *  「如为误报可确认」提示——之前只显示"规则 <id>"，用户看不懂告警含义。 */
-function AlertRow({ alert, onConfirm }) {
+function AlertRow({ alert, onConfirm }: GuardAlertRowProps) {
   const kind = alertKind(alert)
   return createElement(
     'div',
@@ -120,12 +128,14 @@ function AlertRow({ alert, onConfirm }) {
         ),
   )
 }
+
 /** 会话 id 短显示（UUID 取前 8 位）。 */
-function shortSessionId(sessionId) {
+function shortSessionId(sessionId?: string): string {
   return typeof sessionId === 'string' && sessionId.length > 8 ? sessionId.slice(0, 8) + '…' : sessionId || ''
 }
+
 /** 拉取告警列表。 */
-async function loadAlerts(setters) {
+async function loadAlerts(setters: GuardAlertSetters): Promise<void> {
   try {
     setters.setAlerts(await apiJson('/guard/api/alerts?limit=200'))
     setters.setError('')
@@ -135,8 +145,9 @@ async function loadAlerts(setters) {
     setters.setLoading(false)
   }
 }
+
 /** 确认告警（用户确认机制）；成功后行内反馈「已确认」，失败静默（轮询恢复真实状态）。 */
-async function confirmAlert(id, setAlerts) {
+async function confirmAlert(id: number, setAlerts: GuardAlertSetters['setAlerts']): Promise<void> {
   try {
     await apiJson('/guard/api/alerts/confirm', {
       method: 'POST',
@@ -148,8 +159,9 @@ async function confirmAlert(id, setAlerts) {
     // 确认失败静默（下次轮询恢复真实状态）
   }
 }
+
 /** 扫描结果展示（发现项列表；无发现 = 绿色 check 反馈）。 */
-function ScanResult({ result }) {
+function ScanResult({ result }: GuardScanResultProps) {
   const findings = result?.findings || []
   if (findings.length === 0) return cleanFeedback(strings.scanClean())
   return createElement(
@@ -159,8 +171,9 @@ function ScanResult({ result }) {
     findings.map((f, index) => issueRow(f, index, `${f.file} · ${f.pattern}`)),
   )
 }
+
 /** 执行投毒扫描（target 校验 + 请求 + 状态管理）。 */
-async function runScan(target, setters) {
+async function runScan(target: string, setters: GuardScanSetters): Promise<void> {
   const value = target.trim()
   if (value === '') {
     setters.setError(strings.noTarget())
@@ -183,10 +196,11 @@ async function runScan(target, setters) {
     setters.setBusy(false)
   }
 }
+
 /** 投毒扫描工具：输入框 + search 图标按钮 → 扫描 → 显示发现项（busy 禁用 + 扫描中状态）。 */
 function ScanTool() {
   const [target, setTarget] = useState('')
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState<GuardScanResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const run = () => runScan(target, { setResult, setBusy, setError })
@@ -224,8 +238,9 @@ function ScanTool() {
     result !== null ? createElement(ScanResult, { result }) : null,
   )
 }
+
 /** 注入检测结果展示（命中规则列表；无命中 = 绿色 check 反馈）。 */
-function PromptResult({ hits }) {
+function PromptResult({ hits }: GuardPromptResultProps) {
   if (hits.length === 0) return cleanFeedback(strings.checkClean())
   return createElement(
     'div',
@@ -234,10 +249,11 @@ function PromptResult({ hits }) {
     hits.map((h, index) => issueRow(h, index, h.id)),
   )
 }
+
 /** 提示注入检测工具：textarea + check 图标按钮 → 检测 → 显示命中规则（busy 禁用 + 检测中状态）。 */
 function PromptTool() {
   const [text, setText] = useState('')
-  const [hits, setHits] = useState(null)
+  const [hits, setHits] = useState<GuardRuleHit[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const run = async () => {
@@ -293,13 +309,15 @@ function PromptTool() {
     hits !== null ? createElement(PromptResult, { hits }) : null,
   )
 }
+
 /** 安全护栏主面板：告警列表（标题 + 刷新）+ 扫描工具 + 注入检测工具（可见时轮询）。 */
-function GuardPanel(props) {
+function GuardPanel(props: GuardPanelProps) {
   const visible = props.visible !== false
-  const [alerts, setAlerts] = useState([])
+  const [alerts, setAlerts] = useState<GuardAlert[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [reloadTick, setReloadTick] = useState(0)
+
   useEffect(() => {
     if (!visible) return undefined
     let alive = true
@@ -319,6 +337,7 @@ function GuardPanel(props) {
     setLoading(true)
     setReloadTick((tick) => tick + 1)
   }
+
   const rows = alerts.map((alert) =>
     createElement(AlertRow, {
       key: alert.id,
@@ -326,6 +345,7 @@ function GuardPanel(props) {
       onConfirm: (id) => void confirmAlert(id, setAlerts),
     }),
   )
+
   return createElement(
     'div',
     { className: 'dsh-my-guard-panel' },

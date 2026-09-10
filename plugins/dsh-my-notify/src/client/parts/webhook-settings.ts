@@ -1,6 +1,5 @@
-'use strict'
 // ── 出站 Webhook 设置（issue #92）：列表 + 编辑表单 + 失败记录 ──────
-const WEBHOOK_STYLES = `
+const WEBHOOK_STYLES: string = `
 .dsh-my-notify-webhook-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .dsh-my-notify-webhook-editor{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .dsh-my-notify-webhook-field{display:flex;flex-direction:column;gap:4px}
@@ -14,20 +13,23 @@ const WEBHOOK_STYLES = `
 .dsh-my-notify-webhook-failure-time{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
 .dsh-my-notify-webhook-failure-msg{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}
 `
-const CHANNEL_OPTIONS = [
+
+const CHANNEL_OPTIONS: SelectOption[] = [
   { value: 'wecom', label: () => strings.channelWecom() },
   { value: 'feishu', label: () => strings.channelFeishu() },
   { value: 'dingtalk', label: () => strings.channelDingtalk() },
   { value: 'generic', label: () => strings.channelGeneric() },
 ]
-const EVENT_OPTIONS = [
+
+const EVENT_OPTIONS: SelectOption[] = [
   { value: 'end', label: () => strings.eventEnd() },
   { value: 'ask', label: () => strings.eventAsk() },
   { value: 'approval', label: () => strings.eventApproval() },
   { value: 'remote', label: () => strings.eventRemote() },
 ]
+
 /** 空 webhook 模板（添加时使用）。 */
-function emptyWebhook() {
+function emptyWebhook(): WebhookEntry {
   return {
     name: '',
     channel: 'wecom',
@@ -39,13 +41,15 @@ function emptyWebhook() {
     template: '',
   }
 }
+
 /** 渠道中文标签。 */
-function channelLabel(channel) {
+function channelLabel(channel: string): string {
   const option = CHANNEL_OPTIONS.find((o) => o.value === channel)
   return option !== undefined ? option.label() : channel
 }
+
 /** 事件选择中文标签（空数组 = 全部）。 */
-function eventsLabel(events) {
+function eventsLabel(events: string[]): string {
   if (!Array.isArray(events) || events.length === 0) return strings.eventAll()
   return events
     .map((event) => {
@@ -54,8 +58,9 @@ function eventsLabel(events) {
     })
     .join(' / ')
 }
+
 /** 消息类型选项（按渠道：wecom/dingtalk → text/markdown，feishu → text/post）。 */
-function msgTypeOptions(channel) {
+function msgTypeOptions(channel: string): SelectOption[] {
   if (channel === 'feishu') {
     return [
       { value: 'text', label: () => strings.msgTypeText() },
@@ -67,8 +72,9 @@ function msgTypeOptions(channel) {
     { value: 'markdown', label: () => strings.msgTypeMarkdown() },
   ]
 }
+
 /** 单条 webhook 显示行：名称/渠道/事件 + 启用开关 + 编辑/删除。 */
-function WebhookRow({ webhook, onEdit, onDelete, onToggle }) {
+function WebhookRow({ webhook, onEdit, onDelete, onToggle }: WebhookRowProps) {
   const enabled = webhook.enabled !== false
   return createElement(
     'div',
@@ -98,8 +104,9 @@ function WebhookRow({ webhook, onEdit, onDelete, onToggle }) {
     ),
   )
 }
+
 /** 编辑表单字段容器（label + control）。 */
-function editorField(label, control) {
+function editorField(label: string, control: unknown): unknown {
   return createElement(
     'div',
     { className: 'dsh-my-notify-webhook-field' },
@@ -107,8 +114,9 @@ function editorField(label, control) {
     control,
   )
 }
+
 /** 文本输入控件。 */
-function textInput(value, placeholder, onChange) {
+function textInput(value: string, placeholder: string, onChange: (v: string) => void): unknown {
   return createElement('input', {
     className: 'dsh-my-notify-webhook-input',
     value,
@@ -116,16 +124,18 @@ function textInput(value, placeholder, onChange) {
     onChange: (event) => onChange(event.target.value),
   })
 }
+
 /** 下拉选择控件。 */
-function selectInput(value, options, onChange) {
+function selectInput(value: string, options: SelectOption[], onChange: (v: string) => void): unknown {
   return createElement(
     'select',
     { className: 'dsh-my-notify-webhook-select', value, onChange: (event) => onChange(event.target.value) },
     options.map((option) => createElement('option', { key: option.value, value: option.value }, option.label())),
   )
 }
+
 /** 编辑表单：名称/渠道/URL/secret/事件多选/消息类型 + 保存/取消。 */
-function WebhookEditor({ draft, onChange, onSave, onCancel }) {
+function WebhookEditor({ draft, onChange, onSave, onCancel }: WebhookEditorProps) {
   const patch = (key, value) => onChange({ ...draft, [key]: value })
   const toggleEvent = (event) => {
     const events = draft.events.includes(event) ? draft.events.filter((e) => e !== event) : [...draft.events, event]
@@ -191,8 +201,9 @@ function WebhookEditor({ draft, onChange, onSave, onCancel }) {
     ),
   )
 }
+
 /** 失败记录条目。 */
-function FailureRow({ failure }) {
+function FailureRow({ failure }: { failure: WebhookFailure }) {
   const time = new Date(failure.time).toLocaleString()
   return createElement(
     'div',
@@ -205,10 +216,11 @@ function FailureRow({ failure }) {
     createElement('div', { className: 'dsh-my-notify-webhook-failure-msg' }, failure.error),
   )
 }
+
 /** 出站 Webhook 区块：列表 + 添加/编辑 + 失败记录。 */
-function WebhookSection({ webhooks, failures, onPatchWebhooks }) {
-  const [editing, setEditing] = useState(-1)
-  const [editorDraft, setEditorDraft] = useState(null)
+function WebhookSection({ webhooks, failures, onPatchWebhooks }: WebhookSectionProps) {
+  const [editing, setEditing] = useState<number>(-1)
+  const [editorDraft, setEditorDraft] = useState<WebhookEntry | null>(null)
   const startAdd = () => {
     setEditorDraft(emptyWebhook())
     setEditing(webhooks.length)

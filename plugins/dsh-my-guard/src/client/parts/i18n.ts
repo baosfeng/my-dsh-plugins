@@ -1,6 +1,5 @@
-'use strict'
 // ── i18n（浏览器语言判定）──────────────────────────────────────────
-function isZh() {
+function isZh(): boolean {
   try {
     const lang = (navigator.language || 'en').toLowerCase()
     return lang.startsWith('zh')
@@ -8,6 +7,7 @@ function isZh() {
     return false
   }
 }
+
 const strings = {
   tabTitle: () => (isZh() ? '安全护栏' : 'Guard'),
   alertsTitle: () => (isZh() ? '告警记录' : 'Alerts'),
@@ -41,16 +41,16 @@ const strings = {
   scanResult: () => (isZh() ? '扫描结果' : 'Scan result'),
   scanClean: () => (isZh() ? '未发现可疑内容' : 'No suspicious content found'),
   scanError: () => (isZh() ? '扫描失败' : 'Scan failed'),
-  findings: (count) => (isZh() ? `${count} 个发现项` : `${count} finding(s)`),
+  findings: (count: number) => (isZh() ? `${count} 个发现项` : `${count} finding(s)`),
   promptPlaceholder: () => (isZh() ? '输入要检测的文本…' : 'text to check…'),
   check: () => (isZh() ? '检测' : 'Check'),
   checkResult: () => (isZh() ? '检测结果' : 'Result'),
   checkClean: () => (isZh() ? '未命中注入规则' : 'No injection rules hit'),
-  checkHits: (count) => (isZh() ? `命中 ${count} 条规则` : `${count} rule(s) hit`),
+  checkHits: (count: number) => (isZh() ? `命中 ${count} 条规则` : `${count} rule(s) hit`),
   file: () => (isZh() ? '文件' : 'file'),
   rule: () => (isZh() ? '规则' : 'rule'),
   // ── 告警可读性（issue #1xx：让用户看懂告警）──────────────────────────
-  sessionShort: (id) => (isZh() ? `会话 ${id}` : `session ${id}`),
+  sessionShort: (id: string) => (isZh() ? `会话 ${id}` : `session ${id}`),
   hitSnippet: () => (isZh() ? '命中原文' : 'Matched text'),
   falsePositiveHint: () =>
     isZh()
@@ -79,7 +79,7 @@ const strings = {
   notifyHint: () => (isZh() ? '高严重级告警经 dsh-my-notify 推送' : 'High-severity alerts pushed via dsh-my-notify'),
   cooldownLabel: () => (isZh() ? '冷却(秒)' : 'Cooldown (s)'),
   saveRulesOk: () => (isZh() ? '规则已保存（已生效）' : 'Rules saved (active)'),
-  droppedRule: (count) =>
+  droppedRule: (count: number) =>
     isZh()
       ? `已保存 ${count} 条，丢弃 ${count} 条非法规则（正则无效/缺 pattern）`
       : `Saved, ${count} invalid rule(s) dropped`,
@@ -90,7 +90,7 @@ const strings = {
   ruleTest: () => (isZh() ? '测试' : 'Test'),
   ruleTestResult: () => (isZh() ? '命中规则' : 'Matching rules'),
   noRuleHit: () => (isZh() ? '未命中任何护栏规则' : 'No guard rule matched'),
-  ruleHitSource: (source) => (isZh() ? (source === 'builtin' ? '内置' : '自定义') : source),
+  ruleHitSource: (source: string) => (isZh() ? (source === 'builtin' ? '内置' : '自定义') : source),
   effectiveDecision: () => (isZh() ? '合并决策' : 'Effective'),
   emptyRules: () =>
     isZh() ? '暂无自定义规则——点击「添加规则」创建' : 'No custom rules — click "Add rule" to create one',

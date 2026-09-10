@@ -1,10 +1,10 @@
-'use strict'
 // ── 通知内容构造 ────────────────────────────────────────────────────
-function shortId(id) {
+function shortId(id: string): string {
   if (typeof id !== 'string' || id === '') return ''
   return id.length > 8 ? id.slice(0, 8) : id
 }
-function kindLabel(kind) {
+
+function kindLabel(kind: string): string {
   switch (kind) {
     case 'end':
       return strings.kindEnd()
@@ -16,28 +16,33 @@ function kindLabel(kind) {
       return strings.kindRemote()
   }
 }
-function noticeTitle(notice) {
+
+function noticeTitle(notice: NotifyNotice): string {
   if (typeof notice.title === 'string' && notice.title !== '') return notice.title
   return strings.untitled(shortId(notice.sessionId))
 }
-function noticeBody(notice) {
+
+function noticeBody(notice: NotifyNotice): string {
   const parts = []
   if (notice.kind !== 'remote') parts.push(kindLabel(notice.kind))
   if (typeof notice.toolName === 'string' && notice.toolName !== '') parts.push(notice.toolName)
   if (typeof notice.note === 'string' && notice.note !== '') parts.push(notice.note)
   return parts.join(' · ')
 }
-function faviconOf() {
+
+function faviconOf(): string {
   try {
-    const link = document.querySelector('link[rel="icon"]')
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
     return link !== null && typeof link.href === 'string' ? link.href : ''
   } catch {
     return ''
   }
 }
+
 // ── 提示音（Web Audio 合成短促滴声）────────────────────────────────
-let audioCtx = null
-function baseAudio() {
+let audioCtx: AudioContext | null = null
+
+function baseAudio(): AudioContext | null {
   const AC = window.AudioContext || window.webkitAudioContext
   if (typeof AC !== 'function') return null
   if (audioCtx === null) {
@@ -49,7 +54,8 @@ function baseAudio() {
   }
   return audioCtx
 }
-function beep() {
+
+function beep(): void {
   const ac = baseAudio()
   if (ac === null) return
   const resume = typeof ac.resume === 'function' ? ac.resume() : Promise.resolve()
@@ -74,8 +80,9 @@ function beep() {
       // autoplay policy / audio hardware: sound is best-effort
     })
 }
+
 /** 浏览器自动播放策略：首次用户交互后解锁 AudioContext。 */
-function armAudioUnlock() {
+function armAudioUnlock(): () => void {
   if (typeof document === 'undefined') return () => {}
   const unlock = () => {
     try {
@@ -94,26 +101,31 @@ function armAudioUnlock() {
     document.removeEventListener('keydown', unlock)
   }
 }
+
 // ── 页面内 toast（通知权限关闭/被拒时的兜底）────────────────────────
 /** 共享图标是 React 元素树（icon.* 返回 createElement 树），toast 是命令式
  *  DOM 构建：把元素树转成 SVG DOM 节点复用同一套图标（stroke=currentColor
  *  继承周围文字色）。camelCase 属性转 SVG 属性名（viewBox 特例保持原样）。 */
-function svgAttrName(key) {
+function svgAttrName(key: string): string {
   if (key === 'viewBox') return 'viewBox'
   return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
-function isVoidNode(node) {
+
+function isVoidNode(node: unknown): boolean {
   return node === null || node === undefined || typeof node === 'boolean'
 }
-function isTextNode(node) {
+
+function isTextNode(node: unknown): boolean {
   return typeof node === 'string' || typeof node === 'number'
 }
-function toChildList(children) {
+
+function toChildList(children: unknown): unknown[] {
   if (Array.isArray(children)) return children
   if (children === undefined || children === null) return []
   return [children]
 }
-function elementToDom(node) {
+
+function elementToDom(node: any): any {
   if (isVoidNode(node)) return null
   if (isTextNode(node)) return document.createTextNode(String(node))
   const el = document.createElementNS('http://www.w3.org/2000/svg', node.type)
@@ -127,8 +139,9 @@ function elementToDom(node) {
   }
   return el
 }
+
 /** 通知类型 → 共享图标（stroke=currentColor，颜色语义由 CSS 类区分）。 */
-function kindIcon(kind) {
+function kindIcon(kind: string): any {
   switch (kind) {
     case 'end':
       return icon.clock(16)
@@ -140,8 +153,9 @@ function kindIcon(kind) {
       return icon.external(16)
   }
 }
+
 /** 通知类型 → 图标颜色语义类（end/remote=品牌色信息、ask=警告、approval=成功）。 */
-function kindIconClass(kind) {
+function kindIconClass(kind: string): string {
   switch (kind) {
     case 'end':
       return 'dsh-my-notify-toast-icon-end'
@@ -153,7 +167,8 @@ function kindIconClass(kind) {
       return 'dsh-my-notify-toast-icon-remote'
   }
 }
-function ensureToastBox() {
+
+function ensureToastBox(): HTMLElement {
   let box = document.getElementById('dsh-my-notify-toast-box')
   if (box === null) {
     box = document.createElement('div')
@@ -163,7 +178,8 @@ function ensureToastBox() {
   }
   return box
 }
-function buildToastItem(notice) {
+
+function buildToastItem(notice: NotifyNotice): HTMLElement {
   const item = document.createElement('div')
   item.className = 'dsh-my-notify-toast'
   item.setAttribute('role', 'status')
@@ -207,7 +223,8 @@ function buildToastItem(notice) {
   // 只允许 textContent 渲染：note/远程 body 不受信任，禁止 innerHTML。
   return item
 }
-function attachToastEvents(item, onOpen) {
+
+function attachToastEvents(item: HTMLElement, onOpen: () => void): void {
   let timer = null
   const dismiss = () => {
     if (timer !== null) clearTimeout(timer)
@@ -253,7 +270,8 @@ function attachToastEvents(item, onOpen) {
   }
   timer = setTimeout(dismiss, 6000)
 }
-function showToast(notice, onOpen) {
+
+function showToast(notice: NotifyNotice, onOpen: () => void): void {
   if (!prefOn(LS.toast, true)) return
   if (typeof document === 'undefined') return
   const box = ensureToastBox()
@@ -262,7 +280,8 @@ function showToast(notice, onOpen) {
   box.appendChild(item)
   if (box.children.length > 4) box.removeChild(box.firstChild)
 }
-function removeToastBox() {
+
+function removeToastBox(): void {
   try {
     const box = document.getElementById('dsh-my-notify-toast-box')
     if (box !== null && box.parentNode !== null) box.parentNode.removeChild(box)
@@ -270,8 +289,9 @@ function removeToastBox() {
     // ignore
   }
 }
+
 // ── 系统通知（Notification API）────────────────────────────────────
-function fireSystemNotification(notice, sessionId, openSession) {
+function fireSystemNotification(notice: NotifyNotice, sessionId: string, openSession: () => void): void {
   try {
     const bodyText = noticeBody(notice)
     const notification = new Notification(noticeTitle(notice), {
@@ -292,8 +312,9 @@ function fireSystemNotification(notice, sessionId, openSession) {
     showToast(notice, openSession)
   }
 }
+
 // ── 样式（DSH 语义 token，随 activation 注入）───────────────────────
-const STYLES = `
+const STYLES: string = `
 .dsh-my-notify-toast-box{position:fixed;right:16px;bottom:16px;z-index:3000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 .dsh-my-notify-toast{pointer-events:auto;width:284px;max-width:calc(100vw - 32px);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);
   border:1px solid var(--dsw-alias-border-l2);border-radius:10px;box-shadow:var(--dsw-shadow-lv2);padding:10px 12px;cursor:pointer;
@@ -325,7 +346,8 @@ const STYLES = `
 .dsh-my-notify-toast-out{opacity:0;transform:translateY(6px);transition:opacity 150ms var(--ds-ease-in-out),transform 150ms var(--ds-ease-in-out)}
 @keyframes dsh-my-notify-toast-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 `
-function injectStyles() {
+
+function injectStyles(): () => void {
   if (typeof document === 'undefined' || typeof document.head === 'undefined') return () => {}
   const style = document.createElement('style')
   style.setAttribute('data-dsh-my-notify', 'styles')

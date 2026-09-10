@@ -2,6 +2,12 @@
 
 本文件记录 dsh-my-notify 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 变更
+
+- chore(notify): client 端迁移到 TypeScript——手写 `lib/parts/*.js` 片段改由 `src/client/parts/*.ts` 经 `tsc -p tsconfig.client.json` 编译，再由 `scripts/build.mjs` 拼接进 `lib/client.src.js` 模板产出 `lib/client.js`（server 端此前已迁移）；新增 `src/client/globals.d.ts`（DSH 运行时最小契约）与 `test/client-contract.mjs`（构建/行为契约防回归）。产物语义不变
+
 ## [0.3.8] - 2026-09-04
 
 ### 变更

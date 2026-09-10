@@ -14,6 +14,8 @@ export interface ServerRequest {
   url?: string
   method?: string
   headers: Record<string, string | string[] | undefined>
+  /** 流式读取 body：dsh-shared 的 readJsonBody 要求 AsyncIterable<string>。 */
+  [Symbol.asyncIterator](): AsyncIterator<string>
 }
 
 /** DSH HTTP 响应（node:http ServerResponse 的最小契约）。 */

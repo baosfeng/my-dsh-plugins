@@ -1,8 +1,8 @@
-'use strict'
 // ── 通知分发（SSE 帧 → 渲染入口）───────────────────────────────────
-function isNoticeKind(kind) {
+function isNoticeKind(kind: string): boolean {
   return kind === 'end' || kind === 'ask' || kind === 'approval' || kind === 'remote'
 }
+
 // ── 通知去重（issue #70）：本地窗口 + 跨标签页协调 ─────────────────
 // 服务端已按 kind:sessionId 在 dedupeMs（默认 3000ms）内去重；客户端再做
 // 双保险：① 本标签页内存窗口（快速路径 + localStorage 不可用时的兜底）；
@@ -18,9 +18,10 @@ function isNoticeKind(kind) {
 // 原 localStorage 快速路径（尽力而为，保留历史行为）。
 const CLIENT_DEDUPE_MS = 2000
 const DEDUPE_LS_PREFIX = 'dsh-notify:dedupe:'
-const localRecent = new Map() // `${kind}:${sessionId}` -> lastTime
+const localRecent = new Map<string, number>() // `${kind}:${sessionId}` -> lastTime
+
 /** 锁内检查窗口并登记；返回 true = 本标签页应处理（调用方需已持有锁或降级）。 */
-function claimLocked(key, now) {
+function claimLocked(key: string, now: number): boolean {
   try {
     const lockKey = DEDUPE_LS_PREFIX + key
     const last = Number(window.localStorage.getItem(lockKey) || 0)
@@ -40,9 +41,10 @@ function claimLocked(key, now) {
   }
   return true
 }
+
 /** 通知帧是否在去重窗口内已处理（本标签页或其他标签页）；未处理则登记并返回 true。
  *  返回 Promise（Web Locks 互斥异步；无 Web Locks 时立即 resolve，接口统一）。 */
-function claimNotice(key) {
+function claimNotice(key: string): Promise<boolean> {
   const now = Date.now()
   const lastLocal = localRecent.get(key)
   if (lastLocal !== undefined && now - lastLocal < CLIENT_DEDUPE_MS) return Promise.resolve(false)
@@ -54,7 +56,8 @@ function claimNotice(key) {
   // 降级：无 Web Locks（旧浏览器）→ 原 localStorage 快速路径。
   return Promise.resolve(claimLocked(key, now))
 }
-function openSessionFor(sessionId, sessionsSvc) {
+
+function openSessionFor(sessionId: string, sessionsSvc: any): () => void {
   return () => {
     try {
       window.focus()
@@ -75,7 +78,8 @@ function openSessionFor(sessionId, sessionsSvc) {
     }
   }
 }
-function dispatchByPermission(notice, sessionId, openSession) {
+
+function dispatchByPermission(notice: NotifyNotice, sessionId: string, openSession: () => void): void {
   if (prefOn(LS.notify, true) && typeof window !== 'undefined' && typeof Notification !== 'undefined') {
     if (Notification.permission === 'granted') {
       fireSystemNotification(notice, sessionId, openSession)
@@ -99,7 +103,8 @@ function dispatchByPermission(notice, sessionId, openSession) {
   }
   showToast(notice, openSession)
 }
-function handleNotice(notice, sessionsSvc) {
+
+function handleNotice(notice: NotifyNotice | null, sessionsSvc: any): Promise<void> {
   if (notice === null || typeof notice !== 'object' || notice.type !== 'notice') return Promise.resolve()
   if (!isNoticeKind(notice.kind)) return Promise.resolve()
   const sessionId = typeof notice.sessionId === 'string' ? notice.sessionId : ''
@@ -111,8 +116,9 @@ function handleNotice(notice, sessionsSvc) {
     if (prefOn(LS.sound, true)) beep()
   })
 }
+
 // ── SSE 订阅（server 事件 → 浏览器通知）─────────────────────────────
-function subscribeStream(sessionsSvc) {
+function subscribeStream(sessionsSvc: any): () => void {
   if (typeof window === 'undefined' || typeof EventSource !== 'function') return () => {}
   const source = new EventSource('/notify/api/stream')
   source.onmessage = (event) => {
@@ -128,19 +134,24 @@ function subscribeStream(sessionsSvc) {
     removeToastBox()
   }
 }
+
 // ── 插件体 ──────────────────────────────────────────────────────────
-exports.apply = function apply(ctx) {
+exports.apply = function apply(ctx: ClientContext): void {
   // strict=false：首屏加载时 sessions 服务的提供者 fiber 可能尚未 active，
   // cordis 的 ctx.get(name, strict = true) 在 strict 模式下会返回 undefined，
   // 导致点击通知无法跳转会话（降级为仅聚焦窗口，直到 HMR/重启才恢复）；
   // 取到实例即可——openSessionFor 内部仍按 typeof open === 'function' 判空降级。
   const sessionsSvc = ctx.get('sessions', false)
+
   // 样式注入（与 fiber 同生命周期）。
   ctx.effect(() => injectStyles(), 'dsh-my-notify: styles')
+
   // 音频解锁：首次用户交互后 resume（浏览器自动播放策略）。
   ctx.effect(() => armAudioUnlock(), 'dsh-my-notify: audio unlock')
+
   // SSE 订阅：server 事件 → 浏览器通知。
   ctx.effect(() => subscribeStream(sessionsSvc), 'dsh-my-notify: event stream')
+
   // 设置页 tab（官方 slots 扩展点，issue #27 配置可视化）。
   attachSettingsTab(ctx)
 }

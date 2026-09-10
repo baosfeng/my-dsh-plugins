@@ -85,6 +85,29 @@ test('greeting route honors the zh config', () => {
   assert.deepEqual(JSON.parse(response.chunks.join('')), { greeting: '你好，DSH！' })
 })
 
+// 防回归：cordis 对未声明 config schema 的插件调用 apply(ctx)（第二参数为
+// undefined）时不得抛 TypeError，且回落到默认语言 en。cfb28c5 的修复此前
+// 只改了 lib/index.js 产物、没改 src/index.ts，重新构建即丢失——本用例锁死
+// 该契约，避免"源码与产物不同步"再次复发。
+test('apply without a config falls back to the default language', () => {
+  const { registrations, ctx } = createMockCtx()
+  assert.doesNotThrow(() => apply(ctx), 'apply(ctx) without config must not throw')
+  const response = createMockResponse()
+  registrations[0].handler({ url: '/ts-example/api/greeting?name=DSH', headers: { host: 'localhost:3080' } }, response)
+  assert.equal(response.status, 200)
+  assert.deepEqual(JSON.parse(response.chunks.join('')), { greeting: 'Hello, DSH!' })
+})
+
+// 防回归：显式传 undefined 与省略参数同义（宿主可能显式传 undefined）。
+test('apply with an explicit undefined config falls back to the default language', () => {
+  const { registrations, ctx } = createMockCtx()
+  assert.doesNotThrow(() => apply(ctx, undefined), 'apply(ctx, undefined) must not throw')
+  const response = createMockResponse()
+  registrations[0].handler({ url: '/ts-example/api/greeting?name=DSH', headers: { host: 'localhost:3080' } }, response)
+  assert.equal(response.status, 200)
+  assert.deepEqual(JSON.parse(response.chunks.join('')), { greeting: 'Hello, DSH!' })
+})
+
 test('stats route reports the session count', () => {
   const { registrations, listeners, ctx } = createMockCtx()
   apply(ctx, {})

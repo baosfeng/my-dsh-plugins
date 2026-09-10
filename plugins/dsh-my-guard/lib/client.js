@@ -27,7 +27,8 @@ window.__ModuleLoader__.load({
     const { createElement, useEffect, useState } = require('react')
 
     // ── parts（scripts/build.mjs 拼接；顺序固定）───────────────────────
-    // ── i18n（浏览器语言判定）──────────────────────────────────────────
+    'use strict'
+// ── i18n（浏览器语言判定）──────────────────────────────────────────
 function isZh() {
   try {
     const lang = (navigator.language || 'en').toLowerCase()
@@ -36,7 +37,6 @@ function isZh() {
     return false
   }
 }
-
 const strings = {
   tabTitle: () => (isZh() ? '安全护栏' : 'Guard'),
   alertsTitle: () => (isZh() ? '告警记录' : 'Alerts'),
@@ -450,9 +450,9 @@ const fileIconByExt = (ext, size = 14) => {
   return spec === undefined ? icon.file(size) : badgeIcon(spec, size)
 }
 
-    // ── 安全护栏面板 ────────────────────────────────────────────────────
+    'use strict'
+// ── 安全护栏面板 ────────────────────────────────────────────────────
 const GUARD_POLL_MS = 5000
-
 /** 请求插件 API（非 2xx 抛错；返回响应 JSON 的 value 字段）。 */
 function apiJson(path, options) {
   return fetch(path, options).then(async (res) => {
@@ -461,7 +461,6 @@ function apiJson(path, options) {
     return data.value
   })
 }
-
 /** 时间戳 → HH:MM:SS。 */
 function timeText(time) {
   try {
@@ -472,7 +471,6 @@ function timeText(time) {
     return ''
   }
 }
-
 /** 告警类型 → 中文标签。 */
 function alertTypeLabel(type) {
   if (type === 'destructive') return strings.typeDestructive()
@@ -480,14 +478,12 @@ function alertTypeLabel(type) {
   if (type === 'injection') return strings.typeInjection()
   return type
 }
-
 /** 严重度 → 中文标签。 */
 function severityLabel(severity) {
   if (severity === 'high') return strings.sevHigh()
   if (severity === 'medium') return strings.sevMedium()
   return strings.sevLow()
 }
-
 /** 告警类型 → 视觉类别（类型图标/徽章/颜色共用，语义一致）：
  *  destructive=danger（trash 图标）/ poison=warn（alert 图标）/ injection=info（alert 图标）。 */
 function alertKind(alert) {
@@ -495,13 +491,11 @@ function alertKind(alert) {
   if (alert.type === 'poison') return 'warn'
   return 'info'
 }
-
 /** 告警类型 → 类型图标（共享线性图标集，stroke=currentColor）。 */
 function alertTypeIcon(alert) {
   if (alert.type === 'destructive') return icon.trash(15)
   return icon.alert(15)
 }
-
 /** 告警 meta 行：命令/文件/规则 id + 会话短标识。 */
 function AlertMeta({ alert }) {
   const detail = alert.detail || {}
@@ -515,7 +509,6 @@ function AlertMeta({ alert }) {
           : ''
   return meta !== '' ? createElement('div', { className: 'dsh-my-guard-alert-meta' }, meta) : null
 }
-
 /** 告警详情行：规则说明 + 命中原文（可读性）。 */
 function AlertDetails({ alert }) {
   const detail = alert.detail || {}
@@ -531,7 +524,6 @@ function AlertDetails({ alert }) {
       : null,
   )
 }
-
 /** 单条告警行：类型图标 + 类型徽章 + 严重度徽章 + 时间 + 消息 + 详情 + 确认操作。
  *  已确认告警弱化显示（已处理=不再打扰），确认按钮带 check 图标与 aria-label。
  *  提示注入告警补：规则说明（explain）+ 命中原文（snippet）+ 会话 id +
@@ -580,12 +572,10 @@ function AlertRow({ alert, onConfirm }) {
         ),
   )
 }
-
 /** 会话 id 短显示（UUID 取前 8 位）。 */
 function shortSessionId(sessionId) {
   return typeof sessionId === 'string' && sessionId.length > 8 ? sessionId.slice(0, 8) + '…' : sessionId || ''
 }
-
 /** 拉取告警列表。 */
 async function loadAlerts(setters) {
   try {
@@ -597,7 +587,6 @@ async function loadAlerts(setters) {
     setters.setLoading(false)
   }
 }
-
 /** 确认告警（用户确认机制）；成功后行内反馈「已确认」，失败静默（轮询恢复真实状态）。 */
 async function confirmAlert(id, setAlerts) {
   try {
@@ -611,7 +600,6 @@ async function confirmAlert(id, setAlerts) {
     // 确认失败静默（下次轮询恢复真实状态）
   }
 }
-
 /** 扫描结果展示（发现项列表；无发现 = 绿色 check 反馈）。 */
 function ScanResult({ result }) {
   const findings = result?.findings || []
@@ -623,7 +611,6 @@ function ScanResult({ result }) {
     findings.map((f, index) => issueRow(f, index, `${f.file} · ${f.pattern}`)),
   )
 }
-
 /** 执行投毒扫描（target 校验 + 请求 + 状态管理）。 */
 async function runScan(target, setters) {
   const value = target.trim()
@@ -648,7 +635,6 @@ async function runScan(target, setters) {
     setters.setBusy(false)
   }
 }
-
 /** 投毒扫描工具：输入框 + search 图标按钮 → 扫描 → 显示发现项（busy 禁用 + 扫描中状态）。 */
 function ScanTool() {
   const [target, setTarget] = useState('')
@@ -690,7 +676,6 @@ function ScanTool() {
     result !== null ? createElement(ScanResult, { result }) : null,
   )
 }
-
 /** 注入检测结果展示（命中规则列表；无命中 = 绿色 check 反馈）。 */
 function PromptResult({ hits }) {
   if (hits.length === 0) return cleanFeedback(strings.checkClean())
@@ -701,7 +686,6 @@ function PromptResult({ hits }) {
     hits.map((h, index) => issueRow(h, index, h.id)),
   )
 }
-
 /** 提示注入检测工具：textarea + check 图标按钮 → 检测 → 显示命中规则（busy 禁用 + 检测中状态）。 */
 function PromptTool() {
   const [text, setText] = useState('')
@@ -761,7 +745,6 @@ function PromptTool() {
     hits !== null ? createElement(PromptResult, { hits }) : null,
   )
 }
-
 /** 安全护栏主面板：告警列表（标题 + 刷新）+ 扫描工具 + 注入检测工具（可见时轮询）。 */
 function GuardPanel(props) {
   const visible = props.visible !== false
@@ -769,7 +752,6 @@ function GuardPanel(props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [reloadTick, setReloadTick] = useState(0)
-
   useEffect(() => {
     if (!visible) return undefined
     let alive = true
@@ -789,7 +771,6 @@ function GuardPanel(props) {
     setLoading(true)
     setReloadTick((tick) => tick + 1)
   }
-
   const rows = alerts.map((alert) =>
     createElement(AlertRow, {
       key: alert.id,
@@ -797,7 +778,6 @@ function GuardPanel(props) {
       onConfirm: (id) => void confirmAlert(id, setAlerts),
     }),
   )
-
   return createElement(
     'div',
     { className: 'dsh-my-guard-panel' },
@@ -828,17 +808,16 @@ function GuardPanel(props) {
   )
 }
 
-    // ── 状态与反馈展示（loading / 空 / 错误 / 操作反馈）────────────────
+    'use strict'
+// ── 状态与反馈展示（loading / 空 / 错误 / 操作反馈）────────────────
 /** busy 状态行（旋转刷新图标 + 次级色文案）。 */
 function busyState(text) {
   return createElement('div', { className: 'dsh-my-guard-state' }, icon.refresh(14), createElement('span', null, text))
 }
-
 /** 错误反馈行（错误色文案）。 */
 function errorFeedback(text) {
   return createElement('div', { className: 'dsh-my-guard-feedback dsh-my-guard-feedback-error' }, text)
 }
-
 /** 干净结果反馈行（绿色 check + 文案）。 */
 function cleanFeedback(text) {
   return createElement(
@@ -848,7 +827,6 @@ function cleanFeedback(text) {
     createElement('span', null, text),
   )
 }
-
 /** 已确认反馈（绿色 check + 文案）。 */
 function confirmedBadge() {
   return createElement(
@@ -858,7 +836,6 @@ function confirmedBadge() {
     createElement('span', null, strings.confirmed()),
   )
 }
-
 /** 发现项行（严重度徽章 + 消息 + 规则）。 */
 function issueRow(issue, index, rule) {
   return createElement(
@@ -869,12 +846,10 @@ function issueRow(issue, index, rule) {
     createElement('div', { className: 'dsh-my-guard-issue-rule' }, rule),
   )
 }
-
 /** 加载中状态（旋转刷新图标 + 次级色文案，不阻塞布局）。 */
 function LoadingState() {
   return busyState(strings.loading())
 }
-
 /** 空状态（图标 + 主文案 + hint 两行结构）。 */
 function EmptyState() {
   return createElement(
@@ -885,7 +860,6 @@ function EmptyState() {
     createElement('span', { className: 'dsh-my-guard-empty-hint' }, strings.emptyAlertsHint()),
   )
 }
-
 /** 错误状态（错误色文案 + 重试按钮）。 */
 function ErrorState({ message, onRetry }) {
   return createElement(
@@ -906,22 +880,20 @@ function ErrorState({ message, onRetry }) {
   )
 }
 
-    // ── 自定义护栏规则 + 告警通知（issue #88）─────────────────────────
+    'use strict'
+// ── 自定义护栏规则 + 告警通知（issue #88）─────────────────────────
 // 依赖：strings（i18n）、icon（共享图标）、apiJson/severityLabel（panel.js）、
 // busyState/cleanFeedback/errorFeedback（states.js）；本片段在 STATES 之后拼接。
-
 /** 模式 → 中文标签。 */
 function modeLabel(mode) {
   if (mode === 'ask') return strings.modeAsk()
   if (mode === 'deny') return strings.modeDeny()
   return strings.modeObserve()
 }
-
 /** 规则来源 → 中文标签。 */
 function ruleSourceLabel(source) {
   return strings.ruleHitSource(source)
 }
-
 /** 单条自定义规则行（pattern + mode + severity + description + 删除）。 */
 function RuleEntry({ rule, index, onChange, onRemove }) {
   const update = (patch) => onChange(index, patch)
@@ -977,7 +949,6 @@ function RuleEntry({ rule, index, onChange, onRemove }) {
     ),
   )
 }
-
 /** 规则测试结果：命中列表（来源/模式/严重级）+ 合并决策。 */
 function RuleTestResult({ result }) {
   const hits = result?.hits || []
@@ -1010,7 +981,6 @@ function RuleTestResult({ result }) {
         ),
   )
 }
-
 /** 规则测试：输入命令 → 实时预览命中规则 + 合并决策。 */
 function RuleTest() {
   const [command, setCommand] = useState('')
@@ -1075,7 +1045,6 @@ function RuleTest() {
     result !== null ? createElement(RuleTestResult, { result }) : null,
   )
 }
-
 /** 自定义护栏规则设置：列表编辑 + 保存（持久化 profile patch）+ 通知开关。 */
 function RuleSettings() {
   const [customRules, setCustomRules] = useState([])
@@ -1084,7 +1053,6 @@ function RuleSettings() {
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [error, setError] = useState('')
-
   useEffect(() => {
     let alive = true
     void apiJson('/guard/api/rules')
@@ -1101,13 +1069,11 @@ function RuleSettings() {
       alive = false
     }
   }, [])
-
   const changeRule = (index, patch) =>
     setCustomRules((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)))
   const addRule = () =>
     setCustomRules((prev) => [...prev, { pattern: '', mode: 'observe', severity: 'medium', description: '' }])
   const removeRule = (index) => setCustomRules((prev) => prev.filter((_, i) => i !== index))
-
   const save = async () => {
     setBusy(true)
     setFeedback('')
@@ -1128,7 +1094,6 @@ function RuleSettings() {
       setBusy(false)
     }
   }
-
   return ruleSettingsView({
     customRules,
     notifyEnabled,
@@ -1144,7 +1109,6 @@ function RuleSettings() {
     setNotifyCooldownSec,
   })
 }
-
 function ruleSettingsView(view) {
   return createElement(
     'div',
@@ -1209,7 +1173,8 @@ function ruleSettingsView(view) {
   )
 }
 
-    // ── 样式（DSH 语义 token，随 activation 注入 / teardown 卸载）──────
+    'use strict'
+// ── 样式（DSH 语义 token，随 activation 注入 / teardown 卸载）──────
 // 前缀 dsh-my-guard-（issue #54：与 dsh-my-observability- 前缀分离，消除跨插件类名冲突）。
 const STYLES = `
 .dsh-my-guard-panel{display:flex;flex-direction:column;gap:10px;padding:2px 6px 8px;color:var(--dsw-alias-label-primary);font:var(--dsw-font-s-14)}
@@ -1316,7 +1281,6 @@ const STYLES = `
 .dsh-my-guard-notify-hint{font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary)}
 .dsh-my-guard-effective{color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxxs-strong-11)}
 `
-
 function injectStyles() {
   if (typeof document === 'undefined' || typeof document.head === 'undefined') return () => {}
   const style = document.createElement('style')

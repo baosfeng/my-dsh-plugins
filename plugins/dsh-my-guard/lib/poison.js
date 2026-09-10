@@ -91,7 +91,7 @@ async function fetchTarball(pkg) {
         });
         if (!response.ok)
             return '';
-        const meta = await response.json();
+        const meta = (await response.json());
         const dist = meta?.dist;
         const tarballUrl = dist?.tarball;
         if (typeof tarballUrl !== 'string' || tarballUrl === '')

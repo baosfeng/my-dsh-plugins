@@ -14,6 +14,8 @@
 import { buildGreeting } from './greeting.js';
 export const name = 'dsh-ts-example';
 export const inject = ['webServer'];
+// config 可能缺省：DSH 对未声明 config schema 的插件调用 apply(ctx) 时
+// 第二个参数为 undefined（cordis 契约），必须用可选链兜底，否则 TypeError。
 export function apply(ctx, config) {
     const language = config?.language ?? 'en';
     let sessionCount = 0;

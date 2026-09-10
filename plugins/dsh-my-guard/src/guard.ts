@@ -22,7 +22,7 @@ import type { DshContext, GuardMode, GuardOptions, Alert } from './types.js'
 export function attachGuardListener(
   ctx: DshContext,
   options: GuardOptions,
-  recordAlert: (alert: Alert) => Alert
+  recordAlert: (alert: Alert) => Alert,
 ): () => void {
   return ctx.on('tools/pre-execute', async (...args: unknown[]) => {
     const exec = args[0]

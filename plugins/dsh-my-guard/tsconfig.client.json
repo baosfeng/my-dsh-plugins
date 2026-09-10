@@ -1,10 +1,17 @@
 {
-  // dsh-my-guard — client 端构建配置（暂不迁移 client 端代码）。
-  // client 端代码（lib/client.src.js + lib/parts/*.js）保持 JS 手写，
-  // 由 scripts/build.mjs 拼接生成 lib/client.js。
-  // 本配置仅用于类型检查（如需迁移 client 端到 TS 时使用）。
+  // dsh-my-guard — client 端构建配置：src/client/parts/*.ts →
+  // lib/.client-build/parts/*.js（CommonJS 片段，scripts/build.mjs 发布为
+  // lib/parts/*.js 并注入 lib/client.src.js 模板）。
+  //
+  // client 端 TS 源码是**拼接片段**（无 import/export，共享 factory 作用域），
+  // 编译后仍是纯函数/变量声明文本；注入模板后产出 lib/client.js —— DSH
+  // 浏览器端 __ModuleLoader__ 实际服务的单文件 bundle。
+  //
+  // strict=false：片段共享 factory 作用域（跨文件引用其他片段的函数/常量），
+  // TypeScript 无法感知拼接后的运行时作用域，严格模式会产生大量跨文件推断
+  // 错误。类型安全由 globals.d.ts 的共享契约声明保证。
   "compilerOptions": {
-    "strict": true,
+    "strict": false,
     "target": "es2022",
     "module": "commonjs",
     "moduleResolution": "bundler",
@@ -14,7 +21,9 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "types": []
+    "types": [],
+    "declaration": false,
+    "sourceMap": false
   },
   "include": ["src/client/**/*.ts"]
 }

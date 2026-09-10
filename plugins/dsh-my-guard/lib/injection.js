@@ -63,7 +63,10 @@ export function extractUserText(message) {
         return '';
     const parts = [];
     for (const block of content) {
-        if (block !== null && typeof block === 'object' && block.type === 'text' && typeof block.text === 'string') {
+        if (block !== null &&
+            typeof block === 'object' &&
+            block.type === 'text' &&
+            typeof block.text === 'string') {
             parts.push(block.text);
         }
     }

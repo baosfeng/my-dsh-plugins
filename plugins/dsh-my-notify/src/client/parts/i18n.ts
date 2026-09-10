@@ -1,6 +1,5 @@
-'use strict'
 // ── i18n（浏览器语言判定）──────────────────────────────────────────
-function isZh() {
+function isZh(): boolean {
   try {
     const lang = (navigator.language || 'en').toLowerCase()
     return lang.startsWith('zh')
@@ -8,12 +7,13 @@ function isZh() {
     return false
   }
 }
+
 const strings = {
   kindEnd: () => (isZh() ? '会话已结束' : 'Session finished'),
   kindAsk: () => (isZh() ? '需要你回答' : 'Needs your answer'),
   kindApproval: () => (isZh() ? '等待你的批准' : 'Approval needed'),
   kindRemote: () => (isZh() ? '提示' : 'Notice'),
-  untitled: (short) =>
+  untitled: (short: string) =>
     isZh() ? (short !== '' ? `会话 ${short}` : '会话') : short !== '' ? `Session ${short}` : 'Session',
   openSession: () => (isZh() ? '打开会话' : 'Open session'),
   closeToast: () => (isZh() ? '关闭通知' : 'Dismiss notification'),
@@ -78,6 +78,7 @@ const strings = {
   loading: () => (isZh() ? '加载中…' : 'Loading…'),
   loadError: () => (isZh() ? '加载失败' : 'Load failed'),
 }
+
 // ── 本地开关（localStorage 覆盖，默认全开）──────────────────────────
 const LS = {
   notify: 'dsh-notify:notify',
@@ -85,7 +86,8 @@ const LS = {
   toast: 'dsh-notify:toast',
   volume: 'dsh-notify:volume',
 }
-function prefOn(key, def) {
+
+function prefOn(key: string, def: boolean): boolean {
   try {
     const v = window.localStorage.getItem(key)
     if (v === null) return def
@@ -94,8 +96,9 @@ function prefOn(key, def) {
     return def
   }
 }
+
 /** 提示音音量（0~1，默认 0.6；issue #71：0.18 太小听不见）。 */
-function prefVolume() {
+function prefVolume(): number {
   try {
     const raw = window.localStorage.getItem(LS.volume)
     if (raw === null) return 0.6

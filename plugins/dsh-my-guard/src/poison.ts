@@ -104,7 +104,7 @@ async function fetchTarball(pkg: string): Promise<string> {
       headers: { accept: 'application/json' },
     })
     if (!response.ok) return ''
-    const meta = await response.json() as Record<string, unknown>
+    const meta = (await response.json()) as Record<string, unknown>
     const dist = meta?.dist as Record<string, unknown> | undefined
     const tarballUrl = dist?.tarball
     if (typeof tarballUrl !== 'string' || tarballUrl === '') return ''

@@ -292,7 +292,10 @@ let ready = false
 while (Date.now() < deadline) {
   if (web.exitCode !== null) break
   const status = await httpStatus(options.port)
-  if (status === 200) {
+  // 任何 HTTP 响应都说明服务已在监听：DSH 新版对不带 token 的根路径返回
+  // 401（旧版是 200），只认 200 会把"其实已就绪"误判成启动超时（实测
+  // 240s 仍报"未就绪"、而实例进程存活且端口正常服务）。
+  if (status > 0) {
     ready = true
     break
   }

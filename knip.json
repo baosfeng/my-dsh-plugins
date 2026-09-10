@@ -25,7 +25,8 @@
     "@stryker-mutator/html-reporter",
     "react",
     "dsh-better-sidebar",
-    "@deepseek-ai/dsh-client-ui-primitives"
+    "@deepseek-ai/dsh-client-ui-primitives",
+    "@types/react-dom"
   ],
   "ignoreBinaries": ["dsh"],
   "rules": {

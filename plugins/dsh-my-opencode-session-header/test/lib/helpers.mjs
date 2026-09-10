@@ -7,8 +7,8 @@
  */
 import { apply } from '../../lib/index.js'
 
-/** 记录型 logger（info / warn 分桶）。 */
-export function mockLogger() {
+/** 记录型 logger（info / warn 分桶）；仅本文件内部使用。 */
+function mockLogger() {
   const info = []
   const warn = []
   return {

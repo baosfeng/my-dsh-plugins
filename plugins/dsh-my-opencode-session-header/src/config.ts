@@ -44,8 +44,8 @@ const HOST_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-
 /** HTTP 头名 token 形态（RFC 7230）。 */
 const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
 
-/** 构造带插件前缀的配置错误。 */
-export function configError(message: string): Error {
+/** 构造带插件前缀的配置错误（仅本模块内部使用）。 */
+function configError(message: string): Error {
   return new Error(`[opencode-session-header] ${message}`)
 }
 

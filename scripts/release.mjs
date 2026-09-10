@@ -513,7 +513,15 @@ if (push && succeeded.length > 0) {
   const header = succeeded.length === 1 ? commitMessages[0] : `chore(release): 批量发版 ${succeeded.length} 个插件`
   const body = succeeded.map((r) => `- ${r.name}@${r.version}`).join('\n')
   const commitArgs = succeeded.length === 1 ? ['commit', '-m', header] : ['commit', '-m', header, '-m', body]
-  execFileSync('git', commitArgs, { cwd: root, stdio: 'inherit' })
+  // 待提交内容可能为空：例如版本与文档同步已落在先前的提交里（--bump 已跑过、
+  // 或手工/钩子把 bump 一并提交）。此时 `git commit` 会以 "nothing to commit"
+  // 失败并中断整个发版流程（tag/push 都不会执行），所以先检测再提交。
+  const stagedNames = execSync('git diff --cached --name-only', { cwd: root, encoding: 'utf8' }).trim()
+  if (stagedNames === '') {
+    console.log('- 无待提交变更（版本/文档已同步），跳过 commit')
+  } else {
+    execFileSync('git', commitArgs, { cwd: root, stdio: 'inherit' })
+  }
 
   // Push main
   execSync('git push origin main', { cwd: root, stdio: 'inherit' })

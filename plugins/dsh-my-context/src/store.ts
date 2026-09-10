@@ -136,7 +136,10 @@ function applyRequest(session: ReturnType<typeof createSession>, request: Record
 }
 
 /** 查询会话统计（深拷贝，防调用方篡改内部状态）。 */
-function sessionOf(handle: PersistHandle & { seq: number }, sessionId: string): ReturnType<typeof createSession> | undefined {
+function sessionOf(
+  handle: PersistHandle & { seq: number },
+  sessionId: string,
+): ReturnType<typeof createSession> | undefined {
   const session = handle.store.state.bySession[sessionId]
   if (session === undefined) return undefined
   return JSON.parse(JSON.stringify(session))
@@ -163,7 +166,11 @@ function sessionsOf(handle: PersistHandle & { seq: number }): Array<{
 }
 
 /** 通用变更入口：取桶 → 应用变更 → 标记时间 → 调度持久化。 */
-function mutate(handle: PersistHandle & { seq: number }, sessionId: string, apply: (session: ReturnType<typeof createSession>) => void): void {
+function mutate(
+  handle: PersistHandle & { seq: number },
+  sessionId: string,
+  apply: (session: ReturnType<typeof createSession>) => void,
+): void {
   if (typeof sessionId !== 'string' || sessionId === '') return
   const run = () => {
     const state = handle.store.state

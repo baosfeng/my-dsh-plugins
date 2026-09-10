@@ -12,12 +12,14 @@
  * is visible. Styling follows the better-sidebar design language: DSH
  * semantic tokens, flat surfaces, hairline borders.
  *
- * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs splices the
- * `lib/parts/*.part.js` pieces into the PART placeholder markers below
- * (each piece is plain function-declaration text sharing this factory scope;
- * the browser ModuleLoader does not support relative-path require) and writes
- * lib/client.js — the file actually served by DSH, which MUST be committed
- * (CI runs node --check + tests against it, not against this template).
+ * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs compiles the
+ * client halves (`src/client/parts/*.ts` → `lib/.client-build/parts/*.js`),
+ * publishes them as `lib/parts/*.js` and splices those pieces into the PART
+ * placeholder markers below (each piece is plain function/variable-declaration
+ * text sharing this factory scope; the browser ModuleLoader does not support
+ * relative-path require) and writes lib/client.js — the file actually served
+ * by DSH, which MUST be committed (CI runs node --check + tests against it,
+ * not against this template).
  */
 window.__ModuleLoader__.load({
   id: 'dsh-my-guardian',
@@ -30,9 +32,11 @@ window.__ModuleLoader__.load({
     const TAB_ID = 'dsh-my-guardian:panel'
     const POLL_MS = 5000
 
-    // ── parts (injected by scripts/build.mjs; keep this exact order — the
-    //    const initializers below run in splice order) ─────────────────────
-    // ── styles (DSH semantic tokens, injected on activate, removed on teardown) ──
+    // ── parts (compiled from src/client/parts/*.ts, injected by
+    //    scripts/build.mjs; keep this exact order — the const initializers
+    //    below run in splice order) ───────────────────────────────────────
+    'use strict'
+// ── styles (DSH semantic tokens, injected on activate, removed on teardown) ──
 // Visual language follows the dsh-file-activity baseline (issue #54): flat
 // surfaces, hairline borders, 24px circular icon buttons with hover fills,
 // 8px-radius rows with hover fills, dfa-op style badge chips, a role=switch
@@ -213,7 +217,9 @@ const STYLES = `
 @keyframes dsh-my-guardian-spin { to { transform:rotate(360deg); } }
 `
 
-    // ── i18n ──────────────────────────────────────────────────────────────
+    'use strict'
+// ── i18n ──────────────────────────────────────────────────────────────
+/** 当前界面语言是否为中文（navigator 不可用时按英文回退）。 */
 function isZh() {
   try {
     return (navigator.language || 'en').toLowerCase().startsWith('zh')
@@ -221,7 +227,6 @@ function isZh() {
     return false
   }
 }
-
 const strings = {
   title: () => (isZh() ? '插件守护' : 'Plugin Guardian'),
   safeMode: () => (isZh() ? '安全模式' : 'Safe mode'),
@@ -272,8 +277,9 @@ const strings = {
   startupIssueDependency: () => (isZh() ? '依赖缺失' : 'Dependency'),
   startupIssueDuplicate: () => (isZh() ? '重复 id' : 'Duplicate id'),
 }
-
 // ── api ───────────────────────────────────────────────────────────────
+/** GET/POST /guardian/api/<path>；body 省略即 GET，返回 payload.value。
+ *  失败（ok:false / 非 JSON / 网络错误）统一抛出 Error。 */
 async function api(path, body) {
   const response = await fetch(
     `/guardian/api/${path}`,
@@ -289,14 +295,14 @@ async function api(path, body) {
   if (!payload.ok) throw new Error(payload.error?.message ?? 'request failed')
   return payload.value
 }
-
+/** 时间戳 → HH:MM:SS；非有限数值返回空串（行内不渲染时间）。 */
 function formatTime(time) {
   if (typeof time !== 'number' || !Number.isFinite(time)) return ''
   const date = new Date(time)
   const pad = (n) => String(n).padStart(2, '0')
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
-
+/** 状态徽章文案；未知状态原样回显（server 端新增状态不会渲染成空白）。 */
 function statusLabel(status) {
   switch (status) {
     case 'running':
@@ -311,7 +317,6 @@ function statusLabel(status) {
       return status
   }
 }
-
 /** Failure-classification badge label (issue #86): dependency / code / other. */
 function failureTypeLabel(type) {
   switch (type) {
@@ -325,7 +330,6 @@ function failureTypeLabel(type) {
       return type
   }
 }
-
 // ── event log ─────────────────────────────────────────────────────────
 // Event type → badge label + color variant (mirrors the dfa-op chip style).
 const EVENT_LABELS = {
@@ -340,7 +344,6 @@ const EVENT_LABELS = {
   skip: () => (isZh() ? '跳过' : 'Skipped'),
   'startup-issue': () => (isZh() ? '启动区问题' : 'Startup issue'),
 }
-
 /** Badge color variant for an event type; unknown types fall back to the
  *  neutral tertiary chip. */
 function eventVariant(type) {
@@ -361,7 +364,6 @@ function eventVariant(type) {
       return 'neutral'
   }
 }
-
 /** Startup-issue badge label (issue #144): unresolvable / dependency / dup. */
 function startupIssueLabel(type) {
   switch (type) {
@@ -375,7 +377,7 @@ function startupIssueLabel(type) {
       return type
   }
 }
-
+/** 事件徽章文案；未登记的事件类型原样回显。 */
 function eventLabel(type) {
   return (EVENT_LABELS[type] ?? (() => type))()
 }
@@ -705,7 +707,8 @@ const fileIconByExt = (ext, size = 14) => {
   return spec === undefined ? icon.file(size) : badgeIcon(spec, size)
 }
 
-    // ── row ────────────────────────────────────────────────────────────────
+    'use strict'
+// ── row ────────────────────────────────────────────────────────────────
 /** Row head: source chip + name + status badge + failure-category badge. */
 function RowHead({ entry, source }) {
   return createElement(
@@ -734,7 +737,6 @@ function RowHead({ entry, source }) {
       : null,
   )
 }
-
 /** Row meta: entry id + failure attempts + last failure time. */
 function RowMeta({ entry }) {
   return createElement(
@@ -749,7 +751,6 @@ function RowMeta({ entry }) {
       : null,
   )
 }
-
 /** Expandable error-detail toggle (chevron + label). */
 function ErrorToggle({ expanded, onToggle }) {
   return createElement(
@@ -763,7 +764,6 @@ function ErrorToggle({ expanded, onToggle }) {
     expanded ? strings.collapseError() : strings.expandError(),
   )
 }
-
 /** Inline remove confirmation (destructive, red). */
 function RemoveConfirm({ busy, onConfirm, onCancel }) {
   return createElement(
@@ -804,7 +804,6 @@ function RemoveConfirm({ busy, onConfirm, onCancel }) {
     ),
   )
 }
-
 /** Row actions: retry (refresh) + remove (trash) circular icon buttons. */
 function RowActions({ entry, busy, onRetry, onRemove }) {
   return createElement(
@@ -838,13 +837,11 @@ function RowActions({ entry, busy, onRetry, onRemove }) {
     ),
   )
 }
-
 /** 冻结行提示（连败停止自动重试，需手动操作）。 */
 function FrozenHint({ status }) {
   if (status !== 'frozen') return null
   return createElement('div', { className: 'dsh-my-guardian-freeze-hint' }, strings.frozenHint())
 }
-
 function EntryRow({ entry, source, onAction }) {
   // 失败/冻结行默认展开错误详情（用户之前必须手动点开才看得到真正报错）。
   const [expanded, setExpanded] = useState(
@@ -859,12 +856,10 @@ function EntryRow({ entry, source, onAction }) {
   const isDepFailure = entry.failureType === 'dependency'
   const installHint =
     isDepFailure && typeof entry.installHint === 'string' && entry.installHint !== '' ? entry.installHint : null
-
   const run = (kind) => {
     setBusy(true)
     Promise.resolve(onAction(kind, entry)).finally(() => setBusy(false))
   }
-
   return createElement(
     'div',
     { className: 'dsh-my-guardian-row' },
@@ -900,7 +895,8 @@ function EntryRow({ entry, source, onAction }) {
   )
 }
 
-    // ── view ───────────────────────────────────────────────────────────────
+    'use strict'
+// ── view ───────────────────────────────────────────────────────────────
 /** State + data loading + user actions for the panel. Polls /guardian/api
  *  while the tab is visible; actions re-fetch on success, flag the load
  *  error banner on failure. */
@@ -913,7 +909,6 @@ function useGuardianState(visible) {
     loaded: false,
   })
   const [loadFailed, setLoadFailed] = useState(false)
-
   const load = () => {
     api('state')
       .then((value) => {
@@ -922,14 +917,12 @@ function useGuardianState(visible) {
       })
       .catch(() => setLoadFailed(true))
   }
-
   useEffect(() => {
     load()
     if (visible === false) return
     const timer = window.setInterval(load, POLL_MS)
     return () => window.clearInterval(timer)
   }, [visible])
-
   const onAction = (kind, entry) => {
     const request = { id: entry.id }
     const path = kind === 'retry' ? 'retry' : 'remove'
@@ -937,16 +930,13 @@ function useGuardianState(visible) {
       .then(() => load())
       .catch(() => setLoadFailed(true))
   }
-
   const onSafeMode = (enabled) => {
     api('safemode', { enabled })
       .then(() => load())
       .catch(() => setLoadFailed(true))
   }
-
   return { state, loadFailed, reload: load, onAction, onSafeMode }
 }
-
 /** Visual switch (role=switch): track + sliding thumb, checked = enabled.
  *  Semantics match the previous checkbox exactly: clicking reports the NEW
  *  checked state via onToggle. */
@@ -969,7 +959,6 @@ function Switch({ checked, disabled, label, onToggle }) {
     ),
   )
 }
-
 /** Safe-mode switch bar: icon + title + switch + hint, wired to the host API. */
 function SafeModeBar({ safeMode, onSafeMode }) {
   return createElement(
@@ -989,7 +978,6 @@ function SafeModeBar({ safeMode, onSafeMode }) {
     createElement('div', { className: 'dsh-my-guardian-hint' }, strings.safeModeDesc()),
   )
 }
-
 /** Staged + promoted entries as rows; empty state when there are none. */
 function EntryList({ rows, onAction }) {
   if (rows.length === 0) {
@@ -1024,10 +1012,8 @@ function EntryList({ rows, onAction }) {
     ),
   )
 }
-
 /** 高频噪音事件：每次启动/热重载都会大量产生，挤掉真正重要的诊断信息。 */
 const EVENT_NOISE = new Set(['entry-init', 'entry-dispose'])
-
 /** Recent guardian event log: badge + key info + time per entry.
  *  过滤 entry-init/entry-dispose 噪音，优先展示隔离/冻结/更新失败等关键事件。 */
 function EventList({ events }) {
@@ -1056,7 +1042,6 @@ function EventList({ events }) {
     ),
   )
 }
-
 /** 启动区问题（issue #144）：启动名册静态预检发现的问题条目，置顶展示
  *  修复命令与移除提示——名册中的坏条目是 all-or-nothing 启动失败的源头。 */
 function StartupIssuesBlock({ issues, checkedAt }) {
@@ -1112,10 +1097,8 @@ function StartupIssuesBlock({ issues, checkedAt }) {
     ),
   )
 }
-
 function GuardianView({ visible }) {
   const { state, loadFailed, reload, onAction, onSafeMode } = useGuardianState(visible)
-
   if (!state.loaded && !loadFailed) {
     return createElement(
       'div',
@@ -1124,12 +1107,10 @@ function GuardianView({ visible }) {
       strings.loading(),
     )
   }
-
   const rows = [
     ...state.staged.map((entry) => ({ entry, source: 'staged' })),
     ...state.promoted.map((entry) => ({ entry, source: 'promoted' })),
   ]
-
   return createElement(
     'div',
     { className: 'dsh-my-guardian-root' },
@@ -1161,7 +1142,8 @@ function GuardianView({ visible }) {
   )
 }
 
-    // ── plugin body ───────────────────────────────────────────────────────
+    'use strict'
+// ── plugin body ───────────────────────────────────────────────────────
 // 零第三方依赖：不 inject better-sidebar（那是第三方插件服务）。面板是
 // 可选增强——ctx.get('betterSidebar') 动态获取，服务不存在时静默跳过，
 // 核心治理能力（候选区/隔离/安全模式）纯 server 端，不受影响。
@@ -1176,7 +1158,6 @@ exports.apply = function apply(ctx) {
       if (style.parentNode) style.parentNode.removeChild(style)
     }
   }, 'dsh-my-guardian: styles')
-
   // strict=false：首屏加载时 betterSidebar 服务（由 dsh-better-sidebar 提供）
   // 的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true) 在
   // strict 模式下会返回 undefined，注册代码会静默 return（侧边栏看不到本
@@ -1184,7 +1165,6 @@ exports.apply = function apply(ctx) {
   // 仍返回 undefined（下面的判空降级不变），实际渲染发生在注册之后，安全。
   const service = ctx.get('betterSidebar', false)
   if (service === undefined) return
-
   ctx.effect(
     () =>
       service.registerTab({

@@ -51,12 +51,26 @@ export function findRootTree(loader: LoaderService): RootTree | null {
 }
 
 /** Bind the mount operations to one guardian instance's shared state. */
-export function createMountOps(shared: SharedContext): Pick<SharedContext, 'conflictOf' | 'mount' | 'unmount' | 'mountWithState' | 'processStagedEntry' | 'mountPromoted' | 'scanStaged' | 'retryEntry' | 'removeEntry'> {
+export function createMountOps(
+  shared: SharedContext,
+): Pick<
+  SharedContext,
+  | 'conflictOf'
+  | 'mount'
+  | 'unmount'
+  | 'mountWithState'
+  | 'processStagedEntry'
+  | 'mountPromoted'
+  | 'scanStaged'
+  | 'retryEntry'
+  | 'removeEntry'
+> {
   return {
     conflictOf: (id: string) => conflictOf(shared, id),
     mount: (id: string, options: { name: string; config?: unknown }) => mount(shared, id, options),
     unmount: (id: string) => unmount(shared, id),
-    mountWithState: (kind: 'staged' | 'promoted', id: string, entry: { name: string; config?: unknown }) => mountWithState(shared, kind, id, entry),
+    mountWithState: (kind: 'staged' | 'promoted', id: string, entry: { name: string; config?: unknown }) =>
+      mountWithState(shared, kind, id, entry),
     processStagedEntry: (id: string, entry: unknown) => processStagedEntry(shared, id, entry),
     mountPromoted: () => mountPromoted(shared),
     scanStaged: () => scanStaged(shared),

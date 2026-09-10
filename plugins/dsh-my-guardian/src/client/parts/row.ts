@@ -1,6 +1,6 @@
 // ── row ────────────────────────────────────────────────────────────────
 /** Row head: source chip + name + status badge + failure-category badge. */
-function RowHead({ entry, source }) {
+function RowHead({ entry, source }: { entry: GuardianEntry; source: EntrySource }) {
   return createElement(
     'div',
     { className: 'dsh-my-guardian-row-head' },
@@ -29,7 +29,7 @@ function RowHead({ entry, source }) {
 }
 
 /** Row meta: entry id + failure attempts + last failure time. */
-function RowMeta({ entry }) {
+function RowMeta({ entry }: { entry: GuardianEntry }) {
   return createElement(
     'div',
     { className: 'dsh-my-guardian-row-meta' },
@@ -44,7 +44,7 @@ function RowMeta({ entry }) {
 }
 
 /** Expandable error-detail toggle (chevron + label). */
-function ErrorToggle({ expanded, onToggle }) {
+function ErrorToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   return createElement(
     'button',
     {
@@ -58,7 +58,7 @@ function ErrorToggle({ expanded, onToggle }) {
 }
 
 /** Inline remove confirmation (destructive, red). */
-function RemoveConfirm({ busy, onConfirm, onCancel }) {
+function RemoveConfirm({ busy, onConfirm, onCancel }: { busy: boolean; onConfirm: () => void; onCancel: () => void }) {
   return createElement(
     'div',
     { className: 'dsh-my-guardian-confirm' },
@@ -99,7 +99,17 @@ function RemoveConfirm({ busy, onConfirm, onCancel }) {
 }
 
 /** Row actions: retry (refresh) + remove (trash) circular icon buttons. */
-function RowActions({ entry, busy, onRetry, onRemove }) {
+function RowActions({
+  entry,
+  busy,
+  onRetry,
+  onRemove,
+}: {
+  entry: GuardianEntry
+  busy: boolean
+  onRetry: () => void
+  onRemove: () => void
+}) {
   return createElement(
     'div',
     { className: 'dsh-my-guardian-actions' },
@@ -133,14 +143,22 @@ function RowActions({ entry, busy, onRetry, onRemove }) {
 }
 
 /** 冻结行提示（连败停止自动重试，需手动操作）。 */
-function FrozenHint({ status }) {
+function FrozenHint({ status }: { status: string }) {
   if (status !== 'frozen') return null
   return createElement('div', { className: 'dsh-my-guardian-freeze-hint' }, strings.frozenHint())
 }
 
-function EntryRow({ entry, source, onAction }) {
+function EntryRow({
+  entry,
+  source,
+  onAction,
+}: {
+  entry: GuardianEntry
+  source: EntrySource
+  onAction: GuardianAction
+}) {
   // 失败/冻结行默认展开错误详情（用户之前必须手动点开才看得到真正报错）。
-  const [expanded, setExpanded] = useState(
+  const [expanded, setExpanded] = useState<boolean>(
     () =>
       typeof entry.lastError === 'string' &&
       entry.lastError !== '' &&
@@ -153,7 +171,7 @@ function EntryRow({ entry, source, onAction }) {
   const installHint =
     isDepFailure && typeof entry.installHint === 'string' && entry.installHint !== '' ? entry.installHint : null
 
-  const run = (kind) => {
+  const run = (kind: string) => {
     setBusy(true)
     Promise.resolve(onAction(kind, entry)).finally(() => setBusy(false))
   }

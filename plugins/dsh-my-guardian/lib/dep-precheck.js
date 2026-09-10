@@ -96,7 +96,7 @@ function skippedResult(reason) {
  * When the plugin or its package.json cannot be located the check is skipped
  * (ok: true) so an unusual install layout is never a false block.
  */
-export function checkPeerDependencies({ profileDir, pluginName }) {
+export function checkPeerDependencies({ profileDir, pluginName, }) {
     const pluginDir = findModuleDir(join(profileDir, 'node_modules'), pluginName);
     if (pluginDir === null)
         return skippedResult(`无法定位插件 ${pluginName}（未在 profile node_modules 找到 package.json）`);

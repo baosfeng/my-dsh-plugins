@@ -16,7 +16,9 @@ import { normalizeOverflowConfig } from './overflow.js';
 /** 注册 /context/api 路由（effect 持有 disposer）。 */
 export function registerContextRoutes(ctx, store, options) {
     const webRuntime = ctx.get ? ctx.get('webRuntime') : undefined;
-    const trustedHosts = webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
+    const trustedHosts = webRuntime !== undefined &&
+        webRuntime !== null &&
+        Array.isArray(webRuntime.trustedHosts)
         ? webRuntime.trustedHosts
         : [];
     const fence = (request) => isTrustedApiRequest(request, trustedHosts);

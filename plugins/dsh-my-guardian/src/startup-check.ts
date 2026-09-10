@@ -63,7 +63,7 @@ function readOptionString(options: Record<string, unknown> | undefined | null, k
 /** Extract { id, name } from an entry, with safe fallbacks (entry.id getter
  *  may throw on partially-constructed entries — never let it break the boot). */
 export function entryLabels(entry: LoaderEntry): { id: string; name: string } {
-  const options = entry !== null && typeof entry === 'object' ? entry.options ?? null : null
+  const options = entry !== null && typeof entry === 'object' ? (entry.options ?? null) : null
   let id = readOptionString(options as Record<string, unknown> | null, 'id')
   if (id === '') id = entryIdGetterOf(entry)
   const name = readOptionString(options as Record<string, unknown> | null, 'name')
@@ -105,11 +105,7 @@ function unresolvedIssue(id: string, name: string): StartupIssue {
 }
 
 /** Build a dependency issue reusing the staged-mount pre-check result. */
-function dependencyIssue(
-  id: string,
-  name: string,
-  precheck: PrecheckResult,
-): StartupIssue {
+function dependencyIssue(id: string, name: string, precheck: PrecheckResult): StartupIssue {
   return {
     type: 'dependency',
     entryId: id,
@@ -180,13 +176,9 @@ function collectDuplicateIssues(issues: StartupIssue[], byId: Map<string, Normal
  * plugins for package resolvability + peer deps, and the whole roster for
  * duplicate ids. Never throws — returns { issues }.
  */
-export function checkStartupRoster({
-  entries,
-  profileDir,
-}: {
-  entries: NormalizedRosterEntry[]
-  profileDir: string
-}): { issues: StartupIssue[] } {
+export function checkStartupRoster({ entries, profileDir }: { entries: NormalizedRosterEntry[]; profileDir: string }): {
+  issues: StartupIssue[]
+} {
   const issues: StartupIssue[] = []
   const roster = Array.isArray(entries) ? entries : []
   const nmRoot = profileNodeModules(profileDir)

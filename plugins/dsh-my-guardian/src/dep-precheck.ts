@@ -85,7 +85,13 @@ function installedVersion(dir: string | null): string | null {
 }
 
 // Inspect a single peer dependency and classify the outcome.
-function examinePeer(dep: string, range: string, optional: boolean, pluginDir: string | null, profileDir: string): ExamineResult {
+function examinePeer(
+  dep: string,
+  range: string,
+  optional: boolean,
+  pluginDir: string | null,
+  profileDir: string,
+): ExamineResult {
   const depDir = resolveDependencyDir(profileDir, pluginDir, dep)
   if (depDir === null) {
     if (optional) return { kind: 'warn', message: `可选依赖 ${dep} 缺失（未安装）` }
@@ -143,7 +149,13 @@ function skippedResult(reason: string): PrecheckResult {
  * When the plugin or its package.json cannot be located the check is skipped
  * (ok: true) so an unusual install layout is never a false block.
  */
-export function checkPeerDependencies({ profileDir, pluginName }: { profileDir: string; pluginName: string }): PrecheckResult {
+export function checkPeerDependencies({
+  profileDir,
+  pluginName,
+}: {
+  profileDir: string
+  pluginName: string
+}): PrecheckResult {
   const pluginDir = findModuleDir(join(profileDir, 'node_modules'), pluginName)
   if (pluginDir === null)
     return skippedResult(`无法定位插件 ${pluginName}（未在 profile node_modules 找到 package.json）`)

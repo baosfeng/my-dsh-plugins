@@ -12,12 +12,14 @@
  * 样式走 DSH 语义 token（--dsw-alias-* / --dsw-font-*），随 activation
  * 注入、fiber teardown 卸载（HMR/禁用无残留）。
  *
- * BUILD NOTE: 本文件是模板源码，不是 DSH 实际服务的文件。scripts/build.mjs
- * 将三个片段文件（lib/parts/i18n.js / panel.js / styles.js，均为无
- * import/export 的纯函数声明文本）经下方 __PART_*__ 占位符（函数式
- * replaceAll，避免 $&/$1 特殊解释）拼接进 factory 作用域，写出
- * lib/client.js —— 即 DSH 实际服务的产物。产物必须提交；CI 只对产物执行
- * node --check（见 .github/workflows/ci.yml）。
+ * BUILD NOTE: 本文件是模板源码，不是 DSH 实际服务的文件。scripts/build.mjs 先用
+ * tsconfig.client.json 把 src/client/parts/*.ts 编译成 lib/parts/*.js（i18n /
+ * panel / overflow / styles 四个片段，均为无 import/export 的纯函数声明文本，
+ * 共享 factory 作用域），再经下方 __PART_*__ 占位符（函数式 replaceAll，避免
+ * $&/$1 特殊解释）拼接进 factory 作用域，写出 lib/client.js —— 即 DSH 实际
+ * 服务的产物。产物必须提交；CI 只对产物执行 node --check（见 .github/workflows/ci.yml）。
+ *
+ * parts 顺序固定（build.mjs 的 pieces）：i18n → panel → overflow → styles。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-my-context',
@@ -28,7 +30,8 @@ window.__ModuleLoader__.load({
     const { createElement, useEffect, useState } = require('react')
 
     // ── parts（scripts/build.mjs 拼接；顺序固定）───────────────────────
-    // ── i18n（浏览器语言判定）──────────────────────────────────────────
+    'use strict'
+// ── i18n（浏览器语言判定）──────────────────────────────────────────
 function isZh() {
   try {
     const lang = (navigator.language || 'en').toLowerCase()
@@ -37,7 +40,6 @@ function isZh() {
     return false
   }
 }
-
 const strings = {
   tabTitle: () => (isZh() ? '上下文透镜' : 'Context'),
   allSessions: () => (isZh() ? '全部会话' : 'All sessions'),
@@ -117,9 +119,9 @@ const strings = {
   empty: () => (isZh() ? '（空）' : '(empty)'),
 }
 
-    // ── 上下文透镜面板 ──────────────────────────────────────────────────
+    'use strict'
+// ── 上下文透镜面板 ──────────────────────────────────────────────────
 const CONTEXT_POLL_MS = 5000
-
 /** 请求插件 API（非 2xx 抛错；返回响应 JSON 的 value 字段）。 */
 function apiJson(path, options) {
   return fetch(path, options).then(async (res) => {
@@ -128,7 +130,6 @@ function apiJson(path, options) {
     return data.value
   })
 }
-
 /** 时间戳 → HH:MM:SS。 */
 function timeText(time) {
   try {
@@ -139,7 +140,6 @@ function timeText(time) {
     return ''
   }
 }
-
 /** KV 缓存命中率：cacheRead / (input + cacheRead)，无数据返回 0。 */
 function cacheHitRate(usage) {
   const read = usage?.cacheReadTokens || 0
@@ -147,7 +147,6 @@ function cacheHitRate(usage) {
   const total = read + input
   return total > 0 ? read / total : 0
 }
-
 /** 构成分类 → 标签。 */
 function compositionLabel(key) {
   const labels = {
@@ -160,7 +159,6 @@ function compositionLabel(key) {
   }
   return labels[key] || key
 }
-
 /** 单个统计项（值 + 标签）。 */
 function Stat({ value, label }) {
   return createElement(
@@ -170,13 +168,11 @@ function Stat({ value, label }) {
     createElement('div', { className: 'dso-stat-label' }, label),
   )
 }
-
 /** 模型徽标（无模型返回 null）。 */
 function modelBadge(session) {
   if (session.model === '') return null
   return createElement('span', { className: 'dso-time' }, `${strings.model()} ${session.model}`)
 }
-
 /** 上下文窗口备注（无窗口返回 null）。 */
 function windowNote(session) {
   if (session.contextWindow <= 0) return null
@@ -186,7 +182,6 @@ function windowNote(session) {
     `${strings.contextWindow()} ${session.contextWindow.toLocaleString()}`,
   )
 }
-
 /** 概览卡片：累计 token + 缓存命中率 + 模型/上下文窗口。 */
 function OverviewCard({ session }) {
   const usage = session.usage || {}
@@ -231,7 +226,6 @@ function OverviewCard({ session }) {
     windowNote(session),
   )
 }
-
 /** 构成条：按类型展示 token 占比（水平条形）。 */
 function CompositionBar({ composition }) {
   const keys = ['system', 'tools', 'user', 'inject', 'assistant', 'tool']
@@ -256,7 +250,6 @@ function CompositionBar({ composition }) {
     })
   return createElement('div', { className: 'dso-comp' }, rows)
 }
-
 /** 单条请求记录（轮/步 + prompt/output + 缓存命中率）。 */
 function RequestRow({ request }) {
   const rate = cacheHitRate({
@@ -279,14 +272,12 @@ function RequestRow({ request }) {
     ),
   )
 }
-
 /** 请求列表（最新在前）。 */
 function RequestList({ requests }) {
   if (requests.length === 0) return createElement('div', { className: 'dso-empty' }, strings.noRequests())
   const rows = [...requests].reverse().map((request, index) => createElement(RequestRow, { key: index, request }))
   return createElement('div', { className: 'dso-timeline' }, rows)
 }
-
 /** 预算输入行（数字输入 + 标签）。 */
 function BudgetField({ label, value, onChange }) {
   return createElement(
@@ -303,7 +294,6 @@ function BudgetField({ label, value, onChange }) {
     createElement('span', { className: 'dso-time' }, label),
   )
 }
-
 /** 保存预算配置。 */
 async function saveBudget(payload, setBusy, setFeedback, onSaved) {
   setBusy(true)
@@ -322,7 +312,6 @@ async function saveBudget(payload, setBusy, setFeedback, onSaved) {
     setBusy(false)
   }
 }
-
 /** 预算设置：每轮/每会话上限 + 模式 + 保存。 */
 function BudgetSettings({ budget, onSaved }) {
   const [perTurn, setPerTurn] = useState(String(budget.perTurn || 0))
@@ -373,7 +362,6 @@ function BudgetSettings({ budget, onSaved }) {
     feedback !== '' ? createElement('div', { className: 'dso-feedback' }, feedback) : null,
   )
 }
-
 /** 预算告警列表（最新在前）。 */
 function AlertList({ alerts }) {
   if (alerts.length === 0) return createElement('div', { className: 'dso-empty' }, strings.noAlerts())
@@ -398,7 +386,6 @@ function AlertList({ alerts }) {
   })
   return createElement('div', { className: 'dso-timeline' }, rows)
 }
-
 /** 拉取会话列表 + 状态 + 当前会话统计。 */
 async function loadContextData(sessionId, setters) {
   const list = await apiJson('/context/api/sessions')
@@ -412,7 +399,6 @@ async function loadContextData(sessionId, setters) {
     setters.setSession(stats)
   }
 }
-
 /** 会话区块：构成 + 请求 + 告警（无会话返回 null）。 */
 function sessionSections(session) {
   if (session === null) return null
@@ -437,7 +423,6 @@ function sessionSections(session) {
     ),
   ]
 }
-
 /** 状态提示：错误 / 加载中 / 空状态（无提示返回 null）。 */
 function statusNote(error, loading, session) {
   if (error !== '') return createElement('div', { className: 'dso-empty' }, `${strings.loadError()}：${error}`)
@@ -445,7 +430,6 @@ function statusNote(error, loading, session) {
   if (session === null) return createElement('div', { className: 'dso-empty' }, strings.noSessions())
   return null
 }
-
 /** 上下文透镜主面板：会话选择 + 概览 + 构成 + 请求 + 预算（可见时轮询）。 */
 function ContextPanel(props) {
   const visible = props.visible !== false
@@ -456,7 +440,6 @@ function ContextPanel(props) {
   const [overflow, setOverflow] = useState({ warnThreshold: 0.8, alertThreshold: 0.9 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-
   useEffect(() => {
     if (!visible) return undefined
     let alive = true
@@ -477,7 +460,6 @@ function ContextPanel(props) {
       clearInterval(timer)
     }
   }, [visible, sessionId])
-
   const options = sessions.map((s) => createElement('option', { key: s.sessionId, value: s.sessionId }, s.sessionId))
   return createElement(
     'div',
@@ -506,13 +488,13 @@ function ContextPanel(props) {
   )
 }
 
-    // ── 上下文溢出预警（issue #87）────────────────────────────────────
+    'use strict'
+// ── 上下文溢出预警（issue #87）────────────────────────────────────
 // 用量比例 + 分级预警（80/90/95%）进度条、压缩建议卡、预警记录列表、
 // 阈值配置。与 server lib/overflow.js 语义一致（比值口径 = 当前上下文
 // 长度/contextWindow，其中"当前上下文长度"取最近一次请求的 prompt——
 // 历史累计 usage 含每轮重复的 cacheRead，会导致占用虚高数倍）；
 // client 无相对 import，分级逻辑在此本地复刻。
-
 /** 当前上下文长度（最近一次请求 prompt；旧数据回退最近请求快照）。 */
 function contextUsage(session) {
   if (typeof session?.lastPromptTokens === 'number' && session.lastPromptTokens > 0) {
@@ -522,7 +504,6 @@ function contextUsage(session) {
   const last = requests[requests.length - 1]
   return typeof last?.prompt === 'number' ? last.prompt : 0
 }
-
 /** 非负有限比例，夹到 [0,1]。 */
 function ratioTo(value, fallback) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
@@ -530,7 +511,6 @@ function ratioTo(value, fallback) {
   if (value > 1) return 1
   return value
 }
-
 /** 用量比例分级：normal / warn / alert / critical。 */
 function overflowLevelOf(ratio, overflow) {
   const warn = ratioTo(overflow?.warnThreshold, 0.8)
@@ -540,7 +520,6 @@ function overflowLevelOf(ratio, overflow) {
   if (ratio >= warn) return 'warn'
   return 'normal'
 }
-
 /** 当前会话用量表：{ used, window, ratio, level }。 */
 function usageMeter(session, overflow) {
   const window = session.contextWindow || 0
@@ -548,7 +527,6 @@ function usageMeter(session, overflow) {
   const ratio = window > 0 ? used / window : 0
   return { used, window, ratio, level: overflowLevelOf(ratio, overflow) }
 }
-
 /** 级别 → 标签。 */
 function overflowLevelLabel(level) {
   const labels = {
@@ -559,7 +537,6 @@ function overflowLevelLabel(level) {
   }
   return labels[level] || strings.levelNormal()
 }
-
 /** 前 N 个占比最高的构成分类（[{label, percent}]）。 */
 function topComposition(composition, count) {
   const keys = ['system', 'tools', 'user', 'inject', 'assistant', 'tool']
@@ -571,7 +548,6 @@ function topComposition(composition, count) {
   if (total <= 0) return []
   return items.slice(0, count).map((it) => ({ label: it.label, percent: strings.percent(it.value / total) }))
 }
-
 /** 上下文占用卡：进度条（级别色）+ 级别徽标 + 压缩建议。 */
 function ContextUsageCard({ session, overflow }) {
   const meter = usageMeter(session, overflow)
@@ -604,7 +580,6 @@ function ContextUsageCard({ session, overflow }) {
     createElement(CompressSuggestions, { meter, session }),
   )
 }
-
 /** 压缩建议卡（非 normal 级别展示）。 */
 function CompressSuggestions({ meter, session }) {
   if (meter.level === 'normal') return null
@@ -622,7 +597,6 @@ function CompressSuggestions({ meter, session }) {
     ),
   )
 }
-
 /** 溢出预警记录列表（最新在前）。 */
 function OverflowList({ overflows }) {
   if (overflows.length === 0) return createElement('div', { className: 'dso-empty' }, strings.noOverflows())
@@ -642,7 +616,6 @@ function OverflowList({ overflows }) {
   })
   return createElement('div', { className: 'dso-timeline' }, rows)
 }
-
 /** 溢出预警区块（标题 + 记录列表）。 */
 function OverflowSection({ overflows }) {
   return createElement(
@@ -652,7 +625,6 @@ function OverflowSection({ overflows }) {
     createElement(OverflowList, { overflows }),
   )
 }
-
 /** 阈值输入行（百分比数字 + 标签）。 */
 function ThresholdField({ label, value, onChange }) {
   return createElement(
@@ -669,7 +641,6 @@ function ThresholdField({ label, value, onChange }) {
     createElement('span', { className: 'dso-time' }, label),
   )
 }
-
 /** 保存溢出阈值配置。 */
 async function saveOverflow(payload, setBusy, setFeedback, onSaved) {
   setBusy(true)
@@ -688,7 +659,6 @@ async function saveOverflow(payload, setBusy, setFeedback, onSaved) {
     setBusy(false)
   }
 }
-
 /** 溢出阈值配置：预警/告警阈值输入 + 保存。 */
 function OverflowSettings({ overflow, onSaved }) {
   const [warn, setWarn] = useState(String((overflow.warnThreshold || 0.8) * 100))
@@ -717,7 +687,8 @@ function OverflowSettings({ overflow, onSaved }) {
   )
 }
 
-    // ── 样式（DSH 语义 token，随 activation 注入 / teardown 卸载）──────
+    'use strict'
+// ── 样式（DSH 语义 token，随 activation 注入 / teardown 卸载）──────
 const STYLES = `
 .dso-panel{display:flex;flex-direction:column;gap:10px;padding:12px;color:var(--dsw-alias-label-primary)}
 .dso-toolbar{display:flex;flex-direction:column;gap:8px}
@@ -789,7 +760,6 @@ const STYLES = `
 .dso-suggest-list{margin:0;padding-left:18px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.6}
 .dso-badge-overflow{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent)}
 `
-
 function injectStyles() {
   if (typeof document === 'undefined' || typeof document.head === 'undefined') return () => {}
   const style = document.createElement('style')

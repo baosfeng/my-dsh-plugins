@@ -2,8 +2,8 @@
 /** State + data loading + user actions for the panel. Polls /guardian/api
  *  while the tab is visible; actions re-fetch on success, flag the load
  *  error banner on failure. */
-function useGuardianState(visible) {
-  const [state, setState] = useState({
+function useGuardianState(visible: boolean) {
+  const [state, setState] = useState<GuardianState>({
     safeMode: false,
     staged: [],
     promoted: [],
@@ -28,7 +28,7 @@ function useGuardianState(visible) {
     return () => window.clearInterval(timer)
   }, [visible])
 
-  const onAction = (kind, entry) => {
+  const onAction = (kind: string, entry: GuardianEntry) => {
     const request = { id: entry.id }
     const path = kind === 'retry' ? 'retry' : 'remove'
     return api(path, request)
@@ -36,7 +36,7 @@ function useGuardianState(visible) {
       .catch(() => setLoadFailed(true))
   }
 
-  const onSafeMode = (enabled) => {
+  const onSafeMode = (enabled: boolean) => {
     api('safemode', { enabled })
       .then(() => load())
       .catch(() => setLoadFailed(true))
@@ -48,7 +48,17 @@ function useGuardianState(visible) {
 /** Visual switch (role=switch): track + sliding thumb, checked = enabled.
  *  Semantics match the previous checkbox exactly: clicking reports the NEW
  *  checked state via onToggle. */
-function Switch({ checked, disabled, label, onToggle }) {
+function Switch({
+  checked,
+  disabled,
+  label,
+  onToggle,
+}: {
+  checked: boolean
+  disabled?: boolean
+  label: string
+  onToggle: () => void
+}) {
   return createElement(
     'button',
     {
@@ -69,7 +79,7 @@ function Switch({ checked, disabled, label, onToggle }) {
 }
 
 /** Safe-mode switch bar: icon + title + switch + hint, wired to the host API. */
-function SafeModeBar({ safeMode, onSafeMode }) {
+function SafeModeBar({ safeMode, onSafeMode }: { safeMode: boolean; onSafeMode: (enabled: boolean) => void }) {
   return createElement(
     'div',
     { className: `dsh-my-guardian-safemode${safeMode ? ' dsh-my-guardian-safemode-on' : ''}` },
@@ -89,7 +99,7 @@ function SafeModeBar({ safeMode, onSafeMode }) {
 }
 
 /** Staged + promoted entries as rows; empty state when there are none. */
-function EntryList({ rows, onAction }) {
+function EntryList({ rows, onAction }: { rows: EntryRowSpec[]; onAction: GuardianAction }) {
   if (rows.length === 0) {
     return createElement(
       'div',
@@ -128,7 +138,7 @@ const EVENT_NOISE = new Set(['entry-init', 'entry-dispose'])
 
 /** Recent guardian event log: badge + key info + time per entry.
  *  过滤 entry-init/entry-dispose 噪音，优先展示隔离/冻结/更新失败等关键事件。 */
-function EventList({ events }) {
+function EventList({ events }: { events: GuardianEvent[] }) {
   const important = events.filter((event) => !EVENT_NOISE.has(event.type))
   if (important.length === 0) return null
   return createElement(
@@ -157,7 +167,7 @@ function EventList({ events }) {
 
 /** 启动区问题（issue #144）：启动名册静态预检发现的问题条目，置顶展示
  *  修复命令与移除提示——名册中的坏条目是 all-or-nothing 启动失败的源头。 */
-function StartupIssuesBlock({ issues, checkedAt }) {
+function StartupIssuesBlock({ issues, checkedAt }: { issues?: StartupIssue[]; checkedAt?: number }) {
   if (!Array.isArray(issues) || issues.length === 0) return null
   return createElement(
     'div',
@@ -211,7 +221,7 @@ function StartupIssuesBlock({ issues, checkedAt }) {
   )
 }
 
-function GuardianView({ visible }) {
+function GuardianView({ visible }: { visible: boolean }) {
   const { state, loadFailed, reload, onAction, onSafeMode } = useGuardianState(visible)
 
   if (!state.loaded && !loadFailed) {
@@ -223,9 +233,9 @@ function GuardianView({ visible }) {
     )
   }
 
-  const rows = [
-    ...state.staged.map((entry) => ({ entry, source: 'staged' })),
-    ...state.promoted.map((entry) => ({ entry, source: 'promoted' })),
+  const rows: EntryRowSpec[] = [
+    ...state.staged.map((entry): EntryRowSpec => ({ entry, source: 'staged' })),
+    ...state.promoted.map((entry): EntryRowSpec => ({ entry, source: 'promoted' })),
   ]
 
   return createElement(

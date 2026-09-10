@@ -74,6 +74,9 @@ export function estimateToolSchema(tool: unknown): number {
 /** 消息是否为空（无 content 或 content 为空数组）。 */
 export function isEmptyMessage(message: unknown): boolean {
   return (
-    message === null || typeof message !== 'object' || !Array.isArray((message as Record<string, unknown>).content) || ((message as Record<string, unknown>).content as unknown[]).length === 0
+    message === null ||
+    typeof message !== 'object' ||
+    !Array.isArray((message as Record<string, unknown>).content) ||
+    ((message as Record<string, unknown>).content as unknown[]).length === 0
   )
 }

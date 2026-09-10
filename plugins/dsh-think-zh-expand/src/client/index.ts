@@ -654,7 +654,8 @@ _exports.inject = ['slots']
 _exports.apply = function apply(ctx: ClientContext): void {
   // Inject the shared stylesheet once (torn down with the fiber).
   ctx.effect(() => {
-    if (typeof document === 'undefined' || document === null || typeof (document as Document).head === 'undefined') return () => {}
+    if (typeof document === 'undefined' || document === null || typeof (document as Document).head === 'undefined')
+      return () => {}
     const style = (document as Document).createElement('style')
     style.setAttribute('data-dsh-think-zh-expand', 'styles')
     style.textContent = STYLES
@@ -675,7 +676,8 @@ _exports.apply = function apply(ctx: ClientContext): void {
             priority: -1,
             registrant: 'dsh-think-zh-expand',
           },
-          (props: Record<string, unknown>) => createElement(AssistantStepView, props as unknown as AssistantStepViewProps),
+          (props: Record<string, unknown>) =>
+            createElement(AssistantStepView, props as unknown as AssistantStepViewProps),
         ),
       ),
     'dsh-think-zh-expand: assistant-step renderer',

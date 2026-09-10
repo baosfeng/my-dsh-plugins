@@ -23,12 +23,14 @@ export function registerContextRoutes(
   options: {
     current: { perTurn: number; perSession: number; mode: 'warn' | 'deny' }
     overflow: { warnThreshold: number; alertThreshold: number }
-  }
+  },
 ): void {
   const webRuntime = ctx.get ? ctx.get('webRuntime') : undefined
   const trustedHosts =
-    webRuntime !== undefined && webRuntime !== null && Array.isArray((webRuntime as Record<string, unknown>).trustedHosts)
-      ? (webRuntime as Record<string, unknown>).trustedHosts as string[]
+    webRuntime !== undefined &&
+    webRuntime !== null &&
+    Array.isArray((webRuntime as Record<string, unknown>).trustedHosts)
+      ? ((webRuntime as Record<string, unknown>).trustedHosts as string[])
       : []
   const fence = (request: ServerRequest) => isTrustedApiRequest(request, trustedHosts)
 
@@ -50,7 +52,7 @@ function apiHandler(
   options: {
     current: { perTurn: number; perSession: number; mode: 'warn' | 'deny' }
     overflow: { warnThreshold: number; alertThreshold: number }
-  }
+  },
 ): (request: ServerRequest, response: ServerResponse) => Promise<void> {
   return async (request: ServerRequest, response: ServerResponse) => {
     if (!fence(request)) {
@@ -89,7 +91,7 @@ async function dispatchMethod(
   options: {
     current: { perTurn: number; perSession: number; mode: 'warn' | 'deny' }
     overflow: { warnThreshold: number; alertThreshold: number }
-  }
+  },
 ): Promise<boolean> {
   if (isMethod(method, request, 'status', 'GET')) {
     writeJson(response, 200, { ok: true, value: statusValue(store, options) })
@@ -130,7 +132,7 @@ function statusValue(
   options: {
     current: { perTurn: number; perSession: number; mode: 'warn' | 'deny' }
     overflow: { warnThreshold: number; alertThreshold: number }
-  }
+  },
 ): {
   sessions: number
   budget: { perTurn: number; perSession: number; mode: 'warn' | 'deny' }
@@ -159,13 +161,13 @@ async function handleSession(response: ServerResponse, store: StoreType, session
 
 /** 告警列表（最新在前）。 */
 function alertsOf(store: StoreType, sessionId: string): unknown[] {
-  const list = store.session(sessionId)?.alerts as unknown[] ?? []
+  const list = (store.session(sessionId)?.alerts as unknown[]) ?? []
   return [...list].reverse()
 }
 
 /** 溢出预警列表（最新在前）。 */
 function overflowsOf(store: StoreType, sessionId: string): unknown[] {
-  const list = store.session(sessionId)?.overflows as unknown[] ?? []
+  const list = (store.session(sessionId)?.overflows as unknown[]) ?? []
   return [...list].reverse()
 }
 
@@ -176,7 +178,7 @@ async function handleBudget(
   options: {
     current: { perTurn: number; perSession: number; mode: 'warn' | 'deny' }
     overflow: { warnThreshold: number; alertThreshold: number }
-  }
+  },
 ): Promise<void> {
   const payload = await readJsonBody(request as unknown as AsyncIterable<string>)
   options.current = normalizeBudgetConfig(payload)
@@ -190,7 +192,7 @@ async function handleOverflow(
   options: {
     current: { perTurn: number; perSession: number; mode: 'warn' | 'deny' }
     overflow: { warnThreshold: number; alertThreshold: number }
-  }
+  },
 ): Promise<void> {
   const payload = await readJsonBody(request as unknown as AsyncIterable<string>)
   options.overflow = normalizeOverflowConfig(payload)

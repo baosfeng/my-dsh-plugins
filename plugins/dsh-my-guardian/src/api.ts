@@ -61,7 +61,8 @@ function ensureApi(ctx: DshContext, shared: SharedContext): void {
         webServer.register({
           kind: 'prefix',
           path: '/guardian/api',
-          handler: (request: ServerRequest, response: ServerResponse) => handleApiRequest(ctx, shared, webRuntime, request, response),
+          handler: (request: ServerRequest, response: ServerResponse) =>
+            handleApiRequest(ctx, shared, webRuntime, request, response),
         }),
       'dsh-my-guardian: /guardian/api routes',
     )

@@ -153,7 +153,11 @@ export interface SharedContext {
   conflictOf: (id: string) => string | null
   mount: (id: string, options: { name: string; config?: unknown }) => Promise<void>
   unmount: (id: string) => Promise<void>
-  mountWithState: (kind: 'staged' | 'promoted', id: string, entry: { name: string; config?: unknown }) => Promise<'mounted' | 'failed' | 'skipped'>
+  mountWithState: (
+    kind: 'staged' | 'promoted',
+    id: string,
+    entry: { name: string; config?: unknown },
+  ) => Promise<'mounted' | 'failed' | 'skipped'>
   processStagedEntry: (id: string, entry: unknown) => Promise<void>
   mountPromoted: () => Promise<void>
   scanStaged: () => Promise<void>

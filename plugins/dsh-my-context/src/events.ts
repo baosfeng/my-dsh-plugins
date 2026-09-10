@@ -42,7 +42,7 @@ export function attachContextListeners(
   options: {
     current: { perTurn: number; perSession: number; mode: 'warn' | 'deny' }
     overflow: { warnThreshold: number; alertThreshold: number }
-  }
+  },
 ): Array<() => void> {
   const cooldown = new Map<string, number>()
   const overflowCooldown = new Map<string, number>()
@@ -79,15 +79,11 @@ const EVENT_HANDLERS: Record<string, (store: StoreType, sessionId: string, data:
     store.addMessage(
       sessionId,
       isInjection((data as Record<string, unknown>)?.source) ? 'inject' : 'user',
-      estimateMessage(data)
+      estimateMessage(data),
     ),
   'assistant/message': (store, sessionId, data) => handleAssistant(store, sessionId, data),
   'tool/result': (store, sessionId, data) =>
-    store.addMessage(
-      sessionId,
-      'tool',
-      estimateMessage((data as Record<string, unknown>)?.message)
-    ),
+    store.addMessage(sessionId, 'tool', estimateMessage((data as Record<string, unknown>)?.message)),
   'turn/start': (store, sessionId, data) =>
     store.startTurn(sessionId, (data as Record<string, unknown>)?.turn as number),
 }
@@ -134,7 +130,7 @@ async function handlePreStep(
     overflow: { warnThreshold: number; alertThreshold: number }
   },
   cooldown: Map<string, number>,
-  overflowCooldown: Map<string, number>
+  overflowCooldown: Map<string, number>,
 ): Promise<unknown> {
   const sessionId = ((payload as Record<string, unknown>)?.agent as Record<string, unknown>)?.id as string
   if (typeof sessionId !== 'string' || sessionId === '') return next()
@@ -144,7 +140,7 @@ async function handlePreStep(
   const decision = checkBudget(
     session.usage as Record<string, unknown>,
     session.turnUsage as Record<string, unknown>,
-    options.current
+    options.current,
   )
   if (decision.ok) return next()
   const blocked = options.current.mode === 'deny'
@@ -171,15 +167,11 @@ function recordOverflowIfNeeded(
     current: { perTurn: number; perSession: number; mode: 'warn' | 'deny' }
     overflow: { warnThreshold: number; alertThreshold: number }
   },
-  cooldown: Map<string, number>
+  cooldown: Map<string, number>,
 ): void {
   // 口径 = 当前上下文长度（最近一次请求 prompt），而非历史累计 usage：
   // 累计 usage 中 cacheRead 每轮重复累加，会把占用虚高到数倍于窗口。
-  const outcome = overflowLevel(
-    session.lastPromptTokens,
-    session.contextWindow,
-    options.overflow
-  )
+  const outcome = overflowLevel(session.lastPromptTokens, session.contextWindow, options.overflow)
   if (!isOverflowing(outcome.level)) return
   const scope = `overflow:${outcome.level}`
   if (withinCooldown(cooldown, session.sessionId as string, scope)) return

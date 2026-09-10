@@ -24,7 +24,7 @@ export function normalizeOverflowConfig(config: unknown): {
   warnThreshold: number
   alertThreshold: number
 } {
-  const source = config !== null && typeof config === 'object' ? config as Record<string, unknown> : {}
+  const source = config !== null && typeof config === 'object' ? (config as Record<string, unknown>) : {}
   return {
     warnThreshold: ratioOf(source.warnThreshold, 0.8),
     alertThreshold: ratioOf(source.alertThreshold, 0.9),
@@ -41,7 +41,7 @@ export function normalizeOverflowConfig(config: unknown): {
 export function overflowLevel(
   contextLength: unknown,
   contextWindow: unknown,
-  config: unknown
+  config: unknown,
 ): {
   ratio: number
   used: number

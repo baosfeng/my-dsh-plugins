@@ -111,8 +111,14 @@ function copyNumber(target: Record<string, unknown>, raw: Record<string, unknown
 }
 
 /** 复制对象字段（非对象忽略；默认值兜底）。 */
-function copyObject(target: Record<string, unknown>, raw: Record<string, unknown>, key: string, fallback: Record<string, unknown>): void {
-  if (typeof raw[key] === 'object' && raw[key] !== null) target[key] = { ...fallback, ...(raw[key] as Record<string, unknown>) }
+function copyObject(
+  target: Record<string, unknown>,
+  raw: Record<string, unknown>,
+  key: string,
+  fallback: Record<string, unknown>,
+): void {
+  if (typeof raw[key] === 'object' && raw[key] !== null)
+    target[key] = { ...fallback, ...(raw[key] as Record<string, unknown>) }
 }
 
 /** 原子写当前状态（经 dirtyChain 串行化；自动建目录）。 */

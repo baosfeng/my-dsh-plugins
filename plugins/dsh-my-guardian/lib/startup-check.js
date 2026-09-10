@@ -54,7 +54,7 @@ function readOptionString(options, key) {
 /** Extract { id, name } from an entry, with safe fallbacks (entry.id getter
  *  may throw on partially-constructed entries — never let it break the boot). */
 export function entryLabels(entry) {
-    const options = entry !== null && typeof entry === 'object' ? entry.options ?? null : null;
+    const options = entry !== null && typeof entry === 'object' ? (entry.options ?? null) : null;
     let id = readOptionString(options, 'id');
     if (id === '')
         id = entryIdGetterOf(entry);
@@ -156,7 +156,7 @@ function collectDuplicateIssues(issues, byId) {
  * plugins for package resolvability + peer deps, and the whole roster for
  * duplicate ids. Never throws — returns { issues }.
  */
-export function checkStartupRoster({ entries, profileDir, }) {
+export function checkStartupRoster({ entries, profileDir }) {
     const issues = [];
     const roster = Array.isArray(entries) ? entries : [];
     const nmRoot = profileNodeModules(profileDir);

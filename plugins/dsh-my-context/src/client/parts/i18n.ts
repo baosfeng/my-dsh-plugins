@@ -1,6 +1,5 @@
-'use strict'
 // ── i18n（浏览器语言判定）──────────────────────────────────────────
-function isZh() {
+function isZh(): boolean {
   try {
     const lang = (navigator.language || 'en').toLowerCase()
     return lang.startsWith('zh')
@@ -8,6 +7,7 @@ function isZh() {
     return false
   }
 }
+
 const strings = {
   tabTitle: () => (isZh() ? '上下文透镜' : 'Context'),
   allSessions: () => (isZh() ? '全部会话' : 'All sessions'),
@@ -35,7 +35,7 @@ const strings = {
   catTool: () => (isZh() ? '工具结果' : 'Tool results'),
   requests: () => (isZh() ? '请求记录' : 'Requests'),
   noRequests: () => (isZh() ? '暂无请求记录' : 'No requests yet'),
-  turnStep: (turn, step) => (isZh() ? `轮 ${turn} · 步 ${step}` : `turn ${turn} · step ${step}`),
+  turnStep: (turn: number, step: number) => (isZh() ? `轮 ${turn} · 步 ${step}` : `turn ${turn} · step ${step}`),
   prompt: () => (isZh() ? '提示' : 'Prompt'),
   output: () => (isZh() ? '输出' : 'Output'),
   budget: () => (isZh() ? '预算' : 'Budget'),
@@ -63,8 +63,8 @@ const strings = {
   overflowSection: () => (isZh() ? '溢出预警' : 'Overflow alerts'),
   noOverflows: () => (isZh() ? '暂无溢出预警' : 'No overflow alerts'),
   overflowRatio: () => (isZh() ? '已用占比' : 'Usage'),
-  overflowThreshold: (n) => (isZh() ? `阈值 ${(n * 100).toFixed(0)}%` : `threshold ${(n * 100).toFixed(0)}%`),
-  suggestTitle: (level) => {
+  overflowThreshold: (n: number) => (isZh() ? `阈值 ${(n * 100).toFixed(0)}%` : `threshold ${(n * 100).toFixed(0)}%`),
+  suggestTitle: (level: string) => {
     if (isZh()) {
       if (level === 'critical') return '建议：上下文接近上限，开启新会话'
       if (level === 'alert') return '建议：尽快压缩或开启新会话'
@@ -77,12 +77,12 @@ const strings = {
   suggestNewSession: () => (isZh() ? '开启新会话，归档当前上下文' : 'Start a new session and archive this context'),
   suggestCompact: () =>
     isZh() ? '总结/压缩历史对话后再继续' : 'Summarize/compact the conversation history before continuing',
-  suggestComposition: (list) =>
+  suggestComposition: (list: string) =>
     isZh() ? `查看上下文构成占比（${list} 占比最高）` : `Review composition shares (${list} dominate)`,
   warnThresholdLabel: () => (isZh() ? '预警阈值' : 'Warn threshold'),
   alertThresholdLabel: () => (isZh() ? '告警阈值' : 'Alert threshold'),
   overflowConfig: () => (isZh() ? '溢出阈值' : 'Overflow thresholds'),
-  tokens: (n) => (isZh() ? `${n.toLocaleString()} tokens` : `${n.toLocaleString()} tokens`),
-  percent: (n) => `${(n * 100).toFixed(1)}%`,
+  tokens: (n: number) => (isZh() ? `${n.toLocaleString()} tokens` : `${n.toLocaleString()} tokens`),
+  percent: (n: number) => `${(n * 100).toFixed(1)}%`,
   empty: () => (isZh() ? '（空）' : '(empty)'),
 }

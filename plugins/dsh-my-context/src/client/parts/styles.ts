@@ -1,6 +1,5 @@
-'use strict'
 // ── 样式（DSH 语义 token，随 activation 注入 / teardown 卸载）──────
-const STYLES = `
+const STYLES: string = `
 .dso-panel{display:flex;flex-direction:column;gap:10px;padding:12px;color:var(--dsw-alias-label-primary)}
 .dso-toolbar{display:flex;flex-direction:column;gap:8px}
 .dso-select{flex:1;min-width:0;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-primary);
@@ -71,7 +70,8 @@ const STYLES = `
 .dso-suggest-list{margin:0;padding-left:18px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.6}
 .dso-badge-overflow{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent)}
 `
-function injectStyles() {
+
+function injectStyles(): () => void {
   if (typeof document === 'undefined' || typeof document.head === 'undefined') return () => {}
   const style = document.createElement('style')
   style.setAttribute('data-dsh-my-context', 'styles')

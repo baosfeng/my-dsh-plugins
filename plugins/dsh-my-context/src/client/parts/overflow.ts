@@ -1,12 +1,12 @@
-'use strict'
 // ── 上下文溢出预警（issue #87）────────────────────────────────────
 // 用量比例 + 分级预警（80/90/95%）进度条、压缩建议卡、预警记录列表、
 // 阈值配置。与 server lib/overflow.js 语义一致（比值口径 = 当前上下文
 // 长度/contextWindow，其中"当前上下文长度"取最近一次请求的 prompt——
 // 历史累计 usage 含每轮重复的 cacheRead，会导致占用虚高数倍）；
 // client 无相对 import，分级逻辑在此本地复刻。
+
 /** 当前上下文长度（最近一次请求 prompt；旧数据回退最近请求快照）。 */
-function contextUsage(session) {
+function contextUsage(session: CtxSession): number {
   if (typeof session?.lastPromptTokens === 'number' && session.lastPromptTokens > 0) {
     return session.lastPromptTokens
   }
@@ -14,15 +14,17 @@ function contextUsage(session) {
   const last = requests[requests.length - 1]
   return typeof last?.prompt === 'number' ? last.prompt : 0
 }
+
 /** 非负有限比例，夹到 [0,1]。 */
-function ratioTo(value, fallback) {
+function ratioTo(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   if (value < 0) return 0
   if (value > 1) return 1
   return value
 }
+
 /** 用量比例分级：normal / warn / alert / critical。 */
-function overflowLevelOf(ratio, overflow) {
+function overflowLevelOf(ratio: number, overflow: CtxOverflowConfig): string {
   const warn = ratioTo(overflow?.warnThreshold, 0.8)
   const alert = ratioTo(overflow?.alertThreshold, 0.9)
   if (ratio >= 0.95) return 'critical'
@@ -30,15 +32,17 @@ function overflowLevelOf(ratio, overflow) {
   if (ratio >= warn) return 'warn'
   return 'normal'
 }
+
 /** 当前会话用量表：{ used, window, ratio, level }。 */
-function usageMeter(session, overflow) {
+function usageMeter(session: CtxSession, overflow: CtxOverflowConfig): CtxMeter {
   const window = session.contextWindow || 0
   const used = contextUsage(session)
   const ratio = window > 0 ? used / window : 0
   return { used, window, ratio, level: overflowLevelOf(ratio, overflow) }
 }
+
 /** 级别 → 标签。 */
-function overflowLevelLabel(level) {
+function overflowLevelLabel(level: string): string {
   const labels = {
     normal: strings.levelNormal(),
     warn: strings.levelWarn(),
@@ -47,8 +51,9 @@ function overflowLevelLabel(level) {
   }
   return labels[level] || strings.levelNormal()
 }
+
 /** 前 N 个占比最高的构成分类（[{label, percent}]）。 */
-function topComposition(composition, count) {
+function topComposition(composition: CtxComposition, count: number): { label: string; percent: string }[] {
   const keys = ['system', 'tools', 'user', 'inject', 'assistant', 'tool']
   const items = keys
     .filter((key) => (composition[key] || 0) > 0)
@@ -58,8 +63,9 @@ function topComposition(composition, count) {
   if (total <= 0) return []
   return items.slice(0, count).map((it) => ({ label: it.label, percent: strings.percent(it.value / total) }))
 }
+
 /** 上下文占用卡：进度条（级别色）+ 级别徽标 + 压缩建议。 */
-function ContextUsageCard({ session, overflow }) {
+function ContextUsageCard({ session, overflow }: CtxContextUsageCardProps) {
   const meter = usageMeter(session, overflow)
   const width = `${Math.min(100, meter.ratio * 100)}%`
   const bar =
@@ -90,8 +96,9 @@ function ContextUsageCard({ session, overflow }) {
     createElement(CompressSuggestions, { meter, session }),
   )
 }
+
 /** 压缩建议卡（非 normal 级别展示）。 */
-function CompressSuggestions({ meter, session }) {
+function CompressSuggestions({ meter, session }: CtxCompressSuggestionsProps) {
   if (meter.level === 'normal') return null
   const top = topComposition(session.composition, 2)
   const items = [strings.suggestNewSession(), strings.suggestCompact()]
@@ -107,8 +114,9 @@ function CompressSuggestions({ meter, session }) {
     ),
   )
 }
+
 /** 溢出预警记录列表（最新在前）。 */
-function OverflowList({ overflows }) {
+function OverflowList({ overflows }: CtxOverflowListProps) {
   if (overflows.length === 0) return createElement('div', { className: 'dso-empty' }, strings.noOverflows())
   const rows = [...overflows].reverse().map((item) => {
     const meta = `${strings.tokens(item.used)} / ${strings.tokens(item.window)} · ${strings.overflowRatio()} ${strings.percent(item.ratio)} · ${strings.overflowThreshold(item.threshold)}`
@@ -126,8 +134,9 @@ function OverflowList({ overflows }) {
   })
   return createElement('div', { className: 'dso-timeline' }, rows)
 }
+
 /** 溢出预警区块（标题 + 记录列表）。 */
-function OverflowSection({ overflows }) {
+function OverflowSection({ overflows }: CtxOverflowSectionProps) {
   return createElement(
     'div',
     { className: 'dso-section' },
@@ -135,8 +144,9 @@ function OverflowSection({ overflows }) {
     createElement(OverflowList, { overflows }),
   )
 }
+
 /** 阈值输入行（百分比数字 + 标签）。 */
-function ThresholdField({ label, value, onChange }) {
+function ThresholdField({ label, value, onChange }: CtxThresholdFieldProps) {
   return createElement(
     'div',
     { className: 'dso-repo-row' },
@@ -151,8 +161,14 @@ function ThresholdField({ label, value, onChange }) {
     createElement('span', { className: 'dso-time' }, label),
   )
 }
+
 /** 保存溢出阈值配置。 */
-async function saveOverflow(payload, setBusy, setFeedback, onSaved) {
+async function saveOverflow(
+  payload: { warnThreshold: number; alertThreshold: number },
+  setBusy: (busy: boolean) => void,
+  setFeedback: (feedback: string) => void,
+  onSaved: () => void,
+): Promise<void> {
   setBusy(true)
   setFeedback('')
   try {
@@ -169,8 +185,9 @@ async function saveOverflow(payload, setBusy, setFeedback, onSaved) {
     setBusy(false)
   }
 }
+
 /** 溢出阈值配置：预警/告警阈值输入 + 保存。 */
-function OverflowSettings({ overflow, onSaved }) {
+function OverflowSettings({ overflow, onSaved }: CtxOverflowSettingsProps) {
   const [warn, setWarn] = useState(String((overflow.warnThreshold || 0.8) * 100))
   const [alert, setAlert] = useState(String((overflow.alertThreshold || 0.9) * 100))
   const [busy, setBusy] = useState(false)

@@ -22,7 +22,7 @@ export function usageTotal(usage: Record<string, unknown>): number {
 export function checkBudget(
   usage: Record<string, unknown>,
   turnUsage: Record<string, unknown>,
-  options: { perTurn?: number; perSession?: number }
+  options: { perTurn?: number; perSession?: number },
 ): { ok: true } | { ok: false; scope: 'turn' | 'session'; limit: number; used: number } {
   const perTurn = num(options?.perTurn)
   const perSession = num(options?.perSession)
@@ -43,7 +43,7 @@ export function normalizeBudgetConfig(config: unknown): {
   perSession: number
   mode: 'warn' | 'deny'
 } {
-  const source = config !== null && typeof config === 'object' ? config as Record<string, unknown> : {}
+  const source = config !== null && typeof config === 'object' ? (config as Record<string, unknown>) : {}
   return {
     perTurn: limitOf(source.perTurn),
     perSession: limitOf(source.perSession),

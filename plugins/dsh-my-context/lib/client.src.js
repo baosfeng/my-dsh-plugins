@@ -12,12 +12,14 @@
  * 样式走 DSH 语义 token（--dsw-alias-* / --dsw-font-*），随 activation
  * 注入、fiber teardown 卸载（HMR/禁用无残留）。
  *
- * BUILD NOTE: 本文件是模板源码，不是 DSH 实际服务的文件。scripts/build.mjs
- * 将三个片段文件（lib/parts/i18n.js / panel.js / styles.js，均为无
- * import/export 的纯函数声明文本）经下方 __PART_*__ 占位符（函数式
- * replaceAll，避免 $&/$1 特殊解释）拼接进 factory 作用域，写出
- * lib/client.js —— 即 DSH 实际服务的产物。产物必须提交；CI 只对产物执行
- * node --check（见 .github/workflows/ci.yml）。
+ * BUILD NOTE: 本文件是模板源码，不是 DSH 实际服务的文件。scripts/build.mjs 先用
+ * tsconfig.client.json 把 src/client/parts/*.ts 编译成 lib/parts/*.js（i18n /
+ * panel / overflow / styles 四个片段，均为无 import/export 的纯函数声明文本，
+ * 共享 factory 作用域），再经下方 __PART_*__ 占位符（函数式 replaceAll，避免
+ * $&/$1 特殊解释）拼接进 factory 作用域，写出 lib/client.js —— 即 DSH 实际
+ * 服务的产物。产物必须提交；CI 只对产物执行 node --check（见 .github/workflows/ci.yml）。
+ *
+ * parts 顺序固定（build.mjs 的 pieces）：i18n → panel → overflow → styles。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-my-context',

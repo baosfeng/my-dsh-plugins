@@ -72,5 +72,8 @@ export function estimateToolSchema(tool) {
 }
 /** 消息是否为空（无 content 或 content 为空数组）。 */
 export function isEmptyMessage(message) {
-    return (message === null || typeof message !== 'object' || !Array.isArray(message.content) || message.content.length === 0);
+    return (message === null ||
+        typeof message !== 'object' ||
+        !Array.isArray(message.content) ||
+        message.content.length === 0);
 }

@@ -6,10 +6,24 @@
  *  - 防抖窗口内批量合并（写入次数与事件数解耦）；
  *  - compact 阈值回调 + 快照重置；
  *  - atomicWriteJson 可选护栏（minIntervalMs 节流 / maxBytes 拒绝巨型对象）。
+ *
+ * io 失败注入的环境无关性（覆盖边界，务必按此维护）：
+ *  - **不要**用 `chmod 目录 0555` 作为唯一的失败注入手段：权限位在特权环境
+ *    下不生效——root 具 CAP_DAC_OVERRIDE（云效 CI 容器以 root 运行）、
+ *    Windows 忽略 mode、部分容器/网络文件系统同理，写入照样成功 → 降级
+ *    warn 数为 0 → 断言假失败（真实事故：云效 CI `flush/snapshot 失败均有
+ *    warn（got 0）`，GitHub Actions 非 root 通过）。
+ *  - 主用例改用与权限位、运行用户完全无关的确定性 I/O 错误：目标路径本身
+ *    是目录（flush 的 appendFile / snapshot 的 rename → EISDIR）、父层级是
+ *    常规文件（两者的 mkdir recursive → ENOTDIR）。POSIX 语义在 root 与非
+ *    root 下一致，覆盖的仍是"落盘失败 → 只告警不抛出"这条逻辑。
+ *  - 只读目录（真实 EACCES）场景单独保留一个用例，运行前先**动态探测**权限
+ *    位是否被强制执行，特权环境显式 skip 并打印原因；非特权环境下该用例的
+ *    断言与强度与修复前完全一致。
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { jsonlAppender, parseJsonlLines } from '../lib/jsonl.js'
@@ -27,6 +41,25 @@ afterAll(() => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const noop = { warn() {} }
+
+/**
+ * 动态探测目录的权限位是否被内核强制执行：chmod 0555 后试写一个探针文件，
+ * 写成功 ⇒ 权限位不生效（root/CAP_DAC_OVERRIDE、Windows、部分容器或网络
+ * 文件系统），EACCES 无法被注入。比 `process.getuid() === 0` 更准确——
+ * ACL、只读挂载、平台差异都能识别。
+ */
+function permBitsEnforced(dir) {
+  chmodSync(dir, 0o555)
+  try {
+    writeFileSync(join(dir, '.perm-probe'), '', 'utf8')
+    return false
+  } catch {
+    return true
+  } finally {
+    rmSync(join(dir, '.perm-probe'), { force: true })
+    chmodSync(dir, 0o755)
+  }
+}
 const linesOf = (file) =>
   existsSync(file)
     ? readFileSync(file, 'utf8')
@@ -105,15 +138,55 @@ test('atomicWriteJson 护栏: minIntervalMs 节流 + maxBytes 拒绝', async () 
   assert.ok(warns.length >= 2, '拒绝有 warn 记录')
 })
 
-test('jsonlAppender: io 错误降级——flush/snapshot 失败仅警告不抛出', async () => {
+test('jsonlAppender: io 错误降级——确定性 I/O 失败（EISDIR/ENOTDIR）仅警告不抛出', async () => {
+  const dir = tempDir()
+  const warns = []
+  const logger = { warn: (m) => warns.push(m) }
+
+  // 注入 1：目标路径本身是目录 → flush 的 appendFile、snapshot 的 rename 均 EISDIR
+  const fileAsDir = join(dir, 'file-as-dir', 'audit.jsonl')
+  mkdirSync(fileAsDir, { recursive: true })
+  const appenderA = jsonlAppender(fileAsDir, { flushMs: 10, compactLines: 5, logger })
+  for (let i = 0; i < 8; i += 1) appenderA.append({ i })
+  appenderA.flush()
+  await appenderA.snapshot(['{"a":1}'])
+  appenderA.dispose()
+
+  // 注入 2：父层级是常规文件 → 两者的 mkdir(recursive) 均 ENOTDIR
+  const parentAsFile = join(dir, 'parent-as-file')
+  writeFileSync(parentAsFile, '', 'utf8')
+  const appenderB = jsonlAppender(join(parentAsFile, 'audit.jsonl'), { flushMs: 10, compactLines: 5, logger })
+  appenderB.append({ x: 1 })
+  appenderB.flush()
+  await appenderB.snapshot(['{"b":2}'])
+  appenderB.dispose()
+  await sleep(50)
+
+  assert.equal(warns.length, 4, `flush/snapshot 失败均有 warn（got ${warns.length}）`)
+  assert.deepEqual(
+    warns.map((m) => m.replace(/:.*/, '')),
+    ['[jsonl] append failed', '[jsonl] snapshot failed', '[jsonl] append failed', '[jsonl] snapshot failed'],
+    'warn 带 prefix 且区分 append/snapshot 来源',
+  )
+})
+
+test('jsonlAppender: io 错误降级——flush/snapshot 失败仅警告不抛出（只读目录 EACCES）「需权限位生效」', async (context) => {
   const dir = tempDir()
   const file = join(dir, 'readonly', 'audit.jsonl')
   const warns = []
   const logger = { warn: (m) => warns.push(m) }
   const appender = jsonlAppender(file, { flushMs: 10, compactLines: 5, logger })
-  // 目录不存在会自建——先建好再 chmod 只读
-  const { mkdirSync, chmodSync } = await import('node:fs')
+  // 目录不存在会自建——先建好，再决定用哪种失败注入
   mkdirSync(join(dir, 'readonly'), { recursive: true })
+  if (!permBitsEnforced(join(dir, 'readonly'))) {
+    const reason =
+      '权限位未生效（root/CAP_DAC_OVERRIDE、Windows 或只读挂载类文件系统）：chmod 0555 后写入仍成功，无法注入 EACCES。' +
+      '降级逻辑已由「确定性 I/O 失败（EISDIR/ENOTDIR）」用例覆盖，本用例仅在权限位被强制执行的普通用户环境具备判定力'
+    console.log(`[skip] jsonlAppender io 错误降级（只读目录 EACCES）：${reason}`)
+    appender.dispose()
+    context.skip(reason)
+    return
+  }
   chmodSync(join(dir, 'readonly'), 0o555)
   try {
     for (let i = 0; i < 8; i += 1) appender.append({ i })
@@ -126,4 +199,9 @@ test('jsonlAppender: io 错误降级——flush/snapshot 失败仅警告不抛�
     chmodSync(join(dir, 'readonly'), 0o755)
   }
   assert.ok(warns.length >= 2, `flush/snapshot 失败均有 warn（got ${warns.length}）`)
+  assert.deepEqual(
+    warns.map((m) => m.replace(/:.*/, '')),
+    ['[jsonl] append failed', '[jsonl] snapshot failed'],
+    'EACCES 场景 warn 同样带 prefix 且区分来源',
+  )
 })

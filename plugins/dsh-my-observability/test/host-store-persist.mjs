@@ -1,10 +1,27 @@
 /**
  * store-persist 单元测试：格式解析/规整（含全局淘汰、桶形态兼容）、
  * 快照/追加的 io 错误降级。覆盖 store-persist.js 的加载与落盘分支。
+ *
+ * io 失败注入的环境无关性（覆盖边界，务必按此维护）：
+ *  - **不要**用 `chmod 目录 0555` 作为唯一的失败注入手段：权限位在特权环境
+ *    下不生效——root 具 CAP_DAC_OVERRIDE（云效 CI 容器以 root 运行，
+ *    /root/workspace/...）、Windows 忽略 mode、部分容器/网络文件系统同理，
+ *    写入照样成功 → 降级 warn 数为 0 → 断言假失败（真实事故：云效 CI
+ *    `snapshot/append failures logged (got 0)`，GitHub Actions 非 root 通过）。
+ *  - 主用例改用与权限位、运行用户完全无关的确定性 I/O 错误：目标路径本身
+ *    是目录（snapshot 的 rename / append 的 appendFile → EISDIR）、父层级是
+ *    常规文件（两者的 mkdir recursive → ENOTDIR）。POSIX 语义在 root 与非
+ *    root 下一致，覆盖的仍是"落盘失败 → 只告警不抛出"这条逻辑。
+ *  - 只读目录（真实 EACCES）场景单独保留一个用例，运行前先**动态探测**权限
+ *    位是否被强制执行，特权环境显式 skip 并打印原因；非特权环境下该用例的
+ *    断言与强度与修复前完全一致。
+ *  - 覆盖边界结论：root 下"只读目录写失败"这条路径**无法**被覆盖（写入不
+ *    失败），其同一段 catch/warn 代码由上述 EISDIR/ENOTDIR 用例覆盖；特权
+ *    环境损失的是 EACCES 这一具体错误来源，不是降级逻辑本身。
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   normalizeLoaded,
@@ -30,6 +47,25 @@ afterAll(() => {
 
 function ev(time, sessionId, type = 'agent_status') {
   return { id: time, time, sessionId, type, data: { status: `s${time}` } }
+}
+
+/**
+ * 动态探测目录的权限位是否被内核强制执行：chmod 0555 后试写一个探针文件，
+ * 写成功 ⇒ 权限位不生效（root/CAP_DAC_OVERRIDE、Windows、部分容器或网络
+ * 文件系统），EACCES 无法被注入。比 `process.getuid() === 0` 更准确——
+ * ACL、只读挂载、平台差异都能识别。
+ */
+function permBitsEnforced(dir) {
+  chmodSync(dir, 0o555)
+  try {
+    writeFileSync(join(dir, '.perm-probe'), '', 'utf8')
+    return false
+  } catch {
+    return true
+  } finally {
+    rmSync(join(dir, '.perm-probe'), { force: true })
+    chmodSync(dir, 0o755)
+  }
 }
 
 test('normalizeLoaded: 数组桶与对象桶兼容 + 非法事件过滤 + 每会话截断', () => {
@@ -124,10 +160,47 @@ test('writeSnapshot: 空状态写空文件；有事件写 jsonl 行格式', asyn
   assert.equal(JSON.parse(lines[0]).time, 1, 'line is a raw event object')
 })
 
-test('persist io 错误降级：只读目录不致崩溃且告警', async () => {
+test('persist io 错误降级：确定性 I/O 失败（EISDIR/ENOTDIR）均告警且不抛', async () => {
   const home = tempHome()
   const dir = join(home, 'observability')
   mkdirSync(dir, { recursive: true })
+  const warns = []
+  const logger = { warn: (msg) => warns.push(msg) }
+
+  // 注入 1：目标路径本身是目录 → snapshot 的 rename、append 的 appendFile
+  // 都返回 EISDIR（与权限位、运行用户无关；快照残留的 tmp 文件随 home 清理）
+  const dirTarget = join(dir, 'audit.jsonl')
+  mkdirSync(dirTarget, { recursive: true })
+  await writeSnapshot(dirTarget, { version: 1, bySession: {} }, logger, '[t]')
+  await appendLines(dirTarget, '{}\n', logger, '[t]')
+
+  // 注入 2：父层级是常规文件 → 两者的 mkdir(recursive) 都返回 ENOTDIR
+  const fileAsParent = join(home, 'observability-as-file')
+  writeFileSync(fileAsParent, '', 'utf8')
+  const nestedTarget = join(fileAsParent, 'observability', 'audit.jsonl')
+  await writeSnapshot(nestedTarget, { version: 1, bySession: {} }, logger, '[t]')
+  await appendLines(nestedTarget, '{}\n', logger, '[t]')
+
+  assert.equal(warns.length, 4, `每次落盘失败都有告警（got ${warns.length}）`)
+  assert.deepEqual(
+    warns.map((msg) => msg.replace(/:.*/, '')),
+    ['[t] snapshot failed', '[t] append failed', '[t] snapshot failed', '[t] append failed'],
+    '告警带 prefix 且区分 snapshot/append 来源',
+  )
+})
+
+test('persist io 错误降级：只读目录（EACCES）不致崩溃且告警「需权限位生效」', async (context) => {
+  const home = tempHome()
+  const dir = join(home, 'observability')
+  mkdirSync(dir, { recursive: true })
+  if (!permBitsEnforced(dir)) {
+    const reason =
+      '权限位未生效（root/CAP_DAC_OVERRIDE、Windows 或只读挂载类文件系统）：chmod 0555 后写入仍成功，无法注入 EACCES。' +
+      '降级逻辑已由「确定性 I/O 失败（EISDIR/ENOTDIR）」用例覆盖，本用例仅在权限位被强制执行的普通用户环境具备判定力'
+    console.log(`[skip] persist io 错误降级（只读目录）：${reason}`)
+    context.skip(reason)
+    return
+  }
   const warns = []
   const logger = { warn: (msg) => warns.push(msg) }
   chmodSync(dir, 0o555)
@@ -139,6 +212,11 @@ test('persist io 错误降级：只读目录不致崩溃且告警', async () => 
     chmodSync(dir, 0o755)
   }
   assert.ok(warns.length >= 2, `snapshot/append failures logged (got ${warns.length})`)
+  assert.deepEqual(
+    warns.map((msg) => msg.replace(/:.*/, '')),
+    ['[t] snapshot failed', '[t] append failed'],
+    'EACCES 场景告警同样带 prefix 且区分来源',
+  )
 })
 
 test('jsonlFile/legacyFile 路径形态', () => {

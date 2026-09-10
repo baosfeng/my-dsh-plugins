@@ -2,6 +2,15 @@
 
 本文件记录 dsh-shared 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.3] - 2026-09-10
+
+### 变更
+
+- chore(ts): 修复仓库级 CI 门禁并补充迁移规范
+- feat(dsh-my-notify): migrate server to TypeScript
+- feat(dsh-my-remote): migrate to TypeScript
+- fix(ci): 修复 quality job 持续失败（prettier 17 文件 + knip 死代码） (#133)
+
 ## [0.1.2] - 2026-09-03
 
 ### 变更

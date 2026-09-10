@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-context",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "DSH 上下文透镜 + 成本治理插件：token 用量可视化（每次请求的上下文构成、KV 缓存命中率）+ 每轮/每会话预算控制（超限提醒/拦截）。DSH web plugin: context lens (token usage visualization, KV cache hit rate) + cost governance (per-turn / per-session budget with warn/deny).",
   "type": "module",
   "main": "lib/index.js",

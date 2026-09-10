@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-notify",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "DSH 通知提醒插件：会话结束/agent 询问/等待审批时弹浏览器通知+提示音，点击跳转会话，支持远程 webhook 触发。DSH web plugin: browser notification + beep on session end / ask / approval, click-to-focus, remote trigger hook.",
   "type": "module",
   "main": "lib/index.js",

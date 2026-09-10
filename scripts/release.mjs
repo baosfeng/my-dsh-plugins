@@ -506,15 +506,18 @@ if (push && succeeded.length > 0) {
   execSync(`git add ${files}`, { cwd: root, stdio: 'inherit' })
 
   // Create commit
-  const commitMsg =
-    succeeded.length === 1
-      ? commitMessages[0]
-      : `chore(release): batch release ${succeeded.length} plugins（${succeeded.map((r) => r.name).join(', ')}）`
-  execSync(`git commit -m "${commitMsg}"`, { cwd: root, stdio: 'inherit' })
+  // commitlint 限制 header ≤ 100 字符：批量发版时插件清单必须放 body，
+  // 不能 join 进 header —— 原先 12 个插件即 242 字符，commit 被 commitlint
+  // 以 header-max-length 拦下，导致整个批量发版在最后一步失败（实测踩到：
+  // 版本已 bump、CHANGELOG 已生成，但 commit/tag/push 全部未执行）。
+  const header = succeeded.length === 1 ? commitMessages[0] : `chore(release): 批量发版 ${succeeded.length} 个插件`
+  const body = succeeded.map((r) => `- ${r.name}@${r.version}`).join('\n')
+  const commitArgs = succeeded.length === 1 ? ['commit', '-m', header] : ['commit', '-m', header, '-m', body]
+  execFileSync('git', commitArgs, { cwd: root, stdio: 'inherit' })
 
   // Push main
   execSync('git push origin main', { cwd: root, stdio: 'inherit' })
-  console.log(`✓ committed and pushed: ${commitMsg}`)
+  console.log(`✓ committed and pushed: ${header}`)
 
   // Create and push tags sequentially
   for (const result of succeeded) {

@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-skill-manager",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "DSH skill 管理：分「全局 / 项目」查看 skill 列表，按项目启用/禁用（禁用即不注入该会话）。DSH web plugin: per-project skill management with global/project views and enable/disable toggles.",
   "type": "module",
   "main": "lib/index.js",

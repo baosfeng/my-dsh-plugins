@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-memory",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "DSH 记忆插件：全局/项目两级记忆持久化，会话开始时注入系统提示词，设置页可视化面板（新增/修改/删除需用户确认），memory_query 只读查询工具。DSH web plugin: global/project memory with system-prompt injection, settings panel and a read-only query tool.",
   "type": "module",
   "main": "lib/index.js",

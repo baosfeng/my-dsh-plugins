@@ -1,6 +1,6 @@
 {
   "name": "dsh-shared",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "DSH 插件共享工具包：Host-header 信任围栏、HTTP JSON 读写、配置持久化（cordis.patch.yml）、项目根解析、异步与消息工具、原子写。多插件共用实现，消除复制粘贴（issue #45）。",
   "type": "module",
   "main": "lib/index.js",

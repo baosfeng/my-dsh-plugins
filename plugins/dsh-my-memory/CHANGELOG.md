@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-09-10
+
+### 变更
+
+- feat(dsh-my-memory): 完成 client 端 TS 迁移并修复迁移回归
+- feat(dsh-my-guard): migrate to TypeScript
+- fix(dsh-my-memory): 设置页 slots 首屏时序修复（ctx.get strict=false + 防回归测试）
+
 ## [0.1.6] - 2026-09-07
 
 ### 变更

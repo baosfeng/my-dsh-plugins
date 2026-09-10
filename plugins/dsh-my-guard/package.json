@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-guard",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "DSH 安全护栏插件：执行前护栏（破坏性命令拦截/确认）、安装前投毒扫描（可疑脚本/密钥/恶意依赖告警）、提示注入检测（prompt injection / jailbreak 命中告警）。DSH web plugin: pre-execute guard for destructive commands, pre-install poison scan, prompt injection detection.",
   "type": "module",
   "main": "lib/index.js",

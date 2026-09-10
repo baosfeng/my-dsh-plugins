@@ -64,6 +64,11 @@ const MODULES = {
   'dsh-plugin-dev-mode': { module: '插件开发模式', display: '插件开发模式', npm: null }, // agent preset，非 npm 插件
   'dsh-ts-example': { module: 'TS示例', display: 'TS 示例插件', npm: 'dsh-ts-example' },
   'dsh-shared': { module: '共享工具包', display: '共享工具包', npm: 'dsh-shared' }, // 共享工具包（issue #45）
+  'dsh-my-opencode-session-header': {
+    module: 'OpenCode会话头',
+    display: 'OpenCode 会话头',
+    npm: 'dsh-my-opencode-session-header',
+  },
 }
 
 const readme = readFileSync(join(root, 'README.md'), 'utf8')

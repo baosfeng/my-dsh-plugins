@@ -1,0 +1,9 @@
+# dsh-my-opencode-session-header bundle patch: inserts the plugin row into the
+# profile roster. The row mounts the server half (llm/stream wrapper +
+# globalThis.fetch patch injecting the x-opencode-session header). Install with:
+#
+#   git clone https://github.com/baosfeng/my-dsh-plugins.git
+#   dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-opencode-session-header
+- insert:
+    - id: opencode-session-header
+      name: 'dsh-my-opencode-session-header'

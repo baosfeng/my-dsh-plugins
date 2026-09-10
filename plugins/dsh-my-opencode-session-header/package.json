@@ -1,0 +1,46 @@
+{
+  "name": "dsh-my-opencode-session-header",
+  "version": "0.1.0",
+  "description": "DSH opencode 会话头注入插件：包装 llm/stream 建立 AsyncLocalStorage 会话上下文 + 单层 globalThis.fetch 补丁，为 opencode.ai（含子域）的推理请求注入 x-opencode-session 头，修复 OpenCode Go 网关 400 MissingSessionID。DSH web plugin: injects the x-opencode-session header for opencode-go model routes.",
+  "type": "module",
+  "main": "lib/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/baosfeng/my-dsh-plugins"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npx tsc -p tsconfig.json",
+    "typecheck": "npx tsc --noEmit -p tsconfig.json",
+    "test": "npx vitest run --coverage && cucumber-js test/features --import 'test/features/steps/*.mjs'"
+  },
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "cordis": "^4.0.0-rc.8"
+  },
+  "peerDependenciesMeta": {
+    "cordis": {
+      "optional": true
+    }
+  },
+  "license": "MIT"
+}

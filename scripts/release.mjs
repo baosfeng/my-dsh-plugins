@@ -47,8 +47,20 @@ import { verifyPostRelease } from './lib/post-release.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
-// Batch mode: extract all non-flag arguments as plugin names
-const names = args.filter((a) => !a.startsWith('--'))
+// Batch mode: 收集插件名（flag 与其取值都要跳过）
+// 注意：`--bump <type>` / `--skip-reason <理由>` 的取值不以 `--` 开头，
+// 若直接 `filter(!a.startsWith('--'))` 会把取值误当成插件名——实测批量发版
+// 报 `✗ plugins/patch does not exist`（`--bump patch` 的 patch 被当成插件）。
+const VALUE_FLAGS = new Set(['--bump', '--skip-reason'])
+const names = []
+for (let i = 0; i < args.length; i += 1) {
+  const arg = args[i]
+  if (arg.startsWith('--')) {
+    if (VALUE_FLAGS.has(arg)) i += 1 // 跳过该 flag 的取值
+    continue
+  }
+  names.push(arg)
+}
 const push = args.includes('--push')
 const skipRealVerify = args.includes('--skip-real-verify')
 const skipReasonIdx = args.indexOf('--skip-reason')

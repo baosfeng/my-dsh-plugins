@@ -11,7 +11,7 @@
  *
  * 解析失败必须显式失败（exit 2），不允许静默跳过。
  */
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -152,7 +152,8 @@ describe('圈复杂度（complexity ≤ 10）', () => {
     expect(complexityOf('const { q = 1 } = a')).toBe(2)
     expect(complexityOf('a ||= 1')).toBe(2)
     expect(complexityOf('const x = a?.b')).toBe(2)
-    expect(complexityOf('const x = a?.b()')).toBe(3)
+    expect(complexityOf('const x = a?.b()')).toBe(2) // `(` 前无 `?.`，只算成员那一个
+    expect(complexityOf('const x = a?.b?.()')).toBe(3)
   })
 
   it('嵌套函数独立计算，不累加到外层', () => {
@@ -361,6 +362,8 @@ describe('与 ESLint 内置规则语义对照', () => {
     逻辑赋值: 'function f(a) { a ||= 1; return a }',
     '?. 成员': 'function f(a) { return a?.b }',
     '?. 调用': 'function f(a) { return a?.() }',
+    '?. 成员后调用': 'function f(a) { return a?.b() }',
+    '?. 成员后可选调用': 'function f(a) { return a?.b?.() }',
     '?. 深链': 'function f(a) { return a?.b?.c }',
     嵌套函数独立: 'function f(a) { const g = () => (a ? 1 : 2); return g() }',
     类方法: 'class A { static async foo(a) { if (a) { return 1 } return a && 2 } }',
@@ -438,6 +441,3 @@ describe('真实仓库门禁', () => {
     expect(parsed.stats.scannedFiles).toBeGreaterThan(200)
   })
 })
-
-/** 保留 execFileSync 引用：CI 环境下用它获取稳定的仓库根（避免 cwd 漂移）。 */
-void execFileSync

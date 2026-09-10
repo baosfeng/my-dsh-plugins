@@ -40,8 +40,8 @@
  *         2 工具错误（TS 解析失败、基线缺失或损坏、用法错误）——解析失败绝不静默跳过。
  */
 import { parse } from '@babel/parser'
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { join, relative, resolve, sep } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /* ------------------------------------------------------------------ *
@@ -180,10 +180,10 @@ function isIIFE(node, parent) {
  * 命名（基线条目 key：稳定、可读、不随行号漂移）
  * ------------------------------------------------------------------ */
 
-/** 有"头部名字"的节点类型：方法 / 类字段 / 静态块。 */
+/** 有"头部名字"的节点类型：类方法 / 对象方法 / 类字段 / 静态块。 */
 const HEAD_KINDS = {
-  ClassMethod: 'method',
-  ClassPrivateMethod: 'method',
+  ClassMethod: 'class-method',
+  ClassPrivateMethod: 'class-method',
   ObjectMethod: 'method',
   ClassProperty: 'field',
   ClassPrivateProperty: 'field',
@@ -232,8 +232,10 @@ function headName(node, parents) {
   const kind = HEAD_KINDS[node.type]
   if (kind === 'static') return '<static block>'
   const key = keyName(node) ?? '<computed>'
-  if (kind === 'method') return `${className(parents) ?? '<class>'}.${key}`
-  if (kind === 'field') return `${className(parents) ?? '<class>'}.${key} (field)`
+  if (kind === 'method') return key // 对象方法不带类名前缀
+  const owner = className(parents) ?? '<class>'
+  if (kind === 'class-method') return `${owner}.${key}`
+  if (kind === 'field') return `${owner}.${key} (field)`
   return null
 }
 
@@ -460,6 +462,21 @@ function checkFileFunctions(file, base, out) {
   }
 }
 
+/** 单条函数基线的可移除判定（已达标 / 已消失）。 */
+function staleFunction(out, filePath, name, baseFn, file) {
+  const fn = file.functions.find((item) => item.name === name)
+  if (fn && overThreshold(fn)) return
+  out.removable.push({
+    kind: 'function',
+    reason: fn ? '已降到阈值内' : '基线项已不存在（函数已删除或重命名）',
+    file: filePath,
+    line: fn ? fn.line : baseFn.line,
+    name,
+    actual: fn ? { lines: fn.lines, complexity: fn.complexity } : null,
+    baseline: { lines: baseFn.lines ?? null, complexity: baseFn.complexity ?? null },
+  })
+}
+
 /** 基线中已达标或已消失的条目 → 提示可移除（不失败）。 */
 function collectStale(report, baseline, out) {
   const byPath = new Map(report.files.map((file) => [file.filePath, file]))
@@ -477,19 +494,7 @@ function collectStale(report, baseline, out) {
       })
       continue
     }
-    for (const [name, baseFn] of Object.entries(base.functions ?? {})) {
-      const fn = file.functions.find((item) => item.name === name)
-      if (fn && overThreshold(fn)) continue
-      out.removable.push({
-        kind: 'function',
-        reason: fn ? '已降到阈值内' : '基线项已不存在（函数已删除或重命名）',
-        file: filePath,
-        line: fn ? fn.line : baseFn.line,
-        name,
-        actual: fn ? { lines: fn.lines, complexity: fn.complexity } : null,
-        baseline: { lines: baseFn.lines ?? null, complexity: baseFn.complexity ?? null },
-      })
-    }
+    for (const [name, baseFn] of Object.entries(base.functions ?? {})) staleFunction(out, filePath, name, baseFn, file)
   }
 }
 
@@ -607,52 +612,62 @@ export function parseArgs(argv) {
   return opts
 }
 
+/** 解析失败：显式报错（不静默跳过），返回工具错误退出码。 */
+function reportParseErrors(report) {
+  console.error('❌ TS 尺寸门禁无法完成：以下文件解析失败（不静默跳过）')
+  for (const item of report.parseErrors) console.error(`  ${item.message}`)
+  return EXIT.error
+}
+
+/** --update-baseline：重新生成冻结债务基线。 */
+function writeBaseline(opts, baselinePath, report) {
+  const baseline = buildBaseline(report)
+  mkdirSync(dirname(baselinePath), { recursive: true })
+  writeFileSync(baselinePath, serializeBaseline(baseline))
+  const files = Object.keys(baseline.files).length
+  const functions = Object.values(baseline.files).reduce((sum, file) => sum + Object.keys(file.functions).length, 0)
+  if (opts.json) {
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          updated: baselinePath,
+          scannedFiles: report.files.length,
+          baselineFiles: files,
+          baselineFunctions: functions,
+        },
+        null,
+        2,
+      ),
+    )
+  } else {
+    console.log(
+      `✅ 已更新冻结债务基线：${baselinePath}\n   扫描 ${report.files.length} 个文件；收录 ${files} 个超标文件 / ${functions} 个超标函数`,
+    )
+  }
+  return EXIT.ok
+}
+
+/** --json 的机器可读结果。 */
+function jsonReport(report, baseline, diff) {
+  return JSON.stringify({ ok: diff.ok, thresholds: THRESHOLDS, stats: summarize(report, baseline), ...diff }, null, 2)
+}
+
 /** 门禁主流程；返回退出码。 */
-export function run(argv, { log = console.log, errorLog = console.error } = {}) {
+export function run(argv) {
   const opts = parseArgs(argv)
   if (opts.help) {
-    log(USAGE)
+    console.log(USAGE)
     return EXIT.ok
   }
   const baselinePath = opts.baseline ?? join(opts.root, DEFAULT_BASELINE_PATH)
   const report = analyzeRepo(opts.root)
-
-  if (report.parseErrors.length > 0) {
-    errorLog('❌ TS 尺寸门禁无法完成：以下文件解析失败（不静默跳过）')
-    for (const item of report.parseErrors) errorLog(`  ${item.message}`)
-    return EXIT.error
-  }
-
-  if (opts.updateBaseline) {
-    const baseline = buildBaseline(report)
-    writeFileSync(baselinePath, serializeBaseline(baseline))
-    const entries = Object.keys(baseline.files).length
-    const funcs = Object.values(baseline.files).reduce((sum, file) => sum + Object.keys(file.functions).length, 0)
-    log(
-      opts.json
-        ? JSON.stringify(
-            {
-              ok: true,
-              updated: baselinePath,
-              scannedFiles: report.files.length,
-              baselineFiles: entries,
-              baselineFunctions: funcs,
-            },
-            null,
-            2,
-          )
-        : `✅ 已更新冻结债务基线：${baselinePath}\n   扫描 ${report.files.length} 个文件；收录 ${entries} 个超标文件 / ${funcs} 个超标函数`,
-    )
-    return EXIT.ok
-  }
+  if (report.parseErrors.length > 0) return reportParseErrors(report)
+  if (opts.updateBaseline) return writeBaseline(opts, baselinePath, report)
 
   const baseline = loadBaseline(baselinePath)
   const diff = diffAgainstBaseline(report, baseline)
-  if (opts.json) {
-    log(JSON.stringify({ ok: diff.ok, thresholds: THRESHOLDS, stats: summarize(report, baseline), ...diff }, null, 2))
-  } else {
-    log(formatText(report, baseline, diff))
-  }
+  console.log(opts.json ? jsonReport(report, baseline, diff) : formatText(report, baseline, diff))
   return diff.ok ? EXIT.ok : EXIT.fail
 }
 

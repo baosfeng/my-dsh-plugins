@@ -2,6 +2,12 @@
 
 本文件记录 dsh-my-guard 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 变更
+
+- chore(guard): 迁移收尾——删除无输入的 `tsconfig.client.json`（client 端仍为手写 `lib/client.src.js` + `lib/parts/*.js`，该配置无 TS 输入会在 TS7 下报 TS18003）；`patchConfigOf` 的返回值补 `ConfigDict` 断言（dsh-shared 的 `src/types.d.ts` 改名 `types.ts` 后 `writePatchConfig` 的真实签名生效，暴露调用处类型不匹配）
+
 ## [0.1.4] - 2026-09-04
 
 ### 变更

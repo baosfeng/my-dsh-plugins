@@ -301,13 +301,31 @@ A：是的。CI 只跑 `node --check` + 测试，不跑构建。改了 TS 源码
 
 `dsh-my-observability` ✅、`dsh-file-activity` ✅、`dsh-task-reliability` server ✅ / client 🔄。
 
-### 8.4 已知遗留（迁移引入，待修）
+### 8.4 已知遗留（迁移引入）
 
-- **尺寸门禁对 TS 源码失效**：flat config 无 `.ts` 块（typescript-eslint 尚不兼容 TS 7），
-  197 个 TS 文件不受 complexity / max-lines 检查；类型注解让原本刻意卡在 400 行的文件超标
+- **✅ 已修复：尺寸门禁对 TS 源码失效** —— 修复于 `scripts/check-ts-size.mjs`（2026-09-10）。
+
+  flat config 无 `.ts` 块（typescript-eslint 尚不兼容 TS 7），迁移后 227 个 TS 文件不受
+  complexity / max-lines 检查；类型注解让原本刻意卡在 400 行的文件超标
   （my-memory `view` 400→543、`store` 383→428；task-reliability `events` 400→431）。
-  修复方案：`scripts/check-ts-size.mjs`（用 @babel/parser 解析 TS AST）+ 冻结债务基线。
-- **`lint:size` 命令语义错误**：CLI `--rule` 是全局覆盖，报出的 1012 条里 900 条来自 vendor
+  现由该脚本用 `@babel/parser` 解析 TS AST，按 ESLint 内置规则的**真实语义**重新施加三项门禁
+  （complexity ≤10 / 文件 ≤400 行 / 函数 ≤70 行），由 CI 步骤 `TS source size gates` 与
+  `npm run lint:size` 调用。语义对照证据见 `scripts/test/ts-size.test.mjs`：逐算子与 ESLint
+  实测值比对，另有 200 个真实 TS 文件剥离类型后端到端比对（复杂度 200/200 一致）。
+
+  **冻结债务基线机制：** 迁移引入的存量超标项写入 `scripts/ts-size-baseline.json`
+  （只收录超标项：文件行数与函数行数/复杂度），基线内不超过记录值即通过、允许变好；
+  **基线之外的新增超标、或超过基线记录值的恶化一律失败**（exit 1）；已降到阈值内或已消失的
+  条目提示"可移除"（不失败）。退出码：0 通过 / 1 门禁失败 / 2 工具错误（TS 解析失败、
+  基线缺失或损坏）。
+
+  **刷新方式：** 拆分收口后运行 `node scripts/check-ts-size.mjs --update-baseline`
+  （不要手工编辑基线；`--json` 可看机器可读结果）。TS 解析失败会显式报错并 exit 2，
+  绝不静默跳过。
+
+- **✅ 已修复：`lint:size` 命令语义错误** —— `package.json` 的 `lint:size` 已改为
+  `node scripts/check-ts-size.mjs`。旧命令 `eslint plugins/ --rule '{...}'` 中 CLI `--rule`
+  是全局覆盖，绕过 `eslint.config.js` 的分块设计，报出的 1012 条里 900 条来自 vendor
   压缩产物、112 条来自刻意豁免的测试文件；真实业务代码（`lib/**`）零违规。
 - **残留死文件已清理**：`dsh-mermaid-render` / `dsh-think-zh-expand` 的 `lib/parts/*.part.js`
   共 11 个（模板已改为单文件 bundle，构建不再生成、全仓零引用）。

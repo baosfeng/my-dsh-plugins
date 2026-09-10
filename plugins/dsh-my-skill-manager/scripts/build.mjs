@@ -1,7 +1,8 @@
 /**
- * Build: splice the `lib/parts/*.part.js` pieces into the __PART_*__
- * placeholders of lib/client.src.js and write lib/client.js — the single
- * __ModuleLoader__ bundle DSH actually serves.
+ * Build: compile client TS parts (src/client/parts/*.ts →
+ * lib/.client-build/parts/*.js), then splice the compiled pieces into the
+ * __PART_*__ placeholders of lib/client.src.js and write lib/client.js — the
+ * single __ModuleLoader__ bundle DSH actually serves.
  *
  *   node scripts/build.mjs
  *
@@ -13,30 +14,36 @@
  * lib/client.js is the build artifact and MUST be committed (CI runs
  * node --check + tests against it; it does not run this build).
  */
-import { readFileSync, writeFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
+import { readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const partsDir = join(root, 'lib/parts')
+const BUILD_DIR = join(root, 'lib/.client-build')
+const partsDir = join(BUILD_DIR, 'parts')
 // Shared client parts live in the dsh-shared package (issue #54 阶段 0):
 // single source of truth for the icon set, spliced by every plugin's build.
 const sharedPartsDir = join(root, '..', 'dsh-shared', 'client-parts')
-const src = readFileSync(join(root, 'lib/client.src.js'), 'utf8')
 
 /** (placeholder, part file, opts?) in splice order — const initializers
  *  depend on it. opts.shared: true reads the part from the dsh-shared
- *  client-parts directory instead of this plugin's lib/parts. */
+ *  client-parts directory (hand-written JS, not compiled by tsc) instead of
+ *  this plugin's compiled lib/.client-build/parts. */
 const pieces = [
-  ['__PART_I18N__', 'i18n.part.js'],
+  ['__PART_I18N__', 'i18n.js'],
   ['__PART_ICONS__', 'icons.part.js', { shared: true }],
-  ['__PART_STYLES__', 'styles.part.js'],
-  ['__PART_API__', 'api.part.js'],
-  ['__PART_VIEW__', 'view.part.js'],
-  ['__PART_APPLY__', 'apply.part.js'],
+  ['__PART_STYLES__', 'styles.js'],
+  ['__PART_API__', 'api.js'],
+  ['__PART_VIEW__', 'view.js'],
+  ['__PART_APPLY__', 'apply.js'],
 ]
 
-let out = src
+// 1. Compile client TS → lib/.client-build/parts/*.js
+execSync('npx tsc -p tsconfig.client.json', { cwd: root, stdio: 'inherit' })
+
+// 2. Splice compiled parts into the template
+let out = readFileSync(join(root, 'lib/client.src.js'), 'utf8')
 for (const [placeholder, file, opts = {}] of pieces) {
   if (!out.includes(placeholder)) {
     throw new Error(`client.src.js is missing the ${placeholder} placeholder`)
@@ -53,5 +60,9 @@ if (out.includes('__PART_')) {
 }
 
 writeFileSync(join(root, 'lib/client.js'), out)
+
+// 3. Clean up the temporary client build directory
+rmSync(BUILD_DIR, { recursive: true, force: true })
+
 const lines = out.split('\n').length
 console.log(`built lib/client.js (${out.length} bytes, ${lines} lines)`)

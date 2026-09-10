@@ -19,52 +19,44 @@
  *  - ai.js       — 可选 AI 审查增强（agents.create，失败降级）
  *  - routes.js   — /observability/api 路由
  */
-import { createStore } from './store.js'
-import { attachAuditListeners } from './audit.js'
-import { registerObservabilityRoutes } from './routes.js'
-import { createResourceMonitor } from './resource-monitor.js'
-
-export const name = 'dsh-my-observability'
-
-export const inject = ['webServer']
-
+import { createStore } from './store.js';
+import { attachAuditListeners } from './audit.js';
+import { registerObservabilityRoutes } from './routes.js';
+import { createResourceMonitor } from './resource-monitor.js';
+export const name = 'dsh-my-observability';
+export const inject = ['webServer'];
 export function apply(ctx, config) {
-  // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
-  const options = {
-    aiReview: config?.aiReview !== false,
-    aiTimeoutMs: Number.isFinite(config?.aiTimeoutMs) && config.aiTimeoutMs > 0 ? config.aiTimeoutMs : 60000,
-  }
-
-  // ── 审计存储：会话隔离 + 持久化 + 重启恢复 ──────────────────────────
-  const store = createStore(ctx)
-
-  // ── 事件监听（只读观察；waterfall 一律透传 next()）──────────────────
-  attachAuditListeners(ctx, store.record)
-
-  // ── 资源监控 + 降级看门狗（15s 采样 CPU/内存/审计写入速率；写放大/文件
-  //    超限连续触发时自动降级停落盘，资源回归后自动恢复——issue #127）────
-  const monitor = createResourceMonitor(ctx, {
-    intervalMs: config?.resourceIntervalMs,
-    limits: config?.resourceLimits,
-    onDegrade: () => {
-      store.setPersistEnabled(false)
-      ctx.logger.warn(
-        '[dsh-my-observability] 资源看门狗：审计写入速率/文件大小连续超限，已暂停落盘（事件仍在内存，恢复后全量快照补齐）',
-      )
-    },
-    onRecover: () => {
-      store.setPersistEnabled(true)
-      ctx.logger.warn('[dsh-my-observability] 资源看门狗：写入速率回归正常，已恢复审计落盘')
-    },
-  })
-  monitor.start()
-
-  // ── 路由（查询 / git 工具 / diff 审查 / 资源）───────────────────────
-  registerObservabilityRoutes(ctx, store, monitor, options)
-
-  // ── 卸载冲刷：清防抖定时器 + 立即落盘 + 停采样 ──────────────────────
-  ctx.effect(() => {
-    monitor.stop()
-    return store.dispose
-  }, 'dsh-my-observability: persistence teardown')
+    // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
+    const options = {
+        aiReview: config?.aiReview !== false,
+        aiTimeoutMs: Number.isFinite(config?.aiTimeoutMs) && config?.aiTimeoutMs > 0
+            ? config?.aiTimeoutMs
+            : 60000,
+    };
+    // ── 审计存储：会话隔离 + 持久化 + 重启恢复 ──────────────────────────
+    const store = createStore(ctx);
+    // ── 事件监听（只读观察；waterfall 一律透传 next()）──────────────────
+    attachAuditListeners(ctx, store.record);
+    // ── 资源监控 + 降级看门狗（15s 采样 CPU/内存/审计写入速率；写放大/文件
+    //    超限连续触发时自动降级停落盘，资源回归后自动恢复——issue #127）────
+    const monitor = createResourceMonitor(ctx, {
+        intervalMs: config?.resourceIntervalMs,
+        limits: config?.resourceLimits,
+        onDegrade: () => {
+            store.setPersistEnabled(false);
+            ctx.logger.warn('[dsh-my-observability] 资源看门狗：审计写入速率/文件大小连续超限，已暂停落盘（事件仍在内存，恢复后全量快照补齐）');
+        },
+        onRecover: () => {
+            store.setPersistEnabled(true);
+            ctx.logger.warn('[dsh-my-observability] 资源看门狗：写入速率回归正常，已恢复审计落盘');
+        },
+    });
+    monitor.start();
+    // ── 路由（查询 / git 工具 / diff 审查 / 资源）───────────────────────
+    registerObservabilityRoutes(ctx, store, monitor, options);
+    // ── 卸载冲刷：清防抖定时器 + 立即落盘 + 停采样 ──────────────────────
+    ctx.effect(() => {
+        monitor.stop();
+        return store.dispose;
+    }, 'dsh-my-observability: persistence teardown');
 }

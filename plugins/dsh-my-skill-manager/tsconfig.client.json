@@ -1,0 +1,23 @@
+{
+  // dsh-my-skill-manager — client 端构建配置：src/client/parts/*.ts →
+  // lib/.client-build/parts/*.js（片段，scripts/build.mjs 注入模板）。
+  // client 端 TS 源码为片段文件（无 import/export，共享 factory 作用域），
+  // 编译后保持纯函数/变量声明文本，注入 lib/client.src.js 模板后
+  // 产出 lib/client.js（DSH 实际提供的 __ModuleLoader__ bundle）。
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2022",
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "outDir": "lib/.client-build",
+    "rootDir": "src/client",
+    "lib": ["es2022", "dom"],
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": [],
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["src/client/**/*.ts"]
+}

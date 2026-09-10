@@ -5,124 +5,117 @@
  * waterfall、turn-stopping 继续+打断、会话校验、llm/stream 包装、自主决策拦截）。
  * 所有回调均接收 shared（index.js 构建）。
  */
-
-import { sleep, userMessage } from './util.js'
-import { activeTaskOf, finishTask, addQuestion, registerTask } from './store.js'
-import { askNoteOf, raceAskAnswer } from './ask.js'
-import { isTopLevelAgent } from './text.js'
-import { wrapStreamForLoop } from './repeat.js'
-import { loopNotify, detectNoProgress, recordToolLoop, repeatStateOf } from './loop.js'
-import { runVerification } from './verify.js'
-import { markAgentError, rescueAfterError, rescueTurn } from './rescue.js'
-import { PLUGIN_EVENTS } from './emit.js'
-import {
-  AUTOPILOT_DENY_REASON,
-  DIRECT_CONTINUE_TEXT,
-  REPEAT_BREAK_TEXT,
-  RETRY_MAX_DELAY_MS,
-  RATE_WINDOW_MS,
-} from './constants.js'
+import { sleep, userMessage } from './util.js';
+import { activeTaskOf, finishTask, addQuestion, registerTask } from './store.js';
+import { askNoteOf, raceAskAnswer } from './ask.js';
+import { isTopLevelAgent } from './text.js';
+import { wrapStreamForLoop } from './repeat.js';
+import { loopNotify, detectNoProgress, recordToolLoop, repeatStateOf } from './loop.js';
+import { runVerification } from './verify.js';
+import { markAgentError, rescueAfterError, rescueTurn } from './rescue.js';
+import { PLUGIN_EVENTS } from './emit.js';
+import { AUTOPILOT_DENY_REASON, DIRECT_CONTINUE_TEXT, REPEAT_BREAK_TEXT, RETRY_MAX_DELAY_MS, RATE_WINDOW_MS, } from './constants.js';
 // ── 状态辅助 ───────────────────────────────────────────────────────────────
-
 /** 请求级重试计数（按会话 + 时间窗）。 */
 function retryBudget(sessionId, shared) {
-  const now = Date.now()
-  const bucket = shared.retryBuckets.get(sessionId)
-  if (bucket === undefined || now - bucket.windowStart > 60000) {
-    const next = { windowStart: now, count: 0 }
-    shared.retryBuckets.set(sessionId, next)
-    return next
-  }
-  return bucket
+    const now = Date.now();
+    const bucket = shared.retryBuckets.get(sessionId);
+    if (bucket === undefined || now - bucket.windowStart > 60000) {
+        const next = { windowStart: now, count: 0 };
+        shared.retryBuckets.set(sessionId, next);
+        return next;
+    }
+    return bucket;
 }
-
 /** 全局动作速率限制。 */
 function rateAllowed(shared) {
-  const now = Date.now()
-  while (shared.actionLog.length > 0 && now - shared.actionLog[0] > RATE_WINDOW_MS) shared.actionLog.shift()
-  if (shared.actionLog.length >= shared.options.rateMaxActions) return false
-  shared.actionLog.push(now)
-  return true
+    const now = Date.now();
+    while (shared.actionLog.length > 0 && now - shared.actionLog[0] > RATE_WINDOW_MS)
+        shared.actionLog.shift();
+    if (shared.actionLog.length >= shared.options.rateMaxActions)
+        return false;
+    shared.actionLog.push(now);
+    return true;
 }
-
 /** 会话自主决策判定：会话级显式开关优先，否则取全局模式。 */
 function autopilotFor(sessionId, shared) {
-  if (shared.store.mode.sessionAutopilot[sessionId] === true) return true
-  if (shared.store.mode.sessionAutopilot[sessionId] === false) return false
-  return shared.store.mode.autopilot || shared.options.autopilot
+    if (shared.store.mode.sessionAutopilot[sessionId] === true)
+        return true;
+    if (shared.store.mode.sessionAutopilot[sessionId] === false)
+        return false;
+    return shared.store.mode.autopilot || shared.options.autopilot;
 }
-
 function signalAborted(signal) {
-  return signal !== undefined && signal !== null && signal.aborted
+    return signal !== undefined && signal !== null && signal.aborted === true;
 }
-
 // ── 自动跟踪 ───────────────────────────────────────────────────────────────
-
 function goalObjective(ctx, agent) {
-  try {
-    const goals = ctx.get('goals')
-    const view = goals?.get?.(agent)
-    if (view !== undefined && view !== null && typeof view === 'object') {
-      if (typeof view.objective === 'string' && view.objective !== '') return view.objective
+    try {
+        const goals = ctx.get('goals');
+        const view = goals?.get?.(agent);
+        if (view !== undefined && view !== null && typeof view === 'object') {
+            if (typeof view.objective === 'string' && view.objective !== '')
+                return view.objective;
+        }
     }
-  } catch {
-    // ignore
-  }
-  return ''
+    catch {
+        // ignore
+    }
+    return '';
 }
-
 /** 自动跟踪：会话存在活动 goal 时保守登记。 */
 function maybeAutoTrack(agent, shared) {
-  if (!shared.store.mode.tracking) return
-  if (activeTaskOf(shared.store, agent.id) !== undefined) return
-  const objective = goalObjective(shared.ctx, agent)
-  if (objective === '') return
-  const result = registerTask(shared.store, {
-    sessionId: agent.id,
-    description: objective,
-    mode: shared.store.mode.verify ? 'verify' : 'direct',
-    source: 'auto',
-  })
-  if (result.ok) shared.save()
+    if (!shared.store.mode.tracking)
+        return;
+    if (activeTaskOf(shared.store, agent.id) !== undefined)
+        return;
+    const objective = goalObjective(shared.ctx, agent);
+    if (objective === '')
+        return;
+    const result = registerTask(shared.store, {
+        sessionId: agent.id,
+        description: objective,
+        mode: shared.store.mode.verify ? 'verify' : 'direct',
+        source: 'auto',
+    });
+    if (result.ok)
+        shared.save();
 }
-
 // ── 2. 模型超时/请求失败自动重试 ─────────────────────────────────────────
-
 async function handleRequestError(payload, next, shared) {
-  const code = payload?.failure?.code
-  if (typeof code !== 'string' || !shared.options.retryableCodes.has(code)) return next()
-  const agent = payload?.agent
-  if (agent === undefined || agent === null) return next()
-  const bucket = retryBudget(agent.id, shared)
-  if (bucket.count >= shared.options.retryMax) return next()
-  bucket.count += 1
-  if (await retryWait(payload, bucket, shared)) return next()
-  logRetry(shared, agent.id, code, bucket.count)
-  return { kind: 'retry' }
+    const code = payload?.failure?.code;
+    if (typeof code !== 'string' || !shared.options.retryableCodes.has(code))
+        return next();
+    const agent = payload?.agent;
+    if (agent === undefined || agent === null)
+        return next();
+    const bucket = retryBudget(agent.id, shared);
+    if (bucket.count >= shared.options.retryMax)
+        return next();
+    bucket.count += 1;
+    if (await retryWait(payload, bucket, shared))
+        return next();
+    logRetry(shared, agent.id, code, bucket.count);
+    return { kind: 'retry' };
 }
-
 function logRetry(shared, sessionId, code, attempt) {
-  shared.ctx.logger?.info(
-    `[dsh-task-reliability] 请求失败自动重试（sessionId=${sessionId}，错误码=${code}，第 ${attempt}/${shared.options.retryMax} 次）`,
-  )
+    shared.ctx.logger?.info?.(`[dsh-task-reliability] 请求失败自动重试（sessionId=${sessionId}，错误码=${code}，第 ${attempt}/${shared.options.retryMax} 次）`);
 }
-
 /** 指数退避等待：中途 abort 则放弃本次重试。 */
 async function retryWait(payload, bucket, shared) {
-  const signal = payload?.signal
-  const delay = Math.min(shared.options.retryBaseMs * 2 ** (bucket.count - 1), RETRY_MAX_DELAY_MS)
-  if (signalAborted(signal)) return true
-  await sleep(delay)
-  return signalAborted(signal)
+    const signal = payload?.signal;
+    const delay = Math.min(shared.options.retryBaseMs * 2 ** (bucket.count - 1), RETRY_MAX_DELAY_MS);
+    if (signalAborted(signal))
+        return true;
+    await sleep(delay);
+    return signalAborted(signal);
 }
-
 // ── 3+5. 任务自动继续 + 思考重复打断（turn-stopping） ────────────────────
-
 function shouldSteer(task, repeat) {
-  if (task !== undefined) return true
-  return repeat !== undefined && repeat.count > 0 && !repeat.gaveUp
+    if (task !== undefined)
+        return true;
+    return repeat !== undefined && repeat.count > 0 && !repeat.gaveUp;
 }
-
 /**
  * 循环打断（reason/tool/progress）优先于任务继续（避免指令混杂）。
  * 采用一次性消费：只在「刚检测到循环」（pendingBreak 非空）时注入打断指令，
@@ -133,175 +126,171 @@ function shouldSteer(task, repeat) {
  * 解决「回合 A 命中循环 → 回合 B 无工具调用也注入提示」的误报。
  */
 function repeatBreak(repeat, agent, shared) {
-  if (repeat === undefined || repeat.count === 0 || repeat.gaveUp) return false
-  if (repeat.pendingBreak === null) return false
-  if (repeat.pendingBreakTurn !== repeat.turnSeq - 1) {
-    repeat.pendingBreak = null
-    repeat.pendingBreakTurn = null
-    return false
-  }
-  agent.steer(userMessage(REPEAT_BREAK_TEXT(repeat.count, repeat.pendingBreak)))
-  void loopNotify(shared, repeat.pendingBreak, agent.id)
-  shared.ctx.logger?.info(
-    `[dsh-task-reliability] 循环打断已注入（sessionId=${agent.id}，类型=${repeat.pendingBreak}，第 ${repeat.count} 次）`,
-  )
-  shared.emit(PLUGIN_EVENTS.INTERVENTION, {
-    sessionId: agent.id,
-    action: 'repeat-break',
-    reason: repeat.pendingBreak,
-    count: repeat.count,
-  })
-  repeat.pendingBreak = null
-  repeat.pendingBreakTurn = null
-  return true
+    if (repeat === undefined || repeat.count === 0 || repeat.gaveUp)
+        return false;
+    const kind = repeat.pendingBreak;
+    if (kind === null)
+        return false;
+    if (repeat.pendingBreakTurn !== repeat.turnSeq - 1) {
+        repeat.pendingBreak = null;
+        repeat.pendingBreakTurn = null;
+        return false;
+    }
+    agent.steer(userMessage(REPEAT_BREAK_TEXT(repeat.count, kind)));
+    void loopNotify(shared, kind, agent.id);
+    shared.ctx.logger?.info?.(`[dsh-task-reliability] 循环打断已注入（sessionId=${agent.id}，类型=${kind}，第 ${repeat.count} 次）`);
+    shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+        sessionId: agent.id,
+        action: 'repeat-break',
+        reason: kind,
+        count: repeat.count,
+    });
+    repeat.pendingBreak = null;
+    repeat.pendingBreakTurn = null;
+    return true;
 }
-
 /** 对一次命中的循环做计数/上限处理并注入分级打断指令；若达上限放弃则返回 false。 */
 function escalateLoop(repeat, shared, agent, kind) {
-  repeat.count += 1
-  repeat.lastKind = kind
-  if (repeat.count > shared.options.repeatMaxPerSession) {
-    repeat.gaveUp = true
-    repeat.notified = false
-    shared.ctx.logger?.warn(
-      `[dsh-task-reliability] 循环打断达上限放弃（sessionId=${agent.id}，类型=${kind}，上限=${shared.options.repeatMaxPerSession}）`,
-    )
+    repeat.count += 1;
+    repeat.lastKind = kind;
+    if (repeat.count > shared.options.repeatMaxPerSession) {
+        repeat.gaveUp = true;
+        repeat.notified = false;
+        shared.ctx.logger?.warn?.(`[dsh-task-reliability] 循环打断达上限放弃（sessionId=${agent.id}，类型=${kind}，上限=${shared.options.repeatMaxPerSession}）`);
+        shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+            sessionId: agent.id,
+            action: 'loop-give-up',
+            reason: kind,
+            count: repeat.count,
+            max: shared.options.repeatMaxPerSession,
+        });
+        return false;
+    }
+    agent.steer(userMessage(REPEAT_BREAK_TEXT(repeat.count, kind)));
+    void loopNotify(shared, kind, agent.id);
+    shared.ctx.logger?.info?.(`[dsh-task-reliability] 循环升级打断已注入（sessionId=${agent.id}，类型=${kind}，第 ${repeat.count} 次）`);
     shared.emit(PLUGIN_EVENTS.INTERVENTION, {
-      sessionId: agent.id,
-      action: 'loop-give-up',
-      reason: kind,
-      count: repeat.count,
-      max: shared.options.repeatMaxPerSession,
-    })
-    return false
-  }
-  agent.steer(userMessage(REPEAT_BREAK_TEXT(repeat.count, kind)))
-  void loopNotify(shared, kind, agent.id)
-  shared.ctx.logger?.info(
-    `[dsh-task-reliability] 循环升级打断已注入（sessionId=${agent.id}，类型=${kind}，第 ${repeat.count} 次）`,
-  )
-  shared.emit(PLUGIN_EVENTS.INTERVENTION, {
-    sessionId: agent.id,
-    action: 'loop-escalate',
-    reason: kind,
-    count: repeat.count,
-  })
-  return true
+        sessionId: agent.id,
+        action: 'loop-escalate',
+        reason: kind,
+        count: repeat.count,
+    });
+    return true;
 }
-
 function atLoopLimit(task, shared) {
-  if (task.loopCount < shared.options.maxLoop) return false
-  finishTask(shared.store, task.id, 'failed')
-  shared.save()
-  shared.ctx.logger?.warn(
-    `[dsh-task-reliability] 任务循环达上限标记失败（taskId=${task.id}，上限=${shared.options.maxLoop}）`,
-  )
-  shared.emit(PLUGIN_EVENTS.INTERVENTION, {
-    sessionId: task.sessionId,
-    action: 'loop-limit',
-    reason: 'max-loop',
-    taskId: task.id,
-    loopCount: task.loopCount,
-  })
-  return true
+    if (task.loopCount < shared.options.maxLoop)
+        return false;
+    finishTask(shared.store, task.id, 'failed');
+    shared.save();
+    shared.ctx.logger?.warn?.(`[dsh-task-reliability] 任务循环达上限标记失败（taskId=${task.id}，上限=${shared.options.maxLoop}）`);
+    shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+        sessionId: task.sessionId,
+        action: 'loop-limit',
+        reason: 'max-loop',
+        taskId: task.id,
+        loopCount: task.loopCount,
+    });
+    return true;
 }
-
 function steerContinue(task, agent, shared) {
-  agent.steer(userMessage(DIRECT_CONTINUE_TEXT(task.description)))
-  task.loopCount += 1
-  task.lastSteerAt = Date.now()
-  task.updatedAt = Date.now()
-  shared.save()
-  shared.ctx.logger?.info(
-    `[dsh-task-reliability] 任务自动继续已注入（taskId=${task.id}，sessionId=${agent.id}，第 ${task.loopCount} 次）`,
-  )
-  shared.emit(PLUGIN_EVENTS.INTERVENTION, {
-    sessionId: task.sessionId,
-    action: 'steer-continue',
-    reason: 'turn-stopping',
-    taskId: task.id,
-    loopCount: task.loopCount,
-  })
+    agent.steer(userMessage(DIRECT_CONTINUE_TEXT(task.description)));
+    task.loopCount += 1;
+    task.lastSteerAt = Date.now();
+    task.updatedAt = Date.now();
+    shared.save();
+    shared.ctx.logger?.info?.(`[dsh-task-reliability] 任务自动继续已注入（taskId=${task.id}，sessionId=${agent.id}，第 ${task.loopCount} 次）`);
+    shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+        sessionId: task.sessionId,
+        action: 'steer-continue',
+        reason: 'turn-stopping',
+        taskId: task.id,
+        loopCount: task.loopCount,
+    });
 }
-
 /** 无进展命中即注入打断指令；无需继续时返回 false。 */
 function noProgressBreak(task, repeat, agent, shared) {
-  if (task === undefined) return false
-  if (!detectNoProgress(repeat, shared.options)) return false
-  return escalateLoop(repeat, shared, agent, 'progress')
+    if (task === undefined)
+        return false;
+    if (!detectNoProgress(repeat, shared.options))
+        return false;
+    return escalateLoop(repeat, shared, agent, 'progress');
 }
-
 /** 常规任务继续：冷却/上限/verify 模式不继续。 */
 function continueTask(task, agent, shared) {
-  if (Date.now() - task.lastSteerAt < shared.options.steerCooldownMs) return false
-  if (atLoopLimit(task, shared)) return false
-  if (task.mode === 'verify') return false
-  steerContinue(task, agent, shared)
-  return true
+    if (Date.now() - task.lastSteerAt < shared.options.steerCooldownMs)
+        return false;
+    if (atLoopLimit(task, shared))
+        return false;
+    if (task.mode === 'verify')
+        return false;
+    steerContinue(task, agent, shared);
+    return true;
 }
-
 async function handleTurnStopping(agent, signal, shared) {
-  if (!isTopLevelAgent(agent)) return
-  const repeat = shared.repeatStates.get(agent.id)
-  // issue #153：回合边界推进——turn-stopping 是回合结束事件，递增回合序号，
-  // 使上一回合产生的 pendingBreak 在后续回合消费时校验失效（跨回合不注入）。
-  if (repeat !== undefined) repeat.turnSeq += 1
-  if (signalAborted(signal)) return
-  const task = activeTaskOf(shared.store, agent.id)
-  if (!shouldSteer(task, repeat)) {
-    // 无任务无循环：普通对话截断救场（issue #147，受开关/上限/冷却约束）。
-    rescueTurn(agent, shared)
-    return
-  }
-  if (!rateAllowed(shared)) return
-  // 1. 思考/工具循环打断优先（立即中断后自动继续由打断指令驱动）。
-  if (repeatBreak(repeat, agent, shared)) return
-  // 2. 无进展循环（仅当存在活动任务；命中即注入打断指令继续）。
-  if (noProgressBreak(task, repeat, agent, shared)) return
-  if (task === undefined) return
-  continueTask(task, agent, shared)
+    if (!isTopLevelAgent(agent))
+        return;
+    const repeat = shared.repeatStates.get(agent.id);
+    // issue #153：回合边界推进——turn-stopping 是回合结束事件，递增回合序号，
+    // 使上一回合产生的 pendingBreak 在后续回合消费时校验失效（跨回合不注入）。
+    if (repeat !== undefined)
+        repeat.turnSeq += 1;
+    if (signalAborted(signal))
+        return;
+    const task = activeTaskOf(shared.store, agent.id);
+    if (!shouldSteer(task, repeat)) {
+        // 无任务无循环：普通对话截断救场（issue #147，受开关/上限/冷却约束）。
+        rescueTurn(agent, shared);
+        return;
+    }
+    if (!rateAllowed(shared))
+        return;
+    // 1. 思考/工具循环打断优先（立即中断后自动继续由打断指令驱动）。
+    if (repeatBreak(repeat, agent, shared))
+        return;
+    // 2. 无进展循环（仅当存在活动任务；命中即注入打断指令继续）。
+    if (noProgressBreak(task, repeat, agent, shared))
+        return;
+    if (task === undefined)
+        return;
+    continueTask(task, agent, shared);
 }
-
 // ── 4. 会话结束后完成度校验（verify 模式） ───────────────────────────────
-
 async function handleStatus(agent, status, shared) {
-  if (status !== 'idle') return
-  if (!isTopLevelAgent(agent)) return
-  maybeAutoTrack(agent, shared)
-  const task = activeTaskOf(shared.store, agent.id)
-  if (task === undefined) {
-    // 无任务：回合 error 结束的事后救场（issue #147）。
-    rescueAfterError(agent, shared)
-    return
-  }
-  if (task.mode !== 'verify') return
-  if (task.verifyCount >= shared.options.maxVerify) {
-    finishTask(shared.store, task.id, 'failed')
-    shared.save()
-    shared.ctx.logger?.warn(
-      `[dsh-task-reliability] 校验次数达上限标记任务失败（taskId=${task.id}，上限=${shared.options.maxVerify}）`,
-    )
-    shared.emit(PLUGIN_EVENTS.VERIFY, {
-      sessionId: task.sessionId,
-      action: 'verify-limit',
-      reason: 'max-verify',
-      taskId: task.id,
-      verifyCount: task.verifyCount,
-    })
-    return
-  }
-  if (Date.now() - task.lastSteerAt < shared.options.steerCooldownMs) return
-  task.status = 'checking'
-  task.updatedAt = Date.now()
-  shared.save()
-  shared.ctx.logger?.info(
-    `[dsh-task-reliability] 完成度校验触发（taskId=${task.id}，sessionId=${agent.id}，第 ${task.verifyCount + 1} 次）`,
-  )
-  return runVerification(shared.ctx, shared.store, task, agent, shared.save, shared.emit)
+    if (status !== 'idle')
+        return;
+    if (!isTopLevelAgent(agent))
+        return;
+    maybeAutoTrack(agent, shared);
+    const task = activeTaskOf(shared.store, agent.id);
+    if (task === undefined) {
+        // 无任务：回合 error 结束的事后救场（issue #147）。
+        rescueAfterError(agent, shared);
+        return;
+    }
+    if (task.mode !== 'verify')
+        return;
+    if (task.verifyCount >= shared.options.maxVerify) {
+        finishTask(shared.store, task.id, 'failed');
+        shared.save();
+        shared.ctx.logger?.warn?.(`[dsh-task-reliability] 校验次数达上限标记任务失败（taskId=${task.id}，上限=${shared.options.maxVerify}）`);
+        shared.emit(PLUGIN_EVENTS.VERIFY, {
+            sessionId: task.sessionId,
+            action: 'verify-limit',
+            reason: 'max-verify',
+            taskId: task.id,
+            verifyCount: task.verifyCount,
+        });
+        return;
+    }
+    if (Date.now() - task.lastSteerAt < shared.options.steerCooldownMs)
+        return;
+    task.status = 'checking';
+    task.updatedAt = Date.now();
+    shared.save();
+    shared.ctx.logger?.info?.(`[dsh-task-reliability] 完成度校验触发（taskId=${task.id}，sessionId=${agent.id}，第 ${task.verifyCount + 1} 次）`);
+    return runVerification(shared.ctx, shared.store, task, agent, shared.save, shared.emit);
 }
-
 // ── 5. 思考重复检测（llm/stream 包装） ───────────────────────────────────
-
 /**
  * 包装 `llm/stream`：返回包装后的流。
  *
@@ -312,14 +301,13 @@ async function handleStatus(agent, status, shared) {
  * 会抛 `yield* (intermediate value) is not async iterable`。
  */
 function handleStream(options, next, shared) {
-  const sessionId = typeof options?.sessionId === 'string' ? options.sessionId : ''
-  if (sessionId === '') return next()
-  const stream = next()
-  return wrapStreamForLoop(stream, repeatStateOf(sessionId, shared), shared.options)
+    const sessionId = typeof options?.sessionId === 'string' ? options.sessionId : '';
+    if (sessionId === '')
+        return next();
+    const stream = next();
+    return wrapStreamForLoop(stream, repeatStateOf(sessionId, shared), shared.options);
 }
-
 // ── 7. 自主决策：拦截 ask（deny，不调 next）；收集待确认问题 ─────────────
-
 /**
  * 拦截 `tools/pre-execute` 的 ask_user_question（autopilot 模式）。
  *
@@ -329,23 +317,26 @@ function handleStream(options, next, shared) {
  * 保持旧行为：立即 deny + 记录待确认。
  */
 async function handlePreExecute(exec, next, shared) {
-  if (exec === undefined || exec === null || exec.name !== 'ask_user_question') return next()
-  const agent = exec.agent
-  if (!isTopLevelAgent(agent)) return next()
-  if (!autopilotFor(agent.id, shared)) return next()
-  if (shared.options.autopilotGraceMs > 0) return next()
-  addQuestion(shared.store, agent.id, askNoteOf(exec.arguments))
-  shared.save()
-  shared.ctx.logger?.info(`[dsh-task-reliability] 自主决策拦截 ask（sessionId=${agent.id}，deny 并记录待确认）`)
-  shared.emit(PLUGIN_EVENTS.ASK_DECISION, {
-    sessionId: agent.id,
-    action: 'ask-deny',
-    reason: 'autopilot',
-    question: askNoteOf(exec.arguments),
-  })
-  return { kind: 'deny', reason: AUTOPILOT_DENY_REASON }
+    if (exec === undefined || exec === null || exec.name !== 'ask_user_question')
+        return next();
+    const agent = exec.agent;
+    if (!isTopLevelAgent(agent))
+        return next();
+    if (!autopilotFor(agent.id, shared))
+        return next();
+    if (shared.options.autopilotGraceMs > 0)
+        return next();
+    addQuestion(shared.store, agent.id, askNoteOf(exec.arguments));
+    shared.save();
+    shared.ctx.logger?.info?.(`[dsh-task-reliability] 自主决策拦截 ask（sessionId=${agent.id}，deny 并记录待确认）`);
+    shared.emit(PLUGIN_EVENTS.ASK_DECISION, {
+        sessionId: agent.id,
+        action: 'ask-deny',
+        reason: 'autopilot',
+        question: askNoteOf(exec.arguments),
+    });
+    return { kind: 'deny', reason: AUTOPILOT_DENY_REASON };
 }
-
 /**
  * 包装 `tools/execute`：ask_user_question 启动空闲计时器竞速（issue #145
  * 修复 Promise.race 的回答丢失：竞速中回答优先、超时后迟到回答不静默丢弃），
@@ -358,43 +349,44 @@ async function handlePreExecute(exec, next, shared) {
  * pre-execute deny 一致）；非 autopilot 模式沿用 `askTimeoutMs` 超时。
  */
 async function handleToolExecute(exec, next, shared) {
-  if (exec === undefined || exec === null) return next()
-  const agent = exec.agent
-  if (!isTopLevelAgent(agent)) return next()
-  const sessionId = agent.id
-  // 工具调用序列循环检测：命中立即抛错中断回合（与 reasoning 循环一致）。
-  if (recordToolLoop(sessionId, exec, shared)) {
-    void loopNotify(shared, 'tool', sessionId)
-    const count = repeatStateOf(sessionId, shared).count
-    shared.ctx.logger?.warn(
-      `[dsh-task-reliability] 工具循环检测命中（sessionId=${sessionId}，工具=${exec.name}，第 ${count} 次，中断回合）`,
-    )
-    const error = new Error(`tool loop detected (count=${count})`)
-    shared.emit(PLUGIN_EVENTS.INTERVENTION, {
-      sessionId,
-      action: 'tool-loop',
-      reason: 'tool-sequence',
-      count,
-      tool: String(exec.name ?? ''),
-    })
-    error.code = 'TOOL_LOOP'
-    throw error
-  }
-  if (exec.name !== 'ask_user_question') return next()
-  const autopilot = autopilotFor(sessionId, shared)
-  const timeoutMs = autopilot ? shared.options.autopilotGraceMs : shared.options.askTimeoutMs
-  if (timeoutMs <= 0) return next()
-  return raceAskAnswer(exec, next, timeoutMs, autopilot, shared)
+    if (exec === undefined || exec === null)
+        return next();
+    const agent = exec.agent;
+    if (!isTopLevelAgent(agent))
+        return next();
+    const sessionId = agent.id;
+    // 工具调用序列循环检测：命中立即抛错中断回合（与 reasoning 循环一致）。
+    if (recordToolLoop(sessionId, exec, shared)) {
+        void loopNotify(shared, 'tool', sessionId);
+        const count = repeatStateOf(sessionId, shared).count;
+        shared.ctx.logger?.warn?.(`[dsh-task-reliability] 工具循环检测命中（sessionId=${sessionId}，工具=${exec.name}，第 ${count} 次，中断回合）`);
+        const error = new Error(`tool loop detected (count=${count})`);
+        shared.emit(PLUGIN_EVENTS.INTERVENTION, {
+            sessionId,
+            action: 'tool-loop',
+            reason: 'tool-sequence',
+            count,
+            tool: String(exec.name ?? ''),
+        });
+        error.code = 'TOOL_LOOP';
+        throw error;
+    }
+    if (exec.name !== 'ask_user_question')
+        return next();
+    const autopilot = autopilotFor(sessionId, shared);
+    const timeoutMs = autopilot ? shared.options.autopilotGraceMs : shared.options.askTimeoutMs;
+    if (timeoutMs <= 0)
+        return next();
+    return raceAskAnswer(exec, next, timeoutMs, autopilot, shared);
 }
-
 // ── 注册 ───────────────────────────────────────────────────────────────────
 /** 注册全部事件监听（每个事件一个 handler，全部经 shared 共享状态）。 */
 export function registerListeners(ctx, shared) {
-  ctx.on('agent/request-error', (payload, next) => handleRequestError(payload, next, shared))
-  ctx.on('agent/turn-stopping', ({ agent, signal }) => handleTurnStopping(agent, signal, shared))
-  ctx.on('agent/status', ({ agent, status }) => handleStatus(agent, status, shared))
-  ctx.on('agent/error', ({ agent }) => markAgentError(agent, shared))
-  ctx.on('llm/stream', (options, next) => handleStream(options, next, shared))
-  ctx.on('tools/pre-execute', (exec, next) => handlePreExecute(exec, next, shared))
-  ctx.on('tools/execute', (exec, next) => handleToolExecute(exec, next, shared))
+    ctx.on('agent/request-error', (payload, next) => handleRequestError(payload, next, shared));
+    ctx.on('agent/turn-stopping', ({ agent, signal }) => handleTurnStopping(agent, signal, shared));
+    ctx.on('agent/status', ({ agent, status }) => handleStatus(agent, status, shared));
+    ctx.on('agent/error', ({ agent }) => markAgentError(agent, shared));
+    ctx.on('llm/stream', (options, next) => handleStream(options, next, shared));
+    ctx.on('tools/pre-execute', (exec, next) => handlePreExecute(exec, next, shared));
+    ctx.on('tools/execute', (exec, next) => handleToolExecute(exec, next, shared));
 }

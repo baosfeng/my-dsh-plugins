@@ -1,24 +1,22 @@
 /**
- * dsh-my-plugin-manager — registry.js: npm registry lookups for the market
+ * dsh-my-plugin-manager — registry.ts: npm registry lookups for the market
  * browser (search) and the update check (latest versions).
  *
  * The npm registry is the public plugin source of truth: search covers every
  * published dsh plugin (npm search `keywords:dsh`), and `/<pkg>/latest`
  * gives the newest version for update comparison.
  */
-const NPM_SEARCH = 'https://registry.npmjs.org/-/v1/search'
-const NPM_PACKAGE = (name) => `https://registry.npmjs.org/${encodeURIComponent(name)}/latest`
-const NPM_PACKUMENT = (name) => `https://registry.npmjs.org/${encodeURIComponent(name)}`
-const NPM_DOWNLOADS = (name) => `https://api.npmjs.org/downloads/point/last-month/${encodeURIComponent(name)}`
-
+const NPM_SEARCH = 'https://registry.npmjs.org/-/v1/search';
+const NPM_PACKAGE = (name) => `https://registry.npmjs.org/${encodeURIComponent(name)}/latest`;
+const NPM_PACKUMENT = (name) => `https://registry.npmjs.org/${encodeURIComponent(name)}`;
+const NPM_DOWNLOADS = (name) => `https://api.npmjs.org/downloads/point/last-month/${encodeURIComponent(name)}`;
 /** Search npm for plugins; returns a flat market list (name/version/…). */
 export async function searchNpmPlugins(query, size = 30) {
-  const url = `${NPM_SEARCH}?text=${encodeURIComponent(query)}&size=${size}`
-  const data = await fetchJson(url)
-  const objects = Array.isArray(data.objects) ? data.objects : []
-  return objects.map((entry) => entryToResult(entry.package)).filter((entry) => entry.name !== '')
+    const url = `${NPM_SEARCH}?text=${encodeURIComponent(query)}&size=${size}`;
+    const data = await fetchJson(url);
+    const objects = Array.isArray(data.objects) ? data.objects : [];
+    return objects.map((entry) => entryToResult(entry.package)).filter((entry) => entry.name !== '');
 }
-
 /**
  * Fetch a package detail (issue #90): README preview + version timeline +
  * dependency info + metadata. A single full packument lookup provides
@@ -27,170 +25,176 @@ export async function searchNpmPlugins(query, size = 30) {
  * dependencies/metadata are surfaced; defaults to `dist-tags.latest`.
  */
 export async function fetchPackageDetail(name, version = '') {
-  const trimmed = name.trim()
-  if (trimmed === '') throw new Error('package name is required')
-  const packument = await fetchPackument(trimmed)
-  const latest = stringOf(packument?.['dist-tags']?.latest)
-  const selected = pickVersion(packument, version, latest)
-  const doc = versionDocOf(packument, selected)
-  const dependencies = depsOf(doc.dependencies)
-  const downloads = await recentDownloadsOf(trimmed)
-  return {
-    name: stringOf(packument.name || trimmed),
-    version: selected,
-    latest,
-    description: stringOf(packument.description),
-    author: authorOf(packument.author || doc.author),
-    license: licenseOf(doc.license ?? packument.license),
-    homepage: stringOf(doc.homepage || packument.homepage),
-    repository: repositoryUrlOf(doc.repository ?? packument.repository),
-    readme: stringOf(packument.readme),
-    versions: versionTimelineOf(packument),
-    dependencies,
-    peerDependencies: peerDepsOf(doc.peerDependencies, dependencies),
-    downloads,
-  }
+    const trimmed = name.trim();
+    if (trimmed === '')
+        throw new Error('package name is required');
+    const packument = await fetchPackument(trimmed);
+    const latest = stringOf(packument?.['dist-tags']?.latest);
+    const selected = pickVersion(packument, version, latest);
+    const doc = versionDocOf(packument, selected);
+    const dependencies = depsOf(doc.dependencies);
+    const downloads = await recentDownloadsOf(trimmed);
+    return {
+        name: stringOf(packument.name || trimmed),
+        version: selected,
+        latest,
+        description: stringOf(packument.description),
+        author: authorOf(packument.author || doc.author),
+        license: licenseOf(doc.license ?? packument.license),
+        homepage: stringOf(doc.homepage || packument.homepage),
+        repository: repositoryUrlOf(doc.repository ?? packument.repository),
+        readme: stringOf(packument.readme),
+        versions: versionTimelineOf(packument),
+        dependencies,
+        peerDependencies: peerDepsOf(doc.peerDependencies, dependencies),
+        downloads,
+    };
 }
-
 /** Full packument lookup; 404/network errors become a friendly message. */
 async function fetchPackument(name) {
-  try {
-    return await fetchJson(NPM_PACKUMENT(name))
-  } catch (error) {
-    throw new Error(detailErrorMessage(name, error), { cause: error })
-  }
+    try {
+        return await fetchJson(NPM_PACKUMENT(name));
+    }
+    catch (error) {
+        throw new Error(detailErrorMessage(name, error), { cause: error });
+    }
 }
-
 /** The version document for `selected`, falling back to an empty doc. */
 function versionDocOf(packument, selected) {
-  const doc = packument.versions?.[selected]
-  return isPlainObject(doc) ? doc : {}
+    const doc = packument.versions?.[selected];
+    return isPlainObject(doc) ? doc : {};
 }
-
 /** The version to surface: caller's `version` if published, else latest. */
 function pickVersion(packument, version, latest) {
-  const requested = version.trim()
-  if (requested !== '' && isPlainObject(packument.versions?.[requested])) return requested
-  return latest
+    const requested = version.trim();
+    if (requested !== '' && isPlainObject(packument.versions?.[requested]))
+        return requested;
+    return latest;
 }
-
 /** Version timeline from the packument `time` map, oldest → newest. */
 function versionTimelineOf(packument) {
-  const time = isPlainObject(packument.time) ? packument.time : {}
-  const versions = isPlainObject(packument.versions) ? packument.versions : {}
-  return Object.keys(time)
-    .filter((v) => Object.prototype.hasOwnProperty.call(versions, v))
-    .map((v) => ({ version: v, date: stringOf(time[v]) }))
-    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    const time = isPlainObject(packument.time) ? packument.time : {};
+    const versions = isPlainObject(packument.versions) ? packument.versions : {};
+    return Object.keys(time)
+        .filter((v) => Object.prototype.hasOwnProperty.call(versions, v))
+        .map((v) => ({ version: v, date: stringOf(time[v]) }))
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
-
 /** Dependencies map → stable { name, spec } array (deps may be null-ish). */
 function depsOf(deps) {
-  if (!isPlainObject(deps)) return []
-  return Object.entries(deps).map(([name, spec]) => ({ name, spec: stringOf(spec) }))
+    if (!isPlainObject(deps))
+        return [];
+    return Object.entries(deps).map(([name, spec]) => ({ name, spec: stringOf(spec) }));
 }
-
 /** Peer deps → { name, spec, missing } (highlight peers the package alone
  *  does not satisfy: not in its own deps and not DSH-runtime-provided). */
 function peerDepsOf(peers, dependencies) {
-  if (!isPlainObject(peers)) return []
-  const depNames = new Set(dependencies.map((dep) => dep.name))
-  return Object.entries(peers).map(([name, spec]) => ({
-    name,
-    spec: stringOf(spec),
-    missing: !depNames.has(name) && !runtimeProvidedModule(name),
-  }))
+    if (!isPlainObject(peers))
+        return [];
+    const depNames = new Set(dependencies.map((dep) => dep.name));
+    return Object.entries(peers).map(([name, spec]) => ({
+        name,
+        spec: stringOf(spec),
+        missing: !depNames.has(name) && !runtimeProvidedModule(name),
+    }));
 }
-
 /** Modules always supplied by the DSH runtime, not considered "missing". */
 function runtimeProvidedModule(name) {
-  if (name === 'react' || name === 'react-dom' || name === 'cordis' || name.startsWith('cordis:')) return true
-  return ['@deepseek-ai/'].some((prefix) => name.startsWith(prefix))
+    if (name === 'react' || name === 'react-dom' || name === 'cordis' || name.startsWith('cordis:'))
+        return true;
+    return ['@deepseek-ai/'].some((prefix) => name.startsWith(prefix));
 }
-
 /** npm 30-day download count; best-effort (0 on any failure). */
 async function recentDownloadsOf(name) {
-  try {
-    const res = await fetch(NPM_DOWNLOADS(name), { headers: { accept: 'application/json' } })
-    if (!res.ok) return 0
-    const data = await res.json()
-    return Number.isFinite(data?.downloads) ? data.downloads : 0
-  } catch {
-    return 0
-  }
+    try {
+        const res = await fetch(NPM_DOWNLOADS(name), { headers: { accept: 'application/json' } });
+        if (!res.ok)
+            return 0;
+        const data = await res.json();
+        return Number.isFinite(data?.downloads) ? data.downloads : 0;
+    }
+    catch {
+        return 0;
+    }
 }
-
 /** A friendly error message for a failed packument lookup. */
 function detailErrorMessage(name, error) {
-  const code = /404|not found/i.test(String(error?.message ?? ''))
-  return code ? `未找到 npm 包 "${name}"` : `加载插件详情失败（${name}）：${String(error?.message ?? '网络错误')}`
+    const code = /404|not found/i.test(String(messageOf(error) ?? ''));
+    return code ? `未找到 npm 包 "${name}"` : `加载插件详情失败（${name}）：${String(messageOf(error) ?? '网络错误')}`;
 }
-
+/** 未知异常的 message（非对象/无 message 视为未提供）。 */
+function messageOf(error) {
+    return error?.message;
+}
 /** Normalize a repository field (object or string) into a browseable URL. */
 function repositoryUrlOf(repository) {
-  const raw = typeof repository === 'string' ? repository : (repository?.url ?? '')
-  return cleanRepositoryUrl(raw)
+    const raw = typeof repository === 'string' ? repository : (repository?.url ?? '');
+    return cleanRepositoryUrl(raw);
 }
-
 function cleanRepositoryUrl(raw) {
-  let url = raw.trim()
-  if (url === '') return ''
-  if (url.startsWith('git+')) url = url.slice(4)
-  if (url.startsWith('github:')) url = `https://github.com/${url.slice(7)}`
-  else if (url.startsWith('ssh://git@')) url = `https://${url.slice(10).replace(':', '/')}`
-  else if (url.startsWith('git@')) url = `https://${url.slice(4).replace(':', '/')}`
-  else if (url.startsWith('git://')) url = `https://${url.slice(6)}`
-  if (url.endsWith('.git')) url = url.slice(0, -4)
-  return url
+    let url = raw.trim();
+    if (url === '')
+        return '';
+    if (url.startsWith('git+'))
+        url = url.slice(4);
+    if (url.startsWith('github:'))
+        url = `https://github.com/${url.slice(7)}`;
+    else if (url.startsWith('ssh://git@'))
+        url = `https://${url.slice(10).replace(':', '/')}`;
+    else if (url.startsWith('git@'))
+        url = `https://${url.slice(4).replace(':', '/')}`;
+    else if (url.startsWith('git://'))
+        url = `https://${url.slice(6)}`;
+    if (url.endsWith('.git'))
+        url = url.slice(0, -4);
+    return url;
 }
-
 /** License field may be a string or a { type, url } object. */
 function licenseOf(license) {
-  if (typeof license === 'string') return license
-  return isPlainObject(license) ? stringOf(license.type) : ''
+    if (typeof license === 'string')
+        return license;
+    return isPlainObject(license) ? stringOf(license.type) : '';
 }
-
 function isPlainObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
-
 /** String fields of a market row (all defensive-empty). */
-const STRING_FIELDS = ['name', 'version', 'description', 'date', 'homepage', 'repository']
-
+const STRING_FIELDS = ['name', 'version', 'description', 'date', 'homepage', 'repository'];
 /** One npm search hit into the market row shape (defensive defaults). */
 function entryToResult(pkg) {
-  const links = pkg?.links ?? {}
-  const result = {}
-  for (const field of STRING_FIELDS) result[field] = stringOf(pkg?.[field])
-  result.homepage = stringOf(links.homepage)
-  result.repository = stringOf(links.repository)
-  result.author = authorOf(pkg?.author)
-  return result
+    const links = pkg?.links ?? {};
+    const result = {};
+    for (const field of STRING_FIELDS)
+        result[field] = stringOf(pkg?.[field]);
+    result.homepage = stringOf(links.homepage);
+    result.repository = stringOf(links.repository);
+    result.author = authorOf(pkg?.author);
+    return result;
 }
-
 function authorOf(author) {
-  if (typeof author === 'string') return author
-  return author === null || author === undefined ? '' : stringOf(author.name)
+    if (typeof author === 'string')
+        return author;
+    return author === null || author === undefined ? '' : stringOf(author.name);
 }
-
 function stringOf(value) {
-  return typeof value === 'string' ? value : ''
+    return typeof value === 'string' ? value : '';
 }
-
 /** Latest published version of a package ('' when unknown/error). */
 export async function latestVersionOf(name) {
-  try {
-    const res = await fetch(NPM_PACKAGE(name))
-    if (!res.ok) return ''
-    const data = await res.json()
-    return typeof data.version === 'string' ? data.version : ''
-  } catch {
-    return ''
-  }
+    try {
+        const res = await fetch(NPM_PACKAGE(name));
+        if (!res.ok)
+            return '';
+        const data = await res.json();
+        return typeof data.version === 'string' ? data.version : '';
+    }
+    catch {
+        return '';
+    }
 }
-
 async function fetchJson(url) {
-  const res = await fetch(url, { headers: { accept: 'application/json' } })
-  if (!res.ok) throw new Error(`registry request failed: ${res.status}`)
-  return res.json()
+    const res = await fetch(url, { headers: { accept: 'application/json' } });
+    if (!res.ok)
+        throw new Error(`registry request failed: ${res.status}`);
+    return res.json();
 }

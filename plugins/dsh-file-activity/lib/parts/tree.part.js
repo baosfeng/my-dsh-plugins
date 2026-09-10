@@ -1,3 +1,4 @@
+'use strict'
 // ── directory tree construction ───────────────────────────────────────
 /**
  * Collapse chain directories: a directory whose only child is another
@@ -18,7 +19,6 @@ function compressChains(node, isRoot) {
     node.compressed = true
   }
 }
-
 /**
  * Sort a directory node: directories first (alphabetically), then files
  * (by total activity, then name); recurse into directories.
@@ -35,7 +35,6 @@ function sortNode(node) {
     if (child.type === 'dir') sortNode(child)
   }
 }
-
 /**
  * Build a nested directory tree from per-file counts, keyed by the file's
  * absolute path. Every directory node aggregates its subtree counters and

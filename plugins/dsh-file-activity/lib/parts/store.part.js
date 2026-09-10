@@ -1,3 +1,4 @@
+'use strict'
 // ── tiny external store ───────────────────────────────────────────────
 function createStore(initial) {
   let state = initial

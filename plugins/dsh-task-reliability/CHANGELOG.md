@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 变更
+
+- chore(task-reliability): client 端迁移到 TypeScript——632 行手写 `lib/client.js` 拆为 `src/client/parts/*.ts`（i18n / api / styles / rows / view / settings / apply），经 `tsc -p tsconfig.client.json` 编译后由 `scripts/build.mjs` 拼接进 `lib/client.src.js` 模板产出 `lib/client.js`（server 端此前已迁移）；新增 `src/client/globals.d.ts`（DSH 运行时最小契约）与 `test/client-api-contract.mjs`（轮询端点 / 模式开关 / 任务操作 / 问答 / 注册任务的 HTTP 契约防回归）。产物语义与迁移前手写版等价
+- fix(task-reliability): 清理 `stryker.config.mjs` / `vitest.config.mjs` 中已不存在的模块引用（`lib/fence.js`、`lib/config-store.js`），并补上漏统计的 `lib/loop.js`、`lib/emit.js`——原清单会让 stryker `mutate` 直接报错、覆盖率静默漏项
+
 ## [0.4.7] - 2026-09-07
 
 ### 变更

@@ -1,10 +1,10 @@
+'use strict'
 // ── path / time formatting helpers ────────────────────────────────────
 function basenameOf(path) {
   const norm = path.split('\\').join('/')
   const idx = norm.lastIndexOf('/')
   return idx === -1 ? norm : norm.slice(idx + 1)
 }
-
 /** Compact relative time: 刚刚 / N 分钟前 / N 小时前 / N 天前 / MM/DD. */
 function formatRelative(time) {
   if (typeof time !== 'number' || !Number.isFinite(time)) return ''
@@ -19,7 +19,6 @@ function formatRelative(time) {
   const date = new Date(time)
   return `${date.getMonth() + 1}/${date.getDate()}`
 }
-
 /** Local wall-clock HH:MM:SS (used in tooltips; full precision). */
 function formatTime(time) {
   const date = new Date(time)

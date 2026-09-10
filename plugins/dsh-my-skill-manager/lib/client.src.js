@@ -12,8 +12,9 @@
  * (server half). Styling follows the DSH design language: semantic tokens,
  * flat surfaces, hairline borders.
  *
- * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs splices the
- * `lib/parts/*.part.js` pieces into the PART placeholder markers below
+ * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs compiles
+ * src/client/parts/*.ts into lib/.client-build/parts/*.js and splices those
+ * pieces into the PART placeholder markers below
  * (each piece is plain function-declaration text sharing this factory scope;
  * the browser ModuleLoader does not support relative-path require) and writes
  * lib/client.js — the file actually served by DSH, which MUST be committed

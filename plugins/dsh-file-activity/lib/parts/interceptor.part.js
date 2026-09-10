@@ -1,13 +1,12 @@
+'use strict'
 // ── fetch interception: sidebar file operations ───────────────────────
 function methodOf(init) {
   return (init?.method ?? 'GET').toUpperCase()
 }
-
 /** POST body as a plain object (non-string bodies are ignored). */
 function parseBody(init) {
   return typeof init?.body === 'string' ? JSON.parse(init.body) : {}
 }
-
 /** Record fs.read / fs.write POSTs observed on the sidebar API. */
 function recordSidebarFs(url, init) {
   if (url.pathname !== '/sidebar/api/fs.read' && url.pathname !== '/sidebar/api/fs.write') return
@@ -16,7 +15,6 @@ function recordSidebarFs(url, init) {
   if (typeof body.sessionId !== 'string' || typeof body.path !== 'string') return
   postRecord(body.sessionId, body.path, url.pathname === '/sidebar/api/fs.write' ? 'write' : 'read')
 }
-
 /** Record sidebar media opens (/sidebar/file?sessionId=...&path=...). */
 function recordMediaOpen(url, init) {
   if (url.pathname !== '/sidebar/file' || methodOf(init) !== 'GET') return
@@ -24,7 +22,6 @@ function recordMediaOpen(url, init) {
   const path = url.searchParams.get('path')
   if (sessionId !== null && path !== null) postRecord(sessionId, path, 'read')
 }
-
 /** Observe a resolved fetch URL and record sidebar file operations. */
 function observeSidebarFetch(url, init) {
   try {
@@ -34,7 +31,6 @@ function observeSidebarFetch(url, init) {
     // observation must never break the underlying call
   }
 }
-
 function installFetchInterceptor() {
   const original = window.fetch.bind(window)
   window.fetch = (input, init) => {

@@ -1,3 +1,4 @@
+'use strict'
 // ── themed stylesheet (injected once per activation) ──────────────────
 // Mirrors the better-sidebar explorer surface: tight 2px 6px 8px body,
 // 30px rows, box-sizing border-box indentation, folder rows use the

@@ -6,8 +6,15 @@
 // 低价值变异（不改变控制流），排除后聚焦逻辑变异（条件/运算/调用/对象）
 export default {
   testRunner: 'vitest',
-  vitest: { configFile: 'vitest.config.mjs' },
+  vitest: { configFile: 'vitest.stryker.config.mjs' },
   mutate: ['lib/index.js'],
+  // TS 迁移（issue #47 同族）：本插件现在带 tsconfig.json，stryker 的沙箱
+  // TSConfigPreprocessor 会重写它并调用 ts.parseConfigFileTextToJson ——
+  // TypeScript 7（原生编译器）已不再导出该 API，直接崩溃。变异目标只有
+  // lib/*.js（tsc 产物），测试是 .mjs，vitest 不读 tsconfig，沙箱重写本
+  // 无意义；指向一个不存在的文件名即可让 preprocessor 跳过（找不到文件
+  // 就不重写）。
+  tsconfigFile: 'tsconfig.stryker-skip.json',
   mutator: {
     excludedMutations: ['StringLiteral', 'TemplateLiteral'],
   },

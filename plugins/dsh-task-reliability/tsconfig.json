@@ -1,0 +1,20 @@
+{
+  // dsh-task-reliability — server 端构建配置：src/*.ts → lib/*.js（tsc 编译产物）。
+  // 产物必须提交（CI 只跑 node --check + 测试，不跑构建）。
+  // client 端源码在 src/client/（拼接片段），由 tsconfig.client.json 单独编译，
+  // 经 scripts/build.mjs 拼成 lib/client.js，故此处 exclude。
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "outDir": "lib",
+    "rootDir": "src",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "exclude": ["src/client"]
+}

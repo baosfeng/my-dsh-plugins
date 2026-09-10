@@ -12,40 +12,38 @@
  * Conservative by design: names that appear in no config produce no
  * candidates, so an untouched catalog is byte-identical to before.
  */
-import { readConfigFile, globalConfigFile, readProjectConfig } from './config.js'
-
-const PROVIDER_NAME = 'my-skill-manager'
+import { readConfigFile, globalConfigFile, readProjectConfig } from './config.js';
+const PROVIDER_NAME = 'my-skill-manager';
 /** Below every filesystem rank (100–500) and the runtime rank (250). */
-const DISABLED_RANK = 0
-
+const DISABLED_RANK = 0;
 /** Build the provider. Config is read per `list()` call; after a config save
  *  the caller fires `control.invalidate()` so the skill catalog recalculates. */
 export function createDisablerProvider() {
-  return {
-    name: PROVIDER_NAME,
-    async list(options) {
-      const cwd = typeof options?.cwd === 'string' && options.cwd !== '' ? options.cwd : undefined
-      const disabled = await disabledNamesOf(cwd)
-      return [...disabled].map((name) => ({
-        name,
-        description: '已禁用（dsh-my-skill-manager）——该 skill 被启用/禁用配置禁用，模型不会加载它。',
-        invocation: { modelInvocable: false, userInvocable: false },
-        source: 'disabled',
-        provider: PROVIDER_NAME,
-        rank: DISABLED_RANK,
-      }))
-    },
-    async get() {
-      return undefined // disabled: the skill body must not load
-    },
-  }
+    return {
+        name: PROVIDER_NAME,
+        async list(options) {
+            const cwd = typeof options?.cwd === 'string' && options.cwd !== '' ? options.cwd : undefined;
+            const disabled = await disabledNamesOf(cwd);
+            return [...disabled].map((name) => ({
+                name,
+                description: '已禁用（dsh-my-skill-manager）——该 skill 被启用/禁用配置禁用，模型不会加载它。',
+                invocation: { modelInvocable: false, userInvocable: false },
+                source: 'disabled',
+                provider: PROVIDER_NAME,
+                rank: DISABLED_RANK,
+            }));
+        },
+        async get() {
+            return undefined; // disabled: the skill body must not load
+        },
+    };
 }
-
 /** Union of the global and (cwd-resolved) project disabled names. */
 export async function disabledNamesOf(cwd) {
-  const global = await readConfigFile(globalConfigFile())
-  const globalNames = global.global.disabled
-  if (cwd === undefined) return globalNames
-  const project = await readProjectConfig(cwd)
-  return [...new Set([...globalNames, ...project.project.disabled])]
+    const global = await readConfigFile(globalConfigFile());
+    const globalNames = global.global.disabled;
+    if (cwd === undefined)
+        return globalNames;
+    const project = await readProjectConfig(cwd);
+    return [...new Set([...globalNames, ...project.project.disabled])];
 }

@@ -56,9 +56,13 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-skill-manager
 
 ## 开发
 
+TypeScript 源码在 `src/`（server 端 `src/*.ts` + client 端 `src/client/parts/*.ts`），
+编译产物 `lib/*.js` / `lib/client.js` 必须提交（CI 只跑 `node --check` + 测试，不跑构建）。
+
 ```bash
-npm run build   # 拼接 lib/parts/*.part.js → lib/client.js
-npm test        # vitest（server + client 渲染路径）
+npm run build      # tsc 编译 src/ + 拼接 client parts → lib/（产物需提交）
+npm run typecheck  # tsc --noEmit（server + client 两套配置）
+npm test           # vitest（server + client 渲染路径）
 ```
 
 ## 相关文档

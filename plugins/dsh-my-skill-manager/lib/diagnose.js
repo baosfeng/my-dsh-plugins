@@ -20,145 +20,149 @@
  * frontmatter 解析是轻量实现（无 yaml 依赖），只提取 name/description 字段；
  * 与官方 yaml 解析的差异只影响个别条目的收录判定，不改变诊断原因分类。
  */
-import { readdir, readFile, stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
-import { findProjectRoot } from 'dsh-shared'
-
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { findProjectRoot } from 'dsh-shared';
 /** 官方 skill 名语法：kebab-case（与 dsh-skill 的 SKILL_NAME 一致）。 */
-const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-
+const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** 当前视图的 skill 根目录（cwd 为 undefined 时是全局视图）。 */
 export async function viewRootsOf(cwd) {
-  const roots = [
-    { path: join(dshHome(), 'skills'), source: 'user-dsh' },
-    { path: join(agentsHome(), 'skills'), source: 'user-agents' },
-  ]
-  if (cwd !== undefined) {
-    const projectRoot = await findProjectRoot(cwd)
-    roots.push(
-      { path: join(projectRoot, '.dsh', 'skills'), source: 'project-dsh' },
-      { path: join(projectRoot, '.agents', 'skills'), source: 'project-agents' },
-    )
-  }
-  return roots
+    const roots = [
+        { path: join(dshHome(), 'skills'), source: 'user-dsh' },
+        { path: join(agentsHome(), 'skills'), source: 'user-agents' },
+    ];
+    if (cwd !== undefined) {
+        const projectRoot = await findProjectRoot(cwd);
+        roots.push({ path: join(projectRoot, '.dsh', 'skills'), source: 'project-dsh' }, { path: join(projectRoot, '.agents', 'skills'), source: 'project-agents' });
+    }
+    return roots;
 }
-
 function dshHome() {
-  const home = process.env.DSH_HOME
-  return typeof home === 'string' && home !== '' ? home : `${homedir()}/.dsh`
+    const home = process.env.DSH_HOME;
+    return typeof home === 'string' && home !== '' ? home : `${homedir()}/.dsh`;
 }
-
 function agentsHome() {
-  const home = process.env.DSH_AGENTS_HOME
-  return typeof home === 'string' && home !== '' ? home : `${homedir()}/.agents`
+    const home = process.env.DSH_AGENTS_HOME;
+    return typeof home === 'string' && home !== '' ? home : `${homedir()}/.agents`;
 }
-
 /**
  * 扫描 roots：返回 { skills, issues }。
  * skills：frontmatter 正常的条目 [{ name, description, source, path }]；
  * issues：异常条目 [{ name, path, reason }]（reason 见 scanFile）。
  */
 export async function scanSkillRoots(roots) {
-  const skills = []
-  const issues = []
-  for (const root of roots) {
-    let entries
-    try {
-      entries = await readdir(root.path, { withFileTypes: true, encoding: 'utf8' })
-    } catch {
-      continue // 目录不存在或不可读：官方同样跳过，不扫描
+    const skills = [];
+    const issues = [];
+    for (const root of roots) {
+        let entries;
+        try {
+            entries = await readdir(root.path, { withFileTypes: true, encoding: 'utf8' });
+        }
+        catch {
+            continue; // 目录不存在或不可读：官方同样跳过，不扫描
+        }
+        for (const entry of entries) {
+            if (entry.name === '.system')
+                continue;
+            const result = await scanEntry(join(root.path, entry.name), entry, root.source);
+            if (result === undefined)
+                continue;
+            if (result.issue !== undefined)
+                issues.push(result.issue);
+            else
+                skills.push(result.skill);
+        }
     }
-    for (const entry of entries) {
-      if (entry.name === '.system') continue
-      const result = await scanEntry(join(root.path, entry.name), entry, root.source)
-      if (result === undefined) continue
-      if (result.issue !== undefined) issues.push(result.issue)
-      else skills.push(result.skill)
-    }
-  }
-  return { skills, issues }
+    return { skills, issues };
 }
-
 /** 判定一个目录条目：返回 { skill } / { issue } / undefined（非 skill 条目）。 */
 async function scanEntry(fullPath, entry, source) {
-  // Dirent 的 isDirectory/isFile 不跟随符号链接；对 symlink 用 stat 结果判断。
-  let info
-  if (entry.isSymbolicLink()) {
-    try {
-      info = await stat(fullPath)
-    } catch {
-      return { issue: { name: entry.name, path: fullPath, reason: 'broken-symlink' } }
+    // Dirent 的 isDirectory/isFile 不跟随符号链接；对 symlink 用 stat 结果判断。
+    let info;
+    if (entry.isSymbolicLink()) {
+        try {
+            info = await stat(fullPath);
+        }
+        catch {
+            return { issue: { name: entry.name, path: fullPath, reason: 'broken-symlink' } };
+        }
     }
-  }
-  const isDir = info !== undefined ? info.isDirectory() : entry.isDirectory()
-  const isFile = info !== undefined ? info.isFile() : entry.isFile()
-  if (isDir) {
-    let raw
-    try {
-      raw = await readFile(join(fullPath, 'SKILL.md'), 'utf8')
-    } catch {
-      return { issue: { name: entry.name, path: fullPath, reason: 'missing-skills-md' } }
+    const isDir = info !== undefined ? info.isDirectory() : entry.isDirectory();
+    const isFile = info !== undefined ? info.isFile() : entry.isFile();
+    if (isDir) {
+        let raw;
+        try {
+            raw = await readFile(join(fullPath, 'SKILL.md'), 'utf8');
+        }
+        catch {
+            return { issue: { name: entry.name, path: fullPath, reason: 'missing-skills-md' } };
+        }
+        return scanFile(entry.name, fullPath, raw, source);
     }
-    return scanFile(entry.name, fullPath, raw, source)
-  }
-  if (isFile && entry.name.endsWith('.md')) {
-    let raw
-    try {
-      raw = await readFile(fullPath, 'utf8')
-    } catch {
-      return undefined // 不可读：官方同样跳过，无更多信息可给
+    if (isFile && entry.name.endsWith('.md')) {
+        let raw;
+        try {
+            raw = await readFile(fullPath, 'utf8');
+        }
+        catch {
+            return undefined; // 不可读：官方同样跳过，无更多信息可给
+        }
+        return scanFile(entry.name.slice(0, -3), fullPath, raw, source);
     }
-    return scanFile(entry.name.slice(0, -3), fullPath, raw, source)
-  }
-  return undefined // 非 skill 条目（官方同样静默跳过）
+    return undefined; // 非 skill 条目（官方同样静默跳过）
 }
-
 /** 按 frontmatter 内容判定：正常 → { skill }；异常 → { issue }。 */
 function scanFile(entryName, fullPath, raw, source) {
-  const fields = parseFrontmatterFields(raw)
-  if (fields === undefined) return { issue: { name: entryName, path: fullPath, reason: 'missing-frontmatter' } }
-  if (fields.name === undefined || fields.description === undefined) {
-    return { issue: { name: entryName, path: fullPath, reason: 'missing-name-description' } }
-  }
-  if (!SKILL_NAME.test(fields.name)) return { issue: { name: entryName, path: fullPath, reason: 'invalid-name' } }
-  return { skill: { name: fields.name, description: fields.description, source, path: fullPath } }
+    const fields = parseFrontmatterFields(raw);
+    if (fields === undefined)
+        return { issue: { name: entryName, path: fullPath, reason: 'missing-frontmatter' } };
+    if (fields.name === undefined || fields.description === undefined) {
+        return { issue: { name: entryName, path: fullPath, reason: 'missing-name-description' } };
+    }
+    if (!SKILL_NAME.test(fields.name))
+        return { issue: { name: entryName, path: fullPath, reason: 'invalid-name' } };
+    return { skill: { name: fields.name, description: fields.description, source, path: fullPath } };
 }
-
 /** 轻量 frontmatter 解析：只提取 name/description；结构异常返回 undefined。 */
 function parseFrontmatterFields(raw) {
-  const firstLineEnd = raw.indexOf('\n')
-  if (firstLineEnd < 0) return undefined
-  if (raw.slice(0, firstLineEnd).replace(/\r$/, '') !== '---') return undefined
-  const closing = findClosingFrontmatter(raw, firstLineEnd + 1)
-  if (closing === undefined) return undefined
-  const block = raw.slice(firstLineEnd + 1, closing)
-  return {
-    name: fieldValue(block, 'name'),
-    description: fieldValue(block, 'description'),
-  }
+    const firstLineEnd = raw.indexOf('\n');
+    if (firstLineEnd < 0)
+        return undefined;
+    if (raw.slice(0, firstLineEnd).replace(/\r$/, '') !== '---')
+        return undefined;
+    const closing = findClosingFrontmatter(raw, firstLineEnd + 1);
+    if (closing === undefined)
+        return undefined;
+    const block = raw.slice(firstLineEnd + 1, closing);
+    return {
+        name: fieldValue(block, 'name'),
+        description: fieldValue(block, 'description'),
+    };
 }
-
 function findClosingFrontmatter(raw, start) {
-  let lineStart = start
-  while (lineStart <= raw.length) {
-    const nextNewline = raw.indexOf('\n', lineStart)
-    const lineEnd = nextNewline < 0 ? raw.length : nextNewline
-    if (raw.slice(lineStart, lineEnd).replace(/\r$/, '') === '---') return lineStart
-    if (nextNewline < 0) return undefined
-    lineStart = nextNewline + 1
-  }
-  return undefined
+    let lineStart = start;
+    while (lineStart <= raw.length) {
+        const nextNewline = raw.indexOf('\n', lineStart);
+        const lineEnd = nextNewline < 0 ? raw.length : nextNewline;
+        if (raw.slice(lineStart, lineEnd).replace(/\r$/, '') === '---')
+            return lineStart;
+        if (nextNewline < 0)
+            return undefined;
+        lineStart = nextNewline + 1;
+    }
+    return undefined;
 }
-
 /** 提取 frontmatter 块中 `key: value` 的标量值（去引号）；缺失返回 undefined。 */
 function fieldValue(block, key) {
-  const match = block.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))
-  if (match === null) return undefined
-  const value = match[1].trim()
-  if (value === '') return undefined
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1)
-  }
-  return value
+    const match = block.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
+    if (match === null)
+        return undefined;
+    const value = match[1].trim();
+    if (value === '')
+        return undefined;
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        return value.slice(1, -1);
+    }
+    return value;
 }

@@ -46,8 +46,9 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-plugin-manager
 ## 开发
 
 ```bash
-npm run build   # 拼接 lib/parts/*.part.js → lib/client.js
-npm test        # vitest（server 单测 + API 集成 + client 渲染路径）
+npm run build      # tsc 编译 src/*.ts → lib/*.js，并拼接 src/client/parts/*.ts 编译产物 → lib/client.js
+npm run typecheck  # server + client 两端类型检查（tsconfig.json / tsconfig.client.json）
+npm test           # vitest（server 单测 + API 集成 + client 渲染路径）+ cucumber 验收
 ```
 
 ## 相关文档

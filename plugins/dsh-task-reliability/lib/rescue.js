@@ -26,153 +26,164 @@
  *  - todo 清单存在 pending/in_progress 项是「任务进行中」信号：截断时
  *    即使文本完整也救场。
  */
-
-import { lastAssistantText, isTopLevelAgent, sessionEvents } from './text.js'
-import { userMessage } from './util.js'
-import { RESCUE_CONTINUE_TEXT } from './constants.js'
-import { PLUGIN_EVENTS } from './emit.js'
-
+import { lastAssistantText, isTopLevelAgent, sessionEvents } from './text.js';
+import { userMessage } from './util.js';
+import { RESCUE_CONTINUE_TEXT } from './constants.js';
+import { PLUGIN_EVENTS } from './emit.js';
 // ── 输出完整度启发式（纯规则，零成本）────────────────────────────────────
-
-const SENTENCE_END = /[。！？；：.!?;:）)\]"'」』]$/
-const LIST_MARK = /^\s*(?:[-*+]|\d+[.)]|\[[ xX]\])\s+/
-const TABLE_SEPARATOR = /^\|?[\s:|-]+\|[\s:|-]+\|?$/
-
+const SENTENCE_END = /[。！？；：.!?;:）)\]"'」』]$/;
+const LIST_MARK = /^\s*(?:[-*+]|\d+[.)]|\[[ xX]\])\s+/;
+const TABLE_SEPARATOR = /^\|?[\s:|-]+\|[\s:|-]+\|?$/;
 function lastNonEmptyLine(text) {
-  const lines = text.split('\n')
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i].trim() !== '') return lines[i]
-  }
-  return ''
+    const lines = text.split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+        if (lines[i].trim() !== '')
+            return lines[i];
+    }
+    return '';
 }
-
 /** 表格未闭合判定：表头分隔行结尾，或含 | 的长行被截断（不以 | 结尾）。 */
 function tableTruncated(lastLine) {
-  if (!lastLine.includes('|')) return false
-  if (lastLine.endsWith('|')) return TABLE_SEPARATOR.test(lastLine)
-  return lastLine.length > 10
+    if (!lastLine.includes('|'))
+        return false;
+    if (lastLine.endsWith('|'))
+        return TABLE_SEPARATOR.test(lastLine);
+    return lastLine.length > 10;
 }
-
 /** 半句判定：非列表项、无结尾标点、长度超过阈值。 */
 function sentenceTruncated(lastLine) {
-  if (LIST_MARK.test(lastLine)) return false
-  if (SENTENCE_END.test(lastLine)) return false
-  return lastLine.length > 30
+    if (LIST_MARK.test(lastLine))
+        return false;
+    if (SENTENCE_END.test(lastLine))
+        return false;
+    return lastLine.length > 30;
 }
-
 /**
  * 输出完整度启发式：未闭合代码围栏 / 公式块 / 表格，或结尾停在半句
  * 视为「输出未完成」。保守设计（低误报）：完整表格行、列表项、短句、
  * 空文本均不判未完成。
  */
 export function isOutputTruncated(text) {
-  if (typeof text !== 'string' || text === '') return false
-  if ((text.match(/```/g) ?? []).length % 2 === 1) return true
-  if ((text.match(/\$\$/g) ?? []).length % 2 === 1) return true
-  const lastLine = lastNonEmptyLine(text).trimEnd()
-  if (lastLine === '') return false
-  if (tableTruncated(lastLine)) return true
-  return sentenceTruncated(lastLine)
+    if (typeof text !== 'string' || text === '')
+        return false;
+    if ((text.match(/```/g) ?? []).length % 2 === 1)
+        return true;
+    if ((text.match(/\$\$/g) ?? []).length % 2 === 1)
+        return true;
+    const lastLine = lastNonEmptyLine(text).trimEnd();
+    if (lastLine === '')
+        return false;
+    if (tableTruncated(lastLine))
+        return true;
+    return sentenceTruncated(lastLine);
 }
-
 /** 会话事件里最后一条 todo/write 快照是否存在未完成项（pending/in_progress）。 */
 export function todoHasPending(events) {
-  if (!Array.isArray(events)) return false
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i]
-    if (event === null || typeof event !== 'object' || event.type !== 'todo/write') continue
-    const todos = event.data?.todos
-    if (!Array.isArray(todos)) return false
-    return todos.some((todo) => todo?.status === 'pending' || todo?.status === 'in_progress')
-  }
-  return false
+    if (!Array.isArray(events))
+        return false;
+    for (let i = events.length - 1; i >= 0; i--) {
+        const event = events[i];
+        if (event === null || typeof event !== 'object' || event.type !== 'todo/write')
+            continue;
+        const todos = event.data?.todos;
+        if (!Array.isArray(todos))
+            return false;
+        return todos.some((todo) => {
+            const item = todo;
+            return item?.status === 'pending' || item?.status === 'in_progress';
+        });
+    }
+    return false;
 }
-
 // ── 会话级 rescue 状态（内存态，不持久化）─────────────────────────────────
-
 /** 惰性创建会话 rescue 状态（count 累计 + 上次救场时间）。 */
 function rescueStateOf(sessionId, shared) {
-  let state = shared.rescueStates.get(sessionId)
-  if (state === undefined) {
-    state = { count: 0, lastRescueAt: 0 }
-    shared.rescueStates.set(sessionId, state)
-  }
-  return state
+    let state = shared.rescueStates.get(sessionId);
+    if (state === undefined) {
+        state = { count: 0, lastRescueAt: 0 };
+        shared.rescueStates.set(sessionId, state);
+    }
+    return state;
 }
-
 /** 救场许可：开关 + 每会话次数上限 + 冷却（防「截断→继续→再截断」死循环）。 */
 function rescueAllowed(state, options, now = Date.now()) {
-  if (options.rescueOnTruncation !== true) return false
-  if (state.count >= options.rescueMaxPerSession) return false
-  if (now - state.lastRescueAt < options.rescueCooldownMs) return false
-  return true
+    if (options.rescueOnTruncation !== true)
+        return false;
+    if (state.count >= options.rescueMaxPerSession)
+        return false;
+    if (now - state.lastRescueAt < options.rescueCooldownMs)
+        return false;
+    return true;
 }
-
 /** 记录一次救场（计数 + 刷新冷却时间）。 */
 function recordRescue(state, now = Date.now()) {
-  state.count += 1
-  state.lastRescueAt = now
+    state.count += 1;
+    state.lastRescueAt = now;
 }
-
 // ── 决策与动作 ────────────────────────────────────────────────────────────
-
 /**
  * turn-stopping 无任务救场（events.js 在无任务无循环时调用）：
  * 截断信号（lastFinish = max-tokens）或输出不完整启发式命中 → steer 注入
  * 补完指令。文本完整且无 todo pending 时不救场（截断撞自然结尾）。
  */
 export function rescueTurn(agent, shared) {
-  const state = rescueStateOf(agent.id, shared)
-  if (!rescueAllowed(state, shared.options)) return
-  const repeat = shared.repeatStates.get(agent.id)
-  const truncated = repeat?.lastFinish?.kind === 'max-tokens'
-  const incomplete = isOutputTruncated(lastAssistantText(agent.session))
-  if (!incomplete && !(truncated && todoHasPending(sessionEvents(agent.session)))) return
-  try {
-    agent.steer(userMessage(RESCUE_CONTINUE_TEXT))
-  } catch {
-    return
-  }
-  recordRescue(state)
-  shared.emit(PLUGIN_EVENTS.RESCUE, {
-    sessionId: agent.id,
-    action: 'rescue-turn',
-    reason: truncated ? 'truncation' : 'incomplete',
-    count: state.count,
-    max: shared.options.rescueMaxPerSession,
-  })
+    const state = rescueStateOf(agent.id, shared);
+    if (!rescueAllowed(state, shared.options))
+        return;
+    const repeat = shared.repeatStates.get(agent.id);
+    const truncated = repeat?.lastFinish?.kind === 'max-tokens';
+    const incomplete = isOutputTruncated(lastAssistantText(agent.session));
+    if (!incomplete && !(truncated && todoHasPending(sessionEvents(agent.session))))
+        return;
+    try {
+        agent.steer(userMessage(RESCUE_CONTINUE_TEXT));
+    }
+    catch {
+        return;
+    }
+    recordRescue(state);
+    shared.emit(PLUGIN_EVENTS.RESCUE, {
+        sessionId: agent.id,
+        action: 'rescue-turn',
+        reason: truncated ? 'truncation' : 'incomplete',
+        count: state.count,
+        max: shared.options.rescueMaxPerSession,
+    });
 }
-
 /**
  * 回合 error 事后救场（events.js 在 status idle 且无任务时调用）：
  * 消费 agent/error 标记（一次性），输出不完整或 todo pending → followup
  * 唤醒新回合补完。error 不触发 turn-stopping，只能事后救场。
  */
 export function rescueAfterError(agent, shared) {
-  const markAt = shared.errorMarks.get(agent.id)
-  if (markAt === undefined) return
-  shared.errorMarks.delete(agent.id)
-  const state = rescueStateOf(agent.id, shared)
-  if (!rescueAllowed(state, shared.options)) return
-  const incomplete = isOutputTruncated(lastAssistantText(agent.session))
-  if (!incomplete && !todoHasPending(sessionEvents(agent.session))) return
-  try {
-    agent.followup(userMessage(RESCUE_CONTINUE_TEXT))
-  } catch {
-    return
-  }
-  recordRescue(state)
-  shared.emit(PLUGIN_EVENTS.RESCUE, {
-    sessionId: agent.id,
-    action: 'rescue-after-error',
-    reason: 'error',
-    count: state.count,
-    max: shared.options.rescueMaxPerSession,
-  })
+    const markAt = shared.errorMarks.get(agent.id);
+    if (markAt === undefined)
+        return;
+    shared.errorMarks.delete(agent.id);
+    const state = rescueStateOf(agent.id, shared);
+    if (!rescueAllowed(state, shared.options))
+        return;
+    const incomplete = isOutputTruncated(lastAssistantText(agent.session));
+    if (!incomplete && !todoHasPending(sessionEvents(agent.session)))
+        return;
+    try {
+        agent.followup(userMessage(RESCUE_CONTINUE_TEXT));
+    }
+    catch {
+        return;
+    }
+    recordRescue(state);
+    shared.emit(PLUGIN_EVENTS.RESCUE, {
+        sessionId: agent.id,
+        action: 'rescue-after-error',
+        reason: 'error',
+        count: state.count,
+        max: shared.options.rescueMaxPerSession,
+    });
 }
-
 /** agent/error 监听：仅顶层会话标记（子代理错误不救场）。 */
 export function markAgentError(agent, shared) {
-  if (!isTopLevelAgent(agent)) return
-  shared.errorMarks.set(agent.id, Date.now())
+    if (!isTopLevelAgent(agent))
+        return;
+    shared.errorMarks.set(agent.id, Date.now());
 }

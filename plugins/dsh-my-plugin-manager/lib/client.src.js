@@ -13,13 +13,13 @@
  * borders, shared linear icons (dsh-shared client-parts), brand badges and
  * icon buttons — the dsh-file-activity visual baseline.
  *
- * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs splices the
- * `lib/parts/*.part.js` pieces (plus the shared dsh-shared client-parts) into
- * the PART placeholder markers below (each piece is plain function-declaration
- * text sharing this factory scope; the browser ModuleLoader does not support
- * relative-path require) and writes lib/client.js — the file actually served
- * by DSH, which MUST be committed (CI runs node --check + tests against it,
- * not against this template).
+ * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs compiles the
+ * `src/client/parts/*.ts` pieces (plus the shared dsh-shared client-parts) and
+ * splices them into the PART placeholder markers below (each piece is plain
+ * function-declaration text sharing this factory scope; the browser
+ * ModuleLoader does not support relative-path require) and writes
+ * lib/client.js — the file actually served by DSH, which MUST be committed
+ * (CI runs node --check + tests against it, not against this template).
  */
 window.__ModuleLoader__.load({
   id: 'dsh-my-plugin-manager',

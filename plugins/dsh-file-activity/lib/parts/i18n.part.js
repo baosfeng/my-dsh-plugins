@@ -1,3 +1,4 @@
+'use strict'
 // ── i18n ──────────────────────────────────────────────────────────────
 function isZh() {
   try {
@@ -7,7 +8,6 @@ function isZh() {
     return false
   }
 }
-
 const strings = {
   title: () => (isZh() ? '文件活动' : 'File Activity'),
   recent: () => (isZh() ? '最近访问' : 'Recent'),

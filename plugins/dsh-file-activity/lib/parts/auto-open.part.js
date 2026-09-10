@@ -1,3 +1,4 @@
+'use strict'
 // ── auto-open (enabled by default) ────────────────────────────────────
 function findTabIn(state, tabId) {
   const leaves = (node) => (node.kind === 'leaf' ? [node] : (node.children ?? []).flatMap(leaves))
@@ -9,7 +10,6 @@ function findTabIn(state, tabId) {
   }
   return false
 }
-
 /** Current sidebar snapshot, or null when the service is not ready. */
 function sidebarSnapshot(service) {
   try {
@@ -18,13 +18,11 @@ function sidebarSnapshot(service) {
     return null
   }
 }
-
 /** The user disabled auto-open for this tab in the sidebar settings. */
 function isAutoOpenDisabled(snapshot, tabId) {
   const settings = snapshot.prefs?.pluginSettings?.[tabId]
   return settings !== undefined && settings.autoOpen === false
 }
-
 /** Whether this session was already auto-opened (localStorage marker). */
 function isAutoOpenMarked(sessionId) {
   try {
@@ -33,7 +31,6 @@ function isAutoOpenMarked(sessionId) {
     return true
   }
 }
-
 /** Persist the auto-opened marker for this session. */
 function markAutoOpened(sessionId) {
   try {
@@ -42,7 +39,6 @@ function markAutoOpened(sessionId) {
     // ignore
   }
 }
-
 /** Open the tab once per session unless disabled in the plugin settings. */
 function tryAutoOpen(service, tabId) {
   const snapshot = sidebarSnapshot(service)
@@ -62,7 +58,6 @@ function tryAutoOpen(service, tabId) {
     console.error('[dsh-file-activity] auto-open failed:', error)
   }
 }
-
 function installAutoOpen(ctx, tabId) {
   const service = ctx.betterSidebar
   tryAutoOpen(service, tabId)

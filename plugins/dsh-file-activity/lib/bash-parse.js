@@ -18,34 +18,32 @@
  * ('write' is classified create/modify by the known-file registry, 'delete'
  * removes the file from stats), so the view stays consistent with the disk.
  */
-import { pushCommandOps, positionalArgs, resolveSafe, pushOp } from './bash-ops.js'
-
+import { pushCommandOps, positionalArgs, resolveSafe, pushOp } from './bash-ops.js';
 /** Prefix wrappers that do not touch files themselves. */
-const PREFIX_CMDS = new Set(['sudo', 'nohup', 'command', 'time', 'env'])
-
+const PREFIX_CMDS = new Set(['sudo', 'nohup', 'command', 'time', 'env']);
 /** Parse one bash command into [{ op: 'write'|'delete', path }] (deduped). */
 export function parseBashFileOps(command, baseDir) {
-  const ops = []
-  let cwd = baseDir
-  for (const segment of splitSegments(command)) {
-    const tokens = tokenize(segment)
-    const start = commandStartOf(tokens)
-    if (start < 0) continue
-    const cmd = basenameOf(tokens[start].text)
-    const args = tokens.slice(start + 1)
-    if (cmd === 'cd') {
-      const target = cdTargetOf(args)
-      if (target !== '') cwd = resolveSafe({ text: target, safe: true }, cwd)
-      continue
+    const ops = [];
+    let cwd = baseDir;
+    for (const segment of splitSegments(command)) {
+        const tokens = tokenize(segment);
+        const start = commandStartOf(tokens);
+        if (start < 0)
+            continue;
+        const cmd = basenameOf(tokens[start].text);
+        const args = tokens.slice(start + 1);
+        if (cmd === 'cd') {
+            const target = cdTargetOf(args);
+            if (target !== '')
+                cwd = resolveSafe({ text: target, safe: true }, cwd);
+            continue;
+        }
+        pushCommandOps(ops, cmd, args, cwd);
+        pushRedirectOps(ops, tokens, cwd);
     }
-    pushCommandOps(ops, cmd, args, cwd)
-    pushRedirectOps(ops, tokens, cwd)
-  }
-  return dedupeOps(ops)
+    return dedupeOps(ops);
 }
-
 // ── quoting pre-pass ───────────────────────────────────────────────────────
-
 /**
  * Per-char quote state: 0 = unquoted, 1 = single-quoted, 2 = double-quoted,
  * -1 = the quote character itself (kept in segment text, stripped by
@@ -54,209 +52,203 @@ export function parseBashFileOps(command, baseDir) {
  * literal (bash). The output array has one entry per input character.
  */
 function quoteMarks(text) {
-  const marks = []
-  let quote = 0
-  let i = 0
-  while (i < text.length) {
-    const step = quoteStep(text, i, quote)
-    marks.push(...step.marks)
-    quote = step.quote
-    i += step.advance
-  }
-  return marks
+    const marks = [];
+    let quote = 0;
+    let i = 0;
+    while (i < text.length) {
+        const step = quoteStep(text, i, quote);
+        marks.push(...step.marks);
+        quote = step.quote;
+        i += step.advance;
+    }
+    return marks;
 }
-
 /** One character's quote transition: { marks, quote, advance }. */
 function quoteStep(text, i, quote) {
-  const ch = text[i]
-  if (ch === '\\' && quote !== 1 && i + 1 < text.length) return { marks: [quote, quote], quote, advance: 2 }
-  if (quote !== 0 && ch === quoteCharOf(quote)) return { marks: [-1], quote: 0, advance: 1 }
-  if (quote === 0 && isQuoteChar(ch)) return { marks: [-1], quote: quoteOf(ch), advance: 1 }
-  return { marks: [quote], quote, advance: 1 }
+    const ch = text[i];
+    if (ch === '\\' && quote !== 1 && i + 1 < text.length)
+        return { marks: [quote, quote], quote, advance: 2 };
+    if (quote !== 0 && ch === quoteCharOf(quote))
+        return { marks: [-1], quote: 0, advance: 1 };
+    if (quote === 0 && isQuoteChar(ch))
+        return { marks: [-1], quote: quoteOf(ch), advance: 1 };
+    return { marks: [quote], quote, advance: 1 };
 }
-
 function quoteCharOf(quote) {
-  return quote === 1 ? "'" : '"'
+    return quote === 1 ? "'" : '"';
 }
-
 function quoteOf(ch) {
-  return ch === "'" ? 1 : 2
+    return ch === "'" ? 1 : 2;
 }
-
 function isQuoteChar(ch) {
-  return ch === "'" || ch === '"'
+    return ch === "'" || ch === '"';
 }
-
 // ── segment splitting ──────────────────────────────────────────────────────
-
 /**
  * Split a command on the top-level separators && || ; | & and newlines.
  * Quoted separators never split; a bare `&` (background marker) splits only
  * when followed by whitespace/end — `2>&1` stays one word.
  */
 export function splitSegments(command) {
-  const marks = quoteMarks(command)
-  const segments = []
-  let current = ''
-  for (let i = 0; i < command.length; i += 1) {
-    if (marks[i] !== 0 || !isSeparator(command, i)) {
-      current += command[i]
-      continue
+    const marks = quoteMarks(command);
+    const segments = [];
+    let current = '';
+    for (let i = 0; i < command.length; i += 1) {
+        if (marks[i] !== 0 || !isSeparator(command, i)) {
+            current += command[i];
+            continue;
+        }
+        flushSegment(segments, current);
+        current = '';
+        i += separatorLength(command, i) - 1;
     }
-    flushSegment(segments, current)
-    current = ''
-    i += separatorLength(command, i) - 1
-  }
-  flushSegment(segments, current)
-  return segments
+    flushSegment(segments, current);
+    return segments;
 }
-
 function isSeparator(command, i) {
-  const ch = command[i]
-  if (ch === '&') return command[i + 1] === '&' || i + 1 >= command.length || /\s/.test(command[i + 1])
-  return ch === '|' || ch === ';' || ch === '\n' || ch === '\r'
+    const ch = command[i];
+    if (ch === '&')
+        return command[i + 1] === '&' || i + 1 >= command.length || /\s/.test(command[i + 1]);
+    return ch === '|' || ch === ';' || ch === '\n' || ch === '\r';
 }
-
 function separatorLength(command, i) {
-  return command[i] === '&' && command[i + 1] === '&' ? 2 : 1
+    return command[i] === '&' && command[i + 1] === '&' ? 2 : 1;
 }
-
 function flushSegment(segments, current) {
-  const trimmed = current.trim()
-  if (trimmed !== '') segments.push(trimmed)
+    const trimmed = current.trim();
+    if (trimmed !== '')
+        segments.push(trimmed);
 }
-
 // ── tokenizing ─────────────────────────────────────────────────────────────
-
 /**
  * Split one segment into words. Tokens keep their quoted content (quotes
  * stripped) and a `safe` flag: false when the word contains variables /
  * command substitution / globs — such paths must never be recorded.
  */
 export function tokenize(segment) {
-  const marks = quoteMarks(segment)
-  const tokens = []
-  let current = ''
-  let safe = true
-  const push = () => {
-    if (current !== '') {
-      tokens.push({ text: current, safe })
-      current = ''
-      safe = true
+    const marks = quoteMarks(segment);
+    const tokens = [];
+    let current = '';
+    let safe = true;
+    const push = () => {
+        if (current !== '') {
+            tokens.push({ text: current, safe });
+            current = '';
+            safe = true;
+        }
+    };
+    for (let i = 0; i < segment.length; i += 1) {
+        const ch = segment[i];
+        if (marks[i] === -1)
+            continue; // quote characters are stripped
+        if (marks[i] === 0 && /\s/.test(ch)) {
+            push();
+            continue;
+        }
+        if (isEscape(segment, i, marks[i])) {
+            current += segment[i + 1];
+            i += 1;
+            continue;
+        }
+        if (isUnsafeChar(ch, marks[i])) {
+            safe = false;
+            current += ch;
+            continue;
+        }
+        current += ch;
     }
-  }
-  for (let i = 0; i < segment.length; i += 1) {
-    const ch = segment[i]
-    if (marks[i] === -1) continue // quote characters are stripped
-    if (marks[i] === 0 && /\s/.test(ch)) {
-      push()
-      continue
-    }
-    if (isEscape(segment, i, marks[i])) {
-      current += segment[i + 1]
-      i += 1
-      continue
-    }
-    if (isUnsafeChar(ch, marks[i])) {
-      safe = false
-      current += ch
-      continue
-    }
-    current += ch
-  }
-  push()
-  return tokens
+    push();
+    return tokens;
 }
-
 /** Backslash escapes the next char outside quotes and inside double quotes. */
 function isEscape(segment, i, quote) {
-  if (segment[i] !== '\\' || quote === 1) return false
-  return i + 1 < segment.length
+    if (segment[i] !== '\\' || quote === 1)
+        return false;
+    return i + 1 < segment.length;
 }
-
 /** `$` expands everywhere except single quotes; globs only outside quotes. */
 function isUnsafeChar(ch, quote) {
-  if (ch === '$') return quote !== 1
-  if (quote !== 0) return false
-  return ch === '`' || ch === '*' || ch === '?' || ch === '[' || ch === '{'
+    if (ch === '$')
+        return quote !== 1;
+    if (quote !== 0)
+        return false;
+    return ch === '`' || ch === '*' || ch === '?' || ch === '[' || ch === '{';
 }
-
 // ── command head ───────────────────────────────────────────────────────────
-
 /** Index of the first real command token (skipping VAR=x and wrappers). */
 function findStartOf(tokens, index) {
-  while (index < tokens.length) {
-    const token = tokens[index]
-    if (isAssignment(token.text) || PREFIX_CMDS.has(basenameOf(token.text))) {
-      index += 1
-      continue
+    while (index < tokens.length) {
+        const token = tokens[index];
+        if (isAssignment(token.text) || PREFIX_CMDS.has(basenameOf(token.text))) {
+            index += 1;
+            continue;
+        }
+        return index;
     }
-    return index
-  }
-  return -1
+    return -1;
 }
-
 function commandStartOf(tokens) {
-  const start = findStartOf(tokens, 0)
-  if (start < 0) return -1
-  if (basenameOf(tokens[start].text) === 'env') {
-    // env VAR=value cmd: assignments after env are skipped too.
-    return findStartOf(tokens, start + 1)
-  }
-  return start
+    const start = findStartOf(tokens, 0);
+    if (start < 0)
+        return -1;
+    if (basenameOf(tokens[start].text) === 'env') {
+        // env VAR=value cmd: assignments after env are skipped too.
+        return findStartOf(tokens, start + 1);
+    }
+    return start;
 }
-
 function isAssignment(text) {
-  const eq = text.indexOf('=')
-  if (eq <= 0) return false
-  return /^[A-Za-z_][A-Za-z0-9_]*=/.test(text)
+    const eq = text.indexOf('=');
+    if (eq <= 0)
+        return false;
+    return /^[A-Za-z_][A-Za-z0-9_]*=/.test(text);
 }
-
 function basenameOf(text) {
-  const slash = text.lastIndexOf('/')
-  return slash === -1 ? text : text.slice(slash + 1)
+    const slash = text.lastIndexOf('/');
+    return slash === -1 ? text : text.slice(slash + 1);
 }
-
 // ── paths & redirects ──────────────────────────────────────────────────────
-
 /** `> file` / `>> file` / `2> file` redirects write the target file. */
 function pushRedirectOps(ops, tokens, cwd) {
-  for (let i = 0; i < tokens.length; i += 1) {
-    const match = /^(\d*)>{1,2}(.*)$/.exec(tokens[i].text)
-    if (match === null) continue
-    const target = redirectTarget(tokens, i, match[2])
-    if (target === null) continue
-    pushOp(ops, 'write', { text: target.text, safe: target.safe }, cwd)
-  }
+    for (let i = 0; i < tokens.length; i += 1) {
+        const match = /^(\d*)>{1,2}(.*)$/.exec(tokens[i].text);
+        if (match === null)
+            continue;
+        const target = redirectTarget(tokens, i, match[2]);
+        if (target === null)
+            continue;
+        pushOp(ops, 'write', { text: target.text, safe: target.safe }, cwd);
+    }
 }
-
 /** The file a redirect writes; null when it is an fd / /dev/null / missing. */
 function redirectTarget(tokens, i, inline) {
-  if (inline !== '') return usable(inline, tokens[i].safe) ? { text: inline, safe: tokens[i].safe } : null
-  const next = tokens[i + 1]
-  if (next === undefined || !next.safe) return null
-  return usable(next.text, true) ? { text: next.text, safe: true } : null
+    if (inline !== '')
+        return usable(inline, tokens[i].safe) ? { text: inline, safe: tokens[i].safe } : null;
+    const next = tokens[i + 1];
+    if (next === undefined || !next.safe)
+        return null;
+    return usable(next.text, true) ? { text: next.text, safe: true } : null;
 }
-
 function usable(text, safe) {
-  if (!safe || text === '') return false
-  return !text.startsWith('&') && !text.startsWith('/dev/')
+    if (!safe || text === '')
+        return false;
+    return !text.startsWith('&') && !text.startsWith('/dev/');
 }
-
 /** `cd` target: the first positional argument ('' when missing/unsafe). */
 function cdTargetOf(args) {
-  const paths = positionalArgs(args)
-  if (paths.length === 0) return ''
-  return paths[0].safe ? paths[0].text : ''
+    const paths = positionalArgs(args);
+    if (paths.length === 0)
+        return '';
+    return paths[0].safe ? paths[0].text : '';
 }
-
 /** Dedupe by op+path, keeping the first occurrence. */
 function dedupeOps(ops) {
-  const seen = new Set()
-  return ops.filter((op) => {
-    const key = `${op.op}\u0000${op.path}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+    const seen = new Set();
+    return ops.filter((op) => {
+        const key = `${op.op}\u0000${op.path}`;
+        if (seen.has(key))
+            return false;
+        seen.add(key);
+        return true;
+    });
 }

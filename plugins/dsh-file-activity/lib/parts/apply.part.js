@@ -1,3 +1,4 @@
+'use strict'
 // ── plugin body ───────────────────────────────────────────────────────
 /**
  * The stylesheet is pure static CSS and must NOT depend on the
@@ -20,7 +21,6 @@ function injectStyles(ctx) {
     }
   }, 'dsh-file-activity: styles')
 }
-
 /** Mount probe: report client activation to the host state (synthetic
  *  session id, invisible in the UI — confirms the client half actually
  *  loaded after a page refresh). */
@@ -31,7 +31,6 @@ function mountProbe() {
     body: JSON.stringify({ sessionId: '__probe__', path: 'mounted', op: 'read' }),
   }).catch(() => {})
 }
-
 /** Register the tab (enabled by default in the Side card settings). */
 function registerTab(ctx, dataStore) {
   const service = ctx.betterSidebar
@@ -61,9 +60,7 @@ function registerTab(ctx, dataStore) {
     'dsh-file-activity: tab registration',
   )
 }
-
 exports.inject = ['betterSidebar']
-
 exports.apply = function apply(ctx) {
   // Stylesheet first, unconditionally (HMR pitfall — see injectStyles).
   injectStyles(ctx)
@@ -79,21 +76,17 @@ exports.apply = function apply(ctx) {
     }
     return
   }
-
   // Per-session data store: { bySession: { [sessionId]: { recent, counts, loading } }, preview }
   // Each conversation reads/writes only its own bucket, so switching
   // sessions never leaks another session's file activity into the view.
   const dataStore = createStore({ bySession: {}, preview: null })
   mountProbe()
-
   // sidebar operations → host record route
   ctx.effect(() => installFetchInterceptor(), 'dsh-file-activity: sidebar fetch observation')
   registerTab(ctx, dataStore)
-
   // auto-open once per session (default on)
   ctx.effect(() => installAutoOpen(ctx, TAB_ID), 'dsh-file-activity: auto-open')
 }
-
 // Internal functions exposed for the render-path test suite only; inert in
 // the browser bundle (plain properties on the exports object).
 exports.__test = {

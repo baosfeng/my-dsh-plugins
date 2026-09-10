@@ -10,25 +10,18 @@
  * 安装/卸载通过 `dsh plugin --profile <p> add|remove` 落盘（与 CLI 同一
  * 数据源），新插件在下次重启时由 loader（或 guardian 候选区）加载。
  */
-import { currentProfile, isTrustedApiRequest, profileDirOf } from 'dsh-shared'
-import { createApiHandler } from './api-route.js'
-
-export const name = 'dsh-my-plugin-manager'
-
-export const inject = ['pluginInventory', 'webServer', 'webRuntime']
-
+import { currentProfile, isTrustedApiRequest, profileDirOf } from 'dsh-shared';
+import { createApiHandler } from './api-route.js';
+export const name = 'dsh-my-plugin-manager';
+export const inject = ['pluginInventory', 'webServer', 'webRuntime'];
 export function apply(ctx) {
-  const profile = currentProfile()
-  const profileDir = profileDirOf(profile)
-  const fence = (request) => isTrustedApiRequest(request, ctx.webRuntime.trustedHosts)
-  ctx.effect(
-    () =>
-      ctx.webServer.register({
+    const profile = currentProfile();
+    const profileDir = profileDirOf(profile);
+    const fence = (request) => isTrustedApiRequest(request, ctx.webRuntime.trustedHosts);
+    ctx.effect(() => ctx.webServer.register({
         kind: 'prefix',
         path: '/my-plugin-manager/api',
         handler: createApiHandler({ ctx, profile, profileDir, fence }),
-      }),
-    'dsh-my-plugin-manager: /my-plugin-manager/api routes',
-  )
-  ctx.logger?.info(`[dsh-my-plugin-manager] 插件管理器已启用（profile=${profile}）`)
+    }), 'dsh-my-plugin-manager: /my-plugin-manager/api routes');
+    ctx.logger?.info(`[dsh-my-plugin-manager] 插件管理器已启用（profile=${profile}）`);
 }

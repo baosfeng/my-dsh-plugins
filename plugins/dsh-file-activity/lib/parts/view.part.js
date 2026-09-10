@@ -1,7 +1,7 @@
+'use strict'
 // ── view component ────────────────────────────────────────────────────
 /** Shared empty bucket for sessions that have never loaded data (stable ref). */
 const EMPTY_SESSION = { recent: [], counts: {}, loading: true }
-
 /**
  * Polling loader for one session: fetches stats on mount and on a fixed
  * interval while visible, prefers the sidebar's authoritative session.cwd
@@ -44,7 +44,6 @@ function useSessionLoader(visible, sessionId, scope, dataStore, setCwd, setError
     }
   }, [visible, sessionId, dataStore])
 }
-
 /** Error banner element, or null when the last load succeeded. */
 function renderError(error) {
   if (!error) return null
@@ -60,7 +59,6 @@ function renderError(error) {
     strings.loadError(),
   )
 }
-
 /** "最近访问" section: collapsible head with refresh/clear actions. */
 function renderRecentSection(recent, recentOpen, onToggle, onRefresh, onClear, onOpen) {
   return createElement(
@@ -116,7 +114,6 @@ function renderRecentSection(recent, recentOpen, onToggle, onRefresh, onClear, o
           ),
   )
 }
-
 /** "文件统计" section: the directory tree, or an empty hint. */
 function renderStatsSection(tree, collapsedDirs, onToggleDir, onOpen) {
   return createElement(
@@ -132,7 +129,6 @@ function renderStatsSection(tree, collapsedDirs, onToggleDir, onOpen) {
         ),
   )
 }
-
 /**
  * The file-activity tab. Each session renders only its own store bucket:
  * a fresh conversation shows an empty list immediately, with no residue

@@ -12,8 +12,9 @@
  * (server half). Styling follows the DSH design language: semantic tokens,
  * flat surfaces, hairline borders.
  *
- * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs splices the
- * `lib/parts/*.part.js` pieces into the PART placeholder markers below
+ * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs compiles
+ * src/client/parts/*.ts into lib/.client-build/parts/*.js and splices those
+ * pieces into the PART placeholder markers below
  * (each piece is plain function-declaration text sharing this factory scope;
  * the browser ModuleLoader does not support relative-path require) and writes
  * lib/client.js — the file actually served by DSH, which MUST be committed
@@ -32,75 +33,70 @@ window.__ModuleLoader__.load({
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────
-    // ── i18n ──────────────────────────────────────────────────────────────
+    "use strict";
+// ── i18n ──────────────────────────────────────────────────────────────
 function isZh() {
-  try {
-    const lang = (navigator.language || 'en').toLowerCase()
-    return lang.startsWith('zh')
-  } catch {
-    return false
-  }
+    try {
+        const lang = (navigator.language || 'en').toLowerCase();
+        return lang.startsWith('zh');
+    }
+    catch {
+        return false;
+    }
 }
-
+/** 诊断原因 → 可读文案（未知原因原样返回）。 */
+const DIAG_REASONS = {
+    'broken-symlink': '符号链接无法解析（目标不存在）',
+    'missing-skills-md': '目录缺少 SKILL.md',
+    'missing-frontmatter': '缺少 YAML frontmatter',
+    'missing-name-description': 'frontmatter 缺少 name 或 description',
+    'invalid-name': 'skill 名称不符合 kebab-case 规范',
+    unparseable: 'frontmatter 解析失败或字段异常（官方扫描器未收录）',
+};
 const strings = {
-  title: () => (isZh() ? 'Skill 管理' : 'Skill Manager'),
-  globalSection: () => (isZh() ? '全局' : 'Global'),
-  projectSection: () => (isZh() ? '当前项目' : 'Current project'),
-  refresh: () => (isZh() ? '刷新' : 'Refresh'),
-  enabled: () => (isZh() ? '启用' : 'Enabled'),
-  disabled: () => (isZh() ? '已禁用' : 'Disabled'),
-  loading: () => (isZh() ? '加载中…' : 'Loading…'),
-  loadError: () => (isZh() ? '加载失败' : 'Load failed'),
-  empty: () => (isZh() ? '暂无 skill' : 'No skills yet'),
-  emptyHint: () =>
-    isZh() ? 'skill 目录为空或尚未扫描，点击右上角刷新重新扫描' : 'No skills found yet; click refresh to rescan',
-  sourceProject: (source) => (isZh() ? `项目（${source}）` : `project (${source})`),
-  sourceGlobal: (source) => (isZh() ? `全局（${source}）` : `global (${source})`),
-  notCataloged: () => (isZh() ? '未收录' : 'Not cataloged'),
-  notCatalogedHint: () =>
-    isZh()
-      ? '该 skill 存在于目录但未被官方目录收录（不注入会话）；可能是 filesystem 发现未启用或扫描器跳过'
-      : 'This skill exists on disk but is not in the official catalog (not injected); filesystem discovery may be disabled or the scanner skipped it',
-  disabledHint: () =>
-    isZh()
-      ? '禁用的 skill 不再注入本项目/全局会话：模型不可见、不可加载（占位覆盖）'
-      : 'A disabled skill is no longer injected into this scope: the model cannot see or load it (placeholder override)',
-  projectRoot: () => (isZh() ? '项目根：' : 'Project root: '),
-  saved: () => (isZh() ? '已保存' : 'Saved'),
-  saveFailed: () => (isZh() ? '保存失败' : 'Save failed'),
-  diagnosticsTitle: () => (isZh() ? '扫描诊断' : 'Scan diagnostics'),
-  diagBadge: () => (isZh() ? '跳过' : 'Skipped'),
-  diagnosticsHint: () =>
-    isZh()
-      ? '以下条目存在于 skill 目录但未被收录（可能被官方扫描器跳过）：'
-      : 'These entries exist in a skill directory but were not cataloged (likely skipped by the scanner):',
-  diagReason: (reason) =>
-    isZh()
-      ? ({
-          'broken-symlink': '符号链接无法解析（目标不存在）',
-          'missing-skills-md': '目录缺少 SKILL.md',
-          'missing-frontmatter': '缺少 YAML frontmatter',
-          'missing-name-description': 'frontmatter 缺少 name 或 description',
-          'invalid-name': 'skill 名称不符合 kebab-case 规范',
-          unparseable: 'frontmatter 解析失败或字段异常（官方扫描器未收录）',
-        }[reason] ?? reason)
-      : reason,
-  // ── usage statistics (issue #91) ──────────────────────────────────────
-  usageCount: (n) => (isZh() ? `使用 ${n} 次` : `Used ${n} times`),
-  usageNever: () => (isZh() ? '未使用' : 'Never used'),
-  usageLast: (t) => (isZh() ? `最近 ${t}` : `Last used ${t}`),
-  usageSourceModel: () => (isZh() ? '模型' : 'model'),
-  usageSourceUser: () => (isZh() ? '用户' : 'user'),
-  sortName: () => (isZh() ? '名称' : 'Name'),
-  sortCount: () => (isZh() ? '次数' : 'Uses'),
-  sortLastUsed: () => (isZh() ? '最近' : 'Recent'),
-  unusedOnly: () => (isZh() ? '未使用' : 'Unused'),
-  unusedOnlyHint: () => (isZh() ? '只看未使用的 skill' : 'Show only unused skills'),
-  usageHint: () =>
-    isZh()
-      ? '使用统计记录 skill 被加载/注入的次数与最近时间（模型 skill 工具 / 用户 /name 手势），持久化于 $DSH_HOME/skills.usage.json'
-      : 'Usage tracks how often a skill was loaded/injected (model skill tool / user /name gesture), persisted in $DSH_HOME/skills.usage.json',
-}
+    title: () => (isZh() ? 'Skill 管理' : 'Skill Manager'),
+    globalSection: () => (isZh() ? '全局' : 'Global'),
+    projectSection: () => (isZh() ? '当前项目' : 'Current project'),
+    refresh: () => (isZh() ? '刷新' : 'Refresh'),
+    enabled: () => (isZh() ? '启用' : 'Enabled'),
+    disabled: () => (isZh() ? '已禁用' : 'Disabled'),
+    loading: () => (isZh() ? '加载中…' : 'Loading…'),
+    loadError: () => (isZh() ? '加载失败' : 'Load failed'),
+    empty: () => (isZh() ? '暂无 skill' : 'No skills yet'),
+    emptyHint: () => isZh() ? 'skill 目录为空或尚未扫描，点击右上角刷新重新扫描' : 'No skills found yet; click refresh to rescan',
+    sourceProject: (source) => (isZh() ? `项目（${source}）` : `project (${source})`),
+    sourceGlobal: (source) => (isZh() ? `全局（${source}）` : `global (${source})`),
+    notCataloged: () => (isZh() ? '未收录' : 'Not cataloged'),
+    notCatalogedHint: () => isZh()
+        ? '该 skill 存在于目录但未被官方目录收录（不注入会话）；可能是 filesystem 发现未启用或扫描器跳过'
+        : 'This skill exists on disk but is not in the official catalog (not injected); filesystem discovery may be disabled or the scanner skipped it',
+    disabledHint: () => isZh()
+        ? '禁用的 skill 不再注入本项目/全局会话：模型不可见、不可加载（占位覆盖）'
+        : 'A disabled skill is no longer injected into this scope: the model cannot see or load it (placeholder override)',
+    projectRoot: () => (isZh() ? '项目根：' : 'Project root: '),
+    saved: () => (isZh() ? '已保存' : 'Saved'),
+    saveFailed: () => (isZh() ? '保存失败' : 'Save failed'),
+    diagnosticsTitle: () => (isZh() ? '扫描诊断' : 'Scan diagnostics'),
+    diagBadge: () => (isZh() ? '跳过' : 'Skipped'),
+    diagnosticsHint: () => isZh()
+        ? '以下条目存在于 skill 目录但未被收录（可能被官方扫描器跳过）：'
+        : 'These entries exist in a skill directory but were not cataloged (likely skipped by the scanner):',
+    diagReason: (reason) => (isZh() ? (DIAG_REASONS[reason] ?? reason) : reason),
+    // ── usage statistics (issue #91) ──────────────────────────────────────
+    usageCount: (n) => (isZh() ? `使用 ${n} 次` : `Used ${n} times`),
+    usageNever: () => (isZh() ? '未使用' : 'Never used'),
+    usageLast: (t) => (isZh() ? `最近 ${t}` : `Last used ${t}`),
+    usageSourceModel: () => (isZh() ? '模型' : 'model'),
+    usageSourceUser: () => (isZh() ? '用户' : 'user'),
+    sortName: () => (isZh() ? '名称' : 'Name'),
+    sortCount: () => (isZh() ? '次数' : 'Uses'),
+    sortLastUsed: () => (isZh() ? '最近' : 'Recent'),
+    unusedOnly: () => (isZh() ? '未使用' : 'Unused'),
+    unusedOnlyHint: () => (isZh() ? '只看未使用的 skill' : 'Show only unused skills'),
+    usageHint: () => isZh()
+        ? '使用统计记录 skill 被加载/注入的次数与最近时间（模型 skill 工具 / 用户 /name 手势），持久化于 $DSH_HOME/skills.usage.json'
+        : 'Usage tracks how often a skill was loaded/injected (model skill tool / user /name gesture), persisted in $DSH_HOME/skills.usage.json',
+};
 
     // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──
 // Single source of truth for the plugin UI icon set (issue #54 阶段 0).
@@ -427,7 +423,8 @@ const fileIconByExt = (ext, size = 14) => {
   return spec === undefined ? icon.file(size) : badgeIcon(spec, size)
 }
 
-    // ── styles (DSH semantic tokens, injected on activate, removed on teardown) ──
+    "use strict";
+// ── styles (DSH semantic tokens, injected on activate, removed on teardown) ──
 // Visual language follows the dsh-file-activity baseline (issue #54): flat
 // surfaces, hairline borders, 24px circular icon buttons with hover fills,
 // 8px-radius rows with hover fills, badge chips, and a role=switch toggle
@@ -520,518 +517,383 @@ const STYLES = `
 .dsh-my-skill-manager-diag-path { flex:1; min-width:0; font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 @keyframes dsh-my-skill-manager-row-in { from { opacity:0; transform:translateY(1px); } to { opacity:1; transform:none; } }
-`.trim()
+`.trim();
+const STYLE_TAG = 'data-dsh-my-skill-manager';
 
-const STYLE_TAG = 'data-dsh-my-skill-manager'
-
-    // ── api: fetch helpers for the Skill Manager views ─────────────────────
-const API_BASE = '/my-skill-manager/api'
-
+    "use strict";
+// ── api: fetch helpers for the Skill Manager views ─────────────────────
+const API_BASE = '/my-skill-manager/api';
 /** One GET list payload into { skills, globalDisabled, projectDisabled, cwd, projectRoot, diagnostics, usage }. */
 function normalizeList(value) {
-  return {
-    skills: Array.isArray(value.skills) ? value.skills : [],
-    globalDisabled: value.global?.disabled ?? [],
-    projectDisabled: Array.isArray(value.project) ? value.project : [],
-    cwd: value.cwd ?? '',
-    projectRoot: value.projectRoot ?? '',
-    diagnostics: value.diagnostics ?? { missing: [] },
-    usage: value.usage ?? {},
-  }
+    return {
+        skills: Array.isArray(value.skills) ? value.skills : [],
+        globalDisabled: value.global?.disabled ?? [],
+        projectDisabled: Array.isArray(value.project) ? value.project : [],
+        cwd: value.cwd ?? '',
+        projectRoot: value.projectRoot ?? '',
+        diagnostics: value.diagnostics ?? { missing: [] },
+        usage: value.usage ?? {},
+    };
 }
-
 /** GET /my-skill-manager/api/list → normalized value; rejects on bad responses. */
 function fetchList(cwd) {
-  const query = cwd.trim() === '' ? '' : `?cwd=${encodeURIComponent(cwd.trim())}`
-  return fetch(`${API_BASE}/list${query}`)
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) throw new Error('bad list response')
-      return normalizeList(body.value)
-    })
+    const query = cwd.trim() === '' ? '' : `?cwd=${encodeURIComponent(cwd.trim())}`;
+    return fetch(`${API_BASE}/list${query}`)
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('bad list response');
+        return normalizeList(body.value);
+    });
 }
-
 /** Current session id from localStorage ('dsh.sessions.current' → { sessionId }). */
 function currentSessionId() {
-  try {
-    const raw = localStorage.getItem('dsh.sessions.current')
-    const parsed = raw === null ? null : JSON.parse(raw)
-    return typeof parsed?.sessionId === 'string' ? parsed.sessionId : ''
-  } catch {
-    return ''
-  }
+    try {
+        const raw = localStorage.getItem('dsh.sessions.current');
+        const parsed = raw === null ? null : JSON.parse(raw);
+        return typeof parsed?.sessionId === 'string' ? parsed.sessionId : '';
+    }
+    catch {
+        return '';
+    }
 }
-
 /** GET /my-skill-manager/api/session → the session's working directory ('' if none). */
 function fetchSessionCwd(sessionId) {
-  if (sessionId === '') return Promise.resolve('')
-  return fetch(`${API_BASE}/session?sessionId=${encodeURIComponent(sessionId)}`)
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) return ''
-      return typeof body.value?.cwd === 'string' ? body.value.cwd : ''
+    if (sessionId === '')
+        return Promise.resolve('');
+    return fetch(`${API_BASE}/session?sessionId=${encodeURIComponent(sessionId)}`)
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            return '';
+        return typeof body.value?.cwd === 'string' ? body.value.cwd : '';
     })
-    .catch(() => '')
+        .catch(() => '');
 }
-
 /** GET /my-skill-manager/api/rescan → invalidate + fresh normalized value. */
 function rescanCatalog(cwd) {
-  const query = cwd.trim() === '' ? '' : `?cwd=${encodeURIComponent(cwd.trim())}`
-  return fetch(`${API_BASE}/rescan${query}`)
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) throw new Error('rescan failed')
-      return normalizeList(body.value)
-    })
+    const query = cwd.trim() === '' ? '' : `?cwd=${encodeURIComponent(cwd.trim())}`;
+    return fetch(`${API_BASE}/rescan${query}`)
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('rescan failed');
+        return normalizeList(body.value);
+    });
 }
-
 /** PUT /my-skill-manager/api/config; rejects on bad responses. */
 function saveConfig(scope, disabled, cwd) {
-  return fetch(`${API_BASE}/config`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ scope, disabled, cwd }),
-  })
-    .then((res) => res.json())
-    .then((body) => {
-      if (body === null || body.ok !== true) throw new Error('save failed')
+    return fetch(`${API_BASE}/config`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ scope, disabled, cwd }),
     })
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('save failed');
+    });
 }
 
-    // ── view: Skill Manager settings tab ───────────────────────────────────
+    "use strict";
+// ── view: Skill Manager settings tab ───────────────────────────────────
 // issue #69 重设计（Minimal Single Column）：标题区（标题+唯一刷新按钮）/
 // 视图区（分段控件：全局|当前项目，自动感知会话 cwd）/ 列表区（名称+状态
 // chip 为主、描述次之）/ 诊断区（仅异常时出现、可折叠）。无路径输入。
 function isProjectSource(source) {
-  return typeof source === 'string' && source.startsWith('project-')
+    return typeof source === 'string' && source.startsWith('project-');
 }
-
 /** Toggle one name in a disabled list (remove when disabling, add when enabling). */
 function flipDisabled(list, name, isDisabled) {
-  return isDisabled ? list.filter((n) => n !== name) : [...new Set([...list, name])]
+    return isDisabled ? list.filter((n) => n !== name) : [...new Set([...list, name])];
 }
-
 /** Data actions bound to the state setters (created once per component). */
 function createActions({ setData, setLoading, setError, setSaved }) {
-  const applyValue = (value) => {
-    setData(value)
-    setLoading(false)
-  }
-  const refreshWith = (fetcher, cwd) => {
-    setLoading(true)
-    setError(false)
-    setSaved(false)
-    fetcher(cwd)
-      .then(applyValue)
-      .catch(() => {
-        setLoading(false)
-        setError(true)
-      })
-  }
-  const load = (cwd) => refreshWith(fetchList, cwd)
-  const rescan = (cwd) => refreshWith(rescanCatalog, cwd)
-  const save = (scope, disabled, cwd) => {
-    setSaved(false)
-    setError(false)
-    saveConfig(scope, disabled, cwd)
-      .then(() => {
-        setSaved(true)
-        load(scope === 'project' ? cwd || '' : '')
-      })
-      .catch(() => setError(true))
-  }
-  return {
-    load,
-    rescan,
-    toggle: (data, scope, name, isDisabled, cwd) => {
-      if (scope === 'project' && cwd === '') return
-      const list = scope === 'global' ? data.globalDisabled : data.projectDisabled
-      save(scope, flipDisabled(list, name, isDisabled), scope === 'project' ? cwd : '')
-    },
-  }
+    const applyValue = (value) => {
+        setData(value);
+        setLoading(false);
+    };
+    const refreshWith = (fetcher, cwd) => {
+        setLoading(true);
+        setError(false);
+        setSaved(false);
+        fetcher(cwd)
+            .then(applyValue)
+            .catch(() => {
+            setLoading(false);
+            setError(true);
+        });
+    };
+    const load = (cwd) => refreshWith(fetchList, cwd);
+    const rescan = (cwd) => refreshWith(rescanCatalog, cwd);
+    const save = (scope, disabled, cwd) => {
+        setSaved(false);
+        setError(false);
+        saveConfig(scope, disabled, cwd)
+            .then(() => {
+            setSaved(true);
+            load(scope === 'project' ? cwd || '' : '');
+        })
+            .catch(() => setError(true));
+    };
+    return {
+        load,
+        rescan,
+        toggle: (data, scope, name, isDisabled, cwd) => {
+            if (scope === 'project' && cwd === '')
+                return;
+            const list = scope === 'global' ? data.globalDisabled : data.projectDisabled;
+            save(scope, flipDisabled(list, name, isDisabled), scope === 'project' ? cwd : '');
+        },
+    };
 }
-
 /** Skill Manager settings tab: header + view switch + skill list + diagnostics. */
 function SkillManagerView() {
-  const [data, setData] = useState(null)
-  const [view, setView] = useState('global')
-  const [sessionCwd, setSessionCwd] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [sortBy, setSortBy] = useState('name')
-  const [unusedOnly, setUnusedOnly] = useState(false)
-  const actions = createActions({ setData, setLoading, setError, setSaved })
-
-  useEffect(() => {
-    fetchSessionCwd(currentSessionId()).then((cwd) => {
-      setSessionCwd(cwd)
-      actions.load('')
-    })
-  }, [])
-
-  const projectRoot = data === null ? '' : data.projectRoot
-  const cwdOf = (scope) => (scope === 'project' ? sessionCwd : '')
-  const switchView = (scope) => {
-    if (scope === view) return
-    setView(scope)
-    actions.load(cwdOf(scope))
-  }
-
-  return createElement(
-    'div',
-    { className: 'dsh-my-skill-manager-root' },
-    createElement(Header, {
-      loading,
-      error,
-      saved,
-      onRefresh: () => actions.rescan(cwdOf(view)),
-    }),
-    createElement(ViewSwitch, { view, hasProject: sessionCwd !== '', onSwitch: switchView }),
-    loading
-      ? createElement('div', { className: 'dsh-my-skill-manager-status' }, strings.loading())
-      : error
-        ? createElement('div', { className: 'dsh-my-skill-manager-error' }, strings.loadError())
-        : data === null
-          ? null
-          : createElement(Sections, {
-              data,
-              view,
-              saved,
-              sortBy,
-              unusedOnly,
-              onSort: setSortBy,
-              onToggleUnused: () => setUnusedOnly(!unusedOnly),
-              onToggle: (scope, name, isDisabled) => actions.toggle(data, scope, name, isDisabled, cwdOf(scope)),
-            }),
-  )
+    const [data, setData] = useState(null);
+    const [view, setView] = useState('global');
+    const [sessionCwd, setSessionCwd] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [sortBy, setSortBy] = useState('name');
+    const [unusedOnly, setUnusedOnly] = useState(false);
+    const actions = createActions({ setData, setLoading, setError, setSaved });
+    useEffect(() => {
+        fetchSessionCwd(currentSessionId()).then((cwd) => {
+            setSessionCwd(cwd);
+            actions.load('');
+        });
+    }, []);
+    const projectRoot = data === null ? '' : data.projectRoot;
+    const cwdOf = (scope) => (scope === 'project' ? sessionCwd : '');
+    const switchView = (scope) => {
+        if (scope === view)
+            return;
+        setView(scope);
+        actions.load(cwdOf(scope));
+    };
+    return createElement('div', { className: 'dsh-my-skill-manager-root' }, createElement(Header, {
+        loading,
+        error,
+        saved,
+        onRefresh: () => actions.rescan(cwdOf(view)),
+    }), createElement(ViewSwitch, { view, hasProject: sessionCwd !== '', onSwitch: switchView }), loading
+        ? createElement('div', { className: 'dsh-my-skill-manager-status' }, strings.loading())
+        : error
+            ? createElement('div', { className: 'dsh-my-skill-manager-error' }, strings.loadError())
+            : data === null
+                ? null
+                : createElement(Sections, {
+                    data,
+                    view,
+                    saved,
+                    sortBy,
+                    unusedOnly,
+                    onSort: setSortBy,
+                    onToggleUnused: () => setUnusedOnly(!unusedOnly),
+                    onToggle: (scope, name, isDisabled) => actions.toggle(data, scope, name, isDisabled, cwdOf(scope)),
+                }));
 }
-
 /** Title row with the single refresh action (official Button, spins while
  *  loading — issue #143 试点）。 */
 function Header({ loading, error, saved, onRefresh }) {
-  return createElement(
-    'div',
-    { className: 'dsh-my-skill-manager-header' },
-    createElement('span', { className: 'dsh-my-skill-manager-header-title' }, strings.title()),
-    loading ? createElement('div', { className: 'dsh-my-skill-manager-header-hint' }, strings.loading()) : null,
-    saved
-      ? createElement(
-          'div',
-          { className: 'dsh-my-skill-manager-header-hint dsh-my-skill-manager-saved' },
-          strings.saved(),
-        )
-      : null,
-    createElement(ui.Button, {
-      variant: 'ghost',
-      size: 'sm',
-      'aria-label': strings.refresh(),
-      title: strings.refresh(),
-      disabled: loading,
-      onClick: onRefresh,
-      icon: createElement(ui.IconRefreshOutline14, {
-        className: loading ? 'dsh-my-skill-manager-spin' : undefined,
-      }),
-    }),
-  )
+    return createElement('div', { className: 'dsh-my-skill-manager-header' }, createElement('span', { className: 'dsh-my-skill-manager-header-title' }, strings.title()), loading ? createElement('div', { className: 'dsh-my-skill-manager-header-hint' }, strings.loading()) : null, saved
+        ? createElement('div', { className: 'dsh-my-skill-manager-header-hint dsh-my-skill-manager-saved' }, strings.saved())
+        : null, createElement(ui.Button, {
+        variant: 'ghost',
+        size: 'sm',
+        'aria-label': strings.refresh(),
+        title: strings.refresh(),
+        disabled: loading,
+        onClick: onRefresh,
+        icon: createElement(ui.IconRefreshOutline14, {
+            className: loading ? 'dsh-my-skill-manager-spin' : undefined,
+        }),
+    }));
 }
-
 /** Segmented control: 全局 / 当前项目 (project tab only when cwd detected).
  *  官方 Pill 承载（issue #143 试点）：active = 当前视图。 */
 function ViewSwitch({ view, hasProject, onSwitch }) {
-  const seg = (scope, label) =>
-    createElement(
-      ui.Pill,
-      {
+    const seg = (scope, label) => createElement(ui.Pill, {
         className: 'dsh-my-skill-manager-seg',
         active: view === scope,
         'aria-pressed': view === scope,
         onClick: () => onSwitch(scope),
-      },
-      label,
-    )
-  return createElement('div', { className: 'dsh-my-skill-manager-switchseg' }, [
-    seg('global', strings.globalSection()),
-    hasProject ? seg('project', strings.projectSection()) : null,
-  ])
+    }, label);
+    return createElement('div', { className: 'dsh-my-skill-manager-switchseg' }, [
+        seg('global', strings.globalSection()),
+        hasProject ? seg('project', strings.projectSection()) : null,
+    ]);
 }
-
 /** The toggle section for the current view + diagnostics (collapsible). */
 function Sections({ data, view, onToggle, sortBy, unusedOnly, onSort, onToggleUnused }) {
-  const projectMode = view === 'project'
-  return createElement(
-    'div',
-    { className: 'dsh-my-skill-manager-sections' },
-    createElement(SectionBlock, {
-      title: projectMode ? projectTitleOf(data) : strings.globalSection(),
-      hint: strings.disabledHint(),
-      skills: data.skills,
-      disabledNames: projectMode ? data.projectDisabled : data.globalDisabled,
-      usage: data.usage,
-      sortBy,
-      unusedOnly,
-      onSort,
-      onToggleUnused,
-      onToggle: (name, isDisabled) => onToggle(projectMode ? 'project' : 'global', name, isDisabled),
-    }),
-    createElement(DiagnosticsBlock, { diagnostics: data.diagnostics }),
-  )
+    const projectMode = view === 'project';
+    return createElement('div', { className: 'dsh-my-skill-manager-sections' }, createElement(SectionBlock, {
+        title: projectMode ? projectTitleOf(data) : strings.globalSection(),
+        hint: strings.disabledHint(),
+        skills: data.skills,
+        disabledNames: projectMode ? data.projectDisabled : data.globalDisabled,
+        usage: data.usage,
+        sortBy,
+        unusedOnly,
+        onSort,
+        onToggleUnused,
+        onToggle: (name, isDisabled) => onToggle(projectMode ? 'project' : 'global', name, isDisabled),
+    }), createElement(DiagnosticsBlock, { diagnostics: data.diagnostics }));
 }
-
 /** Collapsed warn bar when there are skipped entries; expandable row list. */
 function DiagnosticsBlock({ diagnostics }) {
-  const missing = diagnostics?.missing ?? []
-  const [open, setOpen] = useState(false)
-  if (missing.length === 0) return null
-  return createElement(
-    'div',
-    { className: 'dsh-my-skill-manager-diag' },
-    createElement(
-      'button',
-      {
+    const missing = diagnostics?.missing ?? [];
+    const [open, setOpen] = useState(false);
+    if (missing.length === 0)
+        return null;
+    return createElement('div', { className: 'dsh-my-skill-manager-diag' }, createElement('button', {
         type: 'button',
         className: 'dsh-my-skill-manager-diag-bar',
         'aria-expanded': open,
         onClick: () => setOpen(!open),
-      },
-      createElement('span', { className: 'dsh-my-skill-manager-diag-badge' }, strings.diagBadge()),
-      createElement('span', { className: 'dsh-my-skill-manager-diag-title' }, strings.diagnosticsTitle()),
-      createElement('span', { className: 'dsh-my-skill-manager-diag-count' }, `(${missing.length})`),
-      createElement('span', { className: 'dsh-my-skill-manager-diag-chevron' }, open ? '▾' : '▸'),
-    ),
-    open
-      ? createElement(
-          'div',
-          { className: 'dsh-my-skill-manager-diag-body' },
-          missing.map((item) =>
-            createElement(
-              'div',
-              { key: item.path, className: 'dsh-my-skill-manager-diag-row' },
-              createElement('span', { className: 'dsh-my-skill-manager-diag-name' }, item.name),
-              createElement('span', { className: 'dsh-my-skill-manager-diag-reason' }, strings.diagReason(item.reason)),
-              createElement('span', { className: 'dsh-my-skill-manager-diag-path' }, item.path),
-            ),
-          ),
-        )
-      : null,
-  )
+    }, createElement('span', { className: 'dsh-my-skill-manager-diag-badge' }, strings.diagBadge()), createElement('span', { className: 'dsh-my-skill-manager-diag-title' }, strings.diagnosticsTitle()), createElement('span', { className: 'dsh-my-skill-manager-diag-count' }, `(${missing.length})`), createElement('span', { className: 'dsh-my-skill-manager-diag-chevron' }, open ? '▾' : '▸')), open
+        ? createElement('div', { className: 'dsh-my-skill-manager-diag-body' }, missing.map((item) => createElement('div', { key: item.path, className: 'dsh-my-skill-manager-diag-row' }, createElement('span', { className: 'dsh-my-skill-manager-diag-name' }, item.name), createElement('span', { className: 'dsh-my-skill-manager-diag-reason' }, strings.diagReason(item.reason)), createElement('span', { className: 'dsh-my-skill-manager-diag-path' }, item.path))))
+        : null);
 }
-
 function projectTitleOf(data) {
-  return data.projectRoot === ''
-    ? strings.projectSection()
-    : `${strings.projectSection()} · ${strings.projectRoot()}${data.projectRoot}`
+    return data.projectRoot === ''
+        ? strings.projectSection()
+        : `${strings.projectSection()} · ${strings.projectRoot()}${data.projectRoot}`;
 }
-
-function SectionBlock({
-  title,
-  hint,
-  skills,
-  disabledNames,
-  usage,
-  sortBy,
-  unusedOnly,
-  onSort,
-  onToggleUnused,
-  onToggle,
-}) {
-  const usageOf = (name) => usage?.[name]
-  const visible = unusedOnly ? skills.filter((skill) => (usageOf(skill.name)?.count ?? 0) === 0) : skills
-  const rows = sortSkills(visible, sortBy, usageOf).map((skill) =>
-    createElement(SkillRow, {
-      key: skill.name,
-      skill,
-      usage: usageOf(skill.name),
-      disabled: disabledNames.includes(skill.name),
-      onToggle: () => onToggle(skill.name, disabledNames.includes(skill.name)),
-    }),
-  )
-  return createElement(
-    'div',
-    { className: 'dsh-my-skill-manager-section' },
-    createElement(
-      'div',
-      { className: 'dsh-my-skill-manager-section-head' },
-      createElement('span', { className: 'dsh-my-skill-manager-section-title' }, title),
-      createElement(SortControls, { sortBy, unusedOnly, onSort, onToggleUnused }),
-    ),
-    rows.length === 0
-      ? createElement(
-          'div',
-          { className: 'dsh-my-skill-manager-empty' },
-          createElement('span', { className: 'dsh-my-skill-manager-empty-icon' }, icon.file(16)),
-          strings.empty(),
-          createElement('span', { className: 'dsh-my-skill-manager-empty-hint' }, strings.emptyHint()),
-        )
-      : rows,
-    createElement('div', { className: 'dsh-my-skill-manager-hint' }, `${hint} ${strings.usageHint()}`),
-  )
+function SectionBlock({ title, hint, skills, disabledNames, usage, sortBy, unusedOnly, onSort, onToggleUnused, onToggle, }) {
+    const usageOf = (name) => usage?.[name];
+    const visible = unusedOnly ? skills.filter((skill) => (usageOf(skill.name)?.count ?? 0) === 0) : skills;
+    const rows = sortSkills(visible, sortBy, usageOf).map((skill) => createElement(SkillRow, {
+        key: skill.name,
+        skill,
+        usage: usageOf(skill.name),
+        disabled: disabledNames.includes(skill.name),
+        onToggle: () => onToggle(skill.name, disabledNames.includes(skill.name)),
+    }));
+    return createElement('div', { className: 'dsh-my-skill-manager-section' }, createElement('div', { className: 'dsh-my-skill-manager-section-head' }, createElement('span', { className: 'dsh-my-skill-manager-section-title' }, title), createElement(SortControls, { sortBy, unusedOnly, onSort, onToggleUnused })), rows.length === 0
+        ? createElement('div', { className: 'dsh-my-skill-manager-empty' }, createElement('span', { className: 'dsh-my-skill-manager-empty-icon' }, icon.file(16)), strings.empty(), createElement('span', { className: 'dsh-my-skill-manager-empty-hint' }, strings.emptyHint()))
+        : rows, createElement('div', { className: 'dsh-my-skill-manager-hint' }, `${hint} ${strings.usageHint()}`));
 }
-
 /** 排序 + 未使用过滤控件（issue #91）：名称 / 次数 / 最近 + 只看未使用。
  *  官方 Pill 承载（issue #143 试点）：active = 当前排序/过滤；「未使用」
  *  开启态经 className 覆写为 warn 语义色。 */
 function SortControls({ sortBy, unusedOnly, onSort, onToggleUnused }) {
-  const seg = (key, label) =>
-    createElement(
-      ui.Pill,
-      {
+    const seg = (key, label) => createElement(ui.Pill, {
         className: 'dsh-my-skill-manager-sortseg',
         active: sortBy === key,
         'aria-pressed': sortBy === key,
         onClick: () => onSort(key),
-      },
-      label,
-    )
-  return createElement('div', { className: 'dsh-my-skill-manager-sortbar' }, [
-    createElement(
-      ui.Pill,
-      {
-        className: `dsh-my-skill-manager-unused${unusedOnly ? ' dsh-my-skill-manager-unused-on' : ''}`,
-        active: unusedOnly,
-        'aria-pressed': unusedOnly,
-        title: strings.unusedOnlyHint(),
-        onClick: onToggleUnused,
-      },
-      strings.unusedOnly(),
-    ),
-    seg('name', strings.sortName()),
-    seg('count', strings.sortCount()),
-    seg('lastUsed', strings.sortLastUsed()),
-  ])
+    }, label);
+    return createElement('div', { className: 'dsh-my-skill-manager-sortbar' }, [
+        createElement(ui.Pill, {
+            className: `dsh-my-skill-manager-unused${unusedOnly ? ' dsh-my-skill-manager-unused-on' : ''}`,
+            active: unusedOnly,
+            'aria-pressed': unusedOnly,
+            title: strings.unusedOnlyHint(),
+            onClick: onToggleUnused,
+        }, strings.unusedOnly()),
+        seg('name', strings.sortName()),
+        seg('count', strings.sortCount()),
+        seg('lastUsed', strings.sortLastUsed()),
+    ]);
 }
-
 /** 按 sortBy 排序：count/lastUsed 降序（未使用排最后），name 字母序；同值按名称。 */
 function sortSkills(skills, sortBy, usageOf) {
-  const list = [...skills]
-  if (sortBy === 'count') {
-    list.sort((a, b) => (usageOf(b.name)?.count ?? 0) - (usageOf(a.name)?.count ?? 0) || a.name.localeCompare(b.name))
-  } else if (sortBy === 'lastUsed') {
-    list.sort(
-      (a, b) => (usageOf(b.name)?.lastUsedAt ?? 0) - (usageOf(a.name)?.lastUsedAt ?? 0) || a.name.localeCompare(b.name),
-    )
-  } else {
-    list.sort((a, b) => a.name.localeCompare(b.name))
-  }
-  return list
+    const list = [...skills];
+    if (sortBy === 'count') {
+        list.sort((a, b) => (usageOf(b.name)?.count ?? 0) - (usageOf(a.name)?.count ?? 0) || a.name.localeCompare(b.name));
+    }
+    else if (sortBy === 'lastUsed') {
+        list.sort((a, b) => (usageOf(b.name)?.lastUsedAt ?? 0) - (usageOf(a.name)?.lastUsedAt ?? 0) || a.name.localeCompare(b.name));
+    }
+    else {
+        list.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return list;
 }
-
 /** 时间戳 → "MM-DD HH:mm"（无效时间返回空串）。 */
 function formatTime(ts) {
-  if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) return ''
-  const d = new Date(ts)
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0)
+        return '';
+    const d = new Date(ts);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-
 /** Card row: name + meta on the main line, description below —
  *  issue #69 hierarchy + issue #91 usage columns. State is encoded ONLY by
  *  the switch (曾经的"状态 chip + 开关"双编码让状态表达重复且拥挤，已移除)。 */
 function SkillRow({ skill, disabled, onToggle, usage }) {
-  const usageMeta =
-    usage === undefined
-      ? strings.usageNever()
-      : [
-          strings.usageCount(usage.count),
-          strings.usageLast(formatTime(usage.lastUsedAt)),
-          usage.lastSource === 'model' ? strings.usageSourceModel() : strings.usageSourceUser(),
-        ].join(' · ')
-  const sourceText = isProjectSource(skill.source)
-    ? strings.sourceProject(skill.source)
-    : strings.sourceGlobal(skill.source)
-  return createElement(
-    'div',
-    { className: `dsh-my-skill-manager-row${disabled ? ' dsh-my-skill-manager-row-disabled' : ''}` },
-    createElement(
-      'div',
-      { className: 'dsh-my-skill-manager-row-head' },
-      createElement('span', { className: 'dsh-my-skill-manager-name', title: skill.name }, skill.name),
-      skill.cataloged === false
-        ? createElement(
-            ui.Pill,
-            {
-              className: 'dsh-my-skill-manager-chip-warn',
-              title: strings.notCatalogedHint(),
-            },
-            strings.notCataloged(),
-          )
-        : null,
-      createElement(Switch, {
+    const usageMeta = usage === undefined
+        ? strings.usageNever()
+        : [
+            strings.usageCount(usage.count),
+            strings.usageLast(formatTime(usage.lastUsedAt)),
+            usage.lastSource === 'model' ? strings.usageSourceModel() : strings.usageSourceUser(),
+        ].join(' · ');
+    const sourceText = isProjectSource(skill.source)
+        ? strings.sourceProject(skill.source)
+        : strings.sourceGlobal(skill.source);
+    return createElement('div', { className: `dsh-my-skill-manager-row${disabled ? ' dsh-my-skill-manager-row-disabled' : ''}` }, createElement('div', { className: 'dsh-my-skill-manager-row-head' }, createElement('span', { className: 'dsh-my-skill-manager-name', title: skill.name }, skill.name), skill.cataloged === false
+        ? createElement(ui.Pill, {
+            className: 'dsh-my-skill-manager-chip-warn',
+            title: strings.notCatalogedHint(),
+        }, strings.notCataloged())
+        : null, createElement(Switch, {
         checked: !disabled,
         label: `${skill.name}: ${disabled ? strings.disabled() : strings.enabled()}`,
         onToggle,
-      }),
-    ),
-    createElement('div', { className: 'dsh-my-skill-manager-desc' }, skill.description),
-    createElement('div', { className: 'dsh-my-skill-manager-row-source' }, sourceText),
-    createElement('div', { className: 'dsh-my-skill-manager-row-meta' }, usageMeta),
-  )
+    })), createElement('div', { className: 'dsh-my-skill-manager-desc' }, skill.description), createElement('div', { className: 'dsh-my-skill-manager-row-source' }, sourceText), createElement('div', { className: 'dsh-my-skill-manager-row-meta' }, usageMeta));
 }
-
 /** Visual switch (role=switch): track + sliding thumb, checked = enabled.
  *  Semantics match the previous enable/disable text button exactly: clicking
  *  reports the CURRENT disabled state, and the parent flips the list. */
 function Switch({ checked, disabled, label, onToggle }) {
-  return createElement(
-    'button',
-    {
-      type: 'button',
-      role: 'switch',
-      'aria-checked': checked,
-      'aria-label': label,
-      className: `dsh-my-skill-manager-switch${checked ? ' dsh-my-skill-manager-switch-on' : ''}`,
-      disabled,
-      onClick: onToggle,
-    },
-    createElement(
-      'span',
-      { className: 'dsh-my-skill-manager-switch-track' },
-      createElement('span', { className: 'dsh-my-skill-manager-switch-thumb' }),
-    ),
-  )
+    return createElement('button', {
+        type: 'button',
+        role: 'switch',
+        'aria-checked': checked,
+        'aria-label': label,
+        className: `dsh-my-skill-manager-switch${checked ? ' dsh-my-skill-manager-switch-on' : ''}`,
+        disabled,
+        onClick: onToggle,
+    }, createElement('span', { className: 'dsh-my-skill-manager-switch-track' }, createElement('span', { className: 'dsh-my-skill-manager-switch-thumb' })));
 }
 
-    // ── plugin body ───────────────────────────────────────────────────────
+    "use strict";
+// ── plugin body ───────────────────────────────────────────────────────
 // 零第三方依赖：面板挂在官方 slots 扩展点（设置 → 插件 → Skill 管理），
 // 不依赖 dsh-better-sidebar。slots 服务是官方 client 服务，通过
 // ctx.get 动态获取——服务缺省时静默跳过（不注册 tab，server 端禁用
 // 能力不受影响）。
 exports.apply = function apply(ctx) {
-  ctx.effect(() => {
-    if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined') return () => {}
-    const style = document.createElement('style')
-    style.setAttribute(STYLE_TAG, 'styles')
-    style.textContent = STYLES
-    document.head.appendChild(style)
-    return () => {
-      if (style.parentNode) style.parentNode.removeChild(style)
-    }
-  }, 'dsh-my-skill-manager: styles')
-
-  // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer
-  // 提供）的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true)
-  // 在 strict 模式下会返回 undefined，注册代码会静默 return（设置页看不到
-  // tab，HMR 重载后才出现）；取到实例即可——注册本身由 slots.inject 等待
-  // 槽位声明，实际渲染发生在之后，安全。
-  const slots = ctx.get('slots', false)
-  if (slots === undefined) return
-
-  ctx.effect(
-    () =>
-      slots.inject('settings.plugins.tab', () =>
-        slots.register(
-          {
-            name: 'settings.plugins.tab',
-            id: 'my-skill-manager',
-            order: 90,
-            label: () => strings.title(),
-          },
-          SkillManagerView,
-        ),
-      ),
-    'dsh-my-skill-manager: settings tab registration',
-  )
-}
+    ctx.effect(() => {
+        if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined')
+            return () => { };
+        const style = document.createElement('style');
+        style.setAttribute(STYLE_TAG, 'styles');
+        style.textContent = STYLES;
+        document.head.appendChild(style);
+        return () => {
+            if (style.parentNode)
+                style.parentNode.removeChild(style);
+        };
+    }, 'dsh-my-skill-manager: styles');
+    // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer
+    // 提供）的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true)
+    // 在 strict 模式下会返回 undefined，注册代码会静默 return（设置页看不到
+    // tab，HMR 重载后才出现）；取到实例即可——注册本身由 slots.inject 等待
+    // 槽位声明，实际渲染发生在之后，安全。
+    const slots = ctx.get('slots', false);
+    if (slots === undefined)
+        return;
+    ctx.effect(() => slots.inject('settings.plugins.tab', () => slots.register({
+        name: 'settings.plugins.tab',
+        id: 'my-skill-manager',
+        order: 90,
+        label: () => strings.title(),
+    }, SkillManagerView)), 'dsh-my-skill-manager: settings tab registration');
+};
 
 
     return module.exports

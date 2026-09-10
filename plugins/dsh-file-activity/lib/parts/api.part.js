@@ -1,3 +1,4 @@
+'use strict'
 // ── data access (host routes) ─────────────────────────────────────────
 async function fetchStats(sessionId) {
   const response = await fetch(`/file-activity/api/stats?sessionId=${encodeURIComponent(sessionId)}`)
@@ -5,7 +6,6 @@ async function fetchStats(sessionId) {
   if (json === null || typeof json !== 'object' || json.ok !== true) return null
   return json.value
 }
-
 /** Resolve the session working directory through the sidebar's native API. */
 async function fetchSessionCwd(sessionId) {
   try {
@@ -21,7 +21,6 @@ async function fetchSessionCwd(sessionId) {
     return ''
   }
 }
-
 function postRecord(sessionId, path, op) {
   if (typeof sessionId !== 'string' || sessionId === '' || typeof path !== 'string' || path === '') return
   void fetch('/file-activity/api/record', {
@@ -30,7 +29,6 @@ function postRecord(sessionId, path, op) {
     body: JSON.stringify({ sessionId, path, op }),
   }).catch(() => {})
 }
-
 function postClear(sessionId) {
   void fetch('/file-activity/api/clear', {
     method: 'POST',
@@ -38,12 +36,10 @@ function postClear(sessionId) {
     body: JSON.stringify({ sessionId }),
   }).catch(() => {})
 }
-
 /** Plugin media route URL for a recorded path (authorized per session). */
 function mediaUrlOf(sessionId, path) {
   return `/file-activity/file?${new URLSearchParams({ sessionId, path })}`
 }
-
 /** Plugin text route URL (`as=text`): fs.read-shaped JSON for recorded text. */
 function textUrlOf(sessionId, path) {
   return `/file-activity/file?${new URLSearchParams({ sessionId, path, as: 'text' })}`

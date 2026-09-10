@@ -12,6 +12,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "npx tsc --noEmit -p tsconfig.json && npx tsc --noEmit -p tsconfig.client.json",
     "test": "npx vitest run --coverage && cucumber-js test/features --import 'test/features/steps/*.mjs'"
   },
   "exports": {
@@ -50,6 +52,10 @@
     "cordis": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "typescript": "^7.0.2"
   },
   "license": "MIT"
 }

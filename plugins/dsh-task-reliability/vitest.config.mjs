@@ -1,5 +1,7 @@
 // 质量门禁：vitest 覆盖率（行 ≥85 / 分支 ≥75 / 函数 ≥80），只统计 server 端 lib 子模块
-// （P2 拆分后为多文件；client.js 为浏览器端 __ModuleLoader__ 格式，排除）
+// （P2 拆分后为多文件；client.js 为浏览器端 __ModuleLoader__ 格式，排除）。
+// 清单必须与 lib/ 下真实存在的 .js 产物一致（历史上曾引用已删除的 lib/fence.js，
+// 导致覆盖率统计静默漏项——见 CHANGELOG 的 TS 迁移条目）。
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
@@ -15,7 +17,6 @@ export default defineConfig({
         'lib/index.js',
         'lib/constants.js',
         'lib/util.js',
-        'lib/fence.js',
         'lib/text.js',
         'lib/repeat.js',
         'lib/loop.js',
@@ -25,7 +26,7 @@ export default defineConfig({
         'lib/rescue.js',
         'lib/api.js',
         'lib/ask.js',
-
+        'lib/emit.js',
         'lib/command.js',
       ],
       thresholds: {

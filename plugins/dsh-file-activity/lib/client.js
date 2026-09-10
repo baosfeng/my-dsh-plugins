@@ -46,7 +46,8 @@ window.__ModuleLoader__.load({
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────
-    // ── i18n ──────────────────────────────────────────────────────────────
+    'use strict'
+// ── i18n ──────────────────────────────────────────────────────────────
 function isZh() {
   try {
     const lang = (navigator.language || 'en').toLowerCase()
@@ -55,7 +56,6 @@ function isZh() {
     return false
   }
 }
-
 const strings = {
   title: () => (isZh() ? '文件活动' : 'File Activity'),
   recent: () => (isZh() ? '最近访问' : 'Recent'),
@@ -94,13 +94,13 @@ const strings = {
   autoCloseHint: () => (isZh() ? '预览失败，即将自动关闭' : 'Preview failed — closing automatically'),
 }
 
-    // ── path / time formatting helpers ────────────────────────────────────
+    'use strict'
+// ── path / time formatting helpers ────────────────────────────────────
 function basenameOf(path) {
   const norm = path.split('\\').join('/')
   const idx = norm.lastIndexOf('/')
   return idx === -1 ? norm : norm.slice(idx + 1)
 }
-
 /** Compact relative time: 刚刚 / N 分钟前 / N 小时前 / N 天前 / MM/DD. */
 function formatRelative(time) {
   if (typeof time !== 'number' || !Number.isFinite(time)) return ''
@@ -115,7 +115,6 @@ function formatRelative(time) {
   const date = new Date(time)
   return `${date.getMonth() + 1}/${date.getDate()}`
 }
-
 /** Local wall-clock HH:MM:SS (used in tooltips; full precision). */
 function formatTime(time) {
   const date = new Date(time)
@@ -123,7 +122,8 @@ function formatTime(time) {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-    // ── directory tree construction ───────────────────────────────────────
+    'use strict'
+// ── directory tree construction ───────────────────────────────────────
 /**
  * Collapse chain directories: a directory whose only child is another
  * directory merges into it (a → a.b → a.b.c …). Deep single-child paths
@@ -143,7 +143,6 @@ function compressChains(node, isRoot) {
     node.compressed = true
   }
 }
-
 /**
  * Sort a directory node: directories first (alphabetically), then files
  * (by total activity, then name); recurse into directories.
@@ -160,7 +159,6 @@ function sortNode(node) {
     if (child.type === 'dir') sortNode(child)
   }
 }
-
 /**
  * Build a nested directory tree from per-file counts, keyed by the file's
  * absolute path. Every directory node aggregates its subtree counters and
@@ -208,7 +206,8 @@ function buildTree(counts) {
   return root
 }
 
-    // ── tiny external store ───────────────────────────────────────────────
+    'use strict'
+// ── tiny external store ───────────────────────────────────────────────
 function createStore(initial) {
   let state = initial
   const listeners = new Set()
@@ -225,14 +224,14 @@ function createStore(initial) {
   }
 }
 
-    // ── data access (host routes) ─────────────────────────────────────────
+    'use strict'
+// ── data access (host routes) ─────────────────────────────────────────
 async function fetchStats(sessionId) {
   const response = await fetch(`/file-activity/api/stats?sessionId=${encodeURIComponent(sessionId)}`)
   const json = await response.json()
   if (json === null || typeof json !== 'object' || json.ok !== true) return null
   return json.value
 }
-
 /** Resolve the session working directory through the sidebar's native API. */
 async function fetchSessionCwd(sessionId) {
   try {
@@ -248,7 +247,6 @@ async function fetchSessionCwd(sessionId) {
     return ''
   }
 }
-
 function postRecord(sessionId, path, op) {
   if (typeof sessionId !== 'string' || sessionId === '' || typeof path !== 'string' || path === '') return
   void fetch('/file-activity/api/record', {
@@ -257,7 +255,6 @@ function postRecord(sessionId, path, op) {
     body: JSON.stringify({ sessionId, path, op }),
   }).catch(() => {})
 }
-
 function postClear(sessionId) {
   void fetch('/file-activity/api/clear', {
     method: 'POST',
@@ -265,27 +262,24 @@ function postClear(sessionId) {
     body: JSON.stringify({ sessionId }),
   }).catch(() => {})
 }
-
 /** Plugin media route URL for a recorded path (authorized per session). */
 function mediaUrlOf(sessionId, path) {
   return `/file-activity/file?${new URLSearchParams({ sessionId, path })}`
 }
-
 /** Plugin text route URL (`as=text`): fs.read-shaped JSON for recorded text. */
 function textUrlOf(sessionId, path) {
   return `/file-activity/file?${new URLSearchParams({ sessionId, path, as: 'text' })}`
 }
 
-    // ── fetch interception: sidebar file operations ───────────────────────
+    'use strict'
+// ── fetch interception: sidebar file operations ───────────────────────
 function methodOf(init) {
   return (init?.method ?? 'GET').toUpperCase()
 }
-
 /** POST body as a plain object (non-string bodies are ignored). */
 function parseBody(init) {
   return typeof init?.body === 'string' ? JSON.parse(init.body) : {}
 }
-
 /** Record fs.read / fs.write POSTs observed on the sidebar API. */
 function recordSidebarFs(url, init) {
   if (url.pathname !== '/sidebar/api/fs.read' && url.pathname !== '/sidebar/api/fs.write') return
@@ -294,7 +288,6 @@ function recordSidebarFs(url, init) {
   if (typeof body.sessionId !== 'string' || typeof body.path !== 'string') return
   postRecord(body.sessionId, body.path, url.pathname === '/sidebar/api/fs.write' ? 'write' : 'read')
 }
-
 /** Record sidebar media opens (/sidebar/file?sessionId=...&path=...). */
 function recordMediaOpen(url, init) {
   if (url.pathname !== '/sidebar/file' || methodOf(init) !== 'GET') return
@@ -302,7 +295,6 @@ function recordMediaOpen(url, init) {
   const path = url.searchParams.get('path')
   if (sessionId !== null && path !== null) postRecord(sessionId, path, 'read')
 }
-
 /** Observe a resolved fetch URL and record sidebar file operations. */
 function observeSidebarFetch(url, init) {
   try {
@@ -312,7 +304,6 @@ function observeSidebarFetch(url, init) {
     // observation must never break the underlying call
   }
 }
-
 function installFetchInterceptor() {
   const original = window.fetch.bind(window)
   window.fetch = (input, init) => {
@@ -333,7 +324,8 @@ function installFetchInterceptor() {
   }
 }
 
-    // ── auto-open (enabled by default) ────────────────────────────────────
+    'use strict'
+// ── auto-open (enabled by default) ────────────────────────────────────
 function findTabIn(state, tabId) {
   const leaves = (node) => (node.kind === 'leaf' ? [node] : (node.children ?? []).flatMap(leaves))
   for (const node of [state?.splits, state?.bottomSplits]) {
@@ -344,7 +336,6 @@ function findTabIn(state, tabId) {
   }
   return false
 }
-
 /** Current sidebar snapshot, or null when the service is not ready. */
 function sidebarSnapshot(service) {
   try {
@@ -353,13 +344,11 @@ function sidebarSnapshot(service) {
     return null
   }
 }
-
 /** The user disabled auto-open for this tab in the sidebar settings. */
 function isAutoOpenDisabled(snapshot, tabId) {
   const settings = snapshot.prefs?.pluginSettings?.[tabId]
   return settings !== undefined && settings.autoOpen === false
 }
-
 /** Whether this session was already auto-opened (localStorage marker). */
 function isAutoOpenMarked(sessionId) {
   try {
@@ -368,7 +357,6 @@ function isAutoOpenMarked(sessionId) {
     return true
   }
 }
-
 /** Persist the auto-opened marker for this session. */
 function markAutoOpened(sessionId) {
   try {
@@ -377,7 +365,6 @@ function markAutoOpened(sessionId) {
     // ignore
   }
 }
-
 /** Open the tab once per session unless disabled in the plugin settings. */
 function tryAutoOpen(service, tabId) {
   const snapshot = sidebarSnapshot(service)
@@ -397,7 +384,6 @@ function tryAutoOpen(service, tabId) {
     console.error('[dsh-file-activity] auto-open failed:', error)
   }
 }
-
 function installAutoOpen(ctx, tabId) {
   const service = ctx.betterSidebar
   tryAutoOpen(service, tabId)
@@ -558,6 +544,27 @@ const icon = {
       ],
       size,
     ),
+  // 下载（issue #85 新增）：箭头入托盘，图表导出按钮（dsh-mermaid-render
+  // 卡片下载 PNG/SVG），stroke=currentColor 风格与其余图标一致。
+  download: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
+        createElement('polyline', { points: '7 10 12 15 17 10' }),
+        createElement('line', { x1: 12, y1: 15, x2: 12, y2: 3 }),
+      ],
+      size,
+    ),
+  // 复制（issue #85 新增）：双层矩形，复制源码按钮（dsh-mermaid-render
+  // 卡片复制代码），stroke=currentColor 风格与其余图标一致。
+  copy: (size = 16) =>
+    iconSvg(
+      [
+        createElement('rect', { x: 9, y: 9, width: 13, height: 13, rx: 2 }),
+        createElement('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
+      ],
+      size,
+    ),
 }
 
 // Common-language / file-type badges (issue #24): brand fill + contrast
@@ -714,7 +721,8 @@ const fileIconByExt = (ext, size = 14) => {
   return spec === undefined ? icon.file(size) : badgeIcon(spec, size)
 }
 
-    // ── themed stylesheet (injected once per activation) ──────────────────
+    'use strict'
+// ── themed stylesheet (injected once per activation) ──────────────────
 // Mirrors the better-sidebar explorer surface: tight 2px 6px 8px body,
 // 30px rows, box-sizing border-box indentation, folder rows use the
 // strong type face to read as directories, files stay regular.
@@ -805,7 +813,8 @@ const STYLES = `
    想要的蓝色高亮）。页签选中态回归宿主（dsh-better-sidebar）默认样式。 */
 `
 
-    // ── row rendering helpers (recent list & stats tree) ──────────────────
+    'use strict'
+// ── row rendering helpers (recent list & stats tree) ──────────────────
 const opClass = (op) =>
   op === 'create'
     ? 'dfa-op-create'
@@ -822,7 +831,6 @@ const opLabel = (op) =>
       : op === 'delete'
         ? strings.delete()
         : strings.read()
-
 /** Tooltip for a stats file row: absolute path + created / last-seen times. */
 const fileTitle = (abs, firstSeen, lastSeen) => {
   const times = []
@@ -830,7 +838,6 @@ const fileTitle = (abs, firstSeen, lastSeen) => {
   if (typeof lastSeen === 'number') times.push(`${strings.lastSeen()} ${formatTime(lastSeen)}`)
   return times.length > 0 ? `${abs}\n${times.join(' · ')}` : abs
 }
-
 /** Count pills for a file/dir node — only actions that actually happened are
  *  shown (a zero count renders no pill; all-zero nodes render no pill group,
  *  keeping untouched files visually quiet). */
@@ -849,7 +856,6 @@ const countPills = (node) => {
   if (pills.length === 0) return null
   return createElement('span', { className: 'dfa-counts', style: { paddingLeft: '6px' } }, ...pills)
 }
-
 /** Extension of a file name (lowercase, no leading dot); '' when none.
  *  Dotfiles map to their whole name ('.gitignore' → 'gitignore') so the
  *  badge table can cover them; 'notes.' still yields ''. */
@@ -859,14 +865,12 @@ const extOf = (name) => {
   if (dot === 0) return name.slice(1).toLowerCase()
   return ''
 }
-
 /** Extension-less but common build files → their badge key. */
 const NAME_BADGES = {
   makefile: 'makefile',
   dockerfile: 'dockerfile',
   'cmakelists.txt': 'cmake',
 }
-
 /** Badge key for a file name: basename match first, then extension. */
 const badgeKeyOf = (name) => {
   const base = name.toLowerCase()
@@ -874,7 +878,6 @@ const badgeKeyOf = (name) => {
   if (named !== undefined) return named
   return extOf(name)
 }
-
 /** A stats-tree file row: icon + name + count pills + relative time. */
 const fileRow = (file, depth, onOpen) =>
   createElement(
@@ -891,7 +894,6 @@ const fileRow = (file, depth, onOpen) =>
     countPills(file),
     file.lastSeen ? createElement('span', { className: 'dfa-time' }, formatRelative(file.lastSeen)) : null,
   )
-
 /** One stats-tree node: file rows render inline, dirs toggle collapse. */
 function renderTreeNode(node, depth, collapsedDirs, onToggleDir, onOpen) {
   if (node.type === 'file') return fileRow(node, depth, onOpen)
@@ -917,7 +919,6 @@ function renderTreeNode(node, depth, collapsedDirs, onToggleDir, onOpen) {
       : node.children.map((child) => renderTreeNode(child, depth + 1, collapsedDirs, onToggleDir, onOpen)),
   )
 }
-
 /** A recent-list row: op badge + basename + relative time. */
 const recentEntry = (entry, onOpen) =>
   createElement(
@@ -932,7 +933,6 @@ const recentEntry = (entry, onOpen) =>
     createElement('span', { className: 'dfa-row-name' }, basenameOf(entry.path)),
     createElement('span', { className: 'dfa-time' }, formatRelative(entry.time)),
   )
-
 /** Toggle a key in a Set (directory collapse state). */
 function toggleInSet(set, key) {
   const next = new Set(set)
@@ -940,7 +940,6 @@ function toggleInSet(set, key) {
   else next.add(key)
   return next
 }
-
 /** Clear the current session's records host-side and reset its bucket. */
 function clearSessionData(dataStore, sessionId) {
   if (!window.confirm(strings.clearConfirm())) return
@@ -953,7 +952,6 @@ function clearSessionData(dataStore, sessionId) {
     },
   })
 }
-
 /** Manual refresh: fetch stats + the authoritative cwd for this session. */
 function refreshSessionData(dataStore, sessionId, setCwd, setError) {
   if (sessionId === '') return
@@ -976,10 +974,10 @@ function refreshSessionData(dataStore, sessionId, setCwd, setError) {
   })
 }
 
-    // ── view component ────────────────────────────────────────────────────
+    'use strict'
+// ── view component ────────────────────────────────────────────────────
 /** Shared empty bucket for sessions that have never loaded data (stable ref). */
 const EMPTY_SESSION = { recent: [], counts: {}, loading: true }
-
 /**
  * Polling loader for one session: fetches stats on mount and on a fixed
  * interval while visible, prefers the sidebar's authoritative session.cwd
@@ -1022,7 +1020,6 @@ function useSessionLoader(visible, sessionId, scope, dataStore, setCwd, setError
     }
   }, [visible, sessionId, dataStore])
 }
-
 /** Error banner element, or null when the last load succeeded. */
 function renderError(error) {
   if (!error) return null
@@ -1038,7 +1035,6 @@ function renderError(error) {
     strings.loadError(),
   )
 }
-
 /** "最近访问" section: collapsible head with refresh/clear actions. */
 function renderRecentSection(recent, recentOpen, onToggle, onRefresh, onClear, onOpen) {
   return createElement(
@@ -1094,7 +1090,6 @@ function renderRecentSection(recent, recentOpen, onToggle, onRefresh, onClear, o
           ),
   )
 }
-
 /** "文件统计" section: the directory tree, or an empty hint. */
 function renderStatsSection(tree, collapsedDirs, onToggleDir, onOpen) {
   return createElement(
@@ -1110,7 +1105,6 @@ function renderStatsSection(tree, collapsedDirs, onToggleDir, onOpen) {
         ),
   )
 }
-
 /**
  * The file-activity tab. Each session renders only its own store bucket:
  * a fresh conversation shows an empty list immediately, with no residue
@@ -1165,7 +1159,8 @@ function FileActivityView({ ctx, store, scope, visible, dataStore }) {
   )
 }
 
-    // ── floating preview window (reuses the sidebar's native viewer) ──────
+    'use strict'
+// ── floating preview window (reuses the sidebar's native viewer) ──────
 /** Resolve a possibly-relative path against the session cwd. */
 function resolvePath(path, cwd) {
   if (typeof path !== 'string' || path === '') return path
@@ -1173,12 +1168,10 @@ function resolvePath(path, cwd) {
   if (typeof cwd === 'string' && cwd !== '') return `${cwd.replace(/\/+$/, '')}/${path}`
   return path
 }
-
 /** Whether the fs.read API response carries a text content payload. */
 function isFsReadOk(json) {
   return json !== null && typeof json === 'object' && json.ok === true && typeof json.value?.content === 'string'
 }
-
 /** Error load state from an fs.read API response (or a generic message).
  *  Raw system errors are translated to friendly, locale-aware messages
  *  (issue #68): deleted files and workspace-fenced paths must never surface
@@ -1192,12 +1185,10 @@ function fsReadError(json, viewer) {
   else message = raw
   return { status: 'error', viewer, message }
 }
-
 /** Milliseconds after which an error-state preview closes itself (issue #76):
  *  a shell that failed to load any content is useless, so it must not linger
  *  over the main UI until the user finds the × button. */
 const AUTO_CLOSE_MS = 2500
-
 /** Whether a pointerdown target lies inside the floating window. The window
  *  surface carries the `.dfa-fp` class; anything else counts as "outside"
  *  and dismisses the preview (issue #76 — click anywhere outside closes). */
@@ -1205,7 +1196,6 @@ function isInsideFloating(target) {
   if (!target || typeof target.closest !== 'function') return false
   return target.closest('.dfa-fp') !== null
 }
-
 /** Click behavior for the window surface: in the error state ANY click
  *  closes the shell (there is no content to interact with), otherwise the
  *  click is swallowed so the viewer's own interactions keep working. */
@@ -1214,13 +1204,11 @@ function previewClickAction(load, event) {
   if (event && event.stopPropagation) event.stopPropagation()
   return 'stop'
 }
-
 /** Close the floating preview when the tab goes hidden (switching tabs /
  *  operating the main UI), so it never lingers over the interface. */
 function closePreviewOnHidden(visible, dataStore) {
   if (!visible) dataStore.set({ preview: null })
 }
-
 /**
  * Load fsRead content through the sidebar API and resolve the viewer's
  * load state (ready with text, or error with the API message). When the
@@ -1242,7 +1230,6 @@ async function loadFsReadContent(viewer, path, scope, sessionId) {
   if (isFsReadOk(textJson)) return { status: 'ready', viewer, content: textJson.value.content }
   return fsReadError(json, viewer)
 }
-
 /** Plugin text route (fs.read-shaped JSON), or null on any failure. */
 async function fetchTextContent(sessionId, path) {
   try {
@@ -1252,7 +1239,6 @@ async function fetchTextContent(sessionId, path) {
     return null
   }
 }
-
 /**
  * Fetch the bytes the viewer's fetchStrategy needs (fsRead text /
  * mediaUrl / customData) and resolve its load state.
@@ -1271,7 +1257,6 @@ async function fetchPreviewLoad(viewer, path, scope, sessionId) {
   // component (it handles the download / media itself).
   return { status: 'ready', viewer }
 }
-
 /**
  * Resolve the file's viewer through the sidebar registry and load the
  * bytes it needs; failures become an error state shown in the window.
@@ -1306,7 +1291,6 @@ function usePreviewLoader(service, path, sessionId, scope) {
   }, [path, sessionId, scope])
   return load
 }
-
 /** Preview window body: loading note / error panel / viewer mount. */
 function renderPreviewBody(load, ctx, store, scope, path, title, sessionId) {
   if (load.status === 'loading') {
@@ -1339,7 +1323,6 @@ function renderPreviewBody(load, ctx, store, scope, path, title, sessionId) {
     customData: load.customData,
   })
 }
-
 /**
  * A floating preview window. Instead of re-implementing rendering, it
  * asks the sidebar registry for the file's viewer (`matchFileViewer`),
@@ -1374,7 +1357,6 @@ function usePreviewDismiss(load, onClose) {
     document.addEventListener('pointerdown', handler, true)
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [onClose])
-
   useEffect(() => {
     if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return () => {}
     const handler = (event) => {
@@ -1383,7 +1365,6 @@ function usePreviewDismiss(load, onClose) {
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
-
   useEffect(() => {
     if (load.status !== 'error') return undefined
     if (typeof window === 'undefined' || typeof window.setTimeout !== 'function') return undefined
@@ -1391,7 +1372,6 @@ function usePreviewDismiss(load, onClose) {
     return () => window.clearTimeout(timer)
   }, [load.status, onClose])
 }
-
 /** The floating window element: head (title + hint + close) and body. */
 function renderFloatingWindow(load, ctx, store, scope, path, title, sessionId, onClose) {
   return createElement(
@@ -1433,7 +1413,6 @@ function renderFloatingWindow(load, ctx, store, scope, path, title, sessionId, o
     ),
   )
 }
-
 function FloatingPreview({ ctx, store, scope, preview, onClose }) {
   const sessionId = scope?.sessionId ?? ''
   const path = preview.abs
@@ -1443,7 +1422,6 @@ function FloatingPreview({ ctx, store, scope, preview, onClose }) {
   usePreviewDismiss(load, onClose)
   return renderFloatingWindow(load, ctx, store, scope, path, title, sessionId, onClose)
 }
-
 /**
  * Lightweight PDF preview. better-sidebar's built-in PdfView fetches
  * `/sidebar/file` internally (it ignores any injected `mediaUrl` prop),
@@ -1474,7 +1452,8 @@ function PdfPreview({ src, download, title }) {
   )
 }
 
-    // ── plugin body ───────────────────────────────────────────────────────
+    'use strict'
+// ── plugin body ───────────────────────────────────────────────────────
 /**
  * The stylesheet is pure static CSS and must NOT depend on the
  * betterSidebar service: inject it first, unconditionally. If it lived
@@ -1496,7 +1475,6 @@ function injectStyles(ctx) {
     }
   }, 'dsh-file-activity: styles')
 }
-
 /** Mount probe: report client activation to the host state (synthetic
  *  session id, invisible in the UI — confirms the client half actually
  *  loaded after a page refresh). */
@@ -1507,7 +1485,6 @@ function mountProbe() {
     body: JSON.stringify({ sessionId: '__probe__', path: 'mounted', op: 'read' }),
   }).catch(() => {})
 }
-
 /** Register the tab (enabled by default in the Side card settings). */
 function registerTab(ctx, dataStore) {
   const service = ctx.betterSidebar
@@ -1537,9 +1514,7 @@ function registerTab(ctx, dataStore) {
     'dsh-file-activity: tab registration',
   )
 }
-
 exports.inject = ['betterSidebar']
-
 exports.apply = function apply(ctx) {
   // Stylesheet first, unconditionally (HMR pitfall — see injectStyles).
   injectStyles(ctx)
@@ -1555,21 +1530,17 @@ exports.apply = function apply(ctx) {
     }
     return
   }
-
   // Per-session data store: { bySession: { [sessionId]: { recent, counts, loading } }, preview }
   // Each conversation reads/writes only its own bucket, so switching
   // sessions never leaks another session's file activity into the view.
   const dataStore = createStore({ bySession: {}, preview: null })
   mountProbe()
-
   // sidebar operations → host record route
   ctx.effect(() => installFetchInterceptor(), 'dsh-file-activity: sidebar fetch observation')
   registerTab(ctx, dataStore)
-
   // auto-open once per session (default on)
   ctx.effect(() => installAutoOpen(ctx, TAB_ID), 'dsh-file-activity: auto-open')
 }
-
 // Internal functions exposed for the render-path test suite only; inert in
 // the browser bundle (plain properties on the exports object).
 exports.__test = {

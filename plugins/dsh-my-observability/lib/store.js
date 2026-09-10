@@ -13,291 +13,279 @@
  *
  * 磁盘 I/O 与格式规整在 store-persist.js。
  */
-import {
-  jsonlFile,
-  legacyFile,
-  loadPersisted,
-  writeSnapshot,
-  appendLines,
-  removeLegacyAfterMigration,
-  normalizeLoaded,
-  MAX_EVENTS_PER_SESSION,
-  MAX_TOTAL_EVENTS,
-  COMPACT_LINES,
-} from './store-persist.js'
-
-const FLUSH_INTERVAL_MS = 500
-const COMPACT_DEBOUNCE_MS = 300
-const PREFIX = '[dsh-my-observability]'
-
+import { jsonlFile, legacyFile, loadPersisted, writeSnapshot, appendLines, removeLegacyAfterMigration, normalizeLoaded, MAX_EVENTS_PER_SESSION, MAX_TOTAL_EVENTS, COMPACT_LINES, } from './store-persist.js';
+const FLUSH_INTERVAL_MS = 500;
+const COMPACT_DEBOUNCE_MS = 300;
+const PREFIX = '[dsh-my-observability]';
 /** 初始空状态。 */
 function createState() {
-  return { version: 1, bySession: {} }
+    return { version: 1, bySession: {} };
 }
-
 /** 创建审计存储：{ record, events, sessions, count, dispose }。
  *  record 在状态加载完成前缓冲（不丢事件）；dispose 冲刷未落盘数据。 */
 export function createStore(ctx) {
-  const store = { state: createState() }
-  const handle = {
-    ctx,
-    file: jsonlFile(),
-    legacy: legacyFile(),
-    store,
-    pending: [],
-    ready: false,
-    lineQueue: [],
-    queuedLines: 0,
-    total: 0,
-    flushTimer: null,
-    compactTimer: null,
-    compacting: false,
-    migrated: false,
-    persistEnabled: true,
-    dirtyChain: Promise.resolve(),
-  }
-  store.record = (event) => record(handle, event)
-  store.events = (sessionId, type, limit) => eventsOf(handle, sessionId, type, limit)
-  store.sessions = () => sessionsOf(handle)
-  store.count = () => countOf(handle)
-  store.setPersistEnabled = (enabled) => setPersistEnabled(handle, enabled)
-  store.dispose = () => dispose(handle)
-  void loadPersisted(handle.file, handle.legacy).then((result) => onLoaded(handle, result))
-  return store
+    const store = { state: createState() };
+    const handle = {
+        ctx,
+        file: jsonlFile(),
+        legacy: legacyFile(),
+        store,
+        pending: [],
+        ready: false,
+        lineQueue: [],
+        queuedLines: 0,
+        total: 0,
+        flushTimer: null,
+        compactTimer: null,
+        compacting: false,
+        migrated: false,
+        persistEnabled: true,
+        dirtyChain: Promise.resolve(),
+    };
+    store.record = (event) => record(handle, event);
+    store.events = (sessionId, type, limit) => eventsOf(handle, sessionId, type, limit);
+    store.sessions = () => sessionsOf(handle);
+    store.count = () => countOf(handle);
+    store.setPersistEnabled = (enabled) => setPersistEnabled(handle, enabled);
+    store.dispose = () => dispose(handle);
+    void loadPersisted(handle.file, handle.legacy).then((result) => onLoaded(handle, result));
+    return store;
 }
-
 /** 追加一条审计事件（自动分配 id/时间戳）；未就绪时缓冲。 */
 function record(handle, event) {
-  const item = { id: nextId(handle), time: Date.now(), ...event }
-  if (!handle.ready) {
-    handle.pending.push(item)
-    return item
-  }
-  enqueueRecord(handle, item)
-  scheduleFlush(handle)
-  return item
+    const item = { id: nextId(handle), time: Date.now(), ...event };
+    if (!handle.ready) {
+        handle.pending.push(item);
+        return item;
+    }
+    enqueueRecord(handle, item);
+    scheduleFlush(handle);
+    return item;
 }
-
 /** 事件入内存桶 + 排队待落盘行（回放与运行时共用，保证回放也落盘）。
  *  降级（persistEnabled=false）时事件照常入内存桶（有 FIFO 上限保护），
  *  但不排队落盘行、不触发 flush——写盘完全停止，恢复时全量快照补齐。 */
 function enqueueRecord(handle, item) {
-  appendEvent(handle, item)
-  if (!handle.persistEnabled) return
-  handle.lineQueue.push(JSON.stringify(item))
-  handle.queuedLines += 1
-  if (handle.queuedLines >= COMPACT_LINES) scheduleCompact(handle)
+    appendEvent(handle, item);
+    if (!handle.persistEnabled)
+        return;
+    handle.lineQueue.push(JSON.stringify(item));
+    handle.queuedLines += 1;
+    if (handle.queuedLines >= COMPACT_LINES)
+        scheduleCompact(handle);
 }
-
 /**
  * 落盘开关（资源看门狗降级用）：
  *  - false（降级）：停止落盘——清空待写行（内存 state 仍在，不丢），停 flush。
  *  - true（恢复）：立即 compact 全量快照（内存=真相，补齐降级窗口事件），恢复增量。
  */
 function setPersistEnabled(handle, enabled) {
-  if (handle.persistEnabled === enabled) return
-  handle.persistEnabled = enabled
-  if (handle.flushTimer !== null) {
-    clearTimeout(handle.flushTimer)
-    handle.flushTimer = null
-  }
-  handle.lineQueue = []
-  handle.queuedLines = 0
-  if (enabled) compactNow(handle)
+    if (handle.persistEnabled === enabled)
+        return;
+    handle.persistEnabled = enabled;
+    if (handle.flushTimer !== null) {
+        clearTimeout(handle.flushTimer);
+        handle.flushTimer = null;
+    }
+    handle.lineQueue = [];
+    handle.queuedLines = 0;
+    if (enabled)
+        compactNow(handle);
 }
-
 /** 全部会话事件：合并各会话并按时间正序（sessionId='*'）。 */
 function eventsAllOf(handle, type, limit) {
-  let all = []
-  for (const bucket of Object.values(handle.store.state.bySession)) {
-    if (Array.isArray(bucket.events)) all.push(...bucket.events)
-  }
-  all.sort((a, b) => a.time - b.time)
-  if (type !== undefined && type !== null && type !== '') {
-    all = all.filter((event) => event.type === type)
-  }
-  const capped = typeof limit === 'number' && limit > 0 ? all.slice(-limit) : all
-  return capped.map((event) => ({ ...event }))
+    let all = [];
+    for (const bucket of Object.values(handle.store.state.bySession)) {
+        if (Array.isArray(bucket.events))
+            all.push(...bucket.events);
+    }
+    all.sort((a, b) => a.time - b.time);
+    if (type !== undefined && type !== null && type !== '') {
+        all = all.filter((event) => event.type === type);
+    }
+    const capped = typeof limit === 'number' && limit > 0 ? all.slice(-limit) : all;
+    return capped.map((event) => ({ ...event }));
 }
-
 /** 查询会话事件（正序时间轴；type 可选过滤；limit 限制条数）。
  *  sessionId === '*' 表示全部会话；空字符串（''）保持既有语义返回空数组。 */
 function eventsOf(handle, sessionId, type, limit) {
-  if (sessionId === '*') return eventsAllOf(handle, type, limit)
-  const bucket = handle.store.state.bySession[sessionId]?.events
-  if (!Array.isArray(bucket)) return []
-  let list = bucket
-  if (type !== undefined && type !== null && type !== '') {
-    list = list.filter((event) => event.type === type)
-  }
-  const capped = typeof limit === 'number' && limit > 0 ? list.slice(-limit) : list
-  return capped.map((event) => ({ ...event }))
+    if (sessionId === '*')
+        return eventsAllOf(handle, type, limit);
+    const bucket = handle.store.state.bySession[sessionId]?.events;
+    if (!Array.isArray(bucket))
+        return [];
+    let list = bucket;
+    if (type !== undefined && type !== null && type !== '') {
+        list = list.filter((event) => event.type === type);
+    }
+    const capped = typeof limit === 'number' && limit > 0 ? list.slice(-limit) : list;
+    return capped.map((event) => ({ ...event }));
 }
-
 /** 有审计事件的会话列表（按最后活动时间倒序，含事件数与可读标题）。 */
 function sessionsOf(handle) {
-  const entries = Object.entries(handle.store.state.bySession)
-  const list = entries
-    .map(([sessionId, bucket]) => ({
-      sessionId,
-      count: bucket.events.length,
-      lastTime: bucket.events.length > 0 ? bucket.events[bucket.events.length - 1].time : 0,
-      title: sessionTitleOf(bucket),
+    const entries = Object.entries(handle.store.state.bySession);
+    const list = entries
+        .map(([sessionId, bucket]) => ({
+        sessionId,
+        count: bucket.events.length,
+        lastTime: bucket.events.length > 0 ? bucket.events[bucket.events.length - 1].time : 0,
+        title: sessionTitleOf(bucket),
     }))
-    .filter((entry) => entry.count > 0)
-  list.sort((a, b) => b.lastTime - a.lastTime)
-  return list
+        .filter((entry) => entry.count > 0);
+    list.sort((a, b) => b.lastTime - a.lastTime);
+    return list;
 }
-
 /** 会话标题：最早一条 user_message 事件的文本（无则空串，面板回退 UUID 短显）。 */
 function sessionTitleOf(bucket) {
-  for (const event of bucket.events) {
-    if (event.type === 'user_message' && typeof event.data?.text === 'string' && event.data.text !== '') {
-      return event.data.text
+    for (const event of bucket.events) {
+        const text = event.data?.text;
+        if (event.type === 'user_message' && typeof text === 'string' && text !== '') {
+            return text;
+        }
     }
-  }
-  return ''
+    return '';
 }
-
 /** 全部会话事件总数（O(1) 计数）。 */
 function countOf(handle) {
-  return handle.total
+    return handle.total;
 }
-
 /** 事件自增 id（跨会话单调）。 */
 function nextId(handle) {
-  handle.seq = (handle.seq ?? 0) + 1
-  return handle.seq
+    handle.seq = (handle.seq ?? 0) + 1;
+    return handle.seq;
 }
-
 /** 追加事件到会话桶：FIFO 淘汰 + 全局上限轮转淘汰（维护 O(1) 计数）。 */
 function appendEvent(handle, event) {
-  const state = handle.store.state
-  const bucket = state.bySession[event.sessionId] ?? (state.bySession[event.sessionId] = { events: [] })
-  bucket.events.push(event)
-  handle.total += 1
-  if (bucket.events.length > MAX_EVENTS_PER_SESSION) {
-    const removed = bucket.events.splice(0, bucket.events.length - MAX_EVENTS_PER_SESSION).length
-    handle.total -= removed
-  }
-  if (handle.total > MAX_TOTAL_EVENTS) evictOldest(handle)
+    const state = handle.store.state;
+    const bucket = state.bySession[event.sessionId] ?? (state.bySession[event.sessionId] = { events: [] });
+    bucket.events.push(event);
+    handle.total += 1;
+    if (bucket.events.length > MAX_EVENTS_PER_SESSION) {
+        const removed = bucket.events.splice(0, bucket.events.length - MAX_EVENTS_PER_SESSION).length;
+        handle.total -= removed;
+    }
+    if (handle.total > MAX_TOTAL_EVENTS)
+        evictOldest(handle);
 }
-
 /** 全局超限：从最早活动的会话整桶淘汰，直到回到上限内。 */
 function evictOldest(handle) {
-  const state = handle.store.state
-  const sessions = Object.entries(state.bySession)
-    .filter(([, bucket]) => bucket.events.length > 0)
-    .sort((a, b) => firstTimeOf(a[1]) - firstTimeOf(b[1]))
-  for (const [sessionId, bucket] of sessions) {
-    if (handle.total <= MAX_TOTAL_EVENTS) break
-    handle.total -= bucket.events.length
-    delete state.bySession[sessionId]
-  }
+    const state = handle.store.state;
+    const sessions = Object.entries(state.bySession)
+        .filter(([, bucket]) => bucket.events.length > 0)
+        .sort((a, b) => firstTimeOf(a[1]) - firstTimeOf(b[1]));
+    for (const [sessionId, bucket] of sessions) {
+        if (handle.total <= MAX_TOTAL_EVENTS)
+            break;
+        handle.total -= bucket.events.length;
+        delete state.bySession[sessionId];
+    }
 }
-
 function firstTimeOf(bucket) {
-  return bucket.events.length > 0 ? bucket.events[0].time : 0
+    return bucket.events.length > 0 ? bucket.events[0].time : 0;
 }
-
 /** 状态加载完成：合并本进程已产生的事件（防 dispose 回放被覆盖）+ 回放缓冲 + 迁移/紧凑调度。 */
 function onLoaded(handle, result) {
-  const parsed = result.state
-  mergeCurrentEvents(handle.store.state, parsed)
-  const normalized = normalizeLoaded(parsed.bySession)
-  handle.store.state = normalized
-  handle.total = countOfState(normalized)
-  handle.ready = true
-  const pending = handle.pending.splice(0)
-  for (const item of pending) enqueueRecord(handle, item)
-  if (pending.length > 0) scheduleFlush(handle)
-  handle.migrated = result.migrated
-  if (result.migrated || result.lines >= COMPACT_LINES) scheduleCompact(handle)
+    const parsed = result.state;
+    mergeCurrentEvents(handle.store.state, parsed);
+    const normalized = normalizeLoaded(parsed.bySession);
+    handle.store.state = normalized;
+    handle.total = countOfState(normalized);
+    handle.ready = true;
+    const pending = handle.pending.splice(0);
+    for (const item of pending)
+        enqueueRecord(handle, item);
+    if (pending.length > 0)
+        scheduleFlush(handle);
+    handle.migrated = result.migrated;
+    if (result.migrated || result.lines >= COMPACT_LINES)
+        scheduleCompact(handle);
 }
-
 /** 把 load 完成前（或 dispose 回放时）已进入内存的事件合并进加载状态：后到的事件追加于桶尾。 */
 function mergeCurrentEvents(current, parsed) {
-  for (const [sessionId, bucket] of Object.entries(current.bySession ?? {})) {
-    if (!Array.isArray(bucket.events) || bucket.events.length === 0) continue
-    const target = parsed.bySession[sessionId] ?? (parsed.bySession[sessionId] = { events: [] })
-    target.events.push(...bucket.events)
-  }
+    for (const [sessionId, bucket] of Object.entries(current.bySession ?? {})) {
+        if (!Array.isArray(bucket.events) || bucket.events.length === 0)
+            continue;
+        const target = parsed.bySession[sessionId] ?? (parsed.bySession[sessionId] = { events: [] });
+        target.events.push(...bucket.events);
+    }
 }
-
 function countOfState(state) {
-  let total = 0
-  for (const bucket of Object.values(state.bySession ?? {})) {
-    if (Array.isArray(bucket?.events)) total += bucket.events.length
-  }
-  return total
+    let total = 0;
+    for (const bucket of Object.values(state.bySession ?? {})) {
+        if (Array.isArray(bucket?.events))
+            total += bucket.events.length;
+    }
+    return total;
 }
-
 /** 防抖批量追加落盘（一次 append 全部待写行）。 */
 function scheduleFlush(handle) {
-  if (handle.flushTimer !== null) return
-  handle.flushTimer = setTimeout(() => {
-    handle.flushTimer = null
-    flushNow(handle)
-  }, FLUSH_INTERVAL_MS)
+    if (handle.flushTimer !== null)
+        return;
+    handle.flushTimer = setTimeout(() => {
+        handle.flushTimer = null;
+        flushNow(handle);
+    }, FLUSH_INTERVAL_MS);
 }
-
 function flushNow(handle) {
-  if (handle.lineQueue.length === 0 || !handle.persistEnabled) return
-  const text = `${handle.lineQueue.join('\n')}\n`
-  handle.lineQueue = []
-  handle.dirtyChain = handle.dirtyChain.then(() => appendLines(handle.file, text, handle.ctx.logger, PREFIX))
+    if (handle.lineQueue.length === 0 || !handle.persistEnabled)
+        return;
+    const text = `${handle.lineQueue.join('\n')}\n`;
+    handle.lineQueue = [];
+    handle.dirtyChain = handle.dirtyChain.then(() => appendLines(handle.file, text, handle.ctx.logger, PREFIX));
 }
-
 /** 防抖紧凑调度（合并短时间多次触发）。 */
 function scheduleCompact(handle) {
-  if (handle.compactTimer !== null || handle.compacting) return
-  handle.compactTimer = setTimeout(() => {
-    handle.compactTimer = null
-    compactNow(handle)
-  }, COMPACT_DEBOUNCE_MS)
+    if (handle.compactTimer !== null || handle.compacting)
+        return;
+    handle.compactTimer = setTimeout(() => {
+        handle.compactTimer = null;
+        compactNow(handle);
+    }, COMPACT_DEBOUNCE_MS);
 }
-
 /** 原子快照重写 jsonl（内存 state 全量；含未 flush 行 → 排队行清空防重复）。 */
 function compactNow(handle) {
-  if (handle.compacting) return
-  handle.compacting = true
-  if (handle.flushTimer !== null) {
-    clearTimeout(handle.flushTimer)
-    handle.flushTimer = null
-  }
-  handle.lineQueue = []
-  handle.queuedLines = 0
-  const migrated = handle.migrated
-  handle.migrated = false
-  const file = handle.file
-  const legacy = handle.legacy
-  handle.dirtyChain = handle.dirtyChain
-    .then(async () => {
-      await writeSnapshot(file, handle.store.state, handle.ctx.logger, PREFIX)
-      if (migrated) await removeLegacyAfterMigration(legacy)
+    if (handle.compacting)
+        return;
+    handle.compacting = true;
+    if (handle.flushTimer !== null) {
+        clearTimeout(handle.flushTimer);
+        handle.flushTimer = null;
+    }
+    handle.lineQueue = [];
+    handle.queuedLines = 0;
+    const migrated = handle.migrated;
+    handle.migrated = false;
+    const file = handle.file;
+    const legacy = handle.legacy;
+    handle.dirtyChain = handle.dirtyChain
+        .then(async () => {
+        await writeSnapshot(file, handle.store.state, handle.ctx.logger, PREFIX);
+        if (migrated)
+            await removeLegacyAfterMigration(legacy);
     })
-    .finally(() => {
-      handle.compacting = false
-    })
+        .finally(() => {
+        handle.compacting = false;
+    });
 }
-
 /** 卸载冲刷：清定时器 + 回放未就绪缓冲 + 立即落盘（迁移兜底）。
  *  返回落盘链 promise：调用方 await 可保证冲刷完成（卸载/退出时事件
  *  不丢）；fire-and-forget 调用亦兼容（触发后异步落盘）。 */
 function dispose(handle) {
-  if (handle.flushTimer !== null) {
-    clearTimeout(handle.flushTimer)
-    handle.flushTimer = null
-  }
-  if (handle.compactTimer !== null) {
-    clearTimeout(handle.compactTimer)
-    handle.compactTimer = null
-  }
-  if (!handle.ready) {
-    const pending = handle.pending.splice(0)
-    for (const item of pending) enqueueRecord(handle, item)
-  }
-  flushNow(handle)
-  if (handle.migrated || handle.queuedLines >= COMPACT_LINES) compactNow(handle)
-  return handle.dirtyChain
+    if (handle.flushTimer !== null) {
+        clearTimeout(handle.flushTimer);
+        handle.flushTimer = null;
+    }
+    if (handle.compactTimer !== null) {
+        clearTimeout(handle.compactTimer);
+        handle.compactTimer = null;
+    }
+    if (!handle.ready) {
+        const pending = handle.pending.splice(0);
+        for (const item of pending)
+            enqueueRecord(handle, item);
+    }
+    flushNow(handle);
+    if (handle.migrated || handle.queuedLines >= COMPACT_LINES)
+        compactNow(handle);
+    return handle.dirtyChain;
 }

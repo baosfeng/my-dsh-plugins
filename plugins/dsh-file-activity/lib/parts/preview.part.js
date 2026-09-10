@@ -1,3 +1,4 @@
+'use strict'
 // ── floating preview window (reuses the sidebar's native viewer) ──────
 /** Resolve a possibly-relative path against the session cwd. */
 function resolvePath(path, cwd) {
@@ -6,12 +7,10 @@ function resolvePath(path, cwd) {
   if (typeof cwd === 'string' && cwd !== '') return `${cwd.replace(/\/+$/, '')}/${path}`
   return path
 }
-
 /** Whether the fs.read API response carries a text content payload. */
 function isFsReadOk(json) {
   return json !== null && typeof json === 'object' && json.ok === true && typeof json.value?.content === 'string'
 }
-
 /** Error load state from an fs.read API response (or a generic message).
  *  Raw system errors are translated to friendly, locale-aware messages
  *  (issue #68): deleted files and workspace-fenced paths must never surface
@@ -25,12 +24,10 @@ function fsReadError(json, viewer) {
   else message = raw
   return { status: 'error', viewer, message }
 }
-
 /** Milliseconds after which an error-state preview closes itself (issue #76):
  *  a shell that failed to load any content is useless, so it must not linger
  *  over the main UI until the user finds the × button. */
 const AUTO_CLOSE_MS = 2500
-
 /** Whether a pointerdown target lies inside the floating window. The window
  *  surface carries the `.dfa-fp` class; anything else counts as "outside"
  *  and dismisses the preview (issue #76 — click anywhere outside closes). */
@@ -38,7 +35,6 @@ function isInsideFloating(target) {
   if (!target || typeof target.closest !== 'function') return false
   return target.closest('.dfa-fp') !== null
 }
-
 /** Click behavior for the window surface: in the error state ANY click
  *  closes the shell (there is no content to interact with), otherwise the
  *  click is swallowed so the viewer's own interactions keep working. */
@@ -47,13 +43,11 @@ function previewClickAction(load, event) {
   if (event && event.stopPropagation) event.stopPropagation()
   return 'stop'
 }
-
 /** Close the floating preview when the tab goes hidden (switching tabs /
  *  operating the main UI), so it never lingers over the interface. */
 function closePreviewOnHidden(visible, dataStore) {
   if (!visible) dataStore.set({ preview: null })
 }
-
 /**
  * Load fsRead content through the sidebar API and resolve the viewer's
  * load state (ready with text, or error with the API message). When the
@@ -75,7 +69,6 @@ async function loadFsReadContent(viewer, path, scope, sessionId) {
   if (isFsReadOk(textJson)) return { status: 'ready', viewer, content: textJson.value.content }
   return fsReadError(json, viewer)
 }
-
 /** Plugin text route (fs.read-shaped JSON), or null on any failure. */
 async function fetchTextContent(sessionId, path) {
   try {
@@ -85,7 +78,6 @@ async function fetchTextContent(sessionId, path) {
     return null
   }
 }
-
 /**
  * Fetch the bytes the viewer's fetchStrategy needs (fsRead text /
  * mediaUrl / customData) and resolve its load state.
@@ -104,7 +96,6 @@ async function fetchPreviewLoad(viewer, path, scope, sessionId) {
   // component (it handles the download / media itself).
   return { status: 'ready', viewer }
 }
-
 /**
  * Resolve the file's viewer through the sidebar registry and load the
  * bytes it needs; failures become an error state shown in the window.
@@ -139,7 +130,6 @@ function usePreviewLoader(service, path, sessionId, scope) {
   }, [path, sessionId, scope])
   return load
 }
-
 /** Preview window body: loading note / error panel / viewer mount. */
 function renderPreviewBody(load, ctx, store, scope, path, title, sessionId) {
   if (load.status === 'loading') {
@@ -172,7 +162,6 @@ function renderPreviewBody(load, ctx, store, scope, path, title, sessionId) {
     customData: load.customData,
   })
 }
-
 /**
  * A floating preview window. Instead of re-implementing rendering, it
  * asks the sidebar registry for the file's viewer (`matchFileViewer`),
@@ -207,7 +196,6 @@ function usePreviewDismiss(load, onClose) {
     document.addEventListener('pointerdown', handler, true)
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [onClose])
-
   useEffect(() => {
     if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return () => {}
     const handler = (event) => {
@@ -216,7 +204,6 @@ function usePreviewDismiss(load, onClose) {
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
-
   useEffect(() => {
     if (load.status !== 'error') return undefined
     if (typeof window === 'undefined' || typeof window.setTimeout !== 'function') return undefined
@@ -224,7 +211,6 @@ function usePreviewDismiss(load, onClose) {
     return () => window.clearTimeout(timer)
   }, [load.status, onClose])
 }
-
 /** The floating window element: head (title + hint + close) and body. */
 function renderFloatingWindow(load, ctx, store, scope, path, title, sessionId, onClose) {
   return createElement(
@@ -266,7 +252,6 @@ function renderFloatingWindow(load, ctx, store, scope, path, title, sessionId, o
     ),
   )
 }
-
 function FloatingPreview({ ctx, store, scope, preview, onClose }) {
   const sessionId = scope?.sessionId ?? ''
   const path = preview.abs
@@ -276,7 +261,6 @@ function FloatingPreview({ ctx, store, scope, preview, onClose }) {
   usePreviewDismiss(load, onClose)
   return renderFloatingWindow(load, ctx, store, scope, path, title, sessionId, onClose)
 }
-
 /**
  * Lightweight PDF preview. better-sidebar's built-in PdfView fetches
  * `/sidebar/file` internally (it ignores any injected `mediaUrl` prop),

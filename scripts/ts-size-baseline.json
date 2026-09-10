@@ -1,0 +1,172 @@
+{
+  "note": "冻结债务基线：只收录当前超标项。lines = 该文件当时行数（>400 表示文件行数超标被冻结；≤400 仅表示该条目承载下方函数债务）；functions.name = 超标函数（lines>70 或 complexity>10）。判定：不得超过记录值（可变小）；不在基线中的超标项一律失败。刷新：node scripts/check-ts-size.mjs --update-baseline",
+  "thresholds": {
+    "maxLines": 400,
+    "maxLinesPerFunction": 70,
+    "complexity": 10
+  },
+  "files": {
+    "plugins/dsh-md-render/src/client/parts/highlight.ts": {
+      "lines": 406,
+      "functions": {}
+    },
+    "plugins/dsh-mermaid-render/src/client/index.ts": {
+      "lines": 916,
+      "functions": {}
+    },
+    "plugins/dsh-my-guard/src/index.ts": {
+      "lines": 176,
+      "functions": {
+        "apply": {
+          "line": 56,
+          "lines": 74,
+          "complexity": 10
+        }
+      }
+    },
+    "plugins/dsh-my-memory/src/api-route.ts": {
+      "lines": 405,
+      "functions": {}
+    },
+    "plugins/dsh-my-memory/src/client/parts/view-rows.ts": {
+      "lines": 408,
+      "functions": {
+        "MemoryRow": {
+          "line": 211,
+          "lines": 71,
+          "complexity": 7
+        }
+      }
+    },
+    "plugins/dsh-my-memory/src/client/parts/view.ts": {
+      "lines": 543,
+      "functions": {
+        "renderRoot": {
+          "line": 205,
+          "lines": 98,
+          "complexity": 4
+        },
+        "Sections": {
+          "line": 367,
+          "lines": 90,
+          "complexity": 2
+        },
+        "SectionBlock": {
+          "line": 459,
+          "lines": 83,
+          "complexity": 9
+        }
+      }
+    },
+    "plugins/dsh-my-memory/src/index.ts": {
+      "lines": 364,
+      "functions": {
+        "extractUserText": {
+          "line": 130,
+          "lines": 11,
+          "complexity": 11
+        },
+        "<anonymous>#6": {
+          "line": 241,
+          "lines": 12,
+          "complexity": 11
+        },
+        "apply": {
+          "line": 255,
+          "lines": 73,
+          "complexity": 4
+        }
+      }
+    },
+    "plugins/dsh-my-memory/src/store.ts": {
+      "lines": 428,
+      "functions": {
+        "createDebouncedStore": {
+          "line": 255,
+          "lines": 76,
+          "complexity": 1
+        }
+      }
+    },
+    "plugins/dsh-my-notify/src/webhook/pusher.ts": {
+      "lines": 135,
+      "functions": {
+        "pushWebhook": {
+          "line": 67,
+          "lines": 38,
+          "complexity": 22
+        }
+      }
+    },
+    "plugins/dsh-my-observability/src/client/parts/replay-ext.ts": {
+      "lines": 446,
+      "functions": {}
+    },
+    "plugins/dsh-my-observability/src/client/parts/replay.ts": {
+      "lines": 410,
+      "functions": {}
+    },
+    "plugins/dsh-my-plugin-manager/src/client/parts/view.ts": {
+      "lines": 470,
+      "functions": {}
+    },
+    "plugins/dsh-my-remote/src/registries.ts": {
+      "lines": 198,
+      "functions": {
+        "createAskRegistry": {
+          "line": 47,
+          "lines": 77,
+          "complexity": 1
+        },
+        "createApprovalRegistry": {
+          "line": 128,
+          "lines": 71,
+          "complexity": 1
+        }
+      }
+    },
+    "plugins/dsh-my-skill-manager/src/client/parts/view.ts": {
+      "lines": 482,
+      "functions": {}
+    },
+    "plugins/dsh-task-reliability/src/client/parts/settings.ts": {
+      "lines": 352,
+      "functions": {
+        "TaskReliabilitySettingsView": {
+          "line": 242,
+          "lines": 75,
+          "complexity": 5
+        }
+      }
+    },
+    "plugins/dsh-task-reliability/src/client/parts/view.ts": {
+      "lines": 104,
+      "functions": {
+        "Panel": {
+          "line": 10,
+          "lines": 95,
+          "complexity": 6
+        }
+      }
+    },
+    "plugins/dsh-task-reliability/src/events.ts": {
+      "lines": 431,
+      "functions": {
+        "handleStatus": {
+          "line": 298,
+          "lines": 35,
+          "complexity": 11
+        },
+        "handleToolExecute": {
+          "line": 391,
+          "lines": 29,
+          "complexity": 11
+        }
+      }
+    },
+    "plugins/dsh-think-zh-expand/src/client/index.ts": {
+      "lines": 688,
+      "functions": {}
+    }
+  }
+}

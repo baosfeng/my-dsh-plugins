@@ -5,7 +5,7 @@
   "description": "DSH 插件集合仓库 —— 根工具链（质量门禁：ESLint 复杂度/行数、dependency-cruiser 依赖分析）。各插件测试在 plugins/<name>/ 内独立运行。",
   "scripts": {
     "lint": "eslint plugins/",
-    "lint:size": "eslint plugins/ --rule '{\"complexity\":[\"error\",10],\"max-lines\":[\"error\",400],\"max-lines-per-function\":[\"error\",70]}'",
+    "lint:size": "node scripts/check-ts-size.mjs",
     "depcruise": "depcruise plugins/",
     "typecheck": "tsc --noEmit",
     "knip": "knip",
@@ -16,7 +16,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "typecheck:plugins": "bash scripts/typecheck-all.sh"
+    "typecheck:plugins": "bash scripts/typecheck-all.sh",
+    "check:ts-size": "node scripts/check-ts-size.mjs"
   },
   "lint-staged": {
     "*.{js,mjs}": [
@@ -31,10 +32,11 @@
     ]
   },
   "dependencies": {
-    "dsh-shared": "file:plugins/dsh-shared",
-    "dsh-better-sidebar": ">=0.14.0"
+    "dsh-better-sidebar": ">=0.14.0",
+    "dsh-shared": "file:plugins/dsh-shared"
   },
   "devDependencies": {
+    "@babel/parser": "^8.0.4",
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
     "@cucumber/cucumber": "^13.2.1",

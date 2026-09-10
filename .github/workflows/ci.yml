@@ -152,10 +152,21 @@ jobs:
 
       # 代码质量规则 + 尺寸规则（complexity≤10 / 函数≤70行 / 文件≤400行，
       # issue #44 引入 prettier 后调整，见 eslint.config.js 注释）。
-      # P2 模块拆分（G9-G12）完成后启用尺寸规则强制（client 构建产物已在
-      # eslint.config.js ignores 排除，src/parts 模板与片段照常检查）。
+      # 覆盖范围：TS 全量迁移后插件源码是 plugins/*/src/**/*.ts，而 flat config
+      # 没有 .ts 块（typescript-eslint 尚不兼容 TS 7），本步骤实际只覆盖手写 JS
+      # （lib/parts 片段、client.src.js 模板）；TS 源码尺寸门禁由下一步承担。
       - name: Lint (quality rules + size gates)
         run: npx eslint plugins/
+
+      # TS 源码尺寸门禁（TS 全量迁移引入的门禁漏洞：flat config 无 .ts 块，
+      # src/**/*.ts 全部逃过复杂度/行数检查——迁移前刻意压在 400 行的文件加类型
+      # 注解后超标却无人发现）。scripts/check-ts-size.mjs 用 @babel/parser 解析
+      # TS AST，按 ESLint max-lines / max-lines-per-function / complexity 的真实
+      # 语义重新施加门禁；迁移引入的存量超标项由 scripts/ts-size-baseline.json
+      # 冻结债务基线放行（只允许变好，基线外新增或超过基线值即失败），
+      # 收口后用 node scripts/check-ts-size.mjs --update-baseline 刷新。
+      - name: TS source size gates (check-ts-size)
+        run: npm run lint:size
 
       # 格式校验（issue #44：prettier 统一全仓格式，CI 强制 prettier --check；
       # 构建产物 client.js / vendor 压缩产物在 .prettierignore 排除）

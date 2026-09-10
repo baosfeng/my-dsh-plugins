@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 变更
+
+- chore(guardian): client 端迁移到 TypeScript——5 个手写 `lib/parts/*.part.js` 片段（styles / util / row / view / apply）迁到 `src/client/parts/*.ts`，并删除只用于 typecheck 的占位契约 `src/client/index.ts`；`scripts/build.mjs` 改为 `tsc -p tsconfig.client.json` 编译 → 发布 `lib/parts/*.js` → prettier 归一化 → 函数式 replacer 拼接进 `lib/client.src.js` 模板 → 校验未解析占位符 → 写 `lib/client.js` → 清理 `lib/.client-build`，`npm run build` 覆盖 server + client 两端。新增 `src/client/globals.d.ts`（DSH 运行时最小契约 + 面板数据契约）。产物语义与迁移前手写版等价（AST / token 级比对零差异，仅多出 tsc 注入的 `'use strict'`）
+- test(guardian): 新增 `test/client-contract.mjs`（19 例：产物==模板+片段、"TS 是唯一真源"、build.mjs 片段清单与顺序、样式注入与 fiber teardown、API 轮询与写路径、行组件交互、i18n 回退、事件日志噪音过滤）与 `test/diagnostics-events.mjs`（6 例：诊断事件环形缓冲、HMR 失败监听器、entry 标识读取绝不触碰 `entry.id` getter）——client 端此前零测试覆盖；`lib/events.js` 分支覆盖率 55% → 100%
+- fix(guardian): 清理 `stryker.config.mjs` / `vitest.config.mjs` 中已不存在的 `lib/fence.js`，并补上漏统计的 `lib/startup-check.js`——原清单会让 stryker `mutate` 直接报错、覆盖率静默漏项
+
 ## [0.4.0] - 2026-09-07
 
 ### 变更

@@ -162,6 +162,11 @@ const CHECKS = [
   },
   { id: 'typecheck', label: 'typecheck (npx tsc --noEmit)', run: () => run('npx', ['tsc', '--noEmit']) },
   { id: 'lint', label: 'lint (npx eslint plugins/)', run: () => run('npx', ['eslint', 'plugins/']) },
+  {
+    id: 'ts-size',
+    label: 'TS size gates (node scripts/check-ts-size.mjs)',
+    run: () => run('node', ['scripts/check-ts-size.mjs']),
+  },
   { id: 'format', label: 'format (npx prettier --check .)', run: () => run('npx', ['prettier', '--check', '.']) },
   {
     id: 'test-scripts',

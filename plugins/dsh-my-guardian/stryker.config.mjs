@@ -10,12 +10,12 @@ export default {
   mutate: [
     'lib/index.js',
     'lib/state.js',
-    'lib/fence.js',
     'lib/events.js',
     'lib/mount.js',
     'lib/api.js',
     'lib/dep-version.js',
     'lib/dep-precheck.js',
+    'lib/startup-check.js',
   ],
   mutator: {
     excludedMutations: ['StringLiteral', 'TemplateLiteral'],

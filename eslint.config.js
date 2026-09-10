@@ -1,5 +1,11 @@
 // 根级质量门禁 ESLint 配置（flat config）
-// 门禁：圈复杂度 ≤ 10；单文件 ≤ 400 行；单函数 ≤ 70 行（仅针对 lib/ 业务代码）
+// 门禁：圈复杂度 ≤ 10；单文件 ≤ 400 行；单函数 ≤ 70 行（作用于手写 JS：
+//       plugins/**/lib/ 下的 server 端模块与 lib/parts/*.js 片段）
+// TS 源码另有门禁：TS 全量迁移后插件源码是 plugins/*/src/**/*.ts，本配置没有
+//       .ts 块（typescript-eslint 尚不兼容 TS 7 原生编译器），这批文件由
+//       scripts/check-ts-size.mjs 用 @babel/parser 解析 TS AST 后施加同样的三项
+//       尺寸门禁（语义对齐 ESLint 内置规则，含冻结债务基线），CI 步骤
+//       "TS source size gates"、本地 `npm run lint:size` 调用。
 // 尺寸阈值说明（issue #44 引入 prettier 后调整）：行数是 printWidth 的因变量——
 // 同样的代码 prettier 格式化后行数增加约 20-27%（长行拆开），格式化前
 // "≤40 行/≤300 行"的合规文件格式化后普遍超限（实测 21 个函数 41-65 行、
@@ -80,6 +86,9 @@ export default [
       // scripts/build.mjs 拼接生成）：产物行数 = 源码总和，尺寸规则只查源；
       // mermaid 产物内嵌 8.9MB base64，ESLint 正则规则会崩溃
       'plugins/*/lib/client.js',
+      // 第三方 vendor 源码（dsh-mermaid-render 内嵌 mermaid.min.js，8.9MB 压缩
+      // 单行产物）：同上，正则规则在压缩产物上有崩溃风险，且非本仓库代码
+      'plugins/*/vendor/',
       // TS 插件（issue #47 / TS 全量迁移）：tsc 编译产物（见 tscArtifacts），
       // 尺寸与风格规则只查 TS 源码
       ...tscArtifacts(),

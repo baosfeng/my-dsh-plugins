@@ -63,7 +63,17 @@ ghops proxy                              # 期望：当前代理 http://127.0.0.
 git ls-remote origin refs/heads/main     # 期望：<10s 返回 SHA
 ```
 
-**代理不稳定时的自愈**：本机装有 `~/.local/bin/gh-net`（即上文三层配置的固化版）——`gh-net check` 自检 / `gh-net status` 详细状态（含代理与直连的实测下载速率）/ `gh-net fix` 按探测结果重配。**代理挂掉时 `fix` 会自动清空 `http.proxy` 与 ghops 代理文件退回直连**（慢，但不会让所有 GitHub 操作一起失败），代理恢复后再跑一次即回到代理通路。幂等，可反复跑。
+**代理不稳定时的四层保障**：本机装有 `~/.local/bin/gh-net`（即上文配置的固化版 + 两条应急通路，`gh-net help` 看全集）：
+
+| 命令                               | 作用                                                                                                                                    | 何时用                              |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `gh-net check`                     | 3 秒自检：代理端口 / HTTP 探测 / git 配置 / ghops / 本地镜像                                                                            | **派发子代理前必跑**                |
+| `gh-net status`                    | 详细状态：代理与直连的**实测下载速率**、git 配置、远端分流、镜像清单                                                                    | 怀疑变慢时                          |
+| `gh-net fix`                       | 按探测结果重配；**代理挂掉时自动清空 `http.proxy` 与 ghops 代理文件退回直连**（慢但不会全挂），代理恢复后再跑一次即回到代理通路（幂等） | 报 framing / Empty reply / 无响应时 |
+| `gh-net fetch-mirror [owner/repo]` | 建立 / 增量更新**本地裸镜像**（`~/.cache/dsh/git-mirrors/`）                                                                            | 代理不稳、想彻底摆脱网络依赖时      |
+| `gh-net rescue <owner/repo> [dir]` | **加速站应急只读拉取**：自动测速选站、不走代理，拉完自动把 remote 修正回 GitHub（fetch 走代理 / push 走 SSH）                           | 代理全挂、急需一份代码时            |
+
+镜像的价值：建立后 `git clone --local ~/.cache/dsh/git-mirrors/<owner>_<repo>.git /tmp/work` 可**零网络、0 秒**派生工作副本（实测 18M 镜像 → 派生 0s；增量更新 2s），fork 池也可以镜像为源而不占用主工作区。`rescue` 实测自动选中 `gh-proxy.com`（149 KB/s）——仅用于公开仓库（内容经第三方转发，git 对象 SHA 校验保证不被篡改）。
 
 **排障对照**：`git clone` 报 `HTTP2 framing layer` → 第 1 层丢失；`ghops` 命令长时间无响应 → 第 2 层丢失；`git ls-remote` 报 `Empty reply from server` → 代理进程没起（`lsof -nP -iTCP:7890 -sTCP:LISTEN` 确认）或跑 `gh-net fix`。
 

@@ -33,9 +33,18 @@ description: 使用当 需要检查或处理当前项目 GitHub 仓库的健康�
 | ----------------------- | -------------------------------------------------------------------------- | --------------- |
 | https 直连              | ~10 KB/s（codeload 拉 217 KB 耗时 20s）                                    | ❌ 不可用       |
 | https + 代理 + HTTP/2   | `fatal: Error in the HTTP2 framing layer`                                  | ❌ git 直接失败 |
-| https + 代理 + HTTP/1.1 | 单并发 53s / 3 并发 78s（浅克隆）                                          | ✅ 可用         |
-| SSH `git@github.com`    | 上行 push 正常（秒级），**下行 clone 180s 超时 / `unexpected disconnect`** | ⚠️ 只用于 push  |
-| 代理带宽                | ~170 KB/s（4 路混合并发实测总耗时 4s）                                     | 重负载需节制    |
+| https + 代理 + HTTP/1.1 | 单并发 53s / 3 并发 78s（浅克隆）                                          | ✅ 下行主力     |
+| SSH `git@github.com`    | 上行 push 正常（秒级），**下行 clone 180s 超时 / `unexpected disconnect`** | ✅ 仅用于 push  |
+| 代理带宽                | 273 KB/s（4 路混合并发实测总耗时 4s）                                      | 重负载需节制    |
+
+**分流是本方案的核心**（代理不稳定时仍能干活）：`fetch` 走 https+代理（快），`push` 走 SSH（**完全不经过代理**）。每个仓库设一次：
+
+```bash
+git remote set-url origin https://github.com/<owner>/<repo>.git       # fetch：https + 代理
+git config remote.origin.pushurl git@github.com:<owner>/<repo>.git    # push：SSH，代理挂了照样能推
+```
+
+`ghops push` 内部就是 `git push origin`（SSH 无需 token），对该分流透明。只读操作（fork 派生、log、测试）走 `git clone --local` **零网络**，代理挂掉完全不受影响；`ghops` 的 API 层另有内建降级（探测失败自动直连并提示一次）。
 
 三层配置缺一层就退化为卡死，全部在 `~/.dsh/secrets/github-proxy` 与 git 全局配置里持久化：
 
@@ -49,11 +58,14 @@ git config --global http.lowSpeedLimit 1000 && git config --global http.lowSpeed
 printf 'http://127.0.0.1:7890' > ~/.dsh/secrets/github-proxy && chmod 600 ~/.dsh/secrets/github-proxy
 
 # 3) 自检（派发前跑，3 秒出结论）
+gh-net check                             # 一键自检（见下）；没有该脚本时用后两行
 ghops proxy                              # 期望：当前代理 http://127.0.0.1:7890 / 可用性：正常
 git ls-remote origin refs/heads/main     # 期望：<10s 返回 SHA
 ```
 
-**排障对照**：`git clone` 报 `HTTP2 framing layer` → 第 1 层丢失；`ghops` 命令长时间无响应 → 第 2 层丢失；`git ls-remote` 报 `Empty reply from server` → 代理进程没起（`lsof -nP -iTCP:7890 -sTCP:LISTEN` 确认）。
+**代理不稳定时的自愈**：本机装有 `~/.local/bin/gh-net`（即上文三层配置的固化版）——`gh-net check` 自检 / `gh-net status` 详细状态（含代理与直连的实测下载速率）/ `gh-net fix` 按探测结果重配。**代理挂掉时 `fix` 会自动清空 `http.proxy` 与 ghops 代理文件退回直连**（慢，但不会让所有 GitHub 操作一起失败），代理恢复后再跑一次即回到代理通路。幂等，可反复跑。
+
+**排障对照**：`git clone` 报 `HTTP2 framing layer` → 第 1 层丢失；`ghops` 命令长时间无响应 → 第 2 层丢失；`git ls-remote` 报 `Empty reply from server` → 代理进程没起（`lsof -nP -iTCP:7890 -sTCP:LISTEN` 确认）或跑 `gh-net fix`。
 
 **并发预算**：克隆/推送是唯一重负载。fork 池用 `git clone --local` **本地派生**（零网络，正是为本节问题设计的）——**不要在 fork 内 clone 远程仓库**，也不要把多条 `git fetch` 并发堆在一起。
 
@@ -90,7 +102,8 @@ git ls-remote origin refs/heads/main     # 期望：<10s 返回 SHA
 ```
 git -C <主工作区> fetch origin                                 # 主 agent 先同步远程引用（不碰工作区文件）
 git clone --local <主工作区> /tmp/gh-fork-<编号>               # 本地派生 fork：零网络、秒级（实测 ~1.4s）
-git -C /tmp/gh-fork-<编号> remote set-url origin git@github.com:baosfeng/my-dsh-plugins.git   # 重设 GitHub 远程（必须）
+git -C /tmp/gh-fork-<编号> remote set-url origin https://github.com/baosfeng/my-dsh-plugins.git      # fetch 走 https+代理
+git -C /tmp/gh-fork-<编号> config remote.origin.pushurl git@github.com:baosfeng/my-dsh-plugins.git   # push 走 SSH（不经代理，代理挂了也能推）
 git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # 从远程最新 main 建分支（子 agent 直接在其上工作）
 ```
 
@@ -98,7 +111,7 @@ git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # 从远程�
 
 - **每个修复类子任务拥有且仅拥有一个 fork**（`/tmp/gh-fork-<编号>`）；主工作区（`/Users/bsfeng/IdeaProjects/my-dsh-plugins`）与任何其他 fork 都不得被该子任务操作
 - fork 用 `git clone --local` **本地派生**：不重复走网络、也不调用 REST API（无速率限制），秒级完成；**不是**远程克隆，主工作区未提交改动不会混入 fork（只含已提交内容）
-- **本地派生的 origin 默认指向主工作区本地路径，必须 `remote set-url` 重设为 GitHub 远程**，否则 push 会推到本地路径（静默失败/污染）
+- **本地派生的 origin 默认指向主工作区本地路径，必须重设为 GitHub 远程**（`set-url` 设 https 给 fetch + `config remote.origin.pushurl` 设 SSH 给 push，理由见上方「网络前置」），否则 push 会推到本地路径（静默失败/污染）
 - 派生前主 agent 先 `git -C <主工作区> fetch origin` 同步远程引用；fork 内 `checkout -b fix/<编号> origin/main` 从最新远程 main 起分支——即使主工作区本地 main 落后远程也不受影响
 - 子 agent 工作流：fork 内修改 → `git commit`（fork 是完整独立 .git，工作区/index/HEAD/分支与其他 fork 及主工作区**物理隔离**，互不可见）→ `ghops push --dir /tmp/gh-fork-<编号> --branch fix/<编号>` → `ghops pr create`
 - fork 是完整克隆（不共享对象库），隔离比 worktree 更彻底：两个子任务改动同一文件也互不影响；PR 合并阶段的冲突由后合并方 rebase 最新 main 解决

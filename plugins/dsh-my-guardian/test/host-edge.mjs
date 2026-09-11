@@ -164,8 +164,10 @@ function boot(fake, opts) {
 
 async function shutdown(ctx) {
   const teardown = (ctx.fakeEffects ?? []).find((e) => e.label === 'dsh-my-guardian: teardown')
-  teardown?.disposer()
-  await sleep(60)
+  // disposer 返回「卸载 + 写链 drain」promise：await 它即可确定性等待本实例
+  // 全部落盘完成——此前 sleep(60) 是在赌写盘跑完，赌输时旧实例的延迟快照会
+  // 覆盖下一个用例块写入的 state.json（CI 实测 retry 变 404）。
+  await teardown?.disposer()
 }
 
 test('findRootTree falls back to the first include-like tree without cordis.yml', async () => {
@@ -176,7 +178,7 @@ test('findRootTree falls back to the first include-like tree without cordis.yml'
     JSON.stringify([{ id: 'alt-plugin', name: 'dsh-alt' }], null, 2),
   )
   const ctx = boot(fake)
-  await sleep(150)
+  await waitFor(() => fake.created.includes('alt-plugin'))
   assert.deepEqual(fake.created, ['alt-plugin'], 'entry mounted via the fallback tree')
   await shutdown(ctx)
 })
@@ -190,7 +192,7 @@ test('malformed host header is refused by the fence (403)', async () => {
     'utf8',
   )
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   const r = await callApi(fake, 'GET', 'state', undefined, {
     headers: { host: 'not a valid authority' },
   })
@@ -207,7 +209,7 @@ test('malformed origin is refused by the fence (403)', async () => {
     'utf8',
   )
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   const r = await callApi(fake, 'GET', 'state', undefined, {
     headers: { host: '127.0.0.1:3080', origin: 'http://[' },
   })
@@ -224,7 +226,7 @@ test('trustedHosts entry without explicit port is honored', async () => {
     'utf8',
   )
   const ctx = boot(fake, { trustedHosts: ['guardian.example.com'] })
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   const r = await callApi(fake, 'GET', 'state', undefined, {
     headers: { host: 'guardian.example.com:3080', origin: 'http://guardian.example.com:3080' },
   })
@@ -236,6 +238,7 @@ test('corrupt staged file is treated as empty', async () => {
   const fake = makeLoaderAndTree()
   writeFileSync(join(dir, 'cordis.staged.json'), '{not json', 'utf8')
   const ctx = boot(fake)
+  // 负向断言（"没有被挂载"没有正向信号可等）→ 保留观察窗口
   await sleep(120)
   assert.deepEqual(fake.created, [], 'no entries from a corrupt staged file')
   await shutdown(ctx)
@@ -245,7 +248,7 @@ test('unmount failures are swallowed (best effort)', async () => {
   const fake = makeLoaderAndTree({ removeThrows: true })
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify([{ id: 'u1', name: 'dsh-u1' }], null, 2))
   const ctx = boot(fake)
-  await sleep(150)
+  await waitFor(() => fake.created.includes('u1'))
   assert.deepEqual(fake.created, ['u1'], 'entry mounted')
   await shutdown(ctx) // teardown unmount throws → must be swallowed
 })
@@ -274,7 +277,7 @@ test('promoted entries are skipped in safe mode', async () => {
     'utf8',
   )
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   assert.deepEqual(fake.created, [], 'promoted entries skipped in safe mode')
   await shutdown(ctx)
 })
@@ -283,7 +286,7 @@ test('watcher degradation when the staged file cannot be watched', async () => {
   // staged file does not exist → fs.watch throws → guardian degrades to poll
   const fake = makeLoaderAndTree()
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   assert.ok(fake.apiRoute, 'guardian still serves its API without a watcher')
   await shutdown(ctx)
 })
@@ -297,7 +300,7 @@ test('diagnostic events are recorded (entry-init / dispose / update-failed)', as
     'utf8',
   )
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   for (const { name, listener } of fake.events) {
     if (name === 'loader/entry-init') listener({ options: { id: 'e1' } })
     if (name === 'loader/partial-dispose') listener({ options: { id: 'e2' } })
@@ -367,7 +370,7 @@ test('retry of an unknown entry returns 404', async () => {
     'utf8',
   )
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   const r = await callApi(fake, 'POST', 'retry', { id: 'nope' })
   assert.equal(r.status, 404, 'unknown retry → 404')
   await shutdown(ctx)
@@ -397,7 +400,7 @@ test('retry of a promoted entry remounts it', async () => {
     'utf8',
   )
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   const r = await callApi(fake, 'POST', 'retry', { id: 'retry-p' })
   assert.equal(r.status, 200)
   assert.equal(r.json.value.outcome, 'mounted', 'promoted retry remounts')
@@ -430,12 +433,12 @@ test('safe-mode unlock re-scans staged and remounts promoted', async () => {
   )
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify([{ id: 'unlock-s', name: 'dsh-us' }], null, 2))
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   assert.deepEqual(fake.created, [], 'safe mode blocks both initially')
 
   const off = await callApi(fake, 'POST', 'safemode', { enabled: false })
   assert.equal(off.status, 200)
-  await sleep(150)
+  await waitFor(() => fake.created.includes('unlock-s') && fake.created.includes('unlock-p'))
   assert.ok(fake.created.includes('unlock-s'), 'staged entry mounted after unlock')
   assert.ok(fake.created.includes('unlock-p'), 'promoted entry mounted after unlock')
   await shutdown(ctx)
@@ -450,7 +453,7 @@ test('malformed JSON body returns 400', async () => {
     'utf8',
   )
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   const route = fake.apiRoute
   const res = makeResponse()
   await route.handler(
@@ -480,6 +483,7 @@ test('api registration failure retries on the next poll tick', async () => {
   const fake = makeLoaderAndTree()
   writeFileSync(join(dir, 'cordis.staged.json'), '[]\n')
   const ctx = boot(fake, { registerThrows: true })
+  // 负向断言（注册失败后 apiRoute 必须保持 undefined）→ 保留观察窗口，等 initialScan 跑完
   await sleep(120)
   assert.ok(fake.apiRoute === undefined, 'failed registration leaves apiRegistered false')
   // fix the service, then trigger a poll tick
@@ -490,7 +494,7 @@ test('api registration failure retries on the next poll tick', async () => {
     },
   }
   for (const callback of ctx.fakeIntervals) callback()
-  await sleep(50)
+  await waitFor(() => fake.apiRoute)
   assert.ok(fake.apiRoute, 'api registered on the retry tick')
   await shutdown(ctx)
 })
@@ -500,7 +504,7 @@ test('snapshot lists staged records with status', async () => {
   fake.failMap['bad2'] = 'boom'
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify([{ id: 'bad2', name: 'dsh-bad2' }], null, 2))
   const ctx = boot(fake)
-  await sleep(150)
+  await waitFor(() => fake.apiRoute)
   const r = await callApi(fake, 'GET', 'state')
   assert.equal(r.status, 200)
   const staged = r.json.value.staged.find((e) => e.id === 'bad2')
@@ -516,7 +520,7 @@ test('malformed staged entries (null / missing id / missing name) are ignored', 
     JSON.stringify([null, 42, { name: 'dsh-no-id' }, { id: 'no-name' }, { id: 'good', name: 'dsh-good' }], null, 2),
   )
   const ctx = boot(fake)
-  await sleep(150)
+  await waitFor(() => fake.created.includes('good'))
   assert.deepEqual(fake.created, ['good'], 'only the well-formed entry is mounted')
   await shutdown(ctx)
 })
@@ -526,7 +530,7 @@ test('retry of a staged entry missing from the staged file returns missing', asy
   fake.failMap['gone'] = 'failed once'
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify([{ id: 'gone', name: 'dsh-gone' }], null, 2))
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => readStateOrNull()?.staged?.['gone'])
   assert.ok(JSON.parse(readFileSync(join(dir, 'guardian', 'state.json'), 'utf8')).staged['gone'], 'failure recorded')
   // the entry disappears from the staged file (e.g. removed manually)
   writeFileSync(join(dir, 'cordis.staged.json'), '[]\n')
@@ -545,7 +549,7 @@ test('request body over the size limit is rejected (400)', async () => {
     'utf8',
   )
   const ctx = boot(fake)
-  await sleep(120)
+  await waitFor(() => fake.apiRoute)
   const route = fake.apiRoute
   const res = makeResponse()
   const big = 'x'.repeat(1_000_001)

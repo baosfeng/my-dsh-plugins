@@ -68,6 +68,10 @@ function applyInner(ctx) {
 }
 /** Mutable per-instance runtime context shared by every sub-module. */
 function createShared({ tree, profileDir }) {
+    let markBooted = () => { };
+    const bootPromise = new Promise((resolve) => {
+        markBooted = resolve;
+    });
     const shared = {
         state: createState(),
         ready: false,
@@ -83,6 +87,9 @@ function createShared({ tree, profileDir }) {
         startupIssues: [],
         startupCheckedAt: null,
         persistSoon: () => { },
+        flushPersist: () => Promise.resolve(),
+        bootPromise,
+        markBooted,
         logEvent: (_type, _message) => { },
         // Mount ops — filled by wireServices via Object.assign
         conflictOf: () => null,
@@ -102,7 +109,9 @@ function createShared({ tree, profileDir }) {
 }
 /** Bind persister, event log, mount ops, API and listeners onto shared. */
 function wireServices(ctx, shared) {
-    shared.persistSoon = createPersister(shared).persistSoon;
+    const persister = createPersister(shared);
+    shared.persistSoon = persister.persistSoon;
+    shared.flushPersist = persister.flush;
     shared.logEvent = (type, message) => logEvent(shared, type, message);
     Object.assign(shared, createMountOps(shared));
     Object.assign(shared, createApi(ctx, shared));
@@ -116,10 +125,13 @@ function scheduleInitialScan(ctx, shared) {
         void runStartupCheck(ctx, shared).catch((error) => {
             ctx.logger?.warn(`[dsh-my-guardian] startup pre-check failed (recorded only): ${error instanceof Error ? error.message : String(error)}`);
         });
-        void initialScan(shared).catch((error) => {
+        void initialScan(shared)
+            .catch((error) => {
             // the scan must never take the process down
             ctx.logger?.warn(`[dsh-my-guardian] initial scan failed: ${error instanceof Error ? error.message : String(error)}`);
-        });
+        })
+            // 无论成败都放行 API：扫描失败只降级，不能让 API 永久挂起
+            .finally(() => shared.markBooted());
     });
 }
 // ── staged file watching (new candidates at runtime) + poll fallback ────
@@ -164,9 +176,14 @@ function registerStatusQuery(ctx, shared) {
         };
     });
 }
-/** teardown: unmount everything the guardian mounted, then persist. */
+/** teardown: unmount everything the guardian mounted, then persist.
+ *
+ *  disoser 返回 promise：await 它即保证「卸载 + 全部排队快照落盘」完成。
+ *  此前是 fire-and-forget + 调用方 sleep 赌它跑完——慢 CI 下旧实例的延迟
+ *  快照会在下一个用例块读到 state 之后落盘并覆盖它（跨实例共享状态的
+ *  时序竞态，docs/踩坑/固定sleep等异步落盘导致CI-flaky.md）。 */
 function registerTeardown(ctx, shared) {
-    ctx.effect(() => () => {
+    ctx.effect(() => async () => {
         if (shared.watcher !== null) {
             try {
                 shared.watcher.close();
@@ -176,9 +193,9 @@ function registerTeardown(ctx, shared) {
             }
             shared.watcher = null;
         }
-        for (const id of [...shared.mounted]) {
-            void shared.unmount(id);
-        }
-        void shared.persistSoon();
+        // unmount 内部已吞异常（best effort），逐个 await 期间它们各自入链
+        await Promise.all([...shared.mounted].map((id) => shared.unmount(id)));
+        shared.persistSoon();
+        await shared.flushPersist();
     }, 'dsh-my-guardian: teardown');
 }

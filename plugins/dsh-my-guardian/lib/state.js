@@ -83,7 +83,9 @@ export function createPersister(shared) {
     const persistSoon = () => {
         shared.writeChain = shared.writeChain.then(() => persistState(shared.state));
     };
-    return { persistSoon };
+    /** 确定性 drain 信号：resolve 时链上所有快照（含本 tick 排队的）都已落盘。 */
+    const flush = () => shared.writeChain;
+    return { persistSoon, flush };
 }
 /** Read the candidate file; missing/corrupt → []. */
 export async function readStagedFile(file) {

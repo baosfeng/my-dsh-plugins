@@ -152,8 +152,9 @@ async function boot(fake, opts) {
 
 async function shutdown(ctx) {
   const teardown = (ctx.fakeEffects ?? []).find((e) => e.label === 'dsh-my-guardian: teardown')
-  teardown?.disposer()
-  await sleep(60)
+  // await disposer（卸载 + 写链 drain）而不是 sleep 赌写盘跑完：赌输时旧实例的
+  // 延迟快照会覆盖下一个用例块写入的 state.json（CI flaky 根因）。
+  await teardown?.disposer()
 }
 
 async function freshState() {

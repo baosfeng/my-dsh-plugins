@@ -148,6 +148,13 @@ export interface SharedContext {
   startupIssues: StartupIssue[]
   startupCheckedAt: number | null
   persistSoon: () => void
+  /** 写链 drain：await 它即保证此前所有 persistSoon 都已落盘完成。
+   *  卸载/disposer 返回它，调用方不必再用固定 sleep 赌写盘跑完。 */
+  flushPersist: () => Promise<void>
+  /** 启动扫描（loadState + staged/promoted 挂载 + API 注册）完成的确定性信号：
+   *  API 分派前 await 它，查询/操作语义与「启动耗时」无关。 */
+  bootPromise: Promise<void>
+  markBooted: () => void
   logEvent: (type: string, message: string) => void
   // Mount ops (mixed in by createMountOps)
   conflictOf: (id: string) => string | null
@@ -169,11 +176,16 @@ export interface SharedContext {
 }
 
 /** Serialize state writes on a promise chain (drain in order). */
-export function createPersister(shared: SharedContext): { persistSoon: () => void } {
+export function createPersister(shared: SharedContext): {
+  persistSoon: () => void
+  flush: () => Promise<void>
+} {
   const persistSoon = (): void => {
     shared.writeChain = shared.writeChain.then(() => persistState(shared.state))
   }
-  return { persistSoon }
+  /** 确定性 drain 信号：resolve 时链上所有快照（含本 tick 排队的）都已落盘。 */
+  const flush = (): Promise<void> => shared.writeChain
+  return { persistSoon, flush }
 }
 
 /** Read the candidate file; missing/corrupt → []. */

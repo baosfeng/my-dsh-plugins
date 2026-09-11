@@ -54,6 +54,9 @@ export interface AuditStore {
   sessions(): SessionInfo[]
   count(): number
   setPersistEnabled(enabled: boolean): void
+  /** 「磁盘历史加载 + 缓冲回放完成」的确定性信号：查询方 await 它，
+   *  不要等一段墙钟时间（固定 sleep 是 CI flaky 的根因，见 docs/踩坑/）。 */
+  whenReady(): Promise<void>
   dispose(): Promise<void>
 }
 
@@ -70,6 +73,9 @@ interface StoreHandle {
   store: AuditStore
   pending: AuditEvent[]
   ready: boolean
+  /** 加载完成信号（whenReady 返回它）；markReady 在合并/回放之后调用。 */
+  readyPromise: Promise<void>
+  markReady: () => void
   lineQueue: string[]
   queuedLines: number
   total: number
@@ -91,6 +97,10 @@ function createState(): AuditState {
  *  record 在状态加载完成前缓冲（不丢事件）；dispose 冲刷未落盘数据。 */
 export function createStore(ctx: StoreContext): AuditStore {
   const store = { state: createState() } as AuditStore
+  let markReady: () => void = () => {}
+  const readyPromise = new Promise<void>((resolve) => {
+    markReady = resolve
+  })
   const handle: StoreHandle = {
     ctx,
     file: jsonlFile(),
@@ -98,6 +108,8 @@ export function createStore(ctx: StoreContext): AuditStore {
     store,
     pending: [],
     ready: false,
+    readyPromise,
+    markReady,
     lineQueue: [],
     queuedLines: 0,
     total: 0,
@@ -113,6 +125,7 @@ export function createStore(ctx: StoreContext): AuditStore {
   store.sessions = () => sessionsOf(handle)
   store.count = () => countOf(handle)
   store.setPersistEnabled = (enabled) => setPersistEnabled(handle, enabled)
+  store.whenReady = () => handle.readyPromise
   store.dispose = () => dispose(handle)
   void loadPersisted(handle.file, handle.legacy).then((result) => onLoaded(handle, result))
   return store
@@ -266,6 +279,9 @@ function onLoaded(handle: StoreHandle, result: LoadResult): void {
   if (pending.length > 0) scheduleFlush(handle)
   handle.migrated = result.migrated
   if (result.migrated || result.lines >= COMPACT_LINES) scheduleCompact(handle)
+  // markReady 放在合并/回放**之后**：whenReady 返回即保证缓冲事件已并入
+  // state，查询结果与「加载耗时」无关（不再需要调用方猜 sleep 时长）。
+  handle.markReady()
 }
 
 /** 把 load 完成前（或 dispose 回放时）已进入内存的事件合并进加载状态：后到的事件追加于桶尾。 */

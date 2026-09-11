@@ -127,7 +127,12 @@ export function createStore(ctx: StoreContext): AuditStore {
   store.setPersistEnabled = (enabled) => setPersistEnabled(handle, enabled)
   store.whenReady = () => handle.readyPromise
   store.dispose = () => dispose(handle)
-  void loadPersisted(handle.file, handle.legacy).then((result) => onLoaded(handle, result))
+  void loadPersisted(handle.file, handle.legacy)
+    .then((result) => onLoaded(handle, result))
+    // 兜底：加载链上的任何异常都不能让 whenReady 永不 resolve——那会让所有
+    // API 请求永久挂起（比「读到空 state」严重得多）。loadPersisted 自身已
+    // 逐层 catch，这里是防未来改动引入 reject 的护栏。
+    .catch(() => onLoaded(handle, { state: createState(), migrated: false, lines: 0 }))
   return store
 }
 

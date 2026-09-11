@@ -19,6 +19,8 @@ import {
   mockResponse,
   invoke,
   jsonOf,
+  readJsonFile,
+  waitFor,
   dispatchEvent,
   bashExec,
   settle,
@@ -78,7 +80,6 @@ test('store: parseLoaded rejects non-array alerts', async () => {
   mkdirSync(join(home, 'guard'), { recursive: true })
   writeFileSync(join(home, 'guard', 'alerts.json'), JSON.stringify({ version: 1, alerts: 'nope' }))
   const { api, disposeAll } = boot({}, { home })
-  await settle(80)
   const res = mockResponse()
   await invoke(api, mockRequest({ url: '/guard/api/alerts' }), res)
   assert.deepEqual(jsonOf(res).value, [])
@@ -90,11 +91,15 @@ test('store: persist failure is logged, not thrown', async () => {
   tmpDirs.push(home)
   // 让 guard 目录不可写：先建一个同名文件占位（mkdir 会失败）
   writeFileSync(join(home, 'guard'), 'file blocks dir')
-  const { listeners, disposeAll } = boot({}, { home })
+  const { listeners, api, disposeAll } = boot({}, { home })
   await dispatchEvent(listeners, 'tools/pre-execute', bashExec('s-1', 'rm -rf /'), async () => ({
     kind: 'allow',
   }))
-  await settle(700)
+  // 先确定性等到 store 就绪（就绪后才会调度防抖写盘），再等防抖窗口本身：
+  // 这里等的是真实定时器语义（500ms 防抖），不是"某异步结果出现"
+  const status = mockResponse()
+  await invoke(api, mockRequest({ url: '/guard/api/status' }), status)
+  await settle(520)
   assert.doesNotThrow(() => disposeAll())
 })
 
@@ -108,10 +113,15 @@ test('store: dispose flushes pending buffer when not ready', async () => {
   }))
   disposeAll()
   disposeAlls.splice(disposeAlls.indexOf(disposeAll), 1)
-  await settle(200)
   const file = join(home, 'guard', 'alerts.json')
-  const { readFileSync } = await import('node:fs')
-  const parsed = JSON.parse(readFileSync(file, 'utf8'))
+  // 等落盘完成（条件轮询），不用固定 sleep 猜写入耗时
+  const parsed = await waitFor(
+    () => {
+      const value = readJsonFile(file)
+      return value?.alerts?.length === 1 ? value : undefined
+    },
+    { message: '卸载冲刷应落盘缓冲告警' },
+  )
   assert.equal(parsed.alerts.length, 1, 'pending alert flushed on dispose')
 })
 
@@ -120,7 +130,6 @@ test('store: confirm on already-confirmed alert is idempotent', async () => {
   await dispatchEvent(listeners, 'tools/pre-execute', bashExec('s-1', 'rm -rf /'), async () => ({
     kind: 'allow',
   }))
-  await settle(80)
   const res = mockResponse()
   await invoke(api, mockRequest({ url: '/guard/api/alerts' }), res)
   const id = jsonOf(res).value[0].id
@@ -184,7 +193,9 @@ test('routes: scan accepts a local .tgz tarball path', async () => {
   disposeAll()
 })
 
-test('routes: oversized request body returns 400', async () => {
+// 依赖真实 npm registry 网络（超大 target 走的仍是"包名解析"路径）：慢网络下
+// 默认 5s 超时会假红，给足余量；断言与语义不变
+test('routes: oversized request body returns 400', { timeout: 60_000 }, async () => {
   const { api, disposeAll } = boot({})
   const big = JSON.stringify({ target: 'x'.repeat(1_100_000) })
   const res = mockResponse()
@@ -198,7 +209,6 @@ test('routes: oversized request body returns 400', async () => {
 test('injection: event with non-object data is ignored', async () => {
   const { listeners, api, disposeAll } = boot({})
   await dispatchEvent(listeners, 'session/event', { id: 's-1' }, { type: 'user/message', data: 'not-object' })
-  await settle(80)
   const res = mockResponse()
   await invoke(api, mockRequest({ url: '/guard/api/alerts' }), res)
   assert.deepEqual(jsonOf(res).value, [])
@@ -216,7 +226,6 @@ test('injection: message with non-text blocks yields no alert', async () => {
       data: { content: [{ type: 'image', url: 'x' }], source: { kind: 'user' } },
     },
   )
-  await settle(80)
   const res = mockResponse()
   await invoke(api, mockRequest({ url: '/guard/api/alerts' }), res)
   assert.deepEqual(jsonOf(res).value, [])
@@ -325,12 +334,24 @@ test('store: createStore with logger-less ctx does not throw on persist', async 
   process.env.DSH_HOME = home
   try {
     const store = createStore({})
+    await store.whenReady()
     store.record({ type: 'destructive', sessionId: 's-1', severity: 'high', message: 'x' })
-    await settle(700)
+    // 等防抖写盘完成（条件轮询），不用固定 sleep 猜写入耗时
+    await waitFor(
+      () => {
+        const value = readJsonFile(stateFile())
+        return value?.alerts?.length === 1 ? value : undefined
+      },
+      { message: '告警应被防抖写盘' },
+    )
     store.dispose()
-    await settle(50)
-    const { readFileSync } = await import('node:fs')
-    const parsed = JSON.parse(readFileSync(stateFile(), 'utf8'))
+    const parsed = await waitFor(
+      () => {
+        const value = readJsonFile(stateFile())
+        return value?.alerts?.length === 1 ? value : undefined
+      },
+      { message: '卸载后告警应仍在磁盘上' },
+    )
     assert.equal(parsed.alerts.length, 1)
   } finally {
     if (oldHome !== undefined) process.env.DSH_HOME = oldHome

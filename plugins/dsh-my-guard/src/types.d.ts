@@ -112,6 +112,8 @@ export interface AlertStore {
   alerts(sessionId?: string, type?: string, limit?: number): Alert[]
   count(): number
   confirm(id: number): boolean
+  /** 加载 + 缓冲回放完成的确定性信号（查询前 await 它，别用固定 sleep 等加载完成）。 */
+  whenReady(): Promise<void>
   dispose(): void
 }
 

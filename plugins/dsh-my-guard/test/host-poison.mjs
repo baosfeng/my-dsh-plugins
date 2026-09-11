@@ -217,7 +217,9 @@ test('scanPackageTarget: local path reports alerts via callback', async () => {
   assert.equal(alerts[0].detail.target, dir)
 })
 
-test('scanPackageTarget: unresolvable package name is silent', async () => {
+// 依赖真实 npm registry 网络（不可解析的包名要走一次 registry 查询）：registry
+// 慢时默认 5s 超时会假红，给足余量；断言与语义不变
+test('scanPackageTarget: unresolvable package name is silent', { timeout: 60_000 }, async () => {
   const alerts = []
   await scanPackageTarget('dsh-guard-no-such-pkg-xyz-12345', (alert) => alerts.push(alert))
   assert.deepEqual(alerts, [])

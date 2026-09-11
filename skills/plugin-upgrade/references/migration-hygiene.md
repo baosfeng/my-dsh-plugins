@@ -1,6 +1,6 @@
 # Migration hygiene · version-independent toolchain pitfalls
 
-> First-hand record from a batch migration of 6 real plugins (rc.1 → 0.1.2-alpha.1, see [example 06](../examples/06-real-world-batch-migration.md)). None of these pitfalls belongs to a version card — any of them can cost a migrator half an hour or more on any corridor segment.
+> First-hand record from a batch migration of 6 real plugins (rc.1 → 0.1.2-alpha.1; the upstream `examples/06-real-world-batch-migration.md` write-up is not shipped in this trimmed copy). None of these pitfalls belongs to a version card — any of them can cost a migrator half an hour or more on any corridor segment.
 
 ## 1. Incremental tsbuildinfo false positives
 
@@ -18,7 +18,7 @@ Fix: rewrite the expression as the parser suggests — precompute a variable, sp
 
 Symptom: after changing code, a browser refresh shows no change, or the host still behaves like the old version.
 
-Rule: a change landing in `lib/client.js` (client half) takes effect on a browser hard refresh; a change landing in `lib/index.js` (host half) requires restarting dsh. This corresponds to the plane view in [host-plane-probes.md](host-plane-probes.md): decide the plugin shape and where the change lands first, then pick the validation action.
+Rule: a change landing in `lib/client.js` (client half) takes effect on a browser hard refresh; a change landing in `lib/index.js` (host half) requires restarting dsh. This corresponds to the plane view in `host-plane-probes.md` (upstream reference, not shipped in this trimmed copy): decide the plugin shape and where the change lands first, then pick the validation action.
 
 ## 4. pnpm blocks dependency build scripts (default since 10.0)
 

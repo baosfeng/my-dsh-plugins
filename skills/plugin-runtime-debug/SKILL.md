@@ -9,7 +9,7 @@ description: 使用当 已安装的 DSH Web 插件只在浏览器运行时行为
 
 ## 铁律：先在宿主源码里读 verb 的契约
 
-改任何宿主 API 调用前，打开 DSH 源码检出（`~/.dsh/source/current` 或 vendored 副本）里实现该 API 的包，读实际方法——doc 注释、guards、比较的类型。对插件传入的每个值重复。三个问题覆盖多数事故：
+改任何宿主 API 调用前，打开 DSH 源码检出（`~/.dsh/source/current`，或 npm 全局安装的 `~/.npm-global/lib/node_modules/@deepseek-ai/dsh/`）里实现该 API 的包，读实际方法——doc 注释、guards、比较的类型。对插件传入的每个值重复。三个问题覆盖多数事故：
 
 1. **offset 数的是哪个字符串？** verb 接受 span/offset 时，弄清这些数字索引的是什么字符串。发布快照字段与内部编辑器投影不总是同一个字符串；把一种表示的 offset 喂给 guard 比较另一种表示的 verb，会静默失败（返回 `false` 或 no-op，不抛错）。
 2. **每个"单位"在各表示中占多宽？** 文档含不透明内联单位（chips/tokens/attachments）时，检查单位在发布字段与 verb guard 的投影中是否同宽。宽度不同时，offset 只在无单位时正确——"第一次成功、之后每次失败"就是信号。

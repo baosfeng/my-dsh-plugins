@@ -1,1 +1,126 @@
-npx lint-staged
+# pre-commit：lint-staged + 「git index.lock 竞争导致备份失败」的自动恢复
+#
+# ── 背景（真实事故，已在本仓库复现）─────────────────────────────────────────
+# git 在运行 hook 时**不持有** index.lock（这样 hook 才能修改 index）。如果此刻另一个
+# 进程正在写 index（并行的 agent、编辑器 git 插件、另一条 git add / stash / reset / mv
+# 命令），lint-staged 的 `git stash create` 就会以 rc=1 失败：
+#     error: could not write index
+# lint-staged 把它统一报成「Failed to back up original state!」并跳过全部任务，于是
+# pre-commit 失败、提交被挡 —— 但**没有任何改动丢失**（失败发生在它改动工作区之前）。
+#
+# 判定特征（本次定位出来的关键指纹）：失败时的恢复提示会原样打印 `<git-hash>` 占位符，
+# 说明 ctx.backupHash 根本没被赋值（见 node_modules/lint-staged/lib/messages.js 里
+# restoreStashExample 的默认参数），配合 `git stash list` 为空即可确认 stash 从未创建。
+#
+# ⚠️ 注意：这与「提交里有没有 rename」无关。曾经怀疑是 `git mv` 触发的，但用真实 rename
+# 暂存集（3 个 R + M + A）精确重建后**稳定通过**；触发因素是**时间窗口**——
+# 取决于另一个进程那一刻是否恰好持有 index.lock，所以表现为偶发。
+#
+# ── 本 hook 的处理顺序 ─────────────────────────────────────────────────────
+#   1) 正常跑 lint-staged（保留实时输出）；
+#   2) 命中上述「备份失败」特征 → 等 1s 重试一次。锁竞争是瞬时事件，且此时 lint-staged
+#      尚未改动任何文件，重试绝对安全，正常情况下用户完全无感；
+#   3) 重试仍失败 → 降级为「直接对暂存文件跑 eslint / prettier --check」，保住 pre-commit
+#      的门禁价值。降级刻意**只读**（不加 --fix / --write）：正常路径靠 stash 才能安全地
+#      「改完再重新 stage」，而这条路径的前提（stash 可用）恰好已经失效；只读检查既不会
+#      污染部分暂存状态，也能在格式不合格时明确挡住提交。
+#
+# ⚠️ 本文件由 husky 的 .husky/_/h 以 `sh -e` 执行（shebang 被忽略、errexit 生效），
+# 因此只使用 POSIX sh 语法，且所有允许失败的命令都显式 `|| true` 兜底。
+
+status_file=$(mktemp -t lint-staged-status)
+out_file=$(mktemp -t lint-staged-out)
+cleanup_tmp() { rm -f "$status_file" "$out_file"; }
+trap cleanup_tmp EXIT
+
+# lint-staged 的「备份暂存状态失败」指纹
+stash_backup_failed() { grep -q 'Failed to back up original state' "$out_file" 2>/dev/null; }
+
+# POSIX sh 没有 PIPESTATUS：用子 shell 把真实退出码写进文件，tee 负责实时输出
+run_lint_staged() {
+  : > "$status_file"
+  ( npx --no-install lint-staged; echo $? > "$status_file" ) 2>&1 | tee "$out_file" || true
+  [ "$(cat "$status_file" 2>/dev/null)" = "0" ]
+}
+
+# 降级检查：只读地对「暂存文件」跑与 package.json 中 lint-staged glob 等价的规则
+#   *.{js,mjs}           → eslint --fix + prettier --write
+#   *.ts                 → prettier --write
+#   *.{json,md,yml,yaml} → prettier --write
+# 注意 js/mjs 在原配置里**既跑 eslint 也跑 prettier**，两边都不能漏。
+degraded_check() {
+  list=$(mktemp -t lint-staged-files)
+  git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR > "$list" 2>/dev/null || true
+  grep -E '\.(js|mjs)$' "$list" > "$list.eslint" 2>/dev/null || true
+  grep -E '\.(js|mjs|ts|tsx|json|md|mdx|yml|yaml)$' "$list" > "$list.fmt" 2>/dev/null || true
+
+  ok=1
+  if [ -s "$list.eslint" ]; then
+    n=$(wc -l < "$list.eslint" | tr -d ' ')
+    echo "  · eslint（只读检查 $n 个暂存 .js/.mjs）"
+    # --fix-dry-run：在内存里试算 `eslint --fix` 的结果，退出码反映"修完还剩多少错"。
+    # 用它而不是裸 eslint，是为了不把「--fix 本来就能自动修好」的问题误判成门禁失败。
+    if tr '\n' '\0' < "$list.eslint" | xargs -0 npx --no-install eslint --fix-dry-run > /dev/null 2>&1; then
+      :
+    else
+      ok=0
+      echo '    ↓ eslint 报出的、--fix 无法自动修复的问题：'
+      tr '\n' '\0' < "$list.eslint" | xargs -0 npx --no-install eslint || true
+    fi
+  fi
+  if [ -s "$list.fmt" ]; then
+    n=$(wc -l < "$list.fmt" | tr -d ' ')
+    echo "  · prettier --check（$n 个暂存文件）"
+    tr '\n' '\0' < "$list.fmt" | xargs -0 npx --no-install prettier --check || ok=0
+  fi
+  rm -f "$list" "$list.eslint" "$list.fmt"
+  [ "$ok" = "1" ]
+}
+
+if run_lint_staged; then
+  exit 0
+fi
+
+# 不是「备份失败」→ 正常的 lint / 格式失败，原样挡住
+if ! stash_backup_failed; then
+  exit 1
+fi
+
+echo ""
+echo '⚠ pre-commit：lint-staged 无法备份暂存状态（Failed to back up original state!）'
+echo '  原因：并发的 git 写操作（另一个 agent / 编辑器 / 并行的 git add·stash·reset…）'
+echo '  恰好占用了 git index.lock，使 lint-staged 的 git stash create 报 "could not write index"。'
+echo '  这不是你的代码问题，也没有任何改动丢失（失败发生在它改动工作区之前）。'
+echo '  → 等待 1s 后自动重试一次…'
+
+sleep 1
+
+if run_lint_staged; then
+  echo '  ✔ 重试成功，继续提交。'
+  exit 0
+fi
+
+if ! stash_backup_failed; then
+  exit 1
+fi
+
+echo '  ✖ 重试仍然失败。'
+lock_path=$(git rev-parse --git-path index.lock 2>/dev/null) || lock_path=.git/index.lock
+if [ -f "$lock_path" ]; then
+  echo "  检测到 $lock_path 仍然存在：若确认没有其它 git 进程在跑，它可能是崩溃残留，"
+  echo '  删除后重试即可：rm -f .git/index.lock'
+fi
+echo '  → 降级为「直接对暂存文件跑只读检查」，以保住 pre-commit 的门禁价值：'
+
+if degraded_check; then
+  echo ""
+  echo '  ✔ 降级检查通过：暂存文件本身没有问题（本次只是没走 lint-staged 的自动修复），放行提交。'
+  echo '    想补跑完整流程：确认没有并发 git 操作后执行 npx lint-staged'
+  exit 0
+fi
+
+echo ""
+echo '  ✖ 降级检查未通过：暂存文件确实不符合 eslint/prettier 规则（与 index.lock 无关），提交被挡。'
+echo '    修复：npx prettier --write <文件> 或 npx eslint --fix <文件>，git add 后再提交。'
+echo '    确认要绕过本次门禁：git commit --no-verify'
+exit 1

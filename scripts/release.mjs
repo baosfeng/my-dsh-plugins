@@ -568,8 +568,10 @@ if (push && succeeded.length > 0) {
       }
     }
     execSync(`git push origin ${tag}`, { cwd: root, stdio: 'inherit' })
-    console.log(`✓ tag ${tag} pushed — GitHub Actions will build the release`)
-    console.log(`  watch: https://github.com/baosfeng/my-dsh-plugins/actions`)
+    // origin = GitHub（唯一远程）。tag 推上去后由 GitHub Actions 接手发版：
+    // .github/workflows/release.yml（校验 → npm pack → 建 Release；带 NPM_TOKEN 时发布 npm）。
+    console.log(`✓ tag ${tag} pushed → origin（GitHub）：GitHub Actions 接手发版`)
+    console.log('  watch: https://github.com/baosfeng/my-dsh-plugins/actions')
     // 6. 发版后校验（issue #36）：Release + npm 任一失败即终止（需 GH_TOKEN）。
     await verifyPostRelease(result.pkgName, name, version)
   }

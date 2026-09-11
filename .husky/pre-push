@@ -12,4 +12,66 @@
 # `git config user.name` 报错，导致 host-git / host-mutation 等测试全部失败。
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX 2>/dev/null || true
 
-node scripts/verify-local.mjs --fast
+# ── 整体硬超时（shell 兜底，保证 git push 绝不无限期挂住）──────────────────────
+# 历史上出现过「只改了 docs 的一次推送，git push 前台 5 分钟不返回被超时杀掉，
+# 而同一条命令加 --no-verify 只用 1.5s」——根因是校验链路里的子进程全都没有超时。
+# 现在有两层保护：
+#   1) verify-local.mjs 内部软超时（VERIFY_TIMEOUT，默认 300s）：会打印「卡在哪一步 +
+#      已跑多久 + 如何绕过」，并杀掉全部子进程组（含 npm → vitest/cucumber 孙进程）；
+#   2) 这里的 shell 硬兜底 = VERIFY_TIMEOUT + 15s 宽限：只在 node 进程本身僵死
+#      （连自己的定时器都不再跑）时才生效。
+# 不用 `timeout` 命令：macOS 默认没有 GNU timeout（需 brew coreutils 的 gtimeout），
+# 所以用轮询实现，零依赖。
+VERIFY_TIMEOUT_SEC="${VERIFY_TIMEOUT:-300}"
+if [ "${VERIFY_NO_TIMEOUT:-}" = "1" ]; then
+  HARD_LIMIT=0
+else
+  case "$VERIFY_TIMEOUT_SEC" in
+    0|off|none|OFF|NONE|Off|None) HARD_LIMIT=0 ;;            # 显式关闭
+    ''|*[!0-9]*) HARD_LIMIT=315 ;;                           # 非法值 → 按默认 300+15
+    *) HARD_LIMIT=$(( VERIFY_TIMEOUT_SEC + 15 )) ;;
+  esac
+fi
+
+# set -m 让 node 自成「进程组组长」，超时时一次 kill 整个进程组（node + npm + vitest/cucumber）；
+# 随即 set +m：进程组已经建立，但关掉 job control 可避免 bash 打印 "[1]+ Exit N" 噪音。
+# < /dev/null：git 传给 pre-push 的 stdin 是「待推送 refs」管道，绝不能被子进程消费。
+#
+# ⚠️ 本文件由 husky 的 .husky/_/h 以 `sh -e` 执行（shebang 被忽略，且 errexit 生效），
+# 因此下面所有「允许失败」的命令都必须显式 `|| true` 兜底，否则 set -e 会提前退出并
+# 把退出码改写成 1（实测过：超时分支因此丢掉 124）。
+set -m
+node scripts/verify-local.mjs --fast < /dev/null &
+child=$!
+set +m
+
+if [ "$HARD_LIMIT" -gt 0 ]; then
+  deadline=$(( SECONDS + HARD_LIMIT ))
+  while kill -0 "$child" 2>/dev/null; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "" >&2
+      echo "[pre-push] ⏱ 硬超时：本地校验已运行 ${HARD_LIMIT}s（= VERIFY_TIMEOUT ${VERIFY_TIMEOUT_SEC}s + 15s 宽限）仍未返回。" >&2
+      echo "[pre-push]   正在终止整个进程组（node + npm + vitest/cucumber）——不会留下后台孤儿进程。" >&2
+      echo "[pre-push]   注：verify-local 自己的软超时本该先触发并打印卡在哪一步；没触发说明该进程已僵死。" >&2
+      echo "[pre-push]   如何绕过：git push --no-verify（跳过本地校验；CI 仍会跑全部门禁）" >&2
+      echo "[pre-push]   或调大上限：VERIFY_TIMEOUT=900 git push" >&2
+      kill -TERM "-$child" 2>/dev/null || kill -TERM "$child" 2>/dev/null || true
+      waited=0
+      while kill -0 "$child" 2>/dev/null && [ "$waited" -lt 5 ]; do
+        sleep 1
+        waited=$(( waited + 1 ))
+      done
+      kill -KILL "-$child" 2>/dev/null || kill -KILL "$child" 2>/dev/null || true
+      wait "$child" 2>/dev/null || true
+      exit 124
+    fi
+    sleep 1
+  done
+fi
+
+# 透传 verify-local 的退出码（用 if 而不是裸 wait：if 条件豁免 errexit，语义不依赖 set -e）
+if wait "$child"; then
+  exit 0
+else
+  exit $?
+fi

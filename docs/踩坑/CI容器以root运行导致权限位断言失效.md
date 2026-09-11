@@ -2,14 +2,14 @@
 title: CI 容器以 root 运行导致权限位断言失效
 description: chmod 0555 注入写失败在 root/CAP_DAC_OVERRIDE 下无效，测试假失败；给出 ACL 等价复现手法与两种修法
 created: 2026-09-10
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # CI 容器以 root 运行导致权限位断言失效
 
 ## 现象
 
-云效 CI 容器以 **root** 运行（工作目录 `/root/workspace/...`，具备 `CAP_DAC_OVERRIDE`），`plugins/dsh-my-observability` 的"只读目录写失败降级"用例失败，同一份测试在 GitHub Actions（非 root runner 用户）下通过：
+CI 容器以 **root** 运行（工作目录 `/root/workspace/...`，具备 `CAP_DAC_OVERRIDE`）时，`plugins/dsh-my-observability` 的"只读目录写失败降级"用例失败，同一份测试在非 root runner 上通过：
 
 ```
 FAIL test/host-store-persist.mjs > persist io 错误降级：只读目录不致崩溃且告警
@@ -19,7 +19,7 @@ AssertionError: snapshot/append failures logged (got 0)
 
 **根因不是实现 bug**：用例用 `chmodSync(dir, 0o555)` 把目录设为只读，期望写入抛 EACCES 触发降级告警；但 root 无视文件 mode 位（`CAP_DAC_OVERRIDE`），写入照样成功 → 两个函数都不进 catch → 捕获到的 warn 数为 0 → 断言失败。这是**测试对执行环境（运行用户特权等级）的脆弱假设**。
 
-同一模式在 `plugins/dsh-shared/test/jsonl.mjs`（`chmodSync(dir, 0o555)` + `warns.length >= 2`）也存在，云效若遍历全部插件会同样变红（已一并修复）。
+同一模式在 `plugins/dsh-shared/test/jsonl.mjs`（`chmodSync(dir, 0o555)` + `warns.length >= 2`）也存在，遍历全部插件时同样会变红（已一并修复）。
 
 ## 本机等价复现（macOS，无需 docker / sudo）
 
@@ -46,12 +46,13 @@ chmod -N "$base"; rm -rf "$base"                            # 用完清 ACL 再�
 
 ```
 × persist io 错误降级：只读目录不致崩溃且告警
-AssertionError: snapshot/append failures logged (got 0)    ← 与云效报错逐字一致
+AssertionError: snapshot/append failures logged (got 0)    ← 与 CI 报错逐字一致
 Tests  1 failed | 7 passed (8)
 ```
 
-Linux 上（云效/CI 同类环境）没有这个 ACL 语义，直接用容器复现更省事：
-`docker run --rm -u root -v "$PWD":/w -w /w node:22 bash -lc 'cd plugins/dsh-my-observability && npm test'`。
+Linux 上（容器化 CI 同类环境）没有这个 ACL 语义，直接用容器复现更省事：
+`docker run --rm -u root -v "$PWD":/w -w /w node:latest bash -lc 'cd plugins/dsh-my-observability && npm test'`
+（用任一已发布的官方 `node` 主版本标签均可；此处刻意不写死版本号，避免将来 tag 失效使复现步骤失效）。
 
 ## 修法（两种，本项目两种都用）
 
@@ -110,6 +111,37 @@ function permBitsEnforced(dir) {
 - `plugins/dsh-my-guard` 等处的 `.mode` 断言是业务字段（guard 模式），非文件权限。
 
 留清单（低风险，未改，超出本次授权边界）：`plugins/dsh-my-skill-manager/test/diagnose.mjs:127` 用 `process.env.HOME ?? ''` 构造期望，而 `lib/diagnose.js` 在无 `DSH_HOME` 时用 `os.homedir()`；两者仅在 **`HOME` 未设置**时不一致（Node 的 `homedir()` 会回退 getpwuid），常规 CI/本地都会设置 `HOME`，故未触发。
+
+## 2026-09-11 补记（运行 #11 漏网：假定的"不可写路径"）
+
+上一轮扫描只覆盖了 `chmodSync(..., 0o555)` / `process.getuid()` 形态，漏了**同一原则的另一种伪装：假定的"不可写路径"**。
+
+`plugins/dsh-shared/test/shared.mjs` 的 `atomicWriteJson` 失败路径原先这样注入失败：
+
+```js
+await atomicWriteJson('/nonexistent-dir-xyz/state.json', { a: 1 }, logger, '[test]')
+```
+
+它假定「`/` 根目录不可写」。CI 容器以 root 运行时，`atomicWriteJson` 内部的 `mkdir(dirname, { recursive: true })` 会**真的建出** `/nonexistent-dir-xyz` 并写入成功 → `warnings` 为空 → tests job 里唯一红项：
+
+```
+FAIL  test/shared.mjs > atomicWriteJson writes tmp+rename and warns on failure
+AssertionError: failure warned
+0 !== 1
+  ❯ test/shared.mjs:158:10
+```
+
+除断言恒失败外它还有副作用：在容器根目录留下一个 `/nonexistent-dir-xyz`。
+
+已按修法 A 改为 ENOTDIR **确定性注入**（父层级是普通文件 → `mkdir` 必失败），与运行用户无关，且只在 `mkdtempSync` 出来的临时目录内操作：
+
+```js
+const blocker = join(dir, 'not-a-dir')
+writeFileSync(blocker, 'x')
+await atomicWriteJson(join(blocker, 'sub', 'state.json'), { a: 1 }, logger, '[test]')
+```
+
+**原则补充**：排查清单里的"假定的不可写路径"要单独当一类扫——它不是 `chmod`，`grep chmod` 找不到；判据是**测试是否假定某路径写不进去**（`/`、`/root`、`/proc`、`/sys`、只读挂载点等），一律换成类型不符（EISDIR/ENOTDIR）或探测式 skip。
 
 ## 相关
 

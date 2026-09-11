@@ -21,7 +21,6 @@ import {
   createTempHome,
   bashExec,
   dispatchEvent,
-  settle,
   mockRequest,
   mockResponse,
   invoke,
@@ -284,8 +283,7 @@ test('POST /rules persists custom + notify config to profile patch and updates m
   assert.ok(text.includes(`notifyEnabled: true`), 'patch has notifyEnabled')
   assert.ok(text.includes(`customRules: `), 'patch has customRules')
 
-  // 更新内存：status 反映新配置
-  await settle(60)
+  // 更新内存：status 反映新配置（saveConfig 已在上面 await 完成，无需额外等待）
   const statusRes = mockResponse()
   await invoke(api, mockRequest({ url: '/guard/api/status' }), statusRes)
   const status = jsonOf(statusRes).value
@@ -308,8 +306,8 @@ test('config customRules passed as JSON string is parsed at startup', async () =
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
+/** 查询告警（路由内部等 store 就绪，测试侧不需要固定 sleep）。 */
 async function fetchAlerts(api) {
-  await settle(60)
   const res = mockResponse()
   await invoke(api, mockRequest({ url: '/guard/api/alerts' }), res)
   return jsonOf(res).value

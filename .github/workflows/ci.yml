@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 26
           cache: npm # 缓存 npm 缓存目录（key 基于 package-lock.json hash），加速 npm ci
 
       - name: Install root toolchain (eslint, dependency-cruiser)
@@ -65,7 +65,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
 
       - name: Install root toolchain (eslint, dependency-cruiser)
@@ -96,7 +96,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
 
       - name: Install root toolchain (eslint, dependency-cruiser)
@@ -114,7 +114,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
 
       - name: Install root toolchain (eslint, dependency-cruiser)
@@ -132,7 +132,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
 
       - name: Install root toolchain (eslint, dependency-cruiser)
@@ -197,3 +197,12 @@ jobs:
       # docs/ 索引与模块文档 / 安装章节 npm 方式——防"插件没部署/文档没更新"复发）
       - name: Docs consistency check
         run: node scripts/check-docs.mjs
+
+      # 文档引用完整性（一次全仓审计发现 37 处失效引用——markdown 相对链接层级写错、
+      # 锚点与标题不匹配、指向早已删除的文件，其中一个不存在的 skill 被 13 个文件引用——
+      # 根因就是没有自动校验：check-docs 只看"插件↔文档"一致性，不看链接与锚点。
+      # 本步骤校验：markdown 链接与图片、#anchor 锚点（GitHub slug 规则）、反引号路径 token、
+      # node/bash 调用、npm scripts（就近 package.json 语义）、skill 与插件名。
+      # 误报豁免规则见 scripts/check-links.mjs 头注释，回归测试 scripts/test/check-links.test.mjs）
+      - name: Links integrity check
+        run: npm run check:links

@@ -13,6 +13,7 @@ import {
   bashExec,
   dispatchEvent,
   settle,
+  waitFor,
   mockRequest,
   mockResponse,
   invoke,
@@ -239,10 +240,14 @@ test('plugin add command triggers async poison scan and records alerts', async (
   await dispatchEvent(listeners, 'tools/pre-execute', bashExec('s-1', `dsh plugin add link:${pkgDir}`), async () => ({
     kind: 'allow',
   }))
-  await settle(300)
-  const alerts = await fetchAlerts(api)
-  const poison = alerts.filter((a) => a.type === 'poison')
-  assert.ok(poison.length >= 2, `expected poison alerts, got ${poison.length}`)
+  // 投毒扫描是异步的：条件轮询等它落库，而不是猜"300ms 应该够了"
+  const poison = await waitFor(
+    async () => {
+      const found = (await fetchAlerts(api)).filter((a) => a.type === 'poison')
+      return found.length >= 2 ? found : undefined
+    },
+    { message: '等待投毒扫描告警落库' },
+  )
   assert.ok(
     poison.some((a) => a.message.includes('下载并执行脚本')),
     'suspicious script alert',
@@ -261,6 +266,8 @@ test('plugin add scan is skipped when poisonScan is disabled', async () => {
   await dispatchEvent(listeners, 'tools/pre-execute', bashExec('s-1', `dsh plugin add link:${pkgDir}`), async () => ({
     kind: 'allow',
   }))
+  // 负向断言（"不应产生告警"）没有可等待的正向信号，必须留一个观察窗口：
+  // 这里等的是"异步扫描本该已经跑完"的真实时间窗口，且窗口内不查库（避免掩盖）
   await settle(300)
   const alerts = await fetchAlerts(api)
   assert.equal(alerts.filter((a) => a.type === 'poison').length, 0)
@@ -269,8 +276,8 @@ test('plugin add scan is skipped when poisonScan is disabled', async () => {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
+/** 查询告警（路由内部等 store 就绪，测试侧不需要固定 sleep）。 */
 async function fetchAlerts(api) {
-  await settle(60)
   const res = mockResponse()
   await invoke(api, mockRequest({ url: '/guard/api/alerts' }), res)
   return jsonOf(res).value

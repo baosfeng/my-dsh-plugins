@@ -118,12 +118,12 @@ of the migration feels complete.
 plugin touches appears in `peerDependencies` on the cohort floor — including
 modules used only for types.
 
-Run `node scripts/inject-lint.mjs <fixture-dir>` (shipped with this skill) for
-a residue and peer check: dead `dsh-client-runtime` references in source,
-JSON/YAML manifests and text lockfiles, cordis not at `^4.0.1`, and missing
-peers for declared client inject modules or recognized imports (including
-type-only imports). It does not derive inject from imports. Raw WebServer
-registrations are reported for manual auth review, not as mandatory rewrites.
+Run the residue and peer check by hand (the upstream `scripts/inject-lint.mjs`
+helper is not shipped in this trimmed copy): dead `dsh-client-runtime`
+references in source, JSON/YAML manifests and text lockfiles, cordis not at
+`^4.0.1`, and missing peers for declared client inject modules or recognized
+imports (including type-only imports). Do not derive inject from imports. Raw
+WebServer registrations call for manual auth review, not mandatory rewrites.
 
 In-source compatibility notes are not facts. A comment or memo claiming a
 legacy engine package is "deprecated but present" does not make it importable

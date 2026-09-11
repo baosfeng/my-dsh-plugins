@@ -32,6 +32,8 @@
  *   knip         → npx knip（死代码）
  *   jscpd        → npx jscpd（重复代码）
  *   docs         → node scripts/check-docs.mjs（文档一致性，纯本地文件检查）
+ *   links        → node scripts/check-links.mjs（文档引用完整性：链接/锚点/路径 token/
+ *                  shell 调用/npm script/skill 与插件名，纯本地文件检查）
  *   resource-smoke→ node scripts/resource-smoke.mjs（issue #127 资源回归门禁）
  *
  * 用法：
@@ -43,12 +45,40 @@
  *   node scripts/verify-local.mjs --mutation         # 额外执行 stryker 变异测试
  *   node scripts/verify-local.mjs --only <id>        # 只跑单项（可重复，如 --only knip）
  *   node scripts/verify-local.mjs --plugin <name>    # 只跑该插件的 test/--check（可重复）
+ *   node scripts/verify-local.mjs --timeout <sec>    # 覆盖整体超时上限（秒；0 = 关闭）
  *   node scripts/verify-local.mjs --list             # 列出全部检查项 id
  *   node scripts/verify-local.mjs --help
  *
- * 环境变量：VERIFY_CONCURRENCY=1..8 覆盖插件测试并发度（默认 3；怀疑并发冲突时设 1）。
+ * 环境变量：
+ *   VERIFY_CONCURRENCY=1..8   覆盖插件测试并发度（默认 3；怀疑并发冲突时设 1）
+ *   VERIFY_TIMEOUT=<sec>      整体墙钟上限（默认 300；0/off/none = 关闭）
+ *   VERIFY_STEP_TIMEOUT=<sec> 单个子进程上限（默认 min(整体上限, 120)；0 = 关闭）
+ *   VERIFY_NO_TIMEOUT=1       等价于 VERIFY_TIMEOUT=0
+ *   VERIFY_NO_RETRY=1         关闭「疑似并发冲突 → 串行自动复测」（见下）
  *
- * 退出码：0 = 全部通过（跳过项不计失败）；1 = 任一检查失败、或参数/基准不可解析。
+ * 退出码：0 = 全部通过（跳过项不计失败）；1 = 任一检查失败、或参数/基准不可解析；
+ *         124 = 整体超时（子进程组已被强制终止）。
+ *
+ * 超时与快速失败（必读，pre-push 健壮性）：
+ *   本脚本是 pre-push 钩子的执行体，**绝不能静默挂死**。历史上出现过「只改了 docs
+ *   的一次推送，git push 前台 5 分钟未返回被超时杀掉」，根因就是整条链路上每个子进程都没有
+ *   超时、整个脚本也没有墙钟上限——任何一步被拖慢/阻塞（并发争用、网络、文件锁）都会让
+ *   git push 无限期等待且不打印任何东西。因此现在：
+ *     · 每个子进程都有显式超时（runCapture 的 timeoutMs）；超时杀「进程组」而非单进程，
+ *       连 npm → vitest/cucumber 等孙进程一起清掉，不留孤儿；
+ *     · 整条链路有整体墙钟上限（TOTAL_TIMEOUT_MS），超时打印「卡在哪一步 + 已跑多久 +
+ *       如何绕过」后以退出码 124 结束；
+ *     · 所有子进程禁用交互式提示（GIT_TERMINAL_PROMPT=0 等），绝不等待输入；
+ *     · 本脚本自己的 npx 调用一律带 --no-install：零联网、零临时安装，本地缺工具就立即
+ *       失败，而不是去 registry 拉包（那正是历史上长时间挂起的现实来源之一）。
+ *
+ * 疑似并发冲突 → 串行自动复测：
+ *   多个进程同时跑同一插件的 vitest 会争用其 coverage/ 临时目录，表现为
+ *   coverage/EACCES/ENOENT/EPERM 或 5s 联网用例超时（见 docs/踩坑/多agent并行测试资源冲突.md）。
+ *   插件测试失败且报错命中这些特征时，会自动以串行（并发 1）复测**失败的那些插件**：
+ *   复测通过 → 判通过并打印「疑似并发冲突，已串行复测通过」；复测仍失败 → 判红。
+ *   只复测一次、只复测失败项，不掩盖真实回归；VERIFY_NO_RETRY=1 可关闭该降级。
+ *
  * 详见 docs/开发指南/构建与测试.md「本地一键校验（verify-local）」。
  */
 import { spawn, spawnSync } from 'node:child_process'
@@ -74,6 +104,7 @@ const options = {
   fast: false,
   full: false,
   base: null,
+  timeout: null,
   list: false,
   help: false,
 }
@@ -90,6 +121,7 @@ for (let i = 0; i < args.length; i += 1) {
   if (flag === '--only') options.only.push(value())
   else if (flag === '--plugin') options.plugins.push(value())
   else if (flag === '--base') options.base = value()
+  else if (flag === '--timeout') options.timeout = value()
   else if (flag === '--audit') options.audit = true
   else if (flag === '--mutation') options.mutation = true
   else if (flag === '--fast' || flag === '--changed-only') options.fast = true
@@ -122,26 +154,164 @@ const dim = (t) => paint('2', t)
 const log = (msg = '') => console.log(`[verify] ${msg}`)
 const secs = (ms) => `${(ms / 1000).toFixed(1)}s`
 
-// ── 子进程 ──────────────────────────────────────────────────────────────────
-/** 运行命令并缓冲输出；返回 { ok, code, out, error }。缓冲避免并发日志互相穿插。 */
-function runCapture(cmd, cmdArgs, cwd) {
+// ── 超时配置（pre-push 绝不能静默挂死）──────────────────────────────────────
+/**
+ * 解析「秒」配置：未设置 → null（回落默认值）；0/off/none → 0（显式关闭）。
+ * 0 与 null 语义不同：0 = 用户明确要求关闭，null = 没配。
+ */
+function parseSeconds(raw) {
+  if (raw === undefined || raw === null) return null
+  const text = String(raw).trim().toLowerCase()
+  if (text === '') return null
+  if (['0', 'off', 'none', 'false', 'no', 'disable', 'disabled'].includes(text)) return 0
+  const n = Number(text)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return Math.round(n)
+}
+
+const DEFAULT_TOTAL_TIMEOUT_SEC = 300
+const DEFAULT_STEP_TIMEOUT_SEC = 120
+
+const totalTimeoutSec = (() => {
+  if (String(process.env.VERIFY_NO_TIMEOUT ?? '') === '1') return 0
+  if (options.timeout !== null) {
+    const parsed = parseSeconds(options.timeout)
+    if (parsed === null) {
+      console.error(`[verify] --timeout 参数非法: ${options.timeout}（需要正秒数，或 0 表示关闭）`)
+      process.exit(1)
+    }
+    return parsed
+  }
+  const fromEnv = parseSeconds(process.env.VERIFY_TIMEOUT)
+  return fromEnv === null ? DEFAULT_TOTAL_TIMEOUT_SEC : fromEnv
+})()
+const stepTimeoutSec = (() => {
+  const fromEnv = parseSeconds(process.env.VERIFY_STEP_TIMEOUT)
+  if (fromEnv !== null) return fromEnv
+  if (totalTimeoutSec === 0) return DEFAULT_STEP_TIMEOUT_SEC
+  return Math.min(totalTimeoutSec, DEFAULT_STEP_TIMEOUT_SEC)
+})()
+const TOTAL_TIMEOUT_MS = totalTimeoutSec * 1000
+const STEP_TIMEOUT_MS = stepTimeoutSec * 1000
+/** git 只读查询的超时（正常 <1s；卡住说明 git / 文件系统异常）。 */
+const GIT_TIMEOUT_MS = 30_000
+const globalStartedAt = Date.now()
+
+/**
+ * 注入给所有子进程的环境变量——防「等待输入」与「无谓联网」这两类静默挂起：
+ *   GIT_TERMINAL_PROMPT=0            git 需要账号密码时立即失败，绝不等待终端输入
+ *   GIT_OPTIONAL_LOCKS=0             git 不加「可选锁」（如 status 刷新 index 的锁），
+ *                                    避免与 git push 自身 / 编辑器插件争 index.lock 而互相等待
+ *   npm_config_update_notifier=false npm 不去 registry 查「是否有新版本」（常见静默联网等待）
+ *   npm_config_fund / npm_config_audit=false  关掉 npm 附带的额外网络请求
+ *   npm_config_progress=false        关掉进度条（管道场景无意义，还污染日志）
+ *
+ * ⚠️ 刻意**不**设置 npm_config_yes=true：直觉上它能让 npx「免交互自动确认」，但本机实测
+ * `npm_config_yes=true npx tsc --version` 会挂起 45s+。本地工具的联网风险统一改用显式
+ * `--no-install`（见 NPX_BASE_ARGS）解决。
+ */
+const CHILD_ENV = {
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_OPTIONAL_LOCKS: '0',
+  npm_config_update_notifier: 'false',
+  npm_config_fund: 'false',
+  npm_config_audit: 'false',
+  npm_config_progress: 'false',
+}
+
+/** 本脚本自己调 npx 时统一加的参数：只用本地已装工具，绝不联网 / 临时安装。 */
+const NPX_BASE_ARGS = ['--no-install']
+
+const childEnv = () => ({ ...process.env, ...CHILD_ENV })
+
+// ── 子进程（带超时 + 进程组清理）────────────────────────────────────────────
+/** 活跃子进程登记表：pid → { label, cmd, cwd, startedAt }；超时报告与清理都靠它。 */
+const ACTIVE_CHILDREN = new Map()
+
+/**
+ * 终止子进程及其全部后代。
+ * spawn 时用 detached=true 让子进程自成进程组，于是 `kill(-pid)` 能一次带走
+ * npm → npx → vitest/cucumber 整棵树——只杀直接子进程会留下孤儿继续占 CPU 与 coverage 目录。
+ */
+function killChildTree(pid, signal = 'SIGKILL') {
+  if (!Number.isInteger(pid) || pid <= 0) return
+  try {
+    process.kill(-pid, signal)
+  } catch {
+    try {
+      process.kill(pid, signal)
+    } catch {
+      /* 已经退出了 */
+    }
+  }
+}
+
+/** 终止全部在跑的子进程（整体超时、收到 SIGTERM/SIGINT 时调用）。 */
+function killAllChildren(signal = 'SIGKILL') {
+  for (const pid of [...ACTIVE_CHILDREN.keys()]) killChildTree(pid, signal)
+  ACTIVE_CHILDREN.clear()
+}
+
+/**
+ * 运行命令并缓冲输出；返回 { ok, code, out, error, timedOut, timeoutMs, cmd, ms }。
+ * 缓冲避免并发日志互相穿插；超时整组终止（见 killChildTree）。
+ */
+function runCapture(cmd, cmdArgs, cwd, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? STEP_TIMEOUT_MS
+  const cmdline = [cmd, ...cmdArgs].join(' ')
+  const label = opts.label ?? cmdline
   return new Promise((resolveRun) => {
+    const startedAt = Date.now()
     let child
     try {
-      child = spawn(cmd, cmdArgs, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn(cmd, cmdArgs, {
+        cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true, // 自成进程组 → 超时可整组终止
+        env: childEnv(),
+      })
     } catch (error) {
-      resolveRun({ ok: false, code: -1, out: '', error: String(error?.message ?? error) })
+      resolveRun({ ok: false, code: -1, out: '', error: String(error?.message ?? error), cmd: cmdline, ms: 0 })
       return
     }
     let out = ''
+    let settled = false
+    let timer = null
+    if (Number.isInteger(child.pid)) ACTIVE_CHILDREN.set(child.pid, { label, cmd: cmdline, cwd, startedAt })
+
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      if (timer !== null) clearTimeout(timer)
+      if (Number.isInteger(child.pid)) ACTIVE_CHILDREN.delete(child.pid)
+      resolveRun({ cmd: cmdline, ms: Date.now() - startedAt, ...result })
+    }
+
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        killChildTree(child.pid, 'SIGKILL')
+        finish({
+          ok: false,
+          code: 124,
+          timedOut: true,
+          timeoutMs,
+          out,
+          error:
+            `命令超过单步上限 ${secs(timeoutMs)} 仍未返回，已强制终止其进程组（含孙进程）。\n` +
+            `  命令：${cmdline}（cwd: ${cwd}）\n` +
+            `  放宽单步上限：VERIFY_STEP_TIMEOUT=<秒>；完全关闭超时：VERIFY_NO_TIMEOUT=1`,
+        })
+      }, timeoutMs)
+    }
+
     child.stdout.on('data', (chunk) => {
       out += chunk
     })
     child.stderr.on('data', (chunk) => {
       out += chunk
     })
-    child.on('error', (error) => resolveRun({ ok: false, code: -1, out, error: String(error?.message ?? error) }))
-    child.on('close', (code) => resolveRun({ ok: code === 0, code, out }))
+    child.on('error', (error) => finish({ ok: false, code: -1, out, error: String(error?.message ?? error) }))
+    child.on('close', (code) => finish({ ok: code === 0, code, out }))
   })
 }
 
@@ -172,9 +342,18 @@ async function runPool(tasks, limit, onDone) {
 /**
  * 同步执行 git（只用于范围分析的一次性轻量查询；数组传参，无 shell 注入风险）。
  * 范围分析必须在构建任务列表之前完成，故用 spawnSync。
+ * 同样带超时（spawnSync 的 timeout 会杀子进程）：git 查询卡住时宁可「无法确定基准 →
+ * 安全退化全量」，也不让 pre-push 挂在这里。
  */
 function spawnSyncGIT(gitArgs) {
-  const r = spawnSync('git', gitArgs, { cwd: root, encoding: 'utf8' })
+  const r = spawnSync('git', gitArgs, {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: GIT_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
+    env: childEnv(),
+  })
   if (r.error || r.status !== 0) return { ok: false, out: r.stdout ?? '' }
   return { ok: true, out: r.stdout ?? '' }
 }
@@ -244,6 +423,18 @@ const ROOT_TOOLCHAIN_FILES = new Set([
 const DOC_DIRS = ['docs/', 'skills/']
 const DOC_EXT = ['.md', '.mdx', '.txt']
 const isDocFile = (p) => DOC_DIRS.some((d) => p.startsWith(d)) || DOC_EXT.some((e) => p.endsWith(e)) || p === 'LICENSE'
+
+/**
+ * CI 流水线定义目录（GitHub .github/）。
+ * 与文档同级：改了它不会改变任何插件的运行时行为（插件测试结果与流水线 YAML 无关），
+ * 因此**不应**触发「仓库根文件变更 → 安全退化全量」。
+ *
+ * 背景（真实事故）：一次「只改了 docs/**、CI 流水线 YAML、AGENTS.md」的推送，因流水线 YAML
+ * 落在「其它根文件」分类里被判为无法裁剪 → 退化全量，把本该秒级的 pre-push 变成跑完全部
+ * 插件测试（19 个 vitest+cucumber），叠加机器负载后表现为长时间不返回。
+ */
+const CI_CONFIG_DIRS = ['.github/']
+const isRuntimeIrrelevant = (p) => isDocFile(p) || CI_CONFIG_DIRS.some((d) => p.startsWith(d))
 
 /** 插件包名映射：目录名 → package.json name（本仓库两者一致，仍按实际值匹配以免未来漂移）。 */
 const PLUGIN_NAMES = new Map()
@@ -359,15 +550,15 @@ function computeImpactScope(files) {
       rootToolchain.push(file)
       continue
     }
-    if (isDocFile(file)) {
-      // 文档/skill 只影响 docs/format 检查，不可能改变插件运行时行为
+    if (isRuntimeIrrelevant(file)) {
+      // 文档/skill/CI 流水线定义只影响 docs/format 检查，不可能改变插件运行时行为
       docOnly += 1
       continue
     }
     otherRoot.push(file)
   }
 
-  if (docOnly > 0) reasons.push(`其中文档/skill 文件 ${docOnly} 个：不影响插件测试范围`)
+  if (docOnly > 0) reasons.push(`其中文档/skill/CI 配置 ${docOnly} 个：不影响插件测试范围`)
   if (rootToolchain.length > 0) {
     reasons.push(
       `根工具链文件变更（${rootToolchain.slice(0, 3).join('、')}${rootToolchain.length > 3 ? '…' : ''}）→ 无法安全裁剪，全量`,
@@ -379,7 +570,7 @@ function computeImpactScope(files) {
     return { plugins: new Set(ALL_PLUGINS), escalated: true, reasons, docsOnly: false }
   }
   const docsOnly = files.length > 0 && docOnly === files.length
-  if (docsOnly) reasons.push('本次变更为纯文档/skill → 跳过一切与插件源码相关的检查')
+  if (docsOnly) reasons.push('本次变更为纯文档/skill/CI 配置 → 跳过一切与插件源码相关的检查')
   return { plugins: affected, escalated: false, reasons, docsOnly }
 }
 
@@ -404,7 +595,7 @@ const CHECK_DEFS = [
     label: 'mutation (npx stryker run @ dsh-file-activity)',
     note: 'CI 强制；本地约 20s，默认跳过，--mutation 或 --only mutation 开启',
     optional: true,
-    run: () => runCapture('npx', ['stryker', 'run'], join(root, 'plugins', 'dsh-file-activity')),
+    run: () => runCapture('npx', [...NPX_BASE_ARGS, 'stryker', 'run'], join(root, 'plugins', 'dsh-file-activity')),
   },
   {
     id: 'test',
@@ -415,13 +606,13 @@ const CHECK_DEFS = [
   {
     id: 'typecheck',
     label: 'typecheck (npx tsc --noEmit)',
-    run: () => runCapture('npx', ['tsc', '--noEmit'], root),
+    run: () => runCapture('npx', [...NPX_BASE_ARGS, 'tsc', '--noEmit'], root),
     skip: (ctx) => (ctx.docsOnly ? '纯文档变更：tsc 输入仅含 .ts/.tsx，不可能受影响' : null),
   },
   {
     id: 'lint',
     label: 'lint (npx eslint plugins/)',
-    run: () => runCapture('npx', ['eslint', 'plugins/'], root),
+    run: () => runCapture('npx', [...NPX_BASE_ARGS, 'eslint', 'plugins/'], root),
     skip: (ctx) => (ctx.docsOnly ? '纯文档变更：eslint 只检查 plugins/ 下源码' : null),
   },
   {
@@ -440,9 +631,13 @@ const CHECK_DEFS = [
     id: 'format',
     label: 'format (npx prettier --check .)',
     run: (ctx) => {
-      const paths = ctx.fast && !ctx.escalated && ctx.changedFiles !== null ? ctx.changedFiles : ['.']
-      ctx.report?.(paths[0] === '.' ? '范围：全仓库' : `范围：本次变更 ${paths.length} 个文件`)
-      return runCapture('npx', ['prettier', '--check', ...paths], root)
+      // 仅在「确实拿到了变更文件」时才裁剪范围。changedFiles 为空数组（例如 --base 指向 HEAD、
+      // 没有待推送提交）时必须回退全仓库：否则会变成 `prettier --check` 无文件参数 → prettier
+      // 转去读 stdin，行为随版本而变（本机恰好返回 0，但那是隐式的、不可依赖的）。
+      const scoped = ctx.fast && !ctx.escalated && ctx.changedFiles !== null && ctx.changedFiles.length > 0
+      const paths = scoped ? ctx.changedFiles : ['.']
+      ctx.report?.(scoped ? `范围：本次变更 ${paths.length} 个文件` : '范围：全仓库（没有可裁剪的变更文件，安全回退）')
+      return runCapture('npx', [...NPX_BASE_ARGS, 'prettier', '--check', ...paths], root)
     },
   },
   {
@@ -454,7 +649,7 @@ const CHECK_DEFS = [
   {
     id: 'depcruise',
     label: 'dependency analysis (npx depcruise plugins/)',
-    run: () => runCapture('npx', ['depcruise', 'plugins/'], root),
+    run: () => runCapture('npx', [...NPX_BASE_ARGS, 'depcruise', 'plugins/'], root),
     skip: (ctx) => (ctx.docsOnly ? '纯文档变更：依赖图只由 plugins/ 源码决定' : null),
     // 必须等插件测试跑完：测试会创建/清理各插件 coverage/ 目录，depcruise 扫到半截会 ENOENT
     after: 'test',
@@ -462,19 +657,25 @@ const CHECK_DEFS = [
   {
     id: 'knip',
     label: 'dead code (npx knip)',
-    run: () => runCapture('npx', ['knip'], root),
+    run: () => runCapture('npx', [...NPX_BASE_ARGS, 'knip'], root),
     skip: (ctx) => (ctx.docsOnly ? '纯文档变更：死代码分析只覆盖 JS/TS/MJS 源文件' : null),
   },
   {
     id: 'jscpd',
     label: 'duplicate code (npx jscpd)',
-    run: () => runCapture('npx', ['jscpd'], root),
+    run: () => runCapture('npx', [...NPX_BASE_ARGS, 'jscpd'], root),
     skip: (ctx) => (ctx.docsOnly ? '纯文档变更：重复代码检测只覆盖 js/ts 格式' : null),
   },
   {
     id: 'docs',
     label: 'docs consistency (node scripts/check-docs.mjs)',
     run: () => runCapture('node', ['scripts/check-docs.mjs'], root),
+  },
+  {
+    id: 'links',
+    label: 'links integrity (node scripts/check-links.mjs)',
+    note: '文档引用完整性：markdown 链接与锚点 / 路径 token / shell 调用 / npm script / skill 与插件名（<1s，纯本地文件检查，任何变更都跑）',
+    run: () => runCapture('node', ['scripts/check-links.mjs'], root),
   },
   {
     id: 'resource-smoke',
@@ -521,17 +722,49 @@ if (options.help) {
 }
 
 // ── 插件测试 ────────────────────────────────────────────────────────────────
-/** 单插件：node --check（lib/index.js / lib/client.js）+ npm test。 */
+/** 单插件：node --check（lib/index.js / lib/client.js）+ npm test（带单步超时）。 */
 async function runOnePlugin(name) {
   const dir = join(root, 'plugins', name)
   for (const f of ['lib/index.js', 'lib/client.js']) {
     if (existsSync(join(dir, f))) {
-      const r = await runCapture('node', ['--check', `plugins/${name}/${f}`], root)
-      if (!r.ok) return { name, ok: false, out: r.out, stage: `node --check ${f}` }
+      const r = await runCapture('node', ['--check', `plugins/${name}/${f}`], root, {
+        label: `test ${name}（node --check ${f}）`,
+      })
+      if (!r.ok) {
+        return {
+          name,
+          ok: false,
+          out: r.out,
+          error: r.error,
+          stage: `node --check ${f}`,
+          timedOut: r.timedOut,
+          timeoutMs: r.timeoutMs,
+        }
+      }
     }
   }
-  const r = await runCapture('npm', ['test'], dir)
-  return { name, ok: r.ok, out: r.out, stage: 'npm test' }
+  const r = await runCapture('npm', ['test'], dir, { label: `test ${name}（npm test @ plugins/${name}）` })
+  return { name, ok: r.ok, out: r.out, error: r.error, stage: 'npm test', timedOut: r.timedOut, timeoutMs: r.timeoutMs }
+}
+
+/**
+ * 疑似「多进程并发跑同一插件测试」的报错特征。
+ * 依据 docs/踩坑/多agent并行测试资源冲突.md：并发跑同一插件时两个 vitest 会争用该插件的
+ * coverage/ 与临时目录，表现为 coverage 写入异常 / EACCES / ENOENT / EPERM，或带
+ * testTimeout 的联网用例超时（dsh-my-guard 曾出现 5013ms 误报）。
+ * 刻意保持保守：只有命中这些特征才触发「串行复测」，不做无条件重试，以免掩盖真实回归。
+ */
+const CONCURRENCY_CONFLICT_RE =
+  /coverage|EACCES|ENOENT|EPERM|ETXTBSY|EBUSY|ENOTEMPTY|EEXIST|resource busy|already in use|testTimeout|Timed out in \d+\s*ms|timed out after/i
+
+/** 该失败是否「疑似并发冲突」。单步超时也算：被争用/负载拖慢的典型表现就是超时。 */
+const looksLikeConcurrencyConflict = (r) =>
+  Boolean(r.timedOut) || CONCURRENCY_CONFLICT_RE.test(`${r.out ?? ''}\n${r.error ?? ''}`)
+
+/** 「疑似并发冲突 → 串行复测」是否启用（首轮本就串行时无需复测）。 */
+function serialRetryEnabled() {
+  if (String(process.env.VERIFY_NO_RETRY ?? '') === '1') return false
+  return pluginConcurrency() > 1
 }
 
 /**
@@ -558,7 +791,10 @@ function runPluginTests(ctx) {
   let done = 0
   const onDone = (r) => {
     done += 1
-    log(`  ${r.ok ? green('✓') : red('✗')} ${r.name} ${dim(secs(r.ms))} ${dim(`(${done}/${targets.length})`)}`)
+    const timeoutNote = r.timedOut ? red(` ⏱ 单步超时 ${secs(r.timeoutMs)}，已终止`) : ''
+    log(
+      `  ${r.ok ? green('✓') : red('✗')} ${r.name} ${dim(secs(r.ms))} ${dim(`(${done}/${targets.length})`)}${timeoutNote}`,
+    )
     if (!r.ok) log(dim(indent(tail(r.out, 40))))
   }
   return (async () => {
@@ -568,14 +804,61 @@ function runPluginTests(ctx) {
       results.push(result)
       onDone(result)
     }
+
+    // ── 疑似并发冲突 → 串行复测一次 ──────────────────────────────────────────
+    // 目的：多 agent / 多进程同时跑测试时，coverage 目录争用会让 npm test 偶发退出 1
+    // （实测：pre-push 报「10 通过 / 1 失败」挡住 push，几十秒后原样重跑同一项却全绿）。
+    // 只复测「失败且特征吻合」的插件、只复测一次，且串行独占执行以排除相互争用；
+    // 复测仍失败即判红——真实回归不会被掩盖，只是多花一次单插件测试的时间。
+    const retryCandidates = serialRetryEnabled() ? results.filter((r) => !r.ok && looksLikeConcurrencyConflict(r)) : []
+    const retried = []
+    if (retryCandidates.length > 0) {
+      log('')
+      log(
+        yellow(
+          `⚠ ${retryCandidates.length} 个插件首轮失败，且报错特征疑似「并发冲突」（coverage/EACCES/ENOENT/超时）：`,
+        ),
+      )
+      for (const c of retryCandidates) log(yellow(`  - ${c.name}（${c.stage}）`))
+      log(yellow('  → 自动串行复测（并发 1，逐个独占运行）以排除相互争用…'))
+      for (const candidate of retryCandidates) {
+        const started = Date.now()
+        const r = await runOnePlugin(candidate.name)
+        const ms = Date.now() - started
+        const index = results.findIndex((x) => x.name === candidate.name)
+        if (index >= 0) results[index] = { ...r, ms, retriedSerial: true }
+        retried.push({ name: candidate.name, ok: r.ok, ms })
+        if (r.ok) {
+          log(
+            `  ${green('✓')} ${candidate.name} ${dim(secs(ms))} ${green('串行复测通过')} ${dim('（首轮失败=疑似并发冲突，非真实回归）')}`,
+          )
+        } else {
+          log(
+            `  ${red('✗')} ${candidate.name} ${dim(secs(ms))} ${red('串行复测仍失败')} ${dim('（判定为真实失败，非并发冲突）')}`,
+          )
+        }
+      }
+      log('')
+    }
+
     const failed = results.filter((r) => !r.ok)
-    const out = failed.map((f) => `── ${f.name}（${f.stage} 失败）──\n${tail(f.out, 60)}`).join('\n')
+    const out = failed
+      .map(
+        (f) =>
+          `── ${f.name}（${f.stage} 失败）──\n${f.error ? `${f.error}\n` : ''}${tail(f.out, 60)}` +
+          (f.retriedSerial ? '\n（首轮曾失败：疑似并发冲突；已串行复测，仍未通过）' : ''),
+      )
+      .join('\n')
     const ok = failed.length === 0
+    const retriedPassed = retried.filter((r) => r.ok)
     return {
       ok,
       out,
       summary: ok
-        ? `${targets.length} 个插件全部通过（node --check + npm test）`
+        ? `${targets.length} 个插件全部通过（node --check + npm test）` +
+          (retriedPassed.length > 0
+            ? `；其中 ${retriedPassed.length} 个（${retriedPassed.map((r) => r.name).join('、')}）疑似并发冲突，已串行复测通过`
+            : '')
         : `${failed.length}/${targets.length} 个插件失败：${failed.map((f) => f.name).join('、')}`,
     }
   })()
@@ -598,6 +881,77 @@ function pluginConcurrency() {
   const raw = Number.parseInt(process.env.VERIFY_CONCURRENCY ?? '', 10)
   if (Number.isInteger(raw) && raw >= 1 && raw <= 8) return raw
   return 3
+}
+
+// ── 超时看门狗与进度登记 ────────────────────────────────────────────────────
+/** 正在跑的检查项：id → { label, startedAt }；整体超时时用它回答「卡在哪一步、已跑多久」。 */
+const ACTIVE_CHECKS = new Map()
+/** 已完成的检查项：{ id, ms }；超时报告里列出来，便于判断卡在第几项。 */
+const FINISHED_CHECKS = []
+
+/** 整体超时：打印可读报告 → 终止全部子进程（含孙进程）→ 退出码 124。 */
+function reportTotalTimeout() {
+  const now = Date.now()
+  console.error('')
+  log(
+    red(
+      `⏱ 整体超时：本地校验已运行 ${secs(now - globalStartedAt)}，超过上限 ${totalTimeoutSec}s（可用 VERIFY_TIMEOUT 覆盖）`,
+    ),
+  )
+  log(red('  已强制终止全部子进程（含 npm → vitest/cucumber 等孙进程），不会留在后台继续跑。'))
+  log('')
+  if (ACTIVE_CHECKS.size > 0) {
+    log(yellow('卡在以下检查项（超时时刻仍在运行）：'))
+    for (const [id, info] of ACTIVE_CHECKS) {
+      log(
+        yellow(
+          `  - ${info.label}，已 ${secs(now - info.startedAt)}（复现：node scripts/verify-local.mjs --only ${id}）`,
+        ),
+      )
+    }
+  } else {
+    log(yellow('超时时刻没有登记在跑的检查项（可能卡在启动 / git 范围分析阶段）。'))
+  }
+  if (ACTIVE_CHILDREN.size > 0) {
+    log(yellow('仍在运行的子进程（已被终止）：'))
+    for (const entry of ACTIVE_CHILDREN.values()) {
+      log(yellow(`  - ${entry.label}，已 ${secs(now - entry.startedAt)}`))
+      log(yellow(`      $ ${entry.cmd}（cwd: ${entry.cwd}）`))
+    }
+  }
+  if (FINISHED_CHECKS.length > 0) {
+    log(dim(`已完成 ${FINISHED_CHECKS.length} 项：${FINISHED_CHECKS.map((c) => `${c.id} ${secs(c.ms)}`).join('、')}`))
+  }
+  log('')
+  log('如何继续（本地校验超时 = push 被挡，不是代码错误）：')
+  log('  · 跳过本地校验直接推送（CI 仍会跑全部门禁）：git push --no-verify')
+  log(`  · 放宽上限后重试：VERIFY_TIMEOUT=${Math.max(totalTimeoutSec * 3, 900)} git push`)
+  log('  · 完全关闭超时：VERIFY_NO_TIMEOUT=1 git push')
+  log('  · 只复现卡住的那一项：node scripts/verify-local.mjs --only <id>')
+  log('  · 若疑似并发冲突（coverage/EACCES/ENOENT/超时）：VERIFY_CONCURRENCY=1 node scripts/verify-local.mjs --fast')
+  log(dim('  排查文档：docs/踩坑/多agent并行测试资源冲突.md'))
+  killAllChildren('SIGKILL')
+  process.exit(124)
+}
+
+/** 启动整体看门狗；返回的定时器在正常结束时清理。 */
+function armWatchdog() {
+  if (TOTAL_TIMEOUT_MS <= 0) {
+    log(dim(`超时保护：整体上限已关闭，单步上限 ${secs(STEP_TIMEOUT_MS)}`))
+    return null
+  }
+  return setTimeout(reportTotalTimeout, TOTAL_TIMEOUT_MS)
+}
+
+// 被 kill（含 pre-push 的 shell 兜底超时）时也要清理子进程组：
+// spawn 用了 detached，没人清理的话孙进程会变成孤儿继续占 CPU 与 coverage 目录。
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => {
+    console.error('')
+    log(yellow(`收到 ${signal}，正在终止全部子进程…`))
+    killAllChildren('SIGKILL')
+    process.exit(130)
+  })
 }
 
 // ── 主流程 ──────────────────────────────────────────────────────────────────
@@ -663,14 +1017,32 @@ for (const check of runList) {
     after: check.after,
     run: async () => {
       const started = Date.now()
+      ACTIVE_CHECKS.set(check.id, { label: check.label, startedAt: started })
       let detail = null
       const localCtx = { ...ctx, report: (msg) => (detail = msg) }
-      const r = await check.run(localCtx)
+      let r
+      try {
+        r = await check.run(localCtx)
+      } finally {
+        ACTIVE_CHECKS.delete(check.id)
+      }
       const ms = Date.now() - started
+      FINISHED_CHECKS.push({ id: check.id, ms })
       const extra = []
       if (detail) extra.push(detail)
       if (r.summary) extra.push(r.summary)
-      return { id: check.id, label: check.label, ok: r.ok, code: r.code, out: r.out ?? '', error: r.error, ms, extra }
+      return {
+        id: check.id,
+        label: check.label,
+        ok: r.ok,
+        code: r.code,
+        out: r.out ?? '',
+        error: r.error,
+        timedOut: r.timedOut,
+        timeoutMs: r.timeoutMs,
+        ms,
+        extra,
+      }
     },
   })
 }
@@ -686,9 +1058,11 @@ if (options.plugins.length > 0) log(`--plugin 过滤：${options.plugins.join('�
 log('')
 
 const totalStarted = Date.now()
+const watchdog = armWatchdog()
 const onTaskDone = (r) => {
   const mark = r.ok ? green('✅') : red('❌')
-  log(`${mark} ${r.label} ${dim(secs(r.ms))}`)
+  const timeoutNote = r.timedOut ? red(` ⏱ 单步超时（${secs(r.timeoutMs)} 上限，已终止该进程组）`) : ''
+  log(`${mark} ${r.label} ${dim(secs(r.ms))}${timeoutNote}`)
   for (const line of r.extra) log(`   ${line}`)
   if (!r.ok) {
     const body = r.error ? `${r.error}\n${r.out}` : r.out
@@ -739,7 +1113,15 @@ log('')
 log(`结果：${passed.length} 通过 / ${failed.length} 失败 / 总耗时 ${secs(totalMs)}`)
 if (failed.length > 0) {
   log(red('❌ 失败项（CI 同样会失败，修复后重跑 npm run verify）：'))
-  for (const f of failed) log(`  - ${f.label}`)
+  for (const f of failed) log(`  - ${f.label}${f.timedOut ? red(`（⏱ 单步超时 ${secs(f.timeoutMs)}，已终止）`) : ''}`)
+  const timedOut = failed.filter((f) => f.timedOut)
+  if (timedOut.length > 0) {
+    log('')
+    log(yellow('超时提示（不是断言失败，而是这一步没在预期时间内跑完）：'))
+    log('  - 放宽单步上限重试：VERIFY_STEP_TIMEOUT=600 node scripts/verify-local.mjs --fast')
+    log('  - 放宽整体上限重试：VERIFY_TIMEOUT=900 node scripts/verify-local.mjs --fast')
+    log('  - 只想先推送、把完整校验交给 CI：git push --no-verify')
+  }
   const pluginFail = failed.some((f) => f.id === 'test')
   if (pluginFail) {
     log('')
@@ -749,9 +1131,13 @@ if (failed.length > 0) {
         `（见 docs/踩坑/多agent并行测试资源冲突.md）→ 确认后重跑，或 VERIFY_CONCURRENCY=1 串行复测`,
     )
     log('  - 复测单个插件：node scripts/verify-local.mjs --only test --plugin <name>')
+    log('  - 本次已内置「疑似并发冲突 → 串行自动复测」且复测仍失败 → 按真实失败处理（非并发冲突）')
+    log('  - 想看首轮原始失败（关闭自动复测）：VERIFY_NO_RETRY=1 node scripts/verify-local.mjs --fast')
   }
+  if (watchdog !== null) clearTimeout(watchdog)
   process.exit(1)
 }
+if (watchdog !== null) clearTimeout(watchdog)
 log(green('✅ 全部通过'))
 process.exit(0)
 
@@ -765,11 +1151,18 @@ function printHelp() {
   log('  --full          强制全量（覆盖 --fast）')
   log('  --only <id>     只跑单项（可重复；id 见下）')
   log('  --plugin <name> 只跑该插件的 test/--check（可重复）')
+  log('  --timeout <sec> 覆盖整体超时上限（秒；0 = 关闭）')
   log('  --audit         额外执行 npm audit（默认跳过：本地 registry 可能不支持 audit API）')
   log('  --mutation      额外执行 stryker 变异测试（默认跳过：约 20s）')
   log('  --list          列出检查项 id')
   log('  --help          显示本帮助')
   log('检查项: ' + CHECK_IDS.join(' / '))
   log('默认跳过（CI 强制，本地可显式开启）: ' + OPTIONAL_CHECKS.join(' / '))
-  log('环境变量: VERIFY_CONCURRENCY=<1-8> 覆盖插件测试并发度（默认 fast=4 / full=2）')
+  log('环境变量: VERIFY_CONCURRENCY=<1-8> 覆盖插件测试并发度（默认 3）')
+  log(`           VERIFY_TIMEOUT=<秒> 整体超时上限（当前 ${totalTimeoutSec === 0 ? '已关闭' : `${totalTimeoutSec}s`}）`)
+  log(
+    `           VERIFY_STEP_TIMEOUT=<秒> 单个子进程超时（当前 ${stepTimeoutSec === 0 ? '已关闭' : `${stepTimeoutSec}s`}）`,
+  )
+  log('           VERIFY_NO_TIMEOUT=1 关闭全部超时；VERIFY_NO_RETRY=1 关闭「并发冲突 → 串行复测」')
+  log('超时行为: 单步超时杀该步进程组并判该步失败；整体超时打印「卡在哪一步」后以退出码 124 结束')
 }

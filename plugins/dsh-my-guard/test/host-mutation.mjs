@@ -18,7 +18,7 @@ import {
   jsonOf,
   dispatchEvent,
   bashExec,
-  settle,
+  waitFor,
 } from './lib/helpers.mjs'
 
 const disposeAlls = []
@@ -123,7 +123,9 @@ test('POST /scan with local path returns findings', async () => {
   disposeAll()
 })
 
-test('POST /scan with unresolvable package returns 400', async () => {
+// 依赖真实 npm registry 网络（包名不可解析时先查 registry）：慢网络下默认 5s
+// 超时会假红，给足余量；断言与语义不变
+test('POST /scan with unresolvable package returns 400', { timeout: 60_000 }, async () => {
   const { api, disposeAll } = boot({})
   const res = mockResponse()
   await invoke(
@@ -237,10 +239,16 @@ test('ask mode with plugin add: gate ask + poison scan both fire', async () => {
     async () => ({ kind: 'allow' }),
   )
   assert.equal(decision.kind, 'ask')
-  await settle(300)
-  const res = mockResponse()
-  await invoke(api, mockRequest({ url: '/guard/api/alerts' }), res)
-  const alerts = jsonOf(res).value
+  // 投毒告警异步落库：条件轮询等它出现，不猜"300ms 应该够了"
+  const alerts = await waitFor(
+    async () => {
+      const res = mockResponse()
+      await invoke(api, mockRequest({ url: '/guard/api/alerts' }), res)
+      const value = jsonOf(res).value
+      return value.some((a) => a.type === 'poison') ? value : undefined
+    },
+    { message: '等待投毒告警落库' },
+  )
   assert.ok(
     alerts.some((a) => a.type === 'poison'),
     'poison alert fired',

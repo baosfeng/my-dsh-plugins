@@ -4,10 +4,10 @@
  *
  * io 失败注入的环境无关性（覆盖边界，务必按此维护）：
  *  - **不要**用 `chmod 目录 0555` 作为唯一的失败注入手段：权限位在特权环境
- *    下不生效——root 具 CAP_DAC_OVERRIDE（云效 CI 容器以 root 运行，
+ *    下不生效——root 具 CAP_DAC_OVERRIDE（CI 容器以 root 运行时工作目录在
  *    /root/workspace/...）、Windows 忽略 mode、部分容器/网络文件系统同理，
- *    写入照样成功 → 降级 warn 数为 0 → 断言假失败（真实事故：云效 CI
- *    `snapshot/append failures logged (got 0)`，GitHub Actions 非 root 通过）。
+ *    写入照样成功 → 降级 warn 数为 0 → 断言假失败（真实事故：容器化 CI 报
+ *    `snapshot/append failures logged (got 0)`，非 root runner 上通过）。
  *  - 主用例改用与权限位、运行用户完全无关的确定性 I/O 错误：目标路径本身
  *    是目录（snapshot 的 rename / append 的 appendFile → EISDIR）、父层级是
  *    常规文件（两者的 mkdir recursive → ENOTDIR）。POSIX 语义在 root 与非

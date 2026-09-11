@@ -4,9 +4,11 @@
  * 告警记录的内存态 + 持久化：
  *  - 全局告警列表（每条带 sessionId/type/severity），FIFO 上限
  *    MAX_ALERTS 防膨胀；
- *  - 持久化 $DSH_HOME/guard/alerts.json（防抖 500ms + 原子写 tmp+rename
- *    + teardown flush），启动时异步加载（加载完成前的事件缓冲在 pending，
- *    加载后回放），重启后完整恢复；
+ *  - 持久化 $DSH_HOME/guard/alerts.json（防抖 500ms + 全量写 + teardown flush），
+ *    启动时异步加载（加载完成前的事件缓冲在 pending，加载后回放），重启后完整恢复；
+ *    加载 + 回放的完成由 whenReady() 给出**确定性信号**——查询方等它，不要等墙钟
+ *    （固定 sleep 在 CI 高负载下会随机漏掉尚未加载的历史，见 docs/踩坑/）；
+ *    teardown 若发生在加载完成前，会等合并完成再落盘，避免用缺历史的状态覆盖磁盘；
  *  - confirm(id) 标记告警已确认（用户确认机制）。
  */
 import { readFile } from 'node:fs/promises';
@@ -24,33 +26,55 @@ function createState() {
     return { version: 1, alerts: [] };
 }
 /**
- * 创建告警存储：{ state, record, alerts, count, confirm, dispose }。
- * record 在状态加载完成前缓冲（不丢告警）；dispose 冲刷未落盘数据。
+ * 创建告警存储：{ state, record, alerts, count, confirm, whenReady, dispose }。
+ * record 在状态加载完成前缓冲（不丢告警）；whenReady 是「加载 + 缓冲回放完成」
+ * 的确定性信号（查询方等它，而不是等一段墙钟时间）；dispose 冲刷未落盘数据。
  */
-export function createStore(ctx) {
+export function createStore(ctx, deps = {}) {
     const state = createState();
+    let markReady = () => { };
+    const readyPromise = new Promise((resolve) => {
+        markReady = resolve;
+    });
     const handle = {
         ctx,
         file: stateFile(),
         store: { state },
         pending: [],
         ready: false,
+        readyPromise,
+        markReady,
+        disposed: false,
         persistTimer: null,
         dirtyChain: Promise.resolve(),
         seq: 0,
+        deps: { readFile: deps.readFile ?? defaultReadFile, writeFile: deps.writeFile ?? defaultWriteFile },
     };
     const store = {
-        state: handle.store.state,
+        state,
         record: (alert) => record(handle, alert),
         alerts: (sessionId, type, limit) => alertsOf(handle, sessionId, type, limit),
         count: () => countOf(handle),
         confirm: (id) => confirmOf(handle, id),
+        whenReady: () => handle.readyPromise,
         dispose: () => dispose(handle),
     };
-    void readFile(handle.file, 'utf8')
+    void handle.deps
+        .readFile(handle.file)
         .then((text) => onLoaded(handle, text))
         .catch(() => onLoaded(handle, ''));
     return store;
+}
+/** 默认加载实现：读持久化文件（失败由调用方 catch 回退空状态）。 */
+function defaultReadFile(file) {
+    return readFile(file, 'utf8');
+}
+/** 默认落盘实现：自动建目录 + 全量写（失败由 persistNow 静默）。 */
+async function defaultWriteFile(file, text) {
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    const { dirname } = await import('node:path');
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, text, 'utf8');
 }
 /** 追加一条告警（自动分配 id/时间戳）；未就绪时缓冲。 */
 function record(handle, alert) {
@@ -103,21 +127,26 @@ function appendAlert(handle, item) {
         handle.store.state.alerts.splice(0, handle.store.state.alerts.length - MAX_ALERTS);
     }
 }
-/** 状态加载完成：解析/规整 + 合并本进程已产生的告警 + 回放缓冲 + 落盘。 */
+/** 状态加载完成：解析/规整 + 合并本进程已产生的告警 + 回放缓冲 + 落盘。
+ *  markReady 放在合并/回放**之后**：whenReady 返回即保证缓冲告警已并入 state，
+ *  查询结果与「加载耗时」无关（不再需要调用方猜一个 sleep 时长）。 */
 function onLoaded(handle, text) {
     const parsed = parseLoaded(text);
     if (parsed !== undefined) {
         mergeCurrent(handle.store.state, parsed);
-        handle.store.state = parsed;
+        // 原地替换 alerts 数组：store.state 引用已被外部持有（AlertStore.state），
+        // 整体换对象会让外部持有者永远停在旧数组上
+        handle.store.state.alerts = parsed.alerts;
     }
     handle.ready = true;
     const pending = handle.pending.splice(0);
     for (const item of pending)
         appendAlert(handle, item);
-    if (pending.length > 0 || parsed !== undefined)
+    handle.markReady();
+    if (!handle.disposed && (pending.length > 0 || parsed !== undefined))
         persistSoon(handle);
 }
-/** 把当前 state 中已产生的告警合并进磁盘状态（防 dispose 回放后覆盖丢失）。 */
+/** 把当前 state 中已产生的告警合并进磁盘状态（防加载期间记录/落盘的告警丢失）。 */
 function mergeCurrent(current, parsed) {
     if (current.alerts.length > 0)
         parsed.alerts.push(...current.alerts);
@@ -146,16 +175,10 @@ function isValidAlert(alert) {
         typeof alert.type === 'string' &&
         typeof alert.message === 'string');
 }
-/** 原子写当前状态（经 dirtyChain 串行化；自动建目录）。 */
+/** 落盘当前状态（经 dirtyChain 串行化；写失败静默）。 */
 function persistNow(handle) {
-    // 简化实现：使用 writeFile 代替 atomicWriteJson（dsh-shared 未安装时的降级）
     handle.dirtyChain = handle.dirtyChain
-        .then(async () => {
-        const { mkdir, writeFile } = await import('node:fs/promises');
-        const { dirname } = await import('node:path');
-        await mkdir(dirname(handle.file), { recursive: true });
-        await writeFile(handle.file, JSON.stringify(handle.store.state, null, 2), 'utf8');
-    })
+        .then(() => handle.deps.writeFile(handle.file, JSON.stringify(handle.store.state, null, 2)))
         .catch(() => { });
 }
 /** 防抖（500ms）调度持久化。 */
@@ -167,17 +190,18 @@ function persistSoon(handle) {
         persistNow(handle);
     }, 500);
 }
-/** 卸载冲刷：清定时器 + 回放未就绪缓冲 + 立即落盘。 */
+/** 卸载冲刷：清定时器 + 落盘；加载尚未完成时**等加载合并完成再落盘**——
+ *  否则会拿「缺磁盘历史」的内存状态覆盖磁盘，真实 teardown（进程随后退出，
+ *  防抖写不再发生）时历史告警永久丢失。 */
 function dispose(handle) {
+    handle.disposed = true;
     if (handle.persistTimer !== null) {
         clearTimeout(handle.persistTimer);
         handle.persistTimer = null;
     }
     if (!handle.ready) {
-        const pending = handle.pending.splice(0);
-        for (const item of pending)
-            appendAlert(handle, item);
+        void handle.readyPromise.then(() => persistNow(handle));
+        return;
     }
     persistNow(handle);
-    void handle.dirtyChain;
 }

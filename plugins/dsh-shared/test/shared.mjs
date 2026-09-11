@@ -153,8 +153,14 @@ test('atomicWriteJson writes tmp+rename and warns on failure', async () => {
   await atomicWriteJson(file, { ok: true }, logger, '[test]')
   assert.equal(existsSync(file), true, 'file created (dirs auto-made)')
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), { ok: true }, 'content written')
-  // 失败路径：非法路径 → 告警不抛出
-  await atomicWriteJson('/nonexistent-dir-xyz/state.json', { a: 1 }, logger, '[test]')
+  // 失败路径：路径中间段是普通文件 → mkdir 必报 ENOTDIR → 告警不抛出。
+  // ⚠️ 不要用「父目录不存在」（如 /nonexistent-dir-xyz）或「chmod 只读目录」注入：
+  // 前者在 root（容器内 UID 0）下 mkdir recursive 会真的建出该目录而写成功（断言
+  // 恒失败，还会在根目录留下副作用），后者被 CAP_DAC_OVERRIDE 绕过。ENOTDIR 是
+  // 类型不符的确定性失败，root/非 root、Windows、只读挂载下结论一致。
+  const blocker = join(dir, 'not-a-dir')
+  writeFileSync(blocker, 'x')
+  await atomicWriteJson(join(blocker, 'sub', 'state.json'), { a: 1 }, logger, '[test]')
   assert.equal(warnings.length, 1, 'failure warned')
   assert.ok(warnings[0].includes('[test] persist failed'), 'warning carries prefix')
 })

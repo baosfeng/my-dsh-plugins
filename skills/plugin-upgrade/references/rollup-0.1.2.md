@@ -136,7 +136,7 @@ The following problems span single versions or fall outside the cards; they come
   const roster = presets ?? ctx.connection.api.agentPresets
   ```
 
-- **Host-plane (Cordis composition) equivalent**: keep the artifact unchanged and put the cohort differences into `!!js` probes in `cordis.patch.yml` — the three forms (subpath resolve, reading preset files, probing package directories) and the two disciplines are in [host-plane-probes.md](host-plane-probes.md) ([dsh-TUI #622](https://github.com/ccch1mneyyy/dsh-TUI/pull/622)).
+- **Host-plane (Cordis composition) equivalent**: keep the artifact unchanged and put the cohort differences into `!!js` probes in `cordis.patch.yml` — the three forms (subpath resolve, reading preset files, probing package directories) and the two disciplines are in `host-plane-probes.md` (upstream reference, not shipped in this trimmed copy) ([dsh-TUI #622](https://github.com/ccch1mneyyy/dsh-TUI/pull/622)).
 - **Rejected alternatives**: per-consumer try/catch duplicated through the source; emitting different artifacts per host cohort (reintroduces stateful builds); hard-waiting on inject wait (old hosts pending forever).
 - **Verification**: link the same artifact to both an old host and a new host, and run one cold boot + one full conversation round on each.
 - **Source**: items 3 and 4 of [#5120](https://github.com/deepseek-ai/deepseek-harness/discussions/5120).

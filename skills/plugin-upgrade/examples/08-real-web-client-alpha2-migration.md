@@ -1,6 +1,5 @@
 # 真实样本：Host + Web Client 插件迁到 DSH 0.1.2-alpha.2
 
-简体中文 | [English](08-real-web-client-alpha2-migration.en.md)
 
 > 2026-08-31 在 `omdsh-dev/omdsh-plugin-lab` 的隔离工作树完成。本文记录可复现迁移证据，
 > 不把样本起点误写成现有卡片已覆盖的走廊。

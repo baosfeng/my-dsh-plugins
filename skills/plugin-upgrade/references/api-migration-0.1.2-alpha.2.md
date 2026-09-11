@@ -184,7 +184,7 @@ Web Client:
   [alpha.2 API Remotes Client assembly](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.1.2-alpha.2/packages/api/remotes/src/client/index.ts) ·
   [alpha.2 Workspace Remote owner](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.1.2-alpha.2/packages/api/workspace-controller/src/index.ts) ·
   [alpha.2 actual rename consumer](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.1.2-alpha.2/packages/api/session-controller/src/client/sessions/session.ts) ·
-  [Host / Web Client face contracts in this repo](../examples/face-contracts/README.md)
+  Host / Web Client face contracts (`examples/face-contracts`; upstream fixture, not shipped in this trimmed copy)
 
 ## API-02 · `RemoteResult` version boundaries and the alpha.2 `RemoteError`
 

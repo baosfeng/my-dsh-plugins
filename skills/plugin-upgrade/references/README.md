@@ -32,10 +32,8 @@ Companion material:
 - [pre-flight.md](pre-flight.md): the seven-class touchpoint self-check and the migration-task summary template;
 - [pre-flight-patterns.json](pre-flight-patterns.json): source of truth for the regexes used by executable checks;
 - [api-migration-0.1.2-alpha.2.md](api-migration-0.1.2-alpha.2.md): the precise migration ledger for rc.2→alpha.2 when API, Remote, Settings, events, Headless, packaging, or composition interfaces are hit;
-- [host-plane-probes.md](host-plane-probes.md): three ways for the host plane to run dual-cohort probes in `cordis.patch.yml`;
 - [migration-hygiene.md](migration-hygiene.md): version-independent toolchain pitfalls (tsbuildinfo false positives, oxc parsing strictness, the plane a change takes effect in, pnpm interception, test syntax);
-- [troubleshooting.md](troubleshooting.md): post-migration symptom → root cause → card lookup;
-- [examples/legacy-plugin/](../examples/legacy-plugin/): static fixture for the seven touchpoint classes.
+- [troubleshooting.md](troubleshooting.md): post-migration symptom → root cause → card lookup.
 
 ## Card file metadata
 

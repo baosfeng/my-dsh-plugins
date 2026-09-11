@@ -1,3 +1,8 @@
+---
+name: plugin-upgrade
+description: 使用当 需要处理 DSH 宿主或插件的版本升级时——三种模式：只读检查可用更新（inspect）、升级已安装插件（update）、把插件源码仓迁移到新宿主版本（author-migrate）。含版本迁移卡（v0.1.1-rc.1 ~ v0.1.2-rc.1）、pre-flight 预检、幽灵宿主检查、运行时精确版本验证与升级排障。用户意图不明确时先确认模式，不要从“帮我看看更新”自行滑入安装或改代码。
+---
+
 # plugin-upgrade
 
 安全完成三类任务：只读更新检查、已安装插件升级、DSH 宿主版本兼容迁移。若用户意图
@@ -75,7 +80,7 @@
 2. 先读完整走廊并计算最终净状态。字段在中间版本删除、目标版又恢复时，不先删再加。
 3. 按 [pre-flight.md](references/pre-flight.md) 扫描七类触点：源码 patch、事件、服务/
    Remote、宿主文件系统、UI/命令/工具、自建通道、子进程/输出。可先运行只读
-   [migration planner](scripts/README.md) 生成路径/行号与候选卡，但结果仍是
+   [migration planner](scripts/plan-migration.mjs) 生成路径/行号与候选卡，但结果仍是
    启发式；零命中仍须检查依赖/导入并跑 build 与真实挂载。
 4. 只保留与命中触点和实际 face（Host/Web Client/普通 plugin）相交的卡片。卡片是 curated
    清单，不是完整 API diff；缺走廊边或 API 坐标时标 unsupported/待确认，不凭记忆改。

@@ -75,7 +75,7 @@ Two checks, before any touchpoint scan:
    behavior is known to diverge between generations and classify it by the reply. The
    unauthenticated `agentPreset.list` `ok`/401 fork above is a ready-made probe
    (loopback is not exempt, see [DSH-0.1.2-A1-08](v0.1.2-alpha.1.md)); for the
-   composition-layer equivalent see [host-plane-probes.md](host-plane-probes.md).
+   composition-layer equivalent see `host-plane-probes.md` (upstream reference, not shipped in this trimmed copy).
 
 Both checks plus the probe are packaged as
 [`scripts/ghost-host-check.mjs`](../scripts/ghost-host-check.mjs)

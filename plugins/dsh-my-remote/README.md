@@ -20,7 +20,7 @@
 | 状态查询          | `GET /remote/api/status` 返回活动会话、待回答 ask、待批准 approval 快照                                                                                                           |
 | 继续会话          | `continue` 指令经 `agent.steer` 注入用户消息，唤醒/继续对应会话                                                                                                                   |
 | 安全              | loopback 信任围栏 + `apiToken` 鉴权（写指令 `x-remote-token` 头）+ 指令白名单 + 操作审计（远程控制比通知更敏感，所有指令与拒绝留痕）                                              |
-| 通道可扩展        | 适配器契约（事件帧 + 指令格式渠道无关），HTTP 通道先行，微信/QQ/飞书机器人按同一接口扩展（见 [docs/远程控制/概述.md](../docs/远程控制/概述.md)）                                  |
+| 通道可扩展        | 适配器契约（事件帧 + 指令格式渠道无关），HTTP 通道先行，微信/QQ/飞书机器人按同一接口扩展（见 [docs/远程控制/概述.md](../../docs/远程控制/概述.md)）                               |
 
 ## 架构
 
@@ -100,11 +100,11 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-remote
 { "action": "continue", "sessionId": "<id>", "message": "继续执行下一步" }
 ```
 
-> 远程调用（非本机）需把 DSH 的 `trustedHosts` 配置为你的中转服务域名（webRuntime 配置），并用 `apiToken` 鉴权。详见 [docs/远程控制/概述.md](../docs/远程控制/概述.md)。
+> 远程调用（非本机）需把 DSH 的 `trustedHosts` 配置为你的中转服务域名（webRuntime 配置），并用 `apiToken` 鉴权。详见 [docs/远程控制/概述.md](../../docs/远程控制/概述.md)。
 
 ## 通道扩展（微信/QQ/飞书机器人）
 
-本插件定义**渠道无关**的事件帧与指令格式，新增 IM 渠道只需实现适配器契约（把事件帧转为 IM 消息卡片、把 IM 回调转为指令），无需改动事件层/指令层/安全层。契约与示例见 [docs/远程控制/概述.md](../docs/远程控制/概述.md)。
+本插件定义**渠道无关**的事件帧与指令格式，新增 IM 渠道只需实现适配器契约（把事件帧转为 IM 消息卡片、把 IM 回调转为指令），无需改动事件层/指令层/安全层。契约与示例见 [docs/远程控制/概述.md](../../docs/远程控制/概述.md)。
 
 ## 开发
 
@@ -113,7 +113,7 @@ cd plugins/dsh-my-remote
 npm test          # vitest 单元测试 + 覆盖率门禁 + cucumber Gherkin 验收
 ```
 
-需求清单：[docs/远程控制/需求清单.md](../docs/远程控制/需求清单.md)
+需求清单：[docs/远程控制/需求清单.md](../../docs/远程控制/需求清单.md)
 
 ## 相关
 

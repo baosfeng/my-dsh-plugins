@@ -55,6 +55,10 @@ function apiHandler(fence, store, options, control) {
         const pathname = url.pathname;
         const method = pathname.startsWith('/guard/api/') ? pathname.slice('/guard/api/'.length) : undefined;
         try {
+            // 查询/确认都依赖已加载的磁盘历史与已回放的缓冲告警：先等 store 就绪
+            // （whenReady 在加载完成后立即 resolve，不引入可感知延迟）——API 语义因此
+            // 与「加载有多快」无关，调用方和测试都不必用墙钟时间猜加载是否完成。
+            await store.whenReady();
             const handled = await dispatchMethod(method, request, response, url, store, options, control);
             if (!handled) {
                 writeJson(response, 404, {

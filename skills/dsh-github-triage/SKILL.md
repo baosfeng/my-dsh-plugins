@@ -25,6 +25,38 @@ description: 使用当 需要检查或处理当前项目 GitHub 仓库的健康�
 
 **为什么用 fork 而不是 worktree/共享工作区：** 子 agent 之间没有默认隔离——它们继承同一工作区 cwd、共享同一文件系统（DSH 运行时行为），并行子任务若共用同一仓库/工作区必然互相污染。git worktree 只隔离工作区但**不改变子 agent 的默认工作目录**，子 agent 仍可能踩回主工作区造成冲突；独立 fork（完整独立 .git 的克隆）是物理目录级隔离，最直观可靠。每个修复类子任务 = 一个独立 fork = 一个分支 = 一个 PR。
 
+## 网络前置（必读，2026-09-12 实测）
+
+本机到 GitHub 的**唯一可靠通路是「代理 + HTTP/1.1」**，其它通路都会卡死——**并发派发子代理前必须先跑本节的自检**，否则典型症状是「开 2~3 个子代理后 GitHub 操作全部不可用」（实测数据）：
+
+| 通路                    | 实测结果                                                                   | 判定            |
+| ----------------------- | -------------------------------------------------------------------------- | --------------- |
+| https 直连              | ~10 KB/s（codeload 拉 217 KB 耗时 20s）                                    | ❌ 不可用       |
+| https + 代理 + HTTP/2   | `fatal: Error in the HTTP2 framing layer`                                  | ❌ git 直接失败 |
+| https + 代理 + HTTP/1.1 | 单并发 53s / 3 并发 78s（浅克隆）                                          | ✅ 可用         |
+| SSH `git@github.com`    | 上行 push 正常（秒级），**下行 clone 180s 超时 / `unexpected disconnect`** | ⚠️ 只用于 push  |
+| 代理带宽                | ~170 KB/s（4 路混合并发实测总耗时 4s）                                     | 重负载需节制    |
+
+三层配置缺一层就退化为卡死，全部在 `~/.dsh/secrets/github-proxy` 与 git 全局配置里持久化：
+
+```bash
+# 1) git：强制 HTTP/1.1 + 走代理（缺这层 → HTTP2 framing 崩溃）
+git config --global http.version HTTP/1.1
+git config --global http.proxy http://127.0.0.1:7890
+git config --global http.lowSpeedLimit 1000 && git config --global http.lowSpeedTime 60
+
+# 2) ghops：代理写文件（缺这层 → API 直连 10 KB/s，多子代理并发即集体卡死）
+printf 'http://127.0.0.1:7890' > ~/.dsh/secrets/github-proxy && chmod 600 ~/.dsh/secrets/github-proxy
+
+# 3) 自检（派发前跑，3 秒出结论）
+ghops proxy                              # 期望：当前代理 http://127.0.0.1:7890 / 可用性：正常
+git ls-remote origin refs/heads/main     # 期望：<10s 返回 SHA
+```
+
+**排障对照**：`git clone` 报 `HTTP2 framing layer` → 第 1 层丢失；`ghops` 命令长时间无响应 → 第 2 层丢失；`git ls-remote` 报 `Empty reply from server` → 代理进程没起（`lsof -nP -iTCP:7890 -sTCP:LISTEN` 确认）。
+
+**并发预算**：克隆/推送是唯一重负载。fork 池用 `git clone --local` **本地派生**（零网络，正是为本节问题设计的）——**不要在 fork 内 clone 远程仓库**，也不要把多条 `git fetch` 并发堆在一起。
+
 ## 第一步：收集问题
 
 按 `github-ops` 用 `ghops` 命令查询以下内容，返回精简清单（编号/标题/链接/摘要）：

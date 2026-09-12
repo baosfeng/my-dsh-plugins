@@ -5,6 +5,7 @@
  * variants, origin variations, media route size/directory/fence branches.
  */
 import { test, afterAll } from 'vitest'
+import { settle, waitFileContains } from './lib/settle.mjs'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -119,7 +120,7 @@ async function callRoute(getRoute, method, url, body, overrides) {
 test('paths containing NUL are rejected by applyRecord', async () => {
   const { ctx, getRoute } = await boot()
   emitObserved(ctx, 'read', 'nul-session', '/work/bad\u0000file.txt')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=nul-session')
   assert.deepEqual(r.json.value.counts, {}, 'NUL path never recorded')
 })
@@ -161,7 +162,7 @@ test('wrong-version state file falls back to fresh state', async () => {
 test('str_replace_editor maps to modify', async () => {
   const { ctx, getRoute } = await boot()
   emitObserved(ctx, 'str_replace_editor', 's2', '/work/ed.txt')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=s2')
   assert.equal(r.json.value.counts['/work/ed.txt'].modify, 1, 'str_replace_editor is modify')
 })
@@ -169,7 +170,7 @@ test('str_replace_editor maps to modify', async () => {
 test('read_image maps to read', async () => {
   const { ctx, getRoute } = await boot()
   emitObserved(ctx, 'read_image', 's3', '/work/img.png')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=s3')
   assert.equal(r.json.value.counts['/work/img.png'].read, 1, 'read_image is read')
 })
@@ -177,7 +178,7 @@ test('read_image maps to read', async () => {
 test('unknown tool names map to read', async () => {
   const { ctx, getRoute } = await boot()
   emitObserved(ctx, 'some_future_tool', 's4', '/work/unk.txt')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=s4')
   assert.equal(r.json.value.counts['/work/unk.txt'].read, 1, 'unknown tool is read')
 })
@@ -243,7 +244,7 @@ test('media route rejects directories (400)', async () => {
   const { mkdirSync } = await import('node:fs')
   mkdirSync(dirPath, { recursive: true })
   emitObserved(ctx, 'read', 's7', dirPath)
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const res = makeResponse()
   await getMediaRoute().handler(
     makeRequest('GET', `/file-activity/file?sessionId=s7&path=${encodeURIComponent(dirPath)}`),
@@ -259,7 +260,7 @@ test('media route rejects files over the size limit (413)', async () => {
   const { writeFileSync: wfs } = await import('node:fs')
   wfs(bigFile, Buffer.alloc(64 * 1024 * 1024 + 1)) // MEDIA_LIMIT + 1
   emitObserved(ctx, 'read', 's8', bigFile)
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const res = makeResponse()
   await getMediaRoute().handler(
     makeRequest('GET', `/file-activity/file?sessionId=s8&path=${encodeURIComponent(bigFile)}`),
@@ -340,7 +341,7 @@ test('unknown media extensions fall back to octet-stream', async () => {
   const { writeFileSync: wfs2 } = await import('node:fs')
   wfs2(oddFile, Buffer.from([1, 2, 3]))
   emitObserved(ctx, 'read', 's12', oddFile)
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const res = makeResponse()
   await getMediaRoute().handler(
     makeRequest('GET', `/file-activity/file?sessionId=s12&path=${encodeURIComponent(oddFile)}`),
@@ -358,7 +359,7 @@ test('null observation is ignored by fs/observed', async () => {
     agent: { id: 's-null' },
     arguments: { file_path: '/work/x.txt' },
   })
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=s-null')
   assert.deepEqual(r.json.value.counts, {}, 'null observation ignored')
 })
@@ -371,7 +372,7 @@ test('undefined observation is ignored by fs/observed', async () => {
     agent: { id: 's-undef' },
     arguments: { file_path: '/work/x.txt' },
   })
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=s-undef')
   assert.deepEqual(r.json.value.counts, {}, 'undefined observation ignored')
 })
@@ -448,7 +449,7 @@ test('files without an extension get octet-stream content type', async () => {
   const { writeFileSync: wfs3 } = await import('node:fs')
   wfs3(noExt, Buffer.from([9, 9, 9]))
   emitObserved(ctx, 'read', 's15', noExt)
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const res = makeResponse()
   await getMediaRoute().handler(
     makeRequest('GET', `/file-activity/file?sessionId=s15&path=${encodeURIComponent(noExt)}`),
@@ -462,7 +463,7 @@ test('fs/observed with null args and empty displayPath is ignored', async () => 
   const { ctx, getRoute } = await boot()
   const { listener } = ctx.events.find((e) => e.name === 'fs/observed')
   listener({ displayPath: '' }, { kind: 'present' }, { name: 'read', agent: { id: 's-nullargs' }, arguments: null })
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=s-nullargs')
   assert.deepEqual(r.json.value.counts, {}, 'null args with empty displayPath ignored')
 })
@@ -470,7 +471,7 @@ test('fs/observed with null args and empty displayPath is ignored', async () => 
 test('clear of an unknown session still returns ok and keeps other sessions', async () => {
   const { ctx, getRoute } = await boot()
   emitObserved(ctx, 'read', 'keep-session', '/work/keep.txt')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const clr = await callRoute(getRoute, 'POST', '/file-activity/api/clear', {
     sessionId: 'ghost-session',
   })
@@ -498,7 +499,7 @@ test('download=0 does not attach content-disposition', async () => {
   const { writeFileSync: wfs4 } = await import('node:fs')
   wfs4(dlFile, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
   emitObserved(ctx, 'read', 's16', dlFile)
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const res = makeResponse()
   await getMediaRoute().handler(
     makeRequest('GET', `/file-activity/file?sessionId=s16&path=${encodeURIComponent(dlFile)}&download=0`),
@@ -564,7 +565,7 @@ test('fs/observed with null actor is ignored', async () => {
   const { ctx, getRoute } = await boot()
   const { listener } = ctx.events.find((e) => e.name === 'fs/observed')
   listener({ displayPath: '/work/x.txt' }, { kind: 'present' }, null)
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=s-nullactor')
   assert.deepEqual(r.json.value.counts, {}, 'null actor ignored')
 })
@@ -577,7 +578,7 @@ test('fs/observed with empty session id is ignored', async () => {
     { kind: 'present' },
     { name: 'read', agent: { id: '' }, arguments: { file_path: '/work/x.txt' } },
   )
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=')
   assert.deepEqual(r.json.value.counts, {}, 'empty session id ignored')
 })
@@ -590,7 +591,7 @@ test('fs/observed with non-string tool name is ignored', async () => {
     { kind: 'present' },
     { name: 42, agent: { id: 's-noname' }, arguments: { file_path: '/work/x.txt' } },
   )
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=s-noname')
   assert.deepEqual(r.json.value.counts, {}, 'non-string tool name ignored')
 })
@@ -632,7 +633,7 @@ test('uppercase extensions are normalized to lowercase for the media type', asyn
   const { writeFileSync: wfs5 } = await import('node:fs')
   wfs5(upFile, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
   emitObserved(ctx, 'read', 's18', upFile)
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const res = makeResponse()
   await getMediaRoute().handler(
     makeRequest('GET', `/file-activity/file?sessionId=s18&path=${encodeURIComponent(upFile)}`),
@@ -649,7 +650,7 @@ test('explicit numeric time is preserved in the record', async () => {
   emitObserved(ctx, 'write', 's19', '/work/timed.txt')
   await new Promise((resolve) => setTimeout(resolve, 60))
   emitObserved(ctx, 'write', 's19', '/work/timed.txt')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=s19')
   const counts = r.json.value.counts['/work/timed.txt']
   assert.equal(counts.create, 1, 'first write create')
@@ -738,7 +739,7 @@ test('three-digit octets in the middle are still loopback', async () => {
 test('clear with an empty session id returns ok and deletes nothing', async () => {
   const { ctx, getRoute } = await boot()
   emitObserved(ctx, 'read', 's-keep', '/work/keep2.txt')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const clr = await callRoute(getRoute, 'POST', '/file-activity/api/clear', { sessionId: '' })
   assert.equal(clr.status, 200)
   assert.equal(clr.json.ok, true)
@@ -778,7 +779,8 @@ test('records drained before state load are persisted to disk', async () => {
     { kind: 'present' },
     { name: 'read', agent: { id: 'drain-s' }, arguments: {} },
   )
-  await new Promise((resolve) => setTimeout(resolve, 1200)) // load + debounce persist
+  // state 加载 + 防抖落盘：轮询文件里出现该记录（原固定 1200ms）
+  await waitFileContains(statePath, '/work/drained.txt')
   const persisted = sessionFromFile(statePath, 'drain-s')
   assert.equal(persisted.counts['/work/drained.txt'].read, 1, 'drained record persisted')
 })
@@ -794,9 +796,9 @@ function emitPreExecute(ctx, name, sessionId, command, extraArgs) {
 test('tools/pre-execute: bash rm records a delete and drops the file from stats', async () => {
   const { ctx, getRoute } = await boot()
   emitObserved(ctx, 'read', 'bash-s', '/work/gone.js')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   await emitPreExecute(ctx, 'bash', 'bash-s', 'rm -f /work/gone.js')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const stats = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=bash-s')
   assert.equal(stats.json.value.counts['/work/gone.js'], undefined, 'deleted file removed from stats')
   assert.ok(
@@ -809,7 +811,7 @@ test('tools/pre-execute: touch/redirect create; mv maps source delete + dest cre
   const { ctx, getRoute } = await boot()
   await emitPreExecute(ctx, 'bash', 'bash-s2', 'touch /work/new.txt && echo hi > /work/out.txt')
   await emitPreExecute(ctx, 'bash', 'bash-s2', 'mv /work/a.js /work/b.js')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const stats = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=bash-s2')
   const counts = stats.json.value.counts
   assert.equal(counts['/work/new.txt'].create, 1, 'touch maps to create')
@@ -824,7 +826,7 @@ test('tools/pre-execute: non-bash tools and unsafe/unknown commands record nothi
   await emitPreExecute(ctx, 'bash', 'bash-s3', 'rm $FILE')
   await emitPreExecute(ctx, 'bash', 'bash-s3', 'npm install')
   await emitPreExecute(ctx, 'read_file', 'bash-s3', 'rm -f /work/ignored.js')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const stats = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=bash-s3')
   assert.deepEqual(stats.json.value.counts, {}, 'no phantom counts')
   assert.deepEqual(stats.json.value.recent, [], 'no phantom recent entries')
@@ -857,7 +859,7 @@ test('tools/pre-execute: relative paths resolve against the session cwd', async 
   apply(ctx5)
   await new Promise((resolve) => setTimeout(resolve, 50))
   await emitPreExecute(ctx5, 'bash', 'rel-s', 'rm -f tmp/old.txt')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const stats = await callRoute(() => apiHolder5.get(), 'GET', '/file-activity/api/stats?sessionId=rel-s')
   assert.ok(
     stats.json.value.recent.some((e) => e.path === '/proj/tmp/old.txt' && e.op === 'delete'),
@@ -868,9 +870,9 @@ test('tools/pre-execute: relative paths resolve against the session cwd', async 
 test('media route denies a path whose only record is a delete', async () => {
   const { ctx, getMediaRoute } = await boot()
   emitObserved(ctx, 'read', 'gone-s', '/work/byebye.txt')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   await emitPreExecute(ctx, 'bash', 'gone-s', 'rm /work/byebye.txt')
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const res = makeResponse()
   await getMediaRoute().handler(
     makeRequest('GET', '/file-activity/file?sessionId=gone-s&path=%2Fwork%2Fbyebye.txt'),
@@ -886,7 +888,7 @@ test('tools/pre-execute: non-string command and workdir branch coverage', async 
   await emitPreExecute(ctx, 'bash', 'bash-s4', 42)
   // workdir 参数优先于会话 cwd
   await emitPreExecute(ctx, 'bash', 'bash-s4', 'rm -f tmp/x.txt', { workdir: '/wd' })
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const stats = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=bash-s4')
   assert.ok(
     stats.json.value.recent.some((e) => e.path === '/wd/tmp/x.txt' && e.op === 'delete'),

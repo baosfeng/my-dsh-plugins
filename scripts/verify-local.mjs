@@ -51,7 +51,8 @@
  *   node scripts/verify-local.mjs --help
  *
  * 环境变量：
- *   VERIFY_CONCURRENCY=1..8   覆盖插件测试并发度（默认 3；怀疑并发冲突时设 1）
+ *   VERIFY_CONCURRENCY=1..8   覆盖插件测试并发度（默认 6；怀疑并发冲突时设 1 串行）
+ *   VERIFY_CHECK_CONCURRENCY=1..8 覆盖检查项并发度（默认 4）
  *   VERIFY_TIMEOUT=<sec>      整体墙钟上限（默认 300；0/off/none = 关闭）
  *   VERIFY_STEP_TIMEOUT=<sec> 单个子进程上限（默认 min(整体上限, 120)；0 = 关闭）
  *   VERIFY_NO_TIMEOUT=1       等价于 VERIFY_TIMEOUT=0
@@ -96,6 +97,13 @@ import {
   parseAuditOutput,
   renderAuditReport,
 } from './lib/npm-audit.mjs'
+// issue #188：影响面规则抽成纯函数模块，供 verify-local / 回放统计脚本 / 单测三方共用
+import {
+  computeImpactScope,
+  createDependentsResolver,
+  diffPackageJsonRuntimeFields,
+  listChangedFiles,
+} from './lib/impact-scope.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -403,187 +411,46 @@ function resolveBase(explicit) {
   return { ok: false, reason: '无 upstream 且找不到 origin/main 或 origin/master（首次推送/新 clone）' }
 }
 
-/**
- * git diff base...HEAD 的变更文件；失败返回 null。
- * 关键：`-c core.quotepath=false` 让中文路径按原样输出（本仓库 docs/ 大量中文名），
- * 否则 git 会输出 "docs/\347\264\242\345\274\225.md" 这种 C 风格转义路径，
- * 影响面规则的前缀匹配（docs/、plugins/）会全部失配。
- */
+/** git diff base...HEAD 的变更文件（含状态）；失败返回 null。规则与实现见 lib/impact-scope.mjs。 */
 function changedFiles(base) {
-  const r = spawnSyncGIT(['-c', 'core.quotepath=false', 'diff', '--name-only', '--diff-filter=ACMR', `${base}...HEAD`])
-  if (!r.ok) return null
-  return r.out.split('\n').filter((line) => line !== '')
+  return listChangedFiles(base, spawnSyncGIT)
 }
 
 // ── 影响面规则 ──────────────────────────────────────────────────────────────
-/** 根工具链/根配置：改了它们就无法安全推断影响面 → 全量。 */
-const ROOT_TOOLCHAIN_FILES = new Set([
-  'package.json',
-  'package-lock.json',
-  'knip.json',
-  'tsconfig.json',
-  'vitest.config.mjs',
-  'eslint.config.js',
-  '.dependency-cruiser.js',
-  '.jscpd.json',
-  '.prettierrc.json',
-  '.prettierignore',
-  '.commitlintrc.json',
-])
+// 规则本体（文档/CI 配置短路、根工具链集合、「与插件测试结果无关」白名单、package.json
+// 字段级判定、高扇入阈值、computeImpactScope）已抽到 scripts/lib/impact-scope.mjs（issue #188）。
+// 抽出的两个理由：① pre-push 与「回放最近 N 提交的退化率统计」（scripts/analyze-impact-replay.mjs）
+// 必须共用同一份规则，否则统计数字与实际行为两张皮；② 边界（纯删除提交、已删除的插件目录、
+// package.json 只改元数据）要能单测，见 scripts/test/impact-scope.test.mjs。
+//
+// 相对于旧版内联规则的两处行为变化：
+//   · package-lock.json 从「根工具链 → 全量」移入「与插件测试无关」白名单（lockfile 只被
+//     npm ci/install 消费，本地插件测试跑的是已安装的 node_modules）；
+//   · scripts/check-{docs,links,ts-size}.mjs 同样白名单化（无插件测试引用，且各自有独立检查项）。
 
-/** 文档/skill/纯文本文件：只影响 docs 与 format 检查，不改变插件运行时行为。 */
-const DOC_DIRS = ['docs/', 'skills/']
-const DOC_EXT = ['.md', '.mdx', '.txt']
-const isDocFile = (p) => DOC_DIRS.some((d) => p.startsWith(d)) || DOC_EXT.some((e) => p.endsWith(e)) || p === 'LICENSE'
+// 反向依赖（依赖图口径）已抽到 lib/impact-scope.mjs（issue #188）：pre-push 与
+// scripts/analyze-impact-replay.mjs（回放统计）必须共用同一份依赖图，否则两边算出的
+// 「受影响插件」会对不上。
+const dependentsOf = createDependentsResolver(root, ALL_PLUGINS)
 
 /**
- * CI 流水线定义目录（GitHub .github/）。
- * 与文档同级：改了它不会改变任何插件的运行时行为（插件测试结果与流水线 YAML 无关），
- * 因此**不应**触发「仓库根文件变更 → 安全退化全量」。
+ * package.json 的「字段级」退化判定（issue #188）：只有非元数据字段（dependencies /
+ * devDependencies / scripts / overrides / engines / type / …）变化才需要退化全量；
+ * description / keywords 这类纯元数据改动不改变任何插件测试结果。
  *
- * 背景（真实事故）：一次「只改了 docs/**、CI 流水线 YAML、AGENTS.md」的推送，因流水线 YAML
- * 落在「其它根文件」分类里被判为无法裁剪 → 退化全量，把本该秒级的 pre-push 变成跑完全部
- * 插件测试（19 个 vitest+cucumber），叠加机器负载后表现为长时间不返回。
+ * 返回 diffPackageJsonRuntimeFields 的结果：[] = 只有元数据变化（可收窄）；
+ * 非空数组 = 有运行时字段变化（退化）；null = 无法判定（读不到旧版本或 JSON 解析失败 → 退化）。
  */
-const CI_CONFIG_DIRS = ['.github/']
-const isRuntimeIrrelevant = (p) => isDocFile(p) || CI_CONFIG_DIRS.some((d) => p.startsWith(d))
-
-/** 插件包名映射：目录名 → package.json name（本仓库两者一致，仍按实际值匹配以免未来漂移）。 */
-const PLUGIN_NAMES = new Map()
-for (const name of ALL_PLUGINS) {
+function packageJsonRuntimeFields(baseRef) {
+  const before = spawnSyncGIT(['show', baseRef + ':package.json'])
+  if (!before.ok) return null
+  let after
   try {
-    const pkg = JSON.parse(readFileSync(join(root, 'plugins', name, 'package.json'), 'utf8'))
-    PLUGIN_NAMES.set(name, pkg.name ?? name)
+    after = readFileSync(join(root, 'package.json'), 'utf8')
   } catch {
-    PLUGIN_NAMES.set(name, name)
+    return null
   }
-}
-
-/**
- * 反向依赖：依赖 plugins/<pluginName> 的插件集合（两路取证，宁多勿少）。
- *   1. package.json 依赖声明——按包名（`"dsh-shared": "^0.1.0"`）或 file 路径匹配；
- *   2. 源码 import/require——本仓库存在「源码 import 了 dsh-shared 但 package.json 未声明」
- *      的情况（15 个插件 import、仅 6 个声明），只查 package.json 会漏检。
- */
-function dependentsOf(pluginName) {
-  const result = new Set()
-  const pkgName = PLUGIN_NAMES.get(pluginName) ?? pluginName
-  const sourceCache = (name) => {
-    if (!SOURCE_SCAN_CACHE.has(name)) {
-      const dirs = [join(root, 'plugins', name, 'lib'), join(root, 'plugins', name, 'src')]
-      const texts = []
-      for (const dir of dirs) {
-        if (!existsSync(dir)) continue
-        try {
-          for (const entry of readdirSync(dir, { recursive: true })) {
-            const file = join(dir, String(entry))
-            if (!/\.(mjs|cjs|js|ts|tsx)$/.test(file)) continue
-            if (file.includes('/test/') || file.includes('/coverage/')) continue
-            texts.push(readFileSync(file, 'utf8'))
-          }
-        } catch {
-          /* 目录不可读：忽略该目录 */
-        }
-      }
-      SOURCE_SCAN_CACHE.set(name, texts)
-    }
-    return SOURCE_SCAN_CACHE.get(name)
-  }
-
-  for (const name of ALL_PLUGINS) {
-    if (name === pluginName) continue
-    if (result.has(name)) continue
-    let hit = false
-    try {
-      const pkg = JSON.parse(readFileSync(join(root, 'plugins', name, 'package.json'), 'utf8'))
-      const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) }
-      hit = Object.entries(deps).some(([dep, spec]) => {
-        if (dep === pkgName) return true
-        return typeof spec === 'string' && (spec.includes(`plugins/${pluginName}`) || spec.includes(`/${pluginName}`))
-      })
-    } catch {
-      /* package.json 不可读：继续走源码扫描 */
-    }
-    if (!hit) {
-      // 匹配 import ... from 'dsh-shared' / require('dsh-shared') / from '../dsh-shared'
-      const re = new RegExp(`(?:from|require\\()\\s*['"](?:\\.\\.?/)*${pluginName}['"]`)
-      hit = sourceCache(name).some((text) => re.test(text))
-    }
-    if (hit) result.add(name)
-  }
-  return result
-}
-
-/** 高扇入阈值：依赖方超过这个数就不值得逐个跑，直接全量更简单也更安全。 */
-const HIGH_FANIN = 3
-
-/** 源码扫描缓存：插件名 → 其 lib/ + src/ 下源码文本。 */
-const SOURCE_SCAN_CACHE = new Map()
-
-/**
- * 计算受影响插件集合。
- * 返回 { plugins, escalated, reasons }；escalated = true 表示必须全量（无证据可裁剪）。
- */
-function computeImpactScope(files) {
-  if (files === null) {
-    return { plugins: new Set(ALL_PLUGINS), escalated: true, reasons: ['无法获取变更文件列表（git diff 失败）'] }
-  }
-  const reasons = []
-  const affected = new Set()
-  const rootToolchain = []
-  const otherRoot = []
-  let docOnly = 0
-
-  for (const file of files) {
-    const pluginMatch = /^plugins\/([^/]+)\//.exec(file)
-    if (pluginMatch) {
-      const name = pluginMatch[1]
-      if (!ALL_PLUGINS.includes(name)) continue
-      affected.add(name)
-      const dependents = [...dependentsOf(name)].sort()
-      for (const dep of dependents) affected.add(dep)
-      if (dependents.length >= HIGH_FANIN) {
-        // 高扇入共享库（如 dsh-shared：15 个插件 import 它）——逐个跑依赖方 ≈ 全量，
-        // 直接全量更简单，也不给「漏掉某个间接依赖方」留口子
-        reasons.push(`plugins/${name}/** 是被 ${dependents.length} 个插件依赖的共享库 → 无法有意义地裁剪，全量`)
-        return { plugins: new Set(ALL_PLUGINS), escalated: true, reasons, docsOnly: false }
-      }
-      if (dependents.length > 0) {
-        reasons.push(`plugins/${name}/** 变更 → 额外纳入依赖方：${dependents.join('、')}`)
-      }
-      continue
-    }
-    if (file.startsWith('scripts/')) {
-      // 校验/发版脚本变更：可能影响任何插件结果，保守全量
-      rootToolchain.push(file)
-      continue
-    }
-    if (ROOT_TOOLCHAIN_FILES.has(file)) {
-      rootToolchain.push(file)
-      continue
-    }
-    if (isRuntimeIrrelevant(file)) {
-      // 文档/skill/CI 流水线定义只影响 docs/format 检查，不可能改变插件运行时行为
-      docOnly += 1
-      continue
-    }
-    otherRoot.push(file)
-  }
-
-  if (docOnly > 0) reasons.push(`其中文档/skill/CI 配置 ${docOnly} 个：不影响插件测试范围`)
-  if (rootToolchain.length > 0) {
-    reasons.push(
-      `根工具链文件变更（${rootToolchain.slice(0, 3).join('、')}${rootToolchain.length > 3 ? '…' : ''}）→ 无法安全裁剪，全量`,
-    )
-    return { plugins: new Set(ALL_PLUGINS), escalated: true, reasons, docsOnly: false }
-  }
-  if (otherRoot.length > 0) {
-    reasons.push(`仓库根文件变更（${otherRoot.slice(0, 3).join('、')}${otherRoot.length > 3 ? '…' : ''}）→ 全量`)
-    return { plugins: new Set(ALL_PLUGINS), escalated: true, reasons, docsOnly: false }
-  }
-  const docsOnly = files.length > 0 && docOnly === files.length
-  if (docsOnly) reasons.push('本次变更为纯文档/skill/CI 配置 → 跳过一切与插件源码相关的检查')
-  return { plugins: affected, escalated: false, reasons, docsOnly }
+  return diffPackageJsonRuntimeFields(before.out, after)
 }
 
 /**
@@ -689,8 +556,16 @@ const CHECK_DEFS = [
       // 没有待推送提交）时必须回退全仓库：否则会变成 `prettier --check` 无文件参数 → prettier
       // 转去读 stdin，行为随版本而变（本机恰好返回 0，但那是隐式的、不可依赖的）。
       const scoped = ctx.fast && !ctx.escalated && ctx.changedFiles !== null && ctx.changedFiles.length > 0
-      const paths = scoped ? ctx.changedFiles : ['.']
-      ctx.report?.(scoped ? `范围：本次变更 ${paths.length} 个文件` : '范围：全仓库（没有可裁剪的变更文件，安全回退）')
+      // 删除（D）的文件在工作区已不存在，显式传给 prettier 会 "No files matching the pattern" 假失败
+      // ——这是 issue #188 把 D 纳入 diff-filter 之后才会出现的形态。过滤后一个不剩时回退全仓库，
+      // 与「拿不到变更证据」走同一条安全路径（宁可多查，不可漏查）。
+      const existing = scoped ? ctx.changedFiles.filter((p) => existsSync(join(root, p))) : []
+      const paths = existing.length > 0 ? existing : ['.']
+      ctx.report?.(
+        existing.length > 0
+          ? `范围：本次变更 ${paths.length} 个文件`
+          : '范围：全仓库（没有可裁剪的变更文件，安全回退）',
+      )
       // --ignore-unknown：按变更文件裁剪时传入的是**显式路径**，prettier 对显式路径里的
       // 未知扩展名（.feature / .png 等）直接报 "No parser could be inferred for file"（exit 2），
       // 而全仓库 `--check .`（CI 语义）走目录展开、这类文件被静默跳过 —— 于是「改了 Gherkin
@@ -828,10 +703,14 @@ function serialRetryEnabled() {
 }
 
 /**
- * 需要独占运行的插件测试（不与其他插件测试并发）。
+ * 需要**排队尾**的插件测试（不与其它插件同时开工）。
  * dsh-my-guard 的黑名单扫描测试会真去 npm registry 解析包名（含一个 `testTimeout: 5000`
- * 的联网用例），与其他插件测试并发时曾出现 5013ms 超时误报；独占运行更稳，
- * 代价只是少一路并发（约 8s → 串行 15s 左右）。
+ * 的联网用例），与其他插件测试并发时曾出现 5013ms 超时误报。
+ *
+ * issue #188 把它从「并发池排空后的串行尾巴」改成「队列末尾」：原实现让 guard 的 ~6s 完全
+ * 落在关键路径上（实测全量 --only test：池 25.4s + guard 6.5s = 31.9s）；排到队尾后它只在
+ * 并发池出现空槽时启动，启动时前面的任务大多已结束（等同于旧语义里的「不要和其他插件同时
+ * 开工」），但不再占用尾延迟。仍不把它塞进队列中间——那正是 5013ms 误报的原始形态。
  */
 const EXCLUSIVE_PLUGIN_TESTS = new Set(['dsh-my-guard'])
 
@@ -846,8 +725,14 @@ function runPluginTests(ctx) {
       return { ...r, ms: Date.now() - started }
     },
   })
-  const parallel = targets.filter((name) => !EXCLUSIVE_PLUGIN_TESTS.has(name))
-  const exclusive = targets.filter((name) => EXCLUSIVE_PLUGIN_TESTS.has(name))
+  // 独占插件排在队尾（见 EXCLUSIVE_PLUGIN_TESTS 注释）：既不与其它插件同时开工，
+  // 也不占用「池排空后」的额外尾延迟。
+  // 注：曾实现过「按上轮耗时降序启动（最慢优先）」的 LPT 调度，实测无收益（28.0s → 28.7s）
+  // ——把 6 个最重的插件同时塞进第一批会最大化 CPU 争用，反而整体变慢，故不采用。
+  const ordered = [
+    ...targets.filter((name) => !EXCLUSIVE_PLUGIN_TESTS.has(name)),
+    ...targets.filter((name) => EXCLUSIVE_PLUGIN_TESTS.has(name)),
+  ]
   let done = 0
   const onDone = (r) => {
     done += 1
@@ -858,12 +743,7 @@ function runPluginTests(ctx) {
     if (!r.ok) log(dim(indent(tail(r.out, 40))))
   }
   return (async () => {
-    const results = await runPool(parallel.map(makeTask), pluginConcurrency(), onDone)
-    for (const name of exclusive) {
-      const result = await makeTask(name).run()
-      results.push(result)
-      onDone(result)
-    }
+    const results = await runPool(ordered.map(makeTask), pluginConcurrency(), onDone)
 
     // ── 疑似并发冲突 → 串行复测一次 ──────────────────────────────────────────
     // 目的：多 agent / 多进程同时跑测试时，coverage 目录争用会让 npm test 偶发退出 1
@@ -932,15 +812,25 @@ const indent = (text) =>
 const tail = (text, lines) => text.split('\n').slice(-lines).join('\n')
 
 /**
- * 插件测试并发度。各插件测试相互隔离（独立 node 进程 + 临时 DSH_HOME / port 0，
- * 无固定端口占用），但同一仓库里若**另有进程正在跑同一插件**的 vitest，会争用该插件的
- * coverage 目录（见 docs/踩坑/多agent并行测试资源冲突.md）——故默认取保守值，可用
- * VERIFY_CONCURRENCY 覆盖（1-8；怀疑并发冲突时设 1 串行）。
+ * 插件测试并发度（issue #188：默认 3 → 6）。
+ *
+ * 为什么是 6、而不是更高（依据 = 本机 10 核实测，同一变更集、同一条命令
+ * \`--only test --full\`）：
+ *   · 并发 3（旧默认）38.0s → 并发 6 31.9s（省 6.1s）；
+ *   · 并发 8 实测 32.3s——**没有收益**，且最慢的 dsh-file-activity 从 25.4s 变成 25.8s：
+ *     瓶颈是「最慢单插件」而不是并发度，加进程只是把最慢的那个拖得更慢；
+ *   · 更高并发在 issue #188 的原始实测里曾让 dsh-my-guard 的联网用例（test/host-guard.mjs，
+ *     testTimeout 5s）劣化到单测试 930s；本脚本现已把 dsh-my-guard 放进 EXCLUSIVE_PLUGIN_TESTS
+ *     独占运行，但上界仍钉在 6——加并发换不来收益，只会抬高联网用例与 CPU 争用的 flaky 风险。
+ *
+ * 各插件测试相互隔离（独立 node 进程 + 临时 DSH_HOME / port 0，无固定端口占用），但同一仓库里
+ * 若**另有进程正在跑同一插件**的 vitest，会争用该插件的 coverage 目录
+ * （见 docs/踩坑/多agent并行测试资源冲突.md）——故保留 VERIFY_CONCURRENCY=1 手动串行降级。
  */
 function pluginConcurrency() {
   const raw = Number.parseInt(process.env.VERIFY_CONCURRENCY ?? '', 10)
   if (Number.isInteger(raw) && raw >= 1 && raw <= 8) return raw
-  return 3
+  return 6
 }
 
 // ── 超时看门狗与进度登记 ────────────────────────────────────────────────────
@@ -1032,8 +922,16 @@ if (options.fast) {
       log(yellow('⚠ git diff 失败 → 安全退化全量'))
       impact = { plugins: new Set(ALL_PLUGINS), escalated: true, docsOnly: false, reasons: ['git diff 失败 → 全量'] }
     } else {
-      impact = computeImpactScope(changed)
+      // package.json 的字段级判定只在它真的出现在变更列表里时才去读 base 版本（多一次 git 调用）
+      const pkgFields = changed.some((c) => c.path === 'package.json') ? packageJsonRuntimeFields(base.ref) : null
+      impact = computeImpactScope(changed, {
+        plugins: ALL_PLUGINS,
+        dependentsOf,
+        packageJsonRuntimeFields: pkgFields,
+      })
       log(`  变更文件：${changed.length} 个`)
+      const deleted = changed.filter((c) => c.status === 'D')
+      if (deleted.length > 0) log(`  含删除文件：${deleted.length} 个（--diff-filter 已含 D，issue #188）`)
       for (const reason of impact.reasons) log(`  ${yellow('⚠')} ${reason}`)
       if (impact.docsOnly) {
         log(`  受影响插件：（无 —— 纯文档变更）`)
@@ -1047,7 +945,8 @@ if (options.fast) {
 const ctx = {
   fast: options.fast,
   baseOk: base.ok,
-  changedFiles: changed,
+  // changedFiles：变更文件的路径列表（保持既有语义：format / ts-size 等检查项直接消费）
+  changedFiles: changed === null ? null : changed.map((c) => c.path),
   impactPlugins: impact.plugins,
   escalated: impact.escalated,
   docsOnly: impact.docsOnly || false,
@@ -1108,7 +1007,24 @@ for (const check of runList) {
 }
 
 const HARD_SKIPPED = CHECK_DEFS.filter((c) => !runList.includes(c))
-const CONCURRENCY = options.fast ? 4 : 2
+/**
+ * 检查项并发度（issue #188 实测调优：full 模式 2 → 4）。
+ *
+ * 为什么 full 模式也要提：full 时 12 项检查里有 10 项是「与插件测试无依赖」的独立检查
+ * （typecheck/lint/format/test-scripts/knip/jscpd/docs/links/resource-smoke/ts-size），
+ * 旧的 2 路并发里有一路被 test 项长期占住 → 其余 10 项实际**串行**（实测 34.3s），
+ * 比插件测试本身（25.1s）还长，于是全量墙钟被它们顶到 36s。提到 4 路后它们与 test 项
+ * 真正重叠，全量墙钟回落到由 test 项决定。
+ *
+ * 上界不取更高：插件测试内部已有 6 路并发（pluginConcurrency），10 核机器上再叠加会让
+ * 最慢插件被 CPU 争用拖慢（实测并发 8 时 dsh-file-activity 25.4s → 25.8s）。
+ */
+function checkConcurrency() {
+  const raw = Number.parseInt(process.env.VERIFY_CHECK_CONCURRENCY ?? '', 10)
+  if (Number.isInteger(raw) && raw >= 1 && raw <= 8) return raw
+  return 4
+}
+const CONCURRENCY = checkConcurrency()
 
 log('')
 log(
@@ -1218,7 +1134,8 @@ function printHelp() {
   log('  --help          显示本帮助')
   log('检查项: ' + CHECK_IDS.join(' / '))
   log('默认跳过（CI 强制，本地可显式开启）: ' + OPTIONAL_CHECKS.join(' / '))
-  log('环境变量: VERIFY_CONCURRENCY=<1-8> 覆盖插件测试并发度（默认 3）')
+  log('环境变量: VERIFY_CONCURRENCY=<1-8> 覆盖插件测试并发度（默认 6）')
+  log('           VERIFY_CHECK_CONCURRENCY=<1-8> 覆盖检查项并发度（默认 4）')
   log(`           VERIFY_TIMEOUT=<秒> 整体超时上限（当前 ${totalTimeoutSec === 0 ? '已关闭' : `${totalTimeoutSec}s`}）`)
   log(
     `           VERIFY_STEP_TIMEOUT=<秒> 单个子进程超时（当前 ${stepTimeoutSec === 0 ? '已关闭' : `${stepTimeoutSec}s`}）`,

@@ -1,4 +1,5 @@
 import { test } from 'vitest'
+import { waitFileContains } from './lib/settle.mjs'
 /**
  * Smoke test for the dsh-file-activity host half: mounts the plugin against a
  * mocked context and drives fs/observed events + HTTP routes through it.
@@ -190,8 +191,8 @@ test('host smoke suite', async () => {
       'capped file firstSeen present',
     )
 
-    // 8. persistence file written (debounced 500ms → wait)
-    await new Promise((resolve) => setTimeout(resolve, 800))
+    // 8. persistence file written (debounced 500ms → poll until it lands)
+    await waitFileContains(statePath, '/work/b.txt')
     const persistedSession = sessionFromFile(statePath, sid)
     assert.equal(persistedSession.counts['/work/b.txt'].create, 1, 'persisted creates')
 

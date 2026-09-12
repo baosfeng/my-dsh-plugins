@@ -18,8 +18,7 @@ import { appendFile, mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { createStore } from '../lib/store.js'
 import { stateFile } from '../lib/state.js'
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+import { fileBytes, fileText, settle, waitFileContains, waitReady, waitStateFile, waitUntil } from './lib/settle.mjs'
 
 /** 注入式 appender：真实增量 append + 真快照原子重写 + 精确字节统计。 */
 function makeAppender() {
@@ -83,7 +82,7 @@ function makeAppender() {
       stats: () => ({ bytesWritten: io.bytes, writes: io.writes, total: appended }),
     }
   }
-  return { io, factory, done: () => Promise.all([]).then(() => sleep(250)) }
+  return { io, factory, done: () => settle(3, 25) }
 }
 
 /** 事件本体下界：每条事件一行 JSON（含换行），与实际落盘行同构。 */
@@ -112,7 +111,7 @@ test('长会话 5,000+ 事件 / 100+ 会话：总落盘字节 ≈ 事件本体�
   freshHome('budget')
   const { io, factory } = makeAppender()
   const store = createStore({ logger: { warn: () => {} } }, { appender: factory })
-  await sleep(300)
+  await waitReady(store)
 
   const rows = []
   for (let s = 0; s < 100; s += 1) {
@@ -124,7 +123,8 @@ test('长会话 5,000+ 事件 / 100+ 会话：总落盘字节 ≈ 事件本体�
       rows.push({ sessionId, path, op: 'read', time })
     }
   }
-  await sleep(1200) // 防抖 500ms + flush 落定
+  // 防抖 500ms + append 落定：轮询「已 flush 且盘面字节追平内存计数」，满足即返回（issue #188）
+  await waitUntil(() => io.writes > 0 && fileBytes(stateFile()) >= io.bytes)
 
   const expected = eventBytes(rows)
   const tolerated = Math.ceil(expected * 1.6) + 4096
@@ -151,17 +151,17 @@ test('密集流：单次落盘字节与状态体积解耦（非全量重写）',
   freshHome('chunk')
   const { io, factory } = makeAppender()
   const store = createStore({ logger: { warn: () => {} } }, { appender: factory })
-  await sleep(300)
+  await waitReady(store)
 
   for (let i = 0; i < 290; i += 1) store.record('warm-session', '/warm/p' + i + '.ts', 'read', Date.now())
-  await sleep(900)
+  await waitUntil(() => io.writes > 0)
   const stateBytes = Buffer.byteLength(JSON.stringify(store.state))
   io.bytes = 0
   io.writes = 0
   io.chunks = []
 
   for (let i = 0; i < 40; i += 1) store.record('warm-session', '/warm/new-' + i + '.ts', 'read', Date.now())
-  await sleep(900)
+  await waitUntil(() => io.writes > 0)
 
   assert.ok(io.writes > 0, '必须真实落盘')
   assert.ok(
@@ -177,17 +177,17 @@ test('密集流：单次落盘字节与状态体积解耦（非全量重写）',
 test('重启后从 JSON Lines 状态文件重建内存态（计数与历史不丢）', async () => {
   freshHome('rebuild')
   const store = createStore({ logger: { warn: () => {} } })
-  await sleep(300)
+  await waitReady(store)
   for (let i = 0; i < 30; i += 1) {
     store.record('rebuild-session', '/r/f' + i + '.ts', i === 0 ? 'write' : 'read', Date.now())
   }
   store.record('rebuild-session', '/r/f1.ts', 'edit', Date.now())
-  await sleep(900)
+  await waitStateFile(stateFile())
   store.dispose()
-  await sleep(400)
+  await waitFileContains(stateFile(), '"m":1')
 
   const store2 = createStore({ logger: { warn: () => {} } })
-  await sleep(400)
+  await waitReady(store2)
   const session = store2.state.sessions['rebuild-session']
   assert.ok(session, '重启后会话存在')
   assert.equal(session.counts['/r/f0.ts'].create, 1, 'create 计数恢复')
@@ -203,17 +203,17 @@ test('重启后从 JSON Lines 状态文件重建内存态（计数与历史不�
 test('未 compact（仅事件行）时冷启动同样可重建：事件行按序重放，不丢数据', async () => {
   freshHome('replay-only')
   const store = createStore({ logger: { warn: () => {} } })
-  await sleep(300)
+  await waitReady(store)
   store.record('replay-session', '/p/a.ts', 'write', Date.now())
   store.record('replay-session', '/p/a.ts', 'edit', Date.now())
   store.record('replay-session', '/p/b.ts', 'read', Date.now())
-  await sleep(900) // 只等防抖 append，不 dispose（模拟未 compact 就被 kill）
+  await waitStateFile(stateFile())
   const text = readFileSync(stateFile(), 'utf8')
   assert.ok(text.includes('"p":'), '文件里是事件行')
   assert.ok(!text.includes('"m":1'), '此时还没有 compact 快照行')
 
   const store2 = createStore({ logger: { warn: () => {} } })
-  await sleep(400)
+  await waitReady(store2)
   const session = store2.state.sessions['replay-session']
   assert.ok(session, '仅事件行也能重建会话')
   assert.equal(session.counts['/p/a.ts'].create, 1, 'create 重放正确')
@@ -229,9 +229,9 @@ test('超过 compact 预算触发原子快照：文件有界、重载计数完�
   // 注入小预算（生产默认 20000 行，按状态体积自适应），直接覆盖 compact 分支
   const limits = { maxPathsPerSession: 1000 }
   const store = createStore({ logger: { warn: () => {} } }, { appender: factory, compactLines: 200, limits })
-  await sleep(300)
+  await waitReady(store)
   for (let i = 0; i < 700; i += 1) store.record('c-sess', '/c/f' + i + '.ts', 'read', Date.now())
-  await sleep(1000)
+  await waitUntil(() => io.snapshots >= 1 && fileText(stateFile()).includes('"m":1'))
 
   assert.ok(io.snapshots >= 1, '达到行预算后触发 compact 快照（实际 snapshots=' + io.snapshots + '）')
   const text = readFileSync(stateFile(), 'utf8')
@@ -240,7 +240,7 @@ test('超过 compact 预算触发原子快照：文件有界、重载计数完�
   assert.ok(size <= 512 * 1024, 'compact 后文件有界（' + size + 'B）')
 
   const store2 = createStore({ logger: { warn: () => {} } }, { compactLines: 200, limits })
-  await sleep(400)
+  await waitReady(store2)
   const session = store2.state.sessions['c-sess']
   assert.equal(Object.keys(session.counts).length, 700, 'compact 后重载计数完整')
   assert.equal(session.counts['/c/f699.ts'].read, 1, '计数精确')
@@ -263,12 +263,12 @@ test('升级：旧格式状态文件的计数被完整接管（首次启动一�
   }
   writeFileSync(stateFile(), JSON.stringify(legacy), 'utf8')
   const store = createStore({ logger: { warn: () => {} } })
-  await sleep(600)
+  await waitReady(store)
   const session = store.state.sessions['old-session']
   assert.ok(session, '旧格式会话被接管')
   assert.equal(session.counts['/legacy/a.ts'].read, 7, '旧计数保留')
   assert.equal(session.counts['/legacy/a.ts'].modify, 3, '旧计数保留（modify）')
-  await sleep(400)
+  await waitFileContains(stateFile(), '"m":1')
   const text = readFileSync(stateFile(), 'utf8')
   assert.ok(text.includes('"m":1'), '盘面已重写为 JSON Lines 快照格式')
   store.dispose()

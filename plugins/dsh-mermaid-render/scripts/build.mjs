@@ -10,22 +10,32 @@
  * node --check + tests against it; it does not run this build).
  *
  * 两处注入都走 spliceExactlyOnce（scripts/splice.mjs）：占位符必须**恰好一处**，
- * 0 处与 ≥2 处都显式失败。历史教训（issue #185）：模板注释里曾出现与引擎占位符
- * 同形的字面量，replaceAll 把两处都注入同一份 4.45 MB base64 → 产物 8.93 MB、
- * npm 包 13.5 MB；旧门禁只查"无残留"，两处都替换后残留恰好为 0，静默通过。
+ * 0 处与 ≥2 处都显式失败。历史教训（issue #185，两个耦合缺陷）：
+ *  1. 模板注释里曾出现与引擎占位符同形的字面量 → replaceAll 把两处都注入同一份
+ *     4.45 MB base64（产物 8.93 MB、npm 包体积翻倍），而旧门禁只查"无残留"——
+ *     两处都替换后残留恰好为 0，于是静默通过；
+ *  2. 引擎占位符曾写成注释形（`= /*__MERMAID_UMD_B64__*\/ ''`）→ 替换"成功"但 base64
+ *     仍留在块注释里，常量恒为空串、内联引擎永远加载不了。故注入后必须校验**取值**
+ *     （readAssignedStringLiteral），而不是"占位符没了"。
  */
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { spliceExactlyOnce } from './splice.mjs'
+import { readAssignedStringLiteral, spliceExactlyOnce } from './splice.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD_DIR = join(root, 'lib/.client-build')
 /** tsc 产物注入位（模板里的注释形占位符）。 */
 const BUNDLE_PLACEHOLDER = '/*__CLIENT_BUNDLE__*/'
-/** vendored mermaid 引擎 base64 注入位（src/client/index.ts 的常量声明位）。 */
+/**
+ * vendored mermaid 引擎 base64 的注入位。它位于 src/client/index.ts 的
+ * **字符串字面量**内（`const MERMAID_UMD_B64: string = '__MERMAID_UMD_B64__'`），
+ * 因此注入**裸 base64**（引号已在源码里），并让常量成为有效赋值。
+ */
 const ENGINE_PLACEHOLDER = '__MERMAID_UMD_B64__'
+/** 引擎常量名：注入后按名字校验取值。 */
+const ENGINE_CONST = 'MERMAID_UMD_B64'
 
 // 1. tsc 编译 client TS → lib/.client-build/index.js（CommonJS 单文件）
 execSync('npx tsc -p tsconfig.client.json', { cwd: root, stdio: 'inherit' })
@@ -41,7 +51,15 @@ if (!umd.includes('window') && !umd.includes('globalThis')) {
   throw new Error('vendor/mermaid.min.js does not look like the UMD build')
 }
 const b64 = Buffer.from(umd, 'utf8').toString('base64')
-out = spliceExactlyOnce(out, ENGINE_PLACEHOLDER, JSON.stringify(b64))
+out = spliceExactlyOnce(out, ENGINE_PLACEHOLDER, b64)
+
+// 3b. 产物级校验：断言引擎常量的**取值**等于注入的 base64。
+//     "占位符已替换"不等于"引擎可用"——占位符曾落在块注释里，替换成功而常量恒空。
+const embedded = readAssignedStringLiteral(out, ENGINE_CONST)
+if (embedded !== b64) {
+  const got = embedded === null ? 'no string literal (placeholder likely inside a comment)' : `${embedded.length} chars`
+  throw new Error(`${ENGINE_CONST} in client.js is not the injected base64 (got ${got}, expected ${b64.length} chars)`)
+}
 
 writeFileSync(join(root, 'lib/client.js'), out)
 
@@ -49,5 +67,5 @@ writeFileSync(join(root, 'lib/client.js'), out)
 rmSync(BUILD_DIR, { recursive: true, force: true })
 // 字节数用 Buffer.byteLength（out.length 是 UTF-16 码元数，含中文注释时与文件字节不符）
 console.log(
-  `built lib/client.js (${Buffer.byteLength(out)} bytes, ${out.split('\n').length} lines, mermaid ${Buffer.byteLength(umd)} bytes embedded as base64)`,
+  `built lib/client.js (${Buffer.byteLength(out)} bytes, ${out.split('\n').length} lines, mermaid ${Buffer.byteLength(umd)} bytes embedded as base64, ${ENGINE_CONST} ${embedded.length} chars verified)`,
 )

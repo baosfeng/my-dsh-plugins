@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spliceExactlyOnce } from '../scripts/splice.mjs'
+import { readAssignedStringLiteral, spliceExactlyOnce } from '../scripts/splice.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const TEMPLATE_PATH = join(ROOT, 'lib/client.src.js')
@@ -42,9 +42,16 @@ const ARTIFACT_MAX_BYTES = 6_000_000
 const readArtifact = () => readFileSync(ARTIFACT_PATH, 'utf8')
 const readTemplate = () => readFileSync(TEMPLATE_PATH, 'utf8')
 
+/** vendor 引擎的 base64（4.45 MB，懒加载缓存：多处断言复用同一次编码）。 */
+let cachedB64 = null
+function engineB64() {
+  cachedB64 ??= Buffer.from(readFileSync(VENDOR_PATH, 'utf8'), 'utf8').toString('base64')
+  return cachedB64
+}
+
 /** 引擎 base64 指纹：取 vendor 编码结果前 64 字符，不硬编码魔数。 */
 function engineFingerprint() {
-  return Buffer.from(readFileSync(VENDOR_PATH, 'utf8'), 'utf8').toString('base64').slice(0, 64)
+  return engineB64().slice(0, 64)
 }
 
 /** 统计 haystack 中 needle 出现次数（split 计数：不受正则元字符影响）。 */
@@ -114,5 +121,43 @@ describe('spliceExactlyOnce 占位符门禁（#185）', () => {
     expect(countOf(out, engineB64), '注入后只剩一份引擎 base64').toBe(1)
     expect(countOf(out, ENGINE_PLACEHOLDER)).toBe(0)
     expect(Buffer.byteLength(out)).toBeLessThan(ARTIFACT_MAX_BYTES)
+  })
+})
+describe('产物内引擎常量必须是可用的字符串字面量（#185 扩展）', () => {
+  // 背景：占位符曾写成注释形（`= /*__MERMAID_UMD_B64__*/ ''`），替换后 base64 仍留在
+  // 块注释里，常量恒为空串 → 内联引擎永远加载不了（浏览器报 mermaid engine missing
+  // after injection）。"占位符已替换"不等于"引擎可用"，所以这里直接断言取值。
+  it('MERMAID_UMD_B64 是字符串字面量且取值 === vendor 引擎 base64（非空）', () => {
+    const literal = readAssignedStringLiteral(readArtifact(), 'MERMAID_UMD_B64')
+    expect(literal, '产物里该常量不是字符串字面量（base64 落在注释里 → 引擎常量恒为空串、引擎加载失败）').not.toBeNull()
+    expect(literal.length).toBe(engineB64().length)
+    expect(literal).toBe(engineB64())
+  })
+
+  it('产物内引擎 base64 解码后与 vendor/mermaid.min.js 逐字节一致', () => {
+    const literal = readAssignedStringLiteral(readArtifact(), 'MERMAID_UMD_B64')
+    expect(literal).not.toBeNull()
+    expect(Buffer.from(literal, 'base64').toString('utf8')).toBe(readFileSync(VENDOR_PATH, 'utf8'))
+  })
+})
+describe('readAssignedStringLiteral：按取值校验，而不是「占位符没了」（#185 扩展）', () => {
+  it('读取字符串字面量赋值的取值', () => {
+    expect(readAssignedStringLiteral("const X = 'abc'", 'X')).toBe('abc')
+  })
+
+  it('注释形占位符 → null（本次缺陷形态：替换成功但取值不是字面量）', () => {
+    expect(readAssignedStringLiteral("const X = /*'abc'*/ ''", 'X')).toBe(null)
+  })
+
+  it('非字符串赋值 → null', () => {
+    expect(readAssignedStringLiteral('const X = 42', 'X')).toBe(null)
+  })
+
+  it('跳过同名引用，定位到真正的赋值处', () => {
+    expect(readAssignedStringLiteral("const X = 'v'\nconst Y = fn(X)", 'X')).toBe('v')
+  })
+
+  it('不把更长标识符的后缀当成常量名', () => {
+    expect(readAssignedStringLiteral("const MyX = 'v'", 'X')).toBe(null)
   })
 })

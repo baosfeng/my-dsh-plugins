@@ -69,11 +69,14 @@ npm test
 ### 构建门禁（issue #185）
 
 `scripts/build.mjs` 的两处注入都走 `scripts/splice.mjs` 的 `spliceExactlyOnce`：要求占位符
-**恰好一处**，0 处与 ≥2 处都直接抛错（不再用 `replaceAll` 静默全替换）。回归测试
-`test/build-inject.mjs` 钉住三条底线：
+**恰好一处**，0 处与 ≥2 处都直接抛错（不再用 `replaceAll` 静默全替换）。注入引擎后还会用
+`readAssignedStringLiteral` 断言**产物里常量的取值**等于注入的 base64 —— "占位符已替换"不等于
+"引擎可用"（占位符曾落在块注释里，替换成功而取值恒为空串，内联引擎永远加载不了）。回归测试
+`test/build-inject.mjs` 钉住四条底线：
 
 - `lib/client.src.js` 模板（含注释）不得出现引擎占位符字面量；
 - 产物 `lib/client.js` 里引擎 base64 恰好一份、体积 < 6 MB（单份引擎实测 4.49 MB）；
+- 产物内 `MERMAID_UMD_B64` 是字符串字面量、取值 === vendor 引擎 base64，解码后逐字节一致；
 - `spliceExactlyOnce` 对 0 处 / 2 处显式失败，只有恰好 1 处才写入。
 
 产物含一条 4.45 MB 单行（base64 内联引擎），已被 `.prettierignore`、`eslint.config.js`、

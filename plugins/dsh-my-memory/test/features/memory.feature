@@ -150,3 +150,41 @@
     当 agent 调用 memory_save 保存全局记忆 "用户偏好用 pnpm"
     那么 触发用户确认流程（ask 门）
     并且 未写入任何记忆
+
+  场景: memory_save 按类型保存记忆（issue #192）
+    当 agent 调用 memory_save 保存全局记忆 "用 pnpm 装依赖" 类型为 "preference"
+    那么 触发用户确认流程（ask 门）
+    当 用户批准该带类型的保存
+    那么 全局记忆条目 "用 pnpm 装依赖" 的分类为 "preference"
+    并且 查询渲染文本包含分类 "偏好"
+
+  场景: memory_query 展示每条记忆的分类（issue #192）
+    当 用户确认新增全局记忆 "回复使用中文"
+    当 agent 调用 memory_query 查询全局记忆
+    那么 查询渲染文本包含分类 "事实"
+
+  场景: memory_delete 删除记忆必须经用户确认（issue #192）
+    当 agent 调用 memory_save 保存全局记忆 "用 pnpm 装依赖" 类型为 "fact"
+    当 用户批准该带类型的保存
+    当 agent 调用 memory_delete 删除该记忆
+    那么 触发用户确认流程（ask 门）
+    并且 确认文案包含待删内容 "用 pnpm 装依赖"
+    当 用户拒绝该删除
+    那么 全局记忆仍包含 "用 pnpm 装依赖"
+    当 用户批准该删除
+    那么 删除回执包含分类 "事实"
+    并且 全局记忆不包含 "用 pnpm 装依赖"
+
+  场景: 删除不存在的 id 明确失败（issue #192）
+    当 用户确认新增全局记忆 "保留条目"
+    当 agent 调用 memory_delete 删除 id "mem-404"
+    那么 删除失败且错误包含 "not found"
+    并且 全局记忆包含 "保留条目"
+
+  场景: danger-full-access（approval policy=never）下 memory_delete 与保存策略一致（issue #192）
+    当 会话 "del-session" 的审批策略为 "never" 且 saveApproval 为 "auto"
+    当 用户确认新增全局记忆 "完全权限下要删的记忆"
+    当 agent 调用 memory_delete 删除全局记忆 "完全权限下要删的记忆"
+    那么 删除未经用户确认直接放行
+    当 会话 "del-session" 执行该删除
+    那么 全局记忆不包含 "完全权限下要删的记忆"

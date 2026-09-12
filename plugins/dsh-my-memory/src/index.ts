@@ -38,7 +38,8 @@ import {
   migrateProjectMemory,
   resolveProjectMemory,
 } from './store.js'
-import { createMemoryQueryTool, createMemorySaveGate, createMemorySaveTool } from './tool.js'
+import { createMemoryQueryTool } from './tool.js'
+import { registerMemoryWriteTools } from './write-tools.js'
 import { saveApprovalOf } from './save-policy.js'
 import type { SaveApproval } from './save-policy.js'
 import type { DshContext, LoggerService } from './types.js'
@@ -234,17 +235,6 @@ function cwdOfAgent(agent: unknown): string {
   return typeof cwd === 'string' ? cwd : ''
 }
 
-/**
- * 宿主 approval 服务的策略探针（issue #208）：直接调用
- * `ApprovalService.effectivePolicy(session)`——与宿主对 ask 的判定是同一个
- * 函数（dsh-user-approval/lib/index.js:155-178），所以探针结论不会与宿主漂移；
- * 服务未加载/返回异常时由 save-policy 回落到会话日志折返。
- */
-function approvalProbe(ctx: DshContext, session: unknown): unknown {
-  const approval = ctx.get<{ effectivePolicy?: (session: unknown) => unknown }>('approval')
-  return approval?.effectivePolicy?.(session)
-}
-
 /** session/event 用户消息收集器（issue #78，autoLearn 开启时只读收集）。 */
 function createMessageCollectorListener({
   collector,
@@ -296,13 +286,9 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
     'dsh-my-memory: memory_query tool',
   )
 
-  // ── memory_save 写工具 + 用户确认门（issue #107，#208 起策略感知）──────
+  // ── 记忆写工具（save/delete）+ 用户确认门（#107/#192，#208 起策略感知）──
   // 门按会话审批策略 + saveApproval 决定确认/免确认放行/明确拒绝——绝不静默变更。
-  ctx.effect(
-    () => ctx.tools?.register(createMemorySaveTool({ globalStore, getProjectStore, config, logger: ctx.logger })),
-    'dsh-my-memory: memory_save tool',
-  )
-  registerSaveGate(ctx, config)
+  registerMemoryWriteTools(ctx, { globalStore, getProjectStore, config })
 
   // ── 自动提取（issue #78，autoLearn 默认关）───────────────────────────
   // 只读收集本次会话的用户消息（session/event），会话结束（agent/status
@@ -374,21 +360,5 @@ function logStartup(
 ) {
   logger?.info(
     `[dsh-my-memory] 记忆插件已启用（autoLearn=${autoLearn ? 'on' : 'off'}，extractor=${extractor}，maxEntryLength=${maxEntryLengthOf(config)}，saveApproval=${saveApprovalOf(config)}）`,
-  )
-}
-
-/** 注册 memory_save 的确认门（issue #107；#208 起权限模式感知）。 */
-function registerSaveGate(ctx: DshContext, config: MemoryConfig): void {
-  ctx.effect(
-    () =>
-      ctx.on(
-        'tools/pre-execute',
-        createMemorySaveGate({
-          config,
-          probePolicy: (session) => approvalProbe(ctx, session),
-          logger: ctx.logger,
-        }),
-      ),
-    'dsh-my-memory: memory_save approval gate',
   )
 }

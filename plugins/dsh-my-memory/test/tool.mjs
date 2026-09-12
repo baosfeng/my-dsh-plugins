@@ -18,6 +18,7 @@ import {
   renderSaveResult,
   saveToolDescription,
 } from '../lib/tool.js'
+import { CATEGORIES } from '../lib/memory-scoring.js'
 import { createStore, migrateProjectMemory, resolveProjectMemory } from '../lib/store.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'dmm-tool-test-'))
@@ -522,6 +523,30 @@ test('gate: an approval-service probe wins over the session log fold (#208)', as
   assert.equal(decision.kind, 'allow', 'probe result drives the decision')
 })
 
+test('gate: memory_delete also goes through the confirmation gate (#192)', async () => {
+  const gate = createMemorySaveGate({ lookupTarget: async () => '要删掉的条目' })
+  const decision = await runGate(gate, { name: 'memory_delete', arguments: { id: 'mem-1', scope: 'global' } })
+  assert.equal(decision.kind, 'ask', 'memory_delete raises the DSH native approval')
+  assert.ok(decision.reason.includes('删除'), `reason is about deletion: ${decision.reason}`)
+  assert.ok(decision.reason.includes('要删掉的条目'), 'reason shows the entry being deleted')
+  assert.ok(decision.reason.includes('不可撤销'), 'reason warns the deletion is irreversible')
+})
+
+test('gate: memory_delete follows the same saveApproval policy matrix (#192)', async () => {
+  const deleteCall = (session) => ({
+    name: 'memory_delete',
+    arguments: { id: 'mem-1', scope: 'global' },
+    agent: { id: 's', session },
+  })
+  const auto = createMemorySaveGate({ config: { saveApproval: 'auto' } })
+  assert.equal((await runGate(auto, deleteCall(NEVER_SESSION))).kind, 'allow', 'auto + never deletes without a prompt')
+  assert.equal((await runGate(auto, deleteCall(ASK_SESSION))).kind, 'ask', 'auto + ask still prompts')
+  const always = createMemorySaveGate({ config: { saveApproval: 'always' } })
+  const denied = await runGate(always, deleteCall(NEVER_SESSION))
+  assert.equal(denied.kind, 'deny', 'always + never denies the deletion')
+  assert.ok(denied.reason.includes('删除'), `the deny hint is about deleting: ${denied.reason}`)
+})
+
 test('memory_save writes are stamped with the session source (#209)', async () => {
   const { tool, queryTool } = realSaveTool()
   const exec = { agent: { id: 'sess-42', session: { header: { cwd: '' } } } }
@@ -564,6 +589,77 @@ test('renderQueryResult shows the source session prefix (#209)', () => {
     ],
   })
   assert.ok(text.includes('abcdef12'), `source session prefix shown: ${text}`)
+})
+
+// ── #192 按类型保存 + query 展示分类 ──────────────────────────────────
+
+test('memory_save accepts an optional category and persists it (#192)', async () => {
+  const { tool, queryTool } = realSaveTool()
+  const value = await tool.execute({ scope: 'global', desc: '用户偏好用 pnpm', category: 'preference' }, {})
+  assert.equal(value.item.category, 'preference', 'explicit category lands on the entry')
+  const query = await queryTool.execute({ scope: 'global' }, {})
+  assert.equal(query.items[0].category, 'preference', 'query returns the stored category')
+})
+
+test('memory_save defaults the category to fact and falls back for rogue values (#192)', async () => {
+  const { tool } = realSaveTool()
+  const absent = await tool.execute({ scope: 'global', desc: '未分类条目' }, {})
+  assert.equal(absent.item.category, 'fact', 'absent category falls back to fact')
+  const rogue = await tool.execute({ scope: 'global', desc: '非法分类条目', category: 'nonsense' }, {})
+  assert.equal(rogue.item.category, 'fact', 'an out-of-enum category falls back to fact')
+})
+
+test('the save tool schema declares the category enum from the single source (#192)', () => {
+  const { tool } = realSaveTool()
+  const category = tool.parameters.properties.category
+  assert.ok(category, 'category parameter declared')
+  assert.equal(category.type, 'string')
+  assert.deepEqual(category.enum, [...CATEGORIES], 'enum mirrors CATEGORIES (single source)')
+  assert.ok(!tool.parameters.required.includes('category'), 'category stays optional')
+})
+
+test('renderQueryResult shows each entry category label (#192)', () => {
+  const text = renderQueryResult({
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    items: [
+      { id: 'mem-1', desc: '用 pnpm 装依赖', category: 'preference' },
+      { id: 'mem-2', desc: '用 vitest 测试', category: 'stack' },
+    ],
+  })
+  assert.ok(text.includes('偏好'), `preference label rendered: ${text}`)
+  assert.ok(text.includes('技术栈'), `stack label rendered: ${text}`)
+  assert.ok(text.includes('用 pnpm 装依赖') && text.includes('用 vitest 测试'), 'desc still rendered')
+})
+
+test('renderQueryResult keeps the empty result message free of category noise (#192)', () => {
+  const global = renderQueryResult({ scope: 'global', cwd: '', projectRoot: '', items: [] })
+  assert.equal(global, '没有找到全局记忆。', 'empty global message unchanged')
+  const project = renderQueryResult({ scope: 'project', cwd: '', projectRoot: '', items: [] })
+  assert.equal(project, '没有找到项目记忆（项目目录未知）。', 'empty project message unchanged')
+  for (const label of ['偏好', '事实', '技术栈', '工作流']) {
+    assert.ok(!global.includes(label) && !project.includes(label), `no category label in empty text: ${label}`)
+  }
+})
+
+test('a saved category is visible through the memory_query rendering (#192)', async () => {
+  const { tool, queryTool } = realSaveTool()
+  await tool.execute({ scope: 'global', desc: '用 pnpm 装依赖', category: 'preference' }, {})
+  const query = await queryTool.execute({ scope: 'global' }, {})
+  const text = queryTool.output.render({ scope: 'global' }, query)[0].text
+  assert.ok(text.includes('偏好'), `query render carries the category: ${text}`)
+})
+
+test('renderSaveResult shows the saved category (#192)', () => {
+  const text = renderSaveResult({
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    item: { id: 'm1', desc: '用 pnpm 装依赖', category: 'preference', createdAt: 1, updatedAt: 1 },
+  })
+  assert.ok(text.includes('偏好'), `save render shows the category: ${text}`)
+  assert.ok(text.includes('已保存全局记忆'), 'scope label kept')
 })
 
 test('cleanup', () => {

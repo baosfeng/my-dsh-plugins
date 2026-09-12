@@ -26,7 +26,7 @@
  * saving memories it notices; off, the agent saves on request.
  */
 import { findProjectRoot } from 'dsh-shared';
-import { CATEGORIES, makeSource } from './memory-scoring.js';
+import { CATEGORIES, categoryLabelOf, makeSource, normalizeCategory } from './memory-scoring.js';
 /** Filter items by a keyword substring (case-insensitive); no filter when empty. */
 export function filterItems(items, keyword) {
     const needle = typeof keyword === 'string' ? keyword.trim().toLowerCase() : '';
@@ -44,7 +44,7 @@ export function renderQueryResult(value) {
             : '';
     if (value.items.length === 0)
         return `没有找到${scopeLabel}记忆${where}。`;
-    const lines = value.items.map((item) => `- [${item.id}] ${item.desc}${sourceLabelOf(item)}`);
+    const lines = value.items.map((item) => `- [${item.id}]〔${categoryLabelOf(item.category)}〕${item.desc}${sourceLabelOf(item)}`);
     return `${scopeLabel}记忆${where}（${value.items.length} 条）：\n${lines.join('\n')}`;
 }
 /** 条目的来源标注（issue #209）：有来源会话时附上会话 id 前缀，便于区分
@@ -193,6 +193,11 @@ const SAVE_PARAMETERS = {
             type: 'string',
             description: '要保存的记忆内容（用户偏好、项目约定、技术决策等）',
         },
+        category: {
+            type: 'string',
+            enum: MEMORY_CATEGORIES,
+            description: '可选：记忆类型——preference（用户偏好）/fact（事实）/project（项目约定）/stack（技术栈）/workflow（工作流），默认 fact',
+        },
         cwd: {
             type: 'string',
             description: '可选：项目记忆的项目目录（默认取当前会话的工作目录）',
@@ -221,7 +226,7 @@ export function renderSaveResult(value) {
         : value.scope === 'project'
             ? '（项目目录未知）'
             : '';
-    return `已保存${scopeLabel}记忆${where}：${value.item.desc} [${value.item.id}]`;
+    return `已保存${scopeLabel}记忆${where}〔${categoryLabelOf(value.item.category)}〕：${value.item.desc} [${value.item.id}]`;
 }
 /**
  * The memory_save tool description. The `proactivePropose` switch (default
@@ -260,7 +265,8 @@ async function executeSave(args, exec, { globalStore, getProjectStore, logger })
         throw new Error('memory_save: desc is required and must not be empty');
     }
     const at = Date.now();
-    const entry = { desc, source: makeSource(sessionId, at) };
+    const category = normalizeCategory(args.category);
+    const entry = { desc, category, source: makeSource(sessionId, at) };
     if (scope === 'global') {
         const item = await globalStore.add(entry, at);
         infoSave(logger, `记忆已保存（scope=global，itemId=${item.id}，sessionId=${sessionId}）`);

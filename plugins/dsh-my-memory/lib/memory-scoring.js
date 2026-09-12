@@ -20,9 +20,25 @@ function normalizeText(text) {
 export function themeKeyOf(item) {
     return `${categoryOf(item)}|${normalizeText(descOf(item))}`;
 }
+/** 归一化任意分类取值（枚举外/缺失回退默认分类）。 */
+export function normalizeCategory(value) {
+    return CATEGORIES.includes(value) ? value : DEFAULT_CATEGORY;
+}
+/** 分类的中文标签（展示层单一来源，与 CATEGORIES 同键）。 */
+const CATEGORY_LABELS = {
+    preference: '偏好',
+    fact: '事实',
+    project: '项目',
+    stack: '技术栈',
+    workflow: '工作流',
+};
+/** 取分类的中文标签（非法/缺失回退默认分类的标签；issue #192 工具输出用）。 */
+export function categoryLabelOf(value) {
+    return CATEGORY_LABELS[normalizeCategory(value)];
+}
 /** 取条目的分类（缺省回退默认）。 */
 function categoryOf(item) {
-    return CATEGORIES.includes(item?.category) ? item?.category : DEFAULT_CATEGORY;
+    return normalizeCategory(item?.category);
 }
 /** 取条目的 desc（容错）。 */
 function descOf(item) {

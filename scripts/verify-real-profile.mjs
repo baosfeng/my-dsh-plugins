@@ -18,8 +18,18 @@
  *        [--addons plugins/dsh-my-skill-manager]... [--api-path /my-skill-manager/api/list]...
  *        [--timeout 90] [--skip] [--keep] [--help]
  *        [--checklist <path>] [--check <path>] [--plugin <name>] [--version <x.y.z>]
+ *        [--workspace <dir>] [--workspace-title <title>]
  *
  * 退出码：0 = 全部通过；1 = 任一环节失败。
+ *
+ * issue #220（假验证修复）：
+ *   --addons 是「待验代码」的显式声明，其 profile node_modules 条目**必须**指向该
+ *   addon 目录。旧实现在同名条目已存在时复用真实 profile 的软链（生产 profile 用
+ *   link: 装在主工作区），隔离实例于是加载主工作区版本 → 假通过（未验证的修复被
+ *   当成已验证）/ 假失败（agent 以为改动无效，去改本来正确的代码）。现在软链强制
+ *   重写，并在实例启动前**打印 + 校验**每个 addon 的 realpath：不一致即退出（静默
+ *   正是这个坑潜伏数轮的原因）。--workspace <dir> 预置隔离实例工作区状态，免去每
+ *   个 agent 手工试错 storages/workspace.json 的隐性 Zod 格式。
  *
  * issue #67 增强（发版前功能级验证留痕）：
  *   --checklist <path>  验证通过后生成「发版前功能级验证清单」Markdown 文件：
@@ -31,9 +41,10 @@
  *   --plugin/--version 写入清单头部（插件名与版本，便于留痕归档）。
  */
 import { spawn } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { checkAddonResolution, linkNodeModules, readAddon, writeWorkspaceStorage } from './lib/verify-profile.mjs'
 import { homedir } from 'node:os'
-import { join, resolve, dirname } from 'node:path'
+import { join, dirname } from 'node:path'
 
 // ── args ───────────────────────────────────────────────────────────────────
 const options = parseArgs(process.argv.slice(2))
@@ -56,6 +67,8 @@ function parseArgs(args) {
     check: null,
     plugin: '',
     version: '',
+    workspace: null,
+    workspaceTitle: null,
   }
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i]
@@ -71,6 +84,8 @@ function parseArgs(args) {
     else if (flag === '--check') result.check = value()
     else if (flag === '--plugin') result.plugin = value()
     else if (flag === '--version') result.version = value()
+    else if (flag === '--workspace') result.workspace = value()
+    else if (flag === '--workspace-title') result.workspaceTitle = value()
     else if (flag === '--help' || flag === '-h') result.help = true
     else {
       console.error(`[verify] unknown flag: ${flag}`)
@@ -94,7 +109,9 @@ function printHelp() {
       '  --checklist <path> 验证通过后生成发版前功能级验证清单（issue #67 留痕）\n' +
       '  --check <path>     校验清单功能级项全部勾选（供 release.mjs 门禁；未全勾选 exit 1）\n' +
       '  --plugin <name>    清单头部插件名（配合 --checklist）\n' +
-      '  --version <x.y.z>  清单头部版本号（配合 --checklist）\n',
+      '  --version <x.y.z>  清单头部版本号（配合 --checklist）\n' +
+      '  --workspace <dir>  预置隔离实例的工作区状态（storages/workspace.json；path 自动取 realpath）\n' +
+      '  --workspace-title <t> 工作区标题（配合 --workspace；默认取目录名）\n',
   )
 }
 
@@ -191,45 +208,86 @@ cpSync(realProfile, simProfile, {
 })
 rmSync(join(simProfile, 'node_modules'), { recursive: true, force: true })
 
-// node_modules：真实条目全量软链 + addons 软链（模拟 pnpm link 安装）
+// node_modules：真实条目全量软链（保住 pnpm 依赖解析）+ addons 条目**强制**指向
+// addon 目录（issue #220：旧实现遇到同名条目直接复用真实 profile 的软链，隔离实例
+// 于是加载主工作区版本而不是待验代码 → 假通过/假失败）。
 const simNode = join(simProfile, 'node_modules')
-mkdirSync(simNode)
 const realNode = join(realProfile, 'node_modules')
-for (const entry of readdirSync(realNode)) {
-  symlinkSync(join(realNode, entry), join(simNode, entry))
-}
+const addons = []
 for (const addon of options.addons) {
-  const abs = resolve(addon)
-  if (!existsSync(join(abs, 'package.json'))) {
-    console.error(`[verify] --addons 不是插件目录（无 package.json）: ${addon}`)
+  const entry = readAddon(addon)
+  if (entry === null) {
+    console.error('[verify] --addons 不是插件目录（无 package.json）: ' + addon)
     process.exit(1)
   }
-  // 生产 profile 已 link: 安装的插件（node_modules 已有同名条目，指向真实源码）
-  // 直接复用，避免 EEXIST（发版校验对已安装插件跑 --addons 的常见场景）。
-  const target = join(simNode, addon.split('/').pop())
-  if (!existsSync(target)) symlinkSync(abs, target)
+  addons.push(entry)
+}
+const linkResult = linkNodeModules({ simNode, realNode, addons })
+for (const { entry, was } of linkResult.overridden) {
+  log('覆盖生产 profile 的同名条目 ' + entry + '（原指向 ' + was + '）')
+}
+for (const { entry, was } of linkResult.replaced) {
+  log('修正已存在的错误软链 ' + entry + '（原指向 ' + was + '）')
+}
+
+// 启动前可见性检查（fail-closed，issue #220）：打印每个 addon 的实际解析路径，
+// 与 addon 真实路径不一致即失败退出——静默正是这个坑潜伏数轮的原因。
+const resolution = checkAddonResolution({ simNode, addons })
+if (resolution.entries.length > 0) log('插件解析路径（隔离 profile node_modules）:')
+for (const item of resolution.entries) {
+  log('  ' + item.name + ' → ' + (item.actual ?? '(解析失败)') + (item.ok ? ' ✓' : ' ✗ 期望 ' + item.expected))
+}
+if (!resolution.ok) {
+  fail(
+    'addon 解析路径与 --addons 不一致（' +
+      resolution.mismatches.length +
+      ' 个）：' +
+      resolution.mismatches
+        .map((item) => item.name + ' 期望 ' + item.expected + ' 实际 ' + (item.actual ?? '(解析失败)'))
+        .join('；'),
+  )
+  await cleanup()
+  process.exit(1)
 }
 
 // ── 2. 模拟安装 addons（写入临时 profile：bundles + dependencies） ────────
-if (options.addons.length > 0) {
+if (addons.length > 0) {
   const pkgPath = join(simProfile, 'package.json')
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
   const patchPath = join(simProfile, 'cordis.patch.yml')
   const patchText = existsSync(patchPath) ? readFileSync(patchPath, 'utf8') : ''
-  for (const addon of options.addons) {
-    const abs = resolve(addon)
-    const name = JSON.parse(readFileSync(join(abs, 'package.json'), 'utf8')).name
+  for (const addon of addons) {
+    const { dir: abs, name } = addon
     // 插件已手动安装（patch 行存在）时不再写入 bundles：bundle 自动插行 +
     // patch 手动行叠加会产生重复 id（发版校验对已安装插件跑 --addons 的场景）。
     const alreadyInConfig =
       pkg.dsh.profile.bundles.includes(name) ||
-      patchText.includes(`name: '${name}'`) ||
-      patchText.includes(`name: "${name}"`)
+      patchText.includes("name: '" + name + "'") ||
+      patchText.includes('name: "' + name + '"')
     if (!alreadyInConfig) pkg.dsh.profile.bundles.push(name)
-    pkg.dependencies[name] = `link:${abs}`
+    pkg.dependencies[name] = 'link:' + abs
   }
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2))
-  log(`模拟安装 ${options.addons.length} 个插件（bundles + dependencies）`)
+  log('模拟安装 ' + addons.length + ' 个插件（bundles + dependencies）')
+}
+
+// 2b. 预置隔离实例的工作区状态（GUI 合成器前置，issue #220 附带）：
+// storages/workspace.json 有隐性 Zod 校验（unit 头 + ISO 时间戳 + path 必须是
+// realpath），格式不符会让实例**启动即失败**；macOS 上 path 写 /tmp/... 还会
+// 触发 session/workspace-attach-failed（/tmp 是 /private/tmp 的软链）。
+if (options.workspace !== null) {
+  try {
+    const written = writeWorkspaceStorage({
+      simHome,
+      workspacePath: options.workspace,
+      title: options.workspaceTitle ?? undefined,
+    })
+    log('已预置工作区状态: ' + written.path + ' → ' + written.file)
+  } catch (error) {
+    fail('预置工作区失败: ' + error.message)
+    await cleanup()
+    process.exit(1)
+  }
 }
 
 // ── 3. 配置组合检查（dump-config，与真实启动同一组合逻辑） ────────────────
@@ -255,9 +313,8 @@ if (duplicates.length > 0) {
   process.exit(1)
 }
 pass(`配置组合唯一：${ids.length} 个 id 无重复`)
-for (const addon of options.addons) {
-  const abs = resolve(addon)
-  const name = JSON.parse(readFileSync(join(abs, 'package.json'), 'utf8')).name
+for (const addon of addons) {
+  const name = addon.name
   if (!entryNames(dump.stdout).includes(name)) {
     fail(`模拟安装的插件 ${name} 未出现在组合配置中（bundles 声明可能未生效）`)
     await cleanup()

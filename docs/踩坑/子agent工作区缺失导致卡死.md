@@ -30,7 +30,7 @@ updated: 2026-09-12
 1. **优先使用用户已有的工作区**：涉及 GUI 的验证/自动化任务，**先让用户把工作区选好**（用用户自己的项目目录），不要把「需要人点原生对话框」的步骤留给无人值守的 agent。
 2. **没有工作区时，问用户要**——不要自己新建一个空工作区就往下跑；空工作区同样让合成器处于禁用态。
 3. **隔离实例必须预置工作区状态**（二选一）：
-   - **预置落盘状态**：在隔离 `DSH_HOME` 内预写工作区记录（工作区列表是落盘状态，见主 `~/.dsh/storages/workspace.json`）——结构为 `tables.workspaces.<uuid> = { path, title, sessionIds, createdAt, updatedAt }` 且 `global.workspaceIds` 收录该 uuid（`global.initialized: true`），`path` 指向该实例要用的目录；
+   - **预置落盘状态**：在隔离 `DSH_HOME` 内预写 `storages/workspace.json`（工作区列表是落盘状态，见主 `~/.dsh/storages/workspace.json`）——三段式 `{ unit, global, tables }`，`unit` 必须是 `{ name: 'workspace', version: 2 }`，`global.initialized: true` 且 `global.workspaceIds` 收录该 uuid，`tables.workspaces.<uuid> = { path, title, sessionIds, createdAt, updatedAt }`。**`path` 必须写 realpath（macOS 上写 `/tmp/...` 会 `session/workspace-attach-failed`，`/tmp` 是 `/private/tmp` 的软链），`createdAt`/`updatedAt` 必须是 ISO 字符串（写数字时间戳 → 隐性 Zod 校验失败 → 实例启动即失败）**——现成做法：`node scripts/verify-real-profile.mjs --addons plugins/<插件> --workspace <目录>`（脚本自动取 realpath + 回读校验，不再手工试错）；
    - **替换 picker**：用 `--patch` overlay 把 `directory-picker` 那一行换成非 native 后端 `@deepseek-ai/dsh-host-directory-picker-browse`（应用内浏览，可被浏览器自动化驱动）——是**替换**该行而非并存（选择器与某个后端同时挂载会报重复 `directoryPicker`）。
 4. **派发前自检**：任务 prompt 里必须写明「工作区从哪来」（谁提供、路径是什么、是否已预置），不能留给子 agent 现场摸索。
 5. **收尾必查残留**：验证结束检查并清理遗留的 `choose folder` 进程，避免它继续占着用户桌面、干扰后续 agent。
@@ -50,5 +50,6 @@ ps -Ao pid,ppid,lstart,command | grep -v grep | grep "choose folder"
 ## 相关
 
 - `skills/verifying-dsh-plugins/SKILL.md`（隔离实例 + 浏览器验证流程 —— 已补「工作区预置」硬性前置与收尾清理）
+- `scripts/verify-real-profile.mjs --workspace <目录>`（预置工作区状态的现成入口：自动 realpath + ISO 时间戳 + 写入后回读校验，见 issue #220 附带项）
 - `skills/dsh-github-triage/SKILL.md`（子 agent 派发 —— fork 池即「显式工作区」）
 - [多 agent 并行测试资源冲突](多agent并行测试资源冲突.md)（同类：并行/环境前置缺失导致的假失败）

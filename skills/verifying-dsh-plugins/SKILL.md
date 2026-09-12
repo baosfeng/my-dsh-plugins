@@ -43,7 +43,7 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
 
 1. **优先让用户事先选好工作区**（用用户已有的目录）——涉及 GUI 的验证任务，不要把「需要人点原生对话框」的步骤留给无人值守的 agent；需要工作区就直接问用户，不要自建空工作区。
 2. 隔离实例必须**预置工作区状态**，二选一：
-   - **预置落盘状态**：在隔离 `DSH_HOME` 的 `storages/workspace.json` 写入工作区记录（`tables.workspaces.<uuid> = { path, title, sessionIds, createdAt, updatedAt }`，并把 uuid 加进 `global.workspaceIds`、`global.initialized: true`），`path` 指向本次验证要用的目录；
+   - **预置落盘状态（推荐用现成入口）**：`node scripts/verify-real-profile.mjs --addons plugins/<插件> --port 3099 --workspace <目录> --keep` 会写好 `storages/workspace.json` 并回读校验。手工写时的硬约束：`unit` 必须是 `{ name: 'workspace', version: 2 }`，`global.initialized: true` 且 `global.workspaceIds` 收录该 uuid，`tables.workspaces.<uuid> = { path, title, sessionIds, createdAt, updatedAt }`；**`path` 必须是 realpath（macOS 上写 `/tmp/...` 会 `session/workspace-attach-failed`，`/tmp` 是 `/private/tmp` 的软链）、`createdAt`/`updatedAt` 必须是 ISO 字符串**（写数字时间戳 → 隐性 Zod 校验失败 → 实例**启动即失败**）；
    - **替换 picker**：`--patch` overlay 把 `directory-picker` 那一行换成 `@deepseek-ai/dsh-host-directory-picker-browse`（应用内浏览，浏览器可驱动；替换该行而非并存）。
 
 派发验证 agent 时，prompt 必须写明**工作区从哪来**（谁提供、路径、是否已预置）。
@@ -61,6 +61,17 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3099/
 - `--keep` 的 stdout 提示"日志见 /tmp/dsh-verify-real-<port>.log"——**该文件当前不落盘**，要日志就自己重定向（上面已加）。
 - 隔离 DSH_HOME 会复制生产 profile 的 `.credentials.yaml`（真实凭据），验证后必须删目录。
 - 加 `--api-path /<路由>` 可对 server 端路由做 200 冒烟（纯事件型插件无路由，不加）。
+- 需要工作区状态时加 `--workspace <目录>`：脚本自动取 realpath 并写入隔离 `DSH_HOME` 的 `storages/workspace.json`（该文件有隐性 Zod 校验，手工写极易启动失败，见下「前置」）。
+
+**前置检查（issue #220，硬性）：先确认 realpath 解析到的是工作区版本，而不是主工作区旧版**
+
+```bash
+readlink /tmp/dsh-verify-real-3099/profiles/web/node_modules/<插件>   # 软链原始目标
+realpath /tmp/dsh-verify-real-3099/profiles/web/node_modules/<插件>   # 期望 = 待验工作区路径
+```
+
+- 期望形如 `/private/tmp/<fork>/plugins/<插件>`；若指向 `/Users/<you>/IdeaProjects/my-dsh-plugins/...`（主工作区），**验的是主工作区旧版**，结论无效（假通过会把未验证的修复发出去，假失败会让人去改本来正确的代码）——完整复盘见 [docs/踩坑/隔离实例复用主工作区插件软链导致假验证.md](../../docs/踩坑/隔离实例复用主工作区插件软链导致假验证.md)；
+- 脚本自 #220 起在**实例启动前**打印并校验该路径（`--addons` 显式优先于复用生产 profile 软链，不一致直接 exit 1）。输出里没有这两行、或指向主工作区 → **先修脚本/环境再验**，不要手工 `rm` 软链绕过（绕过只救本次，下个 agent 照样踩）。
 
 ### B. headless 实例（真实模型调用 / 真实事件流，无浏览器）
 

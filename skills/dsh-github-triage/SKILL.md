@@ -110,11 +110,12 @@ git ls-remote origin refs/heads/main     # 期望：<10s 返回 SHA
 主 agent 按派发顺序**逐个**准备 fork（不提前批量派生），子 agent **只在自己被分配的 fork 内工作**：
 
 ```
-git -C <主工作区> fetch origin                                 # 主 agent 先同步远程引用（不碰工作区文件）
-git clone --local <主工作区> /tmp/gh-fork-<编号>               # 本地派生 fork：零网络、秒级（实测 ~1.4s）
-git -C /tmp/gh-fork-<编号> remote set-url origin https://github.com/baosfeng/my-dsh-plugins.git      # fetch 走 https+代理
-git -C /tmp/gh-fork-<编号> config remote.origin.pushurl git@github.com:baosfeng/my-dsh-plugins.git   # push 走 SSH（不经代理，代理挂了也能推）
-git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # 从远程最新 main 建分支（子 agent 直接在其上工作）
+git -C <主工作区> fetch origin && git -C <主工作区> merge --ff-only origin/main   # ① 先同步主工作区本地 main（fetch 只更新 origin/main 引用、不移动本地 main）
+git clone --local <主工作区> /tmp/gh-fork-<编号>               # ② 本地派生 fork：零网络、秒级（实测 ~1.4s）
+git -C /tmp/gh-fork-<编号> remote set-url origin https://github.com/baosfeng/my-dsh-plugins.git      # ③ fetch 走 https+代理
+git -C /tmp/gh-fork-<编号> config remote.origin.pushurl git@github.com:baosfeng/my-dsh-plugins.git   #    push 走 SSH（不经代理，代理挂了也能推）
+git -C /tmp/gh-fork-<编号> fetch origin main                   # ④ 显式从 GitHub 拉一次 main（clone --local 带进来的是主工作区本地 main）
+git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # ⑤ 从远程最新 main 建分支（子 agent 直接在其上工作）
 ```
 
 规则：
@@ -122,7 +123,10 @@ git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # 从远程�
 - **每个修复类子任务拥有且仅拥有一个 fork**（`/tmp/gh-fork-<编号>`）；主工作区（`/Users/bsfeng/IdeaProjects/my-dsh-plugins`）与任何其他 fork 都不得被该子任务操作
 - fork 用 `git clone --local` **本地派生**：不重复走网络、也不调用 REST API（无速率限制），秒级完成；**不是**远程克隆，主工作区未提交改动不会混入 fork（只含已提交内容）
 - **本地派生的 origin 默认指向主工作区本地路径，必须重设为 GitHub 远程**（`set-url` 设 https 给 fetch + `config remote.origin.pushurl` 设 SSH 给 push，理由见上方「网络前置」），否则 push 会推到本地路径（静默失败/污染）
-- 派生前主 agent 先 `git -C <主工作区> fetch origin` 同步远程引用；fork 内 `checkout -b fix/<编号> origin/main` 从最新远程 main 起分支——即使主工作区本地 main 落后远程也不受影响
+- **基线坑（必读）**：`git clone --local <主工作区>` 的 `origin/main` 取的是**主工作区本地 main**——clone 只把源的 `refs/heads/*` 映射为目标 `refs/remotes/origin/*`，**不复制** remote-tracking refs；而主工作区 `git fetch` 只更新 `origin/main` 引用、**不移动本地 main**。因此 ① 的 `merge --ff-only` 与 ④ 的 fork 内 `git fetch origin main` 缺一不可。**判据**：`git -C /tmp/gh-fork-<编号> log --oneline -1` 与 `git ls-remote origin refs/heads/main` 的 SHA 一致（详见 [踩坑](../docs/踩坑/fork池基线与squash判定.md)）
+- **`git cherry` 判不了 squash 合并**：squash 后 patch-id 必然不同，`git cherry -v <main> <branch>` 会对已合并的提交全部标 `+`（假阴性），据此判定「遗留工作未落地」是错的。正确判法：先查 main 历史里的 squash 提交/PR 号（`git log --oneline --grep="#<PR>"`），再比对 `git diff <base>...<branch> | git patch-id --stable` 与 `git show <squash-commit> | git patch-id --stable` 的**第一列**（详见 [踩坑](../docs/踩坑/fork池基线与squash判定.md)）
+- **不要让多个子 agent 同时跑全插件测试**：`node scripts/verify-local.mjs --fast` 并发时会 `EXIT=124`（资源竞争，实测两个 agent 同轮都超时），不是代码问题——同一插件同一时刻只允许一个测试进程，以 CI 结果为准或在无竞争时段重跑（见 [多 agent 并行测试资源冲突](../docs/踩坑/多agent并行测试资源冲突.md)）
+- **fork 里跑工具链的依赖软链不要 `git add -A`**：`ln -s <主工作区>/node_modules /tmp/gh-fork-<编号>/node_modules` 之后，`.gitignore` 的 `node_modules/` 规则**不匹配符号链接**，`git add -A` 会把它当新文件暂存（误提交/体积事故）——只 add 自己改动的文件，或先把 `node_modules` 写进 `.git/info/exclude`（本地生效、不进仓库）
 - 子 agent 工作流：fork 内修改 → `git commit`（fork 是完整独立 .git，工作区/index/HEAD/分支与其他 fork 及主工作区**物理隔离**，互不可见）→ `ghops push --dir /tmp/gh-fork-<编号> --branch fix/<编号>` → `ghops pr create`
 - fork 是完整克隆（不共享对象库），隔离比 worktree 更彻底：两个子任务改动同一文件也互不影响；PR 合并阶段的冲突由后合并方 rebase 最新 main 解决
 - 多个子任务可并行（fork 物理隔离保证安全），但**派发必须按编号从小到大**，主 agent 按序验收汇总
@@ -205,27 +209,29 @@ git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # 从远程�
 
 ## 常见错误
 
-| 错误                                     | 解法                                                                                                                                             |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 子 agent prompt 信息不全                 | 必须自包含：仓库+问题全文+任务+约束+验收+输出格式                                                                                                |
-| 一个子 agent 处理所有问题                | 每次只处理一个问题，并行派多个，但派发顺序严格按编号从小到大                                                                                     |
-| 多个子 agent 共用同一 git 仓库           | 各用独立 fork `/tmp/gh-fork-<编号>`；共享工作区/仓库会互相污染                                                                                   |
-| fork 不清理                              | 汇总后 `rm -rf /tmp/gh-fork-<编号>`；数量=问题数，用完即清                                                                                       |
-| 子 agent 在主工作区/他人 fork 操作       | 只允许操作自己被分配的 fork 目录；修复类子任务严禁碰主工作区                                                                                     |
-| 乱序派发（未按编号从小到大）             | 清单按编号升序，主 agent 按序推进、按序验收                                                                                                      |
-| 子 agent 自报完成即推进                  | 主 agent 必须按验收标准独立核查（变更范围/本地测试/CI），未达标退回修或重派                                                                      |
-| 子 agent 失败后自己动手/派新 agent       | 用 `send_message` 续接原子 agent（保留上下文与进度，可续接状态）；仅彻底失效才重派新 agent                                                       |
-| 把 [需求] issue 当 BUG 派子 agent 修     | 需求转 development-lifecycle，本 skill 只处理 BUG/告警/CI/PR/workflow                                                                            |
-| 等所有子任务完成才统一提交               | 验收达标即独立提交（分支+PR），各自独立                                                                                                          |
-| 一个 PR 混多个问题                       | 一子任务一分支一 PR，标题带编号                                                                                                                  |
-| 验收不达标就提交                         | 按验收标准逐项自查：根因/修复/测试/PR 缺一不可                                                                                                   |
-| PR 后不管 CI 结果                        | `ghops actions watch/logs` 确认绿，红了继续修                                                                                                    |
-| 子 agent 自行合并 PR / 发布 release      | 禁止；合并与发布只在汇总阶段按用户决策执行                                                                                                       |
-| 自己写 curl/gh/API 访问 GitHub           | 一律用 github-ops 的 ghops 命令                                                                                                                  |
-| 读取/打印 token 或 secrets               | 禁止；凭据由 ghops setup 封装，本 skill 不接触                                                                                                   |
-| 只看 issue 漏掉告警/CI/PR                | 四类查询一次跑全（issue/alerts/actions/pr）                                                                                                      |
-| 子 agent push 主分支                     | 约束建分支+PR                                                                                                                                    |
-| 重复处理已交付的工作                     | 接手前先盘点：`ghops pr list --state all` + main 历史核对每个 issue 是否已合并（closed PR ≠ 未合并，看 merged_at）；已合并的只关 issue，不再派工 |
-| 遇到其他代理留下的半成品                 | 先验证（`git status`/`git diff` + `npm test`）再决定接手：代码完整则 rebase 最新 main → push → PR；不完整才重派子 agent                          |
-| `ghops pr create` 报 nil is not a string | 需显式加 `--base main`（base 缺省解析失败）                                                                                                      |
-| `ghops push` 偶发超时                    | 先 `git ls-remote origin refs/heads/<分支>` 确认是否已推；未推则后台重试，勿重复推                                                               |
+| 错误                                     | 解法                                                                                                                                                                                                                                                             |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 子 agent prompt 信息不全                 | 必须自包含：仓库+问题全文+任务+约束+验收+输出格式                                                                                                                                                                                                                |
+| 一个子 agent 处理所有问题                | 每次只处理一个问题，并行派多个，但派发顺序严格按编号从小到大                                                                                                                                                                                                     |
+| 多个子 agent 共用同一 git 仓库           | 各用独立 fork `/tmp/gh-fork-<编号>`；共享工作区/仓库会互相污染                                                                                                                                                                                                   |
+| fork 不清理                              | 汇总后 `rm -rf /tmp/gh-fork-<编号>`；数量=问题数，用完即清                                                                                                                                                                                                       |
+| 子 agent 在主工作区/他人 fork 操作       | 只允许操作自己被分配的 fork 目录；修复类子任务严禁碰主工作区                                                                                                                                                                                                     |
+| 乱序派发（未按编号从小到大）             | 清单按编号升序，主 agent 按序推进、按序验收                                                                                                                                                                                                                      |
+| 子 agent 自报完成即推进                  | 主 agent 必须按验收标准独立核查（变更范围/本地测试/CI），未达标退回修或重派                                                                                                                                                                                      |
+| 子 agent 失败后自己动手/派新 agent       | 用 `send_message` 续接原子 agent（保留上下文与进度，可续接状态）；仅彻底失效才重派新 agent                                                                                                                                                                       |
+| 把 [需求] issue 当 BUG 派子 agent 修     | 需求转 development-lifecycle，本 skill 只处理 BUG/告警/CI/PR/workflow                                                                                                                                                                                            |
+| 等所有子任务完成才统一提交               | 验收达标即独立提交（分支+PR），各自独立                                                                                                                                                                                                                          |
+| 一个 PR 混多个问题                       | 一子任务一分支一 PR，标题带编号                                                                                                                                                                                                                                  |
+| 验收不达标就提交                         | 按验收标准逐项自查：根因/修复/测试/PR 缺一不可                                                                                                                                                                                                                   |
+| PR 后不管 CI 结果                        | `ghops actions watch/logs` 确认绿，红了继续修                                                                                                                                                                                                                    |
+| 子 agent 自行合并 PR / 发布 release      | 禁止；合并与发布只在汇总阶段按用户决策执行                                                                                                                                                                                                                       |
+| 自己写 curl/gh/API 访问 GitHub           | 一律用 github-ops 的 ghops 命令                                                                                                                                                                                                                                  |
+| 读取/打印 token 或 secrets               | 禁止；凭据由 ghops setup 封装，本 skill 不接触                                                                                                                                                                                                                   |
+| 只看 issue 漏掉告警/CI/PR                | 四类查询一次跑全（issue/alerts/actions/pr）                                                                                                                                                                                                                      |
+| 子 agent push 主分支                     | 约束建分支+PR                                                                                                                                                                                                                                                    |
+| 重复处理已交付的工作                     | 接手前先盘点：`ghops pr list --state all` + main 历史核对每个 issue 是否已合并（closed PR ≠ 未合并，看 merged_at；**不要用 `git cherry` 判**——squash 合并必然假阴性，见 [踩坑](../docs/踩坑/fork池基线与squash判定.md)）；已合并的只关 issue，不再派工           |
+| 遇到其他代理留下的半成品                 | 先验证（`git status`/`git diff` + `npm test`）再决定接手：代码完整则 rebase 最新 main → push → PR；不完整才重派子 agent                                                                                                                                          |
+| `ghops pr create` 报 nil is not a string | 需显式加 `--base main`（base 缺省解析失败）                                                                                                                                                                                                                      |
+| `ghops push` 偶发超时                    | 先 `git ls-remote origin refs/heads/<分支>` 确认是否已推；未推则后台重试，勿重复推                                                                                                                                                                               |
+| fork 基线过期（基于合并前的 main 开发）  | `clone --local` 的 `origin/main` = 主工作区本地 main；派生前 `merge --ff-only origin/main`、fork 内 `fetch origin main` 后再 `checkout -b`，并核对 `git ls-remote origin refs/heads/main` 与 fork HEAD 一致（见 [踩坑](../docs/踩坑/fork池基线与squash判定.md)） |
+| 用 `git cherry` 判定工作是否已合并       | squash 合并下必然假阴性（全部标 `+`）；查 main 的 squash 提交/PR 号 + 比对 `git patch-id --stable` 第一列（见 [踩坑](../docs/踩坑/fork池基线与squash判定.md)）                                                                                                   |

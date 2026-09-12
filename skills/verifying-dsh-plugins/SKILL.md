@@ -35,6 +35,19 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
 
 先确认端口空闲：`lsof -ti :3099 || echo 空闲`。**不要**用主实例端口（web 默认 3080），也不要重复用别人的验证端口。
 
+### 前置（硬性）：工作区 —— 没有工作区 = 合成器禁用 = 可能卡死
+
+隔离实例 / 新会话**没有工作区**时，GUI 合成器处于**禁用**态（占位文案「选择工作区」、发送按钮 `disabled`）。此时去点「添加工作区 / 选择工作区」会命中宿主 `@deepseek-ai/dsh-host-directory-picker-auto`：它在 macOS 桌面会话判定为 `native` → 弹**原生 macOS 目录对话框**（`osascript … choose folder with prompt "Select Workspace Directory"`）。`agent-browser` / CDP 只能驱动页面 DOM，**无法操作原生弹窗** → agent 静默卡死（实测可卡数天，`ps` 里积累多个 `choose folder` 进程）。完整记录见 [docs/踩坑/子agent工作区缺失导致卡死.md](../../docs/踩坑/子agent工作区缺失导致卡死.md)。
+
+修法（按优先级）：
+
+1. **优先让用户事先选好工作区**（用用户已有的目录）——涉及 GUI 的验证任务，不要把「需要人点原生对话框」的步骤留给无人值守的 agent；需要工作区就直接问用户，不要自建空工作区。
+2. 隔离实例必须**预置工作区状态**，二选一：
+   - **预置落盘状态**：在隔离 `DSH_HOME` 的 `storages/workspace.json` 写入工作区记录（`tables.workspaces.<uuid> = { path, title, sessionIds, createdAt, updatedAt }`，并把 uuid 加进 `global.workspaceIds`、`global.initialized: true`），`path` 指向本次验证要用的目录；
+   - **替换 picker**：`--patch` overlay 把 `directory-picker` 那一行换成 `@deepseek-ai/dsh-host-directory-picker-browse`（应用内浏览，浏览器可驱动；替换该行而非并存）。
+
+派发验证 agent 时，prompt 必须写明**工作区从哪来**（谁提供、路径、是否已预置）。
+
 ### A. web 实例（client UI / 浏览器验证，推荐）
 
 ```bash
@@ -129,11 +142,13 @@ for i in 1 2 3 4 5; do lsof -ti :3099 >/dev/null 2>&1 || break; sleep 1; done
 rm -rf /tmp/dsh-verify-real-3099 /tmp/dsh-verify-headless     # ② 删隔离目录
 ls -d /tmp/dsh-verify-real-3099 2>&1 || echo "目录已删除"      # ③ 复查：删完再看一眼
 ps aux | grep -c "[d]sh --profile headless"                   # ④ 无残留进程（应为 0）
+pgrep -fl "choose folder"                                     # ⑤ 无遗留的原生目录对话框进程（应为空，见「步骤 1 前置」）
 curl -s -o /dev/null -w "%{http_code}\n" --max-time 3 http://127.0.0.1:3099/  # 应无响应（curl exit 7）
 ```
 
 - **只杀自己起的端口/只删自己的目录**：`/tmp/dsh-verify-*` 下可能有别的 agent 正在用的实例，误删会打断别人的验证。
 - 端口释放 ≠ 进程已退出：进程退出过程中会重建子目录（实测删完又出现只剩 `guard/` 的目录），所以删除后要再 `ls` 一次。
+- **原生目录对话框进程也要清**：验证过程中若出现过「选择工作区」弹出的 `osascript … choose folder`，收尾时用 `pgrep -fl "choose folder"` 复查并按需 `kill`——它会一直占着用户桌面、干扰后续 agent（见 [docs/踩坑/子agent工作区缺失导致卡死.md](../../docs/踩坑/子agent工作区缺失导致卡死.md)）。
 - **不要重启/杀主实例**（3080）：验证全部在隔离实例里做。
 
 ## 步骤 5：报告留档

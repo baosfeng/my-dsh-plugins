@@ -13,7 +13,10 @@
  * 因此产物可直接内联。client 端 TS 源码为单文件（无运行时相对 import），
  * 需要多文件/复杂打包时可用 esbuild/tsdown（官方 tsdown.client.ts 协议）。
  */
-/* global __MERMAID_UMD_B64__ */
+// 引擎载荷的占位符只由 src/client/index.ts 的编译产物承载（注入必须**恰好一处**，
+// 见 scripts/splice.mjs）：本文件任何位置（含注释）都不要写出与它同形的字面量，
+// 否则构建会因"placeholder 不止一处"显式失败 —— 这正是 issue #185 的成因
+// （模板注释与产物占位符同形 → 4.45 MB base64 被注入两遍 → 产物/包体积翻倍）。
 window.__ModuleLoader__.load({
   id: 'dsh-mermaid-render',
   factory: (require) => {

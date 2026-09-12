@@ -40,6 +40,13 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 4. 行为：一条核心路径真实执行（工具插件=一次消息→工具→回复；或等价专用流程）；
 5. 包装器：核对退出码与 stdout/stderr 归属。
 
+### README 效果图门禁（仓库级，`scripts/release.mjs` 3b）
+
+- 插件 README 必须引用 `assets/` 下真实存在的截图（`./assets/<file>` 或 unpkg 绝对 URL）；
+- **无用户可见 UI 的插件走显式声明豁免**：`dsh.kind=library`（共享工具包，沿用原豁免）或 `dsh.ui=false` + 非空 `dsh.uiReason`；声明缺失/自相矛盾（如同时声明 `dsh.client`）会被门禁拒绝——不存在「想要就豁免」的插件名单；
+- 发版输出与批量汇总显式列出「已豁免」插件与理由（豁免可见、可审计）；
+- `--all-checks`（仅 dry-run）：静态门禁全部跑完再统一报告失败项，避免 fail-fast 让后续门禁从未执行而掩盖缺陷（`--push` 仍为首个失败即停的完整门禁）。
+
 ## 第 4 步：发布语义门禁（任一不满足即停止发布）
 
 1. GitHub Release tag 必须等于 `v${package.json.version}`；

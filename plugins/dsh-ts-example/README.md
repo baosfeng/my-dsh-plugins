@@ -2,7 +2,9 @@
 
 [![插件生态](https://img.shields.io/badge/插件生态-topic%20dsh-4d6bfe)](https://github.com/topics/dsh)
 
-<!-- 截图占位：发版前补真实运行截图（见 docs/开发指南/构建与测试.md 效果图规范） -->
+<div align="center">
+  <img alt="侧边栏「TS 示例」页签（隔离实例真实运行）：client 端 TS bundle 调用 server 端 ts-example/api/greeting，显示当前会话问候语「Hello, session-…!」" src="./assets/screenshot.png" width="420" />
+</div>
 
 **DSH 插件 TypeScript 开发示例插件**（issue #47）：演示新插件用 TypeScript 开发的全流程——server 端 TS 源码 + `tsc` 编译（`lib/index.js` 产物）、client 端 TS 源码 + 构建时编译（`__ModuleLoader__` bundle），编译期即可发现模块不存在（TS2307）、类型不匹配、未定义变量等错误。
 

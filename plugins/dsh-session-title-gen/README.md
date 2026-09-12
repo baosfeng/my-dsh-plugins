@@ -2,7 +2,9 @@
 
 [![插件生态](https://img.shields.io/badge/插件生态-topic%20dsh-4d6bfe)](https://github.com/topics/dsh)
 
-<!-- 效果图占位：发版前用 verifying-dsh-plugins 隔离实例 + 真实浏览器截图，存 assets/ 并替换本注释 -->
+<div align="center">
+  <img alt="会话列表（隔离实例 + 真实浏览器）：新会话首条消息后，标题被自动改写为 LLM 生成的简短描述（图中「友好问候闲聊」「查看工作区文件列表」）" src="./assets/session-list.png" width="720" />
+</div>
 
 **DSH 会话标题自动生成插件**：监听会话首条人类消息，用 LLM 生成类似 git commit 的**结构化标题**——先标明当前会话属于哪个（工作区/项目），再写一段简要描述，如 `[my-dsh-plugins] 修复 #143 记忆页签崩溃`。会话列表一眼可辨归属与主题。
 

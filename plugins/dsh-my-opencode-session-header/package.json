@@ -32,7 +32,9 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
-    }
+    },
+    "ui": false,
+    "uiReason": "纯 server 插件：只在出站推理请求上注入 x-opencode-session 头，DSH Web UI 无任何可见产物（无 client / 无面板 / 无设置页）"
   },
   "peerDependencies": {
     "cordis": "^4.0.0-rc.8"

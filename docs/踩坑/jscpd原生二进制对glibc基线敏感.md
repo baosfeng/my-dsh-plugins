@@ -63,6 +63,18 @@ npx jscpd --debug 2>&1 | grep -c 'workflow'   # → 0：扫描集里没有流水
 
 **回退条件**：若将来 CI 的 glibc 基线 ≥ 2.34（`ubuntu-22.04`+ runner、基于 Debian bookworm 的官方 `node` 基础镜像等），可升回 `jscpd@5.x` 并删掉这条记录。
 
+## 2026-09-12 更新：回退条件已满足，已升回 5.x（issue #184 复核）
+
+仓库「回滚到 GitHub 单一主线、移除全部云效配置」之后重新复核阻塞是否仍存在：
+
+1. `grep -ril 'yunxiao|云效|alinux'`（排除 `node_modules`/`.git`）**零命中** —— 当时触发本问题的云效 alinux3（glibc 2.32）通道已不存在；
+2. `.github/workflows/*.yml` 全部 `runs-on: ubuntu-latest`，无自建/容器化 runner；
+3. GitHub 托管的 `ubuntu-latest` 现为 Ubuntu 24.04（glibc 2.39 ≥ 2.34）→ 上面写的回退条件成立。
+
+本地复核（macOS arm64，`jscpd@5.2.0`）：`format` 白名单与 `ignore` 全部生效，3 clones / 0.09%（阈值 5%，exit 0）；耗时 **41ms**，而同配置下 4.3.0 为 4.4s。**该踩坑的判断方法仍然有效**（"先看门禁有没有产出清单"），只是触发场景（旧 glibc 容器）已从本仓库消失。
+
+**仍未闭环的一点**：Linux 二进制可加载性只有 CI runner 能给出证据（本地仅 macOS arm64）—— 由 PR 的 jscpd 步骤验证；失败则一行回退：`npm i -D jscpd@^4.3.0`（配置无需改动）。决策过程与现场数据见 [依赖升级矩阵](../开发指南/依赖升级矩阵.md)。
+
 ## 原则
 
 - 依赖**预编译二进制**的门禁工具（jscpd 5、esbuild 系、各语言 binding），必须核对**目标容器/runner** 的 glibc 基线；"本机能跑"完全不构成证据。

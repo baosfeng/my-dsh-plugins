@@ -20,7 +20,10 @@
     "prepare": "husky",
     "typecheck:plugins": "bash scripts/typecheck-all.sh",
     "check:ts-size": "node scripts/check-ts-size.mjs",
-    "check:links": "node scripts/check-links.mjs"
+    "check:links": "node scripts/check-links.mjs",
+    "deps:matrix": "node scripts/deps-matrix.mjs",
+    "deps:matrix:md": "node scripts/deps-matrix.mjs --markdown",
+    "deps:matrix:offline": "node scripts/deps-matrix.mjs --offline"
   },
   "lint-staged": {
     "*.{js,mjs}": [
@@ -39,7 +42,7 @@
     "dsh-shared": "file:plugins/dsh-shared"
   },
   "devDependencies": {
-    "@babel/parser": "^8.0.4",
+    "@babel/parser": "^8.0.5",
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
     "@cucumber/cucumber": "^13.2.1",
@@ -47,18 +50,18 @@
     "@stryker-mutator/core": "^10.0.0",
     "@stryker-mutator/html-reporter": "^3.1.0",
     "@stryker-mutator/vitest-runner": "^10.0.0",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.5.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitest/coverage-v8": "^5.0.0",
     "dependency-cruiser": "^18.2.0",
-    "eslint": "^10.9.0",
+    "eslint": "^10.10.0",
     "eslint-plugin-import": "^2.32.0",
     "globals": "^17.12.0",
     "husky": "^9.1.7",
-    "jscpd": "^4.3.0",
-    "knip": "^6.34.0",
-    "lint-staged": "^17.4.1",
+    "jscpd": "^5.2.0",
+    "knip": "^6.35.1",
+    "lint-staged": "^17.5.1",
     "prettier": "^3.9.6",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"

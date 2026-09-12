@@ -15,7 +15,9 @@ on:
     inputs:
       plugins:
         # 选项与 scripts/release.mjs 的插件名校验一致（[a-zA-Z0-9._-]，首字符字母/数字）。
-        # 列表来源：`ls plugins/`（17 个 DSH 插件 + 1 个共享库）。
+        # 列表来源：`ls plugins/`（18 个 DSH 插件 + 1 个共享库）。
+        # 一致性由 scripts/test/release-checks.test.mjs「workflow 插件清单一致性」守护
+        # （与 plugins/ 目录、ci.yml matrix 比对）：新增/改名插件忘记同步即 CI 失败。
         # 注意：dsh-notify / dsh-guardian 已改名 dsh-my-notify / dsh-my-guardian
         # （撞名统一 dsh-my-* 前缀，见 release.yml 注释），旧名不再存在。
         # dsh-shared 是共享库（package.json dsh.kind=library）：release.mjs 对其
@@ -35,6 +37,7 @@ on:
           - dsh-my-memory
           - dsh-my-notify
           - dsh-my-observability
+          - dsh-my-opencode-session-header
           - dsh-my-plugin-manager
           - dsh-my-remote
           - dsh-my-skill-manager

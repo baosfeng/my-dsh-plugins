@@ -4,12 +4,15 @@
  *
  * 覆盖：extractDshRequires / findUndeclaredPeers / rangeMin / versionGte /
  * isNpmNotFound / findUnpublishedDeps / collectClientSources / collectServerSources /
- * buildPluginIndex / findFreePort。
+ * buildPluginIndex / findFreePort / inspectTagState / tagConflictHint，
+ * 外加 workflow 插件清单一致性（防漂移：release-auto.yml options + ci.yml matrix）。
  */
 import { describe, it, expect, afterAll } from 'vitest'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   extractDshRequires,
   findUndeclaredPeers,
@@ -21,6 +24,8 @@ import {
   collectServerSources,
   buildPluginIndex,
   findFreePort,
+  inspectTagState,
+  tagConflictHint,
 } from '../lib/release-checks.mjs'
 
 // ── extractDshRequires ────────────────────────────────────────────────────
@@ -285,5 +290,97 @@ describe('findFreePort', () => {
       server.once('error', reject)
       server.listen(port, () => server.close(resolve))
     })
+  })
+})
+
+// ── inspectTagState / tagConflictHint（tag 管理防护）────────────────────────
+// 防回归：发版重跑时「tag 已存在」必须分三支——缺失正常打、指向 HEAD 幂等跳过
+// （仅推送）、指向其他 commit 报错拒绝覆盖（绝不自动 force）。
+describe('inspectTagState（tag 管理防护）', () => {
+  const tmpRepos = []
+  const makeRepo = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'reltag-'))
+    tmpRepos.push(dir)
+    const run = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim()
+    run('init', '-q')
+    run('config', 'user.email', 'test@example.com')
+    run('config', 'user.name', 'test')
+    run('commit', '-q', '--allow-empty', '-m', 'init')
+    return { dir, run }
+  }
+  afterAll(() => {
+    for (const dir of tmpRepos) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('tag 不存在 → absent（正常打 tag 分支）', () => {
+    const { dir } = makeRepo()
+    expect(inspectTagState(dir, 'dsh-x@v1.0.0')).toEqual({ state: 'absent' })
+  })
+
+  it('tag 已存在且指向 HEAD → same-head（幂等跳过、仅推送分支）', () => {
+    const { dir, run } = makeRepo()
+    run('tag', 'dsh-x@v1.0.0')
+    const head = run('rev-parse', 'HEAD')
+    expect(inspectTagState(dir, 'dsh-x@v1.0.0')).toEqual({ state: 'same-head', tagSha: head, headSha: head })
+  })
+
+  it('tag 已存在但指向其他 commit → conflict（报错分支，绝不自动 force）', () => {
+    const { dir, run } = makeRepo()
+    run('tag', 'dsh-x@v1.0.0')
+    const tagged = run('rev-parse', 'HEAD')
+    run('commit', '-q', '--allow-empty', '-m', 'next')
+    const head = run('rev-parse', 'HEAD')
+    expect(head).not.toBe(tagged)
+    expect(inspectTagState(dir, 'dsh-x@v1.0.0')).toEqual({ state: 'conflict', tagSha: tagged, headSha: head })
+  })
+
+  it('annotated tag 解引用到 commit（^{commit}）', () => {
+    const { dir, run } = makeRepo()
+    run('tag', '-a', 'dsh-x@v1.0.0', '-m', 'release')
+    const head = run('rev-parse', 'HEAD')
+    expect(inspectTagState(dir, 'dsh-x@v1.0.0')).toEqual({ state: 'same-head', tagSha: head, headSha: head })
+  })
+
+  it('非 git 目录 → absent（rev-parse 失败不穿透抛错）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'reltag-'))
+    tmpRepos.push(dir)
+    expect(inspectTagState(dir, 'dsh-x@v1.0.0')).toEqual({ state: 'absent' })
+  })
+
+  it('tagConflictHint 只给人工处理选项，且明确不自动 force', () => {
+    const text = tagConflictHint('dsh-x@v1.0.0').join('\n')
+    expect(text).toContain('git tag -d dsh-x@v1.0.0')
+    expect(text).toContain('git push origin -f dsh-x@v1.0.0')
+    expect(text).toContain('不提供 --force-tag 自动覆盖')
+  })
+})
+
+// ── workflow 插件清单一致性（防漂移）──────────────────────────────────────
+// 事故背景：dsh-my-opencode-session-header 新增后 release-auto.yml 的插件选项未
+// 同步，手动触发发版时选不到该插件。把「workflow 清单 == plugins/ 目录」固化成
+// 测试：新增/改名插件忘记同步任一清单，npm run test:scripts 即失败。
+describe('workflow 插件清单一致性', () => {
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+  const pluginDirs = readdirSync(join(repoRoot, 'plugins'), { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort()
+
+  const optionsAfter = (file, startRe, endRe) => {
+    const yml = readFileSync(join(repoRoot, file), 'utf8')
+    const section = yml.split(startRe)[1]?.split(endRe)[0] ?? ''
+    return [...section.matchAll(/^ +- (.+)$/gm)].map((m) => m[1].trim()).sort()
+  }
+
+  it('release-auto.yml 的 plugins 选项与 plugins/ 目录完全一致', () => {
+    const listed = optionsAfter('.github/workflows/release-auto.yml', /^ {6}plugins:$/m, /^ {6}bump:$/m)
+    expect(listed.length).toBeGreaterThan(0) // 解析失效时明确失败，而非静默空列表
+    expect(listed).toEqual(pluginDirs)
+  })
+
+  it('ci.yml 的 matrix.plugin 与 plugins/ 目录完全一致', () => {
+    const listed = optionsAfter('.github/workflows/ci.yml', /^ {8}plugin:$/m, /^ {4}steps:$/m)
+    expect(listed.length).toBeGreaterThan(0)
+    expect(listed).toEqual(pluginDirs)
   })
 })

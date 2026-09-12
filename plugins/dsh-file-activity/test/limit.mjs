@@ -11,8 +11,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createStore } from '../lib/store.js'
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+import { waitFileContains, waitReady, waitStateFile } from './lib/settle.mjs'
+import { stateFile } from '../lib/state.js'
 
 const dirs = []
 function freshHome(tag) {
@@ -35,7 +35,7 @@ test('会话数上限：超限按最久未活动 LRU 淘汰，计数与日志可
   freshHome('sessions')
   const { warns, logger } = makeLogger()
   const store = createStore({ logger }, { limits: { maxSessions: 16 } })
-  await sleep(300)
+  await waitReady(store)
 
   for (let s = 0; s < 40; s += 1) store.record('sess-' + s, '/p/' + s + '.ts', 'read', Date.now())
 
@@ -56,7 +56,7 @@ test('每会话路径上限：超限 LRU 淘汰最久未活动路径，known 同
   freshHome('paths')
   const { warns, logger } = makeLogger()
   const store = createStore({ logger }, { limits: { maxPathsPerSession: 50 } })
-  await sleep(300)
+  await waitReady(store)
 
   for (let i = 0; i < 120; i += 1) store.record('cap-session', '/c/f' + i + '.ts', 'read', Date.now())
 
@@ -82,7 +82,7 @@ test('全局路径数上限：跨会话总量有界且计数可观测', async ()
   freshHome('global')
   const { warns, logger } = makeLogger()
   const store = createStore({ logger }, { limits: { maxPathsTotal: 200, maxSessions: 64 } })
-  await sleep(300)
+  await waitReady(store)
 
   for (let s = 0; s < 20; s += 1) {
     for (let i = 0; i < 20; i += 1) store.record('g-' + s, '/g/' + s + '/' + i + '.ts', 'read', Date.now())
@@ -104,16 +104,16 @@ test('淘汰后完整重载：盘面与内存态一致、不超上限、计数�
   freshHome('reload')
   const { logger } = makeLogger()
   const store = createStore({ logger }, { limits: { maxSessions: 32, maxPathsPerSession: 20 } })
-  await sleep(300)
+  await waitReady(store)
   for (let s = 0; s < 80; s += 1) {
     for (let i = 0; i < 12; i += 1) store.record('r-' + s, '/r/' + s + '/' + i + '.ts', 'read', Date.now())
   }
-  await sleep(900)
+  await waitStateFile(stateFile())
   store.dispose()
-  await sleep(400)
+  await waitFileContains(stateFile(), '"m":1')
 
   const store2 = createStore({ logger: { warn: () => {} } }, { limits: { maxSessions: 32, maxPathsPerSession: 20 } })
-  await sleep(400)
+  await waitReady(store2)
   assert.ok(Object.keys(store2.state.sessions).length <= 32, '重载后会话数有界')
   assert.ok(store2.stats().pathCount <= 32 * 20, '重载后全局路径数有界')
   const kept = store2.state.sessions['r-79']

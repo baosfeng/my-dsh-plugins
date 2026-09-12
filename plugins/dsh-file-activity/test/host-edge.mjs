@@ -4,6 +4,7 @@
  * buffering before state load, recent-only media authorization and teardown.
  */
 import { test, afterAll } from 'vitest'
+import { settle, waitFileContains } from './lib/settle.mjs'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -228,7 +229,7 @@ test('media route authorizes paths present only in recent history', async () => 
     { kind: 'present' },
     { name: 'read', agent: { id: 'edge-session' }, arguments: {} },
   )
-  await new Promise((resolve) => setTimeout(resolve, 600)) // let it persist
+  await settle()
   const res = makeResponse()
   await getMediaRoute().handler(
     makeRequest('GET', `/file-activity/file?sessionId=edge-session&path=${encodeURIComponent(mediaFile)}`),
@@ -295,7 +296,7 @@ test('fs/observed falls back to the file_path argument when displayPath is empty
     { kind: 'present' },
     { name: 'read', agent: { id: 'arg-session' }, arguments: { file_path: '/work/via-args.txt' } },
   )
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=arg-session')
   assert.equal(r.json.value.counts['/work/via-args.txt'].read, 1)
 })
@@ -335,7 +336,8 @@ test('teardown flushes pending persistence', async () => {
   )
   // Run every disposer (teardown) without waiting for the 500ms debounce.
   for (const disposer of disposers) disposer()
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  // teardown 的落盘链是异步的（flush → dispose → compact）：轮询文件里出现该记录即返回
+  await waitFileContains(statePath, 'teardown.txt')
   const persisted = sessionFromFile(statePath, 'td-session')
   assert.equal(persisted.counts['/work/teardown.txt'].read, 1, 'teardown flushed pending record')
 })

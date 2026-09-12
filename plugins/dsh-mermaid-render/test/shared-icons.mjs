@@ -54,7 +54,10 @@ function specOf(name, size = 16) {
   const node = loadSharedIcons().icon[name](size)
   return {
     box: node.props,
-    children: node.children.map((c) => [c.type, Object.fromEntries(Object.entries(c.props).filter(([k]) => k !== 'key'))]),
+    children: node.children.map((c) => [
+      c.type,
+      Object.fromEntries(Object.entries(c.props).filter(([k]) => k !== 'key')),
+    ]),
   }
 }
 
@@ -138,10 +141,9 @@ describe('产物里的徽标实现同样来自共享 part（#186 P1）', () => {
   })
 
   it('fileIconByExt 契约不变（未知扩展名回退中性文件图标，默认 size 14）', () => {
-    const { fileIconByExt } = new Function(
-      'createElement',
-      `${sharedIcons()}\nreturn { fileIconByExt }`,
-    )((type, props, ...rest) => ({ type, props: props ?? {}, children: rest }))
+    const { fileIconByExt } = new Function('createElement', `${sharedIcons()}\nreturn { fileIconByExt }`)(
+      (type, props, ...rest) => ({ type, props: props ?? {}, children: rest }),
+    )
     expect(typeof fileIconByExt).toBe('function')
     const unknown = fileIconByExt('nope')
     expect(unknown.type).toBe('svg')

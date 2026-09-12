@@ -88,25 +88,25 @@ const MarkdownView = require('dsh-md-render').MarkdownView
 
 ### 承诺面
 
-| 面        | 承诺内容                                                           | 破坏性变更判定                                |
-| --------- | ------------------------------------------------------------------ | --------------------------------------------- |
+| 面        | 承诺内容                                                          | 破坏性变更判定                                |
+| --------- | ----------------------------------------------------------------- | --------------------------------------------- |
 | 导出      | `require('dsh-md-render').MarkdownView` 存在且为 React 函数组件   | 移除 / 改名 = major                           |
 | props     | `{ text: string }`（额外 props 被忽略；非字符串不抛，降级为文本） | 必需 prop 变更 = major；新增可选 prop = minor |
-| 输出结构  | 根 `div.tzx-md` + 下表类名与层级                                   | 类名 / 层级变更 = major                       |
-| bundle id | `dsh-md-render`（下游 `dsh.client.external` 的键）              | 改名 = major                                  |
+| 输出结构  | 根 `div.tzx-md` + 下表类名与层级                                  | 类名 / 层级变更 = major                       |
+| bundle id | `dsh-md-render`（下游 `dsh.client.external` 的键）                | 改名 = major                                  |
 
 **输出类名清单**（跨插件可见的 DOM 契约）：
 
-| 类名                                                                                             | 含义                                                                                         |
-| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| `div.tzx-md`                                                                                     | 渲染根容器（think-zh-expand 迁出前约定的结构类名）                                           |
-| `p.tzx-p`                                                                                        | 段落                                                                                         |
-| `table.tzx-table`                                                                                | 表格（`thead` / `tbody` 子结构；DOM 增强另加 `div.dsh-md-render-table-scroll` 滚动容器） |
-| `div.md-code-block`                                                                              | 代码块容器（`dsh-mermaid-render` 靠它扫描 mermaid 围栏）                                    |
-| `pre.tzx-pre`                                                                                    | 代码块 pre                                                                                   |
-| `div.dsh-md-render-code-head` / `span.dsh-md-render-code-lang`                                  | 代码块头部与语言标签                                                                         |
-| `span.dsh-md-render-math` / `div.dsh-md-render-math-block` / `span.dsh-md-render-math-error`     | 行内公式 / 块级公式 / 公式错误标记                                                           |
-| `button.dsh-md-render-copy`                                                                      | 复制按钮                                                                                     |
+| 类名                                                                                         | 含义                                                                                     |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `div.tzx-md`                                                                                 | 渲染根容器（think-zh-expand 迁出前约定的结构类名）                                       |
+| `p.tzx-p`                                                                                    | 段落                                                                                     |
+| `table.tzx-table`                                                                            | 表格（`thead` / `tbody` 子结构；DOM 增强另加 `div.dsh-md-render-table-scroll` 滚动容器） |
+| `div.md-code-block`                                                                          | 代码块容器（`dsh-mermaid-render` 靠它扫描 mermaid 围栏）                                 |
+| `pre.tzx-pre`                                                                                | 代码块 pre                                                                               |
+| `div.dsh-md-render-code-head` / `span.dsh-md-render-code-lang`                               | 代码块头部与语言标签                                                                     |
+| `span.dsh-md-render-math` / `div.dsh-md-render-math-block` / `span.dsh-md-render-math-error` | 行内公式 / 块级公式 / 公式错误标记                                                       |
+| `button.dsh-md-render-copy`                                                                  | 复制按钮                                                                                 |
 
 **不承诺**：其余 exports（`parseTable` / `renderTable` / `setRenderOptions` / `applyContextMarkdown` 等）是内部与测试面，随内部重构变动，下游不得依赖。
 

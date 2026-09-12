@@ -189,7 +189,9 @@ describe('共享图标注入门禁（#186 P1，与 #185 同款两道防线）', 
   })
 
   it('占位符本身被块注释定界符包裹，不会被状态机误判（#186 实测修正）', () => {
-    expect(isPlaceholderOutsideComments(`const a = 1\n${ICONS_PLACEHOLDER}\nconst b = 2\n`, ICONS_PLACEHOLDER)).toBe(true)
+    expect(isPlaceholderOutsideComments(`const a = 1\n${ICONS_PLACEHOLDER}\nconst b = 2\n`, ICONS_PLACEHOLDER)).toBe(
+      true,
+    )
   })
 
   it('产物内图标实现恰好一份（内联副本复活即失败）', () => {

@@ -88,7 +88,9 @@ for (const [placeholder, file, anchor] of [
   [SCANNER_PLACEHOLDER, 'dom-scanner.part.js', 'function installDomScanner('],
 ]) {
   if (!isPlaceholderOutsideComments(template, placeholder)) {
-    throw new Error(`${placeholder} in client.src.js is inside a comment: injection would \`succeed\` but the shared part would never be declared`)
+    throw new Error(
+      `${placeholder} in client.src.js is inside a comment: injection would \`succeed\` but the shared part would never be declared`,
+    )
   }
   out = spliceExactlyOnce(out, placeholder, readFileSync(join(sharedPartsDir, file), 'utf8'))
   const decls = out.split(anchor).length - 1

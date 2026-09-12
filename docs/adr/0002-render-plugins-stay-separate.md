@@ -19,11 +19,11 @@ date: 2026-09-13
 
 调研纠正了三个常见印象（均以当前代码为准）：
 
-| 印象 | 事实 | 证据 |
-| --- | --- | --- |
-| 「有一个独立的公式渲染插件」 | ❌ 不存在。math 在 `dsh-md-render` 内（`src/client/parts/math.ts` + `math-symbols.ts`，issue #82），零依赖自研 LaTeX 子集 | 全仓 grep `katex/mathjax/markdown-it/marked/highlight.js/prismjs` = 0 命中 |
-| 「think 插件在做渲染」 | ❌ 已迁出（#31 落地）。think client 的 markdown 解析引用数为 0，主体是 UI 中文化词表 + 思考块展开交互 | `dsh-think-zh-expand/src/client/index.ts`；server 半只做 system-prompt 注入 |
-| 「三个渲染插件各自为政」 | ❌ `dsh-md-render` **事实上已是渲染内核**，有 2 个下游：`dsh-think-zh-expand`（peerDep `^0.1.1`，硬依赖 require `MarkdownView`）与 `dsh-my-plugin-manager`（peerDep `^0.1.2`，try/catch 降级） | 两者 package.json 均声明 `dsh.client.external: ["dsh-md-render"]` |
+| 印象                         | 事实                                                                                                                                                                                           | 证据                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 「有一个独立的公式渲染插件」 | ❌ 不存在。math 在 `dsh-md-render` 内（`src/client/parts/math.ts` + `math-symbols.ts`，issue #82），零依赖自研 LaTeX 子集                                                                      | 全仓 grep `katex/mathjax/markdown-it/marked/highlight.js/prismjs` = 0 命中  |
+| 「think 插件在做渲染」       | ❌ 已迁出（#31 落地）。think client 的 markdown 解析引用数为 0，主体是 UI 中文化词表 + 思考块展开交互                                                                                          | `dsh-think-zh-expand/src/client/index.ts`；server 半只做 system-prompt 注入 |
+| 「三个渲染插件各自为政」     | ❌ `dsh-md-render` **事实上已是渲染内核**，有 2 个下游：`dsh-think-zh-expand`（peerDep `^0.1.1`，硬依赖 require `MarkdownView`）与 `dsh-my-plugin-manager`（peerDep `^0.1.2`，try/catch 降级） | 两者 package.json 均声明 `dsh.client.external: ["dsh-md-render"]`           |
 
 体积现状（2026-09-13 实测 `lib/client.js`）：`dsh-md-render` 151 KB、`dsh-think-zh-expand` 42.8 KB、`dsh-mermaid-render` 4.49 MB（内联 vendored mermaid 引擎；#185 修复前为 8.93 MB，冗余注入 4.48 MB）。
 
@@ -63,12 +63,12 @@ date: 2026-09-13
 
 ## 备选方案
 
-| 方案 | 内容 | 未采纳原因 |
-| --- | --- | --- |
-| A：三者合并为一个「渲染插件」 | think + mermaid + md-render 合成一个包 | 不用图表的用户被强制下载 4.49 MB；think 的 system-prompt 注入与 mermaid 引擎无关却被迫同版本发布 |
-| B：mermaid 并入 md-render（3 → 2） | 插件数减一 | 需同步改 2 个下游的 `external` 契约与 peerDep 范围，且所有 md-render 用户强制下载 4.49 MB；公共内核 151 KB → ~4.6 MB（已否决） |
-| C：维持现状，不做共享 | 三处继续各写一份 | 图标 157 行已复制（mermaid 是 10 个消费方之外唯一漏接的），scanner 与样式样板继续漂移；#54 阶段的「单一来源」目标失效 |
-| **D（采纳）：保持 3 包 + 内部共享** | `dsh-shared/client-parts` 收口图标/扫描器骨架/样式样板 | —— |
+| 方案                                | 内容                                                   | 未采纳原因                                                                                                                     |
+| ----------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| A：三者合并为一个「渲染插件」       | think + mermaid + md-render 合成一个包                 | 不用图表的用户被强制下载 4.49 MB；think 的 system-prompt 注入与 mermaid 引擎无关却被迫同版本发布                               |
+| B：mermaid 并入 md-render（3 → 2）  | 插件数减一                                             | 需同步改 2 个下游的 `external` 契约与 peerDep 范围，且所有 md-render 用户强制下载 4.49 MB；公共内核 151 KB → ~4.6 MB（已否决） |
+| C：维持现状，不做共享               | 三处继续各写一份                                       | 图标 157 行已复制（mermaid 是 10 个消费方之外唯一漏接的），scanner 与样式样板继续漂移；#54 阶段的「单一来源」目标失效          |
+| **D（采纳）：保持 3 包 + 内部共享** | `dsh-shared/client-parts` 收口图标/扫描器骨架/样式样板 | ——                                                                                                                             |
 
 ## 参考
 

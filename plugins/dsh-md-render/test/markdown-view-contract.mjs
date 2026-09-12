@@ -135,7 +135,13 @@ describe('props 契约：{ text: string }', () => {
   })
 
   it('多行 / 特殊字符输入不抛（含未闭合公式的错误降级路径）', () => {
-    for (const text of ['a\n\nb', '| a | b |\n| --- | --- |\n| 1 | 2 |', '坏公式 $x', '\`\`\`\ncode\n\`\`\`', '<script>alert(1)</script>']) {
+    for (const text of [
+      'a\n\nb',
+      '| a | b |\n| --- | --- |\n| 1 | 2 |',
+      '坏公式 $x',
+      '```\ncode\n```',
+      '<script>alert(1)</script>',
+    ]) {
       expect(() => MarkdownView({ text })).not.toThrow()
     }
   })
@@ -158,11 +164,11 @@ describe('props 契约：{ text: string }', () => {
 
 describe('输出结构契约（README 公共 API 契约清单）', () => {
   const samples = {
-    '普通段落': 'hello',
-    '表格': '| a | b |\n| --- | --- |\n| 1 | 2 |',
-    '代码块': '\`\`\`js\nconst x = 1\n\`\`\`',
+    普通段落: 'hello',
+    表格: '| a | b |\n| --- | --- |\n| 1 | 2 |',
+    代码块: '```js\nconst x = 1\n```',
     '行内 + 块级公式': 'inline $x^2$ end\n\n$$\n\\frac{1}{2}\n$$',
-    '公式错误降级': 'bad $x',
+    公式错误降级: 'bad $x',
   }
 
   it('清单里的每个公共类名都在代表性渲染中出现', () => {
@@ -188,7 +194,7 @@ describe('输出结构契约（README 公共 API 契约清单）', () => {
   })
 
   it('代码块容器是 div.md-code-block（dsh-mermaid-render 靠它扫描）', () => {
-    const tree = MarkdownView({ text: '\`\`\`mermaid\ngraph TD;\n\`\`\`' })
+    const tree = MarkdownView({ text: '```mermaid\ngraph TD;\n```' })
     const classes = new Set()
     collect(tree, classes, new Set())
     expect(classes.has('md-code-block')).toBe(true)

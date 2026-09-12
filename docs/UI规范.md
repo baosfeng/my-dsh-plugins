@@ -43,11 +43,11 @@ dsh-file-activity 的 UI 语言由五个要素构成，翻新插件时逐项对�
 
 ### 共享部件清单
 
-| 部件                  | 内容                                                                                                                                                                                                     | 接入方（2026-09-13）                                                              |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `icons.part.js`       | 线性图标（19 个 key）+ 文件类型徽章（`FILE_BADGES` 98 项扩展名映射 / `badgeIcon` / `fileIconByExt`）                                                                                                    | 11 个插件（含 2026-09-13 接入的 dsh-mermaid-render，issue #186 P1）               |
-| `style-tag.part.js`   | `installStyles(ctx, attr, css, label)`：注入 `<style data-<plugin>="styles">` 并随 fiber teardown 卸载（无条件、最先注入，不进早退分支）                                                                | dsh-md-render / dsh-mermaid-render / dsh-think-zh-expand（issue #186 P2）         |
-| `dom-scanner.part.js`  | `installDomScanner({ scan, rescanSelectors, attributeFilter, onTeardown })`：MutationObserver 骨架（观察 body + 新增元素 + 兜底重扫 + 批次轮次 + disposer），插件特有策略全部留在 `scan` 回调            | dsh-md-render / dsh-mermaid-render（issue #186 P2）                               |
+| 部件                  | 内容                                                                                                                                                                                          | 接入方（2026-09-13）                                                      |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `icons.part.js`       | 线性图标（19 个 key）+ 文件类型徽章（`FILE_BADGES` 98 项扩展名映射 / `badgeIcon` / `fileIconByExt`）                                                                                          | 11 个插件（含 2026-09-13 接入的 dsh-mermaid-render，issue #186 P1）       |
+| `style-tag.part.js`   | `installStyles(ctx, attr, css, label)`：注入 `<style data-<plugin>="styles">` 并随 fiber teardown 卸载（无条件、最先注入，不进早退分支）                                                      | dsh-md-render / dsh-mermaid-render / dsh-think-zh-expand（issue #186 P2） |
+| `dom-scanner.part.js` | `installDomScanner({ scan, rescanSelectors, attributeFilter, onTeardown })`：MutationObserver 骨架（观察 body + 新增元素 + 兜底重扫 + 批次轮次 + disposer），插件特有策略全部留在 `scan` 回调 | dsh-md-render / dsh-mermaid-render（issue #186 P2）                       |
 
 > **共享的边界**：只抽逐字或结构等价的骨架。各插件的特有行为（流式内容门控、幂等签名、宿主契约不匹配时静默降级、围栏闭合判定、离屏渲染、自愈卸载、teardown 清理）通过参数 / 回调注入，**不因归一而削功能**——这是 issue #186 P2 的硬约束。差异过大时宁可只抽骨架（或先不抽），也不做"为归一而削能力"的抽象。
 
@@ -57,27 +57,27 @@ dsh-file-activity 的 UI 语言由五个要素构成，翻新插件时逐项对�
 
 全部为 `stroke=currentColor` 线性图标，`icon.<name>(size)` 调用，默认尺寸见括号：
 
-| 图标   | 名称           | 默认尺寸 | 用途                        |
-| ------ | -------------- | -------- | --------------------------- |
-| 时钟   | `clock`        | 16       | 时间/历史                   |
-| 刷新   | `refresh`      | 16       | 刷新/更新检查               |
-| 垃圾桶 | `trash`        | 16       | 删除/清空/卸载              |
-| 右箭头 | `chevronRight` | 14       | 折叠态指示                  |
-| 下箭头 | `chevronDown`  | 14       | 展开态指示                  |
-| 文件   | `file`         | 16       | 中性文件图标（徽章回退）    |
-| 文件夹 | `folder`       | 16       | 目录                        |
-| 外链   | `external`     | 15       | 打开外部/新窗口             |
-| 关闭   | `close`        | 15       | 取消/关闭/×                 |
-| 问号   | `help`         | 16       | 询问/帮助（issue #54 新增） |
-| 对勾   | `check`        | 16       | 保存/确认（issue #54 新增） |
-| 加号   | `plus`         | 16       | 添加/安装（issue #54 新增） |
-| 放大镜 | `search`       | 16       | 搜索（issue #54 新增）      |
-| 齿轮   | `settings`     | 16       | 设置入口（issue #54 新增）  |
-| 铅笔   | `pencil`       | 15       | 编辑（issue #54 新增）      |
-| 警告   | `alert`        | 16       | 告警/警告（issue #54 新增） |
-| 代码   | `code`         | 16       | 代码/源码（issue #54 新增） |
+| 图标   | 名称           | 默认尺寸 | 用途                                |
+| ------ | -------------- | -------- | ----------------------------------- |
+| 时钟   | `clock`        | 16       | 时间/历史                           |
+| 刷新   | `refresh`      | 16       | 刷新/更新检查                       |
+| 垃圾桶 | `trash`        | 16       | 删除/清空/卸载                      |
+| 右箭头 | `chevronRight` | 14       | 折叠态指示                          |
+| 下箭头 | `chevronDown`  | 14       | 展开态指示                          |
+| 文件   | `file`         | 16       | 中性文件图标（徽章回退）            |
+| 文件夹 | `folder`       | 16       | 目录                                |
+| 外链   | `external`     | 15       | 打开外部/新窗口                     |
+| 关闭   | `close`        | 15       | 取消/关闭/×                         |
+| 问号   | `help`         | 16       | 询问/帮助（issue #54 新增）         |
+| 对勾   | `check`        | 16       | 保存/确认（issue #54 新增）         |
+| 加号   | `plus`         | 16       | 添加/安装（issue #54 新增）         |
+| 放大镜 | `search`       | 16       | 搜索（issue #54 新增）              |
+| 齿轮   | `settings`     | 16       | 设置入口（issue #54 新增）          |
+| 铅笔   | `pencil`       | 15       | 编辑（issue #54 新增）              |
+| 警告   | `alert`        | 16       | 告警/警告（issue #54 新增）         |
+| 代码   | `code`         | 16       | 代码/源码（issue #54 新增）         |
 | 下载   | `download`     | 16       | 下载/导出 PNG·SVG（issue #85 新增） |
-| 复制   | `copy`         | 16       | 复制源码/内容（issue #85 新增） |
+| 复制   | `copy`         | 16       | 复制源码/内容（issue #85 新增）     |
 
 > 新增图标按需补充（如 `alert` 警告、`pencil` 编辑），必须保持 stroke=currentColor 风格一致，并同步更新本清单与 `plugins/dsh-file-activity/test/icons-ext.mjs` 的覆盖。
 

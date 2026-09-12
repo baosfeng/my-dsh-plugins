@@ -3,8 +3,10 @@
  *
  * 纯函数（无 IO，可单元测试）：
  *   extractDshRequires / findUndeclaredPeers / rangeMin / versionGte / findUnpublishedDeps / isNpmNotFound
+ *   tagConflictHint
  * IO 辅助（依赖注入 fs 便于测试）：
  *   collectClientSources / collectServerSources / buildPluginIndex / findFreePort
+ *   inspectTagState（git 查询：发版 tag 管理防护）
  *
  * 校验规则（对应 issue #39 期望 1/3 + issue #72 修复）：
  *   1. client/server 端 require('dsh-*') / import 的包必须在 package.json
@@ -14,6 +16,7 @@
  *   3. npm view 返回 404（包从未发布）必须阻断发版，不再被「已打 tag」兜底放行
  *      （issue #72：dsh-shared 未发布 npm 但 tag 已打，4 个插件安装失败/运行崩溃）。
  */
+import { execFileSync } from 'node:child_process'
 import { readdirSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
@@ -145,4 +148,49 @@ export function findFreePort(start = 3087) {
     }
     probe(start)
   })
+}
+
+/**
+ * 查询发版 tag 的状态（tag 管理防护）。
+ *
+ * 事故背景：release commit 已推 main 但 tag 缺失/指向旧 commit；重跑发版时若直接
+ * `git tag` 会失败（已存在）或误覆盖，故先判定状态，由调用方分三支处理：
+ *   absent    → refs/tags/<tag> 不存在，正常打 tag；
+ *   same-head → 已存在且指向当前 HEAD，跳过打 tag（仅推送，幂等重试）；
+ *   conflict  → 已存在但指向其他 commit，调用方必须报错退出，绝不自动 force。
+ *
+ * 全程 execFileSync 参数数组（不经过 shell）：tag 由外部输入（插件目录名 + 版本）
+ * 拼接，避免 CodeQL js/shell-command-injection-from-environment。
+ *
+ * @param {string} root 仓库根目录
+ * @param {string} tag 形如 `<插件目录名>@v<版本>`
+ * @returns {{state: 'absent'} | {state: 'same-head'|'conflict', tagSha: string, headSha: string}}
+ */
+export function inspectTagState(root, tag) {
+  let tagSha
+  try {
+    tagSha = execFileSync('git', ['rev-parse', '-q', '--verify', `${tag}^{commit}`], {
+      cwd: root,
+      // tag 不存在是正常分支（走打 tag），抑制 git 的 fatal 噪音（stdout 仍需捕获）。
+      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8',
+    }).trim()
+  } catch {
+    return { state: 'absent' }
+  }
+  const headSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+  return { state: tagSha === headSha ? 'same-head' : 'conflict', tagSha, headSha }
+}
+
+/**
+ * conflict 时给人工的处理指引（不提供 --force-tag：删/覆盖 tag 属破坏性操作，
+ * 必须由人确认后手动执行，流程不自动 force）。
+ */
+export function tagConflictHint(tag) {
+  return [
+    '  可选处理：',
+    '  a. 当前 HEAD 即为本次发版内容，删除旧 tag 并重打（远程已存在时需 force 覆盖）：',
+    `     git tag -d ${tag} && git tag ${tag} && git push origin -f ${tag}`,
+    '  b. 不重打本次：等下一个版本再发（tag 指向旧 commit，本流程不提供 --force-tag 自动覆盖）',
+  ]
 }

@@ -16,7 +16,7 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from '../lib/index.js'
-import { createFailureLog, FAILURE_LOG_LIMIT } from '../lib/webhook-store.js'
+import { createFailureLog, createWebhookStore, FAILURE_LOG_LIMIT } from '../lib/webhook-store.js'
 import { patchFileOf } from 'dsh-shared'
 
 const tmpDirs = []
@@ -611,4 +611,18 @@ test('URL host sanitization rejects bypass (CodeQL js/incomplete-url-substring-s
 
   // 畸形 URL 安全地返回失败而不是抛错
   assert.ok(!isTrustedUrl('not a url'), 'malformed url safely rejected')
+})
+
+// ── 11. 保存路径的护栏语义（issue #198）：用户点击保存必须立即落盘 ─────────
+test('webhook save：连续两次保存都立即落盘（默认节流窗口不得吞掉用户配置）', async () => {
+  const file = join(tempDir(), 'notify-webhooks.json')
+  const store = createWebhookStore({ file, logger: { warn() {} } })
+  assert.equal(existsSync(file), false, '保存前无文件')
+  await store.save([{ url: 'https://example.com/hook' }])
+  await store.save([{ url: 'https://example.com/hook' }, { url: 'https://example.com/other' }])
+  assert.equal(
+    JSON.parse(readFileSync(file, 'utf8')).length,
+    2,
+    '1s 内的第二次保存也必须落盘（force：用户显式保存语义，不能被节流窗口拒绝）',
+  )
 })

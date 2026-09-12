@@ -247,7 +247,7 @@ test('store: mutate with empty sessionId is a no-op', async () => {
   store.recordRequest('', { turn: 1, step: 1, usage: { inputTokens: 1 } })
   store.addMessage('', 'user', 5)
   await settle()
-  assert.deepEqual(store.state.bySession, {})
+  assert.equal(store.state.bySession.size, 0, '空 sessionId 不建桶（有界 Map 为空）')
   store.dispose()
   handle.disposeAll()
 })

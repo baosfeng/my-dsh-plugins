@@ -4,21 +4,27 @@
  * 记录每个 skill 被加载/使用的情况：使用次数累计 + 最近使用时间 + 使用来源
  * （model = 模型通过 skill 工具加载；user = 用户 /name 手势注入等）。
  *
- * 持久化：$DSH_HOME/skills.usage.json（fallback ~/.dsh/skills.usage.json），
- * 防抖 500ms + 原子写（tmp+rename，经 dirtyChain 串行化），重启不丢。
+ * 持久化：$DSH_HOME/skills.usage.json（fallback ~/.dsh/skills.usage.json）。
+ * 写入调度用 dsh-shared 的 createWriteScheduler（issue #198：防抖 500ms +
+ * 最小间隔 1s + 串行链），落盘用 atomicWriteJson（默认护栏：1s 节流兜底 +
+ * 1MB 字节上限——usage 状态自身有界，条目数 = 已知 skill 数）。
  * 启动异步加载：结构不合法回退空状态；加载完成前 record 的变更缓冲在
- * pending 队列，加载后回放（不丢事件）。
+ * pending 队列，加载后回放（不丢事件）；drainUsage() 是确定性就绪信号。
  *
  * 数据形状：
  *   { "skills": { "<name>": { "count": N, "lastUsedAt": ts, "lastSource": "model"|"user" } } }
  */
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { atomicWriteJson } from 'dsh-shared'
+import { atomicWriteJson, createWriteScheduler } from 'dsh-shared'
+import type { WriteScheduler } from 'dsh-shared'
 import type { Logger } from './types.js'
 
 /** 防抖间隔（ms）。 */
 const PERSIST_DEBOUNCE_MS = 500
+
+/** 落盘最小间隔（ms）：与 atomicWriteJson 默认节流窗口一致（护栏不误伤正常节奏）。 */
+const PERSIST_MIN_INTERVAL_MS = 1000
 
 /** 使用来源：model = 模型 skill 工具；user = 用户手势注入等。 */
 export type UsageSource = 'model' | 'user'
@@ -40,8 +46,7 @@ interface UsageStoreCore {
   byName: Map<string, UsageEntry>
   ready: boolean
   pending: Array<() => void>
-  persistTimer: ReturnType<typeof setTimeout> | null
-  dirtyChain: Promise<unknown>
+  scheduler: WriteScheduler
 }
 
 /** 使用统计 store（异步加载启动；readyPromise 在加载完成后 resolve）。 */
@@ -66,15 +71,21 @@ export function usageFile(): string {
 
 /** 创建使用统计 store（异步加载启动；readyPromise 在加载完成后 resolve）。 */
 export function createUsageStore({ file, logger }: UsageStoreOptions): UsageStore {
-  const core: UsageStoreCore = {
+  const core = {
     file,
     logger,
-    byName: new Map(),
+    byName: new Map<string, UsageEntry>(),
     ready: false,
-    pending: [],
-    persistTimer: null,
-    dirtyChain: Promise.resolve(),
-  }
+    pending: [] as Array<() => void>,
+  } as UsageStoreCore
+  core.scheduler = createWriteScheduler({
+    debounceMs: PERSIST_DEBOUNCE_MS,
+    minIntervalMs: PERSIST_MIN_INTERVAL_MS,
+    logger,
+    prefix: '[dsh-my-skill-manager]',
+    write: ({ force }) =>
+      atomicWriteJson(core.file, { skills: usageSnapshot(core) }, core.logger, '[dsh-my-skill-manager]', { force }),
+  })
   // 属性顺序与迁移前一致：core 字段先建，readyPromise/_resolveReady 后挂。
   const store = core as UsageStore
   store.readyPromise = new Promise<void>((resolve) => {
@@ -99,7 +110,7 @@ function onLoaded(store: UsageStore, text: string): void {
   store._resolveReady()
   const pending = store.pending.splice(0)
   for (const run of pending) run()
-  if (pending.length > 0 || parsed !== undefined) persistSoon(store)
+  if (pending.length > 0 || parsed !== undefined) store.scheduler.schedule()
 }
 
 /** 解析已持久化的统计（结构不合法时回退 undefined）。 */
@@ -138,12 +149,12 @@ export function recordUsage(store: UsageStore, name: string, source: UsageSource
   entry.lastUsedAt = Date.now()
   entry.lastSource = source === 'model' ? 'model' : 'user'
   store.byName.set(name, entry)
-  if (store.ready) persistSoon(store)
-  else store.pending.push(() => persistSoon(store))
+  if (store.ready) store.scheduler.schedule()
+  else store.pending.push(() => store.scheduler.schedule())
 }
 
 /** 当前统计快照：{ name: { count, lastUsedAt, lastSource } }。 */
-export function usageSnapshot(store: UsageStore): UsageSnapshot {
+export function usageSnapshot(store: UsageStoreCore): UsageSnapshot {
   const result: UsageSnapshot = {}
   for (const [name, entry] of store.byName) {
     result[name] = { count: entry.count, lastUsedAt: entry.lastUsedAt, lastSource: entry.lastSource }
@@ -152,27 +163,11 @@ export function usageSnapshot(store: UsageStore): UsageSnapshot {
 }
 
 /** 立即冲刷持久化（dispose 时调用；返回落盘 Promise）。 */
-export function flushUsage(store: UsageStore): Promise<unknown> {
-  if (store.persistTimer !== null) {
-    clearTimeout(store.persistTimer)
-    store.persistTimer = null
-  }
-  return persistNow(store)
+export function flushUsage(store: UsageStore): Promise<void> {
+  return store.scheduler.flush()
 }
 
-/** 原子写当前状态（经 dirtyChain 串行化；自动建目录）。 */
-function persistNow(store: UsageStore): Promise<unknown> {
-  store.dirtyChain = store.dirtyChain
-    .then(() => atomicWriteJson(store.file, { skills: usageSnapshot(store) }, store.logger, '[dsh-my-skill-manager]'))
-    .catch(() => {})
-  return store.dirtyChain
-}
-
-/** 防抖调度持久化。 */
-function persistSoon(store: UsageStore): void {
-  if (store.persistTimer !== null) return
-  store.persistTimer = setTimeout(() => {
-    store.persistTimer = null
-    persistNow(store)
-  }, PERSIST_DEBOUNCE_MS)
+/** 等待所有挂起写入结束（确定性就绪信号：await 后内存与磁盘一致）。 */
+export function drainUsage(store: UsageStore): Promise<void> {
+  return store.scheduler.drain()
 }

@@ -4,7 +4,8 @@
  * webhooks 是对象数组，cordis.patch.yml 的 YAML 子集序列化
  * （writePatchConfig 的 yamlValue）只支持标量数组，无法表达对象数组——
  * 因此 webhooks 单独持久化到 `$DSH_HOME/profiles/<profile>/
- * notify-webhooks.json`（原子写 tmp+rename，dsh-shared atomicWriteJson），
+ * notify-webhooks.json`（原子写 tmp+rename，dsh-shared atomicWriteJson；保存为
+ * 用户显式操作 → force 立即落盘，issue #198），
  * API 层面仍并入现有 GET/PUT /notify/api/config 模式（config.webhooks
  * 字段），设置页保存即生效、重启恢复。
  *
@@ -30,7 +31,10 @@ export function createWebhookStore({ file, logger }) {
             }
         },
         async save(webhooks) {
-            await atomicWriteJson(file, webhooks, logger, 'dsh-my-notify webhooks');
+            // issue #198：用户点「保存」是低频**显式**操作——force 跳过默认 1s 节流
+            // （否则 1s 内的连续保存会被拒绝、配置静默丢失）；字节上限沿用默认 1MB
+            // （webhooks 为对象数组，体积远小于上限）。
+            await atomicWriteJson(file, webhooks, logger, 'dsh-my-notify webhooks', { force: true });
         },
     };
 }

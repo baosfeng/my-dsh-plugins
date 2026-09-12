@@ -22,6 +22,7 @@ import {
   dispatchEvent,
 } from './lib/helpers.mjs'
 import { createStore } from '../lib/store.js'
+import { waitFileLines, waitUntil } from './lib/wait.mjs'
 
 const disposeAlls = []
 afterAll(() => {
@@ -30,6 +31,17 @@ afterAll(() => {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 40))
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** 轮询 API 直到事件数达到期望（替代「固定等 store 异步加载完成」）：
+ *  超时后返回最后一次结果，由原断言照常判红——等待语义只加强不削弱。 */
+async function waitEvents(api, query, expected, opts) {
+  let value = []
+  await waitUntil(async () => {
+    value = await eventsOf(api, query)
+    return value.length === expected
+  }, opts)
+  return value
+}
 
 function jsonlFile(home) {
   return join(home, 'observability', 'audit.jsonl')
@@ -77,16 +89,21 @@ test('store: 高频事件下持久化为增量追加（无全量重写写放大�
   // 4 批 × 50 事件，批间隔 >500ms 防抖窗口：每批触发一次持久化
   const batches = 4
   const per = 50
+  // 采样写入字节：连续 200ms 没有新字节即视为写入静止（issue #188b）。
+  // 原先固定采样 batches*700+2000 约 4.8s，而批循环 2.8s 就结束了——白等约 2s。
   const tracker = (async () => {
     let total = 0
     let last = dirBytes(home)
-    const end = Date.now() + batches * 700 + 2000
-    while (Date.now() < end) {
+    let idle = 0
+    while (idle < 200) {
       await sleep(15)
       const cur = dirBytes(home)
       if (cur > last) {
         total += cur - last
         last = cur
+        idle = 0
+      } else {
+        idle += 15
       }
     }
     return total
@@ -127,7 +144,7 @@ test('store: compact 产生完整快照且随后恢复增量追加', async () =>
       await dispatchEvent(handle.listeners, 'agent/status', { agent: topAgent(sid), status: `x${i}` })
     }
   }
-  await sleep(2500) // flush + compact 完成
+  await waitFileLines(jsonlFile(home), 5100) // 等 flush + compact 落盘（原固定 2500ms）
 
   const jsonl = jsonlFile(home)
   assert.ok(existsSync(jsonl), 'audit.jsonl exists after compact')
@@ -140,7 +157,7 @@ test('store: compact 产生完整快照且随后恢复增量追加', async () =>
   for (let i = 0; i < 100; i += 1) {
     await dispatchEvent(handle.listeners, 'agent/status', { agent: topAgent('c4'), status: `y${i}` })
   }
-  await sleep(1200)
+  await waitFileLines(jsonl, 5200) // 等追加落盘（原固定 1200ms）
   const linesAfter = readFileSync(jsonl, 'utf8')
     .split('\n')
     .filter((l) => l !== '').length
@@ -173,7 +190,7 @@ test('store: 旧格式 audit.json 迁移为 audit.jsonl 且事件恢复', async 
     await settle()
     const events = await eventsOf(handle.api, '?sessionId=m1')
     assert.equal(events.length, 2, 'legacy events recovered')
-    await sleep(1500) // 迁移原子写完成
+    await waitUntil(() => existsSync(jsonlFile(home)) && !existsSync(legacyFile(home))) // 等迁移完成（原固定 1500ms）
     assert.ok(existsSync(jsonlFile(home)), 'audit.jsonl created by migration')
     assert.ok(!existsSync(legacyFile(home)), 'legacy audit.json removed after migration')
   } finally {
@@ -206,7 +223,7 @@ test('store: dispose 时紧凑挂起仍完整落盘（无事件丢失）', async
       await dispatchEvent(handle.listeners, 'agent/status', { agent: topAgent('d1'), status: `x${i}` })
     }
     handle.disposeAll() // compact 尚未执行时卸载
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+    await waitFileLines(jsonlFile(home), 2000) // 等 dispose 落盘（原固定 1500ms）
     const jsonl = jsonlFile(home)
     assert.ok(existsSync(jsonl), 'jsonl flushed on dispose')
     const lines = readFileSync(jsonl, 'utf8')
@@ -215,8 +232,7 @@ test('store: dispose 时紧凑挂起仍完整落盘（无事件丢失）', async
     assert.equal(lines, 2000, 'dispose 后事件完整落盘（每会话上限 2000）')
     // 重启恢复
     const second = bootPlugin({}, { home })
-    await sleep(400) // 等待 store 异步加载完成
-    const events = await eventsOf(second.api, '?sessionId=d1')
+    const events = await waitEvents(second.api, '?sessionId=d1', 2000)
     assert.equal(events.length, 2000, 'restart 后事件完整恢复')
     second.disposeAll()
   } finally {
@@ -240,12 +256,11 @@ test('store: 旧格式迁移在 dispose 前完成（migrated 兜底）', async (
     // load 完成前即 dispose：未就绪回放 + 迁移兜底
     await dispatchEvent(first.listeners, 'agent/status', { agent: topAgent('m2'), status: 'idle' })
     first.disposeAll()
-    await new Promise((resolve) => setTimeout(resolve, 1200))
+    await waitUntil(() => existsSync(jsonlFile(home)) && !existsSync(legacyFile(home))) // 等迁移兜底（原固定 1200ms）
     assert.ok(!existsSync(legacyFile(home)), 'legacy 已迁移移除')
     assert.ok(existsSync(jsonlFile(home)), 'jsonl 已生成')
     const second = bootPlugin({}, { home })
-    await sleep(400) // 等待 store 异步加载完成
-    const events = await eventsOf(second.api, '?sessionId=m2')
+    const events = await waitEvents(second.api, '?sessionId=m2', 2)
     assert.equal(events.length, 2, '旧事件 + 新回放事件均恢复')
     second.disposeAll()
   } finally {
@@ -269,10 +284,10 @@ test('store: setPersistEnabled 降级停落盘 / 恢复全量快照补齐（资�
       }
     }
 
-    await sleep(400) // 等待 loadPersisted 完成
+    await store.whenReady() // 等异步加载完成（原固定 400ms）
     // 正常阶段：50 事件落盘
     recordN(50, 'normal')
-    await sleep(900) // flush 500ms 完成
+    await waitUntil(() => existsSync(jsonlFile(home)) && countLines() === 50) // 等 flush（原固定 900ms）
     assert.ok(existsSync(jsonlFile(home)), 'normal phase writes jsonl')
     const linesNormal = countLines()
     assert.equal(linesNormal, 50, 'normal phase: 50 events persisted')
@@ -288,7 +303,7 @@ test('store: setPersistEnabled 降级停落盘 / 恢复全量快照补齐（资�
 
     // 恢复：全量快照补齐降级窗口事件
     store.setPersistEnabled(true)
-    await sleep(900) // compact 原子快照完成
+    await waitUntil(() => countLines() === 100) // 等全量快照补齐（原固定 900ms）
     assert.equal(countLines(), 100, 'recover phase: full snapshot restores all events (50 old + 50 degrade)')
 
     store.dispose()

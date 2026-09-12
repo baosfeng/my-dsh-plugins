@@ -27,6 +27,8 @@ function scanNode(seen: Set<Node>, node: Node): void {
   // issue #196：上下文注入块（pre[data-context-text]）的 markdown 渲染。
   if (typeof el.matches === 'function' && el.matches(CONTEXT_TEXT_SELECTOR)) applyContextMarkdown(el)
   scanContextBlocks(el)
+  // issue #205：轨迹视图（div[data-trajectory-scroll]）内 markdown 的接管。
+  scanTrajectoryBlocks(el)
   if (typeof el.matches === 'function' && (el.matches('div.tzx-md') || el.matches('div.md-table-wide'))) {
     scanContainer(seen, el)
     return
@@ -50,6 +52,10 @@ function installScanner(): () => void {
     // 兜底重扫：流式结束后容器内容变化（新增段落 / 表格文本补全），
     // 对已知滚动容器重扫，保证流式中的表格最终被渲染。
     for (const sc of document.querySelectorAll('[data-conversation-scroll]')) {
+      scanNode(seen, sc)
+    }
+    // issue #205：轨迹视图虚拟列表滚动 / 行回收后的兜底重扫。
+    for (const sc of document.querySelectorAll(TRAJECTORY_SCROLL_SELECTOR)) {
       scanNode(seen, sc)
     }
   })

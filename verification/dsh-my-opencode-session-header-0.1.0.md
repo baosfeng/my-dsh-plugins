@@ -135,3 +135,55 @@
 2. **未做 TLS 层中间人抓包**：方法注记已说明层级为 fetch 层全量请求头。
 3. **其它 opencode 形态未覆盖**：仅验证 `openai-completions`（`opencode-go / deepseek-flash`）与 `deepseek-official` 两条路由；`anthropic-messages` 等未单独跑。
 4. 复验后环境已按 skill 步骤 4 清理：端口 3099 释放（`curl` exit 7）、两个隔离 DSH_HOME 已删、无 `web-183` / `headless-183` 残留进程、验证浏览器已关闭、主实例 3080 全程未重启。
+
+### 附录：本轮取证探针源码（fetch 层全量请求头）
+
+仓库既有 `skills/verifying-dsh-plugins/scripts/fetch-probe.mjs` 只记录 `x-opencode-session` / `authorization` 两三项；本轮为做「其余头零变化」的字节级对照，用了它的全量头版本（放置于 `/tmp/dsh-183-verify/probe-full.mjs`，未入库）。语义与仓库探针一致：由 `NODE_OPTIONS=--import` 在 DSH 入口之前装载，包住当时最内层的 `globalThis.fetch` 后转调原实现。
+
+```js
+#!/usr/bin/env node
+/**
+ * probe-full.mjs — NODE_OPTIONS=--import 全量请求头探针（隔离验证专用，不随仓库提交）。
+ * 记录每条匹配请求的 方法/URL/全部请求头（排序）/请求体摘要，用于：
+ *  - issue #183 验收第2条：逐字节证明 x-opencode-session 存在且值 == 会话 id
+ *  - issue #183 验收第4条：非 opencode 路由开/关插件请求头对照（字节级 diff）
+ * 环境变量：PROBE_LOG（JSONL 路径）、PROBE_MATCH（URL 子串，空=全部）、PROBE_BODY_MAX
+ */
+import { appendFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+
+const logPath = process.env.PROBE_LOG || '/tmp/probe-full.jsonl'
+const match = process.env.PROBE_MATCH || ''
+const bodyMax = Number(process.env.PROBE_BODY_MAX || '0')
+const original = globalThis.fetch
+
+globalThis.fetch = async function probedFetch(input, init) {
+  const url = typeof input === 'string' ? input : (input?.url ?? String(input))
+  if (match === '' || url.includes(match)) {
+    const rawHeaders = init?.headers ?? (typeof input === 'object' && input !== null ? input.headers : undefined)
+    const headers = [...new Headers(rawHeaders).entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    const canonical = headers.map(([k, v]) => k + ': ' + v).join('\n')
+    const record = {
+      ts: new Date().toISOString(),
+      method: init?.method ?? (typeof input === 'object' && input !== null ? input.method : undefined) ?? 'GET',
+      url,
+      headers,
+      headerCount: headers.length,
+      headerNames: headers.map(([k]) => k),
+      hasSessionHeader: headers.some(([k]) => k === 'x-opencode-session'),
+      sessionHeader: headers.find(([k]) => k === 'x-opencode-session')?.[1] ?? null,
+      hasAuthorization: headers.some(([k]) => k === 'authorization'),
+      headersSha256: createHash('sha256').update(canonical).digest('hex'),
+      bodySha256:
+        init?.body === undefined || init?.body === null
+          ? null
+          : createHash('sha256')
+              .update(typeof init.body === 'string' ? init.body : String(init.body))
+              .digest('hex'),
+      bodyPrefix: bodyMax > 0 && typeof init?.body === 'string' ? init.body.slice(0, bodyMax) : undefined,
+    }
+    appendFileSync(logPath, JSON.stringify(record) + '\n')
+  }
+  return original.call(this, input, init)
+}
+```

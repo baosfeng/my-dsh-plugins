@@ -20,7 +20,10 @@
     "prepare": "husky",
     "typecheck:plugins": "bash scripts/typecheck-all.sh",
     "check:ts-size": "node scripts/check-ts-size.mjs",
-    "check:links": "node scripts/check-links.mjs"
+    "check:links": "node scripts/check-links.mjs",
+    "deps:matrix": "node scripts/deps-matrix.mjs",
+    "deps:matrix:md": "node scripts/deps-matrix.mjs --markdown",
+    "deps:matrix:offline": "node scripts/deps-matrix.mjs --offline"
   },
   "lint-staged": {
     "*.{js,mjs}": [

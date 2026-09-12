@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# 依赖矩阵缓存（scripts/deps-matrix.mjs 的 registry 查询结果）
+.deps-matrix-cache.json
+
 # Logs
 *.log
 npm-debug.log*

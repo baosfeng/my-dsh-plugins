@@ -54,6 +54,17 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 - 回滚：优先回退发布（删 tag/重新指向旧 commit），不发布“兼容两边”的补丁掩盖问题；
 - 未发布 cohort 的 CI 见 playbook 的“CI 与发布门禁”节（缓存 cohort store、`NPM_PUBLISH_ENABLED` 开关）。
 
+## 批量发版（一次多个插件）
+
+所有插件共享同一个 bump 类型，两个入口：
+
+| 入口 | 怎么发 | 能力边界 |
+|---|---|---|
+| GitHub Actions | Actions → **Release (auto)** → Run workflow：`plugins` 填多个目录名（**逗号或空格**分隔，如 `dsh-md-render,dsh-my-guard`），`bump` 下拉单选 | `plugins` 是文本框不是下拉——GitHub Actions 的 `choice` 原生不支持 `multiple`（issue #204）；workflow 内先跑白名单校验（允许值运行时取自 `plugins/` 目录），非法名 fail-fast 并列出全部允许值 |
+| 本地 | `node scripts/release.mjs a b c --bump patch --push` | 与 CI 同一脚本、同一门禁 |
+
+批量不降低门禁：每个插件仍独立走第 1-4 步（一个失败不影响其他），全部通过才一次提交 + 逐个打 tag。细节见 `docs/开发指南/发版流程.md` 的「批量发版」节。
+
 ## 安全边界
 
 - 发布/推 tag/写 hub 登记前必须展示计划并确认；不自动 bump 版本；

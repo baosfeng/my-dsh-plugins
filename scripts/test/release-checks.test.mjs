@@ -8,7 +8,7 @@
  * 外加 workflow 插件清单一致性（防漂移：release-auto.yml options + ci.yml matrix）。
  */
 import { describe, it, expect, afterAll } from 'vitest'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -452,16 +452,24 @@ describe('inspectTagState（tag 管理防护）', () => {
   })
 })
 
-// ── workflow 插件清单一致性（防漂移）──────────────────────────────────────
-// 事故背景：dsh-my-opencode-session-header 新增后 release-auto.yml 的插件选项未
-// 同步，手动触发发版时选不到该插件。把「workflow 清单 == plugins/ 目录」固化成
-// 测试：新增/改名插件忘记同步任一清单，npm run test:scripts 即失败。
-describe('workflow 插件清单一致性', () => {
+// ── workflow 插件清单一致性与输入语义（防漂移；issue #204）──────────────────
+// 事故背景一：dsh-my-opencode-session-header 新增后 release-auto.yml 的插件选项未
+// 同步，手动触发发版时选不到该插件。
+// 事故背景二（#204）：release-auto.yml 的 plugins 输入原是 type: choice，但注释与
+// PLUGINS 组装按「可多选」设计——GitHub Actions 的 choice 只渲染单选下拉（原生
+// 不支持 multiple），批量发版入口在 UI 上根本用不了。
+// 修复：输入改为自由文本（逗号/空格/换行分隔）+ run 内 fail-fast 白名单校验，且
+// 允许值运行时取自 plugins/ 目录（不硬编码清单 → 不可能漂移）。本组测试把三件事
+// 固化成可执行断言：① 注释语义 == UI 实际能力；② 用户输入不插值进 shell；
+// ③ workflow 里那段真实校验脚本的行为（合法通过 / 非法 fail-fast 并列出允许值）。
+describe('workflow 插件清单一致性与输入语义（#204 防漂移）', () => {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
   const pluginDirs = readdirSync(join(repoRoot, 'plugins'), { withFileTypes: true })
     .filter((e) => e.isDirectory())
     .map((e) => e.name)
     .sort()
+
+  const wfFile = '.github/workflows/release-auto.yml'
 
   const optionsAfter = (file, startRe, endRe) => {
     const yml = readFileSync(join(repoRoot, file), 'utf8')
@@ -469,10 +477,171 @@ describe('workflow 插件清单一致性', () => {
     return [...section.matchAll(/^ +- (.+)$/gm)].map((m) => m[1].trim()).sort()
   }
 
-  it('release-auto.yml 的 plugins 选项与 plugins/ 目录完全一致', () => {
-    const listed = optionsAfter('.github/workflows/release-auto.yml', /^ {6}plugins:$/m, /^ {6}bump:$/m)
-    expect(listed.length).toBeGreaterThan(0) // 解析失效时明确失败，而非静默空列表
-    expect(listed).toEqual(pluginDirs)
+  /**
+   * 抽出 workflow 中某个 step 的 `run: |` 脚本正文（剥离 YAML 缩进）。
+   * 测试直接执行 workflow 里那段真实脚本，而不是它的复制品——复制品会与
+   * workflow 漂移，等于没测。
+   */
+  const runScriptOf = (file, stepId) => {
+    const lines = readFileSync(join(repoRoot, file), 'utf8').split('\n')
+    const idIdx = lines.findIndex((l) => l.trim() === `id: ${stepId}`)
+    if (idIdx < 0) return null
+    const runIdx = lines.findIndex((l, i) => i > idIdx && /^\s+run: \|$/.test(l))
+    if (runIdx < 0) return null
+    const indent = lines[runIdx].search(/\S/)
+    const body = []
+    for (let i = runIdx + 1; i < lines.length; i += 1) {
+      const line = lines[i]
+      if (line.trim() !== '' && line.search(/\S/) <= indent) break
+      body.push(line.trim() === '' ? '' : line.slice(indent + 2))
+    }
+    return `${body.join('\n')}\n`
+  }
+
+  /** 抽出 workflow 里所有 `run: |` 脚本（用于「run 内不得插值」的整体断言）。 */
+  const allRunScripts = (file) => {
+    const lines = readFileSync(join(repoRoot, file), 'utf8').split('\n')
+    const scripts = []
+    for (let i = 0; i < lines.length; i += 1) {
+      if (!/^\s+run: \|$/.test(lines[i])) continue
+      const indent = lines[i].search(/\S/)
+      const body = []
+      for (let j = i + 1; j < lines.length; j += 1) {
+        const line = lines[j]
+        if (line.trim() !== '' && line.search(/\S/) <= indent) break
+        body.push(line.trim() === '' ? '' : line.slice(indent + 2))
+      }
+      scripts.push(body.join('\n'))
+    }
+    return scripts
+  }
+
+  const tmpDirs = []
+  afterAll(() => {
+    for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true })
+  })
+
+  /** 在仓库根用 env 传参执行 workflow 的校验脚本（与 workflow 同口径）。 */
+  const execValidation = (rawPlugins) => {
+    const script = runScriptOf(wfFile, 'resolve-plugins')
+    expect(script).not.toBeNull()
+    const dir = mkdtempSync(join(tmpdir(), 'relwf-'))
+    tmpDirs.push(dir)
+    const scriptPath = join(dir, 'resolve-plugins.sh')
+    const outPath = join(dir, 'github_output')
+    writeFileSync(scriptPath, script)
+    writeFileSync(outPath, '')
+    const res = spawnSync('bash', [scriptPath], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: { ...process.env, RAW_PLUGINS: rawPlugins, GITHUB_OUTPUT: outPath },
+    })
+    return {
+      status: res.status,
+      log: `${res.stdout ?? ''}${res.stderr ?? ''}`,
+      output: readFileSync(outPath, 'utf8'),
+    }
+  }
+
+  // ── 语义一致性：注释/描述声明的能力 == UI 实际能力（#204 的核心矛盾）──
+  it('plugins 输入是自由文本（choice 不支持 multiple），且注释不再声称可多选', () => {
+    const section =
+      readFileSync(join(repoRoot, wfFile), 'utf8')
+        .split(/^ {6}plugins:$/m)[1]
+        ?.split(/^ {6}bump:$/m)[0] ?? ''
+    expect(section).not.toBe('') // 解析失效时明确失败，而非静默通过
+    expect(section).toMatch(/^ +type: string$/m)
+    expect(section).not.toMatch(/^ +type: choice$/m)
+    expect(section).not.toMatch(/可多选|多选插件|按住 Ctrl/)
+  })
+
+  it('bump 输入保持枚举单选（choice：patch/minor/major）', () => {
+    const section =
+      readFileSync(join(repoRoot, wfFile), 'utf8')
+        .split(/^ {6}bump:$/m)[1]
+        ?.split(/^ {4}steps:$/m)[0] ?? ''
+    expect(section).toMatch(/^ +type: choice$/m)
+    expect([...section.matchAll(/^ +- (patch|minor|major)$/gm)].map((m) => m[1])).toEqual(['patch', 'minor', 'major'])
+  })
+
+  it('不再硬编码插件清单：允许值运行时取自 plugins/ 目录', () => {
+    const yml = readFileSync(join(repoRoot, wfFile), 'utf8')
+    expect(yml).not.toMatch(/^ +- dsh-[a-z0-9-]+$/m) // 再出现 options 列表项即重新引入漂移
+    expect(runScriptOf(wfFile, 'resolve-plugins')).toContain('plugins/*/')
+  })
+
+  it('用户输入只经 env 传入，绝不插值进 run 脚本（脚本注入防护）', () => {
+    const lines = readFileSync(join(repoRoot, wfFile), 'utf8').split('\n')
+    const injected = lines.filter((l) => l.includes('${{ inputs.'))
+    expect(injected.length).toBeGreaterThan(0) // 解析/重构失效时明确失败
+    for (const line of injected) {
+      const t = line.trim()
+      if (t.startsWith('#')) continue // 注释里的字面量只是说明，不参与执行
+      expect(t, `inputs.* 只能出现在 step env 映射行：${t}`).toMatch(
+        /^(RAW_PLUGINS|BUMP): \$\{\{ inputs\.(plugins|bump) \}\}$/,
+      )
+    }
+    // 真正的注入面是 run 脚本：里面不得出现任何插值语法
+    for (const script of allRunScripts(wfFile)) expect(script).not.toContain('${{')
+  })
+
+  // ── 校验脚本行为：直接跑 workflow 里那段 shell ──────────────────────────
+  describe('插件名校验脚本行为', () => {
+    it('单个插件名 → 通过并输出该名字', () => {
+      const res = execValidation('dsh-md-render')
+      expect(res.status, res.log).toBe(0)
+      expect(res.output.trim()).toBe('plugins=dsh-md-render')
+    })
+
+    it('逗号 / 空格 / 换行 / 中文逗号分隔多个插件 → 通过（UI 上真能批量）', () => {
+      const rawInputs = [
+        'dsh-md-render,dsh-my-guard',
+        'dsh-md-render dsh-my-guard',
+        'dsh-md-render\n, dsh-my-guard',
+        'dsh-md-render，dsh-my-guard',
+      ]
+      for (const raw of rawInputs) {
+        const res = execValidation(raw)
+        expect(res.status, `输入 ${JSON.stringify(raw)} 应通过；日志：${res.log}`).toBe(0)
+        expect(res.output.trim()).toBe('plugins=dsh-md-render dsh-my-guard')
+      }
+    })
+
+    it('一次传完 plugins/ 全部目录名 → 通过（允许值 == 目录，无漂移）', () => {
+      const res = execValidation(pluginDirs.join(','))
+      expect(res.status, res.log).toBe(0)
+      expect(res.output.trim()).toBe(`plugins=${pluginDirs.join(' ')}`)
+    })
+
+    it('重复名字去重（同一插件不会被发两次）', () => {
+      const res = execValidation('dsh-md-render,dsh-md-render, dsh-md-render')
+      expect(res.status, res.log).toBe(0)
+      expect(res.output.trim()).toBe('plugins=dsh-md-render')
+    })
+
+    it('非法插件名 → fail-fast：列出非法值 + 全部允许值，且不产出清单', () => {
+      const res = execValidation('dsh-md-render,dsh-nonexistent,dsh-typo')
+      expect(res.status).not.toBe(0)
+      expect(res.log).toContain('dsh-nonexistent')
+      expect(res.log).toContain('dsh-typo')
+      for (const name of pluginDirs) expect(res.log).toContain(`  - ${name}`)
+      expect(res.output.trim()).toBe('')
+    })
+
+    it('空输入 / 纯分隔符 → fail-fast 并提示输入格式', () => {
+      for (const raw of ['', '   ', ',,,']) {
+        const res = execValidation(raw)
+        expect(res.status, `输入 ${JSON.stringify(raw)} 应失败`).not.toBe(0)
+        expect(res.log).toContain('plugins 输入为空')
+      }
+    })
+
+    it('命令替换不被执行（env 传参 + 白名单双重防护）', () => {
+      const probe = 'pwned-204'
+      const res = execValidation(`$(touch ${probe}),dsh-md-render`)
+      expect(res.status).not.toBe(0)
+      expect(readdirSync(repoRoot)).not.toContain(probe)
+    })
   })
 
   it('ci.yml 的 matrix.plugin 与 plugins/ 目录完全一致', () => {

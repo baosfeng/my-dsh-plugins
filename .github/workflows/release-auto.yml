@@ -1,52 +1,41 @@
 name: Release (auto)
 
 # 自动发版：在 GitHub Actions 页面手动触发（Actions → Release (auto) →
-# Run workflow → 选择插件与 bump 类型）→ 自动：
+# Run workflow → 填写插件与 bump 类型）→ 自动：
 #   1. bump 版本（patch/minor/major）+ 从 git log 生成 CHANGELOG 段
 #   2. 提交（package.json/CHANGELOG + 根 README/AGENTS 版本同步）
 #   3. 打 tag <插件>@v<新版本> 并推送 → 触发 release.yml
 #      （自动测试 + GitHub Release + npm 发布，NPM_TOKEN 已配置）
-# 等价手动命令：node scripts/release.mjs <插件> --bump <类型> --push
+# 等价手动命令：node scripts/release.mjs <插件> [<插件>...] --bump <类型> --push
 #
-# 批量发版：选择多个插件时，所有插件统一 bump 类型，一次提交 + 逐个打 tag
+# 批量发版：plugins 输入填多个目录名，用逗号或空格分隔（如
+# `dsh-md-render,dsh-my-guard`）——所有插件统一 bump 类型，逐个独立校验门禁、
+# 一次提交、逐个打 tag。非法名字由下方的 Resolve + validate 步骤 fail-fast 拦截
+# （列出全部允许值），不会带着错名字提交。
+#
+# 为什么不是 type: choice：GitHub Actions 的 choice 只渲染单选下拉（原生不支持
+# `multiple`），即使注释按多值设计、UI 上也选不出第二个插件（issue #204）。
+# 这里改为自由文本 + 白名单校验：UI 上真能一次发多个，且校验补救枚举约束的缺失。
 
 on:
   workflow_dispatch:
     inputs:
       plugins:
-        # 选项与 scripts/release.mjs 的插件名校验一致（[a-zA-Z0-9._-]，首字符字母/数字）。
-        # 列表来源：`ls plugins/`（18 个 DSH 插件 + 1 个共享库）。
-        # 一致性由 scripts/test/release-checks.test.mjs「workflow 插件清单一致性」守护
-        # （与 plugins/ 目录、ci.yml matrix 比对）：新增/改名插件忘记同步即 CI 失败。
+        # 允许值 = 仓库 plugins/ 目录：由 Resolve + validate 步骤在运行时读取
+        # （`ls -d plugins/*/`），不在本文件硬编码清单——新增/改名插件无需同步，
+        # 不会出现「清单漏项、页面上选不到插件」的漂移（dsh-my-opencode-session-header
+        # 历史上就漏过一次，防漂移测试见 scripts/test/release-checks.test.mjs）。
+        # dsh-shared 是共享库（package.json dsh.kind=library）：release.mjs 对其有
+        # 专门豁免（cordis peer / 效果图 / 真实环境验证），支持发版，故在允许值内。
         # 注意：dsh-notify / dsh-guardian 已改名 dsh-my-notify / dsh-my-guardian
         # （撞名统一 dsh-my-* 前缀，见 release.yml 注释），旧名不再存在。
-        # dsh-shared 是共享库（package.json dsh.kind=library）：release.mjs 对其
-        # 有专门豁免（cordis peer / 效果图 / 真实环境验证），支持发版，故保留。
         #
-        # 批量发版：选择多个插件时，所有插件统一 bump 类型，一次提交 + 逐个打 tag
-        description: 插件目录名（可多选，批量发版）
+        # 用户输入必须经 env（RAW_PLUGINS）进入脚本，绝不写成 `${{ inputs.plugins }}`
+        # 直接插值到 run：插值会被 shell 当代码执行（GitHub 官方的脚本注入告警），
+        # 属注入面。白名单通过后参数再由数组展开传给 release.mjs。
+        description: 插件目录名，多个用逗号或空格分隔（如 dsh-md-render,dsh-my-guard）
         required: true
-        type: choice
-        options:
-          - dsh-file-activity
-          - dsh-md-render
-          - dsh-mermaid-render
-          - dsh-my-context
-          - dsh-my-guard
-          - dsh-my-guardian
-          - dsh-my-memory
-          - dsh-my-notify
-          - dsh-my-observability
-          - dsh-my-opencode-session-header
-          - dsh-my-plugin-manager
-          - dsh-my-remote
-          - dsh-my-skill-manager
-          - dsh-plugin-dev-mode
-          - dsh-session-title-gen
-          - dsh-shared
-          - dsh-task-reliability
-          - dsh-think-zh-expand
-          - dsh-ts-example
+        type: string
       bump:
         description: 版本类型（patch=补丁 / minor=次要 / major=主版本）
         required: true
@@ -72,14 +61,60 @@ jobs:
         with:
           node-version: 26
 
+      # 输入解析 + 白名单校验（issue #204）：把自由文本收敛成受控参数。
+      # 非法名一次性列出全部允许值并 fail-fast；允许值来自 plugins/ 目录本身，
+      # 清单与目录不可能不一致。
+      - name: Resolve + validate plugins
+        id: resolve-plugins
+        env:
+          RAW_PLUGINS: ${{ inputs.plugins }}
+        run: |
+          set -euo pipefail
+          # 允许值先取（需要 glob 展开），随后立刻关闭 glob：用户输入里的 * ? 只
+          # 按字面处理，绝不做路径展开。
+          ALLOWED="$(ls -d plugins/*/ | sed 's#^plugins/##; s#/$##' | LC_ALL=C sort)"
+          set -f
+          # 分隔符归一化：换行/制表/回车 → 空格；英文与中文逗号、分号 → 空格；
+          # 连续空白压成一个空格，并去掉首尾空格。
+          RAW="$(printf '%s' "$RAW_PLUGINS" | tr '\n\t\r' '   ' | LC_ALL=C sed -E 's/[,;，；]+/ /g; s/[[:space:]]+/ /g; s/^ +//; s/ +$//')"
+          if [ -z "$RAW" ]; then
+            echo "::error::plugins 输入为空：请填插件目录名，多个用逗号或空格分隔（如 dsh-md-render,dsh-my-guard）"
+            echo "允许的值（plugins/ 目录）："
+            printf '%s\n' "$ALLOWED" | sed 's/^/  - /'
+            exit 1
+          fi
+          # 去重（保持输入顺序）：重复名字会让 release.mjs 对同一插件重复处理。
+          SELECTED=""
+          for name in $RAW; do
+            case " $SELECTED " in
+              *" $name "*) ;;
+              *) SELECTED="${SELECTED}${SELECTED:+ }$name" ;;
+            esac
+          done
+          # 白名单校验：一次性报出全部非法名 + 全部允许值。
+          INVALID=""
+          for name in $SELECTED; do
+            printf '%s\n' "$ALLOWED" | grep -Fqx -- "$name" || INVALID="${INVALID}${INVALID:+, }$name"
+          done
+          if [ -n "$INVALID" ]; then
+            echo "::error::非法插件名: $INVALID"
+            echo "允许的值（plugins/ 目录）："
+            printf '%s\n' "$ALLOWED" | sed 's/^/  - /'
+            exit 1
+          fi
+          echo "发版插件（$(printf '%s\n' $SELECTED | wc -l | tr -d ' ') 个）: $SELECTED"
+          echo "plugins=$SELECTED" >> "$GITHUB_OUTPUT"
+
       - name: Auto bump + tag + push
         env:
+          PLUGINS: ${{ steps.resolve-plugins.outputs.plugins }}
+          BUMP: ${{ inputs.bump }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # 批量发版：将多选插件转换为空格分隔的参数
-          PLUGINS="${{ inputs.plugins }}"
-          # 将换行符转换为空格（GitHub Actions 多选会用换行分隔）
-          PLUGINS=$(echo "$PLUGINS" | tr '\n' ' ')
-          node scripts/release.mjs $PLUGINS --bump "${{ inputs.bump }}" --push
+          # PLUGINS 已在上一步过白名单校验（空格分隔、已去重）：按数组展开传参，
+          # 不依赖未加引号的 word splitting。
+          read -r -a PLUGIN_ARGS <<< "$PLUGINS"
+          node scripts/release.mjs "${PLUGIN_ARGS[@]}" --bump "$BUMP" --push

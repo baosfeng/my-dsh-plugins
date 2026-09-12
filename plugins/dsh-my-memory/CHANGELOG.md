@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 新增
+
+- feat(dsh-my-memory): #192 记忆写工具能力补全——① `memory_save` 新增可选 `category`（偏好/事实/项目/技术栈/工作流 5 类，不传或非法值默认 `fact`，enum 与中文标签同源 `lib/memory-scoring.js` 的 `CATEGORIES`）；② `memory_query` 的输出与渲染文本展示每条记忆的分类标签（`- [mem-…]〔偏好〕用 pnpm 装依赖（来源：会话 …）`，空结果文案不变）；③ 新增 `memory_delete` 工具（`id` 必填、`scope`/`cwd` 与保存同语义），**复用同一道 `tools/pre-execute` 确认门与同一套 `saveApproval` 权限模式策略**（#208）——确认文案带待删内容摘要、未确认/被拒绝时不删除、删除不存在的 id 明确报错、删除留下 itemId + 会话 id 的审计日志、输出复用 #191 的 `MEMORY_ITEM_SCHEMA` 把被删条目回执给模型。新增 `test/tool-delete.mjs`（18 例）、`test/write-tools.mjs`（5 例）与 5 个 Gherkin 场景
+
+### 文档
+
+- docs(dsh-my-memory): #192 需求清单新增 R18（工具面按类型保存 + 删除工具），并修正 R14 与实现不符的漂移（原文称 `POST /my-memory/api/memory` 的 add 支持可选 meta（category/source），实际 `applyAdd` 只传 desc、分类恒为默认 `fact`）
+
 ### 修复
 
 - fix(dsh-my-memory): #208 权限模式感知的保存策略——`danger-full-access` 预设的会话 approval policy 是 `never`，宿主对该会话里的一切 `{ kind: 'ask' }` 直接判 rejected（`dsh-user-approval/lib/index.js:178`），`memory_save` 因此在用户当前配置下 100% 失败、且**用户看不到任何弹窗**。新增配置项 `saveApproval: 'auto' | 'always' | 'never'`（默认 `auto`：policy=never 直接写入并标记来源、policy=ask 保持原生确认不变）；`always` + policy=never 时不再笼统 rejected，而是返回可操作的中文提示（方案 B 失败可见化）

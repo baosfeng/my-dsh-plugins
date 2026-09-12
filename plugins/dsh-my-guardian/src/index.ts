@@ -193,7 +193,7 @@ function registerStatusQuery(ctx: DshContext, shared: SharedContext): void {
 
 /** teardown: unmount everything the guardian mounted, then persist.
  *
- *  disoser 返回 promise：await 它即保证「卸载 + 全部排队快照落盘」完成。
+ *  disposer 返回 promise：await 它即保证「卸载 + 全部排队快照落盘」完成。
  *  此前是 fire-and-forget + 调用方 sleep 赌它跑完——慢 CI 下旧实例的延迟
  *  快照会在下一个用例块读到 state 之后落盘并覆盖它（跨实例共享状态的
  *  时序竞态，docs/踩坑/固定sleep等异步落盘导致CI-flaky.md）。 */

@@ -2,6 +2,18 @@
 
 本文件记录 dsh-file-activity 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- fix(dsh-file-activity): #197 写放大 3,665× 与状态无界（P0）——
+  落盘改为 JSON Lines 增量 append（落盘字节 ≈ 事件本体字节）+ 按状态体积自适应的原子 compact；
+  新增三维入口上限（会话/每会话路径/全局路径）与 LRU 淘汰（淘汰计数 + warn 可见，非静默丢弃）；
+  compact 快照显式传 `minIntervalMs`/`maxBytes` 护栏；旧全量 JSON 快照自动兼容并改写。
+  实测：单条新事件落盘 789,780 B → 68 B（11,614×↓）；稳态每事件 2,104 B → 63 B（33×↓）；
+  密集流投影 44.18 MB/小时 → 1.94 MB/小时（22.8×↓）；内存条目与状态文件均有界。
+  本插件并入 `scripts/resource-smoke.mjs` 写放大门禁（此前仅覆盖 observability）。
+
 ## [0.5.8] - 2026-09-10
 
 ### 变更

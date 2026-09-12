@@ -10,7 +10,10 @@
  *   2. 内存有界：单会话灌 1.2 万事件后内存态事件数 = 每会话上限 2000
  *      （FIFO 淘汰，不随事件数线性增长）；多会话全局 ≤ 20000；
  *   3. 降级路径（资源看门狗）：setPersistEnabled(false) 停落盘但内存事件
- *      不丢、文件不增长；恢复后全量快照补齐降级窗口事件（不丢不重）。
+ *      不丢、文件不增长；恢复后全量快照补齐降级窗口事件（不丢不重）；
+ *   4. dsh-file-activity（issue #197 纳入覆盖）：5,100 事件 / 100 会话下写
+ *      放大 ≤ 1.6、内存与状态文件三维有界 —— 旧实现每次防抖全量重写整个
+ *      状态（审计实测单次 1,396,407 B / 放大 3,665×）正是漏过本门禁的原因。
  *
  * 全部通过 exit 0；任一失败 exit 1 并打印原因。
  * CI 入口：.github/workflows/ci.yml 的 resource-smoke job（独立于功能测试）。
@@ -20,6 +23,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createStore } from '../plugins/dsh-my-observability/lib/store.js'
+import { createStore as createFileActivityStore } from '../plugins/dsh-file-activity/lib/store.js'
 
 let failures = 0
 
@@ -136,6 +140,46 @@ async function main() {
     check('恢复后全量快照补齐降级窗口事件（不丢不重）', lineCount(home3) === 130, `lines=${lineCount(home3)}`)
     store3.dispose()
     rmSync(home3, { recursive: true, force: true })
+
+    // ── 场景 4：dsh-file-activity 写放大与三维有界（issue #197）─────────
+    console.log('\n[场景 4] dsh-file-activity：5,100 事件 / 100 会话')
+    const home4 = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
+    process.env.DSH_HOME = home4
+    const faStore = createFileActivityStore({ logger: { warn() {} } })
+    await sleep(400)
+    const faTime = Date.now()
+    let faExpected = 0
+    for (let s = 0; s < 100; s += 1) {
+      for (let i = 0; i < 51; i += 1) {
+        const sessionId = `fa-${s}`
+        const path = `/work/dir${s}/file-${i}.ts`
+        faStore.record(sessionId, path, 'read', faTime)
+        faExpected += Buffer.byteLength(JSON.stringify({ s: sessionId, p: path, o: 'read', t: faTime }), 'utf8') + 1
+      }
+    }
+    await sleep(1500) // flush(500ms) + compact 落定
+    const faStats = faStore.stats()
+    const faTolerated = Math.ceil(faExpected * 1.6) + 8192
+    check(
+      '写放大 ≤ 1.6（JSON Lines 增量 append + 有界 compact，非全量重写）',
+      faStats.writes > 0 && faStats.bytesWritten <= faTolerated,
+      `written=${faStats.bytesWritten}B, expected=${faExpected}B, tolerated=${faTolerated}B, amplification=${(faStats.bytesWritten / faExpected).toFixed(2)}×`,
+    )
+    check(
+      '内存有界（会话数 ≤ 上限、淘汰计数可观测）',
+      Object.keys(faStore.state.sessions).length <= faStats.maxSessions && faStats.evictedSessions > 0,
+      `sessions=${Object.keys(faStore.state.sessions).length}/${faStats.maxSessions}, evictedSessions=${faStats.evictedSessions}`,
+    )
+    check(
+      '路径总数 ≤ 全局上限（三维入口配额生效）',
+      faStats.pathCount <= faStats.maxPathsTotal,
+      `paths=${faStats.pathCount}/${faStats.maxPathsTotal}`,
+    )
+    const faFile = join(home4, 'file-activity.json')
+    const faBytes = existsSync(faFile) ? Buffer.byteLength(readFileSync(faFile, 'utf8'), 'utf8') : 0
+    check('状态文件有界（≤4MB）', faBytes > 0 && faBytes <= 4 * 1024 * 1024, `file=${faBytes}B`)
+    faStore.dispose()
+    rmSync(home4, { recursive: true, force: true })
 
     // ── 汇总 ────────────────────────────────────────────────────────────
     console.log(failures === 0 ? '\n[resource-smoke] 全部通过 ✅' : `\n[resource-smoke] ${failures} 项失败 ❌`)

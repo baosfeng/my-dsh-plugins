@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from '../lib/index.js'
+import { sessionFromFile } from './state-file.mjs'
 
 const dir = mkdtempSync(join(tmpdir(), 'dfa-mutation-test-'))
 process.env.DSH_HOME = dir
@@ -778,8 +779,8 @@ test('records drained before state load are persisted to disk', async () => {
     { name: 'read', agent: { id: 'drain-s' }, arguments: {} },
   )
   await new Promise((resolve) => setTimeout(resolve, 1200)) // load + debounce persist
-  const persisted = JSON.parse((await import('node:fs')).readFileSync(statePath, 'utf8'))
-  assert.equal(persisted.sessions['drain-s'].counts['/work/drained.txt'].read, 1, 'drained record persisted')
+  const persisted = sessionFromFile(statePath, 'drain-s')
+  assert.equal(persisted.counts['/work/drained.txt'].read, 1, 'drained record persisted')
 })
 
 // ── tools/pre-execute: bash command file ops (issue #19) ──────────────────

@@ -109,10 +109,56 @@ export interface SessionState {
   recent: RecentEntry[]
 }
 
+/** 淘汰计数（入口配额可观测，issue #197：淘汰而非静默丢弃）。 */
+export interface EvictedStats {
+  /** 被淘汰的会话数（超会话数上限，整桶 LRU）。 */
+  sessions: number
+  /** 被淘汰的单会话路径数（超每会话上限，LRU）。 */
+  paths: number
+  /** 被淘汰的全局路径数（超全局上限，LRU）。 */
+  pathsTotal: number
+}
+
+/** 状态文档内的运行统计。 */
+export interface ActivityStats {
+  evicted: EvictedStats
+}
+
 /** 内存中的状态文档（createState 产出的完整形态）。 */
 export interface ActivityState {
   version: number
   sessions: Record<string, SessionState>
+  stats: ActivityStats
+}
+
+/** 持久化落盘统计（写放大看板口径：含 compact 快照的累计真实落盘字节）。 */
+export interface PersistStats {
+  bytesWritten: number
+  writes: number
+  events: number
+  fileBytes: number
+}
+
+/** 对外暴露的资源上界与淘汰计数（资源冒烟/看门狗读取）。 */
+export interface StoreStats {
+  bytesWritten: number
+  writes: number
+  persistEvents: number
+  fileBytes: number
+  evictedSessions: number
+  evictedPaths: number
+  evictedPathsTotal: number
+  maxSessions: number
+  maxPathsPerSession: number
+  maxPathsTotal: number
+  pathCount: number
+}
+
+/** 配额参数（可覆盖，便于测试与后续配置化）。 */
+export interface QuotaLimits {
+  maxPathsPerSession: number
+  maxPathsTotal: number
+  maxSessions: number
 }
 
 /** 加载自磁盘的原始状态（字段可能缺失/非法，trimLoadedState 负责归一化）。 */
@@ -136,20 +182,90 @@ export interface ActivityStore {
   state: ActivityState
   record(sessionId: string, path: string, op: string, time?: number): boolean
   schedulePersist(): void
+  /** 资源上界 + 淘汰计数 + 落盘统计（写放大断言/看门狗读取）。 */
+  stats(): StoreStats
   dispose(): void
 }
 
-/** createStore 内部句柄（生命周期状态 + 持久化调度）。 */
+/** jsonlAppender 的最小契约（dsh-shared/lib/jsonl.js 的结构化子集）。 */
+export interface AppenderHandle {
+  append(value: unknown): void
+  flush(): Promise<unknown>
+  snapshot(lines: string[]): Promise<unknown>
+  dispose(): Promise<unknown>
+  /** 各 appender 字段名略有差异（dsh-shared 用 total），读取侧统一兜底。 */
+  stats(): { bytesWritten?: number; writes?: number; total?: number; events?: number; fileBytes?: number }
+}
+
+/** appender 工厂（默认 dsh-shared 的 jsonlAppender；测试可注入以精确测写放大）。 */
+export type AppenderFactory = (
+  file: string,
+  options: {
+    flushMs: number
+    compactLines: number
+    logger?: Logger
+    prefix: string
+    onCompact: () => Promise<unknown> | unknown
+  },
+) => AppenderHandle
+
+/** 增量持久化编排句柄（persist.ts 的 createPersist 产出）。 */
+export interface PersistHandle {
+  file: string
+  appender: AppenderHandle
+  append(record: RecordFact): void
+  compact(state: ActivityState): Promise<boolean>
+  flush(): Promise<unknown>
+  dispose(): Promise<unknown>
+}
+
+/** 增量持久化编排句柄（persist.ts 的 createPersist 产出）。 */
+export interface PersistHandle {
+  file: string
+  appender: AppenderHandle
+  append(record: RecordFact): void
+  compact(state: ActivityState): Promise<boolean>
+  flush(): Promise<unknown>
+  dispose(): Promise<unknown>
+}
+
+/** createStore 的可注入依赖（appender 用于写放大实测，limits 用于配额化测试）。 */
+export interface StoreDeps {
+  appender?: AppenderFactory
+  limits?: Partial<QuotaLimits>
+  flushMs?: number
+  compactLines?: number
+}
+
+/** 一条已应用到内存、待增量落盘的记录事实。 */
+export interface RecordFact {
+  sessionId: string
+  path: string
+  op: string
+  time: number
+}
+
+/** createStore 内部句柄（生命周期状态 + 增量持久化调度）。 */
 export interface StoreHandle {
   ctx: DshContext
   file: string
   store: ActivityStore
   pending: PendingRecord[]
   ready: boolean
-  persistTimer: ReturnType<typeof setTimeout> | null
+  limits: QuotaLimits
+  evicted: EvictedStats
+  /** 已应用但尚未落盘的事件事实（防抖窗口合并）。 */
+  facts: RecordFact[]
+  flushTimer: ReturnType<typeof setTimeout> | null
+  /** 增量持久化编排（createPersist 产出）。 */
+  persist: PersistHandle | null
   dirtyChain: Promise<unknown>
-  persistNow(): void
-  persistSoon(): void
+  /** 当前 compact 触发行阈值（随快照体积自适应）。 */
+  compactLines: number
+  /** 上次 compact 时的累计事件行数。 */
+  compactedEvents: number
+  /** 阈值是否由外部固定（测试注入时不再自适应）。 */
+  compactLinesFixed: boolean
 }
 
 // ── bash 意图解析 ──────────────────────────────────────────────────────────

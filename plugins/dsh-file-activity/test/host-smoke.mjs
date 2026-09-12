@@ -4,10 +4,11 @@ import { test } from 'vitest'
  * mocked context and drives fs/observed events + HTTP routes through it.
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from '../lib/index.js'
+import { sessionFromFile } from './state-file.mjs'
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function makeResponse() {
@@ -191,8 +192,8 @@ test('host smoke suite', async () => {
 
     // 8. persistence file written (debounced 500ms → wait)
     await new Promise((resolve) => setTimeout(resolve, 800))
-    const persisted = JSON.parse(readFileSync(statePath, 'utf8'))
-    assert.equal(persisted.sessions[sid].counts['/work/b.txt'].create, 1, 'persisted creates')
+    const persistedSession = sessionFromFile(statePath, sid)
+    assert.equal(persistedSession.counts['/work/b.txt'].create, 1, 'persisted creates')
 
     // 8b. RESTART RECOVERY: a fresh plugin instance (simulating a DSH restart)
     // must load the persisted state and serve the same per-session data.

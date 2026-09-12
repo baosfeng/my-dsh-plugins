@@ -5,10 +5,11 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from '../lib/index.js'
+import { sessionFromFile } from './state-file.mjs'
 
 const dir = mkdtempSync(join(tmpdir(), 'dfa-edge-test-'))
 process.env.DSH_HOME = dir
@@ -335,6 +336,6 @@ test('teardown flushes pending persistence', async () => {
   // Run every disposer (teardown) without waiting for the 500ms debounce.
   for (const disposer of disposers) disposer()
   await new Promise((resolve) => setTimeout(resolve, 300))
-  const persisted = JSON.parse(readFileSync(statePath, 'utf8'))
-  assert.equal(persisted.sessions['td-session'].counts['/work/teardown.txt'].read, 1, 'teardown flushed pending record')
+  const persisted = sessionFromFile(statePath, 'td-session')
+  assert.equal(persisted.counts['/work/teardown.txt'].read, 1, 'teardown flushed pending record')
 })

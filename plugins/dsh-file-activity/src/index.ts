@@ -12,7 +12,10 @@
  *    `/file-activity/api/record` route.
  *
  * State (recent history + per-file counts) is kept per session and persisted
- * to $DSH_HOME/file-activity.json (atomic tmp+rename, debounced).
+ * to $DSH_HOME/file-activity.json as **JSON Lines**: 每条记录追加一行
+ * （落盘字节 ≈ 事件本体字节），累计行数达自适应阈值时原子 compact（issue #197：
+ * 旧实现每次防抖全量重写，写放大 3,665×）。入口三维上限（会话 / 每会话路径 /
+ * 全局路径）超限按 LRU 淘汰并告警 —— 内存与状态文件均有界。
  */
 import { isTrustedApiRequest } from 'dsh-shared'
 import { createApiHandler } from './api-route.js'

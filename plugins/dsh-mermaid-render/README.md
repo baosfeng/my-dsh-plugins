@@ -15,8 +15,8 @@
 - **预览 / 代码切换**：卡片右上角可切换「预览」（渲染的 SVG 图）与「代码」（原始 mermaid 源码）。
 - **图表导出**（issue #85）：卡片工具栏可**下载 PNG**（SVG → canvas 2x 缩放，清晰度有保障）、**下载 SVG**（矢量原图）、**复制代码**（一键复制 mermaid 源码）；导出失败在卡片内提示，不静默。
 - **离线可用**：mermaid 引擎（`mermaid.min.js` UMD）在构建时**内联进 client bundle**，页面加载即用，**零 CDN 依赖**——网络被墙/离线环境也能渲染。
-- **失败兜底**：渲染失败时保留原始代码块，并在卡片内显示错误横幅（含具体错误信息）。
-- **流式兼容且稳健**：MutationObserver 跟随消息流式渲染；流式中的 mermaid 块会等到内容稳定（流式结束）再渲染，避免把流式中间态的残缺内容渲染成失败卡片；
+- **失败兜底 + 零「炸弹图」**（issue #195）：渲染失败时保留原始代码块，卡片内显示错误横幅（含具体原因）+ **重试**按钮；渲染一律走**离屏容器**，失败时 mermaid 自带的错误图形随容器一起丢弃——页面上**永远不会出现「炸弹图」**（引擎加载失败、解析失败、渲染抛错三条路径都覆盖）。
+- **流式兼容：闭合即渲染**（issue #195）：MutationObserver 跟随消息流式渲染；流式中的 mermaid 块在**内容稳定（代码块闭合）后立即渲染**，**不必等整条消息结束**；内容仍在增长时不渲染，已挂载后源码又变则自动卸载重来，不会把流式中间态的残缺内容渲染成失败卡片；
 - **主题一致**：卡片样式走 DSH 语义 token（`--dsw-alias-*` / `--dsw-font-*`），深浅主题自适应。
 
 <div align="center">
@@ -26,6 +26,8 @@
 ## 工作原理
 
 - **Client 端**（`lib/client.js`）：扫描 `[data-conversation-scroll]` 容器内的 `div.md-code-block`（DSH 内置渲染器与 dsh-think-zh-expand 都产出该结构），检查内部 `code.language-mermaid` / `code.language-mmd` 识别 mermaid 块；命中后隐藏原始 `<pre>`，挂载 React 卡片组件，用内联的 mermaid 引擎渲染 SVG。
+  - **流式「闭合」判定**（issue #195）：宿主只在**整条消息**上挂 `data-streaming`（消息结束才移除），DOM 里看不到结束围栏是否已出现，所以插件用「**内容稳定窗口**（400ms）+ 连续两次观察一致」判定闭合；稳定即渲染、内容再变即自愈卸载。非流式块（历史消息 / 流式已结束）仍零延迟挂载。
+  - **零「炸弹图」**（issue #195）：`render` 的第三个参数指向一个 `position:absolute;left:-99999px` 的**离屏容器**（脱离文档流但仍在布局树内，保证引擎量得到尺寸）；无论成败都移除容器，成功只取返回的 svg 字符串注入卡片。
 - **构建**（`scripts/build.mjs`）：把 `vendor/mermaid.min.js`（3.3MB 自包含 UMD）**base64 编码**注入 `lib/client.src.js` 的占位符，生成 `lib/client.js`（DSH 实际服务的文件）。base64 注入避免 JSON 字符串字面量被压缩源码里的控制字符破坏。
 - **Server 端**（`lib/index.js` + `lib/prompt.js`）：注册一条 system-prompt section（`name: dsh-mermaid-render`，`order: 100`，排在**用户自定义 persona（0）之后**、策略/工具段（≥ 500）之前），文案固定在 `src/prompt.ts`——**只增不改**，不覆盖用户自定义系统提示词，也不干扰其它插件的 section（宿主按 name 去重、按 order 拼接）。文案有硬性长度上限（500 字符，单测钉住）；`injectPrompt: false` 时不注册任何 section。
 
@@ -95,6 +97,8 @@ npm test
 - mermaid 引擎体积较大（内联后 client.js 约 4.4MB），本地加载可接受；首次解析约 1-2 秒。
 - 注入的能力说明描述的是 **web 端**行为（渲染发生在浏览器里）：host 半无法感知 client 端是否可用，非 web profile（headless / TUI）请用 `injectPrompt: false` 关闭。
 - 注入文案目前是**中文**（与 dsh-think-zh-expand / dsh-my-memory 的注入风格一致）；英文环境下的本地化未做。
+- **零「炸弹图」靠离屏渲染实现**：vendored mermaid 是 **10.9.3**，该版本**不支持** `suppressErrorRendering`（传进去会被 config 静默接收、但不生效，实测失败仍会往渲染容器插错误图形），因此消除「炸弹图」完全依赖「渲染到离屏容器 → 失败即丢弃容器」。升级引擎版本后需重跑 `test/client-stream-bomb.mjs` 与真实浏览器验证（错误语法 + 引擎不可用两条路径）。
+- **流式稳定窗口是启发式**（issue #195）：判定参数 `STREAM_SETTLE_MS`=400ms / `STREAM_MIN_OBSERVATIONS`=2（真机实测流式更新间隔约 240ms）。若模型在代码块中间长时间停顿（>400ms）后又继续写同一块，会先渲染再被自愈卸载重来——用户可能看到一次短暂闪动，但不会留下残缺卡片。
 
 ## 配置
 

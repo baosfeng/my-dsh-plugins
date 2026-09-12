@@ -137,8 +137,9 @@ jsPre.appendChild(jsCode)
 jsBlock.appendChild(jsPre)
 scrollEl.appendChild(mermaidBlock)
 scrollEl.appendChild(jsBlock)
-// streaming 中的 mermaid 块（祖先带 data-streaming）：scanner 应跳过，
-// 等流式结束（observer 重扫）才挂载——此处验证初始不挂载
+// streaming 中的 mermaid 块（祖先带 data-streaming）：issue #195 起按「内容稳定窗口
+// （STREAM_SETTLE_MS）+ 连续观察」判定闭合，稳定窗口未到时不得挂载——此处验证初始不挂载
+// （稳定窗口到期后的挂载、内容变化时的自愈卸载、零炸弹图见 client-stream-bomb.mjs）
 const streamingRow = makeElement('div')
 streamingRow.dataset.streaming = '1'
 const streamingBlock = makeElement('div', { className: 'md-code-block' })
@@ -238,7 +239,7 @@ try {
   // non-mermaid md-code-block was NOT mounted (only one card captured)
   // (scanner ran synchronously over the fake DOM before the card render)
   assert.equal(jsPre.style.display, undefined, '非 mermaid 块的 pre 未被隐藏')
-  // streaming 中的 mermaid 块不挂载（等流式结束才渲染）
+  // streaming 中的 mermaid 块初始不挂载（等稳定窗口确认闭合，issue #195）
   assert.equal(streamingPre.style.display, undefined, '流式中的 mermaid 块 pre 未被隐藏')
   assert.equal(streamingBlock.querySelector('.dsh-mermaid-render-card-host'), null, '流式中的 mermaid 块未挂载卡片')
   const cardTree = cardEl.type(cardEl.props)

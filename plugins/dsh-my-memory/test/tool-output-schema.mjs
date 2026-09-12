@@ -15,7 +15,7 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CATEGORIES } from '../lib/memory-scoring.js'
@@ -189,6 +189,22 @@ test('item 的 category/status 枚举与 source/history 嵌套形状与真实值
   assert.deepEqual(itemSchema.properties.history.items.required, ['at', 'action', 'desc'], 'history 条目形状')
   assert.equal(itemSchema.properties.relatedIds.items.type, 'string', 'relatedIds 为字符串数组')
   assert.equal(itemSchema.properties.confidence.type, 'number', 'confidence 为数值')
+})
+
+test('旧数据（无 #78 元数据字段）读取后补齐真实形状，仍通过严格校验', async () => {
+  const file = join(dir, 'legacy.json')
+  writeFileSync(
+    file,
+    JSON.stringify({ items: [{ id: 'mem-legacy-1', desc: '旧数据条目', createdAt: 1, updatedAt: 2 }] }),
+  )
+  const globalStore = createStore({ file })
+  const getProjectStore = async () => globalStore
+  const queryTool = createMemoryQueryTool({ globalStore, getProjectStore })
+  await globalStore.load()
+  const value = await queryTool.execute({ scope: 'global' }, {})
+  assert.equal(value.items.length, 1, '旧条目读取后不丢')
+  assert.equal(value.items[0].category, 'fact', '旧条目按 #78 回退默认元数据')
+  assert.deepEqual(validateStrict(queryTool.output.schema, value), [], '旧数据读取路径零违规')
 })
 
 test('空 items 的 query 结果同样通过严格校验（原有用例条件保留）', async () => {

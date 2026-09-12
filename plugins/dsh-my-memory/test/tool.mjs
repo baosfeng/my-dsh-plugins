@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  MEMORY_ITEM_SCHEMA,
   createMemoryQueryTool,
   createMemorySaveGate,
   createMemorySaveTool,
@@ -37,6 +38,19 @@ const GLOBAL_ITEMS = [
   { id: 'g2', desc: '代码注释用中文', createdAt: 1, updatedAt: 3 },
 ]
 const PROJECT_ITEMS = [{ id: 'p1', desc: '本项目使用 vitest', createdAt: 1, updatedAt: 2 }]
+/** store 返回的真实条目字段（memory-scoring 的 withDefaults 恒补齐；issue #191）。 */
+const REAL_ITEM_FIELDS = [
+  'category',
+  'confidence',
+  'createdAt',
+  'desc',
+  'history',
+  'id',
+  'relatedIds',
+  'source',
+  'status',
+  'updatedAt',
+]
 
 test('global query returns the global items (read-only)', async () => {
   const tool = createMemoryQueryTool({
@@ -190,8 +204,13 @@ test('the tool output schema declares the query result shape', () => {
   assert.equal(props.projectRoot.type, 'string')
   assert.equal(props.items.type, 'array')
   const itemSchema = props.items.items
-  assert.equal(itemSchema.type, 'object')
-  assert.deepEqual(itemSchema.required, ['id', 'desc', 'createdAt', 'updatedAt'], 'item fields required')
+  assert.equal(itemSchema, MEMORY_ITEM_SCHEMA, 'query items[] reuse the shared item schema (issue #191)')
+  assert.deepEqual(
+    Object.keys(itemSchema.properties).sort(),
+    REAL_ITEM_FIELDS,
+    'item schema fields = real store fields',
+  )
+  assert.deepEqual([...itemSchema.required].sort(), REAL_ITEM_FIELDS, 'every real field is required')
   const itemProps = itemSchema.properties
   assert.equal(itemProps.id.type, 'string')
   assert.equal(itemProps.desc.type, 'string')
@@ -253,6 +272,7 @@ test('memory_save registers a write tool with scope+desc required', () => {
   assert.equal(typeof tool.execute, 'function', 'execute callable')
   assert.ok(tool.output.schema.additionalProperties === false, 'output schema closed')
   assert.deepEqual(tool.output.schema.required, ['scope', 'cwd', 'projectRoot', 'item'], 'save output fields')
+  assert.equal(tool.output.schema.properties.item, MEMORY_ITEM_SCHEMA, 'save item reuses the shared item schema (#191)')
 })
 
 test('memory_save saves into the global store and becomes queryable at once', async () => {

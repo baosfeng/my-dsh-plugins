@@ -292,6 +292,8 @@ function SummaryPreview({ desc }: { desc: string }): ReactNode {
 }
 
 /** 自定义确认面板（ask 模式，非原生 confirm）：删除红、保存绿。
+ *  issue #193：改用与工具侧共用同一份 ask 范式卡（AskConfirmCard：条带 +
+ *  20px 大卡 + 范围选项行 + footer 动作区），两边形态一致。
  *  add/update 时若内容超长，显示概要预览（完整内容仍保存，issue #105）。 */
 function ConfirmPanel({
   confirm,
@@ -305,39 +307,18 @@ function ConfirmPanel({
   entryLimit: number
 }): ReactNode {
   const isDelete = confirm.kind === 'delete'
-  const text = CONFIRM_TEXTS[confirm.kind]()
-  const showSummary = !isDelete && isOverEntryLimit(confirm.desc, entryLimit)
-  return createElement(
-    'div',
-    { className: `dsh-my-memory-confirm dsh-my-memory-confirm-${isDelete ? 'delete' : 'save'}` },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-confirm-head' },
-      isDelete ? icon.trash(15) : icon.check(15),
-      createElement('div', { className: 'dsh-my-memory-confirm-text' }, text),
-    ),
-    createElement('div', { className: 'dsh-my-memory-confirm-desc' }, confirm.desc),
-    showSummary ? createElement(SummaryPreview, { desc: confirm.desc }) : null,
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-confirm-actions' },
-      createElement(
-        'button',
-        {
-          className: `dsh-my-memory-confirm-ok dsh-my-memory-confirm-ok-${isDelete ? 'delete' : 'save'}`,
-          onClick: onOk,
-        },
-        isDelete ? icon.trash(14) : icon.check(14),
-        isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
-      ),
-      createElement(
-        'button',
-        { className: 'dsh-my-memory-confirm-cancel', onClick: onCancel },
-        icon.close(14),
-        strings.cancel(),
-      ),
-    ),
-  )
+  return createElement(AskConfirmCard, {
+    variant: isDelete ? 'delete' : 'save',
+    title: CONFIRM_TEXTS[confirm.kind](),
+    scope: confirm.scope,
+    category: '',
+    content: confirm.desc ?? '',
+    showSummary: !isDelete && isOverEntryLimit(confirm.desc, entryLimit),
+    note: strings.confirmHint(),
+    allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
+    onAllow: onOk,
+    onReject: onCancel,
+  })
 }
 
 /** 确认面板标题文案（按 kind 取；未知 kind 回落删除文案）。 */

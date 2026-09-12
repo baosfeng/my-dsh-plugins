@@ -39,6 +39,10 @@ function apiHandler(ctx, fence, store, monitor, options) {
         const pathname = url.pathname;
         const method = pathname.startsWith('/observability/api/') ? pathname.slice('/observability/api/'.length) : undefined;
         try {
+            // 查询语义与「磁盘历史加载耗时」解耦：就绪前不派发，避免读到半加载
+            // 状态（曾经的 CI flaky：固定 40ms sleep 赌 readFile 跑完，慢机器上
+            // 查询读到 0 条事件 → 0 !== 1）。whenReady 就绪后立即 resolve，无延迟。
+            await store.whenReady();
             const handled = await dispatchMethod(method, request, response, url, ctx, store, monitor, options);
             if (!handled) {
                 writeJson(response, 404, {

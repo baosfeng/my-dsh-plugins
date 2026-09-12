@@ -472,13 +472,41 @@ test('audit suite', async () => {
       assert.equal(events[0].type, 'plugin_event')
       assert.equal(events[0].data.action, 'steer-continue')
       assert.equal(events[0].data.params.taskId, 'task-1')
-      second.disposeAll()
+      await second.disposeAll()
     } finally {
       cleanupHome(sharedHome)
     }
   }
 
-  // ── 22. 插件事件受每会话上限约束（与现有事件同一 FIFO 桶）───────────
+  // ── 22. 查询不依赖加载耗时：boot 后零等待即读到磁盘历史（防回归）─────
+  //  曾经的 CI flaky：查询前靠 settle(40) 赌异步 readFile 跑完，慢机器上
+  //  读到 0 条 → 「plugin event survives restart」0 !== 1。查询侧等 whenReady
+  //  后，查询语义与加载耗时无关（docs/踩坑/固定sleep等异步落盘导致CI-flaky.md）。
+  {
+    const sharedHome = createTempHome()
+    try {
+      const first = bootPlugin({}, { home: sharedHome })
+      await settle()
+      await dispatchEvent(first.listeners, 'task-reliability/intervention', {
+        sessionId: 'zero-wait',
+        action: 'steer-continue',
+        reason: 'turn-stopping',
+      })
+      await settle()
+      await first.disposeAll() // await 落盘链：此刻磁盘上已有该事件
+
+      const second = bootPlugin({}, { home: sharedHome })
+      // 刻意不等待：boot 后立即查询，加载必然还没完成（至少一个 IO tick）
+      const events = await eventsOf(second.api, '?sessionId=zero-wait')
+      assert.equal(events.length, 1, 'boot 后零等待查询必须读到磁盘历史')
+      assert.equal(events[0].data.action, 'steer-continue')
+      await second.disposeAll()
+    } finally {
+      cleanupHome(sharedHome)
+    }
+  }
+
+  // ── 23. 插件事件受每会话上限约束（与现有事件同一 FIFO 桶）───────────
   {
     const { listeners, api } = boot({})
     await settle()

@@ -46,6 +46,10 @@ async function handleApiRequest(ctx, shared, webRuntime, request, response) {
     const url = new URL(request.url ?? '/', 'http://dsh.internal');
     const method = url.pathname.startsWith('/guardian/api/') ? url.pathname.slice('/guardian/api/'.length) : '';
     try {
+        // 启动扫描（loadState + promoted 挂载 + API 注册）完成前不派发：否则
+        // retry/state 会读到"半加载"的空 state——CI 上实测变成 404 not found
+        // （固定 sleep 赌 loadState 跑完，慢机器上必然偶发赌输）。
+        await shared.bootPromise;
         await dispatchApiMethod(ctx, shared, method, request, response);
     }
     catch (error) {

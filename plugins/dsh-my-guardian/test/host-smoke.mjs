@@ -25,6 +25,30 @@ const stateFile = () => join(dir, 'guardian', 'state.json')
 const readState = () => JSON.parse(readFileSync(stateFile(), 'utf8'))
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** 读取 state.json；尚未写出时返回 undefined（配合 waitFor）。 */
+const readStateOrNull = () => {
+  try {
+    return readState()
+  } catch {
+    return undefined
+  }
+}
+
+/** 轮询等待异步持久化结果**出现**（返回该真值）。
+ *
+ *  guardian 的状态写入是异步 promise 链，固定 sleep 在慢 CI 上会赌输——
+ *  实测：boot 后立即读 state.json 时文件都还不存在（t0=ENOENT，t100 才有）。
+ *  见 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md。
+ *  仅在「等真实时间语义」或「断言某事没有发生」时才保留 sleep。 */
+async function waitFor(check, timeoutMs = 10000, intervalMs = 25) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    if (check()) return
+    if (Date.now() > deadline) throw new Error('waitFor timed out')
+    await sleep(intervalMs)
+  }
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 /** Fake loader tree: root group with a mutable failure map. */
@@ -156,10 +180,10 @@ function boot(fake, opts) {
  */
 async function shutdown(ctx) {
   const teardown = (ctx.fakeEffects ?? []).find((e) => e.label === 'dsh-my-guardian: teardown')
-  teardown?.disposer()
-  // let the teardown's async unmount + persist chain settle so a later test
-  // block's state-file write is not overwritten by this instance's snapshot
-  await sleep(60)
+  // disposer 返回「卸载 + 写链 drain」promise：await 它即可确定性等待本实例
+  // 全部落盘完成，不必再 sleep 赌它跑完——赌输时旧实例的延迟快照会覆盖
+  // 下一个用例块写入的状态（跨实例共享 state.json 的时序竞态）。
+  await teardown?.disposer()
 }
 
 test('host smoke suite', async () => {
@@ -169,7 +193,7 @@ test('host smoke suite', async () => {
       const fake = makeLoaderAndTree()
       writeFileSync(stagedFile(), JSON.stringify([{ id: 'nice-plugin', name: 'dsh-nice', config: { a: 1 } }], null, 2))
       const ctx1 = boot(fake)
-      await sleep(150)
+      await waitFor(() => readStateOrNull()?.promoted?.['nice-plugin'])
 
       const state = readState()
       assert.ok(state.promoted['nice-plugin'], 'entry promoted')
@@ -191,7 +215,7 @@ test('host smoke suite', async () => {
       fake.failMap['bad-plugin'] = 'apply exploded'
       writeFileSync(stagedFile(), JSON.stringify([{ id: 'bad-plugin', name: 'dsh-bad' }], null, 2))
       const ctx2 = boot(fake)
-      await sleep(100)
+      await waitFor(() => readStateOrNull()?.staged?.['bad-plugin'])
 
       const state = readState()
       assert.ok(state.staged['bad-plugin'], 'entry kept in staged state')
@@ -213,11 +237,11 @@ test('host smoke suite', async () => {
       fake.failMap['flaky'] = 'nope'
       writeFileSync(stagedFile(), JSON.stringify([{ id: 'flaky', name: 'dsh-flaky' }], null, 2))
       const c3a = boot(fake)
-      await sleep(250)
+      await waitFor(() => readStateOrNull()?.staged?.['flaky']?.attempts === 1)
       const c3b = boot(fake)
-      await sleep(250)
+      await waitFor(() => readStateOrNull()?.staged?.['flaky']?.attempts === 2)
       const c3c = boot(fake)
-      await sleep(250)
+      await waitFor(() => readStateOrNull()?.staged?.['flaky']?.attempts === 3)
 
       const state = readState()
       assert.equal(state.staged['flaky'].attempts, 3, 'attempts accumulated across restarts')
@@ -241,7 +265,7 @@ test('host smoke suite', async () => {
         'utf8',
       )
       const ctx4 = boot(fake)
-      await sleep(100)
+      await waitFor(() => readStateOrNull()?.events?.some((e) => e.type === 'safe'))
 
       assert.deepEqual(fake.created, [], 'nothing mounted in safe mode')
       const state = readState()
@@ -265,7 +289,7 @@ test('host smoke suite', async () => {
       )
       writeFileSync(stagedFile(), JSON.stringify([{ id: 'occupied', name: 'dsh-x' }], null, 2))
       const ctx5 = boot(fake)
-      await sleep(100)
+      await waitFor(() => readStateOrNull()?.staged?.['occupied'])
 
       const state = readState()
       assert.equal(state.staged['occupied'].attempts, 1, 'conflict recorded as a failure')
@@ -279,7 +303,7 @@ test('host smoke suite', async () => {
       fake.failMap['fixable'] = 'first failure'
       writeFileSync(stagedFile(), JSON.stringify([{ id: 'fixable', name: 'dsh-fixable' }], null, 2))
       const ctx6 = boot(fake)
-      await sleep(100)
+      await waitFor(() => readStateOrNull()?.staged?.['fixable'])
       assert.ok(readState().staged['fixable'], 'first failure recorded')
 
       // "fix" the plugin, then retry through the API
@@ -287,7 +311,7 @@ test('host smoke suite', async () => {
       const retry = await callApi(fake, 'POST', 'retry', { id: 'fixable' })
       assert.equal(retry.status, 200)
       assert.equal(retry.json.value.outcome, 'mounted', 'retry mounts the fixed plugin')
-      await sleep(120) // let the promotion persist
+      await waitFor(() => readStateOrNull()?.promoted?.['fixable'])
       assert.ok(readState().promoted['fixable'], 'retried entry promoted')
       await shutdown(ctx6)
     }
@@ -318,7 +342,7 @@ test('host smoke suite', async () => {
         'utf8',
       )
       const ctx7 = boot(fake)
-      await sleep(100)
+      await waitFor(() => fake.created.includes('old-1'))
       assert.deepEqual(fake.created, ['old-1'], 'promoted entry remounted after restart')
       await shutdown(ctx7)
     }
@@ -334,7 +358,7 @@ test('host smoke suite', async () => {
       )
       writeFileSync(stagedFile(), JSON.stringify([{ id: 'keep', name: 'dsh-keep' }], null, 2))
       const ctx8 = boot(fake)
-      await sleep(100)
+      await waitFor(() => fake.created.includes('keep'))
 
       // state
       const stateRes = await callApi(fake, 'GET', 'state')
@@ -399,11 +423,10 @@ test('host smoke suite', async () => {
       )
       writeFileSync(stagedFile(), JSON.stringify([{ id: 'tear', name: 'dsh-tear' }], null, 2))
       const ctx9 = boot(fake)
-      await sleep(100)
+      await waitFor(() => fake.created.includes('tear'))
       const teardown = ctx9.fakeEffects.find((e) => e.label === 'dsh-my-guardian: teardown')
       assert.ok(teardown, 'teardown disposer registered')
-      teardown.disposer()
-      await sleep(50)
+      await teardown.disposer()
       assert.deepEqual(fake.removed, ['tear'], 'guardian unmounted its entries on teardown')
     }
 
@@ -413,6 +436,7 @@ test('host smoke suite', async () => {
       const fake = makeLoaderAndTree()
       writeFileSync(stagedFile(), '[]\n')
       const ctx10 = boot(fake, { webServer: false })
+      // 负向断言（"未注册"没有正向信号可等）→ 保留观察窗口，等 initial scan 跑完
       await sleep(100)
       assert.ok(fake.apiRoute === undefined, 'api not registered before webServer appears')
       // the webServer service appears now
@@ -424,7 +448,7 @@ test('host smoke suite', async () => {
       }
       // trigger a poll tick
       for (const callback of ctx10.fakeIntervals) callback()
-      await sleep(50)
+      await waitFor(() => fake.apiRoute)
       assert.ok(fake.apiRoute, 'api registered after webServer appears (poll retry)')
       await shutdown(ctx10)
     }
@@ -451,7 +475,7 @@ test('host smoke suite', async () => {
       const fake11b = makeLoaderAndTree()
       const ctx11b = makeCtx(fake11b)
       apply(ctx11b)
-      await sleep(60)
+      await waitFor(() => (ctx11b._handlers['plugin:status-query'] ?? []).length > 0)
       const handlers = ctx11b._handlers['plugin:status-query'] ?? []
       assert.ok(handlers.length > 0, 'status-query handler registered')
       const result = handlers[0]({ plugin: 'dsh-my-guardian' })

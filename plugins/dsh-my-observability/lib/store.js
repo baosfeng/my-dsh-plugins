@@ -25,6 +25,10 @@ function createState() {
  *  record 在状态加载完成前缓冲（不丢事件）；dispose 冲刷未落盘数据。 */
 export function createStore(ctx) {
     const store = { state: createState() };
+    let markReady = () => { };
+    const readyPromise = new Promise((resolve) => {
+        markReady = resolve;
+    });
     const handle = {
         ctx,
         file: jsonlFile(),
@@ -32,6 +36,8 @@ export function createStore(ctx) {
         store,
         pending: [],
         ready: false,
+        readyPromise,
+        markReady,
         lineQueue: [],
         queuedLines: 0,
         total: 0,
@@ -47,8 +53,14 @@ export function createStore(ctx) {
     store.sessions = () => sessionsOf(handle);
     store.count = () => countOf(handle);
     store.setPersistEnabled = (enabled) => setPersistEnabled(handle, enabled);
+    store.whenReady = () => handle.readyPromise;
     store.dispose = () => dispose(handle);
-    void loadPersisted(handle.file, handle.legacy).then((result) => onLoaded(handle, result));
+    void loadPersisted(handle.file, handle.legacy)
+        .then((result) => onLoaded(handle, result))
+        // 兜底：加载链上的任何异常都不能让 whenReady 永不 resolve——那会让所有
+        // API 请求永久挂起（比「读到空 state」严重得多）。loadPersisted 自身已
+        // 逐层 catch，这里是防未来改动引入 reject 的护栏。
+        .catch(() => onLoaded(handle, { state: createState(), migrated: false, lines: 0 }));
     return store;
 }
 /** 追加一条审计事件（自动分配 id/时间戳）；未就绪时缓冲。 */
@@ -199,6 +211,9 @@ function onLoaded(handle, result) {
     handle.migrated = result.migrated;
     if (result.migrated || result.lines >= COMPACT_LINES)
         scheduleCompact(handle);
+    // markReady 放在合并/回放**之后**：whenReady 返回即保证缓冲事件已并入
+    // state，查询结果与「加载耗时」无关（不再需要调用方猜 sleep 时长）。
+    handle.markReady();
 }
 /** 把 load 完成前（或 dispose 回放时）已进入内存的事件合并进加载状态：后到的事件追加于桶尾。 */
 function mergeCurrentEvents(current, parsed) {

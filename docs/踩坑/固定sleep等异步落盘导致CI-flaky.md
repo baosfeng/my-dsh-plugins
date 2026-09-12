@@ -2,7 +2,7 @@
 title: 固定 sleep 等异步落盘导致 CI flaky（时序竞态）
 description: 测试用 setTimeout 固定等待异步加载/落盘，CI 容器高负载下等待不足 → 随机红；修法是给实现加确定性就绪信号（whenReady）+ 测试用条件轮询，让查询语义与加载耗时无关，而不是把 sleep 调大
 created: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-12
 ---
 
 # 固定 sleep 等异步落盘导致 CI flaky（时序竞态）
@@ -119,8 +119,43 @@ AssertionError: 卸载后的首次落盘必须包含磁盘历史
 - **构造竞态要用注入，不要用负载**：注入受控 `readFile`/`writeFile`（gate、快照记录）能把"加载慢于事件到达"变成 100% 可复现的本地用例；靠 `stress`/`nice` 造负载得到的复现是概率性的，不能进 CI。
 - **排查手法**：把所有 `settle(...)`/sleep 一次删掉再跑——凡是变红的用例都依赖墙钟（本次一删就红 10/13，直接给出完整清单）。
 
+## 复发实例（2026-09-12）：dsh-my-observability / dsh-my-guardian
+
+**同一根因在另外两个插件上再次打红 CI**（docs-only 提交上忽红忽绿，run
+[#34626466982](https://github.com/baosfeng/my-dsh-plugins/actions/runs/34626466982)、
+[#34620615204](https://github.com/baosfeng/my-dsh-plugins/actions/runs/34620615204)）：
+
+| 插件                                           | 断言                                   | 机制                                                                             |
+| ---------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------- |
+| dsh-my-observability `test/host-audit.mjs:471` | `0 !== 1`（重启后事件丢失）            | 第二次 boot 后靠 `settle(40)` 赌异步 `readFile` 跑完；慢机器上查询读到空 state   |
+| dsh-my-guardian `test/host-smoke.mjs:197`      | `state.staged['bad-plugin']` undefined | 读 state.json 前靠 `sleep(100)`；实测 boot 后 t0 该文件**还不存在**（t100 才有） |
+| dsh-my-guardian `test/host-smoke.mjs:271`      | `Cannot read properties of undefined`  | 同上（冲突记录的落盘晚于读取）                                                   |
+| dsh-my-guardian `test/host-edge.mjs:402`       | `404 !== 200`                          | API 在 `loadState` 完成前被调用 → `retryEntry` 返回 null → 404                   |
+
+**确定性复现（不靠造负载）**：boot 后零等待查询/读 state —— 修复前 observability
+稳定得 `0`（期望 1），guardian 读 state.json 稳定得 ENOENT；等 40ms 才得 1。
+本机 10 轮全绿（本机快，40ms 够）正是"本地绿 ≠ CI 绿"。
+
+**修法（与 dsh-my-guard 同一范式，实现侧补确定性信号 + 测试侧条件轮询）**：
+
+- `dsh-my-observability`：`AuditStore.whenReady()`（`onLoaded` 合并/回放**之后** resolve）；
+  `/observability/api` 统一 handler 分派前 `await store.whenReady()`——查询语义与加载耗时无关。
+- `dsh-my-guardian`：`shared.flushPersist()`（写链 drain）+ `shared.bootPromise`
+  （启动扫描完成信号，`initialScan` 的 `finally` 里 resolve，API 分派前 await）；
+  **teardown 的 disposer 改为 async 并返回 drain promise**——此前 fire-and-forget +
+  `sleep(60)` 是在赌写盘跑完，赌输时旧实例的延迟快照会覆盖下一个用例块写入的
+  state.json（正是 host-edge 那条 404 的来源）。测试侧 `shutdown()` 改
+  `await teardown.disposer()`，读持久化前的 `sleep` 改 `waitFor(条件)`；
+  负向断言（"没有发生"）保留观察窗口并注明理由。
+
+**结论**：`sleep` 只是"我不知道什么时候完成"的自白。**判据是"断言是否依赖墙钟"，
+不是"本地跑几次红不红"**——删掉全部 sleep 定位依赖墙钟的用例，再在实现侧补信号，
+比调大数字便宜得多（本次 host-edge 3.9s → 0.77s，host-smoke 保持 0.44s，全绿）。
+
 ## 相关
 
+- `plugins/dsh-my-observability/src/store.ts`（`whenReady`）、`src/routes.ts`（分派前等就绪）
+- `plugins/dsh-my-guardian/src/state.ts`（`flushPersist`/`bootPromise`）、`src/api.ts`（分派前等 boot）、`src/index.ts`（teardown 返回 drain promise）
 - `plugins/dsh-my-guard/src/store.ts`（`whenReady` / 未就绪不落盘 / 原地合并）、`plugins/dsh-my-guard/src/routes.ts`（API 分派前等就绪）
 - `plugins/dsh-my-guard/test/lib/helpers.mjs`（`waitFor` 条件轮询、`readJsonFile`；`settle` 的注释已写明适用边界）
 - `docs/踩坑/本地绿不等于CI绿.md`（"本地绿 ≠ CI 绿"的另一形态：环境差异）、`docs/踩坑/多agent并行测试资源冲突.md`（测试环境类踩坑）

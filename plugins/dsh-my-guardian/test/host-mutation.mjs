@@ -15,6 +15,25 @@ const dir = mkdtempSync(join(tmpdir(), 'dsh-my-guardian-mutation-'))
 process.env.DSH_HOME = dir
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** 轮询等待异步结果**出现**（#217：不再用固定 sleep 赌启动/落盘跑完）。
+ *  见 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md。 */
+async function waitFor(check, timeoutMs = 10000, intervalMs = 10) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    if (check()) return
+    if (Date.now() > deadline) throw new Error('waitFor timed out')
+    await sleep(intervalMs)
+  }
+}
+
+const readStateOrNull = () => {
+  try {
+    return readState()
+  } catch {
+    return undefined
+  }
+}
+
 afterAll(() => {
   rmSync(dir, { recursive: true, force: true })
 })
@@ -146,7 +165,8 @@ async function callApi(fake, method, path, body, overrides) {
 async function boot(fake, opts) {
   const ctx = makeCtx(fake, opts)
   apply(ctx)
-  await sleep(150)
+  // 确定性同步点：API 注册是 initialScan 的最后一步（#217：不再 sleep 赌它跑完）
+  await waitFor(() => fake.apiRoute !== undefined)
   return ctx
 }
 
@@ -227,7 +247,7 @@ test('diagnostic event log messages carry the entry id', async () => {
     // entry-init / dispose 只写内存；update-failed 的 persistSoon 触发落盘
     if (name === 'hmr/config-update-failed') listener('cordis.yml', new Error('boom'))
   }
-  await sleep(250)
+  await waitFor(() => readStateOrNull()?.events?.some((e) => e.type === 'entry-init'))
   const state = readState()
   assert.ok(
     state.events.some((e) => e.type === 'entry-init' && e.message.includes('evt-1')),

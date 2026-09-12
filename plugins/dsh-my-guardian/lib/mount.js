@@ -294,7 +294,10 @@ export async function initialScan(shared) {
         shared.state.promoted = {};
     if (typeof shared.state.safeMode !== 'boolean')
         shared.state.safeMode = false;
-    shared.ready = true;
+    // teardown 已开始时不置 ready（#217）：否则收尾期间排队的 watcher/轮询回调
+    // 会在实例已卸载后重新扫描并写盘
+    if (!shared.disposed)
+        shared.ready = true;
     await shared.scanStaged();
     await shared.mountPromoted();
     shared.ensureApi();

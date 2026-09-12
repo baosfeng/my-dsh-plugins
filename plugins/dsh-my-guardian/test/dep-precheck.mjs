@@ -170,12 +170,33 @@ function boot(fake) {
 
 async function shutdown(ctx) {
   const teardown = (ctx.fakeEffects ?? []).find((e) => e.label === 'dsh-my-guardian: teardown')
-  teardown?.disposer()
-  await new Promise((resolve) => setTimeout(resolve, 60))
+  // #217: disposer 会等本实例启动路径 settle 再 drain 写链，await 它即可——
+  // 此前 fire-and-forget + sleep(60) 是在赌写盘跑完。
+  await teardown?.disposer()
 }
 
 function readState(dir) {
   return JSON.parse(readFileSync(join(dir, 'guardian', 'state.json'), 'utf8'))
+}
+
+const readStateOrNull = (dir) => {
+  try {
+    return readState(dir)
+  } catch {
+    return undefined
+  }
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** 轮询等待异步结果**出现**（#217：不再用固定 sleep 赌启动/落盘跑完）。 */
+async function waitFor(check, timeoutMs = 10000, intervalMs = 10) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    if (check()) return
+    if (Date.now() > deadline) throw new Error('waitFor timed out')
+    await sleep(intervalMs)
+  }
 }
 
 test('mount is skipped and quarantine records a dependency failure', async () => {
@@ -185,7 +206,7 @@ test('mount is skipped and quarantine records a dependency failure', async () =>
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify([{ id: 'dsh-bad', name: 'dsh-bad' }], null, 2))
   const fake = makeFake(dir)
   const ctx = boot(fake)
-  await new Promise((resolve) => setTimeout(resolve, 200))
+  await waitFor(() => readStateOrNull(dir)?.staged?.['dsh-bad'] !== undefined)
 
   const state = readState(dir)
   assert.ok(state.staged['dsh-bad'], 'entry kept in staged state')
@@ -206,7 +227,7 @@ test('plugin whose peer deps are satisfied mounts normally', async () => {
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify([{ id: 'dsh-good', name: 'dsh-good' }], null, 2))
   const fake = makeFake(dir)
   const ctx = boot(fake)
-  await new Promise((resolve) => setTimeout(resolve, 200))
+  await waitFor(() => readStateOrNull(dir)?.promoted?.['dsh-good'] !== undefined)
 
   assert.deepEqual(fake.created, ['dsh-good'], 'entry mounted')
   const state = readState(dir)
@@ -222,7 +243,7 @@ test('a mount-time code error is classified as code (precheck passed)', async ()
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify([{ id: 'dsh-code', name: 'dsh-code' }], null, 2))
   const fake = makeFake(dir, { 'dsh-code': 'apply exploded' })
   const ctx = boot(fake)
-  await new Promise((resolve) => setTimeout(resolve, 200))
+  await waitFor(() => readStateOrNull(dir)?.staged?.['dsh-code'] !== undefined)
 
   const state = readState(dir)
   assert.equal(state.staged['dsh-code'].failureType, 'code', 'mount error classified as code')

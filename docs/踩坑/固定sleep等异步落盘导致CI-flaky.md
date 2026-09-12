@@ -152,6 +152,89 @@ AssertionError: 卸载后的首次落盘必须包含磁盘历史
 不是"本地跑几次红不红"**——删掉全部 sleep 定位依赖墙钟的用例，再在实现侧补信号，
 比调大数字便宜得多（本次 host-edge 3.9s → 0.77s，host-smoke 保持 0.44s，全绿）。
 
+## 复发实例二（2026-09-12）：#189 修完仍偶发 —— 被漏掉的第三条启动异步链（issue #217）
+
+**现象**：PR #216（mermaid 提示词，未触碰 guardian）CI 首跑 `test (dsh-my-guardian)` failure，
+同 commit 本地 `npm test` 89 tests / 12 scenarios 全绿，main 同 base 该 job success，
+推空提交重跑全绿——与提交内容无关的偶发红。**该 job 的原始日志取不到**
+（`ghops actions logs` 返回的 run 日志集合里没有这个 job），因此判定只能走
+"断言是否依赖墙钟"这条路，而不是"日志里红在哪一行"。
+
+**残留窗口**：guardian 的启动期其实有**三条**异步链，而 #189 只给了其中两条确定性信号：
+
+| 异步链                                                     | 入口                                  | #189 给的信号                         | 结果                        |
+| ---------------------------------------------------------- | ------------------------------------- | ------------------------------------- | --------------------------- |
+| initialScan（loadState + staged/promoted 挂载 + API 注册） | `src/index.ts:141`                    | `bootPromise`（`finally` 里 resolve） | ✅                          |
+| teardown 卸载 + 写链                                       | `src/index.ts:213`                    | async disposer 返回 `flushPersist()`  | ✅ 但只 drain「已排队的写」 |
+| **启动名册静态预检 runStartupCheck**                       | `src/index.ts:136`（fire-and-forget） | **无**                                | ❌                          |
+
+`runStartupCheck` 是 `void` 出去的独立链，它自己会 `await writeStartupIssuesFile()`，
+然后（仅当名册有问题时）`shared.persistSoon()`（`src/startup-check.ts:225`）。于是：
+
+1. **API 读到半加载快照**：`/guardian/api` 分派前只 `await shared.bootPromise`（`src/api.ts:96`），
+   预检未完成时 `snapshot.startupIssues` 是空数组；
+2. **旧实例在 teardown 之后仍在写盘**：`flushPersist()` 只能 drain「已经排队的写」，
+   预检的 `persistSoon` 可能晚于 teardown 返回才入链 → 用一个**缺少下一个用例块内容**
+   的旧快照覆盖共享 `state.json`。这正是本文件上面那个跨实例竞态的另一半，
+   当时的可复现样本（host-edge 的 404）走的是 unmount 那条路径。
+
+**测试侧同源的墙钟依赖**（#189 只改了 host-smoke / host-edge，以下都没改）：
+
+| 位置                                               | 写法                                             | 性质                               |
+| -------------------------------------------------- | ------------------------------------------------ | ---------------------------------- |
+| `test/startup-check.mjs:280`                       | `sleep(250)` 后断言挂载 / 报告 / 事件 / snapshot | 正向断言，慢 CI 必红               |
+| `test/startup-check.mjs:324`                       | `sleep(250)` 后读报告文件                        | 正向（ENOENT 即红）                |
+| `test/startup-check.mjs:368`                       | `sleep(150)` 等预检跑完再 teardown               | 赌 teardown 抢在预检前             |
+| `test/host-mutation.mjs:149`                       | `boot()` 里 `sleep(150)`                         | 正向（callApi 里 assert apiRoute） |
+| `test/host-mutation.mjs:230`                       | `sleep(250)` 后读 state.json 事件                | 正向                               |
+| `test/dep-precheck.mjs:174 / 188 / 209 / 225`      | `sleep(60)` + `sleep(200)`×3                     | 正向                               |
+| `test/features/steps/guardian.steps.mjs:101 / 157` | `sleep(150)` + `sleep(60)`                       | 正向                               |
+
+**确定性复现（不造负载，本机 4/4 稳定红）**，四条互补：
+
+```js
+// A) 零墙钟：apply 后立刻 await teardown，返回即同步读盘
+apply(ctx)
+await teardownOf(ctx).disposer()
+readStateOrNull(dir).events.some((e) => e.type === 'startup-issue') // 修复前 false
+// B) 跨实例污染：teardown 后写哨兵，再等旧实例的预检报告落盘
+writeFileSync(stateFile, JSON.stringify(sentinel))
+//    修复前：哨兵被旧实例的延迟快照覆盖 → promoted.sentinel 消失
+// C) 受控慢 IO：vi.mock('node:fs/promises') 注入 gate 挂起 startup-issues.json 的写入，
+//    预检被挂起时 await callApi(GET state) → 修复前立刻返回且 startupIssues 为空（0 !== 1）
+// D) teardown 后手动触发旧实例的轮询 tick（staged 文件里放新候选）
+//    修复前：重新扫描 → 挂载 → persistSoon → 覆盖哨兵
+```
+
+修复前输出 `Tests 4 failed (4)`，修复后 `Tests 4 passed (4)`；用例永久保留在
+`plugins/dsh-my-guardian/test/host-boot-readiness.mjs`。
+
+**修法（对齐本文件既有原则：补信号，不调数字）**：
+
+- `bootPromise` 的语义补完整：`markBooted` 改在 `Promise.all([initialScan, runStartupCheck])`
+  都 settle 之后调用——「启动就绪」= 启动期**全部**异步链完成，API 查询与 teardown 因此
+  都与启动耗时无关。
+- teardown 先进入收尾态、再等启动路径：`disposed = true` + `ready = false` →
+  `await bootPromise` → 卸载 → `persistFinal()`（收尾快照，唯一允许绕过 `disposed` 的写）
+  → `await flushPersist()`。
+- **防御纵深**：`persistSoon` 在 `disposed` 之后直接丢弃；`initialScan` 在 `disposed` 时
+  不把 `ready` 置回 true。这样 watcher 回调 / 轮询 tick / 飞行中的 HTTP handler
+  这些**没有被 await 覆盖**的入口也不会再写盘——否则下次新增一条 fire-and-forget
+  路径就会重演同一个 bug。
+- 测试侧：`sleep` 全部换成条件轮询 `waitFor` 或确定性同步点（API 注册 = initialScan 完成）；
+  `shutdown()` 一律 `await teardown.disposer()`。另修两处**被 sleep 掩盖的共享状态假设**：
+  `resetState()` 现在会删掉上一个用例残留的 `startup-issues.json`（否则「读到报告」
+  并不等于「本次 boot 的报告已写出」）；「三次失败冻结」用例的三个实例改为**顺序**重启
+  （此前三个实例同时存活、各自 persistSoon 同一份 `state.json`，谁后落盘谁说了算）。
+
+**效果**：插件测试 2.95s → 1.09s（startup-check 668→35ms、host-mutation 2735→173ms、
+dep-precheck 810→50ms）；89→93 tests，覆盖率不降（stmts 90.85 / branch 77.49）。
+
+**教训**：一个模块有**多条**启动期异步链时，"给 boot 加一个信号"必须逐条清点——
+`Promise.all` 里漏掉一条就等于没有信号。判据是「所有会写盘的路径是否都在某个可 await
+的信号之内」，而不是「主要的那条加了没有」；同时"teardown 不再写盘"最好由**实现**
+保证（收尾态 + 丢弃延迟写），而不是靠"恰好 await 了每一条已知路径"。
+
 ## 相关
 
 - `plugins/dsh-my-observability/src/store.ts`（`whenReady`）、`src/routes.ts`（分派前等就绪）

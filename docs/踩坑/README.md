@@ -31,6 +31,7 @@ updated: 2026-09-12
 - [协作 / 子 agent 工作区](子agent工作区缺失导致卡死.md) — 新会话/隔离实例没有工作区时合成器被禁用，点「选择工作区」命中宿主原生 macOS 目录对话框（`osascript choose folder`），浏览器自动化无法驱动原生弹窗 → agent 静默卡死数天；修法是让用户事先选好工作区，或预置工作区落盘状态 / `--patch` 换 browse 后端（2026-09-12）
 - [协作 / fork 池](fork池基线与squash判定.md) — `git clone --local` 的 `origin/main` 取的是主工作区本地 main（可能落后 GitHub）→ 基于过期基线开发；`git cherry` 靠 patch-id 判定，对 squash 合并必然假阴性 → 误判「遗留工作未落地」；判法是查 main 的 squash 提交/PR 号 + 比对整体 diff 的 `git patch-id --stable`（2026-09-12）
 - [依赖安全 / audit 盲区](npm-audit在镜像源下静默失效.md) — npmmirror 无 advisories 端点 + `--registry` 被 `replace-registry-host` 重写回镜像 + CI 只阻断 high + Dependabot 告警是 `auto_dismissed`，四层叠加让 2 条 moderate 漏洞长期无人发现；修法是钉官方 registry、门槛提为 moderate、并校验「audit 真查过」而非只看退出码（已解决，2026-09-12，issue #199）
+- [验证 / 隔离实例软链](隔离实例复用主工作区插件软链导致假验证.md) — 隔离 profile 把生产 `node_modules` 的 `link:` 软链整体复用，`--addons` 指定的待验代码被主工作区版本顶替（假通过/假失败）；修法是显式优先 + 启动前 `realpath` 校验 + 防回归测试（已解决，2026-09-12，issue #220）
 
 ## 维护规则
 

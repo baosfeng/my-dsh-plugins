@@ -75,6 +75,10 @@ window.__ModuleLoader__.load({
     // ── 上下文注入块 markdown 渲染（issue #196）────────────────────
     /*__PART_CONTEXT_MARKDOWN__*/
 
+    // ── 轨迹视图 markdown 接管（issue #205）：DOM 渲染器 + 接管层 ───
+    /*__PART_DOM_MARKDOWN__*/
+    /*__PART_TRAJECTORY_MARKDOWN__*/
+
     // ── 扫描器：MutationObserver 跟随流式渲染 ──────────────────────
     /*__PART_SCANNER__*/
 

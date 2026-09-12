@@ -41,6 +41,8 @@ const PARTS = [
   ['/*__PART_INLINE__*/', 'inline.js'],
   ['/*__PART_RENDER__*/', 'render.js'],
   ['/*__PART_CONTEXT_MARKDOWN__*/', 'context-markdown.js'],
+  ['/*__PART_DOM_MARKDOWN__*/', 'dom-markdown.js'],
+  ['/*__PART_TRAJECTORY_MARKDOWN__*/', 'trajectory-markdown.js'],
   ['/*__PART_SCANNER__*/', 'scanner.js'],
   ['/*__PART_STYLES__*/', 'styles.js'],
   ['/*__PART_SETTINGS__*/', 'settings.js'],

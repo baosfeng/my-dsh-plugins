@@ -88,11 +88,24 @@ npm test
 
 > `lib/client.js` 是构建产物，**必须提交**（CI 只跑 `node --check` + 测试，不执行构建）。
 
-## 宿主渲染缺口与插件侧接管（issue #196）
+## 宿主渲染缺口与插件侧接管（issue #196 / #205）
 
-上下文注入正文由宿主 `@deepseek-ai/dsh-client-ui-chat` 的 `ContextBody` 渲染为纯文本（bundle 内实证：`<pre class="ZkiH0q_text" data-context-text="true">` + CSS `white-space:pre-wrap`）。**子 agent 回传消息走的就是这条路径**（`send_message` → agent-message 注入），所以子 agent 消息里的 markdown 从来不会渲染。
+按项目决策「宿主渲染/能力缺口一律由本仓库插件侧接管处理，不依赖上游修改、不向上游提 issue」（见 [dsh-plugin-development 技能](../../skills/dsh-plugin-development/SKILL.md)），宿主自己渲染、不经过本插件管线的 markdown 一律在 DOM 层接管：先确证宿主契约 → 内容签名幂等标记 → 契约不匹配时静默退让原文 → MutationObserver 应对 React 重渲染 → 超长内容跳过。接管层与宿主原文并存（原文节点保留并置 hidden）：这是**接管**而非补丁——上游若将来自行支持渲染，接管可直接下线（但它不以上游修复为前提）。
 
-按项目决策「宿主渲染/能力缺口一律由本仓库插件侧接管处理，不依赖上游修改、不向上游提 issue」（见 [dsh-plugin-development 技能](../../skills/dsh-plugin-development/SKILL.md)），本插件在 DOM 层接管该渲染：先确证宿主契约 → 内容签名幂等标记 → 契约不匹配时静默退让原文 → MutationObserver 应对 React 重渲染 → 超长内容跳过。原文 `pre` 保留并置 hidden：这是**接管**而非补丁——上游若将来自行支持渲染，本接管可直接下线（但它不以上游修复为前提）。
+### 上下文注入块（issue #196）
+
+上下文注入正文由宿主 `@deepseek-ai/dsh-client-ui-chat` 的 `ContextBody` 渲染为纯文本（bundle 内实证：`<pre class="ZkiH0q_text" data-context-text="true">` + CSS `white-space:pre-wrap`）。**子 agent 回传消息走的就是这条路径**（`send_message` → agent-message 注入），所以子 agent 消息里的 markdown 从来不会渲染。接管实现见 `src/client/parts/context-markdown.ts`（原文就在 `pre.textContent`，直接重渲染）。
+
+### 轨迹视图（issue #205）
+
+轨迹视图的 markdown 由宿主 `@deepseek-ai/dsh-client-ui-trajectory` 的 `MarkdownFragment` 在 rendered 模式下交给 `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText` 渲染（bundle 实证：`div.<hash>_markdownPayload` / `_markdownPreview` > `div._markdown_<hash>`，包裹在 `div[data-trajectory-scroll]` 面板 + 同级详情面板 `aside` 内），本插件的表格/公式/代码块增强完全不介入——浏览器实测轨迹视图内 `div.tzx-md` = 0、`.md-table-wide` = 0（宿主表格 <4 列时连 `md-table-wide` 都不加，窄表格同样无增强）。
+
+与上下文块不同的是：**DOM 里只有宿主渲染后的 HTML，markdown 原文只存在于 React fiber 上**。接管实现在 `src/client/parts/trajectory-markdown.ts` + `dom-markdown.ts`：
+
+- 从 `__reactFiber$*` 向上有限跳数读 `MarkdownFragment.memoizedProps.text` 拿原文；拿不到（宿主改名/换实现）即静默退让；
+- 前插 `div.tzx-md.dsh-md-render-trajectory-md`（原生 DOM 渲染，不经 React）并隐藏宿主容器——**不改宿主子结构**（React 拥有该子树）；
+- 渲染能力与 `MarkdownView` 对齐：表格（宽容识别 + 滚动容器 + 表头排序 + 长表格折叠）、公式（块级/行内结构渲染）、代码块（语言标签 + 复制按钮 + 行号 + 语法高亮）、标题/引用/列表；
+- **内容门控**：只接管确实含表格/公式/围栏代码块的块。实测工作区 70 个会话 2262 个 markdown 文本块中，表格 2.6%、代码块 1.0%、公式 0.0%，字符数 p50 = 51——全量接管对 96% 的短文本没有任何收益，却要为每块付出 DOM 替换与虚拟列表行高重算成本。
 
 ## 已知限制
 

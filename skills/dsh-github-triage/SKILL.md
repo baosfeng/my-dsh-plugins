@@ -84,7 +84,7 @@ git ls-remote origin refs/heads/main     # 期望：<10s 返回 SHA
 按 `github-ops` 用 `ghops` 命令查询以下内容，返回精简清单（编号/标题/链接/摘要）：
 
 - `ghops issue list baosfeng/my-dsh-plugins --state open` — open issues
-- `ghops alerts baosfeng/my-dsh-plugins --state open` — 安全告警（依赖/代码扫描/密钥泄露）
+- `ghops alerts baosfeng/my-dsh-plugins --state open` — 安全告警（依赖/代码扫描/密钥泄露）；**看到「0 条」时必须读紧跟其后的 ⚠ 提示行**：可能还有已关闭/auto_dismissed 的告警没显示，用 `--state closed` 复查——把「没有」当成「不存在」是安全假阴性的入口（踩坑见 `docs/踩坑/CI日志取证静默缺项.md`）
 - `ghops actions list baosfeng/my-dsh-plugins --limit 20` — 最近运行，筛出失败的（默认分支优先）
 - `ghops pr list baosfeng/my-dsh-plugins --state open` — open PR 健康检查（冲突/CI 红/无 review/超时未合并）
 - `ghops actions workflows baosfeng/my-dsh-plugins` — workflow 清单（按需：定时任务缺失、废弃语法、失败率高的 workflow 纳入维护）
@@ -191,14 +191,14 @@ git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # ⑤ 从远�
 
 ### 按问题类型判定"已完成"
 
-| 问题类型           | 达标条件                                                                                                                                                                                                                     |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| issue（BUG/需求）  | 根因确认 + 修复代码 + 本地测试通过 + 已建 PR；一个 PR 只覆盖这一个 issue                                                                                                                                                     |
-| 安全告警           | 依赖/代码已修复，升级前查 CHANGELOG/breaking changes 确认兼容；测试通过；已建 PR；无修复版本时给出原因与建议并评论到 issue。**Dependabot 类必须附已关闭告警复查证据**：`check-dependabot-closed.sh` 的输出 + 退出码由 1 变 0 |
-| Actions 失败       | 先 `ghops actions logs baosfeng/my-dsh-plugins <run-id>` 取日志 → 定位失败步骤与根因 → 修复 + 已建 PR；CI 重跑通过（重跑仍失败则继续排查，不得标记完成）                                                                     |
-| PR 健康检查        | 确认问题（冲突/CI 红/无 review/超时）→ rebase 最新 main 解冲突或修复 CI → CI 重跑绿 → 更新 PR 描述/评论说明；无法处理给建议评论到 PR                                                                                         |
-| CICD workflow 维护 | 修改目标明确（新增/优化/修复 workflow 文件）→ 本地语法校验（YAML 解析）→ 改动 + 已建 PR → 触发相关 action 重跑通过                                                                                                           |
-| 分析类（不改代码） | 给出明确结论（无需修复 / 等上游 / 建议方案）并发布到对应 issue/PR                                                                                                                                                            |
+| 问题类型           | 达标条件                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| issue（BUG/需求）  | 根因确认 + 修复代码 + 本地测试通过 + 已建 PR；一个 PR 只覆盖这一个 issue                                                                                                                                                                                                                                                                                                                                         |
+| 安全告警           | 依赖/代码已修复，升级前查 CHANGELOG/breaking changes 确认兼容；测试通过；已建 PR；无修复版本时给出原因与建议并评论到 issue。**Dependabot 类必须附已关闭告警复查证据**：`check-dependabot-closed.sh` 的输出 + 退出码由 1 变 0                                                                                                                                                                                     |
+| Actions 失败       | 先 `ghops actions logs baosfeng/my-dsh-plugins <run-id> --jobs` 拿**全量 job 清单**（不要从日志内容反推有哪些 job——旧版就是这么漏掉失败 job 的，见 `docs/踩坑/CI日志取证静默缺项.md`）→ `--job "<失败 job 名>"` 精确取正文，stderr 的「日志已获取 M/N」会如实报告缺口；单个 job 取不到时按提示走替代路径（网页 job URL）→ 定位失败步骤与根因 → 修复 + 已建 PR；CI 重跑通过（重跑仍失败则继续排查，不得标记完成） |
+| PR 健康检查        | 确认问题（冲突/CI 红/无 review/超时）→ rebase 最新 main 解冲突或修复 CI → CI 重跑绿 → 更新 PR 描述/评论说明；无法处理给建议评论到 PR                                                                                                                                                                                                                                                                             |
+| CICD workflow 维护 | 修改目标明确（新增/优化/修复 workflow 文件）→ 本地语法校验（YAML 解析）→ 改动 + 已建 PR → 触发相关 action 重跑通过                                                                                                                                                                                                                                                                                               |
+| 分析类（不改代码） | 给出明确结论（无需修复 / 等上游 / 建议方案）并发布到对应 issue/PR                                                                                                                                                                                                                                                                                                                                                |
 
 ### 通用要求（所有子任务）
 

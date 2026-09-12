@@ -111,7 +111,7 @@ const TRIMMED_WINDOW = 3
  * 仓库外 skill 内部被文档引用的相对路径（例如 ~/Documents/skills/github-ops/scripts/ghops.py）。
  * 本地靠真实目录命中即通过，CI 上没有这些全局 skill —— 必须显式登记，否则会变成"本地绿、CI 红"。
  */
-export const EXTERNAL_SKILL_ASSETS = ['scripts/ghops.py']
+export const EXTERNAL_SKILL_ASSETS = ['scripts/ghops.py', 'scripts/test_ghops_224.py']
 
 /** 行内含宿主仓库布局 / 上游来源信号 → 该行路径按"别的仓库的结构"处理。 */
 const HOST_LAYOUT_RE = /(?:^|[\s`(（[,])(?:packages|apps|bundle)\//

@@ -75,7 +75,7 @@ description: Use when 开发或修改任何持续运行逻辑（持久化/事件
   → 连续 ≥3 次正常 → 恢复（全量快照补齐降级窗口）
 ```
 
-要求：判定是纯函数（可单测）；降级中内存/文件仍有界；恢复全量快照一次（内存=真相）；阈值可配置。样例实现：`plugins/dsh-my-observability/lib/resource-monitor.js` + `resource-rules.js`（shouldEnterDegrade/shouldExitDegrade + setPersistEnabled）。
+要求：判定是纯函数（可单测）；降级中内存/文件仍有界；恢复全量快照一次（内存=真相）；阈值可配置。**不要自己实现看门狗**：用 `dsh-shared` 的 `createResourceGuard`（`collect` 注入采样源、`enterConfirmCount`/`exitConfirmCount` 连续确认、`onDegrade`/`onRecover` 交给宿主动作、`now` 可注入做确定性三态测试），采样源用 `createProcessSampler`。消费方示例：`plugins/dsh-my-observability/src/resource-monitor.ts`（L2 停落盘 + 恢复全量快照）。
 
 ## CI 资源冒烟（9/2 复盘缺口 2 的对策，issue #127）
 

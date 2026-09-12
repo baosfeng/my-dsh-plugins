@@ -4,7 +4,8 @@
  * 告警记录的内存态 + 持久化：
  *  - 全局告警列表（每条带 sessionId/type/severity），FIFO 上限
  *    MAX_ALERTS 防膨胀；
- *  - 持久化 $DSH_HOME/guard/alerts.json（防抖 500ms + 全量写 + teardown flush），
+ *  - 持久化 $DSH_HOME/guard/alerts.json（防抖 500ms + **dsh-shared 快照原语**
+ *    atomicWriteJson：紧凑 JSON + 字节上限护栏 + 拦截计数可观测 + teardown flush），
  *    启动时异步加载（加载完成前的事件缓冲在 pending，加载后回放），重启后完整恢复；
  *    加载 + 回放的完成由 whenReady() 给出**确定性信号**——查询方等它，不要等墙钟
  *    （固定 sleep 在 CI 高负载下会随机漏掉尚未加载的历史，见 docs/踩坑/）；
@@ -14,8 +15,20 @@
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { atomicWriteJson } from 'dsh-shared'
+import type { Logger } from 'dsh-shared'
 import { MAX_ALERTS } from './constants.js'
 import type { DshContext, Alert, AlertStore } from './types.js'
+
+/** 日志前缀（快照被护栏拦截时 warn）。 */
+const PREFIX = '[dsh-my-guard]'
+
+/**
+ * 快照字节上限：MAX_ALERTS(500) 条 × 单条告警上界（命令/路径片段截断后 ≤ 数 KB）
+ * → 4MB 是安全上界。显式高于 shared 默认 1MB：投毒扫描的告警会带文件路径与
+ * 依赖名，批量命中时单条可达数 KB，用默认 1MB 会拦下正常快照（拦下=丢状态）。
+ */
+const SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
 
 /** 告警数据文件：$DSH_HOME/guard/alerts.json（fallback ~/.dsh/…）。 */
 export function stateFile(): string {
@@ -36,7 +49,7 @@ interface StoreState {
 export interface StoreDeps {
   /** 读取持久化文件文本；文件不存在/不可读时应 reject（调用方回退空状态）。 */
   readFile?: (file: string) => Promise<string>
-  /** 写入持久化文件（默认自动建目录 + writeFile）；失败应由调用方静默。 */
+  /** 写入持久化文件（覆盖默认实现：默认走 dsh-shared atomicWriteJson）；失败应由调用方静默。 */
   writeFile?: (file: string, text: string) => Promise<void>
 }
 
@@ -54,7 +67,9 @@ interface StoreHandle {
   persistTimer: ReturnType<typeof setTimeout> | null
   dirtyChain: Promise<void>
   seq: number
-  deps: Required<StoreDeps>
+  deps: { readFile: (file: string) => Promise<string>; writeFile?: (file: string, text: string) => Promise<void> }
+  /** 落盘动作（默认 dsh-shared 快照原语；deps.writeFile 注入时走注入实现）。 */
+  writeState: (handle: StoreHandle) => Promise<void>
 }
 
 /** 初始空状态。 */
@@ -85,7 +100,8 @@ export function createStore(ctx: DshContext, deps: StoreDeps = {}): AlertStore {
     persistTimer: null,
     dirtyChain: Promise.resolve(),
     seq: 0,
-    deps: { readFile: deps.readFile ?? defaultReadFile, writeFile: deps.writeFile ?? defaultWriteFile },
+    deps: { readFile: deps.readFile ?? defaultReadFile, writeFile: deps.writeFile },
+    writeState: (target) => writeSnapshot(target),
   }
   const store: AlertStore = {
     state,
@@ -108,12 +124,28 @@ function defaultReadFile(file: string): Promise<string> {
   return readFile(file, 'utf8')
 }
 
-/** 默认落盘实现：自动建目录 + 全量写（失败由 persistNow 静默）。 */
-async function defaultWriteFile(file: string, text: string): Promise<void> {
-  const { mkdir, writeFile } = await import('node:fs/promises')
-  const { dirname } = await import('node:path')
-  await mkdir(dirname(file), { recursive: true })
-  await writeFile(file, text, 'utf8')
+/**
+ * 落盘实现：默认 dsh-shared 的 atomicWriteJson（tmp+rename 原子写 + 自动建目录 +
+ * 紧凑 JSON + 字节上限 + 被拦计数），测试注入 deps.writeFile 时走注入实现
+ * （注入点保留：测试要确定性观察落盘快照序列）。
+ */
+async function writeSnapshot(handle: StoreHandle): Promise<void> {
+  if (handle.deps.writeFile !== undefined) {
+    await handle.deps.writeFile(handle.file, JSON.stringify(handle.store.state))
+    return
+  }
+  atomicWriteJson(handle.file, handle.store.state, ctxLogger(handle.ctx), PREFIX, {
+    // 节奏由本插件的 500ms 防抖 + dirtyChain 串行链负责（显式承担，见 resource-budget-review）
+    minIntervalMs: 0,
+    maxBytes: SNAPSHOT_MAX_BYTES,
+  })
+}
+
+/** 取宿主 logger（快照被拦时 warn）；不可用返回 undefined（护栏仍生效）。 */
+function ctxLogger(ctx: DshContext): Logger | undefined {
+  const logger = (ctx as { logger?: { warn?: (message: string) => void } } | null)?.logger
+  if (typeof logger?.warn !== 'function') return undefined
+  return { warn: (message: string) => logger.warn?.(message) }
 }
 
 /** 追加一条告警（自动分配 id/时间戳）；未就绪时缓冲。 */
@@ -222,9 +254,7 @@ function isValidAlert(alert: unknown): boolean {
 
 /** 落盘当前状态（经 dirtyChain 串行化；写失败静默）。 */
 function persistNow(handle: StoreHandle): void {
-  handle.dirtyChain = handle.dirtyChain
-    .then(() => handle.deps.writeFile(handle.file, JSON.stringify(handle.store.state, null, 2)))
-    .catch(() => {})
+  handle.dirtyChain = handle.dirtyChain.then(() => handle.writeState(handle)).catch(() => {})
 }
 
 /** 防抖（500ms）调度持久化。 */

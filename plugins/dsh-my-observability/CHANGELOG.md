@@ -2,6 +2,12 @@
 
 本文件记录 dsh-my-observability 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 变更
+
+- refactor(observability): #198 资源看门狗改为消费 `dsh-shared` 的 `createResourceGuard`（第三批）——插件私有状态机/判定/ring buffer 删除，只保留宿主职责（采样源 + $DSH_HOME 字节维度 + 降级动作）。行为等价：降级在第 3 个连续超限窗口触发、恢复在第 3 个连续正常窗口触发、回调恰好一次、告警规则与顺序不变；新增 `monitor.stats()` / `monitor.history()` 与可注入采样源/时钟（确定性测试）
+
 ## [0.3.1] - 2026-09-10
 
 ### 变更

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 变更
 
+- fix(task-reliability): #198 任务注册表写路径同步 fs → 异步（`writeFileSync`/`renameSync` → `fs/promises` + 写串行链）：防抖落盘不再阻塞事件循环（10MB 状态实测调用耗时 16.96ms → 0.06ms）；teardown 保留同步尾写（`saveStoreSync`）保证卸载返回前落盘；读路径保持同步（启动一次，apply 同步契约）
 - chore(task-reliability): client 端迁移到 TypeScript——632 行手写 `lib/client.js` 拆为 `src/client/parts/*.ts`（i18n / api / styles / rows / view / settings / apply），经 `tsc -p tsconfig.client.json` 编译后由 `scripts/build.mjs` 拼接进 `lib/client.src.js` 模板产出 `lib/client.js`（server 端此前已迁移）；新增 `src/client/globals.d.ts`（DSH 运行时最小契约）与 `test/client-api-contract.mjs`（轮询端点 / 模式开关 / 任务操作 / 问答 / 注册任务的 HTTP 契约防回归）。产物语义与迁移前手写版等价
 - fix(task-reliability): 清理 `stryker.config.mjs` / `vitest.config.mjs` 中已不存在的模块引用（`lib/fence.js`、`lib/config-store.js`），并补上漏统计的 `lib/loop.js`、`lib/emit.js`——原清单会让 stryker `mutate` 直接报错、覆盖率静默漏项
 

@@ -46,7 +46,7 @@
  */
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { loadStore, saveStore, pruneQuestions } from './store.js';
+import { loadStore, saveStore, saveStoreSync, pruneQuestions } from './store.js';
 import { isTrustedApiRequest } from 'dsh-shared';
 import { resumeActiveTasks, runWatchdog } from './verify.js';
 import { registerListeners } from './events.js';
@@ -154,12 +154,10 @@ function createSaver(dir, store, options, logger) {
             return;
         saveTimer = setTimeout(() => {
             saveTimer = null;
-            try {
-                saveStore(dir, store);
-            }
-            catch (error) {
+            // 异步落盘（issue #198 P2）：失败只 warn，不抛出到事件循环
+            void saveStore(dir, store).catch((error) => {
                 logger?.warn?.(`dsh-task-reliability: save failed: ${error instanceof Error ? error.message : String(error)}`);
-            }
+            });
         }, options.saveDebounceMs);
     };
     const cancel = () => {
@@ -237,8 +235,10 @@ function registerTeardown(ctx, shared) {
             shared.watchdogTimer = null;
         }
         shared.saver.cancel();
+        // 尾写必须**同步**完成（issue #198 P2）：卸载返回前状态就要在盘上，
+        // 否则宿主随后退出会丢最后一批变更（见 store.ts 的 saveStoreSync 说明）。
         try {
-            saveStore(shared.dir, shared.store);
+            saveStoreSync(shared.dir, shared.store);
         }
         catch {
             // final flush is best-effort

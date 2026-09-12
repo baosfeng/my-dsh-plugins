@@ -17,6 +17,7 @@
 ### 变更
 
 - chore(guard): 迁移收尾——删除无输入的 `tsconfig.client.json`（client 端仍为手写 `lib/client.src.js` + `lib/parts/*.js`，该配置无 TS 输入会在 TS7 下报 TS18003）；`patchConfigOf` 的返回值补 `ConfigDict` 断言（dsh-shared 的 `src/types.d.ts` 改名 `types.ts` 后 `writePatchConfig` 的真实签名生效，暴露调用处类型不匹配）
+- feat(dsh-my-guard): #198 告警快照落盘接入 `dsh-shared` 的 `atomicWriteJson`（紧凑 JSON 消除 pretty 缩进放大 + 显式 4MB 字节上限 + 被拦计数可观测）；注入点 `deps.writeFile` 保留（测试确定性）
 
 ## [0.1.4] - 2026-09-04
 

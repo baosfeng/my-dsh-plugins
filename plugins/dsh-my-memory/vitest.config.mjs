@@ -20,6 +20,8 @@ export default defineConfig({
         'lib/prompt.js',
         'lib/save-policy.js',
         'lib/tool.js',
+        'lib/write-tools.js',
+        'lib/delete-tool.js',
       ],
     },
   },

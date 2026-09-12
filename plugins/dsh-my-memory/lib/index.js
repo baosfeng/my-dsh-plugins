@@ -30,7 +30,8 @@ import { DEFAULT_MAX_ENTRY_LENGTH } from './memory-text.js';
 import { createMemorySection } from './prompt.js';
 import { extractCandidates } from './extract.js';
 import { candidateMemoryFile, createCandidatesStore, createStore, globalMemoryFile, migrateProjectMemory, resolveProjectMemory, } from './store.js';
-import { createMemoryQueryTool, createMemorySaveGate, createMemorySaveTool } from './tool.js';
+import { createMemoryQueryTool } from './tool.js';
+import { registerMemoryWriteTools } from './write-tools.js';
 import { saveApprovalOf } from './save-policy.js';
 export const name = 'dsh-my-memory';
 export const inject = ['systemPrompt', 'tools', 'webServer', 'webRuntime', 'sessions'];
@@ -166,16 +167,6 @@ function cwdOfAgent(agent) {
     const cwd = header !== null && typeof header === 'object' ? header.cwd : undefined;
     return typeof cwd === 'string' ? cwd : '';
 }
-/**
- * 宿主 approval 服务的策略探针（issue #208）：直接调用
- * `ApprovalService.effectivePolicy(session)`——与宿主对 ask 的判定是同一个
- * 函数（dsh-user-approval/lib/index.js:155-178），所以探针结论不会与宿主漂移；
- * 服务未加载/返回异常时由 save-policy 回落到会话日志折返。
- */
-function approvalProbe(ctx, session) {
-    const approval = ctx.get('approval');
-    return approval?.effectivePolicy?.(session);
-}
 /** session/event 用户消息收集器（issue #78，autoLearn 开启时只读收集）。 */
 function createMessageCollectorListener({ collector, autoLearn, }) {
     return (session, event) => {
@@ -208,10 +199,9 @@ export function apply(ctx, config) {
     ctx.effect(() => ctx.systemPrompt?.section(createMemorySection(globalStore, config)), 'dsh-my-memory: system prompt section');
     // ── memory_query 只读工具 ─────────────────────────────────────────────
     ctx.effect(() => ctx.tools?.register(createMemoryQueryTool({ globalStore, getProjectStore })), 'dsh-my-memory: memory_query tool');
-    // ── memory_save 写工具 + 用户确认门（issue #107，#208 起策略感知）──────
+    // ── 记忆写工具（save/delete）+ 用户确认门（#107/#192，#208 起策略感知）──
     // 门按会话审批策略 + saveApproval 决定确认/免确认放行/明确拒绝——绝不静默变更。
-    ctx.effect(() => ctx.tools?.register(createMemorySaveTool({ globalStore, getProjectStore, config, logger: ctx.logger })), 'dsh-my-memory: memory_save tool');
-    registerSaveGate(ctx, config);
+    registerMemoryWriteTools(ctx, { globalStore, getProjectStore, config });
     // ── 自动提取（issue #78，autoLearn 默认关）───────────────────────────
     // 只读收集本次会话的用户消息（session/event），会话结束（agent/status
     // idle，顶层 agent）时运行提取器，候选进「待确认」区——绝不静默写入。
@@ -261,12 +251,4 @@ function registerMemoryStatusQuery(ctx, globalStore, projectStores, startup) {
 /** 启动日志（issue #155）：统一 [dsh-my-memory] 前缀 + 关键配置摘要。 */
 function logStartup(logger, autoLearn, extractor, config) {
     logger?.info(`[dsh-my-memory] 记忆插件已启用（autoLearn=${autoLearn ? 'on' : 'off'}，extractor=${extractor}，maxEntryLength=${maxEntryLengthOf(config)}，saveApproval=${saveApprovalOf(config)}）`);
-}
-/** 注册 memory_save 的确认门（issue #107；#208 起权限模式感知）。 */
-function registerSaveGate(ctx, config) {
-    ctx.effect(() => ctx.on('tools/pre-execute', createMemorySaveGate({
-        config,
-        probePolicy: (session) => approvalProbe(ctx, session),
-        logger: ctx.logger,
-    })), 'dsh-my-memory: memory_save approval gate');
 }

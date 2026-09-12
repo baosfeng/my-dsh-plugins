@@ -27,11 +27,17 @@
  * `always` + policy=never 的失败提示：可操作、中文、不是笼统 rejected。
  * （方案 B：失败可见化——模型能把这段原因原样转述给用户。）
  */
-const ALWAYS_UNDER_NEVER_HINT = '当前会话的审批策略为 never（不会弹出确认窗口，典型配置是 danger-full-access 预设），' +
-    '插件配置 saveApproval=always 要求每次保存都经用户确认，故本次保存未执行。' +
-    '请任选其一后重试：① 在插件配置中把 saveApproval 改为 auto（该模式下自动保存并标记来源）或 never；' +
-    '② 把会话 preset 切到 workspace-write（该模式会弹出确认窗口）；' +
-    '③ 让用户直接在记忆面板手动新增这条记忆。';
+function alwaysUnderNeverHint(operation) {
+    const isDelete = operation === 'delete';
+    const action = isDelete ? '删除' : '保存';
+    const auto = isDelete ? '该模式下自动删除并记录删除日志' : '该模式下自动保存并标记来源';
+    const manual = isDelete ? '在记忆面板手动删除这条记忆' : '在记忆面板手动新增这条记忆';
+    return ('当前会话的审批策略为 never（不会弹出确认窗口，典型配置是 danger-full-access 预设），' +
+        `插件配置 saveApproval=always 要求每次${action}都经用户确认，故本次${action}未执行。` +
+        `请任选其一后重试：① 在插件配置中把 saveApproval 改为 auto（${auto}）或 never；` +
+        '② 把会话 preset 切到 workspace-write（该模式会弹出确认窗口）；' +
+        `③ 让用户直接${manual}。`);
+}
 /** 归一化 `saveApproval` 配置；非法值回落 'auto'。 */
 export function saveApprovalOf(config) {
     const value = config?.saveApproval;
@@ -111,12 +117,21 @@ function descSnippet(desc) {
         return '（空内容）';
     return oneLine.length > 60 ? `${oneLine.slice(0, 60)}…` : oneLine;
 }
+/** 删除确认的 reason：带待删内容摘要（让用户知道删的是哪条；issue #192）。 */
+function deleteAskReasonOf(args, target) {
+    const id = typeof args?.id === 'string' && args.id !== '' ? args.id : '（未提供 id）';
+    const what = target === undefined ? `id=${id}（未在当前范围找到该条目）` : `「${descSnippet(target)}」[${id}]`;
+    return `dsh-my-memory：agent 请求删除${scopeLabelOf(args)}记忆 ${what}。删除不可撤销，记忆绝不静默变更，请确认是否删除`;
+}
 /** 原生确认门的 reason（记忆绝不静默变更的自述）。 */
-function askReasonOf(args) {
+function askReasonOf(args, operation, target) {
+    if (operation === 'delete')
+        return deleteAskReasonOf(args, target);
     return `dsh-my-memory：agent 请求保存${scopeLabelOf(args)}记忆「${descSnippet(args?.desc)}」。记忆绝不静默变更，请确认是否保存`;
 }
 /**
- * decideSaveGate — saveApproval 三态 × policy 两态 的决策矩阵（issue #208）：
+ * decideSaveGate — saveApproval 三态 × policy 两态 的决策矩阵（issue #208；
+ * #192 起 memory_delete 复用同一矩阵，只有 ask/deny 文案按操作区分）：
  *
  * | saveApproval | policy=ask            | policy=never              | 判定不出 |
  * | ------------ | --------------------- | ------------------------- | -------- |
@@ -124,24 +139,29 @@ function askReasonOf(args) {
  * | always       | ask（原生确认）       | deny（可操作提示）         | ask      |
  * | never        | allow                 | allow                     | allow    |
  *
- * @param input.args memory_save 参数（写文案用）。
+ * @param input.args 记忆写工具参数（写文案用）。
  * @param input.policy 本会话审批策略（undefined = 未知）。
  * @param input.config 插件配置（只读 saveApproval）。
+ * @param input.operation 写操作类型（默认 save；issue #192 起 delete 共用同一矩阵）。
+ * @param input.target 待删内容摘要（仅 delete 用，决定 reason 文案）。
  * @returns allow（不确认）/ ask（原生确认）/ deny（明确失败 + 提示）。
  */
 export function decideSaveGate(input) {
     const mode = saveApprovalOf(input.config);
+    const operation = input.operation ?? 'save';
     if (mode === 'never')
         return { kind: 'allow' };
-    if (mode === 'always' && input.policy === 'never')
-        return { kind: 'deny', reason: ALWAYS_UNDER_NEVER_HINT };
+    if (mode === 'always' && input.policy === 'never') {
+        return { kind: 'deny', reason: alwaysUnderNeverHint(operation) };
+    }
     if (mode === 'auto' && input.policy === 'never')
         return { kind: 'allow' };
-    return { kind: 'ask', reason: askReasonOf(input.args) };
+    return { kind: 'ask', reason: askReasonOf(input.args, operation, input.target) };
 }
 /**
- * The `tools/pre-execute` approval gate for memory_save (issue #107, policy
- * aware since issue #208).
+ * The `tools/pre-execute` approval gate for the memory write tools
+ * (memory_save since issue #107, memory_delete since issue #192; policy aware
+ * since issue #208 — both operations share one strategy matrix).
  *
  * Waterfall contract: every listener must first `await next()` to obtain the
  * downstream decision, then decide whether to override it. The decision comes
@@ -156,23 +176,54 @@ export function decideSaveGate(input) {
 export function createMemorySaveGate(options) {
     return async (exec, next) => {
         const downstream = await next();
-        if (exec?.name !== 'memory_save')
-            return downstream;
-        return saveGateDecision(exec, downstream, options);
+        if (exec?.name === 'memory_save')
+            return saveGateDecision(exec, downstream, options);
+        if (exec?.name === 'memory_delete')
+            return deleteGateDecision(exec, downstream, options);
+        return downstream;
     };
 }
-/** 决策 + 日志（拆出为独立函数以守住圈复杂度 ≤ 10 门禁）。 */
+/** 保存决策 + 日志（拆出为独立函数以守住圈复杂度 ≤ 10 门禁）。 */
 function saveGateDecision(exec, downstream, options) {
     const policy = approvalPolicyOf(exec, options?.probePolicy);
-    const save = decideSaveGate({ args: exec?.arguments, policy, config: options?.config });
-    if (save.kind === 'ask')
-        return save;
-    const where = `policy=${policy ?? 'unknown'}，saveApproval=${saveApprovalOf(options?.config)}`;
-    if (save.kind === 'deny') {
-        warnGate(options?.logger, `memory_save 被拒绝（${where}）：${save.reason}`);
-        return save;
+    const decision = decideSaveGate({ args: exec?.arguments, policy, config: options?.config });
+    return applyGateDecision(decision, downstream, options, 'memory_save', policy);
+}
+/** 删除决策 + 日志：先解析待删内容摘要，再走同一策略矩阵（issue #192）。 */
+async function deleteGateDecision(exec, downstream, options) {
+    const target = await deleteTargetOf(exec, options);
+    const policy = approvalPolicyOf(exec, options?.probePolicy);
+    const decision = decideSaveGate({
+        args: exec?.arguments,
+        policy,
+        config: options?.config,
+        operation: 'delete',
+        target,
+    });
+    return applyGateDecision(decision, downstream, options, 'memory_delete', policy);
+}
+/** 待删内容摘要的容错解析：查询器缺失/抛错/空值一律 undefined（门仍会询问）。 */
+async function deleteTargetOf(exec, options) {
+    if (typeof options?.lookupTarget !== 'function')
+        return undefined;
+    try {
+        const value = await options.lookupTarget(exec?.arguments ?? {}, exec);
+        return typeof value === 'string' && value !== '' ? value : undefined;
     }
-    infoGate(options?.logger, `memory_save 免确认放行（${where}）`);
+    catch {
+        return undefined;
+    }
+}
+/** 统一的决策落地：ask 原样返回触发原生审批，deny 记录并返回，allow 放行下游（+日志）。 */
+function applyGateDecision(decision, downstream, options, toolName, policy) {
+    if (decision.kind === 'ask')
+        return decision;
+    const where = `policy=${policy ?? 'unknown'}，saveApproval=${saveApprovalOf(options?.config)}`;
+    if (decision.kind === 'deny') {
+        warnGate(options?.logger, `${toolName} 被拒绝（${where}）：${decision.reason}`);
+        return decision;
+    }
+    infoGate(options?.logger, `${toolName} 免确认放行（${where}）`);
     return downstream;
 }
 /** 门 info 日志（统一 [dsh-my-memory] 前缀）。 */

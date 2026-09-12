@@ -151,6 +151,10 @@ class World {
     return this.tools.find((t) => t.name === 'memory_save')
   }
 
+  deleteTool() {
+    return this.tools.find((t) => t.name === 'memory_delete')
+  }
+
   gate() {
     return this.events.find((e) => e.name === 'tools/pre-execute')?.listener
   }
@@ -629,4 +633,99 @@ Then('section 评分选择器按 相关性+时效性+置信度 选择条目', fu
 
 When('提交未携带同意标记的候选确认', async function () {
   await this.callRoute('POST', '/my-memory/api/candidates/confirm', { id: 'cand-any' })
+})
+
+// ── 场景 18-22：按类型保存 + memory_delete 工具（issue #192）─────────────
+When('agent 调用 memory_save 保存全局记忆 {string} 类型为 {string}', async function (desc, category) {
+  this.lastSaveArgs = { scope: 'global', desc, category }
+  await this.runGate('memory_save', this.lastSaveArgs)
+})
+
+When('用户批准该带类型的保存', async function () {
+  await this.callSave(this.lastSaveArgs)
+})
+
+Then('全局记忆条目 {string} 的分类为 {string}', async function (desc, category) {
+  const value = await this.callTool({ scope: 'global' })
+  const item = value.items.find((entry) => entry.desc === desc)
+  assert.ok(item, `global memory contains ${desc}`)
+  assert.equal(item.category, category, 'the entry carries the requested category')
+})
+
+Then('查询渲染文本包含分类 {string}', async function (label) {
+  const value = await this.callTool({ scope: 'global' })
+  const text = this.tool().output.render({ scope: 'global' }, value)[0].text
+  assert.ok(text.includes(label), `query render shows the category label: ${text}`)
+})
+
+When('agent 调用 memory_delete 删除该记忆', async function () {
+  assert.ok(this.lastSaveValue?.item?.id, 'a saved entry exists to delete')
+  this.lastDeleteArgs = { id: this.lastSaveValue.item.id, scope: 'global' }
+  await this.runGate('memory_delete', this.lastDeleteArgs)
+})
+
+Then('确认文案包含待删内容 {string}', function (desc) {
+  assert.ok(this.lastAsk, 'gate answered')
+  assert.ok(this.lastAsk.reason.includes(desc), `the ask reason names the entry: ${this.lastAsk.reason}`)
+  assert.ok(this.lastAsk.reason.includes('删除'), 'the ask reason is about deletion')
+})
+
+When('用户拒绝该删除', function () {
+  // 宿主语义：ask 未被批准 → 工具不执行（记忆不变）
+  this.deleteRejected = true
+})
+
+When('用户批准该删除', async function () {
+  this.lastDeleteValue = await this.deleteTool().execute(this.lastDeleteArgs, this.defaultExec())
+})
+
+Then('删除回执包含分类 {string}', function (label) {
+  assert.ok(this.lastDeleteValue, 'delete returned a value')
+  const text = this.deleteTool().output.render({}, this.lastDeleteValue)[0].text
+  assert.ok(text.includes(label), `the delete receipt shows the category: ${text}`)
+})
+
+When('agent 调用 memory_delete 删除 id {string}', async function (id) {
+  this.lastDeleteError = null
+  try {
+    await this.deleteTool().execute({ id, scope: 'global' }, this.defaultExec())
+  } catch (error) {
+    this.lastDeleteError = error
+  }
+})
+
+Then('删除失败且错误包含 {string}', function (needle) {
+  assert.ok(this.lastDeleteError, 'the deletion failed loudly')
+  assert.ok(this.lastDeleteError.message.includes(needle), `error mentions ${needle}: ${this.lastDeleteError.message}`)
+})
+
+When('agent 调用 memory_delete 删除全局记忆 {string}', async function (desc) {
+  const value = await this.callTool({ scope: 'global' })
+  const item = value.items.find((entry) => entry.desc === desc)
+  assert.ok(item, `global memory contains ${desc}`)
+  this.lastDeleteArgs = { id: item.id, scope: 'global' }
+  await this.runGate('memory_delete', this.lastDeleteArgs)
+})
+
+When('会话 {string} 执行该删除', async function (sessionId) {
+  assert.ok(this.lastDeleteArgs, `session ${sessionId} has a pending deletion to run`)
+  this.lastDeleteValue = await this.deleteTool().execute(this.lastDeleteArgs, this.defaultExec())
+})
+
+Then('删除未经用户确认直接放行', function () {
+  assert.ok(this.lastAsk, 'gate answered')
+  assert.equal(this.lastAsk.kind, 'allow', 'policy=never + saveApproval=auto deletes without an ask gate')
+})
+
+Then('全局记忆仍包含 {string}', async function (desc) {
+  const value = await this.callTool({ scope: 'global' })
+  assert.ok(
+    value.items.some((entry) => entry.desc === desc),
+    `a rejected deletion keeps ${desc}`,
+  )
+})
+
+Then('全局记忆不包含 {string}', async function (desc) {
+  const value = await this.callTool({ scope: 'global' })
+  assert.ok(!value.items.some((entry) => entry.desc === desc), `global memory no longer contains ${desc}`)
 })

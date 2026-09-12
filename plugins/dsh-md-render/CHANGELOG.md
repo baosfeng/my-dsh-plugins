@@ -17,6 +17,8 @@
 
 ### 修复
 
+- **#196 子 agent 消息与上下文注入块不渲染 markdown**：宿主 `ContextBody` 把上下文注入正文（子 agent 回传消息 / workspace 指令注入）渲染为 `pre[data-context-text="true"]` 纯文本，`**粗体**` / 列表 / 表格全部以原文显示，且既有 DOM 增强只认 `div.tzx-md` / `div.md-table-wide` + `p.tzx-p`，零介入。新增 `context-markdown` 片段：把这类块渲染为 markdown 结构（标题 / 粗体 / 行内代码 / 列表 / 引用 / 代码块 / 表格），复用 MarkdownView 类名与样式；原文 `pre` 置 `hidden` 保留，渲染容器带签名幂等（宿主 React 重渲染冲掉后由 MutationObserver 兜底重建），> 200 000 字符跳过。防回归测试 `test/context-markdown.mjs`（先 RED 后 GREEN）。
+
 - **代码块主题前景色自洽**：代码主题（codeTheme）此前只定义背景/边框/token 色，代码块文字色继承宿主 `.tzx-md` 的 `--dsw-alias-label-primary`。当系统 `prefers-color-scheme: dark` 而宿主 DSH 为浅色主题时，暗色变体把代码块背景反转成深色（如 `github-light` → `#0d1117`），文字仍是浅色主题的黑字 → **深背景黑字，代码内容不可见**。修复：为每个主题（含暗色变体）定义自洽前景色 `--dsh-md-render-code-fg`，`.tzx-pre` 的 `color` 使用它（fallback 宿主 primary），代码块内文字恒可见、不受宿主主题影响。
 - **代码块行号贴边**：行号列由 `3.5em` 缩窄到 `2.25em`、`::before` 宽由 `3em` 缩到 `1.75em`，`pre` 左内边距由 `16px` 收紧到 `12px`，行号更贴近代码块左边缘、与代码内容间距更紧凑。
 

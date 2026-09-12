@@ -637,7 +637,13 @@ const CHECK_DEFS = [
       const scoped = ctx.fast && !ctx.escalated && ctx.changedFiles !== null && ctx.changedFiles.length > 0
       const paths = scoped ? ctx.changedFiles : ['.']
       ctx.report?.(scoped ? `范围：本次变更 ${paths.length} 个文件` : '范围：全仓库（没有可裁剪的变更文件，安全回退）')
-      return runCapture('npx', [...NPX_BASE_ARGS, 'prettier', '--check', ...paths], root)
+      // --ignore-unknown：按变更文件裁剪时传入的是**显式路径**，prettier 对显式路径里的
+      // 未知扩展名（.feature / .png 等）直接报 "No parser could be inferred for file"（exit 2），
+      // 而全仓库 `--check .`（CI 语义）走目录展开、这类文件被静默跳过 —— 于是「改了 Gherkin
+      // 场景或新增截图」的推送在本地 pre-push 假失败、CI 反而通过。--ignore-unknown 让显式
+      // 路径与目录展开行为一致：只检查**能格式化**的文件（实测 RED：改 .feature 后
+      // `prettier --check <file>` exit 2 → 加该参数后 exit 0）。
+      return runCapture('npx', [...NPX_BASE_ARGS, 'prettier', '--check', '--ignore-unknown', ...paths], root)
     },
   },
   {

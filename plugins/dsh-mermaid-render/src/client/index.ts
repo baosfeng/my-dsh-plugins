@@ -31,8 +31,14 @@ import * as reactDomClient from 'react-dom/client'
 
 /** mermaid 引擎类型（window.mermaid）。 */
 interface MermaidEngine {
-  initialize(config: { startOnLoad: boolean; securityLevel: string }): void
-  render(id: string, source: string): Promise<{ svg: string }>
+  initialize(config: {
+    startOnLoad: boolean
+    securityLevel: string
+    /** mermaid v11+ 才生效（本插件 vendored 10.9.3 实测无效，靠离屏渲染兜底）。 */
+    suppressErrorRendering?: boolean
+  }): void
+  /** 第三个参数是渲染容器：传了它，失败时引擎的错误图形只落在这个容器里。 */
+  render(id: string, source: string, container?: Element): Promise<{ svg: string }>
 }
 
 /** 导出处理器。 */
@@ -76,18 +82,32 @@ const MERMAID_UMD: string = typeof atob === 'function' ? b64ToUtf8(MERMAID_UMD_B
 
 let mermaidReady: Promise<MermaidEngine> | null = null
 
+/**
+ * 引擎初始化配置。
+ *
+ * `suppressErrorRendering` 是 mermaid v11+ 的开关：本插件 vendored 的是 **10.9.3**，
+ * 实测该版本不认识这个键 —— 传进去会被 config 静默接收（getConfig() 里能看到）
+ * 但**不生效**，渲染失败时仍会往容器里插错误图形。这里依然显式传：一是升级引擎后
+ * 自动多一层保险，二是真正的兜底（离屏渲染）与它互不依赖。实测证据见
+ * docs/mermaid渲染/概述.md「零炸弹图」。
+ */
+const MERMAID_INIT = { startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true }
+
+/** 初始化引擎；重复 initialize 抛错时忽略（配置已经在）。 */
+function initEngine(engine: MermaidEngine): MermaidEngine {
+  try {
+    engine.initialize(MERMAID_INIT)
+  } catch {
+    /* already initialized */
+  }
+  return engine
+}
+
 /** Load (or reuse) the embedded mermaid engine on window.mermaid. */
 function ensureMermaid(): Promise<MermaidEngine> {
-  if (typeof window !== 'undefined' && window.mermaid) {
-    try {
-      window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' })
-    } catch {
-      /* already initialized */
-    }
-    return Promise.resolve(window.mermaid)
-  }
+  if (typeof window !== 'undefined' && window.mermaid) return Promise.resolve(initEngine(window.mermaid))
   if (mermaidReady) return mermaidReady
-  mermaidReady = new Promise((resolve, reject) => {
+  mermaidReady = new Promise<MermaidEngine>((resolve, reject) => {
     try {
       if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined') {
         reject(new Error('no document to inject mermaid'))
@@ -102,13 +122,63 @@ function ensureMermaid(): Promise<MermaidEngine> {
         reject(new Error('mermaid engine missing after injection'))
         return
       }
-      m.initialize({ startOnLoad: false, securityLevel: 'strict' })
-      resolve(m)
+      resolve(initEngine(m))
     } catch (err) {
       reject(err instanceof Error ? err : new Error(String(err)))
     }
+  }).catch((err: unknown) => {
+    mermaidReady = null // 加载失败不留缓存：卡片「重试」必须能真的重新加载一次
+    throw err instanceof Error ? err : new Error(String(err))
   })
   return mermaidReady
+}
+
+// ── offscreen part：离屏渲染（零「炸弹图」兜底）───────────────────────
+
+/** 离屏渲染容器标记（回归测试据此断言渲染发生在脱离文档流的节点里）。 */
+const OFFSCREEN_ATTR = 'data-dsh-mermaid-render-offscreen'
+
+/** 创建离屏渲染容器：脱离文档流并移出视口，但仍在布局树内
+ *  （display:none / visibility:hidden 会让 mermaid 量不到节点尺寸）。 */
+function createOffscreenHost(entryId: string): HTMLElement {
+  const host = document.createElement('div')
+  host.setAttribute(OFFSCREEN_ATTR, entryId)
+  host.setAttribute('aria-hidden', 'true')
+  host.style.cssText = 'position:absolute;left:-99999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none'
+  return host
+}
+
+/** 丢弃离屏容器及其内部一切（失败时 mermaid 的错误图形就在里面）。 */
+function dropOffscreen(host: HTMLElement): void {
+  if (host.parentNode) host.parentNode.removeChild(host)
+}
+
+/**
+ * 渲染 mermaid 源码为 SVG 字符串。
+ *
+ * 为什么必须离屏：mermaid 10.9.3 解析/渲染失败时**自己**往渲染容器里插一张
+ * 「炸弹图」（`#d<id>` + `.error-icon` / `.error-text`，文案 "Syntax error in text"），
+ * 而 `suppressErrorRendering` 在该版本无效。把渲染导向一个脱离文档流的容器后，
+ * 失败图形只落在容器里，随容器一起被移除——页面永远看不到它；成功则只取返回的
+ * svg 字符串注入卡片（卡片 DOM 里不会出现引擎的临时节点）。
+ */
+function renderSvg(engine: MermaidEngine, entryId: string, source: string): Promise<string> {
+  const body = typeof document !== 'undefined' && document !== null ? document.body : null
+  if (body === null || body === undefined) return Promise.reject(new Error('no document body to render into'))
+  const host = createOffscreenHost(entryId)
+  body.appendChild(host)
+  return engine.render(entryId, source, host).then(
+    (out) => {
+      const svg = out && typeof out.svg === 'string' ? out.svg : ''
+      dropOffscreen(host)
+      if (!svg) throw new Error('mermaid 未返回 SVG')
+      return svg
+    },
+    (err: unknown) => {
+      dropOffscreen(host)
+      throw err instanceof Error ? err : new Error(String(err))
+    },
+  )
 }
 
 // ── detection: md-code-block + code.language-mermaid / -mmd ─────────
@@ -584,34 +654,59 @@ function makeExportHandlers(
 
 let noticeTimer: ReturnType<typeof setTimeout> | null = null
 
-/** Mermaid 图表卡片组件。 */
-function MermaidCard({ entryId, source }: { entryId: string; source: string }) {
+/**
+ * 渲染状态机（issue #195）：加载引擎 → **离屏渲染** → 成功取 SVG / 失败留原因。
+ * 独立成 hook 是为了让 MermaidCard 保持在函数行数门禁（≤70 行）内。
+ */
+function useMermaidRender(entryId: string, source: string, attempt: number) {
   const [status, setStatus] = useState('loading')
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [mode, setMode] = useState<'preview' | 'code'>('preview')
-  const [notice, setNotice] = useState<Notice | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setStatus('loading')
     ensureMermaid()
-      .then((m) => m.render(entryId, source))
-      .then((out) => {
+      .then((m) => renderSvg(m, entryId, source))
+      .then((svgText) => {
         if (cancelled) return
-        setSvg(out && typeof out.svg === 'string' ? out.svg : null)
+        setSvg(svgText)
         setError(null)
         setStatus('ok')
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (cancelled) return
-        setError(err instanceof Error ? err.message : String(err))
+        setError(errMsg(err))
         setStatus('error')
       })
     return () => {
       cancelled = true
     }
-  }, [entryId, source])
+  }, [entryId, source, attempt])
+
+  /** 立刻回到 loading（重试时先重置视图，不等 effect 跑完）。 */
+  function begin(): void {
+    setError(null)
+    setStatus('loading')
+  }
+
+  return { status, svg, error, begin }
+}
+
+/** Mermaid 图表卡片组件。 */
+function MermaidCard({ entryId, source }: { entryId: string; source: string }) {
+  const [attempt, setAttempt] = useState(0)
+  const [mode, setMode] = useState<'preview' | 'code'>('preview')
+  const [notice, setNotice] = useState<Notice | null>(null)
+  const { status, svg, error, begin } = useMermaidRender(entryId, source, attempt)
+
+  /** 重试渲染：先清掉引擎加载缓存（上次可能就失败在加载），再重跑渲染。
+   *  失败卡片不静默——源码与错误原因都留在卡片里，用户可改完再重试。 */
+  function retry(): void {
+    mermaidReady = null
+    begin()
+    setAttempt((n) => n + 1)
+  }
 
   /** 短暂提示（成功/失败），2.5s 后自动消失。 */
   function flashNotice(type: string, text: string): void {
@@ -647,7 +742,7 @@ function MermaidCard({ entryId, source }: { entryId: string; source: string }) {
       ),
     ),
     notice ? renderNotice(notice) : null,
-    createElement(CardBody, { status, mode, error, source, svg }),
+    createElement(CardBody, { status, mode, error, source, svg, onRetry: retry }),
   )
 }
 
@@ -748,19 +843,21 @@ function ViewToggle({ mode, setMode }: { mode: 'preview' | 'code'; setMode: (mod
   )
 }
 
-/** Card body: loading / error banner / code / rendered svg. */
+/** Card body: loading / error banner + source / code / rendered svg. */
 function CardBody({
   status,
   mode,
   error,
   source,
   svg,
+  onRetry,
 }: {
   status: string
   mode: string
   error: string | null
   source: string
   svg: string | null
+  onRetry: () => void
 }) {
   if (status === 'loading') {
     return createElement(
@@ -771,6 +868,7 @@ function CardBody({
     )
   }
   if (status === 'error') {
+    // 失败兜底：错误原因 + 重试 + **原始源码**（源码必须看得见，不能只剩一张报错卡片）
     return createElement(
       'div',
       { className: 'dsh-mermaid-render-error' },
@@ -779,8 +877,21 @@ function CardBody({
         { className: 'dsh-mermaid-render-error-head' },
         icon.alert(15),
         createElement('span', { className: 'dsh-mermaid-render-error-title' }, 'Mermaid 渲染失败'),
+        createElement(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-mermaid-render-eb dsh-mermaid-render-retry',
+            onClick: onRetry,
+            title: '重试渲染',
+            'aria-label': '重试',
+          },
+          icon.refresh(13),
+          createElement('span', null, '重试'),
+        ),
       ),
       createElement('div', { className: 'dsh-mermaid-render-error-msg' }, error),
+      createElement('pre', { className: 'dsh-mermaid-render-code' }, source),
     )
   }
   if (mode === 'code' || !svg) {
@@ -796,58 +907,160 @@ function CardBody({
 
 let seq = 0
 
+/** 已挂载卡片：记住渲染用的源码快照，源码再变就自愈卸载。 */
+interface MountedCard {
+  root: ReturnType<typeof reactDomClient.createRoot>
+  host: Element
+  pre: HTMLElement | null
+  text: string
+}
+
+/** 流式块的稳定观察记录。 */
+interface StreamWatch {
+  text: string
+  observations: number
+  round: number
+  timer: ReturnType<typeof setTimeout> | null
+}
+
+/**
+ * 流式块稳定窗口（毫秒）。宿主在**整条消息**上挂 data-streaming（证据：
+ * dsh-client-ui-chat/lib/client.js 里 "data-streaming": streaming || void 0），
+ * DOM 里看不到「结束围栏是否已经出现」，只能从内容是否还在增长来判定闭合。
+ * 400ms 取自真机实测的流式更新间隔（约 240ms/次）之上——比它小会把 token
+ * 间隔误判成「已闭合」。误判还有第二道防线：源码再变即自愈卸载重来。
+ */
+const STREAM_SETTLE_MS = 400
+/** 连续观察次数（首次发现算 1 次；窗口到期再确认 1 次才允许渲染）。 */
+const STREAM_MIN_OBSERVATIONS = 2
+/** 超长块跳过（与 mermaid 自身 maxTextSize 5e4 对齐，不做无谓渲染）。 */
+const MAX_SOURCE_CHARS = 50000
+
+const mounts = new Map<Element, MountedCard>()
+const streamWatch = new Map<Element, StreamWatch>()
+let scanRound = 0
+
 /** Mount a card into the block, hiding the original <pre>. */
-function mountCard(seen: Set<Element>, block: Element): void {
-  const source = sourceOf(block)
-  if (!source.trim()) return
-  seen.add(block)
-  const pre = block.querySelector('pre')
+function mountCard(block: Element, source: string): void {
+  if (mounts.has(block)) return
+  const pre = block.querySelector('pre') as HTMLElement | null
   if (pre && pre.style) pre.style.display = 'none'
   const host = document.createElement('div')
   host.className = 'dsh-mermaid-render-card-host'
   block.appendChild(host)
   const root = reactDomClient.createRoot(host)
   const entryId = 'dsh-mermaid-' + ++seq
+  mounts.set(block, { root, host, pre, text: source })
+  clearStreamWatch(block)
   root.render(createElement(MermaidCard, { entryId, source }))
 }
 
-/** Streaming-aware: skip blocks under [data-streaming] ancestors. */
-function attemptMount(seen: Set<Element>, block: Element): void {
-  if (seen.has(block)) return
-  if (block.closest && block.closest('[data-streaming]')) return
-  mountCard(seen, block)
+/** 自愈卸载：源码在挂载后又变了（流式其实还没写完）→ 拆卡片、恢复原始块。 */
+function unmountCard(block: Element, card: MountedCard): void {
+  mounts.delete(block)
+  clearStreamWatch(block)
+  try {
+    card.root.unmount()
+  } catch {
+    /* 卸载异常不阻断恢复原始块 */
+  }
+  if (card.host.parentNode) card.host.parentNode.removeChild(card.host)
+  if (card.pre && card.pre.style) card.pre.style.display = ''
+}
+
+/** 清掉某块的稳定观察（挂载 / 卸载 / 元素已失效时）。 */
+function clearStreamWatch(block: Element): void {
+  const watch = streamWatch.get(block)
+  if (watch !== undefined && watch.timer !== null) clearTimeout(watch.timer)
+  streamWatch.delete(block)
+}
+
+/** 块是否仍在流式消息里（祖先带 data-streaming）。 */
+function isStreamingBlock(block: Element): boolean {
+  return !!(block.closest && block.closest('[data-streaming]'))
+}
+
+/** 记录一次观察：内容变了就重新计时，没变就累计观察次数。 */
+function watchStream(block: Element, source: string, round: number): void {
+  const prev = streamWatch.get(block)
+  if (prev === undefined || prev.text !== source) {
+    if (prev !== undefined && prev.timer !== null) clearTimeout(prev.timer)
+    const watch: StreamWatch = { text: source, observations: 1, round, timer: null }
+    watch.timer = setTimeout(() => settleStream(block), STREAM_SETTLE_MS)
+    streamWatch.set(block, watch)
+    return
+  }
+  if (prev.round !== round) {
+    prev.round = round
+    prev.observations += 1
+  }
+}
+
+/** 稳定窗口到期：内容仍与观察一致、且已连续观察够次数才渲染。 */
+function settleStream(block: Element): void {
+  const watch = streamWatch.get(block)
+  if (watch === undefined) return
+  watch.timer = null
+  if (typeof block.isConnected === 'boolean' && !block.isConnected) {
+    streamWatch.delete(block)
+    return
+  }
+  const source = sourceOf(block)
+  if (source !== watch.text || !source.trim()) return
+  if (mounts.has(block)) return
+  watch.observations += 1
+  if (watch.observations < STREAM_MIN_OBSERVATIONS) {
+    watch.timer = setTimeout(() => settleStream(block), STREAM_SETTLE_MS)
+    return
+  }
+  mountCard(block, source)
+}
+
+/** 单个候选块：挂载 / 继续等待 / 自愈卸载。 */
+function considerBlock(block: Element, round: number): void {
+  if (!isMermaidBlock(block)) return
+  const source = sourceOf(block)
+  if (!source.trim() || source.length > MAX_SOURCE_CHARS) return
+  const mounted = mounts.get(block)
+  if (mounted !== undefined) {
+    if (mounted.text === source) return
+    unmountCard(block, mounted) // 源码还在变：拆掉重来，绝不留残缺卡片
+  }
+  if (!isStreamingBlock(block)) {
+    mountCard(block, source) // 历史消息 / 流式已结束：立即渲染（不回归）
+    return
+  }
+  watchStream(block, source, round)
 }
 
 /** Scan a subtree for mermaid md-code-blocks under conversation scrolls. */
-function scanBlocks(seen: Set<Element>, root: Element): void {
+function scanBlocks(root: Element, round: number): void {
   const scrolls: Element[] = []
-  if (root instanceof Element && root.matches && root.matches('[data-conversation-scroll]')) scrolls.push(root)
+  if (root.matches && root.matches('[data-conversation-scroll]')) scrolls.push(root)
   if (root.querySelectorAll) {
     for (const sc of root.querySelectorAll('[data-conversation-scroll]')) scrolls.push(sc)
   }
   for (const sc of scrolls) {
     for (const block of sc.querySelectorAll('div.md-code-block')) {
-      if (seen.has(block)) continue
-      if (!isMermaidBlock(block)) continue
-      attemptMount(seen, block)
+      considerBlock(block, round)
     }
   }
 }
 
 /** Observe the body; returns the observer disposer. */
 function installScanner(): () => void {
-  const seen = new Set<Element>()
-  scanBlocks(seen, document.body)
+  scanBlocks(document.body, ++scanRound)
 
   const observer = new MutationObserver((mutations) => {
+    const round = ++scanRound
     for (const mutation of mutations) {
       for (const added of mutation.addedNodes) {
-        if (added.nodeType === 1) scanBlocks(seen, added as Element)
+        if (added.nodeType === 1) scanBlocks(added as Element, round)
       }
     }
     // Fallback re-scan: rescan every known scroll container
     for (const sc of document.querySelectorAll('[data-conversation-scroll]')) {
-      scanBlocks(seen, sc)
+      scanBlocks(sc, round)
     }
   })
   observer.observe(document.body, {
@@ -856,7 +1069,11 @@ function installScanner(): () => void {
     attributes: true,
     attributeFilter: ['data-streaming'],
   })
-  return () => observer.disconnect()
+  return () => {
+    observer.disconnect()
+    for (const block of Array.from(streamWatch.keys())) clearStreamWatch(block)
+    mounts.clear()
+  }
 }
 
 // ── styles part：DSH tokens ──────────────────────────────────────────
@@ -890,6 +1107,7 @@ const STYLES = `
 .dsh-mermaid-render-error-head svg{flex:none;color:var(--dsw-alias-state-error-primary)}
 .dsh-mermaid-render-error-title{color:var(--dsw-alias-state-error-primary);font-weight:600}
 .dsh-mermaid-render-error-msg{color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-all;margin-top:4px;line-height:1.5}
+.dsh-mermaid-render-retry{margin-left:auto;flex:none}
 @keyframes dsh-mermaid-render-card-in{from{opacity:0;transform:translateY(1px)}to{opacity:1;transform:none}}
 @keyframes dsh-mermaid-render-spin{to{transform:rotate(360deg)}}
 `

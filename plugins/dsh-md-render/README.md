@@ -88,9 +88,11 @@ npm test
 
 > `lib/client.js` 是构建产物，**必须提交**（CI 只跑 `node --check` + 测试，不执行构建）。
 
-## 上游修复建议（issue #196）
+## 宿主渲染缺口与插件侧接管（issue #196）
 
-上下文注入正文由宿主 `@deepseek-ai/dsh-client-ui-chat` 的 `ContextBody` 渲染为纯文本（bundle 内实证：`<pre class="ZkiH0q_text" data-context-text="true">` + CSS `white-space:pre-wrap`）。**子 agent 回传消息走的就是这条路径**（`send_message` → agent-message 注入），所以子 agent 消息里的 markdown 从来不会渲染。建议上游对该类注入正文改用内置 `MarkdownText`（或按注入来源分流：relay / agent-message 渲染 markdown，工具结果类保持纯文本）。本插件的 DOM 接管是**等价绕过**：原文 `pre` 保留、置 hidden，可随上游修复一起下线。
+上下文注入正文由宿主 `@deepseek-ai/dsh-client-ui-chat` 的 `ContextBody` 渲染为纯文本（bundle 内实证：`<pre class="ZkiH0q_text" data-context-text="true">` + CSS `white-space:pre-wrap`）。**子 agent 回传消息走的就是这条路径**（`send_message` → agent-message 注入），所以子 agent 消息里的 markdown 从来不会渲染。
+
+按项目决策「宿主渲染/能力缺口一律由本仓库插件侧接管处理，不依赖上游修改、不向上游提 issue」（见 [dsh-plugin-development 技能](../../skills/dsh-plugin-development/SKILL.md)），本插件在 DOM 层接管该渲染：先确证宿主契约 → 内容签名幂等标记 → 契约不匹配时静默退让原文 → MutationObserver 应对 React 重渲染 → 超长内容跳过。原文 `pre` 保留并置 hidden：这是**接管**而非补丁——上游若将来自行支持渲染，本接管可直接下线（但它不以上游修复为前提）。
 
 ## 已知限制
 

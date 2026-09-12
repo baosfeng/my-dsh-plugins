@@ -2,7 +2,7 @@
 title: 踩坑记录
 description: 项目已知问题与解决方案总索引
 created: 2026-08-22
-updated: 2026-09-11
+updated: 2026-09-12
 ---
 
 # 踩坑记录
@@ -28,6 +28,8 @@ updated: 2026-09-11
 - [CI / 门禁工具](jscpd原生二进制对glibc基线敏感.md) — jscpd 5.x 的 Rust 二进制要求 GLIBC ≥2.33，旧 glibc 容器加载失败 → 门禁项恒红且日志里没有任何重复清单（易误判成代码重复超标）；锁 4.x 纯 JS 版（2026-09-11）
 - [工具 / 全仓扫描](超长单行让全仓正则扫描挂死.md) — 对全仓每一行跑链接正则时撞上 `vendor/mermaid.min.js` 单行 8.9MB → O(n²) 回溯、脚本挂死 180s 无输出；防压缩产物必须同时按"单行长度"设限（2026-09-11）
 - [门禁 / 环境差异](本地绿不等于CI绿.md) — 同一校验脚本本地 exit 0、CI 首跑即红：macOS 不区分大小写，掩盖了 PR 模板真实文件名全大写、文档里却写成小写的差异；校验类工具的判定必须与宿主 FS 语义解耦（2026-09-11）
+- [协作 / 子 agent 工作区](子agent工作区缺失导致卡死.md) — 新会话/隔离实例没有工作区时合成器被禁用，点「选择工作区」命中宿主原生 macOS 目录对话框（`osascript choose folder`），浏览器自动化无法驱动原生弹窗 → agent 静默卡死数天；修法是让用户事先选好工作区，或预置工作区落盘状态 / `--patch` 换 browse 后端（2026-09-12）
+- [协作 / fork 池](fork池基线与squash判定.md) — `git clone --local` 的 `origin/main` 取的是主工作区本地 main（可能落后 GitHub）→ 基于过期基线开发；`git cherry` 靠 patch-id 判定，对 squash 合并必然假阴性 → 误判「遗留工作未落地」；判法是查 main 的 squash 提交/PR 号 + 比对整体 diff 的 `git patch-id --stable`（2026-09-12）
 
 ## 维护规则
 

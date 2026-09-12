@@ -20,6 +20,7 @@
  * it may propose saving memories it notices; off, the agent saves on request.
  */
 import { findProjectRoot } from 'dsh-shared';
+import { CATEGORIES } from './memory-scoring.js';
 /** Filter items by a keyword substring (case-insensitive); no filter when empty. */
 export function filterItems(items, keyword) {
     const needle = typeof keyword === 'string' ? keyword.trim().toLowerCase() : '';
@@ -61,6 +62,66 @@ const QUERY_PARAMETERS = {
     required: ['scope'],
     additionalProperties: false,
 };
+/** 记忆分类枚举（与 memory-scoring 的 CATEGORIES 同源，schema 单一来源）。 */
+const MEMORY_CATEGORIES = [...CATEGORIES];
+/** 记忆状态枚举（与 memory-scoring 的 statusOf 同源）。 */
+const MEMORY_STATUSES = ['active', 'conflict-pending'];
+/**
+ * 记忆条目字段 JSON Schema 片段——**单一来源**（issue #191）。
+ *
+ * store 返回的条目恒定带这 10 个字段（`withDefaults` 恒补齐，见
+ * memory-scoring），schema 必须与真实形状同源：字段增减只改这里，
+ * `QUERY_OUTPUT` / `SAVE_OUTPUT` 都直接复用本常量，避免契约与实现再次
+ * 漂移（#191 的根因）。
+ *
+ * 导出策略：只导出被消费的完整 `MEMORY_ITEM_SCHEMA`（回归测试 + #192 等
+ * 后续工具复用）；字段片段/枚举保持模块私有——knip 死代码门禁要求「导出
+ * 即被使用」，#192 需要片段时按需导出（同时会被消费）。
+ */
+const MEMORY_ITEM_PROPERTIES = {
+    id: { type: 'string' },
+    desc: { type: 'string' },
+    createdAt: { type: 'number' },
+    updatedAt: { type: 'number' },
+    category: { type: 'string', enum: MEMORY_CATEGORIES },
+    source: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+            sessionId: { type: 'string' },
+            at: { type: 'number' },
+        },
+        required: ['sessionId', 'at'],
+    },
+    confidence: { type: 'number' },
+    relatedIds: { type: 'array', items: { type: 'string' } },
+    history: {
+        type: 'array',
+        items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                at: { type: 'number' },
+                action: { type: 'string' },
+                desc: { type: 'string' },
+            },
+            required: ['at', 'action', 'desc'],
+        },
+    },
+    status: { type: 'string', enum: MEMORY_STATUSES },
+};
+/** 条目必填字段：与 MEMORY_ITEM_PROPERTIES 同源（新增字段自动必填，不会漏声明）。 */
+const MEMORY_ITEM_REQUIRED = Object.keys(MEMORY_ITEM_PROPERTIES);
+/**
+ * 记忆条目的完整输出 schema——**导出供回归测试与后续工具复用**（#192 等）：
+ * save.item 与 query.items[] 共用同一对象引用，形状永不漂移。
+ */
+export const MEMORY_ITEM_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    properties: MEMORY_ITEM_PROPERTIES,
+    required: MEMORY_ITEM_REQUIRED,
+};
 /** memory_query output schema (JSON Schema; enforced on every successful value). */
 const QUERY_OUTPUT = {
     type: 'object',
@@ -69,20 +130,7 @@ const QUERY_OUTPUT = {
         scope: { type: 'string' },
         cwd: { type: 'string' },
         projectRoot: { type: 'string' },
-        items: {
-            type: 'array',
-            items: {
-                type: 'object',
-                additionalProperties: false,
-                properties: {
-                    id: { type: 'string' },
-                    desc: { type: 'string' },
-                    createdAt: { type: 'number' },
-                    updatedAt: { type: 'number' },
-                },
-                required: ['id', 'desc', 'createdAt', 'updatedAt'],
-            },
-        },
+        items: { type: 'array', items: MEMORY_ITEM_SCHEMA },
     },
     required: ['scope', 'cwd', 'projectRoot', 'items'],
 };
@@ -149,17 +197,7 @@ const SAVE_OUTPUT = {
         scope: { type: 'string' },
         cwd: { type: 'string' },
         projectRoot: { type: 'string' },
-        item: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-                id: { type: 'string' },
-                desc: { type: 'string' },
-                createdAt: { type: 'number' },
-                updatedAt: { type: 'number' },
-            },
-            required: ['id', 'desc', 'createdAt', 'updatedAt'],
-        },
+        item: MEMORY_ITEM_SCHEMA,
     },
     required: ['scope', 'cwd', 'projectRoot', 'item'],
 };

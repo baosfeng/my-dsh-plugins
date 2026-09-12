@@ -38,7 +38,23 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-memory
 2. **全局记忆**区块：输入要记住的内容（输入框提示「建议 1-2 句话概括」；超过 `maxEntryLength` 显示「内容过长，建议精简为 1-2 句」，确认面板显示概要预览）→ 绿色「新增」→ 绿色确认面板「确认保存」→ 写入 `$DSH_HOME/memory.json`；列表显示**概要（首句）**、点击「展开」查看完整详情；条目可「编辑」（绿色保存确认）或「删除」（红色确认面板 + 红色「确认删除」二次确认）；
 3. **项目记忆**区块：**面板打开时自动加载当前会话项目的记忆**（issue #104，经 `/my-memory/api/session` 解析会话 cwd，复用 `memory_query` 的会话 cwd 定位逻辑），显示项目记忆（蓝色 accent + 项目根徽标），操作同全局；亦可在顶部输入其他项目根路径 → 「加载」切换查看其他项目记忆；
 4. **自动学习候选**（issue #78）：在 `cordis.yml` 开启 `autoLearn` 后，会话结束自动从对话提取记忆候选，显示在面板底部「自动学习候选（待确认）」区块（分类徽标 + 描述 + 来源会话 + 时间）——点「确认写入」候选渐进合并进正式记忆（同主题自动提升置信度），点「拒弃」丢弃；候选绝不静默写入正式记忆；
-5. 新会话开始时，全局记忆自动注入系统提示词（agent 可见）；agent 可用 `memory_query` 工具查询记忆详情（含项目记忆），也可用 `memory_save` 工具在**用户确认后**保存记忆——发现值得记住的信息时可请 agent 保存（如「把「用 pnpm 装依赖」记到记忆里」）。
+5. 新会话开始时，全局记忆自动注入系统提示词（agent 可见）；agent 可用 `memory_query` 工具查询记忆详情（含项目记忆），也可用 `memory_save` 工具保存记忆——**默认仍需用户确认**；仅在会话权限模式为「完全权限」（`danger-full-access`，即 approval policy = `never`）时按 `saveApproval` 策略免确认直接写入（条目带来源会话标记、面板可见可删除，issue #208）。发现值得记住的信息时可请 agent 保存（如「把「用 pnpm 装依赖」记到记忆里」）。
+
+## 权限模式与保存确认（issue #208）
+
+DSH 的会话权限 preset 同时决定 sandbox 与 approval policy：`danger-full-access` → **approval policy = `never`**，此时宿主对任何 `{ kind: 'ask' }` 审批请求**直接判 rejected**（`@deepseek-ai/dsh-user-approval/lib/index.js:178`），不会弹出确认窗口。旧版 `memory_save` 无条件返回 ask，于是在「完全权限」模式下 100% 失败、用户还看不到任何提示——这是「AI 存不了记忆」的第二环根因（#191 修的是第一环：工具输出 schema）。
+
+插件现按会话审批策略 + `saveApproval` 配置决定行为：
+
+| `saveApproval` | 会话 approval policy = `ask`（如 workspace-write） | 会话 approval policy = `never`（如 danger-full-access）                                   | 策略判定失败（未知）       |
+| -------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------- |
+| `auto`（默认） | 弹原生确认窗口；拒绝则不写入                       | **免确认直接写入**（条目标记来源会话、面板可见可删）                                      | 弹原生确认（保守，不放行） |
+| `always`       | 弹原生确认窗口；拒绝则不写入                       | **明确失败**并返回可操作中文提示（改 `saveApproval` / 切 workspace-write / 面板手动新增） | 弹原生确认                 |
+| `never`        | 免确认直接写入（高级用法）                         | 免确认直接写入                                                                            | 免确认直接写入             |
+
+- **策略判定**：首选宿主 approval 服务的 `effectivePolicy(session)`（与宿主判定同一函数），回落会话日志 `approval/policy` 事件折返（与宿主 `overrideOf` 同构），两者都不可用时按 `ask` 保守处理；
+- **「记忆绝不静默变更」的调整理由**：`danger-full-access` 是用户**主动选择**「全权委托 agent、不要弹窗」的模式（同一模式下 bash 写文件等操作同样不确认），此时再坚持 ask 只会得到一个用户完全看不见的 rejected——既没保护用户，也让功能不可用。因此 `auto` 在 `never` 下改为「直接写入 + 标记来源会话 + 面板可见可撤销」，把不可见的静默失败换成可见、可追溯、可撤销的写入；需要逐条确认的用户把 `saveApproval` 设为 `always`。
+- **来源标记**（issue #209）：agent 保存的条目记录 `source.sessionId`（写入会话）与 `source.at`，`memory_query` 输出与面板卡片显示会话前缀；面板手动新增的条目来源为空，据此可区分「agent 自动保存」与「用户手动添加」。
 
 ## 配置
 
@@ -51,6 +67,7 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-memory
   "autoLearn": false, // issue #78 自动学习开关：会话结束自动提取记忆候选进「待确认」区（默认关；开启后才提取，确认后才写入）
   "extractor": "rule", // issue #78 提取方式：rule（确定性规则提取器，默认）| llm（预留占位，接入 LLM 总结式提取）
   "proactivePropose": false, // issue #78 阶段预留：开启后 memory_save 工具描述引导 agent 主动向用户提议保存记忆（默认关，agent 按用户要求保存）
+  "saveApproval": "auto", // issue #208 保存确认策略：auto（默认）| always | never —— 见下方「权限模式与保存确认」
 }
 ```
 
@@ -61,7 +78,8 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-memory
 - **自动提取**（issue #78）：`lib/extract.js` 规则提取器（`extractCandidates`：偏好/事实/项目/技术栈/工作流 5 类句式模式 + 项目性关键词 → scope 建议 全局/项目 + 单会话上限 + 去重；`splitSentences` 句子边界拆分）；`index.js` 监听 `session/event`（user/message，过滤插件注入）只读收集本次会话用户消息，`agent/status` idle（仅顶层 agent）触发提取——候选进待确认区，`autoLearn` 默认关、`extractor: 'rule' | 'llm'`（llm 预留占位）。
 - **渐进式更新 + 智能注入**（issue #78）：`lib/memory-scoring.js` 纯函数——`mergeCandidate`（同主题判定：分类 + 归一文本包含/子序列；新增/置信度+1（上限 5）/内容更新/矛盾标记；跨明确分类不坍缩）、`decayConfidence`（默认 90 天未用降权、下限 1）、`scoreForInjection`/`pickForInjection`（相关性：上下文关键词命中占比；时效性：exp 衰减 7 天半衰期；置信度：归一化因子；默认权重 0.5/0.3/0.2）；确认写入走 `store.mergeAdd`；`lib/prompt.js` 的 section 先降权再按评分选 `maxItems` 条（替代简单 top-N），配合语义截断。
 - **系统提示词注入**：`lib/prompt.js` 注册 `dsh-my-memory` section（order -95），text 为 provider 函数——每次组装系统提示词时读取全局记忆缓存，智能评分选 `maxItems` 条、每条**按语义截断** `maxDescLength` 字符（优先概要/首句，不截断句子中间）；空记忆渲染空 section（renderPrompt 自动丢弃，零成本）。
-- **工具**：`lib/tool.js` 直接构造 ToolDefinition（JSON Schema 参数/输出，不导入 `@deepseek-ai/dsh-tools`——本仓库插件只解析 Node 内置模块与相对路径），`ctx.tools.register` 注册 `memory_query`（只读）与 `memory_save`（写，工具描述引导「浓缩为 1-2 句」，经 `tools/pre-execute` 确认门触发 DSH 原生审批后执行，绝不静默变更）。
+- **工具**：`lib/tool.js` 直接构造 ToolDefinition（JSON Schema 参数/输出，不导入 `@deepseek-ai/dsh-tools`——本仓库插件只解析 Node 内置模块与相对路径），`ctx.tools.register` 注册 `memory_query`（只读）与 `memory_save`（写，工具描述引导「浓缩为 1-2 句」）。
+- **保存确认门**（issue #107 / #208）：`lib/save-policy.js` 的 `createMemorySaveGate` 注册在 `tools/pre-execute`，按 `saveApproval` × 会话 approval policy 决策（allow / ask / deny + 可操作提示）；`approvalPolicyOf` 优先调用宿主 `ApprovalService.effectivePolicy(session)`，回落会话日志 `approval/policy` 折返（`exec.agent.session` 的 `seq` + `eventAt`）；写入统一带 `source: { sessionId, at }`（`exec.agent.id` 即会话 id，宿主 `dsh-agent` 校验 `agent.id === agent.session.id`）。
 - **写操作 API**：`lib/api-route.js` 的 `POST /my-memory/api/memory` 强制 `confirmed: true` 用户同意标记，缺失即 400；add/update/delete 各自校验（空 desc、未知 id 等）；`GET/POST /my-memory/api/candidates{,confirm,dismiss}` 管理待确认候选（读取/确认写入渐进合并/拒弃，均强制确认标记）。
 - **自定义确认 UI + 候选区块**：`lib/client.js` 内联确认面板（`dmm-confirm`）——删除红色背景 + 红色「确认删除」按钮（二次确认），保存/新增绿色背景 + 绿色「确认保存」按钮；项目 section 蓝色 accent + 项目根徽标与全局区分；条目卡显示分类徽标 + 置信度 + 矛盾警示 + 「演进历史」展开；「自动学习候选（待确认）」区块（`CandidatesBlock`）展示候选（分类徽标 + 描述 + 范围 + 来源会话 + 时间）与确认写入/拒弃按钮。
 

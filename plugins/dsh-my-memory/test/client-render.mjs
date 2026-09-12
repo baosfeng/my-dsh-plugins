@@ -268,7 +268,9 @@ const globalValue = {
     scope: 'global',
     cwd: '',
     projectRoot: '',
-    items: [{ id: 'g1', desc: '回复使用中文', createdAt: 1, updatedAt: 2 }],
+    items: [
+      { id: 'g1', desc: '回复使用中文', createdAt: 1, updatedAt: 2, source: { sessionId: 'sess-abcdef123', at: 3 } },
+    ],
   },
 }
 const projectValue = {
@@ -309,6 +311,9 @@ assert.ok(joined.includes('当前无项目会话'), 'project empty state prompts
 // ── 回归：confidence 缺失时不渲染"置信度 undefined"；徽标不重复 scope 标签 ──
 assert.ok(!joined.includes('置信度 undefined'), 'confidence omitted when missing (no undefined text)')
 assert.ok(joined.includes('1 条'), 'global count badge rendered (count only)')
+// ── issue #209：带来源的条目展示来源会话前缀，未标记条目不渲染该徽章 ──
+assert.ok(joined.includes('agent 保存 · sess-abc'), 'source badge shows the agent session prefix (#209)')
+assert.equal(joined.split('agent 保存').length - 1, 1, 'only the session-stamped entry carries the source badge')
 const buttons2 = []
 collectButtons(tree2, buttons2)
 assert.ok(

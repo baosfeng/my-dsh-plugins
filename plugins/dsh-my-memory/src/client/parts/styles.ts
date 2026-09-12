@@ -127,6 +127,9 @@ const STYLES: string = `
 .dsh-my-memory-conflict-badge { flex:none; display:inline-flex; align-items:center; height:16px; padding:0 5px; border-radius:4px;
   font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-state-warn-primary);
   background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 15%, transparent); }
+.dsh-my-memory-source-badge { flex:none; display:inline-flex; align-items:center; height:16px; padding:0 5px; border-radius:4px;
+  font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary);
+  background:var(--dsw-alias-bg-layer-1); border:1px solid var(--dsw-alias-border-l1); }
 .dsh-my-memory-meta-sep { color:var(--dsw-alias-label-dimmed); }
 .dsh-my-memory-history-entry { display:inline-flex; font:var(--dsw-font-xxxs-11);
   color:var(--dsw-alias-label-tertiary); }

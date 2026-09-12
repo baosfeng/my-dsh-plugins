@@ -20,6 +20,8 @@ interface MemoryItemWithMeta {
   updatedAt?: number
   history?: Array<{ action: string; at: number }>
   status?: string
+  /** 来源会话（issue #209）：agent 自动保存的条目带 sessionId，手动新增为空。 */
+  source?: { sessionId?: string }
 }
 
 /** 一条待确认候选（issue #78）：分类徽标 + 描述 + 范围 + 来源 + 确认/拒弃。 */
@@ -142,6 +144,13 @@ function MetadataRow({
       : null,
     item.status === 'conflict-pending'
       ? createElement('span', { className: 'dsh-my-memory-conflict-badge' }, strings.statusConflict())
+      : null,
+    typeof item.source?.sessionId === 'string' && item.source.sessionId !== ''
+      ? createElement(
+          'span',
+          { className: 'dsh-my-memory-source-badge' },
+          strings.sourceAgentLabel(item.source.sessionId),
+        )
       : null,
     createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'),
     createElement('span', { className: 'dsh-my-memory-meta-icon' }, icon.clock(11)),

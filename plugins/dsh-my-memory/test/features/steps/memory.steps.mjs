@@ -27,6 +27,10 @@ class World {
     this.lastSaveValue = null
     this.lastAsk = null
     this.autoLearn = false
+    this.saveApproval = undefined
+    this.policy = 'ask'
+    this.sessionId = undefined
+    this.lastDesc = ''
     this.boot()
   }
 
@@ -68,7 +72,36 @@ class World {
       },
     }
     this.ctx = ctx
-    apply(ctx, config ?? { autoLearn: this.autoLearn })
+    apply(ctx, config ?? this.defaultConfig())
+  }
+
+  /** 本次挂载的插件配置（saveApproval 仅在场景显式设置时出现）。 */
+  defaultConfig() {
+    const config = { autoLearn: this.autoLearn }
+    if (this.saveApproval !== undefined) config.saveApproval = this.saveApproval
+    return config
+  }
+
+  /** 设置本会话的审批策略 + saveApproval 并重新挂载（issue #208）。 */
+  setPolicy(sessionId, policy, saveApproval) {
+    this.sessionId = sessionId
+    this.policy = policy
+    this.saveApproval = saveApproval
+    this.events.length = 0
+    this.sections.length = 0
+    this.tools.length = 0
+    this.boot()
+  }
+
+  /** 本会话的假 session（宿主 Session 的 seq + eventAt 契约，issue #208）。 */
+  session() {
+    const events = [{ type: 'approval/policy', data: { policy: this.policy } }]
+    return { seq: events.length, eventAt: (index) => events[index] }
+  }
+
+  /** 工具调用载荷（带 agent/session；未设置会话时为空对象）。 */
+  defaultExec() {
+    return this.sessionId === undefined ? {} : { agent: { id: this.sessionId, session: this.session() } }
   }
 
   /** Toggle autoLearn and re-boot so the collector listens (issue #78). */
@@ -123,9 +156,10 @@ class World {
   }
 
   /** Run the pre-execute gate for one tool call; returns the gate decision. */
-  async runGate(name, args) {
+  async runGate(name, args, exec) {
     if (this.gate() === undefined) return null
-    this.lastAsk = await this.gate()({ name, arguments: args ?? {} }, async () => ({ kind: 'allow' }))
+    const payload = { name, arguments: args ?? {}, ...(exec ?? this.defaultExec()) }
+    this.lastAsk = await this.gate()(payload, async () => ({ kind: 'allow' }))
     return this.lastAsk
   }
 
@@ -381,6 +415,7 @@ Then('返回空工作目录', function () {
 
 // ── 场景 6-8：memory_save 工具（issue #107）────────────────────────────
 When('agent 调用 memory_save 保存全局记忆 {string}', async function (desc) {
+  this.lastDesc = desc
   await this.runGate('memory_save', { scope: 'global', desc })
 })
 
@@ -444,6 +479,43 @@ Then('项目记忆存于集中存储位置', function () {
 // ── 场景 10：保存长记忆保留完整内容，注入按语义截断（issue #105）─────────
 Then('section 文本不包含 {string}', function (desc) {
   assert.ok(!this.lastSectionText.includes(desc), `section text excludes ${desc}`)
+})
+
+// ── 场景 15-17：权限模式感知的保存策略（issue #208）+ 来源标记（#209）────
+When('会话 {string} 的审批策略为 {string} 且 saveApproval 为 {string}', function (sessionId, policy, saveApproval) {
+  this.setPolicy(sessionId, policy, saveApproval)
+})
+
+Then('未写入任何记忆', async function () {
+  const value = await this.callTool({ scope: 'global' })
+  assert.equal(value.items.length, 0, 'nothing was written')
+})
+
+Then('保存未经用户确认直接放行', function () {
+  assert.ok(this.lastAsk, 'gate answered')
+  assert.equal(this.lastAsk.kind, 'allow', 'policy=never + saveApproval=auto allows the write without an ask gate')
+})
+
+Then('保存被明确拒绝且提示包含 {string} 与 {string}', function (first, second) {
+  assert.ok(this.lastAsk, 'gate answered')
+  assert.equal(this.lastAsk.kind, 'deny', 'policy=never + saveApproval=always fails explicitly')
+  assert.ok(this.lastAsk.reason.includes(first), `reason mentions ${first}: ${this.lastAsk.reason}`)
+  assert.ok(this.lastAsk.reason.includes(second), `reason mentions ${second}: ${this.lastAsk.reason}`)
+})
+
+When('会话 {string} 执行该保存', async function (sessionId) {
+  this.saveSessionId = sessionId
+  await this.callSave({ scope: 'global', desc: this.lastDesc }, this.defaultExec())
+})
+
+Then('全局记忆包含 {string} 且来源会话为 {string}', async function (desc, sessionId) {
+  const value = await this.callTool({ scope: 'global' })
+  const item = value.items.find((entry) => entry.desc === desc)
+  assert.ok(item, `global memory contains ${desc}`)
+  assert.equal(item.source.sessionId, sessionId, 'the entry records the writing session (#209)')
+  assert.ok(item.source.at > 0, 'the entry records the write timestamp (#209)')
+  const queryText = this.tool().output.render({ scope: 'global' }, value)[0].text
+  assert.ok(queryText.includes(sessionId.slice(0, 8)), `the query render carries the source session: ${queryText}`)
 })
 
 // ── 场景 11：面板拉取条目长度精简引导配置（issue #105）───────────────────

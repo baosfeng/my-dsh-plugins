@@ -54,7 +54,7 @@ export interface StoreInstance {
   flush(): Promise<void>
   dispose(): void
   list(): MemoryItem[]
-  add(item: string | Omit<MemoryItem, 'id' | 'createdAt' | 'updatedAt'>, now?: number): Promise<MemoryItem>
+  add(item: string | (Partial<MemoryItem> & { desc: string }), now?: number): Promise<MemoryItem>
   mergeAdd(candidate: unknown, now?: number): Promise<{ item: unknown; outcome: string }>
   update(id: string, changes: string | Partial<MemoryItem>, now?: number): Promise<MemoryItem | null>
   remove(id: string): Promise<boolean>

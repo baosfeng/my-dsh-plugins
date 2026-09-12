@@ -15,12 +15,18 @@
  * changes memory silently: a `tools/pre-execute` gate (`createMemorySaveGate`)
  * answers every `memory_save` call with `{ kind: 'ask', reason }`, which
  * triggers the DSH native approval flow — the write lands only after the user
- * confirms it. The `proactivePropose` config switch (default off, issue #78
- * phase) only shapes the tool description: on, the description tells the agent
- * it may propose saving memories it notices; off, the agent saves on request.
+ * confirms it. Since issue #208 the gate is **approval-policy aware**: under
+ * `policy = never` (the `danger-full-access` preset) the host auto-rejects
+ * every ask, so the configurable `saveApproval` strategy either writes
+ * directly (`'auto'`, entries still carry their session source) or denies
+ * with an actionable hint (`'always'`) — see `save-policy.ts`. Writes are
+ * stamped with the calling session id and timestamp (issue #209). The
+ * `proactivePropose` config switch (default off, issue #78 phase) only shapes
+ * the tool description: on, the description tells the agent it may propose
+ * saving memories it notices; off, the agent saves on request.
  */
 import { findProjectRoot } from 'dsh-shared'
-import { CATEGORIES } from './memory-scoring.js'
+import { CATEGORIES, makeSource } from './memory-scoring.js'
 import type { MemoryItem, StoreInstance } from './memory-types.js'
 
 /** 查询结果接口。 */
@@ -48,6 +54,8 @@ export interface StoreDeps {
 /** 配置接口。 */
 export interface ToolConfig {
   proactivePropose?: boolean
+  /** 保存确认策略（'auto' | 'always' | 'never'，默认 'auto'；issue #208 权限模式感知）。 */
+  saveApproval?: unknown
 }
 
 /** 日志接口。 */
@@ -85,8 +93,15 @@ export function renderQueryResult(value: QueryResult): string {
         ? '（项目目录未知）'
         : ''
   if (value.items.length === 0) return `没有找到${scopeLabel}记忆${where}。`
-  const lines = value.items.map((item) => `- [${item.id}] ${item.desc}`)
+  const lines = value.items.map((item) => `- [${item.id}] ${item.desc}${sourceLabelOf(item)}`)
   return `${scopeLabel}记忆${where}（${value.items.length} 条）：\n${lines.join('\n')}`
+}
+
+/** 条目的来源标注（issue #209）：有来源会话时附上会话 id 前缀，便于区分
+ *  agent 自动保存与用户手动添加；无来源（旧数据/手动）不加任何后缀。 */
+function sourceLabelOf(item: MemoryItem | undefined): string {
+  const sessionId = typeof item?.source?.sessionId === 'string' ? item.source.sessionId : ''
+  return sessionId === '' ? '' : `（来源：会话 ${sessionId.slice(0, 8)}）`
 }
 
 /** memory_query parameters (JSON Schema; the registry projects them to the model). */
@@ -266,18 +281,6 @@ const SAVE_OUTPUT = {
   required: ['scope', 'cwd', 'projectRoot', 'item'],
 }
 
-/** The save scope label used in the approval reason (zh, model/user-facing). */
-function scopeLabelOf(args: { scope?: string }): string {
-  return args?.scope === 'project' ? '项目' : '全局'
-}
-
-/** A short desc snippet for the approval reason / render text. */
-function descSnippet(desc: unknown): string {
-  const oneLine = typeof desc === 'string' ? desc.trim().split('\n')[0] : ''
-  if (oneLine === '') return '（空内容）'
-  return oneLine.length > 60 ? `${oneLine.slice(0, 60)}…` : oneLine
-}
-
 /** Render one save result as model-facing text. */
 export function renderSaveResult(value: SaveResult): string {
   const scopeLabel = value.scope === 'project' ? '项目' : '全局'
@@ -337,8 +340,10 @@ async function executeSave(
     warnSave(logger, `memory_save 拒绝空内容（sessionId=${sessionId}，操作=save）`)
     throw new Error('memory_save: desc is required and must not be empty')
   }
+  const at = Date.now()
+  const entry = { desc, source: makeSource(sessionId, at) }
   if (scope === 'global') {
-    const item = await globalStore.add(desc)
+    const item = await globalStore.add(entry, at)
     infoSave(logger, `记忆已保存（scope=global，itemId=${item.id}，sessionId=${sessionId}）`)
     return { scope, cwd: '', projectRoot: '', item }
   }
@@ -349,7 +354,7 @@ async function executeSave(
   }
   const store = await getProjectStore(cwd)
   const projectRoot = await findProjectRoot(cwd)
-  const item = await store.add(desc)
+  const item = await store.add(entry, at)
   infoSave(logger, `记忆已保存（scope=project，itemId=${item.id}，sessionId=${sessionId}，cwd=${cwd}）`)
   return { scope, cwd, projectRoot, item }
 }
@@ -370,27 +375,8 @@ function infoSave(logger: Logger | undefined, message: string): void {
 }
 
 /**
- * The `tools/pre-execute` approval gate for memory_save (issue #107).
- *
- * Waterfall contract: every listener must first `await next()` to obtain the
- * downstream decision, then decide whether to override it. Every memory_save
- * call is answered with `{ kind: 'ask', reason }`, which triggers the DSH
- * native approval flow (approval.request) — the write executes only after the
- * user confirms. All other tools pass the downstream decision through, so the
- * gate never changes unrelated tool flows (memory never changes silently).
+ * memory_save 的 `tools/pre-execute` 确认门（issue #107；#208 起权限模式感知）
+ * 实现于 `save-policy.ts`——策略/判定与该门同源。此处 re-export，让工具消费者
+ * （index.ts、测试）保持单一导入点。
  */
-export function createMemorySaveGate() {
-  return async (
-    exec: { name?: string; arguments?: { scope?: string; desc?: string } },
-    next: () => Promise<unknown>,
-  ) => {
-    const decision = await next()
-    if (exec?.name !== 'memory_save') return decision
-    const scope = scopeLabelOf(exec?.arguments ?? {})
-    const snippet = descSnippet(exec?.arguments?.desc)
-    return {
-      kind: 'ask',
-      reason: `dsh-my-memory：agent 请求保存${scope}记忆「${snippet}」。记忆绝不静默变更，请确认是否保存`,
-    }
-  }
-}
+export { createMemorySaveGate } from './save-policy.js'

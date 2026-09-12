@@ -128,6 +128,7 @@ const strings = {
         workflow: isZh() ? '工作流' : 'Workflow',
     })[category] ?? (isZh() ? '事实' : 'Fact'),
     confidenceLabel: (n) => (isZh() ? `置信度 ${n}` : `Confidence ${n}`),
+    sourceAgentLabel: (sessionId) => isZh() ? `agent 保存 · ${sessionId.slice(0, 8)}` : `saved by agent · ${sessionId.slice(0, 8)}`,
     statusConflict: () => (isZh() ? '待处理矛盾' : 'Conflict'),
     historyLabel: () => (isZh() ? '演进历史' : 'History'),
     historyEntry: (action) => isZh()
@@ -271,6 +272,9 @@ const STYLES = `
 .dsh-my-memory-conflict-badge { flex:none; display:inline-flex; align-items:center; height:16px; padding:0 5px; border-radius:4px;
   font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-state-warn-primary);
   background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 15%, transparent); }
+.dsh-my-memory-source-badge { flex:none; display:inline-flex; align-items:center; height:16px; padding:0 5px; border-radius:4px;
+  font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary);
+  background:var(--dsw-alias-bg-layer-1); border:1px solid var(--dsw-alias-border-l1); }
 .dsh-my-memory-meta-sep { color:var(--dsw-alias-label-dimmed); }
 .dsh-my-memory-history-entry { display:inline-flex; font:var(--dsw-font-xxxs-11);
   color:var(--dsw-alias-label-tertiary); }
@@ -980,6 +984,8 @@ function MetadataRow({ item, isExpanded, onToggle, }) {
         ? createElement('span', { className: 'dsh-my-memory-conf-badge' }, strings.confidenceLabel(item.confidence))
         : null, item.status === 'conflict-pending'
         ? createElement('span', { className: 'dsh-my-memory-conflict-badge' }, strings.statusConflict())
+        : null, typeof item.source?.sessionId === 'string' && item.source.sessionId !== ''
+        ? createElement('span', { className: 'dsh-my-memory-source-badge' }, strings.sourceAgentLabel(item.source.sessionId))
         : null, createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'), createElement('span', { className: 'dsh-my-memory-meta-icon' }, icon.clock(11)), relativeTime(item.updatedAt), createElement(HistoryControl, { item, isExpanded, onToggle }));
 }
 /** 待确认候选区块（issue #78）：自动提取的记忆候选，确认后写入（渐进

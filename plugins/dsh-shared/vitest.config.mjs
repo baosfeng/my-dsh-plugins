@@ -19,6 +19,8 @@ export default defineConfig({
         'lib/async.js',
         'lib/persist.js',
         'lib/jsonl.js',
+        'lib/bounded.js',
+        'lib/scheduler.js',
       ],
     },
   },

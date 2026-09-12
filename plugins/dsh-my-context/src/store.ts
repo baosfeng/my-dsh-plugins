@@ -3,19 +3,21 @@
  *
  * 会话上下文统计的内存态 + 持久化：
  *  - 按会话隔离（bySession 分桶），查询/追加都限定在单个会话内；
- *  - 每会话请求记录上限（MAX_REQUESTS_PER_SESSION，FIFO 淘汰）与告警上限
- *    （MAX_ALERTS_PER_SESSION），防无限膨胀；
- *  - 持久化 $DSH_HOME/context/context.json（防抖 500ms + 原子写
- *    tmp+rename + teardown flush），启动时异步加载（加载完成前的事件
- *    缓冲在 pending，加载后回放），重启后完整恢复。
+ *  - 内存**默认有界**（issue #198 接入 dsh-shared 有界容器原语）：
+ *    bySession 会话数上限 MAX_SESSIONS（LRU 淘汰最久未使用）、每会话请求记录
+ *    MAX_REQUESTS_PER_SESSION、告警 MAX_ALERTS_PER_SESSION、溢出 MAX_OVERFLOWS_PER_SESSION
+ *    （FIFO 淘汰），淘汰计数经 store.stats() 可观测；
+ *  - 持久化 $DSH_HOME/context/context.json（写入调度防抖 500ms + 最小间隔 1s +
+ *    串行链 + teardown flush），启动时异步加载（加载完成前的事件缓冲在 pending，
+ *    加载后回放），重启后完整恢复；store.whenPersisted() 是确定性就绪信号。
  *
- * 持久化实现见 persist.js（attachPersistence 挂载 load/persist/dispose）。
+ * 持久化实现见 persist.js（attachPersistence 挂载 load/persist/scheduler）。
  */
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { MAX_REQUESTS_PER_SESSION, MAX_ALERTS_PER_SESSION, MAX_OVERFLOWS_PER_SESSION } from './constants.js'
 import { createState, createSession, zeroUsage } from './state.js'
 import { attachPersistence } from './persist.js'
+import type { SessionState } from './state.js'
 import type { DshContext } from './types.js'
 import type { PersistHandle } from './persist.js'
 
@@ -26,9 +28,20 @@ export function stateFile(): string {
   return join(base, 'context', 'context.json')
 }
 
+/** 资源护栏统计（资源观测/测试用；store.stats() 的返回形状）。 */
+interface ContextResourceStats {
+  sessions: number
+  maxSessions: number
+  evictedSessions: number
+  evictedRequests: number
+  evictedAlerts: number
+  evictedOverflows: number
+}
+
 /**
  * 创建上下文统计存储：{ state, updateHeader, updateContext, addMessage,
- * recordRequest, startTurn, recordAlert, session, sessions, dispose }。
+ * recordRequest, startTurn, recordAlert, recordOverflow, session, sessions,
+ * stats, whenPersisted, dispose }。
  * 所有写操作在状态加载完成前缓冲（不丢事件）；dispose 冲刷未落盘数据。
  */
 export function createStore(ctx: DshContext): Record<string, unknown> {
@@ -39,8 +52,6 @@ export function createStore(ctx: DshContext): Record<string, unknown> {
     store: store as unknown as PersistHandle['store'],
     pending: [] as Array<() => void>,
     ready: false,
-    persistTimer: null as ReturnType<typeof setTimeout> | null,
-    dirtyChain: Promise.resolve(),
     seq: 0,
   }
   store.updateHeader = (sessionId: string, header: Record<string, unknown>) =>
@@ -49,7 +60,7 @@ export function createStore(ctx: DshContext): Record<string, unknown> {
     mutate(handle, sessionId, (s) => applyContext(s, info))
   store.addMessage = (sessionId: string, category: string, tokens: number) =>
     mutate(handle, sessionId, (s) => {
-      ;(s.composition as Record<string, number>)[category] += numberOr(tokens, 0)
+      ;(s.composition as unknown as Record<string, number>)[category] += numberOr(tokens, 0)
     })
   store.recordRequest = (sessionId: string, request: Record<string, unknown>) =>
     mutate(handle, sessionId, (s) => applyRequest(s, request))
@@ -60,26 +71,22 @@ export function createStore(ctx: DshContext): Record<string, unknown> {
   store.recordAlert = (sessionId: string, alert: Record<string, unknown>) =>
     mutate(handle, sessionId, (s) => {
       s.alerts.push({ id: nextId(handle), time: Date.now(), ...alert })
-      if (s.alerts.length > MAX_ALERTS_PER_SESSION) {
-        s.alerts.splice(0, s.alerts.length - MAX_ALERTS_PER_SESSION)
-      }
     })
   store.recordOverflow = (sessionId: string, overflow: Record<string, unknown>) =>
     mutate(handle, sessionId, (s) => {
       s.overflows.push({ id: nextId(handle), time: Date.now(), ...overflow })
-      if (s.overflows.length > MAX_OVERFLOWS_PER_SESSION) {
-        s.overflows.splice(0, s.overflows.length - MAX_OVERFLOWS_PER_SESSION)
-      }
     })
   store.session = (sessionId: string) => sessionOf(handle, sessionId)
   store.sessions = () => sessionsOf(handle)
+  store.stats = () => resourceStats(handle)
+  store.whenPersisted = () => handle.drainWrites?.() ?? Promise.resolve()
   store.dispose = () => dispose(handle)
   attachPersistence(handle)
   return store
 }
 
 /** 请求头更新：system/tools 构成 = 当前请求头估算（覆盖式）。 */
-function applyHeader(session: ReturnType<typeof createSession>, header: Record<string, unknown>): void {
+function applyHeader(session: SessionState, header: Record<string, unknown>): void {
   session.header = {
     system: typeof header.system === 'string' ? header.system : '',
     tools: Array.isArray(header.tools) ? header.tools : [],
@@ -93,14 +100,14 @@ function applyHeader(session: ReturnType<typeof createSession>, header: Record<s
 }
 
 /** 请求上下文更新（模型/提供方/上下文窗口）。 */
-function applyContext(session: ReturnType<typeof createSession>, info: Record<string, unknown>): void {
+function applyContext(session: SessionState, info: Record<string, unknown>): void {
   if (typeof info.model === 'string' && info.model !== '') session.model = info.model
   if (typeof info.provider === 'string' && info.provider !== '') session.provider = info.provider
   if (typeof info.contextWindow === 'number' && info.contextWindow > 0) session.contextWindow = info.contextWindow
 }
 
-/** 记录一次模型请求：累加真实 usage + 快照构成进请求记录。 */
-function applyRequest(session: ReturnType<typeof createSession>, request: Record<string, unknown>): void {
+/** 记录一次模型请求：累加真实 usage + 快照构成进请求记录（FIFO 上限由 boundList 保证）。 */
+function applyRequest(session: SessionState, request: Record<string, unknown>): void {
   const usage = request.usage as Record<string, unknown> | null | undefined
   if (usage !== null && typeof usage === 'object') {
     addUsage(session.usage, usage)
@@ -130,19 +137,13 @@ function applyRequest(session: ReturnType<typeof createSession>, request: Record
     assistant: composition.assistant,
     tool: composition.tool,
   })
-  if (session.requests.length > MAX_REQUESTS_PER_SESSION) {
-    session.requests.splice(0, session.requests.length - MAX_REQUESTS_PER_SESSION)
-  }
 }
 
-/** 查询会话统计（深拷贝，防调用方篡改内部状态）。 */
-function sessionOf(
-  handle: PersistHandle & { seq: number },
-  sessionId: string,
-): ReturnType<typeof createSession> | undefined {
-  const session = handle.store.state.bySession[sessionId]
+/** 查询会话统计（深拷贝，防调用方篡改内部状态；LRU：读取即刷新活跃序）。 */
+function sessionOf(handle: PersistHandle & { seq: number }, sessionId: string): SessionState | undefined {
+  const session = handle.store.state.bySession.get(sessionId)
   if (session === undefined) return undefined
-  return JSON.parse(JSON.stringify(session))
+  return JSON.parse(JSON.stringify(session)) as SessionState
 }
 
 /** 有统计的会话列表（按最后活动时间倒序）。 */
@@ -152,31 +153,55 @@ function sessionsOf(handle: PersistHandle & { seq: number }): Array<{
   alerts: number
   lastTime: number
 }> {
-  const entries = Object.entries(handle.store.state.bySession)
-  const list = entries
+  const list = [...handle.store.state.bySession.entries()]
     .map(([sessionId, session]) => ({
       sessionId,
-      requests: (session as ReturnType<typeof createSession>).requests.length,
-      alerts: (session as ReturnType<typeof createSession>).alerts.length,
-      lastTime: (session as ReturnType<typeof createSession>).updatedAt,
+      requests: session.requests.size,
+      alerts: session.alerts.size,
+      lastTime: session.updatedAt,
     }))
     .filter((entry) => entry.requests > 0 || entry.alerts > 0)
   list.sort((a, b) => b.lastTime - a.lastTime)
   return list
 }
 
-/** 通用变更入口：取桶 → 应用变更 → 标记时间 → 调度持久化。 */
+/** 资源护栏统计：会话数 + 各级淘汰计数（资源观测/告警用）。 */
+function resourceStats(handle: PersistHandle & { seq: number }): ContextResourceStats {
+  const bySession = handle.store.state.bySession
+  let evictedRequests = 0
+  let evictedAlerts = 0
+  let evictedOverflows = 0
+  for (const session of bySession.values()) {
+    evictedRequests += session.requests.evicted
+    evictedAlerts += session.alerts.evicted
+    evictedOverflows += session.overflows.evicted
+  }
+  return {
+    sessions: bySession.size,
+    maxSessions: bySession.maxSize,
+    evictedSessions: bySession.evicted,
+    evictedRequests,
+    evictedAlerts,
+    evictedOverflows,
+  }
+}
+
+/** 通用变更入口：取桶（LRU 刷新）→ 应用变更 → 标记时间 → 调度持久化。 */
 function mutate(
   handle: PersistHandle & { seq: number },
   sessionId: string,
-  apply: (session: ReturnType<typeof createSession>) => void,
+  apply: (session: SessionState) => void,
 ): void {
   if (typeof sessionId !== 'string' || sessionId === '') return
   const run = () => {
     const state = handle.store.state
-    const session = state.bySession[sessionId] ?? (state.bySession[sessionId] = createSession(sessionId))
-    apply(session as ReturnType<typeof createSession>)
-    ;(session as ReturnType<typeof createSession>).updatedAt = Date.now()
+    let session = state.bySession.get(sessionId)
+    if (session === undefined) {
+      session = createSession(sessionId)
+      state.bySession.set(sessionId, session)
+    }
+    apply(session)
+    session.updatedAt = Date.now()
     handle.persistSoon?.()
   }
   if (handle.ready) run()
@@ -208,16 +233,11 @@ function nextId(handle: PersistHandle & { seq: number }): number {
   return handle.seq
 }
 
-/** 卸载冲刷：清定时器 + 回放未就绪缓冲 + 立即落盘。 */
+/** 卸载冲刷：回放未就绪缓冲 + 立即强写（scheduler.flush，跳过防抖/节流窗口）。 */
 function dispose(handle: PersistHandle & { seq: number }): void {
-  if (handle.persistTimer !== null) {
-    clearTimeout(handle.persistTimer)
-    handle.persistTimer = null
-  }
   if (!handle.ready) {
     const pending = handle.pending.splice(0)
     for (const run of pending) run()
   }
-  handle.persistNow?.()
-  void handle.dirtyChain
+  void handle.persistNow?.()
 }

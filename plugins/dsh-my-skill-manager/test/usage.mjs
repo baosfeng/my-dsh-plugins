@@ -9,7 +9,8 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createUsageStore, flushUsage, recordUsage, usageFile, usageSnapshot } from '../lib/usage.js'
+import { atomicWriteStats } from 'dsh-shared'
+import { createUsageStore, drainUsage, flushUsage, recordUsage, usageFile, usageSnapshot } from '../lib/usage.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'dsm-usage-test-'))
 process.env.DSH_HOME = dir
@@ -110,4 +111,28 @@ test('corrupt or malformed usage files degrade to empty state', async () => {
   assert.equal(snap.badCount, undefined, 'non-numeric count dropped')
   assert.equal(snap.zeroCount, undefined, 'zero count dropped')
   assert.equal(snap.badSource.lastSource, 'user', 'unknown source falls back to user')
+})
+
+// ── issue #198：写入调度接入 dsh-shared createWriteScheduler ──────────────
+
+test('drainUsage：确定性就绪信号（await 后状态必已落盘，不需要 sleep 猜防抖窗口）', async () => {
+  const file = join(dir, 'u-drain.json')
+  const store = createUsageStore({ file, logger: quiet })
+  await store.readyPromise
+  recordUsage(store, 'drain-skill', 'model')
+  await drainUsage(store)
+  assert.equal(existsSync(file), true, 'await drainUsage() 后文件已存在')
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).skills['drain-skill'].count, 1, '内存与磁盘一致')
+})
+
+test('写入调度：防抖窗口内 100 次 recordUsage 合并为一次落盘（写次数与变更数解耦）', async () => {
+  const file = join(dir, 'u-coalesce.json')
+  const store = createUsageStore({ file, logger: quiet })
+  await store.readyPromise
+  const before = atomicWriteStats().writes
+  for (let i = 0; i < 100; i += 1) recordUsage(store, 'hot-skill', 'model')
+  await drainUsage(store)
+  const writes = atomicWriteStats().writes - before
+  assert.equal(writes, 1, '100 次高频 record → 1 次写（防抖合并），got ' + writes)
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).skills['hot-skill'].count, 100, '计数不丢')
 })

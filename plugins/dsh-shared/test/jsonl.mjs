@@ -5,7 +5,8 @@
  *  - 高频 append 落盘字节 ≈ 事件本体字节（无全量重写写放大）；
  *  - 防抖窗口内批量合并（写入次数与事件数解耦）；
  *  - compact 阈值回调 + 快照重置；
- *  - atomicWriteJson 可选护栏（minIntervalMs 节流 / maxBytes 拒绝巨型对象）。
+ *  - atomicWriteJson 显式护栏参数（minIntervalMs 节流 / maxBytes 拒绝巨型对象）；
+ *    默认护栏（1s/1MB）与 force/计数见 test/persist.mjs（issue #198）。
  *
  * io 失败注入的环境无关性（覆盖边界，务必按此维护）：
  *  - **不要**用 `chmod 目录 0555` 作为唯一的失败注入手段：权限位在特权环境

@@ -3,17 +3,18 @@
  *
  * 会话上下文统计的内存态 + 持久化：
  *  - 按会话隔离（bySession 分桶），查询/追加都限定在单个会话内；
- *  - 每会话请求记录上限（MAX_REQUESTS_PER_SESSION，FIFO 淘汰）与告警上限
- *    （MAX_ALERTS_PER_SESSION），防无限膨胀；
- *  - 持久化 $DSH_HOME/context/context.json（防抖 500ms + 原子写
- *    tmp+rename + teardown flush），启动时异步加载（加载完成前的事件
- *    缓冲在 pending，加载后回放），重启后完整恢复。
+ *  - 内存**默认有界**（issue #198 接入 dsh-shared 有界容器原语）：
+ *    bySession 会话数上限 MAX_SESSIONS（LRU 淘汰最久未使用）、每会话请求记录
+ *    MAX_REQUESTS_PER_SESSION、告警 MAX_ALERTS_PER_SESSION、溢出 MAX_OVERFLOWS_PER_SESSION
+ *    （FIFO 淘汰），淘汰计数经 store.stats() 可观测；
+ *  - 持久化 $DSH_HOME/context/context.json（写入调度防抖 500ms + 最小间隔 1s +
+ *    串行链 + teardown flush），启动时异步加载（加载完成前的事件缓冲在 pending，
+ *    加载后回放），重启后完整恢复；store.whenPersisted() 是确定性就绪信号。
  *
- * 持久化实现见 persist.js（attachPersistence 挂载 load/persist/dispose）。
+ * 持久化实现见 persist.js（attachPersistence 挂载 load/persist/scheduler）。
  */
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { MAX_REQUESTS_PER_SESSION, MAX_ALERTS_PER_SESSION, MAX_OVERFLOWS_PER_SESSION } from './constants.js';
 import { createState, createSession, zeroUsage } from './state.js';
 import { attachPersistence } from './persist.js';
 /** 统计数据文件：$DSH_HOME/context/context.json（fallback ~/.dsh/…）。 */
@@ -24,7 +25,8 @@ export function stateFile() {
 }
 /**
  * 创建上下文统计存储：{ state, updateHeader, updateContext, addMessage,
- * recordRequest, startTurn, recordAlert, session, sessions, dispose }。
+ * recordRequest, startTurn, recordAlert, recordOverflow, session, sessions,
+ * stats, whenPersisted, dispose }。
  * 所有写操作在状态加载完成前缓冲（不丢事件）；dispose 冲刷未落盘数据。
  */
 export function createStore(ctx) {
@@ -35,8 +37,6 @@ export function createStore(ctx) {
         store: store,
         pending: [],
         ready: false,
-        persistTimer: null,
-        dirtyChain: Promise.resolve(),
         seq: 0,
     };
     store.updateHeader = (sessionId, header) => mutate(handle, sessionId, (s) => applyHeader(s, header));
@@ -51,18 +51,14 @@ export function createStore(ctx) {
     });
     store.recordAlert = (sessionId, alert) => mutate(handle, sessionId, (s) => {
         s.alerts.push({ id: nextId(handle), time: Date.now(), ...alert });
-        if (s.alerts.length > MAX_ALERTS_PER_SESSION) {
-            s.alerts.splice(0, s.alerts.length - MAX_ALERTS_PER_SESSION);
-        }
     });
     store.recordOverflow = (sessionId, overflow) => mutate(handle, sessionId, (s) => {
         s.overflows.push({ id: nextId(handle), time: Date.now(), ...overflow });
-        if (s.overflows.length > MAX_OVERFLOWS_PER_SESSION) {
-            s.overflows.splice(0, s.overflows.length - MAX_OVERFLOWS_PER_SESSION);
-        }
     });
     store.session = (sessionId) => sessionOf(handle, sessionId);
     store.sessions = () => sessionsOf(handle);
+    store.stats = () => resourceStats(handle);
+    store.whenPersisted = () => handle.drainWrites?.() ?? Promise.resolve();
     store.dispose = () => dispose(handle);
     attachPersistence(handle);
     return store;
@@ -91,7 +87,7 @@ function applyContext(session, info) {
     if (typeof info.contextWindow === 'number' && info.contextWindow > 0)
         session.contextWindow = info.contextWindow;
 }
-/** 记录一次模型请求：累加真实 usage + 快照构成进请求记录。 */
+/** 记录一次模型请求：累加真实 usage + 快照构成进请求记录（FIFO 上限由 boundList 保证）。 */
 function applyRequest(session, request) {
     const usage = request.usage;
     if (usage !== null && typeof usage === 'object') {
@@ -122,38 +118,58 @@ function applyRequest(session, request) {
         assistant: composition.assistant,
         tool: composition.tool,
     });
-    if (session.requests.length > MAX_REQUESTS_PER_SESSION) {
-        session.requests.splice(0, session.requests.length - MAX_REQUESTS_PER_SESSION);
-    }
 }
-/** 查询会话统计（深拷贝，防调用方篡改内部状态）。 */
+/** 查询会话统计（深拷贝，防调用方篡改内部状态；LRU：读取即刷新活跃序）。 */
 function sessionOf(handle, sessionId) {
-    const session = handle.store.state.bySession[sessionId];
+    const session = handle.store.state.bySession.get(sessionId);
     if (session === undefined)
         return undefined;
     return JSON.parse(JSON.stringify(session));
 }
 /** 有统计的会话列表（按最后活动时间倒序）。 */
 function sessionsOf(handle) {
-    const entries = Object.entries(handle.store.state.bySession);
-    const list = entries
+    const list = [...handle.store.state.bySession.entries()]
         .map(([sessionId, session]) => ({
         sessionId,
-        requests: session.requests.length,
-        alerts: session.alerts.length,
+        requests: session.requests.size,
+        alerts: session.alerts.size,
         lastTime: session.updatedAt,
     }))
         .filter((entry) => entry.requests > 0 || entry.alerts > 0);
     list.sort((a, b) => b.lastTime - a.lastTime);
     return list;
 }
-/** 通用变更入口：取桶 → 应用变更 → 标记时间 → 调度持久化。 */
+/** 资源护栏统计：会话数 + 各级淘汰计数（资源观测/告警用）。 */
+function resourceStats(handle) {
+    const bySession = handle.store.state.bySession;
+    let evictedRequests = 0;
+    let evictedAlerts = 0;
+    let evictedOverflows = 0;
+    for (const session of bySession.values()) {
+        evictedRequests += session.requests.evicted;
+        evictedAlerts += session.alerts.evicted;
+        evictedOverflows += session.overflows.evicted;
+    }
+    return {
+        sessions: bySession.size,
+        maxSessions: bySession.maxSize,
+        evictedSessions: bySession.evicted,
+        evictedRequests,
+        evictedAlerts,
+        evictedOverflows,
+    };
+}
+/** 通用变更入口：取桶（LRU 刷新）→ 应用变更 → 标记时间 → 调度持久化。 */
 function mutate(handle, sessionId, apply) {
     if (typeof sessionId !== 'string' || sessionId === '')
         return;
     const run = () => {
         const state = handle.store.state;
-        const session = state.bySession[sessionId] ?? (state.bySession[sessionId] = createSession(sessionId));
+        let session = state.bySession.get(sessionId);
+        if (session === undefined) {
+            session = createSession(sessionId);
+            state.bySession.set(sessionId, session);
+        }
         apply(session);
         session.updatedAt = Date.now();
         handle.persistSoon?.();
@@ -185,17 +201,12 @@ function nextId(handle) {
     handle.seq += 1;
     return handle.seq;
 }
-/** 卸载冲刷：清定时器 + 回放未就绪缓冲 + 立即落盘。 */
+/** 卸载冲刷：回放未就绪缓冲 + 立即强写（scheduler.flush，跳过防抖/节流窗口）。 */
 function dispose(handle) {
-    if (handle.persistTimer !== null) {
-        clearTimeout(handle.persistTimer);
-        handle.persistTimer = null;
-    }
     if (!handle.ready) {
         const pending = handle.pending.splice(0);
         for (const run of pending)
             run();
     }
-    handle.persistNow?.();
-    void handle.dirtyChain;
+    void handle.persistNow?.();
 }

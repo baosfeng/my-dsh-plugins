@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createStore, stateFile } from '../lib/store.js'
 import { createState, createSession, zeroUsage } from '../lib/state.js'
+import { MAX_SESSIONS } from '../lib/constants.js'
 import { bootPlugin, settle } from './lib/helpers.mjs'
 
 const disposeAlls = []
@@ -25,7 +26,10 @@ function boot(config, opts) {
 }
 
 test('createState / createSession / zeroUsage shapes', () => {
-  assert.deepEqual(createState(), { version: 1, bySession: {} })
+  const state = createState()
+  assert.equal(state.version, 1)
+  assert.equal(state.bySession.size, 0, '空状态：bySession 为空的有界 Map（issue #198）')
+  assert.equal(state.bySession.maxSize, MAX_SESSIONS, '会话数上限显式声明')
   const session = createSession('s-1')
   assert.equal(session.sessionId, 's-1')
   assert.deepEqual(session.usage, zeroUsage())
@@ -37,8 +41,8 @@ test('createState / createSession / zeroUsage shapes', () => {
     assistant: 0,
     tool: 0,
   })
-  assert.deepEqual(session.requests, [])
-  assert.deepEqual(session.alerts, [])
+  assert.deepEqual(session.requests.items(), [], '明细数组为有界 FIFO 列表（issue #198）')
+  assert.deepEqual(session.alerts.items(), [])
 })
 
 test('store: recordRequest accumulates usage and snapshots composition', async () => {
@@ -240,7 +244,7 @@ test('store: corrupt persisted file falls back to empty state', async () => {
   const handle = boot({}, { home })
   const store = createStore(handle.ctx)
   await settle(80)
-  assert.deepEqual(store.state.bySession, {})
+  assert.equal(store.state.bySession.size, 0, '损坏文件回退空的有界 Map')
   store.dispose()
   handle.disposeAll()
 })

@@ -51,7 +51,8 @@ description: Use when 开发或修改任何持续运行逻辑（持久化/事件
 - [ ] 持久化是增量写？写放大倍数 ≤1.5？
 - [ ] 单次序列化对象大小与频率的乘积给出数字（不是我猜的）？
 - [ ] 高频路径无 O(n)/O(n²)？有维护计数器？
-- [ ] 内存峰值有上界证明（不随运行时间/事件数线性增长）？
+- [ ] 落盘调度复用 `dsh-shared` 的 `createWriteScheduler`（不是各插件自写 persistSoon/dirtyChain）？测试用 `drain()` 而非固定 sleep？
+- [ ] 内存峰值有上界证明（不随运行时间/事件数线性增长）？字典/数组用 `boundedMap`/`boundList` 显式上限 + 淘汰计数？
 - [ ] 文件大小有字节上限（compact/轮转），不是只有条目上限？
 - [ ] 写放大复现测试存在且曾先 RED 后 GREEN？
 - [ ] 验证清单勾了「资源曲线平稳」？
@@ -83,5 +84,11 @@ description: Use when 开发或修改任何持续运行逻辑（持久化/事件
 ## 参考
 
 - 插件资源安全规范（文档细则）：`docs/开发指南/插件资源安全规范.md`
+- **共享工具包原语清单 + 每个原语的适用边界与反例**：`docs/共享工具包/概述.md`（选型先读这里）
 - 事故复盘与高频插件热点清单：#126 根因、各插件写模式分级见 `docs/踩坑/插件资源占用事故复盘.md`
-- dsh-shared 原语：`plugins/dsh-shared/lib/jsonl.js`（增量 append）、`plugins/dsh-shared/lib/persist.js`（快照 + 护栏）——事件流型禁止用快照原语。
+- dsh-shared 原语（issue #198 统一收口，**默认安全**）：
+  - `plugins/dsh-shared/lib/jsonl.js` — 事件流增量 append（`jsonlAppender`）；
+  - `lib/persist.js` — 快照原子写（`atomicWriteJson`，默认 1s 节流 + 1MB 上限，`atomicWriteStats()` 计数可观测）；
+  - `lib/scheduler.js` — 写入调度（`createWriteScheduler`：防抖 + 最小间隔 + 串行 + `drain()` 确定性就绪信号，替掉测试里的固定 sleep）；
+  - `lib/bounded.js` — 有界容器（`boundedMap` LRU / `boundList` FIFO + 淘汰计数）。
+    **事件流型禁止用快照原语**；内存字典/数组必须有界；写节奏交给调度器，护栏是兜底。

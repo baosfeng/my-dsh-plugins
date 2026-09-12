@@ -1,36 +1,50 @@
 /**
  * dsh-my-context — store persistence (load / parse / atomic write).
  *
- * 挂载到 store handle 的持久化能力：
- *  - 启动异步加载 $DSH_HOME/context/context.json（结构不合法回退空状态）；
- *  - 防抖 500ms + 原子写 tmp+rename（经 dirtyChain 串行化）；
+ * 挂载到 store handle 的持久化能力（issue #198：接入 dsh-shared 资源护栏原语）：
+ *  - 启动异步加载 $DSH_HOME/context/context.json（结构不合法回退空状态；
+ *    磁盘存量会话超上限时按 updatedAt 保留最近的 MAX_SESSIONS 个）；
+ *  - 写入调度用 createWriteScheduler（防抖 500ms + 最小间隔 1s + 串行链），
+ *    `drain()` 作为确定性就绪信号（store.whenPersisted()）；
+ *  - 落盘用 atomicWriteJson（默认护栏 1s/1MB + 显式 8MB 字节上限，状态自身有界）；
  *  - 加载完成前 handle.pending 缓冲的变更在加载后回放（不丢事件）。
  */
 import { readFile } from 'node:fs/promises'
-import { atomicWriteJson } from 'dsh-shared'
+import { atomicWriteJson, createWriteScheduler } from 'dsh-shared'
 import { createState, createSession, zeroUsage, zeroComposition } from './state.js'
-import { MAX_REQUESTS_PER_SESSION, MAX_ALERTS_PER_SESSION, MAX_OVERFLOWS_PER_SESSION } from './constants.js'
-
-/** 防抖间隔（ms）。 */
-const PERSIST_DEBOUNCE_MS = 500
+import type { ContextState, SessionState } from './state.js'
+import { PERSIST_DEBOUNCE_MS, PERSIST_MAX_BYTES, PERSIST_MIN_INTERVAL_MS } from './constants.js'
 
 /** Handle 类型定义 */
 export interface PersistHandle {
   file: string
-  store: { state: ReturnType<typeof createState> }
+  store: { state: ContextState }
   ctx: { logger: { warn: (msg: string) => void; info: (msg: string) => void; error: (msg: string) => void } }
   pending: Array<() => void>
   ready: boolean
-  persistTimer: ReturnType<typeof setTimeout> | null
-  dirtyChain: Promise<void>
   persistSoon?: () => void
-  persistNow?: () => void
+  /** 立即强写（teardown 冲刷）；返回落盘 Promise。 */
+  persistNow?: () => Promise<void>
+  /** 等待所有挂起写入完成（确定性就绪信号）。 */
+  drainWrites?: () => Promise<void>
 }
 
 /** 挂载持久化到 store handle（load 异步启动；dispose 冲刷）。 */
 export function attachPersistence(handle: PersistHandle): void {
-  handle.persistSoon = () => persistSoon(handle)
-  handle.persistNow = () => persistNow(handle)
+  const scheduler = createWriteScheduler({
+    debounceMs: PERSIST_DEBOUNCE_MS,
+    minIntervalMs: PERSIST_MIN_INTERVAL_MS,
+    logger: handle.ctx.logger,
+    prefix: '[dsh-my-context]',
+    write: ({ force }) =>
+      atomicWriteJson(handle.file, handle.store.state, handle.ctx.logger, '[dsh-my-context]', {
+        force,
+        maxBytes: PERSIST_MAX_BYTES,
+      }),
+  })
+  handle.persistSoon = () => scheduler.schedule()
+  handle.persistNow = () => scheduler.flush()
+  handle.drainWrites = () => scheduler.drain()
   void readFile(handle.file, 'utf8')
     .then((text) => onLoaded(handle, text))
     .catch(() => onLoaded(handle, ''))
@@ -46,27 +60,35 @@ function onLoaded(handle: PersistHandle, text: string): void {
   handle.ready = true
   const pending = handle.pending.splice(0)
   for (const run of pending) run()
-  if (pending.length > 0 || parsed !== undefined) persistSoon(handle)
+  if (pending.length > 0 || parsed !== undefined) handle.persistSoon?.()
 }
 
 /** 把当前 state 中已产生的会话合并进磁盘状态（防 dispose 回放后覆盖丢失）。 */
-function mergeCurrent(current: ReturnType<typeof createState>, parsed: ReturnType<typeof createState>): void {
-  for (const [sessionId, session] of Object.entries(current.bySession)) {
-    if ((session as Record<string, unknown>).updatedAt === 0) continue
-    parsed.bySession[sessionId] = session
+function mergeCurrent(current: ContextState, parsed: ContextState): void {
+  for (const [sessionId, session] of current.bySession) {
+    if (session.updatedAt === 0) continue
+    parsed.bySession.set(sessionId, session)
   }
 }
 
+/** 根结构校验：必须是含 bySession 对象的 JSON 对象（数组也算对象，与原实现一致）。 */
+function hasSessionsRoot(parsed: unknown): parsed is { bySession: Record<string, unknown> } {
+  if (parsed === null || parsed === undefined || typeof parsed !== 'object') return false
+  const bySession = (parsed as { bySession?: unknown }).bySession
+  return bySession !== null && typeof bySession === 'object'
+}
+
 /** 解析已持久化的状态（结构不合法时回退空状态）。 */
-function parseLoaded(text: string): ReturnType<typeof createState> | undefined {
+function parseLoaded(text: string): ContextState | undefined {
   if (text === undefined || text === null || text === '') return undefined
   try {
-    const parsed = JSON.parse(text)
-    if (parsed === null || typeof parsed !== 'object' || typeof parsed.bySession !== 'object') return undefined
+    const parsed: unknown = JSON.parse(text)
+    if (!hasSessionsRoot(parsed)) return undefined
     const state = createState()
-    for (const [sessionId, raw] of Object.entries(parsed.bySession)) {
-      const session = normalizeSession(sessionId, raw)
-      if (session !== undefined) state.bySession[sessionId] = session
+    // 按 updatedAt 升序灌入：Map 迭代序 = 活跃序，超上限时淘汰最旧会话
+    // （磁盘上可能残留旧版本写入的无限会话，加载即收敛到上限内）。
+    for (const session of collectSessions(parsed.bySession)) {
+      state.bySession.set(session.sessionId, session)
     }
     return state
   } catch {
@@ -74,8 +96,19 @@ function parseLoaded(text: string): ReturnType<typeof createState> | undefined {
   }
 }
 
-/** 会话结构规整：过滤非法字段，回退默认值。 */
-function normalizeSession(sessionId: string, raw: unknown): ReturnType<typeof createSession> | undefined {
+/** 规整磁盘会话并按 updatedAt 升序返回。 */
+function collectSessions(raw: Record<string, unknown>): SessionState[] {
+  const sessions: SessionState[] = []
+  for (const [sessionId, value] of Object.entries(raw)) {
+    const session = normalizeSession(sessionId, value)
+    if (session !== undefined) sessions.push(session)
+  }
+  sessions.sort((a, b) => a.updatedAt - b.updatedAt)
+  return sessions
+}
+
+/** 会话结构规整：过滤非法字段，回退默认值；明细数组有界（FIFO 保留最新 N 条）。 */
+function normalizeSession(sessionId: string, raw: unknown): SessionState | undefined {
   if (raw === null || typeof raw !== 'object') return undefined
   const session = createSession(sessionId)
   const rawObj = raw as Record<string, unknown>
@@ -87,13 +120,13 @@ function normalizeSession(sessionId: string, raw: unknown): ReturnType<typeof cr
   copyObject(session, rawObj, 'turnUsage', { turn: 0, ...zeroUsage() })
   copyObject(session, rawObj, 'composition', zeroComposition())
   copyObject(session, rawObj, 'header', session.header)
-  if (Array.isArray(rawObj.requests)) session.requests = rawObj.requests.slice(-MAX_REQUESTS_PER_SESSION)
-  if (Array.isArray(rawObj.alerts)) session.alerts = rawObj.alerts.slice(-MAX_ALERTS_PER_SESSION)
-  if (Array.isArray(rawObj.overflows)) session.overflows = rawObj.overflows.slice(-MAX_OVERFLOWS_PER_SESSION)
+  if (Array.isArray(rawObj.requests)) session.requests.pushAll(rawObj.requests)
+  if (Array.isArray(rawObj.alerts)) session.alerts.pushAll(rawObj.alerts)
+  if (Array.isArray(rawObj.overflows)) session.overflows.pushAll(rawObj.overflows)
   // 旧版本数据没有 lastPromptTokens：从最近一次请求快照回填（`prompt` 字段同上）。
   copyNumber(session, rawObj, 'lastPromptTokens')
   if (session.lastPromptTokens === 0) {
-    const last = session.requests[session.requests.length - 1]
+    const last = session.requests.items()[session.requests.size - 1]
     if (last !== undefined && typeof (last as Record<string, unknown>).prompt === 'number')
       session.lastPromptTokens = (last as Record<string, unknown>).prompt as number
   }
@@ -101,38 +134,30 @@ function normalizeSession(sessionId: string, raw: unknown): ReturnType<typeof cr
 }
 
 /** 复制字符串字段（非字符串忽略）。 */
-function copyString(target: Record<string, unknown>, raw: Record<string, unknown>, key: string): void {
-  if (typeof raw[key] === 'string') target[key] = raw[key]
+function copyString(target: SessionState, raw: Record<string, unknown>, key: 'model' | 'provider'): void {
+  if (typeof raw[key] === 'string') target[key] = raw[key] as string
 }
 
 /** 复制数字字段（非数字忽略）。 */
-function copyNumber(target: Record<string, unknown>, raw: Record<string, unknown>, key: string): void {
-  if (typeof raw[key] === 'number') target[key] = raw[key]
+function copyNumber(
+  target: SessionState,
+  raw: Record<string, unknown>,
+  key: 'contextWindow' | 'updatedAt' | 'lastPromptTokens',
+): void {
+  if (typeof raw[key] === 'number') target[key] = raw[key] as number
 }
 
 /** 复制对象字段（非对象忽略；默认值兜底）。 */
 function copyObject(
-  target: Record<string, unknown>,
+  target: SessionState,
   raw: Record<string, unknown>,
-  key: string,
+  key: 'usage' | 'turnUsage' | 'composition' | 'header',
   fallback: Record<string, unknown>,
 ): void {
-  if (typeof raw[key] === 'object' && raw[key] !== null)
-    target[key] = { ...fallback, ...(raw[key] as Record<string, unknown>) }
-}
-
-/** 原子写当前状态（经 dirtyChain 串行化；自动建目录）。 */
-function persistNow(handle: PersistHandle): void {
-  handle.dirtyChain = handle.dirtyChain
-    .then(() => atomicWriteJson(handle.file, handle.store.state, handle.ctx.logger, '[dsh-my-context]'))
-    .catch(() => {}) as unknown as Promise<void>
-}
-
-/** 防抖调度持久化。 */
-function persistSoon(handle: PersistHandle): void {
-  if (handle.persistTimer !== null) return
-  handle.persistTimer = setTimeout(() => {
-    handle.persistTimer = null
-    persistNow(handle)
-  }, PERSIST_DEBOUNCE_MS)
+  if (typeof raw[key] === 'object' && raw[key] !== null) {
+    ;(target as unknown as Record<string, unknown>)[key] = {
+      ...fallback,
+      ...(raw[key] as Record<string, unknown>),
+    }
+  }
 }

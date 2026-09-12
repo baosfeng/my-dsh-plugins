@@ -72,6 +72,9 @@ window.__ModuleLoader__.load({
     // ── DOM 表格渲染：div.dsh-md-render-table-scroll > table.dsh-md-render-table ──
     /*__PART_RENDER__*/
 
+    // ── 上下文注入块 markdown 渲染（issue #196）────────────────────
+    /*__PART_CONTEXT_MARKDOWN__*/
+
     // ── 扫描器：MutationObserver 跟随流式渲染 ──────────────────────
     /*__PART_SCANNER__*/
 

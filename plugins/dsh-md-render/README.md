@@ -27,6 +27,7 @@
 - **表头 / 边框样式**：表头底色 + 加粗、行分隔线、斑马纹与 hover 行反馈，样式走 DSH 语义 token（`--dsw-alias-*` / `--dsw-font-*`），深浅主题自适应。
 - **兼容 dsh-think-zh-expand**：think-zh-expand 跨插件 require 本插件 MarkdownView（`dsh.client.external`）；识别其渲染器产出的 `div.tzx-md` 容器；已渲染的表格（`table.tzx-table`）不重复处理。
 - **兼容内置 MarkdownText**：识别内置渲染器的 `div.md-table-wide` 宽表格容器，不干扰已渲染表格。
+- **上下文注入块 markdown 渲染**（issue #196）：宿主 `ContextBody` 把上下文注入正文（**子 agent 回传消息** / AGENTS.md 等 workspace 指令 / 回忆注入）渲染为 `pre[data-context-text="true"]` **纯文本**（`white-space:pre-wrap`），其中的 markdown 全部以原文显示（`**粗体**`、`- 列表`、`| 表格 |`）。本插件在 DOM 层把这类块渲染为真正的 markdown（标题 / 粗体 / 行内代码 / 列表 / 引用 / 代码块 / 表格），复用 MarkdownView 的输出类名，样式与既有增强一致；原文 `pre` 置 `hidden` 保留（宿主仍持有节点，可随时回退）。
 - **流式兼容**：MutationObserver 跟随消息流式渲染；流式中的容器（`[data-streaming]` 祖先）等内容稳定后再处理。
 - **一键复制**（issue #74）：每个代码块（按钮默认右下角 hover 显示，可配置为头部与语言标签同排）+ 整段 markdown 内容右下角有复制按钮（hover 才显示，不遮挡内容），点击一键复制代码内容（不含语言标记）/ 整段纯文本（不含按钮文案）；复制成功按钮短暂显示「已复制」；流式渲染中不显示按钮，避免复制到半截内容。
 - **代码块语法高亮**（issue #80）：常见语言（javascript/typescript/python/json/bash/markdown/yaml 等）的关键字/字符串/注释/数字/函数名着色（CSS 类 `dsh-md-render-tok-*` + 可配置主题色板，深浅主题自适应）；自实现轻量 tokenizer（零依赖）；未知语言（如 mermaid）回退纯文本；超长代码块（>500 行）跳过高亮防卡顿。
@@ -43,6 +44,7 @@
 - **公式结构解析器**（`lib/parts/math.part.js` + `math-symbols.part.js` + `math-render.part.js`，issue #82）：轻量 LaTeX 子集自实现（tokenize `\命令` / `{组}` / `^` `_` + 递归下降）——`\frac{a}{b}` → `span.dsh-md-render-frac`（num/den 上下 + 分数线）、`\sqrt{x}` → `-sqrt`（√ + 顶部根号线）、`x^2` / `x_i` → `-supsub`（base + 上下标）、`\sum_{i=1}^{n}` / `\int_0^1` → `-big`（∑/∫ + 上下限）、`\alpha` 等命令 → Unicode 符号；**回退**：结构命令参数不完整（`\frac{a}{b`）→ 整个公式保持原文（不报错、不误伤），未知命令当文本保留；受 `mathStructures` 开关门控（#84），关闭时公式结构不渲染（退回轻量样式/原文）。
 - **代码块增强**（`lib/parts/highlight.part.js` tokenizer + `codeblock.part.js` 渲染，issue #80 / #146）：tokenizer 为纯函数单遍扫描，按语言规则拆分 token 输出 `<span class="dsh-md-render-tok-*">`；`div.md-code-block` 内新增头部 `div.dsh-md-render-code-head`（语言名 + 复制按钮位），`code` 内按行输出 `div.dsh-md-render-code-line`（行号经 CSS counter `::before` 显示，不进入文本内容）；未知语言/超长代码块（>500 行）跳过高亮；行号开关 `config.lineNumbers` 经 `apply(ctx)` 读取，`setRenderOptions` 可编程切换。代码主题（issue #146）：高亮代码块携带 `data-theme` 属性选择 `styles.part.js` 内置色板（5 套主题 × 深浅变体），关闭高亮/未知语言/超长时无 `data-theme`（保持 DSH 默认样式）。
 - **DOM 层表格增强**（`lib/parts/detect|render|scanner.part.js`）：扫描 `[data-conversation-scroll]` 内的 `div.tzx-md`（MarkdownView 输出）与 `div.md-table-wide`（内置 MarkdownText 的宽表格容器）容器；对容器内以纯文本段落（`p.tzx-p`）形式存在的表格文本，用增强检测规则解析（表头 + 分隔行 + 数据行 + 对齐），将段落替换为 `div.dsh-md-render-table-scroll > table.dsh-md-render-table`（thead/tbody/逐列对齐）；单元格内的 `**bold**` / `` `code` `` / `*em*` / `[link]` 行内格式重新渲染。
+- **上下文注入块渲染**（`lib/parts/context-markdown.part.js`，issue #196）：扫描 `pre[data-context-text="true"]`（宿主 ContextBody 的稳定 data 契约，随会话内容变化由 MutationObserver 兜底重扫）；纯文本 → DOM markdown（`renderContextMarkdown`，块级顺序：围栏 / 标题 / 引用 / 列表 / 段落；段落命中 `parseTable` 时直接复用 `renderTable`，不标准表格同样渲染）。**与 React 共存的约束**：不修改 `pre` 的子结构（宿主 `<pre>{text}</pre>` 的文本 diff 会整体改写 textContent），只在 `pre` 之前插入渲染容器并置 `hidden`；容器带 `data-signature`（长度 + djb2 哈希），重扫时签名一致且容器在位则跳过（幂等），宿主重建节点冲掉容器后由兜底重扫重建；超过 200 000 字符的块跳过，避免单块渲染卡顿。
 - **构建**（`scripts/build.mjs`）：把 `lib/parts/*.part.js` 片段拼接进 `lib/client.src.js` 模板，生成 `lib/client.js`（DSH 实际服务的单一 `__ModuleLoader__` bundle）。
 - **Server 端**（`lib/index.js` + `lib/routes.js`）：提供应用层配置（issue #84 / #146）——`apply(ctx, config)` 读取全部增强开关（默认开启）+ 选择项（`copyButtonPosition` / `codeTheme`，`SELECT_KEYS` 校验合法枚举）；`GET/PUT /md/api/config` 配置读写（loopback 信任围栏），保存写入 profile patch 文件（复用 dsh-shared 配置持久化），DSH watchUserPatches 热重载。
 
@@ -85,6 +87,10 @@ npm test
 ```
 
 > `lib/client.js` 是构建产物，**必须提交**（CI 只跑 `node --check` + 测试，不执行构建）。
+
+## 上游修复建议（issue #196）
+
+上下文注入正文由宿主 `@deepseek-ai/dsh-client-ui-chat` 的 `ContextBody` 渲染为纯文本（bundle 内实证：`<pre class="ZkiH0q_text" data-context-text="true">` + CSS `white-space:pre-wrap`）。**子 agent 回传消息走的就是这条路径**（`send_message` → agent-message 注入），所以子 agent 消息里的 markdown 从来不会渲染。建议上游对该类注入正文改用内置 `MarkdownText`（或按注入来源分流：relay / agent-message 渲染 markdown，工具结果类保持纯文本）。本插件的 DOM 接管是**等价绕过**：原文 `pre` 保留、置 hidden，可随上游修复一起下线。
 
 ## 已知限制
 

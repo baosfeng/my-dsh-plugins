@@ -15,6 +15,10 @@
 
 ## [Unreleased]
 
+### 文档
+
+- **`MarkdownView` 声明为公共 API（issue #186 P2）**：它是本插件唯一对外承诺的跨插件 API（dsh-think-zh-expand 硬依赖、dsh-my-plugin-manager 降级路径），但此前 README 未做 semver 承诺、无契约测试。新增 `test/markdown-view-contract.mjs`（导出存在 + `{text}` props 稳定 + 渲染输出结构 + 公共类名清单 + 文档同步）与 README「公共 API 契约」一节：导出 / props / 输出类名清单的破坏性变更 = major，新增可选 props 或新类名 = minor；其余 exports 为内部与测试面，不承诺。
+
 ### 修复
 
 - **#196 子 agent 消息与上下文注入块不渲染 markdown**：宿主 `ContextBody` 把上下文注入正文（子 agent 回传消息 / workspace 指令注入）渲染为 `pre[data-context-text="true"]` 纯文本，`**粗体**` / 列表 / 表格全部以原文显示，且既有 DOM 增强只认 `div.tzx-md` / `div.md-table-wide` + `p.tzx-p`，零介入。新增 `context-markdown` 片段：把这类块渲染为 markdown 结构（标题 / 粗体 / 行内代码 / 列表 / 引用 / 代码块 / 表格），复用 MarkdownView 类名与样式；原文 `pre` 置 `hidden` 保留，渲染容器带签名幂等（宿主 React 重渲染冲掉后由 MutationObserver 兜底重建），> 200 000 字符跳过。防回归测试 `test/context-markdown.mjs`（先 RED 后 GREEN）。

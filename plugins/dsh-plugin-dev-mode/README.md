@@ -2,6 +2,10 @@
 
 [![插件生态](https://img.shields.io/badge/插件生态-topic%20dsh--agent--presets-4d6bfe)](https://github.com/topics/dsh-agent-presets)
 
+<div align="center">
+  <img alt="DSH Web 模式选择器（隔离实例 + 真实浏览器）：安装 preset 后出现「插件开发模式」条目（当前模式「PTC 模式」旁）" src="./assets/preset-selector.png" width="720" />
+</div>
+
 **DSH 插件开发模式**：一个 agent preset 资产包。它向 DSH 提供一个名为「插件开发模式」（`plugin-dev`）的 Agent 预设——**唯一启用 Cordis 工具集**（`cordis_inspect_*` / `cordis_define` / `cordis_run` / `cordis_stop` / `cordis_undefine`）的模式，用于开发、调试和维护 DSH 插件与动态 Cordis 插件。
 
 > 这不是运行时插件（无需挂载到 profile），而是 Agent preset 配置资产：安装后可在 DSH Web 的模式选择器中切换使用。

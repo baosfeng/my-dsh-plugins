@@ -101,7 +101,7 @@ plugins/<name>/                  # 插件目录（小写连字符命名，如 ds
 - 插件行 id（cordis.patch.yml）用短横线小写（如 `file-activity`）。
 - **client 注册的 tab/viewer id 统一用 `包名:xxx` 前缀**（如 `dsh-file-activity:recent`），不与内置 id 冲突。
 - 每个插件**不需要**独立 .gitignore（根 .gitignore 统一覆盖 node_modules / .DS_Store / .dsh-vision-toolkit 等）。
-- 新插件 README 必须中文，顶部放插件生态 badge（见现有插件）与**真实运行效果图**；骨架阶段截图可用占位注释，发版前补真实截图。**效果图规范（强制）**：① 每插件 README 顶部放 1–3 张真实运行截图（用 `verifying-dsh-plugins` 隔离实例 + 浏览器端到端截图，非示意图）；② 截图存 `<插件>/assets/`，README 用 `./assets/xxx.png` 相对路径引用；③ 新插件发版前必须补图；④ **功能更新 / UI 变化 / 交互新增时必须同步更新/补充截图**，与代码改动一起提交、一起发版（`scripts/release.mjs` 会校验 README 引用了且 `assets/` 含截图，缺失则发版失败）。
+- 新插件 README 必须中文，顶部放插件生态 badge（见现有插件）与**真实运行效果图**；骨架阶段截图可用占位注释，发版前补真实截图。**效果图规范（强制）**：① 每插件 README 顶部放 1–3 张真实运行截图（用 `verifying-dsh-plugins` 隔离实例 + 浏览器端到端截图，非示意图）；② 截图存 `<插件>/assets/`，README 用 `./assets/xxx.png` 相对路径引用；③ 新插件发版前必须补图；④ **功能更新 / UI 变化 / 交互新增时必须同步更新/补充截图**，与代码改动一起提交、一起发版（`scripts/release.mjs` 会校验 README 引用了且 `assets/` 含截图，缺失则发版失败）；⑤ **确无用户可见 UI 的插件走显式声明豁免，不写插件名单**：`package.json` 的 `dsh.ui=false` + 非空 `dsh.uiReason`（写明为什么没有可截图的产物；`dsh.ui=false` 与 `dsh.client` 互斥——声明无 UI 却提供 client 端会被判为非法声明，必须补真实截图）；判据实现 `scripts/lib/screenshot-gate.mjs`、单测 `scripts/test/screenshot-gate.test.mjs`，发版输出与批量汇总显式列出「已豁免」插件与理由（豁免可见、可审计）。
 - **需求清单（强制）**：每个插件在仓库 `docs/<模块>/需求清单.md` 维护一份需求清单，把用户明确的需求逐条列出（编号 R1/R2/…，注明验证方式），**易碎需求（重启恢复、会话隔离、持久化不丢失、数据不串）必须有专门测试断言**。开发/修改本插件前逐条对照，开发后逐条回归（见 [构建与测试 · 需求回归](../../docs/开发指南/构建与测试.md#需求回归强制要求)）。
 
 ## 开发流程

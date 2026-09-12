@@ -2,7 +2,7 @@
 
 [![插件生态](https://img.shields.io/badge/插件生态-topic%20dsh-4d6bfe)](https://github.com/topics/dsh)
 
-<!-- 纯 server 插件（无 client / 无 UI），不产生界面截图；生效证据见「验证是否生效」一节。 -->
+> **无 UI 说明**：本插件是纯 server 插件（无 client / 无面板 / 无设置页），**不产生界面截图**——README 效果图门禁按 `package.json` 的 `dsh.ui=false` + `dsh.uiReason` **显式豁免**（issue #227）。生效证据（真实出站请求头）见下文 [验证是否生效](#验证是否生效) 一节。
 
 **DSH opencode 会话头注入插件**：让走 `opencode` / `opencode-go` 路由的推理请求自动携带
 `x-opencode-session`（该会话的稳定 id），修复 OpenCode Go 网关自 2026-09-05 起对缺失该头的请求返回

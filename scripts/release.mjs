@@ -4,6 +4,10 @@
  *
  *   node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push] [--skip-real-verify --skip-reason "<理由>"]
  *
+ * --all-checks（仅 dry-run，issue #227）：静态门禁（peer / 跨插件依赖 / CHANGELOG /
+ * 测试 / README 效果图）全部跑完再统一报告失败项，避免 fail-fast 让后续门禁
+ * 「从未执行」而掩盖缺陷。默认（含 --push）仍是首个失败即停。
+ *
  * Steps (dry-run by default; --push performs git commit + tag + push):
  *   1.  validate plugins/<name> exists and package.json version parses
  *   1b. validate peerDependencies.cordis declared and consistent across plugins
@@ -46,6 +50,7 @@ import {
   tagConflictHint,
 } from './lib/release-checks.mjs'
 import { verifyPostRelease } from './lib/post-release.mjs'
+import { checkScreenshotGate } from './lib/screenshot-gate.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -64,6 +69,9 @@ for (let i = 0; i < args.length; i += 1) {
   names.push(arg)
 }
 const push = args.includes('--push')
+// --all-checks：静态门禁失败项收集模式（仅 dry-run）。fail-fast 会让"首个失败"
+// 掩盖后续门禁从未执行的事实（issue #227 就是依赖门禁掩盖效果图门禁）。
+const allChecks = args.includes('--all-checks')
 const skipRealVerify = args.includes('--skip-real-verify')
 const skipReasonIdx = args.indexOf('--skip-reason')
 const skipReason = skipReasonIdx >= 0 ? args[skipReasonIdx + 1] || '' : ''
@@ -78,7 +86,9 @@ const BUMP_TYPES = new Set(['patch', 'minor', 'major'])
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 if (names.length === 0) {
-  console.error('usage: node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push]')
+  console.error(
+    'usage: node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push] [--all-checks]',
+  )
   process.exit(2)
 }
 // Validate all plugin names
@@ -99,6 +109,10 @@ if (bump !== '' && !BUMP_TYPES.has(bump)) {
   console.error(`✗ --bump 必须是 patch | minor | major，收到: ${bump}`)
   process.exit(2)
 }
+if (push && allChecks) {
+  console.error('✗ --all-checks 只用于 dry-run 静态门禁全景；发布必须走 fail-fast 完整门禁（含真实环境验证）')
+  process.exit(2)
+}
 
 /**
  * Process a single plugin for release.
@@ -114,6 +128,14 @@ async function processPlugin(name) {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
   let bumped = false
   let version = pkg.version
+
+  // 静态门禁失败收集（issue #227）：默认模式首个失败即停（行为不变）；
+  // --all-checks 记录失败后继续跑其余可独立判定的门禁，最后统一报告。
+  const gate = { failures: [] }
+  const gateFail = (msg) => {
+    console.error(`✗ ${msg}`)
+    gate.failures.push(msg)
+  }
 
   // version 会拼入 git tag/push 命令，先严格校验（CodeQL
   // js/shell-command-injection-from-environment；bump 生成的 next 必为 x.y.z）
@@ -205,19 +227,17 @@ async function processPlugin(name) {
   // peerDependencies.cordis 是正常的——用 package.json 的 dsh.kind=library
   // 显式标记豁免 cordis peer 检查（其余检查照旧）。
   const isLibrary = pkg.dsh?.kind === 'library'
+  const cordisPeer = peers.cordis
   if (isLibrary) {
     console.log('- 共享工具包（dsh.kind=library）豁免 peerDependencies.cordis 检查（非 DSH 插件）')
+  } else if (cordisPeer === undefined) {
+    gateFail(`${name}/package.json 缺少 peerDependencies.cordis（DSH 插件必须声明）`)
+    if (!allChecks) return { ok: false, name, version, bumped, changed: false }
+  } else if (!String(cordisPeer).match(/^[\^~]?(\d+)/)?.[1]) {
+    gateFail(`${name}/package.json peerDependencies.cordis 无法解析 major 版本: ${cordisPeer}`)
+    if (!allChecks) return { ok: false, name, version, bumped, changed: false }
   } else {
-    const cordisPeer = peers.cordis
-    if (!cordisPeer) {
-      console.error(`✗ ${name}/package.json 缺少 peerDependencies.cordis（DSH 插件必须声明）`)
-      return { ok: false, name, version, bumped, changed: false }
-    }
-    const cordisMajor = String(cordisPeer).match(/^[\^~]?(\d+)/)?.[1]
-    if (!cordisMajor) {
-      console.error(`✗ ${name}/package.json peerDependencies.cordis 无法解析 major 版本: ${cordisPeer}`)
-      return { ok: false, name, version, bumped, changed: false }
-    }
+    const cordisMajor = String(cordisPeer).match(/^[\^~]?(\d+)/)[1]
     const mismatched = []
     for (const entry of readdirSync(join(root, 'plugins'))) {
       if (entry === name || !existsSync(join(root, 'plugins', entry, 'package.json'))) continue
@@ -226,10 +246,11 @@ async function processPlugin(name) {
       if (otherMajor && otherMajor !== cordisMajor) mismatched.push(`${entry} (cordis ^${otherMajor})`)
     }
     if (mismatched.length > 0) {
-      console.error(`✗ ${name} peerDependencies.cordis ^${cordisMajor} 与以下插件不一致: ${mismatched.join(', ')}`)
-      return { ok: false, name, version, bumped, changed: false }
+      gateFail(`${name} peerDependencies.cordis ^${cordisMajor} 与以下插件不一致: ${mismatched.join(', ')}`)
+      if (!allChecks) return { ok: false, name, version, bumped, changed: false }
+    } else {
+      console.log(`✓ peerDependencies.cordis ^${cordisMajor} 已声明且与其他插件一致`)
     }
-    console.log(`✓ peerDependencies.cordis ^${cordisMajor} 已声明且与其他插件一致`)
   }
 
   // 1c. 跨插件依赖校验（issue #39 + #72）：client/server 端 require('dsh-*') 必须声明
@@ -244,11 +265,11 @@ async function processPlugin(name) {
   const declared = { ...(pkg.peerDependencies || {}), ...(pkg.dependencies || {}) }
   const undeclared = findUndeclaredPeers(requires, declared)
   if (undeclared.length > 0) {
-    console.error(`✗ 源码 require 了以下 dsh-* 包但未在 peerDependencies/dependencies 声明: ${undeclared.join(', ')}`)
+    gateFail(`源码 require 了以下 dsh-* 包但未在 peerDependencies/dependencies 声明: ${undeclared.join(', ')}`)
     console.error(
       `  修复: 在 plugins/${name}/package.json 的 peerDependencies 或 dependencies 中声明（如 "dsh-shared": "^0.1.0"）`,
     )
-    return { ok: false, name, version, bumped, changed: false }
+    if (!allChecks) return { ok: false, name, version, bumped, changed: false }
   }
   if (requires.length > 0) console.log(`✓ 跨插件依赖已声明: ${requires.join(', ')}`)
 
@@ -298,9 +319,9 @@ async function processPlugin(name) {
   }
   const depProblems = findUnpublishedDeps(declared, pluginIndex, isPublished, isTagged)
   if (depProblems.length > 0) {
-    for (const p of depProblems) console.error(`✗ ${p.reason}`)
+    for (const p of depProblems) gateFail(p.reason)
     console.error('  修复: 先发版依赖包（node scripts/release.mjs <依赖目录> --push），再发本插件')
-    return { ok: false, name, version, bumped, changed: false }
+    if (!allChecks) return { ok: false, name, version, bumped, changed: false }
   }
   const inRepoDeps = Object.keys(declared).filter((d) => pluginIndex.has(d))
   if (inRepoDeps.length > 0)
@@ -309,8 +330,8 @@ async function processPlugin(name) {
   // 2. CHANGELOG section
   const changelog = readFileSync(join(pluginDir, 'CHANGELOG.md'), 'utf8')
   if (!changelog.includes(`## [${version}]`)) {
-    console.error(`✗ CHANGELOG.md has no "## [${version}]" section`)
-    return { ok: false, name, version, bumped, changed: false }
+    gateFail(`CHANGELOG.md has no "## [${version}]" section`)
+    if (!allChecks) return { ok: false, name, version, bumped, changed: false }
   }
   console.log(`✓ CHANGELOG has [${version}] section`)
 
@@ -319,8 +340,8 @@ async function processPlugin(name) {
     execSync('npm test', { cwd: pluginDir, stdio: 'inherit' })
     console.log('✓ tests passed')
   } catch {
-    console.error('✗ tests failed — fix before releasing')
-    return { ok: false, name, version, bumped, changed: false }
+    gateFail('tests failed — fix before releasing')
+    if (!allChecks) return { ok: false, name, version, bumped, changed: false }
   }
 
   // 3c. 真实环境验证（issue #39 + #67）：发版前必须跑 verify-real-profile.mjs
@@ -330,7 +351,11 @@ async function processPlugin(name) {
   // 验证通过后生成「发版前功能级验证清单」（--checklist），并校验功能级项
   // 全部勾选（--check）——未全勾选即阻断发版（issue #67 门禁）。
   const skipReal = skipRealVerify || process.env.GITHUB_ACTIONS === 'true' || process.env.DSH_SKIP_REAL_VERIFY === '1'
-  if (skipReal) {
+  if (allChecks) {
+    // --all-checks 只做静态门禁全景：真实环境验证需要隔离实例 + 功能级清单勾选，
+    // 属动态门禁，不在此模式执行（发布路径仍走完整 fail-fast 门禁）。
+    console.log('- 跳过真实环境验证（--all-checks：静态门禁全景模式，不做动态验证）')
+  } else if (skipReal) {
     if (skipRealVerify && skipReason === '') {
       console.error('✗ --skip-real-verify 必须带 --skip-reason "<理由>" 显式记录跳过原因（issue #67）')
       return { ok: false, name, version, bumped, changed: false }
@@ -376,35 +401,25 @@ async function processPlugin(name) {
   }
 
   // 3b. README 效果图校验：发版前必须引用真实截图（见效果图规范）。
-  // 支持 ./assets/<file> 相对路径与 https://unpkg.com/<pkg>/assets/<file> 绝对 URL，
-  // 均提取文件名校验 assets/ 下真实存在。共享工具包（dsh.kind=library）无 UI，
-  // 豁免截图校验。
+  // 判定抽到 scripts/lib/screenshot-gate.mjs（issue #227）：支持 ./assets/<file> 与
+  // unpkg 绝对 URL，文件必须真实存在；无用户可见 UI 的插件按**显式声明**豁免
+  // （dsh.kind=library 或 dsh.ui=false + 非空 dsh.uiReason），豁免结果显式打印——
+  // 不写插件名单、不悄悄放行（判据单测见 scripts/test/screenshot-gate.test.mjs）。
   const plugReadmePath = join(pluginDir, 'README.md')
-  const assetsDir = join(pluginDir, 'assets')
-  let screenshotRefs = 0
-  if (isLibrary) {
-    console.log('- 共享工具包（dsh.kind=library）豁免 README 效果图校验（无 UI）')
-  } else if (existsSync(plugReadmePath)) {
-    const plugReadme = readFileSync(plugReadmePath, 'utf8')
-    // markdown 图片与 HTML <img> 的两种引用形态
-    const imgRe =
-      /(?:!\[[^\]]*\]\((?:\.\/assets\/([^)]+)|https:\/\/unpkg\.com\/[^"/]+\/assets\/([^)]+))\)|<img[^>]*src="(?:\.\/assets\/([^"]+)|https:\/\/unpkg\.com\/[^"/]+\/assets\/([^"]+))")/g
-    const refs = []
-    for (const m of plugReadme.matchAll(imgRe)) refs.push(m[1] || m[2] || m[3] || m[4])
-    screenshotRefs = refs.length
-    const missingFiles = refs.filter((f) => !existsSync(join(assetsDir, f)))
-    if (refs.length > 0 && missingFiles.length > 0) {
-      console.error(`✗ ${name}/README.md references missing screenshots: ${missingFiles.join(', ')}`)
-      return { ok: false, name, version, bumped, changed: false }
-    }
+  const gateResult = checkScreenshotGate({
+    name,
+    pkg,
+    readme: existsSync(plugReadmePath) ? readFileSync(plugReadmePath, 'utf8') : null,
+    assetExists: (file) => existsSync(join(pluginDir, 'assets', file)),
+  })
+  if (gateResult.status === 'fail') {
+    gateFail(gateResult.detail)
+    if (!allChecks) return { ok: false, name, version, bumped, changed: false }
+  } else if (gateResult.status === 'exempt') {
+    console.log(`- ${gateResult.detail}`)
+  } else {
+    console.log(`✓ ${gateResult.detail}`)
   }
-  if (screenshotRefs === 0 && !isLibrary) {
-    console.error(
-      `✗ ${name}/README.md has no real screenshot reference (./assets/... or unpkg URL) — update README + assets/ per the 效果图规范`,
-    )
-    return { ok: false, name, version, bumped, changed: false }
-  }
-  if (!isLibrary) console.log(`✓ README references ${screenshotRefs} screenshot(s) under assets/`)
 
   // 4. sync versions in root README.md and AGENTS.md
   const readmePath = join(root, 'README.md')
@@ -451,7 +466,22 @@ async function processPlugin(name) {
     writeFileSync(agentsPath, agents)
   }
 
-  return { ok: true, name, version, bumped, changed, pkgName: pkg.name }
+  // --all-checks：静态门禁有失败时不改仓库文件（只报告失败项，便于一次看全）；
+  // 默认模式下失败早已在对应门禁处 return，不会走到这里。
+  if (gate.failures.length > 0) {
+    return { ok: false, name, version, bumped, changed: false, failures: gate.failures }
+  }
+
+  return {
+    ok: true,
+    name,
+    version,
+    bumped,
+    changed,
+    pkgName: pkg.name,
+    // 效果图豁免留痕（issue #227）：发版汇总显式列出「已豁免」插件与理由。
+    screenshotExemption: gateResult.status === 'exempt' ? gateResult.exemption : null,
+  }
 }
 
 // ── Main batch processing ──────────────────────────────────────────────────
@@ -577,10 +607,24 @@ console.log(`Total plugins: ${names.length}`)
 console.log(`Succeeded: ${succeeded.length}`)
 console.log(`Failed: ${failed.length}`)
 
+// README 效果图门禁豁免留痕（issue #227）：无 UI 产物而显式豁免的插件在此列出，
+// 避免「悄悄放行」——理由来自 package.json 的 dsh.uiReason / dsh.kind=library。
+const exempted = results.filter((result) => result.screenshotExemption)
+if (exempted.length > 0) {
+  console.log('\nREADME 效果图门禁已豁免（显式声明无 UI 产物）:')
+  for (const result of exempted) {
+    console.log(`  - ${result.name}: ${result.screenshotExemption.reason}`)
+  }
+}
+
 if (failed.length > 0) {
   console.log('\nFailed plugins:')
   for (const result of failed) {
     console.log(`  ✗ ${result.name} (version: ${result.version})`)
+    // --all-checks：统一列出该插件的全部静态门禁失败项（不 fail-fast 掩盖后续门禁）
+    for (const [index, message] of (result.failures ?? []).entries()) {
+      console.log(`      ${index + 1}. ${message}`)
+    }
   }
   process.exit(1)
 }

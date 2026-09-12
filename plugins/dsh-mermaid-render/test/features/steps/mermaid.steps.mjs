@@ -8,6 +8,8 @@
 import { Given, When, Then, After, setWorldConstructor } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+// host 半（issue #194：system-prompt 注入）——与 client 半同一份产物入口
+import { apply as hostApply } from '../../../lib/index.js'
 
 function makeElement(tag, attrs = {}) {
   const el = {
@@ -227,6 +229,32 @@ class World {
     return buttons
   }
 
+  /**
+   * 挂载 host 半（issue #194）：mock systemPrompt 服务捕获 section 注册，
+   * mock logger 捕获挂载日志。config 省略即默认配置。
+   */
+  mountHost(config) {
+    this.hostSections = []
+    this.hostLogs = []
+    const world = this
+    hostApply(
+      {
+        systemPrompt: {
+          section(options) {
+            world.hostSections.push(options)
+            return () => {}
+          },
+        },
+        logger: {
+          info: (message) => world.hostLogs.push(message),
+          warn: (message) => world.hostLogs.push(message),
+          error: (message) => world.hostLogs.push(message),
+        },
+      },
+      config,
+    )
+  }
+
   /** 按 aria-label 点击卡片内按钮（导出场景用）。 */
   clickExportButton(label) {
     const btn = this.cardButtons().find((b) => (b.props['aria-label'] || '') === label)
@@ -305,4 +333,43 @@ When('用户点击复制代码按钮', async function () {
 Then('剪贴板写入 mermaid 源码', async function () {
   assert.ok(this.clipboardWrites.length === 1, 'clipboard.writeText called')
   assert.equal(this.clipboardWrites[0], 'flowchart TD\n  A --> B', 'copied mermaid source')
+})
+
+// ── 系统提示词注入（issue #194）──────────────────────────────────────────
+Given('渲染插件 host 半以默认配置挂载', async function () {
+  this.mountHost(undefined)
+})
+
+Given('渲染插件 host 半以注入开关关闭的方式挂载', async function () {
+  this.mountHost({ injectPrompt: false })
+})
+
+Then('系统提示词注册了 mermaid 能力说明段', async function () {
+  assert.equal(this.hostSections.length, 1, 'exactly one prompt section registered')
+  assert.equal(this.hostSections[0].name, 'dsh-mermaid-render', 'section name')
+  assert.ok(Number.isFinite(this.hostSections[0].order), 'order is a finite number')
+  assert.ok(this.hostSections[0].text.includes('原生支持'), 'text states native mermaid support')
+})
+
+Then('说明文本含围栏语言标识 mermaid 与七类图表关键字', async function () {
+  const text = this.hostSections[0].text
+  assert.ok(text.includes('```mermaid'), 'fenced language tag present')
+  for (const kind of ['flowchart', 'sequenceDiagram', 'stateDiagram-v2', 'classDiagram', 'erDiagram', 'gantt', 'pie']) {
+    assert.ok(text.includes(kind), 'diagram keyword present: ' + kind)
+  }
+  assert.ok(text.includes('引号') && text.includes('嵌套'), 'common pitfalls covered')
+  assert.ok(text.includes('原样显示'), 'render-failure fallback described')
+})
+
+Then('说明文本长度不超过 500 字符', async function () {
+  assert.ok(this.hostSections[0].text.length <= 500, 'text length = ' + this.hostSections[0].text.length)
+})
+
+Then('系统提示词未注册任何说明段', async function () {
+  assert.equal(this.hostSections.length, 0, 'no prompt section registered when the toggle is off')
+})
+
+Then('插件仍记录挂载日志', async function () {
+  assert.ok(this.hostLogs.length >= 1, 'mount log emitted')
+  assert.ok(this.hostLogs[0].startsWith('[dsh-mermaid-render]'), 'log carries plugin prefix')
 })

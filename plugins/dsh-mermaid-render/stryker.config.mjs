@@ -7,7 +7,7 @@
 export default {
   testRunner: 'vitest',
   vitest: { configFile: 'vitest.config.mjs' },
-  mutate: ['lib/index.js'],
+  mutate: ['lib/index.js', 'lib/prompt.js'],
   mutator: {
     excludedMutations: ['StringLiteral', 'TemplateLiteral'],
   },

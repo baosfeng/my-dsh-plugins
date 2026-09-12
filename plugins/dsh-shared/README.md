@@ -1,7 +1,7 @@
 # dsh-shared
 
 DSH 插件共享工具包：多插件共用的 server 端工具，消除复制粘贴（issue #45）；
-资源护栏（上限 / 节流 / 淘汰 / 写入调度）统一收口在这里（issue #198）。
+资源护栏（上限 / 节流 / 淘汰 / 写入调度 / 降级看门狗）统一收口在这里（issue #198）。
 
 ## 功能
 
@@ -14,16 +14,17 @@ DSH 插件共享工具包：多插件共用的 server 端工具，消除复制�
 - **jsonl 增量追加** `jsonlAppender(file, options)`（+ `parseJsonlLines`）— 防写放大持久化原语：`append(obj)` 只写新行（防抖批量 appendFile）、行数达 `compactLines` 阈值回调 `onCompact` 宿主做 `snapshot(lines)` 原子快照、`dispose()` 冲刷、`stats()` 暴露写入字节/次数。**高频事件持久化必须用它**（9/2 审计插件写放大事故的根治模式）。
 - **有界容器** `boundedMap(options)` / `boundList(options)` — 上限 + 淘汰语义 + 淘汰计数：`boundedMap` 默认 LRU（`policy: 'fifo'` 可选）、`boundList` 为 FIFO；两者都暴露 `evicted` 计数与 `onEvict` 回调，`toJSON()` / `items()` 保持「普通对象 / 普通数组」的磁盘 JSON 形态（替换既有字段不改变持久化格式），maxSize 必须为正整数（fail-fast）。
 - **写入调度** `createWriteScheduler(options)` — 防抖（`debounceMs` 默认 500ms）+ 最小间隔（`minIntervalMs` 默认 1000ms）+ 串行链 + `drain()`（**确定性就绪信号**：await 后所有挂起写入都已结束，测试/teardown 不再 sleep 猜时间）+ `flush()`（退出前立即强写，force 透传）+ 写回调返回 `false`（被护栏拒绝）时自动重排（`maxWriteRetries` 默认 3，耗尽 warn 放弃）；`stats()` 暴露 `writes/coalesced/retried/failures`。
+- **资源看门狗** `createResourceGuard(options)`（+ `createProcessSampler` / `evaluateResourceAlerts` / `shouldEnterDegrade` / `shouldExitDegrade` / `DEFAULT_RESOURCE_LIMITS`）— 采样 → 阈值判定 → **连续确认降级/恢复**：采样源由宿主注入（`collect(previous, now)`，必须**同步且廉价**），连续 `enterConfirmCount`（默认 3）次**关键阈值**（write-rate / file-size）超限 → `onDegrade`（宿主执行降级动作，如停止落盘）；连续 `exitConfirmCount` 次正常 → `onRecover`（宿主恢复 + 全量快照补齐降级窗口）。历史 ring buffer 默认 60 样本（内存有界），`stats()` 暴露 `samples/degraded/recovered/alerts`，`now` 可注入（确定性测试），回调异常只 warn。CPU/内存超限**只告警不降级**（正常大请求峰值会误伤落盘）。
 
 ## 原语选型（先读边界，再动手）
 
-| 数据形态                        | 该用的原语                                         | 反例（错误用法）                                                                                                           |
-| ------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| 事件流（高频追加、每条独立）    | `jsonlAppender`                                    | ❌ 用 `atomicWriteJson` 每次事件全量重写审计日志（写放大数百~数千倍，#126 事故根因）                                       |
-| 状态快照（低频全量、数据汇总）  | `createWriteScheduler` + `atomicWriteJson`         | ❌ 裸 `setTimeout` 防抖 + 手写 dirtyChain（各插件重复且易漏节流）；❌ 用 `jsonlAppender` 存需要整体覆盖的配置              |
-| 内存字典 / 列表要有上界         | `boundedMap` / `boundList`                         | ❌ 无上限的 `Record`/`Map`/`数组`（会话表、路径表随运行时长线性增长）；❌ 用有界容器存**审计明细**（淘汰即丢数据，应落盘） |
-| 需要 LRU 的数组                 | `boundedMap`                                       | ❌ 对数组做「访问即移动到尾部」（O(n)，热路径性能陷阱）                                                                    |
-| 降级 / 看门狗（采样→判定→停写） | 第三批 `createResourceGuard`（issue #198，未落地） | ❌ 各插件抄一份 resource-monitor（当前 observability 仍为插件内实现）                                                      |
+| 数据形态                        | 该用的原语                                     | 反例（错误用法）                                                                                                                                                                              |
+| ------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 事件流（高频追加、每条独立）    | `jsonlAppender`                                | ❌ 用 `atomicWriteJson` 每次事件全量重写审计日志（写放大数百~数千倍，#126 事故根因）                                                                                                          |
+| 状态快照（低频全量、数据汇总）  | `createWriteScheduler` + `atomicWriteJson`     | ❌ 裸 `setTimeout` 防抖 + 手写 dirtyChain（各插件重复且易漏节流）；❌ 用 `jsonlAppender` 存需要整体覆盖的配置                                                                                 |
+| 内存字典 / 列表要有上界         | `boundedMap` / `boundList`                     | ❌ 无上限的 `Record`/`Map`/`数组`（会话表、路径表随运行时长线性增长）；❌ 用有界容器存**审计明细**（淘汰即丢数据，应落盘）                                                                    |
+| 需要 LRU 的数组                 | `boundedMap`                                   | ❌ 对数组做「访问即移动到尾部」（O(n)，热路径性能陷阱）                                                                                                                                       |
+| 降级 / 看门狗（采样→判定→停写） | `createResourceGuard` + `createProcessSampler` | ❌ 各插件抄一份 resource-monitor（observability 已改为消费方，仍私有实现=重复且口径漂移）；❌ 拿「告警」当「降级」（CPU/内存峰值误停落盘）；❌ 把递归扫目录塞进 `collect`（监控自身成为热点） |
 
 **适用边界与反例的完整说明**：`docs/共享工具包/概述.md`；资源预算五维评审口径见 `skills/resource-budget-review/SKILL.md` 与 `docs/开发指南/插件资源安全规范.md`。
 
@@ -47,6 +48,16 @@ const scheduler = createWriteScheduler({
 scheduler.schedule() // 变更后调度（防抖合并）
 await scheduler.drain() // 就绪信号：确定已落盘（测试用它替掉 sleep）
 await scheduler.flush() // teardown：立即强写
+
+// 资源看门狗：超限自动降级（宿主只提供采样源与降级动作）
+const guard = createResourceGuard({
+  collect: createProcessSampler({ file: auditFile }), // CPU/RSS/文件字节/写入速率
+  onDegrade: () => store.setPersistEnabled(false), // L2 停止落盘（内存有界）
+  onRecover: () => store.setPersistEnabled(true), // 恢复 + 全量快照补齐
+  logger: ctx.logger,
+})
+guard.start() // 15s 采样；guard.sample() 可手动采样（routes 查询用）
+guard.stats() // { samples, degraded, recovered, alerts }
 ```
 
 ## 依赖方
@@ -61,7 +72,7 @@ await scheduler.flush() // teardown：立即强写
 }
 ```
 
-已接入资源护栏的依赖方（issue #198 第一/二批）：`dsh-my-context`（`boundedMap` 会话数上限 + `boundList` 明细数组 + `createWriteScheduler`）、`dsh-my-skill-manager`（`createWriteScheduler`）、`dsh-my-notify`（`atomicWriteJson` 保存路径 `force`）、`dsh-file-activity`（#197 已用 `jsonlAppender`）。
+已接入资源护栏的依赖方（issue #198 第三批新增：`dsh-my-observability` 改用 `createResourceGuard`（私有看门狗删除）、`dsh-task-reliability` 写路径异步化、`dsh-my-guard` 落盘改用 `atomicWriteJson` 紧凑快照）。第一/二批：`dsh-my-context`（`boundedMap` 会话数上限 + `boundList` 明细数组 + `createWriteScheduler`）、`dsh-my-skill-manager`（`createWriteScheduler`）、`dsh-my-notify`（`atomicWriteJson` 保存路径 `force`）、`dsh-file-activity`（#197 已用 `jsonlAppender`）。
 
 ## 开发
 

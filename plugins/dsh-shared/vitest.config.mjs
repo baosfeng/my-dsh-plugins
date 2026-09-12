@@ -21,6 +21,9 @@ export default defineConfig({
         'lib/jsonl.js',
         'lib/bounded.js',
         'lib/scheduler.js',
+        'lib/resource-guard.js',
+        'lib/resource-rules.js',
+        // lib/resource-guard-types.js 是纯类型模块（编译产物为空），不计入覆盖率
       ],
     },
   },

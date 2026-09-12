@@ -1,129 +1,75 @@
 /**
- * dsh-my-observability — 资源采样监控 + 降级看门狗。
+ * dsh-my-observability — 资源采样监控 + 降级看门狗（**dsh-shared 原语的消费方**）。
  *
- * 每 intervalMs（默认 15s）采样本进程 CPU/内存与审计文件大小/写入速率，
- * 保留最近 MAX_HISTORY 个样本（ring buffer），并做阈值评估（resource-rules）。
- * 用途：让「写放大/资源超限」在运行期当小时可见（9/2 事故复盘结论：
- * 15 小时 300GB 写入零监控是事故未被及时发现的主因）。
+ * 第三批（issue #198）：本文件原本是插件私有的看门狗实现（采样 → 阈值判定 →
+ * 连续确认降级/恢复），现已改为 `dsh-shared` 的 `createResourceGuard` 消费方——
+ * 抽出来的原语必须有人真的用，否则等于没抽。
  *
- * 降级看门狗（issue #127 资源占用防护）：关键阈值（写放大/文件字节）连续
- * DEGRADE_CONFIRM_COUNT 次超限 → 触发 onDegrade 回调（宿主降级：停落盘等）；
- * 连续 RECOVER_CONFIRM_COUNT 次正常 → 触发 onRecover 回调（宿主恢复 + 全量快照）。
- * 判定为纯函数（resource-rules.shouldEnterDegrade/shouldExitDegrade），可单测。
+ * 保留的插件职责（宿主特有，不进 shared）：
+ *  - **采样源**：`createProcessSampler`（CPU/RSS/审计文件字节/写入速率）
+ *    + `$DSH_HOME` 目录总字节这个插件特有维度；
+ *  - **降级动作**：由 index.ts 的 onDegrade/onRecover 决定（停落盘 / 恢复 + 全量快照）。
  *
- * 采样自身开销：15s 一次 process.cpuUsage/memoryUsage + fs.stat（<0.01% CPU、
- * 零分配大对象），远低于「监控不能放大被监控对象」的护栏（resource-budget-review）。
+ * 行为等价（改造前后逐条对齐，见 test/host-resource-guard.mjs）：
+ *  - 采样间隔默认 15s；历史 ring buffer 60 样本；
+ *  - 首个样本无窗口 → 不告警、不进历史，仅作后续窗口的 prev；
+ *  - 关键阈值只有 write-rate / file-size；CPU/内存超限只告警不降级；
+ *  - 连续 3 次超限 → 降级；连续 3 次正常 → 恢复；降级中不重复触发回调。
+ *
+ * 资源开销：采样 15s 一次、<0.01% CPU；history 固定 60 条（不随运行时长增长）。
+ * 已知存量代价：`homeBytes` 维度每次采样递归扫 $DSH_HOME（O(文件数)），
+ * 新接入方不要复制这个维度（见 shared README 的采样边界）。
  */
-import { statSync, readdirSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { evaluateResourceAlerts, shouldEnterDegrade, shouldExitDegrade, DEFAULT_LIMITS } from './resource-rules.js';
+import { createProcessSampler, createResourceGuard } from 'dsh-shared';
 import { jsonlFile } from './store-persist.js';
 const DEFAULT_INTERVAL_MS = 15000;
-const MAX_HISTORY = 60;
-/** 创建资源监控器：{ sample, start, stop }。options: intervalMs / limits / onDegrade / onRecover。 */
+/** 创建资源监控器：{ sample, start, stop, isDegraded }（薄适配 dsh-shared 看门狗）。 */
 export function createResourceMonitor(ctx, options = {}) {
+    const home = process.env.DSH_HOME || join(homedir(), '.dsh');
+    const collect = options.collect ?? defaultSampler(home);
+    // 配置容错保持与改造前一致：非法 intervalMs 回退默认（而不是 fail-fast 让插件起不来）
     const intervalMs = Number.isFinite(options.intervalMs) && options.intervalMs > 0
         ? options.intervalMs
         : DEFAULT_INTERVAL_MS;
-    const limits = { ...DEFAULT_LIMITS, ...(options.limits ?? {}) };
-    const onDegrade = typeof options.onDegrade === 'function' ? options.onDegrade : null;
-    const onRecover = typeof options.onRecover === 'function' ? options.onRecover : null;
-    const state = {
-        timer: null,
+    const guard = createResourceGuard({
+        collect,
+        limits: options.limits,
+        intervalMs,
+        historySize: options.historySize,
+        enterConfirmCount: options.enterConfirmCount,
+        exitConfirmCount: options.exitConfirmCount,
+        now: options.now,
+        onDegrade: (snapshot) => options.onDegrade?.(snapshot),
+        onRecover: (snapshot) => options.onRecover?.(snapshot),
+        logger: ctxLogger(ctx),
+        prefix: '[dsh-my-observability]',
+    });
+    return {
+        sample: () => guard.sample(),
+        start: () => guard.start(),
+        stop: () => guard.stop(),
+        isDegraded: () => guard.isDegraded(),
+        history: () => guard.history(),
+        stats: () => guard.stats(),
+        guard: () => guard,
+    };
+}
+/** 取宿主的 logger（回调异常 warn 用）；不可用则返回 undefined（看门狗不因此失效）。 */
+function ctxLogger(ctx) {
+    const logger = ctx?.logger;
+    if (typeof logger?.warn !== 'function')
+        return undefined;
+    return { warn: (message) => logger.warn?.(message) };
+}
+/** 默认采样源：进程维度 + 审计文件字节/写入速率 + $DSH_HOME 总字节。 */
+function defaultSampler(home) {
+    return createProcessSampler({
         file: jsonlFile(),
-        dshHome: process.env.DSH_HOME || join(homedir(), '.dsh'),
-        lastSample: null,
-        lastCpu: process.cpuUsage(),
-        history: [],
-        degraded: false,
-    };
-    const monitor = {
-        sample: () => sample(state, limits, onDegrade, onRecover),
-        start: () => startMonitor(state, intervalMs, monitor),
-        stop: () => stopMonitor(state),
-        isDegraded: () => state.degraded,
-    };
-    return monitor;
-}
-/** 采样一次：CPU 使用率（窗口内 user+sys）/RSS/审计文件字节/写入速率 + 告警 + 降级判定。 */
-function sample(state, limits, onDegrade, onRecover) {
-    const now = Date.now();
-    const cpu = process.cpuUsage();
-    const cpuDelta = cpu.user - state.lastCpu.user + (cpu.system - state.lastCpu.system); // µs
-    state.lastCpu = cpu;
-    const mem = process.memoryUsage();
-    const memoryBytes = mem.rss;
-    let fileBytes = 0;
-    try {
-        fileBytes = statSync(state.file).size;
-    }
-    catch {
-        // 审计文件尚未创建：字节为 0
-    }
-    let homeBytes = 0;
-    try {
-        homeBytes = dshHomeSize(state.dshHome);
-    }
-    catch {
-        // $DSH_HOME 不可达
-    }
-    const prev = state.lastSample;
-    if (prev !== null) {
-        const deltaMs = Math.max(now - prev.time, 1);
-        // CPU 单核折算：cpuDelta(µs) / deltaMs(ms) / 1000 → 百分比（×100）
-        const cpuPercent = (cpuDelta / 1000 / deltaMs) * 100;
-        const byteDelta = fileBytes - (prev.fileBytes ?? 0);
-        const writeRateBytesPerHour = byteDelta > 0 ? (byteDelta / deltaMs) * 3600 * 1000 : 0;
-        const sample = { time: now, cpuPercent, memoryBytes, fileBytes, writeRateBytesPerHour, homeBytes };
-        state.history.push(sample);
-        if (state.history.length > MAX_HISTORY)
-            state.history.splice(0, state.history.length - MAX_HISTORY);
-        state.lastSample = sample;
-        updateDegradeState(state, limits, onDegrade, onRecover);
-        return {
-            ...sample,
-            history: [...state.history],
-            alerts: evaluateResourceAlerts(sample, limits),
-            degraded: state.degraded,
-        };
-    }
-    state.lastSample = { time: now, fileBytes, memoryBytes, cpuPercent: 0, writeRateBytesPerHour: 0, homeBytes };
-    return { ...state.lastSample, history: [...state.history], alerts: [], degraded: state.degraded };
-}
-/**
- * 降级状态机：未降级且连续超限 → 进入降级（回调）；已降级且连续正常 → 退出降级（回调）。
- * 判定纯函数见 resource-rules.js；本函数只持有状态并触发宿主回调。
- */
-function updateDegradeState(state, limits, onDegrade, onRecover) {
-    if (!state.degraded) {
-        if (shouldEnterDegrade(state.history, limits)) {
-            state.degraded = true;
-            onDegrade?.();
-        }
-    }
-    else if (shouldExitDegrade(state.history, limits)) {
-        state.degraded = false;
-        onRecover?.();
-    }
-}
-/** 启动周期采样（幂等）。 */
-function startMonitor(state, intervalMs, monitor) {
-    if (state.timer === null) {
-        state.timer = setInterval(() => {
-            void monitor.sample();
-        }, intervalMs);
-        if (state.timer.unref)
-            state.timer.unref();
-    }
-    return state.timer;
-}
-/** 停止采样（幂等）。 */
-function stopMonitor(state) {
-    if (state.timer !== null) {
-        clearInterval(state.timer);
-        state.timer = null;
-    }
+        extra: () => ({ homeBytes: dshHomeSize(home) }),
+    });
 }
 /** 递归计算目录总字节（best-effort，跳过不可达文件）。 */
 function dshHomeSize(dir) {

@@ -9,7 +9,8 @@
  * lib/client.js is the build artifact and MUST be committed (CI runs
  * node --check + tests against it; it does not run this build).
  *
- * 三处注入（模板 / 共享图标 / 内联引擎）都走 spliceExactlyOnce（scripts/splice.mjs）：
+ * 三处注入（模板 / 共享部件 / 内联引擎）都走 spliceExactlyOnce
+ * （dsh-shared/scripts/splice.mjs，issue #186 P2 起为共享辅助）：
  * 占位符必须**恰好一处**，
  * 0 处与 ≥2 处都显式失败。历史教训（issue #185，两个耦合缺陷）：
  *  1. 模板注释里曾出现与引擎占位符同形的字面量 → replaceAll 把两处都注入同一份
@@ -23,7 +24,11 @@ import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { isPlaceholderOutsideComments, readAssignedStringLiteral, spliceExactlyOnce } from './splice.mjs'
+import {
+  isPlaceholderOutsideComments,
+  readAssignedStringLiteral,
+  spliceExactlyOnce,
+} from '../../dsh-shared/scripts/splice.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD_DIR = join(root, 'lib/.client-build')
@@ -37,6 +42,10 @@ const sharedPartsDir = join(root, '..', 'dsh-shared', 'client-parts')
 const BUNDLE_PLACEHOLDER = '/*__CLIENT_BUNDLE__*/'
 /** 共享图标注入位（模板 factory 体内，图标声明处）。 */
 const ICONS_PLACEHOLDER = '/*__PART_ICONS__*/'
+/** 共享样式注入样板位（issue #186 P2）。 */
+const STYLE_PLACEHOLDER = '/*__PART_STYLE_TAG__*/'
+/** 共享 DOM 扫描骨架位（issue #186 P2）。 */
+const SCANNER_PLACEHOLDER = '/*__PART_DOM_SCANNER__*/'
 /** 图标实现的锚点声明：注入后必须**恰好一份**（内联副本复活即失败）。 */
 const ICONS_ANCHOR = 'const ICON_STROKE = 1.8'
 /**
@@ -70,6 +79,22 @@ out = spliceExactlyOnce(out, ICONS_PLACEHOLDER, iconsPart)
 const iconDecls = out.split(ICONS_ANCHOR).length - 1
 if (iconDecls !== 1) {
   throw new Error(`client.js must contain exactly 1 "${ICONS_ANCHOR}" declaration, found ${iconDecls}`)
+}
+
+// 2c. 注入共享样式样板 / DOM 扫描骨架（dsh-shared/client-parts，issue #186 P2）
+//     同款两道防线；锚点断言保证注入的是**函数声明**而不是注释里的文本。
+for (const [placeholder, file, anchor] of [
+  [STYLE_PLACEHOLDER, 'style-tag.part.js', 'function installStyles('],
+  [SCANNER_PLACEHOLDER, 'dom-scanner.part.js', 'function installDomScanner('],
+]) {
+  if (!isPlaceholderOutsideComments(template, placeholder)) {
+    throw new Error(`${placeholder} in client.src.js is inside a comment: injection would \`succeed\` but the shared part would never be declared`)
+  }
+  out = spliceExactlyOnce(out, placeholder, readFileSync(join(sharedPartsDir, file), 'utf8'))
+  const decls = out.split(anchor).length - 1
+  if (decls !== 1) {
+    throw new Error(`client.js must contain exactly 1 "${anchor}" declaration, found ${decls}`)
+  }
 }
 
 // 3. 注入 vendored mermaid engine (base64)：产物内必须只出现一份

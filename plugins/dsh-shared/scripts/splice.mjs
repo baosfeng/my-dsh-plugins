@@ -1,4 +1,8 @@
 /**
+ * 构建期占位符注入辅助（共享单一来源，issue #186 P2 从 dsh-mermaid-render 收口）：
+ * 消费方是各插件的 `scripts/build.mjs`（Node ESM，可直接 import —— 与
+ * `client-parts/` 的 client 片段不同，本文件不进浏览器 bundle）。
+ *
  * 占位符精确注入：把 `replacement` 写到 `source` 里**恰好一处**占位符位置。
  *
  * 为什么不用 replaceAll（issue #185）：

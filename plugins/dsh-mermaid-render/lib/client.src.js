@@ -31,6 +31,10 @@ window.__ModuleLoader__.load({
     const { createElement } = require('react')
     /*__PART_ICONS__*/
 
+    // ── 共享样式注入 / DOM 扫描骨架（dsh-shared/client-parts，#186 P2）──
+    /*__PART_STYLE_TAG__*/
+    /*__PART_DOM_SCANNER__*/
+
     // ── TS 编译产物（scripts/build.mjs 注入）────────────────────────
     /*__CLIENT_BUNDLE__*/
 

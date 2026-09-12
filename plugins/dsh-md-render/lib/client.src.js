@@ -79,11 +79,15 @@ window.__ModuleLoader__.load({
     /*__PART_DOM_MARKDOWN__*/
     /*__PART_TRAJECTORY_MARKDOWN__*/
 
-    // ── 扫描器：MutationObserver 跟随流式渲染 ──────────────────────
+    // ── 扫描器骨架（共享，issue #186 P2）+ MutationObserver 跟随流式渲染 ──
+    /*__PART_DOM_SCANNER__*/
     /*__PART_SCANNER__*/
 
     // ── 样式（DSH 语义 token，随 activation 注入）──────────────────
     /*__PART_STYLES__*/
+
+    // ── 共享样式注入（dsh-shared/client-parts，issue #186 P2）────────
+    /*__PART_STYLE_TAG__*/
 
     // ── 设置页（issue #84）：渲染增强开关可视化 + 保存 ───────────────
     /*__PART_SETTINGS__*/

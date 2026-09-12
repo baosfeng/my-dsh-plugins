@@ -19,7 +19,11 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { isPlaceholderOutsideComments, readAssignedStringLiteral, spliceExactlyOnce } from '../scripts/splice.mjs'
+import {
+  isPlaceholderOutsideComments,
+  readAssignedStringLiteral,
+  spliceExactlyOnce,
+} from '../../dsh-shared/scripts/splice.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const TEMPLATE_PATH = join(ROOT, 'lib/client.src.js')

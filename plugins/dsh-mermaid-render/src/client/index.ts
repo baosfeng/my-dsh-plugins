@@ -649,7 +649,6 @@ const MAX_SOURCE_CHARS = 50000
 
 const mounts = new Map<Element, MountedCard>()
 const streamWatch = new Map<Element, StreamWatch>()
-let scanRound = 0
 
 /** Mount a card into the block, hiding the original <pre>. */
 function mountCard(block: Element, source: string): void {
@@ -758,33 +757,22 @@ function scanBlocks(root: Element, round: number): void {
   }
 }
 
-/** Observe the body; returns the observer disposer. */
+/** Observe the body; returns the observer disposer.
+ *  骨架（观察配置 / 批次轮次 / disposer）来自共享 part（dsh-shared/client-parts/
+ *  dom-scanner.part.js，与 dsh-md-render 同一份，issue #186 P2）。本插件的特有策略
+ *  全部留在 scanBlocks / considerBlock 内 —— 围栏闭合判定、离屏渲染、自愈卸载；
+ *  teardown 清理经 onTeardown 注入，行为与原 disposer 一致。 */
 function installScanner(): () => void {
-  scanBlocks(document.body, ++scanRound)
-
-  const observer = new MutationObserver((mutations) => {
-    const round = ++scanRound
-    for (const mutation of mutations) {
-      for (const added of mutation.addedNodes) {
-        if (added.nodeType === 1) scanBlocks(added as Element, round)
-      }
-    }
-    // Fallback re-scan: rescan every known scroll container
-    for (const sc of document.querySelectorAll('[data-conversation-scroll]')) {
-      scanBlocks(sc, round)
-    }
+  return installDomScanner({
+    // round 由共享骨架递增（同一批次的 scan 调用共享同一轮次），语义与原 scanRound 相同。
+    scan: (node, round) => scanBlocks(node as Element, round),
+    // Fallback re-scan: 会话滚动容器（流式结束后内容补全，不产生 addedNodes）。
+    rescanSelectors: ['[data-conversation-scroll]'],
+    onTeardown: () => {
+      for (const block of Array.from(streamWatch.keys())) clearStreamWatch(block)
+      mounts.clear()
+    },
   })
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['data-streaming'],
-  })
-  return () => {
-    observer.disconnect()
-    for (const block of Array.from(streamWatch.keys())) clearStreamWatch(block)
-    mounts.clear()
-  }
 }
 
 // ── styles part：DSH tokens ──────────────────────────────────────────
@@ -825,21 +813,28 @@ const STYLES = `
 
 // ── apply part：导出 inject 和 apply ──────────────────────────────────
 
+/** 共享样式注入 / DOM 扫描骨架（dsh-shared/client-parts，构建期拼接；issue #186 P2）。 */
+declare function installStyles(
+  ctx: { effect: (fn: () => void | (() => void), label?: string) => void },
+  attr: string,
+  css: string,
+  label: string,
+): void
+declare function installDomScanner(options: {
+  scan: (node: Node, round: number) => void
+  rescanSelectors?: string[]
+  attributeFilter?: string[]
+  onTeardown?: () => void
+}): () => void
+
 exports.inject = []
 
 exports.apply = function apply(ctx: ClientContext): void {
-  // Stylesheet first, unconditionally (see dsh-file-activity pitfall:
-  // injecting styles behind a service early-return loses them on HMR).
-  ctx.effect(() => {
-    if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined') return () => {}
-    const style = document.createElement('style')
-    style.setAttribute('data-dsh-mermaid-render', 'styles')
-    style.textContent = STYLES
-    document.head.appendChild(style)
-    return () => {
-      if (style.parentNode) style.parentNode.removeChild(style)
-    }
-  }, 'dsh-mermaid-render: styles')
+  // 样式注入走共享实现（issue #186 P2）：与 dsh-md-render / dsh-think-zh-expand
+  // 同一份「无条件最先注入 + 随 fiber teardown 卸载」逻辑（style-tag.part.js）。
+  // 位置仍在最前、不进任何早退分支（dsh-file-activity 踩坑：挂在服务判空之后，
+  // HMR / 服务缺省时样式会丢）。
+  installStyles(ctx, 'data-dsh-mermaid-render', STYLES, 'dsh-mermaid-render: styles')
 
   ctx.effect(() => installScanner(), 'dsh-mermaid-render: scanner')
 }

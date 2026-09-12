@@ -59,6 +59,103 @@ describe('extractDshRequires', () => {
   it('空文本返回空数组', () => {
     expect(extractDshRequires('')).toEqual([])
   })
+
+  // ── issue #203：注释 / 字符串 / 正则里的示例文本不得计入（假阳性阻断发版）──
+  it('行注释里的 require 不计入（issue #203）', () => {
+    const src = ["// 示例：const M = require('dsh-md-render').MarkdownView", 'const a = 1'].join('\n')
+    expect(extractDshRequires(src)).toEqual([])
+  })
+
+  it('块注释里的 require 不计入（含 JSDoc 多行）', () => {
+    const src = [
+      '/**',
+      " * 用法：require('dsh-md-render')",
+      " * 子路径：require('dsh-other/lib/x')",
+      ' */',
+      'const a = 1',
+    ].join('\n')
+    expect(extractDshRequires(src)).toEqual([])
+  })
+
+  it('混合场景：注释示例与真实引用并存时只提取真实的', () => {
+    const src = [
+      "// 反例：require('dsh-fake')",
+      "/* import M from 'dsh-fake2' */",
+      "const M = require('dsh-real').MarkdownView",
+      "import X from 'dsh-real2/lib/sub'",
+      "export { y } from 'dsh-real3'",
+    ].join('\n')
+    expect(extractDshRequires(src)).toEqual(['dsh-real', 'dsh-real2', 'dsh-real3'])
+  })
+
+  it('字符串字面量里的示例 require 不计入（双引号/单引号/模板串）', () => {
+    const src = [
+      'const a = "require(\'dsh-x\')"',
+      'const b = \'require("dsh-y")\'',
+      "const c = `require('dsh-z')`",
+    ].join('\n')
+    expect(extractDshRequires(src)).toEqual([])
+  })
+
+  it('字符串里的 // 不被当作注释（URL 之后仍能提取真实依赖）', () => {
+    const src = ["const url = 'https://example.com/a'", "const M = require('dsh-real')"].join('\n')
+    expect(extractDshRequires(src)).toEqual(['dsh-real'])
+  })
+
+  it('行尾注释带 URL 时不吞掉同行真实依赖，注释内示例不计入', () => {
+    const src = "const M = require('dsh-real') // 见 https://example.com require('dsh-fake')"
+    expect(extractDshRequires(src)).toEqual(['dsh-real'])
+  })
+
+  it('正则字面量中的引号/斜杠不破坏扫描，其内部 require 文本不计入', () => {
+    const withQuotes = ["const re = /['\\/]/g", "const M = require('dsh-real')"].join('\n')
+    expect(extractDshRequires(withQuotes)).toEqual(['dsh-real'])
+    expect(extractDshRequires(String.raw`const re = /require\('dsh-x'\)/`)).toEqual([])
+  })
+
+  it('未闭合块注释 / 未闭合字符串不抛错（截断文件容错）', () => {
+    expect(extractDshRequires("/* require('dsh-x')")).toEqual([])
+    expect(extractDshRequires("const s = 'abc")).toEqual([])
+  })
+
+  it('注释与字符串混排：示例不计入、真实引用计入', () => {
+    const src = [
+      'const help = "调用示例：require(\'dsh-fake\')"',
+      "// require('dsh-fake2')",
+      "const M = require('dsh-real')",
+    ].join('\n')
+    expect(extractDshRequires(src)).toEqual(['dsh-real'])
+  })
+
+  it('字符串转义序列不破坏边界：转义引号/反斜杠之后仍能提取真实依赖', () => {
+    const src = String.raw`const s = 'it\'s \\ ok'` + "\nconst M = require('dsh-real')"
+    expect(extractDshRequires(src)).toEqual(['dsh-real'])
+  })
+
+  it('未闭合单引号遇换行即终止（不吞后续真实依赖）；末尾反斜杠不抛错', () => {
+    const src = ["const broken = 'oops", "const M = require('dsh-real')"].join('\n')
+    expect(extractDshRequires(src)).toEqual(['dsh-real'])
+    expect(extractDshRequires("const s = 'abc\\")).toEqual([])
+  })
+
+  it('正则字面量含换行（非法）时按普通字符容错，后续真实依赖仍可提取', () => {
+    const src = ['const re = /abc', 'def/g', "const M = require('dsh-real')"].join('\n')
+    expect(extractDshRequires(src)).toEqual(['dsh-real'])
+  })
+
+  it('表达式起始位置的正则按正则处理（文件开头 / 关键字之后）', () => {
+    expect(extractDshRequires("/dsh-x/.test(s); require('dsh-real')")).toEqual(['dsh-real'])
+    expect(extractDshRequires("function f() { return /dsh-x/.test(s) } require('dsh-real')")).toEqual(['dsh-real'])
+  })
+
+  it('字符串/正则之后的正斜杠按除法处理，不影响后续提取', () => {
+    const src = ["const a = 'x' / 2", 'const b = /y/ / 2', "const M = require('dsh-real')"].join('\n')
+    expect(extractDshRequires(src)).toEqual(['dsh-real'])
+  })
+
+  it('正则字面量到文件末尾仍未闭合时不抛错（截断文件容错）', () => {
+    expect(extractDshRequires('const re = /abc')).toEqual([])
+  })
 })
 
 // ── findUndeclaredPeers ───────────────────────────────────────────────────

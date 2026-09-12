@@ -5,7 +5,7 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -416,6 +416,154 @@ test('memory_save logs a warn when desc is empty (issue #155)', async () => {
   assert.ok(warns.length >= 1, 'warn emitted for empty desc')
   assert.ok(warns[0].startsWith('[dsh-my-memory]'), 'warn carries the unified plugin prefix')
   assert.ok(warns[0].includes('sess-2'), 'warn carries the session id')
+})
+
+// ── #208 权限模式感知的保存策略 + #209 来源标记 ────────────────────────
+
+/** 会话日志折叠用的假 session（seq + eventAt，与宿主 Session 同构）。 */
+function sessionWith(events) {
+  return { seq: events.length, eventAt: (index) => events[index] }
+}
+
+const NEVER_SESSION = sessionWith([{ type: 'approval/policy', data: { policy: 'never' } }])
+const ASK_SESSION = sessionWith([{ type: 'approval/policy', data: { policy: 'ask' } }])
+
+/** One memory_save pre-execute exec payload (host ToolExecution shape). */
+function saveExec(session, desc = '用户偏好用 pnpm') {
+  return {
+    name: 'memory_save',
+    arguments: { scope: 'global', desc },
+    agent: { id: 'sess-never', session },
+  }
+}
+
+/** Run the gate against an always-allow downstream (host default decision). */
+function runGate(gate, exec) {
+  return gate(exec, async () => ({ kind: 'allow' }))
+}
+
+test('gate: saveApproval=auto saves without a prompt under policy=never (#208)', async () => {
+  const gate = createMemorySaveGate({ config: { saveApproval: 'auto' } })
+  const decision = await runGate(gate, saveExec(NEVER_SESSION))
+  assert.equal(decision.kind, 'allow', 'danger-full-access (policy=never) writes without an ask gate')
+})
+
+test('gate: auto + policy=never still stamps the writing session (#208/#209)', async () => {
+  const { tool, queryTool } = realSaveTool()
+  const gate = createMemorySaveGate({ config: { saveApproval: 'auto' } })
+  const exec = { agent: { id: 'sess-auto', session: NEVER_SESSION } }
+  const decision = await runGate(gate, {
+    name: 'memory_save',
+    arguments: { scope: 'global', desc: '用户偏好用 pnpm' },
+    agent: exec.agent,
+  })
+  assert.equal(decision.kind, 'allow')
+  const value = await tool.execute({ scope: 'global', desc: '用户偏好用 pnpm' }, exec)
+  assert.equal(value.item.source.sessionId, 'sess-auto', 'entry records the writing session')
+  assert.ok(value.item.source.at > 0, 'entry records the write timestamp')
+  const query = await queryTool.execute({ scope: 'global' }, exec)
+  assert.equal(query.items.length, 1)
+  assert.equal(query.items[0].source.sessionId, 'sess-auto', 'query returns the source session')
+})
+
+test('gate: always + policy=never denies with an actionable zh hint (#208 plan B)', async () => {
+  const gate = createMemorySaveGate({ config: { saveApproval: 'always' } })
+  const decision = await runGate(gate, saveExec(NEVER_SESSION))
+  assert.equal(decision.kind, 'deny', 'always cannot ask under policy=never → explicit deny')
+  for (const needle of ['danger-full-access', 'saveApproval', 'workspace-write', 'auto']) {
+    assert.ok(decision.reason.includes(needle), `hint mentions "${needle}": ${decision.reason}`)
+  }
+})
+
+test('gate: auto + policy=ask keeps the native confirmation (regression guard)', async () => {
+  const gate = createMemorySaveGate({ config: { saveApproval: 'auto' } })
+  const decision = await runGate(gate, saveExec(ASK_SESSION, '本项目用 pnpm'))
+  assert.equal(decision.kind, 'ask', 'workspace-write still asks the user')
+  assert.ok(decision.reason.includes('确认'), 'ask reason still asks for confirmation')
+  assert.ok(decision.reason.includes('本项目用 pnpm'), 'ask reason still shows the desc snippet')
+})
+
+test('gate: saveApproval=always still asks under policy=ask', async () => {
+  const gate = createMemorySaveGate({ config: { saveApproval: 'always' } })
+  const decision = await runGate(gate, saveExec(ASK_SESSION))
+  assert.equal(decision.kind, 'ask', 'always asks when the host can prompt')
+})
+
+test('gate: saveApproval=never writes without confirmation in every preset (#208)', async () => {
+  for (const session of [ASK_SESSION, NEVER_SESSION, undefined]) {
+    const gate = createMemorySaveGate({ config: { saveApproval: 'never' } })
+    const decision = await runGate(gate, saveExec(session))
+    assert.equal(decision.kind, 'allow', 'saveApproval=never never asks')
+  }
+})
+
+test('gate: an unreadable policy falls back to the native ask (fail-safe)', async () => {
+  const gate = createMemorySaveGate({ config: { saveApproval: 'auto' } })
+  const opaque = { name: 'memory_save', arguments: { scope: 'global', desc: 'x' }, agent: { id: 's', session: {} } }
+  const decision = await runGate(gate, opaque)
+  assert.equal(decision.kind, 'ask', 'no foldable policy info → keep the ask gate')
+})
+
+test('gate: an unknown saveApproval value behaves as auto', async () => {
+  const gate = createMemorySaveGate({ config: { saveApproval: 'sometimes' } })
+  const yes = await runGate(gate, saveExec(NEVER_SESSION))
+  assert.equal(yes.kind, 'allow', 'unknown value falls back to auto (never preset saves)')
+  const no = await runGate(gate, saveExec(ASK_SESSION))
+  assert.equal(no.kind, 'ask', 'unknown value falls back to auto (ask preset still prompts)')
+})
+
+test('gate: an approval-service probe wins over the session log fold (#208)', async () => {
+  const gate = createMemorySaveGate({
+    config: { saveApproval: 'auto' },
+    probePolicy: () => 'never',
+  })
+  // 会话日志里没有 approval/policy 事件，探针（宿主 approval 服务）给权威判定
+  const decision = await runGate(gate, saveExec(sessionWith([])))
+  assert.equal(decision.kind, 'allow', 'probe result drives the decision')
+})
+
+test('memory_save writes are stamped with the session source (#209)', async () => {
+  const { tool, queryTool } = realSaveTool()
+  const exec = { agent: { id: 'sess-42', session: { header: { cwd: '' } } } }
+  const before = Date.now()
+  const value = await tool.execute({ scope: 'global', desc: '来源可追溯' }, exec)
+  assert.equal(value.item.source.sessionId, 'sess-42', 'source.sessionId is the calling session')
+  assert.ok(value.item.source.at >= before, 'source.at is the write timestamp')
+  assert.equal(value.item.createdAt, value.item.source.at, 'createdAt and source.at agree')
+  const query = await queryTool.execute({ scope: 'global' }, exec)
+  assert.equal(query.items[0].source.sessionId, 'sess-42')
+})
+
+test('legacy items without a source stay loadable, queryable and renderable (#209)', async () => {
+  const legacyFile = join(dir, 'legacy-memory.json')
+  writeFileSync(
+    legacyFile,
+    JSON.stringify({ items: [{ id: 'old-1', desc: '旧数据无来源', createdAt: 1, updatedAt: 2 }] }),
+  )
+  const legacyStore = createStore({ file: legacyFile })
+  await legacyStore.load()
+  const queryTool = createMemoryQueryTool({
+    globalStore: legacyStore,
+    getProjectStore: fakeProjectStores(new Map()),
+  })
+  const query = await queryTool.execute({ scope: 'global' }, {})
+  assert.equal(query.items.length, 1, 'legacy entry keeps loading')
+  assert.deepEqual(query.items[0].source, { sessionId: '', at: 0 }, 'legacy source is backfilled')
+  const text = renderQueryResult(query)
+  assert.ok(text.includes('旧数据无来源'), 'legacy entry still renders')
+})
+
+test('renderQueryResult shows the source session prefix (#209)', () => {
+  const text = renderQueryResult({
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    items: [
+      { id: 'mem-1', desc: '带来源', source: { sessionId: 'abcdef1234567890', at: 1 } },
+      { id: 'mem-2', desc: '无来源', source: { sessionId: '', at: 0 } },
+    ],
+  })
+  assert.ok(text.includes('abcdef12'), `source session prefix shown: ${text}`)
 })
 
 test('cleanup', () => {

@@ -131,3 +131,22 @@
     当 提交未携带同意标记的候选确认
     那么 接口返回 400
     并且 正式记忆列表为空
+
+  场景: danger-full-access（approval policy=never）下 memory_save 免确认写入并标记来源（issue #208/#209）
+    当 会话 "auto-session" 的审批策略为 "never" 且 saveApproval 为 "auto"
+    当 agent 调用 memory_save 保存全局记忆 "用户偏好用 pnpm"
+    那么 保存未经用户确认直接放行
+    当 会话 "auto-session" 执行该保存
+    那么 全局记忆包含 "用户偏好用 pnpm" 且来源会话为 "auto-session"
+
+  场景: policy=never 且 saveApproval=always 时明确失败并给出可操作提示（issue #208）
+    当 会话 "locked-session" 的审批策略为 "never" 且 saveApproval 为 "always"
+    当 agent 调用 memory_save 保存全局记忆 "用户偏好用 pnpm"
+    那么 保存被明确拒绝且提示包含 "danger-full-access" 与 "saveApproval"
+    并且 未写入任何记忆
+
+  场景: workspace-write（approval policy=ask）下仍触发用户确认（issue #208 防回归）
+    当 会话 "ask-session" 的审批策略为 "ask" 且 saveApproval 为 "auto"
+    当 agent 调用 memory_save 保存全局记忆 "用户偏好用 pnpm"
+    那么 触发用户确认流程（ask 门）
+    并且 未写入任何记忆

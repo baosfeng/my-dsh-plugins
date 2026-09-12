@@ -18,6 +18,7 @@ export default defineConfig({
         'lib/memory-scoring.js',
         'lib/extract.js',
         'lib/prompt.js',
+        'lib/save-policy.js',
         'lib/tool.js',
       ],
     },

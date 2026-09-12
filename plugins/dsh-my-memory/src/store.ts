@@ -339,7 +339,7 @@ export function createStore(options: { file: string; debounceMs?: number }): Sto
   const core = createDebouncedStore<MemoryItem>(file, debounceMs, normalizeMemory)
 
   async function add(
-    item: string | Omit<MemoryItem, 'id' | 'createdAt' | 'updatedAt'>,
+    item: string | (Partial<MemoryItem> & { desc: string }),
     now: number = Date.now(),
   ): Promise<MemoryItem> {
     await core.load()

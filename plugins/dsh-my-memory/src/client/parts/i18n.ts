@@ -107,6 +107,8 @@ const strings = {
       workflow: isZh() ? '工作流' : 'Workflow',
     })[category] ?? (isZh() ? '事实' : 'Fact'),
   confidenceLabel: (n: number): string => (isZh() ? `置信度 ${n}` : `Confidence ${n}`),
+  sourceAgentLabel: (sessionId: string): string =>
+    isZh() ? `agent 保存 · ${sessionId.slice(0, 8)}` : `saved by agent · ${sessionId.slice(0, 8)}`,
   statusConflict: (): string => (isZh() ? '待处理矛盾' : 'Conflict'),
   historyLabel: (): string => (isZh() ? '演进历史' : 'History'),
   historyEntry: (action: string): string =>

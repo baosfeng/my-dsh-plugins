@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 修复
+
+- fix(dsh-my-memory): #208 权限模式感知的保存策略——`danger-full-access` 预设的会话 approval policy 是 `never`，宿主对该会话里的一切 `{ kind: 'ask' }` 直接判 rejected（`dsh-user-approval/lib/index.js:178`），`memory_save` 因此在用户当前配置下 100% 失败、且**用户看不到任何弹窗**。新增配置项 `saveApproval: 'auto' | 'always' | 'never'`（默认 `auto`：policy=never 直接写入并标记来源、policy=ask 保持原生确认不变）；`always` + policy=never 时不再笼统 rejected，而是返回可操作的中文提示（方案 B 失败可见化）
+- fix(dsh-my-memory): #209 `memory_save` 未把会话来源传给 store，落盘条目 `source` 恒为 `{ sessionId: '', at: 0 }`（#191 声明的字段成了摆设）。现写入会话 id + 时间戳；`memory_query` 文本输出与面板条目卡片展示来源会话前缀（`agent 保存 · <会话前缀>`），旧数据（空 source）加载/查询/渲染行为不变
+
 ## [0.1.7] - 2026-09-10
 
 ### 变更

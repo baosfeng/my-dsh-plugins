@@ -62,12 +62,7 @@ declare const exports: Record<string, unknown>
 
 // ── engine part：vendored mermaid engine ─────────────────────────────
 
-// 占位符必须位于**字符串字面量**内（构建时 scripts/build.mjs 把占位符文本替换成 base64
-// 本体，引号已在源码里）：曾经把占位符写在块注释里（形如「注释 + 空字符串」），替换后
-// base64 全留在注释中、取值恒为空串 → 内联引擎永远加载不了（issue #185 扩展修复）。
-// ⚠️ 本文件任何位置（含注释）都不得再写出与占位符同形的字面量：那会让产物出现 2 处
-// 占位符，构建会以 "expected exactly 1 ... found 2" 失败（当前门禁已覆盖该场景）。
-const MERMAID_UMD_B64: string = '__MERMAID_UMD_B64__'
+const MERMAID_UMD_B64: string = '__MERMAID_UMD_B64__' // 须在字符串字面量内（构建替换为 base64）；勿写同形字面量
 
 /** base64 解码为 UTF-8 字符串。 */
 function b64ToUtf8(b64: string): string {

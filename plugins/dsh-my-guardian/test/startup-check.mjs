@@ -1,4 +1,4 @@
-import { test } from 'vitest'
+import { test, afterEach } from 'vitest'
 /**
  * Tests for the startup-roster static pre-check (issue #144):
  *   - collectTreeEntries / entryLabels / isDisabledEntry tolerances
@@ -8,7 +8,7 @@ import { test } from 'vitest'
  *     carries the issues, boot is never blocked by the pre-check
  */
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -23,9 +23,40 @@ import { apply } from '../lib/index.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'dsh-my-guardian-startup-'))
 process.env.DSH_HOME = dir
+
+/** 当前用例 boot 的实例；由 afterEach 兜底 teardown。
+ *  失败路径也必须 teardown：泄漏的实例会继续监听 staged 文件并写
+ *  state.json，把后续用例拖成**级联假失败**（#217 负载验证时实测到：
+ *  用例 1 断言抛出 → teardown 跳过 → 用例 2 读到用例 1 的快照）。 */
+let bootedCtx = null
+afterEach(async () => {
+  const ctx = bootedCtx
+  bootedCtx = null
+  if (ctx !== null) await shutdown(ctx)
+})
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const issuesFile = () => join(dir, 'guardian', 'startup-issues.json')
 const readIssuesFile = () => JSON.parse(readFileSync(issuesFile(), 'utf8'))
+const stateFilePath = () => join(dir, 'guardian', 'state.json')
+const readStateOrNull = () => {
+  try {
+    return JSON.parse(readFileSync(stateFilePath(), 'utf8'))
+  } catch {
+    return undefined
+  }
+}
+
+/** 轮询等待异步结果**出现**（#217：不再用固定 sleep 赌启动路径跑完）。
+ *  仅「等真实时间语义」或「断言某事没有发生」时才保留 sleep。
+ *  见 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md。 */
+async function waitFor(check, timeoutMs = 10000, intervalMs = 10) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    if (check()) return
+    if (Date.now() > deadline) throw new Error('waitFor timed out')
+    await sleep(intervalMs)
+  }
+}
 
 /** npm-layout helper: write a package (with optional peer deps) into the
  *  profile node_modules. */
@@ -234,7 +265,11 @@ function makeCtx(fake) {
 }
 
 /** Reset persisted guardian state so one host test cannot leak events into
- *  the next (all tests share one DSH_HOME). */
+ *  the next (all tests share one DSH_HOME).
+ *
+ *  #217: 预检报告 startup-issues.json 也必须删——此前用例 2 靠 sleep(250)
+ *  恰好等到了新报告覆盖旧报告；残留旧文件时「读到报告」并不等于「本次 boot
+ *  的报告已写出」，是个被 sleep 掩盖的跨用例共享状态假设。 */
 function resetState() {
   mkdirSync(join(dir, 'guardian'), { recursive: true })
   writeFileSync(
@@ -242,6 +277,23 @@ function resetState() {
     JSON.stringify({ version: 1, safeMode: false, staged: {}, promoted: {}, events: [] }),
     'utf8',
   )
+  rmSync(issuesFile(), { force: true })
+}
+
+/** GET /guardian/api/state：分派内部 await bootPromise，
+ *  返回即「启动路径（initialScan + 启动预检）全部 settle」的确定性同步点。 */
+async function callStateApi(fake) {
+  const res = makeResponse()
+  await fake.apiRoute.handler(
+    {
+      method: 'GET',
+      url: '/guardian/api/state',
+      headers: { host: '127.0.0.1:3080', 'sec-fetch-site': 'same-origin', origin: 'http://127.0.0.1:3080' },
+      [Symbol.asyncIterator]: () => ({ next: () => Promise.resolve({ done: true }) }),
+    },
+    res,
+  )
+  return { status: res._status, json: JSON.parse(res._body) }
 }
 
 /** Minimal HTTP response mock (writeJson uses writeHead + end). */
@@ -276,8 +328,13 @@ test('host: startup pre-check writes the report and never blocks staged mounts',
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify([{ id: 'ok', name: 'dsh-ok' }], null, 2), 'utf8')
   writePkg('dsh-ok', { version: '0.1.0' })
   const ctx = makeCtx(fake)
+  bootedCtx = ctx
   apply(ctx)
-  await sleep(250)
+  // #217：确定性同步点 = API 注册（initialScan 末步）+ API 分派（内部 await
+  // bootPromise，含启动预检）。两者一过就代表启动路径全部 settle，不再用固定
+  // sleep 赌三条异步链跑完。
+  await waitFor(() => fake.apiRoute !== undefined)
+  const apiState = await callStateApi(fake)
 
   // staged candidate still mounted: the pre-check must not block the boot
   assert.deepEqual(fake.created, ['ok'], 'staged entry mounted despite roster issue')
@@ -289,28 +346,17 @@ test('host: startup pre-check writes the report and never blocks staged mounts',
   assert.equal(report.issues[0].type, 'dependency')
   assert.equal(report.issues[0].fix, 'dsh plugin add dsh-shared')
 
+  await waitFor(() => readStateOrNull()?.events?.some((e) => e.type === 'startup-issue'))
   const state = JSON.parse(readFileSync(join(dir, 'guardian', 'state.json'), 'utf8'))
   assert.ok(
     state.events.some((e) => e.type === 'startup-issue'),
     'startup-issue event logged',
   )
 
-  const route = fake.apiRoute
-  const res = makeResponse()
-  await route.handler(
-    {
-      method: 'GET',
-      url: '/guardian/api/state',
-      headers: { host: '127.0.0.1:3080', 'sec-fetch-site': 'same-origin', origin: 'http://127.0.0.1:3080' },
-      [Symbol.asyncIterator]: () => ({ next: () => Promise.resolve({ done: true }) }),
-    },
-    res,
-  )
-  const snapshot = JSON.parse(res._body).value
+  const snapshot = apiState.json.value
   assert.equal(snapshot.startupIssues.length, 1, 'snapshot carries startupIssues')
   assert.equal(snapshot.startupIssues[0].type, 'dependency')
   assert.ok(typeof snapshot.startupCheckedAt === 'number', 'snapshot carries startupCheckedAt')
-  await shutdown(ctx)
 })
 
 test('host: healthy roster writes an empty report and logs nothing', async () => {
@@ -320,14 +366,16 @@ test('host: healthy roster writes an empty report and logs nothing', async () =>
   fake.store['happy'] = { options: { id: 'happy', name: 'dsh-happy' } }
   writeFileSync(join(dir, 'cordis.staged.json'), '[]\n', 'utf8')
   const ctx = makeCtx(fake)
+  bootedCtx = ctx
   apply(ctx)
-  await sleep(250)
+  await waitFor(() => fake.apiRoute !== undefined)
+  const apiState = await callStateApi(fake) // 启动路径（含预检）全部 settle
 
   const report = readIssuesFile()
   assert.deepEqual(report.issues, [], 'healthy roster → empty issues')
+  assert.equal(apiState.json.value.startupIssues.length, 0, 'snapshot has no issues')
   const state = JSON.parse(readFileSync(join(dir, 'guardian', 'state.json'), 'utf8'))
   assert.ok(!state.events.some((e) => e.type === 'startup-issue'), 'no startup-issue event when healthy')
-  await shutdown(ctx)
 })
 
 test('runStartupCheck itself never throws (broken tree / bad profile dir)', async () => {
@@ -358,6 +406,7 @@ test('apply survives a broken loader tree plus a staged candidate (pre-check can
   }
   writeFileSync(join(dir, 'cordis.staged.json'), '[]\n', 'utf8')
   const ctx = makeCtx(fake)
+  bootedCtx = ctx
   let threw = false
   try {
     apply(ctx)
@@ -365,8 +414,7 @@ test('apply survives a broken loader tree plus a staged candidate (pre-check can
     threw = true
   }
   assert.equal(threw, false, 'apply must not throw on a broken loader tree')
-  await sleep(150)
-  await shutdown(ctx)
+  // afterEach 会 await teardown（现在它会等启动路径 settle 再 drain 写链，#217）
 })
 
 console.log('ALL GUARDIAN STARTUP-CHECK TESTS PASSED')

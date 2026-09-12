@@ -87,9 +87,11 @@ function createShared({ tree, profileDir }) {
         startupIssues: [],
         startupCheckedAt: null,
         persistSoon: () => { },
+        persistFinal: () => { },
         flushPersist: () => Promise.resolve(),
         bootPromise,
         markBooted,
+        disposed: false,
         logEvent: (_type, _message) => { },
         // Mount ops — filled by wireServices via Object.assign
         conflictOf: () => null,
@@ -111,6 +113,7 @@ function createShared({ tree, profileDir }) {
 function wireServices(ctx, shared) {
     const persister = createPersister(shared);
     shared.persistSoon = persister.persistSoon;
+    shared.persistFinal = persister.persistFinal;
     shared.flushPersist = persister.flush;
     shared.logEvent = (type, message) => logEvent(shared, type, message);
     Object.assign(shared, createMountOps(shared));
@@ -122,16 +125,20 @@ function scheduleInitialScan(ctx, shared) {
     void Promise.resolve().then(() => {
         // Startup-roster static pre-check (issue #144): best-effort, MUST never
         // block or break the boot — a pre-check failure only records a report.
-        void runStartupCheck(ctx, shared).catch((error) => {
+        //
+        // #217: best-effort 的是「失败不阻断」，不是「可以缺席启动就绪信号」。
+        // 预检的产物（startupIssues / startupCheckedAt 快照 + startup-issue 事件
+        // 落盘）同样是启动结果：它晚于 bootPromise 完成时，API 会读到空
+        // startupIssues、teardown 会在它落盘前返回（旧快照覆盖下一个实例）。
+        const startupCheck = runStartupCheck(ctx, shared).catch((error) => {
             ctx.logger?.warn(`[dsh-my-guardian] startup pre-check failed (recorded only): ${error instanceof Error ? error.message : String(error)}`);
         });
-        void initialScan(shared)
-            .catch((error) => {
+        const scan = initialScan(shared).catch((error) => {
             // the scan must never take the process down
             ctx.logger?.warn(`[dsh-my-guardian] initial scan failed: ${error instanceof Error ? error.message : String(error)}`);
-        })
-            // 无论成败都放行 API：扫描失败只降级，不能让 API 永久挂起
-            .finally(() => shared.markBooted());
+        });
+        // 无论成败都放行 API：扫描/预检失败只降级，不能让 API 永久挂起
+        void Promise.all([scan, startupCheck]).finally(() => shared.markBooted());
     });
 }
 // ── staged file watching (new candidates at runtime) + poll fallback ────
@@ -178,10 +185,12 @@ function registerStatusQuery(ctx, shared) {
 }
 /** teardown: unmount everything the guardian mounted, then persist.
  *
- *  disposer 返回 promise：await 它即保证「卸载 + 全部排队快照落盘」完成。
- *  此前是 fire-and-forget + 调用方 sleep 赌它跑完——慢 CI 下旧实例的延迟
- *  快照会在下一个用例块读到 state 之后落盘并覆盖它（跨实例共享状态的
- *  时序竞态，docs/踩坑/固定sleep等异步落盘导致CI-flaky.md）。 */
+ *  disposer 返回 promise：await 它即保证「本实例启动路径 settle + 卸载 +
+ *  全部排队快照落盘」完成，返回后本实例不再产生任何写。
+ *  #189 只补了「写链 drain」+ async disposer：它覆盖不到 fire-and-forget 的
+ *  启动预检（独立异步链，晚于 drain 才 persistSoon）；#217 把 bootPromise
+ *  （现已含 initialScan + runStartupCheck）也等进来。
+ *  见 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md。 */
 function registerTeardown(ctx, shared) {
     ctx.effect(() => async () => {
         if (shared.watcher !== null) {
@@ -193,9 +202,20 @@ function registerTeardown(ctx, shared) {
             }
             shared.watcher = null;
         }
+        // 立刻进入收尾态：此后本实例不再扫描、不再接受任何持久化——
+        // 飞行中的 HTTP handler、已排队的 watcher/轮询回调都可能在 teardown
+        // 返回之后才 persistSoon，把旧实例快照覆盖到下一个实例的 state.json 上。
+        // （initialScan 也会因为 disposed 而不再把 ready 置回 true。）
+        shared.disposed = true;
+        shared.ready = false;
+        // #217: 再等本实例的启动路径（initialScan + 启动预检）settle。只 drain
+        // 「已排队的写」不够——启动预检是 fire-and-forget 的独立异步链，它可能在
+        // teardown 返回之后才 persistSoon（CI 上表现为随机红）。
+        await shared.bootPromise;
         // unmount 内部已吞异常（best effort），逐个 await 期间它们各自入链
         await Promise.all([...shared.mounted].map((id) => shared.unmount(id)));
-        shared.persistSoon();
+        // 收尾快照：此刻内存状态已完整（启动扫描 + 预检都 settle），写一次最终态
+        shared.persistFinal();
         await shared.flushPersist();
     }, 'dsh-my-guardian: teardown');
 }

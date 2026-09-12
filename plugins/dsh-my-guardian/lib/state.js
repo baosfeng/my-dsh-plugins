@@ -80,12 +80,20 @@ async function persistState(state) {
 }
 /** Serialize state writes on a promise chain (drain in order). */
 export function createPersister(shared) {
-    const persistSoon = () => {
+    const enqueue = () => {
         shared.writeChain = shared.writeChain.then(() => persistState(shared.state));
     };
+    const persistSoon = () => {
+        // teardown 已开始：本实例的任何延迟写都不该落到共享 state.json 上
+        if (shared.disposed)
+            return;
+        enqueue();
+    };
+    /** 收尾快照（teardown 专用）：绕过 disposed 守卫写一次最终状态。 */
+    const persistFinal = () => enqueue();
     /** 确定性 drain 信号：resolve 时链上所有快照（含本 tick 排队的）都已落盘。 */
     const flush = () => shared.writeChain;
-    return { persistSoon, flush };
+    return { persistSoon, persistFinal, flush };
 }
 /** Read the candidate file; missing/corrupt → []. */
 export async function readStagedFile(file) {

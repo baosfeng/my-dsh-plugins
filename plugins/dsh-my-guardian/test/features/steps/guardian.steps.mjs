@@ -30,8 +30,37 @@ class World {
     return join(this.dir, 'guardian', 'state.json')
   }
 
-  readState() {
-    return JSON.parse(readFileSync(this.stateFile(), 'utf8'))
+  readStateOrNull() {
+    try {
+      return JSON.parse(readFileSync(this.stateFile(), 'utf8'))
+    } catch {
+      return undefined
+    }
+  }
+
+  /** 条件轮询直到 check() 为真（落盘/挂载都是异步的：固定 sleep 或同步读
+   *  都会在慢机器上赌输——#217 负载验证实测 state.json 尚未生成就 ENOENT）。
+   *  见 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md。 */
+  async waitFor(check, timeoutMs = 10000, label = '条件') {
+    const deadline = Date.now() + timeoutMs
+    for (;;) {
+      if (check()) return
+      if (Date.now() > deadline) throw new Error(`${label} 未在 ${timeoutMs}ms 内成立`)
+      await sleep(10)
+    }
+  }
+
+  /** 读持久化 state：轮询直到 predicate 成立（默认只要文件已写出）。 */
+  async readStateWhen(predicate = () => true, timeoutMs = 10000) {
+    await this.waitFor(
+      () => {
+        const state = this.readStateOrNull()
+        return state !== undefined && predicate(state)
+      },
+      timeoutMs,
+      `state.json 条件（${this.stateFile()}）`,
+    )
+    return this.readStateOrNull()
   }
 
   makeFake() {
@@ -98,7 +127,8 @@ class World {
     }
     this.ctx = ctx
     apply(ctx)
-    await sleep(150)
+    // 确定性同步点：API 注册是 initialScan 的最后一步
+    await this.waitFor(() => this.fake.apiRoute !== undefined, 10000, 'API 注册')
   }
 
   async callApi(method, path, body, overrides) {
@@ -153,8 +183,8 @@ setWorldConstructor(World)
 After(async function () {
   // 关闭 fs.watch（teardown disposer），否则 Node 进程被 watcher 挂住不退出
   const teardown = (this.fake.effects ?? []).find((e) => e.label === 'dsh-my-guardian: teardown')
-  teardown?.disposer()
-  await sleep(60)
+  // #217: disposer 现在会等启动路径 settle 再 drain 写链，await 它即可
+  await teardown?.disposer()
   rmSync(this.dir, { recursive: true, force: true })
 })
 
@@ -228,7 +258,9 @@ When('守护进程连续启动 {int} 次', async function (count) {
   for (let i = 0; i < count; i++) {
     // 关闭上一个实例的 watcher（模拟完整重启，避免 watcher 泄漏挂住进程）
     const teardown = (this.fake.effects ?? []).find((e) => e.label === 'dsh-my-guardian: teardown')
-    teardown?.disposer()
+    // await 它：disposer 会等本实例启动路径 settle 再 drain 写链（#217），
+    // fire-and-forget 时旧实例的延迟快照会覆盖本次重启写入的 state.json
+    await teardown?.disposer()
     this.fake = this.makeFake()
     this.fake.failMap['flaky'] = 'nope'
     writeFileSync(this.stagedFile(), JSON.stringify([{ id: 'flaky', name: '抖动插件' }], null, 2))
@@ -248,11 +280,16 @@ Then('条目 {string} 已被挂载', async function (id) {
 })
 
 Then('条目 {string} 已转正进入 promoted 清单', async function (id) {
-  const state = this.readState()
+  const state = await this.readStateWhen((s) => s.promoted?.[id] !== undefined)
   assert.ok(state.promoted[id], `entry ${id} promoted`)
 })
 
 Then('候选区文件不再包含 {string}', async function (id) {
+  // 转正后条目被移出候选区（writeStagedFile 也是异步落盘）
+  await this.waitFor(() => {
+    const list = JSON.parse(readFileSync(this.stagedFile(), 'utf8'))
+    return !list.some((e) => e?.id === id)
+  })
   const entries = JSON.parse(readFileSync(this.stagedFile(), 'utf8'))
   assert.ok(!entries.some((e) => e?.id === id), `candidate file no longer contains ${id}`)
 })
@@ -262,7 +299,7 @@ Then('条目 {string} 未被挂载', async function (id) {
 })
 
 Then('条目 {string} 的失败次数为 {int}', async function (id, count) {
-  const state = this.readState()
+  const state = await this.readStateWhen((s) => s.staged?.[id]?.attempts !== undefined)
   assert.equal(state.staged[id]?.attempts, count)
 })
 
@@ -275,30 +312,30 @@ Then('候选区文件仍包含 {string}', async function (id) {
 })
 
 Then('状态记录包含失败原因', async function () {
-  const state = this.readState()
+  const state = await this.readStateWhen((s) => s.staged?.['bad-plugin']?.lastError !== undefined)
   const record = state.staged['bad-plugin']
   assert.ok(record?.lastError?.includes('apply exploded'), `failure reason recorded: ${record?.lastError}`)
 })
 
 Then('条目 {string} 处于依赖缺失失败', async function (id) {
-  const state = this.readState()
+  const state = await this.readStateWhen((s) => s.staged?.[id]?.failureType !== undefined)
   assert.equal(state.staged[id]?.failureType, 'dependency')
 })
 
 Then('条目 {string} 处于代码错误失败', async function (id) {
-  const state = this.readState()
+  const state = await this.readStateWhen((s) => s.staged?.[id]?.failureType !== undefined)
   assert.equal(state.staged[id]?.failureType, 'code')
 })
 
 Then('状态记录包含依赖安装建议', async function () {
-  const state = this.readState()
+  const state = await this.readStateWhen((s) => s.staged?.['dep-miss']?.installHint !== undefined)
   const record = state.staged['dep-miss']
   assert.ok(record?.installHint?.includes('dsh plugin add'), `install hint recorded: ${record?.installHint}`)
   assert.ok(record?.lastError?.includes('缺少依赖'), `dependency message recorded: ${record?.lastError}`)
 })
 
 Then('条目 {string} 处于冻结状态', async function (id) {
-  const state = this.readState()
+  const state = await this.readStateWhen((s) => s.staged?.[id]?.frozen === true)
   assert.equal(state.staged[id]?.frozen, true)
 })
 
@@ -307,7 +344,7 @@ Then('没有任何条目被挂载', async function () {
 })
 
 Then('状态记录包含冲突提示', async function () {
-  const state = this.readState()
+  const state = await this.readStateWhen((s) => s.staged?.['conflict']?.lastError !== undefined)
   const record = state.staged['conflict']
   assert.ok(record?.lastError?.includes('already exists'), `conflict recorded: ${record?.lastError}`)
 })
@@ -329,7 +366,15 @@ Given('名册插件 {string} 声明缺失的 peer 依赖 {string}', async functi
 })
 
 Then('预检报告写入启动区问题', async function () {
-  const report = JSON.parse(readFileSync(join(this.dir, 'guardian', 'startup-issues.json'), 'utf8'))
+  const issuesFile = join(this.dir, 'guardian', 'startup-issues.json')
+  await this.waitFor(() => {
+    try {
+      return JSON.parse(readFileSync(issuesFile, 'utf8')).version === 1
+    } catch {
+      return false
+    }
+  })
+  const report = JSON.parse(readFileSync(issuesFile, 'utf8'))
   assert.equal(report.version, 1)
   assert.ok(report.issues.length >= 1, 'report carries at least one issue')
   assert.equal(report.issues[0].type, 'dependency')
@@ -337,7 +382,7 @@ Then('预检报告写入启动区问题', async function () {
 })
 
 Then('状态记录包含启动区问题事件', async function () {
-  const state = this.readState()
+  const state = await this.readStateWhen((s) => s.events?.some((e) => e.type === 'startup-issue'))
   assert.ok(
     state.events.some((e) => e.type === 'startup-issue'),
     'startup-issue event logged',

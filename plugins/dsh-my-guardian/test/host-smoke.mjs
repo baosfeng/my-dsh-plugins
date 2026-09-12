@@ -236,10 +236,15 @@ test('host smoke suite', async () => {
       const fake = makeLoaderAndTree()
       fake.failMap['flaky'] = 'nope'
       writeFileSync(stagedFile(), JSON.stringify([{ id: 'flaky', name: 'dsh-flaky' }], null, 2))
+      // 「跨重启累计失败」是**顺序**语义：重启 = 上一个实例已经关掉。此前三个
+      // 实例同时存活并各自 persistSoon 同一份 state.json，谁后落盘谁说了算
+      // （#217：shutdown 在下一个实例之前，消除这项并发写竞态）。
       const c3a = boot(fake)
       await waitFor(() => readStateOrNull()?.staged?.['flaky']?.attempts === 1)
+      await shutdown(c3a)
       const c3b = boot(fake)
       await waitFor(() => readStateOrNull()?.staged?.['flaky']?.attempts === 2)
+      await shutdown(c3b)
       const c3c = boot(fake)
       await waitFor(() => readStateOrNull()?.staged?.['flaky']?.attempts === 3)
 
@@ -249,8 +254,6 @@ test('host smoke suite', async () => {
       // (nice-plugin from block 1 is re-mounted here — restart recovery of the
       // promoted list is correct; the point is flaky itself never mounted)
       assert.ok(!fake.created.includes('flaky'), 'flaky never mounted')
-      await shutdown(c3a)
-      await shutdown(c3b)
       await shutdown(c3c)
     }
 

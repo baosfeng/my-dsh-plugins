@@ -151,8 +151,15 @@ export interface SharedContext {
   /** 写链 drain：await 它即保证此前所有 persistSoon 都已落盘完成。
    *  卸载/disposer 返回它，调用方不必再用固定 sleep 赌写盘跑完。 */
   flushPersist: () => Promise<void>
-  /** 启动扫描（loadState + staged/promoted 挂载 + API 注册）完成的确定性信号：
-   *  API 分派前 await 它，查询/操作语义与「启动耗时」无关。 */
+  /** teardown 已开始：此后的扫描入口（watcher/轮询）与 persistSoon 一律失效（#217）。
+   *  只 await 已知的异步路径不够——watcher 回调、轮询 tick、飞行中的 HTTP
+   *  handler 都可能在 teardown 之后才 persistSoon，把旧实例快照覆盖到下一个
+   *  实例已写好的 state.json 上。 */
+  disposed: boolean
+  /** 收尾快照：teardown 唯一允许在 disposed 之后落盘的写（卸载后的最终状态）。 */
+  persistFinal: () => void
+  /** 启动就绪（loadState + staged/promoted 挂载 + API 注册 + 启动预检）完成的
+   *  确定性信号：API 分派与 teardown 前 await 它，查询/卸载语义与「启动耗时」无关。 */
   bootPromise: Promise<void>
   markBooted: () => void
   logEvent: (type: string, message: string) => void
@@ -178,14 +185,22 @@ export interface SharedContext {
 /** Serialize state writes on a promise chain (drain in order). */
 export function createPersister(shared: SharedContext): {
   persistSoon: () => void
+  persistFinal: () => void
   flush: () => Promise<void>
 } {
-  const persistSoon = (): void => {
+  const enqueue = (): void => {
     shared.writeChain = shared.writeChain.then(() => persistState(shared.state))
   }
+  const persistSoon = (): void => {
+    // teardown 已开始：本实例的任何延迟写都不该落到共享 state.json 上
+    if (shared.disposed) return
+    enqueue()
+  }
+  /** 收尾快照（teardown 专用）：绕过 disposed 守卫写一次最终状态。 */
+  const persistFinal = (): void => enqueue()
   /** 确定性 drain 信号：resolve 时链上所有快照（含本 tick 排队的）都已落盘。 */
   const flush = (): Promise<void> => shared.writeChain
-  return { persistSoon, flush }
+  return { persistSoon, persistFinal, flush }
 }
 
 /** Read the candidate file; missing/corrupt → []. */

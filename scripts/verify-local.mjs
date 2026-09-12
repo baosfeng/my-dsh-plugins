@@ -15,8 +15,9 @@
  *     绝不静默放水。
  *
  * 检查项（CI job → 本地命令）：
- *   audit        → npm audit --audit-level=high（默认跳过：本地 npmmirror 等 registry
- *                  不支持 audit API，CI 默认官方 registry 强制执行）
+ *   audit        → npm audit --audit-level=moderate @ 官方 registry（默认跳过：需要联网，
+ *                  本地可用 --audit 显式开启）。issue #199：始终强制官方 registry 并校验
+ *                  「审计是否真的执行」，避免镜像源（npmmirror 无 advisories 端点）静默假绿
  *   test         → 遍历 plugins/ 下全部插件：node --check lib/index.js + lib/client.js（存在
  *                  则查）+ npm test（单元测试 + 覆盖率门禁 + Gherkin 验收），与
  *                  scripts/test-all.sh 同逻辑（区别：本脚本不 set -e，单个插件失败
@@ -85,6 +86,16 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+// issue #199：audit 门禁的参数/输出解析抽成纯函数件（含「镜像源静默失效」检测），便于单测。
+import {
+  auditCmdArgs,
+  auditCommandHint,
+  auditEnv,
+  extractJsonObject,
+  parseAuditOutput,
+  renderAuditReport,
+} from './lib/npm-audit.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -268,7 +279,8 @@ function runCapture(cmd, cmdArgs, cwd, opts = {}) {
         cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true, // 自成进程组 → 超时可整组终止
-        env: childEnv(),
+        // opts.env 覆盖 CHILD_ENV：audit 检查项需要显式指定官方 registry（issue #199）
+        env: { ...childEnv(), ...(opts.env ?? {}) },
       })
     } catch (error) {
       resolveRun({ ok: false, code: -1, out: '', error: String(error?.message ?? error), cmd: cmdline, ms: 0 })
@@ -574,6 +586,48 @@ function computeImpactScope(files) {
   return { plugins: affected, escalated: false, reasons, docsOnly }
 }
 
+/**
+ * audit 检查项（issue #199）。
+ *
+ * 三件事必须同时成立，否则这个门禁就是「假绿」：
+ *   1. 打到**官方 registry**——镜像（npmmirror 等）没有 security advisories 端点。
+ *      实测：`--registry` 会被 npm 按本机 registry 反向重写，必须再设
+ *      `replace_registry_host=never`；两者由 auditEnv() 统一给出；
+ *   2. 校验输出里**确有结构化报告**（parseAuditOutput）——只看退出码时，
+ *      「端点不存在」与「干净」都可能以 0/1 退出而无法区分；
+ *   3. 门槛与 CI 一致（moderate）——原 CI 用 high，正是它放行了 #199 的两条 moderate。
+ */
+async function runAudit() {
+  const result = await runCapture('npm', auditCmdArgs(), root, { env: auditEnv() })
+  const verdict = parseAuditOutput(result)
+  if (!verdict.effective) {
+    const mirror = verdict.reason.includes('端点未实现')
+    const hint = mirror
+      ? '原因：当前 registry 不提供 npm audit 的 security advisories 端点（npmmirror 等镜像即如此）。'
+      : '原因：audit 未能取到 advisory 数据（网络不可达 / 需要代理）。'
+    return {
+      ok: false,
+      message:
+        'audit 门禁未真正执行 —— ' +
+        verdict.reason +
+        '\n      ' +
+        hint +
+        '\n      本检查项始终按官方 registry 运行，与你的 npm 配置无关；请确认网络或代理可用。\n      手动复现：' +
+        auditCommandHint(),
+    }
+  }
+  // effective=true：npm audit 的退出码此时才可信（0 = 无达阈值漏洞，1 = 有）。
+  if (result.ok) return { ok: true, summary: verdict.reason }
+  // 失败时把 --json 报告渲染成人类可读清单（裸 JSON 没人看得下去，等于把门禁做成摆设）
+  let rendered = result.out
+  try {
+    rendered = renderAuditReport(JSON.parse(extractJsonObject(result.out)))
+  } catch {
+    // 渲染失败就退回原始输出——真实报告永远不能被我们自己的渲染逻辑吞掉
+  }
+  return { ok: false, out: rendered }
+}
+
 // ── 检查项定义 ──────────────────────────────────────────────────────────────
 const OPTIONAL_CHECKS = ['audit', 'mutation'] // CI 强制但本地默认跳过的项
 
@@ -585,10 +639,10 @@ const OPTIONAL_CHECKS = ['audit', 'mutation'] // CI 强制但本地默认跳过�
 const CHECK_DEFS = [
   {
     id: 'audit',
-    label: 'audit (npm audit --audit-level=high)',
-    note: 'CI 强制；本地 npmmirror 等 registry 不支持 audit API，默认跳过，--audit 或 --only audit 开启',
+    label: 'audit (npm audit --audit-level=moderate @ 官方 registry)',
+    note: 'CI 强制；本地默认跳过（需联网 + 官方 registry 可直连/可代理），--audit 或 --only audit 开启',
     optional: true,
-    run: () => runCapture('npm', ['audit', '--audit-level=high'], root),
+    run: runAudit,
   },
   {
     id: 'mutation',

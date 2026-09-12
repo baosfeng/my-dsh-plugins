@@ -111,13 +111,19 @@ description: 使用当 需要处理 DSH 宿主或插件的版本升级时——�
 
 1. 依赖解析：对应包管理器、lockfile 与依赖图只发生预期变化；扫描完整 lockfile 中的旧
    DSH cohort 和已删除包，不能只看顶层依赖；
-2. 启用解析：目标 profile 的 composition 指向预期包身份，且无旧来源或重复 row；
-3. 静态：build、typecheck、插件测试；
-4. 运行时：真实 DSH profile 冷启动、entry activate、依赖/提供的 Cordis service 不停在
+2. 依赖安全：任何依赖变更后跑一次官方 registry 的 audit（本地默认镜像没有 advisories
+   端点，裸 `npm audit` 必然失效；必须钉官方源并禁止 registry 重写）——
+   `HTTPS_PROXY=<代理> npm_config_registry=https://registry.npmjs.org npm_config_replace_registry_host=never npm audit --audit-level=moderate`，
+   期望 0 vulnerabilities；确认方式与本地门禁见
+   [构建与测试.md](../../docs/开发指南/构建与测试.md)「依赖漏洞审计」（盲区复盘见
+   [踩坑](../../docs/踩坑/npm-audit在镜像源下静默失效.md)，issue #199）；
+3. 启用解析：目标 profile 的 composition 指向预期包身份，且无旧来源或重复 row；
+4. 静态：build、typecheck、插件测试；
+5. 运行时：真实 DSH profile 冷启动、entry activate、依赖/提供的 Cordis service 不停在
    pending——[verify-runtime.mjs](scripts/verify-runtime.mjs) 在隔离 profile 里端到端执行该层并输出失败归因（plugin-code / dependency-resolution / profile-config / dsh-runtime）；Web Client 插件还要用打印出的 token URL 换 Cookie，读取宿主 boot manifest，
    请求宿主公告的客户端产物并证明注册/挂载，不能把裸 HTTP 200 当完成；
-5. 行为：执行一条插件核心路径；宿主迁移至少完成一次消息→工具→回复，或等价专用流程；
-6. 包装器：核对退出码、stdout、stderr、取消与 teardown。
+6. 行为：执行一条插件核心路径；宿主迁移至少完成一次消息→工具→回复，或等价专用流程；
+7. 包装器：核对退出码、stdout、stderr、取消与 teardown。
 
 报告固定分为：
 

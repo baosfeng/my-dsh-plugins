@@ -28,8 +28,22 @@ jobs:
       - name: Install root toolchain (eslint, dependency-cruiser)
         run: npm ci
 
-      - name: Audit dependencies (npm audit, high+ blocks)
-        run: npm audit --audit-level=high
+      # ── 为什么显式钉住官方 registry（issue #199）────────────────────────────
+      # npm audit 依赖 registry 的 security advisories API（POST /-/npm/v1/security/advisories/bulk）。
+      # npmmirror 等镜像不实现该端点（404 [NOT_IMPLEMENTED]），而 runner 的 registry 可能被
+      # 环境变量/npmrc 指向镜像 —— 那样 audit 只会以 "audit endpoint returned an error" 失败，
+      # 门禁形同虚设。两个变量缺一不可：npm 的 replace-registry-host=npmjs 默认值会把
+      # registry.npmjs.org 的请求**重写回当前的镜像 registry**，所以必须显式设 never。
+      # ── 为什么是 moderate 而不是默认的 high（issue #199 的核心修复）───────────
+      # 原设置 --audit-level=high 会放行 moderate：qs 的两条 moderate 公告
+      # （GHSA-x5fp-wj9c-mxmx / GHSA-4mjr-xmp4-gh2g，经 @stryker-mutator/core →
+      # typed-rest-client → qs 传入）在 CI 里只打印不阻断，长期无人处理。
+      # 与本地 verify-local 保持一致（scripts/verify-local.mjs 的 audit 检查项同级别）。
+      - name: Audit dependencies (npm audit, moderate+ blocks, official registry)
+        run: npm audit --audit-level=moderate
+        env:
+          npm_config_registry: https://registry.npmjs.org
+          npm_config_replace_registry_host: never
 
   # 质量门禁：单元测试 + 覆盖率（行≥85 / 分支≥75，低于阈值即失败）
   # matrix 并行：每个插件一个独立 job，墙钟时间 ≈ 单个插件测试时长

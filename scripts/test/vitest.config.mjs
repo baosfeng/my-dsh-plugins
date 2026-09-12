@@ -1,5 +1,6 @@
-// scripts 测试专用 Vitest 配置：覆盖率只统计 scripts/lib/release-checks.mjs
-// （发版校验纯函数，issue #39），阈值与根配置一致（行 85 / 分支 75 / 函数 80）。
+// scripts 测试专用 Vitest 配置：覆盖率统计 scripts/lib/ 下的纯函数模块
+// （release-checks.mjs = 发版校验，issue #39；npm-audit.mjs = audit 门禁判定，issue #199），
+// 阈值与根配置一致（行 85 / 分支 75 / 函数 80）。
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
@@ -7,7 +8,7 @@ export default defineConfig({
     include: ['scripts/test/*.test.mjs'],
     coverage: {
       provider: 'v8',
-      include: ['scripts/lib/release-checks.mjs'],
+      include: ['scripts/lib/release-checks.mjs', 'scripts/lib/npm-audit.mjs'],
       thresholds: {
         lines: 85,
         branches: 75,

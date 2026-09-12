@@ -35,6 +35,19 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 - `plugin-release`（skills/plugin-release/）：打包发布 + 发布前自动检查（5 层 gate + 语义 gate）
 - `plugin-workflow`（skills/plugin-workflow/）：插件生命周期统一入口（检查/升级/测试/发布选择 + 阶段账本）
 
+## 宿主能力缺口：一律插件侧接管（项目决策 2026-09-12）
+
+**宿主渲染/能力缺口一律由本仓库插件侧接管处理，不依赖上游修改、不向上游提 issue。** 用户决策原话：「全由我们自己的插件进行处理」。
+
+- **不接受**在文档里写「宿主如此设计，故不支持」，也**不接受**以「等上游修复」为由推迟；
+- **落地模式**（issue #196 已验证；issue #205 轨迹视图按此模式覆盖）：
+  1. **先确证宿主 DOM 契约**——拿到 `文件:行号` / bundle 证据（如上下文注入块由 `@deepseek-ai/dsh-client-ui-chat` 的 `ContextBody` 渲染为 `<pre data-context-text="true">` + CSS `white-space:pre-wrap`），不靠猜；
+  2. **幂等标记**——用内容签名标记已接管节点，重复扫描不重复处理；
+  3. **可降级**——宿主契约不匹配时静默退让为宿主原文（不报错、不误伤）；
+  4. **MutationObserver 兜底**——应对 React 重渲染（宿主重建 DOM 后重新接管）；
+  5. **性能保护**——超长内容跳过处理。
+- 参考实现：`dsh-md-render` 对宿主纯文本注入块的 DOM 接管（[插件 README](../../plugins/dsh-md-render/README.md) · [md 渲染模块文档](../../docs/md渲染/概述.md)）；遇到同类缺口不要新开「等上游修复」类 issue，直接在本仓库插件里覆盖。
+
 ## 插件形态（先决策）
 
 | 形态                                           | 面向                                              | 关键 API                                                                                              |

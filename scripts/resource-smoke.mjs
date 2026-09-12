@@ -65,6 +65,43 @@ function fileBytes(home) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * 轮询直到 predicate 成立（issue #188b：把「固定等 N 毫秒」换成「等真实完成信号」）。
+ * 超时返回 false，由原 check() 断言照常判定——等待语义只加强不削弱。
+ */
+async function waitUntil(predicate, { timeoutMs = 8000, intervalMs = 25 } = {}) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    if (await predicate()) return true
+    if (Date.now() >= deadline) return false
+    await sleep(intervalMs)
+  }
+}
+
+/**
+ * 等一个可读数值稳定下来（连续 quietMs 无变化即视为落定）。
+ * minMs 是下限：持久化有 500ms 防抖窗口，窗口内文件本来就还没开始写，
+ * 没有下限会把「还没写」误判成「写完了」。
+ */
+async function waitStable(read, { quietMs = 300, minMs = 700, timeoutMs = 8000 } = {}) {
+  const started = Date.now()
+  const deadline = started + timeoutMs
+  let last = read()
+  let idle = 0
+  while (Date.now() < deadline) {
+    await sleep(25)
+    const current = read()
+    if (current !== last) {
+      last = current
+      idle = 0
+    } else {
+      idle += 25
+    }
+    if (idle >= quietMs && Date.now() - started >= minMs) return true
+  }
+  return false
+}
+
 async function main() {
   const oldHome = process.env.DSH_HOME
   console.log('[resource-smoke] 临时 DSH_HOME 按场景隔离（互不污染）')
@@ -75,11 +112,12 @@ async function main() {
     const home1 = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
     process.env.DSH_HOME = home1
     const store = createStore({ logger: { warn() {} } })
-    await sleep(400) // 等待 loadPersisted 完成
+    await store.whenReady() // 等 loadPersisted 完成（确定性信号，替代固定 400ms）
     for (let i = 0; i < 12000; i += 1) {
       store.record({ sessionId: 'session-1', type: 'agent_status', data: { status: `s${i}` } })
     }
-    await sleep(900) // flush 500ms + compact 300ms 完成
+    // flush 500ms + compact 300ms 落定：等落盘字节稳定（原固定 900ms）
+    await waitStable(() => fileBytes(home1))
 
     // 内存有界：单会话 FIFO 上限 2000
     check('内存态事件数 = 每会话上限 2000（FIFO，不线性增长）', store.count() === 2000, `count=${store.count()}`)
@@ -102,13 +140,13 @@ async function main() {
     const home2 = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
     process.env.DSH_HOME = home2
     const store2 = createStore({ logger: { warn() {} } })
-    await sleep(400)
+    await store2.whenReady() // 确定性就绪信号（原固定 400ms）
     for (let s = 0; s < 11; s += 1) {
       for (let i = 0; i < 2000; i += 1) {
         store2.record({ sessionId: `agent-${s}`, type: 'agent_status', data: { status: `x${i}` } })
       }
     }
-    await sleep(900)
+    await waitStable(() => fileBytes(home2)) // 等落盘稳定（原固定 900ms）
     check('全局事件数 ≤ 20000（超限整桶淘汰最早会话）', store2.count() <= 20000, `count=${store2.count()}`)
     check('最早会话被淘汰（整桶轮转）', store2.events('agent-0').length === 0, 'agent-0 已整桶淘汰')
     store2.dispose()
@@ -119,11 +157,11 @@ async function main() {
     const home3 = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
     process.env.DSH_HOME = home3
     const store3 = createStore({ logger: { warn() {} } })
-    await sleep(400)
+    await store3.whenReady() // 确定性就绪信号（原固定 400ms）
     for (let i = 0; i < 50; i += 1) {
       store3.record({ sessionId: 'g1', type: 'agent_status', data: { status: `normal-${i}` } })
     }
-    await sleep(900)
+    await waitUntil(() => lineCount(home3) === 50) // 等 50 条落盘（原固定 900ms）
     const normalLines = lineCount(home3)
 
     // 降级停写：内存不丢、文件不增长
@@ -131,6 +169,8 @@ async function main() {
     for (let i = 0; i < 80; i += 1) {
       store3.record({ sessionId: 'g1', type: 'agent_status', data: { status: `degrade-${i}` } })
     }
+    // 这一处**刻意保留固定窗口**：断言是「降级期间不该有写入」——否定命题没有可轮询的
+    // 完成信号，必须让一个大于防抖窗口（500ms）的时间窗真正过去，否则等于没测。
     await sleep(900)
     check(
       '降级期间落盘停止（文件行数不变）',
@@ -145,7 +185,7 @@ async function main() {
 
     // 恢复：全量快照补齐（50 旧 + 80 降级窗口 = 130）
     store3.setPersistEnabled(true)
-    await sleep(900)
+    await waitUntil(() => lineCount(home3) === 130) // 等全量快照补齐（原固定 900ms）
     check('恢复后全量快照补齐降级窗口事件（不丢不重）', lineCount(home3) === 130, `lines=${lineCount(home3)}`)
     store3.dispose()
     rmSync(home3, { recursive: true, force: true })
@@ -155,7 +195,9 @@ async function main() {
     const home4 = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
     process.env.DSH_HOME = home4
     const faStore = createFileActivityStore({ logger: { warn() {} } })
-    await sleep(400)
+    // file-activity store 没有 whenReady：onLoaded 会把 store.state 换成新对象，用引用变化当就绪信号
+    const faInitialState = faStore.state
+    await waitUntil(() => faStore.state !== faInitialState)
     const faTime = Date.now()
     let faExpected = 0
     for (let s = 0; s < 100; s += 1) {
@@ -166,7 +208,9 @@ async function main() {
         faExpected += Buffer.byteLength(JSON.stringify({ s: sessionId, p: path, o: 'read', t: faTime }), 'utf8') + 1
       }
     }
-    await sleep(1500) // flush(500ms) + compact 落定
+    const faFile = join(home4, 'file-activity.json')
+    // flush(500ms) + compact 落定：等状态文件字节稳定（原固定 1500ms）
+    await waitStable(() => (existsSync(faFile) ? Buffer.byteLength(readFileSync(faFile, 'utf8'), 'utf8') : 0))
     const faStats = faStore.stats()
     const faTolerated = Math.ceil(faExpected * 1.6) + 8192
     check(
@@ -184,7 +228,6 @@ async function main() {
       faStats.pathCount <= faStats.maxPathsTotal,
       `paths=${faStats.pathCount}/${faStats.maxPathsTotal}`,
     )
-    const faFile = join(home4, 'file-activity.json')
     const faBytes = existsSync(faFile) ? Buffer.byteLength(readFileSync(faFile, 'utf8'), 'utf8') : 0
     check('状态文件有界（≤4MB）', faBytes > 0 && faBytes <= 4 * 1024 * 1024, `file=${faBytes}B`)
     faStore.dispose()

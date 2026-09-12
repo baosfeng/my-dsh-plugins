@@ -1,9 +1,20 @@
 # dsh-mermaid-render bundle patch: inserts the plugin row into the profile
-# roster. The row mounts the (empty) host half; the client half renders
-# mermaid/mmd code blocks in the conversation. Install with:
+# roster. The row mounts BOTH halves:
+#   - host half (lib/index.js): registers a system-prompt section that tells the
+#     model mermaid rendering is natively available (issue #194) — on by default;
+#   - client half (lib/client.js): renders mermaid/mmd code blocks as diagram cards.
+#
+# Install with:
 #
 #   git clone https://github.com/baosfeng/my-dsh-plugins.git
 #   dsh plugin --profile web add link:<仓库路径>/plugins/dsh-mermaid-render
+#
+# Optional config (profile roster row) — disable the prompt injection:
+#
+#   - id: mermaid-render
+#     name: 'dsh-mermaid-render'
+#     config:
+#       injectPrompt: false
 #
 # NOTE: after install, restart `dsh web` so the bundle layer composes.
 - insert:

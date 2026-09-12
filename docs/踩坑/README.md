@@ -32,6 +32,7 @@ updated: 2026-09-12
 - [协作 / fork 池](fork池基线与squash判定.md) — `git clone --local` 的 `origin/main` 取的是主工作区本地 main（可能落后 GitHub）→ 基于过期基线开发；`git cherry` 靠 patch-id 判定，对 squash 合并必然假阴性 → 误判「遗留工作未落地」；判法是查 main 的 squash 提交/PR 号 + 比对整体 diff 的 `git patch-id --stable`（2026-09-12）
 - [依赖安全 / audit 盲区](npm-audit在镜像源下静默失效.md) — npmmirror 无 advisories 端点 + `--registry` 被 `replace-registry-host` 重写回镜像 + CI 只阻断 high + Dependabot 告警是 `auto_dismissed`，四层叠加让 2 条 moderate 漏洞长期无人发现；修法是钉官方 registry、门槛提为 moderate、并校验「audit 真查过」而非只看退出码（已解决，2026-09-12，issue #199）
 - [验证 / 隔离实例软链](隔离实例复用主工作区插件软链导致假验证.md) — 隔离 profile 把生产 `node_modules` 的 `link:` 软链整体复用，`--addons` 指定的待验代码被主工作区版本顶替（假通过/假失败）；修法是显式优先 + 启动前 `realpath` 校验 + 防回归测试（已解决，2026-09-12，issue #220）
+- [依赖安全 / Dependabot 假阴性](dependabot自动关闭告警造成假阴性.md) — GitHub 对 npm development 传递依赖告警 on-by-default 自动关闭（公开仓库），open 视图「0 条」与「没报过」无法区分；更隐蔽的是依赖升到修复版后 `auto_dismissed` 会被覆盖成 `fixed` 并**清空时间戳**，历史无痕。机制修复：巡检强制复查已关闭告警 + `check-dependabot-closed.sh`（13 例防回归自测）（2026-09-12，issue #214）
 
 ## 维护规则
 

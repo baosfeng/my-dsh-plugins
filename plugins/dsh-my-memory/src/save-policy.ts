@@ -134,6 +134,22 @@ function scopeLabelOf(args: { scope?: string } | undefined): string {
   return args?.scope === 'project' ? '项目' : '全局'
 }
 
+/** 范围的机器可读键（确认卡据此渲染选项行；issue #193）。 */
+function scopeKeyOf(args: { scope?: string } | undefined): string {
+  return args?.scope === 'project' ? 'project' : 'global'
+}
+
+/** 确认卡的结构化字段行（issue #193）：中文文案保持人类可读不变，机器可读
+ *  字段另起行追加，客户端确认卡（面板侧 / 工具侧共用）据此渲染范围、分类与
+ *  内容摘要。解析失败时客户端退化为「只显示原文」，不会渲染错信息。 */
+function askReasonFields(fields: { scope?: string; category?: string; content?: string }): string {
+  const lines: string[] = []
+  if (fields.scope !== undefined) lines.push(`范围：${fields.scope}`)
+  if (fields.category !== undefined && fields.category !== '') lines.push(`分类：${fields.category}`)
+  if (fields.content !== undefined && fields.content !== '') lines.push(`内容：${fields.content}`)
+  return lines.length === 0 ? '' : `\n${lines.join('\n')}`
+}
+
 /** 单行 desc 摘要（确认/失败文案用；超长截断）。 */
 function descSnippet(desc: unknown): string {
   const oneLine = typeof desc === 'string' ? desc.trim().split('\n')[0] : ''
@@ -151,17 +167,19 @@ export type DeleteTargetLookup = (
 function deleteAskReasonOf(args: { scope?: string; id?: string } | undefined, target?: string): string {
   const id = typeof args?.id === 'string' && args.id !== '' ? args.id : '（未提供 id）'
   const what = target === undefined ? `id=${id}（未在当前范围找到该条目）` : `「${descSnippet(target)}」[${id}]`
-  return `dsh-my-memory：agent 请求删除${scopeLabelOf(args)}记忆 ${what}。删除不可撤销，记忆绝不静默变更，请确认是否删除`
+  const head = `dsh-my-memory：agent 请求删除${scopeLabelOf(args)}记忆 ${what}。删除不可撤销，记忆绝不静默变更，请确认是否删除`
+  return head + askReasonFields({ scope: scopeKeyOf(args), content: target === undefined ? '' : descSnippet(target) })
 }
 
 /** 原生确认门的 reason（记忆绝不静默变更的自述）。 */
 function askReasonOf(
-  args: { scope?: string; desc?: string; id?: string } | undefined,
+  args: { scope?: string; desc?: string; id?: string; category?: string } | undefined,
   operation: MemoryWriteOperation,
   target?: string,
 ): string {
   if (operation === 'delete') return deleteAskReasonOf(args, target)
-  return `dsh-my-memory：agent 请求保存${scopeLabelOf(args)}记忆「${descSnippet(args?.desc)}」。记忆绝不静默变更，请确认是否保存`
+  const head = `dsh-my-memory：agent 请求保存${scopeLabelOf(args)}记忆「${descSnippet(args?.desc)}」。记忆绝不静默变更，请确认是否保存`
+  return head + askReasonFields({ scope: scopeKeyOf(args), category: args?.category, content: descSnippet(args?.desc) })
 }
 
 /**
@@ -182,7 +200,7 @@ function askReasonOf(
  * @returns allow（不确认）/ ask（原生确认）/ deny（明确失败 + 提示）。
  */
 export function decideSaveGate(input: {
-  args?: { scope?: string; desc?: string; id?: string }
+  args?: { scope?: string; desc?: string; id?: string; category?: string }
   policy: ApprovalPolicy | undefined
   config?: SavePolicyConfig
   operation?: MemoryWriteOperation
@@ -219,7 +237,7 @@ export interface SaveGateOptions {
 /** 门的工具调用载荷（宿主 `tools/pre-execute` 的第一参数子集）。 */
 interface GateExec {
   name?: string
-  arguments?: { scope?: string; desc?: string; id?: string; cwd?: string }
+  arguments?: { scope?: string; desc?: string; id?: string; cwd?: string; category?: string }
   agent?: unknown
 }
 

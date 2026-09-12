@@ -81,16 +81,46 @@ const STYLES: string = `
 .dsh-my-memory-btn-save svg { display:block; flex:none; }
 .dsh-my-memory-btn-save:hover:not(:disabled) { background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 18%, transparent); }
 .dsh-my-memory-btn-save:disabled { opacity:.4; cursor:default; }
-.dsh-my-memory-confirm { display:flex; flex-direction:column; gap:6px; padding:8px 10px; border-radius:8px;
-  border:1px solid var(--dsw-alias-border-l1); animation:dsh-my-memory-row-in 150ms var(--ds-ease-in-out); }
-.dsh-my-memory-confirm-save { border-color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 8%, transparent); }
-.dsh-my-memory-confirm-delete { border-color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 60%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); }
-.dsh-my-memory-confirm-head { display:flex; align-items:center; gap:6px; }
-.dsh-my-memory-confirm-head svg { display:block; flex:none; }
-.dsh-my-memory-confirm-text { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-primary); }
-.dsh-my-memory-confirm-desc { font:var(--dsw-font-s-14); color:var(--dsw-alias-label-primary); word-break:break-word; }
+/* ── issue #193：ask 范式确认卡（面板侧与工具侧共用同一 DOM 契约）──────
+   规格对齐宿主 ask/approval 卡：条带（8px 状态点）+ 20px 大卡 + min(60vh,520px)
+   主体 + 40px/12px 选项行 + footer 左右分布；删除危险色、保存成功色。 */
+.dsh-my-memory-ask { display:flex; flex-direction:column; align-items:center; box-sizing:border-box; width:100%; padding:8px 0 12px; }
+.dsh-my-memory-ask-card { display:flex; flex-direction:column; box-sizing:border-box; width:100%; padding:0; gap:0;
+  border:1px solid var(--dsw-alias-border-l1); border-radius:20px; overflow:hidden;
+  background:var(--dsw-alias-bg-layer-1); box-shadow:var(--dsw-shadow-lv2);
+  animation:dsh-my-memory-row-in 150ms var(--ds-ease-in-out); }
+.dsh-my-memory-ask-save .dsh-my-memory-ask-card { border-color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, transparent); }
+.dsh-my-memory-ask-delete .dsh-my-memory-ask-card { border-color:var(--dsw-alias-state-error-primary); }
+.dsh-my-memory-ask-strip { display:flex; align-items:center; gap:8px; padding:10px 16px; font-size:13px; line-height:18px; }
+.dsh-my-memory-ask-save .dsh-my-memory-ask-strip { color:var(--dsw-alias-state-success-primary);
+  background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent); }
+.dsh-my-memory-ask-delete .dsh-my-memory-ask-strip { color:var(--dsw-alias-state-error-primary);
+  background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent); }
+.dsh-my-memory-ask-dot { flex:none; width:8px; height:8px; border-radius:50%; background:currentColor; }
+.dsh-my-memory-ask-strip-title { font-weight:500; }
+.dsh-my-memory-ask-scope-badge { display:inline-flex; align-items:center; flex:none; margin-left:auto; height:18px; padding:0 8px;
+  border-radius:9px; font:var(--dsw-font-xxxs-11); }
+.dsh-my-memory-ask-save .dsh-my-memory-ask-scope-badge { color:var(--dsw-alias-state-success-primary);
+  background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 16%, transparent); }
+.dsh-my-memory-ask-delete .dsh-my-memory-ask-scope-badge { color:var(--dsw-alias-state-error-primary);
+  background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 16%, transparent); }
+.dsh-my-memory-ask-body { display:flex; flex-direction:column; gap:6px; padding:12px 16px 0; max-height:min(60vh, 520px); overflow-y:auto; }
+.dsh-my-memory-ask-options { display:flex; flex-direction:column; gap:6px; }
+.dsh-my-memory-ask-option { display:flex; align-items:center; gap:8px; box-sizing:border-box; height:40px; padding:0 12px;
+  border:1px solid transparent; border-radius:12px; background:transparent; color:var(--dsw-alias-label-primary);
+  font:var(--dsw-font-s-14); cursor:default;
+  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
+.dsh-my-memory-ask-option:hover { background:var(--dsw-alias-interactive-bg-hover); }
+.dsh-my-memory-ask-option.is-active { border-color:var(--dsw-alias-accent); background:color-mix(in srgb, var(--dsw-alias-accent) 10%, transparent); }
+.dsh-my-memory-ask-option-dot { flex:none; width:8px; height:8px; border-radius:50%; border:1px solid var(--dsw-alias-label-dimmed); }
+.dsh-my-memory-ask-option.is-active .dsh-my-memory-ask-option-dot { border-color:var(--dsw-alias-accent); background:var(--dsw-alias-accent); }
+.dsh-my-memory-ask-fields { display:flex; flex-direction:column; gap:4px; }
+.dsh-my-memory-ask-field { display:flex; gap:6px; font:var(--dsw-font-xxs-12); }
+.dsh-my-memory-ask-field-label { flex:none; color:var(--dsw-alias-label-tertiary); }
+.dsh-my-memory-ask-field-value { min-width:0; color:var(--dsw-alias-label-primary); word-break:break-word; }
+.dsh-my-memory-ask-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; }
+.dsh-my-memory-ask-feedback { min-width:0; font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); }
+.dsh-my-memory-ask-actions { display:flex; align-items:center; flex:none; gap:8px; margin-left:auto; }
 .dsh-my-memory-confirm-summary { display:flex; flex-direction:column; gap:2px; padding:4px 6px; border-radius:4px;
   background:color-mix(in srgb, var(--dsw-alias-accent) 8%, transparent); }
 .dsh-my-memory-confirm-summary-label { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); }

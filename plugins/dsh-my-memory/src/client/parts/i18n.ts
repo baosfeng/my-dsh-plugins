@@ -120,6 +120,23 @@ const strings = {
           : '新增'
       : action,
   noHistory: (): string => (isZh() ? '暂无演进历史' : 'No history yet'),
+  // ── issue #193 确认卡对齐 ask 范式：条带标题 / 范围 / 分类 / footer 文案 ──
+  scopeUnknown: (): string => (isZh() ? '范围未标注' : 'Scope not stated'),
+  askScopeLabel: (): string => (isZh() ? '记忆范围' : 'Memory scope'),
+  askScopeLocked: (): string =>
+    isZh() ? '范围由请求方决定，确认卡内不可更改' : 'Scope is fixed by the request and cannot be changed here',
+  askCategoryLabel: (): string => (isZh() ? '分类' : 'Category'),
+  askContentLabel: (): string => (isZh() ? '内容' : 'Content'),
+  askSaveTitle: (): string => (isZh() ? 'agent 请求保存记忆' : 'Agent requests saving a memory'),
+  askDeleteTitle: (): string => (isZh() ? 'agent 请求删除记忆' : 'Agent requests deleting a memory'),
+  askAllowSave: (): string => (isZh() ? '允许保存' : 'Allow save'),
+  askAllowDelete: (): string => (isZh() ? '删除这条记忆' : 'Delete this memory'),
+  askDeleteArmed: (): string => (isZh() ? '确认删除（不可撤销）' : 'Confirm delete (irreversible)'),
+  askReject: (): string => (isZh() ? '拒绝' : 'Reject'),
+  askNoteSave: (): string =>
+    isZh() ? '允许后写入记忆 · 记忆绝不静默变更' : 'Writes the memory on allow · memories never change silently',
+  askNoteDelete: (): string =>
+    isZh() ? '删除不可撤销 · 记忆绝不静默变更' : 'Deletion is irreversible · memories never change silently',
 }
 
 // 导出给其他 part 文件使用

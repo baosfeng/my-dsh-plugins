@@ -139,6 +139,20 @@ const strings = {
                 : '新增'
         : action,
     noHistory: () => (isZh() ? '暂无演进历史' : 'No history yet'),
+    // ── issue #193 确认卡对齐 ask 范式：条带标题 / 范围 / 分类 / footer 文案 ──
+    scopeUnknown: () => (isZh() ? '范围未标注' : 'Scope not stated'),
+    askScopeLabel: () => (isZh() ? '记忆范围' : 'Memory scope'),
+    askScopeLocked: () => isZh() ? '范围由请求方决定，确认卡内不可更改' : 'Scope is fixed by the request and cannot be changed here',
+    askCategoryLabel: () => (isZh() ? '分类' : 'Category'),
+    askContentLabel: () => (isZh() ? '内容' : 'Content'),
+    askSaveTitle: () => (isZh() ? 'agent 请求保存记忆' : 'Agent requests saving a memory'),
+    askDeleteTitle: () => (isZh() ? 'agent 请求删除记忆' : 'Agent requests deleting a memory'),
+    askAllowSave: () => (isZh() ? '允许保存' : 'Allow save'),
+    askAllowDelete: () => (isZh() ? '删除这条记忆' : 'Delete this memory'),
+    askDeleteArmed: () => (isZh() ? '确认删除（不可撤销）' : 'Confirm delete (irreversible)'),
+    askReject: () => (isZh() ? '拒绝' : 'Reject'),
+    askNoteSave: () => isZh() ? '允许后写入记忆 · 记忆绝不静默变更' : 'Writes the memory on allow · memories never change silently',
+    askNoteDelete: () => isZh() ? '删除不可撤销 · 记忆绝不静默变更' : 'Deletion is irreversible · memories never change silently',
 };
 // 导出给其他 part 文件使用
 
@@ -226,16 +240,46 @@ const STYLES = `
 .dsh-my-memory-btn-save svg { display:block; flex:none; }
 .dsh-my-memory-btn-save:hover:not(:disabled) { background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 18%, transparent); }
 .dsh-my-memory-btn-save:disabled { opacity:.4; cursor:default; }
-.dsh-my-memory-confirm { display:flex; flex-direction:column; gap:6px; padding:8px 10px; border-radius:8px;
-  border:1px solid var(--dsw-alias-border-l1); animation:dsh-my-memory-row-in 150ms var(--ds-ease-in-out); }
-.dsh-my-memory-confirm-save { border-color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 8%, transparent); }
-.dsh-my-memory-confirm-delete { border-color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 60%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); }
-.dsh-my-memory-confirm-head { display:flex; align-items:center; gap:6px; }
-.dsh-my-memory-confirm-head svg { display:block; flex:none; }
-.dsh-my-memory-confirm-text { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-primary); }
-.dsh-my-memory-confirm-desc { font:var(--dsw-font-s-14); color:var(--dsw-alias-label-primary); word-break:break-word; }
+/* ── issue #193：ask 范式确认卡（面板侧与工具侧共用同一 DOM 契约）──────
+   规格对齐宿主 ask/approval 卡：条带（8px 状态点）+ 20px 大卡 + min(60vh,520px)
+   主体 + 40px/12px 选项行 + footer 左右分布；删除危险色、保存成功色。 */
+.dsh-my-memory-ask { display:flex; flex-direction:column; align-items:center; box-sizing:border-box; width:100%; padding:8px 0 12px; }
+.dsh-my-memory-ask-card { display:flex; flex-direction:column; box-sizing:border-box; width:100%; padding:0; gap:0;
+  border:1px solid var(--dsw-alias-border-l1); border-radius:20px; overflow:hidden;
+  background:var(--dsw-alias-bg-layer-1); box-shadow:var(--dsw-shadow-lv2);
+  animation:dsh-my-memory-row-in 150ms var(--ds-ease-in-out); }
+.dsh-my-memory-ask-save .dsh-my-memory-ask-card { border-color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, transparent); }
+.dsh-my-memory-ask-delete .dsh-my-memory-ask-card { border-color:var(--dsw-alias-state-error-primary); }
+.dsh-my-memory-ask-strip { display:flex; align-items:center; gap:8px; padding:10px 16px; font-size:13px; line-height:18px; }
+.dsh-my-memory-ask-save .dsh-my-memory-ask-strip { color:var(--dsw-alias-state-success-primary);
+  background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent); }
+.dsh-my-memory-ask-delete .dsh-my-memory-ask-strip { color:var(--dsw-alias-state-error-primary);
+  background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent); }
+.dsh-my-memory-ask-dot { flex:none; width:8px; height:8px; border-radius:50%; background:currentColor; }
+.dsh-my-memory-ask-strip-title { font-weight:500; }
+.dsh-my-memory-ask-scope-badge { display:inline-flex; align-items:center; flex:none; margin-left:auto; height:18px; padding:0 8px;
+  border-radius:9px; font:var(--dsw-font-xxxs-11); }
+.dsh-my-memory-ask-save .dsh-my-memory-ask-scope-badge { color:var(--dsw-alias-state-success-primary);
+  background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 16%, transparent); }
+.dsh-my-memory-ask-delete .dsh-my-memory-ask-scope-badge { color:var(--dsw-alias-state-error-primary);
+  background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 16%, transparent); }
+.dsh-my-memory-ask-body { display:flex; flex-direction:column; gap:6px; padding:12px 16px 0; max-height:min(60vh, 520px); overflow-y:auto; }
+.dsh-my-memory-ask-options { display:flex; flex-direction:column; gap:6px; }
+.dsh-my-memory-ask-option { display:flex; align-items:center; gap:8px; box-sizing:border-box; height:40px; padding:0 12px;
+  border:1px solid transparent; border-radius:12px; background:transparent; color:var(--dsw-alias-label-primary);
+  font:var(--dsw-font-s-14); cursor:default;
+  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
+.dsh-my-memory-ask-option:hover { background:var(--dsw-alias-interactive-bg-hover); }
+.dsh-my-memory-ask-option.is-active { border-color:var(--dsw-alias-accent); background:color-mix(in srgb, var(--dsw-alias-accent) 10%, transparent); }
+.dsh-my-memory-ask-option-dot { flex:none; width:8px; height:8px; border-radius:50%; border:1px solid var(--dsw-alias-label-dimmed); }
+.dsh-my-memory-ask-option.is-active .dsh-my-memory-ask-option-dot { border-color:var(--dsw-alias-accent); background:var(--dsw-alias-accent); }
+.dsh-my-memory-ask-fields { display:flex; flex-direction:column; gap:4px; }
+.dsh-my-memory-ask-field { display:flex; gap:6px; font:var(--dsw-font-xxs-12); }
+.dsh-my-memory-ask-field-label { flex:none; color:var(--dsw-alias-label-tertiary); }
+.dsh-my-memory-ask-field-value { min-width:0; color:var(--dsw-alias-label-primary); word-break:break-word; }
+.dsh-my-memory-ask-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; }
+.dsh-my-memory-ask-feedback { min-width:0; font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); }
+.dsh-my-memory-ask-actions { display:flex; align-items:center; flex:none; gap:8px; margin-left:auto; }
 .dsh-my-memory-confirm-summary { display:flex; flex-direction:column; gap:2px; padding:4px 6px; border-radius:4px;
   background:color-mix(in srgb, var(--dsw-alias-accent) 8%, transparent); }
 .dsh-my-memory-confirm-summary-label { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); }
@@ -805,6 +849,126 @@ exports.isOverEntryLimit = isOverEntryLimit;
 exports.DEFAULT_ENTRY_LIMIT = DEFAULT_ENTRY_LIMIT;
 
     "use strict";
+// ── confirm-ui: ask 范式确认卡（issue #193）──────────────────────────────
+// 复刻宿主 ask / approval 卡片规格（dsh-client-ui-user-questions:234、
+// dsh-client-ui-approval:272-281 两段构建产物 CSS 的证据）：
+//   条带（8px 状态点 + 标题 + 范围徽标）→ 20px 大卡 → 40px/12px 选项行 →
+//   footer 左右分布（左反馈文字 + 右动作按钮）。
+// 面板内确认与工具侧确认共用本组件，保证两边形态一致（#193 验收标准 4）：
+// 统一的 DOM 契约 = .dsh-my-memory-ask-{save,delete} > .dsh-my-memory-ask-card
+// > strip / body(options + fields) / footer。
+/** 结构化行取值：`范围：project` / `分类：workflow` / `内容：...`。 */
+function askReasonField(text, label) {
+    const hit = new RegExp('(?:^|\\n)' + label + '：([^\\n]+)').exec(text);
+    return hit === null ? '' : hit[1].trim();
+}
+/** 结构化行缺失时的兜底：从中文文案里认范围（老 reason / 外部来源）。 */
+function fallbackScopeOf(text) {
+    if (text.includes('项目记忆'))
+        return 'project';
+    if (text.includes('全局记忆'))
+        return 'global';
+    return '';
+}
+/** 解析确认门 reason；任何异常都退化为「只有原文」的安全结果。 */
+function parseAskReason(reason) {
+    const text = typeof reason === 'string' ? reason : '';
+    try {
+        const raw = askReasonField(text, '范围');
+        const scope = raw === 'global' || raw === 'project' ? raw : fallbackScopeOf(text);
+        return { text, scope, category: askReasonField(text, '分类'), content: askReasonField(text, '内容') };
+    }
+    catch {
+        return { text, scope: '', category: '', content: '' };
+    }
+}
+/** 范围显示名（全局 / 项目 / 未标注）。 */
+function scopeTextOf(scope) {
+    if (scope === 'project')
+        return strings.projectScope();
+    if (scope === 'global')
+        return strings.globalScope();
+    return strings.scopeUnknown();
+}
+/** 条带（ask 范式）：状态点 + 标题 + 范围徽标。 */
+function AskStrip({ title, scope, variant }) {
+    return createElement('div', { className: 'dsh-my-memory-ask-strip' }, createElement('span', { className: 'dsh-my-memory-ask-dot' }), createElement('span', { className: 'dsh-my-memory-ask-strip-title' }, title), createElement('span', { className: `dsh-my-memory-ask-scope-badge dsh-my-memory-ask-scope-badge-${variant}` }, scopeTextOf(scope)));
+}
+/** 选项行组：保存列全局/项目（当前项选中），删除只列该记忆所属范围。 */
+function AskOptions({ variant, scope }) {
+    const scopes = variant === 'delete' ? (scope === '' ? [] : [scope]) : ['global', 'project'];
+    if (scopes.length === 0)
+        return null;
+    return createElement('div', { className: 'dsh-my-memory-ask-options', role: 'radiogroup', 'aria-label': strings.askScopeLabel() }, scopes.map((item) => createElement('div', {
+        key: item,
+        className: `dsh-my-memory-ask-option${item === scope ? ' is-active' : ''}`,
+        role: 'radio',
+        'aria-checked': item === scope,
+        title: strings.askScopeLocked(),
+    }, createElement('span', { className: 'dsh-my-memory-ask-option-dot' }), createElement('span', { className: 'dsh-my-memory-ask-option-text' }, scopeTextOf(item)))));
+}
+/** 信息行：分类 / 内容（+ 超长时的概要预览，沿用 #105 契约）。 */
+function AskFields({ category, content, showSummary, }) {
+    const fields = [
+        category === ''
+            ? null
+            : createElement(AskField, {
+                key: 'category',
+                label: strings.askCategoryLabel(),
+                value: strings.categoryLabel(category),
+            }),
+        content === ''
+            ? null
+            : createElement(AskField, { key: 'content', label: strings.askContentLabel(), value: content }),
+    ];
+    return createElement('div', { className: 'dsh-my-memory-ask-fields' }, ...fields, showSummary ? createElement(SummaryPreview, { desc: content }) : null);
+}
+/** 单条「标签：值」信息行。 */
+function AskField({ label, value }) {
+    return createElement('div', { className: 'dsh-my-memory-ask-field' }, createElement('span', { className: 'dsh-my-memory-ask-field-label' }, label), createElement('span', { className: 'dsh-my-memory-ask-field-value' }, value));
+}
+/** footer（ask 范式）：左反馈文字 + 右动作按钮，gap 8/12px。 */
+function AskFooter({ note, allowLabel, rejectLabel, variant, onAllow, onReject, disabled, }) {
+    return createElement('div', { className: 'dsh-my-memory-ask-footer' }, createElement('span', { className: 'dsh-my-memory-ask-feedback' }, note), createElement('div', { className: 'dsh-my-memory-ask-actions' }, createElement('button', {
+        className: `dsh-my-memory-confirm-ok dsh-my-memory-confirm-ok-${variant}`,
+        disabled: disabled === true,
+        onClick: onAllow,
+    }, variant === 'delete' ? icon.trash(14) : icon.check(14), allowLabel), createElement('button', { className: 'dsh-my-memory-confirm-cancel', disabled: disabled === true, onClick: onReject }, icon.close(14), rejectLabel)));
+}
+/**
+ * ask 范式确认卡（单一视觉实现，两处复用）。
+ * `armedLabel` 存在时按钮走两步：首次点击只 arm，再次点击才执行——危险
+ * 操作（删除）的二次确认；面板侧因已有「图标 → 确认面板」两步，不启用。
+ */
+function AskConfirmCard(props) {
+    const [armed, setArmed] = useState(false);
+    const isDelete = props.variant === 'delete';
+    const twoStep = props.armedLabel !== undefined && props.armedLabel !== '';
+    const handleAllow = () => {
+        if (twoStep && !armed) {
+            setArmed(true);
+            return;
+        }
+        props.onAllow();
+    };
+    const allowLabel = armed && props.armedLabel !== undefined ? props.armedLabel : props.allowLabel;
+    return createElement('div', { className: `dsh-my-memory-ask dsh-my-memory-ask-${props.variant}` }, createElement('div', { className: 'dsh-my-memory-confirm dsh-my-memory-ask-card' }, createElement(AskStrip, { title: props.title, scope: props.scope, variant: props.variant }), createElement('div', { className: 'dsh-my-memory-ask-body' }, createElement(AskOptions, { variant: props.variant, scope: props.scope }), createElement(AskFields, {
+        category: props.category ?? '',
+        content: props.content ?? '',
+        showSummary: props.showSummary === true && !isDelete,
+    })), createElement(AskFooter, {
+        note: props.note,
+        allowLabel,
+        rejectLabel: strings.askReject(),
+        variant: props.variant,
+        onAllow: handleAllow,
+        onReject: props.onReject,
+        disabled: props.disabled,
+    })));
+}
+// 导出给其他 part 文件使用
+
+    "use strict";
 // ── view-rows: row/entry widgets for the Memory tab ─────────────────────
 // 拆分自 view.part.js（issue #110 视觉重设计）：条目卡片、空状态、排序开关、
 // 新增栏与确认面板。纯渲染组件，共用 view 工厂作用域内的 strings/icon/utils。
@@ -900,15 +1064,23 @@ function SummaryPreview({ desc }) {
     return createElement('div', { className: 'dsh-my-memory-confirm-summary' }, createElement('span', { className: 'dsh-my-memory-confirm-summary-label' }, strings.summaryPreview()), createElement('span', { className: 'dsh-my-memory-confirm-summary-text' }, summary.text));
 }
 /** 自定义确认面板（ask 模式，非原生 confirm）：删除红、保存绿。
+ *  issue #193：改用与工具侧共用同一份 ask 范式卡（AskConfirmCard：条带 +
+ *  20px 大卡 + 范围选项行 + footer 动作区），两边形态一致。
  *  add/update 时若内容超长，显示概要预览（完整内容仍保存，issue #105）。 */
 function ConfirmPanel({ confirm, onCancel, onOk, entryLimit, }) {
     const isDelete = confirm.kind === 'delete';
-    const text = CONFIRM_TEXTS[confirm.kind]();
-    const showSummary = !isDelete && isOverEntryLimit(confirm.desc, entryLimit);
-    return createElement('div', { className: `dsh-my-memory-confirm dsh-my-memory-confirm-${isDelete ? 'delete' : 'save'}` }, createElement('div', { className: 'dsh-my-memory-confirm-head' }, isDelete ? icon.trash(15) : icon.check(15), createElement('div', { className: 'dsh-my-memory-confirm-text' }, text)), createElement('div', { className: 'dsh-my-memory-confirm-desc' }, confirm.desc), showSummary ? createElement(SummaryPreview, { desc: confirm.desc }) : null, createElement('div', { className: 'dsh-my-memory-confirm-actions' }, createElement('button', {
-        className: `dsh-my-memory-confirm-ok dsh-my-memory-confirm-ok-${isDelete ? 'delete' : 'save'}`,
-        onClick: onOk,
-    }, isDelete ? icon.trash(14) : icon.check(14), isDelete ? strings.confirmDeleteBtn() : strings.confirmSave()), createElement('button', { className: 'dsh-my-memory-confirm-cancel', onClick: onCancel }, icon.close(14), strings.cancel())));
+    return createElement(AskConfirmCard, {
+        variant: isDelete ? 'delete' : 'save',
+        title: CONFIRM_TEXTS[confirm.kind](),
+        scope: confirm.scope,
+        category: '',
+        content: confirm.desc ?? '',
+        showSummary: !isDelete && isOverEntryLimit(confirm.desc, entryLimit),
+        note: strings.confirmHint(),
+        allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
+        onAllow: onOk,
+        onReject: onCancel,
+    });
 }
 /** 确认面板标题文案（按 kind 取；未知 kind 回落删除文案）。 */
 const CONFIRM_TEXTS = {
@@ -1307,6 +1479,114 @@ function SectionBlock({ scope, title, note, data, drafts, editing, confirming, e
 // 不依赖 dsh-better-sidebar。slots 服务是官方 client 服务，通过
 // ctx.get 动态获取——服务缺省时静默跳过（不注册 tab，server 端记忆
 // 能力不受影响）。
+//
+// issue #193：额外接管工具侧确认「呈现」——注册 conversation.composer 的
+// chain 条目（宿主 dsh-client-ui-approval 用同一扩展点渲染原生审批卡，
+// dsh-client-ui-approval/lib/client.js:272-281），仅当 pending approval 属于
+// memory_save / memory_delete 时当选，其余一律让位。chain 选举语义：
+// dsh-client-ui-renderer/lib/client.js:831-849 —— 按 priority 顺序询问，
+// 首个 select 非 null 者当选并独占渲染（break），select 抛错 = declined。
+// 宿主审批条目 priority=1，本插件用更小的 0 排在其前；即便顺序相反也只是
+// 退回宿主原生卡（安全降级），不会出现「两边都不渲染」的死锁。
+/**
+ * chain 选举判据（严判据 + 双重校验，issue #193 安全契约）：
+ * 只接管 pending approval 且 toolName ∈ {memory_save, memory_delete}；
+ * 任何不确定情形（非对象、kind 不符、toolName 不在白名单、answer 不是函数、
+ * 字段取值抛错）一律返回 null —— chain 渲染器随后询问宿主条目，用户始终
+ * 能批准。绝不返回「半接管」状态（既不渲染、又挡住宿主）。
+ */
+function memoryApprovalOperation(pending) {
+    if (pending === null || pending === undefined || typeof pending !== 'object')
+        return '';
+    const candidate = pending;
+    if (candidate.kind !== 'approval')
+        return '';
+    if (typeof candidate.answer !== 'function')
+        return '';
+    if (candidate.toolName === 'memory_save')
+        return 'save';
+    if (candidate.toolName === 'memory_delete')
+        return 'delete';
+    return '';
+}
+function memoryApprovalSelect(owner) {
+    try {
+        const pending = owner?.pendingInteraction;
+        const operation = memoryApprovalOperation(pending);
+        if (operation === '')
+            return null;
+        const candidate = pending;
+        const parsed = parseAskReason(candidate.reason);
+        return {
+            operation,
+            toolName: String(candidate.toolName),
+            scope: parsed.scope,
+            category: parsed.category,
+            content: parsed.content,
+            reasonText: parsed.text,
+            answer: candidate.answer.bind(pending),
+        };
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * 工具侧确认卡（issue #193）：ask 范式卡 + 直接答复宿主 approval。
+ * 删除走二次确认（首次点击只 arm），保存单击即允许；按钮文案与配色按
+ * 操作区分（保存成功色 / 删除危险色）。答复异常被吞掉，绝不让渲染崩溃
+ * 取代卡片（chain 的 crash face 会让用户无法批准）。
+ */
+function isUsableMatch(matched) {
+    if (matched === null || matched === undefined)
+        return false;
+    if (typeof matched !== 'object')
+        return false;
+    return typeof matched.answer === 'function';
+}
+/** 答复宿主 approval：兑现失败被吞掉，绝不让渲染崩溃取代卡片。 */
+function answerApproval(matched, outcome) {
+    try {
+        const result = matched.answer(outcome);
+        if (result !== null && typeof result === 'object' && typeof result.catch === 'function') {
+            void result.catch(() => { });
+        }
+    }
+    catch {
+        // 宿主 approval 通道异常不得冒泡：卡片保持可交互，用户可重试
+    }
+}
+/** 卡片文案与配色（保存成功色 / 删除危险色 + 二次确认）。 */
+function approvalCardProps(matched, busy, respond) {
+    const isDelete = matched.operation === 'delete';
+    return {
+        variant: isDelete ? 'delete' : 'save',
+        title: isDelete ? strings.askDeleteTitle() : strings.askSaveTitle(),
+        scope: matched.scope,
+        category: matched.category,
+        content: matched.content,
+        showSummary: isOverEntryLimit(matched.content, DEFAULT_ENTRY_LIMIT),
+        note: isDelete ? strings.askNoteDelete() : strings.askNoteSave(),
+        allowLabel: isDelete ? strings.askAllowDelete() : strings.askAllowSave(),
+        armedLabel: isDelete ? strings.askDeleteArmed() : undefined,
+        disabled: busy,
+        onAllow: () => respond('allowed-once'),
+        onReject: () => respond('rejected'),
+    };
+}
+function MemoryApprovalCard(props) {
+    const [busy, setBusy] = useState(false);
+    const matched = props?.matched;
+    if (!isUsableMatch(matched))
+        return null;
+    const respond = (outcome) => {
+        if (busy)
+            return;
+        setBusy(true);
+        answerApproval(matched, outcome);
+    };
+    return createElement(AskConfirmCard, approvalCardProps(matched, busy, respond));
+}
 exports.apply = function apply(ctx) {
     ctx.effect(() => {
         if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined')
@@ -1334,6 +1614,21 @@ exports.apply = function apply(ctx) {
         order: 92,
         label: () => strings.title(),
     }, MemoryView)), 'dsh-my-memory: settings tab registration');
+    // 工具侧确认呈现接管（issue #193）：chain 多注册共存，仅记忆写工具的
+    // approval 当选；其它工具的审批由宿主条目渲染（priority=1）。
+    // 注册失败不得影响面板 tab（记忆能力本身在 server 端，与呈现无关）。
+    ctx.effect(() => slots.inject('conversation.composer', () => {
+        try {
+            return slots.register({
+                name: 'conversation.composer',
+                priority: 0,
+                select: memoryApprovalSelect,
+            }, MemoryApprovalCard);
+        }
+        catch {
+            return () => { };
+        }
+    }), 'dsh-my-memory: memory approval composer takeover');
 };
 
 

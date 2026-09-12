@@ -13,7 +13,10 @@
  *      不丢、文件不增长；恢复后全量快照补齐降级窗口事件（不丢不重）；
  *   4. dsh-file-activity（issue #197 纳入覆盖）：5,100 事件 / 100 会话下写
  *      放大 ≤ 1.6、内存与状态文件三维有界 —— 旧实现每次防抖全量重写整个
- *      状态（审计实测单次 1,396,407 B / 放大 3,665×）正是漏过本门禁的原因。
+ *      状态（审计实测单次 1,396,407 B / 放大 3,665×）正是漏过本门禁的原因；
+ *   5. dsh-my-context（issue #198 纳入覆盖）：bySession 会话数有界（LRU +
+ *      淘汰计数）、写入节流生效（写次数 ≤ 时间窗口 ÷ 最小间隔），并打印
+ *      「旧节奏（防抖 500ms + 无护栏） vs 实际（+ 最小间隔 1s）」写入次数/字节对比。
  *
  * 全部通过 exit 0；任一失败 exit 1 并打印原因。
  * CI 入口：.github/workflows/ci.yml 的 resource-smoke job（独立于功能测试）。
@@ -24,8 +27,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createStore } from '../plugins/dsh-my-observability/lib/store.js'
 import { createStore as createFileActivityStore } from '../plugins/dsh-file-activity/lib/store.js'
+import { createStore as createContextStore } from '../plugins/dsh-my-context/lib/store.js'
+import { createState, createSession } from '../plugins/dsh-my-context/lib/state.js'
+import { atomicWriteJson, atomicWriteStats, createWriteScheduler } from '../plugins/dsh-shared/lib/index.js'
 
 let failures = 0
+
+/** 资源冒烟统一静默 logger（warn 由各 store 自行降级）。 */
+const QUIET = { warn() {} }
 
 function check(name, ok, detail) {
   if (ok) {
@@ -181,6 +190,52 @@ async function main() {
     faStore.dispose()
     rmSync(home4, { recursive: true, force: true })
 
+    // ── 场景 5：dsh-my-context 有界容器 + 写入调度（issue #198）──────────
+    console.log('\n[场景 5] dsh-my-context：会话数有界 + 写入节流（旧/新节奏对比）')
+    const home5a = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
+    process.env.DSH_HOME = home5a
+    const ctxStore = createContextStore({ logger: QUIET })
+    await sleep(300)
+
+    // 5a：会话数上限（审计缺口：bySession 此前无上限）
+    for (let s = 0; s < 25; s += 1) {
+      ctxStore.recordRequest(`cap-${s}`, { turn: 1, step: 1, usage: { inputTokens: 1 } })
+    }
+    await ctxStore.whenPersisted()
+    const capStats = ctxStore.stats()
+    check(
+      'bySession 会话数有界（LRU 淘汰 + 淘汰计数可观测）',
+      capStats.sessions <= capStats.maxSessions && capStats.evictedSessions === 25 - capStats.maxSessions,
+      `sessions=${capStats.sessions}/${capStats.maxSessions}, evictedSessions=${capStats.evictedSessions}`,
+    )
+    ctxStore.dispose()
+    rmSync(home5a, { recursive: true, force: true })
+
+    // 5b：写节奏对比（旧默认值「防抖 500ms + 无护栏」 vs 实际「防抖 500ms + 最小间隔 1s」）
+    // 空目录起步 + 预热到状态稳定（每会话请求达上限）→ 两侧状态大小相同，字节可直接比。
+    const home5b = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
+    const legacy = await legacyContextStream(home5b, 30)
+    const current = await contextStream(home5b, 30)
+    console.log(
+      `  · 写节奏对比（事件流 ${current.elapsed}ms）：旧「防抖 500ms + 无护栏」${legacy.writes} 次 / ${legacy.bytes}B` +
+        ` → 新「+ 最小间隔 1s」${current.writes} 次 / ${current.bytes}B`,
+    )
+    const writeCap = Math.ceil(current.elapsed / 1000) + 2
+    check(
+      '写入节流生效：写次数 ≤ 时间窗口 ÷ 最小间隔 + 2',
+      current.writes <= writeCap,
+      `writes=${current.writes}（上界 ${writeCap}）, bytes=${current.bytes}`,
+    )
+    check(
+      '新旧节奏对比：写次数不高于旧节奏（防抖 500ms + 无护栏）',
+      current.writes <= legacy.writes,
+      `旧 ${legacy.writes} 次 / ${legacy.bytes}B → 新 ${current.writes} 次 / ${current.bytes}B`,
+    )
+    const ctxFile = join(home5b, 'context', 'context.json')
+    const ctxBytes = existsSync(ctxFile) ? Buffer.byteLength(readFileSync(ctxFile, 'utf8'), 'utf8') : 0
+    check('状态文件字节有界（≤8MB 显式上限）', ctxBytes > 0 && ctxBytes <= 8 * 1024 * 1024, `file=${ctxBytes}B`)
+    rmSync(home5b, { recursive: true, force: true })
+
     // ── 汇总 ────────────────────────────────────────────────────────────
     console.log(failures === 0 ? '\n[resource-smoke] 全部通过 ✅' : `\n[resource-smoke] ${failures} 项失败 ❌`)
     process.exit(failures === 0 ? 0 : 1)
@@ -188,6 +243,101 @@ async function main() {
     if (oldHome !== undefined) process.env.DSH_HOME = oldHome
     else delete process.env.DSH_HOME
   }
+}
+
+/**
+ * 场景 5 helper：一次请求记录——字段与 store.applyRequest 的产出**逐一对应**
+ * （14 个字段），保证「旧节奏对照组」与「实际 store」写出的字节可直接比较。
+ */
+function requestOf(tick) {
+  return {
+    turn: 1,
+    step: tick,
+    time: Date.now(),
+    prompt: 1000,
+    output: 20,
+    cacheRead: 900,
+    cacheWrite: 100,
+    total: 1020,
+    system: 120,
+    tools: 300,
+    user: 80,
+    inject: 40,
+    assistant: 60,
+    tool: 120,
+  }
+}
+
+/** 场景 5 helper：向（对照组）state 追加一次会话请求，结构与 store.recordRequest 一致。 */
+function pushRequest(state, sessionId, tick) {
+  let session = state.bySession.get(sessionId)
+  if (session === undefined) {
+    session = createSession(sessionId)
+    state.bySession.set(sessionId, session)
+  }
+  session.requests.push(requestOf(tick))
+  session.updatedAt = Date.now()
+}
+
+/** 场景 5 helper：预热到状态稳态（每会话请求数达上限，之后 FIFO 替换不再增长）。 */
+function warmUp(state) {
+  for (let i = 0; i < 500; i += 1) {
+    for (let s = 0; s < 3; s += 1) pushRequest(state, `legacy-${s}`, i)
+  }
+}
+
+/** 场景 5 helper：旧节奏对照组——防抖 500ms + 无护栏（issue #198 之前的默认值）。 */
+async function legacyContextStream(home, ticks) {
+  const file = join(home, 'legacy-context.json')
+  const state = createState()
+  const scheduler = createWriteScheduler({
+    debounceMs: 500,
+    minIntervalMs: 0,
+    prefix: '[legacy]',
+    write: ({ force }) =>
+      atomicWriteJson(file, state, QUIET, '[legacy]', { force, minIntervalMs: 0, maxBytes: Number.POSITIVE_INFINITY }),
+  })
+  warmUp(state)
+  await scheduler.flush() // 预热落盘一次后开始测量
+  const before = atomicWriteStats()
+  const started = Date.now()
+  for (let tick = 0; tick < ticks; tick += 1) {
+    for (let s = 0; s < 3; s += 1) pushRequest(state, `legacy-${s}`, tick)
+    scheduler.schedule()
+    await sleep(100)
+  }
+  await scheduler.drain()
+  return {
+    writes: atomicWriteStats().writes - before.writes,
+    bytes: atomicWriteStats().bytesWritten - before.bytesWritten,
+    elapsed: Date.now() - started,
+  }
+}
+
+/** 场景 5 helper：实际配置——dsh-my-context store（防抖 500ms + 最小间隔 1s + 有界容器）。 */
+async function contextStream(home, ticks) {
+  process.env.DSH_HOME = home
+  const store = createContextStore({ logger: QUIET })
+  await sleep(300)
+  // 预热到稳态（与对照组同规模），再排掉首次落盘：只测事件流节奏
+  for (let i = 0; i < 500; i += 1) {
+    for (let s = 0; s < 3; s += 1) store.recordRequest(`ctx-${s}`, requestOf(i))
+  }
+  await store.whenPersisted()
+  const before = atomicWriteStats()
+  const started = Date.now()
+  for (let tick = 0; tick < ticks; tick += 1) {
+    for (let s = 0; s < 3; s += 1) store.recordRequest(`ctx-${s}`, requestOf(tick))
+    await sleep(100)
+  }
+  await store.whenPersisted()
+  const result = {
+    writes: atomicWriteStats().writes - before.writes,
+    bytes: atomicWriteStats().bytesWritten - before.bytesWritten,
+    elapsed: Date.now() - started,
+  }
+  store.dispose()
+  return result
 }
 
 main().catch((error) => {

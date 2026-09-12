@@ -1,7 +1,30 @@
 # Dependabot 自动依赖更新：每周检查 npm 与 GitHub Actions 依赖，
 # 有安全漏洞（含 qs 这类 advisory）时自动开 PR，保持依赖安全。
+#
+# ── 覆盖盲区修复（issue #184 阶段 4）────────────────────────────────────────────
+# 原配置只有 `directory: '/'`，而本仓库是「根 + 19 个 plugins/<name>」的多包布局：
+# 19 个插件的 package.json（含 devDeps typescript / @types/node）全在覆盖范围之外，
+# 于是没有自动化盯着它们 —— dsh-my-memory 的 devDeps 漂移到 TS 5 / @types/node 20
+# （落后 2 / 6 个大版本）长期无人发现。现在用 `directories` + 通配符 `/plugins/*`
+# 一次性纳入全部插件目录，且**新增插件自动生效**，不需要再改本文件。
+# 通配符能力见 GitHub Changelog 2024-06-25
+# 「Simplified dependabot.yml configuration with multi-directory key (directories)
+#   and wildcard / glob (*) support」。
+#
+# ── 为什么用 allow: dependency-type=development ──────────────────────────────
+# 插件的 peerDependencies（cordis / react / dsh-shared / dsh-md-render）是**公开兼容
+# 声明**：收紧 react 双版本支持、跳 cordis rc 这类动作属于破坏性变更（issue #184 的
+# D 档），必须人工决策，不能让机器人自动改。dependencies 同理（dsh-better-sidebar
+# 受 DSH 宿主 peer 约束，实测直接升 0.19.1 会 ERESOLVE —— 见 docs/开发指南/依赖升级矩阵.md）。
+# 因此自动更新只覆盖 devDependencies（开发工具链）；安全更新不受 allow 限制，仍会开 PR。
+#
+# ── 分组（避免 PR 风暴）──────────────────────────────────────────────────────
+# glob 覆盖 19 个目录后，若不做分组，一个 `npm update` 周期可能开出十几个 PR。
+# 每个目录内按 minor/patch 与 major 两档合并：低风险一个 PR、跨大版本单独一个 PR
+# （跨大版本本来就该逐个读 CHANGELOG）。`open-pull-requests-limit` 再封顶总量。
 version: 2
 updates:
+  # 根工具链（eslint / vitest / typescript / knip / jscpd ...）
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
@@ -14,7 +37,51 @@ updates:
       - 'dependencies'
     commit-message:
       prefix: 'chore(deps)'
-    # 安全更新（security updates）默认开启，无需额外配置
+    allow:
+      - dependency-type: 'development'
+    groups:
+      root-toolchain-minor-patch:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      root-toolchain-major:
+        patterns:
+          - '*'
+        update-types:
+          - 'major'
+    # 安全更新（security updates）默认开启，且不受上面的 allow 限制
+
+  # 19 个插件目录的 devDeps（typescript / @types/node）—— issue #184 的漂移防线
+  - package-ecosystem: 'npm'
+    directories:
+      - '/plugins/*'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+      timezone: 'Asia/Shanghai'
+    open-pull-requests-limit: 3
+    labels:
+      - 'dependencies'
+    commit-message:
+      prefix: 'chore(deps)'
+      include: 'scope'
+    allow:
+      - dependency-type: 'development'
+    groups:
+      plugin-devdeps-minor-patch:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      plugin-devdeps-major:
+        patterns:
+          - '*'
+        update-types:
+          - 'major'
 
   - package-ecosystem: 'github-actions'
     directory: '/'

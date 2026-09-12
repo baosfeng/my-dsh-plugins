@@ -33,6 +33,7 @@ updated: 2026-09-12
 - [依赖安全 / audit 盲区](npm-audit在镜像源下静默失效.md) — npmmirror 无 advisories 端点 + `--registry` 被 `replace-registry-host` 重写回镜像 + CI 只阻断 high + Dependabot 告警是 `auto_dismissed`，四层叠加让 2 条 moderate 漏洞长期无人发现；修法是钉官方 registry、门槛提为 moderate、并校验「audit 真查过」而非只看退出码（已解决，2026-09-12，issue #199）
 - [验证 / 隔离实例软链](隔离实例复用主工作区插件软链导致假验证.md) — 隔离 profile 把生产 `node_modules` 的 `link:` 软链整体复用，`--addons` 指定的待验代码被主工作区版本顶替（假通过/假失败）；修法是显式优先 + 启动前 `realpath` 校验 + 防回归测试（已解决，2026-09-12，issue #220）
 - [依赖安全 / Dependabot 假阴性](dependabot自动关闭告警造成假阴性.md) — GitHub 对 npm development 传递依赖告警 on-by-default 自动关闭（公开仓库），open 视图「0 条」与「没报过」无法区分；更隐蔽的是依赖升到修复版后 `auto_dismissed` 会被覆盖成 `fixed` 并**清空时间戳**，历史无痕。机制修复：巡检强制复查已关闭告警 + `check-dependabot-closed.sh`（13 例防回归自测）（2026-09-12，issue #214）
+- [CI / 日志取证](CI日志取证静默缺项.md) — `ghops actions logs` 拿 run 归档当 job 清单 → 失败 job 静默缺失（#217），失败 job 日志 403 被误读成"需仓库 admin"（实为未带凭据）；改为 jobs API 全量分页 + 归档缺项单 job 补齐 + 缺口明确报告，并一并修掉 alerts 的「0 条 ≠ 不存在」（已解决，2026-09-12，issue #224）
 
 ## 维护规则
 

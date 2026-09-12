@@ -62,7 +62,7 @@ declare const exports: Record<string, unknown>
 
 // ── engine part：vendored mermaid engine ─────────────────────────────
 
-const MERMAID_UMD_B64: string = /*__MERMAID_UMD_B64__*/ ''
+const MERMAID_UMD_B64: string = '__MERMAID_UMD_B64__' // 须在字符串字面量内（构建替换为 base64）；勿写同形字面量
 
 /** base64 解码为 UTF-8 字符串。 */
 function b64ToUtf8(b64: string): string {

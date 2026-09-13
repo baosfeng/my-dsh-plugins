@@ -11,7 +11,7 @@
       "functions": {}
     },
     "plugins/dsh-mermaid-render/src/client/index.ts": {
-      "lines": 1134,
+      "lines": 840,
       "functions": {}
     },
     "plugins/dsh-my-guard/src/index.ts": {
@@ -29,7 +29,7 @@
       "functions": {}
     },
     "plugins/dsh-my-memory/src/client/parts/view-rows.ts": {
-      "lines": 408,
+      "lines": 389,
       "functions": {
         "MemoryRow": {
           "line": 211,
@@ -62,31 +62,20 @@
       "lines": 364,
       "functions": {
         "extractUserText": {
-          "line": 130,
+          "line": 135,
           "lines": 11,
           "complexity": 11
         },
         "<anonymous>#6": {
-          "line": 241,
+          "line": 246,
           "lines": 12,
           "complexity": 11
-        },
-        "apply": {
-          "line": 255,
-          "lines": 73,
-          "complexity": 4
         }
       }
     },
     "plugins/dsh-my-memory/src/store.ts": {
-      "lines": 428,
-      "functions": {
-        "createDebouncedStore": {
-          "line": 255,
-          "lines": 76,
-          "complexity": 1
-        }
-      }
+      "lines": 424,
+      "functions": {}
     },
     "plugins/dsh-my-notify/src/webhook/pusher.ts": {
       "lines": 135,
@@ -165,7 +154,7 @@
       }
     },
     "plugins/dsh-think-zh-expand/src/client/index.ts": {
-      "lines": 688,
+      "lines": 687,
       "functions": {}
     }
   }

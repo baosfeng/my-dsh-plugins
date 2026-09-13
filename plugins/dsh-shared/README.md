@@ -26,6 +26,14 @@ DSH 插件共享工具包：多插件共用的 server 端工具，消除复制�
 | 需要 LRU 的数组                 | `boundedMap`                                   | ❌ 对数组做「访问即移动到尾部」（O(n)，热路径性能陷阱）                                                                                                                                       |
 | 降级 / 看门狗（采样→判定→停写） | `createResourceGuard` + `createProcessSampler` | ❌ 各插件抄一份 resource-monitor（observability 已改为消费方，仍私有实现=重复且口径漂移）；❌ 拿「告警」当「降级」（CPU/内存峰值误停落盘）；❌ 把递归扫目录塞进 `collect`（监控自身成为热点） |
 
+### ⚠️ 写入节奏只能有一个来源（机械可检查）
+
+用 `createWriteScheduler` 时，写回调里的快照原语**必须**带 `minIntervalMs: 0`（关节流，节奏全交给调度器）；反之，直接用 `atomicWriteJson` 的节流时**不要**再套调度器。**禁止同时启用两道节流**：调度器的 `drain()` 走非 force 路径，快照原语的节流窗口比调度器间隔长时这次写会被拒 → 重排耗尽后放弃 → **状态永不落盘且不报错**（只剩一条 warn）。
+
+- 机械检查：`grep -rn "createWriteScheduler" plugins/*/src` 命中的文件里，`atomicWriteJson` 调用必须含 `minIntervalMs: 0`。
+- 契约测试：`test/scheduler-throttle-conflict.mjs`（A2 = 丢状态反例，A1 = 同窗口的巧合安全，B = 正确用法）。
+- 事故记录：[写入节奏双护栏互斥导致状态永不落盘](../../docs/踩坑/写入节奏双护栏互斥导致状态永不落盘.md)。
+
 **适用边界与反例的完整说明**：`docs/共享工具包/概述.md`；资源预算五维评审口径见 `skills/resource-budget-review/SKILL.md` 与 `docs/开发指南/插件资源安全规范.md`。
 
 ## 安装

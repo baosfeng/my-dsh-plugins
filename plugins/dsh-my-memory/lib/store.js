@@ -30,8 +30,9 @@
  * recovery).
  */
 import { createHash } from 'node:crypto';
-import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import { mkdir } from 'node:fs/promises';
+import { atomicWriteJson, createWriteScheduler } from 'dsh-shared';
 import { homedir } from 'node:os';
 import { dirname, join, normalize, resolve } from 'node:path';
 import { findProjectRoot } from 'dsh-shared';
@@ -192,13 +193,20 @@ function normalizeCandidates(memory) {
         items: items.filter((item) => isCandidateItem(item)),
     };
 }
-/** Atomic write: write to tmp file, then rename (crash-safe); the parent
- *  directory is created on demand (first write into $DSH_HOME/memory). */
+/** 日志前缀（护栏 warn 用）。 */
+const PREFIX = '[dsh-my-memory]';
+/**
+ * 记忆快照字节上限（护栏兜底，issue #198 收尾）：单条记忆 ≤ 数百字节
+ * （desc 默认 ≤ 200 字符 + 文本主体），条目数随长期使用增长且无数量上限
+ * → 4MB 作为保守上界（≈ 上千条记忆）；超限由 shared 护栏**拒绝写入 + 计数**
+ * （`atomicWriteStats().rejected`），不再无界放大。
+ */
+const MEMORY_MAX_BYTES = 4 * 1024 * 1024;
+/** 原子写快照（走 shared 原语：紧凑 JSON + 自动建目录 + 字节上限 + 拦截计数）。
+ *  返回 false 表示被护栏拦截或 IO 失败（调用方/调度器据此重排或告警）。 */
 async function atomicWrite(file, data) {
-    await mkdir(dirname(file), { recursive: true });
-    const tmp = `${file}.tmp.${process.pid}`;
-    await writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
-    await rename(tmp, file);
+    // 节奏由 createWriteScheduler 单一控制 → 原语关节流（双护栏会互相拦掉正常节奏）
+    return atomicWriteJson(file, data, undefined, PREFIX, { minIntervalMs: 0, maxBytes: MEMORY_MAX_BYTES });
 }
 /** Item timestamp for sorting: updatedAt, falling back to createdAt. */
 function tsOf(item) {
@@ -212,10 +220,15 @@ function tsOf(item) {
 function createDebouncedStore(file, debounceMs, normalize) {
     const state = {
         items: [],
-        timer: null,
-        writing: Promise.resolve(),
         ready: Promise.resolve(),
     };
+    /** 写入调度（shared 原语）：防抖 + 最小间隔 1s + 串行链 + drain 就绪信号。 */
+    const scheduler = createWriteScheduler({
+        debounceMs,
+        minIntervalMs: 1000,
+        prefix: PREFIX,
+        write: () => writeMemoryFile(file, { items: state.items }),
+    });
     state.ready = readNormalizedFile(file, normalize).then((document) => {
         state.items = document.items;
     });
@@ -226,30 +239,19 @@ function createDebouncedStore(file, debounceMs, normalize) {
         return state.ready;
     }
     function scheduleWrite() {
-        if (state.timer !== null)
-            clearTimeout(state.timer);
-        state.timer = setTimeout(() => {
-            state.timer = null;
-            state.writing = writeMemoryFile(file, { items: state.items }).catch(() => { });
-        }, debounceMs);
+        scheduler.schedule();
     }
     async function flush() {
-        if (state.timer !== null) {
-            clearTimeout(state.timer);
-            state.timer = null;
-        }
         await state.ready;
-        await writeMemoryFile(file, { items: state.items });
-        await state.writing;
+        // flush = 强写一次（保持"await flush() 之后状态必在盘上"的调用方语义）
+        await scheduler.flush();
     }
     function list() {
         return state.items.slice().sort((a, b) => tsOf(b) - tsOf(a));
     }
     function dispose() {
-        if (state.timer !== null) {
-            clearTimeout(state.timer);
-            state.timer = null;
-        }
+        // drain：把挂起/在飞的写推到结束（同步 teardown 里不阻塞，但不在写链上留悬挂状态）
+        void scheduler.drain();
     }
     function push(item) {
         state.items.push(item);
@@ -348,5 +350,5 @@ export function createCandidatesStore(options) {
  * Write one memory file (atomic).
  */
 async function writeMemoryFile(file, data) {
-    await atomicWrite(file, data);
+    return atomicWrite(file, data);
 }

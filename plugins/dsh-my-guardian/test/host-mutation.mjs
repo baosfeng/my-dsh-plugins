@@ -26,9 +26,11 @@ async function waitFor(check, timeoutMs = 10000, intervalMs = 10) {
   }
 }
 
+/** 同步读（供 waitFor 条件轮询用：轮询本身就是"等到条件成立"的确定性等待，
+ *  不需要 drain；搭配 async readState 会变成永真 promise）。 */
 const readStateOrNull = () => {
   try {
-    return readState()
+    return JSON.parse(readFileSync(stateFile(), 'utf8'))
   } catch {
     return undefined
   }
@@ -46,7 +48,11 @@ function stateFile() {
   return join(dir, 'guardian', 'state.json')
 }
 
-function readState() {
+/** 确定性就绪信号：apply 返回的 shared 暴露 flushPersist()（等落盘完成）。
+ *  persistSoon 现在经 createWriteScheduler 防抖合并，固定 sleep/直接读盘会读到旧状态。 */
+let flushPersist = async () => {}
+async function readState() {
+  await flushPersist()
   return JSON.parse(readFileSync(stateFile(), 'utf8'))
 }
 
@@ -164,7 +170,8 @@ async function callApi(fake, method, path, body, overrides) {
 
 async function boot(fake, opts) {
   const ctx = makeCtx(fake, opts)
-  apply(ctx)
+  const shared = apply(ctx)
+  flushPersist = shared?.flushPersist ?? (async () => {})
   // 确定性同步点：API 注册是 initialScan 的最后一步（#217：不再 sleep 赌它跑完）
   await waitFor(() => fake.apiRoute !== undefined)
   return ctx
@@ -248,7 +255,7 @@ test('diagnostic event log messages carry the entry id', async () => {
     if (name === 'hmr/config-update-failed') listener('cordis.yml', new Error('boom'))
   }
   await waitFor(() => readStateOrNull()?.events?.some((e) => e.type === 'entry-init'))
-  const state = readState()
+  const state = await readState()
   assert.ok(
     state.events.some((e) => e.type === 'entry-init' && e.message.includes('evt-1')),
     'entry-init message has id',
@@ -383,7 +390,7 @@ test('mount with null config works (config omitted)', async () => {
   writeFileSync(stagedFile(), JSON.stringify([{ id: 'nocfg', name: 'dsh-nocfg', config: null }], null, 2))
   const ctx = await boot(fake)
   assert.ok(fake.created.includes('nocfg'), 'null config accepted')
-  const state = readState()
+  const state = await readState()
   assert.equal(state.promoted['nocfg'].config, undefined, 'null config not stored')
   await shutdown(ctx)
 })

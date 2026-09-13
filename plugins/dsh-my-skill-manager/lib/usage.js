@@ -42,7 +42,11 @@ export function createUsageStore({ file, logger }) {
         minIntervalMs: PERSIST_MIN_INTERVAL_MS,
         logger,
         prefix: '[dsh-my-skill-manager]',
-        write: ({ force }) => atomicWriteJson(core.file, { skills: usageSnapshot(core) }, core.logger, '[dsh-my-skill-manager]', { force }),
+        write: ({ force }) => atomicWriteJson(core.file, { skills: usageSnapshot(core) }, core.logger, '[dsh-my-skill-manager]', {
+            force,
+            // 节奏单一来源：调度器负责节奏，快照原语关节流（双护栏会让 drain 的写被拒后放弃）
+            minIntervalMs: 0,
+        }),
     });
     // 属性顺序与迁移前一致：core 字段先建，readyPromise/_resolveReady 后挂。
     const store = core;

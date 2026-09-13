@@ -18,7 +18,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { REPO_ROOT, anchorsOfContent, runCheck, skillFromPath, slugify } from '../check-links.mjs'
+import { REPO_ROOT, anchorsOfContent, runCheck, skillFromPath, slugify, stripHtmlTags } from '../check-links.mjs'
 
 const tmpRoots = []
 afterAll(() => {
@@ -520,6 +520,36 @@ describe('变异验证（破坏 → 红；修复 → 绿）', () => {
 })
 
 // ── 5. 纯函数 ───────────────────────────────────────────────────────────────
+
+describe('stripHtmlTags（HTML 标签剥离，CodeQL #16）', () => {
+  // 等价用例表：逐例锁定「删除 < 到其后最近 > 的整段；未闭合的 < 原样保留」这一语义
+  // （与原 /<[^>]*>/g 一致——该正则一轮替换即为不动点，见下方第 2 条）。
+  it('逐例等价：闭合标签整段删除，未闭合 < 原样保留', () => {
+    const cases = [
+      ['a<b>c', 'ac'],
+      ['<a href="x">text</a>', 'text'],
+      ['<>', ''],
+      ['<<a>', ''],
+      ['<a><b>', ''],
+      ['a>b', 'a>b'],
+      ['a<b', 'a<b'],
+      ['a<script', 'a<script'],
+      ['x<y>z<w', 'xz<w'],
+      ['<!-- c -->x', 'x'],
+      ['', ''],
+    ]
+    for (const [input, expected] of cases) expect(stripHtmlTags(input), input).toBe(expected)
+  })
+
+  it('绕过面核查：CodeQL 命题（剥离后仍可能含 <script）成立，但最终 slug 不可能含 HTML', () => {
+    // 未闭合的 <script 不匹配标签母题 → 中间态原样保留（这正是告警说的 "may still contain <script"）。
+    expect(stripHtmlTags('a<script')).toBe('a<script')
+    // 但 slugify 紧接着按 [^\p{L}\p{N}\s-] 剥离，左尖括号不可能进入最终 slug——功能上不可利用。
+    expect(slugify('a<script')).toBe('ascript')
+    expect(slugify('a<script>b')).toBe('ab')
+    expect(slugify('<script>alert(1)</script>')).toBe('alert1')
+  })
+})
 
 describe('slug 与锚点纯函数', () => {
   it('slugify：全角括号等符号剔除、空格转连字符、大小写归一', () => {

@@ -156,6 +156,27 @@ const PLACEHOLDER_RE = /^(?:url|path|link|href|src|file|target|filename|dir|dire
 // ── 纯函数：slug 与锚点 ─────────────────────────────────────────────────────
 
 /**
+ * 剥离 HTML 标签：删除每个 `<` 到其后最近 `>` 之间的内容（含两端）；未闭合的 `<` 原样保留。
+ *
+ * 语义与原先的 `/<[^>]*>/g` 逐例等价（见 scripts/test/check-links.test.mjs 的等价用例表），
+ * 但换成单字符推进的确定性扫描，而不是多字符正则替换——后者会被 CodeQL
+ * js/incomplete-multi-character-sanitization 判为「可被绕过的净化器：替换一次后字符串
+ * 仍可能含 `<script`」（正则对未闭合的 `<script` 不匹配，替换结果里就会原样残留）。
+ */
+export function stripHtmlTags(text) {
+  const source = String(text ?? '')
+  let out = ''
+  let cursor = 0
+  for (;;) {
+    const start = source.indexOf('<', cursor)
+    const end = start === -1 ? -1 : source.indexOf('>', start + 1)
+    if (end === -1) return out + source.slice(cursor)
+    out += source.slice(cursor, start)
+    cursor = end + 1
+  }
+}
+
+/**
  * GitHub 标题 slug：去 markdown 装饰与 HTML/全角符号，空格转连字符（collapse=折叠连续空白）。
  *
  * keepUnderscore：GitHub（github-slugger）**保留下划线**（`foo_bar` → `foo_bar`），但下划线在
@@ -163,9 +184,7 @@ const PLACEHOLDER_RE = /^(?:url|path|link|href|src|file|target|filename|dir|dire
  * 变体都收进锚点集合：宁可宽松（不误报），也不要把 GitHub 上有效的锚点判红。
  */
 export function slugify(text, collapse = true, keepUnderscore = false) {
-  const stripped = text
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/<[^>]*>/g, '')
+  const stripped = stripHtmlTags(text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1'))
     .replace(keepUnderscore ? /[`*~]/g : /[`*_~]/g, '')
     .trim()
     .toLowerCase()

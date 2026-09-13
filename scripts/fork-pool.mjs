@@ -44,6 +44,7 @@ import {
   buildCheckItems,
   evaluateBaseline,
   evaluateWorkspaceLinks,
+  excludeAppendContent,
   forkDirFor,
   formatMs,
   isSafeToClean,
@@ -155,13 +156,19 @@ function installHooks(forkDir) {
   return { ok: true, detail: `core.hooksPath=${hooksPath}（pre-commit / pre-push 已生效）` }
 }
 
-/** 防误提交：node_modules 是符号链接，.gitignore 的 `node_modules/` 规则**不匹配软链**。 */
+/**
+ * 防误提交：node_modules 是符号链接，.gitignore 的 `node_modules/` 规则**不匹配软链**。
+ *
+ * 读文件用 fs.readFileSync（与 `cat` 同语义、同 utf8 解码，错误同样向上抛），不派生子进程：
+ * 子进程版是多进程/不可移植的（Windows 无 cat），CodeQL js/unnecessary-use-of-cat 也在此报警。
+ */
 function ensureExclude(forkDir) {
   const excludeFile = join(forkDir, '.git', 'info', 'exclude')
-  const current = existsSync(excludeFile) ? execFileSync('cat', [excludeFile], { encoding: 'utf8' }) : ''
-  if (current.split('\n').includes('node_modules')) return { ok: true, detail: '已包含 node_modules' }
+  const current = existsSync(excludeFile) ? readFileSync(excludeFile, 'utf8') : ''
+  const appended = excludeAppendContent(current)
+  if (!appended) return { ok: true, detail: '已包含 node_modules' }
   try {
-    writeFileSync(excludeFile, `${current.replace(/\n?$/, '\n')}node_modules\n`)
+    writeFileSync(excludeFile, appended)
     return { ok: true, detail: '已写入 node_modules（防 git add -A 误提交软链）' }
   } catch (error) {
     return { ok: false, detail: `写入失败：${error.message}` }

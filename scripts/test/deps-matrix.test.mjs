@@ -12,6 +12,7 @@ import {
   buildRows,
   classifyGap,
   compareVersions,
+  encodePackageName,
   findPolicy,
   parseSpec,
   parseVersion,
@@ -21,6 +22,29 @@ import {
   resolveTier,
   summarizeRows,
 } from '../lib/deps-matrix.mjs'
+
+describe('encodePackageName（registry 路径段编码，CodeQL #17）', () => {
+  it('scoped 包名的 / 编码成 %2f', () => {
+    expect(encodePackageName('@deepseek-ai/dsh')).toBe('@deepseek-ai%2fdsh')
+    expect(encodePackageName('@types/node')).toBe('@types%2fnode')
+  })
+
+  it('未 scoped 包名原样返回', () => {
+    expect(encodePackageName('eslint')).toBe('eslint')
+    expect(encodePackageName('qs')).toBe('qs')
+  })
+
+  // 旧实现是 name.replace('/', '%2f')：只替换首个 /。scoped 包名当前只有一个 /，
+  // 所以两者结果相同；这条断言锁定"全局替换"的真实意图（将来多段形态不再漏编码）。
+  it('所有 / 都被替换（不是只替换首个）', () => {
+    expect(encodePackageName('@a/b/c')).toBe('@a%2fb%2fc')
+  })
+
+  it('空值不崩', () => {
+    expect(encodePackageName()).toBe('')
+    expect(encodePackageName(null)).toBe('')
+  })
+})
 
 describe('parseVersion', () => {
   it('解析基本三段版本', () => {

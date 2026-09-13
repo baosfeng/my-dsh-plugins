@@ -14,6 +14,7 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { parseGithubRepo } from './lib/github-repo.mjs'
 
 const CLI = '@deepseek-ai/dsh'
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm'
@@ -166,36 +167,42 @@ for (const name of new Set([...pkgsA.keys(), ...pkgsB.keys()].sort())) {
 }
 writeFileSync(join(out, 'manifest-diff.txt'), manifestDiff)
 
-/** GitHub compare enrichment: commit list + revert detection across the tag pair. */
+/**
+ * GitHub compare enrichment: commit list + revert detection across the tag pair.
+ *
+ * host 判据必须落在**解析后的 hostname**上：`repository.includes('github.com')` 会把
+ * `https://evil.example/github.com/o/r` 这类 URL 也放行（CodeQL
+ * js/incomplete-url-substring-sanitization），随后拿这段路径去请求 api.github.com。
+ * 解析与回归测试见 ./lib/github-repo.mjs + scripts/test/github-repo.test.mjs。
+ */
 let enrichment = { attempted: false }
-if (useGithub && repository.includes('github.com')) {
+const githubRepo = useGithub ? parseGithubRepo(repository) : null
+if (githubRepo) {
   enrichment.attempted = true
-  const [, owner, repo] = repository.match(/github\.com[/:]([^/]+)\/([^/]+)$/) ?? []
-  if (owner) {
-    const range = `dsh-v${a.resolved}...dsh-v${b.resolved}`
-    try {
-      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/compare/${range}`)
-      if (res.ok) {
-        const data = await res.json()
-        const commits = (data.commits ?? []).map((c) => `${c.sha.slice(0, 10)} (${c.commit.author.date.slice(0, 10)}) ${c.commit.message.split('\n')[0]}`)
-        writeFileSync(join(out, 'commits.txt'), commits.join('\n') + '\n')
-        const reverts = commits.filter((c) => /revert/i.test(c))
-        writeFileSync(join(out, 'reverts.txt'), reverts.join('\n') + '\n')
-        enrichment = {
-          attempted: true,
-          ok: true,
-          range,
-          totalCommits: data.total_commits,
-          commitsListed: commits.length,
-          truncated: commits.length < data.total_commits,
-          reverts: reverts.length,
-        }
-      } else {
-        enrichment = { attempted: true, ok: false, status: res.status }
+  const { owner, repo } = githubRepo
+  const range = `dsh-v${a.resolved}...dsh-v${b.resolved}`
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/compare/${range}`)
+    if (res.ok) {
+      const data = await res.json()
+      const commits = (data.commits ?? []).map((c) => `${c.sha.slice(0, 10)} (${c.commit.author.date.slice(0, 10)}) ${c.commit.message.split('\n')[0]}`)
+      writeFileSync(join(out, 'commits.txt'), commits.join('\n') + '\n')
+      const reverts = commits.filter((c) => /revert/i.test(c))
+      writeFileSync(join(out, 'reverts.txt'), reverts.join('\n') + '\n')
+      enrichment = {
+        attempted: true,
+        ok: true,
+        range,
+        totalCommits: data.total_commits,
+        commitsListed: commits.length,
+        truncated: commits.length < data.total_commits,
+        reverts: reverts.length,
       }
-    } catch (e) {
-      enrichment = { attempted: true, ok: false, error: String(e) }
+    } else {
+      enrichment = { attempted: true, ok: false, status: res.status }
     }
+  } catch (e) {
+    enrichment = { attempted: true, ok: false, error: String(e) }
   }
 }
 

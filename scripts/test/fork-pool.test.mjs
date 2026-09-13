@@ -21,6 +21,7 @@ import {
   buildCheckItems,
   evaluateBaseline,
   evaluateWorkspaceLinks,
+  excludeAppendContent,
   planWorkspaceLinks,
   fetchRemoteFor,
   forkDirFor,
@@ -60,6 +61,24 @@ function makeFakeFork(tmpRoot, id, { hooksPath = null } = {}) {
   if (hooksPath) spawnSync('git', ['-C', dir, 'config', 'core.hooksPath', hooksPath], { encoding: 'utf8' })
   return dir
 }
+
+describe('excludeAppendContent（.git/info/exclude 幂等追加，CodeQL #18）', () => {
+  it('已含 node_modules 行 → null（不重复写、不破坏原文件）', () => {
+    expect(excludeAppendContent('node_modules\n')).toBeNull()
+    expect(excludeAppendContent('# 注释\nnode_modules\n')).toBeNull()
+    expect(excludeAppendContent('node_modules')).toBeNull()
+  })
+
+  it('缺 node_modules → 保留原内容并补一行（无尾随换行的文件也补齐）', () => {
+    expect(excludeAppendContent('')).toBe('\nnode_modules\n')
+    expect(excludeAppendContent('# 注释\n')).toBe('# 注释\nnode_modules\n')
+    expect(excludeAppendContent('# 注释')).toBe('# 注释\nnode_modules\n')
+  })
+
+  it('子串不算命中（node_modules_backup 仍要补 node_modules）', () => {
+    expect(excludeAppendContent('node_modules_backup\n')).toBe('node_modules_backup\nnode_modules\n')
+  })
+})
 
 describe('参数解析', () => {
   it('create 解析编号、分支、基线、hooks 与 node_modules 策略', () => {

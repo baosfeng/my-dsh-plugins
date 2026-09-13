@@ -97,6 +97,18 @@ export const fetchRemoteFor = (owner, repo) => `https://github.com/${owner}/${re
 export const pushRemoteFor = (owner, repo) => `git@github.com:${owner}/${repo}.git`
 
 /**
+ * `.git/info/exclude` 的追加内容：已含 node_modules 时返回 null（幂等）。
+ *
+ * 为什么抽成纯函数：这段判据一旦写错，`git add -A` 就会把 node_modules 软链提交进仓库
+ * （node_modules/ 规则**不匹配软链**，见 ensureExclude 的注释），必须能被单测直接覆盖。
+ */
+export function excludeAppendContent(current) {
+  const text = String(current ?? '')
+  if (text.split('\n').includes('node_modules')) return null
+  return `${text.replace(/\n?$/, '\n')}node_modules\n`
+}
+
+/**
  * 基线判定：fork 拿到的 origin/<base> 必须与 GitHub 上 refs/heads/<base> 一致。
  * 历史踩坑（docs/踩坑/fork池基线与squash判定.md）：clone --local 的 origin/<base> 其实是
  * **主工作区本地分支**（clone 把源 refs/heads/* 映射成目标 refs/remotes/origin/*，但不复制

@@ -32,6 +32,7 @@ import { fileURLToPath } from 'node:url'
 import {
   buildRows,
   compareVersions,
+  encodePackageName,
   findPolicy,
   parseSpec,
   parseVersion,
@@ -148,9 +149,6 @@ function collectEngines(manifests) {
   return groups
 }
 
-/** scoped 包名要转义 `/` 才能进 URL 路径。 */
-const encodeName = (name) => (name.startsWith('@') ? name.replace('/', '%2f') : name)
-
 async function fetchJson(url, opts, accept = 'application/json') {
   const res = await fetch(url, { headers: { accept }, signal: AbortSignal.timeout(opts.timeoutMs) })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -168,14 +166,14 @@ async function withRetry(fn) {
 
 /** dist-tags 端点约 100B，比完整 packument（eslint 1.2MB / @types/node 2.3MB）小三个数量级。 */
 async function queryLatest(name, opts) {
-  const tags = await withRetry(() => fetchJson(`${opts.registry}/-/package/${encodeName(name)}/dist-tags`, opts))
+  const tags = await withRetry(() => fetchJson(`${opts.registry}/-/package/${encodePackageName(name)}/dist-tags`, opts))
   return tags.latest ?? null
 }
 
 /** 分支跟踪：在当前 major 分支内取最大正式版本（@types/node 的 latest 停在旧 LTS 分支）。 */
 async function queryBranchLatest(name, major, opts) {
   const doc = await withRetry(() =>
-    fetchJson(`${opts.registry}/${encodeName(name)}`, opts, 'application/vnd.npm.install-v1+json'),
+    fetchJson(`${opts.registry}/${encodePackageName(name)}`, opts, 'application/vnd.npm.install-v1+json'),
   )
   const candidates = Object.keys(doc.versions ?? {})
     .map(parseVersion)

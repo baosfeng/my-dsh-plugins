@@ -110,7 +110,10 @@ function printHelp() {
       '  --profile <name>   profile 名（默认 web）\n' +
       '  --port <port>      验证实例端口（默认 3087）\n' +
       '  --addons <dir>     模拟安装的插件目录（可重复；写入临时 profile 的 bundles + dependencies）\n' +
-      '  --api-path <path>  启动后对每个 path 做 GET 冒烟（可重复）\n' +
+      '  --api-path <path>  启动后对每个 path 做 GET 冒烟（可重复）。\n' +
+      '                     ⚠️ 需要浏览器会话（issue #257）：DSH web 有认证层，非交互环境下脚本\n' +
+      '                     拿不到访问 token，这一项会**显式失败**并提示"这是脚本问题"。\n' +
+      '                     要做 API 断言请走 skills/verifying-dsh-plugins 的浏览器步骤。\n' +
       '  --timeout <sec>    启动就绪超时（默认 90）\n' +
       '  --skip             只做配置组合检查（dump-config），不启动实例\n' +
       '  --keep             失败/完成后保留临时目录（默认清理）\n' +
@@ -455,7 +458,9 @@ if (options.apiPaths.length > 0) {
   if (!token) {
     fail(
       'API 冒烟无法进行：取不到隔离实例的访问 token（启动输出与 .credentials.yaml 都没有）。' +
-        '这是**验证脚本**的问题，不是插件问题 —— 请修脚本，不要跳过这一项。',
+        '这是**验证脚本**的问题，不是插件问题 —— 不要把 404 当成"插件路由异常"去查插件代码。' +
+        'issue #257 的收口结论：DSH web 的认证层使非交互环境拿不到凭据，**这一项需要浏览器会话**；' +
+        '请改用 skills/verifying-dsh-plugins 的浏览器步骤做 API 断言（不要为绕过它而删检查）。',
     )
     if (logTail) log(`实例输出尾部（诊断用）：\n${logTail}`)
   } else {
@@ -479,9 +484,7 @@ if (!failed) writeChecklist()
 if (!options.keep) {
   await cleanup()
 } else {
-  log(
-    `--keep：实例保持运行（端口 ${options.port}，日志见 /tmp/dsh-verify-real-${options.port}.log），临时目录 ${simHome}`,
-  )
+  log(`--keep：实例保持运行（端口 ${options.port}，实例日志 ${join(simHome, 'dsh-web.log')}），临时目录 ${simHome}`)
   log(`手动停止：lsof -ti :${options.port} | xargs kill；清理：rm -rf ${simHome}`)
 }
 process.exit(failed ? 1 : 0)

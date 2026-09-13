@@ -36,10 +36,30 @@ trap cleanup_tmp EXIT
 # lint-staged 的「备份暂存状态失败」指纹
 stash_backup_failed() { grep -q 'Failed to back up original state' "$out_file" 2>/dev/null; }
 
+# ── 工具链直调（issue #240）─────────────────────────────────────────────────
+# 为什么不用 npx：npx 每次启动都要重走一遍它自己的解析，实测
+#   npx --no-install lint-staged 816ms  vs  ./node_modules/.bin/lint-staged 642ms
+#   npx --no-install prettier     ~265ms vs  ./node_modules/.bin/prettier     ~71ms
+# pre-commit 是每次提交都走的高频路径，差出来的 ~174ms 是纯浪费。
+# 本地 bin 不存在时**退回 npx**（保持原来「缺工具就立即失败，不去 registry 装」的语义）。
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=$(pwd)
+BIN_DIR="$repo_root/node_modules/.bin"
+eslint_bin=$BIN_DIR/eslint
+prettier_bin=$BIN_DIR/prettier
+
 # POSIX sh 没有 PIPESTATUS：用子 shell 把真实退出码写进文件，tee 负责实时输出
+#
+# ⚠️ else 分支里的 `npx --no-install lint-staged` 必须保持为**真实执行的命令**、不能简写成
+# 变量：knip 的 husky 插件会解析 .husky/ 下每个 hook 的脚本文本、提取其中的 known bins，
+# 以此判定 devDependencies 是否真被使用。实测把它换成一个变量后，knip 立刻报
+# 「Unused devDependencies (1): lint-staged」→ CI 的 dead code 门禁变红。
 run_lint_staged() {
   : > "$status_file"
-  ( npx --no-install lint-staged; echo $? > "$status_file" ) 2>&1 | tee "$out_file" || true
+  if [ -x "$BIN_DIR/lint-staged" ]; then
+    ( "$BIN_DIR/lint-staged"; echo $? > "$status_file" ) 2>&1 | tee "$out_file" || true
+  else
+    ( npx --no-install lint-staged; echo $? > "$status_file" ) 2>&1 | tee "$out_file" || true
+  fi
   [ "$(cat "$status_file" 2>/dev/null)" = "0" ]
 }
 
@@ -60,7 +80,15 @@ degraded_check() {
     echo "  · eslint（只读检查 $n 个暂存 .js/.mjs）"
     # --fix-dry-run：在内存里试算 `eslint --fix` 的结果，退出码反映"修完还剩多少错"。
     # 用它而不是裸 eslint，是为了不把「--fix 本来就能自动修好」的问题误判成门禁失败。
-    if tr '\n' '\0' < "$list.eslint" | xargs -0 npx --no-install eslint --fix-dry-run > /dev/null 2>&1; then
+    if [ -x "$eslint_bin" ]; then
+      if tr '\n' '\0' < "$list.eslint" | xargs -0 "$eslint_bin" --fix-dry-run > /dev/null 2>&1; then
+        :
+      else
+        ok=0
+        echo '    ↓ eslint 报出的、--fix 无法自动修复的问题：'
+        tr '\n' '\0' < "$list.eslint" | xargs -0 "$eslint_bin" || true
+      fi
+    elif tr '\n' '\0' < "$list.eslint" | xargs -0 npx --no-install eslint --fix-dry-run > /dev/null 2>&1; then
       :
     else
       ok=0
@@ -71,7 +99,11 @@ degraded_check() {
   if [ -s "$list.fmt" ]; then
     n=$(wc -l < "$list.fmt" | tr -d ' ')
     echo "  · prettier --check（$n 个暂存文件）"
-    tr '\n' '\0' < "$list.fmt" | xargs -0 npx --no-install prettier --check || ok=0
+    if [ -x "$prettier_bin" ]; then
+      tr '\n' '\0' < "$list.fmt" | xargs -0 "$prettier_bin" --check || ok=0
+    else
+      tr '\n' '\0' < "$list.fmt" | xargs -0 npx --no-install prettier --check || ok=0
+    fi
   fi
   rm -f "$list" "$list.eslint" "$list.fmt"
   [ "$ok" = "1" ]
@@ -115,12 +147,12 @@ echo '  → 降级为「直接对暂存文件跑只读检查」，以保住 pre-
 if degraded_check; then
   echo ""
   echo '  ✔ 降级检查通过：暂存文件本身没有问题（本次只是没走 lint-staged 的自动修复），放行提交。'
-  echo '    想补跑完整流程：确认没有并发 git 操作后执行 npx lint-staged'
+  echo '    想补跑完整流程：确认没有并发 git 操作后执行 ./node_modules/.bin/lint-staged'
   exit 0
 fi
 
 echo ""
 echo '  ✖ 降级检查未通过：暂存文件确实不符合 eslint/prettier 规则（与 index.lock 无关），提交被挡。'
-echo '    修复：npx prettier --write <文件> 或 npx eslint --fix <文件>，git add 后再提交。'
+echo '    修复：./node_modules/.bin/prettier --write <文件> 或 ./node_modules/.bin/eslint --fix <文件>，git add 后再提交。'
 echo '    确认要绕过本次门禁：git commit --no-verify'
 exit 1

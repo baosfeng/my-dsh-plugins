@@ -24,6 +24,11 @@ const BRANCH_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,120}$/
 /**
  * node_modules 里**必须建成真实目录**的条目：它们是测试运行时的写目标（vitest / vite 缓存）。
  * 其余 658 个包逐条软链回主工作区，既不重复占盘，也不会被并行 agent 互相污染。
+ *
+ * ⚠️ 别把它们和 workspace 内部包（dsh-shared 等）混为一谈：这三个是**缓存目录**，
+ * 必须真实是因为多个 agent 并行时共用同一份 .vite/.cache 会互相踩
+ * （见 docs/踩坑/多agent并行测试资源冲突.md）；内部包必须指向 fork 内则是为了
+ * **避免假验证**（见 planWorkspaceLinks）。两者解决的是不同问题。
  */
 export const WRITABLE_NODE_MODULES_ENTRIES = ['.cache', '.vite', '.vite-temp']
 
@@ -161,6 +166,12 @@ export function planCreateSteps({ hooks = true, nodeModules = 'symlink' } = {}) 
       label: `node_modules 就位（${nodeModules === 'copy' ? 'APFS clonefile 全量克隆' : '逐包软链 + 3 个可写真实目录'}）`,
     })
   }
+  if (nodeModules === 'symlink' || nodeModules === 'copy') {
+    steps.push({
+      id: 'workspace-links',
+      label: 'workspace 内部包重指向（dsh-shared 等必须指向本 fork，否则验证的是主工作区的旧包）',
+    })
+  }
   if (hooks) steps.push({ id: 'hooks', label: '安装 git hooks（恢复 pre-commit / pre-push 门禁）' })
   return steps
 }
@@ -174,6 +185,8 @@ export function buildCheckItems({
   hooksPath,
   hooksWired,
   toolchain = null,
+  workspaceLinks = null,
+  baselineIntegrity = null,
   baseline,
   stagedNodeModules = [],
 } = {}) {
@@ -205,14 +218,39 @@ export function buildCheckItems({
         : `缺少 .bin/${toolchain.missing.join('、.bin/')} —— 多半是建软链时用了 shell glob（node_modules/* 会漏掉隐藏的 .bin）；用 fork-pool create 重建即可`,
     })
   }
+  if (workspaceLinks) {
+    items.push({
+      id: 'workspace-links',
+      ok: workspaceLinks.ok,
+      fatal: true,
+      label: 'workspace 内部包指向本 fork（本地验证才可信）',
+      detail: workspaceLinks.ok
+        ? workspaceLinks.detail
+        : `${workspaceLinks.detail} —— 此时"在 fork 里验证 dsh-shared 改动"读到的是主工作区的旧包（假验证）；用 fork-pool create 重建即可`,
+    })
+  }
+  if (baselineIntegrity) {
+    items.push({
+      id: 'baseline-integrity',
+      ok: baselineIntegrity.ok,
+      fatal: true,
+      label: 'fork 未被改写（创建时的基线提交仍在历史中）',
+      detail: baselineIntegrity.detail,
+    })
+  }
   if (baseline) {
-    // 只有"确认过期"才阻断推送；"无法比对"降级为警告（见 evaluateBaseline 注释）。
+    // 「远端 main 已前进」是**长寿命 fork 的正常生命周期**（尤其 PR 合并后），不是异常。
+    // 把它判成 ✖ 会让每个 fork 长期假红 —— 当 ✖ 成为常态，真异常也会被无视
+    // （这正是 CI 上刚吃过的教训的镜像）。所以这里一律 info：不参与 ok 判定、不阻塞推送。
     items.push({
       id: 'baseline',
-      ok: baseline.ok,
-      fatal: baseline.stale === true,
-      label: '分支基线未过期',
-      detail: baseline.reason,
+      info: true,
+      ok: true,
+      fatal: false,
+      label: '远端基线状态（提示，不阻塞）',
+      detail: baseline.stale
+        ? `远端 <base> 已前进（${baseline.reason}）—— 合并前需要 rebase，不影响本地推送`
+        : baseline.reason,
     })
   }
   items.push({
@@ -239,7 +277,7 @@ export function renderCheckReport({ forkDir, branch, items = [], verify = null }
   lines.push(`  目录：${forkDir}`)
   if (branch) lines.push(`  分支：${branch}`)
   for (const item of items) {
-    const mark = item.ok ? '✔' : item.fatal ? '✖' : '⚠'
+    const mark = item.info ? '·' : item.ok ? '✔' : item.fatal ? '✖' : '⚠'
     lines.push(`  ${mark} ${item.label}：${item.detail}`)
   }
   if (verify === null) {
@@ -349,6 +387,63 @@ export function resolveTargetDir(target, tmpRoot = '/tmp', explicitDir = null, c
   if (!isRelativePath) return forkDirFor(text, tmpRoot)
   const base = text === '' ? '.' : text
   return normalizePath(`${cwd}/${base}`)
+}
+
+/**
+ * workspace 内部包（plugins/* 里被根 package.json 用 `file:` 引用的那些，如 dsh-shared）。
+ *
+ * 为什么必须单独处理：主工作区的 `node_modules/<name>` 是 npm 为 `file:plugins/<dir>` 建的
+ * **相对软链**（`../plugins/<dir>`）。fork 的 node_modules 是逐包软链到主工作区的，
+ * 于是 fork 里的 `node_modules/dsh-shared` → 主工作区 `node_modules/dsh-shared` →
+ * realpath 落在**主工作区**的 `plugins/dsh-shared`。
+ *
+ * 后果比"没验证"更糟 —— **验证了错的代码**：在 fork 里改了 dsh-shared 的导出，从 fork
+ * 加载依赖它的插件时读到的仍是主工作区的旧包（实测：fork 内改成 9.9.9-forkprobe，
+ * 依赖方仍解析到 0.1.4），报错形如
+ * `dsh-shared does not provide an export named createWriteScheduler`。
+ *
+ * 修法：把这些包在 **fork 的** node_modules 下指向 **fork 内**的 plugins/<dir>。
+ */
+export function planWorkspaceLinks(entries = []) {
+  return entries
+    .filter((e) => e && typeof e.name === 'string' && typeof e.dir === 'string' && e.name && e.dir)
+    .map((e) => ({ name: e.name, dir: e.dir, expectedSuffix: `/plugins/${e.dir}` }))
+}
+
+/**
+ * 判定这些包当前指向哪里。`links` 形如 `[{ name, dir, resolved }]`
+ * （resolved = realpath 解析结果，取不到传 null）。
+ * 只要有一个落在 fork 之外就算不通过 —— 这正是"假验证"的直接信号。
+ */
+export function evaluateWorkspaceLinks(links = [], { forkDir } = {}) {
+  const root = String(forkDir ?? '').replace(/\/+$/, '')
+  const wrong = []
+  const missing = []
+  for (const link of links) {
+    if (!link.resolved) {
+      missing.push(link.name)
+      continue
+    }
+    const expected = `${root}/plugins/${link.dir}`
+    if (!String(link.resolved).startsWith(`${expected}`) && String(link.resolved) !== expected) {
+      wrong.push({ name: link.name, resolved: link.resolved, expected })
+    }
+  }
+  const ok = wrong.length === 0 && missing.length === 0
+  const detail = ok
+    ? `${links.length} 个内部包全部指向本 fork`
+    : [
+        wrong.length > 0
+          ? `指向主工作区/别处的 ${wrong.length} 个：${wrong
+              .slice(0, 3)
+              .map((w) => `${w.name} → ${w.resolved}`)
+              .join('、')}`
+          : '',
+        missing.length > 0 ? `解析失败的 ${missing.length} 个：${missing.slice(0, 3).join('、')}` : '',
+      ]
+        .filter(Boolean)
+        .join('；')
+  return { ok, wrong, missing, detail }
 }
 
 /** 人可读的耗时（毫秒 → 123ms / 1.2s）。 */

@@ -27,7 +27,8 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
 ```
 
 - **版本约定**：清单文件名里的版本 = bump 后的 next 版本（当前 package.json 版本 +1）。手动预验证时 `--version` 必须与之一致，文件名对不上会被当成新清单重新生成（已勾选状态丢失 → 阻断）。
-- 自动项 4 条（配置组合唯一 / 实例就绪 / 日志无 error / API 冒烟）由脚本勾选；**功能级 5 条由验证者勾选**。
+- 自动项 **3 条**（配置组合唯一 / 实例就绪 / 日志无 error）由脚本勾选；**功能级 5 条由验证者勾选**。
+  API 断言**不在这里** —— 它需要浏览器会话（issue #257），见下方「API 断言怎么算」。
 - 脚本重跑不覆盖已勾选项（按文案合并），所以可以先预验证再发版。
 - 非 bundle 插件（agent preset 等）按自身安装方式验证，手写同格式清单并注明验证方式。
 
@@ -71,9 +72,11 @@ node scripts/verify-real-profile.mjs --addons plugins/<name> --port 3099 --keep 
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3099/
 ```
 
-- `--keep` 的 stdout 提示"日志见 /tmp/dsh-verify-real-<port>.log"——**该文件当前不落盘**，要日志就自己重定向（上面已加）。
+- 实例输出自 issue #257 起**落盘**在隔离 DSH_HOME 的 `dsh-web.log`（`--keep` 时可直接读；旧的"日志见 /tmp/…"提示已失效）。
 - 隔离 DSH_HOME 会复制生产 profile 的 `.credentials.yaml`（真实凭据），验证后必须删目录。
-- 加 `--api-path /<路由>` 可对 server 端路由做 200 冒烟（纯事件型插件无路由，不加）。
+- `--api-path /<路由>` 可对 server 端路由做 200 冒烟，但 **⚠️ 需要浏览器会话**：DSH web 有认证层，非交互环境拿不到访问 token，这一项会**显式失败**（issue #257）。
+  **API 断言怎么算**：在浏览器步骤（下文「步骤 3」）里带 token 打开实例、从 devtools/Network 或页面行为确认路由可用；**不要**因为 `--api-path` 失败就判定"插件路由异常"，也不要为此删掉检查。
+  （背景：那个失败**曾经**被写成"插件 server 端未生效或路由异常"，把排查引向插件代码 —— 现已改为显式归因到脚本与凭据。）
 - 需要工作区状态时加 `--workspace <目录>`：脚本自动取 realpath 并写入隔离 `DSH_HOME` 的 `storages/workspace.json`（该文件有隐性 Zod 校验，手工写极易启动失败，见下「前置」）。
 
 **前置检查（issue #220，硬性）：先确认 realpath 解析到的是工作区版本，而不是主工作区旧版**

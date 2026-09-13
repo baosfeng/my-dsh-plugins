@@ -180,7 +180,9 @@ async function callApi(fake, method, path, body) {
   // 慢）下偶发 `AssertionError: api route registered`（#250 合并后 main 红盘
   // 的形态）。改为**确定性条件等待**（超时报错，不靠 sleep）：既消除 flaky，
   // 又保证「注册最终必须发生」这一语义仍被断言。
-  await waitFor(() => fake.apiRoute !== undefined)
+  // 仅在尚未注册时才等待（快路径零开销）：原实现每次都 waitFor，其内部的
+  // flushPersist + 轮询会给主 suite 叠加开销，CI 上实测因此撞到 5s testTimeout。
+  if (fake.apiRoute === undefined) await waitFor(() => fake.apiRoute !== undefined)
   const route = fake.apiRoute
   assert.ok(route, 'api route registered')
   const res = makeResponse()
@@ -209,7 +211,8 @@ async function shutdown(ctx) {
   await teardown?.disposer()
 }
 
-test('host smoke suite', async () => {
+// 显式超时：本 suite 本地已约 4.5s（CI 更慢），默认 5s 上限会随环境抖动偶发红。
+test('host smoke suite', { timeout: 30000 }, async () => {
   try {
     // ── 1. staged entry mounts and gets PROMOTED (removed from the file) ────
     {

@@ -23,7 +23,18 @@
  * 退出码：0 成功；1 参数/前置/校验失败；2 需要显式确认（如 clean 缺 --yes）。
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -32,6 +43,7 @@ import {
   branchNameFor,
   buildCheckItems,
   evaluateBaseline,
+  evaluateWorkspaceLinks,
   forkDirFor,
   formatMs,
   isSafeToClean,
@@ -210,6 +222,10 @@ function cmdCreate() {
 
   record('branch', git(forkDir, ['checkout', '--quiet', '-b', branch, options.baseRef]), true)
   record('exclude', ensureExclude(forkDir), true)
+  // 把"创建时的基线 SHA"记进 fork 的 local config：check 用它判断 fork 有没有被
+  // rebase/改写（真异常），而"远端 main 前进"只是正常生命周期（提示，不阻塞）。
+  git(forkDir, ['config', '--local', 'forkPool.baselineSha', remoteSha])
+  git(forkDir, ['config', '--local', 'forkPool.base', options.base])
 
   if (steps.some((s) => s.id === 'node_modules')) {
     const started = performance.now()
@@ -219,6 +235,11 @@ function cmdCreate() {
       options.nodeModules,
     )
     record('node_modules', { ms: performance.now() - started }, nm.ok, nm.detail)
+  }
+  if (steps.some((s) => s.id === 'workspace-links')) {
+    const started = performance.now()
+    const ws = relinkWorkspacePackages(forkDir)
+    record('workspace-links', { ms: performance.now() - started }, ws.ok, ws.detail)
   }
   if (options.hooks) {
     const started = performance.now()
@@ -234,6 +255,98 @@ function cmdCreate() {
   log(`   推送前自检：node scripts/fork-pool.mjs check ${options.id}（或在本 fork 内直接跑）`)
   if (options.json)
     log(JSON.stringify({ ok: true, forkDir, branch, base: options.baseRef, timingsMs: timings, totalMs }, null, 2))
+}
+
+/** 读 fork 的 plugins/<dir>/package.json → [{ name, dir }]（workspace 内部包的权威清单）。 */
+function readWorkspacePackages(forkDir) {
+  const pluginsDir = join(forkDir, 'plugins')
+  if (!existsSync(pluginsDir)) return []
+  const out = []
+  for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const pkgPath = join(pluginsDir, entry.name, 'package.json')
+    if (!existsSync(pkgPath)) continue
+    try {
+      const name = JSON.parse(readFileSync(pkgPath, 'utf8')).name
+      if (typeof name === 'string' && name) out.push({ name, dir: entry.name })
+    } catch {
+      /* 坏 package.json 跳过：不阻断创建，check 会因解析失败而报出来 */
+    }
+  }
+  return out
+}
+
+/**
+ * 把 workspace 内部包在 fork 的 node_modules 下指向 **fork 内**的 plugins/<dir>。
+ * 不这么做的后果见 lib 里 planWorkspaceLinks 的注释：在 fork 里改 dsh-shared 会变成
+ * **假验证**（依赖方仍读主工作区的旧包）。
+ */
+function relinkWorkspacePackages(forkDir) {
+  const entries = readWorkspacePackages(forkDir)
+  const target = join(forkDir, 'node_modules')
+  if (!existsSync(target)) return { ok: true, count: 0, relinked: [], detail: '无 node_modules，跳过' }
+  const relinked = []
+  for (const { name, dir } of entries) {
+    const linkPath = join(target, name)
+    const wanted = join(forkDir, 'plugins', dir)
+    let current = null
+    try {
+      current = realpathSync(linkPath)
+    } catch {
+      /* 不存在或断链 → 下面重建 */
+    }
+    if (current === wanted) continue
+    try {
+      rmSync(linkPath, { recursive: true, force: true })
+      symlinkSync(wanted, linkPath)
+      relinked.push(name)
+    } catch (error) {
+      return { ok: false, count: entries.length, relinked, detail: `重指向 ${name} 失败：${error.message}` }
+    }
+  }
+  const sample = relinked.slice(0, 3).join('、')
+  return {
+    ok: true,
+    count: entries.length,
+    relinked,
+    detail: `内部包 ${entries.length} 个，重指向 ${relinked.length} 个${sample ? `（${sample}${relinked.length > 3 ? ' 等' : ''}）` : '（已全部正确）'}`,
+  }
+}
+
+/**
+ * check 用：解析每个内部包当前落在哪里，交给 lib 判定是否在 fork 内。
+ * 这是「包级假验证」的**日常防线**（比 A/B 对照轻，适合每次推送前跑）。
+ */
+function probeWorkspaceLinks(forkDir) {
+  const root = (() => {
+    try {
+      return realpathSync(forkDir)
+    } catch {
+      return forkDir
+    }
+  })()
+  const links = []
+  for (const { name, dir } of readWorkspacePackages(forkDir)) {
+    const linkPath = join(forkDir, 'node_modules', name)
+    let present = true
+    try {
+      lstatSync(linkPath)
+    } catch {
+      present = false
+    }
+    // 只判定**实际存在于 node_modules** 的内部包。
+    // 大部分内部包本来就不是根依赖（只有 dsh-shared 是 file: 引用的），把它们算成
+    // "解析失败"会让每个 fork 都长期假红 —— 正是本次要消灭的那种噪音。
+    if (!present) continue
+    let resolved = null
+    try {
+      resolved = realpathSync(linkPath)
+    } catch {
+      /* 断链：resolved 保持 null，交由判定报出来 */
+    }
+    links.push({ name, dir, resolved })
+  }
+  return evaluateWorkspaceLinks(links, { forkDir: root })
 }
 
 /** 工具链探针：本地校验要用的可执行文件是否都在（见 lib 里 REQUIRED_TOOLS 的注释）。 */
@@ -258,6 +371,24 @@ function cmdCheck() {
     '?'
   const forkSha = gitOut(forkDir, ['rev-parse', options.baseRef])
   const baseline = evaluateBaseline(forkSha, remoteHeadSha(forkDir, options.base))
+
+  // 「fork 是否被改写」= 真检查（可 ✖）：创建时记录的基线提交必须仍在 HEAD 的历史里。
+  // 不在 → 说明这个 fork 被 rebase / 强推 / 换过基点，那才是异常。
+  // 「远端 main 前进」= 提示（不阻塞）：长寿命 fork 必然遇到，判成 ✖ 会训练人忽略告警。
+  const recordedBaseline = gitOut(forkDir, ['config', '--local', '--get', 'forkPool.baselineSha'])
+  let baselineIntegrity = null
+  if (recordedBaseline) {
+    const ancestor = git(forkDir, ['merge-base', '--is-ancestor', recordedBaseline, 'HEAD'], { allowFail: true })
+    const short = recordedBaseline.slice(0, 8)
+    baselineIntegrity = {
+      ok: ancestor.code === 0,
+      detail:
+        ancestor.code === 0
+          ? `创建时基线 ${short} 仍在 HEAD 历史中`
+          : `创建时基线 ${short} 已不在 HEAD 历史中 —— fork 被 rebase / 强推 / 换过基点`,
+    }
+  }
+
   const staged = gitOut(forkDir, ['diff', '--cached', '--name-only'])
     .split('\n')
     .filter((f) => f.includes('node_modules'))
@@ -266,6 +397,8 @@ function cmdCheck() {
     hooksPath,
     hooksWired,
     toolchain: probeToolchain(forkDir),
+    workspaceLinks: probeWorkspaceLinks(forkDir),
+    baselineIntegrity,
     baseline,
     stagedNodeModules: staged,
   })

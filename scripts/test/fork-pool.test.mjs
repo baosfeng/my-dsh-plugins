@@ -20,6 +20,8 @@ import {
   branchNameFor,
   buildCheckItems,
   evaluateBaseline,
+  evaluateWorkspaceLinks,
+  planWorkspaceLinks,
   fetchRemoteFor,
   forkDirFor,
   formatMs,
@@ -184,14 +186,65 @@ describe('clean 安全护栏（rm -rf 的最后一道闸）', () => {
 })
 
 describe('create 步骤清单（流程完整性）', () => {
-  it('默认 8 步，且必须包含基线校验与 hooks 安装', () => {
+  it('默认 9 步，且必须包含基线校验 / workspace 重指向 / hooks 安装', () => {
     const ids = planCreateSteps({ hooks: true, nodeModules: 'symlink' }).map((s) => s.id)
-    expect(ids).toEqual(['clone', 'remote', 'fetch', 'baseline', 'branch', 'exclude', 'node_modules', 'hooks'])
+    expect(ids).toEqual([
+      'clone',
+      'remote',
+      'fetch',
+      'baseline',
+      'branch',
+      'exclude',
+      'node_modules',
+      'workspace-links',
+      'hooks',
+    ])
   })
 
-  it('--no-hooks 去掉 hooks 步；--node-modules none 去掉就位步', () => {
+  it('--no-hooks 去掉 hooks 步；--node-modules none 同时去掉就位与重指向步', () => {
     expect(planCreateSteps({ hooks: false }).map((s) => s.id)).not.toContain('hooks')
-    expect(planCreateSteps({ nodeModules: 'none' }).map((s) => s.id)).not.toContain('node_modules')
+    const none = planCreateSteps({ nodeModules: 'none' }).map((s) => s.id)
+    expect(none).not.toContain('node_modules')
+    expect(none).not.toContain('workspace-links')
+  })
+})
+
+/**
+ * issue #240：workspace 内部包（dsh-shared 等）必须指向**本 fork**。
+ * 指向主工作区 = 「在 fork 里验证」读到旧包 = 假验证（比"没验证"更糟）。
+ */
+describe('workspace 内部包指向判定（包级假验证防线）', () => {
+  it('全部落在 fork 内 → 通过', () => {
+    const links = [
+      { name: 'dsh-shared', dir: 'dsh-shared', resolved: '/tmp/gh-fork-240/plugins/dsh-shared' },
+      { name: 'dsh-md-render', dir: 'dsh-md-render', resolved: '/tmp/gh-fork-240/plugins/dsh-md-render/index.js' },
+    ]
+    const r = evaluateWorkspaceLinks(links, { forkDir: '/tmp/gh-fork-240' })
+    expect(r.ok).toBe(true)
+    expect(r.detail).toContain('全部指向本 fork')
+  })
+
+  it('指向主工作区 → 不通过，并在 detail 里点名（这正是本次事故的指纹）', () => {
+    const links = [
+      { name: 'dsh-shared', dir: 'dsh-shared', resolved: '/Users/me/proj/plugins/dsh-shared' },
+      { name: 'dsh-md-render', dir: 'dsh-md-render', resolved: '/tmp/gh-fork-240/plugins/dsh-md-render' },
+    ]
+    const r = evaluateWorkspaceLinks(links, { forkDir: '/tmp/gh-fork-240' })
+    expect(r.ok).toBe(false)
+    expect(r.wrong.map((w) => w.name)).toEqual(['dsh-shared'])
+    expect(r.detail).toContain('dsh-shared')
+  })
+
+  it('解析失败（断链/缺失）也算不通过', () => {
+    const r = evaluateWorkspaceLinks([{ name: 'dsh-shared', dir: 'dsh-shared', resolved: null }], { forkDir: '/tmp/x' })
+    expect(r.ok).toBe(false)
+    expect(r.missing).toEqual(['dsh-shared'])
+  })
+
+  it('planWorkspaceLinks 过滤掉不完整的条目（坏 package.json 不炸流程）', () => {
+    const plan = planWorkspaceLinks([{ name: 'a', dir: 'a' }, { name: '', dir: 'b' }, { name: 'c' }, null])
+    expect(plan.map((p) => p.name)).toEqual(['a'])
+    expect(plan[0].expectedSuffix).toBe('/plugins/a')
   })
 })
 
@@ -223,9 +276,40 @@ describe('推送前自检结论', () => {
     expect(report.text).toContain('不会跑本地门禁')
   })
 
-  it('基线确认过期 / node_modules 被误暂存 → 阻断推送', () => {
-    const stale = buildCheckItems({ ...healthy, baseline: evaluateBaseline('abc12345', 'def67890') })
-    expect(renderCheckReport({ forkDir: '/tmp/x', items: stale }).ok).toBe(false)
+  it('workspace 内部包指向主工作区 → 阻断推送（包级假验证防线）', () => {
+    const items = buildCheckItems({
+      ...healthy,
+      workspaceLinks: { ok: false, detail: '指向主工作区/别处的 1 个：dsh-shared → /Users/me/proj/plugins/dsh-shared' },
+    })
+    const report = renderCheckReport({ forkDir: '/tmp/x', items })
+    expect(report.ok).toBe(false)
+    expect(report.text).toContain('dsh-shared')
+    expect(report.text).toContain('假验证')
+  })
+
+  it('fork 被改写（创建时基线已不在历史中）→ 阻断推送', () => {
+    const items = buildCheckItems({
+      ...healthy,
+      baselineIntegrity: {
+        ok: false,
+        detail: '创建时基线 abc12345 已不在 HEAD 历史中 —— fork 被 rebase / 强推 / 换过基点',
+      },
+    })
+    const report = renderCheckReport({ forkDir: '/tmp/x', items })
+    expect(report.ok).toBe(false)
+    expect(report.text).toContain('rebase')
+  })
+
+  it('远端 main 已前进 → 只提示、不阻断（避免长期假红训练人忽略告警）', () => {
+    const items = buildCheckItems({ ...healthy, baseline: evaluateBaseline('abc12345', 'def67890') })
+    const report = renderCheckReport({ forkDir: '/tmp/x', items })
+    expect(report.ok).toBe(true)
+    expect(report.text).toContain('远端 <base> 已前进')
+    expect(report.text).toContain('不影响本地推送')
+    expect(report.text).toContain('·') // info 级标记
+  })
+
+  it('node_modules 被误暂存 → 阻断推送', () => {
     const dirty = buildCheckItems({ ...healthy, stagedNodeModules: ['node_modules/vitest'] })
     const report = renderCheckReport({ forkDir: '/tmp/x', items: dirty })
     expect(report.ok).toBe(false)

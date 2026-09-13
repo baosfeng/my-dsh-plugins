@@ -1,7 +1,7 @@
 /**
  * Headless-Chrome end-to-end verification via CDP (v3 — issue #187 batch 2).
  *
- * v2 probed better-sidebar's private DOM contract ([data-dsh-panel-host] /
+ * v2 probed the removed third-party sidebar private DOM contract ([data-dsh-panel-host] /
  * [data-dsh-sidebar]); the host's native dockkit renders data-dockkit-*
  * instead, and that is the contract a plugin may rely on. This version
  * asserts the NATIVE one:

@@ -512,7 +512,7 @@ function registerDocumentPreviews(ctx) {
   )
 }
 
-    // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──
+    // ── shared icons (inline, stroke=currentColor, matching the host sidebar) ──
 // Single source of truth for the plugin UI icon set (issue #54 阶段 0).
 // Extracted from dsh-file-activity's lib/parts/icons.part.js; every plugin's
 // scripts/build.mjs splices this file via the `shared: true` piece marker.
@@ -1337,7 +1337,7 @@ function renderDegraded() {
 // ── preview data access (routes, viewer choice, loading) ────────────────
 //
 // The floating window used to mount the third-party sidebar's built-in viewer,
-// picked by ctx.betterSidebar.matchFileViewer(path), and fed it the bytes its
+// picked by the third-party sidebar matchFileViewer(path), and fed it the bytes its
 // fetchStrategy asked for. That service is gone (issue #187 batch 2), so this
 // module does the reading itself through the plugin's own routes:
 //

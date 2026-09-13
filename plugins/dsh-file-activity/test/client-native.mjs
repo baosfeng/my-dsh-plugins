@@ -1,10 +1,10 @@
 /**
  * Client contract test: the plugin's client half now rides the HOST's native
  * sidebar extension points (issue #187 batch 2) instead of the third-party
- * better-sidebar service. This suite pins the migration contract:
+ * third-party sidebar service. This suite pins the migration contract:
  *
  *   1. injects the native services (slots / sidebarRightTabs / documentPreviews)
- *      and NOT betterSidebar;
+ *      and NOT the old third-party service;
  *   2. two-stage tab registration — sidebarRightTabs.register(def) plus the
  *      body and chip-title seats under the same id;
  *   3. documentPreviews registration carries metadata only (no byte fetching:

@@ -568,7 +568,7 @@ internals.closePreviewOnHidden(false, dataStore)
 assert.equal(dataStore.getSnapshot().preview, null, 'hidden tab closes the floating preview')
 
 // ── floating preview body fills the window (issue #111) ──────────────────
-// The better-sidebar viewer (html iframe / code / markdown / image) sizes
+// The old third-party viewer (html iframe / code / markdown / image) sized
 // its root with `flex:1`, which only works when the mounted viewer sits in a
 // FLEX parent. .dfa-fp-body must therefore stay a flex column — otherwise the
 // HTML iframe, which has a fixed browser-default height, renders as a thin

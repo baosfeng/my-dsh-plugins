@@ -2,7 +2,7 @@
 // ── preview data access (routes, viewer choice, loading) ────────────────
 //
 // The floating window used to mount the third-party sidebar's built-in viewer,
-// picked by ctx.betterSidebar.matchFileViewer(path), and fed it the bytes its
+// picked by the third-party sidebar matchFileViewer(path), and fed it the bytes its
 // fetchStrategy asked for. That service is gone (issue #187 batch 2), so this
 // module does the reading itself through the plugin's own routes:
 //

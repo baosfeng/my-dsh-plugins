@@ -13,8 +13,20 @@
 import { isTrustedApiRequest, readJsonBody, writeError, writeJson } from 'dsh-shared';
 import { normalizeBudgetConfig } from './budget.js';
 import { normalizeOverflowConfig } from './overflow.js';
-/** 注册 /context/api 路由（effect 持有 disposer）。 */
+/**
+ * root 上的路由注册表（以 root ctx 为键）。
+ *
+ * 与 events.ts 的 rootListeners 同因（issue #242）：`ctx.effect(...)` 的注册
+ * 随插件 fiber 在 apply 结束后被回收，路由会 404（实测）。这里直接注册到宿主
+ * 的 webServer 服务（注册生命周期归服务），并在重复 apply 时先移除上一轮。
+ */
+const rootRoutes = new WeakMap();
+/** 注册 /context/api 路由（注册在常驻服务上，见上）。 */
 export function registerContextRoutes(ctx, store, options) {
+    const listenCtx = ctx.root ?? ctx;
+    const webServer = ctx.webServer ?? listenCtx.webServer;
+    if (webServer === undefined)
+        return;
     const webRuntime = ctx.get ? ctx.get('webRuntime') : undefined;
     const trustedHosts = webRuntime !== undefined &&
         webRuntime !== null &&
@@ -22,11 +34,13 @@ export function registerContextRoutes(ctx, store, options) {
         ? webRuntime.trustedHosts
         : [];
     const fence = (request) => isTrustedApiRequest(request, trustedHosts);
-    ctx.effect(() => ctx.webServer.register({
+    for (const dispose of [rootRoutes.get(listenCtx)].filter((entry) => entry !== undefined))
+        dispose();
+    rootRoutes.set(listenCtx, webServer.register({
         kind: 'prefix',
         path: '/context/api',
         handler: apiHandler(fence, store, options),
-    }), 'dsh-my-context: /context/api routes');
+    }));
 }
 /** 统一 handler：fence → 方法分派 → 404/错误兜底。 */
 function apiHandler(fence, store, options) {

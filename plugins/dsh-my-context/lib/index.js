@@ -17,6 +17,11 @@
  *  - budget.js   — 预算检查与配置校验（纯函数）
  *  - events.js   — 事件监听（session/event 统计 + agent/pre-step 预算拦截）
  *  - routes.js   — /context/api 路由
+ *
+ * 宿主契约（issue #242）：profile 插件的 fiber 会被 DSH loader 在 apply 结束后
+ * 回收——注册在插件自身 ctx 上的监听器/路由会随之静默消失（事件 0 触发、
+ * /context/api 404，且无任何报错）。因此会话监听与路由都注册到**常驻 root**，
+ * 详见 events.ts 的 rootListeners 与 routes.ts 的 rootRoutes。
  */
 import { createStore } from './store.js';
 import { attachContextListeners } from './events.js';
@@ -35,5 +40,8 @@ export function apply(ctx, config) {
     // ── 路由（查询 / 预算配置）────────────────────────────────────────────
     registerContextRoutes(ctx, store, options);
     // ── 卸载冲刷：清防抖定时器 + 立即落盘 ────────────────────────────────
-    ctx.effect(() => store.dispose, 'dsh-my-context: persistence teardown');
+    // 同样挂到常驻 root：若挂插件 fiber，fiber 被回收时 store.dispose 会被立即
+    // 调用（清掉防抖定时器 → 统计不再落盘）。
+    const listenCtx = ctx.root ?? ctx;
+    listenCtx.effect(() => store.dispose, 'dsh-my-context: persistence teardown');
 }

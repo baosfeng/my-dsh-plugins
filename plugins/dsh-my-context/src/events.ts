@@ -35,7 +35,17 @@ export interface StoreType {
 /** 告警冷却（同一会话同一 scope 的重复告警间隔，防刷屏）。 */
 const ALERT_COOLDOWN_MS = 60000
 
-/** 注册全部上下文监听；返回 disposer 数组（全部经 ctx.on 注册）。 */
+/**
+ * root 上的监听器注册表（以 root ctx 为键）。
+ *
+ * 为什么注册到 root（issue #242）：profile 插件的 fiber 会被 DSH loader 在
+ * apply 结束后回收——实测 apply 期间 `ctx.on` 注册成功（hooks 表 +1），数秒后
+ * 该 hook 从表中消失，事件 0 触发且**没有任何报错**。root fiber 常驻，注册在
+ * root 上的监听器不受插件 fiber 回收影响。
+ */
+const rootListeners = new WeakMap<object, Array<() => void>>()
+
+/** 注册全部上下文监听；返回 disposer 数组（注册到常驻 root，见上）。 */
 export function attachContextListeners(
   ctx: DshContext,
   store: StoreType,
@@ -46,16 +56,31 @@ export function attachContextListeners(
 ): Array<() => void> {
   const cooldown = new Map<string, number>()
   const overflowCooldown = new Map<string, number>()
-  return [
-    ctx.on('session/event', (...args: unknown[]) => {
-      const [session, event] = args
-      handleSessionEvent(session, event, store)
-    }),
-    ctx.on('agent/pre-step', (...args: unknown[]) => {
-      const [payload, next] = args
-      return handlePreStep(payload, next as () => Promise<unknown>, store, options, cooldown, overflowCooldown)
-    }),
+  const listenCtx = (ctx as unknown as { root?: DshContext }).root ?? ctx
+
+  // 重复 apply（loader 重载）时先移除上一轮注册，避免同一事件被多份监听器重复处理。
+  for (const dispose of rootListeners.get(listenCtx) ?? []) dispose()
+
+  const disposers = [
+    listenCtx.on(
+      'session/event',
+      (...args: unknown[]) => {
+        const [session, event] = args
+        handleSessionEvent(session, event, store)
+      },
+      { global: true },
+    ),
+    listenCtx.on(
+      'agent/pre-step',
+      (...args: unknown[]) => {
+        const [payload, next] = args
+        return handlePreStep(payload, next as () => Promise<unknown>, store, options, cooldown, overflowCooldown)
+      },
+      { global: true },
+    ),
   ]
+  rootListeners.set(listenCtx, disposers)
+  return disposers
 }
 
 /** session/event → 上下文统计（只读观察，无返回值）。 */

@@ -7,6 +7,9 @@
 > - `dsh-client-ui-sidebar-files/lib/client.js:681-711`（官方生产范本，照抄写法）
 > - `dsh-client-ui-sidebar-documentpreview/lib/types/client/document/registry.d.ts`（文件预览器，见文末）
 
+> **已无插件依赖第三方 `dsh-better-sidebar`**（issue #187 批 1 + 批 2 全部完成）。
+> 迁移期取舍、`shell.overlay` 浮窗、`data-dockkit-*` DOM 契约与降级语义见 [侧边栏原生 API 迁移指南](../../../docs/开发指南/侧边栏原生API迁移指南.md)。
+
 **核心结论：原生能力通过 Cordis 服务名 `inject` 获取，不需要 require 任何 `@deepseek-ai/dsh-client-ui-*` 包**（证据：宿主 41 个官方 client-ui 包没有一个 require `sidebar-right`）。
 
 ## 服务与获取方式

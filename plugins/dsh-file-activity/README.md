@@ -1,7 +1,5 @@
 # dsh-file-activity
 
-[![插件生态](https://img.shields.io/badge/插件生态-topic%20dsh--better--sidebar-4d6bfe)](https://github.com/topics/dsh-better-sidebar)
-
 <div align="center">
   <img alt="文件活动插件截图（最近访问 / 文件统计）" src="https://unpkg.com/dsh-file-activity/assets/screenshot.png" width="340" />
   <br />
@@ -10,11 +8,11 @@
   <img alt="浮窗 HTML 预览：内容撑满整个浮窗主体（issue #111）" src="https://unpkg.com/dsh-file-activity/assets/preview-float-0.5.6.png" width="340" />
 </div>
 
-**DSH 侧边栏文件活动插件**（基于 [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) 扩展）：在 better-sidebar 中新增「文件活动」页签，记录 agent 工具与侧边栏自身的文件读取/新增/修改事件，提供**最近访问**（LRU）与**文件统计**（树形目录）两块视图，点击文件弹出浮窗预览。
+**DSH 侧边栏文件活动插件**（基于宿主 0.1.5-rc.1 的原生侧边栏扩展点，零第三方侧边栏依赖）：在右侧边栏新增「文件活动」页签，记录 agent 工具与插件自身路由的文件读取/新增/修改事件，提供**最近访问**（LRU）与**文件统计**（树形目录）两块视图，点击文件弹出浮窗预览。
 
 ## 功能
 
-在 better-sidebar 中新增「文件活动」页签：
+在右侧边栏新增「文件活动」页签：
 
 1. **最近访问**：按 LRU 记录文件读取 / 新增 / 修改事件（agent 工具读写 + 侧边栏打开/编辑保存都会记录），**每会话最多保留 5 条，同一文件只出现一次**（再次访问会移到列表最前）；区块标题可**点击折叠/展开**；点击任意文件即弹出**浮窗预览**，浮窗内**复用侧边栏内置渲染**（代码高亮 / Markdown 渲染 / 图片 / PDF / HTML，见下方「浮窗预览」）。
 2. **文件统计**：每个文件的「读取 / 新增 / 修改」次数，按文件**绝对路径**组织成**树形目录**；连续单子目录的路径链自动**压缩为点号标签**（如 `a/b/c` → `a.b.c`），文件直接列在下方；**每个文件夹行可点击展开/收起**（箭头指示状态）；每个文件行内显示**相对时间**（刚刚 / N 分钟前 / N 小时前 / N 天前），悬停可查看**创建 / 最近访问**的完整时钟时间：
@@ -28,17 +26,17 @@
          client.js
    ```
 
-3. **默认启用**：页签注册后默认开启（无需在设置页勾选），且每个会话首次打开时**自动打开**本页（可在侧边栏设置中关闭自动打开）。
+3. **默认启用**：页签注册后默认开启（无需在设置页勾选），且每个会话首次打开时**自动打开**本页——开关在 **设置 → 插件 → 文件活动**（`settings.plugins.tab`，存储在浏览器 `localStorage`，插件自身持久化）。
 
 ## 工作原理
 
 - **Server 端**（`lib/index.js`）：监听 DSH `fs/observed` 事件捕获 agent 的 `read` / `write` / `edit` / `str_replace_editor` / `read_image` 等文件操作；提供 `/file-activity/api` 路由（`stats` / `record` / `clear`）；状态按会话持久化到 `$DSH_HOME/file-activity.json`（**JSON Lines 增量 append + 阈值原子 compact**，见下「资源治理」）。
   - `write` 通过每会话的已知文件表自动区分**新增**（首次接触）与**修改**（再次写入）。
-- **Client 端**（`lib/client.js`）：通过 `ctx.betterSidebar.registerTab` 注册页签；fetch 拦截捕获侧边栏自身操作（`/sidebar/api/fs.read`、`/sidebar/api/fs.write`、`/sidebar/file` 媒体预览）并上报 server；数据按会话（session）**分桶隔离**（`bySession`），每个会话只渲染自己的记录——新建/切换会话立即显示该会话的数据，**不会残留上一个会话的记录**；点击文件通过 `ctx.betterSidebar.matchFileViewer(path)` 匹配内置 viewer 并挂载其组件，打开浮窗预览。
+- **Client 端**（`lib/client.js`）：通过宿主原生扩展点注册——`ctx.sidebarRightTabs.register({id,kind,title})`（页签类型）+ `ctx.slots.register({name:'sidebar.right.pane.tab',key:id}, Body)`（正文席位）；`ctx.documentPreviews.register(...)` 声明本插件认领的文件后缀（元数据 only，字节由宿主 document owner 读取）；自动打开走 `ctx.sidebarRight.openTab(kind)`（会话表面未挂载时按 1s 重试，彻底失败会写入 `data-dfa-degraded` 标记并在页签内显示提示，绝不静默失效）；浮窗自实现并挂在宿主推荐落点 `shell.overlay` 列表席位（不替换宿主 UI）；fetch 拦截只记录插件自身路由 `/file-activity/file` 的预览读取。数据按会话（session）**分桶隔离**（`bySession`），每个会话只渲染自己的记录——新建/切换会话立即显示该会话的数据，**不会残留上一个会话的记录**。预览按后缀分流：图片 / PDF 走插件媒体路由（`<img>` / 原生 PDF frame），其余文本走插件文本路由并由官方 `MarkdownText` / `CodeBlock` 渲染（不可用时退回 `<pre>`）。
 
 ## 安装
 
-> 💡 **npm 安装（普通用户推荐）**：`dsh plugin --profile web add dsh-file-activity --trust-lockfile`——无需克隆本仓库；依赖自动级联安装：`dsh-better-sidebar`（宿主，提供侧边栏扩展点）与 `dsh-shared`（server 端共享工具包）均声明为 dependencies，安装时自动安装并加入 profile bundles，无需手动单独处理。
+> 💡 **npm 安装（普通用户推荐）**：`dsh plugin --profile web add dsh-file-activity --trust-lockfile`——无需克隆本仓库；依赖自动级联安装：`dsh-shared`（server 端共享工具包）是唯一 dependencies，侧边栏能力全部来自宿主原生扩展点（**不需安装任何第三方侧边栏插件**）。
 
 ```sh
 # 方式一：dsh plugin（推荐）
@@ -69,7 +67,7 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-file-activity
 
 ### 浮窗预览（复用内置渲染）
 
-点击文件（最近访问 / 文件统计中的任意文件行）会打开一个**悬浮预览窗**，窗口内容由侧边栏**内置的文件查看器**（file viewer）渲染 —— 通过 `ctx.betterSidebar.matchFileViewer(path)` 拿到匹配的 viewer，取其 `component` 挂载，并按 viewer 的 `fetchStrategy` 取内容（`fsRead` 文本 / `mediaUrl` 媒体 / `custom` 自定义）。浮窗为轻量交互：**点击浮窗外任意处、按 `Esc` 或点标题栏右上 `×` 都能关闭**；浮窗主体是可滚动区域，长文件或大图在窗内滚动查看。
+点击文件（最近访问 / 文件统计中的任意文件行）会打开一个**悬浮预览窗**，窗口由本插件渲染（挂在宿主 `shell.overlay` 浮层席位上，不替换宿主 UI）—— 按后缀分流：图片（svg/png/jpg/gif/webp/avif/bmp/ico）用 `<img>`、PDF 用原生 `<iframe>`，两者都取插件自己的媒体路由 `/file-activity/file`（按 `(sessionId, path)` 授权，因此工作区外的记录路径也能预览）；其余文本走插件文本路由 `/file-activity/file?as=text`，由官方 `MarkdownText` / `CodeBlock` 渲染（组件库不可用时退回 `<pre>`）。浮窗为轻量交互：**点击浮窗外任意处、按 `Esc` 或点标题栏右上 `×` 都能关闭**；浮窗主体是可滚动区域，长文件或大图在窗内滚动查看。
 
 - **代码**（后台为侧边栏内置 CodeMirror 编辑器）：语法高亮 + 行号；支持 预览/编辑 切换与保存。
 - **Markdown**（`.md` / `.markdown`）：渲染后的富文本预览，可切换 预览/编辑 模式。
@@ -105,10 +103,10 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-file-activity
 
 ## 依赖
 
-| 依赖                 | 用途                              | 可选                           |
-| -------------------- | --------------------------------- | ------------------------------ |
-| `dsh-better-sidebar` | 侧边栏页签注册 + 浮窗 file viewer | 否（前置，v0.12+，推荐 v0.14） |
-| `cordis`             | 插件运行时                        | 是（宿主提供）                 |
+| 依赖         | 用途                                 | 可选                 |
+| ------------ | ------------------------------------ | -------------------- |
+| `dsh-shared` | server 端共享工具包（路由/JSONL 等） | 否（随插件自动安装） |
+| `cordis`     | 插件运行时                           | 是（宿主提供）       |
 
 ## 相关文档
 

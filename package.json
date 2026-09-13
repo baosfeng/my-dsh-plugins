@@ -38,7 +38,6 @@
     ]
   },
   "dependencies": {
-    "dsh-better-sidebar": ">=0.14.0",
     "dsh-shared": "file:plugins/dsh-shared"
   },
   "devDependencies": {

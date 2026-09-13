@@ -140,6 +140,15 @@ data-dockkit-strip-fill  data-dockkit-strip-chrome  data-dockkit-split-button  d
 | 官方组件库运行时导出 **123** 项                               | 探针 `require('@deepseek-ai/dsh-client-ui-primitives')` → `Object.keys().length === 123`（0.1.2-rc.1 时代记录的 104 已过时） |
 | `openTab` 在会话表面未挂载时 throw                            | `sidebarRight: no session surface is mounted`（页面加载初期），因此自动打开必须重试（本插件 1s × 30 次）                     |
 
+### 真实实例的功能级实测（隔离实例 3093 + 真实 Chrome，`dsh-file-activity` 迁移后代码）
+
+| 能力点 | 实测过程与结果                                                                                                                                                                             |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 页签   | 页面加载后**自动出现**「文件活动」页签（`ctx.sidebarRight.openTab` 在会话表面挂载后成功）；手动点 `[data-dockkit-add-tab]` 也可打开                                                        |
+| 预览层 | 通过插件路由记录一条真实路径后，页签渲染出 3 个文件行；点第一行 → 浮窗出现，标题 `package.json`、正文为真实文件内容（`<pre>` 渲染体），关闭按钮点击后 `[data-dfa-degraded]` 缺席、浮窗消失 |
+| 设置   | 「设置 → 插件 → 文件活动」渲染出开关行（`[data-dfa-settings]` 1 个、`.dfa-set-switch` 1 个），点击后 `localStorage['dsh-file-activity:autoOpen']` 由默认变为 `'0'`                         |
+| 降级   | 整个实测过程 `document.documentElement.dataset.dfaDegraded` 始终为空（无静默失效）                                                                                                         |
+
 ### 仍未实测的项（诚实边界）
 
 - 多会话切换下页签归属与会话隔离（本插件的页签是 session scope，理论由宿主管辖）；

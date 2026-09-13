@@ -75,6 +75,13 @@ curl -X POST http://127.0.0.1:3080/task-reliability/api/trigger \
 | `rescueMaxPerSession` | 2                   | 每会话自动补完次数上限（防「截断→继续→再截断」死循环）                                          |
 | `rescueCooldownMs`    | 30000               | 两次自动补完之间的最小间隔（毫秒）                                                              |
 
+### 侧边栏页签（宿主原生扩展点）
+
+侧边栏「任务可靠性」面板经**宿主原生侧边栏扩展点**注册（issue #187 批 1）：
+`inject = ['slots','sidebarRightTabs']` + `ctx.sidebarRightTabs.register({id:'dsh-task-reliability', kind:'task-reliability:panel', title, guide:[{order:70}]})`
+注册页签类型，再由 `slots` 的 `sidebar.right.pane.tab` / `.title` 两个 keyed 席位注册面板与标题。
+**不声明任何第三方侧边栏依赖**；时序由声明式 `inject` 保证（不再需要「首屏服务未就绪」的绕行写法）。
+
 ### 设置页可视化（推荐）
 
 所有配置项也可在 **设置 → 插件 → 任务可靠性** 页签中可视化查看和编辑（官方 slots 扩展点，无需手动编辑配置文件）：

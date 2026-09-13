@@ -19,20 +19,39 @@ declare function useEffect(effect: () => void | (() => void), deps?: unknown[]):
 declare const exports: Record<string, unknown>
 declare const module: { exports: Record<string, unknown> }
 
-// ── 插件体契约（模板 exports.apply(ctx) / betterSidebar 注册页签）─────────
+// ── 插件体契约（模板 exports.apply(ctx) / 宿主原生扩展点注册页签）─────────
+// 侧边栏能力一律走**宿主原生扩展点**（issue #187 批 1）：原生能力经 Cordis
+// 服务名暴露（slots / sidebarRightTabs），不 require 任何
+// @deepseek-ai/dsh-client-ui-* 包，也不消费第三方 dsh-better-sidebar 服务。
 interface ClientContext {
   effect(callback: () => void | (() => void), label?: string): void
-  betterSidebar?: BetterSidebarService
+  slots?: SlotsService
+  sidebarRightTabs?: SidebarRightTabsService
 }
 
-interface BetterSidebarService {
-  registerTab(options: {
-    id: string
-    title: () => string
-    order?: number
-    single?: boolean
-    component: (props: { visible?: boolean; scope?: { sessionId: string } }) => unknown
-  }): () => void
+/** keyed 席位注册表（@deepseek-ai/dsh-client-ui-slots 的服务面子集）。 */
+interface SlotsService {
+  inject(name: string, factory: () => () => void): () => void
+  register(descriptor: { name: string; key: string }, component: (props: NativeTabProps) => unknown): () => void
+}
+
+/** 页签类型注册表（@deepseek-ai/dsh-client-ui-sidebar-right 的服务面子集）。 */
+interface SidebarRightTabsService {
+  register(definition: SidebarTabDefinition): () => void
+}
+
+/** 原生页签类型定义（右栏 register 的入参子集）。 */
+interface SidebarTabDefinition {
+  id: string
+  kind: string
+  title: (address: string) => string
+  guide?: Array<{ order: number; title: () => string; description?: () => string }>
+}
+
+/** 原生 keyed 席位注入的运行面（tab body / title 共用）。 */
+interface NativeTabProps {
+  sessionId?: string
+  useTabInfo?: () => { tab?: { id?: string; title?: string; visible?: boolean } }
 }
 
 // ── server 端数据结构（GET /context/api/* 的 value，字段全部按需取值）────

@@ -44,6 +44,9 @@ execSync('npx tsc -p tsconfig.client.json', { cwd: root, stdio: 'inherit' })
  *  逐行剥离行首 `export ` 前缀（把可单测的 ESM 模块作为片段拼进 client
  *  作用域）。 */
 const PARTS = [
+  // 原生侧边栏注册助手（issue #187 批 1）：手写片段，不经 TS 编译，与
+  // client.src.js 共享 factory 作用域（调用方注入 tabs/slots/createElement）。
+  ['/*__PART_NATIVE_TABS__*/', 'native-tabs.js', { root: 'lib/parts' }],
   ['/*__PART_I18N__*/', 'i18n.js'],
   ['/*__PART_ICONS__*/', 'icons.part.js', { shared: true }],
   ['/*__PART_AUDIT_VIEW__*/', 'audit-view.js', { root: 'lib', stripExport: true }],

@@ -24,20 +24,43 @@ declare const exports: Record<string, unknown>
 declare const module: { exports: Record<string, unknown> }
 
 // ── client 端 Context 的最小契约（lib/client.src.js 模板的 apply(ctx)）────
+// 侧边栏能力一律走**宿主原生扩展点**（issue #187 批 1）：原生能力经 Cordis
+// 服务名暴露（slots / sidebarRightTabs），不 require 任何
+// @deepseek-ai/dsh-client-ui-* 包，也不消费第三方 dsh-better-sidebar 服务。
 interface ClientContext {
   effect(callback: () => void | (() => void), label?: string): void
-  betterSidebar?: BetterSidebarService
+  slots?: SlotsService
+  sidebarRightTabs?: SidebarRightTabsService
 }
 
-/** 侧边栏页签注册服务（dsh-better-sidebar）。 */
-interface BetterSidebarService {
-  registerTab(options: {
-    id: string
-    title: string | (() => string)
-    order?: number
-    single?: boolean
-    component: (props: GuardPanelProps) => unknown
-  }): () => void
+/** keyed 席位注册表（@deepseek-ai/dsh-client-ui-slots 的服务面子集）。 */
+interface SlotsService {
+  /** 槽位声明后执行 register；返回 dispose。 */
+  inject(name: string, factory: () => () => void): () => void
+  register(descriptor: { name: string; key: string }, component: (props: NativeTabProps) => unknown): () => void
+}
+
+/** 页签类型注册表（@deepseek-ai/dsh-client-ui-sidebar-right 的服务面子集）。 */
+interface SidebarRightTabsService {
+  register(definition: SidebarTabDefinition): () => void
+}
+
+/** 原生页签类型定义（右栏 register 的入参子集）。 */
+interface SidebarTabDefinition {
+  /** 实现身份，全局唯一；同时是 body/title 席位注册用的 key（惯例 = 包名）。 */
+  id: string
+  /** 类型判别符（沿用迁移前 better-sidebar 的 tab id）。 */
+  kind: string
+  /** 页签胶囊标题（打开时捕获；另有 .title 席位负责实时标题）。 */
+  title: (address: string) => string
+  /** 指南页条目：order 决定相对顺序（沿用迁移前的数字 order）。 */
+  guide?: Array<{ order: number; title: () => string; description?: () => string }>
+}
+
+/** 原生 keyed 席位注入的运行面（tab body / title 共用）。 */
+interface NativeTabProps {
+  sessionId?: string
+  useTabInfo?: () => { tab?: { id?: string; title?: string; visible?: boolean } }
 }
 
 // ── server → client 数据契约（GET /guard/api/alerts 的 value 元素）────────
@@ -134,7 +157,7 @@ interface GuardScanSetters {
 
 // ── 组件 props 契约 ─────────────────────────────────────────────────────
 
-/** 主面板（betterSidebar 页签注入 visible）。 */
+/** 主面板（原生 keyed 席位 `sidebar.right.pane.tab` 注入 visible）。 */
 interface GuardPanelProps {
   visible?: boolean
 }

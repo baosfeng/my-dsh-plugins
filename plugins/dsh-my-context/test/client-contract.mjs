@@ -833,7 +833,7 @@ test('轮询：visible=false 不注册轮询，visible=true 按 CONTEXT_POLL_MS 
 
 // ── 8. bundle 组装契约（__ModuleLoader__ + 页签注册）────────────────────
 
-test('bundle 契约：__ModuleLoader__ 加载后注册页签，标题跟随语言', () => {
+test('bundle 契约：__ModuleLoader__ 加载后经原生扩展点注册页签类型与两个席位，标题跟随语言', () => {
   const seen = {}
   const windowMock = { __ModuleLoader__: { load: (def) => (seen.def = def) } }
   new Function('window', read('../lib/client.js'))(windowMock)
@@ -844,42 +844,72 @@ test('bundle 契约：__ModuleLoader__ 加载后注册页签，标题跟随语�
     assert.equal(name, 'react')
     return reactStub
   })
-  assert.deepEqual(exports.inject, ['betterSidebar'])
+  assert.deepEqual(exports.inject, ['slots', 'sidebarRightTabs'])
 
   const labels = []
-  const tabs = []
+  const types = []
+  const seats = []
   const ctx = {
     effect(fn, label) {
       labels.push(label)
       return fn()
     },
-    betterSidebar: {
-      registerTab(def) {
-        tabs.push(def)
+    slots: {
+      inject: (name, factory) => factory(),
+      register(descriptor, component) {
+        seats.push({ descriptor, component })
+        return () => {}
+      },
+    },
+    sidebarRightTabs: {
+      register(definition) {
+        types.push(definition)
         return () => {}
       },
     },
   }
   exports.apply(ctx)
-  assert.deepEqual(labels, ['dsh-my-context: styles', 'dsh-my-context: context tab registration'])
-  assert.equal(tabs.length, 1)
-  assert.equal(tabs[0].id, 'dsh-my-context:context')
-  assert.equal(tabs[0].order, 43)
-  assert.equal(tabs[0].single, true)
+  assert.deepEqual(labels, [
+    'dsh-my-context: styles',
+    'dsh-my-context: context tab',
+    'dsh-my-context: context tab body',
+    'dsh-my-context: context tab title',
+  ])
+
+  assert.equal(types.length, 1, '注册一个原生页签类型')
+  assert.equal(types[0].id, 'dsh-my-context', 'id 用包名（原生惯例，全局唯一）')
+  assert.equal(types[0].kind, 'dsh-my-context:context', 'kind 沿用迁移前 better-sidebar 的 tab id')
   assert.equal(
-    withNavigator('zh-CN', () => tabs[0].title()),
+    withNavigator('zh-CN', () => types[0].title('dsh-resource://sidebar/dsh-my-context:context')),
     '上下文透镜',
     '标题跟随浏览器语言（中文）',
   )
   assert.equal(
-    withNavigator('en-US', () => tabs[0].title()),
+    withNavigator('en-US', () => types[0].title('dsh-resource://sidebar/dsh-my-context:context')),
     'Context',
     '标题跟随浏览器语言（英文）',
   )
-  const element = tabs[0].component({ visible: true })
+  assert.deepEqual(
+    types[0].guide.map((entry) => ({ order: entry.order, title: withNavigator('zh-CN', () => entry.title()) })),
+    [{ order: 43, title: '上下文透镜' }],
+    'guide.order 沿用迁移前 better-sidebar 的 order(43)',
+  )
+
+  // keyed 席位（body + title）的 key 即类型 id
+  assert.deepEqual(
+    seats.map((seat) => ({ name: seat.descriptor.name, key: seat.descriptor.key })),
+    [
+      { name: 'sidebar.right.pane.tab', key: 'dsh-my-context' },
+      { name: 'sidebar.right.pane.tab.title', key: 'dsh-my-context' },
+    ],
+  )
+
+  // 面板本体：原生 props（sessionId + useTabInfo）→ ContextPanel 契约（visible）
+  const body = seats[0].component
+  const element = body({ sessionId: 'sess-1', useTabInfo: () => ({ tab: { visible: true } }) })
   assert.equal(typeof element.type, 'function', '页签组件为 ContextPanel 工厂')
   assert.equal(element.type(element.props).props.className, 'dso-panel')
 
-  // 无 betterSidebar 服务时只注入样式，不抛错（服务未就绪的降级路径）。
+  // 原生扩展点服务缺失时只注入样式，不抛错（服务未就绪的降级路径）。
   assert.doesNotThrow(() => exports.apply({ effect: (fn) => fn() }))
 })

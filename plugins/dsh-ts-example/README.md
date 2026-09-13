@@ -12,7 +12,7 @@
 
 - **问候语路由**：`GET /ts-example/api/greeting?name=xxx` → `{ "greeting": "Hello, xxx!" }`（支持 `zh` / `en` 语言配置）；
 - **会话计数**：`GET /ts-example/api/stats` → `{ "sessions": N }`（监听 `session/start` 事件计数）；
-- **侧边栏页签「TS 示例」**：显示当前会话的问候语（client 端 TS → server 端 TS 全链路）。
+- **侧边栏页签「TS 示例」**：显示当前会话的问候语（client 端 TS → server 端 TS 全链路）。页签经**宿主原生侧边栏扩展点**注册（`ctx.sidebarRightTabs` 页签类型 + `slots` 的 `sidebar.right.pane.tab` / `.title` 席位，issue #187 批 1），零第三方侧边栏依赖 —— 同时作为「原生扩展点 + TS 构建」的活样例。
 
 ## TypeScript 开发说明（本插件即模板）
 

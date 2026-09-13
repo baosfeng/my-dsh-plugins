@@ -20,6 +20,13 @@
  * 服务的产物。产物必须提交；CI 只对产物执行 node --check（见 .github/workflows/ci.yml）。
  *
  * parts 顺序固定（build.mjs 的 pieces）：i18n → panel → overflow → styles。
+ *
+ * 侧边栏走**宿主原生扩展点**（issue #187 批 1），不再消费第三方侧边栏服务：
+ * ctx.sidebarRightTabs.register 注册页面类型（guide 胶囊供用户从右栏指南页打开），
+ * slots 的 sidebar.right.pane.tab / .title 两个 keyed 席位注册面板与标题（key =
+ * 类型 id）。原生能力经 Cordis 服务名 inject 获取（slots / sidebarRightTabs），
+ * 无需 require 任何 @deepseek-ai/dsh-client-ui-* 包（官方范本：
+ * dsh-client-ui-sidebar-files/lib/client.js:681-711）。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-my-context',
@@ -28,6 +35,12 @@ window.__ModuleLoader__.load({
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
+
+    // 原生页签身份（issue #187 批 1）：id = 包名（全局唯一，也是席位 key），
+    // kind = 迁移前 better-sidebar 的 tab id，order = 迁移前的指南页顺序。
+    const TAB_ID = 'dsh-my-context'
+    const TAB_KIND = 'dsh-my-context:context'
+    const TAB_ORDER = 43
 
     // ── parts（scripts/build.mjs 拼接；顺序固定）───────────────────────
     'use strict'
@@ -772,23 +785,51 @@ function injectStyles() {
 }
 
 
-    // ── 插件体：样式注入 + 页签注册 ─────────────────────────────────────
-    exports.inject = ['betterSidebar']
+    // ── 插件体：样式注入 + 原生页签注册 ─────────────────────────────────
+    exports.inject = ['slots', 'sidebarRightTabs']
+
+    /** 指南页胶囊与页签标题共用的惰性文案。 */
+    const guideEntry = { order: TAB_ORDER, title: () => strings.tabTitle() }
+
+    /** 原生 tab body 席位：适配成 ContextPanel 的 { visible } 契约。 */
+    function ContextTabBody(props) {
+      const info = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
+      return createElement(ContextPanel, { visible: info?.tab?.visible !== false })
+    }
+
+    /** 原生 tab title 席位：宿主给定标题优先，否则回退本插件文案。 */
+    function ContextTabTitle(props) {
+      const info = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
+      return createElement('span', null, info?.tab?.title ?? strings.tabTitle())
+    }
 
     exports.apply = function apply(ctx) {
+      // 样式先注入：不依赖任何服务（服务缺失/时序未就绪也不影响面板配色）。
       ctx.effect(() => injectStyles(), 'dsh-my-context: styles')
-      const service = ctx.betterSidebar
-      if (service === undefined) return
+
+      // 服务缺失（旧宿主）时静默跳过：判空必须同时覆盖 null 与 undefined
+      // （typeof null 是 object，会骗过 === undefined 的写法）。
+      const tabs = ctx.sidebarRightTabs
+      const slots = ctx.slots
+      if (tabs == null || slots == null) return
+
+      ctx.effect(
+        () => tabs.register({ id: TAB_ID, kind: TAB_KIND, title: () => strings.tabTitle(), guide: [guideEntry] }),
+        'dsh-my-context: context tab',
+      )
       ctx.effect(
         () =>
-          service.registerTab({
-            id: 'dsh-my-context:context',
-            title: () => strings.tabTitle(),
-            order: 43,
-            single: true,
-            component: (props) => createElement(ContextPanel, props),
-          }),
-        'dsh-my-context: context tab registration',
+          slots.inject('sidebar.right.pane.tab', () =>
+            slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, ContextTabBody),
+          ),
+        'dsh-my-context: context tab body',
+      )
+      ctx.effect(
+        () =>
+          slots.inject('sidebar.right.pane.tab.title', () =>
+            slots.register({ name: 'sidebar.right.pane.tab.title', key: TAB_ID }, ContextTabTitle),
+          ),
+        'dsh-my-context: context tab title',
       )
     }
 

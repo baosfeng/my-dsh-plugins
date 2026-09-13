@@ -94,7 +94,7 @@ Server 端监听 `tools/pre-execute`，bash 命令匹配破坏性模式时记录
 ## 工作原理
 
 - **Server 端**（`lib/index.js`）：`guard.js` 监听 `tools/pre-execute`（破坏性检测 + `dsh plugin add` 联动扫描）；`poison.js` 纯函数扫描引擎（目录/tarball/包名）；`injection.js` 监听 `session/event`（user/message 注入检测）；`store.js` 告警持久化；`routes.js` 提供 `/guard/api` 路由（全部经 loopback 信任围栏）。
-- **Client 端**（`lib/client.js`）：侧边栏页签 `dsh-my-guard:guard`（告警列表 + 扫描工具 + 注入检测工具），样式走 DSH 语义 token，随 fiber 卸载无残留。
+- **Client 端**（`lib/client.js`）：侧边栏页签 `dsh-my-guard:guard`（告警列表 + 扫描工具 + 注入检测工具），经**宿主原生侧边栏扩展点**注册（`ctx.sidebarRightTabs` 页签类型 + `slots` 的 `sidebar.right.pane.tab` / `.title` 席位，issue #187 批 1），样式走 DSH 语义 token，随 fiber 卸载无残留。
 
 ## 安装
 

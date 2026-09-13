@@ -293,7 +293,7 @@ let REGISTRATION = null
 
 /**
  * 启动一个隔离的 client 运行时：stub react + hooks 运行时 + DOM/fetch/定时器桩，
- * 加载产物 bundle 并通过 betterSidebar 注册拿到 exports。
+ * 加载产物 bundle 并通过宿主原生侧边栏扩展点拿到 exports。
  * `language: null` 表示不提供 navigator（测 i18n 的异常回退分支）。
  */
 function boot({ language = 'zh-CN', withDocument = true, fetch: fetchImpl } = {}) {
@@ -349,6 +349,30 @@ function boot({ language = 'zh-CN', withDocument = true, fetch: fetchImpl } = {}
   }
 }
 
+/**
+ * 构造宿主原生扩展点的 mock ctx（issue #187 批 1）：
+ *  - `slots`：keyed 席位注册表（`inject` 声明槽位后回调 `register`）；
+ *  - `sidebarRightTabs`：页签类型注册表；
+ *  - `effect`：立即执行并记录 cleanup（fiber 持有 disposer 的等价物）。
+ */
+function nativeCtx({ cleanups = [], onType = () => () => {}, onSeat = () => {} } = {}) {
+  return {
+    effect: (fn, label) => {
+      cleanups.push({ label, cleanup: fn() })
+    },
+    slots: {
+      inject: (name, factory) => factory(),
+      register: (descriptor, component) => {
+        onSeat({ descriptor, component })
+        return () => {}
+      },
+    },
+    sidebarRightTabs: {
+      register: (definition) => onType(definition),
+    },
+  }
+}
+
 /** 构造一个成功的插件 API 响应（apiJson 取 value 字段）。 */
 const okValue = (value) => ({ ok: true, json: async () => ({ value }) })
 /** 构造一个失败的插件 API 响应（apiJson 抛 data.error.message）。 */
@@ -369,35 +393,55 @@ test('夹具保真：暴露内部符号只改动了 bundle 末尾的 return 语�
 
 // ══ 3. 插件体：样式注入 + 页签注册 ════════════════════════════════════════
 
-test('client 插件体：apply 注册「安全护栏」页签并注入样式，teardown 双清理（HMR 无残留）', () => {
+test('client 插件体：apply 经原生扩展点注册「安全护栏」页签并注入样式，teardown 三清理（HMR 无残留）', () => {
   const env = boot()
   const cleanups = []
-  let tab = null
-  let tabDisposed = false
-  const ctx = {
-    effect: (fn, label) => {
-      cleanups.push({ label, cleanup: fn() })
+  const types = []
+  const seats = []
+  let typeDisposed = false
+  const ctx = nativeCtx({
+    cleanups,
+    onType: (definition) => {
+      types.push(definition)
+      return () => {
+        typeDisposed = true
+      }
     },
-    betterSidebar: {
-      registerTab: (descriptor) => {
-        tab = descriptor
-        return () => {
-          tabDisposed = true
-        }
-      },
-    },
-  }
+    onSeat: (seat) => seats.push(seat),
+  })
 
-  assert.deepEqual(env.api.inject, ['betterSidebar'])
+  assert.deepEqual(env.api.inject, ['slots', 'sidebarRightTabs'])
   env.api.apply(ctx)
 
-  // 页签注册
-  assert.equal(tab.id, 'dsh-my-guard:guard')
-  assert.equal(tab.order, 42)
-  assert.equal(tab.single, true)
-  assert.equal(tab.title(), '安全护栏', '标题惰性求值，跟随语言')
-  assert.equal(tab.component({ visible: true }).type, env.internals.GuardPanel, 'component 接主面板')
-  assert.equal(cleanups.length, 2, '样式与页签各注册一个 effect')
+  // 原生页签类型注册（id 用包名、kind 保留原 tab id、guide.order 保留原 order）
+  assert.equal(types.length, 1, '注册一个原生页签类型')
+  const type = types[0]
+  assert.equal(type.id, 'dsh-my-guard')
+  assert.equal(type.kind, 'dsh-my-guard:guard')
+  assert.equal(type.title('dsh-resource://sidebar/dsh-my-guard:guard'), '安全护栏', '标题惰性求值，跟随语言')
+  assert.deepEqual(
+    type.guide.map((entry) => ({ order: entry.order, title: entry.title() })),
+    [{ order: 42, title: '安全护栏' }],
+    'guide.order 沿用原 better-sidebar 的 order(42)',
+  )
+  // 两个 keyed 席位（body + title），key = 类型 id
+  assert.deepEqual(
+    seats.map((seat) => ({ name: seat.descriptor.name, key: seat.descriptor.key })),
+    [
+      { name: 'sidebar.right.pane.tab', key: 'dsh-my-guard' },
+      { name: 'sidebar.right.pane.tab.title', key: 'dsh-my-guard' },
+    ],
+  )
+  assert.deepEqual(
+    cleanups.map((entry) => entry.label),
+    [
+      'dsh-my-guard: styles',
+      'dsh-my-guard: guard tab type',
+      'dsh-my-guard: guard tab body',
+      'dsh-my-guard: guard tab title',
+    ],
+    '样式 + 页签类型 + body/title 席位各由一个 effect 持有（label 锁定）',
+  )
 
   // 样式注入：一次激活恰好一个 <style>，带标识属性，内容即 STYLES
   assert.equal(env.dom.nodes.length, 1)
@@ -405,10 +449,10 @@ test('client 插件体：apply 注册「安全护栏」页签并注入样式，t
   assert.equal(env.dom.nodes[0].attrs['data-dsh-my-guard'], 'styles')
   assert.equal(env.dom.nodes[0].textContent, env.internals.STYLES)
 
-  // teardown：样式节点卸载 + 页签注销
+  // teardown：样式节点卸载 + 页签类型注销
   for (const { cleanup } of cleanups) cleanup()
   assert.equal(env.dom.nodes.length, 0, 'teardown 后无样式残留')
-  assert.ok(tabDisposed, 'teardown 注销页签')
+  assert.ok(typeDisposed, 'teardown 注销页签类型')
   assert.doesNotThrow(() => cleanups[0].cleanup(), '重复 teardown 安全')
   assert.equal(env.dom.nodes.length, 0)
 
@@ -417,9 +461,9 @@ test('client 插件体：apply 注册「安全护栏」页签并注入样式，t
   assert.equal(env.dom.nodes.length, 1, '重复激活不叠加样式')
 })
 
-test('client 插件体：betterSidebar 缺失时只注入样式不抛错；无 document 时样式注入降级为空操作', () => {
+test('client 插件体：原生扩展点服务缺失时只注入样式不抛错；无 document 时样式注入降级为空操作', () => {
   const env = boot()
-  assert.doesNotThrow(() => env.api.apply({ effect: (fn) => fn(), betterSidebar: undefined }))
+  assert.doesNotThrow(() => env.api.apply({ effect: (fn) => fn(), slots: undefined, sidebarRightTabs: undefined }))
   assert.equal(env.dom.nodes.length, 1)
 
   const headless = boot({ withDocument: false })

@@ -13,6 +13,11 @@
  * 样式走 DSH 语义 token（--dsw-alias-* / --dsw-font-*），随 activation 注入、
  * fiber teardown 卸载。
  *
+ * 侧边栏走**宿主原生扩展点**（issue #187 批 1），不再消费第三方
+ * dsh-better-sidebar 服务：ctx.sidebarRightTabs.register 注册页面类型，
+ * slots 的 sidebar.right.pane.tab / .title 两个 keyed 席位注册面板与标题。
+ * 原生能力经 Cordis 服务名 inject 获取（无 require 官方 UI 包）。
+ *
  * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs compiles
  * src/client/parts/*.ts and splices them into the PART placeholder markers
  * below (each piece is plain function-declaration text sharing this factory
@@ -28,8 +33,16 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
 
+    /** 迁移前 better-sidebar 的 tab id：现为原生 kind，并保留为面板身份语义。 */
     const TAB_ID = 'task-reliability:panel'
+    /** 原生页签类型实现身份（官方惯例：包名；全局唯一，也是席位的 key）。 */
+    const TAB_ID_PKG = 'dsh-task-reliability'
+    /** 指南页相对顺序（沿用迁移前 better-sidebar 的 order）。 */
+    const TAB_ORDER = 70
     const POLL_MS = 6000
+
+    // 侧边栏走宿主原生扩展点（issue #187 批 1），不再消费第三方侧边栏服务。
+    exports.inject = ['slots', 'sidebarRightTabs']
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────

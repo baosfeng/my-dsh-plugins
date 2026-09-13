@@ -39,6 +39,9 @@ export function attachPersistence(handle: PersistHandle): void {
     write: ({ force }) =>
       atomicWriteJson(handle.file, handle.store.state, handle.ctx.logger, '[dsh-my-context]', {
         force,
+        // 节奏**单一来源**：调度器负责防抖/最小间隔，快照原语关节流。
+        // 否则 drain()（非 force）会被原语节流拒掉 → 重排耗尽后放弃 → 状态永不落盘。
+        minIntervalMs: 0,
         maxBytes: PERSIST_MAX_BYTES,
       }),
   })

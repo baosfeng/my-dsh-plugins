@@ -25,8 +25,11 @@ jobs:
           node-version: 26
           cache: npm # 缓存 npm 缓存目录（key 基于 package-lock.json hash），加速 npm ci
 
-      - name: Install root toolchain (eslint, dependency-cruiser)
-        run: npm ci
+      # ── 为什么这里不再 npm ci（issue #240）──────────────────────────────────
+      # npm audit 只读 package-lock.json + registry 的 advisories API，**不需要 node_modules**。
+      # 实测一个 test matrix job：总 23.1s 里 npm ci 占 13.4s、真正的插件测试只有 2.5s；
+      # audit job 原先同样白付一次 npm ci。删掉它不改变门禁语义（审计照跑），只是不再装包。
+      # 注意：test job 的 npm ci **不能删**（理由见那一步上方的注释）。
 
       # ── 为什么显式钉住官方 registry（issue #199）────────────────────────────
       # npm audit 依赖 registry 的 security advisories API（POST /-/npm/v1/security/advisories/bulk）。
@@ -82,6 +85,11 @@ jobs:
           node-version: 26
           cache: npm
 
+      # issue #240 判定：这一步**不能删**。插件的 test 脚本是
+      # `npx vitest run --coverage && cucumber-js test/features ...`，而 CI 里
+      # plugins/<name>/ 没有自己的 node_modules —— vitest / @vitest/coverage-v8 / cucumber
+      # 全靠根这一份解析。实测 dsh-shared job：总 23.1s = npm ci 13.4s + setup-node 5.7s +
+      # 真正的测试 2.5s；这个比例值得知道，但删掉它门禁直接没法跑。
       - name: Install root toolchain (eslint, dependency-cruiser)
         run: npm ci
 

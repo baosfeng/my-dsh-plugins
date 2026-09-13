@@ -11,6 +11,7 @@
  * Steps (dry-run by default; --push performs git commit + tag + push):
  *   1.  validate plugins/<name> exists and package.json version parses
  *   1b. validate peerDependencies.cordis declared and consistent across plugins
+ *       (agent preset 资产包 dsh.kind=preset 豁免——issue #231，判据见 lib/preset-gate.mjs)
  *   1c. cross-plugin dependency check (issue #39): client require('dsh-*') must
  *       be declared in peerDependencies; in-repo dsh-* deps published + tagged
  *   2.  validate CHANGELOG.md has a "## [<version>]" section at the top
@@ -51,6 +52,7 @@ import {
 } from './lib/release-checks.mjs'
 import { verifyPostRelease } from './lib/post-release.mjs'
 import { checkScreenshotGate } from './lib/screenshot-gate.mjs'
+import { resolvePresetAsset } from './lib/preset-gate.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -220,6 +222,23 @@ async function processPlugin(name) {
     }
   }
 
+  // 1b-pre. 形态判定（issue #231）：agent preset 资产包（显式 dsh.kind=preset + 真实
+  // agent.cordis.yml/preset.yml）不挂 profile、无 cordis.patch.yml——peerDependencies.cordis
+  // 与 profile 组合验证对它都不适用（判据与仓库不变量见 lib/preset-gate.mjs，
+  // 单测 scripts/test/preset-gate.test.mjs）。声明不合法时按准确原因报错，不叠加误报。
+  const presetAsset = resolvePresetAsset({
+    pkg,
+    readAsset: (file) => {
+      const p = join(pluginDir, file)
+      return existsSync(p) ? readFileSync(p, 'utf8') : null
+    },
+  })
+  const isPreset = presetAsset.status === 'declared'
+  if (presetAsset.problem !== null) {
+    gateFail(`${name}/package.json ${presetAsset.problem}`)
+    if (!allChecks) return { ok: false, name, version, bumped, changed: false }
+  }
+
   // 1b. peer dependencies: DSH 插件必须声明 cordis peer（npm 分发后缺失会导致
   // dsh plugin add 安装失败），且 cordis major 与仓库内其他插件保持一致。
   const peers = pkg.peerDependencies || {}
@@ -228,7 +247,11 @@ async function processPlugin(name) {
   // 显式标记豁免 cordis peer 检查（其余检查照旧）。
   const isLibrary = pkg.dsh?.kind === 'library'
   const cordisPeer = peers.cordis
-  if (isLibrary) {
+  if (presetAsset.problem !== null) {
+    // 形态声明本身不合法：上面已按准确原因报错，不再叠加「缺少 peerDependencies.cordis」误报
+  } else if (isPreset) {
+    console.log(`- ${presetAsset.reason}：豁免 peerDependencies.cordis 检查（不挂 profile、无 cordis.patch.yml）`)
+  } else if (isLibrary) {
     console.log('- 共享工具包（dsh.kind=library）豁免 peerDependencies.cordis 检查（非 DSH 插件）')
   } else if (cordisPeer === undefined) {
     gateFail(`${name}/package.json 缺少 peerDependencies.cordis（DSH 插件必须声明）`)
@@ -363,16 +386,25 @@ async function processPlugin(name) {
     console.log(
       `- 跳过真实环境验证（${skipRealVerify ? `--skip-reason: ${skipReason}` : 'CI / DSH_SKIP_REAL_VERIFY'}）`,
     )
-  } else if (isLibrary) {
+  } else if (isLibrary || isPreset) {
     // library 包（dsh.kind=library，如 dsh-shared）不是 profile bundle：无插件行、
     // 无 client，verify-real-profile --addons 的 bundle 组合校验不适用。
     // 验证职责已由 3b 测试门禁（单测/覆盖率/eslint 全绿）覆盖；npm pack 内容
     // 由本脚本 3d 校验（files 清单 + exports 可解析）。
     const warn = (msg) => console.log(`- ${msg}`)
-    warn(
-      '共享工具包（dsh.kind=library）非 bundle 插件：跳过 profile 组合验证（--addons 不适用）；' +
-        '验证由测试门禁与 pack 校验覆盖',
-    )
+    if (isPreset) {
+      // agent preset 资产包（issue #231）同样不是 bundle：--addons 依赖 profile 的
+      // bundles/dependencies 解析，对「复制到 $DSH_HOME/.agent-presets/ 的资产」不适用。
+      warn(
+        `${presetAsset.reason}：跳过 profile 组合验证（--addons 只适用于有 dsh.profile/cordis.patch.yml 的 bundle 插件）；` +
+          '真实环境验证 = 安装到隔离 DSH_HOME 后模式选择器出现该 preset（见 README 安装章节）',
+      )
+    } else {
+      warn(
+        '共享工具包（dsh.kind=library）非 bundle 插件：跳过 profile 组合验证（--addons 不适用）；' +
+          '验证由测试门禁与 pack 校验覆盖',
+      )
+    }
   } else {
     const port = await findFreePort(3087)
     const checklistPath = join(root, 'verification', `${name}-${version}.md`)
@@ -481,6 +513,9 @@ async function processPlugin(name) {
     pkgName: pkg.name,
     // 效果图豁免留痕（issue #227）：发版汇总显式列出「已豁免」插件与理由。
     screenshotExemption: gateResult.status === 'exempt' ? gateResult.exemption : null,
+    // preset 形态豁免留痕（issue #231）：1b cordis peer 与 profile 组合验证的豁免理由，
+    // 同样在批量汇总显式列出，不悄悄放行。
+    presetExemption: isPreset ? { reason: presetAsset.reason } : null,
   }
 }
 
@@ -614,6 +649,16 @@ if (exempted.length > 0) {
   console.log('\nREADME 效果图门禁已豁免（显式声明无 UI 产物）:')
   for (const result of exempted) {
     console.log(`  - ${result.name}: ${result.screenshotExemption.reason}`)
+  }
+}
+
+// agent preset 资产包形态豁免留痕（issue #231）：豁免理由来自 package.json 的
+// dsh.presetReason——非 bundle 形态不适用 1b cordis peer 与 profile 组合验证。
+const presetExempted = results.filter((result) => result.presetExemption)
+if (presetExempted.length > 0) {
+  console.log('\nagent preset 资产包形态豁免（1b peerDependencies.cordis + profile 组合验证）:')
+  for (const result of presetExempted) {
+    console.log(`  - ${result.name}: ${result.presetExemption.reason}`)
   }
 }
 

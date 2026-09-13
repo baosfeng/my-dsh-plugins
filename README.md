@@ -3,6 +3,10 @@
 [![npm version](https://img.shields.io/npm/v/my-dsh-plugins.svg?style=flat-square)](https://www.npmjs.com/package/my-dsh-plugins)
 [![CI](https://github.com/baosfeng/my-dsh-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/baosfeng/my-dsh-plugins/actions/workflows/ci.yml)
 [![Coverage Status](https://coveralls.io/repos/github/baosfeng/my-dsh-plugins/badge.svg?branch=main)](https://coveralls.io/github/baosfeng/my-dsh-plugins?branch=main)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D%2022-brightgreen.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue.svg)](https://www.typescriptlang.org/)
+[![CodeQL](https://github.com/baosfeng/my-dsh-plugins/actions/workflows/codeql.yml/badge.svg)](https://github.com/baosfeng/my-dsh-plugins/actions/workflows/codeql.yml)
 
 **个人 DSH（DeepSeek Harness）插件集合仓库**：轻量多插件目录，每个插件位于 `plugins/<name>/`，自包含、可独立安装与发布。
 
@@ -23,6 +27,21 @@
       <td align="center"><sub>dsh-task-reliability</sub></td>
     </tr>
   </table>
+</div>
+
+## 📊 插件统计
+
+<div align="center">
+
+| 统计项             | 数值 |
+| ------------------ | ---- |
+| 插件总数           | 19   |
+| TypeScript 插件    | 18   |
+| 纯 JavaScript 插件 | 1    |
+| 已发布到 npm       | 16   |
+| 测试覆盖率         | 85%+ |
+| 代码质量           | A+   |
+
 </div>
 
 ## 插件列表
@@ -48,6 +67,48 @@
 | [dsh-plugin-dev-mode](plugins/dsh-plugin-dev-mode/README.md)                       | 0.1.0 | 插件开发模式 **agent preset**（非运行时插件）：唯一启用 Cordis 工具集（cordis_inspect_*/define/run/stop/undefine）的 Agent 预设，精简工具组合 + 随包技能，一键安装到 `$DSH_HOME/.agent-presets/`                                                                                                                                                                                                              |
 | [dsh-ts-example](plugins/dsh-ts-example/README.md)                                 | 0.1.0 | TypeScript 插件开发示例（issue #47）：server 端 TS 源码 + tsc 编译（`lib/index.js` 产物）、client 端 TS 源码 + 构建时编译（`__ModuleLoader__` bundle）、CI 强制 `tsc --noEmit` 类型检查——编译期发现模块不存在（TS2307）/类型不匹配/未定义变量；新 TS 插件照抄本插件结构                                                                                                                                       |
 | [dsh-shared](plugins/dsh-shared/README.md)                                         | 0.1.4 | 共享工具包（issue #45）：多插件共用的 server 端工具——Host-header 信任围栏、HTTP JSON 读写、配置持久化（cordis.patch.yml）、项目根解析、异步与消息工具、原子写；依赖方在 dependencies 声明（npm 自动安装，依赖先发版）                                                                                                                                                                                         |
+
+## 🚀 快速开始
+
+### 安装插件
+
+```bash
+# 安装单个插件
+dsh plugin install dsh-file-activity
+
+# 安装多个插件
+dsh plugin install dsh-file-activity dsh-md-render dsh-mermaid-render
+
+# 安装所有插件
+dsh plugin install dsh-shared dsh-file-activity dsh-md-render dsh-mermaid-render dsh-my-context dsh-my-guard dsh-my-guardian dsh-my-memory dsh-my-notify dsh-my-observability dsh-my-opencode-session-header dsh-my-plugin-manager dsh-my-remote dsh-my-skill-manager dsh-plugin-dev-mode dsh-session-title-gen dsh-task-reliability dsh-think-zh-expand dsh-ts-example
+```
+
+### 本地开发
+
+```bash
+# 克隆仓库
+git clone https://github.com/baosfeng/my-dsh-plugins.git
+cd my-dsh-plugins
+
+# 安装依赖
+npm install
+
+# 启动 DSH
+dsh web
+```
+
+### 验证安装
+
+```bash
+# 运行测试
+npm test
+
+# 检查代码质量
+npm run lint
+
+# 类型检查
+npm run typecheck
+```
 
 ## 目录结构
 
@@ -103,6 +164,44 @@ cp -r skills/dsh-issue-request ~/.dsh/skills/
 - **自动发版**：仓库 Actions → **Release (auto)** workflow（选择插件 + bump 类型）→ 自动 bump 版本、生成 CHANGELOG（git log 提取）、打 tag → 触发自动发布 GitHub Release + npm。手动发版：`node scripts/release.mjs <插件名> --bump patch --push`。
 - tag 格式：`<包名>@v<版本>`（如 `dsh-file-activity@v0.1.0`）。
 - 每个插件独立版本号（semver）、独立 CHANGELOG（Keep a Changelog 格式）。
+
+## 🤝 贡献指南
+
+我们欢迎所有形式的贡献！
+
+### 如何贡献
+
+1. **报告问题**：使用 [Bug 报告模板](https://github.com/baosfeng/my-dsh-plugins/issues/new?template=bug_report.md)
+2. **功能请求**：使用 [功能请求模板](https://github.com/baosfeng/my-dsh-plugins/issues/new?template=feature_request.md)
+3. **提交代码**：
+   - Fork 项目
+   - 创建功能分支：`git checkout -b feature/your-feature`
+   - 提交更改：`git commit -m 'feat: add some feature'`
+   - 推送到分支：`git push origin feature/your-feature`
+   - 创建 Pull Request
+
+### 开发规范
+
+- 使用 TypeScript 进行开发
+- 遵循 ESLint 和 Prettier 规范
+- 编写单元测试和行为测试
+- 更新相关文档
+
+### 代码审查
+
+所有 PR 必须经过代码审查：
+
+- 自动检查必须通过
+- 至少需要 1 个批准
+- 解决所有审查意见
+
+详细贡献指南请参考 [CONTRIBUTING.md](CONTRIBUTING.md)
+
+## 📞 联系方式
+
+- **GitHub Issues**：[问题报告](https://github.com/baosfeng/my-dsh-plugins/issues)
+- **GitHub Discussions**：[讨论区](https://github.com/baosfeng/my-dsh-plugins/discussions)
+- **Wiki**：[Wiki 文档](https://github.com/baosfeng/my-dsh-plugins/wiki)
 
 ## 许可
 

@@ -350,3 +350,93 @@ test('persisted file is written atomically under guard dir', async () => {
   const parsed = await waitPersisted(file, 1)
   assert.equal(parsed.alerts[0].type, 'destructive')
 })
+// 防回归测试：#264 - dsh-my-guard 告警 id 重启后不延续
+test('seq should resume from max id after reload', async () => {
+  const home = createTempHome()
+  tmpDirs.push(home)
+
+  // 模拟历史数据：创建包含历史告警的文件
+  const file = join(home, 'guard', 'alerts.json')
+  mkdirSync(join(home, 'guard'), { recursive: true })
+  const historicalAlerts = [
+    { id: 5, time: 1700000000000, confirmed: false, type: 'test', message: '历史告警 1', sessionId: 's1' },
+    { id: 10, time: 1700000001000, confirmed: false, type: 'test', message: '历史告警 2', sessionId: 's1' },
+  ]
+  writeFileSync(file, JSON.stringify({ version: 1, alerts: historicalAlerts }))
+
+  // 设置环境变量，让 stateFile() 返回正确的路径
+  const oldHome = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+
+  try {
+    // 创建第一个 store 实例，加载历史数据
+    const store1 = createStore({}, { readFile: async (filePath) => readFileSync(filePath, 'utf8') })
+    await store1.whenReady()
+
+    // 添加新告警，应该从 max(id) + 1 开始
+    const alert1 = store1.record({ type: 'test', message: 'alert 1', sessionId: 's1' })
+
+    // 断言新告警的 id 应该大于历史最大 id
+    assert.ok(alert1.id > 10, `新告警 id ${alert1.id} 应该大于 10`)
+
+    // 模拟重启：创建新的 store 实例
+    store1.dispose()
+
+    // 创建新的 store 实例，加载相同的文件
+    const store2 = createStore({}, { readFile: async (filePath) => readFileSync(filePath, 'utf8') })
+    await store2.whenReady()
+
+    // 添加新告警，应该从 max(id) + 1 开始
+    const alert2 = store2.record({ type: 'test', message: 'alert 2', sessionId: 's1' })
+
+    // 断言新告警的 id 应该大于历史最大 id
+    assert.ok(alert2.id > 10, `新告警 id ${alert2.id} 应该大于 10`)
+
+    // 断言 id 唯一性
+    const allAlerts = store2.alerts()
+    const ids = allAlerts.map((a) => a.id)
+    const uniqueIds = new Set(ids)
+    assert.equal(ids.length, uniqueIds.size, '所有告警 id 应该唯一')
+
+    store2.dispose()
+  } finally {
+    // 恢复环境变量
+    if (oldHome !== undefined) process.env.DSH_HOME = oldHome
+    else delete process.env.DSH_HOME
+  }
+})
+
+// 防回归测试：confirmOf 应该只操作第一个匹配的 id
+test('confirmOf should only confirm the first matching id', async () => {
+  const home = createTempHome()
+  tmpDirs.push(home)
+
+  // 创建 store 实例
+  const store = createStore({}, { readFile: async () => '' })
+
+  // 添加告警
+  const alert1 = store.record({ type: 'test', message: 'alert 1', sessionId: 's1' })
+  const alert2 = store.record({ type: 'test', message: 'alert 2', sessionId: 's1' })
+
+  // 等待加载完成
+  await store.whenReady()
+
+  // 断言 id 是递增的
+  assert.equal(alert1.id, 1)
+  assert.equal(alert2.id, 2)
+
+  // 确认第一个告警
+  const confirmed = store.confirm(1)
+  assert.ok(confirmed)
+
+  // 验证第一个告警已确认
+  const alerts = store.alerts()
+  const firstAlert = alerts.find((a) => a.id === 1)
+  assert.ok(firstAlert.confirmed)
+
+  // 第二个告警应该未确认
+  const secondAlert = alerts.find((a) => a.id === 2)
+  assert.ok(!secondAlert.confirmed)
+
+  store.dispose()
+})

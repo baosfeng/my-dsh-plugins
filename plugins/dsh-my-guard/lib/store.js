@@ -144,9 +144,11 @@ function countOf(handle) {
 }
 /** 标记告警已确认；返回是否找到并更新。 */
 function confirmOf(handle, id) {
-    const alert = handle.store.state.alerts.find((item) => item.id === id);
-    if (alert === undefined)
+    // 使用 findIndex 确保只找到第一个匹配的 id
+    const index = handle.store.state.alerts.findIndex((item) => item.id === id);
+    if (index === -1)
         return false;
+    const alert = handle.store.state.alerts[index];
     if (!alert.confirmed) {
         alert.confirmed = true;
         alert.confirmedAt = Date.now();
@@ -176,6 +178,11 @@ function onLoaded(handle, text) {
         // 原地替换 alerts 数组：store.state 引用已被外部持有（AlertStore.state），
         // 整体换对象会让外部持有者永远停在旧数组上
         handle.store.state.alerts = parsed.alerts;
+        // 恢复 seq 到已存在 id 的最大值，确保重启后 id 唯一性
+        const maxId = Math.max(0, ...parsed.alerts.map(a => a.id ?? 0));
+        if (maxId > handle.seq) {
+            handle.seq = maxId;
+        }
     }
     handle.ready = true;
     const pending = handle.pending.splice(0);

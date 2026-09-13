@@ -114,6 +114,8 @@ export interface AlertStore {
   confirm(id: number): boolean
   /** 加载 + 缓冲回放完成的确定性信号（查询前 await 它，别用固定 sleep 等加载完成）。 */
   whenReady(): Promise<void>
+  /** 落盘就绪信号：await 后此前所有挂起的快照都已写完（teardown/测试用它替掉 sleep）。 */
+  drainPersist(): Promise<void>
   dispose(): void
 }
 

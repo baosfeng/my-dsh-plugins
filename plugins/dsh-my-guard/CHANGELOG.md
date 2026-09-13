@@ -16,6 +16,7 @@
 
 ### 变更
 
+- feat(dsh-my-guard): #198 落盘调度接入 `createWriteScheduler`（删除自写 `persistTimer`/`dirtyChain`）+ 新增 `AlertStore.drainPersist()` 确定性就绪信号（teardown/测试不再 sleep 等落盘）；顺带修复 `writeSnapshot` 未 await 快照原语导致的 fire-and-forget（调度器 drain 提前 resolve → 读盘 ENOENT）
 - chore(guard): 迁移收尾——删除无输入的 `tsconfig.client.json`（client 端仍为手写 `lib/client.src.js` + `lib/parts/*.js`，该配置无 TS 输入会在 TS7 下报 TS18003）；`patchConfigOf` 的返回值补 `ConfigDict` 断言（dsh-shared 的 `src/types.d.ts` 改名 `types.ts` 后 `writePatchConfig` 的真实签名生效，暴露调用处类型不匹配）
 - feat(dsh-my-guard): #198 告警快照落盘接入 `dsh-shared` 的 `atomicWriteJson`（紧凑 JSON 消除 pretty 缩进放大 + 显式 4MB 字节上限 + 被拦计数可观测）；注入点 `deps.writeFile` 保留（测试确定性）
 

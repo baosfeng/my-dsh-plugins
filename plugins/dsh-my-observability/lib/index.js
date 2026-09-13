@@ -28,6 +28,9 @@ export const inject = ['webServer'];
 export function apply(ctx, config) {
     // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
     const options = {
+        aiProvider: config?.aiProvider,
+        aiModel: config?.aiModel,
+        aiCwd: config?.aiCwd,
         aiReview: config?.aiReview !== false,
         aiTimeoutMs: Number.isFinite(config?.aiTimeoutMs) && config?.aiTimeoutMs > 0
             ? config?.aiTimeoutMs

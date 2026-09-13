@@ -235,7 +235,11 @@ async function aiOutcome(ctx, payload, options, diffText, report) {
         return { enabled: false };
     if (payload.aiReview === false)
         return { enabled: false };
-    return runAiReview(ctx, diffText, report, options.aiTimeoutMs);
+    return runAiReview(ctx, diffText, report, options.aiTimeoutMs, {
+        provider: options.aiProvider,
+        model: options.aiModel,
+        cwd: options.aiCwd,
+    });
 }
 // ── HTTP helpers ───────────────────────────────────────────────────────────
 function queryOf(url, name) {

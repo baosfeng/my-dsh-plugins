@@ -15,8 +15,8 @@
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { atomicWriteJson } from 'dsh-shared'
-import type { Logger } from 'dsh-shared'
+import { atomicWriteJson, createWriteScheduler } from 'dsh-shared'
+import type { Logger, WriteScheduler } from 'dsh-shared'
 import { MAX_ALERTS } from './constants.js'
 import type { DshContext, Alert, AlertStore } from './types.js'
 
@@ -64,12 +64,12 @@ interface StoreHandle {
   readyPromise: Promise<void>
   markReady: () => void
   disposed: boolean
-  persistTimer: ReturnType<typeof setTimeout> | null
-  dirtyChain: Promise<void>
+  /** 写入调度（shared 原语）：防抖 + 最小间隔 + 串行链 + drain 就绪信号。 */
+  scheduler: WriteScheduler
   seq: number
   deps: { readFile: (file: string) => Promise<string>; writeFile?: (file: string, text: string) => Promise<void> }
   /** 落盘动作（默认 dsh-shared 快照原语；deps.writeFile 注入时走注入实现）。 */
-  writeState: (handle: StoreHandle) => Promise<void>
+  writeState: (handle: StoreHandle, force?: boolean) => Promise<void>
 }
 
 /** 初始空状态。 */
@@ -97,12 +97,19 @@ export function createStore(ctx: DshContext, deps: StoreDeps = {}): AlertStore {
     readyPromise,
     markReady,
     disposed: false,
-    persistTimer: null,
-    dirtyChain: Promise.resolve(),
+    scheduler: undefined as unknown as WriteScheduler,
     seq: 0,
     deps: { readFile: deps.readFile ?? defaultReadFile, writeFile: deps.writeFile },
-    writeState: (target) => writeSnapshot(target),
+    writeState: (target, force) => writeSnapshot(target, force),
   }
+  // 节奏**单一来源**：调度器负责防抖/最小间隔/串行，快照原语关节流（见 writeSnapshot）。
+  handle.scheduler = createWriteScheduler({
+    debounceMs: 500,
+    minIntervalMs: 1000,
+    logger: ctxLogger(handle.ctx),
+    prefix: PREFIX,
+    write: ({ force }) => handle.writeState(handle, force),
+  })
   const store: AlertStore = {
     state,
     record: (alert: Alert) => record(handle, alert),
@@ -110,6 +117,7 @@ export function createStore(ctx: DshContext, deps: StoreDeps = {}): AlertStore {
     count: () => countOf(handle),
     confirm: (id: number) => confirmOf(handle, id),
     whenReady: () => handle.readyPromise,
+    drainPersist: () => handle.scheduler.drain(),
     dispose: () => dispose(handle),
   }
   void handle.deps
@@ -129,13 +137,17 @@ function defaultReadFile(file: string): Promise<string> {
  * 紧凑 JSON + 字节上限 + 被拦计数），测试注入 deps.writeFile 时走注入实现
  * （注入点保留：测试要确定性观察落盘快照序列）。
  */
-async function writeSnapshot(handle: StoreHandle): Promise<void> {
+async function writeSnapshot(handle: StoreHandle, force = false): Promise<void> {
   if (handle.deps.writeFile !== undefined) {
     await handle.deps.writeFile(handle.file, JSON.stringify(handle.store.state))
     return
   }
-  atomicWriteJson(handle.file, handle.store.state, ctxLogger(handle.ctx), PREFIX, {
-    // 节奏由本插件的 500ms 防抖 + dirtyChain 串行链负责（显式承担，见 resource-budget-review）
+  // 必须 await：调度器的 drain/flush 以本 Promise 为"写完成"边界，
+  // fire-and-forget 会让 drain 提前 resolve（读盘 ENOENT）。
+  await atomicWriteJson(handle.file, handle.store.state, ctxLogger(handle.ctx), PREFIX, {
+    force,
+    // 节奏**单一来源**：调度器负责防抖 500ms + 最小间隔 1s，快照原语关节流。
+    // 双护栏（两处都开 1s 节流）会让 drain 的非 force 写被拒 → 重排耗尽 → 状态永不落盘。
     minIntervalMs: 0,
     maxBytes: SNAPSHOT_MAX_BYTES,
   })
@@ -252,18 +264,9 @@ function isValidAlert(alert: unknown): boolean {
   )
 }
 
-/** 落盘当前状态（经 dirtyChain 串行化；写失败静默）。 */
-function persistNow(handle: StoreHandle): void {
-  handle.dirtyChain = handle.dirtyChain.then(() => handle.writeState(handle)).catch(() => {})
-}
-
-/** 防抖（500ms）调度持久化。 */
+/** 防抖调度持久化（节奏由 shared 调度器统一管理；哨兵：drainPersist() 可确定性等待）。 */
 function persistSoon(handle: StoreHandle): void {
-  if (handle.persistTimer !== null) return
-  handle.persistTimer = setTimeout(() => {
-    handle.persistTimer = null
-    persistNow(handle)
-  }, 500)
+  handle.scheduler.schedule()
 }
 
 /** 卸载冲刷：清定时器 + 落盘；加载尚未完成时**等加载合并完成再落盘**——
@@ -271,13 +274,10 @@ function persistSoon(handle: StoreHandle): void {
  *  防抖写不再发生）时历史告警永久丢失。 */
 function dispose(handle: StoreHandle): void {
   handle.disposed = true
-  if (handle.persistTimer !== null) {
-    clearTimeout(handle.persistTimer)
-    handle.persistTimer = null
-  }
+  // 强写一次（force）冲刷未落盘数据；调用方可 await store.drainPersist() 确定性等待完成。
   if (!handle.ready) {
-    void handle.readyPromise.then(() => persistNow(handle))
+    void handle.readyPromise.then(() => handle.scheduler.flush())
     return
   }
-  persistNow(handle)
+  void handle.scheduler.flush()
 }

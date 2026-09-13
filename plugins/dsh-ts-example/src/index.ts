@@ -26,19 +26,41 @@ export interface Config {
 
 // config 可能缺省：DSH 对未声明 config schema 的插件调用 apply(ctx) 时
 // 第二个参数为 undefined（cordis 契约），必须用可选链兜底，否则 TypeError。
+/**
+ * root 上的注册表（以 root ctx 为键）。
+ *
+ * ⚠️ 教学要点（issue #242 实测，DSH 0.1.5-rc.1）：profile 插件的 fiber 会被 loader
+ * 在 apply 结束后回收，**注册在插件自身 ctx 上的监听器与路由会随之静默消失**——
+ * 事件 0 触发、路由返回 404，且**没有任何报错**。所以本样例的所有注册都挂到
+ * **常驻 ctx.root**，并以 root 为键去重（loader 会多次 apply 同一插件，重复注册会
+ * 让同一事件被处理多次）。照抄本样例时，**不要把 root 改回 ctx**。
+ */
+const rootRegistrations = new WeakMap<object, Array<() => void>>()
+
 export function apply(ctx: DshContext, config?: Config): void {
   const language = config?.language ?? 'en'
   let sessionCount = 0
 
-  // ── 事件监听：会话开始计数（演示 ctx.on）──────────────────────────
-  ctx.on('session/start', () => {
-    sessionCount += 1
-  })
+  const listenCtx = (ctx as unknown as { root?: DshContext }).root ?? ctx
+  for (const dispose of rootRegistrations.get(listenCtx) ?? []) dispose()
+  const disposers: Array<() => void> = []
 
-  // ── 路由：greeting + stats（effect 持有 disposer）──────────────────
-  ctx.effect(
-    () =>
-      ctx.webServer?.register({
+  // ── 事件监听：会话开始计数（演示 ctx.on；注册在常驻 root）──────────
+  disposers.push(
+    listenCtx.on(
+      'session/start',
+      () => {
+        sessionCount += 1
+      },
+      { global: true },
+    ),
+  )
+
+  // ── 路由：greeting + stats（注册在常驻 root，自持 disposer）────────
+  const webServer = ctx.webServer ?? listenCtx.webServer
+  if (webServer !== undefined) {
+    disposers.push(
+      webServer.register({
         kind: 'prefix',
         path: '/ts-example/api',
         handler: (request, response) => {
@@ -59,8 +81,10 @@ export function apply(ctx: DshContext, config?: Config): void {
           writeJson(response, 404, { ok: false, error: 'not found' })
         },
       }),
-    'dsh-ts-example: /ts-example/api routes',
-  )
+    )
+  }
+
+  rootRegistrations.set(listenCtx, disposers)
 }
 
 /** 请求是否来自本机（loopback 信任围栏）。 */

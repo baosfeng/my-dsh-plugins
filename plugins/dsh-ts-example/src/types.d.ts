@@ -14,8 +14,19 @@ export type EventHandler = (...args: unknown[]) => void
 
 /** DSH server 端 Context（cordis Context 的最小契约）。 */
 export interface DshContext {
-  /** 监听 DSH 事件；返回 disposer。 */
-  on(event: string, handler: EventHandler): () => void
+  /**
+   * 监听 DSH 事件；返回 disposer。
+   * @param options - cordis 监听器选项；\`global: true\` 跳过 scope 过滤（跨 scope 观察宿主事件的必要条件）。
+   */
+  on(event: string, handler: EventHandler, options?: { global?: boolean }): () => void
+  /**
+   * cordis 根 Context（常驻）。
+   *
+   * ⚠️ 教学要点（issue #242 实测）：profile 插件的 fiber 会被 loader 回收，
+   * 注册在插件自身 ctx 上的监听器/路由会随之**静默消失**（无报错）。注册必须
+   * 挂到本 ctx。未提供该字段的旧宿主退回插件自身 ctx。
+   */
+  root?: DshContext
   /** 注册副作用（返回 disposer 的注册函数直接返回其返回值）。 */
   effect(callback: () => void | (() => void), label?: string): void
   /** 读取可选服务（未加载返回 undefined）。 */

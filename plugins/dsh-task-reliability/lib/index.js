@@ -46,7 +46,7 @@
  */
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { loadStore, saveStore, saveStoreSync, pruneQuestions } from './store.js';
+import { loadStore, saveStore, saveStoreSync, drainStoreWrites, pruneQuestions } from './store.js';
 import { isTrustedApiRequest } from 'dsh-shared';
 import { resumeActiveTasks, runWatchdog } from './verify.js';
 import { registerListeners } from './events.js';
@@ -146,18 +146,21 @@ function resolveDir() {
     const envHome = process.env.DSH_HOME;
     return typeof envHome === 'string' && envHome !== '' ? envHome : join(homedir(), '.dsh');
 }
-/** 防抖落盘：save 合并写入，cancel 供 teardown 清理。 */
+/** 防抖落盘：save 合并写入，cancel 供 teardown 清理，drain 是确定性就绪信号。 */
 function createSaver(dir, store, options, logger) {
     let saveTimer = null;
+    /** 最近一次触发的异步落盘（drain 等它）。 */
+    let lastWrite = Promise.resolve();
+    const warnOnError = (error) => {
+        logger?.warn?.(`dsh-task-reliability: save failed: ${error instanceof Error ? error.message : String(error)}`);
+    };
     const save = () => {
         if (saveTimer !== null)
             return;
         saveTimer = setTimeout(() => {
             saveTimer = null;
             // 异步落盘（issue #198 P2）：失败只 warn，不抛出到事件循环
-            void saveStore(dir, store).catch((error) => {
-                logger?.warn?.(`dsh-task-reliability: save failed: ${error instanceof Error ? error.message : String(error)}`);
-            });
+            lastWrite = saveStore(dir, store).catch(warnOnError);
         }, options.saveDebounceMs);
     };
     const cancel = () => {
@@ -166,7 +169,21 @@ function createSaver(dir, store, options, logger) {
             saveTimer = null;
         }
     };
-    return { save, cancel };
+    /**
+     * 确定性就绪信号（PR #233 后续）：等到「挂起在防抖窗口里的写 + 链上在飞写」
+     * 全部落盘。读盘的断言（测试 / 宿主就绪检查）必须先 await 它，而不是 sleep
+     * 猜时间——固定 sleep 在 CI 高负载下会读到旧状态或尚未创建的文件（#34704278680）。
+     */
+    const drain = async () => {
+        if (saveTimer !== null) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+            lastWrite = saveStore(dir, store).catch(warnOnError);
+        }
+        await lastWrite;
+        await drainStoreWrites();
+    };
+    return { save, cancel, drain };
 }
 /** 可变运行时上下文：所有子模块共享（store/options/save/fence/计数状态）。 */
 function createShared(ctx, options) {
@@ -187,6 +204,7 @@ function createShared(ctx, options) {
         store,
         save: saver.save,
         saver,
+        drainSaves: saver.drain,
         fence: (request) => isTrustedApiRequest(request, trustedHosts),
         /** 结构化插件事件出口（best-effort，见 emit.js）。 */
         emit: (name, payload) => emitPluginEvent(ctx, name, payload),

@@ -149,6 +149,22 @@ git -C /tmp/gh-fork-<编号> fetch origin main                   # ④ 显式从
 git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # ⑤ 从远程最新 main 建分支（子 agent 直接在其上工作）
 ```
 
+> ⚠️ **用 `ghops clone` 直接克隆（不走本节 ②③ 流程）时，第 ③ 步不能省**：`ghops clone` 只配 https 的 fetch/push URL，而 https 推送无凭据（实测报 `Invalid username or token. Password authentication is not supported`）。补一条即可（实测 #198c）：
+>
+> ```bash
+> git -C /tmp/gh-fork-<编号> remote set-url --push origin git@github.com:baosfeng/my-dsh-plugins.git
+> ```
+>
+> 判据：`git -C /tmp/gh-fork-<编号> remote -v` 的 push 行是 `git@github.com:...`（与主工作区一致）。
+
+> ⚠️ **fork 内 pre-commit / commit-msg / pre-push 钩子默认不生效**（clone 不会跑 `npm install` → `npm prepare` → `husky` 未执行 → `core.hooksPath` 未设置、husky v9 的钩子目录未生成）。后果：lint-staged 不会自动 prettier/eslint 你的改动，门禁要到 CI `quality` job 才暴露——**每个子 agent 都会踩，白烧一轮 CI**（实测 #198c：`test/persist-race.mjs` 未格式化 → CI format 红）。一行启用（实测有效：探针提交被 lint-staged 正常拦截）：
+>
+> ```bash
+> git -C /tmp/gh-fork-<编号> config core.hooksPath '<husky 钩子目录绝对路径>'
+> ```
+>
+> 其中 `<husky 钩子目录绝对路径>` = 主工作区 `git config core.hooksPath` 的输出（husky v9 生成，位于主工作区仓库根的钩子目录下）。判据：`git -C /tmp/gh-fork-<编号> config core.hooksPath` 有输出；不想配 hook 的兜底是提交前手动跑 `npx prettier --check . && npx eslint plugins/`。
+
 规则：
 
 - **每个修复类子任务拥有且仅拥有一个 fork**（`/tmp/gh-fork-<编号>`）；主工作区（`/Users/bsfeng/IdeaProjects/my-dsh-plugins`）与任何其他 fork 都不得被该子任务操作

@@ -1,7 +1,27 @@
 // ── themed stylesheet (injected once per activation) ──────────────────
-// Mirrors the better-sidebar explorer surface: tight 2px 6px 8px body,
+// Mirrors the host explorer surface: tight 2px 6px 8px body,
 // 30px rows, box-sizing border-box indentation, folder rows use the
 // strong type face to read as directories, files stay regular.
+/**
+ * Inject this activation's stylesheet into the document head exactly once per
+ * fiber. Static CSS only: it must not sit behind any service check, or an HMR
+ * rebuild / service reload can leave an already-rendered tab unstyled. The
+ * disposer removes only this fiber's own <style> element, so a rebuild always
+ * keeps at least one copy.
+ */
+function injectStyles(ctx: ClientContext): void {
+  ctx.effect(() => {
+    if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined') return () => {}
+    const style = document.createElement('style')
+    style.setAttribute('data-dsh-file-activity', 'styles')
+    style.textContent = STYLES
+    document.head.appendChild(style)
+    return () => {
+      if (style.parentNode) style.parentNode.removeChild(style)
+    }
+  }, 'dsh-file-activity: styles')
+}
+
 const STYLES = `
 .dfa { display:flex; flex-direction:column; height:100%; overflow-y:auto; overflow-x:hidden;
   padding:2px 6px 8px; gap:2px; font:var(--dsw-font-s-14); color:var(--dsw-alias-label-primary); }
@@ -65,7 +85,7 @@ const STYLES = `
 .dfa-fp-hint { flex:none; font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-tertiary); opacity:0.8; }
 .dfa-fp-actions { display:flex; align-items:center; gap:2px; flex:none; }
 /* issue #111: the preview body is a FLEX COLUMN so the mounted viewer
-   component (better-sidebar's TextEditor for html/code/markdown, the image
+   component (the host's TextEditor for html/code/markdown, the image
    wrap, and the pdf frame) actually fills the window. Their roots size via
    flex:1 (html iframe .editorHtml, .editorCm, .editorMd, .editorImageWrap,
    .dfa-pdf), which is IGNORED in a block context — so the HTML iframe, which
@@ -86,5 +106,28 @@ const STYLES = `
 @keyframes dfa-row-in { from { opacity:0; transform:translateY(1px); } to { opacity:1; transform:none; } }
 /* issue #60: 移除 #25 的侧边栏页签选中态品牌蓝覆盖（[class*="tab"][class*=
    "tabActive"] 全局子串选择器误伤宿主对话/工作区 tab 选中态，出现用户不
-   想要的蓝色高亮）。页签选中态回归宿主（dsh-better-sidebar）默认样式。 */
+   想要的蓝色高亮）。页签选中态回归宿主原生样式（issue #187 批 2：原生
+   dockkit 页签自己负责选中态，本插件不再覆盖）。 */
+/* issue #187 批 2：页签 chip 由本插件的 title 席位渲染（原生 chip 无图标
+   API），因此标题连同图标一起画在这里。 */
+.dfa-chip { display:inline-flex; align-items:center; gap:4px; min-width:0; }
+/* 扩展点注册失败的显式提示（绝不静默失效）。 */
+.dfa-degraded { margin:6px 2px; padding:6px 8px; border-radius:6px;
+  border:1px solid var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent); }
+.dfa-degraded-title { font:var(--dsw-font-xs-13); color:var(--dsw-alias-state-error-primary); }
+.dfa-degraded-hint { margin-top:2px; font:var(--dsw-font-xxs-12); opacity:.8; }
+/* 设置页（settings.plugins.tab）：开关行。 */
+.dfa-set { display:flex; flex-direction:column; gap:10px; padding:10px 2px; }
+.dfa-set-title { font:var(--dsw-font-sm-14); }
+.dfa-set-row { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; }
+.dfa-set-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.dfa-set-label { font:var(--dsw-font-xs-13); }
+.dfa-set-hint { font:var(--dsw-font-xxs-12); opacity:.75; }
+.dfa-set-switch { flex:none; width:16px; height:16px; accent-color:var(--dsw-alias-accent); cursor:pointer; }
+/* 浮窗正文：Markdown / 代码 / 纯文本 / 图片四种渲染体。 */
+.dfa-fp-md { height:100%; overflow:auto; padding:2px 4px; }
+.dfa-fp-code { height:100%; overflow:auto; }
+.dfa-fp-pre { margin:0; padding:8px 10px; overflow:auto; height:100%; font:var(--dsw-font-xxs-12);
+  white-space:pre-wrap; word-break:break-word; }
+.dfa-fp-img { display:block; margin:auto; max-width:100%; max-height:100%; object-fit:contain; }
 `

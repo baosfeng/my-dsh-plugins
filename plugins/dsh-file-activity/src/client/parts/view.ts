@@ -11,12 +11,21 @@ interface SessionScope {
 /** useState setter 形状（值或函数式更新）。 */
 type StateSetter<T> = (value: T | ((prev: T) => T)) => void
 
-/** FileActivityView 的 props（sidebar 注入 ctx/store/scope/visible + 本插件 dataStore）。 */
+/**
+ * FileActivityView 的 props。
+ *
+ * 原生席位（sidebar.right.pane.tab）给到的标准 props 是 sessionId + 若干
+ * hook（useSessions/useResource…），**没有** scope 对象；旧式
+ * 则传 scope:{sessionId,cwd}。两者都接受，免得依赖任一方的细节。
+ */
 interface FileActivityProps {
   ctx: ClientContext
   store: unknown
-  scope: SessionScope
-  visible: boolean
+  /** 旧式会话作用域（迁移前的 scope 形状）；原生席位不再提供。 */
+  scope?: SessionScope
+  /** 原生席位的会话号。 */
+  sessionId?: string
+  visible?: boolean
   dataStore: DataStore<DataState>
 }
 
@@ -176,13 +185,21 @@ function renderStatsSection(
  * from the previous session. Clicking any file opens a FLOATING preview
  * that reuses the sidebar's NATIVE viewer via matchFileViewer.
  */
-function FileActivityView({ ctx, store, scope, visible, dataStore }: FileActivityProps): unknown {
+function FileActivityView({
+  ctx,
+  store,
+  scope,
+  sessionId: seatSessionId,
+  visible,
+  dataStore,
+}: FileActivityProps): unknown {
   const data = useSyncExternalStore(dataStore.subscribe, dataStore.getSnapshot)
   const [cwd, setCwd] = useState(scope?.cwd || '')
   const [error, setError] = useState(false)
   const [recentOpen, setRecentOpen] = useState(true)
   const [collapsedDirs, setCollapsedDirs] = useState(() => new Set<string>())
-  const sessionId = scope?.sessionId ?? ''
+  // Native seats pass sessionId directly; the legacy scope object still works.
+  const sessionId = seatSessionId ?? scope?.sessionId ?? ''
   const sessionData = (data.bySession ?? {})[sessionId] ?? EMPTY_SESSION
   const tree = useMemo(() => buildTree(sessionData.counts ?? {}), [sessionData.counts])
   useEffect(() => {
@@ -201,8 +218,10 @@ function FileActivityView({ ctx, store, scope, visible, dataStore }: FileActivit
     closePreviewOnHidden(visible, dataStore)
   }, [visible, dataStore])
   const toggleDir = (path: string) => setCollapsedDirs((prev) => toggleInSet(prev, path))
-  const openPreview = (path: string) => dataStore.set({ preview: { abs: path, name: basenameOf(path) } })
-  const closePreview = () => dataStore.set({ preview: null })
+  // The floating preview itself lives in the root-scoped 'shell.overlay' seat
+  // (registered by registerPreviewOverlay), so this view only publishes the
+  // target — together with the owning session, which authorizes the routes.
+  const openPreview = (path: string) => dataStore.set({ preview: { abs: path, name: basenameOf(path), sessionId } })
   const onClear = () => clearSessionData(dataStore, sessionId)
   const onRefresh = () => refreshSessionData(dataStore, sessionId, setCwd, setError)
   const recent = sessionData.recent ?? []
@@ -210,16 +229,30 @@ function FileActivityView({ ctx, store, scope, visible, dataStore }: FileActivit
     'div',
     { className: 'dfa' },
     renderError(error),
+    renderDegraded(),
     renderRecentSection(recent, recentOpen, () => setRecentOpen((v) => !v), onRefresh, onClear, openPreview),
     renderStatsSection(tree, collapsedDirs, toggleDir, openPreview),
-    data.preview
-      ? createElement(FloatingPreview, {
-          ctx,
-          store,
-          scope,
-          preview: data.preview,
-          onClose: closePreview,
-        })
-      : null,
+  )
+}
+
+/**
+ * Degradation notice: shown when this activation failed to register one of the
+ * host extension points (registerTabType / documentPreviews / auto-open). The
+ * panel is also marked with data-dfa-degraded so the e2e suite can assert the
+ * failure instead of hunting a missing tab.
+ * @returns the notice element, or null when nothing degraded.
+ */
+function renderDegraded(): unknown {
+  try {
+    const markers = typeof document === 'undefined' ? undefined : document.documentElement?.dataset
+    if (markers === undefined || markers === null || markers.dfaDegraded === undefined) return null
+  } catch {
+    return null
+  }
+  return createElement(
+    'div',
+    { className: 'dfa-degraded', 'data-dfa-degraded': '1' },
+    createElement('div', { className: 'dfa-degraded-title' }, strings.tabUnavailable()),
+    createElement('div', { className: 'dfa-degraded-hint' }, strings.tabUnavailableHint()),
   )
 }

@@ -1,76 +1,106 @@
 // ── auto-open (enabled by default) ────────────────────────────────────
-function findTabIn(state: SidebarState | undefined, tabId: string): boolean {
-  const leaves = (node: LayoutNode) => (node.kind === 'leaf' ? [node] : (node.children ?? []).flatMap(leaves))
-  for (const node of [state?.splits, state?.bottomSplits]) {
-    if (node === undefined || node === null) continue
-    for (const leaf of leaves(node)) {
-      if ((leaf.tabs ?? []).some((tab) => tab.type === tabId)) return true
-    }
-  }
-  return false
-}
+//
+// Native flow: the tab is a PAGE type, so opening it means
+// `ctx.sidebarRight.openTab(kind)` — there is no layout snapshot to inspect
+// and no session id to read from a third-party sidebar service anymore.
+//
+// Timing is the whole problem. The navigation controller throws
+// "sidebarRight: no session surface is mounted" when the right column has not
+// mounted its session surface yet — which is exactly the state during the
+// first paint of a fresh page. The previous third-party sidebar used to answer with a snapshot
+// and the old code simply gave up when it was missing, which is how the tab
+// could silently never auto-open. Here the attempt is RETRIED with the timers
+// until the surface is up, and a permanent failure is recorded through
+// markDegraded() instead of disappearing.
 
-/** Current sidebar snapshot, or null when the service is not ready. */
-function sidebarSnapshot(service: SidebarService | undefined): SidebarSnapshot | null {
+/** Retry cadence while the right column has not mounted its session surface. */
+const AUTO_OPEN_RETRY_MS = 1000
+/** Give up after this many attempts (~30s) and degrade observably. */
+const AUTO_OPEN_MAX_TRIES = 30
+
+/**
+ * Pending retry timer id (0 = none).
+ *
+ * There is deliberately NO "already attempted" flag guarding this module: a
+ * rejected registration or an HMR rebuild re-runs apply(), and the second run
+ * must still be able to bring the tab back. `openTab` is idempotent — it
+ * focuses the existing page instead of duplicating it.
+ */
+let autoOpenTimer = 0
+
+/**
+ * Whether this BROWSER TAB already had its auto-open attempt.
+ *
+ * The native API exposes no "current session id" to a plugin (`openTab`
+ * targets the mounted session, and the layout store is the host's own), so a
+ * per-session marker cannot be written from here. The marker is therefore
+ * per-browser-tab: one attempt per page load, which is exactly the visible
+ * behaviour — the session's tab record itself is persisted host-side, so
+ * revisiting a session that already shows the tab merely focuses it.
+ */
+function isAutoOpenAttempted(): boolean {
+  const key = AUTO_OPEN_KEY + 'loaded'
   try {
-    return service.getSnapshot?.()
+    return window.sessionStorage.getItem(key) === '1'
   } catch {
-    return null
+    return false
   }
 }
 
-/** The user disabled auto-open for this tab in the sidebar settings. */
-function isAutoOpenDisabled(snapshot: SidebarSnapshot, tabId: string): boolean {
-  const settings = snapshot.prefs?.pluginSettings?.[tabId]
-  return settings !== undefined && settings.autoOpen === false
-}
-
-/** Whether this session was already auto-opened (localStorage marker). */
-function isAutoOpenMarked(sessionId: string): boolean {
+/** Mark this browser tab as already attempted. */
+function markAutoOpenAttempted(): void {
   try {
-    return Boolean(window.localStorage.getItem(AUTO_OPEN_KEY + sessionId))
-  } catch {
-    return true
-  }
-}
-
-/** Persist the auto-opened marker for this session. */
-function markAutoOpened(sessionId: string): void {
-  try {
-    window.localStorage.setItem(AUTO_OPEN_KEY + sessionId, '1')
+    window.sessionStorage.setItem(AUTO_OPEN_KEY + 'loaded', '1')
   } catch {
     // ignore
   }
 }
 
-/** Open the tab once per session unless disabled in the plugin settings. */
-function tryAutoOpen(service: SidebarService | undefined, tabId: string): void {
-  const snapshot = sidebarSnapshot(service)
-  if (snapshot === undefined || snapshot === null || snapshot.sessionId === undefined || snapshot.state === undefined)
-    return
-  const sessionId = snapshot.sessionId
-  if (isAutoOpenDisabled(snapshot, tabId)) return
-  if (isAutoOpenMarked(sessionId)) return
-  if (findTabIn(snapshot.state, tabId)) {
-    markAutoOpened(sessionId)
-    return
-  }
+/** The most recent controller refusal, surfaced when retries run out. */
+let lastAutoOpenError: unknown = null
+
+/** One open attempt: true when the controller accepted it. */
+function tryOpenTab(ctx: ClientContext, tries: number): boolean {
   try {
-    service.openTab({ type: tabId, title: strings.title(), path: '' })
-    markAutoOpened(sessionId)
+    ctx.sidebarRight.openTab(TAB_KIND, { revealIfOpened: false })
+    return true
   } catch (error) {
-    console.error('[dsh-file-activity] auto-open failed:', error)
+    if (tries === 0) lastAutoOpenError = error
+    return false
   }
 }
 
-function installAutoOpen(ctx: ClientContext, tabId: string): () => void {
-  const service = ctx.betterSidebar
-  tryAutoOpen(service, tabId)
-  let off: () => void = () => {}
-  try {
-    off = service.subscribeState?.(() => tryAutoOpen(service, tabId)) ?? off
-  } catch {
-    // service may lack subscribeState on older versions
+/**
+ * Open the tab once the session surface exists, then stop. The tab record
+ * itself is persisted host-side, so a session that already shows it is not
+ * reopened: `openTab` focuses the existing page instead of duplicating it.
+ * @param ctx - client context carrying the navigation controller.
+ * @returns disposer cancelling a pending retry.
+ */
+function installAutoOpen(ctx: ClientContext): () => void {
+  if (!autoOpenEnabled()) return () => {}
+  if (isAutoOpenAttempted()) return () => {}
+
+  let tries = 0
+  const attempt = (): void => {
+    tries += 1
+    if (tryOpenTab(ctx, tries - 1)) {
+      autoOpenTimer = 0
+      markAutoOpenAttempted()
+      return
+    }
+    if (tries >= AUTO_OPEN_MAX_TRIES) {
+      autoOpenTimer = 0
+      markDegraded('auto-open', lastAutoOpenError ?? 'sidebarRight: session surface never mounted')
+      return
+    }
+    autoOpenTimer = window.setTimeout(attempt, AUTO_OPEN_RETRY_MS)
   }
-  return off
+  attempt()
+  return () => {
+    if (autoOpenTimer !== 0) {
+      window.clearTimeout(autoOpenTimer)
+      autoOpenTimer = 0
+    }
+  }
 }

@@ -1,29 +1,30 @@
 /**
  * dsh-file-activity — client half (browser).
  *
- * Extends dsh-better-sidebar with a "文件活动 / File Activity" tab:
- *  - recent file access history (agent + sidebar operations),
- *  - per-file create/modify/read counts flattened by folder, with multi-level
- *    folders shown as dotted paths (a.b.c.d) and their files indented below,
- *  - clicking any file opens a FLOATING preview that reuses the sidebar's
- *    NATIVE viewer via `ctx.betterSidebar.matchFileViewer(path)` — its own
- *    `component` is mounted (built-in markdown / code / image / pdf / html
- *    renderers), so code gets syntax highlighting and markdown gets rendered
- *    with no hand-rolled preview; clicking outside / Esc / × closes it,
- *  - auto-opens once per session by default (toggleable in the sidebar
- *    settings, enabled by default).
+ * A native right-Sidebar tab ("文件活动 / File Activity") built on the HOST's
+ * own extension points (issue #187 batch 2 — no third-party sidebar service):
+ *  - the tab type registers into `ctx.sidebarRightTabs` (stage one) and its
+ *    body / chip title into the keyed `sidebar.right.pane.tab` and
+ *    `sidebar.right.pane.tab.title` seats (stage two);
+ *  - clicking a file opens a FLOATING preview implemented by this plugin inside
+ *    the `shell.overlay` list seat: recent access history (agent + plugin
+ *    routes), per-file create/modify/read counts flattened by folder, and the
+ *    preview window itself — clicking outside / Esc / × closes it;
+ *  - a document-preview descriptor registers with `ctx.documentPreviews`
+ *    (metadata only: the native document owner reads the bytes);
+ *  - auto-opens once per session by default, with its toggle in the Web
+ *    Settings → Plugins tab (`settings.plugins.tab`).
  *
  * Data source: the plugin host half (fs/observed for agent tools) + this
- * half's fetch interception for sidebar file operations (fs.read / fs.write /
- * /sidebar/file media opens), both persisted host-side; the tab polls
- * /file-activity/api/stats.
+ * half's fetch interception for the plugin's own file routes, both persisted
+ * host-side; the tab polls /file-activity/api/stats.
  *
- * Styling follows the dsh-better-sidebar design language: all colors ride the
- * DSH semantic tokens (--dsw-alias-*), typography rides the font roles
- * (--dsw-font-*), motion rides --ds-*. Flat surfaces (no box-shadow), hairline
- * borders, 28px circular icon controls with hover fills, and 8px-radius rows
- * with hover fills. The stylesheet is injected once per activation and torn
- * down with the fiber, so HMR/disable leaves no residue.
+ * Styling follows the DSH design language: all colors ride the DSH semantic
+ * tokens (--dsw-alias-*), typography rides the font roles (--dsw-font-*),
+ * motion rides --ds-*. Flat surfaces (no box-shadow), hairline borders, 28px
+ * circular icon controls with hover fills, and 8px-radius rows with hover
+ * fills. The stylesheet is injected once per activation and torn down with the
+ * fiber, so HMR/disable leaves no residue.
  *
  * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs splices the
  * `lib/parts/*.part.js` pieces into the PART placeholder markers below (each
@@ -40,8 +41,11 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useMemo, useState, useSyncExternalStore } = require('react')
 
-    const TAB_ID = 'file-activity:recent'
+    const TAB_ID = 'dsh-file-activity'
+    const TAB_KIND = 'file-activity'
+    const PREVIEW_ID = 'dsh-file-activity-preview'
     const AUTO_OPEN_KEY = 'dsh-file-activity:auto-opened:'
+    const AUTO_OPEN_PREF_KEY = 'dsh-file-activity:autoOpen'
     const POLL_MS = 6000
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
@@ -91,6 +95,16 @@ const strings = {
     isZh() ? '文件位于工作区外，暂无法读取内容' : 'The file is outside the workspace and cannot be read',
   downloadToView: () => (isZh() ? '下载查看' : 'download to view'),
   clickOutsideToClose: () => (isZh() ? '点击外部关闭' : 'Click outside to close'),
+  autoOpenLabel: () => (isZh() ? '会话开始时自动打开' : 'Auto-open on session start'),
+  autoOpenHint: () =>
+    isZh()
+      ? '每个会话首次打开时自动显示本页；关闭后仍可从侧边栏右上角的「新标签页」手动打开。'
+      : 'Shows this page once per session. When off, open it from the sidebar new-tab control.',
+  tabUnavailable: () => (isZh() ? '侧边栏扩展点不可用' : 'Sidebar extension point unavailable'),
+  tabUnavailableHint: () =>
+    isZh()
+      ? '本插件未能注册页签（宿主原生 API 可能已变更）。原因见浏览器控制台。'
+      : 'This plugin could not register its tab (the host native API may have changed). See the browser console.',
   autoCloseHint: () => (isZh() ? '预览失败，即将自动关闭' : 'Preview failed — closing automatically'),
 }
 
@@ -223,6 +237,24 @@ function createStore(initial) {
     },
   }
 }
+// ── shared store slot ─────────────────────────────────────────────────
+//
+// The tab body renders inside a session-scoped seat while the floating preview
+// renders inside the root-scoped 'shell.overlay' seat, so the store the two
+// halves share cannot travel as a prop from one to the other. One module-level
+// reference is enough: the overlay seat is mounted for the plugin's whole
+// lifetime and only ever reads the CURRENT store, and a rebuild replaces the
+// reference before the new overlay renders.
+/** The store the overlay seat reads; set once per activation. */
+let sharedDataStore = null
+/** Publish the activation's store for the root-scoped overlay seat. */
+function registerSharedStore(store) {
+  sharedDataStore = store
+}
+/** The activation's store, or null before apply() ran. */
+function sharedStore() {
+  return sharedDataStore
+}
 
     'use strict'
 // ── data access (host routes) ─────────────────────────────────────────
@@ -272,34 +304,27 @@ function textUrlOf(sessionId, path) {
 }
 
     'use strict'
-// ── fetch interception: sidebar file operations ───────────────────────
-function methodOf(init) {
-  return (init?.method ?? 'GET').toUpperCase()
-}
-/** POST body as a plain object (non-string bodies are ignored). */
-function parseBody(init) {
-  return typeof init?.body === 'string' ? JSON.parse(init.body) : {}
-}
-/** Record fs.read / fs.write POSTs observed on the sidebar API. */
-function recordSidebarFs(url, init) {
-  if (url.pathname !== '/sidebar/api/fs.read' && url.pathname !== '/sidebar/api/fs.write') return
-  if (methodOf(init) !== 'POST') return
-  const body = parseBody(init)
-  if (typeof body.sessionId !== 'string' || typeof body.path !== 'string') return
-  postRecord(body.sessionId, body.path, url.pathname === '/sidebar/api/fs.write' ? 'write' : 'read')
-}
-/** Record sidebar media opens (/sidebar/file?sessionId=...&path=...). */
-function recordMediaOpen(url, init) {
-  if (url.pathname !== '/sidebar/file' || methodOf(init) !== 'GET') return
+// ── fetch interception: the plugin's own file routes ───────────────────
+//
+// Before the native migration this module also watched the THIRD-PARTY
+// sidebar's routes (/sidebar/api/fs.read|fs.write, /sidebar/file). Those are
+// the host's internal surface now, fed by the host's own file provider and
+// document owner — the plugin neither opens nor owns them, so observing them
+// would record host traffic that is already recorded through the plugin's
+// fs/observed host half. What remains is the plugin's own media/text route,
+// whose reads ARE the user's previews.
+/** Record requests for the plugin's own file route (media + text previews). */
+function recordOwnMediaOpen(url, init) {
+  if (url.pathname !== '/file-activity/file') return
+  if ((init?.method ?? 'GET').toUpperCase() !== 'GET') return
   const sessionId = url.searchParams.get('sessionId')
   const path = url.searchParams.get('path')
   if (sessionId !== null && path !== null) postRecord(sessionId, path, 'read')
 }
-/** Observe a resolved fetch URL and record sidebar file operations. */
+/** Observe a resolved fetch URL and record plugin file operations. */
 function observeSidebarFetch(url, init) {
   try {
-    recordSidebarFs(url, init)
-    recordMediaOpen(url, init)
+    recordOwnMediaOpen(url, init)
   } catch {
     // observation must never break the underlying call
   }
@@ -326,74 +351,165 @@ function installFetchInterceptor() {
 
     'use strict'
 // ── auto-open (enabled by default) ────────────────────────────────────
-function findTabIn(state, tabId) {
-  const leaves = (node) => (node.kind === 'leaf' ? [node] : (node.children ?? []).flatMap(leaves))
-  for (const node of [state?.splits, state?.bottomSplits]) {
-    if (node === undefined || node === null) continue
-    for (const leaf of leaves(node)) {
-      if ((leaf.tabs ?? []).some((tab) => tab.type === tabId)) return true
-    }
-  }
-  return false
-}
-/** Current sidebar snapshot, or null when the service is not ready. */
-function sidebarSnapshot(service) {
+//
+// Native flow: the tab is a PAGE type, so opening it means
+// `ctx.sidebarRight.openTab(kind)` — there is no layout snapshot to inspect
+// and no session id to read from a third-party sidebar service anymore.
+//
+// Timing is the whole problem. The navigation controller throws
+// "sidebarRight: no session surface is mounted" when the right column has not
+// mounted its session surface yet — which is exactly the state during the
+// first paint of a fresh page. better-sidebar used to answer with a snapshot
+// and the old code simply gave up when it was missing, which is how the tab
+// could silently never auto-open. Here the attempt is RETRIED with the timers
+// until the surface is up, and a permanent failure is recorded through
+// markDegraded() instead of disappearing.
+/** Retry cadence while the right column has not mounted its session surface. */
+const AUTO_OPEN_RETRY_MS = 1000
+/** Give up after this many attempts (~30s) and degrade observably. */
+const AUTO_OPEN_MAX_TRIES = 30
+/**
+ * Pending retry timer id (0 = none).
+ *
+ * There is deliberately NO "already attempted" flag guarding this module: a
+ * rejected registration or an HMR rebuild re-runs apply(), and the second run
+ * must still be able to bring the tab back. `openTab` is idempotent — it
+ * focuses the existing page instead of duplicating it.
+ */
+let autoOpenTimer = 0
+/**
+ * Whether this BROWSER TAB already had its auto-open attempt.
+ *
+ * The native API exposes no "current session id" to a plugin (`openTab`
+ * targets the mounted session, and the layout store is the host's own), so a
+ * per-session marker cannot be written from here. The marker is therefore
+ * per-browser-tab: one attempt per page load, which is exactly the visible
+ * behaviour — the session's tab record itself is persisted host-side, so
+ * revisiting a session that already shows the tab merely focuses it.
+ */
+function isAutoOpenAttempted() {
+  const key = AUTO_OPEN_KEY + 'loaded'
   try {
-    return service.getSnapshot?.()
+    return window.sessionStorage.getItem(key) === '1'
   } catch {
-    return null
+    return false
   }
 }
-/** The user disabled auto-open for this tab in the sidebar settings. */
-function isAutoOpenDisabled(snapshot, tabId) {
-  const settings = snapshot.prefs?.pluginSettings?.[tabId]
-  return settings !== undefined && settings.autoOpen === false
-}
-/** Whether this session was already auto-opened (localStorage marker). */
-function isAutoOpenMarked(sessionId) {
+/** Mark this browser tab as already attempted. */
+function markAutoOpenAttempted() {
   try {
-    return Boolean(window.localStorage.getItem(AUTO_OPEN_KEY + sessionId))
-  } catch {
-    return true
-  }
-}
-/** Persist the auto-opened marker for this session. */
-function markAutoOpened(sessionId) {
-  try {
-    window.localStorage.setItem(AUTO_OPEN_KEY + sessionId, '1')
+    window.sessionStorage.setItem(AUTO_OPEN_KEY + 'loaded', '1')
   } catch {
     // ignore
   }
 }
-/** Open the tab once per session unless disabled in the plugin settings. */
-function tryAutoOpen(service, tabId) {
-  const snapshot = sidebarSnapshot(service)
-  if (snapshot === undefined || snapshot === null || snapshot.sessionId === undefined || snapshot.state === undefined)
-    return
-  const sessionId = snapshot.sessionId
-  if (isAutoOpenDisabled(snapshot, tabId)) return
-  if (isAutoOpenMarked(sessionId)) return
-  if (findTabIn(snapshot.state, tabId)) {
-    markAutoOpened(sessionId)
-    return
-  }
+/** The most recent controller refusal, surfaced when retries run out. */
+let lastAutoOpenError = null
+/** One open attempt: true when the controller accepted it. */
+function tryOpenTab(ctx, tries) {
   try {
-    service.openTab({ type: tabId, title: strings.title(), path: '' })
-    markAutoOpened(sessionId)
+    ctx.sidebarRight.openTab(TAB_KIND, { revealIfOpened: false })
+    return true
   } catch (error) {
-    console.error('[dsh-file-activity] auto-open failed:', error)
+    if (tries === 0) lastAutoOpenError = error
+    return false
   }
 }
-function installAutoOpen(ctx, tabId) {
-  const service = ctx.betterSidebar
-  tryAutoOpen(service, tabId)
-  let off = () => {}
-  try {
-    off = service.subscribeState?.(() => tryAutoOpen(service, tabId)) ?? off
-  } catch {
-    // service may lack subscribeState on older versions
+/**
+ * Open the tab once the session surface exists, then stop. The tab record
+ * itself is persisted host-side, so a session that already shows it is not
+ * reopened: `openTab` focuses the existing page instead of duplicating it.
+ * @param ctx - client context carrying the navigation controller.
+ * @returns disposer cancelling a pending retry.
+ */
+function installAutoOpen(ctx) {
+  if (!autoOpenEnabled()) return () => {}
+  if (isAutoOpenAttempted()) return () => {}
+  let tries = 0
+  const attempt = () => {
+    tries += 1
+    if (tryOpenTab(ctx, tries - 1)) {
+      autoOpenTimer = 0
+      markAutoOpenAttempted()
+      return
+    }
+    if (tries >= AUTO_OPEN_MAX_TRIES) {
+      autoOpenTimer = 0
+      markDegraded('auto-open', lastAutoOpenError ?? 'sidebarRight: session surface never mounted')
+      return
+    }
+    autoOpenTimer = window.setTimeout(attempt, AUTO_OPEN_RETRY_MS)
   }
-  return off
+  attempt()
+  return () => {
+    if (autoOpenTimer !== 0) {
+      window.clearTimeout(autoOpenTimer)
+      autoOpenTimer = 0
+    }
+  }
+}
+
+    'use strict'
+// ── native document previews (metadata + plain-text renderer) ──────────
+//
+// The HOST owns file content on the native side: a registered preview only
+// declares WHICH suffixes this implementation recognizes and HOW the document
+// owner should deliver the bytes ('text-pages' = paged text window,
+// 'bytes-complete' = whole file). The owner then injects the prepared
+// DocumentContent into the 'sidebar.right.tab.document' seat, keyed by this
+// implementation's id — so the renderer never fetches anything itself
+// (the responsibility split that made better-sidebar's matchFileViewer
+// obsolete; its fetchStrategy belonged to the third-party viewer).
+//
+// Scope of the registration: filenames whose suffixes no shipped renderer
+// claims. Anything the host already renders (code / markdown / image / pdf /
+// html) keeps winning: those implementations outrank this one by longest
+// suffix, and a 'fallback' band type (the shipped text preview) still beats
+// nothing-else-matches. This descriptor exists so a recorded log/diff/ndjson
+// file opens with a real renderer instead of the "nothing can view this"
+// notice.
+//
+// Degradation is explicit and observable (issue #187 batch 2): a rejected
+// registration is logged with its cause and marked on <html> so it can never
+// fail silently.
+/** Suffixes this implementation claims (no leading dot; compound is allowed). */
+const PREVIEW_EXTENSIONS = ['log', 'jsonl', 'ndjson', 'diff', 'patch']
+/**
+ * Record an extension-point failure so it is visible to users, tests and e2e.
+ * The <html> markers are `data-dfa-degraded` (which stage failed) plus
+ * `data-dfa-degraded-cause` (why), which makes a missing tab diagnosable from
+ * the page itself instead of only from the browser console.
+ */
+function markDegraded(kind, error) {
+  const message = error instanceof Error ? error.message : String(error)
+  if (typeof console !== 'undefined' && typeof console.error === 'function') {
+    console.error('[dsh-file-activity] ' + kind + ' 注册失败: ' + message)
+  }
+  try {
+    const root = typeof document === 'undefined' ? undefined : document.documentElement
+    if (root !== undefined && root !== null && root.dataset !== undefined) {
+      root.dataset.dfaDegraded = kind
+      root.dataset.dfaDegradedCause = message.slice(0, 200)
+    }
+  } catch {
+    // observation only: a missing document must not break activation
+  }
+}
+/** Register the native document-preview descriptor (metadata only). */
+function registerDocumentPreviews(ctx) {
+  ctx.effect(
+    () =>
+      ctx.documentPreviews.register({
+        id: TAB_ID,
+        extensions: PREVIEW_EXTENSIONS,
+        // 'extension' lets this implementation win over a shipped one on the
+        // same suffix; distinct suffixes keep the shipped renderers in charge.
+        priority: 'extension',
+        title: () => strings.title(),
+        loading: 'text-pages',
+      }),
+    'dsh-file-activity: document previews',
+  )
 }
 
     // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──
@@ -726,6 +842,25 @@ const fileIconByExt = (ext, size = 14) => {
 // Mirrors the better-sidebar explorer surface: tight 2px 6px 8px body,
 // 30px rows, box-sizing border-box indentation, folder rows use the
 // strong type face to read as directories, files stay regular.
+/**
+ * Inject this activation's stylesheet into the document head exactly once per
+ * fiber. Static CSS only: it must not sit behind any service check, or an HMR
+ * rebuild / service reload can leave an already-rendered tab unstyled. The
+ * disposer removes only this fiber's own <style> element, so a rebuild always
+ * keeps at least one copy.
+ */
+function injectStyles(ctx) {
+  ctx.effect(() => {
+    if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined') return () => {}
+    const style = document.createElement('style')
+    style.setAttribute('data-dsh-file-activity', 'styles')
+    style.textContent = STYLES
+    document.head.appendChild(style)
+    return () => {
+      if (style.parentNode) style.parentNode.removeChild(style)
+    }
+  }, 'dsh-file-activity: styles')
+}
 const STYLES = `
 .dfa { display:flex; flex-direction:column; height:100%; overflow-y:auto; overflow-x:hidden;
   padding:2px 6px 8px; gap:2px; font:var(--dsw-font-s-14); color:var(--dsw-alias-label-primary); }
@@ -810,7 +945,30 @@ const STYLES = `
 @keyframes dfa-row-in { from { opacity:0; transform:translateY(1px); } to { opacity:1; transform:none; } }
 /* issue #60: 移除 #25 的侧边栏页签选中态品牌蓝覆盖（[class*="tab"][class*=
    "tabActive"] 全局子串选择器误伤宿主对话/工作区 tab 选中态，出现用户不
-   想要的蓝色高亮）。页签选中态回归宿主（dsh-better-sidebar）默认样式。 */
+   想要的蓝色高亮）。页签选中态回归宿主原生样式（issue #187 批 2：原生
+   dockkit 页签自己负责选中态，本插件不再覆盖）。 */
+/* issue #187 批 2：页签 chip 由本插件的 title 席位渲染（原生 chip 无图标
+   API），因此标题连同图标一起画在这里。 */
+.dfa-chip { display:inline-flex; align-items:center; gap:4px; min-width:0; }
+/* 扩展点注册失败的显式提示（绝不静默失效）。 */
+.dfa-degraded { margin:6px 2px; padding:6px 8px; border-radius:6px;
+  border:1px solid var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent); }
+.dfa-degraded-title { font:var(--dsw-font-xs-13); color:var(--dsw-alias-state-error-primary); }
+.dfa-degraded-hint { margin-top:2px; font:var(--dsw-font-xxs-12); opacity:.8; }
+/* 设置页（settings.plugins.tab）：开关行。 */
+.dfa-set { display:flex; flex-direction:column; gap:10px; padding:10px 2px; }
+.dfa-set-title { font:var(--dsw-font-sm-14); }
+.dfa-set-row { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; }
+.dfa-set-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.dfa-set-label { font:var(--dsw-font-xs-13); }
+.dfa-set-hint { font:var(--dsw-font-xxs-12); opacity:.75; }
+.dfa-set-switch { flex:none; width:16px; height:16px; accent-color:var(--dsw-alias-accent); cursor:pointer; }
+/* 浮窗正文：Markdown / 代码 / 纯文本 / 图片四种渲染体。 */
+.dfa-fp-md { height:100%; overflow:auto; padding:2px 4px; }
+.dfa-fp-code { height:100%; overflow:auto; }
+.dfa-fp-pre { margin:0; padding:8px 10px; overflow:auto; height:100%; font:var(--dsw-font-xxs-12);
+  white-space:pre-wrap; word-break:break-word; }
+.dfa-fp-img { display:block; margin:auto; max-width:100%; max-height:100%; object-fit:contain; }
 `
 
     'use strict'
@@ -1111,13 +1269,14 @@ function renderStatsSection(tree, collapsedDirs, onToggleDir, onOpen) {
  * from the previous session. Clicking any file opens a FLOATING preview
  * that reuses the sidebar's NATIVE viewer via matchFileViewer.
  */
-function FileActivityView({ ctx, store, scope, visible, dataStore }) {
+function FileActivityView({ ctx, store, scope, sessionId: seatSessionId, visible, dataStore }) {
   const data = useSyncExternalStore(dataStore.subscribe, dataStore.getSnapshot)
   const [cwd, setCwd] = useState(scope?.cwd || '')
   const [error, setError] = useState(false)
   const [recentOpen, setRecentOpen] = useState(true)
   const [collapsedDirs, setCollapsedDirs] = useState(() => new Set())
-  const sessionId = scope?.sessionId ?? ''
+  // Native seats pass sessionId directly; the legacy scope object still works.
+  const sessionId = seatSessionId ?? scope?.sessionId ?? ''
   const sessionData = (data.bySession ?? {})[sessionId] ?? EMPTY_SESSION
   const tree = useMemo(() => buildTree(sessionData.counts ?? {}), [sessionData.counts])
   useEffect(() => {
@@ -1136,8 +1295,10 @@ function FileActivityView({ ctx, store, scope, visible, dataStore }) {
     closePreviewOnHidden(visible, dataStore)
   }, [visible, dataStore])
   const toggleDir = (path) => setCollapsedDirs((prev) => toggleInSet(prev, path))
-  const openPreview = (path) => dataStore.set({ preview: { abs: path, name: basenameOf(path) } })
-  const closePreview = () => dataStore.set({ preview: null })
+  // The floating preview itself lives in the root-scoped 'shell.overlay' seat
+  // (registered by registerPreviewOverlay), so this view only publishes the
+  // target — together with the owning session, which authorizes the routes.
+  const openPreview = (path) => dataStore.set({ preview: { abs: path, name: basenameOf(path), sessionId } })
   const onClear = () => clearSessionData(dataStore, sessionId)
   const onRefresh = () => refreshSessionData(dataStore, sessionId, setCwd, setError)
   const recent = sessionData.recent ?? []
@@ -1145,22 +1306,71 @@ function FileActivityView({ ctx, store, scope, visible, dataStore }) {
     'div',
     { className: 'dfa' },
     renderError(error),
+    renderDegraded(),
     renderRecentSection(recent, recentOpen, () => setRecentOpen((v) => !v), onRefresh, onClear, openPreview),
     renderStatsSection(tree, collapsedDirs, toggleDir, openPreview),
-    data.preview
-      ? createElement(FloatingPreview, {
-          ctx,
-          store,
-          scope,
-          preview: data.preview,
-          onClose: closePreview,
-        })
-      : null,
+  )
+}
+/**
+ * Degradation notice: shown when this activation failed to register one of the
+ * host extension points (registerTabType / documentPreviews / auto-open). The
+ * panel is also marked with data-dfa-degraded so the e2e suite can assert the
+ * failure instead of hunting a missing tab.
+ * @returns the notice element, or null when nothing degraded.
+ */
+function renderDegraded() {
+  try {
+    const markers = typeof document === 'undefined' ? undefined : document.documentElement?.dataset
+    if (markers === undefined || markers === null || markers.dfaDegraded === undefined) return null
+  } catch {
+    return null
+  }
+  return createElement(
+    'div',
+    { className: 'dfa-degraded', 'data-dfa-degraded': '1' },
+    createElement('div', { className: 'dfa-degraded-title' }, strings.tabUnavailable()),
+    createElement('div', { className: 'dfa-degraded-hint' }, strings.tabUnavailableHint()),
   )
 }
 
     'use strict'
-// ── floating preview window (reuses the sidebar's native viewer) ──────
+// ── floating preview window (own renderer, shell.overlay seat) ─────────
+//
+// History: this window used to mount the third-party sidebar's built-in
+// viewer, picked by `ctx.betterSidebar.matchFileViewer(path)`, and fed it the
+// bytes its `fetchStrategy` asked for. That service is gone (issue #187
+// batch 2), so the window renders the recorded file itself:
+//
+//   image (svg/png/…/avif/webp/gif)  →  <img src> on the plugin's media route
+//   pdf                              →  <iframe src> on the same route, with a
+//                                        download fallback (native PDF frame,
+//                                        no viewer hand-off needed)
+//   everything else                  →  the plugin's own text route, rendered
+//                                        by the host's MarkdownText / CodeBlock
+//                                        atoms (staticModules: zero install)
+//                                        and a <pre> fallback.
+//
+// The route matters: file activity records files the agent touched ANYWHERE
+// (scratch files in /tmp, sibling repos, ~/.dsh), while the host's file
+// provider is fenced to the session workspace. The plugin's own route
+// authorizes exactly the paths this session recorded.
+/** Image suffixes the browser renders natively. */
+const IMAGE_EXT = /^(svg|png|jpe?g|gif|webp|avif|bmp|ico)$/i
+/** Suffixes rendered as Markdown. */
+const MARKDOWN_EXT = /^(md|markdown|mdx)$/i
+/** Lower-case suffix of a path ('' when it has none). extOf (rows.ts) works on
+ *  a file NAME, so the basename is sliced off first. */
+function extOfPath(path) {
+  return extOf(path.slice(path.lastIndexOf('/') + 1))
+}
+/** Official UI atoms come from the host's staticModules (zero install). */
+function uiAtoms() {
+  try {
+    return require('@deepseek-ai/dsh-client-ui-primitives')
+  } catch {
+    return {}
+  }
+}
 /** Resolve a possibly-relative path against the session cwd. */
 function resolvePath(path, cwd) {
   if (typeof path !== 'string' || path === '') return path
@@ -1209,27 +1419,6 @@ function previewClickAction(load, event) {
 function closePreviewOnHidden(visible, dataStore) {
   if (!visible) dataStore.set({ preview: null })
 }
-/**
- * Load fsRead content through the sidebar API and resolve the viewer's
- * load state (ready with text, or error with the API message). When the
- * sidebar refuses a recorded path (its workspace fence, e.g. agent-read
- * files under ~/.dsh), fall back to the plugin's own text route, which
- * authorizes exactly the paths this session recorded (issue #68).
- */
-async function loadFsReadContent(viewer, path, scope, sessionId) {
-  const target = resolvePath(path, scope?.cwd ?? '')
-  const response = await fetch('/sidebar/api/fs.read', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sessionId, path: target }),
-  })
-  const json = await response.json()
-  if (isFsReadOk(json)) return { status: 'ready', viewer, content: json.value.content }
-  // The sidebar refused — try OUR recorded-path text route before giving up.
-  const textJson = await fetchTextContent(sessionId, path)
-  if (isFsReadOk(textJson)) return { status: 'ready', viewer, content: textJson.value.content }
-  return fsReadError(json, viewer)
-}
 /** Plugin text route (fs.read-shaped JSON), or null on any failure. */
 async function fetchTextContent(sessionId, path) {
   try {
@@ -1240,40 +1429,56 @@ async function fetchTextContent(sessionId, path) {
   }
 }
 /**
- * Fetch the bytes the viewer's fetchStrategy needs (fsRead text /
- * mediaUrl / customData) and resolve its load state.
+ * Load the recorded file's text through the plugin's own route, falling back
+ * to the host sidebar route when the plugin refuses the path. Whatever the
+ * host viewer used to do with its own fetchStrategy, this window does the
+ * reading itself now — the routes are the same ones the previous
+ * implementation used for its fsRead strategy.
  */
-async function fetchPreviewLoad(viewer, path, scope, sessionId) {
-  const strategy = viewer.fetchStrategy
-  if (strategy === 'fsRead') return loadFsReadContent(viewer, path, scope, sessionId)
-  if (strategy === 'mediaUrl') {
-    return { status: 'ready', viewer, mediaUrl: mediaUrlOf(sessionId, path) }
+async function loadFsReadContent(viewer, path, scope, sessionId) {
+  const cwd = scope === null || scope === undefined ? '' : scope.cwd
+  const target = resolvePath(path, cwd ?? '')
+  const own = await fetchTextContent(sessionId, target)
+  if (isFsReadOk(own)) return { status: 'ready', viewer, content: own.value.content }
+  try {
+    const response = await fetch('/sidebar/api/fs.read', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, path: target }),
+    })
+    const json = await response.json()
+    if (isFsReadOk(json)) return { status: 'ready', viewer, content: json.value.content }
+    return fsReadError(json, viewer)
+  } catch {
+    return fsReadError(own, viewer)
   }
-  if (strategy === 'custom') {
-    const data = await (viewer.load?.(path, scope) ?? Promise.resolve(undefined))
-    return { status: 'ready', viewer, customData: data }
+}
+/** Which renderer a recorded path gets. */
+function viewerOf(path) {
+  const ext = extOfPath(path)
+  if (IMAGE_EXT.test(ext)) return 'image'
+  if (ext === 'pdf') return 'pdf'
+  if (MARKDOWN_EXT.test(ext)) return 'markdown'
+  return 'text'
+}
+/** Fetch the bytes the chosen renderer needs (media URL, or text content). */
+async function fetchPreviewLoad(target) {
+  const viewer = { id: viewerOf(target.abs) }
+  if (viewer.id === 'image' || viewer.id === 'pdf') {
+    return { status: 'ready', viewer, mediaUrl: mediaUrlOf(target.sessionId, target.abs) }
   }
-  // 'binary-download' and anything else: mount the viewer's own
-  // component (it handles the download / media itself).
-  return { status: 'ready', viewer }
+  return loadFsReadContent(viewer, target.abs, null, target.sessionId)
 }
 /**
- * Resolve the file's viewer through the sidebar registry and load the
- * bytes it needs; failures become an error state shown in the window.
+ * Resolve the file's renderer and load what it needs; failures become an
+ * error state shown in the window.
  */
-function usePreviewLoader(service, path, sessionId, scope) {
+function usePreviewLoader(target) {
   const [load, setLoad] = useState({ status: 'loading', viewer: null })
   useEffect(() => {
     let cancelled = false
-    const viewer = service?.matchFileViewer?.(path)
-    if (!viewer) {
-      setLoad({ status: 'error', viewer: null, message: strings.previewUnsupported() })
-      return () => {
-        cancelled = true
-      }
-    }
-    setLoad({ status: 'loading', viewer })
-    fetchPreviewLoad(viewer, path, scope, sessionId)
+    setLoad({ status: 'loading', viewer: { id: viewerOf(target.abs) } })
+    fetchPreviewLoad(target)
       .then((next) => {
         if (!cancelled) setLoad(next)
       })
@@ -1281,17 +1486,37 @@ function usePreviewLoader(service, path, sessionId, scope) {
         if (!cancelled)
           setLoad({
             status: 'error',
-            viewer,
+            viewer: null,
             message: error instanceof Error ? error.message : String(error),
           })
       })
     return () => {
       cancelled = true
     }
-  }, [path, sessionId, scope])
+  }, [target.abs, target.sessionId])
   return load
 }
-/** Preview window body: loading note / error panel / viewer mount. */
+/** Text body: the host's own Markdown / code atoms, with a plain <pre> fallback. */
+function TextBody({ load, path }) {
+  const text = load.content ?? ''
+  const ui = uiAtoms()
+  if (load.viewer?.id === 'markdown' && typeof ui.MarkdownText === 'function') {
+    return createElement('div', { className: 'dfa-fp-md' }, createElement(ui.MarkdownText, { text }))
+  }
+  if (typeof ui.CodeBlock === 'function') {
+    return createElement(
+      'div',
+      { className: 'dfa-fp-code' },
+      createElement(ui.CodeBlock, { code: text, language: extOfPath(path) }),
+    )
+  }
+  return createElement('pre', { className: 'dfa-fp-pre' }, text)
+}
+/** Image body: the plugin's media route renders the recorded bytes. */
+function ImageBody({ load, title }) {
+  return createElement('img', { className: 'dfa-fp-img', src: load.mediaUrl, alt: title })
+}
+/** Preview window body: loading note / error panel / renderer mount. */
 function renderPreviewBody(load, ctx, store, scope, path, title, sessionId) {
   if (load.status === 'loading') {
     return createElement('div', { className: 'dfa-fp-note' }, strings.loading())
@@ -1307,38 +1532,14 @@ function renderPreviewBody(load, ctx, store, scope, path, title, sessionId) {
       createElement('div', { style: { marginTop: '6px', fontSize: '11px', opacity: 0.7 } }, strings.autoCloseHint()),
     )
   }
-  if (load.viewer.id === 'pdf') {
+  const props = { load, path, title, sessionId }
+  if (load.viewer?.id === 'image') return ImageBody(props)
+  if (load.viewer?.id === 'pdf') {
     const url = mediaUrlOf(sessionId, path)
     return createElement(PdfPreview, { src: url, download: `${url}&download=1`, title })
   }
-  return createElement(load.viewer.component, {
-    ctx,
-    store,
-    scope,
-    path,
-    title,
-    viewerId: load.viewer.id,
-    content: load.content,
-    mediaUrl: load.mediaUrl,
-    customData: load.customData,
-  })
+  return TextBody(props)
 }
-/**
- * A floating preview window. Instead of re-implementing rendering, it
- * asks the sidebar registry for the file's viewer (`matchFileViewer`),
- * fetches the bytes the viewer's fetchStrategy needs (fsRead text /
- * mediaUrl / customData), then mounts that viewer's own component — so
- * code gets syntax highlighting and markdown gets rendered by the SAME
- * built-in renderers the sidebar's editor tab uses.
- *
- * Media caveat: the sidebar's own media route (/sidebar/file) only serves
- * files inside the session working directory, while file activity records
- * files the agent touched anywhere (/tmp scratch files, sibling repos…).
- * Media bytes therefore come from OUR route (/file-activity/file), which
- * authorizes exactly the paths this session recorded; PDF is the one
- * built-in viewer that fetches its own URL internally (it ignores the
- * `mediaUrl` prop), so it gets a small iframe preview instead.
- */
 /**
  * Dismissal affordances (issue #76 — the preview must never linger):
  * 1. pointerdown anywhere OUTSIDE the window closes it (capture phase, so
@@ -1352,7 +1553,7 @@ function usePreviewDismiss(load, onClose) {
   useEffect(() => {
     if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return () => {}
     const handler = (event) => {
-      if (!isInsideFloating(event?.target)) onClose()
+      if (!isInsideFloating(event && event.target)) onClose()
     }
     document.addEventListener('pointerdown', handler, true)
     return () => document.removeEventListener('pointerdown', handler, true)
@@ -1381,6 +1582,7 @@ function renderFloatingWindow(load, ctx, store, scope, path, title, sessionId, o
       'div',
       {
         className: 'dfa-fp',
+        'data-dfa-preview': '1',
         onClick: (event) => {
           if (previewClickAction(load, event) === 'close') onClose()
         },
@@ -1413,22 +1615,50 @@ function renderFloatingWindow(load, ctx, store, scope, path, title, sessionId, o
     ),
   )
 }
-function FloatingPreview({ ctx, store, scope, preview, onClose }) {
-  const sessionId = scope?.sessionId ?? ''
-  const path = preview.abs
-  const title = preview.name
-  const service = ctx.betterSidebar
-  const load = usePreviewLoader(service, path, sessionId, scope)
+/**
+ * The floating preview, mounted by the root-scoped 'shell.overlay' list seat
+ * (the host's own floating layer: above every column, click-through unless the
+ * entry opts into pointer events). It renders nothing at all while no preview
+ * is open, so the layer stays invisible.
+ */
+function FloatingPreviewOverlay() {
+  const store = sharedStore()
+  const state = useSyncExternalStore(
+    store === null ? () => () => {} : store.subscribe,
+    store === null ? () => null : store.getSnapshot,
+  )
+  const preview = state === null || state === undefined ? null : state.preview
+  const sessionId = preview === null ? '' : preview.sessionId
+  // Hooks must run unconditionally: the loader is fed an empty target while
+  // the window is closed (it then never resolves a load, and nothing renders).
+  const target = preview ?? { abs: '', name: '', sessionId: '' }
+  const load = usePreviewLoader(target)
+  const onClose = () => {
+    if (store !== null) store.set({ preview: null })
+  }
   usePreviewDismiss(load, onClose)
-  return renderFloatingWindow(load, ctx, store, scope, path, title, sessionId, onClose)
+  if (preview === null) return null
+  return renderFloatingWindow(load, undefined, null, null, preview.abs, preview.name, sessionId, onClose)
+}
+/** Register the overlay seat (list slot: additive, never replaces host UI). */
+function registerPreviewOverlay(ctx, dataStore) {
+  void dataStore
+  ctx.effect(
+    () =>
+      ctx.slots.inject('shell.overlay', () =>
+        ctx.slots.register(
+          { name: 'shell.overlay', id: PREVIEW_ID, order: 100, label: () => strings.title() },
+          FloatingPreviewOverlay,
+        ),
+      ),
+    'dsh-file-activity: preview overlay',
+  )
 }
 /**
- * Lightweight PDF preview. better-sidebar's built-in PdfView fetches
- * `/sidebar/file` internally (it ignores any injected `mediaUrl` prop),
- * and that route refuses files outside the session working directory — so
- * a recorded /tmp PDF would never load. This tiny view embeds the bytes
- * from OUR media route in a native browser PDF frame, with a download
- * fallback in its toolbar.
+ * Lightweight PDF preview. The recorded file often lives outside the session
+ * workspace, and the host's own PDF route is fenced to it — so the bytes come
+ * from the plugin's media route inside a native browser PDF frame, with a
+ * download fallback in its toolbar.
  */
 function PdfPreview({ src, download, title }) {
   return createElement(
@@ -1453,27 +1683,129 @@ function PdfPreview({ src, download, title }) {
 }
 
     'use strict'
-// ── plugin body ───────────────────────────────────────────────────────
-/**
- * The stylesheet is pure static CSS and must NOT depend on the
- * betterSidebar service: inject it first, unconditionally. If it lived
- * behind the `service === undefined` early return, an HMR rebuild or
- * service reload could leave the already-rendered tab WITHOUT its
- * stylesheet — the raw white-text list you see when the CSS is gone.
- * Each fiber owns its own <style> element and the disposer removes
- * only that element, so a rebuild always keeps at least one copy.
- */
-function injectStyles(ctx) {
-  ctx.effect(() => {
-    if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined') return () => {}
-    const style = document.createElement('style')
-    style.setAttribute('data-dsh-file-activity', 'styles')
-    style.textContent = STYLES
-    document.head.appendChild(style)
-    return () => {
-      if (style.parentNode) style.parentNode.removeChild(style)
-    }
-  }, 'dsh-file-activity: styles')
+// ── settings tab (replaces better-sidebar's settings.pluginToggles) ────
+//
+// The host renders no per-plugin toggle UI for third-party tabs, so this
+// plugin contributes its own tab to the Web Settings → Plugins section
+// ('settings.plugins.tab': a list seat declared by the settings section). The
+// section only exists while it is mounted, so the seat is declared with
+// ctx.slots.inject — the declarative form that survives HMR and late mounts
+// (a plain register on a not-yet-mounted seat would silently contribute
+// nothing).
+/** Auto-open preference (plugin-owned; better-sidebar's prefs no longer exist). */
+function autoOpenEnabled() {
+  try {
+    return window.localStorage.getItem(AUTO_OPEN_PREF_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+/** Persist the auto-open preference. */
+function setAutoOpenEnabled(enabled) {
+  try {
+    window.localStorage.setItem(AUTO_OPEN_PREF_KEY, enabled ? '1' : '0')
+  } catch {
+    // storage unavailable (private mode): the in-memory toggle still applies
+  }
+}
+/** One labeled switch row. */
+function settingsRow(label, hint, checked, onChange) {
+  return createElement(
+    'label',
+    { className: 'dfa-set-row' },
+    createElement(
+      'span',
+      { className: 'dfa-set-text' },
+      createElement('span', { className: 'dfa-set-label' }, label),
+      createElement('span', { className: 'dfa-set-hint' }, hint),
+    ),
+    createElement('input', {
+      type: 'checkbox',
+      className: 'dfa-set-switch',
+      checked,
+      onChange: (event) => onChange(event?.target?.checked === true),
+    }),
+  )
+}
+/** Settings panel body: the auto-open switch plus its explanatory hint. */
+function FileActivitySettings() {
+  const [enabled, setEnabled] = useState(autoOpenEnabled)
+  return createElement(
+    'div',
+    { className: 'dfa-set', 'data-dfa-settings': '1' },
+    createElement('div', { className: 'dfa-set-title' }, strings.title()),
+    settingsRow(strings.autoOpenLabel(), strings.autoOpenHint(), enabled, (next) => {
+      setAutoOpenEnabled(next)
+      setEnabled(next)
+    }),
+  )
+}
+/** Register the settings tab into the settings section's list seat. */
+function registerSettingsTab(ctx) {
+  ctx.effect(
+    () =>
+      ctx.slots.inject('settings.plugins.tab', () =>
+        ctx.slots.register(
+          { name: 'settings.plugins.tab', id: TAB_ID, order: 60, label: () => strings.title() },
+          FileActivitySettings,
+        ),
+      ),
+    'dsh-file-activity: settings tab',
+  )
+}
+
+    'use strict'
+// ── plugin body (native sidebar extension points) ─────────────────────
+//
+// Everything this half needs comes from Cordis services the HOST provides
+// (issue #187 batch 2): the tab registry, the slot registry, the document
+// preview registry and the right-Sidebar navigation controller. There is no
+// third-party sidebar package in the picture anymore, so the page keeps
+// working on any host that ships those four services.
+//
+// The stylesheet is pure static CSS and must NOT depend on any of them:
+// inject it first, unconditionally. If it lived behind an early return, an HMR
+// rebuild or service reload could leave the already-rendered tab WITHOUT its
+// stylesheet — the raw white-text list you see when the CSS is gone. Each
+// fiber owns its own <style> element and the disposer removes only that
+// element, so a rebuild always keeps at least one copy.
+/** registerTab step one: the tab TYPE (what a file-activity page is). */
+function registerTabType(ctx) {
+  ctx.effect(
+    () =>
+      ctx.sidebarRightTabs.register({
+        id: TAB_ID,
+        kind: TAB_KIND,
+        // No patterns: this is a page type, opened by kind (ctx.sidebarRight.openTab).
+        title: () => strings.title(),
+      }),
+    'dsh-file-activity: tab type',
+  )
+}
+/** registerTab step two: the body seat (keyed by the definition id). */
+function registerTabBody(ctx, dataStore) {
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.right.pane.tab', () =>
+        ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, function (props) {
+          const injected = Object.assign({}, props, { dataStore })
+          return createElement(FileActivityView, injected)
+        }),
+      ),
+    'dsh-file-activity: tab body',
+  )
+}
+/** registerTab step three: the chip title seat (a live, localized label). */
+function registerTabTitle(ctx) {
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.right.pane.tab.title', () =>
+        ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: TAB_ID }, () =>
+          createElement('span', { className: 'dfa-chip' }, strings.title()),
+        ),
+      ),
+    'dsh-file-activity: tab title',
+  )
 }
 /** Mount probe: report client activation to the host state (synthetic
  *  session id, invisible in the UI — confirms the client half actually
@@ -1485,61 +1817,42 @@ function mountProbe() {
     body: JSON.stringify({ sessionId: '__probe__', path: 'mounted', op: 'read' }),
   }).catch(() => {})
 }
-/** Register the tab (enabled by default in the Side card settings). */
-function registerTab(ctx, dataStore) {
-  const service = ctx.betterSidebar
-  ctx.effect(
-    () =>
-      service.registerTab({
-        id: TAB_ID,
-        title: () => strings.title(),
-        icon: (size) => icon.clock(size),
-        order: 15,
-        single: true,
-        settings: {
-          pluginToggles: [
-            {
-              key: 'autoOpen',
-              title: () => (isZh() ? '会话开始时自动打开' : 'Auto-open on session start'),
-              desc: () =>
-                isZh()
-                  ? '每个会话首次打开时自动显示本页（可在侧边栏设置中关闭）'
-                  : 'Opens this tab once per session by default (turn off here)',
-              type: 'switch',
-            },
-          ],
-        },
-        component: (props) => createElement(FileActivityView, { ...props, dataStore }),
-      }),
-    'dsh-file-activity: tab registration',
-  )
-}
-exports.inject = ['betterSidebar']
-exports.apply = function apply(ctx) {
-  // Stylesheet first, unconditionally (HMR pitfall — see injectStyles).
-  injectStyles(ctx)
-  const service = ctx.betterSidebar
-  if (service === undefined) {
-    // 依赖缺失提示（issue #72 同类问题）：dsh-file-activity 的 client 端
-    // 依赖 dsh-better-sidebar 提供侧边栏扩展点，未安装时静默返回会让用户
-    // 以为插件坏了——明确提示安装方式。
-    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-      console.warn(
-        '[dsh-file-activity] dsh-better-sidebar 未安装：文件活动页签无法挂载。请安装宿主插件：dsh plugin --profile web add dsh-better-sidebar dsh-file-activity',
-      )
-    }
-    return
+/**
+ * Run one registration, converting a throw into an observable failure.
+ *
+ * Swallowing is deliberate: the host throws for a taken id or a taken kind, and
+ * letting it escape would fail the WHOLE activation (the stylesheet, the
+ * floating preview and the settings tab would go with it). What must never
+ * happen is a SILENT failure, so the cause is logged, marked on <html> and
+ * rendered as a notice inside the tab body.
+ */
+function guarded(kind, register) {
+  try {
+    register()
+  } catch (error) {
+    markDegraded(kind, error)
   }
-  // Per-session data store: { bySession: { [sessionId]: { recent, counts, loading } }, preview }
-  // Each conversation reads/writes only its own bucket, so switching
-  // sessions never leaks another session's file activity into the view.
+}
+exports.inject = ['slots', 'sidebarRightTabs', 'documentPreviews', 'sidebarRight']
+exports.apply = function apply(ctx) {
+  // Stylesheet first, unconditionally (HMR pitfall — see the header note).
+  injectStyles(ctx)
+  // Failing loudly beats failing silently: a rejected registration (id taken,
+  // kind taken, seat missing) is recorded so the user and the e2e suite can
+  // see WHY the tab never appeared.
+  guarded('tab', () => registerTabType(ctx))
   const dataStore = createStore({ bySession: {}, preview: null })
+  registerSharedStore(dataStore)
+  registerTabBody(ctx, dataStore)
+  registerTabTitle(ctx)
+  registerPreviewOverlay(ctx, dataStore)
+  registerSettingsTab(ctx)
+  guarded('previews', () => registerDocumentPreviews(ctx))
   mountProbe()
   // sidebar operations → host record route
   ctx.effect(() => installFetchInterceptor(), 'dsh-file-activity: sidebar fetch observation')
-  registerTab(ctx, dataStore)
   // auto-open once per session (default on)
-  ctx.effect(() => installAutoOpen(ctx, TAB_ID), 'dsh-file-activity: auto-open')
+  ctx.effect(() => installAutoOpen(ctx), 'dsh-file-activity: auto-open')
 }
 // Internal functions exposed for the render-path test suite only; inert in
 // the browser bundle (plain properties on the exports object).
@@ -1553,6 +1866,8 @@ exports.__test = {
   previewClickAction,
   isInsideFloating,
   closePreviewOnHidden,
+  autoOpenEnabled,
+  PREVIEW_EXTENSIONS,
   AUTO_CLOSE_MS,
   // Static stylesheet text, so the render-path suite can assert the floating
   // preview body keeps its flex-fill container (issue #111).

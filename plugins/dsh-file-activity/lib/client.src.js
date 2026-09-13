@@ -1,29 +1,30 @@
 /**
  * dsh-file-activity — client half (browser).
  *
- * Extends dsh-better-sidebar with a "文件活动 / File Activity" tab:
- *  - recent file access history (agent + sidebar operations),
- *  - per-file create/modify/read counts flattened by folder, with multi-level
- *    folders shown as dotted paths (a.b.c.d) and their files indented below,
- *  - clicking any file opens a FLOATING preview that reuses the sidebar's
- *    NATIVE viewer via `ctx.betterSidebar.matchFileViewer(path)` — its own
- *    `component` is mounted (built-in markdown / code / image / pdf / html
- *    renderers), so code gets syntax highlighting and markdown gets rendered
- *    with no hand-rolled preview; clicking outside / Esc / × closes it,
- *  - auto-opens once per session by default (toggleable in the sidebar
- *    settings, enabled by default).
+ * A native right-Sidebar tab ("文件活动 / File Activity") built on the HOST's
+ * own extension points (issue #187 batch 2 — no third-party sidebar service):
+ *  - the tab type registers into `ctx.sidebarRightTabs` (stage one) and its
+ *    body / chip title into the keyed `sidebar.right.pane.tab` and
+ *    `sidebar.right.pane.tab.title` seats (stage two);
+ *  - clicking a file opens a FLOATING preview implemented by this plugin inside
+ *    the `shell.overlay` list seat: recent access history (agent + plugin
+ *    routes), per-file create/modify/read counts flattened by folder, and the
+ *    preview window itself — clicking outside / Esc / × closes it;
+ *  - a document-preview descriptor registers with `ctx.documentPreviews`
+ *    (metadata only: the native document owner reads the bytes);
+ *  - auto-opens once per session by default, with its toggle in the Web
+ *    Settings → Plugins tab (`settings.plugins.tab`).
  *
  * Data source: the plugin host half (fs/observed for agent tools) + this
- * half's fetch interception for sidebar file operations (fs.read / fs.write /
- * /sidebar/file media opens), both persisted host-side; the tab polls
- * /file-activity/api/stats.
+ * half's fetch interception for the plugin's own file routes, both persisted
+ * host-side; the tab polls /file-activity/api/stats.
  *
- * Styling follows the dsh-better-sidebar design language: all colors ride the
- * DSH semantic tokens (--dsw-alias-*), typography rides the font roles
- * (--dsw-font-*), motion rides --ds-*. Flat surfaces (no box-shadow), hairline
- * borders, 28px circular icon controls with hover fills, and 8px-radius rows
- * with hover fills. The stylesheet is injected once per activation and torn
- * down with the fiber, so HMR/disable leaves no residue.
+ * Styling follows the DSH design language: all colors ride the DSH semantic
+ * tokens (--dsw-alias-*), typography rides the font roles (--dsw-font-*),
+ * motion rides --ds-*. Flat surfaces (no box-shadow), hairline borders, 28px
+ * circular icon controls with hover fills, and 8px-radius rows with hover
+ * fills. The stylesheet is injected once per activation and torn down with the
+ * fiber, so HMR/disable leaves no residue.
  *
  * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs splices the
  * `lib/parts/*.part.js` pieces into the PART placeholder markers below (each
@@ -40,8 +41,11 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useMemo, useState, useSyncExternalStore } = require('react')
 
-    const TAB_ID = 'file-activity:recent'
+    const TAB_ID = 'dsh-file-activity'
+    const TAB_KIND = 'file-activity'
+    const PREVIEW_ID = 'dsh-file-activity-preview'
     const AUTO_OPEN_KEY = 'dsh-file-activity:auto-opened:'
+    const AUTO_OPEN_PREF_KEY = 'dsh-file-activity:autoOpen'
     const POLL_MS = 6000
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
@@ -53,11 +57,13 @@ window.__ModuleLoader__.load({
     __PART_API__
     __PART_INTERCEPTOR__
     __PART_AUTO_OPEN__
+    __PART_DOCUMENT_PREVIEWS__
     __PART_ICONS__
     __PART_STYLES__
     __PART_ROWS__
     __PART_VIEW__
     __PART_PREVIEW__
+    __PART_SETTINGS__
     __PART_APPLY__
 
     return module.exports

@@ -49,11 +49,13 @@ const pieces = [
   ['__PART_API__', 'api'],
   ['__PART_INTERCEPTOR__', 'interceptor'],
   ['__PART_AUTO_OPEN__', 'auto-open'],
+  ['__PART_DOCUMENT_PREVIEWS__', 'document-previews'],
   ['__PART_ICONS__', 'icons', { shared: true }],
   ['__PART_STYLES__', 'styles'],
   ['__PART_ROWS__', 'rows'],
   ['__PART_VIEW__', 'view'],
   ['__PART_PREVIEW__', 'preview'],
+  ['__PART_SETTINGS__', 'settings'],
   ['__PART_APPLY__', 'apply'],
 ]
 

@@ -7,7 +7,7 @@ import type { DshContext } from './types.js'
  * sessionCwdOf 为 file-activity 特有，保留本地）。
  */
 
-/** Session working directory, mirroring better-sidebar's resolution. */
+/** Session working directory, mirroring the host's own session resolution. */
 export function sessionCwdOf(ctx: DshContext, sessionId: string): string {
   const session = ctx.sessions.get(sessionId)
   const headerCwd = session?.header?.cwd

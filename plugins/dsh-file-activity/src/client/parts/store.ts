@@ -22,3 +22,25 @@ function createStore<T extends object>(initial: T): DataStore<T> {
     },
   }
 }
+
+// ── shared store slot ─────────────────────────────────────────────────
+//
+// The tab body renders inside a session-scoped seat while the floating preview
+// renders inside the root-scoped 'shell.overlay' seat, so the store the two
+// halves share cannot travel as a prop from one to the other. One module-level
+// reference is enough: the overlay seat is mounted for the plugin's whole
+// lifetime and only ever reads the CURRENT store, and a rebuild replaces the
+// reference before the new overlay renders.
+
+/** The store the overlay seat reads; set once per activation. */
+let sharedDataStore: DataStore<DataState> | null = null
+
+/** Publish the activation's store for the root-scoped overlay seat. */
+function registerSharedStore(store: DataStore<DataState>): void {
+  sharedDataStore = store
+}
+
+/** The activation's store, or null before apply() ran. */
+function sharedStore(): DataStore<DataState> | null {
+  return sharedDataStore
+}

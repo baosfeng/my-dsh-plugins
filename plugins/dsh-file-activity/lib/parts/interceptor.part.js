@@ -1,32 +1,25 @@
 'use strict'
-// ── fetch interception: sidebar file operations ───────────────────────
-function methodOf(init) {
-  return (init?.method ?? 'GET').toUpperCase()
-}
-/** POST body as a plain object (non-string bodies are ignored). */
-function parseBody(init) {
-  return typeof init?.body === 'string' ? JSON.parse(init.body) : {}
-}
-/** Record fs.read / fs.write POSTs observed on the sidebar API. */
-function recordSidebarFs(url, init) {
-  if (url.pathname !== '/sidebar/api/fs.read' && url.pathname !== '/sidebar/api/fs.write') return
-  if (methodOf(init) !== 'POST') return
-  const body = parseBody(init)
-  if (typeof body.sessionId !== 'string' || typeof body.path !== 'string') return
-  postRecord(body.sessionId, body.path, url.pathname === '/sidebar/api/fs.write' ? 'write' : 'read')
-}
-/** Record sidebar media opens (/sidebar/file?sessionId=...&path=...). */
-function recordMediaOpen(url, init) {
-  if (url.pathname !== '/sidebar/file' || methodOf(init) !== 'GET') return
+// ── fetch interception: the plugin's own file routes ───────────────────
+//
+// Before the native migration this module also watched the THIRD-PARTY
+// sidebar's routes (/sidebar/api/fs.read|fs.write, /sidebar/file). Those are
+// the host's internal surface now, fed by the host's own file provider and
+// document owner — the plugin neither opens nor owns them, so observing them
+// would record host traffic that is already recorded through the plugin's
+// fs/observed host half. What remains is the plugin's own media/text route,
+// whose reads ARE the user's previews.
+/** Record requests for the plugin's own file route (media + text previews). */
+function recordOwnMediaOpen(url, init) {
+  if (url.pathname !== '/file-activity/file') return
+  if ((init?.method ?? 'GET').toUpperCase() !== 'GET') return
   const sessionId = url.searchParams.get('sessionId')
   const path = url.searchParams.get('path')
   if (sessionId !== null && path !== null) postRecord(sessionId, path, 'read')
 }
-/** Observe a resolved fetch URL and record sidebar file operations. */
+/** Observe a resolved fetch URL and record plugin file operations. */
 function observeSidebarFetch(url, init) {
   try {
-    recordSidebarFs(url, init)
-    recordMediaOpen(url, init)
+    recordOwnMediaOpen(url, init)
   } catch {
     // observation must never break the underlying call
   }

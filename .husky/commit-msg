@@ -1,1 +1,9 @@
+#!/usr/bin/env sh
+# commitlint（conventional commits 校验）。
+# issue #240：原来直接 `npx --no -- commitlint`，每次提交多花 ~200ms 在 npx 自身的解析上；
+# 本地有 bin 就直调，没有才退回 npx（语义不变：解析不到就失败，绝不联网装包）。
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=$(pwd)
+if [ -x "$repo_root/node_modules/.bin/commitlint" ]; then
+  exec "$repo_root/node_modules/.bin/commitlint" --edit "$1"
+fi
 npx --no -- commitlint --edit "$1"

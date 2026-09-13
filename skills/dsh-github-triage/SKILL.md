@@ -138,7 +138,23 @@ python3 skills/dsh-github-triage/scripts/check-dependabot-closed.py /tmp/db-clos
 
 ### fork 池（隔离方案，必须遵守）
 
-主 agent 按派发顺序**逐个**准备 fork（不提前批量派生），子 agent **只在自己被分配的 fork 内工作**：
+主 agent 按派发顺序**逐个**准备 fork（不提前批量派生），子 agent **只在自己被分配的 fork 内工作**。
+
+**主路径（一条命令，issue #240）**：
+
+```bash
+node scripts/fork-pool.mjs create <编号>            # 等价于下面手工 5 步 + node_modules 就位 + 装 hooks，实测 3.3s
+cd /tmp/gh-fork-<编号>                              # 子 agent 从这里开始工作
+node scripts/fork-pool.mjs check                    # 推送前自检：hooks / 工具链 / 基线 SHA / 误暂存，四项 yes/no
+node scripts/fork-pool.mjs clean <编号> --yes       # 收尾清理（只允许删 /tmp/gh-fork-*）
+```
+
+它比手工多做三件事（都是踩过坑才补的）：**基线 SHA 校验**、**node_modules 逐包软链且不漏隐藏的 `.bin`**、
+**默认装 hooks**（不装则 commit/push 完全不跑本地门禁，见
+[踩坑：fork 池钩子与工具链未就绪](../../docs/踩坑/fork池钩子与工具链未就绪.md)）。
+可用 `--no-hooks` 关闭装钩子、`--node-modules symlink|copy|none` 换就位策略、`--branch` 换分支名。
+
+**兜底（脚本不可用时的手工 5 步，与脚本等价）**：
 
 ```
 git -C <主工作区> fetch origin && git -C <主工作区> merge --ff-only origin/main   # ① 先同步主工作区本地 main（fetch 只更新 origin/main 引用、不移动本地 main）
@@ -164,6 +180,8 @@ git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # ⑤ 从远�
 > ```
 >
 > 其中 `<husky 钩子目录绝对路径>` = 主工作区 `git config core.hooksPath` 的输出（husky v9 生成，位于主工作区仓库根的钩子目录下）。判据：`git -C /tmp/gh-fork-<编号> config core.hooksPath` 有输出；不想配 hook 的兜底是提交前手动跑 `npx prettier --check . && npx eslint plugins/`。
+>
+> **更好的一行**（等价且自洽，推荐）：`cd /tmp/gh-fork-<编号> && ./node_modules/.bin/husky` —— 它会生成 `.husky/_` 并写好 `core.hooksPath`。有脚本时直接 `node scripts/fork-pool.mjs check` 即可一眼看出装没装。
 
 规则：
 

@@ -306,3 +306,24 @@ export function isPluginStatePath(src) {
 export function presentStateDirs(realProfile) {
   return PLUGIN_STATE_DIRS.filter((dir) => existsSync(join(realProfile, dir)))
 }
+
+/**
+ * 从「实例输出」或「凭据文件」里解析访问 token（issue #257）。
+ *
+ * 为什么需要：DSH web 对无凭据请求返回 401/403，而 `--api-path` 冒烟过去是裸 fetch，
+ * 于是恒失败且报错归因指向"插件路由异常"，把排查引向错误方向。
+ *
+ * ⚠️ 两个实测结论（别重蹈）：
+ *   1. `.credentials.yaml` 里的 `secret` **不是** URL 里的 token（长度同为 43 但内容不同），
+ *      拿它冒充 token 只会被拒 —— 所以这里**只认显式的 token 字段**，不做模糊匹配；
+ *   2. 在本机环境里，`dsh web` 由脚本 spawn 起来时**两种捕获方式都没有打印 token 行**
+ *      （pipe 与文件重定向都试过）—— 因此本函数经常返回 null，调用方**必须显式失败**
+ *      而不是静默跳过（见 issue #257 的待确认项）。
+ */
+export function extractApiToken({ logText = '', credentialsText = '' } = {}) {
+  const fromLog = /token=([A-Za-z0-9_-]{10,})/.exec(String(logText))
+  if (fromLog) return { token: fromLog[1], source: '启动输出' }
+  const fromCredentials = /^\s*token:\s*([A-Za-z0-9_-]{10,})/m.exec(String(credentialsText))
+  if (fromCredentials) return { token: fromCredentials[1], source: '.credentials.yaml' }
+  return { token: null, source: null }
+}

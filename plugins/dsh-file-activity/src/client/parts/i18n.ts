@@ -43,6 +43,10 @@ const strings = {
     isZh() ? '文件位于工作区外，暂无法读取内容' : 'The file is outside the workspace and cannot be read',
   downloadToView: () => (isZh() ? '下载查看' : 'download to view'),
   clickOutsideToClose: () => (isZh() ? '点击外部关闭' : 'Click outside to close'),
+  guideDescription: () =>
+    isZh()
+      ? '查看 agent 与侧边栏读写过的文件（最近访问 + 目录统计）'
+      : 'Files the agent and the sidebar touched (recent + tree)',
   autoOpenLabel: () => (isZh() ? '会话开始时自动打开' : 'Auto-open on session start'),
   autoOpenHint: () =>
     isZh()

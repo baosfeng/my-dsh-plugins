@@ -7,7 +7,7 @@ import { test, afterAll } from 'vitest'
  * 上限以注入方式设为小值，直接覆盖淘汰分支（语义与默认上限一致）。
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createStore } from '../lib/store.js'
@@ -121,4 +121,36 @@ test('淘汰后完整重载：盘面与内存态一致、不超上限、计数�
   assert.equal(kept.counts['/r/79/11.ts'].read, 1, '计数精确（不因持久化改造而漂移）')
   assert.ok(store2.state.stats.evicted.sessions > 0, '淘汰计数随状态持久化')
   store2.dispose()
+})
+
+test('issue #266 D: 历史幽灵探针会话（__probe__）在加载时被剔除', async () => {
+  freshHome('probe')
+  const file = stateFile()
+  writeFileSync(
+    file,
+    [
+      JSON.stringify({ m: 1, v: 1, t: Date.now(), stats: { evicted: { sessions: 0, paths: 0, pathsTotal: 0 } } }),
+      // 快照行形式的残留 + 事件行形式的残留（两个写入路径都要覆盖）
+      JSON.stringify({
+        s: '__probe__',
+        d: { known: { mounted: 1 }, counts: { mounted: { read: 1, create: 0, modify: 0 } }, recent: [] },
+      }),
+      JSON.stringify({
+        s: 'sess-1',
+        d: { known: { '/w/a.ts': 1 }, counts: { '/w/a.ts': { read: 1, create: 0, modify: 0 } }, recent: [] },
+      }),
+      '=',
+      JSON.stringify({ s: '__probe__', p: 'mounted', o: 'read', t: 3 }),
+      JSON.stringify({ s: 'sess-1', p: '/w/b.ts', o: 'read', t: 4 }),
+    ].join('\n') + '\n',
+    'utf8',
+  )
+  const store = createStore({ logger: { warn: () => {} } })
+  await waitReady(store)
+  assert.equal(store.state.sessions['__probe__'], undefined, '幽灵探针会话不进内存态')
+  const real = store.state.sessions['sess-1']
+  assert.ok(real, '真实会话保留')
+  assert.ok(real.counts['/w/a.ts'], '快照基线保留')
+  assert.ok(real.counts['/w/b.ts'], '事件行重放不受影响')
+  store.dispose()
 })

@@ -351,6 +351,32 @@ test('unknown media extensions fall back to octet-stream', async () => {
   assert.equal(res._headers['content-type'], 'application/octet-stream', 'unknown ext fallback')
 })
 
+test('issue #266 C: html is served as a sandboxed document', async () => {
+  const { ctx, getMediaRoute } = await boot()
+  const htmlFile = join(dir, 'preview.html')
+  writeFileSync(htmlFile, '<html><body><script>document.title = "x"</script></body></html>', 'utf8')
+  emitObserved(ctx, 'read', 's-html', htmlFile)
+  await settle()
+  const res = makeResponse()
+  await getMediaRoute().handler(
+    makeRequest('GET', `/file-activity/file?sessionId=s-html&path=${encodeURIComponent(htmlFile)}`),
+    res,
+  )
+  assert.equal(res._status, 200)
+  assert.equal(res._headers['content-type'], 'text/html', 'html previews as a document, not a download')
+  assert.equal(
+    res._headers['content-security-policy'],
+    'sandbox allow-scripts allow-forms',
+    'the sandbox CSP travels with the bytes (a direct visit is sandboxed too)',
+  )
+  assert.ok(
+    !res._headers['content-security-policy'].includes('allow-same-origin'),
+    'no same-origin: the previewed document gets an opaque origin',
+  )
+  assert.equal(res._headers['x-content-type-options'], 'nosniff')
+  assert.ok(String(res._body).includes('<html>'), 'document bytes served')
+})
+
 test('null observation is ignored by fs/observed', async () => {
   const { ctx, getRoute } = await boot()
   const { listener } = ctx.events.find((e) => e.name === 'fs/observed')

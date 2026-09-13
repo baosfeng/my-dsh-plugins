@@ -25,8 +25,48 @@ interface FileActivityProps {
   scope?: SessionScope
   /** 原生席位的会话号。 */
   sessionId?: string
+  /**
+   * 旧式可见性 prop。原生席位的 props 里**没有**它（issue #266 A：宿主对
+   * sidebar.right.pane.tab 的调用是 renderSlot(seat, {}, {hookContext})，
+   * owner props 是空对象，可见性只在注入的 useTabInfo() 里）。
+   */
   visible?: boolean
+  /** 原生席位注入的可见性 hook（SidebarRightTabInjected.hooks.tabInfo → useTabInfo）。 */
+  useTabInfo?: () => unknown
   dataStore: DataStore<DataState>
+}
+
+/** tab.visible out of the host's SidebarRightTabInfo; undefined when the
+ *  information (or its shape) is unavailable. */
+function readSeatVisible(info: unknown): boolean | undefined {
+  if (info === null || typeof info !== 'object') return undefined
+  const tab = (info as { tab?: unknown }).tab
+  if (tab === null || typeof tab !== 'object') return undefined
+  const visible = (tab as { visible?: unknown }).visible
+  return typeof visible === 'boolean' ? visible : undefined
+}
+
+/**
+ * Resolve whether this seat is on screen.
+ *
+ * The native seat hands the component **no** `visible` prop: the host dispatches
+ * it as `renderSlot('sidebar.right.pane.tab', {}, { hookContext })`, so the owner
+ * props share is empty and everything live arrives through the injected
+ * `useTabInfo()` hook (SidebarRightTabInfo.tab.visible). Reading `props.visible`
+ * alone is therefore always `undefined` — the pre-#266 (`if (!visible) return`)
+ * guard was constant-true, so an opened panel never loaded and never polled
+ * (it only showed data after a manual Refresh).
+ *
+ * Order: the host hook first, then the legacy prop, then visible by default.
+ * Defaulting to visible is the deliberate failure direction (issue #266): if the
+ * hook is unavailable or the host shape changes again, the panel must still
+ * load — the cost is one polling panel, the alternative is a blank one.
+ */
+function useSeatVisible(useTabInfo: unknown, legacyVisible: unknown): boolean {
+  const info = typeof useTabInfo === 'function' ? (useTabInfo as () => unknown)() : undefined
+  const seatVisible = readSeatVisible(info)
+  if (seatVisible !== undefined) return seatVisible
+  return legacyVisible !== false
 }
 
 /**
@@ -190,7 +230,8 @@ function FileActivityView({
   store,
   scope,
   sessionId: seatSessionId,
-  visible,
+  visible: legacyVisible,
+  useTabInfo,
   dataStore,
 }: FileActivityProps): unknown {
   const data = useSyncExternalStore(dataStore.subscribe, dataStore.getSnapshot)
@@ -200,6 +241,9 @@ function FileActivityView({
   const [collapsedDirs, setCollapsedDirs] = useState(() => new Set<string>())
   // Native seats pass sessionId directly; the legacy scope object still works.
   const sessionId = seatSessionId ?? scope?.sessionId ?? ''
+  // issue #266 A: the native seat passes NO visible prop — visibility comes
+  // from the injected useTabInfo() (see useSeatVisible).
+  const visible = useSeatVisible(useTabInfo, legacyVisible)
   const sessionData = (data.bySession ?? {})[sessionId] ?? EMPTY_SESSION
   const tree = useMemo(() => buildTree(sessionData.counts ?? {}), [sessionData.counts])
   useEffect(() => {

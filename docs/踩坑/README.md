@@ -36,6 +36,7 @@ updated: 2026-09-12
 - [依赖安全 / Dependabot 假阴性](dependabot自动关闭告警造成假阴性.md) — GitHub 对 npm development 传递依赖告警 on-by-default 自动关闭（公开仓库），open 视图「0 条」与「没报过」无法区分；更隐蔽的是依赖升到修复版后 `auto_dismissed` 会被覆盖成 `fixed` 并**清空时间戳**，历史无痕。机制修复：巡检强制复查已关闭告警 + `check-dependabot-closed.sh`（13 例防回归自测）（2026-09-12，issue #214）
 - [协作 / fork 池钩子](fork池钩子与工具链未就绪.md) — `clone --local` 不复制 `.git/config`（`core.hooksPath` 在里面）、`.husky/_/` 又被自身 gitignore，于是 fork 内 pre-commit/pre-push **完全不跑**（PR #239 prettier 红盘根因）；另两条连带坑：shell glob `node_modules/*` 漏掉隐藏的 `.bin` 让本地校验结论不可信、把 `.husky/` 命令简化成变量会让 knip 误报 `Unused devDependencies`。修法：`node scripts/fork-pool.mjs create <编号>`（默认装 hooks）+ `check` 自检四项（2026-09-13，issue #240）
 - [验证 / 隔离实例静默少加载](隔离实例插件被静默禁用.md) — dshmarket 把启停开关写在 `profiles/<p>/.dsh-market/state.json`，复刻生产 profile 时一起复制 → 隔离实例"继承"生产的禁用名单（实测禁用 6 个插件），client 不进 manifest、API 404，看起来像插件坏了；修法是复刻时剥离该目录**并明确打印**（静默正是它潜伏数轮的原因）（2026-09-13，issue #240）
+- [发布 / 并发化](发版并发化的两个坑.md) — 发版从串行改并发时：并发门禁提前 return 会留下孤儿隔离实例（verify-real-profile 无信号清理），每插件各自 findFreePort 并行必撞端口；附 `pushurl` 优先于 `url` 导致"本地验证"误推 GitHub 的 git 陷阱（2026-09-13，issue #246）
 - [CI / 日志取证](CI日志取证静默缺项.md) — `ghops actions logs` 拿 run 归档当 job 清单 → 失败 job 静默缺失（#217），失败 job 日志 403 被误读成"需仓库 admin"（实为未带凭据）；改为 jobs API 全量分页 + 归档缺项单 job 补齐 + 缺口明确报告，并一并修掉 alerts 的「0 条 ≠ 不存在」（已解决，2026-09-12，issue #224）
 
 ## 维护规则

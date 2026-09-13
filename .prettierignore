@@ -15,6 +15,9 @@ build/
 # ignores 保持一致——只格式化 client.src.js 模板与 parts 片段源码。
 plugins/*/lib/client.js
 
+# 一次性调研探针（issue #187 批 2 的能力实测；不属于仓库交付物）
+probe-native-sidebar/
+
 # TS 插件（issue #47 / TS 全量迁移）：tsc 编译产物（src/*.ts → lib/*.js +
 # lib/*.d.ts）与 client 构建临时目录（lib/.client-build/），格式由编译器决定，
 # 下次构建即覆盖——对手写源码做 prettier --check 才有意义。手写的

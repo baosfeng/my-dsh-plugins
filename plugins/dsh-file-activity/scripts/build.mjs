@@ -54,7 +54,8 @@ const pieces = [
   ['__PART_STYLES__', 'styles'],
   ['__PART_ROWS__', 'rows'],
   ['__PART_VIEW__', 'view'],
-  ['__PART_PREVIEW__', 'preview'],
+  ['__PART_PREVIEW_DATA__', 'preview-data'],
+  ['__PART_PREVIEW__', 'preview-float'],
   ['__PART_SETTINGS__', 'settings'],
   ['__PART_APPLY__', 'apply'],
 ]

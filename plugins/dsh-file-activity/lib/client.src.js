@@ -62,6 +62,7 @@ window.__ModuleLoader__.load({
     __PART_STYLES__
     __PART_ROWS__
     __PART_VIEW__
+    __PART_PREVIEW_DATA__
     __PART_PREVIEW__
     __PART_SETTINGS__
     __PART_APPLY__

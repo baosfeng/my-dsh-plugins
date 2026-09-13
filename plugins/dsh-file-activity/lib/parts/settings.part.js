@@ -1,5 +1,5 @@
 'use strict'
-// ── settings tab (replaces better-sidebar's settings.pluginToggles) ────
+// ── settings tab (replaces 迁移前的 settings.pluginToggles) ────
 //
 // The host renders no per-plugin toggle UI for third-party tabs, so this
 // plugin contributes its own tab to the Web Settings → Plugins section
@@ -8,7 +8,7 @@
 // ctx.slots.inject — the declarative form that survives HMR and late mounts
 // (a plain register on a not-yet-mounted seat would silently contribute
 // nothing).
-/** Auto-open preference (plugin-owned; better-sidebar's prefs no longer exist). */
+/** Auto-open preference (plugin-owned; 迁移前的插件偏好已不存在). */
 function autoOpenEnabled() {
   try {
     return window.localStorage.getItem(AUTO_OPEN_PREF_KEY) !== '0'

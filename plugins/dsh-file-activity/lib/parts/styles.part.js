@@ -1,6 +1,6 @@
 'use strict'
 // ── themed stylesheet (injected once per activation) ──────────────────
-// Mirrors the better-sidebar explorer surface: tight 2px 6px 8px body,
+// Mirrors the host explorer surface: tight 2px 6px 8px body,
 // 30px rows, box-sizing border-box indentation, folder rows use the
 // strong type face to read as directories, files stay regular.
 /**
@@ -85,7 +85,7 @@ const STYLES = `
 .dfa-fp-hint { flex:none; font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-tertiary); opacity:0.8; }
 .dfa-fp-actions { display:flex; align-items:center; gap:2px; flex:none; }
 /* issue #111: the preview body is a FLEX COLUMN so the mounted viewer
-   component (better-sidebar's TextEditor for html/code/markdown, the image
+   component (the host's TextEditor for html/code/markdown, the image
    wrap, and the pdf frame) actually fills the window. Their roots size via
    flex:1 (html iframe .editorHtml, .editorCm, .editorMd, .editorImageWrap,
    .dfa-pdf), which is IGNORED in a block context — so the HTML iframe, which

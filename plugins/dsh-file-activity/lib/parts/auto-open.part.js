@@ -8,7 +8,7 @@
 // Timing is the whole problem. The navigation controller throws
 // "sidebarRight: no session surface is mounted" when the right column has not
 // mounted its session surface yet — which is exactly the state during the
-// first paint of a fresh page. better-sidebar used to answer with a snapshot
+// first paint of a fresh page. The previous third-party sidebar used to answer with a snapshot
 // and the old code simply gave up when it was missing, which is how the tab
 // could silently never auto-open. Here the attempt is RETRIED with the timers
 // until the surface is up, and a permanent failure is recorded through

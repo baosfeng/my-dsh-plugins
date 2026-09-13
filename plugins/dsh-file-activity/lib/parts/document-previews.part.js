@@ -7,7 +7,7 @@
 // 'bytes-complete' = whole file). The owner then injects the prepared
 // DocumentContent into the 'sidebar.right.tab.document' seat, keyed by this
 // implementation's id — so the renderer never fetches anything itself
-// (the responsibility split that made better-sidebar's matchFileViewer
+// (the responsibility split that made 第三方查看器注册表的 matchFileViewer
 // obsolete; its fetchStrategy belonged to the third-party viewer).
 //
 // Scope of the registration: filenames whose suffixes no shipped renderer

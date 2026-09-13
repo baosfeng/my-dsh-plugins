@@ -359,7 +359,7 @@ function installFetchInterceptor() {
 // Timing is the whole problem. The navigation controller throws
 // "sidebarRight: no session surface is mounted" when the right column has not
 // mounted its session surface yet — which is exactly the state during the
-// first paint of a fresh page. better-sidebar used to answer with a snapshot
+// first paint of a fresh page. The previous third-party sidebar used to answer with a snapshot
 // and the old code simply gave up when it was missing, which is how the tab
 // could silently never auto-open. Here the attempt is RETRIED with the timers
 // until the surface is up, and a permanent failure is recorded through
@@ -458,7 +458,7 @@ function installAutoOpen(ctx) {
 // 'bytes-complete' = whole file). The owner then injects the prepared
 // DocumentContent into the 'sidebar.right.tab.document' seat, keyed by this
 // implementation's id — so the renderer never fetches anything itself
-// (the responsibility split that made better-sidebar's matchFileViewer
+// (the responsibility split that made 第三方查看器注册表的 matchFileViewer
 // obsolete; its fetchStrategy belonged to the third-party viewer).
 //
 // Scope of the registration: filenames whose suffixes no shipped renderer
@@ -839,7 +839,7 @@ const fileIconByExt = (ext, size = 14) => {
 
     'use strict'
 // ── themed stylesheet (injected once per activation) ──────────────────
-// Mirrors the better-sidebar explorer surface: tight 2px 6px 8px body,
+// Mirrors the host explorer surface: tight 2px 6px 8px body,
 // 30px rows, box-sizing border-box indentation, folder rows use the
 // strong type face to read as directories, files stay regular.
 /**
@@ -924,7 +924,7 @@ const STYLES = `
 .dfa-fp-hint { flex:none; font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-tertiary); opacity:0.8; }
 .dfa-fp-actions { display:flex; align-items:center; gap:2px; flex:none; }
 /* issue #111: the preview body is a FLEX COLUMN so the mounted viewer
-   component (better-sidebar's TextEditor for html/code/markdown, the image
+   component (the host's TextEditor for html/code/markdown, the image
    wrap, and the pdf frame) actually fills the window. Their roots size via
    flex:1 (html iframe .editorHtml, .editorCm, .editorMd, .editorImageWrap,
    .dfa-pdf), which is IGNORED in a block context — so the HTML iframe, which
@@ -1334,26 +1334,20 @@ function renderDegraded() {
 }
 
     'use strict'
-// ── floating preview window (own renderer, shell.overlay seat) ─────────
+// ── preview data access (routes, viewer choice, loading) ────────────────
 //
-// History: this window used to mount the third-party sidebar's built-in
-// viewer, picked by `ctx.betterSidebar.matchFileViewer(path)`, and fed it the
-// bytes its `fetchStrategy` asked for. That service is gone (issue #187
-// batch 2), so the window renders the recorded file itself:
+// The floating window used to mount the third-party sidebar's built-in viewer,
+// picked by ctx.betterSidebar.matchFileViewer(path), and fed it the bytes its
+// fetchStrategy asked for. That service is gone (issue #187 batch 2), so this
+// module does the reading itself through the plugin's own routes:
 //
-//   image (svg/png/…/avif/webp/gif)  →  <img src> on the plugin's media route
-//   pdf                              →  <iframe src> on the same route, with a
-//                                        download fallback (native PDF frame,
-//                                        no viewer hand-off needed)
-//   everything else                  →  the plugin's own text route, rendered
-//                                        by the host's MarkdownText / CodeBlock
-//                                        atoms (staticModules: zero install)
-//                                        and a <pre> fallback.
+//   /file-activity/file?sessionId&path        → raw bytes (image / pdf)
+//   /file-activity/file?sessionId&path&as=text → fs.read-shaped JSON text
 //
 // The route matters: file activity records files the agent touched ANYWHERE
 // (scratch files in /tmp, sibling repos, ~/.dsh), while the host's file
-// provider is fenced to the session workspace. The plugin's own route
-// authorizes exactly the paths this session recorded.
+// provider is fenced to the session workspace. The plugin route authorizes
+// exactly the paths this session recorded.
 /** Image suffixes the browser renders natively. */
 const IMAGE_EXT = /^(svg|png|jpe?g|gif|webp|avif|bmp|ico)$/i
 /** Suffixes rendered as Markdown. */
@@ -1394,30 +1388,6 @@ function fsReadError(json, viewer) {
   else if (/outside workspace/i.test(raw)) message = strings.fileOutside()
   else message = raw
   return { status: 'error', viewer, message }
-}
-/** Milliseconds after which an error-state preview closes itself (issue #76):
- *  a shell that failed to load any content is useless, so it must not linger
- *  over the main UI until the user finds the × button. */
-const AUTO_CLOSE_MS = 2500
-/** Whether a pointerdown target lies inside the floating window. The window
- *  surface carries the `.dfa-fp` class; anything else counts as "outside"
- *  and dismisses the preview (issue #76 — click anywhere outside closes). */
-function isInsideFloating(target) {
-  if (!target || typeof target.closest !== 'function') return false
-  return target.closest('.dfa-fp') !== null
-}
-/** Click behavior for the window surface: in the error state ANY click
- *  closes the shell (there is no content to interact with), otherwise the
- *  click is swallowed so the viewer's own interactions keep working. */
-function previewClickAction(load, event) {
-  if (load.status === 'error') return 'close'
-  if (event && event.stopPropagation) event.stopPropagation()
-  return 'stop'
-}
-/** Close the floating preview when the tab goes hidden (switching tabs /
- *  operating the main UI), so it never lingers over the interface. */
-function closePreviewOnHidden(visible, dataStore) {
-  if (!visible) dataStore.set({ preview: null })
 }
 /** Plugin text route (fs.read-shaped JSON), or null on any failure. */
 async function fetchTextContent(sessionId, path) {
@@ -1469,10 +1439,47 @@ async function fetchPreviewLoad(target) {
   }
   return loadFsReadContent(viewer, target.abs, null, target.sessionId)
 }
-/**
- * Resolve the file's renderer and load what it needs; failures become an
- * error state shown in the window.
- */
+
+    'use strict'
+// ── floating preview window (own renderer, shell.overlay seat) ─────────
+//
+// History: this window used to mount the third-party sidebar's built-in
+// viewer and let it fetch its own bytes. That service is gone (issue #187
+// batch 2), so the window renders the recorded file itself:
+//
+//   image (svg/png/jpeg/gif/webp/avif/bmp/ico) → <img src> on the plugin media route
+//   pdf                                        → <iframe src> on the same route
+//   markdown                                   → host MarkdownText atom
+//   anything else                              → host CodeBlock atom, else <pre>
+//
+// The overlay lives in the root-scoped 'shell.overlay' list seat (the host's
+// own floating layer: above every column, click-through unless the entry opts
+// into pointer events) and renders nothing at all while no preview is open.
+// Data access (routes, viewer choice, loading) lives in preview-data.ts.
+/** Milliseconds after which an error-state preview closes itself (issue #76):
+ *  a shell that failed to load any content is useless, so it must not linger
+ *  over the main UI until the user finds the × button. */
+const AUTO_CLOSE_MS = 2500
+/** Whether a pointerdown target lies inside the floating window. The window
+ *  surface carries the .dfa-fp class; anything else counts as "outside"
+ *  and dismisses the preview (issue #76 — click anywhere outside closes). */
+function isInsideFloating(target) {
+  if (!target || typeof target.closest !== 'function') return false
+  return target.closest('.dfa-fp') !== null
+}
+/** Click behavior for the window surface: in the error state ANY click
+ *  closes the shell (there is no content to interact with), otherwise the
+ *  click is swallowed so the viewer's own interactions keep working. */
+function previewClickAction(load, event) {
+  if (load.status === 'error') return 'close'
+  if (event && event.stopPropagation) event.stopPropagation()
+  return 'stop'
+}
+/** Close the floating preview when the tab goes hidden (switching tabs /
+ *  operating the main UI), so it never lingers over the interface. */
+function closePreviewOnHidden(visible, dataStore) {
+  if (!visible) dataStore.set({ preview: null })
+}
 function usePreviewLoader(target) {
   const [load, setLoad] = useState({ status: 'loading', viewer: null })
   useEffect(() => {
@@ -1683,7 +1690,7 @@ function PdfPreview({ src, download, title }) {
 }
 
     'use strict'
-// ── settings tab (replaces better-sidebar's settings.pluginToggles) ────
+// ── settings tab (replaces 迁移前的 settings.pluginToggles) ────
 //
 // The host renders no per-plugin toggle UI for third-party tabs, so this
 // plugin contributes its own tab to the Web Settings → Plugins section
@@ -1692,7 +1699,7 @@ function PdfPreview({ src, download, title }) {
 // ctx.slots.inject — the declarative form that survives HMR and late mounts
 // (a plain register on a not-yet-mounted seat would silently contribute
 // nothing).
-/** Auto-open preference (plugin-owned; better-sidebar's prefs no longer exist). */
+/** Auto-open preference (plugin-owned; 迁移前的插件偏好已不存在). */
 function autoOpenEnabled() {
   try {
     return window.localStorage.getItem(AUTO_OPEN_PREF_KEY) !== '0'

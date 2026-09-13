@@ -42,7 +42,14 @@
  */
 import { spawn } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { checkAddonResolution, linkNodeModules, readAddon, writeWorkspaceStorage } from './lib/verify-profile.mjs'
+import {
+  checkAddonResolution,
+  isPluginStatePath,
+  linkNodeModules,
+  presentStateDirs,
+  readAddon,
+  writeWorkspaceStorage,
+} from './lib/verify-profile.mjs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 
@@ -202,11 +209,18 @@ if (!existsSync(join(realProfile, 'package.json'))) {
 log(`复刻生产 profile 配置层 → ${simProfile}`)
 rmSync(simHome, { recursive: true, force: true })
 mkdirSync(join(simHome, 'profiles'), { recursive: true })
+// issue #240：剥离插件自维护的启停状态（如 dshmarket 的 .dsh-market/state.json）。
+// 不剥离的话，生产里被关掉的插件在隔离实例里同样被强制 off —— client bundle 不进 manifest、
+// server API 404，看起来像"插件坏了"，实际是验证环境自己把插件关了。
+const strippedStateDirs = presentStateDirs(realProfile)
 cpSync(realProfile, simProfile, {
   recursive: true,
-  filter: (src) => !src.includes('/node_modules'),
+  filter: (src) => !src.includes('/node_modules') && !isPluginStatePath(src),
 })
 rmSync(join(simProfile, 'node_modules'), { recursive: true, force: true })
+if (strippedStateDirs.length > 0) {
+  log(`已剥离插件自维护的启停状态：${strippedStateDirs.join('、')}（否则生产的禁用名单会让隔离实例静默少加载插件）`)
+}
 
 // node_modules：真实条目全量软链（保住 pnpm 依赖解析）+ addons 条目**强制**指向
 // addon 目录（issue #220：旧实现遇到同名条目直接复用真实 profile 的软链，隔离实例

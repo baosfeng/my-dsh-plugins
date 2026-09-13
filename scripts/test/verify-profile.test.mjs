@@ -25,12 +25,15 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  PLUGIN_STATE_DIRS,
   readAddon,
   planNodeModulesLinks,
   linkNodeModules,
   checkAddonResolution,
   realpathOrNull,
   isIsoTimestamp,
+  isPluginStatePath,
+  presentStateDirs,
   buildWorkspaceStorage,
   validateWorkspaceStorage,
   writeWorkspaceStorage,
@@ -384,5 +387,46 @@ describe('verify-real-profile.mjs 接线', () => {
 
   it('不再复用同名真实 profile 软链（旧 EEXIST 绕过的写法已移除）', () => {
     expect(source).not.toContain('if (!existsSync(target)) symlinkSync')
+  })
+})
+
+/**
+ * issue #240：插件自维护的启停状态必须被剥离。
+ * 不剥离 → 生产里被关掉的插件在隔离实例里同样被强制 off（client bundle 不进 manifest、
+ * server API 404），看起来像"插件坏了"，实际是验证环境自己把插件关了。
+ */
+describe('插件自维护启停状态的剥离（issue #240）', () => {
+  it('状态目录清单包含 dshmarket 的 .dsh-market', () => {
+    expect(PLUGIN_STATE_DIRS).toContain('.dsh-market')
+  })
+
+  it('isPluginStatePath 只命中状态目录自身与其内容', () => {
+    expect(isPluginStatePath('/home/u/.dsh/profiles/web/.dsh-market')).toBe(true)
+    expect(isPluginStatePath('/home/u/.dsh/profiles/web/.dsh-market/state.json')).toBe(true)
+    expect(isPluginStatePath('/home/u/.dsh/profiles/web/.dsh-market/log.ndjson')).toBe(true)
+    // 不能误伤：同名前缀的普通文件、其它插件目录、node_modules 照旧保留
+    expect(isPluginStatePath('/home/u/.dsh/profiles/web/.dsh-market.json')).toBe(false)
+    expect(isPluginStatePath('/home/u/.dsh/profiles/web/package.json')).toBe(false)
+    expect(isPluginStatePath('/home/u/.dsh/profiles/web/node_modules')).toBe(false)
+    expect(isPluginStatePath('')).toBe(false)
+  })
+
+  it('presentStateDirs 只报告真实存在的状态目录（不存在 → 不打印"已剥离"噪音）', () => {
+    const profile = tempDir('vprofile-state-')
+    expect(presentStateDirs(profile)).toEqual([])
+    mkdirSync(join(profile, '.dsh-market'), { recursive: true })
+    expect(presentStateDirs(profile)).toEqual(['.dsh-market'])
+  })
+
+  it('脚本接线：复刻时真正调用剥离判定并打印提示（防"lib 改了脚本没接"）', () => {
+    const script = readFileSync(join(repoRoot, 'scripts', 'verify-real-profile.mjs'), 'utf8')
+    expect(script).toContain('isPluginStatePath')
+    expect(script).toContain('presentStateDirs')
+    expect(script).toContain('已剥离插件自维护的启停状态')
+    // 剥离必须发生在 cpSync 的 filter 里，而不是复制完再删（后者会连带复制出噪音）
+    const filterAt = script.indexOf('isPluginStatePath(src)')
+    const copyAt = script.indexOf('cpSync(realProfile, simProfile')
+    expect(copyAt).toBeGreaterThan(-1)
+    expect(filterAt).toBeGreaterThan(copyAt)
   })
 })

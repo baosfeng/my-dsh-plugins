@@ -279,3 +279,30 @@ export function writeWorkspaceStorage({ simHome, workspacePath, title, workspace
   if (backErrors.length > 0) throw new Error(`workspace 存储回读校验失败: ${backErrors.join('; ')}`)
   return { file, workspaceId: id, path: canonical }
 }
+
+/**
+ * 插件自维护的「启停状态」目录（issue #240）。
+ *
+ * 症状：隔离实例**静默少加载几个插件**——client bundle 不进 manifest、server API 404，
+ * 看上去就像"这个插件坏了"，于是 agent 掉头去查插件本身（两个 agent 都在这里烧过时间）。
+ *
+ * 根因：dshmarket 插件把自己维护的启停开关写在
+ * `<DSH_HOME>/profiles/<profile>/.dsh-market/state.json`（形如 `{"disabled":[...]}`），
+ * 启动时按它**强制 off** 名单里的插件（日志：`.dsh-market/log.ndjson` → `my-context -> off: fiber=false`）。
+ * verify-real-profile.mjs 复刻生产 profile 时把它一起 `cpSync` 过去，隔离实例于是"继承"了
+ * 生产环境的禁用名单 —— 生产里被手动关掉的插件，在验证环境里永远起不来。
+ *
+ * 判定与修法：复刻时**剥离**这些状态目录，并且**必须打印**（静默正是这个坑潜伏数轮的原因）。
+ */
+export const PLUGIN_STATE_DIRS = Object.freeze(['.dsh-market'])
+
+/** 该路径是否落在插件自维护的状态目录内（供 cpSync 的 filter 使用）。 */
+export function isPluginStatePath(src) {
+  const text = String(src ?? '')
+  return PLUGIN_STATE_DIRS.some((dir) => text.includes(`/${dir}/`) || text.endsWith(`/${dir}`))
+}
+
+/** 真实 profile 里实际存在哪些状态目录（用于打印"已剥离"提示，避免静默）。 */
+export function presentStateDirs(realProfile) {
+  return PLUGIN_STATE_DIRS.filter((dir) => existsSync(join(realProfile, dir)))
+}

@@ -107,7 +107,7 @@ jobs:
       # 上传单个插件覆盖率到 Coveralls（parallel 模式：每个 matrix job 上传后
       # 由 coverage-finish job 发送 webhook 信号，Coveralls 才汇总并显示总覆盖率）
       - name: Upload coverage to Coveralls
-        if: success()
+        if: success() && matrix.plugin != 'dsh-plugin-dev-mode'
         uses: coverallsapp/github-action@v2
         with:
           flag-name: ${{ matrix.plugin }}

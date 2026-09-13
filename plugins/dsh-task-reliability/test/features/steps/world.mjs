@@ -34,6 +34,8 @@ class World {
     this.commandDefs = []
     this.lastCommandResult = null
     this.disposers = []
+    /** fire-and-forget 的异步流程（issue #253）：drainSaves() 的就绪判据之一。 */
+    this.pending = new Set()
     this.oldHome = process.env.DSH_HOME
   }
 
@@ -138,6 +140,10 @@ class World {
       ...config,
     })
     this.store = shared.store
+    // 落盘链就绪句柄（issue #253）：由 drainSaves() 组合成完整就绪信号。
+    this.drainSaveChain = shared.drainSaves
+    // 重新 boot = 新生命周期：旧实例的挂起流程不再属于当前就绪判据。
+    this.pending.clear()
   }
 
   makeAgent(id, opts = {}) {
@@ -208,7 +214,34 @@ class World {
   dispatch(name, ...args) {
     const handlers = this.listeners[name] ?? []
     assert.ok(handlers.length > 0, `listener ${name} registered`)
-    return handlers[handlers.length - 1](...args)
+    return this.track(handlers[handlers.length - 1](...args))
+  }
+
+  /**
+   * 追踪 fire-and-forget 的异步流程（`void this.dispatch(...)`，如校验/恢复流程）。
+   * 这些流程内部才会调用 save()——只等落盘链不足以覆盖「流程还没跑到写」的窗口。
+   */
+  track(result) {
+    if (result === null || typeof result?.then !== 'function') return result
+    const pending = Promise.resolve(result).catch(() => {})
+    this.pending.add(pending)
+    void pending.finally(() => this.pending.delete(pending))
+    return result
+  }
+
+  /**
+   * 确定性就绪信号（issue #253）：读盘断言必须先 await 它，而不是 sleep 猜时间。
+   *
+   * 覆盖两层窗口——固定 sleep 与「只等落盘链」都漏掉第一层：
+   *  1. **业务流程 settle**：`void dispatch('agent/status')` 启动的校验流程挂在
+   *     verifyIdle 上，结论 step resolve 后才继续到 finishTask + save()；
+   *  2. **落盘链写完**：save → 防抖 timer → fs/promises 串行链（shared.drainSaves）。
+   *
+   * 两层都不覆盖时，CI 高负载下会读到滞后的 'checking'（CI run 34732200802）。
+   */
+  async drainSaves() {
+    while (this.pending.size > 0) await Promise.allSettled([...this.pending])
+    await this.drainSaveChain()
   }
 
   cleanup() {

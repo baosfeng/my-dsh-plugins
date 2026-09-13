@@ -2,7 +2,7 @@
 title: 固定 sleep 等异步落盘导致 CI flaky（时序竞态）
 description: 测试用 setTimeout 固定等待异步加载/落盘，CI 容器高负载下等待不足 → 随机红；修法是给实现加确定性就绪信号（whenReady）+ 测试用条件轮询，让查询语义与加载耗时无关，而不是把 sleep 调大
 created: 2026-09-11
-updated: 2026-09-12
+updated: 2026-09-13
 ---
 
 # 固定 sleep 等异步落盘导致 CI flaky（时序竞态）
@@ -235,8 +235,73 @@ dep-precheck 810→50ms）；89→93 tests，覆盖率不降（stmts 90.85 / bra
 的信号之内」，而不是「主要的那条加了没有」；同时"teardown 不再写盘"最好由**实现**
 保证（收尾态 + 丢弃延迟写），而不是靠"恰好 await 了每一条已知路径"。
 
+## 复发实例三（2026-09-13）：cucumber 侧漏网 —— 「只 drain 落盘链」覆盖不到业务流程（issue #253）
+
+**现象**：CI run [#34732200802](https://github.com/baosfeng/my-dsh-plugins/actions/runs/34732200802)
+的 job `test (dsh-task-reliability)` 只红一条；同代码下一次 run 全绿、本地 5 轮 cucumber
+38/38 场景全过（原处置因此只是「立卡观察」）：
+
+```text
+1) 校验模式会话结束后校验完成度 # test/features/task-reliability.feature:53
+       那么任务状态变为 done # test/features/steps/task-reliability.steps.mjs:324
+           AssertionError [ERR_ASSERTION]: 'checking' !== 'done'
+38 scenarios (37 passed, 1 failed)
+```
+
+**第一层缺口**：#239 把落盘改成异步并补了 `shared.drainSaves()`，但只改了 **vitest 侧**
+6 处「固定 sleep 后读盘」——**cucumber 步骤定义里的 4 处读盘点漏网**：
+
+| 读盘点（`test/features/steps/task-reliability.steps.mjs`） | 修复前                            | 修复后                    |
+| ---------------------------------------------------------- | --------------------------------- | ------------------------- |
+| `:238` 任务注册表已写入持久化文件                          | `setTimeout(20)` + `existsSync`   | `await this.drainSaves()` |
+| `:308` 任务状态变为 failed                                 | `setTimeout(20)` + `readFileSync` | 同上                      |
+| `:325` 任务状态变为 done（CI 失败点）                      | `setTimeout(30)` + `readFileSync` | 同上                      |
+| `:389` 任务记录 resumeAt                                   | `setTimeout(20)` + `readFileSync` | 同上                      |
+
+**第二层缺口（本次最值钱的教训）**：把这 4 处改成「读盘前 `await drainSaves()`」**仍然不够**。
+`drainSaves()` 只覆盖「防抖 timer + 写串行链」；而 `'checking' → 'done'` 的 `save()` 是
+**校验流程内部**调用的，流程本身还挂在 `verifyIdle` 上（`void dispatch('agent/status')`
+返回的 `runVerification(...)`）。读数时流程若还没推进到 `save()`，drain 等到的是**上一次**写，
+盘上仍是 `checking`——实测把 4 处直接换成 `shared.drainSaves()` 后，确定性复现用例依然红。
+
+**确定性复现（不造负载，本机 3/3 稳定红 → 修复后 3/3 绿）**：新增
+`plugins/dsh-task-reliability/test/cucumber-steps-readiness.mjs`——用 `vi.mock('node:fs/promises')`
+把 `writeFile` 延迟 60ms（经 `vi.hoisted` 开关控制：**先把旧状态 `checking` 写实，再打开延迟**，
+于是盘上是确凿的旧值，精确复现 CI 的 `'checking' !== 'done'` 而不是笼统的「可能读到旧状态」），
+再用 `vi.mock('@cucumber/cucumber')` 收集 step handler、**驱动真实步骤定义**跑 feature:53 的步骤
+序列（不复制步骤逻辑）。修复前输出：
+
+```text
+AssertionError: Expected values to be strictly equal: 'checking' !== 'done'
+ ❯ World.<anonymous> test/features/steps/task-reliability.steps.mjs:327:10
+Tests  3 failed (3)
+```
+
+**修法（补信号，不调数字）**：把 World 的就绪信号做成**两层**，`drainSaves()` 一次调用覆盖：
+
+```js
+async drainSaves() {
+  while (this.pending.size > 0) await Promise.allSettled([...this.pending]) // 业务流程 settle
+  await this.drainSaveChain()                                              // 落盘链 drain
+}
+```
+
+`pending` 由 `dispatch()` 自动登记（`track()`）所有返回 promise 的触发——`handleStatus`
+返回 `runVerification(...)`，所以它 settle 时 `finishTask` + `save()` 必然已调用。
+
+**验证**：把 60ms 慢 IO 用 ESM loader hook 注入**真实 cucumber 套件**（`resolve`/`load` 把
+`node:fs/promises` 代理到慢 `writeFile`）——修复前 **4 个场景红**（含 feature:53），修复后
+**38/38 场景、209/209 步骤全绿**；正常模式 10 轮 + 慢 IO 10 轮全绿；插件全量
+**305 tests + 38 scenarios 全绿**（覆盖率 94.5%/88.8% 不变）。
+
+**教训**：「就绪」= **所有会写盘的异步链都完成**（与实例二同源），但这里多一层：
+**业务异步流程本身**也可能还没跑到写盘那一步。「drain 写链」只覆盖「写已排队」的窗口，
+覆盖不到「写还没被调用」的窗口——判据是「读之前，**产生这个状态的异步流程**是否可等待」，
+而不是「写链是否 drain 过」。
+
 ## 相关
 
+- `plugins/dsh-task-reliability/test/features/steps/world.mjs`（`drainSaves()` 两层就绪信号）、`test/cucumber-steps-readiness.mjs`（慢 IO + 真实步骤定义的确定性复现）
 - `plugins/dsh-my-observability/src/store.ts`（`whenReady`）、`src/routes.ts`（分派前等就绪）
 - `plugins/dsh-my-guardian/src/state.ts`（`flushPersist`/`bootPromise`）、`src/api.ts`（分派前等 boot）、`src/index.ts`（teardown 返回 drain promise）
 - `plugins/dsh-my-guard/src/store.ts`（`whenReady` / 未就绪不落盘 / 原地合并）、`plugins/dsh-my-guard/src/routes.ts`（API 分派前等就绪）

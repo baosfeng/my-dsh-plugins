@@ -235,7 +235,8 @@ Then('任务列表包含该任务且状态为进行中', async function () {
 })
 
 Then('任务注册表已写入持久化文件', async function () {
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  // 读盘前等落盘就绪（issue #253）：固定 sleep 在 CI 高负载下会读到尚未创建的文件。
+  await this.drainSaves()
   assert.ok(existsSync(join(this.dir, 'task-reliability.json')))
 })
 
@@ -305,7 +306,8 @@ Then('插件向代理注入补完指令（steer）', function () {
 })
 
 Then('任务状态变为 failed', async function () {
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  // 读盘前等落盘就绪（issue #253）：固定 sleep 在 CI 高负载下会读到滞后的状态。
+  await this.drainSaves()
   const store = JSON.parse(readFileSync(join(this.dir, 'task-reliability.json'), 'utf8'))
   assert.equal(store.tasks[0].status, 'failed')
 })
@@ -322,7 +324,8 @@ Then('校验代理收到校验指令', function () {
 })
 
 Then('任务状态变为 done', async function () {
-  await new Promise((resolve) => setTimeout(resolve, 30))
+  // 读盘前等落盘就绪（issue #253：CI run 34732200802 在这里读到滞后的 'checking'）。
+  await this.drainSaves()
   const store = JSON.parse(readFileSync(join(this.dir, 'task-reliability.json'), 'utf8'))
   assert.equal(store.tasks[0].status, 'done')
 })
@@ -386,7 +389,8 @@ Then('代理 {string} 收到系统重启恢复指令', function (_sessionId) {
 })
 
 Then('任务记录 resumeAt', async function () {
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  // 读盘前等落盘就绪（issue #253）：resume 流程的落盘同样是 fire-and-forget。
+  await this.drainSaves()
   const store = JSON.parse(readFileSync(join(this.dir, 'task-reliability.json'), 'utf8'))
   assert.ok(store.tasks[0].resumeAt > 0)
 })

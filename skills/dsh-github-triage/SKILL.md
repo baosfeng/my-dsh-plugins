@@ -149,6 +149,14 @@ git -C /tmp/gh-fork-<编号> fetch origin main                   # ④ 显式从
 git -C /tmp/gh-fork-<编号> checkout -b fix/<编号> origin/main  # ⑤ 从远程最新 main 建分支（子 agent 直接在其上工作）
 ```
 
+> ⚠️ **用 `ghops clone` 直接克隆（不走本节 ②③ 流程）时，第 ③ 步不能省**：`ghops clone` 只配 https 的 fetch/push URL，而 https 推送无凭据（实测报 `Invalid username or token. Password authentication is not supported`）。补一条即可（实测 #198c）：
+>
+> ```bash
+> git -C /tmp/gh-fork-<编号> remote set-url --push origin git@github.com:baosfeng/my-dsh-plugins.git
+> ```
+>
+> 判据：`git -C /tmp/gh-fork-<编号> remote -v` 的 push 行是 `git@github.com:...`（与主工作区一致）。
+
 规则：
 
 - **每个修复类子任务拥有且仅拥有一个 fork**（`/tmp/gh-fork-<编号>`）；主工作区（`/Users/bsfeng/IdeaProjects/my-dsh-plugins`）与任何其他 fork 都不得被该子任务操作

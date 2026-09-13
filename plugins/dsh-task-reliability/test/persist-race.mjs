@@ -127,10 +127,7 @@ function boot(config = {}) {
 
 async function callApi(env, url, method = 'GET', body) {
   const response = mockResponse()
-  await env.api.handler(
-    mockRequest({ url, method, body: body === undefined ? '' : JSON.stringify(body) }),
-    response,
-  )
+  await env.api.handler(mockRequest({ url, method, body: body === undefined ? '' : JSON.stringify(body) }), response)
   return { response, body: JSON.parse(response.written.join('') || 'null') }
 }
 

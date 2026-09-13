@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 变更
+
+- feat(dsh-my-memory): #198 落盘统一接入 `dsh-shared` 写入原语——删除自写 `timer` 防抖 + `writing` 链 + pretty tmp/rename 落盘，改用 `createWriteScheduler`（防抖沿用 300ms + 最小间隔 1s + 串行链 + `drain()`）+ `atomicWriteJson`（紧凑 JSON + 显式 4MB 字节上限 + 拦截计数）；`flush()` 保持「强写一次后返回」语义，`dispose()` 改为 drain。写放大：3 次变更 3 次全量写 → 1 次；10 条记忆文件 4229B → 3311B（−21.7%）
+
 ### 新增
 
 - feat(dsh-my-memory): #192 记忆写工具能力补全——① `memory_save` 新增可选 `category`（偏好/事实/项目/技术栈/工作流 5 类，不传或非法值默认 `fact`，enum 与中文标签同源 `lib/memory-scoring.js` 的 `CATEGORIES`）；② `memory_query` 的输出与渲染文本展示每条记忆的分类标签（`- [mem-…]〔偏好〕用 pnpm 装依赖（来源：会话 …）`，空结果文案不变）；③ 新增 `memory_delete` 工具（`id` 必填、`scope`/`cwd` 与保存同语义），**复用同一道 `tools/pre-execute` 确认门与同一套 `saveApproval` 权限模式策略**（#208）——确认文案带待删内容摘要、未确认/被拒绝时不删除、删除不存在的 id 明确报错、删除留下 itemId + 会话 id 的审计日志、输出复用 #191 的 `MEMORY_ITEM_SCHEMA` 把被删条目回执给模型。新增 `test/tool-delete.mjs`（18 例）、`test/write-tools.mjs`（5 例）与 5 个 Gherkin 场景

@@ -18,8 +18,18 @@ export type EventHandler = (...args: unknown[]) => void
 
 /** DSH server 端 Context（cordis Context 的最小契约）。 */
 export interface DshContext {
-  /** 监听 DSH 事件；返回 disposer。 */
-  on(event: string, handler: EventHandler): () => void
+  /**
+   * 监听 DSH 事件；返回 disposer。
+   * @param options - cordis 监听器选项；`global: true` 跳过 scope 过滤
+   *   （`@deepseek-ai/dsh-scope`），是跨 scope 观察宿主事件的必要条件。
+   */
+  on(event: string, handler: EventHandler, options?: { global?: boolean }): () => void
+  /**
+   * cordis 根 Context。宿主会话事件在 root 的 events 服务上派发，而 profile
+   * 插件的 ctx.events 与之隔离（issue #232：实测 `ctx.events !== ctx.root.events`），
+   * 跨 scope 监听必须注册到 root。旧宿主不提供该字段时退回插件自身 ctx。
+   */
+  root?: DshContext
   /** 注册副作用（返回 disposer 的注册函数直接返回其返回值）。 */
   effect(callback: () => void | (() => void), label?: string): void
   /** 日志器。 */
@@ -82,7 +92,16 @@ export interface LlmService {
 export interface Session {
   id: string
   header?: { cwd?: string }
-  events: SessionEvent[]
+  /**
+   * 会话事件数组。DSH 0.1.5-rc.1 起该属性已变 private，运行时为 undefined；
+   * 兼容旧宿主保留为可选，读取一律走 {@link Session.snapshotEvents} 回退链
+   * （见 title.ts 的 sessionEvents）。
+   */
+  events?: SessionEvent[]
+  /**
+   * 公开的事件快照读取入口（DSH 0.1.5-rc.1+），返回按 log 顺序的已提交事件。
+   */
+  snapshotEvents?(): readonly SessionEvent[]
   append(type: string, data: unknown): SessionEvent
   requestHeader?(): { config?: SessionRequestConfig } | undefined
 }

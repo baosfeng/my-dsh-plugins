@@ -42,7 +42,7 @@
     }
   },
   "dependencies": {
-    "dsh-shared": "^0.1.0"
+    "dsh-shared": "^0.1.4"
   },
   "peerDependencies": {
     "cordis": "^4.0.0-rc.8",

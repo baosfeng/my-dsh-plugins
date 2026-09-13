@@ -39,7 +39,7 @@
     "cordis": "^4.0.0-rc.8"
   },
   "dependencies": {
-    "dsh-shared": "^0.1.0"
+    "dsh-shared": "^0.1.4"
   },
   "peerDependenciesMeta": {
     "cordis": {

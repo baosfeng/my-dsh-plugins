@@ -180,7 +180,9 @@ async function callApi(fake, method, path, body) {
   // 慢）下偶发 `AssertionError: api route registered`（#250 合并后 main 红盘
   // 的形态）。改为**确定性条件等待**（超时报错，不靠 sleep）：既消除 flaky，
   // 又保证「注册最终必须发生」这一语义仍被断言。
-  await waitFor(() => fake.apiRoute !== undefined)
+  // 仅在尚未注册时才等待（快路径零开销）：原实现每次都 waitFor，其内部的
+  // flushPersist + 轮询会给主 suite 叠加开销，CI 上实测因此撞到 5s testTimeout。
+  if (fake.apiRoute === undefined) await waitFor(() => fake.apiRoute !== undefined)
   const route = fake.apiRoute
   assert.ok(route, 'api route registered')
   const res = makeResponse()
@@ -209,7 +211,8 @@ async function shutdown(ctx) {
   await teardown?.disposer()
 }
 
-test('host smoke suite', async () => {
+// 显式超时：本 suite 本地已约 4.5s（CI 更慢），默认 5s 上限会随环境抖动偶发红。
+test('host smoke suite', { timeout: 30000 }, async () => {
   try {
     // ── 1. staged entry mounts and gets PROMOTED (removed from the file) ────
     {
@@ -550,6 +553,41 @@ test('api route registration retries on poll tick when webServer appears late', 
   await waitFor(() => fake.apiRoute !== undefined)
   assert.ok(fake.apiRoute, 'webServer 出现后经轮询重试完成注册')
 
+  const teardown = (ctx.fakeEffects ?? []).find((e) => e.label === 'dsh-my-guardian: teardown')
+  await teardown?.disposer()
+})
+
+// ── 10. 顶层 inject 不得声明（issue #242 fatal 形态防回归）──────────────────
+// 实测：把 guardian 从隔离 profile 的 disabled 去掉后，cordis 解析顶层
+// inject(['loader','timer']) 时若 ctx 已 inactive 会抛
+// "cannot get required service \"loader\" in inactive context" → dsh web 启动
+// exit 1（apply 内 try/catch 拦不住：错误发生在 apply 之前）。
+// 因此依赖改由 apply 内的 ctx.inject([...], cb) 局部等待承载。
+test('不声明顶层 inject（声明会在 ctx inactive 时 fatal）', async () => {
+  const mod = await import('../lib/index.js')
+  assert.deepEqual([...(mod.inject ?? [])], [], '顶层 inject 必须为空数组')
+})
+
+test('loader/timer 未就绪时 apply 降级：不抛错、返回 undefined（绝不 fatal）', async () => {
+  const fake = makeLoaderAndTree()
+  const ctx = makeCtx(fake)
+  // 模拟 cordis 局部 inject：依赖不就绪 → 回调不被调用（服务始终不到）
+  ctx.inject = () => {}
+  const shared = apply(ctx)
+  assert.equal(shared, undefined, '服务未就绪 → 降级返回 undefined，而不是抛错')
+})
+
+test('loader/timer 就绪时经局部 inject 初始化（声明式依赖保留）', async () => {
+  const fake = makeLoaderAndTree()
+  const ctx = makeCtx(fake)
+  let received = null
+  ctx.inject = (names, cb) => {
+    received = names
+    cb(ctx) // 服务已就绪：cordis 同步回调
+  }
+  const shared = apply(ctx)
+  assert.deepEqual([...(received ?? [])].sort(), ['loader', 'timer'], '局部 inject 声明 loader/timer')
+  assert.ok(shared !== undefined, '服务就绪 → 正常初始化')
   const teardown = (ctx.fakeEffects ?? []).find((e) => e.label === 'dsh-my-guardian: teardown')
   await teardown?.disposer()
 })

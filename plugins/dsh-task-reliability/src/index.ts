@@ -279,15 +279,30 @@ function createShared(ctx: DshContext, options: ResolvedOptions): SharedContext 
 
 // ── 装配 ───────────────────────────────────────────────────────────────────
 
+/**
+ * root 上的路由注册表（以 root ctx 为键）。
+ *
+ * 为什么不是 `ctx.effect(() => ctx.webServer.register(...))`（issue #242 实测）：
+ * profile 插件的 fiber 会被 loader 回收，注册在插件自身 ctx 上的 effect 随之失效 ——
+ * 路由**注册成功但随后静默消失**（`GET /task-reliability/api` 返回宿主 404、无任何
+ * 报错）。探针实证：apply enter / effect callback ran / route registered 三段齐全，
+ * 路由仍不可达。故注册改挂**常驻 ctx.root**，并以 root 为键去重（loader 会多次
+ * apply 同一插件）。
+ */
+const rootRoutes = new WeakMap<object, () => void>()
+
 function registerApi(ctx: DshContext, shared: SharedContext): void {
-  ctx.effect(
-    () =>
-      ctx.webServer!.register({
-        kind: 'prefix',
-        path: '/task-reliability/api',
-        handler: createApi(shared),
-      }),
-    'dsh-task-reliability: /task-reliability/api routes',
+  const listenCtx = (ctx as unknown as { root?: DshContext }).root ?? ctx
+  const webServer = ctx.webServer ?? listenCtx.webServer
+  if (webServer === undefined) return
+  rootRoutes.get(listenCtx)?.()
+  rootRoutes.set(
+    listenCtx,
+    webServer.register({
+      kind: 'prefix',
+      path: '/task-reliability/api',
+      handler: createApi(shared),
+    }),
   )
 }
 

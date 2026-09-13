@@ -80,18 +80,23 @@ function git(args, { inherit = false, allowFail = false } = {}) {
 }
 
 // ── 前置检查 ────────────────────────────────────────────────────────────────
-const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']).out
-const branchGuard = guardProtectedBranch(branch)
-if (!branchGuard.ok) {
-  console.error(`✖ ${branchGuard.reason}`)
-  process.exit(1)
-}
+// ⚠️ 顺序即语义：**用法校验（退出码 2）必须全部先于环境校验（退出码 1）**。
+// 反例（issue #240 的真实 CI 失败）：CI 在 push 到 main 时 checkout 到受保护分支，
+// 若分支守卫先跑，提交信息写错的人会拿到「拒绝在受保护分支上跑流水线」（exit 1），
+// 而真正的原因（信息不合规，exit 2）被掩盖 —— 退出码再也无法区分
+// 「我命令写错了」和「环境不对」。测试也因此变成"本地过、CI 挂"。
 const message = options.messageFile ? readFileSync(options.messageFile, 'utf8') : options.message
 const messageCheck = validateCommitMessage(message)
 if (!messageCheck.ok) {
   console.error(`✖ 提交信息不合规：${messageCheck.reason}`)
   console.error('  格式：<type>(<scope>): <描述>，type ∈ ' + 'feat/fix/docs/style/refactor/test/chore/ci')
   process.exit(2)
+}
+const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']).out
+const branchGuard = guardProtectedBranch(branch)
+if (!branchGuard.ok) {
+  console.error(`✖ ${branchGuard.reason}`)
+  process.exit(1)
 }
 const dirty = git(['status', '--porcelain']).out
 if (!dirty) {

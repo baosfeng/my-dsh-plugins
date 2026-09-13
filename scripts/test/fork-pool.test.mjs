@@ -275,6 +275,19 @@ describe('CLI 端到端（离线）', () => {
     }
   })
 
+  it('用法错误优先于环境状态：目录不存在但缺 --yes 时仍返回 2（issue #240 防回归）', () => {
+    // 反例：若把「目录是否存在」判在「--yes」之前，"clean 不存在的东西" 会以
+    // "幂等通过" 返回 0，把"你忘了 --yes"这个用法错误悄悄吞掉。
+    const fake = mkdtempSync(join(tmpdir(), 'fork-pool-test-'))
+    try {
+      const { code, out } = runCli(['clean', 'nope'], { tmpRoot: fake })
+      expect(code).toBe(2)
+      expect(out).toContain('--yes')
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
   it('clean 幂等：目录不存在也算通过', () => {
     const fake = mkdtempSync(join(tmpdir(), 'fork-pool-test-'))
     try {

@@ -59,6 +59,18 @@ export function compareVersions(a, b) {
   return comparePrerelease(left.prerelease, right.prerelease)
 }
 
+/**
+ * npm registry 路径里的包名编码：`@scope/name` → `@scope%2fname`（未 scoped 原样返回）。
+ *
+ * 必须替换**全部** `/`：`replace('/', ...)` 只替换首个（CodeQL js/incomplete-sanitization）。
+ * scoped 包名当前只有一个 `/`，但这里的真实意图是「把包名整体编码成一个 URL 路径段」，
+ * 写成全局替换才与该意图一致，将来出现多段形态也不会静默漏编码。
+ */
+export function encodePackageName(name) {
+  const text = String(name ?? '')
+  return text.startsWith('@') ? text.replaceAll('/', '%2f') : text
+}
+
 /** 拆解一条 npm 版本声明（^ ~ >= || file: 与裸版本）；认不出的按 unknown 归位，不误判成「可直接升」。 */
 export function parseSpec(spec) {
   const raw = String(spec ?? '').trim()

@@ -173,6 +173,14 @@ function makeRequest(method, url, body) {
 }
 
 async function callApi(fake, method, path, body) {
+  // 路由注册发生在**异步**启动链里（apply → bootPromise → initialScan →
+  // scanStaged/mountPromoted → ensureApi），且设计上是「webServer 服务出现后
+  // 注册，可重试」（CLI profile 无 webServer 时跳过）。原先这里同步断言
+  // fake.apiRoute，等于赌初始扫描先于断言跑完：慢环境（CI 高负载 / 文件 IO
+  // 慢）下偶发 `AssertionError: api route registered`（#250 合并后 main 红盘
+  // 的形态）。改为**确定性条件等待**（超时报错，不靠 sleep）：既消除 flaky，
+  // 又保证「注册最终必须发生」这一语义仍被断言。
+  await waitFor(() => fake.apiRoute !== undefined)
   const route = fake.apiRoute
   assert.ok(route, 'api route registered')
   const res = makeResponse()
@@ -512,4 +520,36 @@ test('host smoke suite', async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+// ── 9. webServer 服务晚到 → poll tick 重试注册（api.js 的尝试/重试语义）──────
+// 路由注册是**可选面**：webServer 未出现时不注册、每个轮询 tick 重试（CLI profile
+// 无 webServer 时整块跳过）。这条重试路径之前没有测试覆盖——而它正是
+// 「api route registered」断言在慢环境下 flaky 的另一面：注册只可能"晚到"，
+// 不可能通过等待之外的方式提前。本用例确定性验证「服务晚到 → 重试后必注册」。
+test('api route registration retries on poll tick when webServer appears late', async () => {
+  const fake = makeLoaderAndTree()
+  // 主 suite 结束时清理过临时目录，这里重建（本用例独立运行）
+  mkdirSync(dir, { recursive: true })
+  mkdirSync(join(dir, 'guardian'), { recursive: true })
+  writeFileSync(stagedFile(), JSON.stringify([], null, 2))
+  const ctx = makeCtx(fake, { webServer: false })
+  const shared = apply(ctx)
+  flushPersist = shared?.flushPersist ?? (async () => {})
+  await waitFor(() => shared.ready === true)
+  assert.equal(fake.apiRoute, undefined, 'webServer 缺失时不注册（可选面降级）')
+
+  // 服务晚到：补上 webServer，然后触发一次轮询 tick（ensureApi 在 tick 内重试）
+  ctx.fakeServices.webServer = {
+    register: (route) => {
+      if (route.kind === 'prefix' && route.path === '/guardian/api') fake.apiRoute = route
+      return () => {}
+    },
+  }
+  for (const tick of ctx.fakeIntervals) await tick()
+  await waitFor(() => fake.apiRoute !== undefined)
+  assert.ok(fake.apiRoute, 'webServer 出现后经轮询重试完成注册')
+
+  const teardown = (ctx.fakeEffects ?? []).find((e) => e.label === 'dsh-my-guardian: teardown')
+  await teardown?.disposer()
 })

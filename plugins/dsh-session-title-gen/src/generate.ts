@@ -10,7 +10,7 @@ import type { TitleConfig } from './title.js'
 import type { LlmService, Session, SessionEvent } from './types.js'
 
 /** 本插件写入标题的 source.provider 标识。 */
-export const PROVIDER_ID = 'dsh-session-title-gen'
+const PROVIDER_ID = 'dsh-session-title-gen'
 
 /** generateSessionTitle 的输入。 */
 export interface GenerateSessionInput {
@@ -69,7 +69,7 @@ export function isUserMessage(event: SessionEvent): boolean {
 }
 
 /** 收集会话中人类用户消息（文本 + seq）。 */
-export function collectMessages(session: Session): Array<{ seq: number; text: string }> {
+function collectMessages(session: Session): Array<{ seq: number; text: string }> {
   const messages: Array<{ seq: number; text: string }> = []
   for (const event of sessionEvents(session) as SessionEvent[]) {
     if (!isUserMessage(event)) continue

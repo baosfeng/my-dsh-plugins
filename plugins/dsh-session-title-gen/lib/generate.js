@@ -6,7 +6,7 @@
 import { workspaceNameOf } from './workspace.js';
 import { foldTitle, generateTitle, isStructuredTitle, sessionEvents } from './title.js';
 /** 本插件写入标题的 source.provider 标识。 */
-export const PROVIDER_ID = 'dsh-session-title-gen';
+const PROVIDER_ID = 'dsh-session-title-gen';
 /**
  * Generate and append the structured title for one session.
  *
@@ -54,7 +54,7 @@ export function isUserMessage(event) {
     return event?.data?.source?.kind === 'user';
 }
 /** 收集会话中人类用户消息（文本 + seq）。 */
-export function collectMessages(session) {
+function collectMessages(session) {
     const messages = [];
     for (const event of sessionEvents(session)) {
         if (!isUserMessage(event))

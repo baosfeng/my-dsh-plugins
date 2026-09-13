@@ -625,6 +625,14 @@ declare const fileIconByExt: (ext: string, size?: number) => unknown
 // 此处声明同名变量让 tsc 不报错。
 declare const module: { exports: Record<string, unknown> }
 
+/** 共享样式注入（dsh-shared/client-parts/style-tag.part.js，构建期拼接；issue #186 P2）。 */
+declare function installStyles(
+  ctx: { effect: (fn: () => void | (() => void), label?: string) => void },
+  attr: string,
+  css: string,
+  label: string,
+): void
+
 // ── 样式 ───────────────────────────────────────────────────────────
 const STYLES = `
 .dsh-think-zh-expand-assistant{display:flex;flex-direction:column;color:var(--dsw-alias-label-primary);font-size:16px;line-height:28px}
@@ -652,18 +660,9 @@ const _exports = module.exports as Record<string, unknown>
 _exports.inject = ['slots']
 
 _exports.apply = function apply(ctx: ClientContext): void {
-  // Inject the shared stylesheet once (torn down with the fiber).
-  ctx.effect(() => {
-    if (typeof document === 'undefined' || document === null || typeof (document as Document).head === 'undefined')
-      return () => {}
-    const style = (document as Document).createElement('style')
-    style.setAttribute('data-dsh-think-zh-expand', 'styles')
-    style.textContent = STYLES
-    ;(document as Document).head.appendChild(style)
-    return () => {
-      if (style.parentNode) style.parentNode.removeChild(style)
-    }
-  }, 'dsh-think-zh-expand: styles')
+  // 样式注入走共享实现（issue #186 P2）：与 dsh-md-render / dsh-mermaid-render
+  // 同一份「无条件注入 + 随 fiber teardown 卸载」逻辑（style-tag.part.js）。
+  installStyles(ctx, 'data-dsh-think-zh-expand', STYLES, 'dsh-think-zh-expand: styles')
 
   // Replace the built-in assistant-step renderer
   ctx.effect(

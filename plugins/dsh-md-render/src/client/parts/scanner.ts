@@ -38,32 +38,24 @@ function scanNode(seen: Set<Node>, node: Node): void {
   }
 }
 
-/** 观察 body；返回观察器 disposer。 */
+/** 共享 DOM 扫描骨架（dsh-shared/client-parts/dom-scanner.part.js，构建期拼接；issue #186 P2）。 */
+declare function installDomScanner(options: {
+  scan: (node: Node, round: number) => void
+  rescanSelectors?: string[]
+  attributeFilter?: string[]
+  onTeardown?: () => void
+}): () => void
+
+/** 观察 body；返回观察器 disposer。
+ *  骨架（观察配置 / 批次轮次 / disposer）来自共享 part（与 dsh-mermaid-render 同一份），
+ *  本插件的特有策略全部留在 scanNode 内：流式内容门控、幂等 seen 集合、
+ *  上下文注入块接管（#196）、轨迹视图接管（#205）、宿主契约不匹配时的静默降级。 */
 function installScanner(): () => void {
   const seen = new Set<Node>()
-  scanNode(seen, document.body)
-
-  const observer = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      for (const added of mutation.addedNodes) {
-        if (added.nodeType === 1) scanNode(seen, added)
-      }
-    }
-    // 兜底重扫：流式结束后容器内容变化（新增段落 / 表格文本补全），
-    // 对已知滚动容器重扫，保证流式中的表格最终被渲染。
-    for (const sc of document.querySelectorAll('[data-conversation-scroll]')) {
-      scanNode(seen, sc)
-    }
-    // issue #205：轨迹视图虚拟列表滚动 / 行回收后的兜底重扫。
-    for (const sc of document.querySelectorAll(TRAJECTORY_SCROLL_SELECTOR)) {
-      scanNode(seen, sc)
-    }
+  return installDomScanner({
+    scan: (node) => scanNode(seen, node),
+    // 兜底重扫目标：会话滚动容器（流式结束后段落 / 表格文本补全）与轨迹视图
+    // 虚拟列表容器（#205：滚动 / 行回收）——这两类变化不一定以 addedNodes 出现。
+    rescanSelectors: ['[data-conversation-scroll]', TRAJECTORY_SCROLL_SELECTOR],
   })
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['data-streaming'],
-  })
-  return () => observer.disconnect()
 }

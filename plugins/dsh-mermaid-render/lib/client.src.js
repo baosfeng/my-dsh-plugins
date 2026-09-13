@@ -25,6 +25,16 @@ window.__ModuleLoader__.load({
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
 
+    // ── 共享图标（dsh-shared/client-parts，issue #186 P1）────────────
+    // 注入的 icons part 用裸 createElement（与 dsh-md-render 等 10 个插件
+    // 同一份片段），故在此显式解构；tsc 产物自带 react_1 引用，两者互不影响。
+    const { createElement } = require('react')
+    /*__PART_ICONS__*/
+
+    // ── 共享样式注入 / DOM 扫描骨架（dsh-shared/client-parts，#186 P2）──
+    /*__PART_STYLE_TAG__*/
+    /*__PART_DOM_SCANNER__*/
+
     // ── TS 编译产物（scripts/build.mjs 注入）────────────────────────
     /*__CLIENT_BUNDLE__*/
 

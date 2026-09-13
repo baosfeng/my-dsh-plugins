@@ -76,6 +76,42 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 
 上面的表格（无首尾管道符）会自动渲染为带表头、边框、对齐的表格；列数 ≥4 的宽表格支持横向滚动。行内公式 `$x^2$` 渲染为上标结构，`$\frac{a}{b}$`、`$\sqrt{x}$`、`$\sum_{i=1}^{n} i$`、`$\alpha \beta$` 等常见数学结构自动排版；块级公式 `$$E=mc^2$$` 居中显示。
 
+## 公共 API 契约（semver 承诺）
+
+本插件对外承诺的 API 只有 **`MarkdownView`**（issue #186 P2 起显式承诺）。跨插件用法：
+
+```js
+// dsh-think-zh-expand：硬依赖（package.json 的 dsh.client.external + peerDependencies）
+const MarkdownView = require('dsh-md-render').MarkdownView
+// dsh-my-plugin-manager：try/catch 降级（取不到时退回内置渲染）
+```
+
+### 承诺面
+
+| 面        | 承诺内容                                                          | 破坏性变更判定                                |
+| --------- | ----------------------------------------------------------------- | --------------------------------------------- |
+| 导出      | `require('dsh-md-render').MarkdownView` 存在且为 React 函数组件   | 移除 / 改名 = major                           |
+| props     | `{ text: string }`（额外 props 被忽略；非字符串不抛，降级为文本） | 必需 prop 变更 = major；新增可选 prop = minor |
+| 输出结构  | 根 `div.tzx-md` + 下表类名与层级                                  | 类名 / 层级变更 = major                       |
+| bundle id | `dsh-md-render`（下游 `dsh.client.external` 的键）                | 改名 = major                                  |
+
+**输出类名清单**（跨插件可见的 DOM 契约）：
+
+| 类名                                                                                         | 含义                                                                                     |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `div.tzx-md`                                                                                 | 渲染根容器（think-zh-expand 迁出前约定的结构类名）                                       |
+| `p.tzx-p`                                                                                    | 段落                                                                                     |
+| `table.tzx-table`                                                                            | 表格（`thead` / `tbody` 子结构；DOM 增强另加 `div.dsh-md-render-table-scroll` 滚动容器） |
+| `div.md-code-block`                                                                          | 代码块容器（`dsh-mermaid-render` 靠它扫描 mermaid 围栏）                                 |
+| `pre.tzx-pre`                                                                                | 代码块 pre                                                                               |
+| `div.dsh-md-render-code-head` / `span.dsh-md-render-code-lang`                               | 代码块头部与语言标签                                                                     |
+| `span.dsh-md-render-math` / `div.dsh-md-render-math-block` / `span.dsh-md-render-math-error` | 行内公式 / 块级公式 / 公式错误标记                                                       |
+| `button.dsh-md-render-copy`                                                                  | 复制按钮                                                                                 |
+
+**不承诺**：其余 exports（`parseTable` / `renderTable` / `setRenderOptions` / `applyContextMarkdown` 等）是内部与测试面，随内部重构变动，下游不得依赖。
+
+契约由 `test/markdown-view-contract.mjs` 钉住（导出存在 + `{text}` props 稳定 + 渲染输出结构 + 本清单）。改类名清单需三处同步：本 README、`CHANGELOG.md`、[`docs/md渲染/需求清单.md`](../../docs/md渲染/需求清单.md) R25。
+
 ## 开发
 
 ```sh

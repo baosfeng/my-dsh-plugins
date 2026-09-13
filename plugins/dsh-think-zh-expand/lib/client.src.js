@@ -24,6 +24,9 @@ window.__ModuleLoader__.load({
     // ── 共享图标（issue #54 阶段 0：dsh-shared/client-parts）──────────
     /*__PART_ICONS__*/
 
+    // ── 共享样式注入（dsh-shared/client-parts，issue #186 P2）────────
+    /*__PART_STYLE_TAG__*/
+
     // ── Client bundle（编译自 src/client/index.ts）──────────────────
     /*__CLIENT_BUNDLE__*/
 

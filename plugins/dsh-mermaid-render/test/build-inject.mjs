@@ -19,7 +19,11 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readAssignedStringLiteral, spliceExactlyOnce } from '../scripts/splice.mjs'
+import {
+  isPlaceholderOutsideComments,
+  readAssignedStringLiteral,
+  spliceExactlyOnce,
+} from '../../dsh-shared/scripts/splice.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const TEMPLATE_PATH = join(ROOT, 'lib/client.src.js')
@@ -30,6 +34,8 @@ const VENDOR_PATH = join(ROOT, 'vendor/mermaid.min.js')
 const ENGINE_PLACEHOLDER = '__MERMAID_UMD_B64__'
 /** 模板里注入 tsc 产物的位置（build.mjs 用同一个严格入口替换）。 */
 const BUNDLE_PLACEHOLDER = '/*__CLIENT_BUNDLE__*/'
+/** 模板里注入共享图标（dsh-shared/client-parts/icons.part.js）的位置（#186 P1）。 */
+const ICONS_PLACEHOLDER = '/*__PART_ICONS__*/'
 
 /**
  * 产物字节上限。单份引擎 base64 = 4,449,016 B（vendor 3,336,760 B），
@@ -159,5 +165,36 @@ describe('readAssignedStringLiteral：按取值校验，而不是「占位符没
 
   it('不把更长标识符的后缀当成常量名', () => {
     expect(readAssignedStringLiteral("const MyX = 'v'", 'X')).toBe(null)
+  })
+})
+describe('共享图标注入门禁（#186 P1，与 #185 同款两道防线）', () => {
+  it('模板里共享图标占位符恰好一处', () => {
+    expect(countOf(readTemplate(), ICONS_PLACEHOLDER)).toBe(1)
+  })
+
+  it('真实模板的占位符位于代码位置（非注释）', () => {
+    expect(isPlaceholderOutsideComments(readTemplate(), ICONS_PLACEHOLDER)).toBe(true)
+  })
+
+  it('占位符写在行注释里 → false（注入"成功"但图标永不声明）', () => {
+    expect(isPlaceholderOutsideComments(`// ${ICONS_PLACEHOLDER}\n`, ICONS_PLACEHOLDER)).toBe(false)
+  })
+
+  it('占位符写在块注释里 → false（#185 缺陷形态）', () => {
+    expect(isPlaceholderOutsideComments(`/* ${ICONS_PLACEHOLDER} */\n`, ICONS_PLACEHOLDER)).toBe(false)
+  })
+
+  it('占位符写在字符串字面量里 → false', () => {
+    expect(isPlaceholderOutsideComments(`const x = '${ICONS_PLACEHOLDER}'\n`, ICONS_PLACEHOLDER)).toBe(false)
+  })
+
+  it('占位符本身被块注释定界符包裹，不会被状态机误判（#186 实测修正）', () => {
+    expect(isPlaceholderOutsideComments(`const a = 1\n${ICONS_PLACEHOLDER}\nconst b = 2\n`, ICONS_PLACEHOLDER)).toBe(
+      true,
+    )
+  })
+
+  it('产物内图标实现恰好一份（内联副本复活即失败）', () => {
+    expect(countOf(readArtifact(), 'const ICON_STROKE = 1.8')).toBe(1)
   })
 })

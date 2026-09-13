@@ -25,6 +25,424 @@ window.__ModuleLoader__.load({
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
 
+    // ── 共享图标（dsh-shared/client-parts，issue #186 P1）────────────
+    // 注入的 icons part 用裸 createElement（与 dsh-md-render 等 10 个插件
+    // 同一份片段），故在此显式解构；tsc 产物自带 react_1 引用，两者互不影响。
+    const { createElement } = require('react')
+    // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──
+// Single source of truth for the plugin UI icon set (issue #54 阶段 0).
+// Extracted from dsh-file-activity's lib/parts/icons.part.js; every plugin's
+// scripts/build.mjs splices this file via the `shared: true` piece marker.
+// Keep the stroke=currentColor outline style — it inherits the surrounding
+// text color and reads on both light and dark themes.
+const ICON_STROKE = 1.8
+const iconSvg = (children, size) =>
+  createElement(
+    'svg',
+    {
+      width: size,
+      height: size,
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: ICON_STROKE,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      'aria-hidden': 'true',
+    },
+    children.map((child, i) =>
+      child === null || child === undefined || typeof child === 'boolean'
+        ? child
+        : createElement(child.type, { key: i, ...child.props }),
+    ),
+  )
+
+const icon = {
+  clock: (size = 16) =>
+    iconSvg([createElement('circle', { cx: 12, cy: 12, r: 9 }), createElement('path', { d: 'M12 7v5l3 2' })], size),
+  refresh: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M21 12a9 9 0 1 1-2.64-6.36' }),
+        createElement('polyline', { points: '21 3 21 9 15 9' }),
+      ],
+      size,
+    ),
+  trash: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M3 6h18' }),
+        createElement('path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' }),
+        createElement('path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }),
+      ],
+      size,
+    ),
+  chevronRight: (size = 14) => iconSvg([createElement('polyline', { points: '9 6 15 12 9 18' })], size),
+  chevronDown: (size = 14) => iconSvg([createElement('polyline', { points: '6 9 12 15 18 9' })], size),
+  file: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }),
+        createElement('path', { d: 'M14 2v6h6' }),
+      ],
+      size,
+    ),
+  folder: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', {
+          d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+        }),
+      ],
+      size,
+    ),
+  external: (size = 15) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }),
+        createElement('polyline', { points: '15 3 21 3 21 9' }),
+        createElement('line', { x1: 10, y1: 14, x2: 21, y2: 3 }),
+      ],
+      size,
+    ),
+  close: (size = 15) =>
+    iconSvg(
+      [
+        createElement('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+        createElement('line', { x1: 6, y1: 6, x2: 18, y2: 18 }),
+      ],
+      size,
+    ),
+  help: (size = 16) =>
+    iconSvg(
+      [
+        createElement('circle', { cx: 12, cy: 12, r: 9 }),
+        createElement('path', { d: 'M9.1 9.2a3 3 0 0 1 5.8 1.2c0 1.8-2.7 2.4-2.7 3.6' }),
+        createElement('line', { x1: 12, y1: 17.2, x2: 12.01, y2: 17.2 }),
+      ],
+      size,
+    ),
+  // ── generic action icons (issue #54 阶段 0) ─────────────────────────────
+  // Added for the upcoming plugin UI refresh: save/confirm (check), add/
+  // install (plus), market search (search), settings entry (settings).
+  check: (size = 16) => iconSvg([createElement('polyline', { points: '20 6 9 17 4 12' })], size),
+  plus: (size = 16) =>
+    iconSvg(
+      [
+        createElement('line', { x1: 12, y1: 5, x2: 12, y2: 19 }),
+        createElement('line', { x1: 5, y1: 12, x2: 19, y2: 12 }),
+      ],
+      size,
+    ),
+  pencil: (size = 15) =>
+    iconSvg([createElement('path', { d: 'M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z' })], size),
+  search: (size = 16) =>
+    iconSvg(
+      [
+        createElement('circle', { cx: 11, cy: 11, r: 8 }),
+        createElement('line', { x1: 21, y1: 21, x2: 16.65, y2: 16.65 }),
+      ],
+      size,
+    ),
+  settings: (size = 16) =>
+    iconSvg(
+      [
+        createElement('circle', { cx: 12, cy: 12, r: 3 }),
+        createElement('path', {
+          d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z',
+        }),
+      ],
+      size,
+    ),
+  // 警告（issue #54 阶段 1 新增）：安全护栏告警类型图标（投毒/提示注入），
+  // 三角警示 + 感叹号，stroke=currentColor 风格与其余图标一致。
+  alert: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', {
+          d: 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z',
+        }),
+        createElement('line', { x1: 12, y1: 9, x2: 12, y2: 13 }),
+        createElement('line', { x1: 12, y1: 17, x2: 12.01, y2: 17 }),
+      ],
+      size,
+    ),
+  // 代码（issue #54 阶段 1 新增）：尖括号 `</>`，预览/代码切换的代码视图
+  // 图标（dsh-mermaid-render 卡片），stroke=currentColor 风格与其余图标一致。
+  code: (size = 16) =>
+    iconSvg(
+      [
+        createElement('polyline', { points: '16 18 22 12 16 6' }),
+        createElement('polyline', { points: '8 6 2 12 8 18' }),
+      ],
+      size,
+    ),
+  // 下载（issue #85 新增）：箭头入托盘，图表导出按钮（dsh-mermaid-render
+  // 卡片下载 PNG/SVG），stroke=currentColor 风格与其余图标一致。
+  download: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
+        createElement('polyline', { points: '7 10 12 15 17 10' }),
+        createElement('line', { x1: 12, y1: 15, x2: 12, y2: 3 }),
+      ],
+      size,
+    ),
+  // 复制（issue #85 新增）：双层矩形，复制源码按钮（dsh-mermaid-render
+  // 卡片复制代码），stroke=currentColor 风格与其余图标一致。
+  copy: (size = 16) =>
+    iconSvg(
+      [
+        createElement('rect', { x: 9, y: 9, width: 13, height: 13, rx: 2 }),
+        createElement('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
+      ],
+      size,
+    ),
+}
+
+// Common-language / file-type badges (issue #24): brand fill + contrast
+// ink, reading on both light and dark themes. Unmapped extensions keep the
+// neutral currentColor file icon above. [bg, fg ink, short mark]
+const FILE_BADGES = {
+  // JavaScript / TypeScript
+  js: ['#F7DF1E', '#323330', 'JS'],
+  mjs: ['#F7DF1E', '#323330', 'JS'],
+  cjs: ['#F7DF1E', '#323330', 'JS'],
+  ts: ['#3178C6', '#ffffff', 'TS'],
+  mts: ['#3178C6', '#ffffff', 'TS'],
+  cts: ['#3178C6', '#ffffff', 'TS'],
+  tsx: ['#3178C6', '#ffffff', 'TSX'],
+  jsx: ['#3178C6', '#ffffff', 'JSX'],
+  // 后端语言
+  java: ['#007396', '#ffffff', 'JAVA'],
+  c: ['#A8B9CC', '#111111', 'C'],
+  cpp: ['#00599C', '#ffffff', 'C++'],
+  cxx: ['#00599C', '#ffffff', 'C++'],
+  cc: ['#00599C', '#ffffff', 'C++'],
+  hpp: ['#00599C', '#ffffff', 'C++'],
+  h: ['#A8B9CC', '#111111', 'H'],
+  hh: ['#A8B9CC', '#111111', 'H'],
+  cs: ['#68217A', '#ffffff', 'C#'],
+  csharp: ['#68217A', '#ffffff', 'C#'],
+  go: ['#00ADD8', '#ffffff', 'GO'],
+  rs: ['#CE422B', '#ffffff', 'RS'],
+  rb: ['#B51624', '#ffffff', 'RB'],
+  php: ['#777BB4', '#ffffff', 'PHP'],
+  py: ['#3776AB', '#ffffff', 'PY'],
+  swift: ['#F05138', '#ffffff', 'SWIFT'],
+  kt: ['#7F52FF', '#ffffff', 'KT'],
+  kotlin: ['#7F52FF', '#ffffff', 'KT'],
+  dart: ['#0175C2', '#ffffff', 'DART'],
+  scala: ['#DC322F', '#ffffff', 'SCALA'],
+  lua: ['#2C2C7C', '#ffffff', 'LUA'],
+  pl: ['#0298C3', '#ffffff', 'PERL'],
+  r: ['#336DC3', '#ffffff', 'R'],
+  m: ['#C1272D', '#ffffff', 'MAT'],
+  mm: ['#C1272D', '#ffffff', 'MAT'],
+  // Web / 前端
+  html: ['#E34F26', '#ffffff', '</>'],
+  htm: ['#E34F26', '#ffffff', '</>'],
+  css: ['#663399', '#ffffff', 'CSS'],
+  scss: ['#CD6799', '#ffffff', 'SCSS'],
+  sass: ['#CD6799', '#ffffff', 'SCSS'],
+  vue: ['#42B883', '#ffffff', 'VUE'],
+  svelte: ['#FF3E00', '#ffffff', 'SVELTE'],
+  // 数据 / 结构化
+  json: ['#F7DF1E', '#323330', '{}'],
+  sql: ['#00758F', '#ffffff', 'SQL'],
+  csv: ['#2E7D32', '#ffffff', 'CSV'],
+  db: ['#0F62FE', '#ffffff', 'DB'],
+  sqlite: ['#0F62FE', '#ffffff', 'DB'],
+  sqlite3: ['#0F62FE', '#ffffff', 'DB'],
+  xml: ['#FF6F00', '#ffffff', 'XML'],
+  svg: ['#FF6F00', '#ffffff', 'SVG'],
+  // 文档
+  md: ['#42A5F5', '#ffffff', 'M↓'],
+  markdown: ['#42A5F5', '#ffffff', 'M↓'],
+  txt: ['#90A4AE', '#ffffff', 'TXT'],
+  text: ['#90A4AE', '#ffffff', 'TXT'],
+  log: ['#90A4AE', '#ffffff', 'TXT'],
+  pdf: ['#E5202B', '#ffffff', 'PDF'],
+  doc: ['#2B579A', '#ffffff', 'DOC'],
+  docx: ['#2B579A', '#ffffff', 'DOC'],
+  xls: ['#217346', '#ffffff', 'XLS'],
+  xlsx: ['#217346', '#ffffff', 'XLS'],
+  ppt: ['#D24726', '#ffffff', 'PPT'],
+  pptx: ['#D24726', '#ffffff', 'PPT'],
+  // 配置 / 构建
+  yml: ['#CB171E', '#ffffff', 'YML'],
+  yaml: ['#CB171E', '#ffffff', 'YML'],
+  toml: ['#8D6E63', '#ffffff', 'TOML'],
+  ini: ['#546E7A', '#ffffff', 'CFG'],
+  cfg: ['#546E7A', '#ffffff', 'CFG'],
+  config: ['#546E7A', '#ffffff', 'CFG'],
+  env: ['#F9A825', '#323330', 'ENV'],
+  properties: ['#7B1FA2', '#ffffff', 'PROP'],
+  lock: ['#37474F', '#ffffff', 'LOCK'],
+  dockerfile: ['#2496ED', '#ffffff', 'DOCK'],
+  docker: ['#2496ED', '#ffffff', 'DOCK'],
+  makefile: ['#607D8B', '#ffffff', 'MAKE'],
+  gradle: ['#02303A', '#ffffff', 'GRADLE'],
+  cmake: ['#265774', '#ffffff', 'CMAKE'],
+  ipynb: ['#F37726', '#ffffff', 'JNB'],
+  // 脚本 / Shell
+  sh: ['#89E051', '#111111', '>_'],
+  bash: ['#89E051', '#111111', '>_'],
+  zsh: ['#89E051', '#111111', '>_'],
+  ps1: ['#012456', '#ffffff', 'PS1'],
+  bat: ['#546E7A', '#ffffff', 'CMD'],
+  cmd: ['#546E7A', '#ffffff', 'CMD'],
+  // 打包 / 二进制
+  zip: ['#FFA726', '#323330', 'ZIP'],
+  tar: ['#FFA726', '#323330', 'ZIP'],
+  gz: ['#FFA726', '#323330', 'ZIP'],
+  '7z': ['#FFA726', '#323330', 'ZIP'],
+  rar: ['#FFA726', '#323330', 'ZIP'],
+  exe: ['#0078D4', '#ffffff', 'EXE'],
+  msi: ['#0078D4', '#ffffff', 'EXE'],
+  wasm: ['#654FF0', '#ffffff', 'WASM'],
+  // 图片 / 媒体
+  png: ['#8E44AD', '#ffffff', 'IMG'],
+  jpg: ['#8E44AD', '#ffffff', 'IMG'],
+  jpeg: ['#8E44AD', '#ffffff', 'IMG'],
+  gif: ['#8E44AD', '#ffffff', 'IMG'],
+  webp: ['#8E44AD', '#ffffff', 'IMG'],
+  ico: ['#8E44AD', '#ffffff', 'IMG'],
+  bmp: ['#8E44AD', '#ffffff', 'IMG'],
+  // 版本控制
+  gitignore: ['#F05032', '#ffffff', 'GIT'],
+  gitattributes: ['#F05032', '#ffffff', 'GIT'],
+}
+
+/** One self-colored badge svg: rounded brand rect + short contrast mark.
+ *  Mark font scales by length so 5-6 char marks (JAVA/SCALA/SWIFT) stay
+ *  inside the 24×24 viewBox. */
+const badgeIcon = ([bg, fg, mark], size) =>
+  createElement(
+    'svg',
+    {
+      width: size,
+      height: size,
+      viewBox: '0 0 24 24',
+      'aria-hidden': 'true',
+    },
+    createElement('rect', { x: 1, y: 1, width: 22, height: 22, rx: 5, fill: bg }),
+    createElement(
+      'text',
+      {
+        x: 12,
+        y: 16,
+        textAnchor: 'middle',
+        fontSize: mark.length <= 2 ? 9 : mark.length <= 4 ? 7 : 5.5,
+        fontWeight: 700,
+        fill: fg,
+      },
+      mark,
+    ),
+  )
+
+/** File-type icon dispatcher: branded badge for known extensions, the
+ *  neutral file icon for everything else (case-insensitive, tolerates a
+ *  leading dot like ".md"). */
+const fileIconByExt = (ext, size = 14) => {
+  const spec =
+    FILE_BADGES[
+      String(ext ?? '')
+        .toLowerCase()
+        .replace(/^\./, '')
+    ]
+  return spec === undefined ? icon.file(size) : badgeIcon(spec, size)
+}
+
+
+    // ── 共享样式注入 / DOM 扫描骨架（dsh-shared/client-parts，#186 P2）──
+    // ── shared plugin stylesheet injection (dsh-shared/client-parts) ──
+// 单一来源（issue #186 P2）：把「注入 <style data-<plugin>="styles"> 并随 fiber
+// teardown 卸载」这段逐字相同的样板从渲染插件收口到这里。当前调用方：
+// dsh-md-render（parts/apply.ts）/ dsh-mermaid-render（client/index.ts）/
+// dsh-think-zh-expand（client/index.ts）——各自 scripts/build.mjs 在构建期把本
+// 文件拼进 __ModuleLoader__ factory 作用域（构建时源文件，不经过 require 解析）。
+//
+// 为什么「无条件、最先注入、不进早退分支」：样式若挂在某个服务判空之后，
+// HMR / 服务缺省时样式就丢了（dsh-file-activity 踩坑，见三处调用点的原注释）。
+/**
+ * 注入插件样式表，随 ctx fiber 卸载（HMR/禁用无残留）。
+ *
+ * @param {{ effect: (fn: () => void | (() => void), label?: string) => void }} ctx cordis client ctx
+ * @param {string} attr 标识属性名（如 'data-dsh-md-render'；值固定为 'styles'）
+ * @param {string} css 样式表文本
+ * @param {string} label effect 标签（如 'dsh-md-render: styles'，HMR/调试定位用）
+ * @returns {void}
+ */
+function installStyles(ctx, attr, css, label) {
+  ctx.effect(() => {
+    if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined') return () => {}
+    const style = document.createElement('style')
+    style.setAttribute(attr, 'styles')
+    style.textContent = css
+    document.head.appendChild(style)
+    return () => {
+      if (style.parentNode) style.parentNode.removeChild(style)
+    }
+  }, label)
+}
+
+    // ── shared DOM scanner skeleton (dsh-shared/client-parts) ──
+// 单一来源（issue #186 P2）：dsh-md-render（parts/scanner.ts：表格增强 + #196
+// 上下文块接管 + #205 轨迹视图接管）与 dsh-mermaid-render（client/index.ts：
+// mermaid 卡片挂载 / 流式闭合判定）各自的 MutationObserver 骨架结构等价，收口到这里。
+//
+// 共享的只是**骨架**：观察 body、把新增元素与兜底重扫目标交给插件的 scan 回调、
+// 维护批次轮次、返回 disposer。各插件的特有策略全部留在 scan 回调里（本 issue
+// 的一条硬约束：共享化不得削掉 #185/#195/#196/#205 的任何行为）：
+//  - dsh-md-render：流式内容门控（[data-streaming] 祖先跳过）、幂等 seen 集合、
+//    上下文注入块 / 轨迹视图接管、宿主契约不匹配时的静默降级；
+//  - dsh-mermaid-render：围栏闭合判定（settleStream）、离屏渲染、自愈卸载，
+//    以及 teardown 时清理挂载表 / 流式观察表（经 onTeardown 注入）。
+/**
+ * 观察 body 的 DOM 变更（子节点 + data-streaming 属性），把新增元素与兜底重扫
+ * 目标交给 scan 回调；返回 disposer。
+ *
+ * @param {{
+ *   scan: (node: Node, round: number) => void
+ *   rescanSelectors?: string[]
+ *   attributeFilter?: string[]
+ *   onTeardown?: () => void
+ * }} options
+ *   - scan：处理一个节点（新增元素，或重扫容器的根）。round 是本次批次的递增序号，
+ *     同一批次内所有 scan 调用共享它（插件可用它做「本批次只挂载一次」判定）
+ *   - rescanSelectors：每次变更后兜底重扫的选择器（流式结束、虚拟列表行回收等
+ *     不产生 addedNodes 的内容变化）
+ *   - attributeFilter：触发重扫的属性名（默认 ['data-streaming']）
+ *   - onTeardown：disposer 被调用时（fiber 卸载 / HMR）的清理钩子
+ * @returns {() => void} 观察器 disposer
+ */
+function installDomScanner(options) {
+  const rescanSelectors = options.rescanSelectors ?? []
+  const attributeFilter = options.attributeFilter ?? ['data-streaming']
+  let round = 0
+  options.scan(document.body, ++round)
+  const observer = new MutationObserver((mutations) => {
+    const current = ++round
+    for (const mutation of mutations) {
+      for (const added of mutation.addedNodes) {
+        if (added.nodeType === 1) options.scan(added, current)
+      }
+    }
+    // 兜底重扫：流式结束后的内容补全 / 轨迹视图虚拟列表回收不一定以 addedNodes
+    // 形式出现，按选择器整体重扫，保证最终一致。
+    for (const selector of rescanSelectors) {
+      for (const el of document.querySelectorAll(selector)) options.scan(el, current)
+    }
+  })
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter })
+  return () => {
+    observer.disconnect()
+    if (options.onTeardown) options.onTeardown()
+  }
+}
+
+
     // ── TS 编译产物（scripts/build.mjs 注入）────────────────────────
     "use strict";
 /**
@@ -211,218 +629,7 @@ function sourceOf(block) {
         return '';
     }
 }
-// ── icons part：shared icons ────────────────────────────────────────
-const ICON_STROKE = 1.8;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const iconSvg = (children, size) => (0, react_1.createElement)('svg', {
-    width: size,
-    height: size,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: ICON_STROKE,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-    'aria-hidden': 'true',
-}, children.map((child, i) => child === null || child === undefined || typeof child === 'boolean'
-    ? child
-    : (0, react_1.createElement)(child.type, { key: i, ...child.props })));
-const icon = {
-    clock: (size = 16) => iconSvg([(0, react_1.createElement)('circle', { cx: 12, cy: 12, r: 9 }), (0, react_1.createElement)('path', { d: 'M12 7v5l3 2' })], size),
-    refresh: (size = 16) => iconSvg([
-        (0, react_1.createElement)('path', { d: 'M21 12a9 9 0 1 1-2.64-6.36' }),
-        (0, react_1.createElement)('polyline', { points: '21 3 21 9 15 9' }),
-    ], size),
-    trash: (size = 16) => iconSvg([
-        (0, react_1.createElement)('path', { d: 'M3 6h18' }),
-        (0, react_1.createElement)('path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' }),
-        (0, react_1.createElement)('path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }),
-    ], size),
-    chevronRight: (size = 14) => iconSvg([(0, react_1.createElement)('polyline', { points: '9 6 15 12 9 18' })], size),
-    chevronDown: (size = 14) => iconSvg([(0, react_1.createElement)('polyline', { points: '6 9 12 15 18 9' })], size),
-    file: (size = 16) => iconSvg([
-        (0, react_1.createElement)('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }),
-        (0, react_1.createElement)('path', { d: 'M14 2v6h6' }),
-    ], size),
-    folder: (size = 16) => iconSvg([
-        (0, react_1.createElement)('path', {
-            d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
-        }),
-    ], size),
-    external: (size = 15) => iconSvg([
-        (0, react_1.createElement)('path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }),
-        (0, react_1.createElement)('polyline', { points: '15 3 21 3 21 9' }),
-        (0, react_1.createElement)('line', { x1: 10, y1: 14, x2: 21, y2: 3 }),
-    ], size),
-    close: (size = 15) => iconSvg([
-        (0, react_1.createElement)('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
-        (0, react_1.createElement)('line', { x1: 6, y1: 6, x2: 18, y2: 18 }),
-    ], size),
-    help: (size = 16) => iconSvg([
-        (0, react_1.createElement)('circle', { cx: 12, cy: 12, r: 9 }),
-        (0, react_1.createElement)('path', { d: 'M9.1 9.2a3 3 0 0 1 5.8 1.2c0 1.8-2.7 2.4-2.7 3.6' }),
-        (0, react_1.createElement)('line', { x1: 12, y1: 17.2, x2: 12.01, y2: 17.2 }),
-    ], size),
-    check: (size = 16) => iconSvg([(0, react_1.createElement)('polyline', { points: '20 6 9 17 4 12' })], size),
-    plus: (size = 16) => iconSvg([
-        (0, react_1.createElement)('line', { x1: 12, y1: 5, x2: 12, y2: 19 }),
-        (0, react_1.createElement)('line', { x1: 5, y1: 12, x2: 19, y2: 12 }),
-    ], size),
-    pencil: (size = 15) => iconSvg([(0, react_1.createElement)('path', { d: 'M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z' })], size),
-    search: (size = 16) => iconSvg([
-        (0, react_1.createElement)('circle', { cx: 11, cy: 11, r: 8 }),
-        (0, react_1.createElement)('line', { x1: 21, y1: 21, x2: 16.65, y2: 16.65 }),
-    ], size),
-    settings: (size = 16) => iconSvg([
-        (0, react_1.createElement)('circle', { cx: 12, cy: 12, r: 3 }),
-        (0, react_1.createElement)('path', {
-            d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z',
-        }),
-    ], size),
-    alert: (size = 16) => iconSvg([
-        (0, react_1.createElement)('path', {
-            d: 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z',
-        }),
-        (0, react_1.createElement)('line', { x1: 12, y1: 9, x2: 12, y2: 13 }),
-        (0, react_1.createElement)('line', { x1: 12, y1: 17, x2: 12.01, y2: 17 }),
-    ], size),
-    code: (size = 16) => iconSvg([
-        (0, react_1.createElement)('polyline', { points: '16 18 22 12 16 6' }),
-        (0, react_1.createElement)('polyline', { points: '8 6 2 12 8 18' }),
-    ], size),
-    download: (size = 16) => iconSvg([
-        (0, react_1.createElement)('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
-        (0, react_1.createElement)('polyline', { points: '7 10 12 15 17 10' }),
-        (0, react_1.createElement)('line', { x1: 12, y1: 15, x2: 12, y2: 3 }),
-    ], size),
-    copy: (size = 16) => iconSvg([
-        (0, react_1.createElement)('rect', { x: 9, y: 9, width: 13, height: 13, rx: 2 }),
-        (0, react_1.createElement)('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
-    ], size),
-};
-// ── FILE_BADGES：文件类型图标 ───────────────────────────────────────
-const FILE_BADGES = {
-    js: ['#F7DF1E', '#323330', 'JS'],
-    mjs: ['#F7DF1E', '#323330', 'JS'],
-    cjs: ['#F7DF1E', '#323330', 'JS'],
-    ts: ['#3178C6', '#ffffff', 'TS'],
-    mts: ['#3178C6', '#ffffff', 'TS'],
-    cts: ['#3178C6', '#ffffff', 'TS'],
-    tsx: ['#3178C6', '#ffffff', 'TSX'],
-    jsx: ['#3178C6', '#ffffff', 'JSX'],
-    java: ['#007396', '#ffffff', 'JAVA'],
-    c: ['#A8B9CC', '#111111', 'C'],
-    cpp: ['#00599C', '#ffffff', 'C++'],
-    cxx: ['#00599C', '#ffffff', 'C++'],
-    cc: ['#00599C', '#ffffff', 'C++'],
-    hpp: ['#00599C', '#ffffff', 'C++'],
-    h: ['#A8B9CC', '#111111', 'H'],
-    hh: ['#A8B9CC', '#111111', 'H'],
-    cs: ['#68217A', '#ffffff', 'C#'],
-    csharp: ['#68217A', '#ffffff', 'C#'],
-    go: ['#00ADD8', '#ffffff', 'GO'],
-    rs: ['#CE422B', '#ffffff', 'RS'],
-    rb: ['#B51624', '#ffffff', 'RB'],
-    php: ['#777BB4', '#ffffff', 'PHP'],
-    py: ['#3776AB', '#ffffff', 'PY'],
-    swift: ['#F05138', '#ffffff', 'SWIFT'],
-    kt: ['#7F52FF', '#ffffff', 'KT'],
-    kotlin: ['#7F52FF', '#ffffff', 'KT'],
-    dart: ['#0175C2', '#ffffff', 'DART'],
-    scala: ['#DC322F', '#ffffff', 'SCALA'],
-    lua: ['#2C2C7C', '#ffffff', 'LUA'],
-    pl: ['#0298C3', '#ffffff', 'PERL'],
-    r: ['#336DC3', '#ffffff', 'R'],
-    m: ['#C1272D', '#ffffff', 'MAT'],
-    mm: ['#C1272D', '#ffffff', 'MAT'],
-    html: ['#E34F26', '#ffffff', '</>'],
-    htm: ['#E34F26', '#ffffff', '</>'],
-    css: ['#663399', '#ffffff', 'CSS'],
-    scss: ['#CD6799', '#ffffff', 'SCSS'],
-    sass: ['#CD6799', '#ffffff', 'SCSS'],
-    vue: ['#42B883', '#ffffff', 'VUE'],
-    svelte: ['#FF3E00', '#ffffff', 'SVELTE'],
-    json: ['#F7DF1E', '#323330', '{}'],
-    sql: ['#00758F', '#ffffff', 'SQL'],
-    csv: ['#2E7D32', '#ffffff', 'CSV'],
-    db: ['#0F62FE', '#ffffff', 'DB'],
-    sqlite: ['#0F62FE', '#ffffff', 'DB'],
-    sqlite3: ['#0F62FE', '#ffffff', 'DB'],
-    xml: ['#FF6F00', '#ffffff', 'XML'],
-    svg: ['#FF6F00', '#ffffff', 'SVG'],
-    md: ['#42A5F5', '#ffffff', 'M↓'],
-    markdown: ['#42A5F5', '#ffffff', 'M↓'],
-    txt: ['#90A4AE', '#ffffff', 'TXT'],
-    text: ['#90A4AE', '#ffffff', 'TXT'],
-    log: ['#90A4AE', '#ffffff', 'TXT'],
-    pdf: ['#E5202B', '#ffffff', 'PDF'],
-    doc: ['#2B579A', '#ffffff', 'DOC'],
-    docx: ['#2B579A', '#ffffff', 'DOC'],
-    xls: ['#217346', '#ffffff', 'XLS'],
-    xlsx: ['#217346', '#ffffff', 'XLS'],
-    ppt: ['#D24726', '#ffffff', 'PPT'],
-    pptx: ['#D24726', '#ffffff', 'PPT'],
-    yml: ['#CB171E', '#ffffff', 'YML'],
-    yaml: ['#CB171E', '#ffffff', 'YML'],
-    toml: ['#8D6E63', '#ffffff', 'TOML'],
-    ini: ['#546E7A', '#ffffff', 'CFG'],
-    cfg: ['#546E7A', '#ffffff', 'CFG'],
-    config: ['#546E7A', '#ffffff', 'CFG'],
-    env: ['#F9A825', '#323330', 'ENV'],
-    properties: ['#7B1FA2', '#ffffff', 'PROP'],
-    lock: ['#37474F', '#ffffff', 'LOCK'],
-    dockerfile: ['#2496ED', '#ffffff', 'DOCK'],
-    docker: ['#2496ED', '#ffffff', 'DOCK'],
-    makefile: ['#607D8B', '#ffffff', 'MAKE'],
-    gradle: ['#02303A', '#ffffff', 'GRADLE'],
-    cmake: ['#265774', '#ffffff', 'CMAKE'],
-    ipynb: ['#F37726', '#ffffff', 'JNB'],
-    sh: ['#89E051', '#111111', '>_'],
-    bash: ['#89E051', '#111111', '>_'],
-    zsh: ['#89E051', '#111111', '>_'],
-    ps1: ['#012456', '#ffffff', 'PS1'],
-    bat: ['#546E7A', '#ffffff', 'CMD'],
-    cmd: ['#546E7A', '#ffffff', 'CMD'],
-    zip: ['#FFA726', '#323330', 'ZIP'],
-    tar: ['#FFA726', '#323330', 'ZIP'],
-    gz: ['#FFA726', '#323330', 'ZIP'],
-    '7z': ['#FFA726', '#323330', 'ZIP'],
-    rar: ['#FFA726', '#323330', 'ZIP'],
-    exe: ['#0078D4', '#ffffff', 'EXE'],
-    msi: ['#0078D4', '#ffffff', 'EXE'],
-    wasm: ['#654FF0', '#ffffff', 'WASM'],
-    png: ['#8E44AD', '#ffffff', 'IMG'],
-    jpg: ['#8E44AD', '#ffffff', 'IMG'],
-    jpeg: ['#8E44AD', '#ffffff', 'IMG'],
-    gif: ['#8E44AD', '#ffffff', 'IMG'],
-    webp: ['#8E44AD', '#ffffff', 'IMG'],
-    ico: ['#8E44AD', '#ffffff', 'IMG'],
-    bmp: ['#8E44AD', '#ffffff', 'IMG'],
-    gitignore: ['#F05032', '#ffffff', 'GIT'],
-    gitattributes: ['#F05032', '#ffffff', 'GIT'],
-};
-/** One self-colored badge svg: rounded brand rect + short contrast mark. */
-const badgeIcon = ([bg, fg, mark], size) => (0, react_1.createElement)('svg', {
-    width: size,
-    height: size,
-    viewBox: '0 0 24 24',
-    'aria-hidden': 'true',
-}, (0, react_1.createElement)('rect', { x: 1, y: 1, width: 22, height: 22, rx: 5, fill: bg }), (0, react_1.createElement)('text', {
-    x: 12,
-    y: 16,
-    textAnchor: 'middle',
-    fontSize: mark.length <= 2 ? 9 : mark.length <= 4 ? 7 : 5.5,
-    fontWeight: 700,
-    fill: fg,
-}, mark));
-/** File-type icon dispatcher: branded badge for known extensions, the
- *  neutral file icon for everything else. */
-const fileIconByExt = (ext, size = 14) => {
-    const spec = FILE_BADGES[String(ext ?? '')
-        .toLowerCase()
-        .replace(/^\./, '')];
-    return spec === undefined ? icon.file(size) : badgeIcon(spec, size);
-};
+// ── 文件类型徽标（共享 part）────────────────────────────────────────\n// FILE_BADGES（98 项扩展名映射）、badgeIcon、fileIconByExt 同属\n// dsh-shared/client-parts/icons.part.js 的图标集，构建期一并注入本作用域；\n// 这里只声明本文件用到的入口类型，实现不复制。\ndeclare const fileIconByExt: (ext: string | null | undefined, size?: number) => ReactNode
 // ── export part：PNG/SVG download + copy source ─────────────────────
 /** 默认文件名：mermaid-<序号>.<ext>（序号取自 entryId，如 dsh-mermaid-3 → 3）。 */
 function buildExportFileName(entryId, ext) {
@@ -714,7 +921,6 @@ const STREAM_MIN_OBSERVATIONS = 2;
 const MAX_SOURCE_CHARS = 50000;
 const mounts = new Map();
 const streamWatch = new Map();
-let scanRound = 0;
 /** Mount a card into the block, hiding the original <pre>. */
 function mountCard(block, source) {
     if (mounts.has(block))
@@ -829,34 +1035,23 @@ function scanBlocks(root, round) {
         }
     }
 }
-/** Observe the body; returns the observer disposer. */
+/** Observe the body; returns the observer disposer.
+ *  骨架（观察配置 / 批次轮次 / disposer）来自共享 part（dsh-shared/client-parts/
+ *  dom-scanner.part.js，与 dsh-md-render 同一份，issue #186 P2）。本插件的特有策略
+ *  全部留在 scanBlocks / considerBlock 内 —— 围栏闭合判定、离屏渲染、自愈卸载；
+ *  teardown 清理经 onTeardown 注入，行为与原 disposer 一致。 */
 function installScanner() {
-    scanBlocks(document.body, ++scanRound);
-    const observer = new MutationObserver((mutations) => {
-        const round = ++scanRound;
-        for (const mutation of mutations) {
-            for (const added of mutation.addedNodes) {
-                if (added.nodeType === 1)
-                    scanBlocks(added, round);
-            }
-        }
-        // Fallback re-scan: rescan every known scroll container
-        for (const sc of document.querySelectorAll('[data-conversation-scroll]')) {
-            scanBlocks(sc, round);
-        }
+    return installDomScanner({
+        // round 由共享骨架递增（同一批次的 scan 调用共享同一轮次），语义与原 scanRound 相同。
+        scan: (node, round) => scanBlocks(node, round),
+        // Fallback re-scan: 会话滚动容器（流式结束后内容补全，不产生 addedNodes）。
+        rescanSelectors: ['[data-conversation-scroll]'],
+        onTeardown: () => {
+            for (const block of Array.from(streamWatch.keys()))
+                clearStreamWatch(block);
+            mounts.clear();
+        },
     });
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['data-streaming'],
-    });
-    return () => {
-        observer.disconnect();
-        for (const block of Array.from(streamWatch.keys()))
-            clearStreamWatch(block);
-        mounts.clear();
-    };
 }
 // ── styles part：DSH tokens ──────────────────────────────────────────
 const STYLES = `
@@ -892,23 +1087,13 @@ const STYLES = `
 @keyframes dsh-mermaid-render-card-in{from{opacity:0;transform:translateY(1px)}to{opacity:1;transform:none}}
 @keyframes dsh-mermaid-render-spin{to{transform:rotate(360deg)}}
 `;
-// ── apply part：导出 inject 和 apply ──────────────────────────────────
 exports.inject = [];
 exports.apply = function apply(ctx) {
-    // Stylesheet first, unconditionally (see dsh-file-activity pitfall:
-    // injecting styles behind a service early-return loses them on HMR).
-    ctx.effect(() => {
-        if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined')
-            return () => { };
-        const style = document.createElement('style');
-        style.setAttribute('data-dsh-mermaid-render', 'styles');
-        style.textContent = STYLES;
-        document.head.appendChild(style);
-        return () => {
-            if (style.parentNode)
-                style.parentNode.removeChild(style);
-        };
-    }, 'dsh-mermaid-render: styles');
+    // 样式注入走共享实现（issue #186 P2）：与 dsh-md-render / dsh-think-zh-expand
+    // 同一份「无条件最先注入 + 随 fiber teardown 卸载」逻辑（style-tag.part.js）。
+    // 位置仍在最前、不进任何早退分支（dsh-file-activity 踩坑：挂在服务判空之后，
+    // HMR / 服务缺省时样式会丢）。
+    installStyles(ctx, 'data-dsh-mermaid-render', STYLES, 'dsh-mermaid-render: styles');
     ctx.effect(() => installScanner(), 'dsh-mermaid-render: scanner');
 };
 

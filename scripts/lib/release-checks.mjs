@@ -366,6 +366,30 @@ export function findFreePort(start = 3087) {
 }
 
 /**
+ * 预分配 count 个互不相同的空闲端口（issue #246：批量并行发版时多个隔离实例
+ * 必须各占一个端口，否则并行校验会互相抢占——原来每个插件各自 `findFreePort(3087)`，
+ * 串行时「碰巧」安全，一并行就会拿到同一个端口）。
+ *
+ * 逐个探测并递增游标：返回的端口严格递增且互不相同；探测与真正启动之间仍有
+ * 极小的被抢占窗口（本机其它进程），因此调用方仍应把端口当作「已尽力预留」。
+ *
+ * @param {number} start 起始端口
+ * @param {number} count 需要的端口个数（<=0 返回空数组）
+ * @returns {Promise<number[]>} 升序、互不相同的空闲端口
+ */
+export async function findFreePorts(start = 3087, count = 1) {
+  const ports = []
+  if (!Number.isInteger(count) || count <= 0) return ports
+  let cursor = Number.isInteger(start) && start > 0 ? start : 3087
+  while (ports.length < count) {
+    const port = await findFreePort(cursor)
+    ports.push(port)
+    cursor = port + 1
+  }
+  return ports
+}
+
+/**
  * 查询发版 tag 的状态（tag 管理防护）。
  *
  * 事故背景：release commit 已推 main 但 tag 缺失/指向旧 commit；重跑发版时若直接

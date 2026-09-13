@@ -21,6 +21,18 @@
  * 差异只有三点：① 多一步基线 SHA 校验；② node_modules 用 Node 逐包软链；③ 默认装 hooks。
  *
  * 退出码：0 成功；1 参数/前置/校验失败；2 需要显式确认（如 clean 缺 --yes）。
+ *
+ * ⚠️ **测试与覆盖边界（别误以为 CI 覆盖了 create）**：
+ *   `scripts/test/fork-pool.test.mjs` 覆盖的是**纯函数契约**与**离线 CLI 路径**
+ *   （list / clean 的安全护栏与幂等 / 参数错误 / 前置失败的可诊断性）。
+ *   `create` 依赖 GitHub 网络（`fetch` + `ls-remote`），**不在 CI 里跑** ——
+ *   它有真实环境的手测记录（八步全绿 3.3s，见 docs/开发指南/工程效率规范.md），
+ *   但那是手测，不是回归保障。改动 create 时请务必手工走一遍。
+ *
+ *   网络不可达时的行为（实测）：第 3 步 `git fetch origin <base>` 立即失败（388ms），
+ *   脚本打印**该步的 git 原始输出**与代理排查提示后以退出码 1 中断；
+ *   已生成的半个 fork 目录会保留供排查，`clean <编号> --yes` 可清理。
+ *   **基线校验绝不跳过**（宁可失败，也不基于来源不明的基线起分支）。
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -184,6 +196,18 @@ function cmdCreate() {
       `  ${ok ? '✔' : '✖'} ${steps.find((s) => s.id === id)?.label ?? id} ${detail ? `— ${detail}` : ''} ${res ? `(${formatMs(res.ms)})` : ''}`,
     )
     if (!ok) {
+      // 失败必须可诊断：把该步的**原始输出**贴出来。
+      // 补验时发现的缺口：断网只会打印「✖ 拉取远端基线」，用户无从判断是代理挂了、
+      // 分支名写错、还是仓库权限问题 —— 于是掉头去查别的地方。
+      const raw = String(res?.out ?? '').trim()
+      if (raw) {
+        console.error('  原始输出（末 5 行）：')
+        for (const line of raw.split('\n').slice(-5)) console.error(`    ${line}`)
+      }
+      if (id === 'fetch' || id === 'baseline') {
+        console.error('  这两步需要网络（https + 代理）。排查：`ghops proxy` / `gh-net check`。')
+        console.error('  离线时无法创建 fork —— 基线校验必须比对远端 SHA，脚本不会跳过它。')
+      }
       console.error('\n✖ 创建中断。已生成的目录可保留排查，或 clean 后重试。')
       process.exit(1)
     }

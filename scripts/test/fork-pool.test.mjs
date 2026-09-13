@@ -37,10 +37,10 @@ import {
 const scriptPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'fork-pool.mjs')
 
 /** 在临时目录里跑一次 CLI，返回 { code, out }。 */
-function runCli(args, { tmpRoot } = {}) {
+function runCli(args, { tmpRoot, env } = {}) {
   const result = spawnSync(process.execPath, [scriptPath, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, ...(tmpRoot ? { FORK_POOL_TMP: tmpRoot } : {}) },
+    env: { ...process.env, ...(tmpRoot ? { FORK_POOL_TMP: tmpRoot } : {}), ...(env ?? {}) },
     timeout: 60_000,
   })
   return { code: result.status ?? 1, out: `${result.stdout ?? ''}${result.stderr ?? ''}` }
@@ -323,6 +323,22 @@ describe('CLI 端到端（离线）', () => {
       expect(out).toContain('gh-fork-test4')
       expect(out).toContain('hooks=✔')
       expect(out).toContain('分支=main')
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
+  it('前置失败时可诊断：源仓库无效会明确说清原因，而不是静默退出', () => {
+    // create 依赖网络（fetch + ls-remote），CI 里跑不了完整路径 —— 但"失败必须说人话"
+    // 这一条是离线可测的：源仓库解析不出来时，脚本要在**动手之前**给出明确原因。
+    const fake = mkdtempSync(join(tmpdir(), 'fork-pool-test-'))
+    try {
+      const { code, out } = runCli(['create', 'fail1'], {
+        tmpRoot: fake,
+        env: { FORK_POOL_MAIN: '/nonexistent-repo-xyz' },
+      })
+      expect(code).toBe(1)
+      expect(out).toContain('无法从主工作区 origin 解析')
     } finally {
       rmSync(fake, { recursive: true, force: true })
     }

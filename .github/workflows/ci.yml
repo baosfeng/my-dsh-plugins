@@ -112,6 +112,7 @@ jobs:
         with:
           flag-name: ${{ matrix.plugin }}
           parallel: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # Coveralls parallel 模式汇总：所有 test matrix job 上传后发送 webhook 信号
   coverage-finish:

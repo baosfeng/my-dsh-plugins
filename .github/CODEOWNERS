@@ -1,0 +1,36 @@
+# Code Owners 文件
+# 自动分配 reviewer 给 PR
+# 文档：https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# 默认 reviewer（整个仓库）
+* @baosfeng
+
+# CI/CD 配置
+.github/workflows/* @baosfeng
+.github/dependabot.yml @baosfeng
+
+# 插件代码
+plugins/ @baosfeng
+
+# 共享库
+plugins/dsh-shared/ @baosfeng
+
+# 文档
+docs/ @baosfeng
+*.md @baosfeng
+
+# 配置文件
+package.json @baosfeng
+tsconfig*.json @baosfeng
+eslint.config.js @baosfeng
+knip.json @baosfeng
+.prettierrc @baosfeng
+
+# 测试文件
+**/test/ @baosfeng
+**/*.test.* @baosfeng
+**/*.spec.* @baosfeng
+
+# 构建脚本
+scripts/ @baosfeng
+**/scripts/ @baosfeng

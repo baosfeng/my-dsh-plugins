@@ -1,5 +1,8 @@
 # my-dsh-plugins
 
+[![npm version](https://img.shields.io/npm/v/my-dsh-plugins.svg?style=flat-square)](https://www.npmjs.com/package/my-dsh-plugins)
+[![CI](https://github.com/baosfeng/my-dsh-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/baosfeng/my-dsh-plugins/actions/workflows/ci.yml)
+[![Coverage Status](https://coveralls.io/repos/github/baosfeng/my-dsh-plugins/badge.svg?branch=main)](https://coveralls.io/github/baosfeng/my-dsh-plugins?branch=main)
 [![插件生态](https://img.shields.io/badge/插件生态-topic%20dsh--better--sidebar-4d6bfe)](https://github.com/topics/dsh-better-sidebar)
 
 **个人 DSH（DeepSeek Harness）插件集合仓库**：轻量多插件目录，每个插件位于 `plugins/<name>/`，自包含、可独立安装与发布。

@@ -1,0 +1,59 @@
+# 自动关闭过期的 issue 和 PR
+# 文档：https://github.com/actions/stale
+
+name: Close Stale Issues and PRs
+
+on:
+  schedule:
+    # 每天 UTC 00:00 运行（北京时间 08:00）
+    - cron: '0 0 * * *'
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          # Issue 配置
+          days-before-issue-stale: 30
+          days-before-issue-close: 7
+          stale-issue-label: 'stale'
+          stale-issue-message: |
+            这个 issue 已经被标记为过期，因为它已经 30 天没有活动。
+            如果这个 issue 仍然相关，请添加评论或移除 stale 标签。
+            否则，这个 issue 将在 7 天后自动关闭。
+          close-issue-message: |
+            这个 issue 已经被自动关闭，因为它已经 7 天没有活动。
+            如果这个 issue 仍然相关，请重新打开或创建新的 issue。
+
+          # PR 配置
+          days-before-pr-stale: 30
+          days-before-pr-close: 7
+          stale-pr-label: 'stale'
+          stale-pr-message: |
+            这个 PR 已经被标记为过期，因为它已经 30 天没有活动。
+            如果这个 PR 仍然相关，请添加评论或移除 stale 标签。
+            否则，这个 PR 将在 7 天后自动关闭。
+          close-pr-message: |
+            这个 PR 已经被自动关闭，因为它已经 7 天没有活动。
+            如果这个 PR 仍然相关，请重新打开或创建新的 PR。
+
+          # 排除的标签
+          exempt-issue-labels: 'pinned,security,bug,enhancement'
+          exempt-pr-labels: 'pinned,security,dependencies'
+
+          # 排除的里程碑
+          exempt-all-milestones: true
+
+          # 排除的项目
+          exempt-all-projects: true
+
+          # 操作选项
+          remove-stale-when-updated: true
+          stale-issue-label: 'stale'
+          stale-pr-label: 'stale'
+          operations-per-run: 100

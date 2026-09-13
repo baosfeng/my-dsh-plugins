@@ -1,21 +1,116 @@
-# Security Policy
+# 安全策略
 
-## Supported Versions
+## 报告漏洞
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+如果您发现安全漏洞，请按照以下步骤报告：
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+### 1. 不要公开披露
 
-## Reporting a Vulnerability
+请**不要**在公开的 issue、PR 或社交媒体上披露安全漏洞。
 
-Use this section to tell people how to report a vulnerability.
+### 2. 通过 GitHub 安全通告报告
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+1. 访问仓库的 [安全通告页面](https://github.com/baosfeng/my-dsh-plugins/security/advisories/new)
+2. 填写漏洞详情：
+   - 漏洞类型（例如：代码注入、XSS、依赖漏洞等）
+   - 影响范围
+   - 复现步骤
+   - 建议的修复方案（如果有）
+
+### 3. 直接联系维护者
+
+如果无法通过 GitHub 安全通告报告，可以通过以下方式联系：
+
+- **邮箱**：[维护者邮箱]
+- **私信**：通过 GitHub 私信联系 @baosfeng
+
+## 响应时间
+
+我们承诺：
+
+- **24 小时内**确认收到漏洞报告
+- **72 小时内**提供初步评估
+- **7 天内**提供修复方案或缓解措施
+- **30 天内**发布修复版本（如果适用）
+
+## 支持的版本
+
+我们为以下版本提供安全更新：
+
+| 版本              | 支持状态  |
+| ----------------- | --------- |
+| 最新版本          | ✅ 支持   |
+| 最近 3 个次要版本 | ✅ 支持   |
+| 更早版本          | ❌ 不支持 |
+
+## 安全更新流程
+
+1. **确认漏洞**：维护者确认漏洞存在
+2. **评估影响**：评估漏洞的影响范围和严重程度
+3. **开发修复**：开发修复方案
+4. **测试验证**：测试修复方案的有效性
+5. **发布更新**：发布安全更新版本
+6. **公开披露**：在修复发布后公开披露漏洞详情
+
+## 安全最佳实践
+
+### 对于用户
+
+1. **及时更新**：定期更新到最新版本
+2. **监控告警**：关注 GitHub 安全告警
+3. **审查依赖**：定期审查项目依赖的安全性
+
+### 对于贡献者
+
+1. **代码审查**：所有 PR 必须经过代码审查
+2. **安全测试**：测试安全相关的功能
+3. **依赖管理**：定期更新依赖，避免使用有漏洞的版本
+
+## 安全工具
+
+本项目使用以下安全工具：
+
+1. **Dependabot**：自动检测依赖漏洞
+2. **CodeQL**：代码安全扫描
+3. **密钥扫描**：检测泄露的密钥
+4. **npm audit**：依赖漏洞审计
+
+## 安全相关配置
+
+### GitHub 仓库设置
+
+- ✅ 启用 Dependabot 安全更新
+- ✅ 启用 CodeQL 代码扫描
+- ✅ 启用密钥扫描
+- ✅ 启用依赖漏洞审计
+
+### CI/CD 安全检查
+
+- ✅ 依赖漏洞审计（moderate+）
+- ✅ 代码质量检查
+- ✅ 文档一致性检查
+- ✅ 链接完整性检查
+
+## 漏洞披露政策
+
+我们遵循 [负责任的漏洞披露](https://cheatsheetseries.owasp.org/cheatsheets/Vulnerability_Disclosure_Cheat_Sheet.html) 原则：
+
+1. **协调披露**：与维护者协调披露时间
+2. **合理时间**：给予维护者合理的时间修复漏洞
+3. **公开披露**：在修复发布后公开披露漏洞详情
+
+## 安全相关资源
+
+- [GitHub 安全功能](https://docs.github.com/en/code-security)
+- [npm 安全最佳实践](https://docs.npmjs.com/packages-and-modules/securing-your-code)
+- [OWASP 安全指南](https://owasp.org/www-project-top-ten/)
+
+## 联系方式
+
+如有任何安全问题，请通过以下方式联系：
+
+- **GitHub 安全通告**：[创建安全通告](https://github.com/baosfeng/my-dsh-plugins/security/advisories/new)
+- **邮箱**：[维护者邮箱]
+- **GitHub 私信**：@baosfeng
+
+感谢您帮助我们保持项目的安全！

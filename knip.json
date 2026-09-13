@@ -24,6 +24,7 @@
     "dsh-shared",
     "@stryker-mutator/html-reporter",
     "react",
+    "react-dom",
     "@deepseek-ai/dsh-client-ui-primitives",
     "@types/react-dom"
   ],

@@ -1,0 +1,79 @@
+# PR 标签配置
+# 根据文件路径自动添加标签
+
+# 依赖更新
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file: 'package.json'
+      - any-glob-to-any-file: 'package-lock.json'
+      - any-glob-to-any-file: 'plugins/*/package.json'
+
+# CI/CD
+ci:
+  - changed-files:
+      - any-glob-to-any-file: '.github/workflows/*.yml'
+      - any-glob-to-any-file: '.github/*.yml'
+
+# 文档
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: '*.md'
+      - any-glob-to-any-file: 'docs/**'
+      - any-glob-to-any-file: 'plugins/*/README.md'
+
+# 测试
+testing:
+  - changed-files:
+      - any-glob-to-any-file: 'plugins/*/test/**'
+      - any-glob-to-any-file: 'scripts/test/**'
+      - any-glob-to-any-file: '**/*.test.*'
+      - any-glob-to-any-file: '**/*.spec.*'
+
+# 插件代码
+plugin:
+  - changed-files:
+      - any-glob-to-any-file: 'plugins/*/src/**'
+      - any-glob-to-any-file: 'plugins/*/lib/**'
+
+# 共享库
+shared:
+  - changed-files:
+      - any-glob-to-any-file: 'plugins/dsh-shared/**'
+
+# 配置文件
+config:
+  - changed-files:
+      - any-glob-to-any-file: 'tsconfig*.json'
+      - any-glob-to-any-file: 'eslint.config.js'
+      - any-glob-to-any-file: 'knip.json'
+      - any-glob-to-any-file: '.jscpd.json'
+      - any-glob-to-any-file: '.prettierrc'
+
+# 脚本
+scripts:
+  - changed-files:
+      - any-glob-to-any-file: 'scripts/**'
+
+# 安全
+security:
+  - changed-files:
+      - any-glob-to-any-file: 'SECURITY.md'
+      - any-glob-to-any-file: '.github/workflows/codeql.yml'
+      - any-glob-to-any-file: '.github/workflows/dependabot-auto-merge.yml'
+
+# 性能
+performance:
+  - changed-files:
+      - any-glob-to-any-file: 'plugins/*/src/**/*.ts'
+      - any-glob-to-any-file: 'plugins/dsh-shared/src/**/*.ts'
+
+# 重构
+refactor:
+  - changed-files:
+      - any-glob-to-any-file: 'plugins/*/src/**/*.ts'
+      - any-glob-to-any-file: 'plugins/dsh-shared/src/**/*.ts'
+
+# 新插件
+new-plugin:
+  - changed-files:
+      - any-glob-to-any-file: 'plugins/*/package.json'

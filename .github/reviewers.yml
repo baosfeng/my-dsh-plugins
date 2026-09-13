@@ -1,0 +1,337 @@
+# 多角度 Code Review 配置
+# 从不同角度自动分配 reviewer
+
+# 默认 reviewer 配置
+default:
+  reviewers:
+    - baosfeng
+  min_approvals: 1
+
+# 按文件类型分配 reviewer
+file_patterns:
+  # CI/CD 配置
+  .github/workflows/*.yml:
+    reviewers:
+      - baosfeng
+    focus:
+      - 'CI/CD 配置安全性'
+      - '性能优化'
+      - '最佳实践'
+      - '权限最小化'
+
+  # GitHub 配置文件
+  .github/*.yml:
+    reviewers:
+      - baosfeng
+    focus:
+      - '配置正确性'
+      - '安全性'
+      - '最佳实践'
+
+  # 依赖配置
+  package.json:
+    reviewers:
+      - baosfeng
+    focus:
+      - '依赖安全性'
+      - '版本兼容性'
+      - '许可证合规'
+      - '依赖树健康'
+
+  # TypeScript 配置
+  tsconfig*.json:
+    reviewers:
+      - baosfeng
+    focus:
+      - 'TypeScript 配置最佳实践'
+      - '编译选项优化'
+      - '类型安全'
+
+  # ESLint 配置
+  eslint.config.js:
+    reviewers:
+      - baosfeng
+    focus:
+      - '代码质量规则'
+      - '最佳实践'
+      - '性能优化'
+      - '规则合理性'
+
+  # 测试文件
+  '**/test/**':
+    reviewers:
+      - baosfeng
+    focus:
+      - '测试覆盖率'
+      - '测试质量'
+      - '边界条件'
+      - '测试隔离性'
+
+  # 文档文件
+  '**/*.md':
+    reviewers:
+      - baosfeng
+    focus:
+      - '文档完整性'
+      - '示例准确性'
+      - '格式规范'
+      - '链接有效性'
+
+  # 插件代码
+  'plugins/**/src/**':
+    reviewers:
+      - baosfeng
+    focus:
+      - '代码架构'
+      - '性能优化'
+      - '错误处理'
+      - '安全性'
+      - '可维护性'
+
+  # 共享库代码
+  'plugins/dsh-shared/**':
+    reviewers:
+      - baosfeng
+    focus:
+      - 'API 设计'
+      - '向后兼容性'
+      - '文档完整性'
+      - '测试覆盖率'
+      - '性能影响'
+
+  # 配置文件
+  '**/*.json':
+    reviewers:
+      - baosfeng
+    focus:
+      - '配置正确性'
+      - '格式规范'
+      - '安全性'
+
+  # 脚本文件
+  'scripts/**':
+    reviewers:
+      - baosfeng
+    focus:
+      - '脚本安全性'
+      - '错误处理'
+      - '性能优化'
+      - '可维护性'
+
+# 按 PR 类型分配 reviewer
+pr_types:
+  # 依赖更新
+  dependencies:
+    reviewers:
+      - baosfeng
+    focus:
+      - '依赖安全性'
+      - '版本兼容性'
+      - '许可证合规'
+      - '性能影响'
+      - '依赖树健康'
+
+  # 功能开发
+  feature:
+    reviewers:
+      - baosfeng
+    focus:
+      - '功能完整性'
+      - '代码质量'
+      - '测试覆盖率'
+      - '文档更新'
+      - '向后兼容性'
+
+  # Bug 修复
+  bugfix:
+    reviewers:
+      - baosfeng
+    focus:
+      - '根因分析'
+      - '修复完整性'
+      - '回归测试'
+      - '边界条件'
+      - '错误处理'
+
+  # 性能优化
+  performance:
+    reviewers:
+      - baosfeng
+    focus:
+      - '性能基准'
+      - '内存使用'
+      - 'CPU 使用'
+      - '优化效果'
+      - '资源管理'
+
+  # 安全修复
+  security:
+    reviewers:
+      - baosfeng
+    focus:
+      - '安全漏洞修复'
+      - '输入验证'
+      - '权限控制'
+      - '安全测试'
+      - '敏感数据处理'
+
+  # 文档更新
+  documentation:
+    reviewers:
+      - baosfeng
+    focus:
+      - '文档完整性'
+      - '示例准确性'
+      - '格式规范'
+      - '链接有效性'
+      - '文档结构'
+
+  # 重构
+  refactor:
+    reviewers:
+      - baosfeng
+    focus:
+      - '代码可读性'
+      - '向后兼容性'
+      - '测试覆盖率'
+      - '性能影响'
+      - '架构合理性'
+
+  # 测试
+  testing:
+    reviewers:
+      - baosfeng
+    focus:
+      - '测试覆盖率'
+      - '测试质量'
+      - '测试隔离性'
+      - '测试性能'
+      - '边界条件'
+
+# 自动审查规则
+auto_review:
+  # 自动批准规则
+  auto_approve:
+    # 依赖更新（minor/patch）
+    - type: dependencies
+      update_type: [minor, patch]
+      require_ci: true
+      require_tests: true
+
+    # 文档更新
+    - type: documentation
+      require_ci: true
+
+    # 测试更新
+    - type: testing
+      require_ci: true
+      require_tests: true
+
+  # 自动请求审查
+  auto_request_review:
+    # 安全修复
+    - type: security
+      require_review: true
+      min_approvals: 2
+
+    # 破坏性变更
+    - type: breaking
+      require_review: true
+      min_approvals: 2
+
+    # 性能优化
+    - type: performance
+      require_review: true
+      require_benchmark: true
+
+    # 重构
+    - type: refactor
+      require_review: true
+      min_approvals: 1
+
+    # 共享库变更
+    - path: 'plugins/dsh-shared/**'
+      require_review: true
+      min_approvals: 1
+
+# 审查焦点配置
+review_focus:
+  # 架构审查
+  architecture:
+    enabled: true
+    focus_areas:
+      - '模块边界'
+      - '依赖方向'
+      - '接口设计'
+      - '扩展性'
+      - '向后兼容性'
+
+  # 性能审查
+  performance:
+    enabled: true
+    focus_areas:
+      - '时间复杂度'
+      - '空间复杂度'
+      - '资源使用'
+      - '缓存策略'
+      - '并发安全'
+
+  # 安全审查
+  security:
+    enabled: true
+    focus_areas:
+      - '输入验证'
+      - '输出编码'
+      - '权限控制'
+      - '敏感数据处理'
+      - '依赖安全'
+
+  # 可维护性审查
+  maintainability:
+    enabled: true
+    focus_areas:
+      - '代码可读性'
+      - '注释质量'
+      - '错误处理'
+      - '日志记录'
+      - '命名规范'
+
+  # 测试审查
+  testing:
+    enabled: true
+    focus_areas:
+      - '测试覆盖率'
+      - '测试质量'
+      - '边界条件'
+      - '错误路径'
+      - '测试隔离性'
+
+  # 文档审查
+  documentation:
+    enabled: true
+    focus_areas:
+      - '文档完整性'
+      - '示例准确性'
+      - '格式规范'
+      - '链接有效性'
+      - '文档结构'
+
+  # API 设计审查
+  api_design:
+    enabled: true
+    focus_areas:
+      - '接口一致性'
+      - '向后兼容性'
+      - '错误处理'
+      - '文档完整性'
+      - '性能影响'
+
+  # 依赖审查
+  dependency:
+    enabled: true
+    focus_areas:
+      - '依赖安全性'
+      - '版本兼容性'
+      - '许可证合规'
+      - '依赖树健康'
+      - '性能影响'

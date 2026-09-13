@@ -104,6 +104,27 @@ jobs:
       - name: Test ${{ matrix.plugin }} (unit tests + coverage gates)
         run: (cd "plugins/${{ matrix.plugin }}" && npm test)
 
+      # 上传单个插件覆盖率到 Coveralls（parallel 模式：每个 matrix job 上传后
+      # 由 coverage-finish job 发送 webhook 信号，Coveralls 才汇总并显示总覆盖率）
+      - name: Upload coverage to Coveralls
+        if: success()
+        uses: coverallsapp/github-action@v2
+        with:
+          flag-name: ${{ matrix.plugin }}
+          parallel: true
+          file: plugins/${{ matrix.plugin }}/coverage/lcov.info
+
+  # Coveralls parallel 模式汇总：所有 test matrix job 上传后发送 webhook 信号
+  coverage-finish:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Coveralls finished
+        uses: coverallsapp/github-action@v2
+        with:
+          parallel-finished: true
+
   # 质量门禁：资源冒烟（issue #127 插件资源占用防护）
   # 长会话资源回归检查：模拟「高频工具调用 + 多子 agent + 数小时」的生产形态
   # （补充 #126 长会话测试盲区），断言审计存储：

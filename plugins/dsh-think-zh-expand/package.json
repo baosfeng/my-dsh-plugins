@@ -45,10 +45,10 @@
     }
   },
   "peerDependencies": {
-    "cordis": "^4.0.0-rc.8",
-    "@deepseek-ai/dsh-system-prompt": "^0.1.1-rc.1",
-    "dsh-md-render": "^0.1.1",
-    "react": "^18.2.0 || ^19.2.0"
+    "cordis": "^4.0.0-rc.10",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.5-rc.2",
+    "dsh-md-render": "^0.1.8",
+    "react": "^18.2.0 || ^19.3.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-system-prompt": {

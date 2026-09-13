@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞报告
+    url: https://github.com/baosfeng/my-dsh-plugins/security/advisories/new
+    about: 请通过 GitHub 安全通告报告安全漏洞
+  - name: 文档问题
+    url: https://github.com/baosfeng/my-dsh-plugins/issues/new?template=documentation.md
+    about: 报告文档问题或建议

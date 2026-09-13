@@ -28,13 +28,13 @@ updates:
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
-      interval: 'weekly'
-      day: 'monday'
+      interval: 'daily'
       time: '09:00'
       timezone: 'Asia/Shanghai'
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - 'dependencies'
+      - 'automerge'
     commit-message:
       prefix: 'chore(deps)'
     allow:
@@ -52,19 +52,21 @@ updates:
         update-types:
           - 'major'
     # 安全更新（security updates）默认开启，且不受上面的 allow 限制
+    # 自动合并：对于 minor/patch 更新，如果 CI 通过，自动合并
+    # 注意：需要在 GitHub 仓库设置中启用 "Allow auto-merge"
 
   # 19 个插件目录的 devDeps（typescript / @types/node）—— issue #184 的漂移防线
   - package-ecosystem: 'npm'
     directories:
       - '/plugins/*'
     schedule:
-      interval: 'weekly'
-      day: 'monday'
+      interval: 'daily'
       time: '09:00'
       timezone: 'Asia/Shanghai'
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 10
     labels:
       - 'dependencies'
+      - 'automerge'
     commit-message:
       prefix: 'chore(deps)'
       include: 'scope'

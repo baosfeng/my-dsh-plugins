@@ -1,0 +1,121 @@
+# 自动分配 Reviewer 工作流
+# 根据文件类型和 PR 类型自动分配 reviewer
+
+name: Auto Assign Reviewers
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  assign-reviewers:
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            .github/workflows/*.yml
+            package.json
+            tsconfig*.json
+            eslint.config.js
+            **/test/**
+            **/*.md
+            plugins/**/src/**
+            plugins/dsh-shared/**
+
+      - name: Assign reviewers based on file types
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const reviewers = new Set();
+            const focusAreas = new Set();
+
+            // 检查文件类型并分配 reviewer
+            const changedFiles = '${{ steps.changed-files.outputs.all_changed_files }}'.split(' ');
+
+            for (const file of changedFiles) {
+              // CI/CD 配置
+              if (file.startsWith('.github/workflows/')) {
+                reviewers.add('baosfeng');
+                focusAreas.add('CI/CD 配置安全性');
+                focusAreas.add('性能优化');
+              }
+              
+              // 依赖配置
+              if (file === 'package.json') {
+                reviewers.add('baosfeng');
+                focusAreas.add('依赖安全性');
+                focusAreas.add('版本兼容性');
+              }
+              
+              // TypeScript 配置
+              if (file.startsWith('tsconfig')) {
+                reviewers.add('baosfeng');
+                focusAreas.add('TypeScript 配置最佳实践');
+              }
+              
+              // ESLint 配置
+              if (file === 'eslint.config.js') {
+                reviewers.add('baosfeng');
+                focusAreas.add('代码质量规则');
+              }
+              
+              // 测试文件
+              if (file.includes('/test/')) {
+                reviewers.add('baosfeng');
+                focusAreas.add('测试覆盖率');
+                focusAreas.add('测试质量');
+              }
+              
+              // 文档文件
+              if (file.endsWith('.md')) {
+                reviewers.add('baosfeng');
+                focusAreas.add('文档完整性');
+              }
+              
+              // 插件代码
+              if (file.startsWith('plugins/') && file.includes('/src/')) {
+                reviewers.add('baosfeng');
+                focusAreas.add('代码架构');
+                focusAreas.add('性能优化');
+              }
+              
+              // 共享库代码
+              if (file.startsWith('plugins/dsh-shared/')) {
+                reviewers.add('baosfeng');
+                focusAreas.add('API 设计');
+                focusAreas.add('向后兼容性');
+              }
+            }
+
+            // 分配 reviewer
+            if (reviewers.size > 0) {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                reviewers: Array.from(reviewers)
+              });
+            }
+
+            // 添加审查焦点评论
+            if (focusAreas.size > 0) {
+              const focusList = Array.from(focusAreas).map(area => `- ${area}`).join('\n');
+              const body = `## 🔍 审查焦点\n\n本次 PR 涉及以下方面，请重点关注：\n\n${focusList}`;
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }

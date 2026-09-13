@@ -112,7 +112,8 @@ jobs:
         with:
           flag-name: ${{ matrix.plugin }}
           parallel: true
-          file: plugins/${{ matrix.plugin }}/coverage/lcov.info
+          file: plugins/${{ matrix.plugin }}/coverage/coverage-final.json
+          format: json
 
   # Coveralls parallel 模式汇总：所有 test matrix job 上传后发送 webhook 信号
   coverage-finish:

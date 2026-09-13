@@ -3,7 +3,9 @@
 // verify-profile.mjs = 隔离 profile 软链与解析路径校验，issue #220；
 // screenshot-gate.mjs = README 效果图门禁判定与无 UI 豁免判据，issue #227；
 // preset-gate.mjs = agent preset 资产包形态判定与门禁豁免判据，issue #231；
-// deps-matrix.mjs = 依赖矩阵的版本解析/分档/漂移判定，issue #184），
+// deps-matrix.mjs = 依赖矩阵的版本解析/分档/漂移判定，issue #184；
+// fork-pool.mjs = fork 池的参数解析/路径推导/基线判定/清理护栏，issue #240；
+// ship-pipeline.mjs = 提交流水线的 fail-closed 判据/步骤清单/结果渲染，issue #240），
 // 阈值与根配置一致（行 85 / 分支 75 / 函数 80）。
 import { defineConfig } from 'vitest/config'
 
@@ -19,6 +21,8 @@ export default defineConfig({
         'scripts/lib/screenshot-gate.mjs',
         'scripts/lib/preset-gate.mjs',
         'scripts/lib/deps-matrix.mjs',
+        'scripts/lib/fork-pool.mjs',
+        'scripts/lib/ship-pipeline.mjs',
       ],
       thresholds: {
         lines: 85,

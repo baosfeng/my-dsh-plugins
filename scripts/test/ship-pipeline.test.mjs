@@ -147,3 +147,52 @@ describe('CLI 端到端（只读路径）', () => {
     expect(out).toContain('不合规')
   })
 })
+
+describe('参数解析的完整开关面', () => {
+  it('--base / --title / --issue / --draft / --dry-run / --json 都被识别并带默认值', () => {
+    const o = parseShipArgs([
+      '-m',
+      'fix(x): #1 修好',
+      '--push',
+      '--pr',
+      '--title',
+      'T',
+      '--issue',
+      '240',
+      '--base',
+      'dev',
+      '--draft',
+      '--dry-run',
+      '--json',
+    ])
+    expect(o).toMatchObject({
+      title: 'T',
+      issue: '240',
+      base: 'dev',
+      draft: true,
+      dryRun: true,
+      json: true,
+      push: true,
+      pr: true,
+    })
+    expect(o.errors).toEqual([])
+    // 默认值：目标分支 main、非草稿、非 dry-run
+    expect(parseShipArgs(['-m', 'fix(x): #1 修好'])).toMatchObject({ base: 'main', draft: false, dryRun: false })
+  })
+
+  it('-F / --message-file 二选一即可（长提交信息走文件）', () => {
+    expect(parseShipArgs(['-F', '/tmp/msg.txt']).messageFile).toBe('/tmp/msg.txt')
+    expect(parseShipArgs(['--message-file', '/tmp/msg.txt']).messageFile).toBe('/tmp/msg.txt')
+    expect(parseShipArgs(['-F', '/tmp/msg.txt']).errors).toEqual([])
+  })
+
+  it('参数缺值时报「缺少参数值」而不是静默用 undefined', () => {
+    expect(parseShipArgs(['-m']).errors.join()).toContain('缺少参数值')
+    expect(parseShipArgs(['-m', 'fix(x): #1 修好', '--base']).errors.join()).toContain('缺少参数值')
+  })
+
+  it('--help 时不因缺提交信息而报错（帮助必须随时可看）', () => {
+    expect(parseShipArgs(['--help']).errors).toEqual([])
+    expect(parseShipArgs(['-h']).help).toBe(true)
+  })
+})

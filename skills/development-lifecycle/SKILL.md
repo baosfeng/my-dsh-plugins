@@ -70,6 +70,7 @@ node scripts/verify-real-profile.mjs --skip    # 只做配置组合检查（不�
 - 信息格式 `<type>(<scope>): <描述>`、type 分类、一次提交一个功能 → `.reasonix/skills/commit-standards/SKILL.md`。
 - 提交前：`node scripts/verify-local.mjs --fast`（要 CI 等价用 `npm run verify`）；`pre-commit` 由 lint-staged 增量跑 `eslint --fix` + `prettier --write`。
 - 提交/推送由 leader 自主决策（`AGENTS.md` 强制规则）；**流程执行者不擅自 commit/push**，除非被明确要求。
+- **效率与流水线（issue #240）**：小步提交、**早推 PR**（让 CI 与本地后续工作并行，不要攒大 PR）；fork 池用 `node scripts/fork-pool.mjs create <编号>`（自动装 hooks），推送前用 `node scripts/fork-pool.mjs check` 自检（不依赖 hook，会真的跑 `verify-local --fast`）。原则、实测基线与取舍见 [工程效率规范](../../docs/开发指南/工程效率规范.md)。
 
 ## 5. 发版
 

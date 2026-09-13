@@ -35,6 +35,19 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
 
 先确认端口空闲：`lsof -ti :3099 || echo 空闲`。**不要**用主实例端口（web 默认 3080），也不要重复用别人的验证端口。
 
+### 前置：隔离实例可能"继承"生产的插件禁用名单（issue #240）
+
+dshmarket 把启停开关写在 `<DSH_HOME>/profiles/<profile>/.dsh-market/state.json`（`{"disabled":[...]}`），
+启动时按它**强制 off** 名单里的插件。`verify-real-profile.mjs` 复刻 profile 时已剥离该目录并打印提示；
+但你若手工搭实例、或看到「插件少了几个 / client 不进 manifest / API 404」，**先查这里再查插件代码**：
+
+```bash
+cat ~/.dsh/profiles/<profile>/.dsh-market/state.json | head -c 300   # disabled 非空 = 生产里被关掉的插件
+```
+
+判定与修法见 [docs/踩坑/隔离实例插件被静默禁用.md](../../docs/踩坑/隔离实例插件被静默禁用.md)。
+**验证环境的"少加载"与插件的"坏掉"表现一样，排查方向却完全相反。**
+
 ### 前置（硬性）：工作区 —— 没有工作区 = 合成器禁用 = 可能卡死
 
 隔离实例 / 新会话**没有工作区**时，GUI 合成器处于**禁用**态（占位文案「选择工作区」、发送按钮 `disabled`）。此时去点「添加工作区 / 选择工作区」会命中宿主 `@deepseek-ai/dsh-host-directory-picker-auto`：它在 macOS 桌面会话判定为 `native` → 弹**原生 macOS 目录对话框**（`osascript … choose folder with prompt "Select Workspace Directory"`）。`agent-browser` / CDP 只能驱动页面 DOM，**无法操作原生弹窗** → agent 静默卡死（实测可卡数天，`ps` 里积累多个 `choose folder` 进程）。完整记录见 [docs/踩坑/子agent工作区缺失导致卡死.md](../../docs/踩坑/子agent工作区缺失导致卡死.md)。

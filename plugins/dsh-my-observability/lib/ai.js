@@ -15,6 +15,19 @@ import { withTimeout, userMessage } from 'dsh-shared';
 import { REVIEW_TIMEOUT_MS } from './constants.js';
 /** diff 送入 prompt 的最大长度（截断防 token 爆炸）。 */
 const AI_DIFF_MAX = 8000;
+/** 从 AiAgentOptions 构建 agents.create 所需的 agentOptions 对象。 */
+function buildAgentOptions(opts) {
+    if (opts === undefined)
+        return {};
+    const result = {};
+    if (opts.provider !== undefined)
+        result.provider = opts.provider;
+    if (opts.model !== undefined)
+        result.model = opts.model;
+    if (opts.cwd !== undefined)
+        result.cwd = opts.cwd;
+    return result;
+}
 /** 运行 AI 审查（尽力而为；任何失败都降级为 failed 标记）。 */
 export async function runAiReview(ctx, diffText, report, timeoutMs = REVIEW_TIMEOUT_MS, agentOptions) {
     const agents = agentsServiceOf(ctx);
@@ -28,11 +41,7 @@ export async function runAiReview(ctx, diffText, report, timeoutMs = REVIEW_TIME
         handle = await agents.create({
             sessionId,
             meta: { origin: 'subagent', delegationDepth: 1 },
-            agentOptions: {
-                ...(agentOptions?.provider !== undefined ? { provider: agentOptions.provider } : {}),
-                ...(agentOptions?.model !== undefined ? { model: agentOptions.model } : {}),
-                ...(agentOptions?.cwd !== undefined ? { cwd: agentOptions.cwd } : {}),
-            },
+            agentOptions: buildAgentOptions(agentOptions),
         });
         handle.agent.followup(userMessage(aiReviewPrompt(diffText, report)));
         await withTimeout(handle.agent.whenIdle(), timeoutMs);

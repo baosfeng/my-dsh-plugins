@@ -41,6 +41,16 @@ export interface AiAgentOptions {
   cwd?: string
 }
 
+/** 从 AiAgentOptions 构建 agents.create 所需的 agentOptions 对象。 */
+function buildAgentOptions(opts?: AiAgentOptions): Record<string, string> {
+  if (opts === undefined) return {}
+  const result: Record<string, string> = {}
+  if (opts.provider !== undefined) result.provider = opts.provider
+  if (opts.model !== undefined) result.model = opts.model
+  if (opts.cwd !== undefined) result.cwd = opts.cwd
+  return result
+}
+
 /** 运行 AI 审查（尽力而为；任何失败都降级为 failed 标记）。 */
 export async function runAiReview(
   ctx: AiContext,
@@ -59,11 +69,7 @@ export async function runAiReview(
     handle = await agents.create({
       sessionId,
       meta: { origin: 'subagent', delegationDepth: 1 },
-      agentOptions: {
-        ...(agentOptions?.provider !== undefined ? { provider: agentOptions.provider } : {}),
-        ...(agentOptions?.model !== undefined ? { model: agentOptions.model } : {}),
-        ...(agentOptions?.cwd !== undefined ? { cwd: agentOptions.cwd } : {}),
-      },
+      agentOptions: buildAgentOptions(agentOptions),
     })
     handle.agent.followup(userMessage(aiReviewPrompt(diffText, report)))
     await withTimeout(handle.agent.whenIdle(), timeoutMs)

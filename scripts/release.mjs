@@ -105,24 +105,22 @@ const BUMP_TYPES = new Set(['patch', 'minor', 'major'])
  */
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+// ── 用法校验（退出码 2）────────────────────────────────────────────────────
+// 约定：用法错误 = 2，环境/仓库错误 = 1；**用法校验全部前移到环境校验之前**。
+// 否则参数写错时会先撞上环境错误，报错指向错的地方（PR #248 实测教训：
+// 用法校验被环境校验挡住，让人以为是仓库状态问题）。
 if (names.length === 0) {
   console.error(
     'usage: node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push] [--all-checks] [--concurrency N]',
   )
   process.exit(2)
 }
-// Validate all plugin names
 for (const name of names) {
   // name 会拼入多个 shell 命令（git tag --list / git log / git add 等），
   // 严格校验字符集（CodeQL js/shell-command-injection-from-environment）。
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name)) {
     console.error(`✗ 非法插件名: ${name}（仅允许 [a-zA-Z0-9._-] 且首字符为字母/数字）`)
     process.exit(2)
-  }
-  const pluginDir = join(root, 'plugins', name)
-  if (!existsSync(pluginDir)) {
-    console.error(`✗ plugins/${name} does not exist`)
-    process.exit(1)
   }
 }
 if (bump !== '' && !BUMP_TYPES.has(bump)) {
@@ -132,6 +130,20 @@ if (bump !== '' && !BUMP_TYPES.has(bump)) {
 if (push && allChecks) {
   console.error('✗ --all-checks 只用于 dry-run 静态门禁全景；发布必须走 fail-fast 完整门禁（含真实环境验证）')
   process.exit(2)
+}
+// --skip-real-verify / --skip-reason 是参数配对约束（用法），不是仓库状态：
+// 前移到任何插件处理之前拦截，避免「先跑了半部门禁才报参数错」。
+if (skipRealVerify && skipReason === '') {
+  console.error('✗ --skip-real-verify 必须带 --skip-reason "<理由>" 显式记录跳过原因（issue #67）')
+  process.exit(2)
+}
+
+// ── 环境校验（退出码 1）────────────────────────────────────────────────────
+for (const name of names) {
+  if (!existsSync(join(root, 'plugins', name))) {
+    console.error(`✗ plugins/${name} does not exist`)
+    process.exit(1)
+  }
 }
 
 /** 并发度：单插件恒为 1；非法取值回落默认值（性能开关不参与放行判定）。 */
@@ -627,10 +639,7 @@ async function processPlugin(name, ctx) {
   } else if (staticBlocked) {
     realPlan = { mode: 'skip', note: '静态门禁未通过：不启动隔离实例' }
   } else if (skipReal) {
-    if (skipRealVerify && skipReason === '') {
-      gateFail('3c', '--skip-real-verify 必须带 --skip-reason "<理由>" 显式记录跳过原因（issue #67）')
-      return fail(orderedStatic)
-    }
+    // --skip-real-verify 必须配 --skip-reason：已在参数校验阶段前移拦截（退出码 2）
     realPlan = {
       mode: 'skip',
       note: skipRealVerify ? `--skip-reason: ${skipReason}` : 'CI / DSH_SKIP_REAL_VERIFY',

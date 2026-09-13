@@ -36,11 +36,10 @@ npm link
 
 ## 📚 文档导航
 
-- [使用指南](Usage-Guide) - 详细使用说明
-- [贡献指南](Contributing) - 如何参与贡献
-- [开发指南](Development-Guide) - 插件开发入门
-- [API 文档](API-Docs) - API 参考文档
-- [插件列表](Plugin-List) - 所有插件说明
+- [使用指南](Usage-Guide.md) - 详细使用说明
+- [贡献指南](Contributing.md) - 如何参与贡献
+- [开发指南](Development-Guide.md) - 插件开发入门
+- [插件列表](Plugin-List.md) - 所有插件说明
 
 ## 🔧 插件列表
 

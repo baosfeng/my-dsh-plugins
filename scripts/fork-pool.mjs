@@ -288,14 +288,18 @@ function cmdClean() {
     console.error(`✖ 拒绝删除：${forkDir} 不在 ${TMP_ROOT}/gh-fork-* 范围内（安全护栏，避免 rm -rf 打错路径）`)
     process.exit(1)
   }
-  if (!existsSync(forkDir)) {
-    log(`✔ 目录本就不存在，幂等通过：${forkDir}`)
-    process.exit(0)
-  }
+  // ⚠️ 顺序即语义（与 scripts/ship.mjs 同一条规则）：**用法校验（缺 --yes，exit 2）
+  // 必须先于环境校验（目录是否存在）**。反过来写的话，`clean 不存在的东西` 会以"幂等通过"
+  // 返回 0，把"你忘了 --yes"这个用法错误悄悄吞掉 —— 退出码就再也区分不出
+  // 「命令写错了」和「环境不对」。
   if (!options.yes) {
     console.error(`✖ clean 会删除 ${forkDir}（不可逆）。确认后加 --yes：`)
     console.error(`  node scripts/fork-pool.mjs clean ${options.id} --yes`)
     process.exit(2)
+  }
+  if (!existsSync(forkDir)) {
+    log(`✔ 目录本就不存在，幂等通过：${forkDir}`)
+    process.exit(0)
   }
   const dirty = git(forkDir, ['status', '--porcelain']).out
   if (dirty) {

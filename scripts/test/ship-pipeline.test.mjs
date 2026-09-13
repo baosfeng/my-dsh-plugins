@@ -10,9 +10,11 @@
  *   5. 本地校验失败 → 不开 PR（fail-closed）。
  */
 import { spawnSync } from 'node:child_process'
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import {
   COMMIT_TYPES,
   PROTECTED_BRANCHES,
@@ -25,11 +27,58 @@ import {
   validateCommitMessage,
 } from '../lib/ship-pipeline.mjs'
 
-const scriptPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'ship.mjs')
+const scriptDir = join(dirname(fileURLToPath(import.meta.url)), '..')
+const scriptPath = join(scriptDir, 'ship.mjs')
+const libPath = join(scriptDir, 'lib', 'ship-pipeline.mjs')
 
-/** 跑一次 CLI（只测只读路径：--help / 参数错误 / --dry-run 之前就失败的分支）。 */
-function runCli(args) {
-  const result = spawnSync(process.execPath, [scriptPath, ...args], { encoding: 'utf8', timeout: 60_000 })
+const tempRoots = []
+
+/**
+ * 跑一次 CLI。默认 cwd = 本仓库（只用于不依赖 git 状态的用例）；
+ * 需要特定 git 状态的用例必须用 cwd 指向构造出来的隔离仓库 ——
+ * **不要赌当前仓库长什么样**：这正是 issue #240 那次 "本地过、CI 挂" 的教训
+ * （CI 在 push 到 main 时 checkout 在受保护分支，本地却在特性分支）。
+ */
+function runCli(args, { cwd } = {}) {
+  const result = spawnSync(process.execPath, [scriptPath, ...args], {
+    encoding: 'utf8',
+    timeout: 60_000,
+    ...(cwd ? { cwd } : {}),
+  })
+  return { code: result.status ?? 1, out: `${result.stdout ?? ''}${result.stderr ?? ''}` }
+}
+
+/**
+ * 造一个**完全可控**的迷你仓库：只含 ship.mjs 与其 lib 依赖，外加一个初始提交。
+ * 分支名可以指定 —— 受保护分支（main）与特性分支的行为差异必须在这里显式构造，
+ * 而不是依赖跑测试时恰好检出在哪个分支上。
+ */
+function makeIsolatedRepo({ branch = 'main' } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-test-'))
+  tempRoots.push(dir)
+  mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true })
+  copyFileSync(scriptPath, join(dir, 'scripts', 'ship.mjs'))
+  copyFileSync(libPath, join(dir, 'scripts', 'lib', 'ship-pipeline.mjs'))
+  const git = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' })
+  git(['init', '-q', '-b', branch, '.'])
+  git(['config', 'user.email', 'test@example.com'])
+  git(['config', 'user.name', 'ship-test'])
+  writeFileSync(join(dir, 'README.md'), '# isolated\n')
+  git(['add', '-A'])
+  git(['commit', '-q', '-m', 'chore: init'])
+  return dir
+}
+
+/** 隔离仓库里的 ship.mjs 路径（runCli 默认用本仓库那份，这里显式指向副本）。 */
+const isolatedScript = (dir) => join(dir, 'scripts', 'ship.mjs')
+
+/** 在隔离仓库里跑 CLI（用仓库内那份副本，保证 root 推导正确）。 */
+function runInRepo(dir, args) {
+  const result = spawnSync(process.execPath, [isolatedScript(dir), ...args], {
+    cwd: dir,
+    encoding: 'utf8',
+    timeout: 60_000,
+  })
   return { code: result.status ?? 1, out: `${result.stdout ?? ''}${result.stderr ?? ''}` }
 }
 
@@ -195,4 +244,49 @@ describe('参数解析的完整开关面', () => {
     expect(parseShipArgs(['--help']).errors).toEqual([])
     expect(parseShipArgs(['-h']).help).toBe(true)
   })
+})
+
+/**
+ * issue #240 的真实 CI 失败防回归：**退出码语义必须与 git 状态无关**。
+ *
+ * 事故原文：main 红了 —— run 的 quality job 报
+ *   AssertionError: expected 1 to be 2   @ scripts/test/ship-pipeline.test.mjs
+ * 根因是 ship.mjs 把「分支守卫」（环境检查，exit 1）放在了「提交信息校验」（用法检查，
+ * exit 2）之前；CI 在 push 到 main 时检出在受保护分支 → 用法错误被环境错误掩盖。
+ * 下面三个用例用**显式构造的隔离仓库**锁死这条语义，不再赌跑测试时在哪个分支上。
+ */
+describe('退出码语义与 git 状态解耦（issue #240 防回归）', () => {
+  it('用法错误优先：受保护分支上，不合规的提交信息仍返回 2 且报用法原因', () => {
+    const repo = makeIsolatedRepo({ branch: 'main' })
+    expect(
+      spawnSync('git', ['-C', repo, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).stdout.trim(),
+    ).toBe('main')
+    const { code, out } = runInRepo(repo, ['-m', '随手写的提交信息', '--push'])
+    expect(code).toBe(2)
+    expect(out).toContain('不合规')
+    expect(out).not.toContain('受保护分支')
+  })
+
+  it('环境错误：受保护分支 + 合规提交信息 → 1，且明确点出分支', () => {
+    const repo = makeIsolatedRepo({ branch: 'main' })
+    const { code, out } = runInRepo(repo, ['-m', 'fix(x): #240 修好', '--push'])
+    expect(code).toBe(1)
+    expect(out).toContain('受保护分支')
+  })
+
+  it('特性分支上用法错误仍是 2（与分支无关）', () => {
+    const repo = makeIsolatedRepo({ branch: 'fix/240-x' })
+    expect(runInRepo(repo, ['-m', '随手写的提交信息', '--push']).code).toBe(2)
+  })
+
+  it('环境错误：特性分支 + 合规提交信息 + 无改动 → 1，提示没有可提交的改动', () => {
+    const repo = makeIsolatedRepo({ branch: 'fix/240-x' })
+    const { code, out } = runInRepo(repo, ['-m', 'fix(x): #240 修好', '--push'])
+    expect(code).toBe(1)
+    expect(out).toContain('没有可提交的改动')
+  })
+})
+
+afterAll(() => {
+  for (const dir of tempRoots) rmSync(dir, { recursive: true, force: true })
 })

@@ -14,8 +14,13 @@ export type EventHandler = (...args: unknown[]) => void
 
 /** DSH server 端 Context（cordis Context 的最小契约）。 */
 export interface DshContext {
-  /** 监听 DSH 事件；返回 disposer。 */
-  on(event: string, handler: EventHandler): () => void
+  /**
+   * 监听 DSH 事件；返回 disposer。
+   * @param options - cordis 监听器选项；`global: true` 跳过 scope 过滤。
+   */
+  on(event: string, handler: EventHandler, options?: { global?: boolean }): () => void
+  /** cordis 根 Context：会话事件在 root 派发，且 root fiber 常驻（issue #242）。 */
+  root?: DshContext
   /** 注册副作用（返回 disposer 的注册函数直接返回其返回值）。 */
   effect(callback: () => void | (() => void), label?: string): void
   /** 读取可选服务（未加载返回 undefined）。 */

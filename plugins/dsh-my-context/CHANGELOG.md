@@ -2,6 +2,12 @@
 
 本文件记录 dsh-my-context 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- 会话监听与 `/context/api` 路由改注册到常驻 root（issue #242）：profile 插件的 fiber 会被 DSH loader 在 apply 结束后回收，原先经 `ctx.on` / `ctx.effect` 的注册会**静默消失**（事件 0 触发、路由 404、无任何报错）；新增 4 例防回归测试 `test/host-root-registration.mjs`（回退修复即 RED）
+
 ## [0.1.4] - 2026-09-10
 
 ### 变更

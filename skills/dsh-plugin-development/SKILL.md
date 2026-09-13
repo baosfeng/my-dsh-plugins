@@ -47,6 +47,7 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
   4. **MutationObserver 兜底**——应对 React 重渲染（宿主重建 DOM 后重新接管）；
   5. **性能保护**——超长内容跳过处理。
 - 参考实现：`dsh-md-render` 对宿主纯文本注入块的 DOM 接管（[插件 README](../../plugins/dsh-md-render/README.md) · [md 渲染模块文档](../../docs/md渲染/概述.md)）；遇到同类缺口不要新开「等上游修复」类 issue，直接在本仓库插件里覆盖。
+- **profile 插件的 fiber 会被 loader 回收 → 注册必须落到常驻 root**（issue #242 实测，2026-09-13）：注册在插件自身 ctx 上的 `ctx.on('session/event', …)` 与 `ctx.effect(() => webServer.register(…))` 会**静默消失**——事件 0 触发、路由 404，**没有任何报错**。新插件写事件监听/路由时默认用 `const listenCtx = ctx.root ?? ctx` + `{ global: true }`，并以 root 为键去重（避免重复 apply 累积）。判定方法（3 分钟探针）与完整修法：[踩坑：profile 插件 fiber 回收导致监听器静默失效](../../docs/踩坑/profile插件fiber被回收导致监听器静默失效.md)；参考实现 `plugins/dsh-my-context`（`rootListeners` / `rootRoutes`）与防回归测试 `plugins/dsh-my-context/test/host-root-registration.mjs`。
 
 ## 插件形态（先决策）
 

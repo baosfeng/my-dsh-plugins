@@ -16,6 +16,7 @@ updated: 2026-09-12
 - [发布 / release.mjs dry-run bump](release脚本dry-run误写版本.md) — dry-run 已写入新版本号，--push 再次 bump 跳版本导致验证清单不匹配（2026-09-01）
 - [发布 / 跨插件依赖](跨插件依赖未声明导致client崩溃.md) — client 端 require('dsh-*') 未声明 peerDependencies 导致插件加载崩溃（已解决，2026-08-28，issue #39）
 - [插件集成 / 依赖级联安装](DSH插件依赖级联安装机制.md) — dependencies 中声明 dsh.bundle 的包会被 dsh plugin add 自动加入 profile bundles（2026-09-01）
+- [插件集成 / profile 插件 fiber 回收](profile插件fiber被回收导致监听器静默失效.md) — profile 插件的 `ctx.on`/`ctx.effect` 注册随插件 fiber 被 loader 回收而静默消失（事件 0 触发、路由 404、无报错），须注册到常驻 root；含 3 分钟判定法与修法（2026-09-13，issue #242）
 - [客户端 UI / 样式](插件页签样式丢失.md) — 插件页签偶发"纯文字无样式"：样式注入放在服务判空早退之后，HMR 瞬间跳过注入（已解决，2026-08-23，v0.4.2）
 - [插件集成 / llm 流](llm流async处理器误用.md) — `llm/stream` handler 误用 async function 导致 waterfall 返回 Promise，vision-toolkit `yield*` 委托流崩溃（已解决，2026-08-26，dsh-task-reliability）
 - [客户端 UI / React 版本](DSH运行时React版本决定实际渲染.md) — 浏览器端实际渲染的 React 版本由 DSH 运行时（dsh-web-frontend 打包的 seed word）决定，与插件自身 node_modules 无关；peer 声明需与运行时匹配（issue #49，2026-08-28）

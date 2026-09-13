@@ -166,6 +166,8 @@ function boot(config = {}, services = {}) {
     disposeAll,
     activateCommands,
     store: shared.store,
+    /** 确定性就绪信号：读盘断言前先 await 它（替代固定 sleep 猜落盘时间）。 */
+    drainSaves: shared.drainSaves,
   }
 }
 
@@ -423,10 +425,10 @@ test('continue：唤醒成功后状态落盘', async () => {
     sessionId: 'session-cmd',
     description: '开发一个功能',
   })
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  await env.drainSaves()
   const before = JSON.parse(readFileSync(join(env.dir, 'task-reliability.json'), 'utf8')).tasks[0].updatedAt
   await runCommand(env, 'continue')
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  await env.drainSaves()
   const after = JSON.parse(readFileSync(join(env.dir, 'task-reliability.json'), 'utf8')).tasks[0].updatedAt
   assert.ok(after > before, 'continue 后 updatedAt 落盘更新')
 })
@@ -586,7 +588,7 @@ test('复用：continue 与看门狗唤醒走同一恢复逻辑（同一 wakeSta
 test('命令操作后状态持久化到注册表', async () => {
   const env = boot()
   await runCommand(env, 'register 开发一个功能')
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  await env.drainSaves()
   const saved = JSON.parse(readFileSync(join(env.dir, 'task-reliability.json'), 'utf8'))
   assert.equal(saved.tasks.length, 1)
   assert.equal(saved.tasks[0].description, '开发一个功能')

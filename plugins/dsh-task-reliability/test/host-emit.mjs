@@ -161,6 +161,8 @@ function boot(config = {}, services = {}, dirOverride, emitBroken = false) {
     dir,
     disposeAll,
     store: shared.store,
+    /** 确定性就绪信号：读盘断言前先 await 它（替代固定 sleep 猜落盘时间）。 */
+    drainSaves: shared.drainSaves,
   }
 }
 
@@ -625,8 +627,8 @@ test('加载时清理已答/过期问题并落盘', async () => {
     mode: { tracking: false, verify: false, autopilot: false, sessionAutopilot: {} },
   }
   writeFileSync(join(dir, 'task-reliability.json'), JSON.stringify(store), 'utf8')
-  boot({}, {}, dir) // 启动插件触发加载时清理（副作用：注册 disposeAlls）
-  await tick()
+  const env = boot({}, {}, dir) // 启动插件触发加载时清理（副作用：注册 disposeAlls）
+  await env.drainSaves()
   const loaded = JSON.parse(readFileSync(join(dir, 'task-reliability.json'), 'utf8'))
   assert.deepEqual(
     loaded.questions.map((q) => q.id),

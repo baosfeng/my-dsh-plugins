@@ -178,6 +178,8 @@ function boot(config = {}, services = {}, dirOverride) {
     dir,
     disposeAll,
     store: shared.store,
+    /** 确定性就绪信号：读盘断言前先 await 它（替代固定 sleep 猜落盘时间）。 */
+    drainSaves: shared.drainSaves,
   }
 }
 
@@ -439,7 +441,7 @@ test('turn-stopping 循环上限后失败标记', async () => {
     agent: env.mainAgent,
     signal: { aborted: false },
   })
-  await tick()
+  await env.drainSaves()
   const store = JSON.parse(readFileSync(join(env.dir, 'task-reliability.json'), 'utf8'))
   assert.equal(store.tasks[0].status, 'failed')
 })

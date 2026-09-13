@@ -202,6 +202,8 @@ function boot(config = {}, services = {}, dirOverride) {
     dir,
     disposeAll,
     store: shared.store,
+    /** 确定性就绪信号：读盘断言前先 await 它（替代固定 sleep 猜落盘时间）。 */
+    drainSaves: shared.drainSaves,
   }
 }
 
@@ -220,13 +222,15 @@ function dispatchOne(listeners, name, ...args) {
 }
 
 async function taskOf(env, id) {
-  await tick()
+  // await drainSaves()：等到落盘完成再读（固定 sleep 在 CI 高负载下会读到旧状态/ENOENT，
+  // 见 test/persist-race.mjs 的确定性复现与 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md）
+  await env.drainSaves()
   const body = JSON.parse(readFileSync(join(env.dir, 'task-reliability.json'), 'utf8'))
   return body.tasks.find((task) => task.id === id)
 }
 
 async function storeOf(env) {
-  await tick()
+  await env.drainSaves()
   return JSON.parse(readFileSync(join(env.dir, 'task-reliability.json'), 'utf8'))
 }
 
@@ -294,7 +298,7 @@ test('任务状态流转 done/pause/resume/delete', async () => {
 test('任务注册表持久化且重启后恢复', async () => {
   const env = boot()
   await registerTask(env)
-  await tick()
+  await env.drainSaves()
   assert.ok(existsSync(join(env.dir, 'task-reliability.json')), 'state file written')
   // 模拟重启：同一目录重新 apply
   const env2 = boot({}, {}, env.dir)

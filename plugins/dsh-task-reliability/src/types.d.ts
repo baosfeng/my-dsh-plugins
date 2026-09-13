@@ -300,7 +300,9 @@ export interface SharedContext {
   dir: string
   store: Store
   save: () => void
-  saver: { save: () => void; cancel: () => void }
+  saver: { save: () => void; cancel: () => void; drain: () => Promise<void> }
+  /** 确定性就绪信号：await 后此前所有 save 都已落盘（替代固定 sleep 等落盘）。 */
+  drainSaves: () => Promise<void>
   fence: (request: ServerRequest) => boolean
   emit: EmitFn
   retryBuckets: Map<string, RetryBucket>

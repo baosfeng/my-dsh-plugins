@@ -10,7 +10,7 @@
  *     `require('react')` 解构出的三个 hook、`module`/`exports`、模板常量
  *     TAB_ID / POLL_MS）；
  *  2. 构建期拼接的共享片段提供的符号（dsh-shared 的 `icon` 图标集）；
- *  3. 跨 part 共享的运行时契约（client Context、betterSidebar 服务、
+ *  3. 跨 part 共享的运行时契约（client Context、宿主原生侧边栏扩展点服务、
  *     /guardian/api/* 返回的数据形状、组件 props 依赖的数据结构）。
  *
  * document / navigator / fetch / window / setInterval 等浏览器全局由
@@ -34,8 +34,12 @@ declare const exports: Record<string, unknown>
 declare const module: { exports: Record<string, unknown> }
 
 // ── 模板常量（lib/client.src.js 的 factory 作用域）──────────────────────
-/** 侧边栏页签 id。 */
+/** 迁移前 better-sidebar 的 tab id（现为原生页签 kind）。 */
 declare const TAB_ID: string
+/** 原生页签类型实现身份（包名；全局唯一，也是席位的 key）。 */
+declare const TAB_ID_PKG: string
+/** 指南页相对顺序（沿用迁移前的数字 order）。 */
+declare const TAB_ORDER: number
 /** 面板可见时的轮询间隔（5000ms）。 */
 declare const POLL_MS: number
 
@@ -53,20 +57,37 @@ interface ClientContext {
   get(name: string, strict?: boolean): any
 }
 
-/** dsh-better-sidebar 服务（本插件只用到 registerTab）。 */
-interface SidebarService {
-  registerTab(options: {
-    id: string
-    title: () => string
-    order: number
-    single: boolean
-    component: (props: { scope: PanelScope; visible: boolean }) => ElementLike
-  }): () => void
+// 侧边栏能力一律走宿主原生扩展点（issue #187 批 1）：原生能力经 Cordis 服务名
+// 暴露（sidebarRightTabs / slots），不 require 任何
+// @deepseek-ai/dsh-client-ui-* 包，也不消费第三方 dsh-better-sidebar 服务。
+
+/** 页签类型注册表（@deepseek-ai/dsh-client-ui-sidebar-right 的服务面子集）。 */
+interface SidebarRightTabsService {
+  register(definition: SidebarTabDefinition): () => void
 }
 
-/** 页签 scope（betterSidebar 注入）。 */
-interface PanelScope {
-  sessionId: string
+/** 原生页签类型定义（右栏 register 的入参子集）。 */
+interface SidebarTabDefinition {
+  /** 实现身份，全局唯一；同时是 body/title 席位注册用的 key（惯例 = 包名）。 */
+  id: string
+  /** 类型判别符（沿用迁移前 better-sidebar 的 tab id）。 */
+  kind: string
+  /** 页签胶囊标题（打开时捕获）。 */
+  title: (address: string) => string
+  /** 指南页条目：order 决定相对顺序（沿用迁移前的数字 order）。 */
+  guide?: Array<{ order: number; title: () => string; description?: () => string }>
+}
+
+/** keyed 席位注册表（@deepseek-ai/dsh-client-ui-slots 的服务面子集）。 */
+interface SlotsService {
+  inject(name: string, factory: () => () => void): () => void
+  register(descriptor: { name: string; key: string }, component: (props: NativeTabProps) => unknown): () => void
+}
+
+/** 原生 keyed 席位注入的运行面（tab body / title 共用）。 */
+interface NativeTabProps {
+  sessionId?: string
+  useTabInfo?: () => { tab?: { id?: string; title?: string; visible?: boolean } }
 }
 
 // ── /guardian/api/* 的数据形状（server 端 api.ts 的返回）────────────────

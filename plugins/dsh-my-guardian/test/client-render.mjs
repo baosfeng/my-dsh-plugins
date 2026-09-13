@@ -2,7 +2,7 @@ import { test } from 'vitest'
 /**
  * Client render-path test (issue #86): loads the guardian client bundle with a
  * stubbed react (real createElement; hooks stubbed to a controllable map),
- * registers the tab through a mocked betterSidebar service, then renders the
+ * registers the tab through the mocked host-native sidebar services, then renders the
  * view component with seeded states and asserts the failure-classification
  * badge (依赖缺失 / 代码错误 / 其他) and the install suggestion appear in the
  * element tree.
@@ -68,11 +68,19 @@ const exportsObj = registered.factory((spec) => {
 })
 assert.equal(typeof exportsObj.apply, 'function')
 
-// ── mock betterSidebar service + context ───────────────────────────────────
-let capturedTab = null
-const mockService = {
-  registerTab: (descriptor) => {
-    capturedTab = descriptor
+// ── mock 宿主原生扩展点（sidebarRightTabs + slots）+ context ───────────────
+let capturedType = null
+let capturedBody = null
+const mockTabs = {
+  register: (definition) => {
+    capturedType = definition
+    return () => {}
+  },
+}
+const mockSlots = {
+  inject: (name, factory) => factory(),
+  register: (descriptor, component) => {
+    if (descriptor.name === 'sidebar.right.pane.tab') capturedBody = component
     return () => {}
   },
 }
@@ -80,20 +88,28 @@ const ctx = {
   effect: (fn) => fn(),
   // 严格模拟 cordis 的 ctx.get(name, strict = true)：服务提供者 fiber 未
   // active 时 strict 取法返回 undefined、strict=false 才返回服务对象。
-  // 防回归（首屏时序）：侧边栏页签注册不得依赖 betterSidebar 提供者已 active。
-  get: (name, strict = true) => (name === 'betterSidebar' ? (strict ? undefined : mockService) : undefined),
+  // 防回归（首屏时序）：页签注册不得依赖提供者 fiber 已 active；迁移后
+  // 时序由声明式 inject（slots / sidebarRightTabs）保证。
+  get: (name, strict = true) => {
+    if (name === 'sidebarRightTabs') return strict ? undefined : mockTabs
+    if (name === 'slots') return strict ? undefined : mockSlots
+    return undefined
+  },
 }
 exportsObj.apply(ctx)
-assert.ok(capturedTab, 'tab registered while the betterSidebar provider fiber is not active yet')
-assert.equal(capturedTab.id, 'dsh-my-guardian:panel')
-
-const scope = { sessionId: 'sess-test', cwd: '/work' }
+assert.ok(capturedType, 'tab type registered while the native sidebar provider fiber is not active yet')
+assert.equal(capturedType.id, 'dsh-my-guardian')
+assert.equal(capturedType.kind, 'dsh-my-guardian:panel')
+assert.ok(capturedBody, 'native tab body seat registered')
 
 // ── render the view with a seeded state and collect texts ──────────────────
 function renderTexts(seed) {
   resetHooks()
   seedState = seed
-  const element = capturedTab.component({ ctx, scope, visible: true })
+  const element = capturedBody({
+    sessionId: 'sess-test',
+    useTabInfo: () => ({ tab: { id: 't1', title: '插件守护', visible: true } }),
+  })
   const tree = element.type(element.props)
   const texts = []
   walk(tree, texts)

@@ -1,138 +1,116 @@
-# ctx.betterSidebar API 参考（dsh-better-sidebar ^0.14+）
+# 宿主原生侧边栏扩展点 API 参考（@deepseek-ai/dsh 0.1.5-rc.1+）
 
-> 权威来源：`omdsh-dev/DSH-better-sidebar` 的 `docs/external-plugin-guide.md`。服务只在 **client 端**存在；消费插件用 `inject: ['betterSidebar']` 声明依赖，注册代码包在 `ctx.effect()` 里。
+> 权威来源（宿主安装目录）：
+>
+> - `dsh-client-ui-sidebar-right/lib/types/client/tab-registry.d.ts`（`register` / `entries` / `guide` / `claim`）
+> - `dsh-client-ui-sidebar-right/lib/types/client/contract/slots.d.ts`（两个 keyed 席位与运行面）
+> - `dsh-client-ui-sidebar-files/lib/client.js:681-711`（官方生产范本，照抄写法）
+> - `dsh-client-ui-sidebar-documentpreview/lib/types/client/document/registry.d.ts`（文件预览器，见文末）
 
-## 服务方法
+**核心结论：原生能力通过 Cordis 服务名 `inject` 获取，不需要 require 任何 `@deepseek-ai/dsh-client-ui-*` 包**（证据：宿主 41 个官方 client-ui 包没有一个 require `sidebar-right`）。
+
+## 服务与获取方式
+
+| 服务名             | 提供方                                  | 用途                                                    |
+| ------------------ | --------------------------------------- | ------------------------------------------------------- |
+| `sidebarRightTabs` | `dsh-client-ui-sidebar-right`           | 页签**类型**注册表（页面/资源类型、guide 胶囊、优先级） |
+| `slots`            | `dsh-client-ui-renderer`                | keyed 席位注册（面板本体与标题）                        |
+| `documentPreviews` | `dsh-client-ui-sidebar-documentpreview` | 文件预览器注册表（批 2 迁移用）                         |
 
 ```js
-// 全部注册方法返回 disposer（() => void），必须被 ctx.effect 持有
-ctx.betterSidebar.registerTab(descriptor)          // 注册侧边栏页签类型
-ctx.betterSidebar.registerFileViewer(descriptor)   // 注册文件预览器
-ctx.betterSidebar.getTabs()                        // 已注册 tab 描述符快照
-ctx.betterSidebar.getFileViewers()                 // 已注册 viewer 描述符快照
-ctx.betterSidebar.getTab(id)                       // 按 id 查 tab 描述符
-ctx.betterSidebar.isTabEnabled(id)                 // 设置页是否启用该 tab
-ctx.betterSidebar.isViewerEnabled(id)
-ctx.betterSidebar.matchFileViewer(path, head?)     // 按 path（+head 字节）匹配 viewer
-ctx.betterSidebar.openTab(seed, scope?)            // 打开 tab（外部触发）
-ctx.betterSidebar.closeTab(tabId, scope?)
-ctx.betterSidebar.activateTab(tabId, scope?)
-ctx.betterSidebar.updateTab(tabId, patch)          // { title?, path?, meta? }
-ctx.betterSidebar.openFile(scope, path, title?)    // 在侧边栏编辑器打开文件
-ctx.betterSidebar.subscribe(listener)              // 注册表变化订阅
-ctx.betterSidebar.getSnapshot()                    // 当前快照（激活会话 + 状态 + prefs）
-ctx.betterSidebar.subscribeState(listener)         // 快照变化订阅
-ctx.betterSidebar.version                          // 如 '0.12.0'
-ctx.betterSidebar.features                         // ['badge','tabLifecycle','updateTab','openFile',...]
+exports.inject = ['slots', 'sidebarRightTabs'] // 声明式依赖：宿主保证服务可用后才激活
+
+exports.apply = function apply(ctx) {
+  ctx.effect(() => ctx.sidebarRightTabs.register(definition), '<pkg>: tab')
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.right.pane.tab', () =>
+        ctx.slots.register({ name: 'sidebar.right.pane.tab', key: ID }, Body),
+      ),
+    '<pkg>: tab body',
+  )
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.right.pane.tab.title', () =>
+        ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: ID }, Title),
+      ),
+    '<pkg>: tab title',
+  )
+}
 ```
 
-## TabDescriptor（registerTab 入参）
+> **首屏时序**：`inject` 声明式注入消除了「提供者 fiber 未 active → strict 取法返回 undefined → 静默不注册」的旧坑（曾用 `ctx.get(name, false)` 绕行）。防御式判空时**必须同时覆盖 `null` 与 `undefined`**（`tabs == null`）——`typeof null === 'object'` 会骗过 `=== undefined`。
 
-```js
+## register(definition) —— 页签类型（stage 1）
+
+```ts
 {
-  id: 'dsh-xxx:page',          // 必填，全局唯一，内置 id 不可占用
-  title: '页面名',              // 字符串或 () => string
-  icon: <Icon />,              // ReactNode 或 (size) => ReactNode
-  order: 50,                   // + 菜单排序，默认 100；内置 explorer=10 git=20 subagent=30 terminal=40
-  hidden: false,               // 从 + 菜单隐藏（editor/diff 用）
-  available: (ctx, scope, state) => bool,   // 菜单禁用判定（false = disabled 行）
-  single: true,                // 单实例（打开时聚焦既有）
-  dedupeKey: (tab) => key,     // 去重键；返回 undefined 不去重
-  createTab: (state) => ({ tab, patch }),   // 自定义 tab 铸造（自增 id 等）
-  badge: (ctx, scope, state) => 'n',        // tab 角标（保持廉价）
-  onOpen / onActivate / onClose: (tab, scope) => void,  // 生命周期
-  settings: { toggles?, pluginToggles?, render? },      // 声明式设置
-  component: ({ ctx, store, scope, tab, visible }) => <Node />,  // 必填
+  id: string                       // 必填，全局唯一（官方惯例 = 包名）；同时是席位的 key
+  kind: string                     // 类型判别符；openTab 按它打开
+  patterns?: readonly string[]     // 资源地址 glob；**省略 = 页面类型**（按 kind 打开）
+  priority?: 'extension' | 'builtin' | 'fallback'   // 默认 extension（外部产品最高档）
+  canOpen?: (address: string) => boolean            // 对已匹配地址的否决
+  title: (address: string) => string                // 页签胶囊初始文本（打开时捕获）
+  guide?: readonly { order: number; title: () => string; description?: () => string }[]
 }
 ```
 
-内置 tab id（**不可重复注册**）：`editor`(hidden) / `explorer`(10) / `git`(20) / `subagent`(30) / `terminal`(40, createTab) / `browser`(50) / `diff`(hidden)。
+- **排序规则**：`priority` 档 → 匹配模式长度 → 注册顺序（`patterns` 省略时按注册顺序）。**没有数字 order 字段**；数字顺序请用 `guide[].order`（guide 页胶囊按它升序排列）。
+- **id 唯一且会 throw**：重复 id 或同档同 kind 冲突 → 注册抛错（官方原文："a second registration in the same band … is a wiring mistake, and so is an `id` already in use"）。
+- **一个 kind 可同时有 builtin 与 extension**：extension 生效，builtin 让位；extension 注销后 builtin 恢复。
+- **多面板插件**：一个 kind 一个 `id`，不同面板请用**不同 id**（id 是席位的 key，同 key 重复注册席位会冲突）。
+- 资源类型用 `patterns`（`dsh-resource://file/**`；含 `:` 的 glob 匹配整条地址，否则匹配 URI path 任意深度）。
+- `guide` 省略 = 不出现在 guide 页（用户只能通过 API/地址打开）。
 
-## FileViewerDescriptor（registerFileViewer 入参）
+## keyed 席位（stage 2）——面板本体与标题
+
+| 席位                           | key       | 组件收到的 props                                            |
+| ------------------------------ | --------- | ----------------------------------------------------------- |
+| `sidebar.right.pane.tab`       | 类型 `id` | `sessionId`、`useTabInfo`（hook）、以及该 slot 的 inject 面 |
+| `sidebar.right.pane.tab.title` | 类型 `id` | 同上；**返回标题节点**（页签 chip 与浮窗标题都走它）        |
 
 ```js
-{
-  id: 'dsh-xxx:csv',          // 必填，唯一
-  title: 'CSV',               // 设置页展示名
-  exts: ['csv'],              // 小写无点扩展名；[] = catch-all
-  priority: 0,                // 高优先先裁决；内置 code=-100 catch-all，binary-download=-50
-  detect: (path, head) => bool,     // 内容嗅探（head = Uint8Array 前 4KB）
-  fetchStrategy: 'custom',    // 'none'|'fsRead'|'mediaUrl'|'custom'|'binary-download'
-  load: async (path, scope, signal) => data,   // fetchStrategy='custom' 时
-  settings: {...},            // 同 TabDescriptor.settings
-  component: (props) => <Node />,
+function Body({ useTabInfo, sessionId }) {
+  const { tab } = useTabInfo() // { id, kind, title, visible, navigation, signal, actions }
+  return createElement(Panel, {
+    scope: { sessionId },
+    visible: tab.visible !== false, // 停靠页签需侧边栏展开且该页签激活
+  })
+}
+function Title({ useTabInfo }) {
+  const { tab } = useTabInfo()
+  return createElement('span', null, tab.title)
 }
 ```
 
-组件 props：`{ ctx, store, scope, path, title, viewerId, content?, truncated?, mediaUrl?, customData? }`。
+- `tab.visible`：停靠面板需「侧边栏展开 + 该页签激活」；展开标题含非激活页签；浮窗恒 true → 用作轮询开关。
+- `tab.signal`：**仅在记录消失或插件卸载时中止**（不是隐藏/切会话）。
+- `tab.actions`：`{ openResource, openTab, close }`（页签对自身操作，落在它所在会话）。
+- `title` 席位渲染的 DOM 带 `data-slot="sidebar.right.pane.tab.title"`（宿主 slot 框架标记，可作 e2e 判据）。
 
-fetchStrategy 对照：
-
-| 策略            | 字节来源                 | 组件字段           |
-| --------------- | ------------------------ | ------------------ |
-| none            | 无                       | —                  |
-| fsRead          | `/sidebar/api/fs.read`   | content, truncated |
-| mediaUrl        | `/sidebar/file` 路由 URL | mediaUrl           |
-| custom          | 你的 load()              | customData         |
-| binary-download | 不预览，下载按钮         | —                  |
-
-内置 viewer：image(0) / pdf(0) / markdown(0,fsRead) / html(0,fsRead) / code(-100,catch-all,fsRead) / binary-download(-50)。同扩展名 + 更高 priority 即可覆盖内置。
-
-## 数据访问（/sidebar API）
+## 打开与导航（`ctx.sidebarRight`）
 
 ```js
-// 读文件
-const res = await fetch('/sidebar/api/fs.read', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ sessionId: scope.sessionId, path }),
-})
-const { value } = await res.json() // 文本: { kind:'text', content, truncated }；二进制: { kind:'binary', size, truncated, head }
-
-// 媒体 URL（<img src> 直接用）
-const url = `/sidebar/file?${new URLSearchParams({ sessionId: scope.sessionId, path })}`
+ctx.sidebarRight.openTab(kind, { paneId?, replaceTab?, params? })        // 打开页面类型
+ctx.sidebarRight.openResource(address, { kind?, params?, revealIfOpened? })  // 打开资源（按地址认领）
 ```
 
-常用方法：`session.cwd` / `fs.tree` / `fs.read` / `fs.write` / `git.status` / `git.diff` / `git.log` / `settings.get` / `settings.update`。所有 POST 都带 `sessionId`（+可选 `cwd`）。
+- 页面类型**始终在目标 pane 内去重**（对应旧 `single: true` 语义）；资源类型默认按 `(kind, contentId)` 复用，`revealIfOpened: false` 允许重复。
+- 空 pane 的 **guide 页**由 strip 的 add 控件打开（kind = `sidebar://guide`）；guide 列出所有注册类型的 `guide[]` 胶囊，按 `order` 升序。
 
-## 声明式设置（settings 字段）
+## 从 `ctx.betterSidebar` 迁移映射（issue #187）
 
-```js
-settings: {
-  // 插件自有设置行（v0.12+，推荐）：持久化在 pluginSettings[id]，无需宿主 schema 字段
-  pluginToggles: [
-    { key: 'pageSize', title: '每页行数', type: 'number', min: 1, max: 100, unit: '行' },
-  ],
-  // 或完全自定义面板（给定时代替行列表）
-  render: ({ store, service, prefs, pluginSettings, updatePluginSetting, close }) => <Panel />,
-}
-```
+| better-sidebar                                                       | 原生等价                                                                                                                                        |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inject: ['betterSidebar']`                                          | `inject: ['slots', 'sidebarRightTabs']`                                                                                                         |
+| `registerTab({ id, title, order, single, component })`               | `sidebarRightTabs.register({ id, kind, title, guide: [{ order, title }] })` + 两个 keyed 席位（key = id）                                       |
+| `id: 'pkg:page'`                                                     | `id` = 包名（唯一 + 席位 key）；`kind` = 原 `'pkg:page'`                                                                                        |
+| 数字 `order`（页签条排序）                                           | `guide[].order`（guide 胶囊顺序）；页签条顺序 = 打开顺序                                                                                        |
+| `single: true`                                                       | 原生页面类型默认在 pane 内去重                                                                                                                  |
+| `component({ scope, visible })`                                      | slot 组件收 `sessionId` + `useTabInfo()`（取 `tab.visible` / `tab.title`）                                                                      |
+| `icon`                                                               | `guide[].icon`（仅 guide 胶囊；页签 chip 无 icon 位）                                                                                           |
+| `registerFileViewer` / `matchFileViewer`                             | `ctx.documentPreviews.register`（`extensions`/`priority`/`candidates`；**字节由文档 owner 读**，与 better-sidebar 的 `fetchStrategy` 职责相反） |
+| `openTab` / `closeTab` / `activateTab` / `updateTab` / `getTabs`     | `ctx.sidebarRight.openTab`/`openResource` + `tabs.entries()`；其余无原生等价（本仓 0 命中）                                                     |
+| `badge` / `onOpen`/`onActivate`/`onClose` / `features` / `dedupeKey` | 无原生等价（本仓 0 命中，缺口影响面为零）                                                                                                       |
 
-行类型：`'switch' | 'text' | 'number'`（默认 switch）；值必须 JSON 可序列化。`toggles`（宿主 prefs 字段行）仅在需要绑定宿主内置键时使用。
-
-读写闭环：
-
-- `render` 面板内：props 直接给 `pluginSettings`（本 descriptor 的持久化 blob）与 `updatePluginSetting(key, value)`，面板内改动即时持久化。
-- 页面组件（tab/viewer 的 component）内读取插件设置：经组件 props 的 `store` 访问（`pluginSettings` 随 store 快照暴露；精确读取路径参考 better-sidebar 内置实现 `src/client/builtins/` 与 `src/client/service.ts`，或把需要的值经 `badge`/`onOpen` 等回调带入组件状态）。
-
-## 版本与能力探测
-
-```js
-if (ctx.betterSidebar.features.includes('openFile')) {
-  /* 用 openFile */
-}
-if (ctx.betterSidebar.version >= '0.12.0') {
-  /* minor 只增，字符串比较即可 */
-}
-```
-
-## 生命周期要点
-
-- 组件卸载 ≠ tab 关闭（会话切换也会卸载）；释放资源用 `onClose`。
-- `visible === false`（面板折叠/非激活 tab）时暂停轮询/订阅。
-- 未加载插件时持久化的 tab 渲染为「插件未加载」占位卡，插件加载后自动恢复。
-
-## 调试参考
-
-- 内置实现（吃狗粮）：`src/client/builtins/`（注册代码）、`src/client/service.ts`（服务实现）、`src/client/api.ts`（fetch 封装）、`src/client/Sidebar.tsx`（分发与 + 菜单）。
-- 已接入案例：`fuhefei/dsh-sentinel`（可选软依赖 + 本地重述最小契约）、`ChenRuoT/dsh-sidebar-qa`。
+> 仍依赖 `dsh-better-sidebar` 的插件只剩 `dsh-file-activity`（预览器/浮窗/设置开关，批量 2 排期）。

@@ -1,16 +1,17 @@
 /**
  * dsh-my-guardian — client half (browser). SOURCE TEMPLATE.
  *
- * A dsh-better-sidebar tab ("插件守护 / Plugin Guardian") showing the staged
- * and promoted plugin entries managed by the server half:
+ * The "插件守护 / Plugin Guardian" sidebar tab (host-native sidebar extension
+ * points since issue #187 batch 1: ctx.sidebarRightTabs + keyed slots) showing
+ * the staged and promoted plugin entries managed by the server half:
  *  - per-entry status (running / pending / failed ×N / frozen),
  *  - the last error for failed entries (expandable),
  *  - actions: retry (unfreeze + remount), remove from the roster,
  *  - a safe-mode switch that unmounts everything the guardian mounted.
  *
  * Data source: GET/POST /guardian/api/* (server half), polled while the tab
- * is visible. Styling follows the better-sidebar design language: DSH
- * semantic tokens, flat surfaces, hairline borders.
+ * is visible. Styling follows the DSH design language: semantic tokens, flat
+ * surfaces, hairline borders.
  *
  * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs compiles the
  * client halves (`src/client/parts/*.ts` → `lib/.client-build/parts/*.js`),
@@ -29,7 +30,12 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
 
+    /** 迁移前 better-sidebar 的 tab id：现为原生 kind。 */
     const TAB_ID = 'dsh-my-guardian:panel'
+    /** 原生页签类型实现身份（官方惯例：包名；全局唯一，也是席位的 key）。 */
+    const TAB_ID_PKG = 'dsh-my-guardian'
+    /** 指南页相对顺序（沿用迁移前 better-sidebar 的 order）。 */
+    const TAB_ORDER = 80
     const POLL_MS = 5000
 
     // ── parts (compiled from src/client/parts/*.ts, injected by
@@ -1144,9 +1150,18 @@ function GuardianView({ visible }) {
 
     'use strict'
 // ── plugin body ───────────────────────────────────────────────────────
-// 零第三方依赖：不 inject better-sidebar（那是第三方插件服务）。面板是
-// 可选增强——ctx.get('betterSidebar') 动态获取，服务不存在时静默跳过，
-// 核心治理能力（候选区/隔离/安全模式）纯 server 端，不受影响。
+// 零第三方依赖：侧边栏页签走**宿主原生扩展点**（issue #187 批 1）——
+// ctx.sidebarRightTabs.register 注册页面类型 + slots 的
+// sidebar.right.pane.tab / .title 两个 keyed 席位注册面板与标题，不再消费
+// 第三方 dsh-better-sidebar 服务。核心治理能力（候选区/隔离/安全模式）纯
+// server 端，本面板只是诊断视图。
+//
+// 时序语义（迁移前 vs 迁移后）：迁移前用 ctx.get('<第三方服务>', false)
+// 绕开「首屏提供者 fiber 未 active → strict 取法返回 undefined → 静默不注册，
+// HMR 后才出现」；迁移后由**声明式 inject**（exports.inject）负责——宿主保证
+// slots / sidebarRightTabs 可用后才激活本插件，首屏时序问题从根上消除。服务
+// 实例仍按防御式判空（旧宿主/测试桩），缺失时静默跳过页签注册。
+exports.inject = ['slots', 'sidebarRightTabs']
 exports.apply = function apply(ctx) {
   ctx.effect(() => {
     if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined') return () => {}
@@ -1158,24 +1173,47 @@ exports.apply = function apply(ctx) {
       if (style.parentNode) style.parentNode.removeChild(style)
     }
   }, 'dsh-my-guardian: styles')
-  // strict=false：首屏加载时 betterSidebar 服务（由 dsh-better-sidebar 提供）
-  // 的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true) 在
-  // strict 模式下会返回 undefined，注册代码会静默 return（侧边栏看不到本
-  // 插件页签，HMR 重载后才出现）；取到实例即可——未安装 better-sidebar 时
-  // 仍返回 undefined（下面的判空降级不变），实际渲染发生在注册之后，安全。
-  const service = ctx.get('betterSidebar', false)
-  if (service === undefined) return
+  const tabs = ctx.get('sidebarRightTabs', false)
+  const slots = ctx.get('slots', false)
+  if (tabs === undefined || tabs === null) return
+  if (slots === undefined || slots === null) return
   ctx.effect(
     () =>
-      service.registerTab({
-        id: TAB_ID,
+      tabs.register({
+        id: TAB_ID_PKG,
+        kind: TAB_ID,
         title: () => strings.title(),
-        order: 80,
-        single: true,
-        component: ({ scope, visible }) => createElement(GuardianView, { sessionId: scope.sessionId, visible }),
+        guide: [{ order: TAB_ORDER, title: () => strings.title() }],
       }),
-    'dsh-my-guardian: tab registration',
+    'dsh-my-guardian: tab type',
   )
+  ctx.effect(
+    () =>
+      slots.inject('sidebar.right.pane.tab', () =>
+        slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID_PKG }, GuardianTabBody),
+      ),
+    'dsh-my-guardian: tab body',
+  )
+  ctx.effect(
+    () =>
+      slots.inject('sidebar.right.pane.tab.title', () =>
+        slots.register({ name: 'sidebar.right.pane.tab.title', key: TAB_ID_PKG }, GuardianTabTitle),
+      ),
+    'dsh-my-guardian: tab title',
+  )
+}
+/** 原生 tab body 席位：适配成 GuardianView 的 { sessionId, visible } 契约。 */
+function GuardianTabBody(props) {
+  const info = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
+  return createElement(GuardianView, {
+    sessionId: props.sessionId,
+    visible: info?.tab?.visible !== false,
+  })
+}
+/** 原生 tab title 席位：宿主给定标题优先，否则回退本插件文案。 */
+function GuardianTabTitle(props) {
+  const info = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
+  return createElement('span', null, info?.tab?.title ?? strings.title())
 }
 
 

@@ -61,7 +61,7 @@ Server 端只读观察 DSH 生命周期事件并记录审计日志：
 ## 工作原理
 
 - **Server 端**（`lib/index.js`）：`audit.js` 监听四类事件 → `store.js` 按会话分桶持久化；`git.js` 类型化提交（execFile）；`review.js` + `diff.js` 规则引擎；`ai.js` 可选 AI 增强；`routes.js` 提供 `/observability/api` 路由（全部经 loopback 信任围栏）。
-- **Client 端**（`lib/client.js`）：两个侧边栏页签（`dsh-my-observability:replay` 轨迹回放、`dsh-my-observability:git` Git 工具），样式走 DSH 语义 token，随 fiber 卸载无残留。
+- **Client 端**（`lib/client.js`）：两个侧边栏页签（`dsh-my-observability:replay` 轨迹回放、`dsh-my-observability:git` Git 工具），每个面板一个页签类型，经**宿主原生侧边栏扩展点**注册（`ctx.sidebarRightTabs` 页签类型 + `slots` 的 `sidebar.right.pane.tab` / `.title` 席位，issue #187 批 1），样式走 DSH 语义 token，随 fiber 卸载无残留。
 
 ## 安装
 

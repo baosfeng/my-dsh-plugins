@@ -169,7 +169,16 @@ const exportsObj = bundleRegistered.factory((spec) => {
   throw new Error(`unexpected require: ${spec}`)
 })
 
-/** 挂载插件：跑 apply(ctx)，返回注册到的页签 + 收集到的 teardown。 */
+/**
+ * 挂载插件：跑 apply(ctx)，返回注册到的原生页签类型/席位 + 收集到的 teardown。
+ *
+ * issue #187 批 1：侧边栏走宿主原生扩展点（ctx.sidebarRightTabs +
+ * ctx.slots），不再消费第三方 dsh-better-sidebar 服务。时序语义随之改变——
+ * 迁移前用动态服务查询绕开「首屏提供者 fiber 未
+ * active」，现在由声明式 `exports.inject = ['slots','sidebarRightTabs']` 负责
+ * （宿主保证服务可用后才激活插件）。本夹具仍按 strict=false 语义提供实例，
+ * 并断言注册不依赖 strict 取法。
+ */
 function mount(options = {}) {
   const { routes = {}, language = 'zh-CN', sidebar = true, hasDocument = true } = options
   resetHooks()
@@ -179,14 +188,22 @@ function mount(options = {}) {
   delete global.document
   const doc = hasDocument ? stubDocument() : null
 
-  let tab = null
-  const service = sidebar
+  const types = []
+  const seats = []
+  const tabs = sidebar
     ? {
-        registerTab: (descriptor) => {
-          tab = descriptor
-          return () => {
-            tab = null
-          }
+        register: (definition) => {
+          types.push(definition)
+          return () => {}
+        },
+      }
+    : undefined
+  const slots = sidebar
+    ? {
+        inject: (name, factory) => factory(),
+        register: (descriptor, component) => {
+          seats.push({ descriptor, component })
+          return () => {}
         },
       }
     : undefined
@@ -198,7 +215,11 @@ function mount(options = {}) {
     },
     // 模拟 cordis：strict 取法（提供者 fiber 未 active）返回 undefined，
     // strict=false 才拿到实例。
-    get: (name, strict = true) => (name === 'betterSidebar' ? (strict ? undefined : service) : undefined),
+    get: (name, strict = true) => {
+      if (name === 'sidebarRightTabs') return strict ? undefined : tabs
+      if (name === 'slots') return strict ? undefined : slots
+      return undefined
+    },
   }
   global.window = {
     __ModuleLoader__: { load: () => {} },
@@ -209,12 +230,17 @@ function mount(options = {}) {
     clearInterval: () => {},
   }
   exportsObj.apply(ctx)
+  const type = types[0] ?? null
+  const body = seats.find((seat) => seat.descriptor.name === 'sidebar.right.pane.tab') ?? null
   return {
     ctx,
     doc,
     cleanups,
+    types,
+    seats,
     get tab() {
-      return tab
+      // 兼容旧断言：tab 视图 = 原生页签类型 + 原生 body 席位的组合。
+      return type === null || body === null ? null : { ...type, component: body.component }
     },
   }
 }
@@ -222,7 +248,10 @@ function mount(options = {}) {
 /** 渲染页签组件并把元素树展开成扁平 host 元素列表。 */
 function renderTab(tab, visible = true) {
   resetCursors()
-  const element = tab.component({ scope: { sessionId: 'sess-1' }, visible })
+  const element = tab.component({
+    sessionId: 'sess-1',
+    useTabInfo: () => ({ tab: { id: 't1', title: '插件守护', visible } }),
+  })
   return collect(element)
 }
 
@@ -432,16 +461,30 @@ test('样式契约：apply 注入 <style data-dsh-my-guardian=styles>，fiber te
   assert.equal(style.parentNode, null, 'teardown 必须移除样式元素，避免 HMR 后重复注入')
 })
 
-test('应用契约：betterSidebar 未提供时静默跳过；strict 取法返回 undefined 仍注册页签', () => {
+test('应用契约：原生扩展点缺失时静默跳过；strict=false 取法拿到服务即注册页签类型与两个席位', () => {
   const withoutService = mount({ sidebar: false })
-  assert.equal(withoutService.tab, null, '未安装 better-sidebar 时不注册、不抛异常')
+  assert.equal(withoutService.tab, null, '原生服务缺失时不注册、不抛异常')
+  assert.deepEqual(withoutService.types, [], '不缺省注册页签类型')
 
   const withService = mount()
-  assert.ok(withService.tab, 'strict=false 取法拿到服务实例时必须注册页签（首屏提供者 fiber 尚未 active）')
-  assert.equal(withService.tab.id, 'dsh-my-guardian:panel')
-  assert.equal(withService.tab.order, 80)
-  assert.equal(withService.tab.single, true)
-  assert.equal(withService.tab.title(), '插件守护', '页签标题走 i18n')
+  assert.ok(withService.tab, 'strict=false 取法拿到服务实例时必须注册（服务声明式 inject + 实例判空）')
+  const type = withService.types[0]
+  assert.equal(type.id, 'dsh-my-guardian', 'id 用包名（原生惯例，全局唯一）')
+  assert.equal(type.kind, 'dsh-my-guardian:panel', 'kind 沿用迁移前 better-sidebar 的 tab id')
+  assert.equal(type.title('dsh-resource://sidebar/dsh-my-guardian:panel'), '插件守护', '页签标题走 i18n')
+  assert.deepEqual(
+    type.guide.map((entry) => entry.order),
+    [80],
+    'guide.order 沿用迁移前 better-sidebar 的 order(80)',
+  )
+  assert.deepEqual(
+    withService.seats.map((seat) => seat.descriptor),
+    [
+      { name: 'sidebar.right.pane.tab', key: 'dsh-my-guardian' },
+      { name: 'sidebar.right.pane.tab.title', key: 'dsh-my-guardian' },
+    ],
+    'body + title 两个 keyed 席位（key = 类型 id）',
+  )
   assert.equal(typeof withService.tab.component, 'function')
 })
 

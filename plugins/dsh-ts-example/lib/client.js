@@ -40,21 +40,55 @@ exports.apply = apply;
  *
  * 演示内容：侧边栏页签「TS 示例」——调 server 端 /ts-example/api/greeting
  * 显示问候语（client TS → server TS 全链路）。
+ *
+ * 侧边栏走**宿主原生扩展点**（issue #187 批 1），不再消费第三方
+ * dsh-better-sidebar 服务：
+ *   1. `ctx.sidebarRightTabs.register(...)` 注册页面类型（含 guide 胶囊，
+ *      用户从右栏指南页点开）；
+ *   2. keyed 席位 `sidebar.right.pane.tab` 注册面板本体（key = 类型 id）；
+ *   3. keyed 席位 `sidebar.right.pane.tab.title` 注册页签标题。
+ * 原生能力通过 Cordis 服务名 inject 获取（`slots` / `sidebarRightTabs`），
+ * 无需 require 任何 `@deepseek-ai/dsh-client-ui-*` 包 —— 官方生产范本见
+ * dsh-client-ui-sidebar-files/lib/client.js:681-711。
  */
 const react_1 = require("react");
 // ── 插件体 ─────────────────────────────────────────────────────────────
-exports.inject = ['betterSidebar'];
+/** 页签实现身份（官方惯例：包名；全局唯一）。 */
+const TAB_ID = 'dsh-ts-example';
+/** 页面类型判别符（沿用迁移前 better-sidebar 的 tab id）。 */
+const TAB_KIND = 'dsh-ts-example:greeting';
+/** 指南页相对顺序（沿用迁移前 better-sidebar 的 order）。 */
+const TAB_ORDER = 90;
+exports.inject = ['slots', 'sidebarRightTabs'];
 function apply(ctx) {
-    const service = ctx.betterSidebar;
-    if (service === undefined)
+    // 服务缺失（旧宿主）时静默跳过：判空必须同时覆盖 null 与 undefined
+    // （typeof null 是 object，会骗过 === undefined 的写法）。
+    const tabs = ctx.sidebarRightTabs;
+    const slots = ctx.slots;
+    if (tabs == null || slots == null)
         return;
-    ctx.effect(() => service.registerTab({
-        id: 'dsh-ts-example:greeting',
+    ctx.effect(() => tabs.register({
+        id: TAB_ID,
+        kind: TAB_KIND,
         title: () => 'TS 示例',
-        order: 90,
-        single: true,
-        component: (props) => (0, react_1.createElement)(GreetingPanel, props),
-    }), 'dsh-ts-example: greeting tab registration');
+        guide: [{ order: TAB_ORDER, title: () => 'TS 示例' }],
+    }), 'dsh-ts-example: tab');
+    ctx.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, GreetingTabBody)), 'dsh-ts-example: greeting tab body');
+    ctx.effect(() => slots.inject('sidebar.right.pane.tab.title', () => slots.register({ name: 'sidebar.right.pane.tab.title', key: TAB_ID }, GreetingTabTitle)), 'dsh-ts-example: greeting tab title');
+}
+// ── 原生席位 → 面板适配 ────────────────────────────────────────────────
+/**
+ * 原生 tab body 席位：把原生 props（`sessionId` + `useTabInfo` hook）
+ * 适配成面板契约（`scope.sessionId` + `visible`），面板本体零改动。
+ * `useTabInfo` 缺失（契约不匹配）时保守取 visible=true，只影响轮询。
+ */
+function GreetingTabBody(props) {
+    const visible = props.useTabInfo?.()?.tab?.visible ?? true;
+    return (0, react_1.createElement)(GreetingPanel, { scope: { sessionId: props.sessionId }, visible });
+}
+/** 原生 tab title 席位：优先用宿主给定的标题（i18n 由文档标题决定）。 */
+function GreetingTabTitle(props) {
+    return (0, react_1.createElement)('span', null, props.useTabInfo?.()?.tab?.title ?? 'TS 示例');
 }
 // ── 页面组件 ───────────────────────────────────────────────────────────
 function GreetingPanel(props) {
@@ -64,7 +98,7 @@ function GreetingPanel(props) {
         if (!props.visible)
             return;
         let cancelled = false;
-        fetch(`/ts-example/api/greeting?name=${encodeURIComponent(props.scope.sessionId)}`)
+        fetch(`/ts-example/api/greeting?name=${encodeURIComponent(props.scope?.sessionId ?? '')}`)
             .then((response) => response.json())
             .then((body) => {
             if (!cancelled) {
@@ -81,7 +115,7 @@ function GreetingPanel(props) {
         return () => {
             cancelled = true;
         };
-    }, [props.visible, props.scope.sessionId]);
+    }, [props.visible, props.scope?.sessionId]);
     return (0, react_1.createElement)('div', { style: { padding: '12px', fontFamily: 'var(--dsw-font-sans)' } }, (0, react_1.createElement)('h3', null, 'TS 示例插件'), (0, react_1.createElement)('p', null, loading ? '加载中…' : greeting), (0, react_1.createElement)('p', { style: { color: 'var(--dsw-alias-text-tertiary)', fontSize: '12px' } }, 'server 端由 TypeScript 编写（tsc 编译），client 端由 TypeScript 编写（构建时编译）。'));
 }
 

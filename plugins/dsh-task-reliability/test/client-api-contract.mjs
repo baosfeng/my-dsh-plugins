@@ -196,27 +196,54 @@ function loadBundle() {
   return exportsObj
 }
 
-/** apply(ctx) 并返回侧边栏页签描述符。 */
-function mountTab(exportsObj) {
-  let capturedTab = null
-  const mockService = {
-    registerTab: (descriptor) => {
-      capturedTab = descriptor
+/**
+ * apply(ctx) 并返回宿主原生扩展点的登记结果（issue #187 批 1）：
+ * `types` = ctx.sidebarRightTabs.register(...) 的页签类型；
+ * `seat(name)` = ctx.slots.register(...) 的 keyed 席位。
+ * `get(name, strict)` 严格模拟 cordis：strict 取法在提供者 fiber 未 active
+ * 时返回 undefined、strict=false 才拿到实例。
+ */
+function mountNative(exportsObj) {
+  const types = []
+  const seats = []
+  const tabs = {
+    register: (definition) => {
+      types.push(definition)
+      return () => {}
+    },
+  }
+  const slots = {
+    inject: (name, factory) => factory(),
+    register: (descriptor, component) => {
+      seats.push({ descriptor, component })
       return () => {}
     },
   }
   exportsObj.apply({
-    betterSidebar: mockService,
     effect: (fn) => fn(),
-    // 严格模拟 cordis：strict 取法在提供者未 active 时返回 undefined。
     get(name, strict = true) {
-      if (name === 'betterSidebar') return strict ? undefined : mockService
+      if (name === 'sidebarRightTabs') return strict ? undefined : tabs
+      if (name === 'slots') return strict ? undefined : slots
       return undefined
     },
   })
-  assert.ok(capturedTab, 'sidebar tab registered')
-  return capturedTab
+  assert.equal(types.length, 1, 'sidebar tab type registered')
+  const body = seats.find((seat) => seat.descriptor.name === 'sidebar.right.pane.tab')
+  return {
+    types,
+    seats,
+    type: types[0],
+    seat: (name) => seats.find((seat) => seat.descriptor.name === name),
+    /** 兼容旧夹具：面板元素由原生 body 席位产出（原生 props 自动适配）。 */
+    component: (props = {}) => body.component(nativeBodyProps(props.visible !== false)),
+  }
 }
+
+/** 原生 body 席位的 props（sessionId + tabInfo hook）。 */
+const nativeBodyProps = (visible = true, sessionId = 'sess-test') => ({
+  sessionId,
+  useTabInfo: () => ({ tab: { id: 't1', title: 'x', visible } }),
+})
 
 /** 展平元素树，收集全部元素节点（只展开本 bundle 的组件函数）。 */
 function collect(node, out = []) {
@@ -352,7 +379,7 @@ afterEach(() => {
 
 test('visible panel polls the three list endpoints and re-arms every 6000ms', async () => {
   const exportsObj = loadBundle()
-  const tab = mountTab(exportsObj)
+  const tab = mountNative(exportsObj)
   routes = {
     'GET /task-reliability/api/info': { ok: true, value: { tracking: true, verify: false, autopilot: true } },
     'GET /task-reliability/api/tasks': { ok: true, value: [{ id: 't1', description: 'task one', status: 'active' }] },
@@ -397,7 +424,7 @@ test('visible panel polls the three list endpoints and re-arms every 6000ms', as
 
 test('hidden panel (visible === false) issues no request and arms no interval', async () => {
   const exportsObj = loadBundle()
-  const tab = mountTab(exportsObj)
+  const tab = mountNative(exportsObj)
   renderTree(tab.component({ scope: { sessionId: 'sess-test' }, visible: false }))
   await drain()
   assert.deepEqual(fetchCalls, [], 'hidden tab must not poll')
@@ -406,7 +433,7 @@ test('hidden panel (visible === false) issues no request and arms no interval', 
 
 test('each mode switch POSTs only its own key to /api/mode', async () => {
   const exportsObj = loadBundle()
-  const tab = mountTab(exportsObj)
+  const tab = mountNative(exportsObj)
   routes = {
     'GET /task-reliability/api/info': { ok: true, value: { tracking: false, verify: false, autopilot: false } },
     'GET /task-reliability/api/tasks': { ok: true, value: [] },
@@ -464,7 +491,7 @@ test('each mode switch POSTs only its own key to /api/mode', async () => {
 
 test('task actions POST /api/tasks/<id>/<action> and reload', async () => {
   const exportsObj = loadBundle()
-  const tab = mountTab(exportsObj)
+  const tab = mountNative(exportsObj)
   routes = {
     'GET /task-reliability/api/info': { ok: true, value: {} },
     'GET /task-reliability/api/tasks': {
@@ -524,7 +551,7 @@ test('task actions POST /api/tasks/<id>/<action> and reload', async () => {
 
 test('answering a question POSTs { answer } to /api/questions/<id>/answer', async () => {
   const exportsObj = loadBundle()
-  const tab = mountTab(exportsObj)
+  const tab = mountNative(exportsObj)
   routes = {
     'GET /task-reliability/api/info': { ok: true, value: {} },
     'GET /task-reliability/api/tasks': { ok: true, value: [] },
@@ -596,11 +623,15 @@ test('apply injects the panel stylesheet with the plugin attribute tag and unreg
 
   const disposers = []
   let capturedTab = null
-  const mockService = {
-    registerTab: (descriptor) => {
-      capturedTab = descriptor
+  const tabs = {
+    register: (definition) => {
+      capturedTab = definition
       return () => {}
     },
+  }
+  const slots = {
+    inject: (name, factory) => factory(),
+    register: () => () => {},
   }
   const ctx = {
     effect: (fn) => {
@@ -608,12 +639,13 @@ test('apply injects the panel stylesheet with the plugin attribute tag and unreg
       if (typeof dispose === 'function') disposers.push(dispose)
     },
     get(name, strict = true) {
-      if (name === 'betterSidebar') return strict ? undefined : mockService
+      if (name === 'sidebarRightTabs') return strict ? undefined : tabs
+      if (name === 'slots') return strict ? undefined : slots
       return undefined
     },
   }
   exportsObj.apply(ctx)
-  assert.ok(capturedTab, 'tab registered')
+  assert.ok(capturedTab, 'tab type registered')
 
   const style = elements.find((node) => node.tag === 'style')
   assert.ok(style, 'apply must inject a <style> element')
@@ -623,7 +655,7 @@ test('apply injects the panel stylesheet with the plugin attribute tag and unreg
 
   // fiber teardown：两个 effect 的 disposer 各自摘掉自己插入的 <style>，
   // 且不得抛错（HMR / 插件禁用路径）。
-  assert.ok(disposers.length >= 2, 'apply must register styles + tab effects')
+  assert.ok(disposers.length >= 4, 'apply must register styles + tab type + body/title seat effects')
   for (const dispose of disposers) dispose()
   assert.equal(style.parentNode, null, 'teardown must detach the injected stylesheet')
 })
@@ -689,7 +721,7 @@ test('settings tab registers through the slots service and degrades silently wit
 
 test('register task POSTs { sessionId, description, mode } to /api/tasks', async () => {
   const exportsObj = loadBundle()
-  const tab = mountTab(exportsObj)
+  const tab = mountNative(exportsObj)
   routes = {
     'GET /task-reliability/api/info': { ok: true, value: {} },
     'GET /task-reliability/api/tasks': { ok: true, value: [] },

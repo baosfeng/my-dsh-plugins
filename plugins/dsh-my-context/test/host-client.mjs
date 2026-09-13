@@ -29,7 +29,7 @@ function reactStub() {
   return { createElement, useEffect, useState }
 }
 
-test('client bundle: loads, injects betterSidebar, registers tab, renders panel root', () => {
+test('client bundle: loads, injects native sidebar services, registers tab type, renders panel root', () => {
   const seen = {}
   const windowMock = {
     __ModuleLoader__: {
@@ -46,29 +46,38 @@ test('client bundle: loads, injects betterSidebar, registers tab, renders panel 
   assert.ok(seen.def, 'module loader load called')
   assert.equal(seen.def.id, 'dsh-my-context')
   const exports = seen.def.factory(reactStub)
-  assert.deepEqual(exports.inject, ['betterSidebar'])
+  assert.deepEqual(exports.inject, ['slots', 'sidebarRightTabs'])
 
   const disposers = []
-  let tab
+  let type
+  let body
   const ctx = {
     effect(fn) {
       const dispose = fn()
       disposers.push(dispose)
       return dispose
     },
-    betterSidebar: {
-      registerTab(def) {
-        tab = def
+    slots: {
+      inject: (name, factory) => factory(),
+      register(descriptor, component) {
+        if (descriptor.name === 'sidebar.right.pane.tab') body = component
+        return () => {}
+      },
+    },
+    sidebarRightTabs: {
+      register(definition) {
+        type = definition
         return () => {}
       },
     },
   }
-  // 不抛错，样式注入在无 document 时降级为 noop；页签注册成功。
+  // 不抛错，样式注入在无 document 时降级为 noop；页签类型与席位注册成功。
   assert.doesNotThrow(() => exports.apply(ctx))
-  assert.equal(tab.id, 'dsh-my-context:context')
+  assert.equal(type.id, 'dsh-my-context')
+  assert.equal(type.kind, 'dsh-my-context:context')
 
-  // 组件工厂生成 ContextPanel 元素；渲染函数组件本体，顶层为 dso-panel div。
-  const element = tab.component({ visible: true })
+  // 原生席位适配层生成 ContextPanel 元素；渲染函数组件本体，顶层为 dso-panel div。
+  const element = body({ sessionId: 'sess-1', useTabInfo: () => ({ tab: { visible: true } }) })
   assert.equal(typeof element.type, 'function')
   const tree = element.type(element.props)
   assert.equal(tree.type, 'div')

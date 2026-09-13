@@ -62,7 +62,7 @@ Server 端监听 `session/event` 统计每次请求的上下文：
 ## 工作原理
 
 - **Server 端**（`lib/index.js`）：`events.js` 监听 `session/event`（统计）+ `agent/pre-step`（预算拦截）；`meter.js` token 估算纯函数；`budget.js` 预算检查纯函数；`store.js` + `persist.js` 会话统计持久化；`routes.js` 提供 `/context/api` 路由（全部经 loopback 信任围栏）。
-- **Client 端**（`lib/client.js`）：侧边栏页签 `dsh-my-context:context`（概览 + 构成 + 请求 + 预算），样式走 DSH 语义 token，随 fiber 卸载无残留。
+- **Client 端**（`lib/client.js`）：侧边栏页签 `dsh-my-context:context`（概览 + 构成 + 请求 + 预算），经**宿主原生侧边栏扩展点**注册（`ctx.sidebarRightTabs` 页签类型 + `slots` 的 `sidebar.right.pane.tab` / `.title` 席位，issue #187 批 1），样式走 DSH 语义 token，随 fiber 卸载无残留。
 
 > 📌 **调研结论**：DSH 核心**没有 `llm/request` 事件**（dsh-llm / dsh-agent-loop / dsh-session 均无）。token 计量改用 `session/event` 通道的 `assistant/message`（携带真实 usage），预算拦截用 `agent/pre-step` waterfall（返回 `{ kind: 'reject' }`）。
 

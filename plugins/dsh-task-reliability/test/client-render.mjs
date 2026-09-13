@@ -1,7 +1,8 @@
 /**
  * Client render-path test: loads the client bundle with a self-contained
  * createElement stub (zero dependencies, platform-independent), registers
- * the sidebar tab through a mocked betterSidebar service, then invokes the
+ * the sidebar tab through the host's native sidebar extension points
+ * (ctx.sidebarRightTabs + ctx.slots, issue #187 batch 1), then invokes the
  * panel component directly to verify the element tree builds without errors
  * and renders the mode switches / task list / pending questions structure.
  */
@@ -56,35 +57,24 @@ test('client bundle registers sidebar tab and renders panel structure', () => {
   hookValues.clear()
   const exportsObj = loadBundle()
 
-  // ── mock betterSidebar service + context ──────────────────────────────
-  let capturedTab = null
-  const mockService = {
-    registerTab: (descriptor) => {
-      capturedTab = descriptor
-      return () => {}
-    },
-  }
-  const ctx = {
-    betterSidebar: mockService,
-    effect: (fn) => fn(),
-    // 严格模拟 cordis 的 ctx.get(name, strict = true)：服务提供者 fiber 未
-    // active 时 strict 取法返回 undefined、strict=false 才返回服务对象。
-    // 防回归（首屏时序）：侧边栏 tab 注册不得依赖 betterSidebar 提供者已 active。
-    get(name, strict = true) {
-      if (name === 'betterSidebar') return strict ? undefined : mockService
-      return undefined
-    },
-  }
-  exportsObj.apply(ctx)
-  assert.ok(capturedTab, 'tab registered')
-  assert.equal(capturedTab.id, 'task-reliability:panel')
-  assert.equal(capturedTab.single, true)
-  assert.ok(typeof capturedTab.title === 'function' && capturedTab.title() !== '')
-  assert.equal(capturedTab.order, 70)
+  // ── mock 宿主原生扩展点（sidebarRightTabs + slots）+ context ──────────
+  const native = mountNativeTab(exportsObj)
+  assert.equal(native.types.length, 1, 'one native tab type registered')
+  assert.equal(native.types[0].id, 'dsh-task-reliability', 'id 用包名（原生惯例，全局唯一）')
+  assert.equal(native.types[0].kind, 'task-reliability:panel', 'kind 沿用迁移前 better-sidebar 的 tab id')
+  assert.ok(typeof native.types[0].title === 'function' && native.types[0].title('addr') !== '')
+  assert.deepEqual(
+    native.types[0].guide.map((entry) => entry.order),
+    [70],
+    'guide.order 沿用迁移前 better-sidebar 的 order(70)',
+  )
 
-  // ── build the panel element ───────────────────────────────────────────
-  const scope = { sessionId: 'sess-test' }
-  const element = capturedTab.component({ ctx, scope, visible: true })
+  // ── build the panel element（原生 body 席位：sessionId + useTabInfo）───
+  const body = native.seat('sidebar.right.pane.tab')
+  const element = body.component({
+    sessionId: 'sess-test',
+    useTabInfo: () => ({ tab: { id: 't1', title: 'x', visible: true } }),
+  })
   assert.ok(element, 'component wired')
 
   // ── invoke the component directly (stubbed hooks) ─────────────────────
@@ -122,7 +112,7 @@ test('client bundle registers sidebar tab and renders panel structure', () => {
   assert.ok(joined.includes('Register task'), 'register form rendered')
 })
 
-test('apply without betterSidebar must not throw', () => {
+test('apply without the native sidebar services must not throw', () => {
   hookValues.clear()
   const exportsObj = loadBundle()
   let error = null
@@ -134,33 +124,51 @@ test('apply without betterSidebar must not throw', () => {
   } catch (caught) {
     error = caught
   }
-  assert.equal(error, null, 'apply without betterSidebar must not throw')
+  assert.equal(error, null, 'apply without sidebarRightTabs/slots must not throw（服务缺失静默降级）')
+  assert.deepEqual(exportsObj.inject, ['slots', 'sidebarRightTabs'], 'inject 声明原生服务名（不再有第三方侧边栏服务）')
 })
+
+/**
+ * 挂载插件体并返回宿主原生扩展点的登记结果（issue #187 批 1）：
+ *  - `types`：ctx.sidebarRightTabs.register(...) 收到的页签类型；
+ *  - `seat(name)`：ctx.slots.register(...) 收到的 keyed 席位。
+ * `get(name, strict)` 严格模拟 cordis：strict 取法在提供者 fiber 未 active
+ * 时返回 undefined、strict=false 才拿到实例（防回归：页签注册不得依赖
+ * 提供者已 active）。
+ */
+function mountNativeTab(exportsObj) {
+  const types = []
+  const seats = []
+  const tabs = {
+    register: (definition) => {
+      types.push(definition)
+      return () => {}
+    },
+  }
+  const slots = {
+    inject: (name, factory) => factory(),
+    register: (descriptor, component) => {
+      seats.push({ descriptor, component })
+      return () => {}
+    },
+  }
+  exportsObj.apply({
+    effect: (fn) => fn(),
+    get(name, strict = true) {
+      if (name === 'sidebarRightTabs') return strict ? undefined : tabs
+      if (name === 'slots') return strict ? undefined : slots
+      return undefined
+    },
+  })
+  return { types, seats, seat: (name) => seats.find((seat) => seat.descriptor.name === name) }
+}
 
 test('task status badge shows the correct label per status (regression: statusLabel(task))', () => {
   hookValues.clear()
   const exportsObj = loadBundle()
 
-  let capturedTab = null
-  const mockService = {
-    registerTab: (descriptor) => {
-      capturedTab = descriptor
-      return () => {}
-    },
-  }
-  const ctx = {
-    betterSidebar: mockService,
-    effect: (fn) => fn(),
-    // 严格模拟 cordis 的 ctx.get(name, strict = true)：服务提供者 fiber 未
-    // active 时 strict 取法返回 undefined、strict=false 才返回服务对象。
-    // 防回归（首屏时序）：侧边栏 tab 注册不得依赖 betterSidebar 提供者已 active。
-    get(name, strict = true) {
-      if (name === 'betterSidebar') return strict ? undefined : mockService
-      return undefined
-    },
-  }
-  exportsObj.apply(ctx)
-  assert.ok(capturedTab, 'tab registered')
+  const native = mountNativeTab(exportsObj)
+  assert.equal(native.types.length, 1, 'tab type registered')
 
   // 预置 tasks state（idx=1）：Panel 渲染时 useState 按 hookIndex 取 idx，
   // 命中预置的任务列表；其余 state（info/questions/loadError）由渲染默认创建。
@@ -173,7 +181,10 @@ test('task status badge shows the correct label per status (regression: statusLa
     () => {},
   ])
 
-  const element = capturedTab.component({ ctx, scope: { sessionId: 'sess-test' }, visible: true })
+  const element = native.seat('sidebar.right.pane.tab').component({
+    sessionId: 'sess-test',
+    useTabInfo: () => ({ tab: { id: 't1', title: 'x', visible: true } }),
+  })
   const tree = element.type(element.props)
 
   const texts = []

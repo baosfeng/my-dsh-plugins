@@ -1,16 +1,17 @@
 /**
  * dsh-my-guardian — client half (browser). SOURCE TEMPLATE.
  *
- * A dsh-better-sidebar tab ("插件守护 / Plugin Guardian") showing the staged
- * and promoted plugin entries managed by the server half:
+ * The "插件守护 / Plugin Guardian" sidebar tab (host-native sidebar extension
+ * points since issue #187 batch 1: ctx.sidebarRightTabs + keyed slots) showing
+ * the staged and promoted plugin entries managed by the server half:
  *  - per-entry status (running / pending / failed ×N / frozen),
  *  - the last error for failed entries (expandable),
  *  - actions: retry (unfreeze + remount), remove from the roster,
  *  - a safe-mode switch that unmounts everything the guardian mounted.
  *
  * Data source: GET/POST /guardian/api/* (server half), polled while the tab
- * is visible. Styling follows the better-sidebar design language: DSH
- * semantic tokens, flat surfaces, hairline borders.
+ * is visible. Styling follows the DSH design language: semantic tokens, flat
+ * surfaces, hairline borders.
  *
  * BUILD NOTE: this file is the SOURCE TEMPLATE. scripts/build.mjs compiles the
  * client halves (`src/client/parts/*.ts` → `lib/.client-build/parts/*.js`),
@@ -29,7 +30,12 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
 
+    /** 迁移前 better-sidebar 的 tab id：现为原生 kind。 */
     const TAB_ID = 'dsh-my-guardian:panel'
+    /** 原生页签类型实现身份（官方惯例：包名；全局唯一，也是席位的 key）。 */
+    const TAB_ID_PKG = 'dsh-my-guardian'
+    /** 指南页相对顺序（沿用迁移前 better-sidebar 的 order）。 */
+    const TAB_ORDER = 80
     const POLL_MS = 5000
 
     // ── parts (compiled from src/client/parts/*.ts, injected by

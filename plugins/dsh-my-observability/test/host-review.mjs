@@ -375,7 +375,7 @@ test('AI 审查上下文：都没有 → 降级不崩溃（issue #165）', async
   const { status, value } = await postReview(api, { repoPath: repo, aiReview: true })
   assert.equal(status, 200)
   assert.equal(value.value.ai.enabled, true)
-  assert.equal(value.value.ai.failed, true, '无会话快照 → AI 结论解析失败降级')
+  assert.equal(value.value.ai.failed, true, '无会话快照 → 模型未产出回复降级')
   assert.equal(value.value.summary.errors, 0, '规则引擎结果不受影响')
 })
 
@@ -446,4 +446,28 @@ test('GET /status exposes audit stats and aiReview flag', async () => {
   assert.equal(value.gitEnabled, true)
   assert.equal(value.aiReview, true)
   assert.equal(typeof value.auditCount, 'number')
+})
+
+test('aiProvider/aiModel/aiCwd options are forwarded to agents.create', async () => {
+  const repo = createRepo()
+  writeFileSync(join(repo, 'src/a.js'), 'const x = 1\n')
+  git(repo, 'add', 'src/a.js')
+  git(repo, 'commit', '-m', 'chore: seed')
+  writeFileSync(join(repo, 'src/a.js'), 'const x = 1\nconst y = 2\n')
+  let capturedOpts = null
+  const { api } = boot(
+    { aiProvider: 'deepseek', aiModel: 'deepseek-flash', aiCwd: '/work/repo' },
+    {
+      agents: agentsMock({
+        onCreate: (opts) => {
+          capturedOpts = opts
+        },
+      }),
+    },
+  )
+  await settle()
+  await postReview(api, { repoPath: repo })
+  assert.equal(capturedOpts.agentOptions.provider, 'deepseek')
+  assert.equal(capturedOpts.agentOptions.model, 'deepseek-flash')
+  assert.equal(capturedOpts.agentOptions.cwd, '/work/repo')
 })

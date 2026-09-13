@@ -25,14 +25,21 @@ import { registerObservabilityRoutes } from './routes.js';
 import { createResourceMonitor } from './resource-monitor.js';
 export const name = 'dsh-my-observability';
 export const inject = ['webServer'];
-export function apply(ctx, config) {
-    // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
-    const options = {
+/** 从配置构建 ObservabilityOptions。 */
+function buildOptions(config) {
+    return {
+        aiProvider: config?.aiProvider,
+        aiModel: config?.aiModel,
+        aiCwd: config?.aiCwd,
         aiReview: config?.aiReview !== false,
         aiTimeoutMs: Number.isFinite(config?.aiTimeoutMs) && config?.aiTimeoutMs > 0
             ? config?.aiTimeoutMs
             : 60000,
     };
+}
+export function apply(ctx, config) {
+    // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
+    const options = buildOptions(config);
     // ── 审计存储：会话隔离 + 持久化 + 重启恢复 ──────────────────────────
     const store = createStore(ctx);
     // ── 事件监听（只读观察；waterfall 一律透传 next()）──────────────────

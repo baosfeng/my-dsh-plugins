@@ -25,6 +25,9 @@ import type { DshContext, ServerRequest, ServerResponse } from './types.js'
 export interface ObservabilityOptions {
   aiReview: boolean
   aiTimeoutMs: number
+  aiProvider?: string
+  aiModel?: string
+  aiCwd?: string
 }
 
 /** 信任围栏。 */
@@ -317,7 +320,11 @@ async function aiOutcome(
 ): Promise<AiReviewOutcome> {
   if (options.aiReview === false) return { enabled: false }
   if (payload.aiReview === false) return { enabled: false }
-  return runAiReview(ctx, diffText, report, options.aiTimeoutMs)
+  return runAiReview(ctx, diffText, report, options.aiTimeoutMs, {
+    provider: options.aiProvider,
+    model: options.aiModel,
+    cwd: options.aiCwd,
+  })
 }
 
 // ── HTTP helpers ───────────────────────────────────────────────────────────

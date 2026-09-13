@@ -34,12 +34,30 @@ export interface AiContext {
   get?: <T = unknown>(name: string, strict?: boolean) => T | undefined
 }
 
+/** AI 审查所需的 agentOptions 子集（provider / model / cwd 透传）。 */
+export interface AiAgentOptions {
+  provider?: string
+  model?: string
+  cwd?: string
+}
+
+/** 从 AiAgentOptions 构建 agents.create 所需的 agentOptions 对象。 */
+function buildAgentOptions(opts?: AiAgentOptions): Record<string, string> {
+  if (opts === undefined) return {}
+  const result: Record<string, string> = {}
+  if (opts.provider !== undefined) result.provider = opts.provider
+  if (opts.model !== undefined) result.model = opts.model
+  if (opts.cwd !== undefined) result.cwd = opts.cwd
+  return result
+}
+
 /** 运行 AI 审查（尽力而为；任何失败都降级为 failed 标记）。 */
 export async function runAiReview(
   ctx: AiContext,
   diffText: string,
   report: ReviewReport,
   timeoutMs = REVIEW_TIMEOUT_MS,
+  agentOptions?: AiAgentOptions,
 ): Promise<AiReviewOutcome> {
   const agents = agentsServiceOf(ctx)
   if (agents === undefined) return { enabled: true, failed: true, note: 'agents service unavailable' }
@@ -51,11 +69,17 @@ export async function runAiReview(
     handle = await agents.create({
       sessionId,
       meta: { origin: 'subagent', delegationDepth: 1 },
-      agentOptions: {},
+      agentOptions: buildAgentOptions(agentOptions),
     })
     handle.agent.followup(userMessage(aiReviewPrompt(diffText, report)))
     await withTimeout(handle.agent.whenIdle(), timeoutMs)
-    const parsed = parseAiConclusion(lastAssistantText(handle.agent.session))
+    const text = lastAssistantText(handle.agent.session)
+    // 区分「模型未调用」与「结论解析失败」：
+    // - text 为空 → agent 未产出 assistant 消息（模型从未被调用或调用失败）
+    // - text 非空但解析失败 → 模型回复了，但结论无法解析
+    if (text === '')
+      return { enabled: true, failed: true, note: '模型未产出回复（agent 可能未调用模型或模型请求失败）' }
+    const parsed = parseAiConclusion(text)
     if (parsed === undefined) return { enabled: true, failed: true, note: 'AI 结论解析失败' }
     return { enabled: true, ...parsed }
   } catch (error) {

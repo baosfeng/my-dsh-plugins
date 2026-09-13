@@ -30,6 +30,9 @@ import type { DshContext } from './types.js'
 export interface ObservabilityConfig {
   aiReview?: boolean
   aiTimeoutMs?: number
+  aiProvider?: string
+  aiModel?: string
+  aiCwd?: string
   resourceIntervalMs?: number
   resourceLimits?: Record<string, number>
 }
@@ -38,15 +41,23 @@ export const name = 'dsh-my-observability'
 
 export const inject = ['webServer']
 
-export function apply(ctx: DshContext, config?: ObservabilityConfig): void {
-  // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
-  const options: ObservabilityOptions = {
+/** 从配置构建 ObservabilityOptions。 */
+function buildOptions(config?: ObservabilityConfig): ObservabilityOptions {
+  return {
+    aiProvider: config?.aiProvider,
+    aiModel: config?.aiModel,
+    aiCwd: config?.aiCwd,
     aiReview: config?.aiReview !== false,
     aiTimeoutMs:
       Number.isFinite(config?.aiTimeoutMs) && (config?.aiTimeoutMs as number) > 0
         ? (config?.aiTimeoutMs as number)
         : 60000,
   }
+}
+
+export function apply(ctx: DshContext, config?: ObservabilityConfig): void {
+  // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
+  const options = buildOptions(config)
 
   // ── 审计存储：会话隔离 + 持久化 + 重启恢复 ──────────────────────────
   const store = createStore(ctx)

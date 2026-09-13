@@ -41,9 +41,10 @@
  *   --plugin/--version 写入清单头部（插件名与版本，便于留痕归档）。
  */
 import { spawn } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import {
   checkAddonResolution,
+  extractApiToken,
   isPluginStatePath,
   linkNodeModules,
   presentStateDirs,
@@ -179,15 +180,53 @@ function entryNames(dumpOutput) {
   return names
 }
 
-async function httpStatus(port, path = '/') {
+async function httpStatus(port, path = '/', token = null) {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+    const url = new URL(`http://127.0.0.1:${port}${path}`)
+    if (token) url.searchParams.set('token', token)
+    const res = await fetch(url, {
       signal: AbortSignal.timeout(5000),
     })
     return res.status
   } catch {
     return 0
   }
+}
+
+/**
+ * 取隔离实例的访问 token（issue #257）。
+ *
+ * 为什么必须要：DSH web 对**无凭据**请求返回 401/403。旧实现里 `--api-path` 的冒烟是裸
+ * `fetch`（不带 token），于是**恒返回 404** —— 这一项成了"永远不通过、也永远不会真正
+ * 失败"的空检查，让 release.mjs 3c 门禁的「API 冒烟」失去意义。
+ *
+ * 取法（两条，都不赌固定 sleep）：
+ *   ① 启动输出：`dsh web` 首次启动会打印 `http://127.0.0.1:<port>/?token=…`；
+ *      隔离实例每次都重建 DSH_HOME，属于首次启动，因此这条命中率最高；
+ *   ② 退路：`<DSH_HOME>/.credentials.yaml` —— 该文件在启动过程中可能处于 .tmp/.lock
+ *      写入中，故用**条件轮询**（每 500ms 试一次，直到超时），而不是 sleep 固定秒数。
+ *
+ * 拿不到 token 时**不静默**：调用方必须显式失败或降级并说明原因（见步骤 5）。
+ */
+async function resolveApiToken({ getWebLog, simHome, timeoutMs = 20000 }) {
+  const file = join(simHome, '.credentials.yaml')
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    // 条件轮询（不是 sleep 固定秒数）：token 行可能在"实例就绪"之后才出现，
+    // 凭据文件在启动过程中也可能处于 .tmp/.lock 的写入态。
+    let credentialsText = ''
+    if (existsSync(file)) {
+      try {
+        credentialsText = readFileSync(file, 'utf8')
+      } catch {
+        /* 正在写入：下一轮再试 */
+      }
+    }
+    const found = extractApiToken({ logText: getWebLog(), credentialsText })
+    if (found.token) return found
+    await new Promise((resolveWait) => setTimeout(resolveWait, 500))
+  }
+  return { token: null, source: null, logTail: String(getWebLog() ?? '').slice(-400) }
 }
 
 // ── 0. 前置校验 ────────────────────────────────────────────────────────────
@@ -345,16 +384,31 @@ if (options.skipWeb) {
 
 // ── 4. 启动实例（真实进程） ────────────────────────────────────────────────
 log(`启动验证实例（端口 ${options.port}）…`)
+// issue #257：实例输出重定向到**文件**（而不是 pipe）。
+// 收益是确定的：日志会落盘，事后可诊断（pipe 版本一退出就什么都不剩）。
+// ⚠️ 如实记录：本机实测两种方式**都没有**在输出里看到 token 行（捕获字节数 0），
+// 所以 `--api-path` 目前会走到"取不到凭据 → 显式失败"这条分支（归因到脚本缺陷，
+// 而不是像旧版那样把 404 说成插件路由异常）。真正的 200 打通见 issue #257 待确认项。
+const webLogFile = join(simHome, 'dsh-web.log')
+const webLogFd = openSync(webLogFile, 'a')
 web = spawn(dshBin, ['--profile', options.profile, '--port', String(options.port), '--no-open'], {
   env: { ...process.env, DSH_HOME: simHome },
-  stdio: ['ignore', 'pipe', 'pipe'],
+  stdio: ['ignore', webLogFd, webLogFd],
 })
-let webLog = ''
-web.stdout.on('data', (chunk) => {
-  webLog += chunk
-})
-web.stderr.on('data', (chunk) => {
-  webLog += chunk
+/** 按需读实例输出（文件即真相，避免 pipe 捕获不全）。 */
+const readWebLog = () => {
+  try {
+    return readFileSync(webLogFile, 'utf8')
+  } catch {
+    return ''
+  }
+}
+process.on('exit', () => {
+  try {
+    closeSync(webLogFd)
+  } catch {
+    /* 已关闭 */
+  }
 })
 
 // 等待就绪（轮询 HTTP）
@@ -374,7 +428,7 @@ while (Date.now() < deadline) {
 }
 if (!ready) {
   fail(`实例 ${options.timeoutSec}s 内未就绪（exitCode=${web.exitCode}）`)
-  console.error(webLog.slice(-2000))
+  console.error(readWebLog().slice(-2000))
   await cleanup()
   process.exit(1)
 }
@@ -382,7 +436,7 @@ pass(`实例启动就绪（HTTP 200, 端口 ${options.port}）`)
 
 // 启动日志错误扫描（duplicate / failed to apply / error / exception）
 const errorHits = []
-for (const line of webLog.split('\n')) {
+for (const line of readWebLog().split('\n')) {
   if (/(duplicate loader|failed to apply|error|exception|ECONNREFUSED)/i.test(line) && !/(EADDRINUSE)/i.test(line)) {
     errorHits.push(line.trim())
   }
@@ -394,11 +448,27 @@ if (errorHits.length > 0) {
 }
 
 // ── 5. 插件 API 冒烟（验证 server 端 apply 生效） ──────────────────────────
-for (const path of options.apiPaths) {
-  const status = await httpStatus(options.port, path)
-  if (status === 200) pass(`API 冒烟 ${path} → 200`)
-  else {
-    fail(`API 冒烟 ${path} → ${status}（预期 200，说明插件 server 端未生效或路由异常）`)
+// issue #257 的硬要求：**不能假绿**。拿不到凭据时要么显式失败、要么明确降级并打印原因，
+// 绝不允许"静默 404 但当通过" —— 绿得没有意义的门禁比红更危险（它会让人以为验过了）。
+if (options.apiPaths.length > 0) {
+  const { token, source, logTail } = await resolveApiToken({ getWebLog: readWebLog, simHome })
+  if (!token) {
+    fail(
+      'API 冒烟无法进行：取不到隔离实例的访问 token（启动输出与 .credentials.yaml 都没有）。' +
+        '这是**验证脚本**的问题，不是插件问题 —— 请修脚本，不要跳过这一项。',
+    )
+    if (logTail) log(`实例输出尾部（诊断用）：\n${logTail}`)
+  } else {
+    log(`API 冒烟凭据来源：${source}`)
+    for (const path of options.apiPaths) {
+      const status = await httpStatus(options.port, path, token)
+      if (status === 200) pass(`API 冒烟 ${path} → 200`)
+      else if (status === 401 || status === 403) {
+        fail(`API 冒烟 ${path} → ${status}（token 被拒：认证方式或凭据不对，属**脚本缺陷**，不是插件路由问题）`)
+      } else {
+        fail(`API 冒烟 ${path} → ${status}（预期 200，说明插件 server 端未生效或路由异常）`)
+      }
+    }
   }
 }
 

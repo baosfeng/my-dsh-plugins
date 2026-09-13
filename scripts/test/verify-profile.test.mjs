@@ -32,6 +32,7 @@ import {
   checkAddonResolution,
   realpathOrNull,
   isIsoTimestamp,
+  extractApiToken,
   isPluginStatePath,
   presentStateDirs,
   buildWorkspaceStorage,
@@ -416,6 +417,36 @@ describe('插件自维护启停状态的剥离（issue #240）', () => {
     expect(presentStateDirs(profile)).toEqual([])
     mkdirSync(join(profile, '.dsh-market'), { recursive: true })
     expect(presentStateDirs(profile)).toEqual(['.dsh-market'])
+  })
+
+  it('token 只认显式来源：启动输出的 token= 或凭据文件里的 token 字段', () => {
+    expect(extractApiToken({ logText: 'dsh web: http://127.0.0.1:3098/?token=abc123DEF456ghi' })).toMatchObject({
+      token: 'abc123DEF456ghi',
+      source: '启动输出',
+    })
+    expect(
+      extractApiToken({ credentialsText: 'version: 1\nrecords:\n  x:\n    token: tok_ABCDEFGHIJ\n' }),
+    ).toMatchObject({
+      token: 'tok_ABCDEFGHIJ',
+      source: '.credentials.yaml',
+    })
+    expect(extractApiToken({}).token).toBeNull()
+  })
+
+  it('绝不把 credentials 里的 secret 当成 token（issue #257 实测：两者不同，冒充只会被拒）', () => {
+    const credentials =
+      'version: 1\nrecords:\n  client-conn/browser-session:\n    kind: grant\n    payload:\n      version: 1\n      secret: dmur_xq-laImABCDEFGHIJKLMNOPQRSTUVWXYZ012345678\n'
+    const found = extractApiToken({ credentialsText: credentials })
+    expect(found.token).toBeNull()
+    expect(found.source).toBeNull()
+  })
+
+  it('脚本接线：verify-real-profile 真的用 extractApiToken（防"lib 改了脚本没接"）', () => {
+    const script = readFileSync(join(repoRoot, 'scripts', 'verify-real-profile.mjs'), 'utf8')
+    expect(script).toContain('extractApiToken')
+    // 拿不到凭据时必须显式失败，不允许静默跳过（"绿得没有意义"比红更危险）
+    expect(script).toContain('API 冒烟无法进行')
+    expect(script).toContain('不能假绿')
   })
 
   it('脚本接线：复刻时真正调用剥离判定并打印提示（防"lib 改了脚本没接"）', () => {

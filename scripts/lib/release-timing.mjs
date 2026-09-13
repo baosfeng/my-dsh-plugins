@@ -72,23 +72,28 @@ export function createTimeline(options = {}) {
   const startedAt = now()
   const phases = []
 
+  // 并发阶段是「重叠」的：只按完成顺序记录会让表格看起来像串行。因此每条记录都带上
+  // 起始偏移 `start`，渲染时按 start 排序——表格顺序 = 流水线真实启动顺序。
+  const push = (entry) => phases.push({ note: '', skipped: false, ...entry })
+
   const mark = (name, durationMs, note = '') => {
-    phases.push({ name: String(name), ms: ms(durationMs), note: String(note), skipped: false })
+    push({ name: String(name), ms: ms(durationMs), note: String(note), start: ms(now() - startedAt) })
   }
 
   return {
     mark,
     async phase(name, fn, note = '') {
       const begin = now()
+      const start = ms(begin - startedAt)
       try {
         return await fn()
       } finally {
-        mark(name, now() - begin, note)
+        push({ name: String(name), ms: ms(now() - begin), note: String(note), start })
       }
     },
     /** 记录「本阶段被合法跳过」（形态豁免/显式跳过），与「没跑」区分开，避免表格撒谎。 */
     skip(name, note = '') {
-      phases.push({ name: String(name), ms: 0, note: String(note), skipped: true })
+      push({ name: String(name), ms: 0, note: String(note), skipped: true, start: ms(now() - startedAt) })
     },
     entries: () => phases.map((p) => ({ ...p })),
     totalMs: () => ms(now() - startedAt),
@@ -98,12 +103,14 @@ export function createTimeline(options = {}) {
      */
     format(title = '流水线阶段耗时') {
       const total = ms(now() - startedAt)
-      const rows = phases.map((p) => [
-        p.name,
-        p.skipped ? '跳过' : `${p.ms} ms`,
-        p.skipped ? '-' : total > 0 ? `${((p.ms / total) * 100).toFixed(1)}%` : '-',
-        p.note,
-      ])
+      const rows = [...phases]
+        .sort((a, b) => a.start - b.start)
+        .map((p) => [
+          p.name,
+          p.skipped ? '跳过' : `${p.ms} ms`,
+          p.skipped ? '-' : total > 0 ? `${((p.ms / total) * 100).toFixed(1)}%` : '-',
+          p.note,
+        ])
       rows.push(['合计', `${total} ms`, '100.0%', ''])
       return `${title}\n${formatTable(['阶段', '耗时', '占比', '备注'], rows)}`
     },

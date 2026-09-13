@@ -68,7 +68,10 @@ describe('createTimeline（阶段耗时记录）', () => {
     const tl = createTimeline({ now: clock(100) })
     const value = await tl.phase('门禁', async () => 'ok')
     expect(value).toBe('ok')
-    expect(tl.entries()).toEqual([{ name: '门禁', ms: 100, note: '', skipped: false }])
+    const [entry] = tl.entries()
+    expect(entry.name).toBe('门禁')
+    expect(entry.ms).toBe(100)
+    expect(entry.skipped).toBe(false)
   })
 
   it('phase 内抛错也留下耗时记录（失败点之前的阶段不丢）', async () => {
@@ -80,7 +83,11 @@ describe('createTimeline（阶段耗时记录）', () => {
   it('mark 记录外部测量值并支持备注', () => {
     const tl = createTimeline({ now: clock(1) })
     tl.mark('npm view', 2554, 'E404 分支')
-    expect(tl.entries()[0]).toEqual({ name: 'npm view', ms: 2554, note: 'E404 分支', skipped: false })
+    const [entry] = tl.entries()
+    expect(entry.name).toBe('npm view')
+    expect(entry.ms).toBe(2554)
+    expect(entry.note).toBe('E404 分支')
+    expect(entry.skipped).toBe(false)
   })
 
   it('mark 对非数字耗时归零（表格不出现 NaN）', () => {
@@ -115,11 +122,32 @@ describe('createTimeline（阶段耗时记录）', () => {
     expect(text).not.toContain('NaN')
   })
 
+  it('format 按启动顺序排列（并发阶段重叠时表格不冒充串行）', async () => {
+    let t = 0
+    const tl = createTimeline({ now: () => t })
+    const first = tl.phase('先启动后完成', async () => {
+      await Promise.resolve() // 让它在「后启动」的阶段之后才落账
+      t = 900
+    })
+    t = 100
+    const second = tl.phase('后启动先完成', () => {
+      t = 110
+    })
+    await second
+    await first
+    // 记录顺序是「后启动先完成」在前，但表格必须按 start 排——否则并发流水线会被误读成串行
+    expect(tl.entries()[0].name).toBe('后启动先完成')
+    const text = tl.format()
+    expect(text.indexOf('先启动后完成')).toBeLessThan(text.indexOf('后启动先完成'))
+  })
+
   it('format 占比以合计为分母', () => {
-    // 时钟每次读取 +1000ms：创建时 1000 → format 时 2000 → 合计 1000ms，各占 50%
-    const tl = createTimeline({ now: clock(1000) })
+    // 手工时钟：两个阶段各 500ms，合计推进到 1000ms → 各占 50%
+    let t = 1000
+    const tl = createTimeline({ now: () => t })
     tl.mark('一半', 500)
     tl.mark('另一半', 500)
+    t = 2000
     expect(tl.format()).toContain('50.0%')
   })
 })

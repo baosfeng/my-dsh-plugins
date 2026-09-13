@@ -2,6 +2,37 @@
 // ── view component ────────────────────────────────────────────────────
 /** Shared empty bucket for sessions that have never loaded data (stable ref). */
 const EMPTY_SESSION = { recent: [], counts: {}, loading: true }
+/** tab.visible out of the host's SidebarRightTabInfo; undefined when the
+ *  information (or its shape) is unavailable. */
+function readSeatVisible(info) {
+  if (info === null || typeof info !== 'object') return undefined
+  const tab = info.tab
+  if (tab === null || typeof tab !== 'object') return undefined
+  const visible = tab.visible
+  return typeof visible === 'boolean' ? visible : undefined
+}
+/**
+ * Resolve whether this seat is on screen.
+ *
+ * The native seat hands the component **no** `visible` prop: the host dispatches
+ * it as `renderSlot('sidebar.right.pane.tab', {}, { hookContext })`, so the owner
+ * props share is empty and everything live arrives through the injected
+ * `useTabInfo()` hook (SidebarRightTabInfo.tab.visible). Reading `props.visible`
+ * alone is therefore always `undefined` — the pre-#266 (`if (!visible) return`)
+ * guard was constant-true, so an opened panel never loaded and never polled
+ * (it only showed data after a manual Refresh).
+ *
+ * Order: the host hook first, then the legacy prop, then visible by default.
+ * Defaulting to visible is the deliberate failure direction (issue #266): if the
+ * hook is unavailable or the host shape changes again, the panel must still
+ * load — the cost is one polling panel, the alternative is a blank one.
+ */
+function useSeatVisible(useTabInfo, legacyVisible) {
+  const info = typeof useTabInfo === 'function' ? useTabInfo() : undefined
+  const seatVisible = readSeatVisible(info)
+  if (seatVisible !== undefined) return seatVisible
+  return legacyVisible !== false
+}
 /**
  * Polling loader for one session: fetches stats on mount and on a fixed
  * interval while visible, prefers the sidebar's authoritative session.cwd
@@ -135,7 +166,15 @@ function renderStatsSection(tree, collapsedDirs, onToggleDir, onOpen) {
  * from the previous session. Clicking any file opens a FLOATING preview
  * that reuses the sidebar's NATIVE viewer via matchFileViewer.
  */
-function FileActivityView({ ctx, store, scope, sessionId: seatSessionId, visible, dataStore }) {
+function FileActivityView({
+  ctx,
+  store,
+  scope,
+  sessionId: seatSessionId,
+  visible: legacyVisible,
+  useTabInfo,
+  dataStore,
+}) {
   const data = useSyncExternalStore(dataStore.subscribe, dataStore.getSnapshot)
   const [cwd, setCwd] = useState(scope?.cwd || '')
   const [error, setError] = useState(false)
@@ -143,6 +182,9 @@ function FileActivityView({ ctx, store, scope, sessionId: seatSessionId, visible
   const [collapsedDirs, setCollapsedDirs] = useState(() => new Set())
   // Native seats pass sessionId directly; the legacy scope object still works.
   const sessionId = seatSessionId ?? scope?.sessionId ?? ''
+  // issue #266 A: the native seat passes NO visible prop — visibility comes
+  // from the injected useTabInfo() (see useSeatVisible).
+  const visible = useSeatVisible(useTabInfo, legacyVisible)
   const sessionData = (data.bySession ?? {})[sessionId] ?? EMPTY_SESSION
   const tree = useMemo(() => buildTree(sessionData.counts ?? {}), [sessionData.counts])
   useEffect(() => {

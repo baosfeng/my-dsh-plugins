@@ -45,6 +45,12 @@ const resetHooks = () => {
 }
 
 // ── browser globals ────────────────────────────────────────────────────────
+/** Every fetch the client half performed (issue #266 D: there must be no mount probe). */
+const fetchCalls = []
+const fetchStub = (url) => {
+  fetchCalls.push(String(url))
+  return Promise.resolve({ json: () => Promise.resolve({ ok: true, value: {} }) })
+}
 let registered = null
 const warnings = []
 const errors = []
@@ -57,7 +63,7 @@ global.window = {
   },
   location: { href: 'http://127.0.0.1:3080/app', search: '' },
   confirm: () => true,
-  fetch: () => Promise.resolve({ json: () => Promise.resolve({ ok: true, value: {} }) }),
+  fetch: (url) => fetchStub(url),
   setTimeout: (fn, ms) => {
     timers.push({ fn, ms })
     return timers.length
@@ -89,7 +95,7 @@ global.sessionStorage = sessionStorageStub
 // the bundle reads window.sessionStorage (the browser shape), so the stub is
 // reachable through the window object as well
 global.window.sessionStorage = sessionStorageStub
-global.fetch = () => Promise.resolve({ json: () => Promise.resolve({ ok: true, value: {} }) })
+global.fetch = (url) => fetchStub(url)
 global.document = {
   head: { appendChild: () => {} },
   documentElement: { dataset: {} },
@@ -173,6 +179,13 @@ assert.equal(typeof exportsObj.apply, 'function')
 // 2. five native registrations happen in one apply()
 const ctx = makeCtx()
 exportsObj.apply(ctx)
+// issue #266 D: activation must not persist a synthetic record any more (the
+// old mount probe wrote a `__probe__` ghost row on every page load).
+assert.equal(
+  fetchCalls.filter((url) => url.includes('/file-activity/api/record')).length,
+  0,
+  'no mount probe: activation persists no synthetic record',
+)
 assert.equal(calls.tabs.length, 1, 'one tab type registered')
 const tab = calls.tabs[0]
 assert.equal(tab.id, 'dsh-file-activity')
@@ -180,6 +193,15 @@ assert.equal(tab.kind, 'file-activity')
 assert.equal(typeof tab.title, 'function', 'chip title thunk present')
 assert.equal(tab.title('sidebar://file-activity'), '文件活动')
 assert.equal(tab.patterns, undefined, 'page type: no address patterns')
+// 2b. guide entry (issue #266 B): the sidebar's "new tab" page renders the
+// guide entries of every registered type — without one, closing the chip made
+// the page unreachable from the UI (auto-open runs once per browser tab).
+assert.ok(Array.isArray(tab.guide) && tab.guide.length === 1, 'one guide entry registered')
+const guideEntry = tab.guide[0]
+assert.equal(typeof guideEntry.order, 'number', 'guide order is numeric')
+assert.equal(guideEntry.title(), '文件活动', 'the guide capsule carries the plugin title')
+assert.equal(typeof guideEntry.description, 'function', 'the guide capsule has a description thunk')
+assert.ok(guideEntry.description().length > 0, 'the description is non-empty')
 assert.equal(calls.panes.length, 1, 'body seat registered')
 assert.equal(calls.panes[0].options.key, 'dsh-file-activity', 'body seat keyed by the definition id')
 assert.equal(calls.titles.length, 1, 'chip title seat registered')

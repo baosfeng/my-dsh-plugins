@@ -22,6 +22,19 @@ function registerTabType(ctx) {
         kind: TAB_KIND,
         // No patterns: this is a page type, opened by kind (ctx.sidebarRight.openTab).
         title: () => strings.title(),
+        // Guide entry (issue #266 B): the sidebar's "new tab" page is the guide
+        // tab, and its doors come from `sidebarRightTabs.guide()` — the entries
+        // every registered type contributes. Without one the page was reachable
+        // ONLY through auto-open, so closing its chip made it impossible to
+        // reopen from the UI. Picking the capsule opens this kind in the guide's
+        // place (host GuideBody → actions.openTab(kind, { replaceTab: true })).
+        guide: [
+          {
+            order: 20,
+            title: () => strings.title(),
+            description: () => strings.guideDescription(),
+          },
+        ],
       }),
     'dsh-file-activity: tab type',
   )
@@ -50,16 +63,6 @@ function registerTabTitle(ctx) {
       ),
     'dsh-file-activity: tab title',
   )
-}
-/** Mount probe: report client activation to the host state (synthetic
- *  session id, invisible in the UI — confirms the client half actually
- *  loaded after a page refresh). */
-function mountProbe() {
-  void fetch('/file-activity/api/record', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sessionId: '__probe__', path: 'mounted', op: 'read' }),
-  }).catch(() => {})
 }
 /**
  * Run one registration, converting a throw into an observable failure.
@@ -92,7 +95,6 @@ exports.apply = function apply(ctx) {
   registerPreviewOverlay(ctx, dataStore)
   registerSettingsTab(ctx)
   guarded('previews', () => registerDocumentPreviews(ctx))
-  mountProbe()
   // sidebar operations → host record route
   ctx.effect(() => installFetchInterceptor(), 'dsh-file-activity: sidebar fetch observation')
   // auto-open once per session (default on)
@@ -106,6 +108,7 @@ exports.__test = {
   fetchTextContent,
   textUrlOf,
   strings,
+  viewerOf,
   renderPreviewBody,
   previewClickAction,
   isInsideFloating,

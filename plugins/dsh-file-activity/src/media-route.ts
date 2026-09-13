@@ -38,12 +38,36 @@ const MEDIA_TYPES: Record<string, string> = {
   '.ico': 'image/x-icon',
   '.avif': 'image/avif',
   '.pdf': 'application/pdf',
+  // HTML documents (issue #266 C): rendered in a sandboxed iframe by the
+  // floating preview, so they must be served as documents, not as text.
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.xhtml': 'application/xhtml+xml',
+}
+
+/** HTML suffixes: always served through the sandboxing CSP below. */
+const HTML_TYPES = new Set(['.html', '.htm', '.xhtml'])
+
+/**
+ * Content-Security-Policy for a previewed HTML document (issue #266 C).
+ *
+ * `sandbox` with NO `allow-same-origin` forces an opaque origin: the document
+ * cannot read cookies, storage, or same-origin APIs, and it cannot script the
+ * embedding page. Scripts/forms stay enabled so interactive documents render.
+ * The header (not only the iframe's own `sandbox` attribute) is what keeps a
+ * DIRECT visit to this URL sandboxed too — the preview iframe is not the only
+ * way to reach it.
+ */
+const HTML_SANDBOX_CSP = 'sandbox allow-scripts allow-forms'
+
+/** 小写后缀（含点号；无后缀返回空串）。 */
+function suffixOf(path: string): string {
+  const dot = path.lastIndexOf('.')
+  return dot === -1 ? '' : path.slice(dot).toLowerCase()
 }
 
 function mediaTypeForPath(path: string): string {
-  const dot = path.lastIndexOf('.')
-  const ext = dot === -1 ? '' : path.slice(dot).toLowerCase()
-  return MEDIA_TYPES[ext] ?? 'application/octet-stream'
+  return MEDIA_TYPES[suffixOf(path)] ?? 'application/octet-stream'
 }
 
 /** Error carrying an HTTP status, for the media route's catch-all. */
@@ -131,6 +155,12 @@ async function serveMedia(response: ServerResponse, abs: string, url: URL): Prom
   const headers: Record<string, string> = {
     'content-type': mediaTypeForPath(abs),
     'cache-control': 'no-cache',
+  }
+  // Untrusted document: the sandboxing CSP travels with the bytes, so the
+  // protection does not depend on the caller embedding it in a sandboxed frame.
+  if (HTML_TYPES.has(suffixOf(abs))) {
+    headers['content-security-policy'] = HTML_SANDBOX_CSP
+    headers['x-content-type-options'] = 'nosniff'
   }
   if (url.searchParams.get('download') === '1') {
     headers['content-disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(basename(abs))}`

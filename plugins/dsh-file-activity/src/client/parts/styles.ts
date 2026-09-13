@@ -130,4 +130,7 @@ const STYLES = `
 .dfa-fp-pre { margin:0; padding:8px 10px; overflow:auto; height:100%; font:var(--dsw-font-xxs-12);
   white-space:pre-wrap; word-break:break-word; }
 .dfa-fp-img { display:block; margin:auto; max-width:100%; max-height:100%; object-fit:contain; }
+/* HTML 预览（issue #266 C）：沙箱 iframe 撑满浮窗主体并内部滚动（与 PDF 一致）。 */
+.dfa-fp-html { display:flex; flex-direction:column; width:100%; height:100%; }
+.dfa-fp-html-frame { flex:1; min-height:0; width:100%; border:none; border-radius:6px; background:#fff; }
 `

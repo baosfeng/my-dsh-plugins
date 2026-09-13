@@ -34,6 +34,8 @@ interface PreviewLoad {
 const IMAGE_EXT = /^(svg|png|jpe?g|gif|webp|avif|bmp|ico)$/i
 /** Suffixes rendered as Markdown. */
 const MARKDOWN_EXT = /^(md|markdown|mdx)$/i
+/** Suffixes rendered as a sandboxed HTML document (issue #266 C). */
+const HTML_EXT = /^(html?|xhtml)$/i
 
 /** Lower-case suffix of a path ('' when it has none). extOf (rows.ts) works on
  *  a file NAME, so the basename is sliced off first. */
@@ -123,6 +125,7 @@ function viewerOf(path: string): string {
   const ext = extOfPath(path)
   if (IMAGE_EXT.test(ext)) return 'image'
   if (ext === 'pdf') return 'pdf'
+  if (HTML_EXT.test(ext)) return 'html'
   if (MARKDOWN_EXT.test(ext)) return 'markdown'
   return 'text'
 }
@@ -130,7 +133,9 @@ function viewerOf(path: string): string {
 /** Fetch the bytes the chosen renderer needs (media URL, or text content). */
 async function fetchPreviewLoad(target: PreviewTarget): Promise<PreviewLoad> {
   const viewer = { id: viewerOf(target.abs) }
-  if (viewer.id === 'image' || viewer.id === 'pdf') {
+  // image / pdf / html are served as BYTES by the plugin's own media route;
+  // html goes through an iframe (see HtmlBody), not through the text path.
+  if (viewer.id === 'image' || viewer.id === 'pdf' || viewer.id === 'html') {
     return { status: 'ready', viewer, mediaUrl: mediaUrlOf(target.sessionId, target.abs) }
   }
   return loadFsReadContent(viewer, target.abs, null, target.sessionId)

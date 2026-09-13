@@ -23,6 +23,17 @@ const END = '='
 /** NUL 字符（路径合法性判定）。 */
 const NUL = String.fromCharCode(0)
 
+/**
+ * 已删除的客户端挂载探针使用的合成会话 id（issue #266 D）。
+ *
+ * 0.5.8 之前客户端每次页面加载都往记录接口 POST 一条
+ * `{sessionId:'__probe__', path:'mounted'}`，于是每个浏览器加载都在状态文件里
+ * 留下一行永不清理的幽灵记录（实测累计 9 行、重启后仍在），与 #197「状态有界」
+ * 相悖。探针本身已被删除；这里把历史文件里的残留一并剔除，加载后的第一次
+ * compact 即让它在盘面上消失。
+ */
+const PROBE_SESSION = '__probe__'
+
 /** State file: $DSH_HOME/file-activity.json（JSON Lines 格式）。 */
 export function stateFile(): string {
   const home = process.env.DSH_HOME
@@ -231,6 +242,8 @@ export async function loadState(
   }
   const legacy = parseLegacySnapshot(text)
   const sessions = legacy === null ? sessionsOfJsonl(text) : sessionsOfLegacy(legacy)
+  // issue #266 D: never resurrect the retired mount probe's ghost records.
+  delete sessions[PROBE_SESSION]
   const result = trimToQuota({ version: 1, sessions }, limits, logger)
   return { ...mergeSnapshotStats(result, legacy?.stats ?? extractSnapshotStats(text)), legacy: legacy !== null }
 }

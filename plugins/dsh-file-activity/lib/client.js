@@ -95,6 +95,10 @@ const strings = {
     isZh() ? '文件位于工作区外，暂无法读取内容' : 'The file is outside the workspace and cannot be read',
   downloadToView: () => (isZh() ? '下载查看' : 'download to view'),
   clickOutsideToClose: () => (isZh() ? '点击外部关闭' : 'Click outside to close'),
+  guideDescription: () =>
+    isZh()
+      ? '查看 agent 与侧边栏读写过的文件（最近访问 + 目录统计）'
+      : 'Files the agent and the sidebar touched (recent + tree)',
   autoOpenLabel: () => (isZh() ? '会话开始时自动打开' : 'Auto-open on session start'),
   autoOpenHint: () =>
     isZh()
@@ -512,7 +516,7 @@ function registerDocumentPreviews(ctx) {
   )
 }
 
-    // ── shared icons (inline, stroke=currentColor, matching the host sidebar) ──
+    // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──
 // Single source of truth for the plugin UI icon set (issue #54 阶段 0).
 // Extracted from dsh-file-activity's lib/parts/icons.part.js; every plugin's
 // scripts/build.mjs splices this file via the `shared: true` piece marker.
@@ -969,6 +973,9 @@ const STYLES = `
 .dfa-fp-pre { margin:0; padding:8px 10px; overflow:auto; height:100%; font:var(--dsw-font-xxs-12);
   white-space:pre-wrap; word-break:break-word; }
 .dfa-fp-img { display:block; margin:auto; max-width:100%; max-height:100%; object-fit:contain; }
+/* HTML 预览（issue #266 C）：沙箱 iframe 撑满浮窗主体并内部滚动（与 PDF 一致）。 */
+.dfa-fp-html { display:flex; flex-direction:column; width:100%; height:100%; }
+.dfa-fp-html-frame { flex:1; min-height:0; width:100%; border:none; border-radius:6px; background:#fff; }
 `
 
     'use strict'
@@ -1136,6 +1143,37 @@ function refreshSessionData(dataStore, sessionId, setCwd, setError) {
 // ── view component ────────────────────────────────────────────────────
 /** Shared empty bucket for sessions that have never loaded data (stable ref). */
 const EMPTY_SESSION = { recent: [], counts: {}, loading: true }
+/** tab.visible out of the host's SidebarRightTabInfo; undefined when the
+ *  information (or its shape) is unavailable. */
+function readSeatVisible(info) {
+  if (info === null || typeof info !== 'object') return undefined
+  const tab = info.tab
+  if (tab === null || typeof tab !== 'object') return undefined
+  const visible = tab.visible
+  return typeof visible === 'boolean' ? visible : undefined
+}
+/**
+ * Resolve whether this seat is on screen.
+ *
+ * The native seat hands the component **no** `visible` prop: the host dispatches
+ * it as `renderSlot('sidebar.right.pane.tab', {}, { hookContext })`, so the owner
+ * props share is empty and everything live arrives through the injected
+ * `useTabInfo()` hook (SidebarRightTabInfo.tab.visible). Reading `props.visible`
+ * alone is therefore always `undefined` — the pre-#266 (`if (!visible) return`)
+ * guard was constant-true, so an opened panel never loaded and never polled
+ * (it only showed data after a manual Refresh).
+ *
+ * Order: the host hook first, then the legacy prop, then visible by default.
+ * Defaulting to visible is the deliberate failure direction (issue #266): if the
+ * hook is unavailable or the host shape changes again, the panel must still
+ * load — the cost is one polling panel, the alternative is a blank one.
+ */
+function useSeatVisible(useTabInfo, legacyVisible) {
+  const info = typeof useTabInfo === 'function' ? useTabInfo() : undefined
+  const seatVisible = readSeatVisible(info)
+  if (seatVisible !== undefined) return seatVisible
+  return legacyVisible !== false
+}
 /**
  * Polling loader for one session: fetches stats on mount and on a fixed
  * interval while visible, prefers the sidebar's authoritative session.cwd
@@ -1269,7 +1307,15 @@ function renderStatsSection(tree, collapsedDirs, onToggleDir, onOpen) {
  * from the previous session. Clicking any file opens a FLOATING preview
  * that reuses the sidebar's NATIVE viewer via matchFileViewer.
  */
-function FileActivityView({ ctx, store, scope, sessionId: seatSessionId, visible, dataStore }) {
+function FileActivityView({
+  ctx,
+  store,
+  scope,
+  sessionId: seatSessionId,
+  visible: legacyVisible,
+  useTabInfo,
+  dataStore,
+}) {
   const data = useSyncExternalStore(dataStore.subscribe, dataStore.getSnapshot)
   const [cwd, setCwd] = useState(scope?.cwd || '')
   const [error, setError] = useState(false)
@@ -1277,6 +1323,9 @@ function FileActivityView({ ctx, store, scope, sessionId: seatSessionId, visible
   const [collapsedDirs, setCollapsedDirs] = useState(() => new Set())
   // Native seats pass sessionId directly; the legacy scope object still works.
   const sessionId = seatSessionId ?? scope?.sessionId ?? ''
+  // issue #266 A: the native seat passes NO visible prop — visibility comes
+  // from the injected useTabInfo() (see useSeatVisible).
+  const visible = useSeatVisible(useTabInfo, legacyVisible)
   const sessionData = (data.bySession ?? {})[sessionId] ?? EMPTY_SESSION
   const tree = useMemo(() => buildTree(sessionData.counts ?? {}), [sessionData.counts])
   useEffect(() => {
@@ -1352,6 +1401,8 @@ function renderDegraded() {
 const IMAGE_EXT = /^(svg|png|jpe?g|gif|webp|avif|bmp|ico)$/i
 /** Suffixes rendered as Markdown. */
 const MARKDOWN_EXT = /^(md|markdown|mdx)$/i
+/** Suffixes rendered as a sandboxed HTML document (issue #266 C). */
+const HTML_EXT = /^(html?|xhtml)$/i
 /** Lower-case suffix of a path ('' when it has none). extOf (rows.ts) works on
  *  a file NAME, so the basename is sliced off first. */
 function extOfPath(path) {
@@ -1428,13 +1479,16 @@ function viewerOf(path) {
   const ext = extOfPath(path)
   if (IMAGE_EXT.test(ext)) return 'image'
   if (ext === 'pdf') return 'pdf'
+  if (HTML_EXT.test(ext)) return 'html'
   if (MARKDOWN_EXT.test(ext)) return 'markdown'
   return 'text'
 }
 /** Fetch the bytes the chosen renderer needs (media URL, or text content). */
 async function fetchPreviewLoad(target) {
   const viewer = { id: viewerOf(target.abs) }
-  if (viewer.id === 'image' || viewer.id === 'pdf') {
+  // image / pdf / html are served as BYTES by the plugin's own media route;
+  // html goes through an iframe (see HtmlBody), not through the text path.
+  if (viewer.id === 'image' || viewer.id === 'pdf' || viewer.id === 'html') {
     return { status: 'ready', viewer, mediaUrl: mediaUrlOf(target.sessionId, target.abs) }
   }
   return loadFsReadContent(viewer, target.abs, null, target.sessionId)
@@ -1523,6 +1577,33 @@ function TextBody({ load, path }) {
 function ImageBody({ load, title }) {
   return createElement('img', { className: 'dfa-fp-img', src: load.mediaUrl, alt: title })
 }
+/**
+ * HTML body: a SANDBOXED iframe over the plugin's media route (issue #266 C —
+ * the README promised a sandboxed iframe while the code rendered the markup as
+ * a code block).
+ *
+ * Two independent sandbox layers, deliberately without `allow-same-origin`:
+ *  - the iframe's `sandbox` attribute gives the document an opaque origin, so
+ *    a previewed page cannot read the host's storage, cookies or same-origin
+ *    APIs, and cannot reach the parent document;
+ *  - the route answers text/html with a response-level
+ *    `Content-Security-Policy: sandbox …` header, so the SAME protection holds
+ *    when the URL is opened directly instead of inside this iframe.
+ * Scripts/forms stay enabled so interactive documents (charts, demos) work;
+ * navigation of the top window is not granted.
+ */
+function HtmlBody({ load, title }) {
+  return createElement(
+    'div',
+    { className: 'dfa-fp-html' },
+    createElement('iframe', {
+      className: 'dfa-fp-html-frame',
+      src: load.mediaUrl,
+      sandbox: 'allow-scripts allow-forms',
+      title,
+    }),
+  )
+}
 /** Preview window body: loading note / error panel / renderer mount. */
 function renderPreviewBody(load, ctx, store, scope, path, title, sessionId) {
   if (load.status === 'loading') {
@@ -1541,6 +1622,7 @@ function renderPreviewBody(load, ctx, store, scope, path, title, sessionId) {
   }
   const props = { load, path, title, sessionId }
   if (load.viewer?.id === 'image') return ImageBody(props)
+  if (load.viewer?.id === 'html') return HtmlBody(props)
   if (load.viewer?.id === 'pdf') {
     const url = mediaUrlOf(sessionId, path)
     return createElement(PdfPreview, { src: url, download: `${url}&download=1`, title })
@@ -1785,6 +1867,19 @@ function registerTabType(ctx) {
         kind: TAB_KIND,
         // No patterns: this is a page type, opened by kind (ctx.sidebarRight.openTab).
         title: () => strings.title(),
+        // Guide entry (issue #266 B): the sidebar's "new tab" page is the guide
+        // tab, and its doors come from `sidebarRightTabs.guide()` — the entries
+        // every registered type contributes. Without one the page was reachable
+        // ONLY through auto-open, so closing its chip made it impossible to
+        // reopen from the UI. Picking the capsule opens this kind in the guide's
+        // place (host GuideBody → actions.openTab(kind, { replaceTab: true })).
+        guide: [
+          {
+            order: 20,
+            title: () => strings.title(),
+            description: () => strings.guideDescription(),
+          },
+        ],
       }),
     'dsh-file-activity: tab type',
   )
@@ -1813,16 +1908,6 @@ function registerTabTitle(ctx) {
       ),
     'dsh-file-activity: tab title',
   )
-}
-/** Mount probe: report client activation to the host state (synthetic
- *  session id, invisible in the UI — confirms the client half actually
- *  loaded after a page refresh). */
-function mountProbe() {
-  void fetch('/file-activity/api/record', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sessionId: '__probe__', path: 'mounted', op: 'read' }),
-  }).catch(() => {})
 }
 /**
  * Run one registration, converting a throw into an observable failure.
@@ -1855,7 +1940,6 @@ exports.apply = function apply(ctx) {
   registerPreviewOverlay(ctx, dataStore)
   registerSettingsTab(ctx)
   guarded('previews', () => registerDocumentPreviews(ctx))
-  mountProbe()
   // sidebar operations → host record route
   ctx.effect(() => installFetchInterceptor(), 'dsh-file-activity: sidebar fetch observation')
   // auto-open once per session (default on)
@@ -1869,6 +1953,7 @@ exports.__test = {
   fetchTextContent,
   textUrlOf,
   strings,
+  viewerOf,
   renderPreviewBody,
   previewClickAction,
   isInsideFloating,

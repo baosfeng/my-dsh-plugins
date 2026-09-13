@@ -6,6 +6,24 @@
 
 ### 修复
 
+- fix(dsh-file-activity): #266 侧边栏「文件活动」面板打开后永远显示「暂无文件活动记录」（P0）——
+  宿主渲染 `sidebar.right.pane.tab` 席位时 owner props 是**空对象**
+  （`renderSlot(seat, {}, {hookContext})`），可见性只在注入的 `useTabInfo()` 里；
+  旧守卫只读 `props.visible`（恒为 `undefined`）→ 守卫恒真 → 面板打开后既不首载也不轮询
+  （`POLL_MS` 失效），只有手点「刷新」才有数据。现按宿主真实契约取
+  `useTabInfo().tab.visible`（取不到时退回可见：宁可多轮询一个面板，也不能空白），
+  切回页签/展开侧边栏立即重新加载并重启轮询，宿主判定不可见时不轮询（省资源）。
+  同一 issue 的关联项：
+  - B：「新标签页」菜单补 guide 入口（`sidebarRightTabs.register({guide:[…]})`）——此前页签关闭后
+    无法从 UI 重新打开（auto-open 每浏览器标签只跑一次）；
+  - C：HTML 预览按 README 承诺落地为**沙箱 iframe**（此前 `viewerOf()` 无 html 分支，
+    `.html` 落到文本渲染器、显示为代码块 `.dfa-fp-code`）：iframe
+    `sandbox="allow-scripts allow-forms"` + 媒体路由响应头
+    `Content-Security-Policy: sandbox allow-scripts allow-forms`（两层都不含
+    `allow-same-origin`，直接打开该 URL 同样受限）；
+  - D：删除客户端挂载探针（此前每次页面加载都往状态文件写一条
+    `sessionId="__probe__", path="mounted"` 的幽灵记录，累计 9 行、重启后仍在），
+    并在加载时剔除历史残留（#197「状态有界」）。
 - fix(dsh-file-activity): #197 写放大 3,665× 与状态无界（P0）——
   落盘改为 JSON Lines 增量 append（落盘字节 ≈ 事件本体字节）+ 按状态体积自适应的原子 compact；
   新增三维入口上限（会话/每会话路径/全局路径）与 LRU 淘汰（淘汰计数 + warn 可见，非静默丢弃）；

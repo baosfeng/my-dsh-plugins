@@ -580,6 +580,36 @@ assert.ok(fpBodyRule.includes('flex-direction:column'), 'floating preview body i
 assert.ok(fpBodyRule.includes('flex:1'), 'floating preview body keeps its window-fill flex:1')
 assert.ok(fpBodyRule.includes('min-height:0'), 'floating preview body allows shrink so viewer content fits')
 
+// ── HTML preview (issue #266 C): a sandboxed iframe, never a code block ───
+// The README promised a sandboxed HTML iframe; viewerOf() had no html branch,
+// so .html fell through to the text viewer and rendered as .dfa-fp-code.
+assert.equal(internals.viewerOf('/work/demo.html'), 'html', '.html routes to the html viewer')
+assert.equal(internals.viewerOf('/work/demo.htm'), 'html', '.htm routes to the html viewer')
+assert.equal(internals.viewerOf('/work/page.xhtml'), 'html', '.xhtml routes to the html viewer')
+assert.equal(internals.viewerOf('/work/notes.md'), 'markdown', 'markdown still routes to markdown')
+assert.equal(internals.viewerOf('/work/app.ts'), 'text', 'plain text still routes to text')
+const htmlLoad = {
+  status: 'ready',
+  viewer: { id: 'html' },
+  mediaUrl: '/file-activity/file?sessionId=sess-test&path=%2Fwork%2Fdemo.html',
+}
+const htmlBody = internals.renderPreviewBody(htmlLoad, null, null, null, '/work/demo.html', 'demo.html', 'sess-test')
+assert.equal(htmlBody.type, 'div')
+assert.equal(htmlBody.props.className, 'dfa-fp-html', 'html body uses the flex-fill container')
+const htmlFrame = htmlBody.props.children
+assert.equal(htmlFrame.type, 'iframe', 'html renders an iframe, not .dfa-fp-code')
+assert.equal(htmlFrame.props.src, htmlLoad.mediaUrl, 'the iframe loads the plugin media route')
+assert.equal(htmlFrame.props.className, 'dfa-fp-html-frame')
+assert.ok(String(htmlFrame.props.sandbox).includes('allow-scripts'), 'scripts enabled for interactive documents')
+assert.ok(
+  !String(htmlFrame.props.sandbox).includes('allow-same-origin'),
+  'no allow-same-origin: the document gets an opaque origin',
+)
+assert.ok(internals.STYLES.includes('.dfa-fp-html-frame'), 'html frame style present')
+const htmlFrameRule = (internals.STYLES.match(/\.dfa-fp-html-frame\s*{[^}]*}/) ?? [])[0] ?? ''
+assert.ok(htmlFrameRule.includes('flex:1'), 'the html frame fills the window body (issue #111 parity)')
+assert.ok(htmlFrameRule.includes('min-height:0'), 'the html frame can shrink so it scrolls internally')
+
 console.log('ALL CLIENT RENDER-PATH TESTS PASSED')
 console.log('sample output tree (clickable rows):')
 for (const row of rows) console.log('  '.repeat(row.depth) + row.title)

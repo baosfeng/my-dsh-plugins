@@ -81,6 +81,33 @@ function TextBody({ load, path }) {
 function ImageBody({ load, title }) {
   return createElement('img', { className: 'dfa-fp-img', src: load.mediaUrl, alt: title })
 }
+/**
+ * HTML body: a SANDBOXED iframe over the plugin's media route (issue #266 C —
+ * the README promised a sandboxed iframe while the code rendered the markup as
+ * a code block).
+ *
+ * Two independent sandbox layers, deliberately without `allow-same-origin`:
+ *  - the iframe's `sandbox` attribute gives the document an opaque origin, so
+ *    a previewed page cannot read the host's storage, cookies or same-origin
+ *    APIs, and cannot reach the parent document;
+ *  - the route answers text/html with a response-level
+ *    `Content-Security-Policy: sandbox …` header, so the SAME protection holds
+ *    when the URL is opened directly instead of inside this iframe.
+ * Scripts/forms stay enabled so interactive documents (charts, demos) work;
+ * navigation of the top window is not granted.
+ */
+function HtmlBody({ load, title }) {
+  return createElement(
+    'div',
+    { className: 'dfa-fp-html' },
+    createElement('iframe', {
+      className: 'dfa-fp-html-frame',
+      src: load.mediaUrl,
+      sandbox: 'allow-scripts allow-forms',
+      title,
+    }),
+  )
+}
 /** Preview window body: loading note / error panel / renderer mount. */
 function renderPreviewBody(load, ctx, store, scope, path, title, sessionId) {
   if (load.status === 'loading') {
@@ -99,6 +126,7 @@ function renderPreviewBody(load, ctx, store, scope, path, title, sessionId) {
   }
   const props = { load, path, title, sessionId }
   if (load.viewer?.id === 'image') return ImageBody(props)
+  if (load.viewer?.id === 'html') return HtmlBody(props)
   if (load.viewer?.id === 'pdf') {
     const url = mediaUrlOf(sessionId, path)
     return createElement(PdfPreview, { src: url, download: `${url}&download=1`, title })

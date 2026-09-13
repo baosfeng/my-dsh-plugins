@@ -50,14 +50,17 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 
 ## 插件形态（先决策）
 
-| 形态                                           | 面向                                              | 关键 API                                                                                              |
-| ---------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **工具型插件**（注册 agent 工具）              | 提供 agent 可调用的函数（天气/搜索/记忆等纯工具） | server 端 `ctx.tools.register(defineTool(...))`，详见 [dsh-tools-api.md](references/dsh-tools-api.md) |
-| **侧边栏页签 / 预览器**（消费 better-sidebar） | 在侧边栏提供新页面或文件预览                      | client 端 `ctx.betterSidebar.registerTab` / `registerFileViewer`                                      |
-| **纯 server 插件**                             | 事件监听 / HTTP 路由 / 持久化                     | `apply(ctx)` + `ctx.on` / `webServer`                                                                 |
-| **两者混合**（最常见）                         | 页面 + 后端逻辑                                   | 两端都写，client 通过 HTTP 路由或事件上报 server                                                      |
+| 形态                                           | 面向                                                | 关键 API                                                                                                                                                     |
+| ---------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **工具型插件**（注册 agent 工具）              | 提供 agent 可调用的函数（天气/搜索/记忆等纯工具）   | server 端 `ctx.tools.register(defineTool(...))`，详见 [dsh-tools-api.md](references/dsh-tools-api.md)                                                        |
+| **侧边栏页签 / 预览器**（消费 better-sidebar） | 在侧边栏提供新页面或文件预览                        | client 端 `ctx.betterSidebar.registerTab` / `registerFileViewer`                                                                                             |
+| **纯 server 插件**                             | 事件监听 / HTTP 路由 / 持久化                       | `apply(ctx)` + `ctx.on` / `webServer`                                                                                                                        |
+| **两者混合**（最常见）                         | 页面 + 后端逻辑                                     | 两端都写，client 通过 HTTP 路由或事件上报 server                                                                                                             |
+| **agent preset 资产包**                        | 提供模式选择器里的 agent 预设（如「插件开发模式」） | `agent.cordis.yml` + `preset.yml` + 自带 `skills/`；**不挂 profile**，复制到 `$DSH_HOME/.agent-presets/<id>/` 后由宿主 `@deepseek-ai/dsh-agent-presets` 发现 |
 
 > `ctx.betterSidebar` **只存在于 client 端**。server 端需要侧边栏数据时走 `/sidebar/api/*` HTTP 路由，不要假设服务存在。
+
+> **agent preset 资产包不是插件**（issue #231）：没有 `lib/`、`cordis.patch.yml`，不声明 `peerDependencies.cordis`，也不经 `dsh plugin add` 装载。`package.json` 必须显式声明 `"dsh": { "kind": "preset", "presetReason": "<这是什么 preset / 为什么是资产包而非 profile 插件>" }` 才会走对应的发版门禁豁免（1b cordis peer + 3c profile 组合验证；跨插件依赖/CHANGELOG/测试/效果图门禁照旧）。判据与仓库不变量在 `scripts/lib/preset-gate.mjs`：声明必须配真实 `agent.cordis.yml` + `preset.yml`，且与 `dsh.bundle` / `dsh.client` 互斥。参考实现 `plugins/dsh-plugin-dev-mode/`。
 
 ### 命名阶段：先检索 npm 包名（强制）
 
@@ -273,7 +276,7 @@ export function apply(ctx) {
 
 **方式 B（本地手动，等价）**：`node scripts/release.mjs <插件名> --bump patch --push`（bump 版本 + CHANGELOG 生成 + 根 README/AGENTS 版本同步 + tag + push）。版本已手动改好时省略 `--bump`。
 
-发版门禁（release.mjs 自动校验）：`peerDependencies.cordis` 已声明且 major 一致 → CHANGELOG 有当前版本段 → npm test 全绿 → README 效果截图引用有效（`./assets/` 或 unpkg URL）→ 文档版本同步 → tag。**验证发布结果**：GitHub Releases 页面确认 Release + `.tgz` 附件、npmjs.com 确认新版本（或 `npm view <包名> version --registry=https://registry.npmjs.org`）；失败时去 Actions 页看失败步骤（历史校验 bug 见 [踩坑：release 版本校验失败](../../docs/踩坑/github-release版本校验失败.md)）。
+发版门禁（release.mjs 自动校验）：`peerDependencies.cordis` 已声明且 major 一致（**agent preset 资产包 `dsh.kind=preset` 豁免**，见「插件形态」）→ CHANGELOG 有当前版本段 → npm test 全绿 → README 效果截图引用有效（`./assets/` 或 unpkg URL）→ 文档版本同步 → tag。**验证发布结果**：GitHub Releases 页面确认 Release + `.tgz` 附件、npmjs.com 确认新版本（或 `npm view <包名> version --registry=https://registry.npmjs.org`）；失败时去 Actions 页看失败步骤（历史校验 bug 见 [踩坑：release 版本校验失败](../../docs/踩坑/github-release版本校验失败.md)）。
 
 ## 常见错误
 

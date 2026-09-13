@@ -40,6 +40,21 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 4. 行为：一条核心路径真实执行（工具插件=一次消息→工具→回复；或等价专用流程）；
 5. 包装器：核对退出码与 stdout/stderr 归属。
 
+### 插件形态与门禁适用性（仓库级，`scripts/release.mjs` 1b-pre，issue #231）
+
+`plugins/` 下的目录不都是 profile 插件。发版门禁按 `package.json` 的**显式形态声明**决定适用性——不写插件名单（名单会腐烂）：
+
+| 形态 | 显式声明 | 门禁差异 |
+|---|---|---|
+| profile 插件（bundle） | `dsh.bundle.patch`（有 UI 时另有 `dsh.client`） | 全部门禁：`peerDependencies.cordis`、跨插件依赖、真实挂载 |
+| 共享工具包 | `dsh.kind=library` | 豁免 `peerDependencies.cordis`（1b）与 profile 组合验证（3c） |
+| **agent preset 资产包** | `dsh.kind=preset` + 非空 `dsh.presetReason` | 同上豁免 1b + 3c；跨插件依赖（1c）、CHANGELOG、测试、效果图门禁照旧 |
+
+- preset 资产包 = `agent.cordis.yml`（预设组合，宿主 `@deepseek-ai/dsh-agent-presets` 的 `COMPOSITION_FILE`，**目录名即 preset id**）+ `preset.yml`（模式选择器的 name/description 显示元数据，`METADATA_FILE`），由安装脚本复制到 `$DSH_HOME/.agent-presets/<id>/`；它**不挂 profile**、没有 `cordis.patch.yml`，所以**不该**补 `peerDependencies.cordis`（那会让 npm 消费者以为它是 cordis 插件包）；
+- 判据与仓库不变量（`scripts/lib/preset-gate.mjs`，单测 `scripts/test/preset-gate.test.mjs`）：`dsh.kind=preset` 必须真的有 `agent.cordis.yml` + `preset.yml` 且内容成形（组合含插件行、元数据含非空 `name`）；与 `dsh.bundle` / `dsh.client` 互斥；目录里有 preset 资产却不声明也会被拦下，并提示正确修复方式（而不是误报缺 cordis peer）；
+- **豁免不削弱拦截**：preset 只豁免 1b 的 cordis peer 与 3c 的 profile 组合验证；注入未声明的真实 `dsh-*` `import` 仍会被 1c 拦下；
+- 豁免结果在发版输出与批量汇总显式列出（含 `dsh.presetReason`），不悄悄放行。
+
 ### README 效果图门禁（仓库级，`scripts/release.mjs` 3b）
 
 - 插件 README 必须引用 `assets/` 下真实存在的截图（`./assets/<file>` 或 unpkg 绝对 URL）；

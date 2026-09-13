@@ -23,5 +23,9 @@
     "CHANGELOG.md",
     "LICENSE"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "dsh": {
+    "kind": "preset",
+    "presetReason": "提供 plugin-dev 预设组合（agent.cordis.yml）+ 模式选择器显示元数据（preset.yml）+ 自带 skills，由 scripts/install.mjs 复制到 $DSH_HOME/.agent-presets/plugin-dev/ 后经宿主 @deepseek-ai/dsh-agent-presets 的 discovery 读取；不挂 profile、无 cordis.patch.yml，因此不声明 peerDependencies.cordis"
+  }
 }

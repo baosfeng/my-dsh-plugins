@@ -39,7 +39,20 @@ import { createApi } from './api.js';
 import { attachEventListeners, logEvent } from './events.js';
 import { runStartupCheck } from './startup-check.js';
 export const name = 'dsh-my-guardian';
-export const inject = ['loader', 'timer'];
+/**
+ * **顶层不声明 inject**（issue #242 的 fatal 形态修复）。
+ *
+ * cordis 解析顶层 `inject` 声明时若插件 ctx 已 inactive，会抛
+ * `cannot get required service "loader" in inactive context` 并让整个
+ * `dsh web` 启动失败（fail-loud 设计）；该错误发生在 apply **之前**，
+ * apply 内的 try/catch 拦不住 —— 实测：把本插件从隔离 profile 的
+ * `disabled: true` 去掉后实例直接 exit 1。
+ *
+ * 改为在 apply 内用 `ctx.inject([...], cb)` **局部等待**（与
+ * `dsh-task-reliability/src/command.ts` 的 commands 注册同一模式）：
+ * 服务就绪后回调初始化；始终拿不到时只 warn + 降级，绝不 fatal。
+ */
+export const inject = [];
 /** Fallback poll interval for the staged file when fs.watch is unavailable. */
 const POLL_MS = 4000;
 /** 返回 shared（含 `flushPersist()` 确定性就绪信号）供宿主/测试等待落盘；Cordis 忽略返回值。 */
@@ -48,12 +61,46 @@ export function apply(ctx) {
     // down. Any synchronous failure inside apply degrades the guardian (no
     // staged loading) instead of failing the whole boot (fail-loud).
     try {
-        return applyInner(ctx);
+        return applyWithScopedServices(ctx);
     }
     catch (error) {
         ctx.logger?.warn(`[dsh-my-guardian] apply failed — guardian degraded: ${error instanceof Error ? error.message : String(error)}`);
         return undefined;
     }
+}
+/**
+ * 以局部 inject 等待 loader/timer 后初始化（见上方 inject 注释）。
+ *
+ * - 服务已就绪：cordis 同步回调 → 返回 shared（行为与旧实现一致）；
+ * - 服务晚到：apply 先返回 undefined（宿主忽略返回值），就绪后回调初始化；
+ * - 服务始终缺失：**只 warn + 降级**，绝不抛错（看门狗自身不得 fatal）；
+ * - 无 `ctx.inject` 的宿主/单测 mock：按旧路径直接初始化（依赖由调用方保证）。
+ */
+function applyWithScopedServices(ctx) {
+    // 优先用常驻 root ctx 承载局部 inject（issue #242：profile 插件自身的 ctx 可能
+    // 在加载时序里 inactive；root 常驻）。
+    const hostCtx = ctx.root ?? ctx;
+    const inject = hostCtx
+        .inject;
+    if (typeof inject !== 'function')
+        return applyInner(ctx);
+    let shared;
+    let initialized = false;
+    inject.call(hostCtx, ['loader', 'timer'], (scoped) => {
+        initialized = true;
+        // 回调可能是**异步**的（服务晚到才触发）：此时异常不再落在外层 try/catch 里，
+        // 必须在这里兜住——看门狗自身绝不能把进程带崩（fail-loud 会 exit 1）。
+        try {
+            shared = applyInner(scoped);
+        }
+        catch (error) {
+            scoped.logger?.warn(`[dsh-my-guardian] scoped init failed — guardian degraded: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    });
+    if (!initialized) {
+        ctx.logger?.warn('[dsh-my-guardian] loader/timer 服务尚未就绪 — guardian 等待局部 inject；本次 apply 暂不初始化（不 fatal）');
+    }
+    return shared;
 }
 function applyInner(ctx) {
     const root = findRootTree(ctx.loader);

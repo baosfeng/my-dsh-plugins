@@ -78,4 +78,22 @@ function probe(ctx: any, tag: string): void {
 4. **不要只靠 `ctx.effect` 做清理副作用**：`ctx.effect(() => store.dispose, ...)` 在 fiber 被回收时会**立即**执行 `store.dispose()`（实测会清掉持久化防抖定时器）；此类 teardown 同样应挂到 `ctx.root`。
 5. **防回归测试**：用「self 表（模拟会被回收的插件 fiber，派发永不到达）+ root 表（模拟常驻 fiber）」两个分离注册表复刻语义，断言注册必须落在 root。参考 `plugins/dsh-my-context/test/host-root-registration.mjs`（把修复回退成 `ctx.on` 时该测试 RED）。
 
-参考实现：`plugins/dsh-my-context/src/events.ts`（`rootListeners`）、`src/routes.ts`（`rootRoutes`）、`src/index.ts`。
+6. **第二种形态（fatal）：顶层 `inject` 声明在 ctx inactive 时会崩整个进程**。cordis 解析顶层 `inject` 时若插件 ctx 已 inactive，会抛 `cannot get required service "<name>" in inactive context` → **`dsh web` 启动 exit 1**；该错误发生在 apply **之前**，apply 内的 try/catch 拦不住（实测：`dsh-my-guardian` 从 `disabled` 去掉后实例直接起不来，而它恰恰是"别让插件把进程带崩"的看门狗）。
+   修法：**顶层 `inject` 改空数组**，依赖改由 apply 内 `ctx.inject([...], cb)` **局部等待**（参考 `plugins/dsh-my-guardian/src/index.ts`、`dsh-task-reliability/src/command.ts`）。
+7. ⚠️ **局部 `ctx.inject([...], cb)` 的回调可能是异步的 —— 异常必须在回调内部兜住**（#242 实战教训：第一版修复因此**仍然 fatal**）。
+   若依赖服务**晚到**，`cb` 会在 **apply 返回之后**才执行；此时 cb 内访问服务/初始化抛出的异常**不在 apply 的 try/catch 范围内**，会直接冒泡成 `fatal load failure`（实测：guardian 第一版修复后实例仍 exit 1，补上回调内 try/catch 后才通过验收）。
+   正确写法：
+   ```ts
+   const hostCtx = (ctx as { root?: DshContext }).root ?? ctx // 优先常驻 root
+   hostCtx.inject(['loader', 'timer'], (scoped) => {
+     try {
+       init(scoped)
+     } catch (error) {
+       scoped.logger?.warn(`[plugin] scoped init failed — degraded: ${String(error)}`)
+     }
+   })
+   ```
+   要点：**回调内再包一层 try/catch + warn 降级**（绝不 fatal），并优先用**常驻 `ctx.root`** 承载局部 inject。
+8. **验收判据不能只看单测**：这类问题的单测（mock ctx）**结构上无法复现**（mock 没有 loader、没有 fiber 回收、effect 立即执行）。必须用隔离实例验证「**实例能正常启动** + 该插件的路由/UI **有响应**」（如 `GET /guardian/api/state` → 200）。
+
+参考实现：`plugins/dsh-my-context/src/events.ts`（`rootListeners`）、`src/routes.ts`（`rootRoutes`）、`src/index.ts`；fatal 形态见 `plugins/dsh-my-guardian/src/index.ts`（`applyWithScopedServices`）。

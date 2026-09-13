@@ -54,6 +54,4 @@ jobs:
 
           # 操作选项
           remove-stale-when-updated: true
-          stale-issue-label: 'stale'
-          stale-pr-label: 'stale'
           operations-per-run: 100

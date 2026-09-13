@@ -26,7 +26,8 @@
     "react",
     "react-dom",
     "@deepseek-ai/dsh-client-ui-primitives",
-    "@types/react-dom"
+    "@types/react-dom",
+    "eslint-formatter-compact"
   ],
   "ignoreBinaries": ["dsh"],
   "rules": {

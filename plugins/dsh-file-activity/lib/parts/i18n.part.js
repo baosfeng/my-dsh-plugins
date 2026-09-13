@@ -43,5 +43,15 @@ const strings = {
     isZh() ? '文件位于工作区外，暂无法读取内容' : 'The file is outside the workspace and cannot be read',
   downloadToView: () => (isZh() ? '下载查看' : 'download to view'),
   clickOutsideToClose: () => (isZh() ? '点击外部关闭' : 'Click outside to close'),
+  autoOpenLabel: () => (isZh() ? '会话开始时自动打开' : 'Auto-open on session start'),
+  autoOpenHint: () =>
+    isZh()
+      ? '每个会话首次打开时自动显示本页；关闭后仍可从侧边栏右上角的「新标签页」手动打开。'
+      : 'Shows this page once per session. When off, open it from the sidebar new-tab control.',
+  tabUnavailable: () => (isZh() ? '侧边栏扩展点不可用' : 'Sidebar extension point unavailable'),
+  tabUnavailableHint: () =>
+    isZh()
+      ? '本插件未能注册页签（宿主原生 API 可能已变更）。原因见浏览器控制台。'
+      : 'This plugin could not register its tab (the host native API may have changed). See the browser console.',
   autoCloseHint: () => (isZh() ? '预览失败，即将自动关闭' : 'Preview failed — closing automatically'),
 }

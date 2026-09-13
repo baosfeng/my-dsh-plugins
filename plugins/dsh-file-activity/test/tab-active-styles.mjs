@@ -6,7 +6,7 @@ import { test } from 'vitest'
  * `[class*="tab"][class*="tabActive"]`。该规则会误伤宿主（DSH 官方 GUI）中
  * 任何 class 名含 "tab"/"tabActive" 的元素——包括对话/工作区 tab 的选中态，
  * 出现用户不想要的蓝色高亮（issue #60）。issue #60 决定移除该覆盖，页签
- * 选中态回归宿主（dsh-better-sidebar）默认样式。
+ * 选中态回归宿主原生样式（issue #187 批 2：本插件不再覆盖）。
  *
  * 本套件是 issue #60 的防复发测试：断言 STYLES **不包含**任何针对
  * tab/tabActive 的品牌蓝覆盖规则。若未来重新引入此类全局覆盖，测试即红灯。

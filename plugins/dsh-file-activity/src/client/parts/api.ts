@@ -33,10 +33,14 @@ interface SessionBucket {
   loading: boolean
 }
 
-/** 浮窗预览目标（绝对路径 + 显示名）。 */
+/** Floating preview target: absolute path, display name, owning session.
+ *  The session id travels with the target because the preview window renders
+ *  in the root-scoped 'shell.overlay' seat, where no session props exist —
+ *  and because the plugin routes authorize exactly (sessionId, path). */
 interface PreviewTarget {
   abs: string
   name: string
+  sessionId: string
 }
 
 /** client 端全局状态（store.ts createStore 的形状）。 */

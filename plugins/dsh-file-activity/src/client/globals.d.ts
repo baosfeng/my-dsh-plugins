@@ -3,16 +3,16 @@
  *
  * 声明 __ModuleLoader__ factory 作用域注入的变量（React hooks、
  * dsh-shared 共享图标、client.src.js 模板常量）以及跨 part 共享的
- * dsh-better-sidebar 服务契约。跨 part 文件的函数/变量引用由
- * TypeScript script 模式自动处理（module: commonjs + 无 import/export =
- * 全局作用域，见 tsconfig.client.json）。
+ * **宿主原生侧边栏扩展点**契约（issue #187 批 2：不再消费 宿主侧边栏）。
+ * 跨 part 文件的函数/变量引用由 TypeScript script 模式自动处理
+ * （module: commonjs + 无 import/export = 全局作用域，见 tsconfig.client.json）。
  */
 
 // ── React（由 factory 作用域的 require('react') 注入）────────────────────
 declare function createElement(type: unknown, props?: unknown, ...children: unknown[]): unknown
 declare function useState<T = unknown>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T)) => void]
 declare function useEffect(effect: () => void | (() => void), deps?: unknown[]): void
-declare function useMemo<T>(factory: () => T, deps?: unknown[]): T
+declare function useMemo<T>(factory: () => T, deps: unknown[]): T
 declare function useSyncExternalStore<T>(
   subscribe: (onStoreChange: () => void) => () => unknown,
   getSnapshot: () => T,
@@ -35,84 +35,91 @@ declare const icon: Record<string, (size?: number) => unknown>
 declare const fileIconByExt: (ext: unknown, size?: number) => unknown
 
 // ── 模板常量（client.src.js 的 factory 作用域）───────────────────────────
+declare const TAB_KIND: string
 declare const TAB_ID: string
+declare const PREVIEW_ID: string
 declare const AUTO_OPEN_KEY: string
+declare const AUTO_OPEN_PREF_KEY: string
 declare const POLL_MS: number
 
 // ── CommonJS（apply.ts 使用 exports.inject / exports.apply / exports.__test）
 declare const exports: Record<string, unknown>
 declare const module: { exports: Record<string, unknown> }
+/** ModuleLoader require（factory 作用域注入；浏览器 bundle 里无 node 类型）。 */
+declare function require(spec: string): any
 
-// ── 共享服务契约（client 端内部形状）────────────────────────────────────
+// ── 宿主原生扩展点契约（client 端内部形状，全部经 Cordis 服务注入）──────
 
-/** client 端 Context 的最小契约（effect + betterSidebar 服务）。 */
+/** client 端 Context 最小契约（effect + 四个原生侧边栏服务）。 */
 interface ClientContext {
   effect(callback: () => void | (() => void), label?: string): void
-  /** dsh-better-sidebar 服务；宿主未安装时为 undefined（apply 里显式提示）。 */
-  betterSidebar?: SidebarService
+  /** 官方 slots 席位注册表（keyed / list / chain）。 */
+  slots: SlotsService
+  /** 原生右栏 tab 类型注册表（dsh-client-ui-sidebar-right）。 */
+  sidebarRightTabs: SidebarRightTabRegistry
+  /** 原生文档预览器注册表（dsh-client-ui-sidebar-documentpreview）。 */
+  documentPreviews: DocumentPreviewRegistry
+  /** 原生右栏导航控制器（openTab / openResource / isExpanded / active）。 */
+  sidebarRight: SidebarRightController
 }
 
-/** dsh-better-sidebar 服务（client 端用到的扩展点）。 */
-interface SidebarService {
-  registerTab(options: TabRegistration): () => void
-  openTab(options: { type: string; title: string; path: string }): unknown
-  matchFileViewer(path: string): FileViewer | undefined
-  getSnapshot?(): SidebarSnapshot | undefined
-  subscribeState?(listener: () => void): () => void
+/** slots 席位注册选项（settings / overlay / pane.tab 各席位共用）。 */
+interface SlotRegisterOptions {
+  name: string
+  /** keyed 席位的 key（正文与标题席位 = tab 定义的 id）。 */
+  key?: string
+  /** list 席位的条目 id。 */
+  id?: string
+  order?: number
+  label?: string | (() => string)
+  locale?: string
 }
 
-/** 页签注册选项（registerTab）。 */
-interface TabRegistration {
+/** slots 服务（宿主 dsh-client-ui-slots）。 */
+interface SlotsService {
+  inject(slot: string, factory: () => () => void): void
+  register(options: SlotRegisterOptions, component: (props: never) => unknown): () => void
+}
+
+/** 右栏 tab 类型的静态面（原生注册契约）。 */
+interface SidebarRightTabDefinition {
+  /** 实现身份，全局唯一；也是正文与标题席位的 key。 */
   id: string
-  title: () => string
-  icon: (size?: number) => unknown
-  order: number
-  single: boolean
-  settings: { pluginToggles: PluginToggle[] }
-  /** 页签组件：sidebar 传入 ctx/store/scope/visible，本插件再注入 dataStore。 */
-  component: (props: Record<string, unknown>) => unknown
+  /** 类型判别符（openTab 用具名 kind）。 */
+  kind: string
+  /** 资源地址 glob；页面类型省略。 */
+  patterns?: readonly string[]
+  priority?: 'extension' | 'builtin' | 'fallback'
+  title: (address: string) => string
+  guide?: readonly { order: number; title: () => string; description?: () => string }[]
 }
 
-/** 插件设置开关（settings.pluginToggles 元素）。 */
-interface PluginToggle {
-  key: string
-  title: () => string
-  desc: () => string
-  type: string
+/** 原生右栏 tab 类型注册表。 */
+interface SidebarRightTabRegistry {
+  register(definition: SidebarRightTabDefinition): () => void
+  entries(): readonly SidebarRightTabDefinition[]
 }
 
-/** 侧边栏状态快照（仅取自动打开需要的字段）。 */
-interface SidebarSnapshot {
-  sessionId?: string
-  state?: SidebarState
-  prefs?: { pluginSettings?: Record<string, PluginSettings | undefined> }
-}
-
-/** 侧边栏布局（splits / bottomSplits 各自是一棵布局树）。 */
-interface SidebarState {
-  splits?: LayoutNode
-  bottomSplits?: LayoutNode
-}
-
-/** 布局节点（leaf 带 tabs，split 带 children）。 */
-interface LayoutNode {
-  kind?: string
-  tabs?: { type: string }[]
-  children?: LayoutNode[]
-}
-
-/** 单个插件页签的设置（autoOpen 为自动打开开关，false 表示用户已关闭）。 */
-interface PluginSettings {
-  autoOpen?: boolean
-}
-
-/** 侧边栏文件查看器（matchFileViewer 的返回值）。 */
-interface FileViewer {
+/** 原生文档预览器定义：只声明元数据，字节由宿主 document owner 读取。 */
+interface DocumentPreviewDefinition {
   id: string
-  /** 字节获取策略：fsRead / mediaUrl / custom / binary-download…。 */
-  fetchStrategy?: string
-  /** 查看器组件（取到数据后挂载）。 */
-  component?: unknown
-  /** custom 策略的自取数据钩子。 */
-  load?: (path: string, scope: unknown) => unknown
+  /** 不带点号的后缀（tar.gz 这类复合后缀也接受）。 */
+  extensions: readonly string[]
+  priority?: 'builtin' | 'extension'
+  title: () => string
+  loading: 'text-pages' | 'bytes-complete'
+}
+
+/** 原生文档预览器注册表。 */
+interface DocumentPreviewRegistry {
+  register(definition: DocumentPreviewDefinition): () => void
+  candidates(path: string): readonly DocumentPreviewDefinition[]
+}
+
+/** 原生右栏导航控制器（只声明本插件用到的面）。 */
+interface SidebarRightController {
+  openTab(kind: string, options?: { revealIfOpened?: boolean }): void
+  openResource(address: string, options?: { kind?: string }): void
+  isExpanded(): boolean
+  active(): unknown
 }

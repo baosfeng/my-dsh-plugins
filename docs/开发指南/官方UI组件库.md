@@ -5,12 +5,12 @@
 
 ## 结论（TL;DR）
 
-1. **DSH 官方自带 UI 组件库**：`@deepseek-ai/dsh-client-ui-primitives`（官方仓库 `packages/client/ui-primitives`，npm 已发布 `0.0.1-rc.x`，描述："Pure React atoms for the dsh web UI: controls, icons, markdown, and JSON inspectors (zero cordis)"）。
+1. **DSH 官方自带 UI 组件库**：`@deepseek-ai/dsh-client-ui-primitives`（宿主 0.1.5-rc.1 运行时实测导出 123 项；官方仓库 `packages/client/ui-primitives`，npm 已发布 `0.0.1-rc.x`，描述："Pure React atoms for the dsh web UI: controls, icons, markdown, and JSON inspectors (zero cordis)"）。
 2. **插件 client 可直接 `require` 使用，零安装、零打包、零体积**：宿主把它注册进 ModuleLoader 的 **staticModules 静态模块表**（主 bundle `staticModules: Jd()` 显式暴露 `react` / `react/jsx-runtime` / `react-dom` / `@deepseek-ai/cordis` / `@deepseek-ai/dsh-client-ui-slots` / `@deepseek-ai/dsh-client-ui-primitives`），插件 factory 的 `require` 直接命中该表。
 3. **生态已实证**：社区最流行插件 [DSH-Transparent-UI-Plugin](https://github.com/WYH66666666/DSH-Transparent-UI-Plugin)（401★）的 client 就是 `require("@deepseek-ai/dsh-client-ui-primitives")` 构建的。
-4. **本机实测**：在隔离实例的 dsh-my-memory 插件 client factory 顶层 `require('@deepseek-ai/dsh-client-ui-primitives')` → **解析成功，拿到 104 个导出**，页面正常加载（实验代码已验证后还原）。
+4. **本机实测**：在隔离实例的 dsh-my-memory 插件 client factory 顶层 `require('@deepseek-ai/dsh-client-ui-primitives')` → **解析成功，拿到 123 个导出**，页面正常加载（实验代码已验证后还原）。
 
-## 组件清单（导出实证，共 104 项）
+## 组件清单（导出实证，共 123 项）
 
 - **控件**：`Button` `Input` `Menu` `Modal` `Pill` `DisclosureRow` `HoverCard` `StateDot` `FoldToggle` `OnboardingSurface` `ConnectionIndicator`
 - **内容/展示**：`CodeBlock` `JsonTree` `JsonBlock` `MarkdownText` `MessageText` `ReadBlock` `SearchBlock` `TerminalBlock` `WebBlock` `DiffBlock` `RiskConfirmation`

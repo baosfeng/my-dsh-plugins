@@ -1,14 +1,15 @@
 import { test } from 'vitest'
 /**
  * Client render-path test: loads the client bundle with a stubbed react
- * (real createElement; hooks stubbed to no-ops), registers the tab through a
- * mocked betterSidebar service, then invokes the view component directly to
- * verify the element tree builds without errors and the folder flattening /
+ * (real createElement; hooks stubbed to no-ops), registers the tab through the
+ * HOST's native extension points (issue #187 batch 2 — slots / sidebarRightTabs
+ * / documentPreviews / sidebarRight), then invokes the view component directly
+ * to verify the element tree builds without errors and the folder flattening /
  * dotted-label / recent-list logic produces the expected structure.
  *
- * Clicking a file row must open the file in the sidebar's NATIVE viewer via
- * ctx.betterSidebar.openFile(scope, path) (built-in markdown/code rendering),
- * NOT a hand-rolled floating preview — there is no preview data path anymore.
+ * Clicking a file row publishes a preview TARGET into the shared store; the
+ * floating window itself renders in the root-scoped 'shell.overlay' seat, so
+ * the preview assertions below mount THAT seat's component.
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -25,16 +26,44 @@ function createElement(type, props, ...children) {
   return { type, props: p }
 }
 
-const hookValues = new Map()
+// Hook slots are per RENDER SCOPE (the tab body is one component, the overlay
+// seat another): sharing one store between them would let the overlay's first
+// useState read the view's slot — the same class of bug React's rules exist to
+// prevent. The suite is single-threaded, so a module-level cursor suffices.
+const hookStores = new Map()
+let hookScope = 'body'
+const hookStore = []
+const resetHooks = () => {
+  hookScope = 'body'
+  hookStore.length = 0
+  hookStores.set('body', { index: 0, slots: [] })
+}
+// React's own rule: hooks are read in call order, and the N-th useState call of
+// a component always lands on the same slot.
+const scopeOf = (name) => {
+  let scope = hookStores.get(name)
+  if (!scope) {
+    scope = { index: 0, slots: [] }
+    hookStores.set(name, scope)
+  }
+  return scope
+}
+const useScope = (name) => {
+  const scope = scopeOf(name)
+  scope.index = 0
+  hookStore.length = 0
+  hookStore.push(...scope.slots)
+}
 const stubbed = {
   createElement,
+  // Slots are keyed by call order and keep their first value, so a second
+  // render of the same component reads the same slots (the overlay seat is
+  // rendered twice below).
   useState: (initial) => {
-    const idx = hookValues.size
-    if (!hookValues.has(idx)) {
-      const value = typeof initial === 'function' ? initial() : initial
-      hookValues.set(idx, [value, () => {}])
-    }
-    return hookValues.get(idx)
+    const scope = scopeOf(hookScope)
+    const i = scope.index++
+    if (!scope.slots[i]) scope.slots[i] = [typeof initial === 'function' ? initial() : initial, () => {}]
+    return scope.slots[i]
   },
   useEffect: () => {},
   useMemo: (fn) => fn(),
@@ -43,6 +72,18 @@ const stubbed = {
 
 // ── browser globals ────────────────────────────────────────────────────────
 let registered = null
+const storage = new Map()
+const localStorageStub = {
+  getItem: (k) => (storage.has(k) ? storage.get(k) : null),
+  setItem: (k, v) => storage.set(k, String(v)),
+  removeItem: (k) => storage.delete(k),
+}
+const tabStorage = new Map()
+const sessionStorageStub = {
+  getItem: (k) => (tabStorage.has(k) ? tabStorage.get(k) : null),
+  setItem: (k, v) => tabStorage.set(k, String(v)),
+  removeItem: (k) => tabStorage.delete(k),
+}
 global.window = {
   __ModuleLoader__: {
     load: (registration) => {
@@ -54,56 +95,89 @@ global.window = {
   fetch: () => Promise.resolve({ json: () => Promise.resolve({ ok: true, value: {} }) }),
   setTimeout: (fn, ms) => setTimeout(fn, ms),
   clearTimeout: (id) => clearTimeout(id),
+  setInterval: () => 1,
+  clearInterval: () => {},
+  // the bundle reads the browser-global storages, not the node globals
+  localStorage: localStorageStub,
+  sessionStorage: sessionStorageStub,
 }
 Object.defineProperty(global, 'navigator', { value: { language: 'zh-CN' }, configurable: true })
-global.localStorage = { getItem: () => null, setItem: () => {} }
+global.localStorage = localStorageStub
+global.sessionStorage = sessionStorageStub
 global.fetch = () => Promise.resolve({ json: () => Promise.resolve({ ok: true, value: {} }) })
+global.document = {
+  head: { appendChild: () => {} },
+  documentElement: { dataset: {} },
+  createElement: () => ({ setAttribute: () => {}, textContent: '', parentNode: null }),
+}
 
 // ── load bundle ────────────────────────────────────────────────────────────
 eval(fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8'))
 assert.ok(registered, 'bundle registered')
 const exportsObj = registered.factory((spec) => {
   if (spec === 'react') return stubbed
+  // the official atoms come from the host's staticModules; this suite only
+  // needs the module to resolve, not to render anything real
+  if (spec === '@deepseek-ai/dsh-client-ui-primitives') return {}
   throw new Error('unexpected require: ' + spec)
 })
-assert.deepEqual(exportsObj.inject, ['betterSidebar'])
+assert.deepEqual(exportsObj.inject, ['slots', 'sidebarRightTabs', 'documentPreviews', 'sidebarRight'])
 assert.equal(typeof exportsObj.apply, 'function')
 
-// ── mock betterSidebar service + context ───────────────────────────────────
+// ── native service doubles + context ──────────────────────────────────────
 let capturedTab = null
-const openFileCalls = []
-const openTabCalls = []
-const mockService = {
-  registerTab: (descriptor) => {
-    capturedTab = descriptor
-    return () => {}
-  },
-  features: ['openFile'],
-  isTabEnabled: () => true,
-  openFile: (scope, path) => {
-    openFileCalls.push({ scope, path })
-  },
-  openTab: (seed) => {
-    openTabCalls.push(seed)
-  },
-  getSnapshot: () => undefined,
-  subscribeState: () => () => {},
-}
+let capturedTabBody = null
+let capturedOverlay = null
+const registeredPreviews = []
+const registeredSettings = []
+const openedTabs = []
 const ctx = {
-  betterSidebar: mockService,
   effect: (fn) => fn(),
+  slots: {
+    inject: (_slot, factory) => factory(),
+    register: (options, component) => {
+      if (options.name === 'sidebar.right.pane.tab') capturedTabBody = component
+      else if (options.name === 'shell.overlay') capturedOverlay = component
+      else if (options.name === 'settings.plugins.tab') registeredSettings.push({ options, component })
+      return () => {}
+    },
+  },
+  sidebarRightTabs: {
+    register: (definition) => {
+      capturedTab = definition
+      return () => {}
+    },
+    entries: () => [],
+  },
+  documentPreviews: {
+    register: (definition) => {
+      registeredPreviews.push(definition)
+      return () => {}
+    },
+    candidates: () => [],
+  },
+  sidebarRight: {
+    openTab: (kind) => openedTabs.push(kind),
+    openResource: () => {},
+    isExpanded: () => true,
+    active: () => undefined,
+  },
 }
 exportsObj.apply(ctx)
-assert.ok(capturedTab, 'tab registered')
-assert.equal(capturedTab.id, 'file-activity:recent')
-assert.equal(capturedTab.single, true)
-assert.equal(capturedTab.order, 15)
-assert.ok(capturedTab.settings?.pluginToggles?.length === 1, 'autoOpen toggle declared')
+assert.ok(capturedTab, 'tab type registered')
+assert.equal(capturedTab.id, 'dsh-file-activity')
+assert.equal(capturedTab.kind, 'file-activity')
+assert.equal(capturedTab.title('sidebar://file-activity'), '文件活动')
+assert.ok(capturedTabBody, 'tab body seat registered')
+assert.ok(capturedOverlay, 'floating preview overlay seat registered')
+assert.equal(registeredPreviews.length, 1, 'native document preview registered')
+assert.equal(registeredSettings.length, 1, 'settings tab registered')
 
 // ── build the view element with data ───────────────────────────────────────
-const scope = { sessionId: 'sess-test', cwd: '/work' }
-const element = capturedTab.component({ ctx, scope, visible: true })
-assert.equal(element.type.name, 'FileActivityView', 'component wired')
+const seatElement = capturedTabBody({ sessionId: 'sess-test', visible: true })
+assert.equal(seatElement.type.name, 'FileActivityView', 'component wired')
+// the seat injects this activation's shared store into the view
+const element = { type: seatElement.type, props: seatElement.props }
 
 // Seed the store with realistic data (multi-level folders like a.b.c.d + e),
 // bucketed per session: the view reads only its own sessionId's bucket.
@@ -127,8 +201,8 @@ dataStore.set({
     },
   },
 })
-
-// ── invoke the component directly (stubbed hooks) ──────────────────────────
+resetHooks()
+useScope('body')
 const tree = element.type(element.props)
 assert.ok(tree, 'view tree built')
 
@@ -159,7 +233,9 @@ walk(tree, 0)
 const joined = texts.join('|')
 // No in-content "文件活动" heading: the tab strip already names the page, so
 // the view starts flush with content (refreshed/compact, "immersive").
-assert.ok(!joined.includes('文件活动'), 'no redundant in-content tab title')
+// NOTE: the empty-state copy legitimately contains the substring 文件活动
+// ("暂无文件活动记录"), so the assertion is on an exact text node.
+assert.ok(!texts.includes('文件活动'), 'no redundant in-content tab title')
 assert.ok(joined.includes('最近访问'), 'recent section')
 assert.ok(joined.includes('文件统计'), 'stats section')
 // Header action buttons are icon-only but must be reachable & labelled.
@@ -303,16 +379,20 @@ const clickableRows = rows.filter(
   (r) =>
     typeof r.onClick === 'function' && typeof r.title === 'string' && r.title.startsWith('/') && !r.title.endsWith('/'),
 )
+const tabOpensBeforeClick = openedTabs.length
 for (const row of clickableRows) row.onClick()
-assert.equal(openFileCalls.length, 0, 'clicking a row does not open the sidebar editor tab')
-assert.equal(openTabCalls.length, 0, 'clicking a row does not open any sidebar tab')
+assert.equal(openedTabs.length, tabOpensBeforeClick, 'clicking a row does not open any sidebar tab')
 const preview = dataStore.getSnapshot().preview
 assert.ok(preview !== null && typeof preview === 'object', 'click opens the floating preview')
 assert.equal(preview.abs, clickableRows[clickableRows.length - 1].title, 'floating preview targets the clicked file')
+assert.equal(preview.sessionId, 'sess-test', 'the preview carries the owning session for the plugin routes')
 
 // ── floating preview: click-outside (scrim overlay) & the close button ────
-// both dismiss it; large files scroll inside the window body.
-const fpTree = element.type(element.props) // re-render with preview in the store
+// both dismiss it; large files scroll inside the window body. The window now
+// renders in the ROOT-scoped 'shell.overlay' seat, so that seat's component is
+// what gets mounted here.
+useScope('overlay')
+const fpTree = { type: capturedOverlay, props: {} }
 let overlay = null
 let closeBtn = null
 const fpTexts = []
@@ -488,7 +568,7 @@ internals.closePreviewOnHidden(false, dataStore)
 assert.equal(dataStore.getSnapshot().preview, null, 'hidden tab closes the floating preview')
 
 // ── floating preview body fills the window (issue #111) ──────────────────
-// The better-sidebar viewer (html iframe / code / markdown / image) sizes
+// The old third-party viewer (html iframe / code / markdown / image) sized
 // its root with `flex:1`, which only works when the mounted viewer sits in a
 // FLEX parent. .dfa-fp-body must therefore stay a flex column — otherwise the
 // HTML iframe, which has a fixed browser-default height, renders as a thin

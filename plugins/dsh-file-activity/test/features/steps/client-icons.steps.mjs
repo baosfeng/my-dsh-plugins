@@ -48,7 +48,16 @@ global.window = {
   clearTimeout: (id) => clearTimeout(id),
 }
 Object.defineProperty(global, 'navigator', { value: { language: 'zh-CN' }, configurable: true })
-global.localStorage = { getItem: () => null, setItem: () => {} }
+const emptyStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+global.localStorage = emptyStorage
+global.sessionStorage = emptyStorage
+global.window.localStorage = emptyStorage
+global.window.sessionStorage = emptyStorage
+global.document = {
+  head: { appendChild: () => {} },
+  documentElement: { dataset: {} },
+  createElement: () => ({ setAttribute: () => {}, textContent: '', parentNode: null }),
+}
 global.fetch = () => Promise.resolve({ json: () => Promise.resolve({ ok: true, value: {} }) })
 
 eval(fs.readFileSync(new URL('../../../lib/client.js', import.meta.url), 'utf8'))
@@ -139,23 +148,27 @@ function collectIcons(tree) {
 
 // ── Given ──────────────────────────────────────────────────────────────────
 Given('客户端已加载文件活动页签', function () {
-  let capturedTab = null
-  const mockService = {
-    registerTab: (descriptor) => {
-      capturedTab = descriptor
-      return () => {}
+  // The tab now registers through the HOST's native extension points
+  // (issue #187 batch 2): capture the body seat and mount it directly.
+  let capturedTabBody = null
+  const ctx = {
+    effect: (fn) => fn(),
+    slots: {
+      inject: (_slot, factory) => factory(),
+      register: (options, component) => {
+        if (options.name === 'sidebar.right.pane.tab') capturedTabBody = component
+        return () => {}
+      },
     },
-    features: ['openFile'],
-    isTabEnabled: () => true,
-    openFile: () => {},
-    openTab: () => {},
-    getSnapshot: () => undefined,
-    subscribeState: () => () => {},
+    sidebarRightTabs: { register: () => () => {}, entries: () => [] },
+    documentPreviews: { register: () => () => {}, candidates: () => [] },
+    sidebarRight: { openTab: () => {}, openResource: () => {}, isExpanded: () => true, active: () => undefined },
   }
-  const ctx = { betterSidebar: mockService, effect: (fn) => fn() }
   bundle.apply(ctx)
-  const scope = { sessionId: 'sess-icons', cwd: '/work' }
-  this.element = capturedTab.component({ ctx, scope, visible: true })
+  if (capturedTabBody === null) throw new Error('tab body seat was not registered')
+  hookValues.clear()
+  const seat = capturedTabBody({ sessionId: 'sess-icons', visible: true })
+  this.element = { type: seat.type, props: seat.props }
   this.dataStore = this.element.props.dataStore
 })
 
@@ -169,6 +182,7 @@ When('渲染统计视图', function () {
   const counts = {}
   for (const p of this.paths) counts[p] = { read: 1, create: 0, modify: 0 }
   this.dataStore.set({ bySession: { 'sess-icons': { recent: [], counts, loading: false } } })
+  hookValues.clear()
   const tree = this.element.type(this.element.props)
   this.icons = collectIcons(tree)
 })

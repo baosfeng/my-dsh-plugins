@@ -135,13 +135,14 @@ function renderStatsSection(tree, collapsedDirs, onToggleDir, onOpen) {
  * from the previous session. Clicking any file opens a FLOATING preview
  * that reuses the sidebar's NATIVE viewer via matchFileViewer.
  */
-function FileActivityView({ ctx, store, scope, visible, dataStore }) {
+function FileActivityView({ ctx, store, scope, sessionId: seatSessionId, visible, dataStore }) {
   const data = useSyncExternalStore(dataStore.subscribe, dataStore.getSnapshot)
   const [cwd, setCwd] = useState(scope?.cwd || '')
   const [error, setError] = useState(false)
   const [recentOpen, setRecentOpen] = useState(true)
   const [collapsedDirs, setCollapsedDirs] = useState(() => new Set())
-  const sessionId = scope?.sessionId ?? ''
+  // Native seats pass sessionId directly; the legacy scope object still works.
+  const sessionId = seatSessionId ?? scope?.sessionId ?? ''
   const sessionData = (data.bySession ?? {})[sessionId] ?? EMPTY_SESSION
   const tree = useMemo(() => buildTree(sessionData.counts ?? {}), [sessionData.counts])
   useEffect(() => {
@@ -160,8 +161,10 @@ function FileActivityView({ ctx, store, scope, visible, dataStore }) {
     closePreviewOnHidden(visible, dataStore)
   }, [visible, dataStore])
   const toggleDir = (path) => setCollapsedDirs((prev) => toggleInSet(prev, path))
-  const openPreview = (path) => dataStore.set({ preview: { abs: path, name: basenameOf(path) } })
-  const closePreview = () => dataStore.set({ preview: null })
+  // The floating preview itself lives in the root-scoped 'shell.overlay' seat
+  // (registered by registerPreviewOverlay), so this view only publishes the
+  // target — together with the owning session, which authorizes the routes.
+  const openPreview = (path) => dataStore.set({ preview: { abs: path, name: basenameOf(path), sessionId } })
   const onClear = () => clearSessionData(dataStore, sessionId)
   const onRefresh = () => refreshSessionData(dataStore, sessionId, setCwd, setError)
   const recent = sessionData.recent ?? []
@@ -169,16 +172,29 @@ function FileActivityView({ ctx, store, scope, visible, dataStore }) {
     'div',
     { className: 'dfa' },
     renderError(error),
+    renderDegraded(),
     renderRecentSection(recent, recentOpen, () => setRecentOpen((v) => !v), onRefresh, onClear, openPreview),
     renderStatsSection(tree, collapsedDirs, toggleDir, openPreview),
-    data.preview
-      ? createElement(FloatingPreview, {
-          ctx,
-          store,
-          scope,
-          preview: data.preview,
-          onClose: closePreview,
-        })
-      : null,
+  )
+}
+/**
+ * Degradation notice: shown when this activation failed to register one of the
+ * host extension points (registerTabType / documentPreviews / auto-open). The
+ * panel is also marked with data-dfa-degraded so the e2e suite can assert the
+ * failure instead of hunting a missing tab.
+ * @returns the notice element, or null when nothing degraded.
+ */
+function renderDegraded() {
+  try {
+    const markers = typeof document === 'undefined' ? undefined : document.documentElement?.dataset
+    if (markers === undefined || markers === null || markers.dfaDegraded === undefined) return null
+  } catch {
+    return null
+  }
+  return createElement(
+    'div',
+    { className: 'dfa-degraded', 'data-dfa-degraded': '1' },
+    createElement('div', { className: 'dfa-degraded-title' }, strings.tabUnavailable()),
+    createElement('div', { className: 'dfa-degraded-hint' }, strings.tabUnavailableHint()),
   )
 }

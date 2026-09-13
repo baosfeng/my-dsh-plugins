@@ -1,13 +1,13 @@
 /**
  * dsh-file-activity — host half.
  *
- * Tracks file activity for dsh-better-sidebar:
+ * Tracks file activity for the DSH right sidebar:
  *  - agent tool file operations arrive as `fs/observed` events (read / write /
  *    edit / str_replace_editor / read_image ...), with the tool execution as
  *    the actor (name + parsed arguments + owning agent).
  *  - bash tool calls carry file-touching commands (rm/touch/mv/…): the
  *    `tools/pre-execute` observer parses them and records the intents.
- *  - sidebar operations (files opened / saved through the better-sidebar
+ *  - sidebar operations (files opened / saved through the host's own
  *    explorer & editor) are reported by our client half through the
  *    `/file-activity/api/record` route.
  *

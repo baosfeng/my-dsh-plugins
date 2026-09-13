@@ -83,7 +83,7 @@ jobs:
           echo "" >> review-report.md
 
       - name: Comment code quality report
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -143,7 +143,7 @@ jobs:
           echo "" >> security-report.md
 
       - name: Comment security report
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -213,7 +213,7 @@ jobs:
           echo "" >> performance-report.md
 
       - name: Comment performance report
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -268,7 +268,7 @@ jobs:
           echo "" >> test-report.md
 
       - name: Comment test report
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -338,7 +338,7 @@ jobs:
           echo "" >> docs-report.md
 
       - name: Comment documentation report
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -393,7 +393,7 @@ jobs:
           echo "" >> api-report.md
 
       - name: Comment API design report
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -453,7 +453,7 @@ jobs:
           echo "" >> dependency-report.md
 
       - name: Comment dependency report
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 变更
+
+- feat(dsh-my-guardian): #198 落盘统一接入 `dsh-shared` 写入原语——删除自写 `writeChain`/`persistSoon` 串行链与 tmp+rename 实现，改用 `createWriteScheduler`（防抖 500ms + 最小间隔 1s + `drain()` 确定性就绪信号）+ `atomicWriteJson`（显式 4MB 字节上限 + 拦截计数 + warn）；`writeStagedFile` / `writeStartupIssuesFile` 同批接入（紧凑 JSON，staged 体积 −47.3%）；`apply()` 返回 shared（暴露 `flushPersist()` 就绪信号）供宿主/测试等待落盘。写放大：3 次变更 3 次全量写 → 1 次；典型 state 4.1KB（4MB 上限 1000× 余量）
+- fix(dsh-my-guardian): 节奏**单一来源**——快照原语 `minIntervalMs: 0` 关节流（scheduler 与护栏同时启用 1s 节流时，`drain()` 的非 force 写会被节流拒掉、重排耗尽后放弃 → 状态永不落盘）
+
 ## [0.4.1] - 2026-09-10
 
 ### 变更

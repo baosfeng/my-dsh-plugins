@@ -42,22 +42,24 @@ export const name = 'dsh-my-guardian';
 export const inject = ['loader', 'timer'];
 /** Fallback poll interval for the staged file when fs.watch is unavailable. */
 const POLL_MS = 4000;
+/** 返回 shared（含 `flushPersist()` 确定性就绪信号）供宿主/测试等待落盘；Cordis 忽略返回值。 */
 export function apply(ctx) {
     // Watchdog self-protection: the guardian itself must never take the process
     // down. Any synchronous failure inside apply degrades the guardian (no
     // staged loading) instead of failing the whole boot (fail-loud).
     try {
-        applyInner(ctx);
+        return applyInner(ctx);
     }
     catch (error) {
         ctx.logger?.warn(`[dsh-my-guardian] apply failed — guardian degraded: ${error instanceof Error ? error.message : String(error)}`);
+        return undefined;
     }
 }
 function applyInner(ctx) {
     const root = findRootTree(ctx.loader);
     if (root === null) {
         ctx.logger?.warn('[dsh-my-guardian] no include tree found — guardian inactive');
-        return;
+        return undefined;
     }
     const shared = createShared(root);
     wireServices(ctx, shared);
@@ -65,6 +67,7 @@ function applyInner(ctx) {
     startWatchers(ctx, shared);
     registerTeardown(ctx, shared);
     registerStatusQuery(ctx, shared);
+    return shared;
 }
 /** Mutable per-instance runtime context shared by every sub-module. */
 function createShared({ tree, profileDir }) {
@@ -111,7 +114,7 @@ function createShared({ tree, profileDir }) {
 }
 /** Bind persister, event log, mount ops, API and listeners onto shared. */
 function wireServices(ctx, shared) {
-    const persister = createPersister(shared);
+    const persister = createPersister(shared, ctx.logger);
     shared.persistSoon = persister.persistSoon;
     shared.persistFinal = persister.persistFinal;
     shared.flushPersist = persister.flush;

@@ -5,9 +5,11 @@
  * All file writes are atomic (tmp + rename) and never throw to callers — the
  * guardian must never take the process down over a persistence failure.
  */
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { atomicWriteJson, createWriteScheduler } from 'dsh-shared'
+import type { Logger } from 'dsh-shared'
 
 /** Consecutive failures before an entry freezes (manual retry required). */
 export const FREEZE_LIMIT = 3
@@ -18,12 +20,22 @@ export const EVENT_LIMIT = 20
 /** How many characters of an error message to keep in state. */
 export const ERROR_SNIP = 300
 
-/** Unique suffix for temp files (same-process instances must not collide). */
-let tmpSeq = 0
-function uniqueSuffix(): string {
-  tmpSeq += 1
-  return `${process.pid}-${Date.now().toString(36)}-${tmpSeq}`
-}
+/** 日志前缀（落盘护栏 warn 用）。 */
+const PREFIX = '[dsh-my-guardian]'
+
+/**
+ * 状态快照字节上限（护栏兜底，issue #198 收尾）：events ≤ EVENT_LIMIT(20) 条
+ * （每条消息截断到 ERROR_SNIP=300 字符），staged/promoted 条目数 = 受管插件数
+ * （数十量级），单条 config 大小由用户配置决定 → 4MB 是保守上限。
+ * 超限**拒绝写入并 warn**（保留上一份完好快照），不再随条目增长无界放大磁盘占用。
+ */
+const STATE_MAX_BYTES = 4 * 1024 * 1024
+
+/** 候选文件字节上限（同上；条目来自扫描结果，数量级与受管插件数一致）。 */
+const STAGED_MAX_BYTES = 4 * 1024 * 1024
+
+/** 启动预检报告字节上限（issues 条目数 = 受管插件数）。 */
+const REPORT_MAX_BYTES = 4 * 1024 * 1024
 
 /** Guardian state dir: $DSH_HOME/guardian (fallback: ~/.dsh/guardian). */
 function guardianDir(): string {
@@ -90,16 +102,12 @@ export interface StartupIssue {
  * Never throws to callers — the guardian must not take the process down.
  */
 export async function writeStartupIssuesFile(payload: StartupIssuesPayload): Promise<void> {
-  const dir = guardianDir()
-  const file = join(dir, 'startup-issues.json')
-  const tmp = `${file}.tmp-${uniqueSuffix()}`
-  try {
-    await mkdir(dir, { recursive: true })
-    await writeFile(tmp, JSON.stringify(payload), 'utf8')
-    await rename(tmp, file)
-  } catch {
-    // the report is diagnostic-only: a write failure must not break boot
-  }
+  // 走 shared 快照原语（原子写 + 显式 4MB 上限 + 拦截计数）；失败只 warn，
+  // 不上抛——报告是诊断产物，不能因此让 guardian 启动失败。
+  await atomicWriteJson(join(guardianDir(), 'startup-issues.json'), payload, undefined, PREFIX, {
+    minIntervalMs: 0,
+    maxBytes: REPORT_MAX_BYTES,
+  })
 }
 
 /** Empty state document. */
@@ -119,18 +127,9 @@ export async function loadState(): Promise<GuardianStateDoc> {
   return createState()
 }
 
-/** Persist state atomically (tmp + rename). Never throws to callers. */
-async function persistState(state: GuardianStateDoc): Promise<void> {
-  const dir = guardianDir()
-  const file = join(dir, 'state.json')
-  const tmp = `${file}.tmp-${uniqueSuffix()}`
-  try {
-    await mkdir(dir, { recursive: true })
-    await writeFile(tmp, JSON.stringify(state), 'utf8')
-    await rename(tmp, file)
-  } catch {
-    // persistence must never take the guardian down
-  }
+/** 状态文件绝对路径（$DSH_HOME/guardian/state.json）。 */
+function stateFilePath(): string {
+  return join(guardianDir(), 'state.json')
 }
 
 /** Shared runtime context for the guardian instance. */
@@ -182,24 +181,50 @@ export interface SharedContext {
   snapshot: () => unknown
 }
 
-/** Serialize state writes on a promise chain (drain in order). */
-export function createPersister(shared: SharedContext): {
+/**
+ * 状态落盘（issue #198 收尾：接入 dsh-shared 原语，不再自写串行链）：
+ *  - `createWriteScheduler`：防抖 500ms + 最小间隔 1s + 串行链 + `drain()` 确定性就绪信号。
+ *    原实现每次 persistSoon 立即排一次全量写（mount 链上 5 处调用 → 多次写放大）；
+ *  - `atomicWriteJson`：tmp+rename 原子写 + **显式 4MB 字节上限** + 拦截计数
+ *    （`atomicWriteStats()`）与 warn（不静默）；
+ *  - teardown 语义不变：`persistFinal()`（force 强写）+ `flush()`（drain）保证最终快照落盘，
+ *    且 persistSoon 在 disposed 后依旧失效（#217：不让旧实例覆盖新实例状态）。
+ */
+export function createPersister(
+  shared: SharedContext,
+  logger?: Logger,
+): {
   persistSoon: () => void
   persistFinal: () => void
   flush: () => Promise<void>
 } {
-  const enqueue = (): void => {
-    shared.writeChain = shared.writeChain.then(() => persistState(shared.state))
-  }
+  const scheduler = createWriteScheduler({
+    debounceMs: 500,
+    // 与 atomicWriteJson 默认节流窗口一致（调度间隔 < 护栏窗口会拦下正常节奏）
+    minIntervalMs: 1000,
+    logger,
+    prefix: PREFIX,
+    // 节奏**单一来源**：调度器负责防抖 + 最小间隔，快照原语 `minIntervalMs: 0` 关节流。
+    // 若两处都启用 1s 节流，`drain()`（非 force）的写会被原语节流拒掉 → 调度器重排耗尽后
+    // 放弃 → 状态永不落盘（实测：guardian 的 promote 流程读盘断言失败）。
+    write: ({ force }) =>
+      atomicWriteJson(stateFilePath(), shared.state, logger, PREFIX, {
+        force,
+        minIntervalMs: 0,
+        maxBytes: STATE_MAX_BYTES,
+      }),
+  })
   const persistSoon = (): void => {
     // teardown 已开始：本实例的任何延迟写都不该落到共享 state.json 上
     if (shared.disposed) return
-    enqueue()
+    scheduler.schedule()
   }
-  /** 收尾快照（teardown 专用）：绕过 disposed 守卫写一次最终状态。 */
-  const persistFinal = (): void => enqueue()
-  /** 确定性 drain 信号：resolve 时链上所有快照（含本 tick 排队的）都已落盘。 */
-  const flush = (): Promise<void> => shared.writeChain
+  /** 收尾快照（teardown 专用）：绕过 disposed 守卫强写一次最终状态。 */
+  const persistFinal = (): void => {
+    void scheduler.flush()
+  }
+  /** 确定性 drain 信号：resolve 时所有挂起/在飞快照（含防抖窗口内的）都已落盘。 */
+  const flush = (): Promise<void> => scheduler.drain()
   return { persistSoon, persistFinal, flush }
 }
 
@@ -215,16 +240,17 @@ export async function readStagedFile(file: string): Promise<unknown[]> {
   return []
 }
 
-/** Write the candidate file atomically. Returns an error object or null. */
+/**
+ * Write the candidate file atomically. Returns an error object or null.
+ * 走 shared 快照原语（紧凑 JSON：消除原 `JSON.stringify(entries, null, 2)` 的缩进放大；
+ * 显式 4MB 上限；`minIntervalMs: 0` 因为这是挂载流程里的显式低频写，节奏由调用方决定）。
+ */
 export async function writeStagedFile(file: string, entries: unknown[]): Promise<Error | null> {
-  const tmp = `${file}.tmp-${uniqueSuffix()}`
-  try {
-    await writeFile(tmp, `${JSON.stringify(entries, null, 2)}\n`, 'utf8')
-    await rename(tmp, file)
-    return null
-  } catch (error) {
-    return error instanceof Error ? error : new Error(String(error))
-  }
+  const written = await atomicWriteJson(file, entries, undefined, PREFIX, {
+    minIntervalMs: 0,
+    maxBytes: STAGED_MAX_BYTES,
+  })
+  return written ? null : new Error('staged file write blocked by shared guardrails (byte limit / IO)')
 }
 
 /** Shorten an error for the state record. */

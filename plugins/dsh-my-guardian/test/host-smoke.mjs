@@ -22,13 +22,24 @@ process.on('unhandledRejection', () => {
 
 const stagedFile = () => join(dir, 'cordis.staged.json')
 const stateFile = () => join(dir, 'guardian', 'state.json')
-const readState = () => JSON.parse(readFileSync(stateFile(), 'utf8'))
+/** 确定性就绪信号：apply 返回的 shared 暴露 flushPersist()（等落盘完成）。
+ *  persistSoon 经 createWriteScheduler 防抖合并后，"写盘完成时刻"不再紧随变更，
+ *  读盘断言必须先 await 它（与 198c 对 task-reliability 的修法同一模式）。 */
+let flushPersist = async () => {}
+
+const readStateSync = () => JSON.parse(readFileSync(stateFile(), 'utf8'))
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** 读取 state.json；尚未写出时返回 undefined（配合 waitFor）。 */
+/** 读盘前先推一次落盘（确定性，不靠墙钟）。 */
+async function readState() {
+  await flushPersist()
+  return readStateSync()
+}
+
+/** 同步读；尚未写出时返回 undefined（配合 waitFor 做条件轮询）。 */
 const readStateOrNull = () => {
   try {
-    return readState()
+    return readStateSync()
   } catch {
     return undefined
   }
@@ -43,6 +54,9 @@ const readStateOrNull = () => {
 async function waitFor(check, timeoutMs = 10000, intervalMs = 25) {
   const deadline = Date.now() + timeoutMs
   for (;;) {
+    // 每轮先推一次落盘：调度器防抖窗口（500ms）内也立即写，条件很快成立，
+    // 不必等 500ms × N 次轮询（那会让整套 smoke 超过 testTimeout）。
+    await flushPersist()
     if (check()) return
     if (Date.now() > deadline) throw new Error('waitFor timed out')
     await sleep(intervalMs)
@@ -169,7 +183,8 @@ async function callApi(fake, method, path, body) {
 /** Boot a fresh guardian instance against the same fake tree. */
 function boot(fake, opts) {
   const ctx = makeCtx(fake, opts)
-  apply(ctx)
+  const shared = apply(ctx)
+  flushPersist = shared?.flushPersist ?? (async () => {})
   return ctx
 }
 
@@ -195,7 +210,7 @@ test('host smoke suite', async () => {
       const ctx1 = boot(fake)
       await waitFor(() => readStateOrNull()?.promoted?.['nice-plugin'])
 
-      const state = readState()
+      const state = await readState()
       assert.ok(state.promoted['nice-plugin'], 'entry promoted')
       assert.equal(state.promoted['nice-plugin'].name, 'dsh-nice')
       assert.equal(state.promoted['nice-plugin'].config.a, 1, 'config preserved')
@@ -217,7 +232,7 @@ test('host smoke suite', async () => {
       const ctx2 = boot(fake)
       await waitFor(() => readStateOrNull()?.staged?.['bad-plugin'])
 
-      const state = readState()
+      const state = await readState()
       assert.ok(state.staged['bad-plugin'], 'entry kept in staged state')
       assert.equal(state.staged['bad-plugin'].attempts, 1, 'attempt recorded')
       assert.ok(state.staged['bad-plugin'].lastError.includes('apply exploded'), 'error recorded')
@@ -248,7 +263,7 @@ test('host smoke suite', async () => {
       const c3c = boot(fake)
       await waitFor(() => readStateOrNull()?.staged?.['flaky']?.attempts === 3)
 
-      const state = readState()
+      const state = await readState()
       assert.equal(state.staged['flaky'].attempts, 3, 'attempts accumulated across restarts')
       assert.equal(state.staged['flaky'].frozen, true, 'frozen after 3 failures')
       // (nice-plugin from block 1 is re-mounted here — restart recovery of the
@@ -271,7 +286,7 @@ test('host smoke suite', async () => {
       await waitFor(() => readStateOrNull()?.events?.some((e) => e.type === 'safe'))
 
       assert.deepEqual(fake.created, [], 'nothing mounted in safe mode')
-      const state = readState()
+      const state = await readState()
       assert.equal(state.safeMode, true, 'safe mode persisted')
       assert.ok(
         state.events.some((e) => e.type === 'safe'),
@@ -294,7 +309,7 @@ test('host smoke suite', async () => {
       const ctx5 = boot(fake)
       await waitFor(() => readStateOrNull()?.staged?.['occupied'])
 
-      const state = readState()
+      const state = await readState()
       assert.equal(state.staged['occupied'].attempts, 1, 'conflict recorded as a failure')
       assert.ok(state.staged['occupied'].lastError.includes('already exists'), 'conflict error recorded')
       await shutdown(ctx5)
@@ -307,7 +322,7 @@ test('host smoke suite', async () => {
       writeFileSync(stagedFile(), JSON.stringify([{ id: 'fixable', name: 'dsh-fixable' }], null, 2))
       const ctx6 = boot(fake)
       await waitFor(() => readStateOrNull()?.staged?.['fixable'])
-      assert.ok(readState().staged['fixable'], 'first failure recorded')
+      assert.ok((await readState()).staged['fixable'], 'first failure recorded')
 
       // "fix" the plugin, then retry through the API
       delete fake.failMap['fixable']
@@ -315,7 +330,7 @@ test('host smoke suite', async () => {
       assert.equal(retry.status, 200)
       assert.equal(retry.json.value.outcome, 'mounted', 'retry mounts the fixed plugin')
       await waitFor(() => readStateOrNull()?.promoted?.['fixable'])
-      assert.ok(readState().promoted['fixable'], 'retried entry promoted')
+      assert.ok((await readState()).promoted['fixable'], 'retried entry promoted')
       await shutdown(ctx6)
     }
 

@@ -60,14 +60,40 @@ export async function collectStreamText(chunks) {
     return { text, finish, failure };
 }
 /**
+ * Read a session's committed events.
+ *
+ * DSH 0.1.5-rc.1 起 `Session.events` 变为 private（宿主类型只剩
+ * `private eventsSnapshot`），公开读取入口是 `snapshotEvents()`；直接读
+ * `session.events` 得到 undefined，会让消息收集与标题折叠**静默**返回空
+ * （issue #232 实测：插件执行了却从不 append 标题）。这里优先用公开 API，
+ * 并为旧宿主保留 `events` 数组回退。
+ *
+ * @param session - live session (or mock) carrying either accessor.
+ * @returns committed events in log order, or an empty array.
+ */
+export function sessionEvents(session) {
+    if (session === null || typeof session !== 'object')
+        return [];
+    const candidate = session;
+    if (typeof candidate.snapshotEvents === 'function') {
+        try {
+            const events = candidate.snapshotEvents();
+            if (Array.isArray(events))
+                return events;
+        }
+        catch {
+            // 公开 API 不可用时回退到 events 数组（旧宿主）
+        }
+    }
+    return Array.isArray(candidate.events) ? candidate.events : [];
+}
+/**
  * Fold the latest session/title event data from a session log.
- * @param session - live session (or mock) with an events array.
+ * @param session - live session (or mock) with committed events.
  * @returns the latest title event data, or undefined.
  */
 export function foldTitle(session) {
-    const events = session?.events;
-    if (!Array.isArray(events))
-        return undefined;
+    const events = sessionEvents(session);
     for (let i = events.length - 1; i >= 0; i--) {
         const event = events[i];
         if (event?.type === 'session/title')
@@ -97,17 +123,17 @@ function truncateUtf8(input, maxBytes) {
 }
 /**
  * Generate a structured title through the llm service.
- * @param ctx - context exposing the llm service.
+ * @param services - object exposing the llm service (a `DshContext` qualifies).
  * @param options - { session, workspace, messages, route, signal, config }.
  * @returns { title, model } — formatted title and the used model route.
  * @throws when the LLM call fails, produces no text, or no route is available.
  */
-export async function generateTitle(ctx, { session, workspace, messages, route, signal, config }) {
+export async function generateTitle(services, { session, workspace, messages, route, signal, config }) {
     const framed = frameMessages(messages);
     assertInputSize(framed, config.maxInputBytes);
     const resolved = resolveRoute(config, route);
     const options = buildOptions({ session, framed, route: resolved, signal, config });
-    const { text, finish, failure } = await collectStreamText(ctx.llm.stream(options));
+    const { text, finish, failure } = await collectStreamText(services.llm.stream(options));
     assertFinish(finish, failure);
     const description = String(text ?? '')
         .replace(/\s+/g, ' ')

@@ -8,7 +8,7 @@ export default defineConfig({
     include: ['test/*.mjs'],
     coverage: {
       ...root.test.coverage,
-      include: ['lib/index.js', 'lib/title.js', 'lib/workspace.js'],
+      include: ['lib/index.js', 'lib/title.js', 'lib/workspace.js', 'lib/host.js', 'lib/generate.js'],
     },
   },
 })

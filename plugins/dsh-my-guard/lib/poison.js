@@ -53,8 +53,16 @@ export async function scanTarball(tarballPath) {
  */
 export async function scanPackageTarget(pkg, onAlert) {
     const result = await resolveAndScan(pkg);
-    if (!result.ok)
+    if (!result.ok) {
+        // 无法解析目标时产出告警（fail-loud 原则）
+        onAlert({
+            type: 'poison',
+            severity: 'low',
+            message: `无法解析投毒扫描目标: ${result.error ?? '未知错误'}`,
+            detail: { target: pkg, error: result.error },
+        });
         return;
+    }
     for (const finding of result.findings ?? []) {
         onAlert({
             type: 'poison',

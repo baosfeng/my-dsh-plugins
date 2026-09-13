@@ -83,11 +83,14 @@ export function detectDestructive(command, customRules = []) {
 }
 /** 从 bash 命令提取 `dsh plugin add <pkg>` 的包名（无命中返回空串）。 */
 export function extractPluginAdd(command) {
-    const match = /\bdsh\s+plugin\s+(--profile\s+\S+\s+)?add\s+(\S+)/.exec(command);
+    const match = /\bdsh\s+plugin\s+(--profile\s+\S+\s+)?add\s+(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(command);
     if (match === null)
         return '';
-    const pkg = match[2].replace(/^link:/, '');
-    return pkg === '' ? '' : pkg;
+    // 优先取双引号内容，其次单引号内容，最后无引号内容
+    const pkg = match[2] ?? match[3] ?? match[4] ?? '';
+    if (pkg === '')
+        return '';
+    return pkg.replace(/^link:/, '');
 }
 /** 命令截断（保留首行，限长）。 */
 export function truncateCommand(command) {

@@ -143,20 +143,15 @@ function assertMediaParams(sessionId: string | null, raw: string | null): assert
 
 /** stat + read + respond with the file's bytes (bounded by MEDIA_LIMIT). */
 async function serveMedia(response: ServerResponse, abs: string, url: URL): Promise<void> {
-  let info
-  try {
-    info = await stat(abs)
-  } catch {
-    throw mediaError(404, 'file not found')
-  }
-  if (!info.isFile()) throw mediaError(400, 'not a file')
-  if (info.size > MEDIA_LIMIT) throw mediaError(413, 'file too large')
   let body: Buffer
   try {
+    // Use try-catch instead of stat + readFile to avoid TOCTOU race condition
     body = await readFile(abs)
   } catch {
     throw mediaError(404, 'file not found')
   }
+  // Check file size after reading to avoid race condition
+  if (body.length > MEDIA_LIMIT) throw mediaError(413, 'file too large')
   const headers: Record<string, string> = {
     'content-type': mediaTypeForPath(abs),
     'cache-control': 'no-cache',
@@ -182,19 +177,14 @@ async function serveMedia(response: ServerResponse, abs: string, url: URL): Prom
  * recorded paths only.
  */
 async function serveText(response: ServerResponse, abs: string): Promise<void> {
-  let info
-  try {
-    info = await stat(abs)
-  } catch {
-    throw mediaError(404, 'file not found')
-  }
-  if (!info.isFile()) throw mediaError(400, 'not a file')
-  if (info.size > TEXT_LIMIT) throw mediaError(413, 'file too large')
   let content: string
   try {
+    // Use try-catch instead of stat + readFile to avoid TOCTOU race condition
     content = await readFile(abs, 'utf8')
   } catch {
     throw mediaError(404, 'file not found')
   }
+  // Check content length after reading to avoid race condition
+  if (content.length > TEXT_LIMIT) throw mediaError(413, 'file too large')
   writeJson(response, 200, { ok: true, value: { content } })
 }

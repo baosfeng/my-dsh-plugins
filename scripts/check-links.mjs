@@ -119,7 +119,7 @@ const UPSTREAM_RE = /upstream|权威来源|上游仓库|not shipped/i
 /** 宿主 API 名（skill.list / subagent.interrupt 这类）所在行的 skills/ 路径是宿主工具路径，不是仓库 skill。 */
 const HOST_API_RE = /`[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z][a-zA-Z0-9.]*`/
 /** 同行有外部仓库链接 → 该行 scripts/ 引用是那个仓库自己的脚本（如 dsh-TUI 的 verify-tps.mjs）。 */
-const THIRD_PARTY_RE = /github\.com/
+const THIRD_PARTY_RE = /\bgithub\.com\b/
 /** 升级审计语料：按设计引用上游 DSH 仓库的文档（如 docs/config-catalog.md）。 */
 const UPSTREAM_CORPUS_RE = /^skills\/(?:dsh-upgrade-audit|plugin-upgrade)\//
 
@@ -292,12 +292,13 @@ export function runCheck(options = {}) {
     let content
     try {
       const abs = join(root, file)
-      const stat = statSync(abs)
-      if (stat.size > MAX_FILE_BYTES) {
+      // Use try-catch instead of stat + readFileSync to avoid TOCTOU race condition
+      content = readFileSync(abs, 'utf8')
+      // Check file size after reading to avoid race condition
+      if (content.length > MAX_FILE_BYTES) {
         skip(ctx, '超大文件（构建/压缩产物，非文档）')
         continue
       }
-      content = readFileSync(abs, 'utf8')
     } catch {
       continue
     }

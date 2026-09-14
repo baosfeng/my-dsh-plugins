@@ -52,14 +52,14 @@ export async function scanPackage(dir: string): Promise<ScanResult> {
 
 /** 解压 tarball 到临时目录后扫描（不执行包内代码）；返回扫描结果。 */
 export async function scanTarball(tarballPath: string): Promise<ScanResult> {
-  const tmp = await mkdtemp(join(tmpdir(), 'dsh-guard-scan-'))
+  const tmpDir = tmp.dirSync({ prefix: 'dsh-guard-scan-', unsafeCleanup: true }).name
   try {
-    await execFileAsync('tar', ['-xzf', tarballPath, '-C', tmp])
-    return await scanPackage(tmp)
+    await execFileAsync('tar', ['-xzf', tarballPath, '-C', tmpDir])
+    return await scanPackage(tmpDir)
   } catch (error) {
     return { ok: false, error: errorMessage(error) }
   } finally {
-    await rm(tmp, { recursive: true, force: true })
+    await rm(tmpDir, { recursive: true, force: true })
   }
 }
 

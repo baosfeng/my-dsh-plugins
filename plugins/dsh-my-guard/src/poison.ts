@@ -13,9 +13,9 @@
  * 扫描只读包内容，绝不执行包内脚本/代码。
  */
 import { readFile, readdir, stat, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join, basename, extname } from 'node:path'
 import { execFile } from 'node:child_process'
+import tmp from 'tmp'
 import {
   SUSPICIOUS_SCRIPT_PATTERNS,
   SECRET_PATTERNS,
@@ -120,7 +120,7 @@ async function fetchTarball(pkg: string): Promise<string> {
     const tarballResponse = await fetch(tarballUrl)
     if (!tarballResponse.ok) return ''
     const buffer = Buffer.from(await tarballResponse.arrayBuffer())
-    const file = join(tmpdir(), `dsh-guard-${Date.now()}-${Math.random().toString(36).slice(2)}.tgz`)
+    const file = tmp.fileSync({ prefix: 'dsh-guard-', postfix: '.tgz', unsafeCleanup: true }).name
     await writeFile(file, buffer)
     return file
   } catch {

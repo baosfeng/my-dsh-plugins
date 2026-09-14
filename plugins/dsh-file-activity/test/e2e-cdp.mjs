@@ -25,7 +25,8 @@ const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const PORT = Number(process.env.CDP_PORT || 9225)
 const PROFILE = '/tmp/dsh-fa-cdp2'
 const TARGET = process.env.PROBE_URL || 'http://127.0.0.1:3080/'
-const log = (...args) => console.log('[e2e]', ...args)
+const sanitize = (s) => String(s).replace(/[\n\r]/g, ' ')
+const log = (...args) => console.log('[e2e]', ...args.map(sanitize))
 
 rmSync(PROFILE, { recursive: true, force: true })
 const chrome = spawn(
@@ -177,7 +178,7 @@ try {
   log('=== E2E DONE ===')
   console.log(JSON.stringify(results, null, 2))
 } catch (error) {
-  console.error('[e2e] FAILED:', error.message)
+  console.error('[e2e] FAILED:', String(error.message).replace(/[\n\r]/g, ' '))
   console.error(JSON.stringify(results, null, 2))
 } finally {
   try {

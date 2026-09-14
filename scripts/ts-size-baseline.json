@@ -96,8 +96,14 @@
       "functions": {}
     },
     "plugins/dsh-my-plugin-manager/src/client/parts/view.ts": {
-      "lines": 470,
-      "functions": {}
+      "lines": 686,
+      "functions": {
+        "InstalledRowActions": {
+          "line": 461,
+          "lines": 72,
+          "complexity": 8
+        }
+      }
     },
     "plugins/dsh-my-remote/src/registries.ts": {
       "lines": 198,

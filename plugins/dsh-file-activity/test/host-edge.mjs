@@ -6,13 +6,13 @@
 import { test, afterAll } from 'vitest'
 import { settle, waitFileContains } from './lib/settle.mjs'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import tmp from 'tmp'
 import { apply } from '../lib/index.js'
 import { sessionFromFile } from './state-file.mjs'
 
-const dir = mkdtempSync(join(tmpdir(), 'dfa-edge-test-'))
+const dir = tmp.dirSync({ prefix: 'dfa-edge-test-', unsafeCleanup: true }).name
 process.env.DSH_HOME = dir
 const statePath = join(dir, 'file-activity.json')
 
@@ -221,7 +221,7 @@ test('media route refuses non-GET methods (405)', async () => {
 
 test('media route authorizes paths present only in recent history', async () => {
   const { getMediaRoute, ctx } = await boot()
-  const mediaFile = join(tmpdir(), `dfa-edge-${Date.now()}.png`)
+  const mediaFile = join(tmp.dirSync({ prefix: 'dfa-edge-', unsafeCleanup: true }).name, `media-${Date.now()}.png`)
   writeFileSync(mediaFile, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
   const { listener } = ctx.events.find((e) => e.name === 'fs/observed')
   listener(

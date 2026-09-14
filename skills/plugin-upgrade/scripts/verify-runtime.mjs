@@ -22,10 +22,10 @@
 // only for git-URL / npm-name specs).
 
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import tmp from 'tmp'
 
 // --- Signature regexes (priority order; see diagnoseBootLog) ----------------
 // The bare word "network" is deliberately NOT a transport signature — matching
@@ -371,7 +371,7 @@ export async function verifyRuntime(rawSpec, options = {}) {
 
   // Isolated DSH_HOME: the caller's $DSH_HOME and profiles are never touched.
   const keep = options.keepWorkspace === true
-  const home = mkdtempSync(join(tmpdir(), 'dsh-verify-'))
+  const home = tmp.dirSync({ prefix: 'dsh-verify-', unsafeCleanup: true }).name
   const dshHome = join(home, '.dsh')
   const profile = options.profile ?? 'verify'
   try {

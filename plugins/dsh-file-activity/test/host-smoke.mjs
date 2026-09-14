@@ -5,9 +5,9 @@ import { waitFileContains } from './lib/settle.mjs'
  * mocked context and drives fs/observed events + HTTP routes through it.
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import tmp from 'tmp'
 import { apply } from '../lib/index.js'
 import { sessionFromFile } from './state-file.mjs'
 
@@ -60,7 +60,7 @@ function captureRoute(prefix) {
 }
 
 // ── test ─────────────────────────────────────────────────────────────────
-const dir = mkdtempSync(join(tmpdir(), 'dsh-file-activity-test-'))
+const dir = tmp.dirSync({ prefix: 'dsh-file-activity-test-', unsafeCleanup: true }).name
 process.env.DSH_HOME = dir
 const statePath = join(dir, 'file-activity.json')
 
@@ -212,7 +212,7 @@ test('host smoke suite', async () => {
     // 8c. MEDIA ROUTE: a file recorded OUTSIDE the session cwd (e.g. /tmp) must
     // preview — the sidebar's /sidebar/file would 403 it, /file-activity/file
     // authorizes exactly the recorded paths and serves the bytes.
-    const mediaFile = join(tmpdir(), `dfa-media-${Date.now()}.png`)
+    const mediaFile = join(tmp.dirSync({ prefix: 'dfa-media-', unsafeCleanup: true }).name, `media-${Date.now()}.png`)
     const mediaBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
     writeFileSync(mediaFile, mediaBytes)
     emitObserved(ctxRestarted, 'read', sid, mediaFile)
@@ -267,7 +267,7 @@ test('host smoke suite', async () => {
     // must be readable via ?as=text — the sidebar fs.read refuses such paths
     // (workspace fence), so the floating preview falls back to this route,
     // which returns an fs.read-shaped JSON payload: { ok, value: { content } }.
-    const textFile = join(tmpdir(), `dfa-text-${Date.now()}.md`)
+    const textFile = join(tmp.dirSync({ prefix: 'dfa-text-', unsafeCleanup: true }).name, `text-${Date.now()}.md`)
     const textContent = `# issue body\n\noutside-workspace text ${Date.now()}`
     writeFileSync(textFile, textContent)
     emitObserved(ctxRestarted, 'read', sid, textFile)

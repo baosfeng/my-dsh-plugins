@@ -178,10 +178,10 @@ describe('图标视觉与其它消费方一致（#186 P1）', () => {
     })
   })
 
-  it('共享 part 提供 mermaid 的全部 19 个 key（含卡片用到的 6 个）', () => {
+  it('共享 part 提供 mermaid 的全部 22 个 key（含卡片用到的 6 个）', () => {
     const { icon, ICON_STROKE } = loadSharedIcons()
     expect(ICON_STROKE).toBe(1.8)
-    expect(Object.keys(icon)).toHaveLength(19)
+    expect(Object.keys(icon)).toHaveLength(22)
     for (const name of Object.keys(CARD_ICONS)) {
       expect(typeof icon[name], `icon.${name} 必须存在`).toBe('function')
     }

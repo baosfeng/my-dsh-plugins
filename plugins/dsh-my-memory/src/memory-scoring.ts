@@ -43,7 +43,7 @@ export const DEFAULT_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000
 /** 同主题大意描述（供主题归一化比较）。 */
 function normalizeText(text: unknown): string {
   return String(text ?? '')
-    .replace(/[\s，。！？、；：,.!?;:·…—_'"""''()（）【】]+/gu, '')
+    .replace(/[\s，。！？、；：,.!?;:·…—_'"„‟‹›「」『』〈〉《》【】（）]+/gu, '')
     .toLowerCase()
 }
 

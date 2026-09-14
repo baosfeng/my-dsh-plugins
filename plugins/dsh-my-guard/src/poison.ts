@@ -120,7 +120,7 @@ async function fetchTarball(pkg: string): Promise<string> {
     const tarballResponse = await fetch(tarballUrl)
     if (!tarballResponse.ok) return ''
     const buffer = Buffer.from(await tarballResponse.arrayBuffer())
-    const file = tmp.fileSync({ prefix: 'dsh-guard-', postfix: '.tgz', unsafeCleanup: true }).name
+    const file = tmp.fileSync({ prefix: 'dsh-guard-', postfix: '.tgz' }).name
     await writeFile(file, buffer)
     return file
   } catch {

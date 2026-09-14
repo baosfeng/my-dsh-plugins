@@ -1,0 +1,44 @@
+【代码扫描漏洞】43 条
+  #80 [open/high] Potential file system race condition
+  #79 [open/high] Potential file system race condition
+  #78 [open/note] Unused variable, import, function or class
+  #77 [open/medium] Unpinned tag for a non-immutable Action or reusable workflow
+  #74 [open/warning] Duplicate character in character class
+  #73 [open/warning] Duplicate character in character class
+  #72 [open/warning] Useless assignment to local variable
+  #71 [open/warning] Useless assignment to local variable
+  #70 [open/warning] Useless assignment to local variable
+  #69 [open/note] Unused variable, import, function or class
+  #68 [open/note] Unused variable, import, function or class
+  #67 [open/note] Unused variable, import, function or class
+  #66 [open/note] Unused variable, import, function or class
+  #65 [open/note] Unused variable, import, function or class
+  #64 [open/note] Unused variable, import, function or class
+  #63 [open/note] Unused variable, import, function or class
+  #62 [open/note] Unused variable, import, function or class
+  #61 [open/note] Unused variable, import, function or class
+  #60 [open/note] Unused variable, import, function or class
+  #59 [open/note] Unused variable, import, function or class
+  #58 [open/note] Unused variable, import, function or class
+  #57 [open/note] Unused variable, import, function or class
+  #56 [open/note] Unused variable, import, function or class
+  #55 [open/note] Unused variable, import, function or class
+  #54 [open/note] Unused variable, import, function or class
+  #53 [open/note] Unused variable, import, function or class
+  #52 [open/note] Unneeded defensive code
+  #51 [open/note] Unneeded defensive code
+  #50 [open/warning] Expression has no effect
+  #49 [open/warning] Expression has no effect
+  #48 [open/warning] Expression has no effect
+  #47 [open/warning] Expression has no effect
+  #34 [open/high] Potential file system race condition
+  #33 [open/high] Potential file system race condition
+  #30 [open/medium] Network data written to file
+  #29 [open/medium] Network data written to file
+  #28 [open/medium] Network data written to file
+  #27 [open/high] Missing regular expression anchor
+  #26 [open/medium] Log injection
+  #25 [open/medium] Log injection
+  #24 [open/medium] Unpinned tag for a non-immutable Action or reusable workflow
+  #23 [open/medium] Unpinned tag for a non-immutable Action or reusable workflow
+  #22 [open/medium] Unpinned tag for a non-immutable Action or reusable workflow

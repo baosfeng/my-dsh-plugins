@@ -28,7 +28,7 @@
  * 退出码：0 成功；1 前置/校验/推送失败；2 用法错误。
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {

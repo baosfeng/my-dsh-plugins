@@ -7,14 +7,7 @@
  */
 import { createState, foldRecord, loadState, mapOp, stateFile } from './state.js'
 import { createPersist, readAppenderStats } from './persist.js'
-import {
-  defaultLimits,
-  emptyEvicted,
-  enforceQuota,
-  normalizeLimits,
-  type EvictedStats,
-  type QuotaLimits,
-} from './quota.js'
+import { emptyEvicted, enforceQuota, normalizeLimits, type EvictedStats, type QuotaLimits } from './quota.js'
 import { statSync } from 'node:fs'
 import type {
   ActivityState,

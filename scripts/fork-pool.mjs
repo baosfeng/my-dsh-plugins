@@ -22,7 +22,7 @@
  *
  * 退出码：0 成功；1 参数/前置/校验失败；2 需要显式确认（如 clean 缺 --yes）。
  */
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import {
   existsSync,
   lstatSync,

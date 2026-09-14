@@ -89,14 +89,14 @@ function boot(config = {}, fetchImpl) {
     },
   }
   const originalFetch = globalThis.fetch
-  if (fetchImpl !== undefined) globalThis.fetch = fetchImpl
+  globalThis.fetch = fetchImpl
   apply(ctx, config)
   const api = routes.find((r) => r.path === '/remote/api' && r.kind === 'prefix')
   assert.ok(api, 'prefix route /remote/api registered')
   const disposeAll = () => {
     for (const dispose of disposers.splice(0)) dispose()
     process.env.DSH_HOME = oldHome
-    if (fetchImpl !== undefined) globalThis.fetch = originalFetch
+    globalThis.fetch = originalFetch
   }
   disposeAlls.push(disposeAll)
   return { ctx, listeners, api, disposeAll }

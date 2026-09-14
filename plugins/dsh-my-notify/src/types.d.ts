@@ -85,6 +85,13 @@ export interface TokenUsage {
   total?: number
 }
 
+/** 免打扰时间段配置。 */
+export interface QuietHours {
+  enabled: boolean
+  start: string // "HH:mm" 格式，如 "23:00"
+  end: string // "HH:mm" 格式，如 "08:00"
+}
+
 /** Webhook 配置。 */
 export interface WebhookConfig {
   name: string
@@ -108,6 +115,7 @@ export interface NotifyOptions {
   apiToken: string
   dedupeMs: number
   webhooks: WebhookConfig[]
+  quietHours: QuietHours
 }
 
 /** 插件应用层配置（cordis.patch.yml 的 config 字段）。 */
@@ -121,6 +129,11 @@ export interface PluginConfig {
   apiToken?: string
   dedupeMs?: number
   webhooks?: WebhookConfig[]
+  quietHours?: QuietHours
+  /** 扁平持久化字段（patch 文件写入/读取）。 */
+  quietHoursEnabled?: boolean
+  quietHoursStart?: string
+  quietHoursEnd?: string
 }
 
 /** sessionTitle 服务快照。 */

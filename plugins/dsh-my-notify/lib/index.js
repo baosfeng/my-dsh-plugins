@@ -37,7 +37,7 @@
  *    （formatMessage / sign）、pusher.ts 推送调度（超时/重试/失败记录）
  *  - webhook-store.ts — webhooks 配置持久化（JSON 文件）+ 失败记录
  */
-import { createNoticeBus } from './notice.js';
+import { createNoticeBus, isQuietNow } from './notice.js';
 import { attachListeners } from './listeners.js';
 import { createTokenMeter } from './token-meter.js';
 import { registerNotifyRoutes } from './routes.js';
@@ -71,6 +71,9 @@ export function apply(ctx, config) {
     // 上游误判把子代理当顶层产生子代理标记帧，也无法绕过开关双通道轰炸。
     const emitNotice = (notice) => {
         if (notice?.agentType === 'subagent' && !options.subagentEnd)
+            return;
+        // 免打扰：在 quietHours 指定时段内静默所有通知（SSE + webhook 双通道）
+        if (isQuietNow(options.quietHours))
             return;
         bus.emitNotice(notice);
         dispatchWebhooks(options.webhooks, notice, {
@@ -112,6 +115,7 @@ function buildOptions(config) {
         apiToken: str(c.apiToken),
         dedupeMs: num(c.dedupeMs, 3000),
         webhooks: [],
+        quietHours: buildQuietHours(c),
     };
 }
 /** 布尔开关默认开启：缺省/true → true，false → false。 */
@@ -130,9 +134,53 @@ function str(value) {
 function num(value, fallback) {
     return Number.isFinite(value) ? value : fallback;
 }
-/** 从 patch 配置中剥离 webhooks（对象数组无法 YAML 子集序列化）。 */
+/** 从 patch 配置中剥离 webhooks（对象数组无法 YAML 子集序列化），
+ *  quietHours 展开为扁平字段（嵌套对象无法 YAML 子集序列化）。 */
 function patchConfigOf(merged) {
     const rest = { ...merged };
     delete rest.webhooks;
+    // quietHours 展开为三个扁平字段，YAML 子集可正确序列化
+    const qh = merged.quietHours;
+    rest.quietHoursEnabled = qh.enabled;
+    rest.quietHoursStart = qh.start;
+    rest.quietHoursEnd = qh.end;
+    delete rest.quietHours;
     return rest;
+}
+/** 规整免打扰配置：缺失/非法回退默认（关闭，23:00-08:00）。 */
+function normalizeQuietHours(value) {
+    const DEFAULT = { enabled: false, start: '23:00', end: '08:00' };
+    if (value === null || typeof value !== 'object')
+        return DEFAULT;
+    const q = value;
+    return {
+        enabled: q.enabled === true,
+        start: isValidTimeStr(q.start) ? q.start : DEFAULT.start,
+        end: isValidTimeStr(q.end) ? q.end : DEFAULT.end,
+    };
+}
+/**
+ * 从 PluginConfig 构建 QuietHours：
+ *  - 优先读嵌套 `quietHours` 对象（API PUT 写入时的格式）
+ *  - 回退读扁平字段 `quietHoursEnabled/Start/End`（patch 文件持久化格式）
+ */
+function buildQuietHours(c) {
+    const DEFAULT = { enabled: false, start: '23:00', end: '08:00' };
+    // 嵌套对象优先（API 写入）
+    if (c.quietHours !== undefined)
+        return normalizeQuietHours(c.quietHours);
+    // 扁平字段回退（patch 文件读取）
+    const flat = c;
+    if (flat.quietHoursEnabled !== undefined || flat.quietHoursStart !== undefined || flat.quietHoursEnd !== undefined) {
+        return {
+            enabled: flat.quietHoursEnabled === true,
+            start: isValidTimeStr(flat.quietHoursStart) ? flat.quietHoursStart : DEFAULT.start,
+            end: isValidTimeStr(flat.quietHoursEnd) ? flat.quietHoursEnd : DEFAULT.end,
+        };
+    }
+    return DEFAULT;
+}
+/** "HH:mm" 格式校验。 */
+function isValidTimeStr(value) {
+    return typeof value === 'string' && /^\d{2}:\d{2}$/.test(value);
 }

@@ -75,6 +75,7 @@ interface NotifyConfig {
   apiToken?: string
   dedupeMs?: number
   webhooks?: WebhookEntry[]
+  quietHours?: { enabled: boolean; start: string; end: string }
 }
 
 /** 单条出站 webhook 配置（issue #92）。 */

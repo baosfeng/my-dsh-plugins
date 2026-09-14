@@ -73,6 +73,17 @@ const strings = {
   settingsDedupeMsHint: () => (isZh() ? '同类通知在窗口内只推一次' : 'Same-kind notices are deduped within the window'),
   settingsVolume: () => (isZh() ? '提示音音量' : 'Sound volume'),
   settingsVolumeHint: () => (isZh() ? '调节提示音大小（0~100%）' : 'Adjust the beep volume (0-100%)'),
+  // 免打扰（quiet hours）
+  settingsQuietHours: () => (isZh() ? '免打扰' : 'Do Not Disturb'),
+  settingsQuietHoursHint: () =>
+    isZh() ? '在指定时段内静默所有通知' : 'Silence all notifications during the specified time window',
+  settingsQuietHoursEnabled: () => (isZh() ? '启用免打扰' : 'Enable DND'),
+  settingsQuietHoursEnabledHint: () =>
+    isZh() ? '开启后在指定时段内不弹通知' : 'When on, notifications are silenced during quiet hours',
+  settingsQuietHoursStart: () => (isZh() ? '开始时间' : 'Start time'),
+  settingsQuietHoursStartHint: () => (isZh() ? '免打扰开始时间（如 23:00）' : 'Quiet hours start (e.g. 23:00)'),
+  settingsQuietHoursEnd: () => (isZh() ? '结束时间' : 'End time'),
+  settingsQuietHoursEndHint: () => (isZh() ? '免打扰结束时间（如 08:00）' : 'Quiet hours end (e.g. 08:00)'),
   // 出站 webhook（issue #92）
   settingsWebhooks: () => (isZh() ? '出站 Webhook' : 'Outbound webhooks'),
   settingsWebhooksHint: () =>
@@ -311,6 +322,33 @@ const icon = {
       [
         createElement('rect', { x: 9, y: 9, width: 13, height: 13, rx: 2 }),
         createElement('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
+      ],
+      size,
+    ),
+  // 箭头向上（更新图标）：向上的箭头，表示更新操作
+  arrowUp: (size = 16) =>
+    iconSvg(
+      [
+        createElement('line', { x1: 12, y1: 19, x2: 12, y2: 5 }),
+        createElement('polyline', { points: '5 12 12 5 19 12' }),
+      ],
+      size,
+    ),
+  // 电源关（禁用图标）：圆形电源按钮，表示禁用操作
+  powerOff: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M18.36 6.64a9 9 0 1 1-12.73 0' }),
+        createElement('line', { x1: 12, y1: 2, x2: 12, y2: 12 }),
+      ],
+      size,
+    ),
+  // 电源开（启用图标）：圆形电源按钮，表示启用操作
+  powerOn: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M18.36 6.64a9 9 0 1 1-12.73 0' }),
+        createElement('line', { x1: 12, y1: 2, x2: 12, y2: 12 }),
       ],
       size,
     ),
@@ -1390,12 +1428,41 @@ function renderAdvancedSection(draft, patch) {
     }),
   )
 }
-/** 设置表单渲染（触发开关 + 出站 webhook + 高级项 + 保存动作）。 */
+/** 免打扰区块（quietHours 开关 + 开始/结束时间）。 */
+function renderQuietHoursSection(draft, patch) {
+  const qh = draft.quietHours ?? { enabled: false, start: '23:00', end: '08:00' }
+  const patchQh = (key, value) => patch('quietHours', { ...qh, [key]: value })
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-section' },
+    createElement('div', { className: 'dsh-my-notify-section-title' }, strings.settingsQuietHours()),
+    createElement(SwitchRow, {
+      label: strings.settingsQuietHoursEnabled(),
+      hint: strings.settingsQuietHoursEnabledHint(),
+      on: qh.enabled === true,
+      onChange: (v) => patchQh('enabled', v),
+    }),
+    createElement(TextRow, {
+      label: strings.settingsQuietHoursStart(),
+      hint: strings.settingsQuietHoursStartHint(),
+      value: qh.start ?? '23:00',
+      onChange: (v) => patchQh('start', v),
+    }),
+    createElement(TextRow, {
+      label: strings.settingsQuietHoursEnd(),
+      hint: strings.settingsQuietHoursEndHint(),
+      value: qh.end ?? '08:00',
+      onChange: (v) => patchQh('end', v),
+    }),
+  )
+}
+/** 设置表单渲染（触发开关 + 免打扰 + 出站 webhook + 高级项 + 保存动作）。 */
 function renderSettingsForm(draft, patch, save, saved, error, volume, onVolumeChange, webhookProps) {
   return createElement(
     'div',
     { className: 'dsh-my-notify-settings' },
     renderTriggersSection(draft, patch, volume, onVolumeChange),
+    renderQuietHoursSection(draft, patch),
     createElement(WebhookSection, {
       webhooks: draft.webhooks ?? [],
       failures: webhookProps.failures,

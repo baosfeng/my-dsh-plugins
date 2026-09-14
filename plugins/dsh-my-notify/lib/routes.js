@@ -130,6 +130,7 @@ function infoValue(options) {
         apiToken: options.apiToken !== '',
         dedupeMs: options.dedupeMs,
         askMode: options.askMode,
+        quietHours: options.quietHours,
     };
 }
 /** 配置查询：当前生效配置（设置页表单回填；apiToken 为明文，仅本机可读）。 */
@@ -144,6 +145,7 @@ function configValue(options) {
         askMode: options.askMode,
         webBaseUrl: options.webBaseUrl,
         webhooks: options.webhooks,
+        quietHours: options.quietHours,
     };
 }
 /** 出站 webhook 状态：当前配置列表 + 失败记录（设置页可见）。 */
@@ -191,6 +193,10 @@ function normalizeConfig(payload) {
     if (webhooks === undefined)
         return undefined;
     Object.assign(result, webhooks);
+    const quietHours = normalizeQuietHoursField(p);
+    if (quietHours === undefined)
+        return undefined;
+    Object.assign(result, quietHours);
     return result;
 }
 /** 规整 askMode（full/summary）；缺失跳过；非法返回 undefined。 */
@@ -292,6 +298,35 @@ function normalizeEvents(value) {
             return undefined;
     }
     return [...new Set(value)];
+}
+/** 规整免打扰字段（缺失返回空对象；非法返回 undefined）。 */
+function normalizeQuietHoursField(payload) {
+    if (payload.quietHours === undefined)
+        return {};
+    const qh = normalizeQuietHours(payload.quietHours);
+    if (qh === undefined)
+        return undefined;
+    return { quietHours: qh };
+}
+/** 校验 quietHours 对象；非法返回 undefined。 */
+function normalizeQuietHours(value) {
+    if (value === null || typeof value !== 'object')
+        return undefined;
+    const q = value;
+    if (typeof q.enabled !== 'boolean')
+        return undefined;
+    if (!isHHmm(q.start) || !isHHmm(q.end))
+        return undefined;
+    return { enabled: q.enabled, start: q.start, end: q.end };
+}
+/** "HH:mm" 格式校验（含值范围：小时 0-23，分钟 0-59）。 */
+function isHHmm(value) {
+    if (typeof value !== 'string')
+        return false;
+    const m = /^(\d{2}):(\d{2})$/.exec(value);
+    if (!m)
+        return false;
+    return Number(m[1]) <= 23 && Number(m[2]) <= 59;
 }
 /** 保存配置：校验 → 持久化 + 更新内存 + 重载监听器（onConfigChange）。 */
 async function handleConfigPut(request, response, onConfigChange) {

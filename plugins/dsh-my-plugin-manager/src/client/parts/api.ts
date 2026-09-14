@@ -7,6 +7,10 @@ interface InstalledEntry {
   enabled: boolean
   fiberPhase: string | null
   version: string
+  updateAvailable: {
+    current: string
+    latest: string
+  } | null
 }
 
 /** 市场搜索结果行（GET /search 的 results[]）。 */
@@ -24,7 +28,7 @@ interface OutdatedItem {
   latest: string
 }
 
-/** GET /installed → { entries: [{ moduleName, enabled, fiberPhase, version }] }. */
+/** GET /installed → { entries: [{ moduleName, enabled, fiberPhase, version, updateAvailable }] }. */
 function fetchInstalled(): Promise<{ entries: InstalledEntry[] }> {
   return fetchJson(`${API_BASE}/installed`)
 }
@@ -58,6 +62,33 @@ function postInstall(source: string): Promise<Record<string, unknown>> {
 /** POST /uninstall { name } → { ok, error? }. */
 function postUninstall(name: string): Promise<Record<string, unknown>> {
   return fetchJson(`${API_BASE}/uninstall`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+/** POST /update { name } → { ok, error? }. */
+function postUpdate(name: string): Promise<Record<string, unknown>> {
+  return fetchJson(`${API_BASE}/update`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+/** POST /enable { name } → { ok, error? }. */
+function postEnable(name: string): Promise<Record<string, unknown>> {
+  return fetchJson(`${API_BASE}/enable`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+/** POST /disable { name } → { ok, error? }. */
+function postDisable(name: string): Promise<Record<string, unknown>> {
+  return fetchJson(`${API_BASE}/disable`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ name }),

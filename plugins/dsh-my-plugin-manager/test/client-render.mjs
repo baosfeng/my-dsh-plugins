@@ -149,9 +149,22 @@ assert.ok(joined.includes('dsh-b'), 'second plugin rendered')
 assert.ok(joined.includes('卸载'), 'uninstall button rendered')
 
 // ── update check flow ──────────────────────────────────────────────────────
+// 我们的实现中，更新信息是在 /installed 接口中返回的，而不是通过单独的 /updates 接口
+// 所以我们需要在点击"检查更新"按钮后，重新加载已安装列表来获取更新信息
 cannedResponses.push({
   ok: true,
-  value: { outdated: [{ name: 'dsh-a', current: '1.0.0', latest: '1.1.0' }] },
+  value: {
+    entries: [
+      {
+        moduleName: 'dsh-a',
+        enabled: true,
+        fiberPhase: 'ready',
+        version: '1.0.0',
+        updateAvailable: { current: '1.0.0', latest: '1.1.0' },
+      },
+      { moduleName: 'dsh-b', enabled: false, fiberPhase: null, version: '', updateAvailable: null },
+    ],
+  },
 })
 const buttons = []
 function textOf(node) {
@@ -193,10 +206,10 @@ const texts2 = []
 walkText(tree2, texts2)
 assert.ok(texts2.join('|').includes('1.0.0 → 1.1.0'), 'outdated version shown on the row')
 
-// the update check hit /updates
+// the update check hit /installed (since we now return update info with installed list)
 assert.ok(
-  fetchCalls.some((c) => c.url.startsWith('/my-plugin-manager/api/updates')),
-  'updates endpoint called',
+  fetchCalls.some((c) => c.url.startsWith('/my-plugin-manager/api/installed')),
+  'installed endpoint called for update info',
 )
 
 console.log('ALL PLUGIN-MANAGER CLIENT RENDER-PATH TESTS PASSED')

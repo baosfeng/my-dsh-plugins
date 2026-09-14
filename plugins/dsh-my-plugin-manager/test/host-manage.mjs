@@ -4,7 +4,7 @@
 import { test, afterAll } from 'vitest'
 import { vi } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -34,8 +34,17 @@ vi.mock('node:child_process', () => ({
   },
 }))
 
-const { runDsh, pluginArgs, installPlugin, uninstallPlugin, outdatedPlugins, installedVersionOf } =
-  await import('../lib/manage.js')
+const {
+  runDsh,
+  pluginArgs,
+  installPlugin,
+  uninstallPlugin,
+  updatePlugin,
+  outdatedPlugins,
+  installedVersionOf,
+  enablePlugin,
+  disablePlugin,
+} = await import('../lib/manage.js')
 
 /** Drive the last spawned child: emit output, then close or error. */
 function settleLast({ stdout = '', stderr = '', code = 0, error = null }) {
@@ -172,4 +181,91 @@ test('runDsh handles a null spawn error object', async () => {
   const r = await p
   assert.equal(r.ok, false)
   assert.ok(typeof r.error === 'string')
+})
+
+test('updatePlugin calls dsh plugin update', async () => {
+  const p = updatePlugin('web', 'dsh-file-activity')
+  settleLast({ code: 0 })
+  const r = await p
+  assert.equal(r.ok, true)
+  const last = spawned[spawned.length - 1]
+  assert.deepEqual(last.args, ['plugin', '--profile', 'web', 'update', 'dsh-file-activity'])
+})
+
+test('updatePlugin handles failure', async () => {
+  const p = updatePlugin('web', 'dsh-file-activity')
+  settleLast({ code: 1, stderr: 'update failed' })
+  const r = await p
+  assert.equal(r.ok, false)
+  assert.ok(r.stderr.includes('update failed'))
+})
+
+test('enablePlugin enables a plugin in cordis.patch.yml', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dpm-enable-test-'))
+  const patchPath = join(dir, 'cordis.patch.yml')
+  writeFileSync(
+    patchPath,
+    `- insert:\n    - id: test-plugin\n      name: 'dsh-test-plugin'\n      enabled: false\n`,
+    'utf8',
+  )
+
+  const r = await enablePlugin(dir, 'dsh-test-plugin')
+  assert.equal(r.ok, true)
+
+  const content = readFileSync(patchPath, 'utf8')
+  assert.ok(content.includes('enabled: true'))
+})
+
+test('disablePlugin disables a plugin in cordis.patch.yml', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dpm-disable-test-'))
+  const patchPath = join(dir, 'cordis.patch.yml')
+  writeFileSync(
+    patchPath,
+    `- insert:\n    - id: test-plugin\n      name: 'dsh-test-plugin'\n      enabled: true\n`,
+    'utf8',
+  )
+
+  const r = await disablePlugin(dir, 'dsh-test-plugin')
+  assert.equal(r.ok, true)
+
+  const content = readFileSync(patchPath, 'utf8')
+  assert.ok(content.includes('enabled: false'))
+})
+
+test('enablePlugin creates entry if not found', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dpm-enable-new-test-'))
+  const patchPath = join(dir, 'cordis.patch.yml')
+  writeFileSync(patchPath, `- insert:\n    - id: other-plugin\n      name: 'dsh-other-plugin'\n`, 'utf8')
+
+  const r = await enablePlugin(dir, 'dsh-test-plugin')
+  assert.equal(r.ok, true)
+
+  const content = readFileSync(patchPath, 'utf8')
+  assert.ok(content.includes('dsh-test-plugin'))
+  assert.ok(content.includes('enabled: true'))
+})
+
+test('disablePlugin creates entry if not found', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dpm-disable-new-test-'))
+  const patchPath = join(dir, 'cordis.patch.yml')
+  writeFileSync(patchPath, `- insert:\n    - id: other-plugin\n      name: 'dsh-other-plugin'\n`, 'utf8')
+
+  const r = await disablePlugin(dir, 'dsh-test-plugin')
+  assert.equal(r.ok, true)
+
+  const content = readFileSync(patchPath, 'utf8')
+  assert.ok(content.includes('dsh-test-plugin'))
+  assert.ok(content.includes('enabled: false'))
+})
+
+test('enablePlugin handles missing file', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dpm-enable-missing-test-'))
+
+  const r = await enablePlugin(dir, 'dsh-test-plugin')
+  assert.equal(r.ok, true)
+
+  const patchPath = join(dir, 'cordis.patch.yml')
+  const content = readFileSync(patchPath, 'utf8')
+  assert.ok(content.includes('dsh-test-plugin'))
+  assert.ok(content.includes('enabled: true'))
 })

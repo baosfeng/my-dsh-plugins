@@ -11,8 +11,16 @@
  * cache-control: no-cache.
  */
 import { readJsonBody, writeError, writeJson } from 'dsh-shared'
-import { installedVersionOf, installPlugin, uninstallPlugin, outdatedPlugins } from './manage.js'
-import type { DshResult } from './manage.js'
+import {
+  installedVersionOf,
+  installPlugin,
+  uninstallPlugin,
+  updatePlugin,
+  outdatedPlugins,
+  enablePlugin,
+  disablePlugin,
+} from './manage.js'
+import type { DshResult, OutdatedEntry } from './manage.js'
 import { fetchPackageDetail, searchNpmPlugins } from './registry.js'
 import type { DshContext, Logger, ServerRequest, ServerResponse } from './types.js'
 
@@ -59,6 +67,18 @@ export function createApiHandler({
     uninstall: {
       method: 'POST',
       run: (url, request, response) => handleUninstall(profile, request, response, logger),
+    },
+    update: {
+      method: 'POST',
+      run: (url, request, response) => handleUpdate(profile, request, response, logger),
+    },
+    enable: {
+      method: 'POST',
+      run: (url, request, response) => handleEnable(profileDir, request, response, logger),
+    },
+    disable: {
+      method: 'POST',
+      run: (url, request, response) => handleDisable(profileDir, request, response, logger),
     },
   }
   return async (request: ServerRequest, response: ServerResponse): Promise<void> => {
@@ -123,7 +143,33 @@ async function handleInstalled(ctx: DshContext, profileDir: string, response: Se
       official: isOfficialModule(entry.moduleName),
     }))
     .filter((entry) => !entry.official)
-  writeJson(response, 200, { ok: true, value: { entries } })
+
+  // 获取更新信息（异步，不阻塞主流程）
+  let updates: OutdatedEntry[] = []
+  try {
+    const updateResult = await outdatedPlugins(profileDir)
+    if (updateResult.ok) {
+      updates = updateResult.outdated
+    }
+  } catch {
+    // 更新检查失败不影响已安装列表显示
+  }
+
+  // 合并更新信息到 entries
+  const entriesWithUpdates = entries.map((entry) => {
+    const update = updates.find((u) => u.name === entry.moduleName)
+    return {
+      ...entry,
+      updateAvailable: update
+        ? {
+            current: update.current,
+            latest: update.latest,
+          }
+        : null,
+    }
+  })
+
+  writeJson(response, 200, { ok: true, value: { entries: entriesWithUpdates } })
 }
 
 /** GET /search?q=… — npm registry market search. */
@@ -219,6 +265,69 @@ async function handleUninstall(
   })
 }
 
+/** POST /update { name } — update a plugin to latest version. */
+async function handleUpdate(
+  profile: string,
+  request: ServerRequest,
+  response: ServerResponse,
+  logger: Logger | undefined,
+): Promise<void> {
+  const payload = await readJsonBody(request)
+  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
+  if (name === '') {
+    writeJson(response, 400, { ok: false, error: { message: 'name is required' } })
+    return
+  }
+  const result = await updatePlugin(profile, name)
+  logUpdateResult(logger, result, name, profile)
+  writeJson(response, 200, {
+    ok: result.ok,
+    error: result.ok ? undefined : { message: cliErrorText(result) },
+  })
+}
+
+/** POST /enable { name } — enable a plugin. */
+async function handleEnable(
+  profileDir: string,
+  request: ServerRequest,
+  response: ServerResponse,
+  logger: Logger | undefined,
+): Promise<void> {
+  const payload = await readJsonBody(request)
+  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
+  if (name === '') {
+    writeJson(response, 400, { ok: false, error: { message: 'name is required' } })
+    return
+  }
+  const result = await enablePlugin(profileDir, name)
+  logEnableResult(logger, result, name)
+  writeJson(response, 200, {
+    ok: result.ok,
+    error: result.ok ? undefined : { message: cliErrorText(result) },
+  })
+}
+
+/** POST /disable { name } — disable a plugin. */
+async function handleDisable(
+  profileDir: string,
+  request: ServerRequest,
+  response: ServerResponse,
+  logger: Logger | undefined,
+): Promise<void> {
+  const payload = await readJsonBody(request)
+  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
+  if (name === '') {
+    writeJson(response, 400, { ok: false, error: { message: 'name is required' } })
+    return
+  }
+  const result = await disablePlugin(profileDir, name)
+  logDisableResult(logger, result, name)
+  writeJson(response, 200, {
+    ok: result.ok,
+    error: result.ok ? undefined : { message: cliErrorText(result) },
+  })
+}
+
 /** CLI 失败文本（stderr 优先，回退 stdout / exit code）。 */
 function cliErrorText(result: DshResult): string {
   return result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`
@@ -239,6 +348,33 @@ function logUninstallResult(logger: Logger | undefined, result: DshResult, name:
     logger?.info(`[dsh-my-plugin-manager] 插件卸载成功（name=${name}，profile=${profile}）`)
   } else {
     logger?.warn(`[dsh-my-plugin-manager] 插件卸载失败（name=${name}，原因=${cliErrorText(result)}）`)
+  }
+}
+
+/** 更新结果日志。 */
+function logUpdateResult(logger: Logger | undefined, result: DshResult, name: string, profile: string): void {
+  if (result.ok) {
+    logger?.info(`[dsh-my-plugin-manager] 插件更新成功（name=${name}，profile=${profile}）`)
+  } else {
+    logger?.warn(`[dsh-my-plugin-manager] 插件更新失败（name=${name}，原因=${cliErrorText(result)}）`)
+  }
+}
+
+/** 启用结果日志。 */
+function logEnableResult(logger: Logger | undefined, result: DshResult, name: string): void {
+  if (result.ok) {
+    logger?.info(`[dsh-my-plugin-manager] 插件已启用（name=${name}）`)
+  } else {
+    logger?.warn(`[dsh-my-plugin-manager] 插件启用失败（name=${name}，原因=${cliErrorText(result)}）`)
+  }
+}
+
+/** 禁用结果日志。 */
+function logDisableResult(logger: Logger | undefined, result: DshResult, name: string): void {
+  if (result.ok) {
+    logger?.info(`[dsh-my-plugin-manager] 插件已禁用（name=${name}）`)
+  } else {
+    logger?.warn(`[dsh-my-plugin-manager] 插件禁用失败（name=${name}，原因=${cliErrorText(result)}）`)
   }
 }
 

@@ -18,7 +18,10 @@ const manageMock = vi.hoisted(() => ({
   installedVersionOf: vi.fn(() => '0.1.0'),
   installPlugin: vi.fn(async () => ({ ok: true, code: 0, stdout: 'added', stderr: '' })),
   uninstallPlugin: vi.fn(async () => ({ ok: true, code: 0, stdout: '', stderr: '' })),
+  updatePlugin: vi.fn(async () => ({ ok: true, code: 0, stdout: 'updated', stderr: '' })),
   outdatedPlugins: vi.fn(async () => ({ ok: true, outdated: [] })),
+  enablePlugin: vi.fn(async () => ({ ok: true, code: 0, stdout: 'enabled', stderr: '' })),
+  disablePlugin: vi.fn(async () => ({ ok: true, code: 0, stdout: 'disabled', stderr: '' })),
 }))
 vi.mock('../lib/manage.js', () => manageMock)
 
@@ -455,4 +458,102 @@ test('install failure logs a warn line with reason (issue #155)', async () => {
   assert.ok(warns[0].startsWith('[dsh-my-plugin-manager]'), 'warn carries the unified plugin prefix')
   assert.ok(warns[0].includes('dsh-bad'), 'warn carries the source')
   assert.ok(warns[0].includes('EACCES'), 'warn carries the reason')
+})
+
+test('POST /update updates a plugin', async () => {
+  const { getRoute } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/update', { name: 'dsh-x' })
+  assert.equal(r.json.ok, true, 'update ok')
+  assert.equal(manageMock.updatePlugin.mock.calls.length, 1, 'updatePlugin called')
+  assert.deepEqual(manageMock.updatePlugin.mock.calls[0][1], 'dsh-x', 'updatePlugin called with name')
+})
+
+test('POST /update returns 400 when name is missing', async () => {
+  const { getRoute } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/update', {})
+  assert.equal(r.status, 400, '400 status')
+  assert.equal(r.json.ok, false, 'ok=false')
+  assert.ok(r.json.error.message.includes('name is required'), 'error message')
+})
+
+test('POST /update handles failure', async () => {
+  manageMock.updatePlugin.mockResolvedValueOnce({ ok: false, code: 1, stdout: '', stderr: 'update failed' })
+  const { getRoute } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/update', { name: 'dsh-x' })
+  assert.equal(r.json.ok, false, 'update failed')
+  assert.ok(r.json.error.message.includes('update failed'), 'error message')
+})
+
+test('POST /enable enables a plugin', async () => {
+  const { getRoute } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/enable', { name: 'dsh-x' })
+  assert.equal(r.json.ok, true, 'enable ok')
+  assert.equal(manageMock.enablePlugin.mock.calls.length, 1, 'enablePlugin called')
+  assert.deepEqual(manageMock.enablePlugin.mock.calls[0][1], 'dsh-x', 'enablePlugin called with name')
+})
+
+test('POST /enable returns 400 when name is missing', async () => {
+  const { getRoute } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/enable', {})
+  assert.equal(r.status, 400, '400 status')
+  assert.equal(r.json.ok, false, 'ok=false')
+  assert.ok(r.json.error.message.includes('name is required'), 'error message')
+})
+
+test('POST /disable disables a plugin', async () => {
+  const { getRoute } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/disable', { name: 'dsh-x' })
+  assert.equal(r.json.ok, true, 'disable ok')
+  assert.equal(manageMock.disablePlugin.mock.calls.length, 1, 'disablePlugin called')
+  assert.deepEqual(manageMock.disablePlugin.mock.calls[0][1], 'dsh-x', 'disablePlugin called with name')
+})
+
+test('POST /disable returns 400 when name is missing', async () => {
+  const { getRoute } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/disable', {})
+  assert.equal(r.status, 400, '400 status')
+  assert.equal(r.json.ok, false, 'ok=false')
+  assert.ok(r.json.error.message.includes('name is required'), 'error message')
+})
+
+test('update success logs an info line', async () => {
+  const { getRoute, logs } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/update', { name: 'dsh-x' })
+  assert.equal(r.json.ok, true, 'update ok')
+  const updateLog = logs.find((line) => line.includes('插件更新成功'))
+  assert.ok(updateLog !== undefined, 'update info log emitted')
+  assert.ok(updateLog.startsWith('[dsh-my-plugin-manager]'), 'update log carries the unified plugin prefix')
+  assert.ok(updateLog.includes('dsh-x'), 'update log carries the name')
+})
+
+test('update failure logs a warn line', async () => {
+  const warns = []
+  manageMock.updatePlugin.mockResolvedValueOnce({ ok: false, code: 1, stdout: '', stderr: 'update failed' })
+  const { getRoute } = await boot({ logger: { info: () => {}, warn: (m) => warns.push(m) } })
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/update', { name: 'dsh-x' })
+  assert.equal(r.json.ok, false, 'update failed')
+  assert.ok(warns.length >= 1, 'warn emitted for failed update')
+  assert.ok(warns[0].startsWith('[dsh-my-plugin-manager]'), 'warn carries the unified plugin prefix')
+  assert.ok(warns[0].includes('dsh-x'), 'warn carries the name')
+  assert.ok(warns[0].includes('update failed'), 'warn carries the reason')
+})
+
+test('enable success logs an info line', async () => {
+  const { getRoute, logs } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/enable', { name: 'dsh-x' })
+  assert.equal(r.json.ok, true, 'enable ok')
+  const enableLog = logs.find((line) => line.includes('插件已启用'))
+  assert.ok(enableLog !== undefined, 'enable info log emitted')
+  assert.ok(enableLog.startsWith('[dsh-my-plugin-manager]'), 'enable log carries the unified plugin prefix')
+  assert.ok(enableLog.includes('dsh-x'), 'enable log carries the name')
+})
+
+test('disable success logs an info line', async () => {
+  const { getRoute, logs } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/disable', { name: 'dsh-x' })
+  assert.equal(r.json.ok, true, 'disable ok')
+  const disableLog = logs.find((line) => line.includes('插件已禁用'))
+  assert.ok(disableLog !== undefined, 'disable info log emitted')
+  assert.ok(disableLog.startsWith('[dsh-my-plugin-manager]'), 'disable log carries the unified plugin prefix')
+  assert.ok(disableLog.includes('dsh-x'), 'disable log carries the name')
 })

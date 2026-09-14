@@ -165,6 +165,7 @@ test('config API suite', async () => {
           askMode: 'full',
           webBaseUrl: '',
           webhooks: [],
+          quietHours: { enabled: false, start: '23:00', end: '08:00' },
         },
         'defaults reported',
       )
@@ -188,6 +189,7 @@ test('config API suite', async () => {
           askMode: 'full',
           webBaseUrl: '',
           webhooks: [],
+          quietHours: { enabled: false, start: '23:00', end: '08:00' },
         },
         'app-level config reflected',
       )
@@ -229,6 +231,7 @@ test('config API suite', async () => {
           askMode: 'full',
           webBaseUrl: '',
           webhooks: [],
+          quietHours: { enabled: false, start: '23:00', end: '08:00' },
         },
         'saved config read back',
       )
@@ -318,10 +321,19 @@ test('config API suite', async () => {
       const put = mockResponse()
       await invoke(api, mockRequest({ url: '/notify/api/config', method: 'PUT', body: JSON.stringify(saved) }), put)
       assert.equal(put.writeHeadStatus, 200, 'save ok')
-      // patch 文件已写入
+      // patch 文件已写入（quietHours 展开为扁平字段，webhooks 单独 JSON 文件）
       const file = patchFileOf('web')
       const text = readFileSync(file, 'utf8')
-      assert.deepEqual(extractConfig(text, 'notify'), saved, 'patch file carries the saved config')
+      assert.deepEqual(
+        extractConfig(text, 'notify'),
+        {
+          ...saved,
+          quietHoursEnabled: false,
+          quietHoursStart: '23:00',
+          quietHoursEnd: '08:00',
+        },
+        'patch file carries the saved config (quietHours flattened)',
+      )
       disposeAll()
 
       // 模拟重启：同一 DSH_HOME 重新 apply，config 来自 patch 文件
@@ -333,7 +345,15 @@ test('config API suite', async () => {
       const get = mockResponse()
       await invoke(api2, mockRequest({ url: '/notify/api/config' }), get)
       const body = JSON.parse(get.written.join(''))
-      assert.deepEqual(body.value, { ...saved, webhooks: [] }, 'config survives restart')
+      assert.deepEqual(
+        body.value,
+        {
+          ...saved,
+          webhooks: [],
+          quietHours: { enabled: false, start: '23:00', end: '08:00' },
+        },
+        'config survives restart',
+      )
       // 重启后监听器按持久化配置工作
       const stream = mockResponse()
       await invoke(api2, mockRequest({ url: '/notify/api/stream' }), stream)

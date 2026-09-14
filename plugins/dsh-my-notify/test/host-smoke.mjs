@@ -282,6 +282,7 @@ test('host smoke suite', async () => {
           apiToken: false,
           dedupeMs: 3000,
           askMode: 'full',
+          quietHours: { enabled: false, start: '23:00', end: '08:00' },
         },
         'info mirrors config',
       )

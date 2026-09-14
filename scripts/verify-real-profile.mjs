@@ -53,6 +53,7 @@ import {
 } from './lib/verify-profile.mjs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
+import tmp from 'tmp'
 
 // ── args ───────────────────────────────────────────────────────────────────
 const options = parseArgs(process.argv.slice(2))
@@ -129,7 +130,7 @@ function printHelp() {
 // ── 常量 ───────────────────────────────────────────────────────────────────
 const home = homedir()
 const realProfile = join(home, '.dsh', 'profiles', options.profile)
-const simHome = `/tmp/dsh-verify-real-${options.port}`
+const simHome = tmp.dirSync({ prefix: `dsh-verify-real-${options.port}-`, unsafeCleanup: true }).name
 const simProfile = join(simHome, 'profiles', options.profile)
 const dshBin = process.env.DSH_BIN || 'dsh'
 let web = null

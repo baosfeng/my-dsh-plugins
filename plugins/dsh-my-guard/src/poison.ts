@@ -207,10 +207,10 @@ function checkShellScripts(name: string, text: string, rel: string, handle: Scan
 
 /** 读取文件文本（大小上限内；不可读/超限返回 null）。 */
 async function readText(full: string, handle: ScanHandle): Promise<string | null> {
-  const info = await stat(full)
-  if (!info.isFile() || info.size > MAX_SCAN_FILE_BYTES) return null
-  handle.bytes += info.size
   try {
+    const info = await stat(full)
+    if (!info.isFile() || info.size > MAX_SCAN_FILE_BYTES) return null
+    handle.bytes += info.size
     return await readFile(full, 'utf8')
   } catch {
     return null

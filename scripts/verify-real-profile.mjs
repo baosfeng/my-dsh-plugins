@@ -547,8 +547,14 @@ function writeChecklist() {
   const plugin = options.plugin || (options.addons.length > 0 ? options.addons[0].split('/').pop() : 'unknown')
   const version = options.version || 'x.y.z'
   let text = checklistTemplate(plugin, version, options.port)
-  if (existsSync(options.checklist)) {
-    text = mergeChecklistState(readFileSync(options.checklist, 'utf8'), text)
+  let existingText = ''
+  try {
+    existingText = readFileSync(options.checklist, 'utf8')
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
+  if (existingText) {
+    text = mergeChecklistState(existingText, text)
   }
   mkdirSync(dirname(options.checklist), { recursive: true })
   writeFileSync(options.checklist, text, 'utf8')

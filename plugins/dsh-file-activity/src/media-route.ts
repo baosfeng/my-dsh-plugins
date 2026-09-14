@@ -151,7 +151,12 @@ async function serveMedia(response: ServerResponse, abs: string, url: URL): Prom
   }
   if (!info.isFile()) throw mediaError(400, 'not a file')
   if (info.size > MEDIA_LIMIT) throw mediaError(413, 'file too large')
-  const body = await readFile(abs)
+  let body: Buffer
+  try {
+    body = await readFile(abs)
+  } catch {
+    throw mediaError(404, 'file not found')
+  }
   const headers: Record<string, string> = {
     'content-type': mediaTypeForPath(abs),
     'cache-control': 'no-cache',
@@ -185,6 +190,11 @@ async function serveText(response: ServerResponse, abs: string): Promise<void> {
   }
   if (!info.isFile()) throw mediaError(400, 'not a file')
   if (info.size > TEXT_LIMIT) throw mediaError(413, 'file too large')
-  const content = await readFile(abs, 'utf8')
+  let content: string
+  try {
+    content = await readFile(abs, 'utf8')
+  } catch {
+    throw mediaError(404, 'file not found')
+  }
   writeJson(response, 200, { ok: true, value: { content } })
 }

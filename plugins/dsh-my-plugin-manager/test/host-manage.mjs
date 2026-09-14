@@ -4,9 +4,9 @@
 import { test, afterAll } from 'vitest'
 import { vi } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 
 // ── mock child_process.spawn ───────────────────────────────────────────────
 const spawned = []
@@ -55,7 +55,7 @@ function settleLast({ stdout = '', stderr = '', code = 0, error = null }) {
   else last.listeners.close?.(code)
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'dpm-manage-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-manage-test-' }).name
 
 afterAll(() => {
   rmSync(dir, { recursive: true, force: true })
@@ -201,7 +201,7 @@ test('updatePlugin handles failure', async () => {
 })
 
 test('enablePlugin enables a plugin in cordis.patch.yml', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dpm-enable-test-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-enable-test-' }).name
   const patchPath = join(dir, 'cordis.patch.yml')
   writeFileSync(
     patchPath,
@@ -217,7 +217,7 @@ test('enablePlugin enables a plugin in cordis.patch.yml', async () => {
 })
 
 test('disablePlugin disables a plugin in cordis.patch.yml', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dpm-disable-test-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-disable-test-' }).name
   const patchPath = join(dir, 'cordis.patch.yml')
   writeFileSync(
     patchPath,
@@ -233,7 +233,7 @@ test('disablePlugin disables a plugin in cordis.patch.yml', async () => {
 })
 
 test('enablePlugin creates entry if not found', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dpm-enable-new-test-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-enable-new-test-' }).name
   const patchPath = join(dir, 'cordis.patch.yml')
   writeFileSync(patchPath, `- insert:\n    - id: other-plugin\n      name: 'dsh-other-plugin'\n`, 'utf8')
 
@@ -246,7 +246,7 @@ test('enablePlugin creates entry if not found', async () => {
 })
 
 test('disablePlugin creates entry if not found', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dpm-disable-new-test-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-disable-new-test-' }).name
   const patchPath = join(dir, 'cordis.patch.yml')
   writeFileSync(patchPath, `- insert:\n    - id: other-plugin\n      name: 'dsh-other-plugin'\n`, 'utf8')
 
@@ -259,7 +259,7 @@ test('disablePlugin creates entry if not found', async () => {
 })
 
 test('enablePlugin handles missing file', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dpm-enable-missing-test-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-enable-missing-test-' }).name
 
   const r = await enablePlugin(dir, 'dsh-test-plugin')
   assert.equal(r.ok, true)

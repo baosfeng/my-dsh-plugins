@@ -11,16 +11,16 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { satisfies } from '../lib/dep-version.js'
 import { checkPeerDependencies, buildDependencyMessage, classifyFailure } from '../lib/dep-precheck.js'
 import { apply } from '../lib/index.js'
 
 const createdDirs = []
 function freshDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-guardian-dep-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-guardian-dep-' }).name
   createdDirs.push(dir)
   return dir
 }

@@ -5,14 +5,14 @@
  */
 import { Given, When, Then, After, setWorldConstructor } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply } from '../../../lib/index.js'
 
 class World {
   constructor() {
-    this.dir = mkdtempSync(join(tmpdir(), 'dsm-feature-'))
+    this.dir = dirSync({ unsafeCleanup: true, prefix: 'dsm-feature-' }).name
     process.env.DSH_HOME = this.dir
     process.env.DSH_AGENTS_HOME = join(this.dir, 'agents')
     this.apiHolder = captureRoute('/my-skill-manager/api')

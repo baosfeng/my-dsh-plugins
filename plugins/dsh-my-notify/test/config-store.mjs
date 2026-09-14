@@ -10,15 +10,15 @@ import { test } from 'vitest'
  *  - 持久化闭环：写入 → 重新读取 → 值正确（模拟重启后 loader 重新解析）。
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { extractConfig, writePatchConfig, patchFileOf, profileDirOf, currentProfile } from 'dsh-shared'
 
 const tmpDirs = []
 
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-my-notify-config-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-notify-config-' }).name
   tmpDirs.push(dir)
   return dir
 }

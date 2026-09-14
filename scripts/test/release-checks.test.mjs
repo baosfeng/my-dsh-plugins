@@ -9,8 +9,8 @@
  */
 import { describe, it, expect, afterAll } from 'vitest'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -270,7 +270,7 @@ describe('findUnpublishedDeps', () => {
 
 // ── collectClientSources ──────────────────────────────────────────────────
 describe('collectClientSources', () => {
-  const tmp = mkdtempSync(join(tmpdir(), 'relchk-'))
+  const { name: tmp } = dirSync({ unsafeCleanup: true, prefix: 'relchk-' })
   afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
   it('client.src.js 优先（含 lib/parts/*.js）', () => {
@@ -321,7 +321,7 @@ describe('collectClientSources', () => {
 
 // ── collectServerSources（issue #72：server 端 import 纳入跨插件依赖扫描）──
 describe('collectServerSources', () => {
-  const tmp = mkdtempSync(join(tmpdir(), 'relsrv-'))
+  const { name: tmp } = dirSync({ unsafeCleanup: true, prefix: 'relsrv-' })
   afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
   it('收集 lib/*.js（排除 client.js / client.src.js 与 parts/ 子目录）', () => {
@@ -352,7 +352,7 @@ describe('collectServerSources', () => {
 
 // ── buildPluginIndex ──────────────────────────────────────────────────────
 describe('buildPluginIndex', () => {
-  const tmp = mkdtempSync(join(tmpdir(), 'relidx-'))
+  const { name: tmp } = dirSync({ unsafeCleanup: true, prefix: 'relidx-' })
   afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
   it('按 package.json name 建索引（目录名 ≠ 包名也正确）', () => {
@@ -396,7 +396,7 @@ describe('findFreePort', () => {
 describe('inspectTagState（tag 管理防护）', () => {
   const tmpRepos = []
   const makeRepo = () => {
-    const dir = mkdtempSync(join(tmpdir(), 'reltag-'))
+    const { name: dir } = dirSync({ unsafeCleanup: true, prefix: 'reltag-' })
     tmpRepos.push(dir)
     const run = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim()
     run('init', '-q')
@@ -439,7 +439,7 @@ describe('inspectTagState（tag 管理防护）', () => {
   })
 
   it('非 git 目录 → absent（rev-parse 失败不穿透抛错）', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'reltag-'))
+    const { name: dir } = dirSync({ unsafeCleanup: true, prefix: 'reltag-' })
     tmpRepos.push(dir)
     expect(inspectTagState(dir, 'dsh-x@v1.0.0')).toEqual({ state: 'absent' })
   })
@@ -525,7 +525,7 @@ describe('workflow 插件清单一致性与输入语义（#204 防漂移）', ()
   const execValidation = (rawPlugins) => {
     const script = runScriptOf(wfFile, 'resolve-plugins')
     expect(script).not.toBeNull()
-    const dir = mkdtempSync(join(tmpdir(), 'relwf-'))
+    const { name: dir } = dirSync({ unsafeCleanup: true, prefix: 'relwf-' })
     tmpDirs.push(dir)
     const scriptPath = join(dir, 'resolve-plugins.sh')
     const outPath = join(dir, 'github_output')

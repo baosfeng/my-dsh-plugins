@@ -5,14 +5,13 @@
  */
 import { Given, When, Then, After, setWorldConstructor } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync, writeFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../../../lib/index.js'
 
 class World {
   constructor() {
-    this.dir = mkdtempSync(join(tmpdir(), 'dfa-feature-'))
+    this.dir = dirSync({ unsafeCleanup: true, prefix: 'dfa-feature-' }).name
     process.env.DSH_HOME = this.dir
     this.ctx = null
     this.sessionId = null

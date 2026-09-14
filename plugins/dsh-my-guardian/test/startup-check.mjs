@@ -8,9 +8,9 @@ import { test, afterEach } from 'vitest'
  *     carries the issues, boot is never blocked by the pre-check
  */
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import {
   collectTreeEntries,
   entryLabels,
@@ -21,7 +21,7 @@ import {
 } from '../lib/startup-check.js'
 import { apply } from '../lib/index.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dsh-my-guardian-startup-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-guardian-startup-' }).name
 process.env.DSH_HOME = dir
 
 /** 当前用例 boot 的实例；由 afterEach 兜底 teardown。

@@ -5,9 +5,9 @@
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import {
   COMMIT_TYPES,
   formatCommitMessage,
@@ -24,7 +24,7 @@ afterAll(() => {
 })
 
 function createRepo() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-obs-git-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-obs-git-' }).name
   tmpDirs.push(dir)
   git(dir, 'init')
   git(dir, 'config', 'user.email', 'test@example.com')
@@ -76,7 +76,7 @@ test('COMMIT_TYPES is the conventional commits set', () => {
 
 test('isGitRepo distinguishes real repos from plain dirs', async () => {
   const repo = createRepo()
-  const plain = mkdtempSync(join(tmpdir(), 'dsh-obs-plain-'))
+  const plain = dirSync({ unsafeCleanup: true, prefix: 'dsh-obs-plain-' }).name
   tmpDirs.push(plain)
   assert.equal(await isGitRepo(repo), true, 'git repo accepted')
   assert.equal(await isGitRepo(plain), false, 'plain dir rejected')
@@ -158,7 +158,7 @@ test('gitCommit rejects invalid requests and non-repos', async () => {
   assert.equal(bad.ok, false)
   assert.ok(bad.error.message.includes('invalid commit request'))
 
-  const plain = mkdtempSync(join(tmpdir(), 'dsh-obs-plain2-'))
+  const plain = dirSync({ unsafeCleanup: true, prefix: 'dsh-obs-plain2-' }).name
   tmpDirs.push(plain)
   const notRepo = await gitCommit(plain, { type: 'feat', description: 'x' })
   assert.equal(notRepo.ok, false)

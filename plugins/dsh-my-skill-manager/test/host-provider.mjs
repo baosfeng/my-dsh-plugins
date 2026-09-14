@@ -6,14 +6,14 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { findProjectRoot } from 'dsh-shared'
 import { normalizeConfig, readConfigFile, writeConfigFile, globalConfigFile } from '../lib/config.js'
 import { createDisablerProvider, disabledNamesOf } from '../lib/provider.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dsm-provider-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dsm-provider-test-' }).name
 process.env.DSH_HOME = dir
 
 afterAll(() => {

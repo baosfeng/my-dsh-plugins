@@ -5,9 +5,9 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import {
   MEMORY_ITEM_SCHEMA,
   createMemoryQueryTool,
@@ -21,7 +21,7 @@ import {
 import { CATEGORIES } from '../lib/memory-scoring.js'
 import { createStore, migrateProjectMemory, resolveProjectMemory } from '../lib/store.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dmm-tool-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dmm-tool-test-' }).name
 process.env.DSH_HOME = dir
 
 /** A fake global store with a fixed item list. */

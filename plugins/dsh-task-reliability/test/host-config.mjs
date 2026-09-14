@@ -11,9 +11,8 @@ import { test } from 'vitest'
  *  - 非法输入 400；非本机来源 403。
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync, readFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 import { extractConfig, patchFileOf } from 'dsh-shared'
 
@@ -21,7 +20,7 @@ const tmpDirs = []
 const disposeAlls = []
 
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-task-reliability-api-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-task-reliability-api-' }).name
   tmpDirs.push(dir)
   return dir
 }

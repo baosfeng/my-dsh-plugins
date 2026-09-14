@@ -12,9 +12,9 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { atomicWriteStats } from 'dsh-shared'
 import { createStore } from '../lib/store.js'
 
@@ -24,7 +24,7 @@ afterAll(() => {
 })
 
 function tempFile(name = 'memory.json') {
-  const dir = mkdtempSync(join(tmpdir(), 'memory-sched-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'memory-sched-' }).name
   dirs.push(dir)
   return join(dir, name)
 }

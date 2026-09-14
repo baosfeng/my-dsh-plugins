@@ -11,12 +11,11 @@
 import { test, expect, afterAll } from 'vitest'
 import { createDisablerProvider } from '../lib/provider.js'
 import { writeConfigFile, globalConfigFile } from '../lib/config.js'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 
 // 创建临时目录
-const dir = mkdtempSync(join(tmpdir(), 'dsm-layer-override-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dsm-layer-override-test-' }).name
 process.env.DSH_HOME = dir
 
 // 配置禁用的技能

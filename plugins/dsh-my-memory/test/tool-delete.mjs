@@ -8,14 +8,14 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { MEMORY_ITEM_SCHEMA, createMemoryQueryTool, createMemorySaveGate, createMemorySaveTool } from '../lib/tool.js'
 import { createMemoryDeleteTool, lookupDeleteTarget, renderDeleteResult } from '../lib/delete-tool.js'
 import { createStore } from '../lib/store.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dmm-delete-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dmm-delete-test-' }).name
 process.env.DSH_HOME = dir
 
 /** 记录日志的假 logger（审计断言用）。 */

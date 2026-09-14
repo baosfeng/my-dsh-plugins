@@ -6,15 +6,14 @@
  */
 import { Given, When, Then, setWorldConstructor } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+
+import { dirSync } from 'tmp'
 import { createApiHandler, isOfficialModule } from '../../../lib/api-route.js'
 import { isTrustedApiRequest } from 'dsh-shared'
 
 class World {
   constructor() {
-    this.profileDir = mkdtempSync(join(tmpdir(), 'dpm-feature-'))
+    this.profileDir = dirSync({ unsafeCleanup: true, prefix: 'dpm-feature-' }).name
     this.entries = []
     this.lastStatus = 0
     this.lastJson = null

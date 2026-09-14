@@ -22,8 +22,8 @@
  * CI 入口：.github/workflows/ci.yml 的 resource-smoke job（独立于功能测试）。
  * 本地用法：node scripts/resource-smoke.mjs
  */
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, existsSync, readFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { join } from 'node:path'
 import { createStore } from '../plugins/dsh-my-observability/lib/store.js'
 import { createStore as createFileActivityStore } from '../plugins/dsh-file-activity/lib/store.js'
@@ -109,7 +109,7 @@ async function main() {
   try {
     // ── 场景 1：长会话高频事件流 → 写放大 + 每会话内存有界 ──────────────
     console.log('\n[场景 1] 长会话 12000 事件（高频工具调用形态）')
-    const home1 = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
+    const { name: home1 } = dirSync({ unsafeCleanup: true, prefix: 'dsh-resource-smoke-' })
     process.env.DSH_HOME = home1
     const store = createStore({ logger: { warn() {} } })
     await store.whenReady() // 等 loadPersisted 完成（确定性信号，替代固定 400ms）
@@ -137,7 +137,7 @@ async function main() {
 
     // ── 场景 2：多会话全局上限 20000 ────────────────────────────────────
     console.log('\n[场景 2] 11 会话 × 2000 事件（多子 agent 形态）')
-    const home2 = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
+    const { name: home2 } = dirSync({ unsafeCleanup: true, prefix: 'dsh-resource-smoke-' })
     process.env.DSH_HOME = home2
     const store2 = createStore({ logger: { warn() {} } })
     await store2.whenReady() // 确定性就绪信号（原固定 400ms）
@@ -154,7 +154,7 @@ async function main() {
 
     // ── 场景 3：降级路径（资源看门狗：停落盘 → 恢复全量快照补齐）────────
     console.log('\n[场景 3] 降级：setPersistEnabled(false) 停写 → true 全量补齐')
-    const home3 = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
+    const { name: home3 } = dirSync({ unsafeCleanup: true, prefix: 'dsh-resource-smoke-' })
     process.env.DSH_HOME = home3
     const store3 = createStore({ logger: { warn() {} } })
     await store3.whenReady() // 确定性就绪信号（原固定 400ms）
@@ -192,7 +192,7 @@ async function main() {
 
     // ── 场景 4：dsh-file-activity 写放大与三维有界（issue #197）─────────
     console.log('\n[场景 4] dsh-file-activity：5,100 事件 / 100 会话')
-    const home4 = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
+    const { name: home4 } = dirSync({ unsafeCleanup: true, prefix: 'dsh-resource-smoke-' })
     process.env.DSH_HOME = home4
     const faStore = createFileActivityStore({ logger: { warn() {} } })
     // file-activity store 没有 whenReady：onLoaded 会把 store.state 换成新对象，用引用变化当就绪信号
@@ -235,7 +235,7 @@ async function main() {
 
     // ── 场景 5：dsh-my-context 有界容器 + 写入调度（issue #198）──────────
     console.log('\n[场景 5] dsh-my-context：会话数有界 + 写入节流（旧/新节奏对比）')
-    const home5a = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
+    const { name: home5a } = dirSync({ unsafeCleanup: true, prefix: 'dsh-resource-smoke-' })
     process.env.DSH_HOME = home5a
     const ctxStore = createContextStore({ logger: QUIET })
     await sleep(300)
@@ -256,7 +256,7 @@ async function main() {
 
     // 5b：写节奏对比（旧默认值「防抖 500ms + 无护栏」 vs 实际「防抖 500ms + 最小间隔 1s」）
     // 空目录起步 + 预热到状态稳定（每会话请求达上限）→ 两侧状态大小相同，字节可直接比。
-    const home5b = mkdtempSync(join(tmpdir(), 'dsh-resource-smoke-'))
+    const { name: home5b } = dirSync({ unsafeCleanup: true, prefix: 'dsh-resource-smoke-' })
     const legacy = await legacyContextStream(home5b, 30)
     const current = await contextStream(home5b, 30)
     console.log(

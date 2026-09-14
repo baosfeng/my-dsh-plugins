@@ -13,9 +13,9 @@ import { test, vi } from 'vitest'
  * 受控 gate 把「预检慢于 API 分派」变成确定性时序（注入而非造负载）。
  */
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 
 /** 受控慢 IO：只挂起 startup-issues.json 的写入（其余 IO 直通真实实现）。 */
 const gate = vi.hoisted(() => {
@@ -42,7 +42,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 const { apply } = await import('../lib/index.js')
 
-const root = mkdtempSync(join(tmpdir(), 'dsh-my-guardian-boot-'))
+const root = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-guardian-boot-' }).name
 process.env.DSH_HOME = root
 
 /** Fake loader tree; `healthy` drops the unresolvable roster row so the
@@ -147,7 +147,7 @@ const readIssuesOrNull = (dir) => {
 
 /** Boot one instance for a fresh profile dir. */
 function bootInstance(tag, staged, treeOpts) {
-  const dir = mkdtempSync(join(root, tag))
+  const dir = dirSync({ unsafeCleanup: true, prefix: tag }).name
   process.env.DSH_HOME = dir
   const fake = makeLoaderAndTree(dir, treeOpts)
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify(staged), 'utf8')

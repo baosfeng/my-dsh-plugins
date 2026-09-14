@@ -8,8 +8,8 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { join } from 'node:path'
 import {
   computeImpactScope,
@@ -36,7 +36,7 @@ test('parseNameStatus：空输入/空行/缺分隔符的畸形行被忽略（不
 
 // ── listChangedFiles：真实 git 仓库（issue #188 的核心回归）────────────────
 function makeRepo() {
-  const dir = mkdtempSync(join(tmpdir(), 'impact-scope-test-'))
+  const { name: dir } = dirSync({ unsafeCleanup: true, prefix: 'impact-scope-test-' })
   const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' })
   git('init', '-q')
   git('config', 'user.email', 'test@example.com')

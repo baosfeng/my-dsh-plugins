@@ -8,13 +8,13 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 import { candidateMemoryFile, createCandidatesStore } from '../lib/store.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dmm-cand-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dmm-cand-test-' }).name
 process.env.DSH_HOME = dir
 const homes = []
 
@@ -72,7 +72,7 @@ function captureRoute(prefix) {
  *  `seed` (array of candidate items) is written to the candidates file BEFORE
  *  apply() so the store's startup load sees them. */
 function boot(config, seed) {
-  const home = mkdtempSync(join(tmpdir(), 'dmm-cand-home-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'dmm-cand-home-' }).name
   homes.push(home)
   process.env.DSH_HOME = home
   if (Array.isArray(seed)) {

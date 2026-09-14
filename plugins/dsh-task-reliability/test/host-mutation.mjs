@@ -8,8 +8,8 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { join } from 'node:path'
 import { apply } from '../lib/index.js'
 import { runWatchdog } from '../lib/verify.js'
@@ -76,7 +76,7 @@ const tmpDirs = []
 const disposeAlls = []
 
 function boot(config = {}, services = {}, dirOverride) {
-  const dir = dirOverride ?? mkdtempSync(join(tmpdir(), 'dsh-task-rel-mut-'))
+  const dir = dirOverride ?? dirSync({ unsafeCleanup: true, prefix: 'dsh-task-rel-mut-' }).name
   if (dirOverride === undefined) tmpDirs.push(dir)
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = dir

@@ -4,9 +4,9 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { detectDestructive, extractPluginAdd, truncateCommand, normalizeMode } from '../lib/guard.js'
 import {
   bootPlugin,
@@ -34,7 +34,7 @@ function boot(config) {
 }
 
 function createPoisonPackage() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-guard-pkg-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-guard-pkg-' }).name
   tmpDirs.push(dir)
   writeFileSync(
     join(dir, 'package.json'),

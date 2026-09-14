@@ -24,15 +24,15 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { jsonlAppender, parseJsonlLines } from '../lib/jsonl.js'
 import { atomicWriteJson } from '../lib/persist.js'
 
 const dirs = []
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-shared-jsonl-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-shared-jsonl-' }).name
   dirs.push(dir)
   return dir
 }

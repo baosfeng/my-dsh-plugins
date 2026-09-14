@@ -17,9 +17,9 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { createWriteScheduler, DEFAULT_DEBOUNCE_MS, DEFAULT_MIN_WRITE_INTERVAL_MS } from '../lib/scheduler.js'
 import { atomicWriteJson } from '../lib/persist.js'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -163,7 +163,7 @@ test('createWriteScheduler：连续被拒超过 maxWriteRetries → 放弃并 wa
 })
 
 test('createWriteScheduler + atomicWriteJson：默认护栏下不误伤、不丢状态（真实组合）', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-shared-sched-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-shared-sched-' }).name
   const file = join(dir, 'state.json')
   let version = 0
   // 契约：调度器 minIntervalMs 默认 1000 = atomicWriteJson 默认节流窗口，

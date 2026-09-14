@@ -11,8 +11,8 @@
  *     全部在临时目录里构造，不依赖 GitHub 网络（CI 里也必须能跑）。
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -356,7 +356,7 @@ describe('推送前自检结论', () => {
 
 describe('CLI 端到端（离线）', () => {
   it('clean 拒绝非 gh-fork-* 路径（退出码 1）', () => {
-    const fake = mkdtempSync(join(tmpdir(), 'fork-pool-test-'))
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
     try {
       const { code, out } = runCli(['clean', '/Users/bsfeng/IdeaProjects/my-dsh-plugins', '--yes'], { tmpRoot: fake })
       expect(code).toBe(1)
@@ -367,7 +367,7 @@ describe('CLI 端到端（离线）', () => {
   })
 
   it('clean 缺 --yes 时退出码 2（要求显式确认）', () => {
-    const fake = mkdtempSync(join(tmpdir(), 'fork-pool-test-'))
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
     try {
       makeFakeFork(fake, 'test1')
       const { code, out } = runCli(['clean', 'test1'], { tmpRoot: fake })
@@ -381,7 +381,7 @@ describe('CLI 端到端（离线）', () => {
   it('用法错误优先于环境状态：目录不存在但缺 --yes 时仍返回 2（issue #240 防回归）', () => {
     // 反例：若把「目录是否存在」判在「--yes」之前，"clean 不存在的东西" 会以
     // "幂等通过" 返回 0，把"你忘了 --yes"这个用法错误悄悄吞掉。
-    const fake = mkdtempSync(join(tmpdir(), 'fork-pool-test-'))
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
     try {
       const { code, out } = runCli(['clean', 'nope'], { tmpRoot: fake })
       expect(code).toBe(2)
@@ -392,7 +392,7 @@ describe('CLI 端到端（离线）', () => {
   })
 
   it('clean 幂等：目录不存在也算通过', () => {
-    const fake = mkdtempSync(join(tmpdir(), 'fork-pool-test-'))
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
     try {
       const { code, out } = runCli(['clean', 'nope', '--yes'], { tmpRoot: fake })
       expect(code).toBe(0)
@@ -403,7 +403,7 @@ describe('CLI 端到端（离线）', () => {
   })
 
   it('clean --yes 只删目标 fork，不动同目录其它 fork', () => {
-    const fake = mkdtempSync(join(tmpdir(), 'fork-pool-test-'))
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
     try {
       const doomed = makeFakeFork(fake, 'test2')
       const keep = makeFakeFork(fake, 'test3')
@@ -417,7 +417,7 @@ describe('CLI 端到端（离线）', () => {
   })
 
   it('list 能列出 fork 并标注 hooks 状态', () => {
-    const fake = mkdtempSync(join(tmpdir(), 'fork-pool-test-'))
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
     try {
       makeFakeFork(fake, 'test4', { hooksPath: '.husky/_' })
       mkdirSync(join(fake, 'gh-fork-test4', '.husky', '_'), { recursive: true })

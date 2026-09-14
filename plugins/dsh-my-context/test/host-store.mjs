@@ -4,9 +4,9 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { createStore, stateFile } from '../lib/store.js'
 import { createState, createSession, zeroUsage } from '../lib/state.js'
 import { MAX_SESSIONS } from '../lib/constants.js'
@@ -184,7 +184,7 @@ test('store: updateHeader / updateContext', async () => {
 })
 
 test('store: persistence survives restart (recovery)', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-context-restart-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'dsh-context-restart-' }).name
   tmpDirs.push(home)
   const first = boot({}, { home })
   const store = createStore(first.ctx)
@@ -222,7 +222,7 @@ test('store: persistence survives restart (recovery)', async () => {
 })
 
 test('store: stateFile respects DSH_HOME', () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-context-home-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'dsh-context-home-' }).name
   tmpDirs.push(home)
   const old = process.env.DSH_HOME
   process.env.DSH_HOME = home
@@ -235,7 +235,7 @@ test('store: stateFile respects DSH_HOME', () => {
 })
 
 test('store: corrupt persisted file falls back to empty state', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-context-corrupt-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'dsh-context-corrupt-' }).name
   tmpDirs.push(home)
   const { writeFileSync, mkdirSync } = await import('node:fs')
   const { join: joinPath } = await import('node:path')

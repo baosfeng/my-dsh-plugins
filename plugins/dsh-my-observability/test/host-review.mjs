@@ -6,9 +6,9 @@
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { parseDiff, isTestFile, isSourceFile } from '../lib/diff.js'
 import { reviewRules, LARGE_DIFF_LINES } from '../lib/review.js'
 import { bootPlugin, mockRequest, mockResponse, invoke, jsonOf } from './lib/helpers.mjs'
@@ -23,7 +23,7 @@ afterAll(() => {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 40))
 
 function createRepo() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-obs-review-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-obs-review-' }).name
   tmpDirs.push(dir)
   mkdirSync(join(dir, 'src'), { recursive: true })
   git(dir, 'init')

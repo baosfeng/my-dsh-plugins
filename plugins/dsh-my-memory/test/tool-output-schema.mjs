@@ -15,14 +15,14 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { CATEGORIES } from '../lib/memory-scoring.js'
 import { createStore, migrateProjectMemory, resolveProjectMemory } from '../lib/store.js'
 import { MEMORY_ITEM_SCHEMA, createMemoryQueryTool, createMemorySaveTool } from '../lib/tool.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dmm-tool-output-schema-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dmm-tool-output-schema-' }).name
 process.env.DSH_HOME = dir
 
 /**

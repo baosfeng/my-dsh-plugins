@@ -5,9 +5,9 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { execFileSync } from 'node:child_process'
 import { isTrustedApiRequest } from 'dsh-shared'
 import {
@@ -38,7 +38,7 @@ function boot(config, opts) {
 }
 
 function createRepo() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-obs-mut-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-obs-mut-' }).name
   tmpDirs.push(dir)
   mkdirSync(join(dir, 'src'), { recursive: true })
   git(dir, 'init')

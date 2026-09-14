@@ -7,8 +7,8 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, readFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { join } from 'node:path'
 import { apply } from '../lib/index.js'
 import { parseTaskCommand } from '../lib/command.js'
@@ -71,7 +71,7 @@ const tmpDirs = []
 const disposeAlls = []
 
 function boot(config = {}, services = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-task-rel-cmd-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-task-rel-cmd-' }).name
   tmpDirs.push(dir)
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = dir

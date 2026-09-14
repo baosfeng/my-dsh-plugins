@@ -15,9 +15,9 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, readdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { saveStore } from '../lib/store.js'
 
 /** 造一个大状态（用于把「同步阻塞」放大到可测量）。 */
@@ -48,7 +48,7 @@ function bigStore(count, marker = 'x') {
 }
 
 function tempDir() {
-  return mkdtempSync(join(tmpdir(), 'tr-store-async-'))
+  return dirSync({ unsafeCleanup: true, prefix: 'tr-store-async-' }).name
 }
 
 test('saveStore：落盘不阻塞事件循环（返回 Promise，调用立即返回）', async () => {

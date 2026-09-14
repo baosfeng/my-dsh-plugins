@@ -20,9 +20,9 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync, appendFileSync, rmSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync, appendFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import {
   createResourceGuard,
   evaluateResourceAlerts,
@@ -238,7 +238,7 @@ test('guard 健壮性：宿主回调抛错只 warn，不中断状态机', () => 
   )
 })
 
-const samplerDir = mkdtempSync(join(tmpdir(), 'guard-sampler-'))
+const samplerDir = dirSync({ unsafeCleanup: true, prefix: 'guard-sampler-' }).name
 afterAll(() => {
   rmSync(samplerDir, { recursive: true, force: true })
 })

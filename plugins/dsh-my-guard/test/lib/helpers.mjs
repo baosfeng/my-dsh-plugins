@@ -8,14 +8,13 @@
  * 等待异步结果一律用 waitFor（条件轮询），不要用 settle（固定墙钟）——
  * 后者在 CI 容器高负载下会让"等待不足"变成随机失败（docs/踩坑/）。
  */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFileSync, rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../../lib/index.js'
 
 /** 临时 DSH_HOME 目录（配合 cleanupHome 使用）。 */
 export function createTempHome(prefix = 'dsh-guard-test-') {
-  return mkdtempSync(join(tmpdir(), prefix))
+  return dirSync({ unsafeCleanup: true, prefix }).name
 }
 
 function cleanupHome(home) {

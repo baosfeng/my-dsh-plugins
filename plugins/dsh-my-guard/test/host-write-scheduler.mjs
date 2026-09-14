@@ -12,9 +12,8 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFileSync, rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { atomicWriteStats } from 'dsh-shared'
 import { createStore, stateFile } from '../lib/store.js'
 
@@ -27,7 +26,7 @@ afterAll(() => {
 })
 
 function useHome() {
-  const home = mkdtempSync(join(tmpdir(), 'guard-sched-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'guard-sched-' }).name
   homes.push(home)
   process.env.DSH_HOME = home
   return home

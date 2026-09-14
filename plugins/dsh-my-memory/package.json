@@ -43,8 +43,8 @@
   },
   "peerDependencies": {
     "cordis": "^4.0.0-rc.10",
-    "react": "^18.2.0 || ^19.3.0",
-    "dsh-shared": "^0.1.4"
+    "dsh-shared": "^0.1.4",
+    "react": "^18.2.0 || ^19.3.0"
   },
   "peerDependenciesMeta": {
     "cordis": {
@@ -52,8 +52,11 @@
     }
   },
   "devDependencies": {
-    "typescript": "^7.0.2",
-    "@types/node": "^26.5.1"
+    "@types/node": "^26.5.1",
+    "typescript": "^7.0.2"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "tmp": "^0.2.7"
+  }
 }

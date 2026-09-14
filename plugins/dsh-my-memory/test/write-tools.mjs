@@ -7,13 +7,13 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { registerMemoryWriteTools } from '../lib/write-tools.js'
 import { createStore } from '../lib/store.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dmm-write-tools-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dmm-write-tools-' }).name
 process.env.DSH_HOME = dir
 
 /** mock DshContext：记录注册的工具 / 监听器 / effect disposer。 */

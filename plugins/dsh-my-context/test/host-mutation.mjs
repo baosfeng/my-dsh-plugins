@@ -5,9 +5,8 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { rmSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { isTrustedApiRequest } from 'dsh-shared'
 import { bootPlugin, mockRequest, mockResponse, invoke, jsonOf, settle } from './lib/helpers.mjs'
 
@@ -272,7 +271,7 @@ test('store: recordRequest with malformed usage is safe', async () => {
 // ── persist edge cases ─────────────────────────────────────────────────────
 
 test('persist: parseLoaded rejects invalid root structures', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-context-persist-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'dsh-context-persist-' }).name
   tmpDirs.push(home)
   const { writeFileSync, mkdirSync } = await import('node:fs')
   const { join: joinPath } = await import('node:path')
@@ -302,7 +301,7 @@ test('persist: parseLoaded rejects invalid root structures', async () => {
 })
 
 test('persist: mergeCurrent skips untouched sessions', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-context-merge-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'dsh-context-merge-' }).name
   tmpDirs.push(home)
   const { writeFileSync, mkdirSync } = await import('node:fs')
   const { join: joinPath } = await import('node:path')
@@ -334,7 +333,7 @@ test('persist: mergeCurrent skips untouched sessions', async () => {
 })
 
 test('persist: mutations before load are buffered and replayed', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'dsh-context-buffer-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'dsh-context-buffer-' }).name
   tmpDirs.push(home)
   const handle = boot({}, { home })
   const { createStore } = await import('../lib/store.js')

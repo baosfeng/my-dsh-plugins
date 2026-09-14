@@ -13,14 +13,14 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { atomicWriteJson, atomicWriteStats, DEFAULT_MAX_BYTES, DEFAULT_MIN_INTERVAL_MS } from '../lib/persist.js'
 
 const dirs = []
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-shared-persist-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-shared-persist-' }).name
   dirs.push(dir)
   return dir
 }

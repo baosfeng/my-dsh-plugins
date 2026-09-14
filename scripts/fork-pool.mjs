@@ -35,6 +35,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -68,7 +69,7 @@ if (options.errors.length > 0) {
   process.exit(1)
 }
 
-const TMP_ROOT = process.env.FORK_POOL_TMP ?? '/tmp'
+const TMP_ROOT = process.env.FORK_POOL_TMP ?? tmpdir()
 const log = (text = '') => process.stdout.write(`${text}\n`)
 
 /** 跑一条命令并计时；默认继承 stdio 之外全捕获（便于在 JSON 模式里回放证据）。 */

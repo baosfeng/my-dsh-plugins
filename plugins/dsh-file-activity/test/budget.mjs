@@ -11,9 +11,8 @@ import { test, afterAll } from 'vitest'
  * jsonlAppender），工厂内部用真实 fs 写入并统计字节 —— 测的是真实盘面行为。
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { appendFile, mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { createStore } from '../lib/store.js'
@@ -96,7 +95,7 @@ function eventBytes(rows) {
 
 const dirs = []
 function freshHome(tag) {
-  const dir = mkdtempSync(join(tmpdir(), 'dfa-' + tag + '-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dfa-' + tag + '-' }).name
   dirs.push(dir)
   process.env.DSH_HOME = dir
   return dir

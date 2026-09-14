@@ -7,13 +7,13 @@
 import { test, afterAll } from 'vitest'
 import { settle, waitFileContains } from './lib/settle.mjs'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 import { sessionFromFile } from './state-file.mjs'
 
-const dir = mkdtempSync(join(tmpdir(), 'dfa-mutation-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dfa-mutation-test-' }).name
 process.env.DSH_HOME = dir
 const statePath = join(dir, 'file-activity.json')
 

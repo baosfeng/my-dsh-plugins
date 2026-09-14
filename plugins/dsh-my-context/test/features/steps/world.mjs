@@ -7,9 +7,8 @@
  */
 import { setWorldConstructor, After } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { bootPlugin, mockRequest, mockResponse, dispatchEvent } from '../../lib/helpers.mjs'
 
 class World {
@@ -23,7 +22,7 @@ class World {
 
   boot(config, opts) {
     // 场景内共享同一个 DSH_HOME（「插件重启」场景需要跨实例保留统计数据）
-    this.sharedHome ??= mkdtempSync(join(tmpdir(), 'dsh-context-feature-home-'))
+    this.sharedHome ??= dirSync({ unsafeCleanup: true, prefix: 'dsh-context-feature-home-' }).name
     this.tmpDirs.push(this.sharedHome)
     this.handle = bootPlugin(config, { ...opts, home: this.sharedHome })
   }

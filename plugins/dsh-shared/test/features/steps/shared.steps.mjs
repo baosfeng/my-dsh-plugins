@@ -4,9 +4,9 @@
  */
 import { Given, When, Then, After } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { isTrustedApiRequest } from '../../../lib/fence.js'
 import { readJsonBody, writeJson, writeError } from '../../../lib/http.js'
 import { atomicWriteJson, atomicWriteStats } from '../../../lib/persist.js'
@@ -121,7 +121,7 @@ Then('响应状态码为 {int} 且内容含错误消息 {string}', function (sta
 
 /** 临时目录（场景用完即删）。 */
 function tempDir() {
-  if (world.tmpDir === null) world.tmpDir = mkdtempSync(join(tmpdir(), 'dsh-shared-feature-'))
+  if (world.tmpDir === null) world.tmpDir = dirSync({ unsafeCleanup: true, prefix: 'dsh-shared-feature-' }).name
   return world.tmpDir
 }
 

@@ -18,8 +18,8 @@
  */
 import { test, afterAll, vi } from 'vitest'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { join } from 'node:path'
 
 /** 注入慢 IO：writeFile 延迟 60ms（把 CI 负载下的时序窗口变成确定性事实）。 */
@@ -78,7 +78,7 @@ function mockRequest({ url, method = 'GET', body = '' } = {}) {
 
 /** 最小 boot：只装配 store/API/teardown（落盘时序测试不需要 agents 等服务）。 */
 function boot(config = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-tr-race-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-tr-race-' }).name
   tmpDirs.push(dir)
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = dir

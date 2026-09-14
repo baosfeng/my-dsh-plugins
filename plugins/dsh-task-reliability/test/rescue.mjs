@@ -18,9 +18,8 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 import { isOutputTruncated, todoHasPending } from '../lib/rescue.js'
 
@@ -52,7 +51,7 @@ const tmpDirs = []
 const disposeAlls = []
 
 function boot(config = {}, services = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-task-reliability-rescue-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-task-reliability-rescue-' }).name
   tmpDirs.push(dir)
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = dir

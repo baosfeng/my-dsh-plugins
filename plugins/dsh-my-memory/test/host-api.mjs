@@ -6,13 +6,13 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply, inject } from '../lib/index.js'
 import { projectMemoryDir, projectIdOf, resolveProjectMemory } from '../lib/store.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dmm-api-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dmm-api-test-' }).name
 process.env.DSH_HOME = dir
 const homes = []
 
@@ -68,7 +68,7 @@ function captureRoute(prefix) {
 
 async function boot(overrides) {
   // 每个 boot 使用独立的 DSH_HOME，避免测试间持久化状态泄漏
-  const home = mkdtempSync(join(tmpdir(), 'dmm-api-home-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'dmm-api-home-' }).name
   homes.push(home)
   process.env.DSH_HOME = home
   const apiHolder = captureRoute('/my-memory/api')
@@ -123,7 +123,7 @@ test('apply registers the API route and declares the required injects', async ()
 test('apply registers memory_save and its pre-execute user-consent gate (issue #107)', async () => {
   const registered = []
   const events = []
-  const home = mkdtempSync(join(tmpdir(), 'dmm-api-save-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'dmm-api-save-' }).name
   homes.push(home)
   process.env.DSH_HOME = home
   const ctx = {

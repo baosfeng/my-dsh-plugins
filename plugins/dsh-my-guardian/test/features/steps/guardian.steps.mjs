@@ -6,16 +6,16 @@
  */
 import { Given, When, Then, After, setWorldConstructor } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply } from '../../../lib/index.js'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 class World {
   constructor() {
-    this.dir = mkdtempSync(join(tmpdir(), 'guardian-feature-'))
+    this.dir = dirSync({ unsafeCleanup: true, prefix: 'guardian-feature-' }).name
     process.env.DSH_HOME = this.dir
     this.fake = this.makeFake()
     this.ctx = null

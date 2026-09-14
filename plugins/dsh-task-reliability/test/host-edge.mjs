@@ -7,9 +7,8 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 
 // ── mock helpers（与 host-smoke.mjs 相同的模式）─────────────────────────
@@ -70,7 +69,7 @@ const tmpDirs = []
 const disposeAlls = []
 
 function boot(config = {}, services = {}, dirOverride) {
-  const dir = dirOverride ?? mkdtempSync(join(tmpdir(), 'dsh-task-rel-edge-'))
+  const dir = dirOverride ?? dirSync({ unsafeCleanup: true, prefix: 'dsh-task-rel-edge-' }).name
   if (dirOverride === undefined) tmpDirs.push(dir)
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = dir

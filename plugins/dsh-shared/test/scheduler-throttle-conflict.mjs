@@ -12,15 +12,15 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { createWriteScheduler } from '../lib/scheduler.js'
 import { atomicWriteJson } from '../lib/persist.js'
 
 const dirs = []
 function tempFile(name) {
-  const dir = mkdtempSync(join(tmpdir(), 'shared-throttle-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'shared-throttle-' }).name
   dirs.push(dir)
   return join(dir, name)
 }

@@ -9,9 +9,8 @@
  *  - 配置读写方法（GET/PUT /notify/api/config）。
  */
 import { setWorldConstructor, After } from '@cucumber/cucumber'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../../../lib/index.js'
 
 /** 解析 "key=value key2=value2" 为对象（布尔/数字/字符串）。 */
@@ -101,7 +100,7 @@ class World {
   }
 
   boot(config) {
-    const home = mkdtempSync(join(tmpdir(), 'dsh-my-notify-feature-'))
+    const home = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-notify-feature-' }).name
     this.tmpDirs.push(home)
     this.oldHome = process.env.DSH_HOME
     process.env.DSH_HOME = home

@@ -42,12 +42,13 @@
     }
   },
   "peerDependencies": {
-    "cordis": "^4.0.0-rc.10",
     "@deepseek-ai/dsh-session-title": "^0.1.5-rc.2",
+    "cordis": "^4.0.0-rc.10",
     "react": "^18.2.0 || ^19.3.0"
   },
   "dependencies": {
-    "dsh-shared": "^0.1.4"
+    "dsh-shared": "^0.1.4",
+    "tmp": "^0.2.7"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-session-title": {

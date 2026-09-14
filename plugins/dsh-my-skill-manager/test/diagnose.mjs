@@ -8,12 +8,12 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { scanSkillRoots, viewRootsOf } from '../lib/diagnose.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dsm-diagnose-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dsm-diagnose-test-' }).name
 process.env.DSH_HOME = dir
 process.env.DSH_AGENTS_HOME = join(dir, 'agents')
 

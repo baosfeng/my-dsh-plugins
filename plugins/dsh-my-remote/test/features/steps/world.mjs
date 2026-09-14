@@ -9,9 +9,8 @@
  *  - invoke：调 /remote/api handler。
  */
 import { setWorldConstructor, After } from '@cucumber/cucumber'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../../../lib/index.js'
 import { createAskRegistry, createApprovalRegistry } from '../../../lib/registries.js'
 
@@ -66,7 +65,7 @@ class World {
   }
 
   boot(config) {
-    const home = mkdtempSync(join(tmpdir(), 'dsh-my-remote-feature-'))
+    const home = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-remote-feature-' }).name
     this.tmpDirs.push(home)
     this.oldHome = process.env.DSH_HOME
     process.env.DSH_HOME = home

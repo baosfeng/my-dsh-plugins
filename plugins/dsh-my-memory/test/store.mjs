@@ -4,9 +4,9 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { findProjectRoot } from 'dsh-shared'
 import {
   createStore,
@@ -20,7 +20,7 @@ import {
   resolveProjectMemory,
 } from '../lib/store.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dmm-store-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dmm-store-test-' }).name
 process.env.DSH_HOME = dir
 
 test('global and project memory files are separate paths', () => {

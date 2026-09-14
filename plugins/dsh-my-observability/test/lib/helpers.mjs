@@ -5,14 +5,13 @@
  * 临时 DSH_HOME 管理（store 持久化测试需要）。测试文件在 test/*.mjs，
  * 本文件位于 test/lib/ 子目录，vitest include（test/*.mjs）不会收集它。
  */
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../../lib/index.js'
 
 /** 临时 DSH_HOME 目录（配合 cleanupHome 使用）。 */
 export function createTempHome(prefix = 'dsh-observability-test-') {
-  return mkdtempSync(join(tmpdir(), prefix))
+  return dirSync({ unsafeCleanup: true, prefix }).name
 }
 
 export function cleanupHome(home) {

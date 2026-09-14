@@ -6,12 +6,12 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dsh-my-guardian-edge-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-guardian-edge-' }).name
 process.env.DSH_HOME = dir
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 

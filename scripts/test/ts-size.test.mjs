@@ -12,8 +12,8 @@
  * 解析失败必须显式失败（exit 2），不允许静默跳过。
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ESLint } from 'eslint'
@@ -45,7 +45,7 @@ const fnWithComplexity = (times) => `function f(a) {\n${'  if (a) {}\n'.repeat(t
 
 /** 在临时目录里造一个最小仓库（plugins/<name>/src/**）。 */
 function makeRepo(files) {
-  const root = mkdtempSync(join(tmpdir(), 'ts-size-'))
+  const { name: root } = dirSync({ unsafeCleanup: true, prefix: 'ts-size-' })
   for (const [rel, content] of Object.entries(files)) {
     const full = join(root, rel)
     mkdirSync(dirname(full), { recursive: true })

@@ -8,9 +8,9 @@
  *  - 临时包目录构造（投毒扫描场景需要）。
  */
 import { setWorldConstructor, After } from '@cucumber/cucumber'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { bootPlugin, mockRequest, mockResponse, dispatchEvent, settle } from '../../lib/helpers.mjs'
 
 class World {
@@ -24,7 +24,7 @@ class World {
 
   boot(config, opts) {
     // 场景内共享同一个 DSH_HOME（「插件重启」场景需要跨实例保留告警数据）
-    this.sharedHome ??= mkdtempSync(join(tmpdir(), 'dsh-guard-feature-home-'))
+    this.sharedHome ??= dirSync({ unsafeCleanup: true, prefix: 'dsh-guard-feature-home-' }).name
     this.tmpDirs.push(this.sharedHome)
     this.handle = bootPlugin(config, { ...opts, home: this.sharedHome })
   }
@@ -44,7 +44,7 @@ class World {
   }
 
   createPackage(pkg, files = {}) {
-    const dir = mkdtempSync(join(tmpdir(), 'dsh-guard-feature-pkg-'))
+    const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-guard-feature-pkg-' }).name
     this.tmpDirs.push(dir)
     writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg))
     for (const [name, content] of Object.entries(files)) {

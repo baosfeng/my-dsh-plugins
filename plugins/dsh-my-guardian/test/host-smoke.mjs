@@ -5,12 +5,12 @@ import { test } from 'vitest'
  * isolation, freeze, safe mode, restart recovery and the HTTP API through it.
  */
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dsh-my-guardian-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-guardian-test-' }).name
 process.env.DSH_HOME = dir
 
 // Watchdog self-protection: the guardian must never leak an unhandled

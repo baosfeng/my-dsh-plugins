@@ -6,13 +6,13 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply, inject } from '../lib/index.js'
 import { globalConfigFile } from '../lib/config.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dsm-api-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dsm-api-test-' }).name
 process.env.DSH_HOME = dir
 process.env.DSH_AGENTS_HOME = join(dir, 'agents')
 

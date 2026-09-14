@@ -20,8 +20,8 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { join } from 'node:path'
 import { apply } from '../lib/index.js'
 
@@ -102,7 +102,7 @@ const disposeAlls = []
 
 /** Boot the plugin with a mocked ctx and default test-friendly timing. */
 function boot(config = {}, services = {}, dirOverride) {
-  const dir = dirOverride ?? mkdtempSync(join(tmpdir(), 'dsh-task-reliability-'))
+  const dir = dirOverride ?? dirSync({ unsafeCleanup: true, prefix: 'dsh-task-reliability-' }).name
   if (dirOverride === undefined) tmpDirs.push(dir)
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = dir
@@ -308,7 +308,7 @@ test('任务注册表持久化且重启后恢复', async () => {
 })
 
 test('损坏状态文件回退空表不崩溃', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-task-reliability-broken-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-task-reliability-broken-' }).name
   tmpDirs.push(dir)
   writeFileSync(join(dir, 'task-reliability.json'), '{broken json', 'utf8')
   const env = boot({}, {}, dir)

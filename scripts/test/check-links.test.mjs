@@ -15,8 +15,8 @@
  * fixture 用 mkdtemp 造独立小仓库：非 git 目录 → listFiles 走目录遍历分支（顺带覆盖回退路径）。
  */
 import { afterAll, describe, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { dirname, join } from 'node:path'
 import { REPO_ROOT, anchorsOfContent, runCheck, skillFromPath, slugify, stripHtmlTags } from '../check-links.mjs'
 
@@ -50,7 +50,7 @@ const BASE = {
 
 /** 造 fixture 仓库并返回根目录（extra 覆盖 BASE 同名文件）。 */
 function makeRepo(extra = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'check-links-'))
+  const { name: root } = dirSync({ unsafeCleanup: true, prefix: 'check-links-' })
   tmpRoots.push(root)
   for (const [rel, content] of Object.entries({ ...BASE, ...extra })) {
     const abs = join(root, rel)
@@ -607,7 +607,10 @@ describe('slug 与锚点纯函数', () => {
 
 describe('真实仓库自检', () => {
   it('当前仓库在「无全局 skill」环境下也无失效引用（白名单足以让本地/CI 一致）', () => {
-    const result = runCheck({ root: REPO_ROOT, home: join(tmpdir(), 'check-links-no-such-home') })
+    const result = runCheck({
+      root: REPO_ROOT,
+      home: join(dirSync({ unsafeCleanup: true }).name, 'check-links-no-such-home'),
+    })
     expect(result.findings).toEqual([])
   })
 })

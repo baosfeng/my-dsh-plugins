@@ -13,7 +13,6 @@ import { describe, it, expect, afterAll } from 'vitest'
 import {
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readlinkSync,
   realpathSync,
@@ -21,7 +20,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { dirSync } from 'tmp'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -46,7 +45,7 @@ const repoRoot = join(fileURLToPath(new URL('../../', import.meta.url)))
 const roots = []
 /** 建一个临时工作区目录（自动清理）。 */
 function tempDir(prefix = 'vprofile-') {
-  const dir = mkdtempSync(join(tmpdir(), prefix))
+  const { name: dir } = dirSync({ unsafeCleanup: true, prefix })
   roots.push(dir)
   return dir
 }
@@ -267,7 +266,7 @@ describe('checkAddonResolution', () => {
   })
 
   it('realpathOrNull 对不存在路径返回 null（不抛错）', () => {
-    expect(realpathOrNull(join(tmpdir(), 'definitely-missing-220'))).toBeNull()
+    expect(realpathOrNull(join(dirSync({ unsafeCleanup: true }).name, 'definitely-missing-220'))).toBeNull()
   })
 })
 
@@ -331,7 +330,7 @@ describe('workspace 存储预置', () => {
 
   it('writeWorkspaceStorage：path 取 realpath（macOS /tmp 软链）+ 写入后可回读', () => {
     const base = tempDir()
-    const target = mkdtempSync(join(base, 'ws-'))
+    const { name: target } = dirSync({ dir: base, unsafeCleanup: true, prefix: 'ws-' })
     const alias = join(base, 'tmp-alias')
     symlinkSync(base, alias, 'dir')
     const simHome = join(base, 'sim-home')

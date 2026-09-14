@@ -7,11 +7,11 @@
 import { test } from 'vitest'
 import { vi } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 
-const dir = mkdtempSync(join(tmpdir(), 'dpm-api-test-'))
+import { join } from 'node:path'
+import { dirSync } from 'tmp'
+
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-api-test-' }).name
 
 // ── mocks ──────────────────────────────────────────────────────────────────
 const manageMock = vi.hoisted(() => ({

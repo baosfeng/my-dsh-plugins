@@ -13,9 +13,8 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 
 /** 构造 profile 语义 mock：self 表（会被回收）与 root 表（常驻）分离。 */
@@ -81,7 +80,7 @@ async function dispatchOnRoot(root, name, ...args) {
 }
 
 function withTempHome(run) {
-  const home = mkdtempSync(join(tmpdir(), 'ctx242-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'ctx242-' }).name
   const old = process.env.DSH_HOME
   process.env.DSH_HOME = home
   try {

@@ -2,16 +2,15 @@ import { describe, it, expect, afterEach } from 'vitest'
 /**
  * dsh-my-remote — 路由层单测（/remote/api：fence / token / 分派 / 404 / 审计）。
  */
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 
 const tmpDirs = []
 const disposeAlls = []
 
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-my-remote-route-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-remote-route-' }).name
   tmpDirs.push(dir)
   return dir
 }

@@ -10,9 +10,8 @@
  */
 import { setWorldConstructor, After } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../../../lib/index.js'
 
 class World {
@@ -40,7 +39,7 @@ class World {
   }
 
   boot(config = {}, dirOverride) {
-    this.dir = dirOverride ?? mkdtempSync(join(tmpdir(), 'dsh-task-rel-feature-'))
+    this.dir = dirOverride ?? dirSync({ unsafeCleanup: true, prefix: 'dsh-task-rel-feature-' }).name
     if (dirOverride === undefined) this.dirs.push(this.dir)
     process.env.DSH_HOME = this.dir
     const listeners = this.listeners

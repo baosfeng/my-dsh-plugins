@@ -10,8 +10,8 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { join } from 'node:path'
 import { apply } from '../lib/index.js'
 import { pruneQuestions, addQuestion } from '../lib/store.js'
@@ -79,7 +79,7 @@ const disposeAlls = []
 
 /** Boot 插件：mock ctx 记录 emit 到 env.emitted；emitBroken 模拟 emit 抛错。 */
 function boot(config = {}, services = {}, dirOverride, emitBroken = false) {
-  const dir = dirOverride ?? mkdtempSync(join(tmpdir(), 'dsh-task-reliability-emit-'))
+  const dir = dirOverride ?? dirSync({ unsafeCleanup: true, prefix: 'dsh-task-reliability-emit-' }).name
   if (dirOverride === undefined) tmpDirs.push(dir)
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = dir
@@ -614,7 +614,7 @@ test('addQuestion 后列表不超上限（集成路径）', () => {
 })
 
 test('加载时清理已答/过期问题并落盘', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-task-reliability-prune-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-task-reliability-prune-' }).name
   tmpDirs.push(dir)
   const now = Date.now()
   const store = {

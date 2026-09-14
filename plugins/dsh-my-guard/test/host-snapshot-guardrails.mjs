@@ -14,9 +14,8 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFileSync, existsSync, rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { atomicWriteStats } from 'dsh-shared'
 import { createStore, stateFile } from '../lib/store.js'
 
@@ -31,7 +30,7 @@ async function waitFor(predicate, timeoutMs = 3000) {
 }
 
 test('落盘接入 shared 快照原语：紧凑 JSON（消除 pretty 放大）且可读回', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'guard-snapshot-'))
+  const home = dirSync({ unsafeCleanup: true, prefix: 'guard-snapshot-' }).name
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = home
   try {

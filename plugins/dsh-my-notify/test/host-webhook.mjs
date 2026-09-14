@@ -12,9 +12,9 @@ import { test } from 'vitest'
  *  - 非法 webhooks 输入 400；失败记录环形缓冲上限。
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 import { createFailureLog, createWebhookStore, FAILURE_LOG_LIMIT } from '../lib/webhook-store.js'
 import { patchFileOf } from 'dsh-shared'
@@ -23,7 +23,7 @@ const tmpDirs = []
 const disposeAlls = []
 
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-my-notify-webhook-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-notify-webhook-' }).name
   tmpDirs.push(dir)
   return dir
 }

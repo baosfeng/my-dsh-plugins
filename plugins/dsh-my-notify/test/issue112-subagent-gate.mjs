@@ -16,16 +16,15 @@ import { test } from 'vitest'
  *  - `options.subagentDepth` 形态在关闭时同样被过滤（双通道）。
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 
 const tmpDirs = []
 const disposeAlls = []
 
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-my-notify-issue112-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-notify-issue112-' }).name
   tmpDirs.push(dir)
   return dir
 }

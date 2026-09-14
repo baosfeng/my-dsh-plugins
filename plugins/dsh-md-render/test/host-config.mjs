@@ -11,9 +11,9 @@ import { test } from 'vitest'
  *  - 非法输入 400；非本机来源 403；未知方法 404。
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply, buildOptions } from '../lib/index.js'
 import { extractConfig, patchFileOf } from 'dsh-shared'
 
@@ -21,7 +21,7 @@ const tmpDirs = []
 const disposeAlls = []
 
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-md-render-api-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-md-render-api-' }).name
   tmpDirs.push(dir)
   return dir
 }

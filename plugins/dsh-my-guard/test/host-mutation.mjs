@@ -4,9 +4,9 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { isTrustedApiRequest } from 'dsh-shared'
 import { stateFile } from '../lib/store.js'
 import { commandOf, sessionIdOf } from '../lib/guard.js'
@@ -102,7 +102,7 @@ test('POST /scan without target returns 400', async () => {
 })
 
 test('POST /scan with local path returns findings', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-guard-route-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-guard-route-' }).name
   tmpDirs.push(dir)
   const { writeFileSync } = await import('node:fs')
   writeFileSync(
@@ -220,7 +220,7 @@ test('stateFile: uses DSH_HOME when set', () => {
 // ── 联动：ask 模式 + 投毒扫描同时工作 ─────────────────────────────────────
 
 test('ask mode with plugin add: gate ask + poison scan both fire', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-guard-ask-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-guard-ask-' }).name
   tmpDirs.push(dir)
   const { writeFileSync } = await import('node:fs')
   writeFileSync(

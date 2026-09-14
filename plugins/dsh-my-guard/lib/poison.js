@@ -12,10 +12,10 @@
  *
  * 扫描只读包内容，绝不执行包内脚本/代码。
  */
-import { readFile, readdir, stat, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, basename, extname } from 'node:path';
 import { execFile } from 'node:child_process';
+import tmp from 'tmp';
 import { SUSPICIOUS_SCRIPT_PATTERNS, SECRET_PATTERNS, SUSPICIOUS_FILES, MALICIOUS_DEPENDENCIES, SCAN_IGNORE, MAX_SCAN_FILE_BYTES, MAX_SCAN_FILES, } from './constants.js';
 /** 扫描本地包目录；返回 { ok, findings, scannedFiles, scannedBytes }。 */
 export async function scanPackage(dir) {
@@ -35,16 +35,16 @@ export async function scanPackage(dir) {
 }
 /** 解压 tarball 到临时目录后扫描（不执行包内代码）；返回扫描结果。 */
 export async function scanTarball(tarballPath) {
-    const tmp = await mkdtemp(join(tmpdir(), 'dsh-guard-scan-'));
+    const tmpDir = tmp.dirSync({ unsafeCleanup: true, prefix: 'dsh-guard-scan-' });
     try {
-        await execFileAsync('tar', ['-xzf', tarballPath, '-C', tmp]);
-        return await scanPackage(tmp);
+        await execFileAsync('tar', ['-xzf', tarballPath, '-C', tmpDir.name]);
+        return await scanPackage(tmpDir.name);
     }
     catch (error) {
         return { ok: false, error: errorMessage(error) };
     }
     finally {
-        await rm(tmp, { recursive: true, force: true });
+        tmpDir.removeCallback();
     }
 }
 /**
@@ -108,9 +108,9 @@ async function fetchTarball(pkg) {
         if (!tarballResponse.ok)
             return '';
         const buffer = Buffer.from(await tarballResponse.arrayBuffer());
-        const file = join(tmpdir(), `dsh-guard-${Date.now()}-${Math.random().toString(36).slice(2)}.tgz`);
-        await writeFile(file, buffer);
-        return file;
+        const tmpFile = tmp.fileSync({ postfix: '.tgz', prefix: 'dsh-guard-' });
+        await writeFile(tmpFile.name, buffer);
+        return tmpFile.name;
     }
     catch {
         return '';

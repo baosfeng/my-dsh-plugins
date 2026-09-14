@@ -8,9 +8,9 @@
  *  - 真实临时 git 仓库（git 工具与 diff 审查场景需要）。
  */
 import { setWorldConstructor, After } from '@cucumber/cucumber'
-import { mkdtempSync, rmSync, mkdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { execFileSync } from 'node:child_process'
 import { bootPlugin, mockRequest, mockResponse, dispatchEvent } from '../../lib/helpers.mjs'
 
@@ -26,7 +26,7 @@ class World {
 
   boot(config, opts) {
     // 场景内共享同一个 DSH_HOME（「插件重启」场景需要跨实例保留审计数据）
-    this.sharedHome ??= mkdtempSync(join(tmpdir(), 'dsh-obs-feature-home-'))
+    this.sharedHome ??= dirSync({ unsafeCleanup: true, prefix: 'dsh-obs-feature-home-' }).name
     this.tmpDirs.push(this.sharedHome)
     this.handle = bootPlugin(config, { ...opts, home: this.sharedHome })
   }
@@ -46,7 +46,7 @@ class World {
   }
 
   createRepo() {
-    const dir = mkdtempSync(join(tmpdir(), 'dsh-obs-feature-'))
+    const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-obs-feature-' }).name
     this.tmpDirs.push(dir)
     mkdirSync(join(dir, 'src'), { recursive: true })
     this.git(dir, 'init')

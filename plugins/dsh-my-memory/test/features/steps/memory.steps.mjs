@@ -7,15 +7,15 @@
  */
 import { When, Then, After, setWorldConstructor } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { apply } from '../../../lib/index.js'
 import { projectMemoryDir, projectIdOf } from '../../../lib/store.js'
 
 class World {
   constructor() {
-    this.dir = mkdtempSync(join(tmpdir(), 'dmm-feature-'))
+    this.dir = dirSync({ unsafeCleanup: true, prefix: 'dmm-feature-' }).name
     process.env.DSH_HOME = this.dir
     this.apiHolder = captureRoute('/my-memory/api')
     this.sections = []

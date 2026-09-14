@@ -4,13 +4,13 @@
  * 工作区名 = 会话 cwd 的项目根 basename（findProjectRoot 向上找 .git）。
  */
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { workspaceNameOf } from '../lib/workspace.js'
 
 function tempRepo() {
-  const dir = mkdtempSync(join(tmpdir(), 'stg-ws-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'stg-ws-' }).name
   const repo = join(dir, 'repo')
   mkdirSync(join(repo, 'sub', 'deep'), { recursive: true })
   mkdirSync(join(repo, '.git'))
@@ -37,7 +37,7 @@ describe('workspaceNameOf', () => {
   })
 
   it('无 .git 祖先时返回 cwd 自身 basename', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'stg-ws-'))
+    const dir = dirSync({ unsafeCleanup: true, prefix: 'stg-ws-' }).name
     try {
       expect(await workspaceNameOf(dir)).toBe(dir.split('/').at(-1))
     } finally {

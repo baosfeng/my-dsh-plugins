@@ -7,16 +7,15 @@ import { test, afterAll } from 'vitest'
  * 上限以注入方式设为小值，直接覆盖淘汰分支（语义与默认上限一致）。
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync, writeFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { createStore } from '../lib/store.js'
 import { waitFileContains, waitReady, waitStateFile } from './lib/settle.mjs'
 import { stateFile } from '../lib/state.js'
 
 const dirs = []
 function freshHome(tag) {
-  const dir = mkdtempSync(join(tmpdir(), 'dfa-' + tag + '-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dfa-' + tag + '-' }).name
   dirs.push(dir)
   process.env.DSH_HOME = dir
   return dir

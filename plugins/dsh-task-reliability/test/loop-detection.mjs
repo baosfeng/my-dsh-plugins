@@ -11,9 +11,8 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 import { registerTask } from '../lib/store.js'
 import { detectReasoningLoop, detectToolCallLoop, similarityOf } from '../lib/repeat.js'
@@ -42,7 +41,7 @@ const tmpDirs = []
 const disposeAlls = []
 
 function boot(config = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-loop-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-loop-' }).name
   tmpDirs.push(dir)
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = dir

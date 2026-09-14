@@ -10,16 +10,15 @@ import { test } from 'vitest'
  * 闭环 4（status/audit）：查询接口可见 pending 与审计。
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 
 const tmpDirs = []
 const disposeAlls = []
 
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-my-remote-smoke-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-remote-smoke-' }).name
   tmpDirs.push(dir)
   return dir
 }

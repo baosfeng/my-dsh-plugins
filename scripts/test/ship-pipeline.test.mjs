@@ -10,8 +10,8 @@
  *   5. 本地校验失败 → 不开 PR（fail-closed）。
  */
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { dirSync } from 'tmp'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -54,7 +54,7 @@ function runCli(args, { cwd } = {}) {
  * 而不是依赖跑测试时恰好检出在哪个分支上。
  */
 function makeIsolatedRepo({ branch = 'main' } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'ship-test-'))
+  const { name: dir } = dirSync({ unsafeCleanup: true, prefix: 'ship-test-' })
   tempRoots.push(dir)
   mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true })
   copyFileSync(scriptPath, join(dir, 'scripts', 'ship.mjs'))

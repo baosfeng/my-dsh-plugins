@@ -6,9 +6,9 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import {
   currentProfile,
   profileDirOf,
@@ -24,7 +24,7 @@ import {
 const tmpDirs = []
 
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-shared-'))
+  const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-shared-' }).name
   tmpDirs.push(dir)
   return dir
 }

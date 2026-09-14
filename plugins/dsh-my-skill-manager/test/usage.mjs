@@ -6,13 +6,13 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirSync } from 'tmp'
 import { atomicWriteStats } from 'dsh-shared'
 import { createUsageStore, drainUsage, flushUsage, recordUsage, usageFile, usageSnapshot } from '../lib/usage.js'
 
-const dir = mkdtempSync(join(tmpdir(), 'dsm-usage-test-'))
+const dir = dirSync({ unsafeCleanup: true, prefix: 'dsm-usage-test-' }).name
 process.env.DSH_HOME = dir
 
 afterAll(() => {

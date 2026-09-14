@@ -164,7 +164,12 @@ function installHooks(forkDir) {
  */
 function ensureExclude(forkDir) {
   const excludeFile = join(forkDir, '.git', 'info', 'exclude')
-  const current = existsSync(excludeFile) ? readFileSync(excludeFile, 'utf8') : ''
+  let current = ''
+  try {
+    current = readFileSync(excludeFile, 'utf8')
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
   const appended = excludeAppendContent(current)
   if (!appended) return { ok: true, detail: '已包含 node_modules' }
   try {

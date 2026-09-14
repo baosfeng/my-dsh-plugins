@@ -292,7 +292,8 @@ export function runCheck(options = {}) {
     let content
     try {
       const abs = join(root, file)
-      if (statSync(abs).size > MAX_FILE_BYTES) {
+      const stat = statSync(abs)
+      if (stat.size > MAX_FILE_BYTES) {
         skip(ctx, '超大文件（构建/压缩产物，非文档）')
         continue
       }

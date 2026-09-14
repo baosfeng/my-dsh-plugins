@@ -341,7 +341,12 @@ function parseGitAllowBuildsKey(log) {
 
 function writeAllowBuilds(profileDir, key) {
   const yamlPath = join(profileDir, 'pnpm-workspace.yaml')
-  const existing = existsSync(yamlPath) ? readFileSync(yamlPath, 'utf8') : ''
+  let existing = ''
+  try {
+    existing = readFileSync(yamlPath, 'utf8')
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
   if (existing.includes(key)) return
   // Quoted: a leading @ is reserved in YAML and an unquoted key silently
   // fails to match the allowlist (fleet-verified).

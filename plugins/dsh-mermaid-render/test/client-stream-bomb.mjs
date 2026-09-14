@@ -238,7 +238,10 @@ function makeEnv() {
   global.MutationObserver = FakeMutationObserver
   global.Element = FakeElement
   global.NodeFilter = { SHOW_TEXT: 4 }
-  global.atob = undefined // payload 不可用：MERMAID_UMD 恒为空串（真实引擎路径由浏览器验证覆盖）
+  global.atob = undefined // payload 不可用：fetch 会失败（真实引擎路径由浏览器验证覆盖）
+  global.fetch = async () => {
+    throw new Error('mock fetch: engine not available')
+  } // 模拟 fetch 失败
   return { body, head, document, react, reactDomClient, roots, observers: FakeMutationObserver.instances }
 }
 
@@ -381,8 +384,12 @@ test('引擎加载失败：无炸弹图残留、错误横幅可见、重试按�
     initialize: () => {},
     render: async (id) => ({ svg: '<svg id="' + id + '"></svg>' }),
   }
+  console.log('DEBUG global.window.mermaid:', !!global.window.mermaid)
+  console.log('DEBUG typeof window:', typeof window)
+  console.log('DEBUG window.mermaid:', !!window.mermaid) // eslint-disable-line no-undef
   const retry = findButton(tree, '重试')
   retry.onClick()
+  console.log('DEBUG after retry, mermaidReady should be null')
   const tree2 = renderCard(env, root)
   assert.ok(
     collectCardText(tree2).some((t) => t.includes('渲染中')),
@@ -390,9 +397,21 @@ test('引擎加载失败：无炸弹图残留、错误横幅可见、重试按�
   )
   await sleep(20)
   const tree3 = renderCard(env, root)
+  // Debug: print tree3 structure
+  console.log(
+    'DEBUG tree3:',
+    JSON.stringify(tree3, (key, val) => (typeof val === 'function' ? '[fn]' : val), 2).slice(0, 2000),
+  )
+  const classNames3 = collectClassNames(tree3)
+  const texts3 = collectCardText(tree3)
+  console.log('DEBUG classNames3:', classNames3)
+  console.log('DEBUG texts3:', texts3)
   assert.ok(
-    collectClassNames(tree3).includes('dsh-mermaid-render-svg'),
-    '重试后成功渲染出 SVG（重试清掉了引擎加载缓存）',
+    classNames3.includes('dsh-mermaid-render-svg'),
+    '重试后成功渲染出 SVG（重试清掉了引擎加载缓存）: classNames=' +
+      JSON.stringify(classNames3) +
+      ' texts=' +
+      JSON.stringify(texts3),
   )
 })
 

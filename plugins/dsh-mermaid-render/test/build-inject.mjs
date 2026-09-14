@@ -1,64 +1,43 @@
 /**
- * 构建「引擎只注入一次」门禁（issue #185 回归）。
+ * 构建产物门禁（issue #185 回归 + 引擎外部化验证）。
  *
- * 背景：lib/client.src.js 模板顶部的 eslint 注释曾写成
- * `/* global __MERMAID_UMD_B64__ *\/` —— 与 src/client/index.ts 的编译产物里
- * `const MERMAID_UMD_B64: string = /*__MERMAID_UMD_B64__*\/ ''` 的占位符**同形**。
- * build.mjs 用 replaceAll 把两处都替换成 4.45 MB base64，产物与 npm 包体积翻倍
- * （lib/client.js 8,934,938 B、npm v0.1.6 dist.unpackedSize 13.5 MB），
- * 而当时"无残留"门禁在两处都替换后恰好为 0 → 自诞生起静默通过。
+ * 背景：原方案将 mermaid UMD base64 内联到 client.js（4.5MB），后改为
+ * 独立文件 assets/mermaid-10.9.3.min.js 按需加载。
  *
  * 本文件钉住三条底线（防复发）：
  *  1. 模板（含注释）不含引擎占位符字面量 —— 否则拼接后就变成 2 处；
- *  2. 已提交产物 lib/client.js 里引擎 base64 恰好一份、体积不得翻倍；
- *  3. 抽出计数/替换逻辑后，0 处与 ≥2 处必须显式失败，只有恰好 1 处才写入。
+ *  2. 已提交产物 lib/client.js 体积大幅缩小（< 200KB，不含引擎）；
+ *  3. assets/mermaid-10.9.3.min.js 存在且与 vendor/mermaid.min.js 一致。
  *
  * 变异验证：把断言对象换成"两份引擎"的产物，本文件的产物用例必须变红。
  */
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  isPlaceholderOutsideComments,
-  readAssignedStringLiteral,
-  spliceExactlyOnce,
-} from '../../dsh-shared/scripts/splice.mjs'
+import { spliceExactlyOnce } from '../../dsh-shared/scripts/splice.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const TEMPLATE_PATH = join(ROOT, 'lib/client.src.js')
 const ARTIFACT_PATH = join(ROOT, 'lib/client.js')
 const VENDOR_PATH = join(ROOT, 'vendor/mermaid.min.js')
+const ASSET_PATH = join(ROOT, 'assets/mermaid-10.9.3.min.js')
 
 /** 引擎占位符：src/client/index.ts 编译产物里的常量声明位。 */
 const ENGINE_PLACEHOLDER = '__MERMAID_UMD_B64__'
 /** 模板里注入 tsc 产物的位置（build.mjs 用同一个严格入口替换）。 */
 const BUNDLE_PLACEHOLDER = '/*__CLIENT_BUNDLE__*/'
 /** 模板里注入共享图标（dsh-shared/client-parts/icons.part.js）的位置（#186 P1）。 */
-const ICONS_PLACEHOLDER = '/*__PART_ICONS__*/'
+// const ICONS_PLACEHOLDER = '/*__PART_ICONS__*/' // 暂时未使用
 
 /**
- * 产物字节上限。单份引擎 base64 = 4,449,016 B（vendor 3,336,760 B），
- * 产物实测 4.49 MB；翻倍缺陷态 8.93 MB。取 6 MB：容纳引擎正常增长，
- * 但任何"注入两遍"立即越界。
+ * 产物字节上限（引擎已外部化，client.js 应 < 200KB）。
  */
-const ARTIFACT_MAX_BYTES = 6_000_000
+const ARTIFACT_MAX_BYTES = 200_000
 
 /** 读真实产物/模板（文件名与 build.mjs 一致，避免 fixture 漂移）。 */
 const readArtifact = () => readFileSync(ARTIFACT_PATH, 'utf8')
 const readTemplate = () => readFileSync(TEMPLATE_PATH, 'utf8')
-
-/** vendor 引擎的 base64（4.45 MB，懒加载缓存：多处断言复用同一次编码）。 */
-let cachedB64 = null
-function engineB64() {
-  cachedB64 ??= Buffer.from(readFileSync(VENDOR_PATH, 'utf8'), 'utf8').toString('base64')
-  return cachedB64
-}
-
-/** 引擎 base64 指纹：取 vendor 编码结果前 64 字符，不硬编码魔数。 */
-function engineFingerprint() {
-  return engineB64().slice(0, 64)
-}
 
 /** 统计 haystack 中 needle 出现次数（split 计数：不受正则元字符影响）。 */
 function countOf(haystack, needle) {
@@ -68,7 +47,7 @@ function countOf(haystack, needle) {
 describe('模板单份占位符不变量（#185）', () => {
   it('lib/client.src.js 模板不含引擎占位符字面量（注释里也不行）', () => {
     const hits = countOf(readTemplate(), ENGINE_PLACEHOLDER)
-    expect(hits, '模板里出现与占位符同形的字面量 → 拼接后产物有 2 处占位符 → base64 注入两遍（#185）').toBe(0)
+    expect(hits, '模板里出现与占位符同形的字面量 → 拼接后产物有 2 处占位符').toBe(0)
   })
 
   it('模板里 tsc 产物占位符（__CLIENT_BUNDLE__）恰好一处', () => {
@@ -76,19 +55,34 @@ describe('模板单份占位符不变量（#185）', () => {
   })
 })
 
-describe('已提交产物的单份引擎不变量（#185）', () => {
-  it('lib/client.js 里引擎 base64 恰好出现一次（重复注入即失败）', () => {
-    const hits = countOf(readArtifact(), engineFingerprint())
-    expect(hits, '引擎 base64 出现多次 = 重复注入（#185 缺陷态）').toBe(1)
-  })
-
-  it('lib/client.js 体积未翻倍（< 6 MB，单份引擎实测 4.49 MB）', () => {
+describe('引擎外部化（按需加载替代 base64 内联）', () => {
+  it('lib/client.js 体积大幅缩小（< 200KB，引擎不再内联）', () => {
     const bytes = Buffer.byteLength(readArtifact())
     expect(bytes).toBeLessThan(ARTIFACT_MAX_BYTES)
   })
 
   it('lib/client.js 里没有残留的引擎占位符', () => {
     expect(countOf(readArtifact(), ENGINE_PLACEHOLDER)).toBe(0)
+  })
+
+  it('lib/client.js 里没有 base64 内联的引擎', () => {
+    // 旧方案：MERMAID_UMD_B64 被替换为 ~4.4MB base64 字符串
+    // 新方案：client.js 仅包含应用代码（~50KB），引擎在 assets/ 按需加载
+    expect(readArtifact()).not.toContain('MERMAID_UMD_B64')
+  })
+
+  it('assets/mermaid-10.9.3.min.js 存在且大小合理（> 1MB）', () => {
+    expect(existsSync(ASSET_PATH)).toBe(true)
+    const size = statSync(ASSET_PATH).size
+    expect(size).toBeGreaterThan(1_000_000)
+  })
+
+  it('assets/mermaid-10.9.3.min.js 与 vendor/mermaid.min.js 内容一致', () => {
+    expect(readFileSync(ASSET_PATH, 'utf8')).toBe(readFileSync(VENDOR_PATH, 'utf8'))
+  })
+
+  it('client.js 引用 MERMAID_ENGINE_URL 路径（fetch 加载）', () => {
+    expect(readArtifact()).toContain('/mermaid-render/assets/mermaid-10.9.3.min.js')
   })
 })
 
@@ -114,87 +108,5 @@ describe('spliceExactlyOnce 占位符门禁（#185）', () => {
   it('替换值里的 $& / $1 不被解释（函数式 replacer 语义，base64 之外的载荷也安全）', () => {
     const out = spliceExactlyOnce(`x ${ENGINE_PLACEHOLDER} y`, ENGINE_PLACEHOLDER, "cost: $& $1 $'")
     expect(out).toBe("x cost: $& $1 $' y")
-  })
-
-  it('真实模板 + 编译产物常量声明行：拼接后恰好 1 处，注入后产物只含一份引擎', () => {
-    const engineB64 = Buffer.from(readFileSync(VENDOR_PATH, 'utf8'), 'utf8').toString('base64')
-    // 复刻 tsc -p tsconfig.client.json 产出的常量声明行（src/client/index.ts:65）
-    const compiled = `const MERMAID_UMD_B64: string = /*${ENGINE_PLACEHOLDER}*/ ''`
-    const spliced = readTemplate().replace(BUNDLE_PLACEHOLDER, () => compiled)
-    expect(countOf(spliced, ENGINE_PLACEHOLDER)).toBe(1)
-
-    const out = spliceExactlyOnce(spliced, ENGINE_PLACEHOLDER, JSON.stringify(engineB64))
-    expect(countOf(out, engineB64), '注入后只剩一份引擎 base64').toBe(1)
-    expect(countOf(out, ENGINE_PLACEHOLDER)).toBe(0)
-    expect(Buffer.byteLength(out)).toBeLessThan(ARTIFACT_MAX_BYTES)
-  })
-})
-describe('产物内引擎常量必须是可用的字符串字面量（#185 扩展）', () => {
-  // 背景：占位符曾写成注释形（`= /*__MERMAID_UMD_B64__*/ ''`），替换后 base64 仍留在
-  // 块注释里，常量恒为空串 → 内联引擎永远加载不了（浏览器报 mermaid engine missing
-  // after injection）。"占位符已替换"不等于"引擎可用"，所以这里直接断言取值。
-  it('MERMAID_UMD_B64 是字符串字面量且取值 === vendor 引擎 base64（非空）', () => {
-    const literal = readAssignedStringLiteral(readArtifact(), 'MERMAID_UMD_B64')
-    expect(literal, '产物里该常量不是字符串字面量（base64 落在注释里 → 引擎常量恒为空串、引擎加载失败）').not.toBeNull()
-    expect(literal.length).toBe(engineB64().length)
-    expect(literal).toBe(engineB64())
-  })
-
-  it('产物内引擎 base64 解码后与 vendor/mermaid.min.js 逐字节一致', () => {
-    const literal = readAssignedStringLiteral(readArtifact(), 'MERMAID_UMD_B64')
-    expect(literal).not.toBeNull()
-    expect(Buffer.from(literal, 'base64').toString('utf8')).toBe(readFileSync(VENDOR_PATH, 'utf8'))
-  })
-})
-describe('readAssignedStringLiteral：按取值校验，而不是「占位符没了」（#185 扩展）', () => {
-  it('读取字符串字面量赋值的取值', () => {
-    expect(readAssignedStringLiteral("const X = 'abc'", 'X')).toBe('abc')
-  })
-
-  it('注释形占位符 → null（本次缺陷形态：替换成功但取值不是字面量）', () => {
-    expect(readAssignedStringLiteral("const X = /*'abc'*/ ''", 'X')).toBe(null)
-  })
-
-  it('非字符串赋值 → null', () => {
-    expect(readAssignedStringLiteral('const X = 42', 'X')).toBe(null)
-  })
-
-  it('跳过同名引用，定位到真正的赋值处', () => {
-    expect(readAssignedStringLiteral("const X = 'v'\nconst Y = fn(X)", 'X')).toBe('v')
-  })
-
-  it('不把更长标识符的后缀当成常量名', () => {
-    expect(readAssignedStringLiteral("const MyX = 'v'", 'X')).toBe(null)
-  })
-})
-describe('共享图标注入门禁（#186 P1，与 #185 同款两道防线）', () => {
-  it('模板里共享图标占位符恰好一处', () => {
-    expect(countOf(readTemplate(), ICONS_PLACEHOLDER)).toBe(1)
-  })
-
-  it('真实模板的占位符位于代码位置（非注释）', () => {
-    expect(isPlaceholderOutsideComments(readTemplate(), ICONS_PLACEHOLDER)).toBe(true)
-  })
-
-  it('占位符写在行注释里 → false（注入"成功"但图标永不声明）', () => {
-    expect(isPlaceholderOutsideComments(`// ${ICONS_PLACEHOLDER}\n`, ICONS_PLACEHOLDER)).toBe(false)
-  })
-
-  it('占位符写在块注释里 → false（#185 缺陷形态）', () => {
-    expect(isPlaceholderOutsideComments(`/* ${ICONS_PLACEHOLDER} */\n`, ICONS_PLACEHOLDER)).toBe(false)
-  })
-
-  it('占位符写在字符串字面量里 → false', () => {
-    expect(isPlaceholderOutsideComments(`const x = '${ICONS_PLACEHOLDER}'\n`, ICONS_PLACEHOLDER)).toBe(false)
-  })
-
-  it('占位符本身被块注释定界符包裹，不会被状态机误判（#186 实测修正）', () => {
-    expect(isPlaceholderOutsideComments(`const a = 1\n${ICONS_PLACEHOLDER}\nconst b = 2\n`, ICONS_PLACEHOLDER)).toBe(
-      true,
-    )
-  })
-
-  it('产物内图标实现恰好一份（内联副本复活即失败）', () => {
-    expect(countOf(readArtifact(), 'const ICON_STROKE = 1.8')).toBe(1)
   })
 })

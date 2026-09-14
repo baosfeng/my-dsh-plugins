@@ -63,19 +63,20 @@ declare const window: Window & { mermaid?: MermaidEngine }
 // Client 端编译为 CommonJS，需要声明 exports 变量
 declare const exports: Record<string, unknown>
 
-// ── engine part：vendored mermaid engine ─────────────────────────────
+// ── engine part：vendored mermaid engine（按需加载，非 base64 内联）──────
 
-const MERMAID_UMD_B64: string = '__MERMAID_UMD_B64__' // 须在字符串字面量内（构建替换为 base64）；勿写同形字面量
-
-/** base64 解码为 UTF-8 字符串。 */
-function b64ToUtf8(b64: string): string {
-  const bin = atob(b64)
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return new TextDecoder('utf-8').decode(bytes)
-}
-
-const MERMAID_UMD: string = typeof atob === 'function' ? b64ToUtf8(MERMAID_UMD_B64) : ''
+/**
+ * mermaid 引擎由 DSH webServer 从插件 assets 目录静态托管。
+ * 首次渲染时 fetch 加载，不阻塞启动。
+ *
+ * 构建期：scripts/build.mjs 将 vendor/mermaid.min.js 复制到
+ * assets/mermaid-10.9.3.min.js（由 DSH webServer 静态服务）。
+ * 运行时：ensureMermaid() 首次调用时 fetch 该文件并注入 <script>。
+ *
+ * 降级路径：fetch 失败时（离线/路径错误）回退到旧方案——检查
+ * window.mermaid 是否已由外部加载。
+ */
+const MERMAID_ENGINE_URL = '/mermaid-render/assets/mermaid-10.9.3.min.js'
 
 let mermaidReady: Promise<MermaidEngine> | null = null
 
@@ -100,9 +101,15 @@ function initEngine(engine: MermaidEngine): MermaidEngine {
   return engine
 }
 
-/** Load (or reuse) the embedded mermaid engine on window.mermaid. */
+/** Load (or reuse) the mermaid engine. Fetch from assets on first use. */
 function ensureMermaid(): Promise<MermaidEngine> {
-  if (typeof window !== 'undefined' && window.mermaid) return Promise.resolve(initEngine(window.mermaid))
+  if (typeof window !== 'undefined' && window.mermaid) {
+    console.log('DEBUG ensureMermaid: window.mermaid found, returning directly')
+    const result = Promise.resolve(initEngine(window.mermaid))
+    console.log('DEBUG ensureMermaid: returning promise:', typeof result)
+    return result
+  }
+  console.log('DEBUG ensureMermaid: window.mermaid not found, mermaidReady:', !!mermaidReady)
   if (mermaidReady) return mermaidReady
   mermaidReady = new Promise<MermaidEngine>((resolve, reject) => {
     try {
@@ -110,16 +117,27 @@ function ensureMermaid(): Promise<MermaidEngine> {
         reject(new Error('no document to inject mermaid'))
         return
       }
-      const script = document.createElement('script')
-      script.textContent = MERMAID_UMD
-      script.onerror = () => reject(new Error('mermaid engine failed to load'))
-      document.head.appendChild(script)
-      const m = typeof window !== 'undefined' ? window.mermaid : undefined
-      if (!m) {
-        reject(new Error('mermaid engine missing after injection'))
-        return
-      }
-      resolve(initEngine(m))
+      // fetch mermaid UMD from assets (served by DSH webServer)
+      fetch(MERMAID_ENGINE_URL)
+        .then((resp) => {
+          if (!resp.ok) throw new Error(`mermaid engine fetch failed: ${resp.status}`)
+          return resp.text()
+        })
+        .then((code) => {
+          const script = document.createElement('script')
+          script.textContent = code
+          script.onerror = () => reject(new Error('mermaid engine script injection failed'))
+          document.head.appendChild(script)
+          const m = typeof window !== 'undefined' ? window.mermaid : undefined
+          if (!m) {
+            reject(new Error('mermaid engine missing after injection'))
+            return
+          }
+          resolve(initEngine(m))
+        })
+        .catch((err: unknown) => {
+          reject(err instanceof Error ? err : new Error(String(err)))
+        })
     } catch (err) {
       reject(err instanceof Error ? err : new Error(String(err)))
     }

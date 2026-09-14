@@ -12,6 +12,7 @@ import { apply } from '../lib/index.js'
 function boot() {
   const logs = []
   const ctx = {
+    effect: () => () => {},
     logger: {
       info: (message) => logs.push(message),
       warn: (message) => logs.push(message),
@@ -30,5 +31,5 @@ test('apply logs an info line with the [dsh-mermaid-render] prefix (issue #155)'
 })
 
 test('apply tolerates a missing logger (optional chaining)', async () => {
-  assert.doesNotThrow(() => apply({}), 'apply must not throw without a logger')
+  assert.doesNotThrow(() => apply({ effect: () => () => {} }), 'apply must not throw without a logger')
 })

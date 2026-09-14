@@ -13,6 +13,10 @@
 export interface DshContext {
   /** systemPrompt 服务（inject 声明后可用）。 */
   systemPrompt?: SystemPromptService
+  /** webServer 服务（静态文件路由）。 */
+  webServer?: WebServerService
+  /** 注册副作用（返回 disposer，随 fiber teardown 自动卸载）。 */
+  effect(callback: () => void | (() => void), label?: string): void
   /** 日志器。 */
   logger?: {
     info(msg: string): void
@@ -25,4 +29,14 @@ export interface DshContext {
 export interface SystemPromptService {
   /** 注册一条有序 section；同名重复注册会抛错。返回 disposer。 */
   section(options: { name: string; order: number; text: string | (() => string) }): () => void
+}
+
+/** webServer 服务（HTTP 路由注册）。 */
+export interface WebServerService {
+  /** 注册路由；返回 disposer。 */
+  register(options: {
+    kind: string
+    path: string
+    handler: (req: unknown, res: unknown) => void | Promise<void>
+  }): () => void
 }

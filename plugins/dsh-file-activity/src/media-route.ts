@@ -13,7 +13,7 @@
  * fence), the client falls back to this route and receives an fs.read-shaped
  * JSON payload ({ ok, value: { content } }) so the viewer mounts unchanged.
  */
-import { readFile, stat } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { basename, isAbsolute, join } from 'node:path'
 import { writeJson } from 'dsh-shared'
 import { sessionCwdOf } from './cwd.js'

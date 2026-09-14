@@ -29,6 +29,7 @@ function boot(config) {
   const sections = []
   const logs = []
   const ctx = {
+    effect: () => () => {},
     systemPrompt: {
       section(options) {
         sections.push(options)
@@ -163,13 +164,15 @@ describe('apply() 注入行为（issue #194）', () => {
   })
 
   it('缺 systemPrompt 服务时不抛错（guard 降级，client 端照常渲染）', () => {
-    expect(() => apply({}, undefined)).not.toThrow()
-    expect(() => apply({ logger: { info: () => {} } }, undefined)).not.toThrow()
+    expect(() => apply({ effect: () => () => {} }, undefined)).not.toThrow()
+    expect(() => apply({ effect: () => () => {}, logger: { info: () => {} } }, undefined)).not.toThrow()
   })
 
   it('缺 logger 时不抛错（可选链）', () => {
     const sections = []
-    expect(() => apply({ systemPrompt: { section: (o) => sections.push(o) } }, undefined)).not.toThrow()
+    expect(() =>
+      apply({ effect: () => () => {}, systemPrompt: { section: (o) => sections.push(o) } }, undefined),
+    ).not.toThrow()
     expect(sections).toHaveLength(1)
   })
 })

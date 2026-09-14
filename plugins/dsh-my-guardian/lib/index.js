@@ -80,8 +80,7 @@ function applyWithScopedServices(ctx) {
     // 优先用常驻 root ctx 承载局部 inject（issue #242：profile 插件自身的 ctx 可能
     // 在加载时序里 inactive；root 常驻）。
     const hostCtx = ctx.root ?? ctx;
-    const inject = hostCtx
-        .inject;
+    const inject = hostCtx.inject;
     if (typeof inject !== 'function')
         return applyInner(ctx);
     let shared;

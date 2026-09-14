@@ -179,7 +179,7 @@ function onLoaded(handle, text) {
         // 整体换对象会让外部持有者永远停在旧数组上
         handle.store.state.alerts = parsed.alerts;
         // 恢复 seq 到已存在 id 的最大值，确保重启后 id 唯一性
-        const maxId = Math.max(0, ...parsed.alerts.map(a => a.id ?? 0));
+        const maxId = Math.max(0, ...parsed.alerts.map((a) => a.id ?? 0));
         if (maxId > handle.seq) {
             handle.seq = maxId;
         }

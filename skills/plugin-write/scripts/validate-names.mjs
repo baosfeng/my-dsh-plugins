@@ -203,7 +203,7 @@ function validateOwnership(values, surface, bases, policy, errors, warnings) {
 
     if (surface === 'pluginNames') continue
 
-    let owned = true
+    let owned
     if (surface === 'services') owned = hasCamelPrefix(value, bases.camel)
     else if (surface === 'tools') owned = hasDelimitedPrefix(value, bases.snake, '_')
     else if (surface === 'events') owned = value.startsWith(`${bases.kebab}/`)

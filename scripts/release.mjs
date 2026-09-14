@@ -628,7 +628,7 @@ async function processPlugin(name, ctx) {
   // 失败代价与串行版持平；一旦通过，1a/3/3c 全部并发启动，成功路径 ≈ max(三者)。
   const staticBlocked = !shapeOk || !peerOk || !depOk || !changelogOk || !screenshotOk
   const skipReal = skipRealVerify || process.env.GITHUB_ACTIONS === 'true' || process.env.DSH_SKIP_REAL_VERIFY === '1'
-  let realPlan = { mode: 'skip', note: '' }
+  let realPlan
   if (allChecks) {
     // --all-checks 只做静态门禁全景：真实环境验证需要隔离实例 + 功能级清单勾选，
     // 属动态门禁，不在此模式执行（发布路径仍走完整 fail-fast 门禁）。

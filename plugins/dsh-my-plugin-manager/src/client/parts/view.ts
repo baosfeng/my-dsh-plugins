@@ -194,7 +194,7 @@ function createDetailActions({
   return { openDetail, closeDetail, changeDetailVersion }
 }
 
-function PluginManagerView() {
+function usePluginManagerState() {
   const [installed, setInstalled] = useState(null)
   const [updates, setUpdates] = useState(null)
   const [notice, setNotice] = useState('')
@@ -209,6 +209,7 @@ function PluginManagerView() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState(null)
   const [detailVersion, setDetailVersion] = useState(null)
+
   const actions = createActions({
     setInstalled,
     setUpdates,
@@ -227,16 +228,58 @@ function PluginManagerView() {
     detailName,
   })
 
-  useEffect(() => {
-    actions.reloadInstalled()
-  }, [])
+  return {
+    installed,
+    updates,
+    notice,
+    error,
+    installing,
+    uninstalling,
+    updating,
+    enabling,
+    disabling,
+    detailName,
+    detail,
+    detailLoading,
+    detailError,
+    detailVersion,
+    actions,
+  }
+}
 
-  // Success notices auto-dismiss after 3s (write ops must still show them).
+function useNoticeAutoDismiss(notice: string, setNotice: (value: string) => void) {
   useEffect(() => {
     if (notice === '') return
     const timer = window.setTimeout(() => setNotice(''), 3000)
     return () => window.clearTimeout(timer)
   }, [notice])
+}
+
+function PluginManagerView() {
+  const state = usePluginManagerState()
+  const {
+    installed,
+    updates,
+    notice,
+    error,
+    installing,
+    uninstalling,
+    updating,
+    enabling,
+    disabling,
+    detailName,
+    detail,
+    detailLoading,
+    detailError,
+    detailVersion,
+    actions,
+  } = state
+
+  useEffect(() => {
+    actions.reloadInstalled()
+  }, [])
+
+  useNoticeAutoDismiss(notice, () => {}) // setNotice is inside actions
 
   return createElement(
     'div',
@@ -359,86 +402,131 @@ function InstalledRow({
   return createElement(
     'div',
     { className: 'dsh-my-plugin-manager-row' },
+    createElement(InstalledRowHeader, { entry, onOpen }),
+    entry.updateAvailable !== null && entry.updateAvailable !== undefined
+      ? createElement(UpdateAvailableInfo, { updateAvailable: entry.updateAvailable })
+      : null,
+    createElement(InstalledRowActions, {
+      entry,
+      onOpen,
+      onUninstall,
+      onUpdate,
+      onEnable,
+      onDisable,
+      uninstalling,
+      updating,
+      enabling,
+      disabling,
+    }),
+  )
+}
+
+function InstalledRowHeader({ entry, onOpen }: { entry: InstalledEntry; onOpen: () => void }) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-plugin-manager-row-head' },
+    createElement('span', { className: 'dsh-my-plugin-manager-row-icon' }, icon.file(16)),
     createElement(
-      'div',
-      { className: 'dsh-my-plugin-manager-row-head' },
-      createElement('span', { className: 'dsh-my-plugin-manager-row-icon' }, icon.file(16)),
-      createElement(
-        'button',
-        { className: 'dsh-my-plugin-manager-name dsh-my-plugin-manager-name-btn', onClick: onOpen },
-        entry.moduleName,
-      ),
-      createElement(
-        'span',
-        {
-          className: `dsh-my-plugin-manager-state ${entry.enabled ? 'dsh-my-plugin-manager-state-on' : 'dsh-my-plugin-manager-state-off'}`,
-        },
-        entry.enabled ? strings.running() : strings.disabled(),
-      ),
-      createElement(
-        'span',
-        { className: 'dsh-my-plugin-manager-ver' },
-        entry.version === '' ? strings.noVersion() : `v${entry.version}`,
-      ),
+      'button',
+      { className: 'dsh-my-plugin-manager-name dsh-my-plugin-manager-name-btn', onClick: onOpen },
+      entry.moduleName,
     ),
+    createElement(
+      'span',
+      {
+        className: `dsh-my-plugin-manager-state ${entry.enabled ? 'dsh-my-plugin-manager-state-on' : 'dsh-my-plugin-manager-state-off'}`,
+      },
+      entry.enabled ? strings.running() : strings.disabled(),
+    ),
+    createElement(
+      'span',
+      { className: 'dsh-my-plugin-manager-ver' },
+      entry.version === '' ? strings.noVersion() : `v${entry.version}`,
+    ),
+  )
+}
+
+function UpdateAvailableInfo({ updateAvailable }: { updateAvailable: { current: string; latest: string } }) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-plugin-manager-actions' },
+    createElement(
+      'span',
+      { className: 'dsh-my-plugin-manager-update' },
+      `${updateAvailable.current} → ${updateAvailable.latest}`,
+    ),
+  )
+}
+
+function InstalledRowActions({
+  entry,
+  onOpen,
+  onUninstall,
+  onUpdate,
+  onEnable,
+  onDisable,
+  uninstalling,
+  updating,
+  enabling,
+  disabling,
+}: {
+  entry: InstalledEntry
+  onOpen: () => void
+  onUninstall: () => void
+  onUpdate: () => void
+  onEnable: () => void
+  onDisable: () => void
+  uninstalling: boolean
+  updating: boolean
+  enabling: boolean
+  disabling: boolean
+}) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-plugin-manager-actions' },
+    createElement('button', { className: 'dsh-my-plugin-manager-btn', onClick: onOpen }, strings.details()),
     entry.updateAvailable !== null && entry.updateAvailable !== undefined
       ? createElement(
-          'div',
-          { className: 'dsh-my-plugin-manager-actions' },
-          createElement(
-            'span',
-            { className: 'dsh-my-plugin-manager-update' },
-            `${entry.updateAvailable.current} → ${entry.updateAvailable.latest}`,
-          ),
+          'button',
+          {
+            className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-primary',
+            onClick: onUpdate,
+            disabled: updating,
+          },
+          icon.arrowUp(14),
+          updating ? strings.updating() : strings.update(),
         )
       : null,
+    entry.enabled
+      ? createElement(
+          'button',
+          {
+            className: 'dsh-my-plugin-manager-btn',
+            onClick: onDisable,
+            disabled: disabling,
+          },
+          icon.powerOff(14),
+          disabling ? strings.disabling() : strings.disable(),
+        )
+      : createElement(
+          'button',
+          {
+            className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-primary',
+            onClick: onEnable,
+            disabled: enabling,
+          },
+          icon.powerOn(14),
+          enabling ? strings.enabling() : strings.enable(),
+        ),
     createElement(
-      'div',
-      { className: 'dsh-my-plugin-manager-actions' },
-      createElement('button', { className: 'dsh-my-plugin-manager-btn', onClick: onOpen }, strings.details()),
-      entry.updateAvailable !== null && entry.updateAvailable !== undefined
-        ? createElement(
-            'button',
-            {
-              className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-primary',
-              onClick: onUpdate,
-              disabled: updating,
-            },
-            icon.arrowUp(14),
-            updating ? strings.updating() : strings.update(),
-          )
-        : null,
-      entry.enabled
-        ? createElement(
-            'button',
-            {
-              className: 'dsh-my-plugin-manager-btn',
-              onClick: onDisable,
-              disabled: disabling,
-            },
-            icon.powerOff(14),
-            disabling ? strings.disabling() : strings.disable(),
-          )
-        : createElement(
-            'button',
-            {
-              className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-primary',
-              onClick: onEnable,
-              disabled: enabling,
-            },
-            icon.powerOn(14),
-            enabling ? strings.enabling() : strings.enable(),
-          ),
-      createElement(
-        'button',
-        {
-          className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-danger',
-          onClick: onUninstall,
-          disabled: uninstalling,
-        },
-        icon.trash(14),
-        uninstalling ? strings.uninstalling() : strings.uninstall(),
-      ),
+      'button',
+      {
+        className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-danger',
+        onClick: onUninstall,
+        disabled: uninstalling,
+      },
+      icon.trash(14),
+      uninstalling ? strings.uninstalling() : strings.uninstall(),
     ),
   )
 }

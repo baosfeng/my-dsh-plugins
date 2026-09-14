@@ -267,7 +267,7 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
   const loadPromise = Promise.all([globalStore.load(), candidatesStore.load()]).catch(() => {})
 
   ctx.effect(() => {
-    loadPromise
+    void loadPromise
     return () => {
       Promise.all([globalStore.flush(), candidatesStore.flush()]).catch(() => {})
       ;[...projectStores.values()].forEach((store) => store.flush().catch(() => {}))

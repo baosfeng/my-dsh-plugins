@@ -76,7 +76,7 @@ function makeOriginRepo(tmpRoot, id = 'origin') {
   spawnSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'init'], {
     encoding: 'utf8',
   })
-  // issue #337：origin 必须是**本地**远端。原先写死 `https://github.com/o/r.git`，
+  // issue #346：origin 必须是**本地**远端。原先写死 `https://github.com/o/r.git`，
   // 于是 create 流程里的 `git ls-remote` 会去连 github.com —— 本机网络不可达时该用例必红，
   // 而它测的是 exclude 写入/软链拒绝，跟网络毫无关系。
   spawnSync('git', ['-C', dir, 'remote', 'add', 'origin', dir], { encoding: 'utf8' })
@@ -208,7 +208,7 @@ describe('基线判定', () => {
   })
 
   /**
-   * issue #337：**查不到 ≠ 过期**。远端查询失败（网络不通/代理挂）时 `remoteHeadSha`
+   * issue #346：**查不到 ≠ 过期**。远端查询失败（网络不通/代理挂）时 `remoteHeadSha`
    * 返回空串 → 这里必须是 `stale: null`（"无法比对"），不能判成"基线过期"——否则网络问题
    * 会被伪装成"你的分支该 rebase 了"，把人引到错误方向。
    */
@@ -390,7 +390,7 @@ describe('推送前自检结论', () => {
   })
 })
 
-describe('isLocalRemote（本地远端判据，issue #337）', () => {
+describe('isLocalRemote（本地远端判据，issue #346）', () => {
   it('本地路径 / file:// → true（不依赖网络）', () => {
     for (const url of ['/tmp/x/gh-fork-origin', 'file:///tmp/x/origin', './relative/origin', '../up/origin']) {
       expect(isLocalRemote(url), url).toBe(true)
@@ -411,7 +411,7 @@ describe('isLocalRemote（本地远端判据，issue #337）', () => {
     expect(isLocalRemote(null)).toBe(false)
   })
 
-  it('本地 origin 的 create 全流程不依赖网络（#337 的核心修复）', { timeout: 60_000 }, () => {
+  it('本地 origin 的 create 全流程不依赖网络（#346 的核心修复）', { timeout: 60_000 }, () => {
     // makeOriginRepo 现在把 origin 指向本地目录；若实现回退成 github.com URL，
     // 本用例在网络不可达的机器上就会失败（这正是修复前的形态）。
     const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })

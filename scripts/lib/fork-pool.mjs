@@ -94,7 +94,7 @@ export function parseOwnerRepo(remoteUrl) {
 
 /** fetch 走 https + 代理（本机唯一可靠下行通路）；push 走 SSH（不经代理，代理挂了也能推）。 */
 /**
- * 远端是否为「本地，不依赖网络」（issue #337）：本地路径 / `file://` → true；
+ * 远端是否为「本地，不依赖网络」（issue #346）：本地路径 / `file://` → true；
  * http(s):// · git:// · ssh:// · scp 式 `user@host:path` → false（这些要走远端规范化）。
  *
  * 为什么单独成纯函数：`parseOwnerRepo` 对任何 `a/b` 形态都会给出 owner/repo，所以

@@ -35,7 +35,6 @@ export function parseShipArgs(argv = []) {
     issue: null,
     base: 'main',
     dryRun: false,
-    json: false,
     help: false,
     errors: [],
   }
@@ -76,9 +75,9 @@ export function parseShipArgs(argv = []) {
       case '--dry-run':
         options.dryRun = true
         break
-      case '--json':
-        options.json = true
-        break
+      // 曾经的 `--json` 已删除（issue #337）：它被解析、被单测断言"被识别"，但 ship.mjs
+      // 从未消费它 —— 是个**静默失效的开关**，还给出了"它可用"的假保障。
+      // **接受但从不使用的参数比没有更糟**：宁可在这里以「未知参数」显式报错（exit 2）。
       case '-h':
       case '--help':
         options.help = true
@@ -139,15 +138,21 @@ export function externalActionPlan({ push = false, pr = false, dryRun = false } 
   return { required: true, actions, reason: `已显式同意外发：${actions.join(' + ')}` }
 }
 
-/** 流水线步骤清单（纯数据，供 CLI 执行与单测断言顺序）。 */
-export function planShipSteps({ push = false, pr = false } = {}) {
+/**
+ * 流水线步骤清单（纯数据，供 CLI 执行与单测断言顺序）。
+ *
+ * `verifyMode`（issue #337）必须由调用方传入**实际要跑的模式**，标签不再是写死的
+ * `--fast`：#330 把默认从 `--fast` 改成 CI 等价全量后，写死的标签就成了"文案说谎"
+ * （用户/agent 据此以为很快）。参数化之后，改默认值不会再让文案与行为脱同步。
+ */
+export function planShipSteps({ push = false, pr = false, verifyMode = 'full' } = {}) {
   const steps = [
     { id: 'preflight', label: '前置检查（分支 / 提交信息 / 是否有改动）' },
     { id: 'commit', label: 'git commit（保留 pre-commit 门禁）' },
   ]
   if (push) {
     steps.push({ id: 'push', label: 'git push（跳过 pre-push，改由下一步并行校验承担）' })
-    steps.push({ id: 'verify', label: 'verify-local --fast（与 CI 并行执行）' })
+    steps.push({ id: 'verify', label: `verify-local --${verifyMode}（与 CI 并行执行）` })
   }
   if (pr) steps.push({ id: 'pr', label: 'ghops pr create（校验失败则不建 PR）' })
   return steps
@@ -167,11 +172,11 @@ export function renderShipPlan({ branch, message, steps = [], external = null } 
 }
 
 /** 结果汇总（CLI 末尾打印；ok=false 时调用方必须非零退出）。 */
-export function renderShipResult({ commit = null, push = null, verify = null, pr = null } = {}) {
+export function renderShipResult({ commit = null, push = null, verify = null, pr = null, verifyMode = 'full' } = {}) {
   const lines = []
   if (commit) lines.push(`${commit.ok ? '✔' : '✖'} commit：${commit.detail}`)
   if (push) lines.push(`${push.ok ? '✔' : '✖'} push：${push.detail}`)
-  if (verify) lines.push(`${verify.ok ? '✔' : '✖'} 本地校验（verify-local --fast）：${verify.detail}`)
+  if (verify) lines.push(`${verify.ok ? '✔' : '✖'} 本地校验（verify-local --${verifyMode}）：${verify.detail}`)
   if (pr) lines.push(`${pr.ok ? '✔' : '✖'} PR：${pr.detail}`)
   const failed = [commit, push, verify, pr].filter((item) => item && !item.ok)
   const ok = failed.length === 0

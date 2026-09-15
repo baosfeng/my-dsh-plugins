@@ -220,6 +220,15 @@ jobs:
       - name: Client bundle module allowlist (check-client-modules)
         run: npm run check:client-modules
 
+      # 客户端产物体积预算（issue #322）：产物体积直接决定用户下载量与加载时间，
+      # 而 issue #185 曾把 4.48 MB 冗余（3.3 MB mermaid UMD base64 内联）注入 client bundle，
+      # 纯靠人工发现。门禁范围是**完整发布面**（以插件 package.json 的 files 为准：
+      # lib/** 与 assets/**）——只查 lib/client.js 会漏掉 99%（mermaid 的 assets 引擎单个 3.18 MB，
+      # 该插件 npm pack unpacked 3.44 MB 里引擎占 92%）。上限 = 基线 + max(64 KB, 基线×15%)，
+      # 基线见 scripts/client-size-baseline.json（含测量时间与来源）。
+      - name: Client artifact size budget (check-client-size)
+        run: npm run check:client-size
+
       - name: Format check (prettier)
         run: npx prettier --check .
 

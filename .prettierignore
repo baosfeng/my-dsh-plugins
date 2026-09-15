@@ -57,3 +57,11 @@ skills/plugin-workflow/
 skills/plugin-write/
 skills/README.md
 skills/README.en.md
+
+# CI 自产审查报告（issue #303）：审查 job 在仓库根生成 *-report.md / *-check.txt / *-report.json
+# 等中间产物，`prettier --check .` 会扫到它们 → 「格式检查」必然失败（假警报；
+# 评论里那条 `[warn] docs-report.md` 就是证据）。这些文件不进版本控制，也不该参与格式门禁。
+*-report.md
+*-report.txt
+*-report.json
+*-check.txt

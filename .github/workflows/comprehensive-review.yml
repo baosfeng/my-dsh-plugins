@@ -1,5 +1,10 @@
-# 全面自动审查工作流
-# 从多个角度自动审查 PR，提供详细的审查报告
+# 全面自动审查工作流（本仓库唯一的 PR 自动审查 workflow，issue #303）
+# 从多个角度自动审查 PR，提供详细的审查报告。
+# 去重说明：原 auto-code-review.yml 的 5 个 job（code-quality/security-review/performance-review/
+# test-review/documentation-review）是本文件 7 个 job 的真子集，两者监听同一事件导致每次 push
+# 发两套报告（#295 累计 36 条 bot 评论），故删除 auto-code-review.yml，只保留本文件。
+# 每个 job 发一条 sticky 评论（marker 去重，push 时 update 而非 append），
+# 评论正文经 .github/scripts/review-comment.cjs 剥色，避免 ANSI 乱码。
 
 name: Comprehensive Review
 
@@ -10,6 +15,14 @@ on:
 permissions:
   contents: read
   pull-requests: write
+
+# issue #303：CI runner 上 npm/prettier 等命令输出带 ANSI 颜色（实测日志中的 \u001b[36;1m…），
+# 被 cat 进报告再发成评论后 GitHub 不解析转义 → 页面上出现 [33mwarn[39m 之类乱码。
+# 这里统一关色；github-script 侧再用 .github/scripts/review-comment.cjs 兜底剥离（双保险）。
+env:
+  NO_COLOR: '1'
+  FORCE_COLOR: '0'
+  TERM: dumb
 
 jobs:
   # 代码质量审查
@@ -87,15 +100,16 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
             const report = fs.readFileSync('review-report.md', 'utf8');
-            const body = `## 🔍 代码质量审查报告\n\n${report}`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
+            const res = await upsertReviewComment({
+              github,
+              context,
+              id: 'code-quality',
+              heading: '## 🔍 代码质量审查报告',
+              report,
             });
+            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
 
   # 安全审查
   security-review:
@@ -147,15 +161,16 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
             const report = fs.readFileSync('security-report.md', 'utf8');
-            const body = `## 🔒 安全审查报告\n\n${report}`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
+            const res = await upsertReviewComment({
+              github,
+              context,
+              id: 'security-review',
+              heading: '## 🔒 安全审查报告',
+              report,
             });
+            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
 
   # 性能审查
   performance-review:
@@ -217,15 +232,16 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
             const report = fs.readFileSync('performance-report.md', 'utf8');
-            const body = `## ⚡ 性能审查报告\n\n${report}`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
+            const res = await upsertReviewComment({
+              github,
+              context,
+              id: 'performance-review',
+              heading: '## ⚡ 性能审查报告',
+              report,
             });
+            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
 
   # 测试审查
   test-review:
@@ -272,15 +288,16 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
             const report = fs.readFileSync('test-report.md', 'utf8');
-            const body = `## 🧪 测试审查报告\n\n${report}`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
+            const res = await upsertReviewComment({
+              github,
+              context,
+              id: 'test-review',
+              heading: '## 🧪 测试审查报告',
+              report,
             });
+            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
 
   # 文档审查
   documentation-review:
@@ -324,7 +341,7 @@ jobs:
 
           # 格式检查
           echo "### 格式检查" >> docs-report.md
-          if npx prettier --check . > format-check.txt 2>&1; then
+          if npx prettier --check . --no-color > format-check.txt 2>&1; then
             echo "✅ 格式检查通过" >> docs-report.md
           else
             echo "❌ 格式检查失败" >> docs-report.md
@@ -342,15 +359,16 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
             const report = fs.readFileSync('docs-report.md', 'utf8');
-            const body = `## 📚 文档审查报告\n\n${report}`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
+            const res = await upsertReviewComment({
+              github,
+              context,
+              id: 'documentation-review',
+              heading: '## 📚 文档审查报告',
+              report,
             });
+            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
 
   # API 设计审查
   api-design-review:
@@ -397,15 +415,16 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
             const report = fs.readFileSync('api-report.md', 'utf8');
-            const body = `## 🔌 API 设计审查报告\n\n${report}`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
+            const res = await upsertReviewComment({
+              github,
+              context,
+              id: 'api-design-review',
+              heading: '## 🔌 API 设计审查报告',
+              report,
             });
+            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
 
   # 依赖审查
   dependency-review:
@@ -457,12 +476,13 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
             const report = fs.readFileSync('dependency-report.md', 'utf8');
-            const body = `## 📦 依赖审查报告\n\n${report}`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
+            const res = await upsertReviewComment({
+              github,
+              context,
+              id: 'dependency-review',
+              heading: '## 📦 依赖审查报告',
+              report,
             });
+            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);

@@ -122,10 +122,13 @@ function parseReport(md) {
   const text = stripAnsi(String(md || ''))
   const conclusion = (/##\s*结论\s*\n+\s*([^\n]+)/.exec(text) || [])[1]
   const stats = (/统计：([^\n]+)/.exec(text) || [])[1]
-  const evidence = text
+  const hint = (/^- \*\*提示（非门禁）\*\*：([^\n]+)/m.exec(text) || [])[1]
+  // 只从「## 关键证据」段里取证据行，避免把「## 建议」里的条目当证据
+  const evidenceBlock = (/##\s*关键证据[^\n]*\n([\s\S]*?)(?:\n##\s|$)/.exec(text) || [])[1] || text
+  const evidence = evidenceBlock
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => /^-\s+\S/.test(l))
+    .filter((l) => /^-\s+\S/.test(l) && !l.includes('提示（非门禁）'))
     .slice(0, 2)
   const detail = conclusion ? conclusion.trim() : OUTCOMES.UNKNOWN
   const normalized = detail.startsWith(OUTCOMES.FAIL)
@@ -138,6 +141,7 @@ function parseReport(md) {
   return {
     conclusion: normalized,
     detail,
+    hint: hint ? hint.trim() : '',
     stats: stats ? stats.trim() : '',
     evidence,
   }
@@ -166,7 +170,8 @@ function buildConsolidated(reports, { maxLines = 30, historyLine = '', historyCo
   for (const p of parsed) {
     const first = p.evidence[0] ? ` — ${p.evidence[0].replace(/^-\s*/, '')}` : ''
     const shown = p.detail && p.detail !== p.conclusion ? p.detail : p.conclusion
-    lines.push(`- **${p.name}**：${shown}${first}`)
+    const hint = p.hint ? `（${p.hint}）` : ''
+    lines.push(`- **${p.name}**：${shown}${first}${hint}`)
   }
   lines.push('', '## 建议', '', '- 先处理「不通过」项；完整明细见本次运行 artifact 与 CI 日志。')
   if (historyComment) lines.push('', historyComment)

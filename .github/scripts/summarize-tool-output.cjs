@@ -87,7 +87,7 @@ function summarizeGeneric(raw, { max = 20 } = {}) {
  * ESLint `--format json` 输出 → 中文列表（ESLint 9 已移除内置 compact formatter，
  * 原 `--format compact` 会直接报错，故改为 JSON）。
  */
-function summarizeEslintJson(raw, { max = 20 } = {}) {
+function summarizeEslintJson(raw, { max = 20, pathFilter } = {}) {
   let data
   const text = stripAnsi(String(raw || '')).trim()
   if (!text.startsWith('[')) return null
@@ -100,6 +100,7 @@ function summarizeEslintJson(raw, { max = 20 } = {}) {
   const items = []
   for (const file of data) {
     const rel = String(file.filePath || '').replace(/^.*?\/(?=plugins\/|scripts\/|docs\/|\.github\/)/, '')
+    if (pathFilter && !pathFilter.test(rel)) continue
     for (const m of file.messages || []) {
       if (m.severity === 1 && !m.ruleId) continue
       const rule = m.ruleId || ''
@@ -122,8 +123,8 @@ function summarizeEslintJson(raw, { max = 20 } = {}) {
  * ESLint compact 输出 → 中文列表。
  * 输入形如：`/path/a.js: line 12, col 3, Error - Function 'f' has a complexity of 12. Maximum allowed is 10. (complexity)`
  */
-function summarizeEslint(raw, { max = 20 } = {}) {
-  const asJson = summarizeEslintJson(raw, { max })
+function summarizeEslint(raw, { max = 20, pathFilter } = {}) {
+  const asJson = summarizeEslintJson(raw, { max, pathFilter })
   if (asJson) return asJson
   const lines = cleanLines(raw)
   const items = []
@@ -222,6 +223,34 @@ const SUMMARIZERS = {
   generic: summarizeGeneric,
 }
 
+/** 统计问题条数（可选按相对路径正则过滤，用于区分「门禁口径」与「全量」）。 */
+function countIssues(kind, raw, pathFilter) {
+  const text = stripAnsi(String(raw ?? ''))
+  if (kind === 'eslint' || kind === 'complexity') {
+    const trimmed = text.trim()
+    if (trimmed.startsWith('[')) {
+      try {
+        const data = JSON.parse(trimmed)
+        let matched = 0
+        let total = 0
+        for (const file of data) {
+          const rel = String(file.filePath || '').replace(/^.*?\/(?=plugins\/|scripts\/|docs\/|\.github\/)/, '')
+          for (const m of file.messages || []) {
+            total += 1
+            if (!pathFilter || pathFilter.test(rel)) matched += 1
+          }
+        }
+        return { matched, total }
+      } catch {
+        /* 落到通用统计 */
+      }
+    }
+  }
+  const lines = cleanLines(text)
+  const matched = pathFilter ? lines.filter((l) => pathFilter.test(l)).length : lines.length
+  return { matched, total: lines.length }
+}
+
 /** 统一入口：按 kind 选择摘要器；未知 kind 退化为通用摘要。 */
 function summarizeToolOutput(kind, raw, options = {}) {
   const fn = SUMMARIZERS[kind] || summarizeGeneric
@@ -240,6 +269,7 @@ module.exports = {
   summarizeNpmAudit,
   summarizeTsc,
   summarizeToolOutput,
+  countIssues,
   countEscapes,
 }
 
@@ -254,11 +284,18 @@ if (require.main === module) {
   const kind = opt('kind', 'generic')
   const input = opt('input', '')
   const max = Number.parseInt(opt('max', '20'), 10)
+  const filterRaw = opt('path-filter', '')
+  const pathFilter = filterRaw ? new RegExp(filterRaw) : null
   let raw = ''
   try {
     raw = input ? fs.readFileSync(input, 'utf8') : fs.readFileSync(0, 'utf8')
   } catch {
     raw = ''
   }
-  process.stdout.write(`${summarizeToolOutput(kind, raw, { max })}\n`)
+  if (args.includes('--counts')) {
+    const { matched, total } = countIssues(kind, raw, pathFilter)
+    process.stdout.write(`${matched} ${total}\n`)
+  } else {
+    process.stdout.write(`${summarizeToolOutput(kind, raw, { max, pathFilter })}\n`)
+  }
 }

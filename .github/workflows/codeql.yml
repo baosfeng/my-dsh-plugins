@@ -71,8 +71,13 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # 启用扩展查询包，提高安全检测覆盖率
-          queries: security-extended,security-and-quality
+          # 启用扩展安全查询包（security-extended 是安全类超集）。
+          # 刻意**不再叠加** security-and-quality：它的 quality 子集（js/unused-local-variable、
+          # js/useless-expression 等）与仓库既有门禁重复（eslint + tsc --noUnusedLocals + knip），
+          # 却贡献了 63%（19/30）的告警噪声，导致真实安全告警被淹没、维护成本上升（issue #320/#314）。
+          # 安全覆盖不受影响：regex-injection / file-system-race / http-to-file-access /
+          # log-injection / insecure-temporary-file 等均属 security 类，仍会被扫到。
+          queries: security-extended
           # 配置 CodeQL 扫描类别
           category: '/language:${{matrix.language}}'
 

@@ -19,12 +19,20 @@ window.__ModuleLoader__.load({
     // useState 由编译后的 client bundle 使用；模板静态分析看不到 bundle 内容。
     const { createElement, useState } = require('react')
     // 统一 MarkdownView 由 dsh-md-render 提供（issue #31 渲染职责迁移）。
-    let MarkdownView = null
+    // 该包不在宿主 PLATFORM_MODULES 冻结表内，需靠本插件的 dsh.client.external
+    // 声明进入 boot graph；若该包未安装，这行 require 抛错会连带整条 client
+    // factory 失败、本插件占用的 UI 席位全部挂掉（即 issue #39 / #290 的现象）。
+    // 此处按 issue #90（dsh-my-plugin-manager）同款模式降级：渲染器不可用时回退
+    // 纯文本 <pre>，保住思考块的中文化、折叠交互与 system-prompt 注入。
+    let __mdRenderView = null
     try {
-      MarkdownView = require('dsh-md-render').MarkdownView
+      __mdRenderView = require('dsh-md-render').MarkdownView
     } catch {
-      MarkdownView = null // 不可用时回退纯文本
+      __mdRenderView = null
     }
+    const MarkdownView =
+      __mdRenderView ||
+      ((props) => createElement('pre', { 'data-dsh-think-zh-expand-fallback': 'true' }, props.text))
 
     // ── 共享图标（issue #54 阶段 0：dsh-shared/client-parts）──────────
     /*__PART_ICONS__*/

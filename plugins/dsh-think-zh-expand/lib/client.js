@@ -19,12 +19,20 @@ window.__ModuleLoader__.load({
     // useState 由编译后的 client bundle 使用；模板静态分析看不到 bundle 内容。
     const { createElement, useState } = require('react')
     // 统一 MarkdownView 由 dsh-md-render 提供（issue #31 渲染职责迁移）。
-    let MarkdownView = null
+    // 该包不在宿主 PLATFORM_MODULES 冻结表内，需靠本插件的 dsh.client.external
+    // 声明进入 boot graph；若该包未安装，这行 require 抛错会连带整条 client
+    // factory 失败、本插件占用的 UI 席位全部挂掉（即 issue #39 / #290 的现象）。
+    // 此处按 issue #90（dsh-my-plugin-manager）同款模式降级：渲染器不可用时回退
+    // 纯文本 <pre>，保住思考块的中文化、折叠交互与 system-prompt 注入。
+    let __mdRenderView = null
     try {
-      MarkdownView = require('dsh-md-render').MarkdownView
+      __mdRenderView = require('dsh-md-render').MarkdownView
     } catch {
-      MarkdownView = null  // 不可用时回退纯文本
+      __mdRenderView = null
     }
+    const MarkdownView =
+      __mdRenderView ||
+      ((props) => createElement('pre', { 'data-dsh-think-zh-expand-fallback': 'true' }, props.text))
 
     // ── 共享图标（issue #54 阶段 0：dsh-shared/client-parts）──────────
     // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──
@@ -193,6 +201,33 @@ const icon = {
       [
         createElement('rect', { x: 9, y: 9, width: 13, height: 13, rx: 2 }),
         createElement('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
+      ],
+      size,
+    ),
+  // 箭头向上（更新图标）：向上的箭头，表示更新操作
+  arrowUp: (size = 16) =>
+    iconSvg(
+      [
+        createElement('line', { x1: 12, y1: 19, x2: 12, y2: 5 }),
+        createElement('polyline', { points: '5 12 12 5 19 12' }),
+      ],
+      size,
+    ),
+  // 电源关（禁用图标）：圆形电源按钮，表示禁用操作
+  powerOff: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M18.36 6.64a9 9 0 1 1-12.73 0' }),
+        createElement('line', { x1: 12, y1: 2, x2: 12, y2: 12 }),
+      ],
+      size,
+    ),
+  // 电源开（启用图标）：圆形电源按钮，表示启用操作
+  powerOn: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M18.36 6.64a9 9 0 1 1-12.73 0' }),
+        createElement('line', { x1: 12, y1: 2, x2: 12, y2: 12 }),
       ],
       size,
     ),

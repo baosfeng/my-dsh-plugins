@@ -644,6 +644,73 @@ try {
   assert.ok(bundleSrc.includes('chevronRight:'), 'shared icons spliced into bundle (chevronRight)')
   assert.ok(bundleSrc.includes('clock:'), 'shared icons spliced into bundle (clock)')
 
+  // 17. dsh-md-render 缺失时的降级回归（issue #290）：宿主安装路径不会自动安装
+  //     dsh.client.external 指向的第三方包，require 落空时不得拖垮整条 client
+  //     factory —— 同 issue #90（dsh-my-plugin-manager）的兜底模式。
+  const fbError = new Error('client-modules: require("dsh-md-render") missed the module table')
+  let fbExports = null
+  assert.doesNotThrow(
+    () => {
+      fbExports = thinkReg.factory((spec) => {
+        if (spec === 'react') return stubbed
+        if (spec === 'dsh-md-render') throw fbError
+        throw new Error('unexpected require: ' + spec)
+      })
+    },
+    'client factory must not throw when dsh-md-render is missing',
+  )
+  assert.equal(typeof fbExports.apply, 'function', 'plugin still applies without the renderer')
+
+  let fbRenderer = null
+  fbExports.apply({
+    effect: (fn) => fn(),
+    slots: {
+      inject: (_name, fn) => fn(),
+      register: (_desc, renderer) => {
+        fbRenderer = renderer
+        return () => {}
+      },
+    },
+  })
+  assert.equal(typeof fbRenderer, 'function', 'assistant-step renderer still registered on fallback')
+
+  const fbTree = fbRenderer({
+    node: { data: { blocks: [{ kind: 'reasoning', text: '降级内容第一行\n第二行' }] } },
+  })
+  const fbTags = []
+  const fbTexts = []
+  ;(function walkFallback(node) {
+    if (node === null || node === undefined || typeof node === 'boolean') return
+    if (typeof node === 'string' || typeof node === 'number') {
+      fbTexts.push(String(node))
+      return
+    }
+    if (Array.isArray(node)) {
+      for (const c of node) walkFallback(c)
+      return
+    }
+    const props = node.props ?? {}
+    if (typeof node.type === 'string') {
+      fbTags.push(node)
+    } else if (typeof node.type === 'function') {
+      walkFallback(node.type(node.props))
+      return
+    }
+    walkFallback(props.children)
+  })(fbTree)
+
+  const preNode = fbTags.find((n) => n.type === 'pre')
+  assert.ok(preNode, 'renders <pre> fallback when dsh-md-render is unavailable')
+  assert.equal(
+    preNode.props['data-dsh-think-zh-expand-fallback'],
+    'true',
+    'fallback node carries a debug marker attribute',
+  )
+  assert.ok(
+    fbTexts.some((t) => t.includes('降级内容第一行')),
+    'reasoning text preserved through the fallback renderer',
+  )
+
   console.log('ALL CLIENT RENDER-PATH TESTS PASSED')
 } finally {
   delete global.window

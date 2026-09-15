@@ -185,6 +185,23 @@ function boot(config = {}, services = {}, dirOverride) {
 
 const tick = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * 条件等待：轮询直到条件成立（issue #313，与 #310 同源收敛）。
+ *
+ * 为什么不能用固定 `tick(N)`：重启恢复是 `setTimeout(resumeGraceMs)` → `resume()`
+ * → 置 `resumeAt` → 防抖串行落盘的异步链；CI 高负载下链路未跑完就读断言，会读到
+ * 中间态（`followed[0]` 为 undefined、事件数组为空）→ 假红。固定 `tick` 只表达
+ * "我猜 N 毫秒够了"，不表达任何条件。
+ */
+async function waitFor(predicate, { timeoutMs = 2000, stepMs = 5, what = 'condition' } = {}) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await tick(stepMs)
+  }
+  assert.fail(`等待超时（${timeoutMs}ms）：${what}`)
+}
+
 async function callApi(api, request) {
   const response = mockResponse()
   await api.handler(request, response)
@@ -919,10 +936,14 @@ test('重启恢复文本包含完整段落', async () => {
   await tick()
   env.disposeAll()
   const env2 = boot({ resumeGraceMs: 0 }, {}, env.dir)
-  await tick(30)
+  // 等条件（issue #313）：恢复副作用先发生，再断言文本；不再用 tick(30) 猜时间
+  await waitFor(() => env2.mainAgent.followed.length >= 1, { what: '重启恢复 followup 注入' })
   const text = env2.mainAgent.followed[0].content[0].text
   assert.ok(text.includes('系统此前在任务执行中被中断（休眠/重启）'))
   assert.ok(text.includes('先回顾当前进度，然后继续执行剩余部分，直到任务完成'))
+  // 加强（#313）：恢复的副作用必须落到状态里（不只是"发了条消息"）
+  await env2.drainSaves()
+  assert.ok(env2.store.tasks[0].resumeAt > 0, 'resumeAt 已记录（恢复副作用完整发生）')
 })
 
 test('autopilot 拒绝文本包含完整段落', async () => {

@@ -168,6 +168,23 @@ function boot(config = {}, services = {}, dirOverride, emitBroken = false) {
 
 const tick = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * 条件等待：轮询直到条件成立（issue #313，与 #310 同源收敛）。
+ *
+ * 为什么不能用固定 `tick(N)`：重启恢复是 `setTimeout(resumeGraceMs)` → `resume()`
+ * → 置 `resumeAt` → 防抖串行落盘的异步链；CI 高负载下链路未跑完就读断言，会读到
+ * 中间态（`followed[0]` 为 undefined、事件数组为空）→ 假红。固定 `tick` 只表达
+ * "我猜 N 毫秒够了"，不表达任何条件。
+ */
+async function waitFor(predicate, { timeoutMs = 2000, stepMs = 5, what = 'condition' } = {}) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await tick(stepMs)
+  }
+  assert.fail(`等待超时（${timeoutMs}ms）：${what}`)
+}
+
 async function callApi(api, request) {
   const response = mockResponse()
   await api.handler(request, response)
@@ -518,12 +535,16 @@ test('重启恢复任务发出 resume 事件（resume-task）', async () => {
   await tick()
   env.disposeAll()
   const env2 = boot({ resumeGraceMs: 0 }, {}, env.dir)
-  await tick(30)
+  // 等条件（issue #313）：等 resume 事件真的发出，再断言其内容；不再用 tick(30) 猜时间
+  await waitFor(() => eventsOf(env2, 'task-reliability/resume').length >= 1, { what: 'resume 事件发出' })
   const events = eventsOf(env2, 'task-reliability/resume')
   assert.equal(events.length, 1)
   assert.equal(events[0].action, 'resume-task')
   assert.equal(events[0].reason, 'restart')
   assert.equal(events[0].sessionId, 'session-main')
+  // 加强（#313）：事件与状态必须一致 —— 事件发了，resumeAt 也必须已记录并落盘
+  await env2.drainSaves()
+  assert.ok(env2.store.tasks[0].resumeAt > 0, 'resumeAt 已记录（与 resume 事件一致）')
 })
 
 // ── emit 失败静默（best-effort）───────────────────────────────────────────

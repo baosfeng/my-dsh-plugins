@@ -1294,10 +1294,10 @@ if (options.fast) {
 const ctx = {
   fast: options.fast,
   baseOk: base.ok,
-  // 提交信息门禁的默认基准（--fast 解析出来的那个；full 模式下为 null → 走 resolveCommitsBase 兜底）。
-  // 必须经 ctx 传进去：`base` 在本文件里是**后面**才声明的顶层 const，CHECK_DEFS 的 run 里直接引用
-  // 会命中 TDZ（ReferenceError: Cannot access 'base' before initialization）——实测踩到过一次。
-  baseRef: base.ok ? base.ref : null,
+  // 提交信息门禁不再需要基准：scripts/check-commit-messages.mjs 自己推导范围（CI 读
+  // GITHUB_EVENT_PATH，本地 @{upstream} → origin/main），需要时用 --commits-from <ref> 覆盖。
+  // 历史上这里传过 baseRef，但 `base` 是本文件**后面**才声明的顶层 const，CHECK_DEFS 的 run 里
+  // 直接引用会命中 TDZ（ReferenceError: Cannot access 'base' before initialization，实测踩过）。
   // changedFiles：变更文件的路径列表（保持既有语义：format / ts-size 等检查项直接消费）
   changedFiles: changed === null ? null : changed.map((c) => c.path),
   impactPlugins: impact.plugins,

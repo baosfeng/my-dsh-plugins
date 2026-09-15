@@ -204,8 +204,12 @@ jobs:
           node-version: 26
           cache: npm
 
-      # 刻意不跑 npm ci：check-secrets.mjs 只用 Node 内置模块 + 系统 tar（不需要 node_modules），
-      # 省一次安装。二进制按钉死版本 + SHA256 下载并缓存到 .gitleaks-cache/。
+      # 必须装一次根工具链：check-commit-messages.mjs 用 @commitlint/load + @commitlint/lint
+      # 解析 .commitlintrc.json（与本地 hook 同一份规则）。secret 扫描本身不需要 node_modules
+      # （纯 Node 内置 + 系统 tar），但两个门禁共用一个 job，装一次即可。
+      - name: Install root toolchain (eslint, dependency-cruiser)
+        run: npm ci
+
       - name: Secret scan (gitleaks, pinned version + SHA256, full history)
         run: node scripts/check-secrets.mjs
 
@@ -233,7 +237,13 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 是**必需的**（issue #324）：本 job 里的 commitlint 只校验变更范围，
+      # 而它要解析 `base.sha..head.sha` 两个**历史** SHA —— 默认 fetch-depth: 1 的浅克隆里
+      # 两者都不存在，git 只会回 `fatal: Invalid revision range A..B`（首个 CI 运行实测）。
+      # 代价：拉全历史约 +3s；换来的是"范围判定在本地/CI 用同一套语义"。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:

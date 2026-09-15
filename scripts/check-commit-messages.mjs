@@ -42,6 +42,7 @@ import {
   commitRecord,
   decideEmptyRange,
   renderCommitReport,
+  renderRangeFailure,
 } from './lib/commit-lint.mjs'
 
 export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -159,7 +160,11 @@ function deriveRange() {
           : { from: before, to: after, source: 'GITHUB_EVENT_PATH（push before..after）' }
       }
     } catch (error) {
-      return { from: null, to: null, source: `GITHUB_EVENT_PATH 解析失败：${String(error?.message ?? error).slice(0, 80)}` }
+      return {
+        from: null,
+        to: null,
+        source: `GITHUB_EVENT_PATH 解析失败：${String(error?.message ?? error).slice(0, 80)}`,
+      }
     }
   }
   const upstream = git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'])
@@ -189,8 +194,15 @@ if (!spec.ok) {
 
 const count = countCommits(spec)
 if (typeof count === 'object') {
-  console.error(`[commits] ❌ 无法解析范围 ${spec.reason}：${count.error}`)
-  console.error('[commits]   fail-closed 判失败（范围解析不了时绝不当作"通过"）。')
+  // 「算不出范围」与「提交信息不合规」是**两种失败**，必须让人一眼分清
+  // （CI 首个运行就因此被误读成"提交信息写错了"，见 PR 记录）。
+  console.error(
+    renderRangeFailure({
+      spec,
+      gitError: count.error,
+      isShallow: git(['rev-parse', '--is-shallow-repository']) === 'true',
+    }),
+  )
   process.exit(1)
 }
 if (count === 0) {
@@ -207,8 +219,7 @@ if (count === 0) {
   const verdict = decideEmptyRange({
     allowEmpty: options.allowEmpty || autoSkip,
     reason:
-      `范围 ${spec.reason} 内没有提交` +
-      (autoSkip ? '（本地自动推导：无可校验提交，跳过；CI 侧空范围判失败）' : ''),
+      `范围 ${spec.reason} 内没有提交` + (autoSkip ? '（本地自动推导：无可校验提交，跳过；CI 侧空范围判失败）' : ''),
   })
   console.error(
     renderCommitReport({
@@ -306,6 +317,12 @@ process.exit(ok ? 0 : 1)
 
 /** 范围内的提交数（`A..B` 语义；出错返回 { error }）。 */
 function countCommits(spec) {
+  if (spec.mode === 'single') {
+    const out = git(['rev-parse', '--verify', '--quiet', `${spec.to}^{commit}`])
+    if (typeof out === 'object' || out === '')
+      return { error: `rev-parse 无法解析提交 ${spec.to}（对象不存在？浅克隆？）` }
+    return 1
+  }
   const out = git(['rev-list', '--count', `${spec.from}..${spec.to}`])
   if (typeof out === 'object') return out
   return Number.parseInt(out, 10)
@@ -316,7 +333,9 @@ function countCommits(spec) {
  * 用 NUL 分隔记录、RS(0x1e) 分隔字段，避免提交信息里的换行/特殊字符把解析搅乱。
  */
 function listCommits(spec) {
-  const out = git(['log', '--reverse', '--no-merges', '--format=%H%x1e%s%x1e%B%x1d', `${spec.from}..${spec.to}`])
+  // 单提交模式只取那一条（**不需要父提交**：根提交没有 X^、浅克隆里父提交也不在本地）
+  const rangeArgs = spec.mode === 'single' ? ['-1', spec.to] : [`${spec.from}..${spec.to}`]
+  const out = git(['log', '--reverse', '--no-merges', '--format=%H%x1e%s%x1e%B%x1d', ...rangeArgs])
   if (typeof out === 'object') return null
   const records = out
     .split('\u001d')

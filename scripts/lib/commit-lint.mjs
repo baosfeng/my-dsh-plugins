@@ -33,18 +33,20 @@ const SUBJECT_MAX = 100
 /**
  * 由 from/to 推导校验范围。返回 { ok, from, to, mode, reason }。
  *   · mode='range'  ：from 与 to 都有值 → 用 from..to（git 语义，**不含 from**）
- *   · mode='single' ：只有 to → 用 to^..to（含 to 这一个提交；to^ 取父提交）
+ *   · mode='single' ：只有 to → **只校验 to 这一个提交**（from 为 null，调用方走单提交路径）
  *   · mode='empty'  ：都没有 → ok:false（由调用方按 --allow-empty 决定是否放行）
  *
- * 为什么要区分 single：commitlint（CLI 与 `git log` 的 `A..B` 语义）都不含左端点，
- * 单提交用 `X..X` 会直接报错（实测 commitlint exit 9: "--from and --to point to the
- * same commit"）。所以单提交必须显式退化为 `X^..X`。
+ * 为什么单提交**不能**写成 `X^..X`（直觉写法，实测两种坏结果）：
+ *   1. `X` 是根提交时 `X^` 不存在 → `fatal: ambiguous argument`（本地夹具里撞到过）；
+ *   2. 浅克隆（CI 的 `actions/checkout` 默认 `fetch-depth: 1`）里父提交不在本地 → 同样解析失败，
+ *      而"只查最新一个提交"恰恰是浅历史下唯一**能**做的判定。
+ * 所以单提交模式完全不依赖父提交：调用方直接对 `X` 取 `git log -1`。
  */
 export function commitRangeSpec({ from = null, to = null } = {}) {
   const f = typeof from === 'string' && from.trim() !== '' ? from.trim() : null
   const t = typeof to === 'string' && to.trim() !== '' ? to.trim() : null
   if (f && t) return { ok: true, from: f, to: t, mode: 'range', reason: `${f}..${t}（不含 ${f}）` }
-  if (t) return { ok: true, from: `${t}^`, to: t, mode: 'single', reason: `${t}^..${t}（只校验这 1 个提交）` }
+  if (t) return { ok: true, from: null, to: t, mode: 'single', reason: `${t}（只校验这 1 个提交，不需要父提交）` }
   return {
     ok: false,
     from: null,
@@ -152,6 +154,30 @@ export function renderCommitReport({ ok, range, checked, findings, reason, notes
 /** 机器可读结果（供 --json / 子 agent 消费）。 */
 export function commitRecord({ ok, range, checked, findings, ms, reason }) {
   return { ok, range, checked, ms, reason, findings }
+}
+
+/**
+ * 「无法确定校验范围」的诊断（**不是**提交信息不合规）。
+ *
+ * 为什么单独一条：CI 在 `pull_request` 下校验 `base.sha..head.sha`，而 `actions/checkout`
+ * 默认 `fetch-depth: 1` —— 两个 SHA 都不在本地仓库里，git 只回一句
+ * `fatal: Invalid revision range A..B`。实测（issue #324 首个 CI 运行）这行输出被误读成
+ * "提交信息写错了"，而真正该做的是给 checkout 加 `fetch-depth: 0`。
+ *
+ * 纯函数（浅克隆与否由调用方探测后传入），便于单测。
+ */
+export function renderRangeFailure({ spec, gitError, isShallow = null }) {
+  const shallowText =
+    isShallow === true ? '是（git rev-parse --is-shallow-repository = true）' : isShallow === false ? '否' : '未知'
+  return [
+    '❌ 无法确定校验范围 —— **不是**提交信息不合规（fail-closed：范围解析不了绝不当作"通过"）',
+    `  范围：${spec?.reason ?? '(未指定)'}`,
+    `  git 报错：${gitError}`,
+    `  本仓库是浅克隆：${shallowText}`,
+    '  常见原因：CI 的 actions/checkout 用了默认 fetch-depth: 1，base/head 两个 SHA 都取不到',
+    '  修法：该 job 的 checkout 加 `fetch-depth: 0`（或显式 `git fetch origin <base>`）',
+    `  本地复现/自查：npm run lint:commits -- --from <base> --to <head>（本次为 ${spec?.from ?? '?'} .. ${spec?.to ?? '?'}）`,
+  ].join('\n')
 }
 
 /**

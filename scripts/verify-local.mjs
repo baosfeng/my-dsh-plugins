@@ -27,6 +27,8 @@
  *   typecheck    → npx tsc --noEmit
  *   lint         → npx eslint plugins/
  *   ts-size      → node scripts/check-ts-size.mjs（TS 行数/复杂度基线）
+ *   client-modules→ node scripts/check-client-modules.mjs（客户端 bundle 模块白名单，
+ *                  issue #321：产物 require 的模块必须能解析，否则整条 client factory 挂掉）
  *   format       → npx prettier --check .
  *   test-scripts → npm run test:scripts（vitest 发版校验）
  *   depcruise    → npx depcruise plugins/
@@ -546,6 +548,20 @@ const CHECK_DEFS = [
       if (!ctx.fast || ctx.escalated || ctx.changedFiles === null) return null
       const touched = ctx.changedFiles.some((f) => /\.tsx?$/.test(f))
       return touched ? null : '本次变更不含 .ts/.tsx 文件（该门禁只统计 TS 源码规模）'
+    },
+  },
+  {
+    id: 'client-modules',
+    label: 'client-modules (node scripts/check-client-modules.mjs)',
+    run: () => runCapture('node', ['scripts/check-client-modules.mjs'], root),
+    // 只扫 plugins/*/lib/client.js 与 plugins/*/package.json：两者都没动就不可能失败
+    skip: (ctx) => {
+      if (ctx.docsOnly) return '纯文档变更：该门禁只扫客户端产物与插件 package.json'
+      if (!ctx.fast || ctx.escalated || ctx.changedFiles === null) return null
+      const touched = ctx.changedFiles.some(
+        (f) => /^plugins\/[^/]+\/lib\/client\.js$/.test(f) || /^plugins\/[^/]+\/package\.json$/.test(f),
+      )
+      return touched ? null : '本次变更不含 plugins/*/lib/client.js 或 plugins/*/package.json'
     },
   },
   {

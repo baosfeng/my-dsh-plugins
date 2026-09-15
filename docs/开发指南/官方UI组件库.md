@@ -7,6 +7,7 @@
 
 1. **DSH 官方自带 UI 组件库**：`@deepseek-ai/dsh-client-ui-primitives`（宿主 0.1.5-rc.1 运行时实测导出 123 项；官方仓库 `packages/client/ui-primitives`，npm 已发布 `0.0.1-rc.x`，描述："Pure React atoms for the dsh web UI: controls, icons, markdown, and JSON inspectors (zero cordis)"）。
 2. **插件 client 可直接 `require` 使用，零安装、零打包、零体积**：宿主把它注册进 ModuleLoader 的 **staticModules 静态模块表**（主 bundle `staticModules: Jd()` 显式暴露 `react` / `react/jsx-runtime` / `react-dom` / `@deepseek-ai/cordis` / `@deepseek-ai/dsh-client-ui-slots` / `@deepseek-ai/dsh-client-ui-primitives`），插件 factory 的 `require` 直接命中该表。
+   > 该 staticModules 表的**门禁副本**在 `scripts/check-client-modules.mjs` 的 `SEED_MODULES`（issue #321）：任何 `plugins/*/lib/client.js` 里 require 了既非该表、也非 `dsh.client.external` / 自身包名的模块，CI 的 `quality` job 会直接失败（这类 require 在用户机器上会抛 `client-modules: require("X") missed the module table`，整条 client factory 挂掉）。新增 seed 模块时**两处同步**。
 3. **生态已实证**：社区最流行插件 [DSH-Transparent-UI-Plugin](https://github.com/WYH66666666/DSH-Transparent-UI-Plugin)（401★）的 client 就是 `require("@deepseek-ai/dsh-client-ui-primitives")` 构建的。
 4. **本机实测**：在隔离实例的 dsh-my-memory 插件 client factory 顶层 `require('@deepseek-ai/dsh-client-ui-primitives')` → **解析成功，拿到 123 个导出**，页面正常加载（实验代码已验证后还原）。
 

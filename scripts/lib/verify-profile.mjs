@@ -435,3 +435,90 @@ export function extractApiToken({ logText = '', credentialsText = '' } = {}) {
   if (fromCredentials) return { token: fromCredentials[1], source: '.credentials.yaml' }
   return { token: null, source: null }
 }
+
+// ── 启动结果判定（issue #305：崩溃必须 fail-closed）─────────────────────────
+/**
+ * 启动失败的「定论」特征。命中任意一条即判定实例**启动失败**（不是"还没起好"）。
+ *
+ * 为什么单独拉出来：`dsh web` 会**先监听端口**、再加载插件树。插件 apply 崩掉时，
+ * 端口已经能回 HTTP（脚本旧实现据此判"就绪"），随后进程才带栈退出 —— 于是崩溃被
+ * 当成通过（issue #305 实测：#298 的 `inject` 缺 `webServer` 就是这样潜伏的）。
+ *
+ * 关键词表按实测补全（第四项 `cannot get property` 由 #298 的原始崩溃日志驱动）：
+ *  - `plugin tree failed to load`：dsh-app-boot 的顶层失败摘要；
+ *  - `failed to apply loader entry` / `failed to import loader entry`：cordis 加载器；
+ *  - `without inject` / `cannot get property`：cordis service 守卫（#298 形态）；
+ *  - `missed the module table`：依赖缺包（#294 场景）；
+ *  - `duplicate loader entry`：配置组合炸弹。
+ */
+export const FATAL_BOOT_PATTERNS = Object.freeze([
+  /plugin tree failed to load/i,
+  /failed to (?:apply|import) loader entry/i,
+  /without inject/i,
+  /cannot get property/i,
+  /missed the module table/i,
+  /duplicate loader entry/i,
+])
+
+/**
+ * 启动成功的**正向**证据：`dsh web` 就绪后会打印
+ * `dsh web: http://127.0.0.1:<port>/?token=<43 字符>`（实测，见 #257/#305）。
+ * 只认它，不认"端口回了个 HTTP" —— 后者在崩溃场景同样成立。
+ */
+export const BOOT_READY_PATTERN = /dsh web: https?:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]{10,}/
+
+/** 扫描文本，返回命中的致命启动特征（去重、保序）。 */
+export function fatalBootHits({ logText = '' } = {}) {
+  const text = String(logText ?? '')
+  const hits = []
+  for (const pattern of FATAL_BOOT_PATTERNS) {
+    const m = pattern.exec(text)
+    if (m) hits.push(m[0])
+  }
+  return hits
+}
+
+/** 文本里是否出现"实例已就绪"的正向证据（token 行）。 */
+export function hasBootReadyLine({ logText = '' } = {}) {
+  return BOOT_READY_PATTERN.test(String(logText ?? ''))
+}
+
+/**
+ * 判定一次启动尝试的结果（纯函数，供单测与集成路径共用）。
+ *
+ * 语义（fail-closed）：
+ *  - 日志命中致命特征 → `failed`（**优先于**就绪行：先崩后残留的就绪行不算数）；
+ *  - 有就绪行且进程仍存活 → `ready`；
+ *  - 有就绪行但进程已退出 → `failed`（起来了又崩，同样不可用）；
+ *  - 都没有 → `pending`（调用方继续轮询，超时后再判失败）。
+ *
+ * @param {{logText?: string, exited?: boolean}} input
+ * @returns {{verdict: 'failed'|'ready'|'pending', hits: string[], reason: string|null}}
+ */
+export function decideBootOutcome({ logText = '', exited = false } = {}) {
+  const hits = fatalBootHits({ logText })
+  if (hits.length > 0) {
+    return { verdict: 'failed', hits, reason: `启动日志出现致命特征：${hits.join(' / ')}` }
+  }
+  const ready = hasBootReadyLine({ logText })
+  if (ready && exited) {
+    return { verdict: 'failed', hits: [], reason: '实例打印了就绪行但进程随后退出（启动中途崩溃）' }
+  }
+  if (ready) return { verdict: 'ready', hits: [], reason: null }
+  if (exited) {
+    return { verdict: 'failed', hits: [], reason: '实例进程已退出且日志未出现就绪行（启动即崩）' }
+  }
+  return { verdict: 'pending', hits: [], reason: null }
+}
+
+/** 从启动日志里摘出可诊断的崩溃摘要（供失败时打印关键行 + 日志路径）。 */
+export function bootFailureExcerpt({ logText = '', maxLines = 6 } = {}) {
+  const lines = String(logText ?? '')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0)
+  if (lines.length === 0) return '(实例日志为空：进程在写出任何输出前就退出了)'
+  const start = lines.findIndex((line) => /Error|error|failed|without inject/.test(line))
+  const from = start === -1 ? 0 : start
+  return lines.slice(from, from + maxLines).join('\n')
+}

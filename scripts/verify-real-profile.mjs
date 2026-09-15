@@ -58,9 +58,12 @@
 import { spawn } from 'node:child_process'
 import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import {
+  bootFailureExcerpt,
   checkAddonResolution,
   checkOmittedAbsent,
+  decideBootOutcome,
   extractApiToken,
+  fatalBootHits,
   isPluginStatePath,
   linkNodeModules,
   presentStateDirs,
@@ -526,34 +529,61 @@ process.on('exit', () => {
   }
 })
 
-// 等待就绪（轮询 HTTP）
+// 等待就绪（轮询 HTTP + **进程存活** + **日志就绪行**，issue #305 fail-closed）
+//
+// issue #305 的实测教训：`dsh web` **先监听端口、后加载插件树**。插件 apply 崩掉时，
+// 端口已经能回 HTTP（旧实现据此判"就绪"并 break），随后进程才带栈退出；更糟的是
+// 崩溃栈往往在脚本读完日志之后才落盘 —— 于是「实例起不来」被报成
+// 「✓ 实例启动就绪 / ✓ 启动日志无 error」，把 P0 缺陷一路放行（#298 就是这么潜伏的）。
+//
+// 现在的判据（全部满足才算就绪，任一不满足即显式失败）：
+//   1. 端口有 HTTP 响应（保留原有语义：401 也算已监听，见 #257）；
+//   2. 实例日志出现**正向就绪行** `dsh web: http://127.0.0.1:<port>/?token=…`；
+//   3. 就绪行出现后进程**仍然存活**（起来又崩 = 不可用）。
+// 同时全程扫描致命启动特征（`plugin tree failed to load` / `without inject` / …），
+// 命中即立刻失败并打印崩溃栈关键行与日志路径 —— 不再等超时、不再静默。
 const deadline = Date.now() + options.timeoutSec * 1000
-let ready = false
+let outcome = { verdict: 'pending', hits: [], reason: null }
+let sawHttp = false
 while (Date.now() < deadline) {
-  if (web.exitCode !== null) break
-  const status = await httpStatus(options.port)
-  // 任何 HTTP 响应都说明服务已在监听：DSH 新版对不带 token 的根路径返回
-  // 401（旧版是 200），只认 200 会把"其实已就绪"误判成启动超时（实测
-  // 240s 仍报"未就绪"、而实例进程存活且端口正常服务）。
-  if (status > 0) {
-    ready = true
-    break
+  const exited = web.exitCode !== null
+  outcome = decideBootOutcome({ logText: readWebLog(), exited })
+  if (outcome.verdict !== 'pending') break
+  if (!sawHttp) {
+    const status = await httpStatus(options.port)
+    // 任何 HTTP 响应都说明服务已在监听：DSH 新版对不带 token 的根路径返回
+    // 401（旧版是 200），只认 200 会把"其实已就绪"误判成启动超时（实测
+    // 240s 仍报"未就绪"、而实例进程存活且端口正常服务）。
+    // ⚠️ 但它**不能**单独作为就绪依据（#305：崩溃时端口同样在监听）。
+    if (status > 0) sawHttp = true
   }
-  await new Promise((resolveWait) => setTimeout(resolveWait, 1000))
+  if (exited) break
+  await new Promise((resolveWait) => setTimeout(resolveWait, 500))
 }
-if (!ready) {
-  fail(`实例 ${options.timeoutSec}s 内未就绪（exitCode=${web.exitCode}）`)
-  console.error(readWebLog().slice(-2000))
+if (outcome.verdict !== 'ready') {
+  // 再给一次机会：进程若已退出，日志可能刚写完（buffered stdout 落盘有延迟）。
+  await new Promise((resolveWait) => setTimeout(resolveWait, 500))
+  outcome = decideBootOutcome({ logText: readWebLog(), exited: web.exitCode !== null })
+}
+if (outcome.verdict !== 'ready') {
+  const why =
+    outcome.verdict === 'failed' ? outcome.reason : `实例 ${options.timeoutSec}s 内未就绪（exitCode=${web.exitCode}）`
+  fail(`实例启动失败：${why}`)
+  console.error('[verify] 崩溃关键行：')
+  console.error(bootFailureExcerpt({ logText: readWebLog() }))
+  console.error(`[verify] 完整实例日志：${webLogFile}`)
   await cleanup()
   process.exit(1)
 }
-pass(`实例启动就绪（HTTP 200, 端口 ${options.port}）`)
+pass(`实例启动就绪（HTTP 响应${sawHttp ? ' + 就绪行 + 进程存活' : ' + 就绪行'}，端口 ${options.port}）`)
 
 // 启动日志错误扫描（duplicate / failed to apply / error / exception）
 // issue #294：正则显式覆盖「缺包」类症状 —— failed to import loader entry（loader entry
 // 解析失败）/ missed the module table（client graph 里没有该行）/ Element type is invalid
 // （createElement(null)：require 落空后渲染期抛错，正是 #293 的假降级）/ Cannot find module。
 // 这些关键词原先不在扫描面内，缺包崩溃可能"扫不出来"。
+// issue #305：再按**致命启动特征表**（lib/verify-profile.mjs 的 FATAL_BOOT_PATTERNS）复查一遍 ——
+// 上面这条靠 `error` 字样，致命表按 dsh/cordis 的真实崩溃文案（如 `plugin tree failed to load`）。
 const STARTUP_ERROR_RE =
   /(duplicate loader|failed to apply|failed to import loader entry|missed the module table|Element type is invalid|Cannot find module|error|exception|ECONNREFUSED)/i
 const errorHits = []
@@ -562,10 +592,20 @@ for (const line of readWebLog().split('\n')) {
     errorHits.push(line.trim())
   }
 }
-if (errorHits.length > 0) {
-  fail(`启动日志扫描到 ${errorHits.length} 条错误: ${errorHits.slice(0, 5).join(' | ')}`)
+const fatalHits = fatalBootHits({ logText: readWebLog() })
+if (errorHits.length > 0 || fatalHits.length > 0) {
+  const detail = [
+    errorHits.length > 0 ? `${errorHits.length} 条错误: ${errorHits.slice(0, 5).join(' | ')}` : null,
+    fatalHits.length > 0 ? `致命启动特征: ${fatalHits.join(' / ')}` : null,
+  ]
+    .filter(Boolean)
+    .join('；')
+  fail(`启动日志扫描失败：${detail}`)
+} else if (web.exitCode !== null) {
+  // 就绪后又退出（例如日志扫描期间崩掉）：实例不可用，绝不能报绿（#305）。
+  fail(`实例在就绪后退出（exitCode=${web.exitCode}），未通过启动稳定性检查`)
 } else {
-  pass('启动日志无 error / duplicate 记录')
+  pass('启动日志无 error / duplicate 记录（就绪行存在且进程存活）')
   if (linkResult.omitted.length > 0) {
     // 缺包演练时的针对性留痕：日志没提 external 包缺失（server 侧可见的部分）。
     // 诚实记录边界：client 侧崩溃发生在浏览器运行时，server 启动日志未必留痕 →

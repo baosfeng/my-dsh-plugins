@@ -93,6 +93,20 @@ export function parseOwnerRepo(remoteUrl) {
 }
 
 /** fetch 走 https + 代理（本机唯一可靠下行通路）；push 走 SSH（不经代理，代理挂了也能推）。 */
+/**
+ * 远端是否为「本地，不依赖网络」（issue #337）：本地路径 / `file://` → true；
+ * http(s):// · git:// · ssh:// · scp 式 `user@host:path` → false（这些要走远端规范化）。
+ *
+ * 为什么单独成纯函数：`parseOwnerRepo` 对任何 `a/b` 形态都会给出 owner/repo，所以
+ * "要不要拼 github.com URL"必须靠这个判据，而不能靠 parseOwnerRepo 是否返回 null。
+ */
+export function isLocalRemote(remoteUrl) {
+  const text = String(remoteUrl ?? '').trim()
+  if (text === '') return false
+  if (/^file:\/\//i.test(text)) return true
+  return !/^(?:https?|git|ssh):\/\//i.test(text) && !/^[a-z0-9._-]+@[^:]+:/i.test(text)
+}
+
 export const fetchRemoteFor = (owner, repo) => `https://github.com/${owner}/${repo}.git`
 export const pushRemoteFor = (owner, repo) => `git@github.com:${owner}/${repo}.git`
 

@@ -150,3 +150,50 @@ test('upsertReviewComment：不会误更新其它报告或人类评论的 marker
   assert.equal(calls.updated.length, 0)
   assert.equal(calls.created.length, 1)
 })
+
+test('buildConsolidated：结论唯一、任一项不通过则总结论不通过、≤30 行', () => {
+  const { buildConsolidated } = require('./review-comment.cjs')
+  const pass = '## 结论\n\n通过\n\n统计：通过 2 项 / 不通过 0 项 / 未能判定 0 项\n'
+  const fail = '## 结论\n\n不通过\n\n## 关键证据\n\n- `src/a.ts:12` — 圈复杂度超标（complexity）：实测 17，阈值 10\n'
+  const unknown = '## 结论\n\n未能判定\n'
+  const out = buildConsolidated([
+    { name: '代码质量', md: fail },
+    { name: '安全', md: pass },
+    { name: 'API 设计', md: unknown },
+  ])
+  assert.ok(out.startsWith('## 结论\n\n不通过'), out)
+  assert.ok(out.includes('通过 1 项 / 不通过 1 项 / 未能判定 1 项'), out)
+  assert.ok(out.includes('**代码质量**：不通过 — `src/a.ts:12`'), out)
+  assert.ok(out.includes('## 建议'), out)
+  assert.ok(out.split('\n').length <= 30, `行数 ${out.split('\n').length}`)
+  assert.equal(out.includes('\u001b'), false)
+})
+
+test('buildConsolidated：无不通过但存在未能判定时，总结论为未能判定（不得伪装通过）', () => {
+  const { buildConsolidated } = require('./review-comment.cjs')
+  const out = buildConsolidated([
+    { name: '测试', md: '## 结论\n\n未能判定（本 job 不执行测试）\n' },
+    { name: '文档', md: '## 结论\n\n通过\n' },
+  ])
+  assert.ok(out.startsWith('## 结论\n\n未能判定'), out)
+})
+
+test('truncateLines：超限即截断并给指向说明', () => {
+  const { truncateLines } = require('./review-comment.cjs')
+  const long = Array.from({ length: 50 }, (_, i) => `行${i + 1}`).join('\n')
+  const out = truncateLines(long, 30)
+  assert.equal(out.split('\n').length, 30)
+  assert.ok(out.includes('内容超长已截断'), out)
+  assert.equal(truncateLines('短文本', 30), '短文本')
+})
+
+test('mergeHistory：累计历史结论（保留最近 N 次）并渲染中文摘要', () => {
+  const { mergeHistory, renderHistory } = require('./review-comment.cjs')
+  const body = '<!-- dsh-review-history: 通过,不通过 -->\n\n## 结论\n\n不通过\n'
+  const r = mergeHistory(body, '通过')
+  assert.deepEqual(r.outcomes, ['通过', '不通过', '通过'])
+  assert.equal(r.historyLine, '最近 3 次检查：通过 ×2、不通过 ×1')
+  assert.ok(r.historyComment.includes('<!-- dsh-review-history: 通过,不通过,通过 -->'))
+  assert.equal(mergeHistory('', '通过').historyLine, '最近 1 次检查：通过 ×1')
+  assert.equal(renderHistory([]), '')
+})

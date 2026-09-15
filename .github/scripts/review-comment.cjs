@@ -80,4 +80,110 @@ async function upsertReviewComment({ github, context, id, heading, report }) {
   return { action: 'created', commentId: created.data.id, escapeCount: countEscapes(body) }
 }
 
-module.exports = { ANSI_ESCAPE_RE, stripAnsi, countEscapes, reviewMarker, upsertReviewComment }
+/** 结论三态（issue #303：严禁把「没真正跑」写成通过）。 */
+const OUTCOMES = { PASS: '通过', FAIL: '不通过', UNKNOWN: '未能判定' }
+
+const HISTORY_RE = /<!-- dsh-review-history: ([^>]*?) -->/
+
+/** 从既有 sticky 评论里取历史结论序列。 */
+function readHistory(previousBody, { keep = 5 } = {}) {
+  const m = HISTORY_RE.exec(String(previousBody || ''))
+  if (!m) return []
+  return m[1]
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(-keep)
+}
+
+/** 历史结论 → 一行中文摘要（让「结论变了」可解释）。 */
+function renderHistory(outcomes) {
+  if (outcomes.length === 0) return ''
+  const parts = []
+  for (const name of [OUTCOMES.PASS, OUTCOMES.FAIL, OUTCOMES.UNKNOWN]) {
+    const n = outcomes.filter((o) => o === name).length
+    if (n > 0) parts.push(`${name} ×${n}`)
+  }
+  return `最近 ${outcomes.length} 次检查：${parts.join('、')}`
+}
+
+/** 追加本次结论并渲染历史行 + 要写回 body 的隐藏注释。 */
+function mergeHistory(previousBody, outcome, { keep = 5 } = {}) {
+  const outcomes = [...readHistory(previousBody, { keep: keep - 1 }), outcome].slice(-keep)
+  return {
+    outcomes,
+    historyLine: renderHistory(outcomes),
+    historyComment: `<!-- dsh-review-history: ${outcomes.join(',')} -->`,
+  }
+}
+
+/** 从一份三段结构报告里提取结论 / 统计 / 证据行。 */
+function parseReport(md) {
+  const text = stripAnsi(String(md || ''))
+  const conclusion = (/##\s*结论\s*\n+\s*([^\n]+)/.exec(text) || [])[1]
+  const stats = (/统计：([^\n]+)/.exec(text) || [])[1]
+  const evidence = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => /^-\s+\S/.test(l))
+    .slice(0, 2)
+  const detail = conclusion ? conclusion.trim() : OUTCOMES.UNKNOWN
+  const normalized = detail.startsWith(OUTCOMES.FAIL)
+    ? OUTCOMES.FAIL
+    : detail.startsWith(OUTCOMES.UNKNOWN)
+      ? OUTCOMES.UNKNOWN
+      : detail.startsWith(OUTCOMES.PASS)
+        ? OUTCOMES.PASS
+        : OUTCOMES.UNKNOWN
+  return {
+    conclusion: normalized,
+    detail,
+    stats: stats ? stats.trim() : '',
+    evidence,
+  }
+}
+
+/** 按行数上限截断，超限追加指向日志/artifact 的说明（禁止刷屏）。 */
+function truncateLines(text, maxLines = 30, hint = '完整结果见 CI 日志 / artifact') {
+  const lines = String(text || '').split('\n')
+  if (lines.length <= maxLines) return lines.join('\n')
+  return [...lines.slice(0, Math.max(0, maxLines - 1)), `_（内容超长已截断，${hint}）_`].join('\n')
+}
+
+/** 把各 job 报告汇总成一条「结论优先、超限即截断」的总评论。 */
+function buildConsolidated(reports, { maxLines = 30, historyLine = '', historyComment = '' } = {}) {
+  const parsed = reports.map((r) => ({ name: r.name, ...parseReport(r.md) }))
+  const count = (name) => parsed.filter((p) => p.conclusion === name).length
+  const outcome =
+    count(OUTCOMES.FAIL) > 0 ? OUTCOMES.FAIL : count(OUTCOMES.UNKNOWN) > 0 ? OUTCOMES.UNKNOWN : OUTCOMES.PASS
+  const lines = ['## 结论', '', outcome, '']
+  lines.push(
+    `统计：通过 ${count(OUTCOMES.PASS)} 项 / 不通过 ${count(OUTCOMES.FAIL)} 项 / 未能判定 ${count(OUTCOMES.UNKNOWN)} 项`,
+    '',
+  )
+  if (historyLine) lines.push(`历史：${historyLine}`, '')
+  lines.push('## 关键证据', '')
+  for (const p of parsed) {
+    const first = p.evidence[0] ? ` — ${p.evidence[0].replace(/^-\s*/, '')}` : ''
+    const shown = p.detail && p.detail !== p.conclusion ? p.detail : p.conclusion
+    lines.push(`- **${p.name}**：${shown}${first}`)
+  }
+  lines.push('', '## 建议', '', '- 先处理「不通过」项；完整明细见本次运行 artifact 与 CI 日志。')
+  if (historyComment) lines.push('', historyComment)
+  return truncateLines(lines.join('\n'), maxLines)
+}
+
+module.exports = {
+  ANSI_ESCAPE_RE,
+  stripAnsi,
+  countEscapes,
+  reviewMarker,
+  upsertReviewComment,
+  OUTCOMES,
+  readHistory,
+  renderHistory,
+  mergeHistory,
+  parseReport,
+  truncateLines,
+  buildConsolidated,
+}

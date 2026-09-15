@@ -1,10 +1,14 @@
-# 全面自动审查工作流（本仓库唯一的 PR 自动审查 workflow，issue #303）
-# 从多个角度自动审查 PR，提供详细的审查报告。
-# 去重说明：原 auto-code-review.yml 的 5 个 job（code-quality/security-review/performance-review/
-# test-review/documentation-review）是本文件 7 个 job 的真子集，两者监听同一事件导致每次 push
-# 发两套报告（#295 累计 36 条 bot 评论），故删除 auto-code-review.yml，只保留本文件。
-# 每个 job 发一条 sticky 评论（marker 去重，push 时 update 而非 append），
-# 评论正文经 .github/scripts/review-comment.cjs 剥色，避免 ANSI 乱码。
+# 全面自动审查工作流（唯一的 PR 自动审查 workflow，issue #303）
+#
+# 去重：原 auto-code-review.yml 的 5 个 job 是本文件 7 个 job 的真子集，两者监听同一事件
+# → 每次 push 发两套报告（#295 累计 36 条 bot 评论），已删除该文件。
+#
+# 报告规范（issue #303 + 工程效率规范第十三节）：
+#   - 三段结构：## 结论（通过 / 不通过 / 未能判定）→ ## 关键证据（≤5 条，超出即截断）
+#     → ## 建议；每条 ≤30 行，全中文，禁止裸贴工具原始输出；
+#   - 严禁把「没真正跑」写成通过：命令失败但无输出 / 超时 / 依赖缺失 → 结论必须是「未能判定」；
+#   - 所有进评论的文本都经剥色（NO_COLOR + FORCE_COLOR=0 + 正则兜底），杜绝 ANSI 乱码；
+#   - 7 个 job 各自上传报告 artifact，由 publish job 汇总成**一条** sticky 评论（含历史结论摘要）。
 
 name: Comprehensive Review
 
@@ -16,9 +20,6 @@ permissions:
   contents: read
   pull-requests: write
 
-# issue #303：CI runner 上 npm/prettier 等命令输出带 ANSI 颜色（实测日志中的 \u001b[36;1m…），
-# 被 cat 进报告再发成评论后 GitHub 不解析转义 → 页面上出现 [33mwarn[39m 之类乱码。
-# 这里统一关色；github-script 侧再用 .github/scripts/review-comment.cjs 兜底剥离（双保险）。
 env:
   NO_COLOR: '1'
   FORCE_COLOR: '0'
@@ -42,74 +43,21 @@ jobs:
 
       - name: Run code quality checks
         run: |
-          echo "## 🔍 代码质量审查报告" >> review-report.md
-          echo "" >> review-report.md
+          source .github/scripts/lib/review-check.sh
+          review_init review-report.md "代码质量"
+          run_check review-report.md "ESLint 静态检查" eslint npx eslint plugins/ --format compact
+          run_check review-report.md "TypeScript 类型检查" tsc npx tsc --noEmit
+          run_check review-report.md "圈复杂度（阈值 10）" complexity npx eslint plugins/ --rule 'complexity: ["error", 10]' --format compact
+          review_finish review-report.md "- 优先处理「不通过」项；圈复杂度超标建议拆分函数（阈值 10，见 quality-gates）。"
 
-          # ESLint 检查
-          echo "### ESLint 检查" >> review-report.md
-          if npx eslint plugins/ --format json > eslint-report.json 2>&1; then
-            echo "✅ ESLint 检查通过" >> review-report.md
-          else
-            echo "❌ ESLint 检查失败" >> review-report.md
-            npx eslint plugins/ --format compact >> review-report.md 2>&1
-          fi
-          echo "" >> review-report.md
-
-          # TypeScript 检查
-          echo "### TypeScript 检查" >> review-report.md
-          if npx tsc --noEmit > ts-report.txt 2>&1; then
-            echo "✅ TypeScript 检查通过" >> review-report.md
-          else
-            echo "❌ TypeScript 检查失败" >> review-report.md
-            cat ts-report.txt >> review-report.md
-          fi
-          echo "" >> review-report.md
-
-          # 代码复杂度检查
-          echo "### 代码复杂度检查" >> review-report.md
-          if npx eslint plugins/ --rule 'complexity: ["error", 10]' > complexity-report.txt 2>&1; then
-            echo "✅ 代码复杂度符合要求（≤10）" >> review-report.md
-          else
-            echo "❌ 代码复杂度超标" >> review-report.md
-            cat complexity-report.txt >> review-report.md
-          fi
-          echo "" >> review-report.md
-
-          # 文件大小检查
-          echo "### 文件大小检查" >> review-report.md
-          if npm run lint:size > size-report.txt 2>&1; then
-            echo "✅ 文件大小符合要求" >> review-report.md
-          else
-            echo "❌ 文件大小超标" >> review-report.md
-            cat size-report.txt >> review-report.md
-          fi
-          echo "" >> review-report.md
-
-          # 依赖分析
-          echo "### 依赖分析" >> review-report.md
-          if npx depcruise plugins/ > deps-report.txt 2>&1; then
-            echo "✅ 依赖结构正常" >> review-report.md
-          else
-            echo "❌ 依赖结构异常" >> review-report.md
-            cat deps-report.txt >> review-report.md
-          fi
-          echo "" >> review-report.md
-
-      - name: Comment code quality report
-        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          script: |
-            const fs = require('fs');
-            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
-            const report = fs.readFileSync('review-report.md', 'utf8');
-            const res = await upsertReviewComment({
-              github,
-              context,
-              id: 'code-quality',
-              heading: '## 🔍 代码质量审查报告',
-              report,
-            });
-            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
+          name: review-code-quality
+          path: review-report.md
+          retention-days: 1
+          if-no-files-found: ignore
 
   # 安全审查
   security-review:
@@ -128,51 +76,22 @@ jobs:
 
       - name: Run security checks
         run: |
-          echo "## 🔒 安全审查报告" >> security-report.md
-          echo "" >> security-report.md
+          source .github/scripts/lib/review-check.sh
+          review_init security-report.md "安全审查"
+          run_check security-report.md "依赖漏洞审计（npm audit）" npm-audit npm audit --audit-level=moderate
+          review_unknown security-report.md "CodeQL / 密钥扫描" "由平台托管（Security 页），本 job 无法给出即时结论"
+          review_finish security-report.md "- 高危及以上漏洞请在合并前处理；无修复版本的依赖需评估替代方案（CodeQL/密钥扫描见仓库 Security 页）。"
 
-          # 依赖漏洞审计
-          echo "### 依赖漏洞审计" >> security-report.md
-          if npm audit --audit-level=moderate > audit-report.txt 2>&1; then
-            echo "✅ 无安全漏洞" >> security-report.md
-          else
-            echo "❌ 发现安全漏洞" >> security-report.md
-            cat audit-report.txt >> security-report.md
-          fi
-          echo "" >> security-report.md
-
-          # 代码扫描
-          echo "### 代码扫描" >> security-report.md
-          echo "✅ CodeQL 扫描已启用" >> security-report.md
-          echo "" >> security-report.md
-
-          # 密钥扫描
-          echo "### 密钥扫描" >> security-report.md
-          echo "✅ 密钥扫描已启用" >> security-report.md
-          echo "" >> security-report.md
-
-          # 依赖许可证检查
-          echo "### 依赖许可证检查" >> security-report.md
-          echo "✅ 依赖许可证检查已配置" >> security-report.md
-          echo "" >> security-report.md
-
-      - name: Comment security report
-        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          script: |
-            const fs = require('fs');
-            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
-            const report = fs.readFileSync('security-report.md', 'utf8');
-            const res = await upsertReviewComment({
-              github,
-              context,
-              id: 'security-review',
-              heading: '## 🔒 安全审查报告',
-              report,
-            });
-            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
+          name: review-security-review
+          path: security-report.md
+          retention-days: 1
+          if-no-files-found: ignore
 
-  # 性能审查
+  # 性能与结构审查
   performance-review:
     runs-on: ubuntu-latest
     if: github.actor != 'dependabot[bot]'
@@ -189,115 +108,44 @@ jobs:
 
       - name: Run performance checks
         run: |
-          echo "## ⚡ 性能审查报告" >> performance-report.md
-          echo "" >> performance-report.md
+          source .github/scripts/lib/review-check.sh
+          review_init performance-report.md "性能与结构"
+          run_check performance-report.md "圈复杂度（阈值 10）" complexity npx eslint plugins/ --rule 'complexity: ["error", 10]' --format compact
+          run_check performance-report.md "文件大小门禁" generic npm run lint:size
+          run_check performance-report.md "依赖结构（无环）" generic npx depcruise plugins/
+          review_finish performance-report.md "- 复杂度/文件大小超标优先拆分；依赖环需解耦（见 dependency-cruiser 配置）。"
 
-          # 代码复杂度检查
-          echo "### 代码复杂度检查" >> performance-report.md
-          if npx eslint plugins/ --rule 'complexity: ["error", 10]' > complexity-report.txt 2>&1; then
-            echo "✅ 代码复杂度符合要求" >> performance-report.md
-          else
-            echo "❌ 代码复杂度超标" >> performance-report.md
-            cat complexity-report.txt >> performance-report.md
-          fi
-          echo "" >> performance-report.md
-
-          # 文件大小检查
-          echo "### 文件大小检查" >> performance-report.md
-          if npm run lint:size > size-report.txt 2>&1; then
-            echo "✅ 文件大小符合要求" >> performance-report.md
-          else
-            echo "❌ 文件大小超标" >> performance-report.md
-            cat size-report.txt >> performance-report.md
-          fi
-          echo "" >> performance-report.md
-
-          # 依赖分析
-          echo "### 依赖分析" >> performance-report.md
-          if npx depcruise plugins/ > deps-report.txt 2>&1; then
-            echo "✅ 依赖结构正常" >> performance-report.md
-          else
-            echo "❌ 依赖结构异常" >> performance-report.md
-            cat deps-report.txt >> performance-report.md
-          fi
-          echo "" >> performance-report.md
-
-          # 资源使用检查
-          echo "### 资源使用检查" >> performance-report.md
-          echo "✅ 资源使用检查已配置" >> performance-report.md
-          echo "" >> performance-report.md
-
-      - name: Comment performance report
-        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          script: |
-            const fs = require('fs');
-            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
-            const report = fs.readFileSync('performance-report.md', 'utf8');
-            const res = await upsertReviewComment({
-              github,
-              context,
-              id: 'performance-review',
-              heading: '## ⚡ 性能审查报告',
-              report,
-            });
-            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
+          name: review-performance-review
+          path: performance-report.md
+          retention-days: 1
+          if-no-files-found: ignore
 
-  # 测试审查
+  # 测试审查（本 job 不重复跑测试：权威结果以 CI workflow 为准，避免两套口径矛盾）
   test-review:
     runs-on: ubuntu-latest
     if: github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 26
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run test checks
+      - name: Summarize test status
         run: |
-          echo "## 🧪 测试审查报告" >> test-report.md
-          echo "" >> test-report.md
+          source .github/scripts/lib/review-check.sh
+          review_init test-report.md "测试"
+          review_unknown test-report.md "测试与覆盖率" "本 job 不执行测试，避免与 CI workflow 形成两套口径；以 CI 的 test/coverage 结果为准"
+          review_finish test-report.md "- 测试与覆盖率结论请看 CI workflow（job: test / coverage-finish）；本 job 不做重复判定。"
 
-          # 测试覆盖率检查
-          echo "### 测试覆盖率检查" >> test-report.md
-          echo "✅ 测试覆盖率门禁已配置（85%/75%）" >> test-report.md
-          echo "" >> test-report.md
-
-          # 测试质量检查
-          echo "### 测试质量检查" >> test-report.md
-          echo "✅ 测试质量检查已配置" >> test-report.md
-          echo "" >> test-report.md
-
-          # 变异测试
-          echo "### 变异测试" >> test-report.md
-          echo "✅ 变异测试已配置（dsh-file-activity）" >> test-report.md
-          echo "" >> test-report.md
-
-          # 测试隔离性检查
-          echo "### 测试隔离性检查" >> test-report.md
-          echo "✅ 测试隔离性检查已配置" >> test-report.md
-          echo "" >> test-report.md
-
-      - name: Comment test report
-        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          script: |
-            const fs = require('fs');
-            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
-            const report = fs.readFileSync('test-report.md', 'utf8');
-            const res = await upsertReviewComment({
-              github,
-              context,
-              id: 'test-review',
-              heading: '## 🧪 测试审查报告',
-              report,
-            });
-            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
+          name: review-test-review
+          path: test-report.md
+          retention-days: 1
+          if-no-files-found: ignore
 
   # 文档审查
   documentation-review:
@@ -316,115 +164,44 @@ jobs:
 
       - name: Run documentation checks
         run: |
-          echo "## 📚 文档审查报告" >> docs-report.md
-          echo "" >> docs-report.md
+          source .github/scripts/lib/review-check.sh
+          review_init docs-report.md "文档"
+          run_check docs-report.md "文档一致性检查" generic node scripts/check-docs.mjs
+          run_check docs-report.md "链接完整性检查" generic npm run check:links
+          run_check docs-report.md "格式检查（Prettier）" prettier npx prettier --check . --no-color
+          review_finish docs-report.md "- 格式问题本地执行 npm run format；链接/一致性失败见上方条目。"
 
-          # 文档一致性检查
-          echo "### 文档一致性检查" >> docs-report.md
-          if node scripts/check-docs.mjs > docs-check.txt 2>&1; then
-            echo "✅ 文档一致性检查通过" >> docs-report.md
-          else
-            echo "❌ 文档一致性检查失败" >> docs-report.md
-            cat docs-check.txt >> docs-report.md
-          fi
-          echo "" >> docs-report.md
-
-          # 链接完整性检查
-          echo "### 链接完整性检查" >> docs-report.md
-          if npm run check:links > links-check.txt 2>&1; then
-            echo "✅ 链接完整性检查通过" >> docs-report.md
-          else
-            echo "❌ 链接完整性检查失败" >> docs-report.md
-            cat links-check.txt >> docs-report.md
-          fi
-          echo "" >> docs-report.md
-
-          # 格式检查
-          echo "### 格式检查" >> docs-report.md
-          if npx prettier --check . --no-color > format-check.txt 2>&1; then
-            echo "✅ 格式检查通过" >> docs-report.md
-          else
-            echo "❌ 格式检查失败" >> docs-report.md
-            cat format-check.txt >> docs-report.md
-          fi
-          echo "" >> docs-report.md
-
-          # 文档结构检查
-          echo "### 文档结构检查" >> docs-report.md
-          echo "✅ 文档结构检查已配置" >> docs-report.md
-          echo "" >> docs-report.md
-
-      - name: Comment documentation report
-        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          script: |
-            const fs = require('fs');
-            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
-            const report = fs.readFileSync('docs-report.md', 'utf8');
-            const res = await upsertReviewComment({
-              github,
-              context,
-              id: 'documentation-review',
-              heading: '## 📚 文档审查报告',
-              report,
-            });
-            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
+          name: review-documentation-review
+          path: docs-report.md
+          retention-days: 1
+          if-no-files-found: ignore
 
-  # API 设计审查
+  # API 设计审查（当前无自动化检查，如实标注「未能判定」，不再输出伪结论）
   api-design-review:
     runs-on: ubuntu-latest
     if: github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 26
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run API design checks
+      - name: Summarize API design review
         run: |
-          echo "## 🔌 API 设计审查报告" >> api-report.md
-          echo "" >> api-report.md
+          source .github/scripts/lib/review-check.sh
+          review_init api-report.md "API 设计"
+          review_unknown api-report.md "公开 API 兼容性" "尚未接入自动化检查（原实现只输出固定文案，属伪结论）"
+          review_finish api-report.md "- 涉及公开 API 的改动请人工确认兼容性，并同步文档与 CHANGELOG。"
 
-          # 接口一致性检查
-          echo "### 接口一致性检查" >> api-report.md
-          echo "✅ 接口一致性检查已配置" >> api-report.md
-          echo "" >> api-report.md
-
-          # 向后兼容性检查
-          echo "### 向后兼容性检查" >> api-report.md
-          echo "✅ 向后兼容性检查已配置" >> api-report.md
-          echo "" >> api-report.md
-
-          # 错误处理检查
-          echo "### 错误处理检查" >> api-report.md
-          echo "✅ 错误处理检查已配置" >> api-report.md
-          echo "" >> api-report.md
-
-          # 文档完整性检查
-          echo "### 文档完整性检查" >> api-report.md
-          echo "✅ 文档完整性检查已配置" >> api-report.md
-          echo "" >> api-report.md
-
-      - name: Comment API design report
-        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          script: |
-            const fs = require('fs');
-            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
-            const report = fs.readFileSync('api-report.md', 'utf8');
-            const res = await upsertReviewComment({
-              github,
-              context,
-              id: 'api-design-review',
-              heading: '## 🔌 API 设计审查报告',
-              report,
-            });
-            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
+          name: review-api-design-review
+          path: api-report.md
+          retention-days: 1
+          if-no-files-found: ignore
 
   # 依赖审查
   dependency-review:
@@ -443,46 +220,101 @@ jobs:
 
       - name: Run dependency checks
         run: |
-          echo "## 📦 依赖审查报告" >> dependency-report.md
-          echo "" >> dependency-report.md
+          source .github/scripts/lib/review-check.sh
+          review_init dependency-report.md "依赖"
+          run_check dependency-report.md "依赖漏洞审计（npm audit）" npm-audit npm audit --audit-level=moderate
+          review_finish dependency-report.md "- 高危漏洞先处理；无修复版本时评估替代依赖或临时白名单（需在 PR 里说明）。"
 
-          # 依赖安全性检查
-          echo "### 依赖安全性检查" >> dependency-report.md
-          if npm audit --audit-level=moderate > audit-report.txt 2>&1; then
-            echo "✅ 无安全漏洞" >> dependency-report.md
-          else
-            echo "❌ 发现安全漏洞" >> dependency-report.md
-            cat audit-report.txt >> dependency-report.md
-          fi
-          echo "" >> dependency-report.md
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: review-dependency-review
+          path: dependency-report.md
+          retention-days: 1
+          if-no-files-found: ignore
 
-          # 版本兼容性检查
-          echo "### 版本兼容性检查" >> dependency-report.md
-          echo "✅ 版本兼容性检查已配置" >> dependency-report.md
-          echo "" >> dependency-report.md
+  # 汇总发布：把 7 份报告合成**一条** sticky 评论（含历史结论摘要，超长即截断）
+  publish:
+    runs-on: ubuntu-latest
+    needs:
+      - code-quality
+      - security-review
+      - performance-review
+      - test-review
+      - documentation-review
+      - api-design-review
+      - dependency-review
+    if: always() && github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-          # 许可证合规检查
-          echo "### 许可证合规检查" >> dependency-report.md
-          echo "✅ 许可证合规检查已配置" >> dependency-report.md
-          echo "" >> dependency-report.md
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: reports
+          pattern: review-*
 
-          # 依赖树健康检查
-          echo "### 依赖树健康检查" >> dependency-report.md
-          echo "✅ 依赖树健康检查已配置" >> dependency-report.md
-          echo "" >> dependency-report.md
-
-      - name: Comment dependency report
+      - name: Publish consolidated review comment
         uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
         with:
           script: |
-            const fs = require('fs');
-            const { upsertReviewComment } = require('./.github/scripts/review-comment.cjs');
-            const report = fs.readFileSync('dependency-report.md', 'utf8');
+            const fs = require('fs')
+            const path = require('path')
+            const {
+              upsertReviewComment,
+              buildConsolidated,
+              mergeHistory,
+              parseReport,
+              reviewMarker,
+              OUTCOMES,
+            } = require('./.github/scripts/review-comment.cjs')
+
+            const ORDER = [
+              ['review-code-quality', '代码质量'],
+              ['review-security-review', '安全'],
+              ['review-performance-review', '性能与结构'],
+              ['review-test-review', '测试'],
+              ['review-documentation-review', '文档'],
+              ['review-api-design-review', 'API 设计'],
+              ['review-dependency-review', '依赖'],
+            ]
+
+            const sections = []
+            for (const [dir, name] of ORDER) {
+              const dirPath = path.join('reports', dir)
+              let md = ''
+              if (fs.existsSync(dirPath)) {
+                const file = fs.readdirSync(dirPath).find((f) => f.endsWith('.md'))
+                if (file) md = fs.readFileSync(path.join(dirPath, file), 'utf8')
+              }
+              if (!md) md = `## 结论\n\n${OUTCOMES.UNKNOWN}（未收到报告 artifact，请查看该 job 日志）`
+              sections.push({ name, md })
+            }
+
+            const id = 'comprehensive-review'
+            const marker = reviewMarker(id)
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            })
+            const previous = comments.find(
+              (c) => c.user && c.user.type === 'Bot' && typeof c.body === 'string' && c.body.includes(marker)
+            )
+
+            const draft = buildConsolidated(sections, { maxLines: 30 })
+            const outcome = parseReport(draft).conclusion
+            const { historyLine, historyComment } = mergeHistory(previous ? previous.body : '', outcome)
+            const report = buildConsolidated(sections, { maxLines: 30, historyLine, historyComment })
+
             const res = await upsertReviewComment({
               github,
               context,
-              id: 'dependency-review',
-              heading: '## 📦 依赖审查报告',
+              id,
+              heading: '## 🧾 PR 自动审查（结论摘要）',
               report,
-            });
-            console.log(`review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}`);
+            })
+            console.log(
+              `review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}, sections=${sections.length}, outcome=${outcome}`
+            )

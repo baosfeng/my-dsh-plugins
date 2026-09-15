@@ -14,7 +14,7 @@
 # 陷阱提醒：不要用 `bash scripts/test-all.sh | tee log` 取退出码——那是 tee 的退出码，
 # 后台 job 会误报 exit 0；必须用 ${PIPESTATUS[0]}。
 # 另一个已知坑：同一插件目录并发跑 vitest --coverage 会因 coverage 目录锁而启动即死
-# （见 docs/踩坑/多agent并行测试资源冲突.md），本脚本请勿与其它测试进程并行跑同一插件。
+# （见 docs/踩坑/README.md），本脚本请勿与其它测试进程并行跑同一插件。
 set -o pipefail
 
 if [ "$#" -gt 0 ]; then

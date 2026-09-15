@@ -1,14 +1,14 @@
-# Troubleshooting · post-migration symptom lookup
+# 迁移后症状速查
 
-> Quick-reference table for tracing symptoms back to root causes and their cards, for debugging after Mode C migrations. It is not a decision flow, nor a complete fault catalog: root-cause confirmation still rests on the card recipes and the target tag's source; symptoms not listed here return to the pre-flight touchpoints and the layered validation checklist for layer-by-layer triage.
+> 症状 → 最可能根因的映射，对任何 DSH 版本迁移都适用。这不是完整故障目录：确认根因仍要读目标 tag 的一手源码；未列出的症状回到 [pre-flight.md](pre-flight.md) 的七类触点与 [SKILL.md](../SKILL.md) 的分层验证逐层排查。
 
-| Symptom | Most likely root cause | Card to check first |
-|---|---|---|
-| Panel/floating ball silently disappears, the plugin is absent from the boot graph, usually with no error at all | `dsh.client.inject` still references a removed package (phantom dependency), so the row never enters the graph; or the registration id / assembly row name does not match the package name; or the plugin is `disabled: true` at the patch layer | [DSH-0.1.2-A1-25](v0.1.2-alpha.1.md), [DSH-0.1.2-A1-26](v0.1.2-alpha.1.md) |
-| Startup assertion `loaded without registering "<id>"` | the client bundle's registration id (`__ModuleLoader__.load` id / tsdown banner `PLUGIN_ID`) ≠ package.json `name`, or the assembly row's `name` is not the bare package name | [DSH-0.1.2-A1-26](v0.1.2-alpha.1.md) |
-| `web boot: N entries did not activate`, `waiting for service: apiProxy` | 0.1.2 removed the ApiProxy transport layer, so a row with `require: ['apiProxy']` stays pending forever; or inject still references a removed package | [DSH-0.1.2-A1-01](v0.1.2-alpha.1.md), [DSH-0.1.2-A1-25](v0.1.2-alpha.1.md) |
-| Plugin loads but features half fail, console reports a factory error | the session-content read path is broken (per-session `.nodes` snapshot removed) or the composer DOM has drifted | [DSH-0.1.2-A1-27](v0.1.2-alpha.1.md), [DSH-0.1.2-A1-28](v0.1.2-alpha.1.md) |
-| `workspaces.connectWorkspace is not a function`, or workspace connect/pick throws while the plugin still boots | `ctx.workspaces` survived the Client Runtime split as list/CRUD only; navigation and the directory picker moved to `ctx.uiWorkspace`. `baselinesReady` / `recentWorkspaceId` are gone | [DSH-0.1.2-A1-32](v0.1.2-alpha.1.md), [DSH-0.1.2-A1-25](v0.1.2-alpha.1.md) |
-| Old host reports `missed the module table` | the client bundle hard-requires a module unique to the target cohort during evaluation (cross-cohort coexistence problem) | rollup [R-02](rollup-0.1.2.md) |
+| 症状 | 最可能根因 |
+|---|---|
+| 面板 / 悬浮球静默消失，插件不在 boot 图里，通常完全没有报错 | `dsh.client.inject` 仍引用已被移除的包（幽灵依赖），该 row 进不了图；或注册 id / assembly row 名与包名不一致；或 patch 层把它标成 `disabled: true` |
+| 启动断言 `loaded without registering "<id>"` | 客户端 bundle 的注册 id（`__ModuleLoader__.load` 的 id 或打包 banner 里的插件 id）≠ `package.json` 的 `name`，或 assembly row 的 `name` 不是裸包名 |
+| `web boot: N entries did not activate`、`waiting for service: xxx` | 引用了已被移除的内部服务（例如传输层拆除后仍 `require` 它），row 永远停在 pending；或 inject 仍指向已移除的包 |
+| 插件能加载，但功能半失效，控制台报 factory 错误 | 会话内容读取路径断裂（按 session 的快照结构被移除），或 composer 的 DOM 结构漂移 |
+| 连接 / 选择工作区抛错但插件仍能启动 | Client Runtime 拆分后工作区服务只剩列表与 CRUD，导航与目录选择器已迁到别处；旧的 baseline / recent 字段已删除 |
+| 旧宿主报 `missed the module table` | 客户端 bundle 在求值期硬依赖只存在于目标 cohort 的模块（跨 cohort 共存问题） |
 
-- **Source**: real migration of dsh-input-history 0.1.1 → 0.2.0 (2026-08); the last row comes from [discussion #5120](https://github.com/deepseek-ai/deepseek-harness/discussions/5120).
+未列出的症状：先按七类触点重扫一遍，再用分层验证逐层定位，不要凭症状名字猜接口。

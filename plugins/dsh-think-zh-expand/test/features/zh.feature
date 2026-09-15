@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/思考增强/需求清单.md（需求 1、2a、3a）
+# 需求来源：GitHub issue + docs/思考增强/概述.md（需求 1、2a、3a）
 # 验收基准：host-smoke.mjs / client-render.mjs 的 Gherkin 化表达；新增需求须在此补充场景
 
 功能: 思考增强

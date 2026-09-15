@@ -481,7 +481,7 @@ test('audit suite', async () => {
   // ── 22. 查询不依赖加载耗时：boot 后零等待即读到磁盘历史（防回归）─────
   //  曾经的 CI flaky：查询前靠 settle(40) 赌异步 readFile 跑完，慢机器上
   //  读到 0 条 → 「plugin event survives restart」0 !== 1。查询侧等 whenReady
-  //  后，查询语义与加载耗时无关（docs/踩坑/固定sleep等异步落盘导致CI-flaky.md）。
+  //  后，查询语义与加载耗时无关（docs/踩坑/README.md）。
   {
     const sharedHome = createTempHome()
     try {

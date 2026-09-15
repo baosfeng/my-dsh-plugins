@@ -4,7 +4,7 @@
  * 审计缺口：各插件重复实现「防抖 persistSoon + dirtyChain 串行链」（my-context /
  * my-guard / skill-manager / 旧 file-activity 结构几乎逐行相同），且「等落盘」
  * 只能靠固定 sleep —— 这正是 CI flaky 的根因
- * （docs/踩坑/固定sleep等异步落盘导致CI-flaky.md：sleep 不表达条件，只表达"我猜够了"）。
+ * （docs/踩坑/README.md：sleep 不表达条件，只表达"我猜够了"）。
  *
  * createWriteScheduler 把三层职责收口到一处：
  *  1. **防抖**（debounceMs，默认 500ms）：窗口内多次 schedule 合并为一次写；

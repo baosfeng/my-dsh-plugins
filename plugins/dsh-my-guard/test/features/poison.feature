@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/安全护栏/需求清单.md（需求 R4-R6）
+# 需求来源：GitHub issue + docs/安全护栏/概述.md（需求 R4-R6）
 # 验收基准：host-poison.mjs 的 Gherkin 化表达；新增需求须在此补充场景
 
 功能: 安装前投毒扫描

@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/任务可靠性/需求清单.md（需求 13：配置可视化，issue #27）
+# 需求来源：GitHub issue + docs/任务可靠性/概述.md（需求 13：配置可视化，issue #27）
 # 验收基准：host-config.mjs 的 Gherkin 化表达
 
 功能: 任务可靠性配置可视化

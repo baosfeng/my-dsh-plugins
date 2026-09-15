@@ -33,7 +33,6 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 - `dsh-upgrade-audit`（skills/dsh-upgrade-audit/）：两 DSH 版本间兼容性审计（npm 模式物化 + playbook 输出契约）
 - `plugin-test`（skills/plugin-test/）：测试 + docker 冒烟（发布前对打包产物冷启动验证）
 - `plugin-release`（skills/plugin-release/）：打包发布 + 发布前自动检查（5 层 gate + 语义 gate）
-- `plugin-workflow`（skills/plugin-workflow/）：插件生命周期统一入口（检查/升级/测试/发布选择 + 阶段账本）
 
 ## 宿主能力缺口：一律插件侧接管（项目决策 2026-09-12）
 
@@ -47,7 +46,7 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
   4. **MutationObserver 兜底**——应对 React 重渲染（宿主重建 DOM 后重新接管）；
   5. **性能保护**——超长内容跳过处理。
 - 参考实现：`dsh-md-render` 对宿主纯文本注入块的 DOM 接管（[插件 README](../../plugins/dsh-md-render/README.md) · [md 渲染模块文档](../../docs/md渲染/概述.md)）；遇到同类缺口不要新开「等上游修复」类 issue，直接在本仓库插件里覆盖。
-- **profile 插件的 fiber 会被 loader 回收 → 注册必须落到常驻 root**（issue #242 实测，2026-09-13）：注册在插件自身 ctx 上的 `ctx.on('session/event', …)` 与 `ctx.effect(() => webServer.register(…))` 会**静默消失**——事件 0 触发、路由 404，**没有任何报错**。新插件写事件监听/路由时默认用 `const listenCtx = ctx.root ?? ctx` + `{ global: true }`，并以 root 为键去重（避免重复 apply 累积）。判定方法（3 分钟探针）与完整修法：[踩坑：profile 插件 fiber 回收导致监听器静默失效](../../docs/踩坑/profile插件fiber被回收导致监听器静默失效.md)；参考实现 `plugins/dsh-my-context`（`rootListeners` / `rootRoutes`）与防回归测试 `plugins/dsh-my-context/test/host-root-registration.mjs`。
+- **profile 插件的 fiber 会被 loader 回收 → 注册必须落到常驻 root**（issue #242 实测，2026-09-13）：注册在插件自身 ctx 上的 `ctx.on('session/event', …)` 与 `ctx.effect(() => webServer.register(…))` 会**静默消失**——事件 0 触发、路由 404，**没有任何报错**。新插件写事件监听/路由时默认用 `const listenCtx = ctx.root ?? ctx` + `{ global: true }`，并以 root 为键去重（避免重复 apply 累积）。判定方法（3 分钟探针）与完整修法：[踩坑：profile 插件 fiber 回收导致监听器静默失效](../../docs/踩坑/README.md)；参考实现 `plugins/dsh-my-context`（`rootListeners` / `rootRoutes`）与防回归测试 `plugins/dsh-my-context/test/host-root-registration.mjs`。
 
 ## 插件形态（先决策）
 
@@ -79,7 +78,7 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
    - 想发现近似名/同功能包：`npm search <关键词> --registry=https://registry.npmjs.org`。
 
 3. **被占用 → 改名**：统一加 `my-` 前缀为 `dsh-my-<功能>`，参考本仓库改名先例 `dsh-my-skill-manager`（原 `dsh-skill-manager` 被占）、`dsh-my-plugin-manager`（原 `dsh-plugin-manager` 被占）。改名后重新执行第 2 步确认新名可用再继续。
-4. **记录检索结果（强制）**：候选名 + 占用情况记入插件需求清单 `docs/<模块>/需求清单.md`（如 `R1 包名 dsh-my-xxx：候选 dsh-xxx 已被 maintainer xxx 占用（2026-xx 检索）`），发布前复查一次。
+4. **记录检索结果（强制）**：候选名 + 占用情况记入该插件的命名 issue（评论即可），发布前复查一次。
 
 > **命名查重增量（plugin-write skill）**：对方提供结构化命名清单 + 离线/在线双重校验，可补充到本流程——① 新建插件时声明 `dsh-plugin.naming.json`（结构化命名清单：包名/显示名/标识符）；② 用 `skills/plugin-write/scripts/validate-names.mjs --manifest ./dsh-plugin.naming.json` 离线校验（兼容性错误 = 目标契约失败，前缀警告 = 社区建议）；③ 网络可用时用 `skills/plugin-write/scripts/query-registry.mjs --manifest ./dsh-plugin.naming.json --harness-version <精确版本>` 查中央注册表（无匹配只算"无已审匹配"，超时/网络失败算"未检查"，绝不把自动发现候选当预留）。本仓库 npm 检索（上面 1-4 步）与对方注册表查询互补：npm 查包名占用，注册表查生态标识符冲突。
 
@@ -106,17 +105,17 @@ plugins/<name>/                  # 插件目录（小写连字符命名，如 ds
 - **client 注册的 tab/viewer id 统一用 `包名:xxx` 前缀**（如 `dsh-file-activity:recent`），不与内置 id 冲突。
 - 每个插件**不需要**独立 .gitignore（根 .gitignore 统一覆盖 node_modules / .DS_Store / .dsh-vision-toolkit 等）。
 - 新插件 README 必须中文，顶部放插件生态 badge（见现有插件）与**真实运行效果图**；骨架阶段截图可用占位注释，发版前补真实截图。**效果图规范（强制）**：① 每插件 README 顶部放 1–3 张真实运行截图（用 `verifying-dsh-plugins` 隔离实例 + 浏览器端到端截图，非示意图）；② 截图存 `<插件>/assets/`，README 用 `./assets/xxx.png` 相对路径引用；③ 新插件发版前必须补图；④ **功能更新 / UI 变化 / 交互新增时必须同步更新/补充截图**，与代码改动一起提交、一起发版（`scripts/release.mjs` 会校验 README 引用了且 `assets/` 含截图，缺失则发版失败）；⑤ **确无用户可见 UI 的插件走显式声明豁免，不写插件名单**：`package.json` 的 `dsh.ui=false` + 非空 `dsh.uiReason`（写明为什么没有可截图的产物；`dsh.ui=false` 与 `dsh.client` 互斥——声明无 UI 却提供 client 端会被判为非法声明，必须补真实截图）；判据实现 `scripts/lib/screenshot-gate.mjs`、单测 `scripts/test/screenshot-gate.test.mjs`，发版输出与批量汇总显式列出「已豁免」插件与理由（豁免可见、可审计）。
-- **需求清单（强制）**：每个插件在仓库 `docs/<模块>/需求清单.md` 维护一份需求清单，把用户明确的需求逐条列出（编号 R1/R2/…，注明验证方式），**易碎需求（重启恢复、会话隔离、持久化不丢失、数据不串）必须有专门测试断言**。开发/修改本插件前逐条对照，开发后逐条回归（见 [构建与测试 · 需求回归](../../docs/开发指南/构建与测试.md#需求回归强制要求)）。
+- **需求与回归基准（强制）**：需求以 **GitHub issue** 为准（验收标准写在 issue 正文）；**回归基准 = 该插件测试套件 + issue 验收标准逐条核对**。易碎需求（重启恢复、会话隔离、持久化不丢失、数据不串）必须有专门测试断言（见 [构建与测试 · 需求回归](../../docs/开发指南/构建与测试.md#需求回归强制要求)）。
 
 ## 开发流程
 
-0. **先建/读需求清单**：`docs/<模块>/需求清单.md` 不存在则先建（把用户提出的需求逐条列进去），存在则通读——本次改动涉及哪些条目、可能影响哪些条目，先想清楚。**新建插件时先做命名阶段 npm 包名检索**（见「插件形态 · 命名阶段」），候选名与占用情况记入需求清单。
+0. **先读需求**：读该插件相关 issue 的验收标准，想清楚本次改动涉及哪些条目、可能影响哪些。**新建插件时先做命名阶段 npm 包名检索**（见「插件形态 · 命名阶段」），候选名与占用情况记入命名 issue。
 1. **搭骨架**：按上面目录结构创建 `plugins/<name>/`，复制现有插件（`plugins/dsh-file-activity/`）的 `cordis.patch.yml`、LICENSE 作参照。
 2. **写 package.json**（见下方字段说明）。
 3. **写 server 端** `lib/index.js`：`export const name / inject / apply(ctx)`。用 `ctx.on(...)` 监听事件、`ctx.effect(() => ...)` 注册副作用（返回 disposer）。HTTP 路由注入 `webServer`：`ctx.webServer.register({ kind: 'prefix', path: '/<插件名>/api', handler: async (request, response) => {...} })`，handler 内先做 loopback 信任围栏（参考现有插件的 `fence(request)`，403 拒绝非本机来源）。
 4. **写 client 端** `lib/client.js`（格式见下节）：声明 `inject`、用 `ctx.effect(() => ctx.betterSidebar.registerTab(...))` 注册页签（disposer 必须被 fiber 持有，否则 HMR/禁用后残留注册、下次激活报 `"already registered"`）。
 5. **写测试**：`test/` 下放纯 Node 冒烟测试（mock ctx / mock webServer / mock betterSidebar），CI 只跑 `npm test`（即 `node test/host-smoke.mjs`）；依赖浏览器/真实 GUI 的测试留在本机手动跑。**新增功能必须补测试**，易碎需求（重启恢复/会话隔离）必须有专门断言（可参考 `dsh-file-activity/test/host-smoke.mjs` 的"重启恢复"测试段落）。
-6. **回归验证（强制）**：跑全部测试 + 对照需求清单逐条验证（尤其与本次改动相邻的功能），确认无回归后再提交。
+6. **回归验证（强制）**：跑全部测试 + 对照 issue 验收标准逐条验证（尤其与本次改动相邻的功能），确认无回归后再提交。
 7. **本地验证**：`dsh plugin --profile web add link:<路径>` → 浏览器硬刷新（Cmd/Ctrl+Shift+R）。client 改动热加载无需重启；**server 端改动需重启 `dsh web`**。
 8. **清理验证环境（强制）**：验证完成后必须清干净——停掉后台验证实例（job_kill）、删除临时验证目录（`/tmp/dsh-<port>`）、关闭验证用专用浏览器（`browser_close` + 杀 `chrome-cdp-profile` 实例）、确认端口已释放（`curl` 应无响应）、`job_list` 确认无 running 任务。**用户可能同时在开发多个插件，残留环境会互相干扰**。完整清单见 [verifying-dsh-plugins](../verifying-dsh-plugins/SKILL.md) 的「步骤 4：收尾清理」章节（仓库内 skill）。
 9. **发布**：`node scripts/release.mjs <插件名> --bump patch --push`（自动 bump 版本 + 生成 CHANGELOG + 同步文档 + 推 tag `<包名>@v<版本>`）→ `.github/workflows/release.yml` 自动测试 + 创建 GitHub Release + npm 发布（NPM_TOKEN 已配置）。详见 [发布流程](#发布流程自动--手动)。
@@ -277,23 +276,23 @@ export function apply(ctx) {
 
 **方式 B（本地手动，等价）**：`node scripts/release.mjs <插件名> --bump patch --push`（bump 版本 + CHANGELOG 生成 + 根 README/AGENTS 版本同步 + tag + push）。版本已手动改好时省略 `--bump`。
 
-发版门禁（release.mjs 自动校验）：`peerDependencies.cordis` 已声明且 major 一致（**agent preset 资产包 `dsh.kind=preset` 豁免**，见「插件形态」）→ CHANGELOG 有当前版本段 → npm test 全绿 → README 效果截图引用有效（`./assets/` 或 unpkg URL）→ 文档版本同步 → tag。**验证发布结果**：GitHub Releases 页面确认 Release + `.tgz` 附件、npmjs.com 确认新版本（或 `npm view <包名> version --registry=https://registry.npmjs.org`）；失败时去 Actions 页看失败步骤（历史校验 bug 见 [踩坑：release 版本校验失败](../../docs/踩坑/github-release版本校验失败.md)）。
+发版门禁（release.mjs 自动校验）：`peerDependencies.cordis` 已声明且 major 一致（**agent preset 资产包 `dsh.kind=preset` 豁免**，见「插件形态」）→ CHANGELOG 有当前版本段 → npm test 全绿 → README 效果截图引用有效（`./assets/` 或 unpkg URL）→ 文档版本同步 → tag。**验证发布结果**：GitHub Releases 页面确认 Release + `.tgz` 附件、npmjs.com 确认新版本（或 `npm view <包名> version --registry=https://registry.npmjs.org`）；失败时去 Actions 页看失败步骤（历史校验 bug 见 [踩坑：release 版本校验失败](../../docs/踩坑/README.md)）。
 
 ## 常见错误
 
-| 症状                                                                       | 根因                                                                                          | 解决                                                                                                                                                                                    |
-| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `"tab type ... already registered"`                                        | 重复注册：HMR 残留或 id 冲突                                                                  | 注册必须包 `ctx.effect`；id 全局唯一（内置 explorer/git/terminal 等不可占用）                                                                                                           |
-| `"no service available"`（tools）                                          | 工具型插件没声明 `inject: ['tools']`                                                          | `export const inject = ['tools']`                                                                                                                                                       |
-| 工具注册了但 agent 从不调用                                                | `description` 写得不够好                                                                      | description 是 agent 决策依据，写清用途与参数                                                                                                                                           |
-| Release workflow 在 `Verify the git tag matches package.json version` 失败 | 校验比较格式不一致（历史 bug：`expected` 带 `v` 前缀而 tag 解析的 `VERSION` 不带）            | 校验必须比较**裸版本**：`expected="$(node -p ...)"`（不带 v），与 tag `@v` 后部分一致；改后删 tag 重推（`git tag -d <tag> && git push origin :refs/tags/<tag>`）                        |
-| schema 类型推断/校验失败                                                   | `required` 数组、`required: false`、缺 `additionalProperties`                                 | 属性级 `required: true`；对象 schema 显式 `additionalProperties: false`（见 dsh-tools-api.md）                                                                                          |
-| 页面没效果                                                                 | 只改了 server 端没重启；或没硬刷新                                                            | server 改动重启 `dsh web`；client 改动 Cmd/Ctrl+Shift+R                                                                                                                                 |
-| `duplicate loader entry id`                                                | profile 里手动 insert + bundle patch 自动插入重复                                             | 删掉手动行，只用 `dsh plugin` 安装                                                                                                                                                      |
-| `ctx.betterSidebar` undefined                                              | 没声明 inject，或服务未加载                                                                   | `inject: ['betterSidebar']`；可选场景 `ctx.get` 判空降级                                                                                                                                |
-| 双 Cordis / 类型分裂                                                       | 同时引用 unscoped 与 scoped cordis                                                            | 全链统一一个 cordis（本仓库用 `cordis` peer + link 安装）                                                                                                                               |
-| HMR 后状态错乱                                                             | disposer 没被 fiber 持有                                                                      | `ctx.effect(() => register(...))`，绝不裸调                                                                                                                                             |
-| 页签偶发"纯文字无样式"                                                     | 样式注入放在服务判空早退（`if (service === undefined) return`）之后，HMR/服务重载瞬间跳过注入 | **样式注入必须放 `apply` 最前、无条件执行**（不依赖任何服务），每个 fiber 持自己的 `<style>`、disposer 只删自己的（详见 [踩坑：插件页签样式丢失](../../docs/踩坑/插件页签样式丢失.md)） |
+| 症状                                                                       | 根因                                                                                          | 解决                                                                                                                                                                          |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"tab type ... already registered"`                                        | 重复注册：HMR 残留或 id 冲突                                                                  | 注册必须包 `ctx.effect`；id 全局唯一（内置 explorer/git/terminal 等不可占用）                                                                                                 |
+| `"no service available"`（tools）                                          | 工具型插件没声明 `inject: ['tools']`                                                          | `export const inject = ['tools']`                                                                                                                                             |
+| 工具注册了但 agent 从不调用                                                | `description` 写得不够好                                                                      | description 是 agent 决策依据，写清用途与参数                                                                                                                                 |
+| Release workflow 在 `Verify the git tag matches package.json version` 失败 | 校验比较格式不一致（历史 bug：`expected` 带 `v` 前缀而 tag 解析的 `VERSION` 不带）            | 校验必须比较**裸版本**：`expected="$(node -p ...)"`（不带 v），与 tag `@v` 后部分一致；改后删 tag 重推（`git tag -d <tag> && git push origin :refs/tags/<tag>`）              |
+| schema 类型推断/校验失败                                                   | `required` 数组、`required: false`、缺 `additionalProperties`                                 | 属性级 `required: true`；对象 schema 显式 `additionalProperties: false`（见 dsh-tools-api.md）                                                                                |
+| 页面没效果                                                                 | 只改了 server 端没重启；或没硬刷新                                                            | server 改动重启 `dsh web`；client 改动 Cmd/Ctrl+Shift+R                                                                                                                       |
+| `duplicate loader entry id`                                                | profile 里手动 insert + bundle patch 自动插入重复                                             | 删掉手动行，只用 `dsh plugin` 安装                                                                                                                                            |
+| `ctx.betterSidebar` undefined                                              | 没声明 inject，或服务未加载                                                                   | `inject: ['betterSidebar']`；可选场景 `ctx.get` 判空降级                                                                                                                      |
+| 双 Cordis / 类型分裂                                                       | 同时引用 unscoped 与 scoped cordis                                                            | 全链统一一个 cordis（本仓库用 `cordis` peer + link 安装）                                                                                                                     |
+| HMR 后状态错乱                                                             | disposer 没被 fiber 持有                                                                      | `ctx.effect(() => register(...))`，绝不裸调                                                                                                                                   |
+| 页签偶发"纯文字无样式"                                                     | 样式注入放在服务判空早退（`if (service === undefined) return`）之后，HMR/服务重载瞬间跳过注入 | **样式注入必须放 `apply` 最前、无条件执行**（不依赖任何服务），每个 fiber 持自己的 `<style>`、disposer 只删自己的（详见 [踩坑：插件页签样式丢失](../../docs/踩坑/README.md)） |
 
 ## 运行时故障排查（plugin-runtime-debug 增量）
 

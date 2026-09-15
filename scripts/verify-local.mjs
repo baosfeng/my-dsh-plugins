@@ -102,7 +102,7 @@
  *
  * 疑似并发冲突 → 串行自动复测：
  *   多个进程同时跑同一插件的 vitest 会争用其 coverage/ 临时目录，表现为
- *   coverage/EACCES/ENOENT/EPERM 或 5s 联网用例超时（见 docs/踩坑/多agent并行测试资源冲突.md）。
+ *   coverage/EACCES/ENOENT/EPERM 或 5s 联网用例超时（见 docs/踩坑/README.md）。
  *   插件测试失败且报错命中这些特征时，会自动以串行（并发 1）复测**失败的那些插件**：
  *   复测通过 → 判通过并打印「疑似并发冲突，已串行复测通过」；复测仍失败 → 判红。
  *   只复测一次、只复测失败项，不掩盖真实回归；VERIFY_NO_RETRY=1 可关闭该降级。
@@ -969,7 +969,7 @@ async function runOnePlugin(name) {
 
 /**
  * 疑似「多进程并发跑同一插件测试」的报错特征。
- * 依据 docs/踩坑/多agent并行测试资源冲突.md：并发跑同一插件时两个 vitest 会争用该插件的
+ * 依据 docs/踩坑/README.md：并发跑同一插件时两个 vitest 会争用该插件的
  * coverage/ 与临时目录，表现为 coverage 写入异常 / EACCES / ENOENT / EPERM，或带
  * testTimeout 的联网用例超时（dsh-my-guard 曾出现 5013ms 误报）。
  * 刻意保持保守：只有命中这些特征才触发「串行复测」，不做无条件重试，以免掩盖真实回归。
@@ -1110,7 +1110,7 @@ const tail = (text, lines) => text.split('\n').slice(-lines).join('\n')
  *
  * 各插件测试相互隔离（独立 node 进程 + 临时 DSH_HOME / port 0，无固定端口占用），但同一仓库里
  * 若**另有进程正在跑同一插件**的 vitest，会争用该插件的 coverage 目录
- * （见 docs/踩坑/多agent并行测试资源冲突.md）——故保留 VERIFY_CONCURRENCY=1 手动串行降级。
+ * （见 docs/踩坑/README.md）——故保留 VERIFY_CONCURRENCY=1 手动串行降级。
  */
 function pluginConcurrency() {
   const raw = Number.parseInt(process.env.VERIFY_CONCURRENCY ?? '', 10)
@@ -1164,7 +1164,7 @@ function reportTotalTimeout() {
   log('  · 完全关闭超时：VERIFY_NO_TIMEOUT=1 git push')
   log('  · 只复现卡住的那一项：node scripts/verify-local.mjs --only <id>')
   log('  · 若疑似并发冲突（coverage/EACCES/ENOENT/超时）：VERIFY_CONCURRENCY=1 node scripts/verify-local.mjs --fast')
-  log(dim('  排查文档：docs/踩坑/多agent并行测试资源冲突.md'))
+  log(dim('  排查文档：docs/踩坑/README.md'))
   killAllChildren('SIGKILL')
   process.exit(124)
 }
@@ -1448,7 +1448,7 @@ if (failed.length > 0) {
     log(yellow('排查提示（插件测试失败时）：'))
     log(
       `  - 若报错含 coverage / EACCES / ENOENT 或 5s 超时：可能有另一个进程正在跑同一插件` +
-        `（见 docs/踩坑/多agent并行测试资源冲突.md）→ 确认后重跑，或 VERIFY_CONCURRENCY=1 串行复测`,
+        `（见 docs/踩坑/README.md）→ 确认后重跑，或 VERIFY_CONCURRENCY=1 串行复测`,
     )
     log('  - 复测单个插件：node scripts/verify-local.mjs --only test --plugin <name>')
     log('  - 本次已内置「疑似并发冲突 → 串行自动复测」且复测仍失败 → 按真实失败处理（非并发冲突）')

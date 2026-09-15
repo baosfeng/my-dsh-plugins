@@ -31,7 +31,7 @@ description: 使用当 需要审计两个 DSH 版本之间仓库外消费者可�
 | `CHANGELOG.md` | 按类型分类，**必须有 Reverts 分节** | 有富化时生成；否则省略并明说 |
 | `UPGRADE-ADAPTATION.md` | 审计报告（两模式同一骨架） | 相同；头部记录模式与版本出处 |
 
-报告语言跟随用户语言（[examples/](examples/0.1.2alpha1-to-0.1.2alpha2/UPGRADE-ADAPTATION.md) 既有报告为英文，属历史约定不强制）。
+报告语言跟随用户语言。
 
 ## Phase 1 — 物化两棵树
 
@@ -71,7 +71,7 @@ node <skill-dir>/scripts/materialize-npm.mjs <from> <to> tmp/<pair>
 
 ## Phase 5 — 写 UPGRADE-ADAPTATION.md
 
-按 [references/audit-playbook.md](references/audit-playbook.md) 骨架：头部（区间、统计、模式与出处、源码模式的纯性说明）、**Verdict**（直接回答比较性问题）、§1 回滚、按消费者影响排序的破坏分节（删除项在前，每条标注谁会被破坏，配 **Adapt:** 行）、**Confirmed unchanged**（兼容性成立的部分与破坏同等重要）、边界签名表 `[API surface | from | to | changed?]`、编号迁移清单。完整实例见 [examples/0.1.2alpha1-to-0.1.2alpha2/](examples/0.1.2alpha1-to-0.1.2alpha2/UPGRADE-ADAPTATION.md)（源码模式真实审计）。对话回复跟随用户语言。
+按 [references/audit-playbook.md](references/audit-playbook.md) 骨架：头部（区间、统计、模式与出处、源码模式的纯性说明）、**Verdict**（直接回答比较性问题）、§1 回滚、按消费者影响排序的破坏分节（删除项在前，每条标注谁会被破坏，配 **Adapt:** 行）、**Confirmed unchanged**（兼容性成立的部分与破坏同等重要）、边界签名表 `[API surface | from | to | changed?]`、编号迁移清单。对话回复跟随用户语言。
 
 ## 护栏
 

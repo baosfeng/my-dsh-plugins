@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/会话标题自动生成/需求清单.md（R1-R5）
+# 需求来源：GitHub issue + docs/会话标题自动生成/概述.md（R1-R5）
 # 验收基准：test/host-smoke.mjs 的 Gherkin 化表达；新增需求须在此补充场景
 
 功能: 会话标题自动生成

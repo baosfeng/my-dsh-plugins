@@ -15,7 +15,7 @@
  *   · summarizeAuditJson() —— 把 --json 结果压缩成一行人类可读摘要
  *   · renderAuditReport()  —— 失败时把 --json 报告渲染成人类可读清单（替代裸 JSON）
  *
- * ⚠️ 关键 npm 行为（npm 11 + node 26 实测，见 docs/踩坑/npm-audit在镜像源下静默失效.md）：
+ * ⚠️ 关键 npm 行为（npm 11 + node 26 实测，见 docs/踩坑/README.md）：
  *   1. `--registry https://registry.npmjs.org` 会被 npm 的 replace-registry-host=npmjs
  *      默认值**反向重写**成当前配置的 registry（即又回到镜像）——必须同时设
  *      `replace_registry_host=never` 才能真正打到官方源；

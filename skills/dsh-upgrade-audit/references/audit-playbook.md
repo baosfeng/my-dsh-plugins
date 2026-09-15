@@ -46,7 +46,7 @@ Recon output is leads, not findings. Before anything enters the report:
 
 ## UPGRADE-ADAPTATION.md skeleton
 
-Report language follows the user's language; the skeleton below uses the English headings of the [sample report under examples/](../examples/0.1.2alpha1-to-0.1.2alpha2/UPGRADE-ADAPTATION.md).
+Report language follows the user's language.
 
 ```markdown
 # Upgrade Adaptation: <to> ← <from>

@@ -7,7 +7,7 @@
  *
  * 注意：handler 本身必须是同步函数（返回流对象），async handler 会把
  * waterfall 返回值变成 Promise，破坏下游 `yield*` 委托（见踩坑
- * docs/踩坑/llm流async处理器误用.md）。
+ * docs/踩坑/README.md）。
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 

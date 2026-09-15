@@ -14,7 +14,7 @@
  *
  * 破坏其中任何一条 = semver 破坏性变更（major）。改类名清单时三处同步：
  * `plugins/dsh-md-render/README.md`（公共 API 契约）、`CHANGELOG.md`、
- * `docs/md渲染/需求清单.md` R25。
+ * `docs/md渲染/概述.md` R25。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -207,10 +207,9 @@ describe('输出结构契约（README 公共 API 契约清单）', () => {
   })
 })
 
-describe('semver 承诺文档（README / 需求清单）', () => {
+describe('semver 承诺文档（README / CHANGELOG）', () => {
   const readme = readFileSync(join(ROOT, 'README.md'), 'utf8')
   const changelog = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8')
-  const requirementList = readFileSync(join(ROOT, '..', '..', 'docs', 'md渲染', '需求清单.md'), 'utf8')
 
   it('README 有「公共 API 契约」章节', () => {
     expect(readme.includes('公共 API 契约')).toBe(true)
@@ -224,9 +223,5 @@ describe('semver 承诺文档（README / 需求清单）', () => {
 
   it('CHANGELOG 记录了 MarkdownView 的 semver 承诺', () => {
     expect(changelog.includes('MarkdownView')).toBe(true)
-  })
-
-  it('需求清单有对应条目（R25）', () => {
-    expect(requirementList.includes('R25')).toBe(true)
   })
 })

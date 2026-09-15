@@ -6,88 +6,37 @@
   <img alt="远程触发通知：页面右下角 toast 卡片（通知权限未授予时的兜底呈现）" src="https://unpkg.com/dsh-my-notify/assets/notify-toast.png" width="640" />
 </div>
 
-**DSH 通知提醒插件**：在**会话（本轮对话）结束**、**agent 询问问题**（`ask_user_question`）、**等待你要批准**（审批请求）时，发出**浏览器系统通知 + 提示音（滴一声）**；点击通知直接**跳转到对应会话**。预留了**远程 hook 触发接口**——任意进程 / cron / CI / webhook 都能推送自定义通知。支持**出站 webhook**——事件发生时自动推送到**企微 / 飞书 / 钉钉**群机器人，离开电脑手机也能收到。
+**DSH 通知提醒插件**：在**会话结束**、**agent 询问问题**、**等待你批准**时发出**浏览器系统通知 + 提示音**，点击通知直接跳转到对应会话；另提供**远程 hook 触发接口**与**出站 webhook**（推送企微 / 飞书 / 钉钉机器人），离开电脑也能收到。
 
 ## 功能
 
-### 1. 三类自动触发（默认全开，可单独关闭）
+- **三类自动触发**（默认全开、可单独关闭）：`end` 本轮对话完成或被中断、`ask` agent 调用 `ask_user_question`、`approval` 出现待批准请求；同类事件同一会话 3 秒内去重。
+- **默认过滤子代理会话**：只提醒你直接查看的顶层会话；`subagentEnd: true` 后子代理完成也提醒，标题带「子代理」前缀。
+- **通知呈现**：系统通知（标题 = 会话标题，正文 = 类型 + 摘要）、提示音（Web Audio 合成，无需音频文件，首次与页面交互后解锁）、点击通知聚焦窗口并打开对应会话；通知权限被拒时用页面内 toast 兜底。
+- **出站 Webhook**：事件推送到企业微信 / 飞书 / 钉钉群机器人或自建通用中转（消息格式与加签自动适配），支持多 webhook、按事件订阅、自定义模板；推送失败重试 3 次（指数退避），失败记录在设置页可见。
+- **可视化设置**：设置 → 插件 → 通知提醒 页签编辑触发开关、webhook 列表、Token、去重窗口，保存即生效、重启不丢。
 
-| 触发类型               | 时机                                              | 通知内容                                   |
-| ---------------------- | ------------------------------------------------- | ------------------------------------------ |
-| **结束**（`end`）      | `agent/status` 变为 idle（本轮对话完成 / 被中断） | 会话标题 + 「会话已结束」                  |
-| **询问**（`ask`）      | agent 调用 `ask_user_question` 工具               | 会话标题 + 「需要你回答」+ 问题摘要        |
-| **审批**（`approval`） | 出现需要用户批准的请求（如沙箱、文件操作）        | 会话标题 + 「等待你的批准」+ 工具名 / 原因 |
+## 配置
 
-- **自动过滤子代理（subagent）会话**：只提醒用户直接查看的顶层会话，不打扰子代理批量完成；判定白名单化（`origin` / `delegationDepth` / 运行时 `subagentDepth` 任一命中即子代理，无法确认的会话保守视为子代理）。配置 `subagentEnd: true` 后子代理完成也提醒，通知标题带「子代理」前缀，与主会话一眼区分。
-- **同类去重**：同一会话同一类型 3 秒内只提醒一次，避免重复弹窗。
+`cordis.patch.yml` 对应插件行的 `config` 字段，均为可选：
 
-### 2. 通知呈现（Client 端）
+| 配置键        | 默认    | 作用                                                         |
+| ------------- | ------- | ------------------------------------------------------------ |
+| `end`         | `true`  | 会话结束提醒                                                 |
+| `ask`         | `true`  | 询问提醒（`askMode: 'full'` 完整问题 / `'summary'` 摘要）    |
+| `approval`    | `true`  | 审批提醒（工具名 + 原因）                                    |
+| `subagentEnd` | `false` | 子代理完成也提醒                                             |
+| `apiToken`    | `''`    | 远程触发 token；非空时 trigger 需带 `x-notify-token` 头      |
+| `dedupeMs`    | `3000`  | 同类事件去重窗口（毫秒）                                     |
+| `webBaseUrl`  | `''`    | DSH Web 地址；配置后 `end` 推送携带会话链接 `/sessions/<id>` |
 
-- **系统通知**（Notification API）：标题 = **会话标题**，正文 = 类型 + 摘要（如「需要你回答 · 选择方案」）；
-- **点击通知 → 聚焦窗口并打开对应会话**（`ctx.sessions.open`）；
-- **提示音**：Web Audio 合成短促「滴」声（880 Hz / 0.22 s，无音频文件）；受浏览器自动播放策略约束，首次与页面交互后解锁；
-- **页面内 toast 兜底**：通知权限被拒 / 关闭系统通知时，右上角弹出提示卡（点击同样跳转）；
-- **本地开关**（localStorage，默认全开）：
+**远程触发**：`POST /notify/api/trigger`（loopback 信任围栏 + 可选 token），body `{title, body, sessionId?}`——任何本机进程、cron、CI、其他插件都能推送通知，`sessionId` 填写后点击通知可跳到该会话。
 
-| 键                  | 值  | 含义             |
-| ------------------- | --- | ---------------- |
-| `dsh-notify:notify` | `0` | 关闭系统通知     |
-| `dsh-notify:sound`  | `0` | 关闭提示音       |
-| `dsh-notify:toast`  | `0` | 关闭页面内 toast |
-
-（可随时在浏览器控制台 `localStorage.setItem('dsh-notify:sound','0')` 关闭。）
-
-### 3. 远程 hook 扩展接口
-
-`POST /notify/api/trigger` —— 任何本机进程、cron 定时任务、CI 流水线、其他插件都能触发通知：
-
-```bash
-# 本机触发（loopback 信任围栏）
-curl -X POST http://127.0.0.1:3080/notify/api/trigger \
-  -H 'content-type: application/json' \
-  -d '{"title":"CI 构建完成","body":"构建成功，可发布","sessionId":"session-xxx"}'
-```
-
-- `sessionId` 可选：填写后点击通知可跳到该会话；
-- **远程主机触发**：在插件配置中设置 `apiToken`，请求需带 `x-notify-token` 头（适用于经反向代理暴露给远程服务的场景）：
-  ```bash
-  curl -X POST https://your-dsh/notify/api/trigger \
-    -H 'content-type: application/json' \
-    -H 'x-notify-token: <你的 token>' \
-    -d '{"title":"部署完成","body":"staging 已更新"}'
-  ```
-- 后续扩展（监听任意 DSH 事件、出站 webhook 等）都建议复用该接口 + 同一条 SSE 通道，互不干扰。
-
-### 4. 出站 Webhook（推送到企微 / 飞书 / 钉钉机器人）
-
-离开电脑也能收到通知：配置**出站 webhook** 后，`end` / `ask` / `approval` / `remote` 事件发生时自动推送到**企业微信 / 飞书 / 钉钉**群机器人（或自建通用中转），手机即可收到。
-
-- **多 webhook 配置**：每个包含名称、渠道（`wecom` / `feishu` / `dingtalk` / `generic`）、webhook URL、可选签名密钥、触发事件多选（end / ask / approval / remote）、启用开关；
-- **渠道适配**（消息格式 + 签名自动处理）：
-
-| 渠道     | 消息类型        | 签名方式                                                                          |
-| -------- | --------------- | --------------------------------------------------------------------------------- |
-| 企业微信 | text / markdown | 可选加签：`sha256(timestamp + '\n' + secret)`，URL 参数 `timestamp`+`sign`        |
-| 飞书     | text / post     | 签名校验：`base64(hmac_sha256(key=secret, timestamp + '\n' + secret))`，body 字段 |
-| 钉钉     | text / markdown | 加签：`base64(hmac_sha256(key=secret, timestamp + '\n' + secret))`，URL 参数      |
-| 通用     | 原始通知帧 JSON | 无签名（自建中转）                                                                |
-
-- **失败处理**：推送失败自动重试 3 次（指数退避 1s/2s/4s），全部失败记录到**失败记录**（设置页可见，最多保留 50 条）；
-- **配置持久化**：webhooks 保存到 `$DSH_HOME/profiles/<profile>/notify-webhooks.json`（原子写），保存即生效、重启不丢。
-
-## 工作原理
-
-- **Server 端**（`lib/index.js`）：
-  - 监听 `agent/status`（idle → `end`）、`tools/pre-execute`（`ask_user_question` → `ask`，透传 `next()` 不影响工具执行）、`approval/request`（→ `approval`，透传 `next()` 不影响审批流程）；
-  - 通过 `webServer.register` 提供 `/notify/api` 前缀路由：`GET /stream`（SSE 长连接，EventSource 消费，25s 心跳）、`POST /trigger`（远程触发）、`GET /info`（开关状态）、`GET/PUT /config`（配置读写，含 webhooks）、`GET /webhooks`（出站 webhook 列表 + 失败记录）；
-  - 通知出口（`emitNotice`）广播 SSE 的同时按配置分发到出站 webhook（`lib/webhook/`：`adapters.js` 渠道适配 + `pusher.js` 推送调度，5s 超时 + 3 次指数退避重试 + 失败记录）；
-  - 所有请求先过 **loopback 信任围栏**（与 DSH `/api` 网关一致契约）；配置 `apiToken` 后 trigger 再校验 `x-notify-token`；
-  - 可选服务（`webRuntime` / `sessionTitle`）经 `ctx.get` 读取——`sessionTitle` 提供真实会话标题，缺失时回退工作目录名 / 会话短 id。
-- **Client 端**（`lib/client.js`）：`EventSource('/notify/api/stream')` 实时接收帧 → 系统通知 / 提示音 / toast → 点击跳转；样式走 DSH 语义 token，随 fiber 卸载（无残留）。
+**页面内开关**（localStorage，默认全开）：`dsh-notify:notify` / `dsh-notify:sound` / `dsh-notify:toast` 置 `0` 分别关闭系统通知 / 提示音 / toast。
 
 ## 安装
 
-> 💡 **npm 安装（普通用户推荐）**：`dsh plugin --profile web add dsh-my-notify --trust-lockfile`——无需克隆本仓库；以下 link 方式供本仓库开发者使用。依赖 `dsh-shared`（server 端共享工具包）随 npm 自动安装，无需手动处理。
+> 💡 **npm 安装（普通用户推荐）**：`dsh plugin --profile web add dsh-my-notify --trust-lockfile`——无需克隆本仓库；以下 link 方式供本仓库开发者使用。依赖 `dsh-shared` 随 npm 自动安装。
 
 ```bash
 # 1) 克隆本仓库（任意目录）
@@ -96,54 +45,14 @@ git clone https://github.com/baosfeng/my-dsh-plugins.git
 dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-notify
 ```
 
-- server 端改动需重启 `dsh web`；client 端改动浏览器硬刷新（Cmd/Ctrl+Shift+R）即可。
-
-## 配置
-
-插件级配置（`cordis.patch.yml` 对应插件行的 `config` 字段，均为可选）：
-
-```yaml
-- insert:
-    - id: notify
-      name: 'dsh-my-notify'
-    - config: # 传给 apply(ctx, config)
-        end: true # 会话结束提醒（默认 true）
-        ask: true # 询问提醒（默认 true）
-        approval: true # 审批提醒（默认 true）
-        subagentEnd: false # 子代理完成也提醒（默认 false；开启后标题带「子代理」前缀）
-        apiToken: '' # 远程触发 token；非空时 trigger 需 x-notify-token 头
-        dedupeMs: 3000 # 同类去重窗口（毫秒，默认 3000）
-        askMode: 'full' # ask 推送完整问题 'full'（默认）/ 摘要 'summary'
-        webBaseUrl: '' # DSH Web 地址；配置后 end 推送携带会话链接 /sessions/<id>
-```
-
-### 设置页可视化（推荐）
-
-所有配置项也可在 **设置 → 插件 → 通知提醒** 页签中可视化查看和编辑（官方 slots 扩展点，无需手动编辑配置文件）：
-
-- **触发开关**：会话结束 / 询问 / 审批 / 子代理完成 四个开关；
-- **出站 Webhook**：webhook 列表（名称/渠道/事件/启用开关）+ 添加/编辑/删除（名称、渠道、URL、签名密钥、触发事件多选、消息类型）+ **推送失败记录**；
-- **高级**：远程触发 Token（文本）、去重窗口（毫秒，数字）；
-- 点击「保存」即生效（标量配置写入 `$DSH_HOME/profiles/<profile>/cordis.patch.yml`，DSH 热重载 + 内存即时更新；webhooks 对象数组单独写入 `notify-webhooks.json`），重启不丢。
-
-> 💡 **webhooks 也可在 `cordis.patch.yml` 的 `config.webhooks` 直接配置**（应用层配置优先于设置页保存值），字段：`name`（必填）、`channel`（`wecom`/`feishu`/`dingtalk`/`generic`）、`url`（必填）、`secret`（可选）、`events`（`end`/`ask`/`approval`/`remote` 数组，空 = 全部）、`enabled`（默认 true）、`msgType`（`text`/`markdown`/`post`，默认 text）、`template`（可选自定义模板，变量 `{title}`/`{kind}`/`{note}`/`{tokens}`/`{question}`/`{sessionUrl}`/`{time}`，未配置走默认富格式）。
-
-> 💡 **推送内容增强（issue #109）**：`end` 默认携带 **token 消耗**（输入/输出/总计）+ **会话耗时** + **会话链接**（需配 `webBaseUrl`）；`ask` 默认携带**完整问题**（多问题全部列出，`askMode: 'summary'` 切回摘要）；`approval` 携带**工具名 + 完整原因**；各 webhook 可配 `template` 自定义推送格式。
-
-## 依赖
-
-| 依赖                             | 用途                                                     | 可选               |
-| -------------------------------- | -------------------------------------------------------- | ------------------ |
-| `cordis`                         | 插件运行时                                               | 是（宿主提供）     |
-| `@deepseek-ai/dsh-session-title` | 会话标题读取（缺失时回退）                               | 是                 |
-| `dsh-shared`                     | server 端共享工具包（信任围栏 / HTTP JSON / 配置持久化） | 否（npm 自动安装） |
+- server 端改动需重启 `dsh web`；client 端改动浏览器硬刷新即可。
 
 ## 限制与说明
 
-- **通知权限**：浏览器首次收到通知时会发起权限请求（此时用户正好需要它）；拒绝后自动用页面内 toast 兜底。
-- **自动播放策略**：提示音需用户与页面有过至少一次交互（点击/按键）后才能发声，这是浏览器安全限制。
-- **SSE 会话**：多标签页同时打开时全部收到通知；EventSource 断线自动重连（3s）。
+- **通知权限**：浏览器首次收到通知时发起权限请求；拒绝后自动用页面内 toast 兜底。
+- **自动播放策略**：提示音需用户与页面有过至少一次交互（点击 / 按键）后才能发声，属浏览器安全限制。
+- **SSE 会话**：多标签页同时打开时全部收到通知；EventSource 断线 3s 自动重连。
 
 ## 相关文档
 
-→ [通知提醒模块文档](../../docs/通知提醒/概述.md) · [需求清单](../../docs/通知提醒/需求清单.md) · [CHANGELOG](CHANGELOG.md)
+→ [通知提醒模块文档](../../docs/通知提醒/概述.md) · [CHANGELOG](CHANGELOG.md)

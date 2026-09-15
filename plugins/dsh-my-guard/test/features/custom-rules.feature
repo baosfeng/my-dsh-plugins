@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/安全护栏/需求清单.md（需求 R12-R14, issue #88）
+# 需求来源：GitHub issue + docs/安全护栏/概述.md（需求 R12-R14, issue #88）
 # 验收基准：host-custom-rules.mjs / host-notify.mjs 的 Gherkin 化表达
 
 功能: 自定义护栏规则与告警通知

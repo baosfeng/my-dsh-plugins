@@ -336,7 +336,7 @@ export const CLIENT_EXTERNAL_FIX_HINT = [
   '     dsh.profile.bundles / 由依赖包自身声明 dsh.bundle.patch 并被 profile 直接依赖）——',
   '     注意：单纯移进 dependencies 只让包落到 profile/node_modules，不会被 reconcile 激活，',
   '     浏览器端 require 仍然落空；peerDependencies 在 profile 模板 autoInstallPeers:false 下更是永不安装。',
-  '  3. 判据与教训见 docs/踩坑/跨插件依赖未声明导致client崩溃.md',
+  '  3. 判据与教训见 docs/踩坑/README.md',
 ].join('\n')
 
 /** 读取 pkg.dsh.client.external 列表（缺失/非数组/非字符串项一律忽略，返回去重结果）。 */

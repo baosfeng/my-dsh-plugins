@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/记忆/需求清单.md（R1-R12）+ issue #38 / #105 / #107 / #108
+# 需求来源：GitHub issue + docs/记忆/概述.md（R1-R12）+ issue #38 / #105 / #107 / #108
 # 验收基准：test/store.mjs、test/host-api.mjs、test/prompt.mjs、test/tool.mjs、test/client-render.mjs、test/memory-text.mjs 的 Gherkin 化表达
 
 功能: 记忆管理（全局/项目两级 + 系统提示词注入 + 工具查询 + 用户确认）

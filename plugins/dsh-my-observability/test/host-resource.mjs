@@ -1,7 +1,7 @@
 /**
  * host-resource.mjs — 资源监控（写放大/资源超限提前发现）测试。
  *
- * 对应需求 R17（需求清单）与 quality-gates #11 资源护栏：
+ * 对应需求 R17与 quality-gates #11 资源护栏：
  *  - evaluateResourceAlerts 各阈值边界（纯函数）；
  *  - createResourceMonitor 采样统计（CPU/内存/审计文件字节/写入速率）；
  *  - /observability/api/resources 路由（fence + 返回结构）。

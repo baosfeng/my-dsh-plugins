@@ -147,7 +147,7 @@ export const GATE_REGISTRY = [
     localCommand: 'npx --no-install knip',
     ci: { ...CI_QUALITY_STEP },
     cost: '1.1~2.3s',
-    why: '唯一权威（issue #45）：未使用的文件/依赖/导出。**注意**：它解析 `.husky/pre-commit` 脚本文本来提取 known bins，该文件里的 `npx --no-install lint-staged` 必须是文本可见的真实命令，改成变量会让 knip 报 `Unused devDependencies: lint-staged` 而红（见 docs/踩坑/fork池钩子与工具链未就绪.md 第三节）。',
+    why: '唯一权威（issue #45）：未使用的文件/依赖/导出。**注意**：它解析 `.husky/pre-commit` 脚本文本来提取 known bins，该文件里的 `npx --no-install lint-staged` 必须是文本可见的真实命令，改成变量会让 knip 报 `Unused devDependencies: lint-staged` 而红（见 docs/踩坑/README.md 第三节）。',
   },
   {
     id: 'jscpd',

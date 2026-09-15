@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/Skill管理/需求清单.md（R1-R8）+ issue #29（项目视图过滤 / 刷新 / 诊断）
+# 需求来源：GitHub issue + docs/Skill管理/概述.md（R1-R8）+ issue #29（项目视图过滤 / 刷新 / 诊断）
 # + issue #91（使用统计）
 # 验收基准：test/host-api.mjs、test/client-render.mjs、test/diagnose.mjs、test/usage.mjs 的 Gherkin 化表达
 

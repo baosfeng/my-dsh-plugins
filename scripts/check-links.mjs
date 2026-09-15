@@ -150,8 +150,11 @@ const SKIP_PATH_RES = [
   /(^|\/)vendor\//,
   /\.min\.(?:js|css)$/i,
   /^plugins\/[^/]+\/lib\/(?!parts\/)(?!client\.src\.js$).*\.js$/,
-  // 测试文件里的"失效引用"是 fixture 数据（本门禁自己的回归测试就靠它们），不是文档引用
+  // 测试文件与测试 fixture 里的"失效引用"是 fixture 数据（本门禁自己的回归测试就靠它们），
+  // 不是文档引用。fixtures/ 专放测试样本（如发版清单的原始形状），其中的
+  // `verification/<插件>-<版本>.md` 是当次发版产物名、按需生成也会被清理，不该按失效引用报。
   /^scripts\/test\/.*\.test\.mjs$/,
+  /^scripts\/test\/fixtures\//,
 ]
 const SKIP_FILES = new Set(['package-lock.json'])
 /** 单文件/单行上限：超过就不做 markdown 解析（文档不会这么长，正则也不该跑这种输入）。 */

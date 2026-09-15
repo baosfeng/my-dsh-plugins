@@ -1,37 +1,32 @@
-# Migration hygiene · version-independent toolchain pitfalls
+# 迁移卫生 · 与版本无关的工具链坑
 
-> First-hand record from a batch migration of 6 real plugins (rc.1 → 0.1.2-alpha.1; the upstream `examples/06-real-world-batch-migration.md` write-up is not shipped in this trimmed copy). None of these pitfalls belongs to a version card — any of them can cost a migrator half an hour or more on any corridor segment.
+> 这五条不属于任何版本走廊，但任何一段迁移都可能被它们耗掉半小时以上。
 
-## 1. Incremental tsbuildinfo false positives
+## 1. tsbuildinfo 增量误报
 
-Symptom: after editing source, typecheck reports old errors unrelated to the change (e.g. TS2305), or the oxc/rolldown build reports a `MISSING_EXPORT`-class missing export (that is a build-cache false positive, not a tsc error), or the incremental check passes outright and the real error chain only surfaces after a clean.
+- 症状：改完源码后，类型检查报出与本次改动无关的旧错误（缺导出一类），或构建报缺导出而 tsc 明明通过；增量检查直接过、真实错误链只在 clean 之后才浮现。
+- 修法：迁移验证期间每次构建前先 clean；怀疑缓存误报时先 clean 排除缓存，再定位真实引用。
 
-Fix: always run `pnpm run clean` before build during migration validation. On a suspicious TS2305/TS2614-class missing export, clean first to rule out the cache, then grep the real references (see the [A1-21 field note](v0.1.2-alpha.1.md)).
+## 2. oxc / vite 解析比 tsc 严
 
-## 2. The oxc / vite parser is stricter than tsc
+- 症状：tsc 通过，构建却报解析错误。已知触发：JSX 标签未闭合、多行三元表达式里写箭头函数。
+- 修法：按解析器提示改写表达式（预先算成变量、把语句拆开），不要绕过；tsc 通过不等于构建通过。
 
-Symptom: tsc passes, but the build reports a "Did you mean {'>'}"-class parse error. Known triggers: unclosed JSX tags, arrow functions inside multi-line ternary expressions.
+## 3. 改动生效面：客户端硬刷新 vs 宿主重启
 
-Fix: rewrite the expression as the parser suggests — precompute a variable, split the statement. Do not work around it, and do not treat a passing tsc as sufficient.
+- 症状：改完代码刷新浏览器看不出变化，或宿主仍按旧版本行为运行。
+- 修法：先判断改动落在哪半边——客户端产物改动靠浏览器硬刷新生效，宿主侧产物改动必须重启 dsh 进程。
 
-## 3. Which plane a change takes effect in: client hard refresh vs host restart
+## 4. pnpm 默认拦截依赖构建脚本
 
-Symptom: after changing code, a browser refresh shows no change, or the host still behaves like the old version.
+- 症状：在新环境安装插件时，带原生构建的依赖安装被拒绝。
+- 修法：在 profile 目录执行 `pnpm approve-builds --all`；插件文档要把这一步写清楚。
 
-Rule: a change landing in `lib/client.js` (client half) takes effect on a browser hard refresh; a change landing in `lib/index.js` (host half) requires restarting dsh. This corresponds to the plane view in `host-plane-probes.md` (upstream reference, not shipped in this trimmed copy): decide the plugin shape and where the change lands first, then pick the validation action.
+## 5. 测试代码里的 readonly / as-in-JSX
 
-## 4. pnpm blocks dependency build scripts (default since 10.0)
+- 症状：迁移后源码类型检查全过，测试文件却编译失败。
+- 修法：fiber 上像 `dispose` 这类字段变成 readonly、测试不能再直接赋值 mock 时，改成间接观察；测试文件里的 `as` 断言在 JSX 解析路径上不支持，先收窄到变量。
 
-Symptom: installing the plugin in a fresh environment fails with a build rejection such as node-pty.
+## 验证纪律
 
-Fix: run `pnpm approve-builds --all` in the profile directory. Plugin READMEs should state this step explicitly.
-
-## 5. readonly and as-in-JSX in test code
-
-Symptom: after migration, test files fail to compile while the source typechecks clean.
-
-Known triggers: fields such as `dispose` on the fiber become readonly (tests can no longer assign mocks — switch to indirect observation); `as` assertions in test files are unsupported on the JSX parsing path (pre-narrow into a variable instead).
-
-## Validation discipline
-
-Run the full chain for every migration change: `pnpm run clean && pnpm run build && pnpm run typecheck && pnpm run test`, then boot for real (`dsh --profile web` + hard refresh; restart when the host half changed). Conclusions from incremental checks alone are not trustworthy — see item 1.
+每次迁移改动都跑完整链条：clean → build → typecheck → test，然后真实启动（Web 客户端硬刷新；改动落在宿主半边时重启宿主）。只看增量检查的结论不可信——见第 1 条。

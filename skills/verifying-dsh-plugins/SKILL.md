@@ -27,7 +27,7 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
 ```
 
 - **版本约定**：清单文件名里的版本 = bump 后的 next 版本（当前 package.json 版本 +1）。手动预验证时 `--version` 必须与之一致，文件名对不上会被当成新清单重新生成（已勾选状态丢失 → 阻断）。
-- 自动项 **3 条**（配置组合唯一 / 实例就绪 / 日志无 error）由脚本勾选；**功能级 5 条由验证者勾选**。
+- 自动项 **4 条**（配置组合唯一性 / 实例就绪 / 日志无 error / 插件 API 冒烟）由脚本勾选；**功能级 5 条由验证者勾选**。
   API 断言**不在这里** —— 它需要浏览器会话（issue #257），见下方「API 断言怎么算」。
 - **重跑清单是幂等的（issue #329 保证，放心重跑）**：目标清单已存在时**绝不整文件重写** ——
   头部「验证时间 / 验证环境」保持原值（换端口重跑**零 diff**，不会对已发布版本产生假 diff）、
@@ -58,12 +58,12 @@ dshmarket 把启停开关写在 `<DSH_HOME>/profiles/<profile>/.dsh-market/state
 cat ~/.dsh/profiles/<profile>/.dsh-market/state.json | head -c 300   # disabled 非空 = 生产里被关掉的插件
 ```
 
-判定与修法见 [docs/踩坑/隔离实例插件被静默禁用.md](../../docs/踩坑/隔离实例插件被静默禁用.md)。
+判定与修法见 [docs/踩坑/README.md](../../docs/踩坑/README.md)。
 **验证环境的"少加载"与插件的"坏掉"表现一样，排查方向却完全相反。**
 
 ### 前置（硬性）：工作区 —— 没有工作区 = 合成器禁用 = 可能卡死
 
-隔离实例 / 新会话**没有工作区**时，GUI 合成器处于**禁用**态（占位文案「选择工作区」、发送按钮 `disabled`）。此时去点「添加工作区 / 选择工作区」会命中宿主 `@deepseek-ai/dsh-host-directory-picker-auto`：它在 macOS 桌面会话判定为 `native` → 弹**原生 macOS 目录对话框**（`osascript … choose folder with prompt "Select Workspace Directory"`）。`agent-browser` / CDP 只能驱动页面 DOM，**无法操作原生弹窗** → agent 静默卡死（实测可卡数天，`ps` 里积累多个 `choose folder` 进程）。完整记录见 [docs/踩坑/子agent工作区缺失导致卡死.md](../../docs/踩坑/子agent工作区缺失导致卡死.md)。
+隔离实例 / 新会话**没有工作区**时，GUI 合成器处于**禁用**态（占位文案「选择工作区」、发送按钮 `disabled`）。此时去点「添加工作区 / 选择工作区」会命中宿主 `@deepseek-ai/dsh-host-directory-picker-auto`：它在 macOS 桌面会话判定为 `native` → 弹**原生 macOS 目录对话框**（`osascript … choose folder with prompt "Select Workspace Directory"`）。`agent-browser` / CDP 只能驱动页面 DOM，**无法操作原生弹窗** → agent 静默卡死（实测可卡数天，`ps` 里积累多个 `choose folder` 进程）。完整记录见 [docs/踩坑/README.md](../../docs/踩坑/README.md)。
 
 修法（按优先级）：
 
@@ -102,7 +102,7 @@ readlink /tmp/dsh-verify-real-3099/profiles/web/node_modules/<插件>   # 软链
 realpath /tmp/dsh-verify-real-3099/profiles/web/node_modules/<插件>   # 期望 = 待验工作区路径
 ```
 
-- 期望形如 `/private/tmp/<fork>/plugins/<插件>`；若指向 `/Users/<you>/IdeaProjects/my-dsh-plugins/...`（主工作区），**验的是主工作区旧版**，结论无效（假通过会把未验证的修复发出去，假失败会让人去改本来正确的代码）——完整复盘见 [docs/踩坑/隔离实例复用主工作区插件软链导致假验证.md](../../docs/踩坑/隔离实例复用主工作区插件软链导致假验证.md)；
+- 期望形如 `/private/tmp/<fork>/plugins/<插件>`；若指向 `/Users/<you>/IdeaProjects/my-dsh-plugins/...`（主工作区），**验的是主工作区旧版**，结论无效（假通过会把未验证的修复发出去，假失败会让人去改本来正确的代码）——完整复盘见 [docs/踩坑/README.md](../../docs/踩坑/README.md)；
 - 脚本自 #220 起在**实例启动前**打印并校验该路径（`--addons` 显式优先于复用生产 profile 软链，不一致直接 exit 1）。输出里没有这两行、或指向主工作区 → **先修脚本/环境再验**，不要手工 `rm` 软链绕过（绕过只救本次，下个 agent 照样踩）。
 
 ### B. headless 实例（真实模型调用 / 真实事件流，无浏览器）
@@ -191,7 +191,7 @@ curl -s -o /dev/null -w "%{http_code}\n" --max-time 3 http://127.0.0.1:3099/  # 
 
 - **只杀自己起的端口/只删自己的目录**：`/tmp/dsh-verify-*` 下可能有别的 agent 正在用的实例，误删会打断别人的验证。
 - 端口释放 ≠ 进程已退出：进程退出过程中会重建子目录（实测删完又出现只剩 `guard/` 的目录），所以删除后要再 `ls` 一次。
-- **原生目录对话框进程也要清**：验证过程中若出现过「选择工作区」弹出的 `osascript … choose folder`，收尾时用 `pgrep -fl "choose folder"` 复查并按需 `kill`——它会一直占着用户桌面、干扰后续 agent（见 [docs/踩坑/子agent工作区缺失导致卡死.md](../../docs/踩坑/子agent工作区缺失导致卡死.md)）。
+- **原生目录对话框进程也要清**：验证过程中若出现过「选择工作区」弹出的 `osascript … choose folder`，收尾时用 `pgrep -fl "choose folder"` 复查并按需 `kill`——它会一直占着用户桌面、干扰后续 agent（见 [docs/踩坑/README.md](../../docs/踩坑/README.md)）。
 - **不要重启/杀主实例**（3080）：验证全部在隔离实例里做。
 
 ## 步骤 5：报告留档
@@ -215,7 +215,7 @@ curl -s -o /dev/null -w "%{http_code}\n" --max-time 3 http://127.0.0.1:3099/  # 
   （`--refresh-header` 也只刷新头部两行）—— 写在这里的证据（命令与输出、探针 JSONL、未覆盖项与环境限制）
   不会被下一次 `--checklist` 抹掉。
 - 如实记录**未验证项与环境限制**（无凭据、无 agent 事件、权限被拒等），不要把没跑过的写成通过。
-- 清单随发版 commit 归档进 `verification/`。
+- 清单随发版 commit 提交（历史留痕在 git；下次发版生成新文件后旧清单即可删除，见 `verification/README.md`）。
 
 ## 参考
 

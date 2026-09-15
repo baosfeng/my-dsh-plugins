@@ -257,7 +257,7 @@ function registerStatusQuery(ctx: DshContext, shared: SharedContext): void {
  *  #189 只补了「写链 drain」+ async disposer：它覆盖不到 fire-and-forget 的
  *  启动预检（独立异步链，晚于 drain 才 persistSoon）；#217 把 bootPromise
  *  （现已含 initialScan + runStartupCheck）也等进来。
- *  见 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md。 */
+ *  见 docs/踩坑/README.md。 */
 function registerTeardown(ctx: DshContext, shared: SharedContext): void {
   ctx.effect(
     () => async () => {

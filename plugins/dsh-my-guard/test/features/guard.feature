@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/安全护栏/需求清单.md（需求 R1-R3）
+# 需求来源：GitHub issue + docs/安全护栏/概述.md（需求 R1-R3）
 # 验收基准：host-guard.mjs 的 Gherkin 化表达；新增需求须在此补充场景
 
 功能: 执行前护栏

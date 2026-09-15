@@ -124,7 +124,7 @@ export function saveStore(dir: string, store: Store): Promise<void> {
 /**
  * **确定性就绪信号**（PR #233 后续）：await 之后，此前**所有已调用的 saveStore**
  * 都已完成落盘。给"读之前先等落盘"提供可等待句柄，替代固定 sleep——
- * 固定 sleep 不表达条件，只表达"我猜够了"（docs/踩坑/固定sleep等异步落盘导致CI-flaky.md）。
+ * 固定 sleep 不表达条件，只表达"我猜够了"（docs/踩坑/README.md）。
  * 串行链上的失败已被吞掉（链尾不会 reject），因此本函数只表示"写已结束"。
  */
 export function drainStoreWrites(): Promise<void> {

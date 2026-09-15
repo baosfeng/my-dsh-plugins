@@ -10,11 +10,13 @@
 // release-concurrency.mjs = 发版有界并发调度，issue #246；
 // pack-hygiene.mjs = 包发布卫生判定（字段自洽 / pack 内容 / README 引用面），issue #323；
 // verify-checklist.mjs = 验证清单的渲染/幂等合并/#67 门禁判定，issue #329；
-// test-sleeps.mjs = 测试里固定 sleep 的分类/豁免/基线判定，issue #335），
-// verify-checklist.mjs = 验证清单的渲染/幂等合并/#67 门禁判定，issue #329），
-// pack-hygiene.mjs = 包发布卫生判定（字段自洽 / pack 内容 / README 引用面），issue #323），
+// test-sleeps.mjs = 测试里固定 sleep 的分类/豁免/基线判定，issue #335；
+// verify-checklist.mjs = 验证清单的渲染/幂等合并/#67 门禁判定，issue #329；
+// pack-hygiene.mjs = 包发布卫生判定（字段自洽 / pack 内容 / README 引用面），issue #323；
 // gate-registry.mjs = 门禁登记表（检查项 → 唯一权威执行点），issue #330；
-// ci-workflow.mjs = ci.yml 极简解析（job/steps/run），issue #330），
+// ci-workflow.mjs = ci.yml 极简解析（job/steps/run），issue #330；
+// gitleaks-scan.mjs = secret 扫描门禁判据（平台/校验值/版本/报告净化/fail-closed），issue #324；
+// commit-lint.mjs = 提交信息门禁判据（范围推导/空范围 fail-closed/渲染），issue #324），
 // 阈值与根配置一致（行 85 / 分支 75 / 函数 80）。
 import { defineConfig } from 'vitest/config'
 
@@ -39,6 +41,8 @@ export default defineConfig({
         'scripts/lib/test-sleeps.mjs',
         'scripts/lib/gate-registry.mjs',
         'scripts/lib/ci-workflow.mjs',
+        'scripts/lib/gitleaks-scan.mjs',
+        'scripts/lib/commit-lint.mjs',
       ],
       thresholds: {
         lines: 85,

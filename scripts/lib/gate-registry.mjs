@@ -223,6 +223,41 @@ export const GATE_REGISTRY = [
     why: '唯一权威（issue #127）：长会话写放大 ≤1.6 / 内存有界 / 降级与恢复。独立 job 与 test 并行，不拉长主流程。',
   },
   {
+    id: 'secret-scan',
+    authority: '`scripts/check-secrets.mjs` + `.gitleaks.toml`（二进制钉在 `scripts/ci-tools.json`：版本 + 发布产物 SHA256）',
+    local: 'always',
+    localCommand: 'node scripts/check-secrets.mjs',
+    ci: {
+      job: 'history-gates',
+      step: 'Secret scan (gitleaks, pinned version + SHA256, full history)',
+      command: 'node scripts/check-secrets.mjs',
+    },
+    cost: '扫 692 提交 5.8~12.1s（首次另需下载二进制 7.9MB；CI 实测 12.8s）',
+    why:
+      '唯一权威（issue #324）：CI 层能在合并前拦下凭据，而 GitHub 原生 secret scanning 是**事后**告警' +
+      '（本仓库还有 Dependabot 告警被 auto_dismissed 的假阴性教训，见 docs/踩坑/npm-audit在镜像源下静默失效.md）。' +
+      '与 CI 同一个二进制、同一份配置；命中即失败且**不回显明文**（只给 文件:行:规则）。' +
+      '扫描范围是全历史 → 需要 fetch-depth: 0，故由独立的 history-gates job 执行（quality 是浅克隆）。',
+  },
+  {
+    id: 'commits',
+    authority: '`.commitlintrc.json`（config-conventional + type-enum）——与本地 `.husky/commit-msg` 同一份规则',
+    local: 'always',
+    localCommand: 'node scripts/check-commit-messages.mjs',
+    ci: {
+      job: 'history-gates',
+      step: 'Commit messages (changed range only)',
+      command: 'node scripts/check-commit-messages.mjs',
+    },
+    cost: '1~5 条提交 0.3~0.5s',
+    why:
+      '唯一权威（issue #324）：**只校验本次变更范围**的提交信息。不查全历史是刻意的——实测 639 个非 merge 提交里' +
+      '61 条不符合默认规则（9.5%：body-max-line-length 28 / header-max-length 14 / subject-case 11 / type-enum 5 / …），' +
+      '全历史校验会**恒红**，等于把门禁做成摆设。范围推导与 CI 同源（读 GITHUB_EVENT_PATH：PR 的 base..head、push 的 before..after），' +
+      '本地自动退化为 @{upstream} → origin/main，也可用 --from/--to 显式指定来复现任意 CI 范围；' +
+      '范围不可解析时显式报「**不是**提交信息不合规」（浅克隆实测踩过：CI 首个运行因此红，见 PR 记录）。',
+  },
+  {
     id: 'audit',
     authority: '`scripts/lib/npm-audit.mjs`（官方 registry + 禁止重写 + moderate 门槛）',
     local: 'optional',

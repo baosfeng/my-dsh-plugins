@@ -48,6 +48,13 @@
  *                  shell 调用/npm script/skill 与插件名，纯本地文件检查）
  *   artifacts    → node scripts/check-client-artifacts.mjs（issue #318 / ADR-0002：共享部件与
  *                  server tsc 产物必须与已提交版本逐字节一致，fail-closed）
+ *   secret-scan  → node scripts/check-secrets.mjs（issue #324：gitleaks 扫**全历史**
+ *                  —— 覆盖本次 diff。二进制固定版本 + SHA256 校验后缓存到 .gitleaks-cache/；
+ *                  首次需下载（走 HTTPS_PROXY；本机实测 7.9MB / 90s，CI 网络下更快））
+ *   commits      → node scripts/check-commit-messages.mjs（issue #324：**只校验本次变更范围**
+ *                  的提交信息，规则同 ./.commitlintrc.json 与 .husky/commit-msg。
+ *                  范围默认 @{upstream} → origin/main；CI 上从 GITHUB_EVENT_PATH 推导
+ *                  （PR 的 base..head / push 的 before..after）；范围内无提交时打印"跳过"）
  *   resource-smoke→ node scripts/resource-smoke.mjs（issue #127 资源回归门禁）
  *   client-size  → node scripts/check-client-size.mjs（客户端产物**体积预算**，issue #322：
  *                  发布面（lib/** 与 assets/**，以插件 package.json 的 files 为准）不得超过
@@ -151,6 +158,7 @@ const options = {
   full: false,
   ciQuality: false,
   base: null,
+  commitsFrom: null,
   timeout: null,
   list: false,
   json: false,
@@ -169,6 +177,7 @@ for (let i = 0; i < args.length; i += 1) {
   if (flag === '--only') options.only.push(value())
   else if (flag === '--plugin') options.plugins.push(value())
   else if (flag === '--base') options.base = value()
+  else if (flag === '--commits-from') options.commitsFrom = value()
   else if (flag === '--timeout') options.timeout = value()
   else if (flag === '--audit') options.audit = true
   else if (flag === '--mutation') options.mutation = true
@@ -597,6 +606,11 @@ const CHECK_META = {
   artifacts: { command: 'node scripts/check-client-artifacts.mjs', ciQuality: true },
   'merge-ref': { command: 'git merge-base --is-ancestor origin/main HEAD', ciQuality: false },
   'gate-parity': { command: 'node scripts/check-gate-parity.mjs', ciQuality: true },
+  // issue #324：两项都需要**完整历史**（gitleaks 扫全历史；commitlint 解析 base..head 两个历史 SHA），
+  // 而 quality job 的 checkout 是浅克隆 → 它们由独立的 history-gates job 执行（fetch-depth: 0），
+  // 故 ciQuality 为 false（与 test / resource-smoke 同理）。
+  'secret-scan': { command: 'node scripts/check-secrets.mjs', ciQuality: false },
+  commits: { command: 'node scripts/check-commit-messages.mjs', ciQuality: false },
   'resource-smoke': { command: 'node scripts/resource-smoke.mjs', ciQuality: false },
 }
 
@@ -810,6 +824,25 @@ const CHECK_DEFS = [
     label: 'duplicate code (npx jscpd)',
     run: () => runCapture('npx', [...NPX_BASE_ARGS, 'jscpd'], root),
     skip: (ctx) => (ctx.docsOnly ? '纯文档变更：重复代码检测只覆盖 js/ts 格式' : null),
+  },
+  {
+    id: 'secret-scan',
+    label: 'secret-scan (node scripts/check-secrets.mjs：gitleaks 全历史)',
+    note: 'issue #324：与 CI 同一个二进制（版本 + SHA256 钉死在 scripts/ci-tools.json，缓存 .gitleaks-cache/）。首次运行需下载，走 HTTPS_PROXY',
+    // 与 CI 完全同一条命令。默认**要跑**（本地绿 ⇒ CI 绿）：拿不到二进制就是失败，
+    // 错误信息给出出口（单次放行：--only secret-scan --allow-missing；或 --bin 手动指定）。
+    run: () => runCapture('node', ['scripts/check-secrets.mjs'], root),
+  },
+  {
+    id: 'commits',
+    label: 'commits (node scripts/check-commit-messages.mjs：提交信息规范)',
+    note: 'issue #324：只校验本次变更范围；规则同 .commitlintrc.json（与 .husky/commit-msg 同源）。范围自动推导（CI 读 GITHUB_EVENT_PATH；本地 @{upstream} → origin/main），可用 --commits-from <ref> 覆盖',
+    run: () =>
+      runCapture(
+        'node',
+        ['scripts/check-commit-messages.mjs', ...(options.commitsFrom ? ['--from', options.commitsFrom] : [])],
+        root,
+      ),
   },
   {
     id: 'docs',
@@ -1261,6 +1294,10 @@ if (options.fast) {
 const ctx = {
   fast: options.fast,
   baseOk: base.ok,
+  // 提交信息门禁的默认基准（--fast 解析出来的那个；full 模式下为 null → 走 resolveCommitsBase 兜底）。
+  // 必须经 ctx 传进去：`base` 在本文件里是**后面**才声明的顶层 const，CHECK_DEFS 的 run 里直接引用
+  // 会命中 TDZ（ReferenceError: Cannot access 'base' before initialization）——实测踩到过一次。
+  baseRef: base.ok ? base.ref : null,
   // changedFiles：变更文件的路径列表（保持既有语义：format / ts-size 等检查项直接消费）
   changedFiles: changed === null ? null : changed.map((c) => c.path),
   impactPlugins: impact.plugins,
@@ -1468,6 +1505,7 @@ function printHelp() {
   log('  （无参数）      full 全量：全部检查项 + 全部插件测试')
   log('  --fast          快速通道（pre-push 默认）：按本次推送变更裁剪插件测试，独立性检查并发')
   log('  --base <ref>    指定范围比较基准（默认 @{upstream} → origin/main；仅在 --fast 生效）')
+  log('  --commits-from <ref>  commitlint 校验范围左端点（默认同 --base 的解析结果，回退 origin/main）')
   log('  --full          强制全量（覆盖 --fast）')
   log('  --ci-quality    CI quality job 的执行体：并发跑登记表中 ciQuality 的检查项 + 写 job summary')
   log('  --json          配合 --list 输出机器可读清单（供 scripts/check-gate-parity.mjs 校验）')

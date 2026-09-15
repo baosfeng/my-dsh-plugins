@@ -88,8 +88,12 @@ for (const entry of readdirSync(join(root, 'plugins'))) {
 
   // 1a. 根 README 插件表
   // \s+ 容忍 prettier 表格列对齐填充的多空格（issue #44 引入 prettier 后，
-  // markdown 表格单元格间按列宽填充空格，单空格正则匹配失败）
-  const rowRe = new RegExp(`\\| \\[${entry}\\]\\(plugins/${entry}/README\\.md\\)\\s+\\| ${version} \\|`)
+  // markdown 表格单元格间按列宽填充空格，单空格正则匹配失败）。
+  // 版本列同样会被填充：版本号位宽不同（如 0.1.5 vs 0.4.10）时 prettier 会把
+  // 短版本号补空格（`| 0.1.5  |`），因此版本两侧也必须容忍空白；版本号中的
+  // `.` 需转义，避免正则把 `.` 当通配符导致假通过。
+  const versionRe = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const rowRe = new RegExp(`\\| \\[${entry}\\]\\(plugins/${entry}/README\\.md\\)\\s+\\|\\s*${versionRe}\\s*\\|`)
   if (!rowRe.test(readme)) {
     errors.push(`✗ 根 README.md 插件表缺少 ${entry} 行（或版本不是 ${version}）`)
   }

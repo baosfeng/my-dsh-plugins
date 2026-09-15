@@ -229,6 +229,20 @@ jobs:
       - name: Client artifact size budget (check-client-size)
         run: npm run check:client-size
 
+      # 包发布卫生（issue #323）：查「这个包本身能不能装、内容对不对」，与上一步的**体积**
+      # 判据互补（本步不设任何体积阈值）。四条判据：① `exports`（递归所有条件值）/ `main` /
+      # `types` / `dsh.bundle.patch` 指向的文件必须真实存在；② `dsh.*` 与 `exports` 互证
+      # （`dsh.client` ⇔ `exports["./client"]`、`platform==='web'`、有 `cordis.patch.yml`
+      # 必声明 `dsh.bundle.patch`）；③ `npm pack --dry-run --json` 内容断言：README /
+      # CHANGELOG / LICENSE / package.json 与所有声明目标必须在包内，`test/` `src/`
+      # `coverage/` `reports/` `node_modules/` `.DS_Store` `*.log` 不得在包内；
+      # ④ README 引用的 assets 必须存在且**随包发布**——3b 效果图门禁只查文件在仓库里存不存在，
+      # 查不到"文件在、files 白名单没带它"（本门禁首次全量跑即抓出 5 个插件 8 张图的 npm/unpkg
+      # 裂图）。fail-closed：pack 失败 / JSON 解析失败 / 找不到插件一律 exit 1。
+      # 判定纯函数在 scripts/lib/pack-hygiene.mjs，回归测试 scripts/test/pack-hygiene.test.mjs
+      - name: Package publish hygiene (check-pack-hygiene)
+        run: npm run check:pack-hygiene
+
       - name: Format check (prettier)
         run: npx prettier --check .
 

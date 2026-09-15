@@ -62,6 +62,17 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 - 发版输出与批量汇总显式列出「已豁免」插件与理由（豁免可见、可审计）；
 - `--all-checks`（仅 dry-run）：静态门禁全部跑完再统一报告失败项，避免 fail-fast 让后续门禁从未执行而掩盖缺陷（`--push` 仍为首个失败即停的完整门禁）。
 
+### 包发布卫生门禁（仓库级，`scripts/release.mjs` 1d；issue #323）
+
+查「这个包本身是否可安装、内容是否正确」（**不设体积阈值**，体积归 #322）：
+
+- **字段**：`exports`（递归所有条件值）/ `main` / `types` / `dsh.bundle.patch` 指向的文件必须真实存在；声明 `dsh.client` ⇒ `platform === 'web'` 且 `exports["./client"]` 存在；有 `exports["./client"]` ⇒ 必须声明 `dsh.client`；有 `cordis.patch.yml` ⇒ 必须声明 `dsh.bundle.patch`；有 `lib/client.js` ⇒ 必须有 `exports["./client"]` + `dsh.client`；
+- **pack 内容**（`npm pack --dry-run --json`）：README / CHANGELOG / LICENSE / package.json 与所有声明目标**必须在包里**；`test/` `src/` `coverage/` `reports/` `node_modules/` `.DS_Store` `*.log` **不得在包里**；
+- **README 引用面**：README 引用的 assets（相对路径或 `unpkg.com/<本包>/...`）必须**存在且随包发布**——这是 3b 的盲区（3b 只查文件在仓库里是否存在，查不到 `files` 白名单没带它；#323 靠这条抓出 5 个插件 8 张图的裂图问题）；
+- **「源在仓库但故意不发布」**：判据是「被已发布面引用才必须在包内」，`vendor/`、`src/`、`test/`、`scripts/`、`client-parts/` 不被引用 → 只作 info 列出、不报警（**不要**改成"不在 files 就报警"）；
+- 本地单独跑：`node scripts/check-pack-hygiene.mjs`（`--json` / `--list` / `--plugin <名>` / `--root <dir>`）；判定是纯函数（`scripts/lib/pack-hygiene.mjs`，单测 `scripts/test/pack-hygiene.test.mjs`）；
+- **fail-closed**：pack 失败 / JSON 解析失败 / 找不到插件一律阻断。**选型已论证**：不用 `publint`（它不认 `dsh.*` 字段、恒定噪声、+428K 依赖，详见 `docs/开发指南/发版流程.md`），勿重复引入。
+
 ## 第 4 步：发布语义门禁（任一不满足即停止发布）
 
 1. GitHub Release tag 必须等于 `v${package.json.version}`；
@@ -96,6 +107,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 | **3c 真实环境验证（隔离实例）** | **~9.8s** | **73%** |
 | └ 其中：实例冷启动到 HTTP 200 | ~8.7s | 65% |
 | 1a npm latest 防降级查询 | 0.3–2.5s | 19% |
+| 1d 包发布卫生（`npm pack`，issue #323，与 1a/3/3c 并发） | **235–390ms** | 0.6–2% |
 | 3 `npm test` | 0.8–8.8s | 6–95%（取决于插件） |
 | 1b / 1b-pre / 1c / 2 / 3b / 4 | 合计 < 50ms | ~0% |
 
@@ -104,7 +116,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 流水线（并发只改顺序与耗时，不改判定）：
 
 - 静态门禁（1b-pre / 1b / 1c / 2 / 3b）先跑完（实测 ~6ms，有仓库内依赖时 ~0.5s）；
-- 通过后 **1a / 3 / 3c 并发**启动 → 成功路径 ≈ max(三者) 而非三者相加；
+- 通过后 **1a / 1d / 3 / 3c 并发**启动 → 成功路径 ≈ max(四者) 而非四者相加（1d 需要一次 `npm pack` 的 IO，放进静态组会把快速失败路径从 ~6ms 拖到 ~300ms，故与重门禁并发）；
 - 批量发版默认 **3 个插件并发**（`--concurrency N` 覆盖，上界 8；单插件恒为 1）；端口预分配，隔离实例不会撞车；
 - `--push`：全部 tag 创建完 → **一次推送** → **并发**等全部 Release/npm（原来是每个插件串行等 ~55s）；
 - 静态门禁失败时不启动任何隔离实例（失败路径实测 484ms，比串行版还快）。

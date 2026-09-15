@@ -7,7 +7,7 @@
  *
  * issue #246（发版速度专项）把本脚本从「严格串行」改成「流水线」，门禁一条都没少：
  *   1. 同一插件内互不依赖的门禁并发执行——每条失败都带门禁编号，汇总按门禁编号
- *      （1a→1b-pre→1b→1c→2→3→3c→3b）重排，「首个失败门禁」与串行版同口径；
+ *      （1a→1b-pre→1b→1c→1d→2→3→3c→3b）重排，「首个失败门禁」与串行版同口径；
  *      每个门禁都必须通过，判定权没有交给调度器；
  *   2. 批量发版的多个插件流水线并发（--concurrency，默认 3；单插件恒为 1，行为与串行版一致）；
  *   3. tag 全部创建后一次性推送，再并发等待全部 Release/npm（N × ~55s → ~55s）；
@@ -27,6 +27,13 @@
  *   1b-pre. 形态判定：agent preset 资产包 dsh.kind=preset 豁免（issue #231，lib/preset-gate.mjs）
  *   1c. cross-plugin dependency check (issue #39): client require('dsh-*') must
  *       be declared in peerDependencies; in-repo dsh-* deps published + tagged
+ *   1d. package publish-hygiene check (issue #323): exports/main/types/dsh.bundle.patch
+ *       point at real files; dsh.client consistent with exports["./client"]; npm pack
+ *       content assertions (required files present, test/src/coverage/reports/node_modules
+ *       absent); README-referenced assets actually published.
+ *       Pure judgement in lib/pack-hygiene.mjs, IO (one npm pack, ~300ms) in
+ *       scripts/check-pack-hygiene.mjs; runs concurrently with 1a/3/3c so the static
+ *       fast-fail path (~6ms) is unaffected.
  *   2.  validate CHANGELOG.md has a "## [<version>]" section at the top
  *   3.  run the plugin's tests (npm test)
  *   3b. validate README screenshot references under assets/
@@ -75,6 +82,7 @@ import { checkScreenshotGate } from './lib/screenshot-gate.mjs'
 import { resolvePresetAsset } from './lib/preset-gate.mjs'
 import { createTimeline } from './lib/release-timing.mjs'
 import { mapWithConcurrency, normalizeConcurrency, DEFAULT_CONCURRENCY } from './lib/release-concurrency.mjs'
+import { checkPlugin as checkPackHygiene } from './check-pack-hygiene.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -339,6 +347,28 @@ async function realVerifyGate(name, version, port, prefix) {
     }
   }
   return { ok: true }
+}
+
+/**
+ * 1d. 包发布卫生（issue #323）：字段指向的文件必须真实存在、`dsh.*` 与 `exports` 互证、
+ * `npm pack` 内容「该有的在 / 不该发的没在」、README 引用的资产确实随包发布。
+ * 判定是纯函数（scripts/lib/pack-hygiene.mjs，单测 scripts/test/pack-hygiene.test.mjs），
+ * 这里只做 IO：一次 `npm pack --dry-run --json`（实测 ~300ms/插件）。
+ * fail-closed：pack 失败 / JSON 解析失败 / 找不到包一律阻断，绝不静默放行。
+ */
+async function packHygieneGate(name) {
+  const result = await checkPackHygiene({ root, plugin: name })
+  if (result.aborted !== undefined) {
+    return { ok: false, message: `包发布卫生无法判定（fail-closed）：${result.aborted}` }
+  }
+  if (result.problems.length > 0) {
+    const lines = result.problems.map((p) => `[${p.code}] ${p.message}（位置：${p.where}；修法：${p.fix}）`)
+    return {
+      ok: false,
+      message: `包发布卫生未通过（${result.problems.length} 项）：\n      ${lines.join('\n      ')}`,
+    }
+  }
+  return { ok: true, detail: `包内 ${result.entryCount} 项 / ${Math.round(result.unpackedSize / 1024)}KB` }
 }
 
 /**
@@ -711,11 +741,17 @@ async function processPlugin(name, ctx) {
   if (gate.failures.length > 0 && !allChecks) return fail(orderedStatic)
 
   // ── 并发启动「重」门禁（issue #246）────────────────────────────────────────
-  // 1a（npm 查询 0.3–2.5s）/ 3（插件测试 0.8–8.8s）/ 3c（真实验证 ~10s）互不依赖。
+  // 1a（npm 查询 0.3–2.5s）/ 1d（npm pack ~0.3s）/ 3（插件测试 0.8–8.8s）/
+  // 3c（真实验证 ~10s）互不依赖。
   // 三者都必须在返回前 await 完：提前 return 会让 3c 的隔离实例与临时目录变成孤儿
   // （verify-real-profile 没有信号清理，强杀会残留实例，比多等几秒更糟）。
-  say(`- 并发门禁：1a npm latest 防降级 + 3 插件测试${realPlan.mode === 'run' ? ' + 3c 真实环境验证' : ''}…`)
+  // 1d 放在这里而不是静态组：它需要一次 npm pack（IO），若插进静态组会把
+  // 「静态门禁失败快速路径」（~6ms 拦下）拖到 ~300ms；并发执行则墙钟 ≈ max(四者)。
+  say(
+    `- 并发门禁：1a npm latest 防降级 + 1d 包发布卫生 + 3 插件测试${realPlan.mode === 'run' ? ' + 3c 真实环境验证' : ''}…`,
+  )
   const npmLatestPromise = timeline.phase('1a npm latest 防降级', () => npmLatestGate(name, pkg, version, say))
+  const packHygienePromise = timeline.phase('1d 包发布卫生（npm pack）', () => packHygieneGate(name))
   const testsPromise = timeline.phase('3 插件测试 (npm test)', () => testsGate(pluginDir, `${prefix}    `))
   let realVerifyPromise = null
   if (realPlan.mode === 'run') {
@@ -726,10 +762,13 @@ async function processPlugin(name, ctx) {
   }
 
   const npmLatest = await npmLatestPromise
+  const packHygiene = await packHygienePromise
   const tests = await testsPromise
   const realVerify = realVerifyPromise === null ? null : await realVerifyPromise
 
   const okNpmLatest = settle('1a', npmLatest)
+  const okPackHygiene = settle('1d', packHygiene)
+  if (packHygiene.ok && packHygiene.detail !== undefined) say(`✓ 包发布卫生：${packHygiene.detail}`)
   const okTests = settle('3', tests)
   const okRealVerify = realVerify === null ? true : settle('3c', realVerify)
   if (realPlan.note !== '') say(`- 跳过真实环境验证（${realPlan.note}）`)
@@ -739,6 +778,7 @@ async function processPlugin(name, ctx) {
     ['1b-pre', shapeOk],
     ['1b', peerOk],
     ['1c', depOk],
+    ['1d', okPackHygiene],
     ['2', changelogOk],
     ['3', okTests],
     ['3c', okRealVerify],

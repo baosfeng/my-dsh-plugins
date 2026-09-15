@@ -1,6 +1,6 @@
 /**
  * 极简 GitHub Actions workflow 解析（issue #330）——只取 parity 校验需要的结构：
- *   job 名 → steps[]（每个 step 的 name / run / uses）。
+ *   job 名 → steps[]（每个 step 的 name / run / uses / continue-on-error）。
  *
  * 为什么不直接用 yaml 包：`yaml` 是**传递依赖**（vitest 依赖链带来），本仓库并未声明它。
  * 门禁脚本跨 CI/本地运行，不该依赖一个未声明、随时可能消失的包。而这里需要的结构极浅
@@ -9,7 +9,7 @@
  * 支持的 YAML 子集（够用即止）：
  *   · `jobs:` 顶格；job 名 2 空格缩进
  *   · step 列表项 `      - `（6 空格），行内字段 `- name: x`
- *   · step 字段 `        key: value`（8 空格）：name / uses / run（其余忽略）
+ *   · step 字段 `        key: value`（8 空格）：name / uses / run / continue-on-error（其余忽略）
  *   · run 的块标量 `        run: |`（其后缩进更深的行按行拼接）
  */
 
@@ -71,6 +71,7 @@ export function parseWorkflow(text) {
     if (key === 'name') step.name = val
     else if (key === 'uses') step.uses = val
     else if (key === 'run') step.run = val
+    else if (key === 'continue-on-error') step.continueOnError = val === 'true' // issue #350：上报类步骤不得判红
   }
 
   for (const raw of text.split('\n')) {
@@ -108,7 +109,7 @@ export function parseWorkflow(text) {
     const stepMatch = line.match(STEP_RE)
     if (stepMatch) {
       endStep()
-      step = { name: '', run: '', uses: '' }
+      step = { name: '', run: '', uses: '', continueOnError: false }
       const inline = stepMatch[1]
       const inlineField = inline.match(INLINE_FIELD_RE)
       if (inlineField) handleField(inlineField[1], inlineField[2], indent)

@@ -39,6 +39,23 @@ export const CI_INFRA_STEPS = [
   /^npm ci$/,
 ]
 
+/**
+ * CI 基础设施里**必须 `continue-on-error: true`**（尽力而为、不得判红）的第三方上报步骤（issue #350）。
+ *
+ * 为什么单列：`coverallsapp/github-action` 是**第三方上报**动作，运行时要下载二进制并校验 checksum。
+ * 实测（#349 首次 run `34993038142`）：test (dsh-my-notify) job 内插件测试全绿
+ * （Test Files 17 passed / 17 scenarios passed），却仅因
+ * `Failed to download coveralls binary or checksum (Linux).` 把整个 job 判红 → 一次无谓的 CI 往返
+ * （排队 + 19 插件 matrix + 读日志定位 + 重跑），且**与本次改动无关**。它命中规范第十四节的
+ * 第三种漏网形态「本地无、CI 有」，而且是其中最难防的一种：本地既无法预知、也无法拦住。
+ *
+ * ⚠️ 边界（绝不能混）：覆盖率**阈值门禁**由各插件自身的 vitest coverage 强制
+ * （行 ≥85 / 分支 ≥75 / 函数 ≥80，见根 `vitest.config.mjs`），那部分**仍然阻断**；本类步骤只把
+ * 已算出的结果**上报**到第三方看板 → 定位是「尽力而为」，不该决定 PR 红绿。失败仍留在 run 日志与
+ * job annotation 里（可观测性不丢）。反向由 `check-gate-parity.mjs` 守住：去掉 `continue-on-error` 即红。
+ */
+export const CI_BEST_EFFORT_STEPS = [/^coverallsapp\/github-action@/]
+
 export const GATE_REGISTRY = [
   {
     id: 'test',

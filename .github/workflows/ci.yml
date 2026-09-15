@@ -106,8 +106,22 @@ jobs:
 
       # 上传单个插件覆盖率到 Coveralls（parallel 模式：每个 matrix job 上传后
       # 由 coverage-finish job 发送 webhook 信号，Coveralls 才汇总并显示总覆盖率）
+      #
+      # ── continue-on-error：上报失败不得判红（issue #350）──────────────────────
+      # Coveralls 是**第三方上报**动作，运行时下载二进制并校验 checksum。#349 实测：job 内插件
+      # 测试全绿（Test Files 17 passed / 17 scenarios passed）却仅因
+      # `Failed to download coveralls binary or checksum (Linux).` 把 test (dsh-my-notify)
+      # 判红 → 一次无谓的 CI 往返（排队 + 19 插件 matrix + 读日志 + 重跑），且**与改动无关**；
+      # 本地既无法预知、也无法拦住，属规范第十四节「本地无、CI 有」的第三种漏网形态。
+      #
+      # ⚠️ 边界：**覆盖率阈值门禁**由各插件自己的 vitest coverage 强制（行 ≥85 / 分支 ≥75 /
+      # 函数 ≥80，见根 vitest.config.mjs），那一步（`npm test`）**仍然阻断**；本步骤只是把
+      # 已算出的结果**上报**到第三方看板，所以定位是「尽力而为」，不该决定 PR 红绿。
+      # 失败仍可在 run 日志与 job annotation 里看到，只是不再判红。反向也由门禁守住：
+      # scripts/check-gate-parity.mjs 校验本步骤必须带 continue-on-error，去掉即红。
       - name: Upload coverage to Coveralls
         if: success() && matrix.plugin != 'dsh-plugin-dev-mode'
+        continue-on-error: true
         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2
         with:
           flag-name: ${{ matrix.plugin }}
@@ -120,7 +134,10 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      # 同上（issue #350）：汇总信号同样是第三方上报动作，下载/上报抖动不得判红。注意它
+      # `needs: test` —— 测试或覆盖率阈值红时 test job 仍然红，PR 依然拦得住；本步骤只发信号。
       - name: Coveralls finished
+        continue-on-error: true
         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2
         with:
           parallel-finished: true

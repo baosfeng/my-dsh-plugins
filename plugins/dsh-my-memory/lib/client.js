@@ -30,7 +30,12 @@ window.__ModuleLoader__.load({
     const { createElement, useEffect, useState } = require('react')
     // 官方 UI 组件库（宿主 staticModules 提供，零安装零体积；组件表见
     // docs/开发指南/官方UI组件库.md）：Input/Pill/Button + 官方线性图标。
-    const ui = require('@deepseek-ai/dsh-client-ui-primitives')
+    let ui = null
+    try {
+      ui = require('@deepseek-ai/dsh-client-ui-primitives')
+    } catch {
+      ui = null  // 宿主模块不可用时降级
+    }
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────
@@ -612,6 +617,33 @@ const icon = {
       [
         createElement('rect', { x: 9, y: 9, width: 13, height: 13, rx: 2 }),
         createElement('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
+      ],
+      size,
+    ),
+  // 箭头向上（更新图标）：向上的箭头，表示更新操作
+  arrowUp: (size = 16) =>
+    iconSvg(
+      [
+        createElement('line', { x1: 12, y1: 19, x2: 12, y2: 5 }),
+        createElement('polyline', { points: '5 12 12 5 19 12' }),
+      ],
+      size,
+    ),
+  // 电源关（禁用图标）：圆形电源按钮，表示禁用操作
+  powerOff: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M18.36 6.64a9 9 0 1 1-12.73 0' }),
+        createElement('line', { x1: 12, y1: 2, x2: 12, y2: 12 }),
+      ],
+      size,
+    ),
+  // 电源开（启用图标）：圆形电源按钮，表示启用操作
+  powerOn: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M18.36 6.64a9 9 0 1 1-12.73 0' }),
+        createElement('line', { x1: 12, y1: 2, x2: 12, y2: 12 }),
       ],
       size,
     ),

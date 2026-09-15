@@ -19,7 +19,12 @@ window.__ModuleLoader__.load({
     // useState 由编译后的 client bundle 使用；模板静态分析看不到 bundle 内容。
     const { createElement, useState } = require('react')
     // 统一 MarkdownView 由 dsh-md-render 提供（issue #31 渲染职责迁移）。
-    const MarkdownView = require('dsh-md-render').MarkdownView
+    let MarkdownView = null
+    try {
+      MarkdownView = require('dsh-md-render').MarkdownView
+    } catch {
+      MarkdownView = null  // 不可用时回退纯文本
+    }
 
     // ── 共享图标（issue #54 阶段 0：dsh-shared/client-parts）──────────
     // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──

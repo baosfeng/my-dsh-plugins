@@ -193,19 +193,13 @@ function normalizeCandidates(memory) {
         items: items.filter((item) => isCandidateItem(item)),
     };
 }
-/** 日志前缀（护栏 warn 用）。 */
-const PREFIX = '[dsh-my-memory]';
-/**
- * 记忆快照字节上限（护栏兜底，issue #198 收尾）：单条记忆 ≤ 数百字节
- * （desc 默认 ≤ 200 字符 + 文本主体），条目数随长期使用增长且无数量上限
- * → 4MB 作为保守上界（≈ 上千条记忆）；超限由 shared 护栏**拒绝写入 + 计数**
- * （`atomicWriteStats().rejected`），不再无界放大。
- */
+const PREFIX = '[dsh-my-memory]'; // 护栏 warn 用
+/** 快照字节上限（issue #198）：单条 ≤ 数百字节、条目数无上限 → 4MB 保守上界；
+ *  超限由 shared 护栏拒绝写入 + 计数（`atomicWriteStats().rejected`），不再无界放大。 */
 const MEMORY_MAX_BYTES = 4 * 1024 * 1024;
-/** 原子写快照（走 shared 原语：紧凑 JSON + 自动建目录 + 字节上限 + 拦截计数）。
- *  返回 false 表示被护栏拦截或 IO 失败（调用方/调度器据此重排或告警）。 */
+/** 原子写快照（shared 原语：紧凑 JSON + 建目录 + 字节上限 + 计数）；false = 被拦或 IO 失败。 */
 async function atomicWrite(file, data) {
-    // 节奏由 createWriteScheduler 单一控制 → 原语关节流（双护栏会互相拦掉正常节奏）
+    // 节奏由 createWriteScheduler 单一控制 → 原语关节流（双护栏会拦掉正常节奏）
     return atomicWriteJson(file, data, undefined, PREFIX, { minIntervalMs: 0, maxBytes: MEMORY_MAX_BYTES });
 }
 /** Item timestamp for sorting: updatedAt, falling back to createdAt. */
@@ -222,7 +216,6 @@ function createDebouncedStore(file, debounceMs, normalize) {
         items: [],
         ready: Promise.resolve(),
     };
-    /** 写入调度（shared 原语）：防抖 + 最小间隔 1s + 串行链 + drain 就绪信号。 */
     const scheduler = createWriteScheduler({
         debounceMs,
         minIntervalMs: 1000,
@@ -250,8 +243,7 @@ function createDebouncedStore(file, debounceMs, normalize) {
         return state.items.slice().sort((a, b) => tsOf(b) - tsOf(a));
     }
     function dispose() {
-        // drain：把挂起/在飞的写推到结束（同步 teardown 里不阻塞，但不在写链上留悬挂状态）
-        void scheduler.drain();
+        void scheduler.drain(); // 把挂起/在飞的写推到结束（不阻塞调用方）
     }
     function push(item) {
         state.items.push(item);

@@ -13,7 +13,7 @@ export const DEFAULT_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 /** 同主题大意描述（供主题归一化比较）。 */
 function normalizeText(text) {
     return String(text ?? '')
-        .replace(/[\s，。！？、；：,.!?;:·…—_'"""''()（）【】]+/gu, '')
+        .replace(/[\s，。！？、；：,.!?;:·…—_'"„‟‹›「」『』〈〉《》【】（）]+/gu, '')
         .toLowerCase();
 }
 /** 规范化后的主题 key（category + 归一文本）。 */

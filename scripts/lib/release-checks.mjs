@@ -1,21 +1,25 @@
 /**
  * release-checks.mjs — 发版校验逻辑（issue #39：跨插件依赖校验；issue #72：404 阻断 + server 端扫描；
- * issue #203：源码依赖解析先剔除注释/字符串，消除「注释里的示例 require」假阳性阻断）。
+ * issue #203：源码依赖解析先剔除注释/字符串，消除「注释里的示例 require」假阳性阻断；
+ * issue #294：dsh.client.external（跨插件 client 行请求）校验）。
  *
  * 纯函数（无 IO，可单元测试）：
  *   extractDshRequires / findUndeclaredPeers / rangeMin / versionGte / findUnpublishedDeps / isNpmNotFound
- *   tagConflictHint
+ *   listClientExternals / checkClientExternals / tagConflictHint
  * IO 辅助（依赖注入 fs 便于测试）：
  *   collectClientSources / collectServerSources / buildPluginIndex / findFreePort
  *   inspectTagState（git 查询：发版 tag 管理防护）
  *
- * 校验规则（对应 issue #39 期望 1/3 + issue #72 修复）：
+ * 校验规则（对应 issue #39 期望 1/3 + issue #72 修复 + issue #294 修复）：
  *   1. client/server 端 require('dsh-*') / import 的包必须在 package.json
  *      peerDependencies 或 dependencies 声明；
  *   2. 声明的 dsh-* 依赖中属于本仓库插件的，必须已发布（npm）且版本已打 tag
  *      （<目录>@v<版本>）——依赖先发版、依赖方后发版；
  *   3. npm view 返回 404（包从未发布）必须阻断发版，不再被「已打 tag」兜底放行
- *      （issue #72：dsh-shared 未发布 npm 但 tag 已打，4 个插件安装失败/运行崩溃）。
+ *      （issue #72：dsh-shared 未发布 npm 但 tag 已打，4 个插件安装失败/运行崩溃）；
+ *   4. dsh.client.external（同 boot 图内的跨插件 client 行请求）必须声明，且指向
+ *      仓库内插件时**必须**在 dependencies（peer 永不安装 → 浏览器端 require 落空，
+ *      整条 client factory 抛错、插件全部 UI 席位挂掉，见 checkClientExternals）。
  */
 import { execFileSync } from 'node:child_process'
 import { readdirSync, existsSync, readFileSync } from 'node:fs'
@@ -301,6 +305,83 @@ export function findUnpublishedDeps(peers, pluginIndex, isPublished, isTagged) {
         dep,
         reason: `依赖包 ${dep}（${entry.dir}@v${entry.version}）未打 tag——依赖必须先发版（先发依赖、再发本插件）`,
       })
+    }
+  }
+  return problems
+}
+
+/**
+ * dsh.client.external 消费者的修法指引（issue #294）。
+ *
+ * external 是「同 boot 图内的跨插件 client 行请求」：只有被请求的插件成为 loader entry
+ * （⇒ 进入 dsh.profile.bundles）才会产生 client graph row，浏览器端 require 才命中；
+ * 缺包时**无 stub、无隔离**，整条 client factory 抛错 → 插件全部 UI 席位挂掉。
+ * 消费者必须同时满足「装得到」与「缺了也不崩」两条，缺一条都会把崩溃漏到用户侧。
+ */
+export const CLIENT_EXTERNAL_FIX_HINT = [
+  '  修复: external 指向的包必须「装得到」且「缺了也不崩」（否则整条 client factory 抛错，插件 UI 全挂）:',
+  '  1. 声明的包放进 package.json 的 dependencies，并在 README/安装说明里保证与插件同时安装',
+  '     （只有进 profile dependencies 才会被 reconcilePlugins 写进 dsh.profile.bundles → 才有 client graph row；',
+  '     peerDependencies 在 profile 模板 autoInstallPeers:false 下永不安装，兜不住）；',
+  '  2. 必须有降级路径：依赖缺失时用平台 seed 组件或纯文本回退渲染，绝不让渲染期 createElement(null) 抛错（issue #293）；',
+  '  3. 判据与教训见 docs/踩坑/跨插件依赖未声明导致client崩溃.md',
+].join('\n')
+
+/** 读取 pkg.dsh.client.external 列表（缺失/非数组/非字符串项一律忽略，返回去重结果）。 */
+export function listClientExternals(pkg) {
+  const external = pkg?.dsh?.client?.external
+  if (!Array.isArray(external)) return []
+  const names = external.filter((name) => typeof name === 'string' && name !== '')
+  return [...new Set(names)]
+}
+
+/**
+ * 校验 pkg.dsh.client.external（issue #294，防 #290/#293 复发）。
+ *
+ * 对每一项断言：
+ *   (i)  必须在 dependencies 或 peerDependencies 声明（否则新装用户拿不到该包）；
+ *   (ii) 若是本仓库内的插件包（pluginIndex 命中，即 plugins/*）：必须位于
+ *        **dependencies**（只有进 profile dependencies 才可能被 reconcile 激活成
+ *        loader entry / client graph row），且满足既有「已发布 + 已打 tag」判据
+ *        —— 直接复用 findUnpublishedDeps，不另写一套网络逻辑。
+ *
+ * 仓库外的包（官方包/第三方包）只看 (i)：其安装语义由包管理器负责，本仓库无法
+ * 保证「已发布 + 已打 tag」。这一取舍是显式的（单测覆盖），不是漏检。
+ *
+ * @param {object} pkg 插件 package.json 内容
+ * @param {Map<string, {dir: string, version: string}>} pluginIndex 仓库内插件索引
+ * @param {(dep: string, range: string) => boolean} isPublished 依赖是否已发布且满足范围
+ * @param {(dir: string, version: string) => boolean} isTagged 依赖版本是否已打 tag
+ * @returns {{external: string, kind: 'undeclared'|'peer-only'|'unpublished', reason: string}[]} 问题列表
+ */
+export function checkClientExternals(pkg, pluginIndex, isPublished, isTagged) {
+  const externals = listClientExternals(pkg)
+  if (externals.length === 0) return []
+  const deps = pkg?.dependencies ?? {}
+  const peers = pkg?.peerDependencies ?? {}
+  const problems = []
+  for (const external of externals) {
+    const inDeps = Object.prototype.hasOwnProperty.call(deps, external)
+    const inPeers = Object.prototype.hasOwnProperty.call(peers, external)
+    if (!inDeps && !inPeers) {
+      problems.push({
+        external,
+        kind: 'undeclared',
+        reason: `dsh.client.external 请求了 ${external} 但未在 peerDependencies/dependencies 声明——新装用户拿不到该包，浏览器端 require 落空`,
+      })
+      continue
+    }
+    if (!pluginIndex.has(external)) continue // 仓库外包：安装语义由包管理器负责（只看 (i)）
+    if (!inDeps) {
+      problems.push({
+        external,
+        kind: 'peer-only',
+        reason: `dsh.client.external ${external} 只声明在 peerDependencies——profile 模板 autoInstallPeers:false 下 peer 永不安装、也不会进 dsh.profile.bundles（无 client graph row），浏览器端 require 必然落空（issue #290/#293）`,
+      })
+      continue
+    }
+    for (const problem of findUnpublishedDeps({ [external]: deps[external] }, pluginIndex, isPublished, isTagged)) {
+      problems.push({ external, kind: 'unpublished', reason: `dsh.client.external ${problem.reason}` })
     }
   }
   return problems

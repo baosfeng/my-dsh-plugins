@@ -238,10 +238,9 @@ test('media route refuses requests outside the fence (403)', async () => {
   assert.equal(res._status, 403, 'media route fenced')
 })
 
-// #318：src 的 TOCTOU 加固（commit 76f52ac 用 readFile 取代 stat+readFile）后，
-// 目录不再走 "not a file" 的 400 分支，而是与"读不到的文件"同一条 404 分支——
-// 语义仍是"拒绝"，且不再有 check-then-use 的时间窗。此处断言随之改为 404。
-test('media route rejects directories (404)', async () => {
+// #318：目录必须仍是 400（线上契约），且不再有 check-then-use 时间窗——
+// src 的 mediaReadError 按 errno 分类：EISDIR → 400 / EACCES|EPERM → 403 / 其余（含 ENOENT）→ 404。
+test('media route rejects directories (400)', async () => {
   const { ctx, getMediaRoute } = await boot()
   const dirPath = join(dir, 'a-directory')
   const { mkdirSync } = await import('node:fs')
@@ -253,8 +252,48 @@ test('media route rejects directories (404)', async () => {
     makeRequest('GET', `/file-activity/file?sessionId=s7&path=${encodeURIComponent(dirPath)}`),
     res,
   )
-  assert.equal(res._status, 404, 'directory is not a readable file')
+  assert.equal(res._status, 400, 'directory is not a file')
   assert.equal(JSON.parse(res._body).ok, false)
+})
+
+test('media route returns 404 for a recorded-but-missing file', async () => {
+  const { ctx, getMediaRoute } = await boot()
+  const missing = join(dir, 'gone-file.md')
+  emitObserved(ctx, 'read', 's7b', missing)
+  await settle()
+  const res = makeResponse()
+  await getMediaRoute().handler(
+    makeRequest('GET', `/file-activity/file?sessionId=s7b&path=${encodeURIComponent(missing)}`),
+    res,
+  )
+  assert.equal(res._status, 404, 'ENOENT is a genuine 404')
+  assert.equal(JSON.parse(res._body).ok, false)
+})
+
+// EACCES/EPERM → 403 的分类在 CI 上不便于端到端构造（runner 常为 root，chmod 000 仍可读），
+// 因此这里钉住"权限错误不能被当成 not-found"的可验证部分：路径存在但 chmod 000 时，
+// 若宿主确实返回 EACCES（本机实测 macOS 用户态为 EACCES），必须落 403；若宿主是 root
+// （读成功）则落 200——**任何情况下都不允许落 404**（这正是 commit 76f52ac 的空 catch {}
+// 造成的诊断退化：把 EACCES 说成"文件不存在"）。
+test('media route never reports a permission failure as 404', async () => {
+  const { chmodSync } = await import('node:fs')
+  const target = join(dir, 'locked.md')
+  writeFileSync(target, 'secret\n')
+  chmodSync(target, 0o000)
+  try {
+    const { ctx, getMediaRoute } = await boot()
+    emitObserved(ctx, 'read', 's7c', target)
+    await settle()
+    const res = makeResponse()
+    await getMediaRoute().handler(
+      makeRequest('GET', `/file-activity/file?sessionId=s7c&path=${encodeURIComponent(target)}`),
+      res,
+    )
+    assert.notEqual(res._status, 404, 'permission failure must not be reported as not-found')
+    assert.ok([200, 403].includes(res._status), `expected 200 (root) or 403 (EACCES), got ${res._status}`)
+  } finally {
+    chmodSync(target, 0o600)
+  }
 })
 
 test('media route rejects files over the size limit (413)', async () => {

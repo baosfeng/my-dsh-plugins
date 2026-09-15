@@ -4,6 +4,10 @@ node_modules/
 # 依赖矩阵缓存（scripts/deps-matrix.mjs 的 registry 查询结果）
 .deps-matrix-cache.json
 
+# gitleaks 二进制缓存（scripts/check-secrets.mjs 下载 + SHA256 校验后落盘，issue #324；
+# 版本化目录名，二进制本身绝不入库，只由发布产物按校验值重建）
+.gitleaks-cache/
+
 # Logs
 *.log
 npm-debug.log*

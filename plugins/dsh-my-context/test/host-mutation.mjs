@@ -8,12 +8,12 @@ import assert from 'node:assert/strict'
 import { rmSync } from 'node:fs'
 import { dirSync } from 'tmp'
 import { isTrustedApiRequest } from 'dsh-shared'
-import { bootPlugin, mockRequest, mockResponse, invoke, jsonOf, settle } from './lib/helpers.mjs'
+import { bootPlugin, bootStore, mockRequest, mockResponse, invoke, jsonOf, yieldLoop } from './lib/helpers.mjs'
 
 const disposeAlls = []
 const tmpDirs = []
-afterAll(() => {
-  for (const disposeAll of disposeAlls.splice(0)) disposeAll()
+afterAll(async () => {
+  for (const disposeAll of disposeAlls.splice(0)) await disposeAll()
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
@@ -52,7 +52,7 @@ test('fence: malformed host / origin rejected', () => {
 
 test('routes: POST /budget updates config and persists', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const res = mockResponse()
   await invoke(
     handle.api,
@@ -68,12 +68,12 @@ test('routes: POST /budget updates config and persists', async () => {
   const status = mockResponse()
   await invoke(handle.api, mockRequest({ url: '/context/api/status' }), status)
   assert.deepEqual(jsonOf(status).value.budget, { perTurn: 500, perSession: 10000, mode: 'deny' })
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('routes: POST /budget with invalid values falls back to defaults', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const res = mockResponse()
   await invoke(
     handle.api,
@@ -86,12 +86,12 @@ test('routes: POST /budget with invalid values falls back to defaults', async ()
   )
   assert.equal(res.writeHeadStatus, 200)
   assert.deepEqual(jsonOf(res).value.budget, { perTurn: 0, perSession: 0, mode: 'warn' })
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('routes: status exposes overflow thresholds, POST /overflow updates them', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const status = mockResponse()
   await invoke(handle.api, mockRequest({ url: '/context/api/status' }), status)
   assert.deepEqual(jsonOf(status).value.overflow, { warnThreshold: 0.8, alertThreshold: 0.9 })
@@ -110,12 +110,12 @@ test('routes: status exposes overflow thresholds, POST /overflow updates them', 
   const status2 = mockResponse()
   await invoke(handle.api, mockRequest({ url: '/context/api/status' }), status2)
   assert.deepEqual(jsonOf(status2).value.overflow, { warnThreshold: 0.6, alertThreshold: 0.7 })
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('routes: POST /overflow with invalid values falls back to defaults', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const res = mockResponse()
   await invoke(
     handle.api,
@@ -128,12 +128,12 @@ test('routes: POST /overflow with invalid values falls back to defaults', async 
   )
   assert.equal(res.writeHeadStatus, 200)
   assert.deepEqual(jsonOf(res).value.overflow, { warnThreshold: 0, alertThreshold: 1 })
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('routes: GET /overflows returns overflow warnings newest first', async () => {
   const handle = boot({ warnThreshold: 0.8, alertThreshold: 0.9 })
-  await settle()
+  await yieldLoop()
   const { sessionEvent, dispatchEvent, preStepPayload } = await import('./lib/helpers.mjs')
   const { session, event } = sessionEvent('s-1', 'request/context', { contextWindow: 100 })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
@@ -144,12 +144,12 @@ test('routes: GET /overflows returns overflow warnings newest first', async () =
     usage: { inputTokens: 90, outputTokens: 0 },
   })
   await dispatchEvent(handle.listeners, 'session/event', s2, e2)
-  await settle()
+  await yieldLoop()
   await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => ({
     kind: 'enter',
     messages: [],
   }))
-  await settle()
+  await yieldLoop()
   const res = mockResponse()
   await invoke(handle.api, mockRequest({ url: '/context/api/overflows?sessionId=s-1' }), res)
   assert.equal(res.writeHeadStatus, 200)
@@ -157,12 +157,12 @@ test('routes: GET /overflows returns overflow warnings newest first', async () =
   assert.equal(overflows.length, 1)
   assert.equal(overflows[0].kind, 'overflow')
   assert.equal(overflows[0].level, 'alert')
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('routes: GET /alerts returns alerts newest first', async () => {
   const handle = boot({ perTurn: 10, mode: 'warn' })
-  await settle()
+  await yieldLoop()
   const { sessionEvent, dispatchEvent, preStepPayload } = await import('./lib/helpers.mjs')
   const { session, event } = sessionEvent('s-1', 'assistant/message', {
     turn: 1,
@@ -171,12 +171,12 @@ test('routes: GET /alerts returns alerts newest first', async () => {
     usage: { inputTokens: 50, outputTokens: 5 },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => ({
     kind: 'enter',
     messages: [],
   }))
-  await settle()
+  await yieldLoop()
   const res = mockResponse()
   await invoke(handle.api, mockRequest({ url: '/context/api/alerts?sessionId=s-1' }), res)
   assert.equal(res.writeHeadStatus, 200)
@@ -184,12 +184,12 @@ test('routes: GET /alerts returns alerts newest first', async () => {
   assert.equal(alerts.length, 1)
   assert.equal(alerts[0].kind, 'budget')
   assert.equal(alerts[0].scope, 'turn')
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('routes: GET /sessions lists sessions with stats', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const { sessionEvent, dispatchEvent } = await import('./lib/helpers.mjs')
   const { session, event } = sessionEvent('s-1', 'assistant/message', {
     turn: 1,
@@ -198,7 +198,7 @@ test('routes: GET /sessions lists sessions with stats', async () => {
     usage: { inputTokens: 10, outputTokens: 1 },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   const res = mockResponse()
   await invoke(handle.api, mockRequest({ url: '/context/api/sessions' }), res)
   assert.equal(res.writeHeadStatus, 200)
@@ -206,21 +206,21 @@ test('routes: GET /sessions lists sessions with stats', async () => {
   assert.equal(sessions.length, 1)
   assert.equal(sessions[0].sessionId, 's-1')
   assert.equal(sessions[0].requests, 1)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('routes: fence rejects non-loopback requests with 403', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const res = mockResponse()
   await invoke(handle.api, mockRequest({ url: '/context/api/status', host: 'evil.example' }), res)
   assert.equal(res.writeHeadStatus, 403)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('routes: malformed JSON body returns 400', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const res = mockResponse()
   await invoke(
     handle.api,
@@ -232,40 +232,32 @@ test('routes: malformed JSON body returns 400', async () => {
     res,
   )
   assert.equal(res.writeHeadStatus, 400)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 // ── store edge cases ───────────────────────────────────────────────────────
 
 test('store: mutate with empty sessionId is a no-op', async () => {
   const handle = boot({})
-  await settle()
-  const { createStore } = await import('../lib/store.js')
-  const store = createStore(handle.ctx)
-  await settle()
+  const store = await bootStore(handle.ctx) // 加载就绪 + 登记卸载（issue #335）
   store.recordRequest('', { turn: 1, step: 1, usage: { inputTokens: 1 } })
   store.addMessage('', 'user', 5)
-  await settle()
+  await yieldLoop()
   assert.equal(store.state.bySession.size, 0, '空 sessionId 不建桶（有界 Map 为空）')
-  store.dispose()
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('store: recordRequest with malformed usage is safe', async () => {
   const handle = boot({})
-  await settle()
-  const { createStore } = await import('../lib/store.js')
-  const store = createStore(handle.ctx)
-  await settle()
+  const store = await bootStore(handle.ctx) // 加载就绪 + 登记卸载（issue #335）
   store.recordRequest('s-1', { turn: 1, step: 1, usage: null })
   store.recordRequest('s-1', { turn: 1, step: 2, usage: { inputTokens: 'x', outputTokens: -1 } })
-  await settle()
+  await yieldLoop()
   const session = store.session('s-1')
   assert.equal(session.requests.length, 2)
   assert.equal(session.requests[0].prompt, 0)
   assert.equal(session.requests[1].total, 0)
-  store.dispose()
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 // ── persist edge cases ─────────────────────────────────────────────────────
@@ -287,16 +279,13 @@ test('persist: parseLoaded rejects invalid root structures', async () => {
   for (const text of cases) {
     writeFileSync(joinPath(home, 'context', 'context.json'), text, 'utf8')
     const handle = boot({}, { home })
-    const { createStore } = await import('../lib/store.js')
-    const store = createStore(handle.ctx)
-    await settle(80)
+    const store = await bootStore(handle.ctx) // 加载就绪 + 登记卸载（issue #335）
     const session = store.session('s-1')
     if (session !== undefined) {
       assert.equal(typeof session.requests, 'object')
       assert.equal(typeof session.alerts, 'object')
     }
-    store.dispose()
-    handle.disposeAll()
+    await handle.disposeAll()
   }
 })
 
@@ -323,38 +312,30 @@ test('persist: mergeCurrent skips untouched sessions', async () => {
     'utf8',
   )
   const handle = boot({}, { home })
-  const { createStore } = await import('../lib/store.js')
-  const store = createStore(handle.ctx)
-  await settle(80)
+  const store = await bootStore(handle.ctx) // 加载就绪 + 登记卸载（issue #335）
   // 加载后旧会话存在
   assert.equal(store.session('old-s').usage.inputTokens, 7)
-  store.dispose()
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('persist: mutations before load are buffered and replayed', async () => {
   const home = dirSync({ unsafeCleanup: true, prefix: 'dsh-context-buffer-' }).name
   tmpDirs.push(home)
   const handle = boot({}, { home })
-  const { createStore } = await import('../lib/store.js')
-  const store = createStore(handle.ctx)
-  // 立即写入（加载完成前）
+  const store = await bootStore(handle.ctx, { waitReady: false }) // 不等就绪：本用例要测「加载完成前的缓冲」
+  // 立即写入（加载完成前）——这正是 CI 上 settle(80) 赌输的窗口（@335）
   store.recordRequest('s-1', { turn: 1, step: 1, usage: { inputTokens: 42 } })
-  await settle(80)
+  await store.whenReady() // 加载就绪信号：与 readFile 何时完成无关，不用固定 sleep 赌
   const session = store.session('s-1')
   assert.equal(session.usage.inputTokens, 42)
-  store.dispose()
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 // ── store edge cases (header/context/request boundaries) ────────────────────
 
 test('store: applyHeader ignores malformed fields', async () => {
   const handle = boot({})
-  await settle()
-  const { createStore } = await import('../lib/store.js')
-  const store = createStore(handle.ctx)
-  await settle()
+  const store = await bootStore(handle.ctx) // 加载就绪 + 登记卸载（issue #335）
   store.updateHeader('s-1', { system: 5, tools: 'x', systemTokens: 'a', model: 5, provider: null })
   store.updateHeader('s-1', {
     system: 'ok',
@@ -364,53 +345,44 @@ test('store: applyHeader ignores malformed fields', async () => {
     model: 'm',
     provider: 'p',
   })
-  await settle()
+  await yieldLoop()
   const session = store.session('s-1')
   assert.equal(session.header.system, 'ok')
   assert.equal(session.header.systemTokens, 3)
   assert.equal(session.model, 'm')
   assert.equal(session.provider, 'p')
-  store.dispose()
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('store: applyContext ignores malformed fields', async () => {
   const handle = boot({})
-  await settle()
-  const { createStore } = await import('../lib/store.js')
-  const store = createStore(handle.ctx)
-  await settle()
+  const store = await bootStore(handle.ctx) // 加载就绪 + 登记卸载（issue #335）
   store.updateContext('s-1', { model: 5, provider: null, contextWindow: -1 })
   store.updateContext('s-1', { model: 'm', provider: 'p', contextWindow: 128000 })
-  await settle()
+  await yieldLoop()
   const session = store.session('s-1')
   assert.equal(session.model, 'm')
   assert.equal(session.contextWindow, 128000)
-  store.dispose()
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('store: sessionsOf filters empty sessions', async () => {
   const handle = boot({})
-  await settle()
-  const { createStore } = await import('../lib/store.js')
-  const store = createStore(handle.ctx)
-  await settle()
+  const store = await bootStore(handle.ctx) // 加载就绪 + 登记卸载（issue #335）
   store.updateHeader('s-1', { system: 'x', tools: [], systemTokens: 1, toolsTokens: 0 })
-  await settle()
+  await yieldLoop()
   assert.deepEqual(store.sessions(), [], 'header-only session has no requests/alerts')
   store.recordRequest('s-1', { turn: 1, step: 1, usage: { inputTokens: 1 } })
-  await settle()
+  await yieldLoop()
   assert.equal(store.sessions().length, 1)
-  store.dispose()
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 // ── events edge cases ───────────────────────────────────────────────────────
 
 test('events: malformed session/event payloads are ignored safely', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const { sessionEvent, dispatchEvent } = await import('./lib/helpers.mjs')
   // session 无 id
   await dispatchEvent(handle.listeners, 'session/event', {}, { type: 'assistant/message', data: {} })
@@ -427,11 +399,11 @@ test('events: malformed session/event payloads are ignored safely', async () => 
   // 未知事件类型
   const { session: s3, event: e3 } = sessionEvent('s-1', 'unknown/type', {})
   await dispatchEvent(handle.listeners, 'session/event', s3, e3)
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.requests.length, 0, 'no usage → no request record')
   assert.ok(stats.composition.assistant > 0)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 // ── routes edge cases ───────────────────────────────────────────────────────
@@ -440,22 +412,22 @@ test('routes: webRuntime variants do not break fence', async () => {
   for (const webRuntime of [undefined, null, { trustedHosts: null }, { trustedHosts: ['dsh.example'] }]) {
     const handle = bootPlugin({}, { webRuntime })
     disposeAlls.push(handle.disposeAll)
-    await settle()
+    await yieldLoop()
     const res = mockResponse()
     await invoke(handle.api, mockRequest({ url: '/context/api/status' }), res)
     assert.equal(res.writeHeadStatus, 200, `webRuntime=${JSON.stringify(webRuntime)}`)
-    handle.disposeAll()
+    await handle.disposeAll()
   }
 })
 
 test('routes: empty body budget update keeps defaults', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const res = mockResponse()
   await invoke(handle.api, mockRequest({ url: '/context/api/budget', method: 'POST', body: '' }), res)
   assert.equal(res.writeHeadStatus, 200)
   assert.deepEqual(jsonOf(res).value.budget, { perTurn: 0, perSession: 0, mode: 'warn' })
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 // ── budget / meter / fence edge cases ───────────────────────────────────────

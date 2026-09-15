@@ -9,7 +9,15 @@
  *    （FIFO 淘汰），淘汰计数经 store.stats() 可观测；
  *  - 持久化 $DSH_HOME/context/context.json（写入调度防抖 500ms + 最小间隔 1s +
  *    串行链 + teardown flush），启动时异步加载（加载完成前的事件缓冲在 pending，
- *    加载后回放），重启后完整恢复；store.whenPersisted() 是确定性就绪信号。
+ *    加载后回放），重启后完整恢复。
+ *
+ * **就绪信号（issue #335 同族第 5 例的修复）**——两种就绪必须分开：
+ *  - `store.whenReady()`：**加载就绪**。磁盘状态已合并 + 缓冲变更已回放之后 resolve；
+ *    `await` 之后 `session()/sessions()/stats()` 的查询结果与磁盘 IO 耗时无关。
+ *  - `store.whenPersisted()`：**落盘就绪**。等价于 `whenReady()` + 写链 drain，
+ *    返回后「此刻内存态的变更」必已落盘。
+ *  此前只有 `whenPersisted()`（= 裸 drain），加载未完成时它**立即 resolve**，
+ *  于是测试只能靠 `await settle(80)` 赌 readFile 回调跑完 —— CI 容器高负载下必输。
  *
  * 持久化实现见 persist.js（attachPersistence 挂载 load/persist/scheduler）。
  */
@@ -24,20 +32,48 @@ export function stateFile() {
     return join(base, 'context', 'context.json');
 }
 /**
+ * 等 store 加载就绪（issue #335）——**所有读路径在查询前都要过这一关**。
+ *
+ * 为什么必须有：`store.session()` 在加载未完成时返回 `undefined`，而
+ * `handlePreStep` 这类读路径原本遇到 `undefined` 会**静默 `return next()`**
+ * ——预算超限既不告警也不拦截。也就是说「启动期是否拦住第一次超预算请求」
+ * 取决于 readFile 回调有没有抢在事件前面，这是不折不扣的生产缺陷（不只是测试 flake），
+ * 且表现是**静默降级**，没有任何日志。`await whenReadyOf(store)` 之后查询语义
+ * 与 IO 耗时无关；就绪后 whenReady() 立即 resolve，无可感知延迟。
+ *
+ * 容错：store 没有 whenReady（老 mock / 其它实现的 store）时按「已就绪」处理，
+ * 不引入新的失败面。
+ */
+export async function whenReadyOf(store) {
+    const ready = store?.whenReady;
+    if (typeof ready === 'function')
+        await ready.call(store);
+}
+/**
  * 创建上下文统计存储：{ state, updateHeader, updateContext, addMessage,
  * recordRequest, startTurn, recordAlert, recordOverflow, session, sessions,
- * stats, whenPersisted, dispose }。
+ * stats, whenReady, whenPersisted, dispose }。
  * 所有写操作在状态加载完成前缓冲（不丢事件）；dispose 冲刷未落盘数据。
  */
 export function createStore(ctx) {
     const store = { state: createState() };
+    // 加载就绪信号（issue #335）：在 attachPersistence 发起 readFile **之前**建好 promise，
+    // 由 onLoaded 在「磁盘状态合并 + pending 回放」之后 resolve —— createStore 返回后
+    // 调用方立刻就能 await，不存在「信号还没建好」的窗口。
+    let markReady = () => { };
+    const readyPromise = new Promise((resolve) => {
+        markReady = resolve;
+    });
     const handle = {
         ctx: ctx,
         file: stateFile(),
         store: store,
         pending: [],
         ready: false,
+        dirty: false,
         seq: 0,
+        readyPromise,
+        markReady,
     };
     store.updateHeader = (sessionId, header) => mutate(handle, sessionId, (s) => applyHeader(s, header));
     store.updateContext = (sessionId, info) => mutate(handle, sessionId, (s) => applyContext(s, info));
@@ -58,7 +94,11 @@ export function createStore(ctx) {
     store.session = (sessionId) => sessionOf(handle, sessionId);
     store.sessions = () => sessionsOf(handle);
     store.stats = () => resourceStats(handle);
-    store.whenPersisted = () => handle.drainWrites?.() ?? Promise.resolve();
+    // 加载就绪（issue #335）：await 之后查询必已包含磁盘状态 + 全部缓冲变更。
+    store.whenReady = () => handle.readyPromise;
+    // 落盘就绪：先等加载（否则变更还在 pending，drain 无事可做），再 drain 写链。
+    // 这样「await whenPersisted() ⇒ 此刻的变更已落盘」才名副其实。
+    store.whenPersisted = () => handle.readyPromise.then(() => handle.drainWrites?.() ?? undefined);
     store.dispose = () => dispose(handle);
     attachPersistence(handle);
     return store;
@@ -172,6 +212,7 @@ function mutate(handle, sessionId, apply) {
         }
         apply(session);
         session.updatedAt = Date.now();
+        handle.dirty = true;
         handle.persistSoon?.();
     };
     if (handle.ready)
@@ -201,12 +242,33 @@ function nextId(handle) {
     handle.seq += 1;
     return handle.seq;
 }
-/** 卸载冲刷：回放未就绪缓冲 + 立即强写（scheduler.flush，跳过防抖/节流窗口）。 */
+/**
+ * 卸载冲刷：立即强写（scheduler.flush，跳过防抖/节流窗口）。
+ *
+ * 两条 fail-safe（issue #335），都是「不要用不完整的快照覆盖磁盘」：
+ *  1. 加载**未完成**时不直接回放 pending 再写盘：那时内存态里只有本进程刚产生的
+ *     变更、**没有磁盘历史**，落盘等于用残缺快照覆盖历史（真实 teardown 后进程退出，
+ *     防抖写不再发生 → 历史永久丢失）。改为等 `readyPromise` ——`onLoaded` 会把磁盘
+ *     历史合并进来、回放 pending，再强写。
+ *  2. 本实例**从未产生变更**时不写盘：scheduler.flush 的契约是「无变更也写一次」，
+ *     但对一个只读启动的实例，写出去的是空/陈旧快照 —— 多实例共享同一状态文件时
+ *     会直接覆盖别处写入的数据（实测：插件自身实例 teardown 时的空快照覆盖测试实例
+ *     刚写的会话，重启恢复用例因此读到空）。
+ *
+ * 返回落盘 Promise，调用方可以 await 到「确已落盘」（不 await 时与原先的
+ * fire-and-forget 行为一致）。
+ */
 function dispose(handle) {
     if (!handle.ready) {
-        const pending = handle.pending.splice(0);
-        for (const run of pending)
-            run();
+        // 等加载合并后再写；并且**仍然要 drain**：onLoaded 会 persistSoon() 排一个防抖
+        // 写，不 drain 就会在测试删掉临时目录之后才落盘（ENOTEMPTY / 幽灵目录）。
+        return handle.readyPromise.then(async () => {
+            if (handle.dirty)
+                await handle.persistNow?.();
+            await handle.drainWrites?.();
+        });
     }
-    void handle.persistNow?.();
+    if (handle.dirty)
+        void handle.persistNow?.();
+    return handle.drainWrites?.() ?? Promise.resolve();
 }

@@ -16,11 +16,11 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { atomicWriteStats } from 'dsh-shared'
-import { bootPlugin, settle } from './lib/helpers.mjs'
+import { bootPlugin } from './lib/helpers.mjs'
 
 const disposeAlls = []
-afterAll(() => {
-  for (const disposeAll of disposeAlls.splice(0)) disposeAll()
+afterAll(async () => {
+  for (const disposeAll of disposeAlls.splice(0)) await disposeAll()
 })
 
 function boot(config, opts) {
@@ -33,7 +33,7 @@ async function bootStore(config = {}, opts = {}) {
   const handle = boot(config, opts)
   const { createStore } = await import('../lib/store.js')
   const store = createStore(handle.ctx)
-  await settle(80) // 等异步加载完成（加载信号本身不在本次范围）
+  await store.whenReady() // 加载就绪信号（issue #335）：不再用固定 sleep 赌 readFile 回调
   return { handle, store }
 }
 
@@ -54,7 +54,7 @@ test('bySession 会话数上限：LRU 淘汰最旧会话 + 淘汰计数可读（
   // 磁盘状态同样有界（淘汰不是只在内存里）
   const onDisk = JSON.parse(readFileSync(join(process.env.DSH_HOME, 'context', 'context.json'), 'utf8'))
   assert.equal(Object.keys(onDisk.bySession).length, MAX_SESSIONS, '落盘 JSON 的会话数同样有界')
-  store.dispose()
+  await store.dispose() // 等落盘完成（避免 fire-and-forget 写污染下一个用例的写计数）
 })
 
 test('bySession LRU：访问过的旧会话不被淘汰（最近使用优先保留）', async () => {
@@ -68,7 +68,7 @@ test('bySession LRU：访问过的旧会话不被淘汰（最近使用优先保�
   await store.whenPersisted()
   assert.notEqual(store.session('s-0'), undefined, 'LRU：刚访问过的 s-0 保留')
   assert.equal(store.session('s-1'), undefined, '最久未使用的 s-1 被淘汰')
-  store.dispose()
+  await store.dispose() // 等落盘完成（避免 fire-and-forget 写污染下一个用例的写计数）
 })
 
 test('每会话数组上限保持（FIFO 保留最新 N 条）+ 淘汰计数可读', async () => {
@@ -88,7 +88,7 @@ test('每会话数组上限保持（FIFO 保留最新 N 条）+ 淘汰计数可�
   const stats = store.stats()
   assert.equal(stats.evictedRequests, 100, '请求淘汰计数可读')
   assert.equal(stats.evictedAlerts, 7, '告警淘汰计数可读')
-  store.dispose()
+  await store.dispose() // 等落盘完成（避免 fire-and-forget 写污染下一个用例的写计数）
 })
 
 test('whenPersisted：确定性就绪信号（await 后状态必已落盘，不需要 sleep 猜窗口）', async () => {
@@ -99,7 +99,7 @@ test('whenPersisted：确定性就绪信号（await 后状态必已落盘，不�
   assert.equal(existsSync(file), true, 'await whenPersisted() 后状态文件已存在')
   const parsed = JSON.parse(readFileSync(file, 'utf8'))
   assert.equal(parsed.bySession['s-1'].usage.inputTokens, 42, '内存与磁盘一致')
-  store.dispose()
+  await store.dispose() // 等落盘完成（避免 fire-and-forget 写污染下一个用例的写计数）
 })
 
 test('写入调度：500ms 防抖窗口内 100 次变更合并为一次落盘（写次数与变更数解耦）', async () => {
@@ -111,17 +111,16 @@ test('写入调度：500ms 防抖窗口内 100 次变更合并为一次落盘（
   await store.whenPersisted()
   const writes = atomicWriteStats().writes - before
   assert.equal(writes, 1, '100 次高频变更 → 1 次写（防抖合并），got ' + writes)
-  store.dispose()
+  await store.dispose() // 等落盘完成（避免 fire-and-forget 写污染下一个用例的写计数）
 })
 
 test('dispose：退出前冲刷强制落盘（flush 路径不受节流窗口影响）', async () => {
   const { store } = await bootStore()
   const before = atomicWriteStats().writes
   store.recordRequest('s-1', { turn: 1, step: 1, usage: { inputTokens: 7 } })
-  store.dispose() // 立即 teardown（不等防抖窗口）
   const file = join(process.env.DSH_HOME, 'context', 'context.json')
-  // dispose 内部 flush 是异步的；用同样的调度器 drain 语义等它（waitForFinite）
-  await settle(60)
+  // dispose 返回落盘 Promise（issue #335）：await 它即「已落盘」，不再用固定 sleep 赌 flush 跑完
+  await store.dispose()
   assert.equal(existsSync(file), true, 'dispose 后状态已落盘')
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).bySession['s-1'].usage.inputTokens, 7)
   assert.ok(atomicWriteStats().writes - before >= 1, 'dispose 触发一次强制写')

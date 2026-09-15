@@ -10,7 +10,7 @@ import {
   dispatchEvent,
   sessionEvent,
   preStepPayload,
-  settle,
+  yieldLoop,
   mockRequest,
   mockResponse,
   invoke,
@@ -20,8 +20,8 @@ import { isInjection } from '../lib/events.js'
 
 const disposeAlls = []
 const tmpDirs = []
-afterAll(() => {
-  for (const disposeAll of disposeAlls.splice(0)) disposeAll()
+afterAll(async () => {
+  for (const disposeAll of disposeAlls.splice(0)) await disposeAll()
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
@@ -33,7 +33,7 @@ function boot(config, opts) {
 
 test('session/event: request/header updates system/tools estimates', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'request/header', {
     header: {
       system: 'abcd',
@@ -43,33 +43,33 @@ test('session/event: request/header updates system/tools estimates', async () =>
     reason: 'initial',
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.ok(stats.header.systemTokens > 0)
   assert.ok(stats.header.toolsTokens > 0)
   assert.equal(stats.model, 'deepseek-v4')
   assert.equal(stats.provider, 'deepseek')
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('session/event: user/message with injection source goes to inject', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'user/message', {
     content: [{ type: 'text', text: 'abcd' }],
     source: { kind: 'plugin', form: 'notice', plugin: 'dsh-x' },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.ok(stats.composition.inject > 0)
   assert.equal(stats.composition.user, 0)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('session/event: assistant/message records request with real usage', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'assistant/message', {
     turn: 1,
     step: 2,
@@ -80,7 +80,7 @@ test('session/event: assistant/message records request with real usage', async (
     usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 30 },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.usage.inputTokens, 100)
   assert.equal(stats.usage.outputTokens, 20)
@@ -91,12 +91,12 @@ test('session/event: assistant/message records request with real usage', async (
   assert.equal(stats.requests[0].prompt, 130)
   assert.equal(stats.requests[0].total, 150)
   assert.ok(stats.composition.assistant > 0)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('session/event: empty assistant message adds no composition but records usage', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'assistant/message', {
     turn: 1,
     step: 1,
@@ -104,29 +104,29 @@ test('session/event: empty assistant message adds no composition but records usa
     usage: { inputTokens: 10, outputTokens: 5 },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.composition.assistant, 0)
   assert.equal(stats.requests.length, 1)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('session/event: tool/result adds tool composition', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'tool/result', {
     message: { content: [{ type: 'tool-result', content: [{ type: 'text', text: 'ok' }] }] },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.ok(stats.composition.tool > 0)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('session/event: turn/start resets turn usage', async () => {
   const handle = boot({})
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'assistant/message', {
     turn: 1,
     step: 1,
@@ -136,17 +136,17 @@ test('session/event: turn/start resets turn usage', async () => {
   await dispatchEvent(handle.listeners, 'session/event', session, event)
   const { session: s2, event: e2 } = sessionEvent('s-1', 'turn/start', { turn: 2 })
   await dispatchEvent(handle.listeners, 'session/event', s2, e2)
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.usage.inputTokens, 50)
   assert.equal(stats.turnUsage.inputTokens, 0)
   assert.equal(stats.turnUsage.turn, 2)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('agent/pre-step: warn mode records alert and passes through', async () => {
   const handle = boot({ perTurn: 10, mode: 'warn' })
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'assistant/message', {
     turn: 1,
     step: 1,
@@ -154,7 +154,7 @@ test('agent/pre-step: warn mode records alert and passes through', async () => {
     usage: { inputTokens: 50, outputTokens: 5 },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   let nextCalled = false
   const decision = await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => {
     nextCalled = true
@@ -166,12 +166,12 @@ test('agent/pre-step: warn mode records alert and passes through', async () => {
   assert.equal(stats.alerts.length, 1)
   assert.equal(stats.alerts[0].scope, 'turn')
   assert.equal(stats.alerts[0].blocked, false)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('agent/pre-step: deny mode rejects and records blocked alert', async () => {
   const handle = boot({ perTurn: 10, mode: 'deny' })
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'assistant/message', {
     turn: 1,
     step: 1,
@@ -179,7 +179,7 @@ test('agent/pre-step: deny mode rejects and records blocked alert', async () => 
     usage: { inputTokens: 50, outputTokens: 5 },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   let nextCalled = false
   const decision = await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => {
     nextCalled = true
@@ -190,12 +190,12 @@ test('agent/pre-step: deny mode rejects and records blocked alert', async () => 
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.alerts.length, 1)
   assert.equal(stats.alerts[0].blocked, true)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('agent/pre-step: under budget passes through without alert', async () => {
   const handle = boot({ perTurn: 1000, mode: 'deny' })
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'assistant/message', {
     turn: 1,
     step: 1,
@@ -203,7 +203,7 @@ test('agent/pre-step: under budget passes through without alert', async () => {
     usage: { inputTokens: 5, outputTokens: 1 },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   const decision = await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => ({
     kind: 'enter',
     messages: [],
@@ -211,12 +211,12 @@ test('agent/pre-step: under budget passes through without alert', async () => {
   assert.equal(decision.kind, 'enter')
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.alerts.length, 0)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('agent/pre-step: unknown session or missing agent passes through', async () => {
   const handle = boot({ perTurn: 1, mode: 'deny' })
-  await settle()
+  await yieldLoop()
   const decision1 = await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('ghost'), async () => ({
     kind: 'enter',
     messages: [],
@@ -227,12 +227,12 @@ test('agent/pre-step: unknown session or missing agent passes through', async ()
     messages: [],
   }))
   assert.equal(decision2.kind, 'enter')
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('agent/pre-step: alert cooldown suppresses duplicate alerts', async () => {
   const handle = boot({ perTurn: 10, mode: 'warn' })
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'assistant/message', {
     turn: 1,
     step: 1,
@@ -240,7 +240,7 @@ test('agent/pre-step: alert cooldown suppresses duplicate alerts', async () => {
     usage: { inputTokens: 50, outputTokens: 5 },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => ({
     kind: 'enter',
     messages: [],
@@ -249,15 +249,15 @@ test('agent/pre-step: alert cooldown suppresses duplicate alerts', async () => {
     kind: 'enter',
     messages: [],
   }))
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.alerts.length, 1, 'cooldown suppresses duplicate alert')
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('agent/pre-step: records overflow warning when usage crosses warn threshold', async () => {
   const handle = boot({ warnThreshold: 0.8, alertThreshold: 0.9 })
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'request/context', { contextWindow: 100 })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
   const { session: s2, event: e2 } = sessionEvent('s-1', 'assistant/message', {
@@ -267,7 +267,7 @@ test('agent/pre-step: records overflow warning when usage crosses warn threshold
     usage: { inputTokens: 80, outputTokens: 0 },
   })
   await dispatchEvent(handle.listeners, 'session/event', s2, e2)
-  await settle()
+  await yieldLoop()
   const decision = await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => ({
     kind: 'enter',
     messages: [],
@@ -279,12 +279,12 @@ test('agent/pre-step: records overflow warning when usage crosses warn threshold
   assert.equal(stats.overflows[0].level, 'warn')
   assert.equal(stats.overflows[0].threshold, 0.8)
   assert.ok(stats.overflows[0].time > 0)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('agent/pre-step: critical overflow recorded at 95%+ usage', async () => {
   const handle = boot({ warnThreshold: 0.8, alertThreshold: 0.9 })
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'request/context', { contextWindow: 100 })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
   const { session: s2, event: e2 } = sessionEvent('s-1', 'assistant/message', {
@@ -294,21 +294,21 @@ test('agent/pre-step: critical overflow recorded at 95%+ usage', async () => {
     usage: { inputTokens: 95, outputTokens: 0 },
   })
   await dispatchEvent(handle.listeners, 'session/event', s2, e2)
-  await settle()
+  await yieldLoop()
   await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => ({
     kind: 'enter',
     messages: [],
   }))
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.overflows.length, 1)
   assert.equal(stats.overflows[0].level, 'critical')
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('agent/pre-step: overflow cooldown suppresses same-level duplicate', async () => {
   const handle = boot({ warnThreshold: 0.8, alertThreshold: 0.9 })
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'request/context', { contextWindow: 100 })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
   const { session: s2, event: e2 } = sessionEvent('s-1', 'assistant/message', {
@@ -318,7 +318,7 @@ test('agent/pre-step: overflow cooldown suppresses same-level duplicate', async 
     usage: { inputTokens: 80, outputTokens: 0 },
   })
   await dispatchEvent(handle.listeners, 'session/event', s2, e2)
-  await settle()
+  await yieldLoop()
   await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => ({
     kind: 'enter',
     messages: [],
@@ -327,15 +327,15 @@ test('agent/pre-step: overflow cooldown suppresses same-level duplicate', async 
     kind: 'enter',
     messages: [],
   }))
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.overflows.length, 1, 'same-level overflow within cooldown suppressed')
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('agent/pre-step: no overflow recorded when context window unknown', async () => {
   const handle = boot({ warnThreshold: 0.8, alertThreshold: 0.9 })
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'assistant/message', {
     turn: 1,
     step: 1,
@@ -343,20 +343,20 @@ test('agent/pre-step: no overflow recorded when context window unknown', async (
     usage: { inputTokens: 1000, outputTokens: 0 },
   })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
-  await settle()
+  await yieldLoop()
   await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => ({
     kind: 'enter',
     messages: [],
   }))
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.overflows.length, 0)
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('agent/pre-step: cumulative cacheRead never triggers overflow — only the current context length does', async () => {
   const handle = boot({ warnThreshold: 0.8, alertThreshold: 0.9 })
-  await settle()
+  await yieldLoop()
   const { session, event } = sessionEvent('s-1', 'request/context', { contextWindow: 100 })
   await dispatchEvent(handle.listeners, 'session/event', session, event)
   // 多轮请求：累计 usage（含重复 cacheRead）远超窗口，但当前上下文
@@ -373,17 +373,17 @@ test('agent/pre-step: cumulative cacheRead never triggers overflow — only the 
     })
     await dispatchEvent(handle.listeners, 'session/event', s, e)
   }
-  await settle()
+  await yieldLoop()
   await dispatchEvent(handle.listeners, 'agent/pre-step', preStepPayload('s-1'), async () => ({
     kind: 'enter',
     messages: [],
   }))
-  await settle()
+  await yieldLoop()
   const stats = await sessionStats(handle, 's-1')
   assert.equal(stats.usage.cacheReadTokens, 10, 'cumulative cacheRead still recorded')
   assert.equal(stats.lastPromptTokens, 30, 'context length = latest prompt (20+10)')
   assert.equal(stats.overflows.length, 0, '30% context length must not warn despite huge cumulative usage')
-  handle.disposeAll()
+  await handle.disposeAll()
 })
 
 test('isInjection: source classification', () => {

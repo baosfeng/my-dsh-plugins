@@ -243,6 +243,14 @@ jobs:
       - name: Package publish hygiene (check-pack-hygiene)
         run: npm run check:pack-hygiene
 
+      # 固定 sleep 门禁（issue #335）：同一个根因在 CI 上复发过 5 次（#310/#313/#317/#335）
+      # ——测试用固定 sleep 赌异步落盘/加载完成，本机快、CI 容器高负载下必输。本门禁把默认
+      # 反转：**新增**的固定时长等待必须写 `// sleep-ok: <为什么不能用条件轮询>`，存量冻结在
+      # scripts/test-sleep-baseline.json（只允许变少）。判定是纯函数（scripts/lib/test-sleeps.mjs），
+      # 回归测试 scripts/test/test-sleeps.test.mjs
+      - name: Fixed sleeps in tests (check-test-sleeps)
+        run: npm run check:test-sleeps
+
       - name: Format check (prettier)
         run: npx prettier --check .
 

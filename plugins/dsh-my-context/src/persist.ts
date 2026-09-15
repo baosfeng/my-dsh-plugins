@@ -4,10 +4,18 @@
  * 挂载到 store handle 的持久化能力（issue #198：接入 dsh-shared 资源护栏原语）：
  *  - 启动异步加载 $DSH_HOME/context/context.json（结构不合法回退空状态；
  *    磁盘存量会话超上限时按 updatedAt 保留最近的 MAX_SESSIONS 个）；
- *  - 写入调度用 createWriteScheduler（防抖 500ms + 最小间隔 1s + 串行链），
- *    `drain()` 作为确定性就绪信号（store.whenPersisted()）；
+ *  - 写入调度用 createWriteScheduler（防抖 500ms + 最小间隔 1s + 串行链）：
+ *    `drain()` 是**写就绪**信号，**不等于加载就绪**（见下）；
  *  - 落盘用 atomicWriteJson（默认护栏 1s/1MB + 显式 8MB 字节上限，状态自身有界）；
- *  - 加载完成前 handle.pending 缓冲的变更在加载后回放（不丢事件）。
+ *  - 加载完成前 handle.pending 缓冲的变更在加载后回放（不丢事件）；
+ *  - `handle.readyPromise` 是**加载就绪**信号（issue #335）：`onLoaded` 完成
+ *    「磁盘状态合并 + pending 回放」**之后**才 resolve，查询/落盘因此与 IO 耗时无关。
+ *
+ * ⚠️ 两种「就绪」不是一回事（issue #335 同族第 5 例的结构性根因）：
+ *  - **加载就绪**（readyPromise）：磁盘状态已读入内存、缓冲变更已回放 → 查询可信；
+ *  - **写就绪**（drain）：已排队的写已落盘。加载未完成时 `drain()` **立即 resolve**
+ *    （写链是空的，变更还卡在 pending 里，根本没进 state），把它当就绪信号用，
+ *    读到的就是半加载状态——这正是 CI 偶发红（本机不复现）的来源。
  */
 import { readFile } from 'node:fs/promises'
 import { atomicWriteJson, createWriteScheduler } from 'dsh-shared'
@@ -22,10 +30,16 @@ export interface PersistHandle {
   ctx: { logger: { warn: (msg: string) => void; info: (msg: string) => void; error: (msg: string) => void } }
   pending: Array<() => void>
   ready: boolean
+  /** 本实例是否产生过变更（mutate 走 run() 时置位）。无变更的实例 teardown 不写盘。 */
+  dirty: boolean
+  /** 加载就绪信号（磁盘状态合并 + pending 回放完成）；store.whenReady() 的载体。 */
+  readyPromise: Promise<void>
+  /** onLoaded 末尾调用的 resolve（readyPromise 的触发器）。 */
+  markReady?: () => void
   persistSoon?: () => void
   /** 立即强写（teardown 冲刷）；返回落盘 Promise。 */
   persistNow?: () => Promise<void>
-  /** 等待所有挂起写入完成（确定性就绪信号）。 */
+  /** 等待所有挂起写入完成（**写就绪**，不是加载就绪）。 */
   drainWrites?: () => Promise<void>
 }
 
@@ -48,6 +62,8 @@ export function attachPersistence(handle: PersistHandle): void {
   handle.persistSoon = () => scheduler.schedule()
   handle.persistNow = () => scheduler.flush()
   handle.drainWrites = () => scheduler.drain()
+  // readyPromise / markReady 由 createStore 建好（见 store.ts）；本函数只负责发起加载，
+  // onLoaded 完成「合并 + 回放」后调用 markReady 兑现信号。
   void readFile(handle.file, 'utf8')
     .then((text) => onLoaded(handle, text))
     .catch(() => onLoaded(handle, ''))
@@ -63,7 +79,13 @@ function onLoaded(handle: PersistHandle, text: string): void {
   handle.ready = true
   const pending = handle.pending.splice(0)
   for (const run of pending) run()
-  if (pending.length > 0 || parsed !== undefined) handle.persistSoon?.()
+  // 只有「回放了本地缓冲变更」才需要落盘：单纯加载成功时内存态 == 磁盘态，
+  // 再写一遍是**无谓写**（启动即产生一次写放大），而且会与调度器的最小间隔
+  // 窗口叠加，让 teardown/后续 drain 白白等一个 minInterval（实测 6 轮用例累积
+  // 5s 超时）。`pending.length > 0` ⇔ 加载期间产生过变更（mutate 在 ready 前只入 pending）。
+  if (pending.length > 0) handle.persistSoon?.()
+  // 顺序**关键**：回放之后才 resolve，保证 `await store.whenReady()` 之后查询必含缓冲变更
+  handle.markReady?.()
 }
 
 /** 把当前 state 中已产生的会话合并进磁盘状态（防 dispose 回放后覆盖丢失）。 */

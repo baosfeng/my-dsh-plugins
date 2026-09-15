@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.10] - 2026-09-15
+
+### 变更
+
+- refactor(think-zh-expand): #299 三级回退切到 dsh-shared/client-parts/markdown-fallback（行为等价） (#308)
+- fix(think-zh-expand): #293 渲染三级回退，md-render 缺失时用平台 MarkdownText 兜底 (#295)
+- fix(test): cucumber-js --import glob 改用双引号，兼容 Windows
+
 ## [0.4.10]
 
 - fix: 渲染改为三级回退（#293）——`dsh-md-render` 缺失时不再崩溃，改用宿主静态模块表的官方 `MarkdownText`（GFM + KaTeX，零安装）渲染；官方组件也缺失时回退 `<pre data-dsh-think-zh-expand-fallback="true">` 纯文本，渲染期永不抛错

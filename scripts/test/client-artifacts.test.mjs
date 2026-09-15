@@ -7,7 +7,9 @@
 //      · 正常态 → exit 0；
 //      · 改了 part 不重建 → exit 1，且报告里点名插件与共享件（issue #318 的验收标准）。
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dirSync } from 'tmp'
@@ -164,6 +166,9 @@ describe('端到端（临时 git 仓库，含「改 part 不重建」失败用�
       join(root, 'plugins', 'dsh-shared', 'client-parts', 'icons.part.js'),
       'function icon() { return 2 }\n',
     )
+    // 镜像取自 HEAD（#336：只读镜像按提交内容重建），所以共享件改动要先提交——
+    // "共享件已提交、消费方产物没重建（仍是旧内容）"正是本用例要抓的漂移形态。
+    execFileSync('git', ['commit', '-q', '-am', 'change part without rebuilding'], { cwd: root, stdio: 'ignore' })
     const { code, out } = runGate(root)
     expect(code, out).toBe(1)
     expect(out).toContain('fake-plugin')
@@ -207,5 +212,80 @@ describe('真实仓库的共享件清单（判据输入不是手写列表）', (
       'dsh-my-plugin-manager',
       'dsh-think-zh-expand',
     ])
+  })
+})
+
+/**
+ * issue #336 回归：门禁对工作区**只读**。
+ *
+ * 为什么必须断言 mtime/inode 而不只是 `git status`：`build.mjs` 会 `writeFileSync` 再
+ * `prettier --write lib/parts`——**内容相同但 inode/mtime 变了**，`git status` 看不见，
+ * 却足以让并发 `prettier --check .` 读到中途态而假红，并能覆盖别人未提交的编辑。
+ * （本文件由 `client-parts` 回归测试与一个临时 git 仓库共同覆盖；这里直接跑真实脚本。）
+ */
+/** 全仓「产物 + parts」快照：路径 → {hash, mtimeMs, ino, size}。 */
+function artifactSnapshot(root) {
+  const snap = new Map()
+  const pluginsDir = join(root, 'plugins')
+  for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const lib = join(pluginsDir, entry.name, 'lib')
+    if (!existsSync(lib)) continue
+    const walk = (dir) => {
+      for (const item of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, item.name)
+        if (item.isDirectory()) walk(full)
+        else if (item.name.endsWith('.js') || item.name.endsWith('.d.ts')) {
+          const st = statSync(full)
+          snap.set(full, {
+            hash: createHash('sha256').update(readFileSync(full)).digest('hex'),
+            mtimeMs: st.mtimeMs,
+            ino: st.ino,
+            size: st.size,
+          })
+        }
+      }
+    }
+    walk(lib)
+  }
+  return snap
+}
+
+function diffSnapshots(before, after) {
+  const changed = []
+  for (const [file, b] of before) {
+    const a = after.get(file)
+    if (!a) {
+      changed.push(`${file}: 消失`)
+      continue
+    }
+    if (b.hash !== a.hash) changed.push(`${file}: 内容变化`)
+    else if (b.mtimeMs !== a.mtimeMs || b.ino !== a.ino) changed.push(`${file}: 内容相同但被重写（mtime/inode 变化）`)
+  }
+  return changed
+}
+
+describe('只读契约（issue #336：检查项不得写工作区）', () => {
+  it('client + server 重建后，全仓产物与 parts 的 hash/mtime/inode 均不变', { timeout: 300_000 }, () => {
+    const before = artifactSnapshot(REPO_ROOT)
+    const statusBefore = execFileSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, encoding: 'utf8' })
+    const { code, out } = runGate(REPO_ROOT) // runGate 带 --client-only
+    expect(code, out).toBe(0)
+    // 再跑一次完整（含 server tsc）——两条路径都必须只读
+    execFileSync('node', [scriptPath, '--root', REPO_ROOT], { cwd: REPO_ROOT, stdio: 'ignore', timeout: 300_000 })
+    const after = artifactSnapshot(REPO_ROOT)
+    expect(diffSnapshots(before, after)).toEqual([])
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, encoding: 'utf8' })).toBe(statusBefore)
+  })
+
+  it('重建过程不残留临时目录（镜像建在 os.tmpdir 且用后即删）', { timeout: 300_000 }, () => {
+    const leftovers = () => readdirSync(tmpdir()).filter((n) => n.startsWith('dsh-artifacts-mirror-'))
+    const before = leftovers().length
+    execFileSync('node', [scriptPath, '--client-only', '--root', REPO_ROOT], {
+      cwd: REPO_ROOT,
+      stdio: 'ignore',
+      timeout: 300_000,
+    })
+    expect(leftovers().length).toBe(before)
   })
 })

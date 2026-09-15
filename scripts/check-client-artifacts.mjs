@@ -30,7 +30,7 @@
  * 退出码：0 = 全部同源；1 = 存在漂移 / 无法判定（fail-closed：缺产物、tsc 失败、git 不可用都算失败）。
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -177,8 +177,35 @@ export function runCheck({
     log(`❌ ${error.message}（fail-closed：无法在只读镜像里重建，拒绝原地写工作区）`)
     return { ok: false, code: 1, checked: 0, drifted: [], ms: Date.now() - started }
   }
-  // 任何异常路径都必须删掉镜像（临时目录不残留是只读契约的一部分）
-  process.on('exit', () => rmSync(mirror, { recursive: true, force: true }))
+  /**
+   * 镜像清理的三条路径（#336 返工；#330 推广"只读镜像"时照抄这三条结论）：
+   *
+   *   1. **正常 / 异常**：`runCheck` 返回前 + `process.on('exit')` 各清一次（幂等）。
+   *      `exit` 钩子在**正常退出和 process.exit() 下都会执行**，异常抛出也走同一路径。
+   *   2. **被 SIGTERM/SIGINT 杀死**：**清不掉**。实测（`node -e` 探针 + 本脚本）：
+   *      重建走 `execFileSync`，事件循环被阻塞 → 信号被推迟到阻塞结束后才派发，而此时
+   *      Node 直接终止进程，`exit` 钩子与信号处理器都不会执行（探针输出只有
+   *      "子进程结束"，没有 "处理器执行了"）。所以**不要**为此加信号处理器——那只是
+   *      看着安全的死代码（本文件曾挂过 SIGTERM/SIGINT 处理器，实测从未执行）。
+   *   3. **SIGKILL / 断电**：任何钩子都无机会执行，残留不可避免。
+   *
+   * 因此对 2/3 的**正确缓解**不是"更多钩子"，而是**作用域隔离 + 可观测**：
+   *   · 镜像一律建在**调用方的 TMPDIR 作用域**内（`os.tmpdir()` 遵循 TMPDIR），调用方
+   *     可以给它一个专属目录，残留就被限界在那一处、可整体清理；
+   *   · 设 `DSH_ARTIFACT_MIRROR_REPORT=<文件>` 时把镜像路径写进该文件，让调用方/CI 能
+   *     在进程被杀后**直接定位并清理**残留（也给回归测试一个确定性观测点）。
+   */
+  let mirrorCleaned = false
+  const cleanMirror = () => {
+    if (mirrorCleaned) return
+    mirrorCleaned = true
+    rmSync(mirror, { recursive: true, force: true })
+    const report = process.env.DSH_ARTIFACT_MIRROR_REPORT
+    if (report) rmSync(report, { force: true })
+  }
+  process.on('exit', cleanMirror)
+  const mirrorReport = process.env.DSH_ARTIFACT_MIRROR_REPORT
+  if (mirrorReport) writeFileSync(mirrorReport, mirror)
 
   // 1. client bundle（只重建受影响插件）
   const buildFailures = new Set()
@@ -226,7 +253,7 @@ export function runCheck({
     }
   }
 
-  rmSync(mirror, { recursive: true, force: true })
+  cleanMirror()
   const ms = Date.now() - started
   const scope = `client ${list.length} 个消费方 + server ${servers.length} 个插件`
   if (drifted.length === 0) {

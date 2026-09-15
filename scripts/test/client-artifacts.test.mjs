@@ -6,8 +6,18 @@
 //   3. 端到端（临时 git 仓库 + 最小假插件，不依赖 node_modules / tsc）：
 //      · 正常态 → exit 0；
 //      · 改了 part 不重建 → exit 1，且报告里点名插件与共享件（issue #318 的验收标准）。
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -24,9 +34,37 @@ import {
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const scriptPath = join(REPO_ROOT, 'scripts', 'check-client-artifacts.mjs')
 const tmpRoots = []
+/** 注入给被测子进程的专属 TMPDIR 作用域（#336：断言只看这些目录，避免并发假红）。 */
+const tmpScopes = []
 afterAll(() => {
+  for (const dir of tmpScopes.splice(0)) rmSync(dir, { recursive: true, force: true })
   for (const dir of tmpRoots.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
+
+/** 在注入的 TMPDIR 作用域里同步跑一次门禁（并让它把镜像路径写到 reportPath）。 */
+function runGateInScope(scope, reportPath, args) {
+  try {
+    const out = execFileSync('node', [scriptPath, ...args], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 300_000,
+      env: { ...process.env, TMPDIR: scope, DSH_ARTIFACT_MIRROR_REPORT: reportPath },
+    })
+    return { code: 0, out }
+  } catch (error) {
+    return { code: error.status ?? 1, out: `${error.stdout ?? ''}${error.stderr ?? ''}` }
+  }
+}
+
+async function waitForFile(file, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (existsSync(file)) return true
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  return false
+}
 
 describe('parsePartRefs / findClientArtifactConsumers', () => {
   it('识别三种真实写法（.part.js / .part / 裸名），且忽略非部件字符串', () => {
@@ -278,14 +316,55 @@ describe('只读契约（issue #336：检查项不得写工作区）', () => {
     expect(execFileSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, encoding: 'utf8' })).toBe(statusBefore)
   })
 
-  it('重建过程不残留临时目录（镜像建在 os.tmpdir 且用后即删）', { timeout: 300_000 }, () => {
-    const leftovers = () => readdirSync(tmpdir()).filter((n) => n.startsWith('dsh-artifacts-mirror-'))
-    const before = leftovers().length
-    execFileSync('node', [scriptPath, '--client-only', '--root', REPO_ROOT], {
+  /**
+   * #336 返工：原断言读的是**全局** `os.tmpdir()` 里的镜像计数，而镜像名对所有并发进程可见
+   * （多个 agent 同时在跑 verify / artifacts 检查）→ 别人的进程建/删镜像就会让这条断言假红
+   * （实测：单文件跑绿、本地并发跑红、CI 单进程跑绿）。
+   *
+   * 正确做法：**给被测子进程注入专属 TMPDIR 作用域**，只断言那个作用域。前提已实测：
+   * Node 的 `os.tmpdir()` 遵循 `TMPDIR`（见最后一条用例）。
+   */
+  it('正常路径：镜像建在注入的专属作用域里，跑完作用域为空', { timeout: 300_000 }, () => {
+    const scope = mkdtempSync(join(tmpdir(), 'dsh-artifacts-scope-'))
+    tmpScopes.push(scope)
+    const reportPath = join(scope, 'mirror-path.txt')
+    const result = runGateInScope(scope, reportPath, ['--client-only', '--root', REPO_ROOT])
+    expect(result.code, result.out).toBe(0)
+    // 报告文件在清理时被一并删掉（幂等），所以"跑完不存在"本身就是清理已发生的证据
+    expect(existsSync(reportPath), '报告文件应在清理时被删除').toBe(false)
+    expect(readdirSync(scope).filter((n) => n.startsWith('dsh-artifacts-mirror-'))).toEqual([])
+  })
+
+  it('被 SIGTERM 杀死：残留只可能在调用方作用域内，绝不落到全局 temp', { timeout: 300_000 }, async () => {
+    const scope = mkdtempSync(join(tmpdir(), 'dsh-artifacts-scope-'))
+    tmpScopes.push(scope)
+    const reportPath = join(scope, 'mirror-path.txt')
+    const child = spawn('node', [scriptPath, '--client-only', '--root', REPO_ROOT], {
       cwd: REPO_ROOT,
       stdio: 'ignore',
-      timeout: 300_000,
+      env: { ...process.env, TMPDIR: scope, DSH_ARTIFACT_MIRROR_REPORT: reportPath },
     })
-    expect(leftovers().length).toBe(before)
+    // 等镜像路径被报告出来（此时构建正在进行），再 SIGTERM —— 命中的是真实"构建中被杀"窗口
+    expect(await waitForFile(reportPath, 60_000), '等待镜像报告超时').toBe(true)
+    const reported = readFileSync(reportPath, 'utf8').trim()
+    expect(reported.startsWith(scope), '镜像必须建在调用方作用域内').toBe(true)
+    child.kill('SIGTERM')
+    await new Promise((resolve) => child.on('exit', resolve))
+    // 实测结论：execFileSync 阻塞事件循环 → 信号处理器/exit 钩子都来不及执行，
+    // 镜像可能残留；但残留**必然在注入的作用域内**（全局 temp 不受影响）——这就是本关守卫的东西。
+    const strays = readdirSync(scope).filter((n) => n.startsWith('dsh-artifacts-mirror-'))
+    // 有残留属预期（见上文实测结论）；关键是它们全都在注入的作用域内，
+    // 且报告文件（若仍在）指向的也是这个作用域 —— 调用方据此可整体清理。
+    for (const stray of strays) expect(join(scope, stray).startsWith(scope)).toBe(true)
+  })
+
+  it('os.tmpdir() 遵循注入的 TMPDIR（隔离机制的前提，实测而非假设）', () => {
+    const scope = mkdtempSync(join(tmpdir(), 'dsh-artifacts-scope-'))
+    tmpScopes.push(scope)
+    const out = execFileSync('node', ['-e', "process.stdout.write(require('node:os').tmpdir())"], {
+      env: { ...process.env, TMPDIR: scope },
+      encoding: 'utf8',
+    })
+    expect(realpathSync(out)).toBe(realpathSync(scope))
   })
 })

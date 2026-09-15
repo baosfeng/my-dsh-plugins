@@ -12,6 +12,7 @@
  *   4. 某项是否属于 CI quality 聚合步骤两边说法不一致           → [范围漂移]
  *   5. ci.yml 里出现未登记的命令步骤                            → [CI≠声明]
  *   6. registry 声明的 CI 步骤在 ci.yml 中不存在                → [声明≠CI]
+ *   7. 第三方上报步骤（Coveralls）没开容错                      → [上报不得判红]（issue #350）
  * 外加 ci.yml 解析器本身的正例（job 集合、块标量 step 的内容）。
  */
 import { readFileSync } from 'node:fs'
@@ -20,6 +21,7 @@ import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import {
+  checkBestEffortInfra,
   checkCiBlockingHasLocal,
   checkExemptions,
   checkGateParity,
@@ -161,6 +163,34 @@ describe('parity 校验：正例与六个维度的反例', () => {
   it('基础设施步骤（checkout / setup-node / npm ci / coveralls）不算未登记门禁', () => {
     const gaps = checkGateParity({ workflowText, localChecks })
     expect(gaps.filter((g) => g.includes('actions/checkout') || g.includes('npm ci'))).toEqual([])
+  })
+
+  it('continue-on-error 被解析出来（issue #350 的容错开关）', () => {
+    const parsed = parseWorkflow(workflowText)
+    const infra = parseWorkflow(
+      'jobs:\n  j:\n    steps:\n      - name: a\n        uses: x/y@v1\n        continue-on-error: true\n      - name: b\n        run: echo hi\n',
+    )
+    expect(findStep(infra, 'j', 'a').continueOnError).toBe(true)
+    expect(findStep(infra, 'j', 'b').continueOnError).toBe(false)
+    // 真实 ci.yml 的两个 Coveralls 上报步骤都必须开着容错
+    expect(findStep(parsed, 'test', 'Upload coverage to Coveralls').continueOnError).toBe(true)
+    expect(findStep(parsed, 'coverage-finish', 'Coveralls finished').continueOnError).toBe(true)
+  })
+})
+
+describe('第三方上报步骤不得判红（issue #350）', () => {
+  it('真实 ci.yml：所有上报类基础设施步骤都带 continue-on-error → 0 缺口', () => {
+    expect(checkBestEffortInfra(parseWorkflow(workflowText))).toEqual([])
+    expect(checkGateParity({ workflowText, localChecks })).toEqual([])
+  })
+
+  it('[上报不得判红] 去掉容错 → 逐个报出（否则「下载抖动判红」会静默复发）', () => {
+    const noTolerance = workflowText.replace(/^ {8}continue-on-error: true\n/gm, '')
+    const gaps = checkGateParity({ workflowText: noTolerance, localChecks })
+    const reported = gaps.filter((g) => g.startsWith('[上报不得判红]'))
+    expect(reported.length).toBe(2) // test 的 Upload + coverage-finish 的 finished
+    expect(reported.some((g) => g.includes('Upload coverage to Coveralls'))).toBe(true)
+    expect(reported.some((g) => g.includes('coverage-finish'))).toBe(true)
   })
 })
 

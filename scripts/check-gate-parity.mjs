@@ -19,6 +19,7 @@
  *   [命令漂移]  registry 的 localCommand 与 verify-local 实际执行的命令不一致
  *   [范围漂移]  某项是否属于 CI quality 聚合步骤，两边说法不一致
  *   [无执行点]  某条规则既没有本地执行点也没有 CI 执行点（= 规则实际上不存在了）
+ *   [上报不得判红] 第三方**上报**步骤（Coveralls）没带 `continue-on-error: true`（issue #350）
  *
  * 用法：
  *   node scripts/check-gate-parity.mjs          # 校验，缺口列出，退出码 0/1
@@ -32,7 +33,14 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { CI_INFRA_STEPS, GATE_BY_ID, GATE_REGISTRY, LOCAL_EXEMPTIONS, ciDeclarations } from './lib/gate-registry.mjs'
+import {
+  CI_INFRA_STEPS,
+  GATE_BY_ID,
+  GATE_REGISTRY,
+  LOCAL_EXEMPTIONS,
+  ciDeclarations,
+  CI_BEST_EFFORT_STEPS,
+} from './lib/gate-registry.mjs'
 import { parseWorkflow, stepCommand } from './lib/ci-workflow.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -200,6 +208,31 @@ function checkUnregisteredCiSteps(workflow) {
   return gaps
 }
 
+/**
+ * 「第三方上报步骤不得判红」检测（issue #350）：
+ * `CI_BEST_EFFORT_STEPS`（Coveralls 等**上报类**基础设施）必须带 `continue-on-error: true`。
+ * 理由：它的失败源于第三方二进制下载/校验抖动，与本次改动无关，本地既无法预知也无法拦住
+ * （规范第十四节「本地无、CI 有」的第三种漏网形态）；而覆盖率**阈值门禁**由各插件 vitest coverage
+ * 承担、仍在 `npm test` 里阻断 —— 两者是两件事，不能一起放过。所以这条反向校验的作用是：
+ * 谁把容错去掉，CI 立刻红（否则「上报不判红」会悄悄退化成「抖动判红」）。
+ */
+export function checkBestEffortInfra(workflow) {
+  const gaps = []
+  for (const job of workflow.jobs) {
+    for (const step of job.steps) {
+      const cmd = stepCommand(step).trim()
+      if (!CI_BEST_EFFORT_STEPS.some((re) => re.test(cmd))) continue
+      if (step.continueOnError !== true) {
+        gaps.push(
+          `[上报不得判红] ci.yml 的 "${job.name} / ${step.name || '(无名步骤)'}" 是第三方上报步骤` +
+            `（${cmd.split('@')[0]}）却没有 \`continue-on-error: true\`：它的下载/上报抖动会把整个 job 判红（issue #350）`,
+        )
+      }
+    }
+  }
+  return gaps
+}
+
 /** registry ↔ verify-local 的双向校验。 */
 function checkLocalDeclarations(localChecks) {
   const gaps = []
@@ -254,6 +287,8 @@ export function checkGateParity({ workflowText, localChecks, packageScripts }) {
     ...checkCiBlockingHasLocal(workflow, localChecks),
     ...checkExemptions(localChecks),
     ...checkInvocations(scripts),
+    // issue #350：第三方**上报**步骤不得判红（覆盖率阈值门禁不受影响，见函数注释）
+    ...checkBestEffortInfra(workflow),
   ]
 }
 

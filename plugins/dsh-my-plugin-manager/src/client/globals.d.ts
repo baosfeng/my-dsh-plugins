@@ -28,9 +28,10 @@ declare namespace React {
 declare const icon: Record<string, (size?: number) => unknown>
 declare function badgeIcon(badge: string[], size?: number): unknown
 
-// ── MarkdownView（client.src.js 模板：require('dsh-md-render').MarkdownView，
-//    不可用时为 null → <pre> 兜底）────────────────────────────────────────
-declare const MarkdownView: ((props: { text: string }) => unknown) | null
+// ── MarkdownView（client.src.js 模板：installMarkdownViewFallback，共享部件
+//    dsh-shared/client-parts/markdown-fallback.part.js —— 三级回退永远是组件，
+//    不再为 null）──────────────────────────────────────────────────────────
+declare const MarkdownView: (props: { text: string }) => unknown
 
 // ── CommonJS（apply.ts 使用 exports.apply）──────────────────────────────
 declare const exports: Record<string, unknown>

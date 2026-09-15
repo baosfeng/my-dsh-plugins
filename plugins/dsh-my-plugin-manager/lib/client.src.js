@@ -28,15 +28,28 @@ window.__ModuleLoader__.load({
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
-    // README Markdown 渲染复用 dsh-md-render 的统一 MarkdownView（issue #31
-    // 跨插件 require 模式，package.json dsh.client.external 声明）；该插件
-    // 不可用时回退纯文本 <pre>（issue #90 加载兜底）。
-    let MarkdownView = null
-    try {
-      MarkdownView = require('dsh-md-render').MarkdownView
-    } catch {
-      MarkdownView = null
+
+    // ── README Markdown 渲染：三级回退（issue #299，共享部件）──────────
+    // 1) dsh-md-render 的 MarkdownView（首选内核，issue #31；package.json 的
+    //    dsh.client.external 声明）；
+    // 2) 宿主平台官方 MarkdownText（零安装零体积，缺 md-render 时仍渲染 markdown）；
+    // 3) 本插件自己的 <pre class="dsh-my-plugin-manager-readme-plain">（issue #90）。
+    // 逻辑收口在 dsh-shared/client-parts/markdown-fallback.part.js（issue #299：
+    // 同一段样板 ≥2 处即抽出），构建期 splice 进本 factory 作用域。
+    __PART_MARKDOWN_FALLBACK__
+    const MD_README_LABELS = {
+      code: { copyLabel: '复制', copiedLabel: '已复制' },
+      footnotes: '脚注',
     }
+    const MD_README_CODE_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
+    const MarkdownView = installMarkdownViewFallback({
+      require,
+      createElement,
+      labels: MD_README_LABELS,
+      codeLabels: MD_README_CODE_LABELS,
+      fallbackAttribute: 'data-dsh-my-plugin-manager-fallback',
+      fallbackClassName: 'dsh-my-plugin-manager-readme-plain',
+    })
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────

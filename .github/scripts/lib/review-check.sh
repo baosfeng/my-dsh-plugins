@@ -133,16 +133,16 @@ review_unknown() {
   printf '#### %s\n\n**结论**：未能判定（%s）\n\n' "$2" "$3" >>"$1"
 }
 
-# review_check_scope <报告文件> <检查名> <摘要 kind> <门禁路径正则> <命令...>
+# review_check_scope <报告文件> <检查名> <摘要 kind> <门禁 scope 名（白名单，如 gate）> <命令...>
 # 用于「门禁口径 vs 全量」不一致的检查（当前仅圈复杂度）：三态只由**门禁口径**决定，
 # 全量数字作为「提示（非门禁）」，不参与 outcome。
 review_check_scope() {
-  local report="$1" name="$2" kind="$3" filter="$4"
+  local report="$1" name="$2" kind="$3" scope="$4"
   shift 4
   local tmp status=0 counts matched total
   tmp="$(mktemp)"
   timeout "$REVIEW_CHECK_TIMEOUT" "$@" >"$tmp" 2>&1 || status=$?
-  counts="$(node "$REVIEW_SCRIPTS_DIR/summarize-tool-output.cjs" --kind "$kind" --input "$tmp" --counts --path-filter "$filter" 2>/dev/null || true)"
+  counts="$(node "$REVIEW_SCRIPTS_DIR/summarize-tool-output.cjs" --kind "$kind" --input "$tmp" --counts --path-filter "$scope" 2>/dev/null || true)"
   matched="$(printf '%s' "$counts" | awk '{print $1}')"
   total="$(printf '%s' "$counts" | awk '{print $2}')"
 
@@ -153,9 +153,9 @@ review_check_scope() {
     printf '**结论**：未能判定（无法统计检查结果）\n\n' >>"$report"
   elif [ "$matched" -gt 0 ]; then
     printf '**结论**：不通过（门禁口径 %s 处）\n\n' "$matched" >>"$report"
-    printf '门禁口径证据（%s，最多 %s 条）：\n\n' "$filter" "$REVIEW_MAX_EVIDENCE" >>"$report"
+    printf '门禁口径证据（scope=%s，最多 %s 条）：\n\n' "$scope" "$REVIEW_MAX_EVIDENCE" >>"$report"
     node "$REVIEW_SCRIPTS_DIR/summarize-tool-output.cjs" --kind "$kind" --input "$tmp" \
-      --max "$REVIEW_MAX_EVIDENCE" --path-filter "$filter" >>"$report" 2>/dev/null || true
+      --max "$REVIEW_MAX_EVIDENCE" --path-filter "$scope" >>"$report" 2>/dev/null || true
     printf '\n' >>"$report"
   else
     printf '**结论**：通过（门禁口径 0 处超标）\n\n' >>"$report"

@@ -223,6 +223,21 @@ const SUMMARIZERS = {
   generic: summarizeGeneric,
 }
 
+/**
+ * 路径过滤白名单（issue #320：`js/regex-injection`）。
+ * CLI 只接受**具名 scope**，正则一律是源码里的字面量，绝不接受外部字符串拼正则。
+ */
+const PATH_FILTERS = {
+  all: null,
+  /** 门禁口径：只统计 plugins/<name>/src/ 下的问题（与 quality-gates 对象一致）。 */
+  gate: /^plugins\/[^/]+\/src\//,
+}
+
+/** 具名 scope → 正则；未知 scope 返回 undefined（调用方据此报错，避免静默全量）。 */
+function resolvePathFilter(scope) {
+  return Object.prototype.hasOwnProperty.call(PATH_FILTERS, scope) ? PATH_FILTERS[scope] : undefined
+}
+
 /** 统计问题条数（可选按相对路径正则过滤，用于区分「门禁口径」与「全量」）。 */
 function countIssues(kind, raw, pathFilter) {
   const text = stripAnsi(String(raw ?? ''))
@@ -235,10 +250,10 @@ function countIssues(kind, raw, pathFilter) {
         let total = 0
         for (const file of data) {
           const rel = String(file.filePath || '').replace(/^.*?\/(?=plugins\/|scripts\/|docs\/|\.github\/)/, '')
-          for (const m of file.messages || []) {
-            total += 1
-            if (!pathFilter || pathFilter.test(rel)) matched += 1
-          }
+          // 过滤只依赖文件路径，因此按文件聚合计数即可（无需逐条解构 messages）
+          const count = (file.messages || []).length
+          total += count
+          if (!pathFilter || pathFilter.test(rel)) matched += count
         }
         return { matched, total }
       } catch {
@@ -259,6 +274,8 @@ function summarizeToolOutput(kind, raw, options = {}) {
 }
 
 module.exports = {
+  PATH_FILTERS,
+  resolvePathFilter,
   ESLINT_RULE_ZH,
   SEVERITY_ZH,
   cleanLines,
@@ -284,8 +301,12 @@ if (require.main === module) {
   const kind = opt('kind', 'generic')
   const input = opt('input', '')
   const max = Number.parseInt(opt('max', '20'), 10)
-  const filterRaw = opt('path-filter', '')
-  const pathFilter = filterRaw ? new RegExp(filterRaw) : null
+  const scope = opt('path-filter', 'all')
+  const pathFilter = resolvePathFilter(scope)
+  if (pathFilter === undefined) {
+    process.stderr.write(`未知的 --path-filter scope：${scope}（可选：${Object.keys(PATH_FILTERS).join(' / ')}）\n`)
+    process.exit(2)
+  }
   let raw = ''
   try {
     raw = input ? fs.readFileSync(input, 'utf8') : fs.readFileSync(0, 'utf8')

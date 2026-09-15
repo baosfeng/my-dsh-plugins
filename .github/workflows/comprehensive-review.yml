@@ -47,7 +47,7 @@ jobs:
           review_init review-report.md "代码质量"
           run_check review-report.md "ESLint 静态检查" eslint npx eslint plugins/ --format json
           run_check review-report.md "TypeScript 类型检查" tsc npx tsc --noEmit
-          review_check_scope review-report.md "圈复杂度（门禁口径：plugins/*/src，阈值 10）" complexity '^plugins/[^/]+/src/' npx eslint plugins/ --rule 'complexity: ["error", 10]' --format json
+          review_check_scope review-report.md "圈复杂度（门禁口径：plugins/*/src，阈值 10）" complexity gate npx eslint plugins/ --rule 'complexity: ["error", 10]' --format json
           review_finish review-report.md "- 优先处理「不通过」项；圈复杂度超标建议拆分函数（阈值 10，见 quality-gates）。"
 
       - name: Upload report
@@ -110,7 +110,7 @@ jobs:
         run: |
           source .github/scripts/lib/review-check.sh
           review_init performance-report.md "性能与结构"
-          review_check_scope performance-report.md "圈复杂度（门禁口径：plugins/*/src，阈值 10）" complexity '^plugins/[^/]+/src/' npx eslint plugins/ --rule 'complexity: ["error", 10]' --format json
+          review_check_scope performance-report.md "圈复杂度（门禁口径：plugins/*/src，阈值 10）" complexity gate npx eslint plugins/ --rule 'complexity: ["error", 10]' --format json
           run_check performance-report.md "文件大小门禁" generic npm run lint:size
           run_check performance-report.md "依赖结构（无环）" generic npx depcruise plugins/
           review_finish performance-report.md "- 复杂度/文件大小超标优先拆分；依赖环需解耦（见 dependency-cruiser 配置）。"

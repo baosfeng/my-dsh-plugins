@@ -141,3 +141,20 @@ test('eslint(JSON)：超过 max 条时截断并给中文提示', () => {
   assert.equal(out.split('\n').filter((l) => l.startsWith('- `')).length, 3)
   assert.ok(out.includes('共 9 条；完整输出见 CI 日志'), out)
 })
+
+test('各摘要器导出契约：可直接调用且均剥色（issue #320 消除未使用绑定）', () => {
+  assert.ok(summarizeEslint('plain without compact format').join('').includes('plain'))
+  assert.ok(summarizePrettier('[warn] a.md').join('').includes('a.md'))
+  assert.ok(summarizeNpmAudit('lodash  <4.17.21\nSeverity: high\nPrototype Pollution').join('').includes('lodash'))
+  assert.ok(summarizeTsc('src/a.ts(1,1): error TS1: boom').join('').includes('TS1'))
+  assert.equal(countEscapes(summarizePrettier(`${ESC}[33mwarn${ESC}[39m a.md`).join('')), 0)
+})
+
+test('path-filter 只接受白名单 scope（不再从参数构造正则）', () => {
+  const { PATH_FILTERS, resolvePathFilter } = require('./summarize-tool-output.cjs')
+  assert.deepEqual(Object.keys(PATH_FILTERS).sort(), ['all', 'gate'])
+  assert.equal(resolvePathFilter('gate').test('plugins/dsh-a/src/x.ts'), true)
+  assert.equal(resolvePathFilter('gate').test('plugins/dsh-a/test/x.mjs'), false)
+  assert.equal(resolvePathFilter('all'), null)
+  assert.equal(resolvePathFilter('^plugins/.*'), undefined)
+})

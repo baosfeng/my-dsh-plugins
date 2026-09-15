@@ -818,16 +818,11 @@ let noticeTimer = null;
  * 渲染状态机（issue #195）：加载引擎 → **离屏渲染** → 成功取 SVG / 失败留原因。
  * 独立成 hook 是为了让 MermaidCard 保持在函数行数门禁（≤70 行）内。
  *
- * 渲染令牌（issue #296）：每个 hook 实例持有自己的「当前尝试」令牌。effect 每次
- * 运行（含重试后的 attempt 变化）先作废旧令牌再挂上新令牌，异步结果回来时令牌
- * 已作废就整段丢弃。
- *
- * 为什么不能只靠 effect 的 cancelled 标志：**被取代的那次尝试仍在飞行中**——引擎
- * 加载是有缓存层（mermaidReady）的慢操作，重试会立刻清缓存并发起新一轮，而上一轮
- * 的失败（或成功）仍可能在其后落定。真实用户可见的后果：点「重试」后卡片先成功
- * 渲染出 SVG，又被上一轮的旧错误覆盖回错误态（重试看起来"没生效"）。cancelled
- * 标志只在 React 真正跑清理时翻转，挡不住这种迟到的落定，所以状态落定处必须按
- * 令牌再判一次。
+ * 渲染令牌（issue #296）：effect 每次运行（含重试）先作废旧令牌再挂新令牌，异步
+ * 结果落定时令牌已废就丢弃。只靠 effect 的 cancelled 标志不够——引擎加载有缓存层
+ * （mermaidReady）且是慢操作，重试清缓存并发起新一轮后，上一轮仍可能迟到落定，把
+ * 已渲染好的卡片打回错误态（用户看到「重试没生效」）；cancelled 只在 React 真跑
+ * 清理时翻转，挡不住这种迟到。
  */
 function useMermaidRender(entryId, source, attempt) {
     const [status, setStatus] = (0, react_1.useState)('loading');
@@ -836,10 +831,9 @@ function useMermaidRender(entryId, source, attempt) {
     // 令牌表随组件实例常驻（useState 初值只取一次），键为该卡片的 entryId。
     const [tokens] = (0, react_1.useState)(() => new Map());
     (0, react_1.useEffect)(() => {
-        // 作废旧令牌 → 新一轮尝试拥有唯一令牌；此后旧结果一律不落定。
+        // 作废旧令牌 → 新一轮尝试拿到唯一令牌，此后旧结果一律不落定。
         const token = {};
         tokens.set(entryId, token);
-        /** 结果是否仍属于「当前」这一轮尝试。 */
         const current = () => tokens.get(entryId) === token;
         setStatus('loading');
         ensureMermaid()
@@ -862,7 +856,7 @@ function useMermaidRender(entryId, source, attempt) {
                 tokens.delete(entryId);
         };
     }, [entryId, source, attempt, tokens]);
-    /** 立刻回到 loading（重试时先重置视图、并立即作废在飞的一轮，不等 effect 跑完）。 */
+    /** 立刻回到 loading（重试时先重置视图、并作废在飞的一轮，不等 effect 跑完）。 */
     function begin() {
         tokens.delete(entryId);
         setError(null);

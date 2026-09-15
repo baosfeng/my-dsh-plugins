@@ -11,7 +11,7 @@
       "functions": {}
     },
     "plugins/dsh-mermaid-render/src/client/index.ts": {
-      "lines": 858,
+      "lines": 864,
       "functions": {}
     },
     "plugins/dsh-my-guard/src/index.ts": {

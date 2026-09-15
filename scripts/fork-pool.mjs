@@ -25,7 +25,9 @@
 import { spawnSync } from 'node:child_process'
 import {
   closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -181,18 +183,27 @@ function installHooks(forkDir) {
 function ensureExclude(forkDir) {
   const excludeFile = join(forkDir, '.git', 'info', 'exclude')
   // 现状必须是"不存在"或"普通文件"：软链/目录/设备一律拒绝（软链正是攻击者预置的形态）。
-  const existing = lstatSync(excludeFile, { throwIfNoEntry: false })
-  if (existing && !existing.isFile()) {
-    return {
-      ok: false,
-      detail: `拒绝写入：${excludeFile} 不是普通文件（${existing.isSymbolicLink() ? '符号链接' : '特殊文件'}）`,
-    }
-  }
+  // 用 O_NOFOLLOW 打开并**直接从 fd 读取**：不再 lstat 后再按路径 readFileSync，
+  // 消除「检查与使用之间被替换成软链」的 TOCTOU（issue #320，CodeQL js/file-system-race）。
+  // 软链由内核以 ELOOP 拒绝（不再依赖用户态判断）；目录/设备由 fstat 判定拒绝。
+  let sourceFd
   let current = ''
   try {
-    current = readFileSync(excludeFile, 'utf8')
+    sourceFd = openSync(excludeFile, constants.O_RDONLY | constants.O_NOFOLLOW)
+    if (!fstatSync(sourceFd).isFile()) {
+      return { ok: false, detail: `拒绝写入：${excludeFile} 不是普通文件（特殊文件）` }
+    }
+    current = readFileSync(sourceFd, 'utf8')
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error
+    if (error.code === 'ENOENT') {
+      current = ''
+    } else if (error.code === 'ELOOP') {
+      return { ok: false, detail: `拒绝写入：${excludeFile} 不是普通文件（符号链接）` }
+    } else {
+      throw error
+    }
+  } finally {
+    if (sourceFd !== undefined) closeSync(sourceFd)
   }
   const appended = excludeAppendContent(current)
   if (!appended) return { ok: true, detail: '已包含 node_modules' }

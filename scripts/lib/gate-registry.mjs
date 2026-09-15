@@ -224,7 +224,8 @@ export const GATE_REGISTRY = [
   },
   {
     id: 'secret-scan',
-    authority: '`scripts/check-secrets.mjs` + `.gitleaks.toml`（二进制钉在 `scripts/ci-tools.json`：版本 + 发布产物 SHA256）',
+    authority:
+      '`scripts/check-secrets.mjs` + `.gitleaks.toml`（二进制钉在 `scripts/ci-tools.json`：版本 + 发布产物 SHA256）',
     local: 'always',
     localCommand: 'node scripts/check-secrets.mjs',
     ci: {

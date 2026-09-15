@@ -14,6 +14,7 @@ import {
   decideEmptyRange,
   renderCommitReport,
   renderFindings,
+  renderRangeFailure,
   truncateSubject,
 } from '../lib/commit-lint.mjs'
 
@@ -35,8 +36,8 @@ describe('commitRangeSpec', () => {
     })
   })
 
-  it('只有 to → single 模式，显式退化为 to^..to（commitlint 不接受 X..X）', () => {
-    expect(commitRangeSpec({ to: 'bbb' })).toMatchObject({ ok: true, mode: 'single', from: 'bbb^', to: 'bbb' })
+  it('只有 to → single 模式，且**不依赖父提交**（X^..X 在根提交/浅克隆里必然解析失败）', () => {
+    expect(commitRangeSpec({ to: 'bbb' })).toMatchObject({ ok: true, mode: 'single', from: null, to: 'bbb' })
   })
 
   it('都没有（或空串）→ ok:false，交由 decideEmptyRange 处置', () => {
@@ -173,5 +174,29 @@ describe('renderFindings / renderCommitReport', () => {
     expect(rec.findings[0]).toMatchObject({ commit: 'deadbeef', subject: 'update ci' })
     // 不含提交正文（只留首行与规则原因，报告不泄漏/不刷屏）
     expect(Object.keys(rec.findings[0]).sort()).toEqual(['commit', 'errors', 'subject'])
+  })
+})
+
+describe('renderRangeFailure：把「算不出范围」与「提交信息不合规」分开', () => {
+  const spec = { ok: true, mode: 'range', from: 'aaa', to: 'bbb', reason: 'aaa..bbb（不含 aaa）' }
+
+  it('显式声明这不是提交信息问题，并给出范围/git 报错/浅克隆判定/修法', () => {
+    const text = renderRangeFailure({ spec, gitError: 'fatal: Invalid revision range aaa..bbb', isShallow: true })
+    expect(text).toContain('**不是**提交信息不合规')
+    expect(text).toContain('aaa..bbb')
+    expect(text).toContain('fatal: Invalid revision range')
+    expect(text).toContain('浅克隆：是')
+    expect(text).toContain('fetch-depth: 0')
+    expect(text).toContain('npm run lint:commits')
+  })
+
+  it('浅克隆未知/为否时也给出确定文案（不误导成"就是浅克隆"）', () => {
+    expect(renderRangeFailure({ spec, gitError: 'x', isShallow: false })).toContain('浅克隆：否')
+    expect(renderRangeFailure({ spec, gitError: 'x' })).toContain('浅克隆：未知')
+  })
+
+  it('spec 缺失时不抛（诊断路径本身不能崩，否则报错被吞）', () => {
+    expect(() => renderRangeFailure({ gitError: 'boom' })).not.toThrow()
+    expect(renderRangeFailure({ gitError: 'boom' })).toContain('boom')
   })
 })

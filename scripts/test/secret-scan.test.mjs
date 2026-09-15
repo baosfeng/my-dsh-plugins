@@ -48,7 +48,9 @@ function ensureGitleaks() {
     timeout: 300_000,
   })
   if (r.status === 0) return resolveGitleaks()
-  console.warn(`[secret-scan.test] 自动获取 gitleaks 失败，端到端用例将跳过：${(r.stderr ?? '').trim().split('\n').pop()}`)
+  console.warn(
+    `[secret-scan.test] 自动获取 gitleaks 失败，端到端用例将跳过：${(r.stderr ?? '').trim().split('\n').pop()}`,
+  )
   return null
 }
 
@@ -111,8 +113,15 @@ function runScan(target, extra = []) {
   return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' }
 }
 
+/**
+ * 端到端用例每条要跑 1-3 次真实 gitleaks 扫描 + 若干夹具 git 操作：本机独立跑约 0.7-1.5s，
+ * 但在 `npm run verify` 的并发负载下会超过 vitest 默认的 5s（实测被顶穿）。显式给足超时
+ * ——**放宽超时不是放宽判据**。
+ */
+const E2E_TIMEOUT = { timeout: 60_000 }
+
 describe.skipIf(GITLEAKS === null)(`check-secrets.mjs 端到端（${GITLEAKS ?? SKIP_REASON}）`, () => {
-  it('干净仓库：通过，并回显扫描了提交数与耗时（证明门禁真的执行了）', () => {
+  it('干净仓库：通过，并回显扫描了提交数与耗时（证明门禁真的执行了）', E2E_TIMEOUT, () => {
     const repo = fixtureRepo({ 'src/index.js': 'export const answer = 42\n' })
     const r = runScan(repo)
     expect(r.code).toBe(0)
@@ -121,7 +130,7 @@ describe.skipIf(GITLEAKS === null)(`check-secrets.mjs 端到端（${GITLEAKS ?? 
     expect(r.stdout).toContain(`gitleaks ${TOOLS.gitleaks.version}`)
   })
 
-  it('反例：塞一条真形态假密钥 → 门禁变红，且输出里搜不到明文', () => {
+  it('反例：塞一条真形态假密钥 → 门禁变红，且输出里搜不到明文', E2E_TIMEOUT, () => {
     // 43 字符 base64url（形态与真实 access token 相同）——刻意不用任何真实凭据。
     // ⚠️ 夹具必须写成 `token="值"`（关键字与分隔符**紧邻**）：实测 gitleaks 的
     // generic-api-key 不认 `token = "值"`（deny-list 词后接 `\s*[:=]` 才对得上），
@@ -138,7 +147,7 @@ describe.skipIf(GITLEAKS === null)(`check-secrets.mjs 端到端（${GITLEAKS ?? 
     expect(r.stdout).not.toContain('REDACTED') // 连脱敏占位串也不出现在报告正文里（我们只给定位）
   })
 
-  it('allowlist 只豁免样例值：把样例换成另一个值，门禁仍然变红', () => {
+  it('allowlist 只豁免样例值：把样例换成另一个值，门禁仍然变红', E2E_TIMEOUT, () => {
     // 夹具内使用 .gitleaks.toml 里已豁免的**同一个字面量形态**（token=abc123DEF456ghi）→ 通过
     const allowed = "const READY_LINE = 'http://127.0.0.1:3095/?token=abc123DEF456ghi'\n"
 
@@ -153,7 +162,7 @@ describe.skipIf(GITLEAKS === null)(`check-secrets.mjs 端到端（${GITLEAKS ?? 
     expect(r.stdout).not.toContain(other)
   })
 
-  it('--scope 限定范围：只扫本次提交区间（覆盖 PR diff 场景）', () => {
+  it('--scope 限定范围：只扫本次提交区间（覆盖 PR diff 场景）', E2E_TIMEOUT, () => {
     const fake = probeToken('scope-1')
     const repo = fixtureRepo({ 'src/index.js': 'export const a = 1\n' })
     writeFileSync(join(repo, 'src/leak.js'), `const token="${fake}"\n`)
@@ -166,14 +175,14 @@ describe.skipIf(GITLEAKS === null)(`check-secrets.mjs 端到端（${GITLEAKS ?? 
     expect(r.stdout).not.toContain(fake)
   })
 
-  it('扫描 0 个提交 → 判失败（"没扫成"不得与"扫过且干净"混为一谈）', () => {
+  it('扫描 0 个提交 → 判失败（"没扫成"不得与"扫过且干净"混为一谈）', E2E_TIMEOUT, () => {
     const repo = fixtureRepo({ 'a.js': 'export const a = 1\n' })
     const r = runScan(repo, ['--scope', 'HEAD..HEAD'])
     expect(r.code).toBe(1)
     expect(r.stdout).toContain('扫描了 0 个提交')
   })
 
-  it('版本与 ci-tools.json 不一致 → 拒绝执行（本地结论不可与 CI 互相印证）', () => {
+  it('版本与 ci-tools.json 不一致 → 拒绝执行（本地结论不可与 CI 互相印证）', E2E_TIMEOUT, () => {
     const repo = fixtureRepo({ 'a.js': 'export const a = 1\n' })
     // 用一个假 gitleaks（version 输出对不上）模拟"本机装了别的版本"
     const fakeBin = join(repo, 'fake-gitleaks.sh')

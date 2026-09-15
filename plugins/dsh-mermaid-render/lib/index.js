@@ -56,7 +56,7 @@ function createMermaidAssetHandler() {
             'Content-Type': 'application/javascript; charset=utf-8',
             'Content-Length': String(cache.body.length),
             'Cache-Control': 'public, max-age=31536000, immutable',
-            'ETag': cache.etag,
+            ETag: cache.etag,
             'Last-Modified': cache.mtime,
         });
         s.end(cache.body);

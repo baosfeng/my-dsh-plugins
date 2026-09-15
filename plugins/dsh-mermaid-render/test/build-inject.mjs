@@ -77,8 +77,34 @@ describe('引擎外部化（按需加载替代 base64 内联）', () => {
     expect(size).toBeGreaterThan(1_000_000)
   })
 
-  it('assets/mermaid-10.9.3.min.js 与 vendor/mermaid.min.js 内容一致', () => {
-    expect(readFileSync(ASSET_PATH, 'utf8')).toBe(readFileSync(VENDOR_PATH, 'utf8'))
+  /**
+   * issue #296 回归：asset 必须是 vendor 的**逐字节**副本（build.mjs 用 copyFileSync）。
+   *
+   * 线上资产曾被格式化提交（6.9MB / 177k 行的 `;(function (JM, _g) {` 美化版，与
+   * minified 源只差空白与 `;` 前缀），让本 job 长期红。
+   *
+   * 断言方式（为什么不写 `expect(assetText).toBe(vendorText)`）：失败时 vitest 会把
+   * 两个 3.3MB 字符串**整篇打进日志**，真正的失败原因被淹没（#296 取证时 CI job 日志
+   * 就是被这个巨型 diff 灌满的）。这里改为字节比较 + 自建短消息：失败只打印
+   * 「字节数 / 首 48 字节」—— 既钉住「必须逐字节一致」这条语义，又不再制造日志洪水。
+   */
+  it('asset 与 vendor 完全一致（逐字节；失败时只报字节数与文件头，不灌日志）', () => {
+    const asset = readFileSync(ASSET_PATH)
+    const vendor = readFileSync(VENDOR_PATH)
+    const head = (buf) => JSON.stringify(buf.subarray(0, 48).toString('utf8'))
+    // 不是「放宽」：这正是原来 toBe 的语义（逐字节相同），只是换了失败时的信息量。
+    expect(
+      asset.equals(vendor),
+      `asset 必须与 vendor 逐字节一致（build.mjs 用 copyFileSync 复制）\n` +
+        `  asset  bytes=${asset.byteLength} head=${head(asset)}\n` +
+        `  vendor bytes=${vendor.byteLength} head=${head(vendor)}`,
+    ).toBe(true)
+  })
+
+  it('asset 保持 minified（< 4MB、单行 UMD 开头；被 prettier --write 美化会立即超标）', () => {
+    expect(statSync(ASSET_PATH).size).toBeLessThan(4_000_000)
+    const head = readFileSync(ASSET_PATH, 'utf8').slice(0, 32)
+    expect(head.startsWith('(function(')).toBe(true)
   })
 
   it('client.js 引用 MERMAID_ENGINE_URL 路径（fetch 加载）', () => {

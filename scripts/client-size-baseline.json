@@ -59,12 +59,12 @@
       }
     },
     "dsh-mermaid-render": {
-      "total": 3608810,
+      "total": 3609599,
       "files": {
         "assets/mermaid-10.9.3.min.js": 3336760,
         "assets/mermaid-auto-diagram.png": 92687,
         "assets/mermaid-card.png": 97426,
-        "lib/client.js": 54776,
+        "lib/client.js": 54837,
         "lib/client.src.js": 2407,
         "lib/index.js": 4068,
         "lib/prompt.js": 3087

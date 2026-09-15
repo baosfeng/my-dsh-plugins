@@ -14,11 +14,14 @@
  *
  * mermaid engine is no longer inlined into client.js (old approach embedded
  * 3.3MB UMD as base64, inflating client.js to 4.5MB).
- * New approach: copy vendor/mermaid.min.js to assets/mermaid-10.9.3.min.js,
- * served by DSH webServer, loaded on-demand by client fetch.
+ * The engine ships as assets/mermaid-<version>.min.js (served by the DSH
+ * webServer, loaded on-demand by client fetch) and is verified here against a
+ * frozen SHA256 — it is the single source of truth since issue #322 removed the
+ * redundant vendor/mermaid.min.js copy (identical bytes, both tracked in git).
  */
 import { execSync } from 'node:child_process'
-import { readFileSync, writeFileSync, rmSync, copyFileSync, mkdirSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { isPlaceholderOutsideComments, spliceExactlyOnce } from '../../dsh-shared/scripts/splice.mjs'
@@ -84,24 +87,45 @@ for (const [placeholder, file, anchor] of [
   }
 }
 
-// 3. Copy vendored mermaid engine to assets/ (served by DSH webServer at runtime)
-//    Instead of base64-inlining into client.js, the engine is loaded on-demand via fetch.
-const assetsDir = join(root, 'assets')
-mkdirSync(assetsDir, { recursive: true })
-const mermaidSrc = join(root, 'vendor/mermaid.min.js')
-const mermaidDest = join(assetsDir, 'mermaid-10.9.3.min.js')
-const umd = readFileSync(mermaidSrc, 'utf8')
-if (!umd.includes('window') && !umd.includes('globalThis')) {
-  throw new Error('vendor/mermaid.min.js does not look like the UMD build')
+// 3. 校验发布用的 mermaid 引擎（assets/，由 DSH webServer 在运行时按需 fetch，而非 base64 内联）。
+//
+//    issue #322：引擎此前在仓库里存了两份（vendor/mermaid.min.js 与 assets/ 的构建产物副本，
+//    md5 完全相同）。删除冗余的 vendor/ 后，assets/mermaid-<版本>.min.js 成为**唯一真源**，
+//    这里用冻结的 SHA256 承担原先「asset 必须与 vendor 逐字节一致」那条断言（issue #296：
+//    线上资产曾被 prettier 美化后提交成 6.9MB / 177k 行版本）。SHA256 比原断言更强——
+//    原先两份同时被改仍会通过，现在任何字节变化都必须显式更新下面的常量。
+//    换引擎版本：把上游 mermaid@<版本> 的 dist/mermaid.min.js 放到 assets/mermaid-<版本>.min.js，
+//    同步改 MERMAID_VERSION / MERMAID_SHA256 与 src/client/index.ts 里的版本引用。
+const MERMAID_VERSION = '10.9.3'
+/** assets/mermaid-10.9.3.min.js 的 SHA256（`shasum -a 256` 实测冻结）。 */
+const MERMAID_SHA256 = '5a8ec91820bd55afef049068489369910e5d6ce70c8103952f27e29d3e76e8bc'
+const mermaidDest = join(root, 'assets', `mermaid-${MERMAID_VERSION}.min.js`)
+if (!existsSync(mermaidDest)) {
+  throw new Error(
+    `assets/mermaid-${MERMAID_VERSION}.min.js is missing — it is the single source of truth for the engine`,
+  )
 }
-copyFileSync(mermaidSrc, mermaidDest)
+const engineBytes = readFileSync(mermaidDest)
+const umd = engineBytes.toString('utf8')
+if (!umd.includes('window') && !umd.includes('globalThis')) {
+  throw new Error(`assets/mermaid-${MERMAID_VERSION}.min.js does not look like the UMD build`)
+}
+const engineSha = createHash('sha256').update(engineBytes).digest('hex')
+if (engineSha !== MERMAID_SHA256) {
+  throw new Error(
+    `assets/mermaid-${MERMAID_VERSION}.min.js SHA256 mismatch\n` +
+      `  want ${MERMAID_SHA256}\n` +
+      `  got  ${engineSha}\n` +
+      `  引擎内容变了就必须显式更新 MERMAID_SHA256（防无声替换 / 被 prettier 美化后提交）`,
+  )
+}
 
 writeFileSync(join(root, 'lib/client.js'), out)
 
 // 4. 清理临时编译目录
 rmSync(BUILD_DIR, { recursive: true, force: true })
 // 字节数用 Buffer.byteLength（out.length 是 UTF-16 码元数，含中文注释时与文件字节不符）
-const engineSize = Buffer.byteLength(umd)
+const engineSize = engineBytes.byteLength
 console.log(
-  `built lib/client.js (${Buffer.byteLength(out)} bytes, ${out.split('\n').length} lines, mermaid engine copied to assets/mermaid-10.9.3.min.js (${engineSize} bytes, loaded on-demand via fetch), icons from ${join(sharedPartsDir, 'icons.part.js')})`,
+  `built lib/client.js (${Buffer.byteLength(out)} bytes, ${out.split('\n').length} lines, mermaid engine verified at assets/mermaid-${MERMAID_VERSION}.min.js (${engineSize} bytes, sha256 ok, loaded on-demand via fetch), icons from ${join(sharedPartsDir, 'icons.part.js')})`,
 )

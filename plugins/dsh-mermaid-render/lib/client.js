@@ -530,8 +530,8 @@ const reactDomClient = __importStar(require("react-dom/client"));
  * mermaid 引擎由 DSH webServer 从插件 assets 目录静态托管。
  * 首次渲染时 fetch 加载，不阻塞启动。
  *
- * 构建期：scripts/build.mjs 将 vendor/mermaid.min.js 复制到
- * assets/mermaid-10.9.3.min.js（由 DSH webServer 静态服务）。
+ * 构建期：scripts/build.mjs 校验 assets/mermaid-10.9.3.min.js 的 SHA256 与 UMD 形态
+ * （issue #322 起该文件是引擎的**唯一真源**，原先冗余的 vendor/ 副本已删除）；
  * 运行时：ensureMermaid() 首次调用时 fetch 该文件并注入 <script>。
  *
  * 降级路径：fetch 失败时（离线/路径错误）回退到旧方案——检查

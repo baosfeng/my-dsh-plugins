@@ -82,9 +82,17 @@ npm test
 `test/build-inject.mjs` 钉住四条底线：
 
 - `lib/client.src.js` 模板（含注释）不得出现引擎占位符字面量；
-- 产物 `lib/client.js` 里引擎 base64 恰好一份、体积 < 6 MB（单份引擎实测 4.49 MB）；
-- 产物内 `MERMAID_UMD_B64` 是字符串字面量、取值 === vendor 引擎 base64，解码后逐字节一致；
+- 产物 `lib/client.js` 体积 < 200 KB（引擎已**外部化**，见下；旧方案内联 base64 时实测 4.49 MB）；
+- 产物里不含 `MERMAID_UMD_B64` 字面量（引擎不再内联）；
 - `spliceExactlyOnce` 对 0 处 / 2 处显式失败，只有恰好 1 处才写入。
+
+**引擎外部化与体积（issue #185 修复 / #322 收口）**：引擎不再是产物里的 4.45 MB base64 单行，
+改为 `assets/mermaid-10.9.3.min.js`（`npm pack` unpacked 3.44 MB 里引擎占 92%）由 DSH webServer
+静态托管、客户端首次渲染时 fetch。该文件是引擎的**唯一真源**——原先与之逐字节重复的
+`vendor/mermaid.min.js` 已删除（git 按内容寻址只存一份 blob，但每次 clone 的工作区要多检出
+3.18 MB）；`scripts/build.mjs` 与 `test/build-inject.mjs` 改为用冻结的 SHA256 校验它，
+换引擎版本须显式更新该常量（见脚本注释）。产物体积由 `scripts/check-client-size.mjs`
+（issue #322，基线 `scripts/client-size-baseline.json`）守住预算。
 
 产物含一条 4.45 MB 单行（base64 内联引擎），已被 `.prettierignore`、`eslint.config.js`、
 `.jscpd.json` 排除；全仓扫描类门禁（`scripts/check-links.mjs`）靠「路径排除 + >1MB 文件 + >100k 字符单行」三重防护在 0.2 秒内扫完 883 个文件，见

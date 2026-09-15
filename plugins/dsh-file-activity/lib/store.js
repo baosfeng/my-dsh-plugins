@@ -7,7 +7,7 @@
  */
 import { createState, foldRecord, loadState, mapOp, stateFile } from './state.js';
 import { createPersist, readAppenderStats } from './persist.js';
-import { emptyEvicted, enforceQuota, normalizeLimits, } from './quota.js';
+import { emptyEvicted, enforceQuota, normalizeLimits } from './quota.js';
 import { statSync } from 'node:fs';
 /** compact 触发下限：快照成本必须远小于触发区间的事件流字节（写放大 ≤ 1.6 的关键）。 */
 const MIN_COMPACT_LINES = 20000;

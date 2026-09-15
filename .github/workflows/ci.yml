@@ -255,3 +255,13 @@ jobs:
       # 误报豁免规则见 scripts/check-links.mjs 头注释，回归测试 scripts/test/check-links.test.mjs）
       - name: Links integrity check
         run: npm run check:links
+
+      # 产物一致性（issue #318，ADR-0002）：共享部件 `plugins/dsh-shared/client-parts/*`
+      # 是纯函数文本片段，构建期 splice 进各消费方的 lib/client.js；server 端 lib/*.js
+      # 是 tsc 产物。两者都必须提交，而 CI 不跑构建 → 漏重建会静默陈旧（实测 commit
+      # 735e2fa 加图标只重建 2 个消费方；file-activity 的 media-route.js/store.js 也陈旧）。
+      # 本步骤只重建受影响插件的 client bundle + 各插件 server tsc（临时 outDir），
+      # 与已提交产物逐字节比对，fail-closed（缺产物/编译失败都算失败）。回归测试见
+      # scripts/test/client-artifacts.test.mjs）
+      - name: Client artifacts consistency check
+        run: node scripts/check-client-artifacts.mjs

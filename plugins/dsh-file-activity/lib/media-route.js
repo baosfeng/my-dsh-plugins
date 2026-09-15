@@ -13,7 +13,7 @@
  * fence), the client falls back to this route and receives an fs.read-shaped
  * JSON payload ({ ok, value: { content } }) so the viewer mounts unchanged.
  */
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { basename, isAbsolute, join } from 'node:path';
 import { writeJson } from 'dsh-shared';
 import { sessionCwdOf } from './cwd.js';
@@ -113,20 +113,41 @@ function assertMediaParams(sessionId, raw) {
     if (sessionId === null || raw === null || raw === '')
         throw mediaError(400, 'sessionId and path are required');
 }
+/**
+ * 把 fs 读取失败按 errno 分类成 HTTP 状态（#318：commit 76f52ac 引入的 `catch {}` 把
+ * 所有错误都吞成 404，丢掉了旧实现的诊断信息——EISDIR 与 EACCES 都被误报为
+ * "file not found"，而目录明明存在、权限被拒也不是"没找到"）。
+ *
+ * 分类（与同文件既有契约对齐）：
+ *   · EISDIR       → 400 'not a file'     —— 与加固前 `if (!info.isFile())` 的行为一致
+ *   · EACCES/EPERM → 403 'permission denied' —— 与信任围栏的 403 语义一致
+ *   · 其余（含 ENOENT）→ 404 'file not found'
+ *
+ * TOCTOU 加固保留：不再 stat，只在一次 `readFile` 失败后按 errno 归类——check-then-use
+ * 的时间窗不复存在，分类只依赖这次真实失败的原因。
+ */
+function mediaReadError(error, abs) {
+    const code = error?.code;
+    if (code === 'EISDIR' || code === 'ENOTDIR')
+        return mediaError(400, `not a file: ${abs}`);
+    if (code === 'EACCES' || code === 'EPERM')
+        return mediaError(403, `permission denied: ${abs}`);
+    return mediaError(404, 'file not found');
+}
 /** stat + read + respond with the file's bytes (bounded by MEDIA_LIMIT). */
 async function serveMedia(response, abs, url) {
-    let info;
+    let body;
     try {
-        info = await stat(abs);
+        // 单次 read：不再 stat，避免 check-then-use（#318 前的 TOCTOU 加固）
+        body = await readFile(abs);
     }
-    catch {
-        throw mediaError(404, 'file not found');
+    catch (error) {
+        // 按 errno 分类（目录 → 400；权限 → 403；其余 → 404），不丢诊断信息
+        throw mediaReadError(error, abs);
     }
-    if (!info.isFile())
-        throw mediaError(400, 'not a file');
-    if (info.size > MEDIA_LIMIT)
+    // Check file size after reading to avoid race condition
+    if (body.length > MEDIA_LIMIT)
         throw mediaError(413, 'file too large');
-    const body = await readFile(abs);
     const headers = {
         'content-type': mediaTypeForPath(abs),
         'cache-control': 'no-cache',
@@ -151,17 +172,16 @@ async function serveMedia(response, abs, url) {
  * recorded paths only.
  */
 async function serveText(response, abs) {
-    let info;
+    let content;
     try {
-        info = await stat(abs);
+        // Use try-catch instead of stat + readFile to avoid TOCTOU race condition
+        content = await readFile(abs, 'utf8');
     }
-    catch {
-        throw mediaError(404, 'file not found');
+    catch (error) {
+        throw mediaReadError(error, abs);
     }
-    if (!info.isFile())
-        throw mediaError(400, 'not a file');
-    if (info.size > TEXT_LIMIT)
+    // Check content length after reading to avoid race condition
+    if (content.length > TEXT_LIMIT)
         throw mediaError(413, 'file too large');
-    const content = await readFile(abs, 'utf8');
     writeJson(response, 200, { ok: true, value: { content } });
 }

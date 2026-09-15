@@ -12,13 +12,21 @@ import { test } from 'vitest'
  *  - A：md-render 缺失 + 平台 `@deepseek-ai/dsh-client-ui-primitives` 的
  *    `MarkdownText` 可用 → 用官方组件渲染（文本不丢、`labels` 契约被满足）；
  *  - B：md-render 与平台组件都缺失 → `<pre data-dsh-think-zh-expand-fallback>`；
- *  - C：各级解析的「导出不是对象 / 不是 function」都必须安全落到下一级。
+ *  - C：各级解析的「导出不是组件」都必须安全落到下一级；
+ *  - F：官方组件是 **`React.memo` 返回的对象**（真实宿主实测：
+ *    `object($$typeof,type,compare)`）→ 必须仍被第二级采用；「可用性判定」若写成
+ *    `typeof v === 'function'` 会把 memo 组件误判为不可用、直接落到 `<pre>`。
  *
  * createElement 复刻 React 的元素类型不变量（type 为 null/undefined 或非
- * string/function 时抛错）——纯结构 stub 不会抛错，会让「假降级」静默通过。
+ * string/function/带 `$$typeof` 的组件对象时抛错）——纯结构 stub 不会抛错，
+ * 会让「假降级」静默通过；展开时同样复刻 React 对 memo/forwardRef 的调用方式
+ * （memo 用 `type.type`、forwardRef 用 `type.render`），否则 memo 用例会假失败。
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+
+const MEMO_TYPE = Symbol.for('react.memo')
+const FORWARD_REF_TYPE = Symbol.for('react.forward_ref')
 
 function invalidElementType(got) {
   return new Error(
@@ -27,22 +35,44 @@ function invalidElementType(got) {
   )
 }
 
+/** React 的 isValidElementType 语义（string / function / 带 $$typeof 的组件对象）。 */
+function isValidElementType(type) {
+  if (typeof type === 'string' || typeof type === 'function') return true
+  return typeof type === 'object' && type !== null && typeof type.$$typeof === 'symbol'
+}
+
 function createElement(type, props, ...children) {
-  if (type === null || type === undefined) throw invalidElementType(String(type))
-  if (typeof type !== 'string' && typeof type !== 'function') throw invalidElementType(typeof type)
+  if (!isValidElementType(type)) {
+    const got = type === null || type === undefined ? String(type) : typeof type
+    throw invalidElementType(got)
+  }
   const p = props ? { ...props } : {}
   if (children.length === 1) p.children = children[0]
   else if (children.length > 1) p.children = children
   return { type, props: p }
 }
 
-const stubbed = {
-  createElement,
-  useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
-  useEffect: () => {},
-  useMemo: (fn) => fn(),
-  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+/** 复刻 React 调用组件的方式（函数组件 / memo / forwardRef）。 */
+function renderComponent(type, props) {
+  if (typeof type === 'function') return type(props)
+  if (typeof type.type === 'function') return type.type(props) // React.memo
+  if (typeof type.render === 'function') return type.render(props, null) // React.forwardRef
+  throw new Error('unsupported component shape in test walker')
 }
+
+/** react stub：withIsValidElementType=false 模拟只有退化判定可用的精简 seed。 */
+function makeReactStub({ withIsValidElementType = true } = {}) {
+  return {
+    createElement,
+    useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
+    useEffect: () => {},
+    useMemo: (fn) => fn(),
+    useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+    ...(withIsValidElementType ? { isValidElementType } : {}),
+  }
+}
+
+const stubbed = makeReactStub()
 
 // ── 全局宿主 mock（与 client-render.mjs 同款最小集）────────────────────
 const registrations = []
@@ -68,24 +98,26 @@ const thinkReg = registrations.find((r) => r.id === 'dsh-think-zh-expand')
 assert.ok(thinkReg, 'dsh-think-zh-expand bundle registered')
 
 // ── 平台官方组件 stub（带 data-ui 标记，可断言「官方组件被使用」）──────
-function makePlatformStub() {
+// shape='function'：普通函数组件；shape='memo'：**真实宿主形态**
+// （宿主 0.1.5-rc.1 实测 `MarkdownText` 是 `React.memo(...)` 返回的对象：
+//  `object($$typeof,type,compare)`，typeof 是 'object' 而不是 'function'）。
+function makePlatformStub({ shape = 'function' } = {}) {
   const calls = []
-  const ui = {
-    MarkdownText: (props) => {
-      calls.push(props)
-      return createElement('div', { 'data-ui': 'markdown-text' }, props.text)
-    },
+  const render = (props) => {
+    calls.push(props)
+    return createElement('div', { 'data-ui': 'markdown-text' }, props.text)
   }
-  return { ui, calls }
+  const MarkdownText = shape === 'memo' ? { $$typeof: MEMO_TYPE, type: render, compare: null } : render
+  return { ui: { MarkdownText }, calls }
 }
 
 const MD_MISSING = new Error("Cannot find module 'dsh-md-render'")
 const UI_MISSING = new Error("Cannot find module '@deepseek-ai/dsh-client-ui-primitives'")
 
 /** 构造 require stub：mdRender / platform 取值为 exports 或 'throw'。 */
-function requireStub({ mdRender = 'throw', platform = 'throw' } = {}) {
+function requireStub({ mdRender = 'throw', platform = 'throw', react = stubbed } = {}) {
   return (spec) => {
-    if (spec === 'react') return stubbed
+    if (spec === 'react') return react
     if (spec === 'dsh-md-render') {
       if (mdRender === 'throw') throw MD_MISSING
       return mdRender
@@ -128,7 +160,7 @@ function mount(opts) {
 }
 
 // ── 元素树断言辅助 ─────────────────────────────────────────────────────
-/** 展开函数组件后收集全部 props 快照（含 data-ui / fallback 标记）。 */
+/** 展开函数/memo/forwardRef 组件后收集全部 props 快照（含 data-ui / fallback 标记）。 */
 function collectNodes(tree) {
   const nodes = []
   const texts = []
@@ -143,9 +175,10 @@ function collectNodes(tree) {
       return
     }
     const props = node.props ?? {}
-    if (typeof node.type === 'function') {
-      // 插件内部组件（AssistantStepView / ThinkBlock）与三级链适配器
-      walk(node.type(props))
+    if (isValidElementType(node.type) && typeof node.type !== 'string') {
+      // 插件内部组件（AssistantStepView / ThinkBlock）、三级链适配器，
+      // 以及宿主组件（函数组件 / memo 对象）
+      walk(renderComponent(node.type, props))
       return
     }
     nodes.push({ type: node.type, props })
@@ -212,15 +245,69 @@ try {
     assert.ok(reasoning.text.includes('思考第二行'), 'reasoning text preserved in <pre> fallback')
   }
 
-  // ── 用例 C：每一级导出畸形都必须安全落到下一级（永不抛错）────────────
+  // ── 用例 F：官方 MarkdownText 是 React.memo 对象 → 第二级必须被采用 ────
+  // 真实宿主（0.1.5-rc.1）实测 MarkdownText 形态为
+  // `object($$typeof,type,compare)`：`typeof === 'function'` 判定会把它误判为
+  // 不可用、直接落到第三级 <pre>（渲染不再崩，但仍未达成 #293 的「官方组件渲染」）。
+  {
+    const platform = makePlatformStub({ shape: 'memo' })
+    assert.equal(typeof platform.ui.MarkdownText, 'object', 'stub reproduces the real memo-object shape')
+    const { render } = mount({ mdRender: 'throw', platform: platform.ui })
+
+    const reasoning = collectNodes(render([{ kind: 'reasoning', text: REASONING }]))
+    const textNodes = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
+
+    for (const [label, out] of [
+      ['reasoning', reasoning],
+      ['text', textNodes],
+    ]) {
+      const markers = out.nodes.map((n) => n.props['data-ui'] ?? n.props['data-dsh-think-zh-expand-fallback'] ?? n.type)
+      assert.equal(
+        out.nodes.filter((n) => n.props['data-ui'] === 'markdown-text').length,
+        1,
+        `${label} block rendered by memo-form official MarkdownText (level 2), got markers=${JSON.stringify(markers)}`,
+      )
+      assert.ok(!out.nodes.some((n) => n.type === 'pre'), `${label} block not downgraded to <pre>`)
+    }
+    assert.ok(reasoning.text.includes('思考第二行'), 'reasoning text preserved (memo form)')
+    assert.ok(textNodes.text.includes('回复正文'), 'text block content preserved (memo form)')
+
+    assert.ok(platform.calls.length >= 2, 'memo-form MarkdownText received props')
+    const props = platform.calls[0]
+    assert.equal(props.labels?.code?.copyLabel, '复制', 'labels.code.copyLabel passed to memo component')
+    assert.equal(props.labels?.code?.copiedLabel, '已复制', 'labels.code.copiedLabel passed to memo component')
+    assert.equal(props.labels?.footnotes, '脚注', 'labels.footnotes passed to memo component')
+    assert.equal(props.codeLabels?.copyLabel, '复制', 'legacy codeLabels passed to memo component')
+    assert.equal(props.text, REASONING, 'adaptor forwards text unchanged (memo form)')
+  }
+
+  // ── 用例 G：react seed 无 isValidElementType 时退化判定仍认 memo 对象 ──
+  {
+    const bareReact = makeReactStub({ withIsValidElementType: false })
+    assert.equal(bareReact.isValidElementType, undefined, 'react stub without isValidElementType')
+    const platform = makePlatformStub({ shape: 'memo' })
+    const { render } = mount({ mdRender: 'throw', platform: platform.ui, react: bareReact })
+    const out = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
+    assert.equal(
+      out.nodes.filter((n) => n.props['data-ui'] === 'markdown-text').length,
+      1,
+      'fallback predicate (typeof function || $$typeof symbol) still accepts memo objects',
+    )
+    assert.ok(platform.calls.length >= 1, 'memo-form MarkdownText used with bare react seed')
+  }
+
+  // ── 用例 C：每一级导出「非组件」都必须安全落到下一级（永不抛错）──────
+  // 注意：**带 $$typeof 的对象是合法组件**（React.memo / forwardRef），不算畸形；
+  // 只有 undefined / null / 字符串 / 空对象 / 组件位非组件才是畸形。
   {
     const malformedMdRender = [
       ['undefined exports', undefined],
       ['null exports', null],
       ['string exports', 'nope'],
       ['empty object', {}],
-      ['non-function MarkdownView', { MarkdownView: 'nope' }],
+      ['non-component MarkdownView', { MarkdownView: 'nope' }],
       ['null MarkdownView', { MarkdownView: null }],
+      ['empty-object MarkdownView', { MarkdownView: {} }],
     ]
     for (const [label, mdRender] of malformedMdRender) {
       const platform = makePlatformStub()
@@ -239,8 +326,9 @@ try {
       ['null exports', null],
       ['string exports', 'nope'],
       ['empty object', {}],
-      ['non-function MarkdownText', { MarkdownText: 'nope' }],
+      ['non-component MarkdownText', { MarkdownText: 'nope' }],
       ['null MarkdownText', { MarkdownText: null }],
+      ['empty-object MarkdownText', { MarkdownText: {} }],
     ]
     for (const [label, platform] of malformedPlatform) {
       const { render } = mount({ mdRender: 'throw', platform })
@@ -249,6 +337,38 @@ try {
       assert.ok(pre, `platform ${label} → level 3 <pre> fallback`)
       assert.equal(out.text, TEXT_BLOCK, `platform ${label} → text preserved`)
     }
+
+    // 组件位是 memo / forwardRef 对象 → **可用**，不得落级
+    const memoView = {
+      $$typeof: MEMO_TYPE,
+      type: (props) => createElement('div', { 'data-ui': 'md-render-memo' }, props.text),
+      compare: null,
+    }
+    const memoPlatform = makePlatformStub({ shape: 'memo' })
+    const bothObject = collectNodes(
+      mount({ mdRender: { MarkdownView: memoView }, platform: memoPlatform.ui }).render([
+        { kind: 'text', text: TEXT_BLOCK },
+      ]),
+    )
+    assert.ok(
+      bothObject.nodes.some((n) => n.props['data-ui'] === 'md-render-memo'),
+      'memo-form MarkdownView counts as a valid level-1 component (object with $$typeof)',
+    )
+    assert.equal(memoPlatform.calls.length, 0, 'level 1 wins when md-render export is a memo object')
+
+    const forwardRefView = {
+      $$typeof: FORWARD_REF_TYPE,
+      render: (props) => createElement('div', { 'data-ui': 'md-render-forward-ref' }, props.text),
+    }
+    const forwardOut = collectNodes(
+      mount({ mdRender: { MarkdownView: forwardRefView }, platform: 'throw' }).render([
+        { kind: 'text', text: TEXT_BLOCK },
+      ]),
+    )
+    assert.ok(
+      forwardOut.nodes.some((n) => n.props['data-ui'] === 'md-render-forward-ref'),
+      'forwardRef-form MarkdownView counts as a valid level-1 component',
+    )
   }
 
   // ── 用例 D：md-render 可用时仍是第一级（平台组件不被触碰）────────────
@@ -281,6 +401,10 @@ try {
       'bundle carries the <pre> fallback marker (level 3)',
     )
     assert.ok(bundleSrc.includes('const MarkdownView = '), 'three-level chain still binds a MarkdownView const')
+    assert.ok(
+      bundleSrc.includes('isValidElementType') && bundleSrc.includes('$$typeof'),
+      'bundle uses React isValidElementType semantics with a $$typeof fallback (memo/forwardRef aware)',
+    )
   }
 
   console.log('ALL THREE-LEVEL RENDER FALLBACK TESTS PASSED')

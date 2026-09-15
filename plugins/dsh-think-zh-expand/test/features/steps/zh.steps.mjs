@@ -34,11 +34,12 @@ class World {
   /**
    * 加载 client bundle 并 materialize 本插件 factory。
    *
-   * @param {{ withMdRender?: boolean, platform?: 'ok' | 'throw' }} [opts]
+   * @param {{ withMdRender?: boolean, platform?: 'ok' | 'throw', platformShape?: 'function' | 'memo' }} [opts]
    *   withMdRender=false 模拟「未安装 dsh-md-render」（issue #293 场景），
-   *   platform 控制宿主 staticModules 的官方组件是否可用（三级回退）。
+   *   platform 控制宿主 staticModules 的官方组件是否可用（三级回退），
+   *   platformShape='memo' 复刻真实宿主 MarkdownText 的 React.memo 对象形态。
    */
-  loadClient({ withMdRender = true, platform = 'throw' } = {}) {
+  loadClient({ withMdRender = true, platform = 'throw', platformShape = 'function' } = {}) {
     const stubbed = {
       createElement(type, props, ...children) {
         return { type, props: { ...(props || {}), children: children.flat() } }
@@ -81,11 +82,17 @@ class World {
         })
       : null
     const platformCalls = this.platformCalls
+    const markdownTextRender = (props) => {
+      platformCalls.push(props)
+      return { type: 'div', props: { 'data-ui': 'markdown-text', children: [props.text] } }
+    }
+    // 真实宿主（0.1.5-rc.1）的 MarkdownText 是 React.memo 返回的**对象**
+    // （object($$typeof,type,compare)），不是函数——可用性判定必须按 React 语义。
     const uiPrimitives = {
-      MarkdownText: (props) => {
-        platformCalls.push(props)
-        return { type: 'div', props: { 'data-ui': 'markdown-text', children: [props.text] } }
-      },
+      MarkdownText:
+        platformShape === 'memo'
+          ? { $$typeof: Symbol.for('react.memo'), type: markdownTextRender, compare: null }
+          : markdownTextRender,
     }
     const exportsObj = thinkReg.factory((spec) => {
       if (spec === 'react') return stubbed
@@ -147,6 +154,10 @@ class World {
         // plugin internal components (MarkdownView / ThinkBlock …): expand
         walk(node.type(node.props))
         return
+      } else if (typeof node.type?.type === 'function') {
+        // React.memo 对象（真实宿主 MarkdownText 形态）：React 渲染时调用 type.type
+        walk(node.type.type(node.props))
+        return
       }
       walk(props.children)
     }
@@ -184,6 +195,12 @@ Given('未装 dsh-md-render 但官方组件可用时渲染器已注册', async f
 
 Given('未装 dsh-md-render 且官方组件也缺失时渲染器已注册', async function () {
   this.loadClient({ withMdRender: false, platform: 'throw' })
+  this.registerRenderer()
+})
+
+// 真实宿主 MarkdownText 是 React.memo 对象（不是函数）——可用性判定必须按 React 语义
+Given('未装 dsh-md-render 且官方组件为 memo 对象时渲染器已注册', async function () {
+  this.loadClient({ withMdRender: false, platform: 'ok', platformShape: 'memo' })
   this.registerRenderer()
 })
 

@@ -31,8 +31,8 @@
 
 > ℹ️ **渲染三级回退（issue #293）**：本插件 client 端**不再硬依赖** `dsh-md-render`，按以下顺序解析渲染组件：
 >
-> 1. **`dsh-md-render`（推荐同时安装）**：用它提供的 `MarkdownView`，行为与 0.4.9 完全一致（增强表格容错 / 宽表滚动 / 代码高亮），`.tzx-md` 系列样式随它注入；
-> 2. **宿主官方组件**：未装 `dsh-md-render` 时自动用宿主 staticModules 提供的 `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText`（官方 GFM + KaTeX 渲染，零安装、零体积、无需 external 声明）——**开箱即可正常渲染**（缺的只是 md-render 的表格容错与代码高亮增强）；
+> 1. **`dsh-md-render`（推荐同时安装）**：用它提供的 `MarkdownView`，行为与 0.4.9 完全一致（表格增强 / 代码块增强 / 公式结构排版），`.tzx-md` 系列样式随它注入；
+> 2. **宿主官方组件**：未装 `dsh-md-render` 时自动用宿主 staticModules 提供的 `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText`（官方 GFM + KaTeX，实测表格 / 宽表滚动容器 / 代码块 / 公式都能渲染，零安装、零体积、无需 external 声明）——**开箱即可正常渲染**；相比 md-render 缺的是它的增强集：不标准表格容错、`div.md-code-block` 代码块容器（[dsh-mermaid-render](../dsh-mermaid-render/README.md) 靠它把 ```mermaid 渲染成图表卡片）、代码复制按钮 / 语法高亮 / 行号 / 主题、公式结构排版（`\frac` / `\sqrt` 等）、以及跨插件样式契约类（`.tzx-md` / `dsh-md-render-*`）；
 > 3. **纯文本兜底**：极旧/裁剪宿主连官方组件表都没有时，回退 `<pre data-dsh-think-zh-expand-fallback="true">`，渲染期仍不抛错。
 >
 > 0.4.9 及更早版本只把 `require('dsh-md-render')` 包了 try/catch（`MarkdownView = null`）却仍裸调 `createElement(MarkdownView, …)`，渲染期会抛 `Element type is invalid … but got: null`——是**假降级**（见 [踩坑：假降级](../../docs/踩坑/假降级-只catch-require不等于优雅降级.md)）。

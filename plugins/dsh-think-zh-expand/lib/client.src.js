@@ -17,34 +17,39 @@ window.__ModuleLoader__.load({
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     // useState 由编译后的 client bundle 使用；模板静态分析看不到 bundle 内容。
-    const { createElement, useState } = require('react')
+    const { createElement, useState, isValidElementType: reactIsValidElementType } = require('react')
     // ── MarkdownView：三级渲染回退（issue #293）────────────────────────
     // 1) dsh-md-render 的 MarkdownView —— 首选渲染内核（issue #31/#186 决策不变）；
     // 2) 宿主 staticModules 的官方 @deepseek-ai/dsh-client-ui-primitives 的
     //    MarkdownText —— 未装 md-render 时仍是完整 GFM + KaTeX 渲染（零安装）；
     // 3) <pre data-dsh-think-zh-expand-fallback="true"> —— 极旧/裁剪宿主纯文本。
-    // 注意：只 catch require 不是降级——必须真的换掉渲染组件，否则
-    // createElement(null) 会在渲染期抛 `Element type is invalid ... but got: null`
-    // （0.4.9 的假降级，issue #290/#293）。任一级不可用（require 抛错 / 导出非
-    // 对象 / 组件非 function）都必须安全落到下一级，渲染期永不抛错。
-    // labels 无默认值：官方 MarkdownText 直接读 labels.code.copyLabel，本插件
-    // 是中文化插件，文案正好由它提供；codeLabels 兼容早期官方包（0.0.1-rc.1）。
-    const ZH_MD_LABELS = {
-      code: { copyLabel: '复制', copiedLabel: '已复制' },
-      footnotes: '脚注',
-    }
+    // 只 catch require 不是降级（0.4.9 的假降级，#290/#293）：必须真的换掉渲染组件，
+    // 否则 createElement(null) 渲染期抛 `Element type is invalid ... but got: null`。
+    // 可用性判定必须用 React 语义：官方 MarkdownText 是 React.memo 返回的**对象**
+    // （宿主实测 object($$typeof,type,compare)），`typeof === 'function'` 会把
+    // memo/forwardRef 组件误判为不可用、直接落到 <pre>。优先用 react 自带的
+    // isValidElementType（react 19 已不再导出 → 退化式是实际生效路径），两者都
+    // 排除宿主标签字符串（垃圾导出值应落级，而不是渲染成未知标签）。
+    const isComponentLike = (value) =>
+      typeof value === 'function' || (typeof value === 'object' && value !== null && typeof value.$$typeof === 'symbol')
+    const isRenderableComponent =
+      typeof reactIsValidElementType === 'function'
+        ? (value) => typeof value !== 'string' && reactIsValidElementType(value)
+        : isComponentLike
+    // labels 无默认值（仅渲染含代码块的 markdown 时才读 labels.code.copyLabel），
+    // 中文文案由本中文化插件提供；codeLabels 兼容早期官方包（npm 0.0.1-rc.1）。
+    const ZH_MD_LABELS = { code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' }
     const ZH_MD_CODE_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
-    const isComponent = (value) => typeof value === 'function'
     function resolveMarkdownView() {
       try {
         const md = require('dsh-md-render')
-        if (md && isComponent(md.MarkdownView)) return md.MarkdownView
+        if (md && isRenderableComponent(md.MarkdownView)) return md.MarkdownView
       } catch {
         // 未安装 dsh-md-render：落到官方组件
       }
       try {
         const ui = require('@deepseek-ai/dsh-client-ui-primitives')
-        if (ui && isComponent(ui.MarkdownText)) {
+        if (ui && isRenderableComponent(ui.MarkdownText)) {
           const MarkdownText = ui.MarkdownText
           return (props) =>
             createElement(MarkdownText, {

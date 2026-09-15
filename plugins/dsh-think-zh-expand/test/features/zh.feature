@@ -51,3 +51,12 @@
     当 渲染文本块 "回退纯文本"
     那么 输出回退为带 fallback 标记的 pre
     并且 输出包含数据文本 "回退纯文本"
+
+  # 真实宿主 MarkdownText 是 React.memo 对象（object($$typeof,type,compare)），
+  # 不是函数——用 typeof === 'function' 判可用性会误判为缺失、直接落到 <pre>
+  场景: 官方组件是 memo 对象时仍用官方组件渲染
+    假如 未装 dsh-md-render 且官方组件为 memo 对象时渲染器已注册
+    当 渲染文本块 "memo 形态渲染"
+    那么 输出由官方 MarkdownText 渲染
+    并且 传给官方组件的 labels.code.copyLabel 为 "复制"
+    并且 输出包含数据文本 "memo 形态渲染"

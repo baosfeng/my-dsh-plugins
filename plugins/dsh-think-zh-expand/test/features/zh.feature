@@ -37,3 +37,17 @@
     假如 客户端模块已加载
     那么 本插件不导出 MarkdownView 渲染组件
     并且 本插件 bundle 不包含表格渲染逻辑
+
+  # issue #293：三级渲染回退（md-render 首选 → 官方 MarkdownText → <pre>）
+  场景: 未装 dsh-md-render 时用官方 MarkdownText 兜底
+    假如 未装 dsh-md-render 但官方组件可用时渲染器已注册
+    当 渲染文本块 "| 插件 | 版本 |"
+    那么 输出由官方 MarkdownText 渲染
+    并且 传给官方组件的 labels.code.copyLabel 为 "复制"
+    并且 输出包含数据文本 "| 插件 | 版本 |"
+
+  场景: md-render 与官方组件都缺失时回退纯文本
+    假如 未装 dsh-md-render 且官方组件也缺失时渲染器已注册
+    当 渲染文本块 "回退纯文本"
+    那么 输出回退为带 fallback 标记的 pre
+    并且 输出包含数据文本 "回退纯文本"

@@ -18,13 +18,47 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     // useState 由编译后的 client bundle 使用；模板静态分析看不到 bundle 内容。
     const { createElement, useState } = require('react')
-    // 统一 MarkdownView 由 dsh-md-render 提供（issue #31 渲染职责迁移）。
-    let MarkdownView = null
-    try {
-      MarkdownView = require('dsh-md-render').MarkdownView
-    } catch {
-      MarkdownView = null // 不可用时回退纯文本
+    // ── MarkdownView：三级渲染回退（issue #293）────────────────────────
+    // 1) dsh-md-render 的 MarkdownView —— 首选渲染内核（issue #31/#186 决策不变）；
+    // 2) 宿主 staticModules 的官方 @deepseek-ai/dsh-client-ui-primitives 的
+    //    MarkdownText —— 未装 md-render 时仍是完整 GFM + KaTeX 渲染（零安装）；
+    // 3) <pre data-dsh-think-zh-expand-fallback="true"> —— 极旧/裁剪宿主纯文本。
+    // 注意：只 catch require 不是降级——必须真的换掉渲染组件，否则
+    // createElement(null) 会在渲染期抛 `Element type is invalid ... but got: null`
+    // （0.4.9 的假降级，issue #290/#293）。任一级不可用（require 抛错 / 导出非
+    // 对象 / 组件非 function）都必须安全落到下一级，渲染期永不抛错。
+    // labels 无默认值：官方 MarkdownText 直接读 labels.code.copyLabel，本插件
+    // 是中文化插件，文案正好由它提供；codeLabels 兼容早期官方包（0.0.1-rc.1）。
+    const ZH_MD_LABELS = {
+      code: { copyLabel: '复制', copiedLabel: '已复制' },
+      footnotes: '脚注',
     }
+    const ZH_MD_CODE_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
+    const isComponent = (value) => typeof value === 'function'
+    function resolveMarkdownView() {
+      try {
+        const md = require('dsh-md-render')
+        if (md && isComponent(md.MarkdownView)) return md.MarkdownView
+      } catch {
+        // 未安装 dsh-md-render：落到官方组件
+      }
+      try {
+        const ui = require('@deepseek-ai/dsh-client-ui-primitives')
+        if (ui && isComponent(ui.MarkdownText)) {
+          const MarkdownText = ui.MarkdownText
+          return (props) =>
+            createElement(MarkdownText, {
+              text: props.text,
+              labels: ZH_MD_LABELS,
+              codeLabels: ZH_MD_CODE_LABELS,
+            })
+        }
+      } catch {
+        // 宿主模块表没有官方组件：落到纯文本
+      }
+      return (props) => createElement('pre', { 'data-dsh-think-zh-expand-fallback': 'true' }, props.text)
+    }
+    const MarkdownView = resolveMarkdownView()
 
     // ── 共享图标（issue #54 阶段 0：dsh-shared/client-parts）──────────
     /*__PART_ICONS__*/

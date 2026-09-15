@@ -15,6 +15,7 @@ class World {
     this.exportsObj = null
     this.renderer = null
     this.lastRender = null
+    this.platformCalls = []
   }
 
   bootServer() {
@@ -30,7 +31,14 @@ class World {
     apply(ctx)
   }
 
-  loadClient() {
+  /**
+   * 加载 client bundle 并 materialize 本插件 factory。
+   *
+   * @param {{ withMdRender?: boolean, platform?: 'ok' | 'throw' }} [opts]
+   *   withMdRender=false 模拟「未安装 dsh-md-render」（issue #293 场景），
+   *   platform 控制宿主 staticModules 的官方组件是否可用（三级回退）。
+   */
+  loadClient({ withMdRender = true, platform = 'throw' } = {}) {
     const stubbed = {
       createElement(type, props, ...children) {
         return { type, props: { ...(props || {}), children: children.flat() } }
@@ -66,13 +74,29 @@ class World {
     const thinkReg = registrations.find((r) => r.id === 'dsh-think-zh-expand')
     assert.ok(mdRenderReg, 'dsh-md-render bundle registered')
     assert.ok(thinkReg, 'think-zh-expand bundle registered')
-    const mdRenderExports = mdRenderReg.factory((spec) => {
-      if (spec === 'react') return stubbed
-      throw new Error('unexpected require: ' + spec)
-    })
+    const mdRenderExports = withMdRender
+      ? mdRenderReg.factory((spec) => {
+          if (spec === 'react') return stubbed
+          throw new Error('unexpected require: ' + spec)
+        })
+      : null
+    const platformCalls = this.platformCalls
+    const uiPrimitives = {
+      MarkdownText: (props) => {
+        platformCalls.push(props)
+        return { type: 'div', props: { 'data-ui': 'markdown-text', children: [props.text] } }
+      },
+    }
     const exportsObj = thinkReg.factory((spec) => {
       if (spec === 'react') return stubbed
-      if (spec === 'dsh-md-render') return mdRenderExports
+      if (spec === 'dsh-md-render') {
+        if (!withMdRender) throw new Error("Cannot find module 'dsh-md-render'")
+        return mdRenderExports
+      }
+      if (spec === '@deepseek-ai/dsh-client-ui-primitives') {
+        if (platform !== 'ok') throw new Error("Cannot find module '@deepseek-ai/dsh-client-ui-primitives'")
+        return uiPrimitives
+      }
       throw new Error('unexpected require: ' + spec)
     })
     this.exportsObj = exportsObj
@@ -104,6 +128,7 @@ class World {
     const tree = this.renderer({ node: { data: { blocks: [{ kind: 'text', text }] } } })
     const tags = []
     const texts = []
+    const nodes = []
     function walk(node) {
       if (node === null || node === undefined || typeof node === 'boolean') return
       if (typeof node === 'string' || typeof node === 'number') {
@@ -117,6 +142,7 @@ class World {
       const props = node.props ?? {}
       if (typeof node.type === 'string') {
         tags.push(node.type)
+        nodes.push({ type: node.type, props })
       } else if (typeof node.type === 'function') {
         // plugin internal components (MarkdownView / ThinkBlock …): expand
         walk(node.type(node.props))
@@ -125,7 +151,7 @@ class World {
       walk(props.children)
     }
     walk(tree)
-    this.lastRender = { tags, texts }
+    this.lastRender = { tags, texts, nodes }
   }
 }
 
@@ -150,9 +176,24 @@ Given('渲染器已注册', async function () {
   this.registerRenderer()
 })
 
+// issue #293 三级渲染回退：md-render 缺失 / 平台官方组件也缺失
+Given('未装 dsh-md-render 但官方组件可用时渲染器已注册', async function () {
+  this.loadClient({ withMdRender: false, platform: 'ok' })
+  this.registerRenderer()
+})
+
+Given('未装 dsh-md-render 且官方组件也缺失时渲染器已注册', async function () {
+  this.loadClient({ withMdRender: false, platform: 'throw' })
+  this.registerRenderer()
+})
+
 // ── When ──────────────────────────────────────────────────────────────────
 When('渲染含分隔行的文本块', async function () {
   this.renderText('| 插件 | 版本 |\n|:-----|:----:|\n| dsh-file-activity | **0.4.2** |')
+})
+
+When('渲染文本块 {string}', async function (text) {
+  this.renderText(text)
 })
 
 // ── Then ──────────────────────────────────────────────────────────────────
@@ -214,4 +255,30 @@ Then('本插件 bundle 不包含表格渲染逻辑', async function () {
   assert.ok(!bundleSrc.includes('function tryTable'), 'tryTable definition removed from bundle')
   assert.ok(!bundleSrc.includes('function MarkdownView'), 'MarkdownView definition removed from bundle')
   assert.ok(bundleSrc.includes("require('dsh-md-render')"), 'bundle requires dsh-md-render for rendering')
+})
+
+// ── issue #293：三级渲染回退 ───────────────────────────────────────────────
+Then('输出由官方 MarkdownText 渲染', async function () {
+  const nodes = this.lastRender.nodes
+  assert.ok(
+    nodes.some((n) => n.props['data-ui'] === 'markdown-text'),
+    `expected official MarkdownText output, got tags: ${this.lastRender.tags.join(',')}`,
+  )
+})
+
+Then('传给官方组件的 labels.code.copyLabel 为 {string}', async function (expected) {
+  assert.ok(this.platformCalls.length >= 1, 'official MarkdownText received props')
+  const props = this.platformCalls[0]
+  assert.equal(props.labels?.code?.copyLabel, expected, 'labels.code.copyLabel (required, no default)')
+  assert.equal(props.labels?.code?.copiedLabel, '已复制', 'labels.code.copiedLabel')
+  assert.equal(props.labels?.footnotes, '脚注', 'labels.footnotes')
+  assert.equal(props.codeLabels?.copyLabel, expected, 'legacy codeLabels.copyLabel (npm 0.0.1-rc.1)')
+})
+
+Then('输出回退为带 fallback 标记的 pre', async function () {
+  const nodes = this.lastRender.nodes
+  assert.ok(
+    nodes.some((n) => n.type === 'pre' && n.props['data-dsh-think-zh-expand-fallback'] === 'true'),
+    `expected <pre data-dsh-think-zh-expand-fallback>, got tags: ${this.lastRender.tags.join(',')}`,
+  )
 })

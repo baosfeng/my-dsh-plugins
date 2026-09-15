@@ -166,8 +166,22 @@ jobs:
       - name: 'Mutation testing (stryker pilot: dsh-file-activity)'
         run: (cd plugins/dsh-file-activity && npx stryker run)
 
-  # 质量门禁：代码质量规则 + 尺寸规则 + 依赖结构 + 文档一致性
-  # 三者都很快（秒级），合并一个 job 与测试并行
+  # 质量门禁：类型检查 + 代码质量规则 + 尺寸规则 + 依赖结构 + 死代码 + 重复代码 + 文档一致性
+  #
+  # issue #330：改前这里是 12 个**串行**步骤，每一步都独立启动 npx、独立全仓扫描，彼此无依赖
+  # 却排队（本机实测纯累加 41.7s；且同一批 server TS 被 tsc 检查 3 遍、prettier 被跑 3 遍）。
+  # 现在合并为**一个并发执行体**：`verify-local --ci-quality`（插件测试/资源冒烟/审计/变异各由
+  # 独立 job 覆盖，不在本 job 重复）。检查项清单与「唯一权威执行点」登记在
+  # scripts/lib/gate-registry.mjs，由 `gate-parity` 门禁对本文件、verify-local、登记表做**双向**
+  # 交叉校验（声明了没跑 / 跑了没声明，都会红，缺口逐条列出）。
+  #
+  # 失败可定位性（并发化的硬约束）：虽然 Actions UI 里只剩一个步骤，但
+  #   ① 每一项的完整输出在日志里按 `[verify] ❌ <label>` 分组打印（不是「某步失败」了事）；
+  #   ② 结果表写进 job summary（哪一项红 + 每项耗时 + 复现命令）；
+  #   ③ 单项复现：`node scripts/verify-local.mjs --only <id>`。
+  #
+  # 并发度 4（runner 是 4 核，这批检查项都是单线程 Node 进程；实测再高无收益，见
+  # scripts/verify-local.mjs 的 checkConcurrency 注释）。整体墙钟由最慢的一项决定。
   quality:
     runs-on: ubuntu-latest
     steps:
@@ -181,118 +195,19 @@ jobs:
       - name: Install root toolchain (eslint, dependency-cruiser)
         run: npm ci
 
-      # 类型检查（issue #47：TS 插件开发——tsc --noEmit 编译期发现模块
-      # 不存在 TS2307 / 类型不匹配 / 未定义变量；TS 7 原生编译器）
-      # 根配置 exclude plugins/*/src/client/**：client parts 是拼接片段
-      # （无 import/export，靠 factory 全局作用域共享符号），在根配置的
-      # nodenext 模块模式下会被当成独立模块而全量报错（TS2304/TS2552）。
-      # client 端类型检查由下一步按插件跑 tsconfig.client.json 承担。
-      - name: Type check (tsc --noEmit)
-        run: npx tsc --noEmit
-
-      # 逐插件类型检查（server 端 tsconfig.json + client 端 tsconfig.client.json）
-      - name: Type check (per-plugin server + client)
-        run: bash scripts/typecheck-all.sh
-
-      # 代码质量规则 + 尺寸规则（complexity≤10 / 函数≤70行 / 文件≤400行，
-      # issue #44 引入 prettier 后调整，见 eslint.config.js 注释）。
-      # 覆盖范围：TS 全量迁移后插件源码是 plugins/*/src/**/*.ts，而 flat config
-      # 没有 .ts 块（typescript-eslint 尚不兼容 TS 7），本步骤实际只覆盖手写 JS
-      # （lib/parts 片段、client.src.js 模板）；TS 源码尺寸门禁由下一步承担。
-      - name: Lint (quality rules + size gates)
-        run: npx eslint plugins/
-
-      # TS 源码尺寸门禁（TS 全量迁移引入的门禁漏洞：flat config 无 .ts 块，
-      # src/**/*.ts 全部逃过复杂度/行数检查——迁移前刻意压在 400 行的文件加类型
-      # 注解后超标却无人发现）。scripts/check-ts-size.mjs 用 @babel/parser 解析
-      # TS AST，按 ESLint max-lines / max-lines-per-function / complexity 的真实
-      # 语义重新施加门禁；迁移引入的存量超标项由 scripts/ts-size-baseline.json
-      # 冻结债务基线放行（只允许变好，基线外新增或超过基线值即失败），
-      # 收口后用 node scripts/check-ts-size.mjs --update-baseline 刷新。
-      - name: TS source size gates (check-ts-size)
-        run: npm run lint:size
-
-      # 格式校验（issue #44：prettier 统一全仓格式，CI 强制 prettier --check；
-      # 构建产物 client.js / vendor 压缩产物在 .prettierignore 排除）
-      # 客户端 bundle 模块白名单（issue #321）：产物里 require 的模块必须能在用户机器上解析
-      # —— 只认平台 seed 表 / dsh.client.external / 自身包名，否则浏览器端 ModuleLoader 抛
-      # `missed the module table` 并让整条 client factory 挂掉（#39/#290/#293 三次事故同根因）。
-      - name: Client bundle module allowlist (check-client-modules)
-        run: npm run check:client-modules
-
-      # 客户端产物体积预算（issue #322）：产物体积直接决定用户下载量与加载时间，
-      # 而 issue #185 曾把 4.48 MB 冗余（3.3 MB mermaid UMD base64 内联）注入 client bundle，
-      # 纯靠人工发现。门禁范围是**完整发布面**（以插件 package.json 的 files 为准：
-      # lib/** 与 assets/**）——只查 lib/client.js 会漏掉 99%（mermaid 的 assets 引擎单个 3.18 MB，
-      # 该插件 npm pack unpacked 3.44 MB 里引擎占 92%）。上限 = 基线 + max(64 KB, 基线×15%)，
-      # 基线见 scripts/client-size-baseline.json（含测量时间与来源）。
-      - name: Client artifact size budget (check-client-size)
-        run: npm run check:client-size
-
-      # 包发布卫生（issue #323）：查「这个包本身能不能装、内容对不对」，与上一步的**体积**
-      # 判据互补（本步不设任何体积阈值）。四条判据：① `exports`（递归所有条件值）/ `main` /
-      # `types` / `dsh.bundle.patch` 指向的文件必须真实存在；② `dsh.*` 与 `exports` 互证
-      # （`dsh.client` ⇔ `exports["./client"]`、`platform==='web'`、有 `cordis.patch.yml`
-      # 必声明 `dsh.bundle.patch`）；③ `npm pack --dry-run --json` 内容断言：README /
-      # CHANGELOG / LICENSE / package.json 与所有声明目标必须在包内，`test/` `src/`
-      # `coverage/` `reports/` `node_modules/` `.DS_Store` `*.log` 不得在包内；
-      # ④ README 引用的 assets 必须存在且**随包发布**——3b 效果图门禁只查文件在仓库里存不存在，
-      # 查不到"文件在、files 白名单没带它"（本门禁首次全量跑即抓出 5 个插件 8 张图的 npm/unpkg
-      # 裂图）。fail-closed：pack 失败 / JSON 解析失败 / 找不到插件一律 exit 1。
-      # 判定纯函数在 scripts/lib/pack-hygiene.mjs，回归测试 scripts/test/pack-hygiene.test.mjs
-      - name: Package publish hygiene (check-pack-hygiene)
-        run: npm run check:pack-hygiene
-
-      # 固定 sleep 门禁（issue #335）：同一个根因在 CI 上复发过 5 次（#310/#313/#317/#335）
-      # ——测试用固定 sleep 赌异步落盘/加载完成，本机快、CI 容器高负载下必输。本门禁把默认
-      # 反转：**新增**的固定时长等待必须写 `// sleep-ok: <为什么不能用条件轮询>`，存量冻结在
-      # scripts/test-sleep-baseline.json（只允许变少）。判定是纯函数（scripts/lib/test-sleeps.mjs），
-      # 回归测试 scripts/test/test-sleeps.test.mjs
-      - name: Fixed sleeps in tests (check-test-sleeps)
-        run: npm run check:test-sleeps
-
-      - name: Format check (prettier)
-        run: npx prettier --check .
-
-      # 发版校验纯函数单元测试（issue #39：跨插件依赖校验逻辑，含覆盖率门禁）
-      - name: Release checks unit tests
-        run: npm run test:scripts
-
-      # 依赖结构分析（无循环依赖、server/client 不交叉）
-      - name: Dependency analysis
-        run: npx depcruise plugins/
-
-      # 死代码检测（issue #45：knip 接入 CI——未使用的文件/依赖/导出；
-      # 配置见 knip.json：各插件 workspace 入口 + 构建产物/脚本 ignore）
-      - name: Dead code check (knip)
-        run: npx knip
-
-      # 重复代码检测（issue #45：jscpd 接入 CI——复制粘贴检测；
-      # 配置见 .jscpd.json：min-tokens 100 + 配置模板 ignore + 阈值 5%，
-      # 真实重复已抽取到 dsh-shared 共享包）
-      - name: Duplicate code check (jscpd)
-        run: npx jscpd
-
-      # 文档一致性（新插件/新版本必须同步根 README / AGENTS.md /
-      # docs/ 索引与模块文档 / 安装章节 npm 方式——防"插件没部署/文档没更新"复发）
-      - name: Docs consistency check
-        run: node scripts/check-docs.mjs
-
-      # 文档引用完整性（一次全仓审计发现 37 处失效引用——markdown 相对链接层级写错、
-      # 锚点与标题不匹配、指向早已删除的文件，其中一个不存在的 skill 被 13 个文件引用——
-      # 根因就是没有自动校验：check-docs 只看"插件↔文档"一致性，不看链接与锚点。
-      # 本步骤校验：markdown 链接与图片、#anchor 锚点（GitHub slug 规则）、反引号路径 token、
-      # node/bash 调用、npm scripts（就近 package.json 语义）、skill 与插件名。
-      # 误报豁免规则见 scripts/check-links.mjs 头注释，回归测试 scripts/test/check-links.test.mjs）
-      - name: Links integrity check
-        run: npm run check:links
-
-      # 产物一致性（issue #318，ADR-0002）：共享部件 `plugins/dsh-shared/client-parts/*`
-      # 是纯函数文本片段，构建期 splice 进各消费方的 lib/client.js；server 端 lib/*.js
-      # 是 tsc 产物。两者都必须提交，而 CI 不跑构建 → 漏重建会静默陈旧（实测 commit
-      # 735e2fa 加图标只重建 2 个消费方；file-activity 的 media-route.js/store.js 也陈旧）。
-      # 本步骤只重建受影响插件的 client bundle + 各插件 server tsc（临时 outDir），
-      # 与已提交产物逐字节比对，fail-closed（缺产物/编译失败都算失败）。回归测试见
-      # scripts/test/client-artifacts.test.mjs）
-      - name: Client artifacts consistency check
-        run: node scripts/check-client-artifacts.mjs
+      # 执行体：scripts/verify-local.mjs --ci-quality。
+      # 覆盖（每项的权威执行点见 scripts/lib/gate-registry.mjs）：
+      #   根 tsc --noEmit / 逐插件 server+client tsc（scripts/typecheck-all.mjs，并发）
+      #   / eslint（complexity≤10、函数≤70 行、文件≤400 行、import 解析）
+      #   / TS 源码尺寸门禁（check-ts-size）/ 客户端 bundle 模块白名单（check-client-modules）
+      #   / 客户端产物体积预算（check-client-size，issue #322）/ 包发布卫生（check-pack-hygiene，issue #323）
+      #   / prettier --check / 发版校验单测（test:scripts）/ dependency-cruiser / knip / jscpd
+      #   / check-docs / check-links / check-gate-parity（本地↔CI 覆盖一致性）
+      #   / 固定 sleep 门禁（check-test-sleeps，issue #335）
+      #   / 产物一致性（issue #318，ADR-0002）：共享部件 `plugins/dsh-shared/client-parts/*` 是
+      #     纯函数文本片段，构建期 splice 进消费方的 lib/client.js；server 端 lib/*.js 是 tsc
+      #     产物。两者都必须提交，而 CI 不跑构建 → 漏重建会静默陈旧（实测 commit 735e2fa 加图标
+      #     只重建 2 个消费方；file-activity 的 media-route.js / store.js 也陈旧）。
+      #     check-client-artifacts.mjs 重建后与已提交产物逐字节比对，fail-closed。
+      - name: Quality gates (concurrent, registry-driven)
+        run: node scripts/verify-local.mjs --ci-quality

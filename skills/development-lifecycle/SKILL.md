@@ -55,10 +55,13 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 ```bash
 cd plugins/<name> && npm test                  # 单插件冒烟（CI 同款）
 node scripts/verify-local.mjs --fast           # 提交/push 前快速通道（pre-push 同款，按变更裁剪）
-npm run verify                                 # CI 等价全量（= --full，默认 11 项检查）
+npm run verify                                 # CI 等价全量（= --full，默认 20 项检查）
+npm run check:gate-parity                      # 本地 ↔ CI 门禁覆盖一致性（缺口逐条列出，issue #330）
 node scripts/verify-real-profile.mjs --addons plugins/<name> [--api-path /<插件>/api/xxx]
 node scripts/verify-real-profile.mjs --skip    # 只做配置组合检查（不启动实例，快）
 ```
+
+- **门禁清单的机器可读事实源**：`scripts/lib/gate-registry.mjs`（改门禁前先读它）；一致性用 `npm run check:gate-parity` 校验。
 
 - **选最小充分层级**：`plugin-test` skill（单测 / 覆盖率 / 真实 API e2e / 快照 / Web / 真实组合 / 打包产物冒烟）。
 - **真实环境（issue #39）**：`verify-real-profile.mjs` 复刻生产配置组合 + 独立端口启动 + API 冒烟 + 自动清理；`duplicate loader entry id` 这类炸弹只在这一层暴露，全新实例测不出。

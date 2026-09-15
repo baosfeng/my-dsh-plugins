@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# push 前本地校验（快速通道）：
-#   node scripts/verify-local.mjs --fast
-# 只跑与本次推送变更相关的插件测试 + 全部独立性检查（并发），无变更证据时自动退化为全量。
-# 想跑与 CI 完全等价的全量：npm run verify（或 node scripts/verify-local.mjs --full）
+# push 前本地校验：**默认跑 CI 等价全量**（`node scripts/verify-local.mjs --full`）。
+#
+# 为什么默认全量（issue #330 起，工程效率规范第十四节「本地绿 ⇒ CI 绿」）：
+# 用户诉求是「确保本地测试通过了，远程就一定可以通过」——一次 CI 往返约半小时，本地多花几十秒
+# 是划算的。CI 的每个**阻断性**检查本地都必须有对应项并默认执行（含 mutation；唯一白名单项是
+# audit，因为官方 advisories 端点在本地镜像 registry 上不存在，属「CI 专属环境」而非「本地慢」）。
+#
+# 显式快速通道（**只在明确知道自己要什么时用**）：VERIFY_MODE=fast git push
+#   → 只跑与本次推送变更相关的插件测试，无变更证据时自动退化为全量；
+#   → 它会逐条打印「本次未跑 X/Y/Z，CI 会跑」，不会静默放行（不会漏跑）。
 # 详见 docs/开发指南/构建与测试.md「本地一键校验（verify-local）」。
 #
 # ⚠️ 必须先清理 git 钩子环境变量（issue #127 修复）：
@@ -41,7 +47,12 @@ fi
 # 因此下面所有「允许失败」的命令都必须显式 `|| true` 兜底，否则 set -e 会提前退出并
 # 把退出码改写成 1（实测过：超时分支因此丢掉 124）。
 set -m
-node scripts/verify-local.mjs --fast < /dev/null &
+# 默认 CI 等价全量；VERIFY_MODE=fast 走显式快速通道（两者都不会漏跑，区别只在裁剪与否）
+if [ "${VERIFY_MODE:-full}" = "fast" ]; then
+  node scripts/verify-local.mjs --fast < /dev/null &
+else
+  node scripts/verify-local.mjs --full < /dev/null &
+fi
 child=$!
 set +m
 

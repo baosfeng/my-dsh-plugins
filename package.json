@@ -15,6 +15,7 @@
     "verify": "node scripts/verify-local.mjs",
     "verify:fast": "node scripts/verify-local.mjs --fast",
     "verify:full": "node scripts/verify-local.mjs --full",
+    "verify:ci-quality": "node scripts/verify-local.mjs --ci-quality",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
@@ -25,6 +26,7 @@
     "check:client-size": "node scripts/check-client-size.mjs",
     "check:pack-hygiene": "node scripts/check-pack-hygiene.mjs",
     "check:test-sleeps": "node scripts/check-test-sleeps.mjs",
+    "check:gate-parity": "node scripts/check-gate-parity.mjs",
     "deps:matrix": "node scripts/deps-matrix.mjs",
     "deps:matrix:md": "node scripts/deps-matrix.mjs --markdown",
     "deps:matrix:offline": "node scripts/deps-matrix.mjs --offline"

@@ -1,0 +1,346 @@
+{
+  "note": "客户端产物体积预算基线（issue #322）：登记各插件**发布面**的体积实测值。上限 = 基线 + max(64 KB, 基线×15%)，理由见 scripts/check-client-size.mjs 顶部常量注释。unpacked total = 该插件 npm 发布面全部文件字节和；files = 逐个冻结的产物（lib/** 与 assets/**）。未登记的文件与插件只受默认上限（1 MB/文件）约束。刷新：node scripts/check-client-size.mjs --update-baseline（须在 PR 说明体积变化原因）。",
+  "measuredAt": "2026-09-15",
+  "source": "npm pack --dry-run --json（19 个插件，2026-09-15 与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）",
+  "margin": {
+    "absFloorBytes": 65536,
+    "relMargin": 0.15,
+    "defaultFileLimitBytes": 1048576,
+    "why": "绝对底 64 KB = git 全历史 136 次 client.js 增长事件的 max 27.0 KB × 2.4；相对余量 15% 用于大体量 vendored 资源；判据：对当前最大 client.js 基线（152.5 KB）上限 216.5 KB，仅为 #185 冗余量级（4.48 MB）的 4.7%"
+  },
+  "plugins": {
+    "dsh-file-activity": {
+      "total": 848177,
+      "files": {
+        "assets/preview-float-0.5.6.png": 121400,
+        "assets/preview-float.png": 251552,
+        "assets/screenshot.png": 210899,
+        "lib/api-route.js": 3815,
+        "lib/bash-ops.js": 4256,
+        "lib/bash-parse.js": 9835,
+        "lib/client.js": 86081,
+        "lib/client.src.js": 3272,
+        "lib/cwd.js": 551,
+        "lib/index.js": 5132,
+        "lib/media-route.js": 6968,
+        "lib/observer.js": 2006,
+        "lib/parts/api.part.js": 1892,
+        "lib/parts/apply.part.js": 4984,
+        "lib/parts/auto-open.part.js": 3834,
+        "lib/parts/document-previews.part.js": 3000,
+        "lib/parts/format.part.js": 1204,
+        "lib/parts/i18n.part.js": 3874,
+        "lib/parts/interceptor.part.js": 1797,
+        "lib/parts/preview-data.part.js": 4983,
+        "lib/parts/preview-float.part.js": 10981,
+        "lib/parts/rows.part.js": 6124,
+        "lib/parts/settings.part.js": 2491,
+        "lib/parts/store.part.js": 1498,
+        "lib/parts/styles.part.js": 11138,
+        "lib/parts/tree.part.js": 2859,
+        "lib/parts/view.part.js": 9458,
+        "lib/persist.js": 6584,
+        "lib/quota-trim.js": 5141,
+        "lib/quota.js": 6478,
+        "lib/state.js": 14696,
+        "lib/store.js": 10200
+      }
+    },
+    "dsh-md-render": {
+      "total": 498965,
+      "files": {
+        "assets/math-frac.png": 92232,
+        "assets/md-table-render.png": 69517,
+        "assets/settings-tab.png": 132071,
+        "lib/client.js": 156144,
+        "lib/client.src.js": 4951,
+        "lib/index.js": 2663,
+        "lib/routes.js": 5402
+      }
+    },
+    "dsh-mermaid-render": {
+      "total": 3609599,
+      "files": {
+        "assets/mermaid-10.9.3.min.js": 3336760,
+        "assets/mermaid-auto-diagram.png": 92687,
+        "assets/mermaid-card.png": 97426,
+        "lib/client.js": 54837,
+        "lib/client.src.js": 2407,
+        "lib/index.js": 4068,
+        "lib/prompt.js": 3087
+      }
+    },
+    "dsh-my-context": {
+      "total": 258534,
+      "files": {
+        "assets/context-panel.png": 117918,
+        "lib/budget.js": 2149,
+        "lib/client.js": 39108,
+        "lib/client.src.js": 5088,
+        "lib/constants.js": 1855,
+        "lib/events.js": 7571,
+        "lib/index.js": 3199,
+        "lib/meter.js": 3105,
+        "lib/overflow.js": 3300,
+        "lib/parts/i18n.js": 5152,
+        "lib/parts/overflow.js": 8214,
+        "lib/parts/panel.js": 13818,
+        "lib/parts/styles.js": 6911,
+        "lib/persist.js": 6497,
+        "lib/routes.js": 6979,
+        "lib/state.js": 2205,
+        "lib/store.js": 9142
+      }
+    },
+    "dsh-my-guard": {
+      "total": 482972,
+      "files": {
+        "assets/guard-panel.png": 165536,
+        "assets/guard-rules-panel.png": 117036,
+        "lib/client.js": 61270,
+        "lib/client.src.js": 4808,
+        "lib/constants.js": 8741,
+        "lib/custom-rules.js": 6370,
+        "lib/guard.js": 4648,
+        "lib/index.js": 8022,
+        "lib/injection.js": 5160,
+        "lib/notify.js": 2893,
+        "lib/parts/i18n.js": 6148,
+        "lib/parts/panel.js": 13131,
+        "lib/parts/rules-panel.js": 10741,
+        "lib/parts/states.js": 2628,
+        "lib/parts/styles.js": 10977,
+        "lib/poison.js": 11403,
+        "lib/routes.js": 12039,
+        "lib/store.js": 10410
+      }
+    },
+    "dsh-my-guardian": {
+      "total": 192010,
+      "files": {
+        "lib/api.js": 8062,
+        "lib/client.js": 60170,
+        "lib/client.src.js": 2478,
+        "lib/dep-precheck.js": 6052,
+        "lib/dep-version.js": 7838,
+        "lib/events.js": 2136,
+        "lib/index.js": 12703,
+        "lib/mount.js": 12019,
+        "lib/parts/apply.js": 3122,
+        "lib/parts/row.js": 6385,
+        "lib/parts/styles.js": 18461,
+        "lib/parts/util.js": 7638,
+        "lib/parts/view.js": 9221,
+        "lib/startup-check.js": 8729,
+        "lib/state.js": 6789
+      }
+    },
+    "dsh-my-memory": {
+      "total": 770279,
+      "files": {
+        "assets/issue-193-delete-armed.png": 96684,
+        "assets/issue-193-other-tool-approval.png": 125884,
+        "assets/issue-193-panel-confirm.png": 134070,
+        "assets/issue-193-save-confirm.png": 85785,
+        "assets/screenshot.png": 106646,
+        "lib/api-route.js": 15383,
+        "lib/api-route.types.js": 11,
+        "lib/client.js": 89265,
+        "lib/client.src.js": 2367,
+        "lib/delete-tool.js": 7052,
+        "lib/extract.js": 7591,
+        "lib/index.js": 14330,
+        "lib/memory-scoring.js": 12941,
+        "lib/memory-text.js": 2808,
+        "lib/memory-types.js": 165,
+        "lib/prompt.js": 3464,
+        "lib/save-policy.js": 13218,
+        "lib/store.js": 13946,
+        "lib/tool.js": 14608,
+        "lib/write-tools.js": 2213
+      }
+    },
+    "dsh-my-notify": {
+      "total": 306864,
+      "files": {
+        "assets/notify-toast.png": 96384,
+        "lib/client.js": 68709,
+        "lib/client.src.js": 3355,
+        "lib/index.js": 9384,
+        "lib/listeners.js": 5952,
+        "lib/notice.js": 6164,
+        "lib/parts/i18n.js": 6750,
+        "lib/parts/render.js": 14199,
+        "lib/parts/settings.js": 13711,
+        "lib/parts/stream.js": 6976,
+        "lib/parts/webhook-settings.js": 10902,
+        "lib/routes.js": 13804,
+        "lib/session.js": 6162,
+        "lib/token-meter.js": 3469,
+        "lib/webhook-store.js": 2316,
+        "lib/webhook/adapters.js": 11701,
+        "lib/webhook/pusher.js": 4593
+      }
+    },
+    "dsh-my-observability": {
+      "total": 431571,
+      "files": {
+        "assets/git-panel.png": 88508,
+        "assets/replay-panel.png": 144928,
+        "lib/ai.js": 7205,
+        "lib/audit-view.js": 11253,
+        "lib/audit.js": 11176,
+        "lib/client.js": 89635,
+        "lib/client.src.js": 4825,
+        "lib/constants.js": 196,
+        "lib/diff.js": 3265,
+        "lib/git.js": 6332,
+        "lib/index.js": 3847,
+        "lib/parts/native-tabs.js": 1727,
+        "lib/resource-monitor.js": 4269,
+        "lib/resource-rules.js": 807,
+        "lib/review.js": 4970,
+        "lib/routes.js": 11309,
+        "lib/store-persist.js": 7446,
+        "lib/store.js": 12585
+      }
+    },
+    "dsh-my-opencode-session-header": {
+      "total": 33208,
+      "files": {
+        "lib/config.js": 3076,
+        "lib/context.js": 2405,
+        "lib/fetch-patch.js": 6120,
+        "lib/headers.js": 2368,
+        "lib/index.js": 3050,
+        "lib/session-value.js": 534
+      }
+    },
+    "dsh-my-plugin-manager": {
+      "total": 113394,
+      "files": {
+        "lib/api-route.js": 13390,
+        "lib/client.js": 69258,
+        "lib/client.src.js": 3164,
+        "lib/index.js": 1482,
+        "lib/manage.js": 6450,
+        "lib/registry.js": 8462
+      }
+    },
+    "dsh-my-remote": {
+      "total": 184669,
+      "files": {
+        "assets/ask-push.png": 127358,
+        "lib/audit.js": 1582,
+        "lib/channels.js": 5770,
+        "lib/commands.js": 8329,
+        "lib/events.js": 10192,
+        "lib/index.js": 4352,
+        "lib/registries.js": 6522,
+        "lib/routes.js": 5758,
+        "lib/session.js": 3533
+      }
+    },
+    "dsh-my-skill-manager": {
+      "total": 88296,
+      "files": {
+        "lib/api-route.js": 8682,
+        "lib/client.js": 47317,
+        "lib/client.src.js": 2193,
+        "lib/config.js": 3319,
+        "lib/diagnose.js": 7267,
+        "lib/index.js": 4050,
+        "lib/provider.js": 2347,
+        "lib/usage.js": 5947
+      }
+    },
+    "dsh-plugin-dev-mode": {
+      "total": 55662,
+      "files": {}
+    },
+    "dsh-session-title-gen": {
+      "total": 28935,
+      "files": {
+        "lib/generate.js": 3590,
+        "lib/host.js": 2616,
+        "lib/index.js": 4244,
+        "lib/title.js": 8647,
+        "lib/workspace.js": 708
+      }
+    },
+    "dsh-shared": {
+      "total": 97662,
+      "files": {
+        "lib/async.d.ts": 706,
+        "lib/async.js": 905,
+        "lib/bounded.d.ts": 5094,
+        "lib/bounded.js": 5832,
+        "lib/config-store.d.ts": 914,
+        "lib/config-store.js": 7003,
+        "lib/fence.d.ts": 846,
+        "lib/fence.js": 2429,
+        "lib/http.d.ts": 589,
+        "lib/http.js": 965,
+        "lib/index.d.ts": 3511,
+        "lib/index.js": 2641,
+        "lib/jsonl.d.ts": 1343,
+        "lib/jsonl.js": 5635,
+        "lib/persist.d.ts": 3839,
+        "lib/persist.js": 4670,
+        "lib/project.d.ts": 374,
+        "lib/project.js": 823,
+        "lib/resource-guard-types.d.ts": 536,
+        "lib/resource-guard-types.js": 247,
+        "lib/resource-guard.d.ts": 4219,
+        "lib/resource-guard.js": 9676,
+        "lib/resource-rules.d.ts": 2118,
+        "lib/resource-rules.js": 3872,
+        "lib/scheduler.d.ts": 5144,
+        "lib/scheduler.js": 5403,
+        "lib/types.d.ts": 1484,
+        "lib/types.js": 440
+      }
+    },
+    "dsh-task-reliability": {
+      "total": 310213,
+      "files": {
+        "assets/screenshot-panel.png": 122908,
+        "lib/api.js": 11427,
+        "lib/ask.js": 7021,
+        "lib/client.js": 43025,
+        "lib/client.src.js": 2969,
+        "lib/command.js": 8922,
+        "lib/constants.js": 6282,
+        "lib/emit.js": 1029,
+        "lib/events.js": 18062,
+        "lib/index.js": 15526,
+        "lib/loop.js": 5167,
+        "lib/repeat.js": 6804,
+        "lib/rescue.js": 8131,
+        "lib/store.js": 10673,
+        "lib/text.js": 3561,
+        "lib/util.js": 2037,
+        "lib/verify.js": 11167
+      }
+    },
+    "dsh-think-zh-expand": {
+      "total": 299511,
+      "files": {
+        "assets/think-markdown.png": 227686,
+        "lib/client.js": 52704,
+        "lib/client.src.js": 2787,
+        "lib/index.js": 1433
+      }
+    },
+    "dsh-ts-example": {
+      "total": 48596,
+      "files": {
+        "assets/screenshot.png": 28844,
+        "lib/client.js": 7013,
+        "lib/client.src.js": 1406,
+        "lib/greeting.js": 591,
+        "lib/index.js": 4207
+      }
+    }
+  }
+}

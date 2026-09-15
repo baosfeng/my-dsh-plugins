@@ -86,9 +86,13 @@ export default [
       // scripts/build.mjs 拼接生成）：产物行数 = 源码总和，尺寸规则只查源；
       // mermaid 产物内嵌 8.9MB base64，ESLint 正则规则会崩溃
       'plugins/*/lib/client.js',
-      // 第三方 vendor 源码（dsh-mermaid-render 内嵌 mermaid.min.js，8.9MB 压缩
-      // 单行产物）：同上，正则规则在压缩产物上有崩溃风险，且非本仓库代码
+      // 第三方 / 压缩产物（dsh-mermaid-render 内嵌 mermaid.min.js，8.9MB 压缩单行产物）：
+      // 同上，正则规则在压缩产物上有崩溃风险，且非本仓库代码
       'plugins/*/vendor/',
+      // issue #322：引擎真源已从 vendor/ 移到 assets/（冗余的 vendor 副本删除），
+      // 原先只豁免 plugins/*/vendor/ 导致 eslint 每次都去解析这 3.18MB 压缩单行
+      // （实测 `eslint plugins/` 耗时 7.9s）。
+      'plugins/*/assets/*.min.js',
       // TS 插件（issue #47 / TS 全量迁移）：tsc 编译产物（见 tscArtifacts），
       // 尺寸与风格规则只查 TS 源码
       ...tscArtifacts(),

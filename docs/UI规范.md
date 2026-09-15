@@ -54,6 +54,11 @@ dsh-file-activity 的 UI 语言由五个要素构成，翻新插件时逐项对�
 
 > **构建期注入辅助**：占位符注入的「恰好一处 + 非注释位置 + 锚点声明恰好一份」三道断言位于 **`plugins/dsh-shared/scripts/splice.mjs`**（issue #185 起于 dsh-mermaid-render，#186 P2 收口为共享；Node ESM 辅助，各插件 `scripts/build.mjs` 直接 import）。
 
+> **体积预算（issue #322）**：共享 parts 是**构建期拼接**进各插件产物的 —— 改一次 `icons.part.js`，11 个插件的
+> `lib/client.js` 会同时变大（git 全历史实测单次提交最大 +27 KB）。因此共享件"顺带膨胀"会被放大 11 倍，改动
+> 这些部件后请跑 `node scripts/check-client-size.mjs`（或 `npm run verify`）确认没顶破体积预算；门禁口径、
+> 基线表与余量理由见 [构建与测试](开发指南/构建与测试.md#客户端产物体积预算issue-322)。
+
 ### 图标清单（19 个）
 
 全部为 `stroke=currentColor` 线性图标，`icon.<name>(size)` 调用，默认尺寸见括号：

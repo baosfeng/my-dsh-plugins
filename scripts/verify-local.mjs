@@ -38,6 +38,9 @@
  *   links        → node scripts/check-links.mjs（文档引用完整性：链接/锚点/路径 token/
  *                  shell 调用/npm script/skill 与插件名，纯本地文件检查）
  *   resource-smoke→ node scripts/resource-smoke.mjs（issue #127 资源回归门禁）
+ *   client-size  → node scripts/check-client-size.mjs（客户端产物**体积预算**，issue #322：
+ *                  发布面（lib/** 与 assets/**，以插件 package.json 的 files 为准）不得超过
+ *                  「基线 + 余量」——#185 曾把 4.48 MB 冗余注入 client bundle，全靠人工发现）
  *
  * 用法：
  *   node scripts/verify-local.mjs                    # full：全部检查（跳过 audit/mutation）
@@ -562,6 +565,24 @@ const CHECK_DEFS = [
         (f) => /^plugins\/[^/]+\/lib\/client\.js$/.test(f) || /^plugins\/[^/]+\/package\.json$/.test(f),
       )
       return touched ? null : '本次变更不含 plugins/*/lib/client.js 或 plugins/*/package.json'
+    },
+  },
+  {
+    id: 'client-size',
+    label: 'client-size (node scripts/check-client-size.mjs)',
+    run: () => runCapture('node', ['scripts/check-client-size.mjs'], root),
+    // 只量「发布面」体积：插件 package.json（files 字段决定发布面）+ plugins/<name>/{lib,assets}/
+    // 下的产物 + 门禁自己的基线文件。三者都没动时体积不可能变化（纯统计，无外部输入）。
+    skip: (ctx) => {
+      if (ctx.docsOnly) return '纯文档变更：该门禁只量插件发布面产物体积'
+      if (!ctx.fast || ctx.escalated || ctx.changedFiles === null) return null
+      const touched = ctx.changedFiles.some(
+        (f) =>
+          /^plugins\/[^/]+\/package\.json$/.test(f) ||
+          /^plugins\/[^/]+\/(lib|assets)\//.test(f) ||
+          f === 'scripts/client-size-baseline.json',
+      )
+      return touched ? null : '本次变更不含 plugins/*/{package.json,lib/**,assets/**} 或体积基线'
     },
   },
   {

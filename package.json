@@ -22,6 +22,7 @@
     "check:ts-size": "node scripts/check-ts-size.mjs",
     "check:links": "node scripts/check-links.mjs",
     "check:client-modules": "node scripts/check-client-modules.mjs",
+    "check:client-size": "node scripts/check-client-size.mjs",
     "deps:matrix": "node scripts/deps-matrix.mjs",
     "deps:matrix:md": "node scripts/deps-matrix.mjs --markdown",
     "deps:matrix:offline": "node scripts/deps-matrix.mjs --offline"

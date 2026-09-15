@@ -23,8 +23,18 @@ const MERMAID_ROUTE_PATH = '/mermaid-render/assets/mermaid-10.9.3.min.js'
 
 export const name = 'dsh-mermaid-render'
 
-/** 服务依赖：systemPrompt（硬）+ webServer（可选，静态文件路由）。 */
-export const inject = ['systemPrompt'] as const
+/**
+ * 服务依赖（issue #298）：systemPrompt + webServer。
+ *
+ * `webServer` **必须**声明：cordis 4 的 service 守卫在 `ctx.webServer` 的 **get 阶段**就抛
+ * `cannot get property "webServer" without inject`，可选链 `?.` 挡不住（它保护的是
+ * undefined 的方法调用，不是抛错的属性读取）。本仓库访问 `ctx.webServer` 的其它插件
+ * 全部在 inject 里声明了它，此前本插件漏了 —— apply 即崩。
+ *
+ * cordis 4 的 inject 没有 required/optional 语义；声明后在没有 webServer 的 profile
+ * （如 tui）里该 fiber 保持 inactive，这正是期望：没有 webServer 就没有静态资源路由。
+ */
+export const inject = ['systemPrompt', 'webServer'] as const
 
 /** 插件配置（issue #194）。 */
 export type MermaidRenderConfig = PromptConfig

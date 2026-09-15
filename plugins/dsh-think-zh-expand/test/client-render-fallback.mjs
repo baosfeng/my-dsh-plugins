@@ -391,10 +391,12 @@ try {
 
   // ── 用例 E：产物契约（三级链都在 bundle 里，且无裸 createElement(null)）──
   {
-    assert.ok(bundleSrc.includes("require('dsh-md-render')"), 'bundle still requires dsh-md-render (level 1)')
+    // issue #299：三级链逻辑收口在共享件（构建期注入），模块名以参数传入共享件
+    assert.ok(bundleSrc.includes('function installMarkdownViewFallback('), 'shared fallback part injected')
+    assert.ok(bundleSrc.includes("'dsh-md-render'"), 'preferred render kernel is dsh-md-render (level 1)')
     assert.ok(
-      bundleSrc.includes("require('@deepseek-ai/dsh-client-ui-primitives')"),
-      'bundle requires official ui primitives for fallback (level 2)',
+      bundleSrc.includes("'@deepseek-ai/dsh-client-ui-primitives'"),
+      'platform official primitives wired for fallback (level 2)',
     )
     assert.ok(
       bundleSrc.includes('data-dsh-think-zh-expand-fallback'),

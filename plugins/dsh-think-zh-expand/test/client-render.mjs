@@ -376,7 +376,10 @@ try {
   assert.ok(!bundleSrc.includes('function tryTable'), 'tryTable definition removed from bundle')
   assert.ok(!bundleSrc.includes('function tryFence'), 'tryFence definition removed from bundle')
   assert.ok(!bundleSrc.includes('function MarkdownView'), 'MarkdownView definition removed from bundle')
-  assert.ok(bundleSrc.includes("require('dsh-md-render')"), 'bundle requires dsh-md-render for rendering')
+  // issue #299：三级回退逻辑收口在共享件 dsh-shared/client-parts/markdown-fallback.part.js
+  // （构建期注入），bundle 里是共享件内的 req('dsh-md-render') 调用。
+  assert.ok(bundleSrc.includes('function installMarkdownViewFallback('), 'shared fallback part injected')
+  assert.ok(bundleSrc.includes("'dsh-md-render'"), 'bundle wires dsh-md-render as the preferred render kernel')
 
   // ── issue #54 类名前缀统一 + 视觉回退（用户要求）：思考块结构/折叠交互 ──
   // 13. 结构：统一 dsh-think-zh-expand- 前缀类名；视觉回归官方基线

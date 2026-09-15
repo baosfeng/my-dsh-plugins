@@ -29,12 +29,15 @@ const BUILD_DIR = join(root, 'lib/.client-build')
 const PLACEHOLDER = '/*__CLIENT_BUNDLE__*/'
 const ICONS_PLACEHOLDER = '/*__PART_ICONS__*/'
 const STYLE_PLACEHOLDER = '/*__PART_STYLE_TAG__*/'
+const MARKDOWN_FALLBACK_PLACEHOLDER = '/*__PART_MARKDOWN_FALLBACK__*/'
 
-// 共享 client parts 位于 dsh-shared 包（issue #54 阶段 0；#186 P2 起含样式样板）
+// 共享 client parts 位于 dsh-shared 包（issue #54 阶段 0；#186 P2 起含样式样板；
+// #299 起含三级 Markdown 渲染回退——与 dsh-my-plugin-manager 共用单一来源）
 const sharedPartsDir = join(root, '..', 'dsh-shared', 'client-parts')
 
 /** 占位符 → [共享片段文件, 注入后必须恰好一份的锚点声明]。 */
 const SHARED_PARTS = [
+  [MARKDOWN_FALLBACK_PLACEHOLDER, 'markdown-fallback.part.js', 'function installMarkdownViewFallback('],
   [ICONS_PLACEHOLDER, 'icons.part.js', 'const ICON_STROKE = 1.8'],
   [STYLE_PLACEHOLDER, 'style-tag.part.js', 'function installStyles('],
 ]

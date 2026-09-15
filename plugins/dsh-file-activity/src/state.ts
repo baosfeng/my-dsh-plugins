@@ -16,10 +16,6 @@ import { createSession, defaultLimits, emptyEvicted, type QuotaLimits } from './
 import { trimToQuota } from './quota-trim.js'
 import type { ActivityState, Counters, LoadedState, Logger, RecentEntry, SessionState } from './types.js'
 
-/** 快照元信息行标记 / 快照结束行标记（非会话数据行）。 */
-const META = '~'
-const END = '='
-
 /** NUL 字符（路径合法性判定）。 */
 const NUL = String.fromCharCode(0)
 

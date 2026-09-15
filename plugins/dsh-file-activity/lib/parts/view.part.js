@@ -176,7 +176,7 @@ function FileActivityView({
   dataStore,
 }) {
   const data = useSyncExternalStore(dataStore.subscribe, dataStore.getSnapshot)
-  const [cwd, setCwd] = useState(scope?.cwd || '')
+  const [, setCwd] = useState(scope?.cwd || '')
   const [error, setError] = useState(false)
   const [recentOpen, setRecentOpen] = useState(true)
   const [collapsedDirs, setCollapsedDirs] = useState(() => new Set())

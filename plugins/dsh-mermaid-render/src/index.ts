@@ -19,7 +19,6 @@ import type { DshContext } from './types.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MERMAID_ASSET_PATH = join(__dirname, '..', 'assets', 'mermaid-10.9.3.min.js')
-const MERMAID_ROUTE_PATH = '/mermaid-render/assets/mermaid-10.9.3.min.js'
 
 export const name = 'dsh-mermaid-render'
 

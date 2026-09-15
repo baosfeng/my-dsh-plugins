@@ -29,7 +29,7 @@
  * without touching disk; load() restores the cache at startup (restart
  * recovery).
  */
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { readFile, rm, stat } from 'node:fs/promises'
 import { mkdir } from 'node:fs/promises'
 import { atomicWriteJson, createWriteScheduler } from 'dsh-shared'

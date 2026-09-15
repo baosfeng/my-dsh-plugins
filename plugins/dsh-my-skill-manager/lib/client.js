@@ -696,7 +696,6 @@ function SkillManagerView() {
             actions.load('');
         });
     }, []);
-    const projectRoot = data === null ? '' : data.projectRoot;
     const cwdOf = (scope) => (scope === 'project' ? sessionCwd : '');
     const switchView = (scope) => {
         if (scope === view)

@@ -17,7 +17,7 @@
  * tsconfig.client.json 的 `lib: ["es2022", "dom"]` 提供，无需重复声明。
  *
  * 本文件只被 tsconfig.client.json 加载（根 tsconfig 已 exclude
- * `plugins/*/ src / client /**`），不会污染仓库级类型环境。
+ * `plugins/<名>/src/client/**`），不会污染仓库级类型环境。
  */
 
 // ── React（模板里 require('react') 解构出的三个 hook）────────────────────

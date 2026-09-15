@@ -13,7 +13,7 @@
  * 扫描只读包内容，绝不执行包内脚本/代码。
  */
 import { createHash } from 'node:crypto'
-import { readFile, readdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { execFile } from 'node:child_process'
 import tmp from 'tmp'

@@ -4,6 +4,7 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -15,6 +16,7 @@ import {
   localPathOf,
   isShellFile,
   scanPackageTarget,
+  verifyTarballIntegrity,
 } from '../lib/poison.js'
 
 const tmpDirs = []
@@ -225,4 +227,23 @@ test('scanPackageTarget: unresolvable package name produces alert', { timeout: 6
   assert.equal(alerts[0].type, 'poison')
   assert.equal(alerts[0].severity, 'low')
   assert.ok(alerts[0].message.includes('无法解析投毒扫描目标'))
+})
+
+// ── verifyTarballIntegrity ─────────────────────────────────────────────────
+
+/**
+ * #314 js/http-to-file-access 回归：registry 下载的 tarball 字节必须先过摘要校验再落盘。
+ * 这里钉住校验器的判定方向——**错摘要一律 false**（失败方向必须是"不落盘、不扫描"）。
+ */
+test('verifyTarballIntegrity: 摘要匹配才放行；不匹配/形态非法一律拒绝', () => {
+  const body = Buffer.from('fake-tarball-bytes')
+  const good = `sha512-${createHash('sha512').update(body).digest('base64')}`
+  assert.equal(verifyTarballIntegrity(body, good), true, '正确摘要应放行')
+
+  const tampered = Buffer.from('fake-tarball-bytes!')
+  assert.equal(verifyTarballIntegrity(tampered, good), false, '字节被改 → 拒绝')
+  assert.equal(verifyTarballIntegrity(body, `${good}x`), false, '摘要被改 → 拒绝')
+  for (const bad of ['', 'sha512-', 'sha1-abc', 'not-an-integrity', null, undefined, 42, {}]) {
+    assert.equal(verifyTarballIntegrity(body, bad), false, `非法 integrity（${String(bad)}）→ 拒绝`)
+  }
 })

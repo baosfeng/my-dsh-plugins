@@ -12,7 +12,7 @@
  * 变异验证：把断言对象换成"两份引擎"的产物，本文件的产物用例必须变红。
  */
 import { describe, expect, it } from 'vitest'
-import { readFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, existsSync, openSync, fstatSync, closeSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spliceExactlyOnce } from '../../dsh-shared/scripts/splice.mjs'
@@ -102,9 +102,18 @@ describe('引擎外部化（按需加载替代 base64 内联）', () => {
   })
 
   it('asset 保持 minified（< 4MB、单行 UMD 开头；被 prettier --write 美化会立即超标）', () => {
-    expect(statSync(ASSET_PATH).size).toBeLessThan(4_000_000)
-    const head = readFileSync(ASSET_PATH, 'utf8').slice(0, 32)
-    expect(head.startsWith('(function(')).toBe(true)
+    // #314 js/file-system-race：原来是 `statSync(path)` 查大小 + `readFileSync(path)` 再读，
+    // 两次按**路径**打开——check 与 use 之间文件可被替换（构建/格式化并发时实测会读到另一份）。
+    // 改为一次 open 拿 fd，再对该 fd 做 fstat + read：同一打开实例，不存在第二个可被掉包的时刻。
+    const fd = openSync(ASSET_PATH, 'r')
+    try {
+      const stats = fstatSync(fd)
+      const head = readFileSync(fd, 'utf8').slice(0, 32)
+      expect(stats.size).toBeLessThan(4_000_000)
+      expect(head.startsWith('(function(')).toBe(true)
+    } finally {
+      closeSync(fd)
+    }
   })
 
   it('client.js 引用 MERMAID_ENGINE_URL 路径（fetch 加载）', () => {

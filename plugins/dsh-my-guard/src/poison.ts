@@ -12,6 +12,7 @@
  *
  * 扫描只读包内容，绝不执行包内脚本/代码。
  */
+import { createHash } from 'node:crypto'
 import { readFile, readdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -106,6 +107,24 @@ export function localPathOf(pkg: string): string {
   return ''
 }
 
+/**
+ * 校验 tarball 字节与 registry 声明的 `dist.integrity` 是否一致（#314 js/http-to-file-access）。
+ *
+ * 为什么必须校验再落盘：这段字节会被写进 `os.tmpdir()` 下的文件并交给 tar 解包扫描，
+ * 来源是 HTTP（`registry.npmjs.org` 返回的 `dist.tarball` URL）。provenance 的
+ * `dist.integrity`（`sha512-<base64>`）是 registry 对这份 tarball 的摘要声明——
+ * 摘要不符说明传输被篡改 / 缓存被投毒 / 拿到的是别的版本，此时宁可不扫（返回 false → 空串），
+ * 也不能把未校验的远端字节落盘。
+ *
+ * 非 `sha512-` 形态（未知算法、空值、格式错）一律拒绝：无法校验就不放行。
+ */
+export function verifyTarballIntegrity(buffer: Buffer, integrity: unknown): boolean {
+  if (typeof integrity !== 'string' || !integrity.startsWith('sha512-')) return false
+  const expected = integrity.slice('sha512-'.length)
+  if (expected === '') return false
+  return createHash('sha512').update(buffer).digest('base64') === expected
+}
+
 /** 从 npm registry 获取并下载 tarball 到临时文件；失败返回空串。 */
 async function fetchTarball(pkg: string): Promise<string> {
   try {
@@ -120,6 +139,8 @@ async function fetchTarball(pkg: string): Promise<string> {
     const tarballResponse = await fetch(tarballUrl)
     if (!tarballResponse.ok) return ''
     const buffer = Buffer.from(await tarballResponse.arrayBuffer())
+    // 落盘前先验摘要：不通过就不写文件（调用方会把空串当解析失败处理）。
+    if (!verifyTarballIntegrity(buffer, dist?.integrity)) return ''
     const file = tmp.fileSync({ prefix: 'dsh-guard-', postfix: '.tgz' }).name
     await writeFile(file, buffer)
     return file

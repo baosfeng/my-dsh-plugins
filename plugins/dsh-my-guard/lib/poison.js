@@ -12,7 +12,8 @@
  *
  * 扫描只读包内容，绝不执行包内脚本/代码。
  */
-import { readFile, readdir, stat, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, basename, extname } from 'node:path';
 import { execFile } from 'node:child_process';
 import tmp from 'tmp';
@@ -35,16 +36,16 @@ export async function scanPackage(dir) {
 }
 /** 解压 tarball 到临时目录后扫描（不执行包内代码）；返回扫描结果。 */
 export async function scanTarball(tarballPath) {
-    const tmpDir = tmp.dirSync({ unsafeCleanup: true, prefix: 'dsh-guard-scan-' });
+    const tmpDir = tmp.dirSync({ prefix: 'dsh-guard-scan-', unsafeCleanup: true }).name;
     try {
-        await execFileAsync('tar', ['-xzf', tarballPath, '-C', tmpDir.name]);
-        return await scanPackage(tmpDir.name);
+        await execFileAsync('tar', ['-xzf', tarballPath, '-C', tmpDir]);
+        return await scanPackage(tmpDir);
     }
     catch (error) {
         return { ok: false, error: errorMessage(error) };
     }
     finally {
-        tmpDir.removeCallback();
+        await rm(tmpDir, { recursive: true, force: true });
     }
 }
 /**
@@ -91,6 +92,25 @@ export function localPathOf(pkg) {
         return candidate;
     return '';
 }
+/**
+ * 校验 tarball 字节与 registry 声明的 `dist.integrity` 是否一致（#314 js/http-to-file-access）。
+ *
+ * 为什么必须校验再落盘：这段字节会被写进 `os.tmpdir()` 下的文件并交给 tar 解包扫描，
+ * 来源是 HTTP（`registry.npmjs.org` 返回的 `dist.tarball` URL）。provenance 的
+ * `dist.integrity`（`sha512-<base64>`）是 registry 对这份 tarball 的摘要声明——
+ * 摘要不符说明传输被篡改 / 缓存被投毒 / 拿到的是别的版本，此时宁可不扫（返回 false → 空串），
+ * 也不能把未校验的远端字节落盘。
+ *
+ * 非 `sha512-` 形态（未知算法、空值、格式错）一律拒绝：无法校验就不放行。
+ */
+export function verifyTarballIntegrity(buffer, integrity) {
+    if (typeof integrity !== 'string' || !integrity.startsWith('sha512-'))
+        return false;
+    const expected = integrity.slice('sha512-'.length);
+    if (expected === '')
+        return false;
+    return createHash('sha512').update(buffer).digest('base64') === expected;
+}
 /** 从 npm registry 获取并下载 tarball 到临时文件；失败返回空串。 */
 async function fetchTarball(pkg) {
     try {
@@ -108,9 +128,12 @@ async function fetchTarball(pkg) {
         if (!tarballResponse.ok)
             return '';
         const buffer = Buffer.from(await tarballResponse.arrayBuffer());
-        const tmpFile = tmp.fileSync({ postfix: '.tgz', prefix: 'dsh-guard-' });
-        await writeFile(tmpFile.name, buffer);
-        return tmpFile.name;
+        // 落盘前先验摘要：不通过就不写文件（调用方会把空串当解析失败处理）。
+        if (!verifyTarballIntegrity(buffer, dist?.integrity))
+            return '';
+        const file = tmp.fileSync({ prefix: 'dsh-guard-', postfix: '.tgz' }).name;
+        await writeFile(file, buffer);
+        return file;
     }
     catch {
         return '';
@@ -196,12 +219,14 @@ function checkShellScripts(name, text, rel, handle) {
 }
 /** 读取文件文本（大小上限内；不可读/超限返回 null）。 */
 async function readText(full, handle) {
-    const info = await stat(full);
-    if (!info.isFile() || info.size > MAX_SCAN_FILE_BYTES)
-        return null;
-    handle.bytes += info.size;
     try {
-        return await readFile(full, 'utf8');
+        // Use try-catch instead of stat + readFile to avoid TOCTOU race condition
+        const content = await readFile(full, 'utf8');
+        // Check content size after reading to avoid race condition
+        if (content.length > MAX_SCAN_FILE_BYTES)
+            return null;
+        handle.bytes += content.length;
+        return content;
     }
     catch {
         return null;

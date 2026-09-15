@@ -11,7 +11,7 @@
  *     全部在临时目录里构造，不依赖 GitHub 网络（CI 里也必须能跑）。
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirSync } from 'tmp'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -59,6 +59,24 @@ function makeFakeFork(tmpRoot, id, { hooksPath = null } = {}) {
   mkdirSync(dir, { recursive: true })
   spawnSync('git', ['init', '-q', '-b', 'main', dir], { encoding: 'utf8' })
   if (hooksPath) spawnSync('git', ['-C', dir, 'config', 'core.hooksPath', hooksPath], { encoding: 'utf8' })
+  return dir
+}
+
+/**
+ * 造一个可被 `git clone --local` 的"origin"仓（`create` 端到端用例用）。
+ * 为什么不用 makeFakeFork：它没有 commit，clone 出来拿不到 `origin/main`，基线校验必然失败。
+ */
+function makeOriginRepo(tmpRoot, id = 'origin') {
+  const dir = join(tmpRoot, id)
+  mkdirSync(dir, { recursive: true })
+  spawnSync('git', ['init', '-q', '-b', 'main', dir], { encoding: 'utf8' })
+  writeFileSync(join(dir, 'README.md'), '# origin\n')
+  spawnSync('git', ['-C', dir, 'add', '-A'], { encoding: 'utf8' })
+  spawnSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'init'], {
+    encoding: 'utf8',
+  })
+  spawnSync('git', ['-C', dir, 'remote', 'add', 'origin', 'https://github.com/o/r.git'], { encoding: 'utf8' })
+  spawnSync('git', ['-C', dir, 'fetch', '-q', 'origin', 'main'], { encoding: 'utf8' })
   return dir
 }
 
@@ -411,6 +429,47 @@ describe('CLI 端到端（离线）', () => {
       expect(code).toBe(0)
       expect(existsSync(doomed)).toBe(false)
       expect(existsSync(keep)).toBe(true)
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
+  /**
+   * #314 js/insecure-temporary-file 回归：`.git/info/exclude` 的写入不得跟随符号链接。
+   * fork 落在 `os.tmpdir()`（同机其他用户可写）下，攻击者可以预置软链把"追加 node_modules"
+   * 变成"往任意文件里追加内容"。修复用 mkdtemp + `wx` + rename 原子替换。
+   */
+  it('create 正常路径写入 .git/info/exclude（git clone 已建该文件，不能被 O_EXCL 判死）', { timeout: 60_000 }, () => {
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
+    try {
+      makeOriginRepo(fake)
+      const { code, out } = runCli(['create', 'test9', '--dir', join(fake, 'gh-fork-test9')], { tmpRoot: fake })
+      expect(code, out).toBe(0)
+      const exclude = readFileSync(join(fake, 'gh-fork-test9', '.git', 'info', 'exclude'), 'utf8')
+      expect(exclude).toContain('node_modules')
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
+  it('exclude 位置已被软链占据 → 拒绝写入，受害者文件一字不改', { timeout: 60_000 }, () => {
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
+    try {
+      const victim = join(fake, 'victim.txt')
+      const original = 'keep-me\n'
+      writeFileSync(victim, original)
+      // 攻击者视角：把 fork 的 .git/info/exclude 预置成指向受害者的软链
+      const forkDir = join(fake, 'gh-fork-test8')
+      mkdirSync(join(forkDir, '.git', 'info'), { recursive: true })
+      symlinkSync(victim, join(forkDir, '.git', 'info', 'exclude'))
+
+      // fork 目录已存在 → create 先拒绝（不依赖本修复）；这里的价值是钉住
+      // "现有路径不是普通文件时绝不写入"，配合下面的源码形态断言构成回归网。
+      const { code, out } = runCli(['create', 'test8', '--dir', forkDir], { tmpRoot: fake })
+      expect(code).toBe(1)
+      expect(out).toContain('目录已存在')
+      expect(readFileSync(victim, 'utf8')).toBe(original)
+      expect(lstatSync(join(forkDir, '.git', 'info', 'exclude')).isSymbolicLink()).toBe(true)
     } finally {
       rmSync(fake, { recursive: true, force: true })
     }

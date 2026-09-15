@@ -118,8 +118,18 @@ const HOST_LAYOUT_RE = /(?:^|[\s`(（[,])(?:packages|apps|bundle)\//
 const UPSTREAM_RE = /upstream|权威来源|上游仓库|not shipped/i
 /** 宿主 API 名（skill.list / subagent.interrupt 这类）所在行的 skills/ 路径是宿主工具路径，不是仓库 skill。 */
 const HOST_API_RE = /`[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z][a-zA-Z0-9.]*`/
-/** 同行有外部仓库链接 → 该行 scripts/ 引用是那个仓库自己的脚本（如 dsh-TUI 的 verify-tps.mjs）。 */
-const THIRD_PARTY_RE = /\bgithub\.com\b/
+/**
+ * 同行有外部仓库链接 → 该行 scripts/ 引用是那个仓库自己的脚本（如 dsh-TUI 的 verify-tps.mjs）。
+ *
+ * #314 js/regex/missing-regexp-anchor：原为 `/\bgithub\.com\b/`——`\b` 是**单词**边界，不是
+ * 主机名边界：`notgithub.com/o/r`、`github.com.evil.example/o/r` 都会命中，于是同一行的仓库内
+ * scripts/ 引用被静默豁免（**漏检**，方向不安全）。改为前锚定 + 显式结束边界：
+ *   · `(?:^|[/\s([<"'\`])` —— `github.com` 只能出现在行首或 URL/分隔符之后（挡 `notgithub.com`）；
+ *   · `(?![\w.-])` —— 后面不能紧跟主机名合法字符（挡 `github.com.evil.example`）。
+ * 语义保持"行内任意位置命中"（调用点是 `test(整行)`）：`[文字](https://github.com/o/r)` 仍命中。
+ * 回归测试见 scripts/test/check-links.test.mjs。
+ */
+export const THIRD_PARTY_RE = /(?:^|[/\s([<"'\`])github\.com(?![\w.-])/
 /** 升级审计语料：按设计引用上游 DSH 仓库的文档（如 docs/config-catalog.md）。 */
 const UPSTREAM_CORPUS_RE = /^skills\/(?:dsh-upgrade-audit|plugin-upgrade)\//
 

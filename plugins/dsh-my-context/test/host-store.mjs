@@ -7,15 +7,15 @@ import assert from 'node:assert/strict'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
-import { createStore, stateFile } from '../lib/store.js'
+import { stateFile } from '../lib/store.js'
 import { createState, createSession, zeroUsage } from '../lib/state.js'
 import { MAX_SESSIONS } from '../lib/constants.js'
-import { bootPlugin, settle } from './lib/helpers.mjs'
+import { bootPlugin, bootStore, yieldLoop } from './lib/helpers.mjs'
 
 const disposeAlls = []
 const tmpDirs = []
-afterAll(() => {
-  for (const disposeAll of disposeAlls.splice(0)) disposeAll()
+afterAll(async () => {
+  for (const disposeAll of disposeAlls.splice(0)) await disposeAll()
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
@@ -47,8 +47,7 @@ test('createState / createSession / zeroUsage shapes', () => {
 
 test('store: recordRequest accumulates usage and snapshots composition', async () => {
   const { ctx, disposeAll } = boot({})
-  const store = createStore(ctx)
-  await settle()
+  const store = await bootStore(ctx) // 加载就绪 + 登记卸载（issue #335）
   store.addMessage('s-1', 'user', 10)
   store.addMessage('s-1', 'assistant', 20)
   store.recordRequest('s-1', {
@@ -56,7 +55,7 @@ test('store: recordRequest accumulates usage and snapshots composition', async (
     step: 1,
     usage: { inputTokens: 100, outputTokens: 30, cacheReadTokens: 50 },
   })
-  await settle()
+  await yieldLoop()
   const session = store.session('s-1')
   assert.equal(session.usage.inputTokens, 100)
   assert.equal(session.usage.outputTokens, 30)
@@ -70,13 +69,12 @@ test('store: recordRequest accumulates usage and snapshots composition', async (
   assert.equal(request.user, 10)
   assert.equal(request.assistant, 20)
   assert.equal(session.lastPromptTokens, 150, 'lastPromptTokens = latest request prompt')
-  disposeAll()
+  await disposeAll()
 })
 
 test('store: lastPromptTokens tracks the latest request, not the cumulative total', async () => {
   const { ctx, disposeAll } = boot({})
-  const store = createStore(ctx)
-  await settle()
+  const store = await bootStore(ctx) // 加载就绪 + 登记卸载（issue #335）
   // 多轮请求：cacheRead 每轮都很大且会重复累计（usage 口径），
   // 但"当前上下文长度"必须等于最近一次请求的 prompt。
   store.recordRequest('s-1', { turn: 1, step: 1, usage: { inputTokens: 100, cacheReadTokens: 900 } })
@@ -85,63 +83,59 @@ test('store: lastPromptTokens tracks the latest request, not the cumulative tota
     step: 1,
     usage: { inputTokens: 50, cacheReadTokens: 950, cacheWriteTokens: 5 },
   })
-  await settle()
+  await yieldLoop()
   const session = store.session('s-1')
   assert.equal(session.usage.inputTokens, 150, 'cumulative input still accumulates')
   assert.equal(session.usage.cacheReadTokens, 1850, 'cumulative cacheRead still accumulates')
   assert.equal(session.lastPromptTokens, 1005, 'context length = latest prompt (50+950+5)')
   assert.equal(session.requests[session.requests.length - 1].prompt, 1005)
-  disposeAll()
+  await disposeAll()
 })
 
 test('store: startTurn resets turn usage but keeps session usage', async () => {
   const { ctx, disposeAll } = boot({})
-  const store = createStore(ctx)
-  await settle()
+  const store = await bootStore(ctx) // 加载就绪 + 登记卸载（issue #335）
   store.recordRequest('s-1', { turn: 1, step: 1, usage: { inputTokens: 100, outputTokens: 10 } })
   store.startTurn('s-1', 2)
   store.recordRequest('s-1', { turn: 2, step: 1, usage: { inputTokens: 5, outputTokens: 1 } })
-  await settle()
+  await yieldLoop()
   const session = store.session('s-1')
   assert.equal(session.usage.inputTokens, 105)
   assert.equal(session.turnUsage.inputTokens, 5)
   assert.equal(session.turnUsage.turn, 2)
-  disposeAll()
+  await disposeAll()
 })
 
 test('store: sessions are isolated per sessionId', async () => {
   const { ctx, disposeAll } = boot({})
-  const store = createStore(ctx)
-  await settle()
+  const store = await bootStore(ctx) // 加载就绪 + 登记卸载（issue #335）
   store.recordRequest('s-1', { turn: 1, step: 1, usage: { inputTokens: 10 } })
   store.recordRequest('s-2', { turn: 1, step: 1, usage: { inputTokens: 20 } })
-  await settle()
+  await yieldLoop()
   assert.equal(store.session('s-1').usage.inputTokens, 10)
   assert.equal(store.session('s-2').usage.inputTokens, 20)
   assert.equal(store.session('s-3'), undefined)
   const sessions = store.sessions()
   assert.equal(sessions.length, 2)
-  disposeAll()
+  await disposeAll()
 })
 
 test('store: requests FIFO cap at MAX_REQUESTS_PER_SESSION', async () => {
   const { ctx, disposeAll } = boot({})
-  const store = createStore(ctx)
-  await settle()
+  const store = await bootStore(ctx) // 加载就绪 + 登记卸载（issue #335）
   for (let i = 0; i < 520; i++) {
     store.recordRequest('s-1', { turn: 1, step: i, usage: { inputTokens: 1 } })
   }
-  await settle()
+  await yieldLoop()
   const session = store.session('s-1')
   assert.equal(session.requests.length, 500)
   assert.equal(session.requests[0].step, 20)
-  disposeAll()
+  await disposeAll()
 })
 
 test('store: alerts FIFO cap and id assignment', async () => {
   const { ctx, disposeAll } = boot({})
-  const store = createStore(ctx)
-  await settle()
+  const store = await bootStore(ctx) // 加载就绪 + 登记卸载（issue #335）
   for (let i = 0; i < 60; i++) {
     store.recordAlert('s-1', {
       kind: 'budget',
@@ -152,17 +146,16 @@ test('store: alerts FIFO cap and id assignment', async () => {
       blocked: false,
     })
   }
-  await settle()
+  await yieldLoop()
   const session = store.session('s-1')
   assert.equal(session.alerts.length, 50)
   assert.equal(session.alerts[0].id, 11)
-  disposeAll()
+  await disposeAll()
 })
 
 test('store: updateHeader / updateContext', async () => {
   const { ctx, disposeAll } = boot({})
-  const store = createStore(ctx)
-  await settle()
+  const store = await bootStore(ctx) // 加载就绪 + 登记卸载（issue #335）
   store.updateHeader('s-1', {
     system: 'sys',
     tools: [{ name: 'bash' }],
@@ -172,7 +165,7 @@ test('store: updateHeader / updateContext', async () => {
     provider: 'deepseek',
   })
   store.updateContext('s-1', { model: 'deepseek-v4', provider: 'deepseek', contextWindow: 128000 })
-  await settle()
+  await yieldLoop()
   const session = store.session('s-1')
   assert.equal(session.header.system, 'sys')
   assert.equal(session.header.systemTokens, 10)
@@ -180,15 +173,14 @@ test('store: updateHeader / updateContext', async () => {
   assert.equal(session.model, 'deepseek-v4')
   assert.equal(session.provider, 'deepseek')
   assert.equal(session.contextWindow, 128000)
-  disposeAll()
+  await disposeAll()
 })
 
 test('store: persistence survives restart (recovery)', async () => {
   const home = dirSync({ unsafeCleanup: true, prefix: 'dsh-context-restart-' }).name
   tmpDirs.push(home)
   const first = boot({}, { home })
-  const store = createStore(first.ctx)
-  await settle()
+  const store = await bootStore(first.ctx) // 加载就绪 + 登记卸载（issue #335）
   store.recordRequest('s-1', {
     turn: 1,
     step: 1,
@@ -202,13 +194,11 @@ test('store: persistence survives restart (recovery)', async () => {
     mode: 'deny',
     blocked: true,
   })
-  store.dispose()
-  await settle(80)
-  first.disposeAll()
+  await store.dispose() // 落盘完成信号（返回 Promise），不再 sleep 赌 flush
+  await first.disposeAll()
 
   const second = boot({}, { home })
-  const store2 = createStore(second.ctx)
-  await settle(80)
+  const store2 = await bootStore(second.ctx) // 第二次启动同样等加载就绪
   const session = store2.session('s-1')
   assert.ok(session, 'session recovered after restart')
   assert.equal(session.usage.inputTokens, 100)
@@ -217,8 +207,7 @@ test('store: persistence survives restart (recovery)', async () => {
   assert.equal(session.lastPromptTokens, 130, 'lastPromptTokens recovered after restart')
   assert.equal(session.alerts.length, 1)
   assert.equal(session.alerts[0].blocked, true)
-  store2.dispose()
-  second.disposeAll()
+  await second.disposeAll()
 })
 
 test('store: stateFile respects DSH_HOME', () => {
@@ -242,9 +231,7 @@ test('store: corrupt persisted file falls back to empty state', async () => {
   mkdirSync(joinPath(home, 'context'), { recursive: true })
   writeFileSync(joinPath(home, 'context', 'context.json'), '{not json', 'utf8')
   const handle = boot({}, { home })
-  const store = createStore(handle.ctx)
-  await settle(80)
+  const store = await bootStore(handle.ctx) // 加载就绪（含解析失败的降级路径）+ 登记卸载
   assert.equal(store.state.bySession.size, 0, '损坏文件回退空的有界 Map')
-  store.dispose()
-  handle.disposeAll()
+  await handle.disposeAll()
 })

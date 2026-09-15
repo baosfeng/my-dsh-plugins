@@ -14,6 +14,7 @@
  */
 import { estimateMessage, estimateSystem, estimateTools, isEmptyMessage } from './meter.js';
 import { checkBudget } from './budget.js';
+import { whenReadyOf } from './store.js';
 import { overflowLevel, isOverflowing } from './overflow.js';
 /** 告警冷却（同一会话同一 scope 的重复告警间隔，防刷屏）。 */
 const ALERT_COOLDOWN_MS = 60000;
@@ -104,6 +105,9 @@ async function handlePreStep(payload, next, store, options, cooldown, overflowCo
     const sessionId = payload?.agent?.id;
     if (typeof sessionId !== 'string' || sessionId === '')
         return next();
+    // 加载就绪后才查询（issue #335）：否则 session() 返回 undefined → 静默跳过预算检查，
+    // 「启动期第一次超预算请求拦不拦得住」变成看 readFile 回调有没有抢在事件前面。
+    await whenReadyOf(store);
     const session = store.session(sessionId);
     if (session === undefined)
         return next();

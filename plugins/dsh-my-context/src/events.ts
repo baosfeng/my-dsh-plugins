@@ -14,6 +14,7 @@
  */
 import { estimateMessage, estimateSystem, estimateTools, isEmptyMessage } from './meter.js'
 import { checkBudget } from './budget.js'
+import { whenReadyOf } from './store.js'
 import { overflowLevel, isOverflowing } from './overflow.js'
 import type { DshContext } from './types.js'
 
@@ -28,7 +29,9 @@ export interface StoreType {
   recordOverflow: (sessionId: string, overflow: Record<string, unknown>) => void
   session: (sessionId: string) => Record<string, unknown> | undefined
   sessions: () => Array<Record<string, unknown>>
-  dispose: () => void
+  /** 加载就绪信号（issue #335）：磁盘状态合并 + pending 回放之后 resolve。 */
+  whenReady: () => Promise<void>
+  dispose: () => Promise<void>
   [key: string]: unknown // 允许索引访问
 }
 
@@ -159,6 +162,9 @@ async function handlePreStep(
 ): Promise<unknown> {
   const sessionId = ((payload as Record<string, unknown>)?.agent as Record<string, unknown>)?.id as string
   if (typeof sessionId !== 'string' || sessionId === '') return next()
+  // 加载就绪后才查询（issue #335）：否则 session() 返回 undefined → 静默跳过预算检查，
+  // 「启动期第一次超预算请求拦不拦得住」变成看 readFile 回调有没有抢在事件前面。
+  await whenReadyOf(store)
   const session = store.session(sessionId) as Record<string, unknown> | undefined
   if (session === undefined) return next()
   recordOverflowIfNeeded(store, session, options, overflowCooldown)

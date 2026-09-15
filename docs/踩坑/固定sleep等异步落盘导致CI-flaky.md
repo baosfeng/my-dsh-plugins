@@ -2,7 +2,7 @@
 title: 固定 sleep 等异步落盘导致 CI flaky（时序竞态）
 description: 测试用 setTimeout 固定等待异步加载/落盘，CI 容器高负载下等待不足 → 随机红；修法是给实现加确定性就绪信号（whenReady）+ 测试用条件轮询，让查询语义与加载耗时无关，而不是把 sleep 调大
 created: 2026-09-11
-updated: 2026-09-13
+updated: 2026-09-15
 ---
 
 # 固定 sleep 等异步落盘导致 CI flaky（时序竞态）
@@ -298,6 +298,101 @@ async drainSaves() {
 **业务异步流程本身**也可能还没跑到写盘那一步。「drain 写链」只覆盖「写已排队」的窗口，
 覆盖不到「写还没被调用」的窗口——判据是「读之前，**产生这个状态的异步流程**是否可等待」，
 而不是「写链是否 drain 过」。
+
+## 复发实例四（2026-09-15）：dsh-my-context `host-mutation.mjs:345` —— 同族第 5 例，以及**为什么前 4 次修复没有终结它**
+
+**现象**：CI 首跑红在 `plugins/dsh-my-context/test/host-mutation.mjs:345`（`store.session()` 未就绪
+断言失败），本地 118/118 全绿；按 `ci.yml` 认可的 `workflow_dispatch` 重跑即 success。
+与 #310 / #313 / #317 **完全同一根因**，只是换了插件（issue #335）。
+
+### 这次多出来的三层（同一根因的三个面）
+
+| 面                              | 事实                                                                                                                                                                                                                                                                                                                            | 性质                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 测试侧                          | `await settle(80)` 赌 `createStore()` 的异步 `readFile` 回调已跑完                                                                                                                                                                                                                                                              | 老问题（前 4 例同款）                                     |
+| **实现侧的信号名不副实**        | store 早就有 `whenPersisted()`，注释写着「确定性就绪信号」，但它 = 裸 `scheduler.drain()` —— **加载未完成时写链是空的，它立即 resolve**（变更还在 `pending` 里，根本没进 state）                                                                                                                                                | 第 5 例的**结构性入口**                                   |
+| **读路径也在赌加载**            | `handlePreStep`（预算告警/拦截入口）取到 `store.session() === undefined` 时 **静默 `return next()`**：启动期第一次超预算请求既不告警也不拦截，且**没有任何日志**                                                                                                                                                                | **生产缺陷**（静默降级，永远不会以 CI 红的形式暴露）      |
+| **teardown 用残缺快照覆盖磁盘** | `dispose()` 在加载未完成时直接回放 `pending` 再落盘 —— 那份快照**只有本进程刚产生的变更、没有磁盘历史**；真实 teardown 后进程退出、防抖写不再发生 → 历史永久丢失。另外 `scheduler.flush()` 的契约是「无变更也写一次」，于是**从未产生变更的只读实例 teardown 时也会写出空快照**，多实例共享同一状态文件时直接覆盖别处写入的数据 | **生产缺陷** + 跨实例写覆盖（并发争用类，另见 #330/#336） |
+
+### 确定性复现（不靠造负载，本机 4/4 稳定红 → 修复后 4/4 绿）
+
+新增 `plugins/dsh-my-context/test/host-boot-readiness.mjs`：`vi.mock('node:fs/promises')` 把
+`readFile` 挂到受控闸门上，于是「加载慢于事件到达/查询」变成 100% 可复现。
+
+```text
+× 复现 A：加载被挂起时 store.session() 必未就绪，whenReady() 之后必有值（零墙钟）
+    TypeError: store.whenReady is not a function
+× 复现 B：host-mutation.mjs:345 的「settle(80) 赌加载」在慢 IO 下必红，whenReady 必绿
+    TypeError: store.whenReady is not a function
+× 复现 C：whenPersisted() 名副其实——加载未完成时调用，返回后变更必已落盘
+    AssertionError: whenPersisted() 返回后状态文件必须已存在   false !== true
+× 复现 D：加载被挂起时 dispose() 不得用「缺磁盘历史」的快照覆盖磁盘
+    AssertionError: teardown 落盘必须保留磁盘历史（不得被空历史快照覆盖）
+Tests  4 failed (4)
+```
+
+外加一个**临时对照用例**（复刻修复前写法 `settle(80)` + 300ms 慢 IO）稳定复现 CI 的失败形态：
+
+```text
+× legacy 写法：settle(80) 赌加载完成（修复前）
+    TypeError: Cannot read properties of undefined (reading 'usage')
+```
+
+顺带一提：把全部 `settle(...)` 换成 `yieldLoop()`（只让出一个事件循环）后，**恰好 17 条用例变红**
+—— 它们就是全部「依赖墙钟」的点，被 sleep 掩盖着。这是本文件反复推荐的定位手法。
+
+### 修法（补信号，不调数字）
+
+- `src/persist.ts`：`handle.readyPromise` + `markReady`，在 `onLoaded` 的
+  「磁盘状态合并 + pending 回放」**之后** resolve（顺序是关键）。
+- `src/store.ts`：新增 `store.whenReady()`（**加载就绪**）；`whenPersisted()` 改为
+  `whenReady() → drainWrites()`（**落盘就绪**，名副其实）；新增 `whenReadyOf(store)` 供读路径复用。
+- `src/routes.ts` / `src/events.ts`：API 与 `agent/pre-step` 在查询前 `await whenReadyOf(store)`
+  —— 查询语义与启动耗时无关（`handlePreStep` 那条同时修掉了静默降级）。
+- `dispose()`：未就绪时等 `readyPromise` 再写；**无变更（`dirty=false`）不写盘**。
+- `onLoaded`：只在「回放过 pending」时 `persistSoon()`，去掉"刚读进来又原样写回去"的无谓写
+  （它还会与调度器最小间隔叠加，让 teardown 白等一个 `minInterval`，实测 6 轮用例累积 5s 超时）。
+- 测试侧：**`test/lib/helpers.mjs` 不再导出 `settle`**，改导出统一的 `waitFor/yieldLoop/sleepFor`；
+  `bootStore(ctx)` 统一「建 store + 登记卸载 + 等就绪」；`disposeAll()` 改 async 并等落盘。
+
+**效果**：122 tests + 10 scenarios 全绿，用例墙钟 **3.07s → 0.7s**（host-mutation 2257→76ms、
+host-store 902→39ms）。压力验证（见下）修复前 **20/20 红** → 修复后 **0/20 红**。
+
+### 为什么前 4 次修复没有终结它（**本实例最值钱的一节**）
+
+前 4 次（#310 host-smoke / #313 host-mutation·host-emit·host-edge / #317）的修法**都是对的**，
+但四次都复发了，因为修的是「用例」而不是「能力」：
+
+1. **每次都只修出事的那个用例**：补一个 `whenReady` + 把这条的 `settle` 换成 `waitFor`。
+   下一个人写新测试时，**没有任何机制提示他"这里该等条件而不是等时间"** ——
+   而 `await settle(80)` 在本地**永远是绿的**，评审也看不出问题。
+2. **「看起来已经有信号」比「根本没有信号」更危险**：`dsh-my-context` 早就有
+   `whenPersisted()`，名字和注释都在说"这个能等"，语义却只覆盖写链。于是没有人再去补加载信号
+   —— 第 5 例就这样埋了很久。**教训：给信号起名时要写清它"等的是什么"，
+   并且让"名不副实"本身可被发现**（本次把 `whenPersisted()` 的语义改对，而不是再加一个名字）。
+3. **只问了"测试为什么红"，没问"实现里还有谁在赌加载完成"**：顺着这条线本次才挖出
+   `handlePreStep` 静默降级与 `dispose` 覆盖磁盘历史两个**生产缺陷** ——
+   它们的表现是**静默降级**，永远不会有 CI 红来提示你。**判据：同一根因往往不止出现在测试里。**
+4. **判据一直停留在人的经验里**：怎么判断"这条 flaky 是不是时序问题"（"断言是否依赖墙钟"）
+   是经验，经验不会自动施加到新代码上。**机制 = 把这个判据变成 CI 里会红的检查**（见下）。
+
+### 防复发机制（本次真正新增的东西）
+
+单靠"再修一遍"必然有第 6 次。本次落地两条**可执行**的机制：
+
+**① 门禁 `scripts/check-test-sleeps.mjs`（默认反转）**：`plugins/*/test/**` 里**新增**的
+固定时长等待（`setTimeout(N>0)` / `settle(N)` / `sleep(N)`）必须自己解释为什么不能用条件轮询
+（写 `// sleep-ok: <理由>`，理由 ≥8 字符），否则 CI 红；存量冻结在
+`scripts/test-sleep-baseline.json`（**只允许变少**）。判据与分类（`yield` 安全 / `fixed` 受管 /
+`dynamic` 提示）写在 `scripts/lib/test-sleeps.mjs` 文件头，判定是纯函数并有回归测试。
+
+**② 统一等待工具 `plugins/dsh-shared/test-kit/wait.mjs`**：扫描发现仓库里原本有 **4 份**
+语义/名字/失败行为都不同的轮询实现（`waitFor` / `waitUntil` / `waitReady`）——
+每次复发都在重新发明一份。现在统一为 `waitFor`（超时**报出等的是什么条件**）、
+`yieldLoop`、`sleepFor(reason, ms)`（**理由必填**，空理由直接抛错）。
+
+这两条都接进了 CI（quality job）与 `npm run verify`，并做过**反向验证**：
+故意新增一处裸 `setTimeout(500)` → 门禁 exit 1 并给出改法；移除 → exit 0。
 
 ## 相关
 

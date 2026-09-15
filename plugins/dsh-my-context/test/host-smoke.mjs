@@ -14,7 +14,7 @@ test('plugin contract: name + inject + route registration', async () => {
   assert.ok(api, 'prefix route /context/api registered')
   assert.equal(api.path, '/context/api')
   assert.equal(api.kind, 'prefix')
-  disposeAll()
+  await disposeAll()
 })
 
 test('loopback requests pass the fence and get JSON back', async () => {
@@ -25,7 +25,7 @@ test('loopback requests pass the fence and get JSON back', async () => {
   const value = jsonOf(res)
   assert.equal(value.ok, true)
   assert.deepEqual(value.value.budget, { perTurn: 0, perSession: 0, mode: 'warn' })
-  disposeAll()
+  await disposeAll()
 })
 
 test('cross-site requests are rejected by the fence', async () => {
@@ -33,12 +33,13 @@ test('cross-site requests are rejected by the fence', async () => {
   const res = mockResponse()
   await invoke(api, mockRequest({ url: '/context/api/status', secFetchSite: 'cross-site' }), res)
   assert.equal(res.writeHeadStatus, 403)
-  disposeAll()
+  await disposeAll()
 })
 
-test('teardown disposes effects without throwing', async () => {
+test('teardown disposes effects without rejecting', async () => {
   const handle = bootPlugin({})
-  assert.doesNotThrow(() => handle.disposeAll())
+  // issue #335：disposeAll 现在等落盘完成，返回 Promise —— 断言不再 reject（含落盘失败）
+  await assert.doesNotReject(() => handle.disposeAll())
 })
 
 test('GET /context/api/session without sessionId returns 400', async () => {
@@ -46,7 +47,7 @@ test('GET /context/api/session without sessionId returns 400', async () => {
   const res = mockResponse()
   await invoke(api, mockRequest({ url: '/context/api/session' }), res)
   assert.equal(res.writeHeadStatus, 400)
-  disposeAll()
+  await disposeAll()
 })
 
 test('GET /context/api/session for unknown session returns 404', async () => {
@@ -54,7 +55,7 @@ test('GET /context/api/session for unknown session returns 404', async () => {
   const res = mockResponse()
   await invoke(api, mockRequest({ url: '/context/api/session?sessionId=nope' }), res)
   assert.equal(res.writeHeadStatus, 404)
-  disposeAll()
+  await disposeAll()
 })
 
 test('unknown API method returns 404', async () => {
@@ -62,5 +63,5 @@ test('unknown API method returns 404', async () => {
   const res = mockResponse()
   await invoke(api, mockRequest({ url: '/context/api/nope' }), res)
   assert.equal(res.writeHeadStatus, 404)
-  disposeAll()
+  await disposeAll()
 })

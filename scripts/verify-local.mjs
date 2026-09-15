@@ -32,6 +32,8 @@
  *   pack-hygiene → node scripts/check-pack-hygiene.mjs（包发布卫生，issue #323：字段指向的
  *                  文件存在 / dsh.* 与 exports 互证 / npm pack 内容断言 / README 引用的
  *                  assets 确实随包发布）
+ *   test-sleeps  → node scripts/check-test-sleeps.mjs（固定 sleep 门禁，issue #335：新增的
+ *                  固定时长等待必须写 `// sleep-ok: 理由`，存量冻结在基线里只许变少）
  *   format       → npx prettier --check .
  *   test-scripts → npm run test:scripts（vitest 发版校验）
  *   depcruise    → npx depcruise plugins/
@@ -599,6 +601,20 @@ const CHECK_DEFS = [
       if (!ctx.fast || ctx.escalated || ctx.changedFiles === null) return null
       const touched = ctx.changedFiles.some((f) => f.startsWith('plugins/'))
       return touched ? null : '本次变更不含 plugins/（包发布卫生只与插件包内容有关）'
+    },
+  },
+  {
+    id: 'test-sleeps',
+    label: 'fixed sleeps in tests (node scripts/check-test-sleeps.mjs)',
+    note: 'issue #335 固定 sleep 门禁：plugins/*/test/** 里**新增**的固定时长等待（setTimeout(N>0)/settle(N)/sleep(N)）必须写 `// sleep-ok: <为什么不能用条件轮询>`，否则失败；存量冻结在 scripts/test-sleep-baseline.json（只允许变少）。判据与分类见 scripts/lib/test-sleeps.mjs 文件头（同族根因已复发 5 次：CI 高负载下固定 sleep 赌异步必输）',
+    run: () => runCapture('node', ['scripts/check-test-sleeps.mjs'], root),
+    // 判据只落在 plugins/*/test/** 与基线文件上：没有测试变更就不可能失败
+    skip: (ctx) => {
+      if (!ctx.fast || ctx.escalated || ctx.changedFiles === null) return null
+      const touched = ctx.changedFiles.some(
+        (f) => /^plugins\/[^/]+\/test\//.test(f) || f === 'scripts/test-sleep-baseline.json',
+      )
+      return touched ? null : '本次变更不含 plugins/*/test/**（固定 sleep 门禁只扫描测试代码）'
     },
   },
   {

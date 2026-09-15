@@ -52,6 +52,6 @@ class World {
 setWorldConstructor(World)
 
 After(async function () {
-  this.handle?.disposeAll()
+  await this.handle?.disposeAll()
   for (const dir of this.tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })

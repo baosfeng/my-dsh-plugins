@@ -9,7 +9,8 @@
 // release-timing.mjs = 发版阶段耗时表，issue #246；
 // release-concurrency.mjs = 发版有界并发调度，issue #246；
 // pack-hygiene.mjs = 包发布卫生判定（字段自洽 / pack 内容 / README 引用面），issue #323；
-// verify-checklist.mjs = 验证清单的渲染/幂等合并/#67 门禁判定，issue #329），
+// verify-checklist.mjs = 验证清单的渲染/幂等合并/#67 门禁判定，issue #329；
+// test-sleeps.mjs = 测试里固定 sleep 的分类/豁免/基线判定，issue #335），
 // 阈值与根配置一致（行 85 / 分支 75 / 函数 80）。
 import { defineConfig } from 'vitest/config'
 
@@ -31,6 +32,7 @@ export default defineConfig({
         'scripts/lib/release-concurrency.mjs',
         'scripts/lib/pack-hygiene.mjs',
         'scripts/lib/verify-checklist.mjs',
+        'scripts/lib/test-sleeps.mjs',
       ],
       thresholds: {
         lines: 85,

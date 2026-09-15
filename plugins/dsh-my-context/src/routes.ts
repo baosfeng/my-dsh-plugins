@@ -11,6 +11,7 @@
  *  - POST /overflow                — 更新溢出阈值（body { warnThreshold, alertThreshold }）
  */
 import { isTrustedApiRequest, readJsonBody, writeError, writeJson } from 'dsh-shared'
+import { whenReadyOf } from './store.js'
 import { normalizeBudgetConfig } from './budget.js'
 import { normalizeOverflowConfig } from './overflow.js'
 import type { DshContext, ServerRequest, ServerResponse } from './types.js'
@@ -75,6 +76,10 @@ function apiHandler(
     const pathname = url.pathname
     const method = pathname.startsWith('/context/api/') ? pathname.slice('/context/api/'.length) : undefined
     try {
+      // 分派前等加载就绪（issue #335）：加载未完成时 `session()/sessions()` 读的是
+      // 半加载内存态（磁盘历史还没合并、事件还在 pending）——查询结果因此取决于启动
+      // 耗时（墙钟）。就绪后 whenReady() 立即 resolve，无可感知延迟。
+      await whenReadyOf(store)
       const handled = await dispatchMethod(method, request, response, url, store, options)
       if (!handled) {
         writeJson(response, 404, {

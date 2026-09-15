@@ -7,22 +7,22 @@
  */
 import { Given, When, Then } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
-import { sessionEvent, preStepPayload } from '../../lib/helpers.mjs'
+import { sessionEvent, preStepPayload, yieldLoop } from '../../lib/helpers.mjs'
 
 // ── Given ─────────────────────────────────────────────────────────────────
 Given('上下文透镜插件已启动', async function () {
   this.boot({})
-  await settle()
+  await yieldLoop()
 })
 
 Given('上下文透镜插件已启动且每轮预算为 {int}', async function (perTurn) {
   this.boot({ perTurn })
-  await settle()
+  await yieldLoop()
 })
 
 Given('上下文透镜插件已启动且每轮预算为 {int} 且模式为拦截', async function (perTurn) {
   this.boot({ perTurn, mode: 'deny' })
-  await settle()
+  await yieldLoop()
 })
 
 // ── When ──────────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ When('会话 {string} 的请求头包含系统提示与工具', async function (
     reason: 'initial',
   })
   await this.dispatch('session/event', session, event)
-  await settle()
+  await yieldLoop()
 })
 
 When('会话 {string} 的模型返回带用量统计的回复', async function (sessionId) {
@@ -52,7 +52,7 @@ When('会话 {string} 的模型返回带用量统计的回复', async function (
     usage: { inputTokens: input, outputTokens: 20, cacheReadTokens: 30 },
   })
   await this.dispatch('session/event', session, event)
-  await settle()
+  await yieldLoop()
 })
 
 When('会话 {string} 收到来自插件的注入消息', async function (sessionId) {
@@ -61,15 +61,15 @@ When('会话 {string} 收到来自插件的注入消息', async function (sessio
     source: { kind: 'plugin', form: 'notice', plugin: 'dsh-x' },
   })
   await this.dispatch('session/event', session, event)
-  await settle()
+  await yieldLoop()
 })
 
 When('插件重启', async function () {
-  this.handle.disposeAll()
-  await settle()
+  await this.handle.disposeAll() // 等旧实例落盘完成，避免它的延迟写落到新实例的读之后（issue #335）
+  await yieldLoop()
   this.handle = null
   this.boot({})
-  await settle()
+  await yieldLoop()
 })
 
 When('代理 {string} 准备执行下一步', async function (agentId) {
@@ -89,7 +89,7 @@ When('通过接口更新预算为每轮 {int} 且模式为拦截', async functio
 When('会话 {string} 的上下文窗口为 {int}', async function (sessionId, window) {
   const { session, event } = sessionEvent(sessionId, 'request/context', { contextWindow: window })
   await this.dispatch('session/event', session, event)
-  await settle()
+  await yieldLoop()
 })
 
 When('会话 {string} 的模型返回 {int} 输入 token 的回复', async function (sessionId, input) {
@@ -104,7 +104,7 @@ When('会话 {string} 的模型返回 {int} 输入 token 的回复', async funct
     usage: { inputTokens: input, outputTokens: 0 },
   })
   await this.dispatch('session/event', session, event)
-  await settle()
+  await yieldLoop()
 })
 
 When('通过接口把溢出预警阈值设为预警 {int} 告警 {int}', async function (warn, alert) {
@@ -178,8 +178,3 @@ Then('溢出预警级别为 {string}', async function (level) {
   const stats = await this.sessionStats(this.lastSessionId)
   assert.equal(stats.overflows[0].level, level)
 })
-
-/** 等待 store 异步加载/落盘 settle。 */
-function settle() {
-  return new Promise((resolve) => setTimeout(resolve, 50))
-}

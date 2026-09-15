@@ -18,7 +18,7 @@
  *        [--addons plugins/dsh-my-skill-manager]... [--api-path /my-skill-manager/api/list]...
  *        [--timeout 90] [--skip] [--keep] [--help]
  *        [--checklist <path>] [--check <path>] [--plugin <name>] [--version <x.y.z>]
- *        [--workspace <dir>] [--workspace-title <title>]
+ *        [--workspace <dir>] [--workspace-title <title>] [--refresh-header]
  *        [--clean-externals] [--omit-node-modules <pkg>]...
  *
  * 退出码：0 = 全部通过；1 = 任一环节失败。
@@ -54,6 +54,18 @@
  *   --check <path>     校验清单文件：功能级验证项必须全部 [x]（供 release.mjs
  *                       发版门禁调用；未全部勾选 → exit 1）。
  *   --plugin/--version 写入清单头部（插件名与版本，便于留痕归档）。
+ *
+ * issue #329（幂等，不许覆盖人工留痕）：
+ *   过去 --checklist **整文件重写**目标清单 —— 已发布版本的 `verification/<插件>-<版本>.md`
+ *   被重跑一次后，末尾「验证记录（真实环境证据）」整段（实测 45 行）被删除、头部
+ *   「验证时间/端口」被改写（3092 → 3087，对已发布版本是纯假 diff），改动还会以
+ *   未提交状态留在工作区（极易被顺手提交掉）。现在：
+ *     目标文件已存在 → **幂等合并**（scripts/lib/verify-checklist.mjs）：人工「验证记录」
+ *     段与已勾选的 [x] 逐字节保留，头部时间/端口保持原值（换端口重跑不产生任何 diff），
+ *     只刷新脚本拥有的自动验证项；需要把本轮环境写进头部时加 `--refresh-header`。
+ *     目标文件不存在 → 按模板新建（行为与旧版逐字节一致）。
+ *   清单的生成/合并/门禁判定全部是 lib 里的**纯函数**（单测
+ *   scripts/test/verify-checklist.test.mjs 不需要启动任何隔离实例）。
  */
 import { spawn } from 'node:child_process'
 import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -72,6 +84,7 @@ import {
   stripProfileDeclarations,
   writeWorkspaceStorage,
 } from './lib/verify-profile.mjs'
+import { DEFAULT_AUTO_ITEMS, checkChecklistFile, mergeChecklist, renderChecklist } from './lib/verify-checklist.mjs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { createServer } from 'node:net'
@@ -102,6 +115,7 @@ function parseArgs(args) {
     workspaceTitle: null,
     cleanExternals: false,
     omitNodeModules: [],
+    refreshHeader: false,
   }
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i]
@@ -119,6 +133,9 @@ function parseArgs(args) {
     else if (flag === '--version') result.version = value()
     else if (flag === '--workspace') result.workspace = value()
     else if (flag === '--workspace-title') result.workspaceTitle = value()
+    // issue #329：清单已存在时头部时间/端口默认冻结（换端口重跑不产生假 diff）；
+    // 确需把本轮环境写入留痕时显式开启。
+    else if (flag === '--refresh-header') result.refreshHeader = true
     // issue #294：external 缺包演练（默认关，发版门禁 3c 默认开）
     else if (flag === '--clean-externals') result.cleanExternals = true
     else if (flag === '--omit-node-modules') result.omitNodeModules.push(value())
@@ -145,8 +162,12 @@ function printHelp() {
       '  --timeout <sec>    启动就绪超时（默认 90）\n' +
       '  --skip             只做配置组合检查（dump-config），不启动实例\n' +
       '  --keep             失败/完成后保留临时目录（默认清理）\n' +
-      '  --checklist <path> 验证通过后生成发版前功能级验证清单（issue #67 留痕）\n' +
+      '  --checklist <path> 验证通过后生成发版前功能级验证清单（issue #67 留痕）。\n' +
+      '                     清单已存在时**幂等合并**（issue #329）：人工「验证记录」段与已勾选的\n' +
+      '                     [x] 逐字节保留，头部时间/端口保持原值（换端口重跑不产生假 diff），\n' +
+      '                     只刷新自动验证项；需要把本轮环境写进头部时加 --refresh-header。\n' +
       '  --check <path>     校验清单功能级项全部勾选（供 release.mjs 门禁；未全勾选 exit 1）\n' +
+      '  --refresh-header   刷新清单头部「验证时间 / 验证环境」为本轮值（默认冻结；issue #329）\n' +
       '  --plugin <name>    清单头部插件名（配合 --checklist）\n' +
       '  --version <x.y.z>  清单头部版本号（配合 --checklist）\n' +
       '  --workspace <dir>  预置隔离实例的工作区状态（storages/workspace.json；path 自动取 realpath）\n' +
@@ -282,9 +303,20 @@ async function resolveApiToken({ getWebLog, simHome, timeoutMs = 20000 }) {
 
 // ── 0. 前置校验 ────────────────────────────────────────────────────────────
 // --check 模式：只校验清单文件功能级项是否全部勾选（供 release.mjs 门禁调用）。
+// 判定逻辑在 scripts/lib/verify-checklist.mjs 的 checkChecklistText（纯函数，可单测）。
 if (options.check !== null) {
-  const ok = checkChecklist(options.check)
-  process.exit(ok ? 0 : 1)
+  const result = checkChecklistFile(options.check)
+  if (result.missing) {
+    console.error(`[verify] ✗ 验证清单不存在: ${options.check}（发版前必须先跑 verify-real-profile.mjs --checklist）`)
+    process.exit(1)
+  }
+  if (!result.ok) {
+    console.error(`[verify] ✗ 功能级验证项未全部勾选（${result.pending.length} 项待验证）:`)
+    for (const item of result.pending) console.error(`[verify]   - ${item}`)
+    process.exit(1)
+  }
+  console.log(`[verify] ✓ 验证清单全部勾选: ${options.check}`)
+  process.exit(0)
 }
 if (!existsSync(realProfile)) {
   console.error(`[verify] profile 不存在: ${realProfile}`)
@@ -677,42 +709,12 @@ async function cleanup() {
 // ── issue #67：发版前功能级验证清单（留痕） ────────────────────────────────
 // 自动验证项（脚本已执行且通过）自动勾选；功能级验证项（核心功能/易碎场景/
 // client UI/插件联动）留空待验证者（人工或 agent）在真实浏览器中验证后勾选。
-// 函数声明（提升）而非 const：main 流程在文件中部调用 writeChecklist()，
-// const 初始化在其后会导致 TDZ ReferenceError（issue #67 实测发现的坑）。
-function checklistTemplate(plugin, version, port, extraAuto = []) {
-  const autoLines = [
-    '- [x] 配置组合唯一性（dump-config 无重复插件行 id）',
-    '- [x] 实例启动就绪（HTTP 200）',
-    '- [x] 启动日志无 error / duplicate 记录',
-    '- [x] 插件 API 冒烟（--api-path 全部 200）',
-    // issue #294：缺包演练留痕（只有真的 omit 了条目才写这一行，避免误导）
-    ...extraAuto.map((text) => `- [x] ${text}`),
-  ].join('\n')
-  return `# 发版前功能级验证清单 — ${plugin}@${version}
-
-验证时间：${new Date().toISOString()}
-验证环境：隔离实例（端口 ${port}，复用生产 profile 配置组合，独立 DSH_HOME）
-
-## 自动验证项（verify-real-profile.mjs 自动执行）
-
-${autoLines}
-
-## 功能级验证项（需在隔离实例 + 真实浏览器中验证后勾选）
-
-- [ ] 核心功能走通（插件主功能在真实 GUI 中可用）
-- [ ] 易碎场景（重启恢复 / 会话隔离 / 持久化）
-- [ ] client UI 正常（侧边栏页签 / 设置页 / 交互）
-- [ ] 插件间联动不崩（与相邻插件共存）
-- [ ] 验证后环境已清理（实例停止 / 临时目录删除 / 端口释放）
-
-> 说明：功能级项由验证者（人工或 agent）在真实浏览器中逐项验证后，将 [ ] 改为 [x]。
-> release.mjs 发版门禁会校验本清单功能级项全部勾选，未全勾选将阻断发版（issue #67）。
-`
-}
-
-/** 生成验证清单文件（自动项已勾选，功能级项待勾选）。
- *  若目标文件已存在（如 release.mjs 3c 重跑），保留原功能级项的勾选
- *  状态，避免覆盖已验证的留痕（issue #67）。 */
+//
+// issue #329（本函数的历史事故）：过去这里**整文件重写**目标清单 —— 已发布版本的清单
+// 被重跑一次，末尾「验证记录（真实环境证据）」整段（实测 45 行）被删除、头部
+// 「验证时间/端口」被改写（3092 → 3087，纯假 diff），改动以未提交状态留在工作区。
+// 现在渲染/合并逻辑全部在 scripts/lib/verify-checklist.mjs（纯函数、可单测，
+// 单测不需要启动任何隔离实例），本函数只做「读 → 合并 → 写」三步接线。
 function writeChecklist() {
   if (options.checklist === null) return
   const plugin = options.plugin || (options.addons.length > 0 ? options.addons[0].split('/').pop() : 'unknown')
@@ -722,65 +724,36 @@ function writeChecklist() {
     linkResult.omitted.length > 0
       ? [`external 缺包演练：隔离实例 node_modules 不含 ${linkResult.omitted.join('、')}（启动日志无相关错误）`]
       : []
-  let text = checklistTemplate(plugin, version, options.port, extraAuto)
+  const fresh = renderChecklist({
+    plugin,
+    version,
+    port: options.port,
+    timestamp: new Date().toISOString(),
+    autoItems: [...DEFAULT_AUTO_ITEMS, ...extraAuto],
+  })
   let existingText = ''
   try {
     existingText = readFileSync(options.checklist, 'utf8')
   } catch (error) {
     if (error.code !== 'ENOENT') throw error
   }
-  if (existingText) {
-    text = mergeChecklistState(existingText, text)
-  }
+  // 已存在 → 幂等合并；不存在 → 新建（issue #329：人工记录段与勾选永不被覆盖）。
+  const { text, note } =
+    existingText === ''
+      ? { text: fresh, note: '新建，功能级项待验证后勾选' }
+      : mergeNote(mergeChecklist({ existingText, freshText: fresh, refreshHeader: options.refreshHeader }))
   mkdirSync(dirname(options.checklist), { recursive: true })
   writeFileSync(options.checklist, text, 'utf8')
-  log(`验证清单已生成: ${options.checklist}（功能级项待验证后勾选）`)
+  log(`验证清单已生成: ${options.checklist}（${note}）`)
 }
 
-/** 将既有清单中已勾选（[x]）的功能级项状态合并到新生成的清单文本（按文案匹配）。 */
-function mergeChecklistState(oldText, newText) {
-  const checked = new Set()
-  let inFunctional = false
-  for (const line of oldText.split('\n')) {
-    if (line.startsWith('## 功能级验证项')) inFunctional = true
-    else if (line.startsWith('## ')) inFunctional = false
-    if (!inFunctional) continue
-    const m = /^- \[(x)\] (.+)$/.exec(line.trim())
-    if (m) checked.add(m[2])
+/** 把合并结果翻译成一行日志（幂等合并 / 原样保留）。 */
+function mergeNote({ text, merged, reason }) {
+  return {
+    text,
+    note: merged
+      ? '幂等合并：保留人工记录段与已勾选项' +
+        (options.refreshHeader ? '（--refresh-header：头部已刷新为本轮环境）' : '，头部保持原值')
+      : `未改写（${reason}）`,
   }
-  if (checked.size === 0) return newText
-  return newText
-    .split('\n')
-    .map((line) => {
-      const m = /^- \[( |x)\] (.+)$/.exec(line.trim())
-      if (m && checked.has(m[2])) return line.replace('- [ ]', '- [x]')
-      return line
-    })
-    .join('\n')
-}
-
-/** 校验清单文件：功能级验证项必须全部 [x]（供 release.mjs 门禁调用）。 */
-function checkChecklist(path) {
-  if (!existsSync(path)) {
-    console.error(`[verify] ✗ 验证清单不存在: ${path}（发版前必须先跑 verify-real-profile.mjs --checklist）`)
-    return false
-  }
-  const text = readFileSync(path, 'utf8')
-  const lines = text.split('\n')
-  const pending = []
-  let inFunctional = false
-  for (const line of lines) {
-    if (line.startsWith('## 功能级验证项')) inFunctional = true
-    else if (line.startsWith('## ')) inFunctional = false
-    if (!inFunctional) continue
-    const m = /^- \[( |x)\] (.+)$/.exec(line.trim())
-    if (m !== null && m[1] !== 'x') pending.push(m[2])
-  }
-  if (pending.length > 0) {
-    console.error(`[verify] ✗ 功能级验证项未全部勾选（${pending.length} 项待验证）:`)
-    for (const item of pending) console.error(`[verify]   - ${item}`)
-    return false
-  }
-  console.log(`[verify] ✓ 验证清单全部勾选: ${path}`)
-  return true
 }

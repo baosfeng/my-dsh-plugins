@@ -52,16 +52,17 @@ import {
   evaluateBaseline,
   evaluateWorkspaceLinks,
   excludeAppendContent,
+  fetchRemoteFor,
   forkDirFor,
   formatMs,
+  isLocalRemote,
   isSafeToClean,
   isValidForkId,
   normalizePath,
   parseForkPoolArgs,
   parseOwnerRepo,
-  fetchRemoteFor,
-  pushRemoteFor,
   planCreateSteps,
+  pushRemoteFor,
   renderCheckReport,
   resolveTargetDir,
 } from './lib/fork-pool.mjs'
@@ -102,13 +103,24 @@ const gitOut = (dir, gitArgs) => {
   return res.code === 0 ? res.out : ''
 }
 
-/** 分支上报 ①：只读远程（走 https+代理）。失败返回空串，由调用方判定。 */
+/**
+ * 分支上报 ①：只读远程。失败返回空串，由调用方判定。
+ *
+ * **本地 remote 不得被改写成 github.com**（issue #337）：`parseOwnerRepo` 对任何 `a/b`
+ * 形态的路径都会给出 owner/repo，所以无脑用 `fetchRemoteFor()` 拼 URL 时，一个指向本地
+ * 目录（`/tmp/.../origin`、`file://...`）的 origin 会被查询成
+ * `https://github.com/<父目录名>/<目录名>` —— 既查错地方，又让**完全本地的场景依赖网络**
+ * （这正是 `scripts/test/fork-pool.test.mjs` 的 `create` 用例在网络不可达时必红的原因）。
+ * 现在：HTTP(S) 与 scp 形态仍走 github.com（原语义），本地远端直接用原值 → 离线可测。
+ */
 function remoteHeadSha(repoDir, base) {
   const url = gitOut(repoDir, ['remote', 'get-url', 'origin'])
+  const local = isLocalRemote(url)
   const parsed = parseOwnerRepo(url)
-  if (!parsed) return ''
+  if (!local && !parsed) return ''
+  const remote = local ? url : fetchRemoteFor(parsed.owner, parsed.repo)
   const ref = `refs/heads/${base}`
-  const res = run('git', ['ls-remote', fetchRemoteFor(parsed.owner, parsed.repo), ref], { cwd: repoDir })
+  const res = run('git', ['ls-remote', remote, ref], { cwd: repoDir })
   return res.code === 0 ? (res.out.split(/\s+/)[0] ?? '') : ''
 }
 

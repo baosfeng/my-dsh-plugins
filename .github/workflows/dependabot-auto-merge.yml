@@ -32,10 +32,38 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Approve minor and patch updates
+        id: approve
         if: >-
           steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
           steps.metadata.outputs.update-type == 'version-update:semver-patch'
-        run: gh pr review --approve "$PR_URL"
+        run: |
+          # issue #304：仓库未开启 Settings → Actions → General →
+          # "Allow GitHub Actions to create and approve pull requests" 时，
+          # `gh pr review --approve` 必然报
+          # `GraphQL: GitHub Actions is not permitted to approve pull requests.`
+          # → 整个 job 变红（run 34766636038 / PR #286），而这是平台策略开关问题，
+          # 不是依赖升级本身的问题（fetch-metadata v2→v3 也不会改善）。
+          # 这里做「可诊断的降级」：只对该权限错误放行并打 warning 提示维护者，
+          # 其它错误照常失败——不是静默忽略一切错误。
+          set +e
+          output=$(gh pr review --approve "$PR_URL" 2>&1)
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "✅ 已自动 approve（minor/patch 依赖升级）"
+            exit 0
+          fi
+
+          printf '%s\n' "$output"
+
+          if printf '%s' "$output" | grep -qi 'not permitted to approve'; then
+            echo "::warning title=Actions 无权 approve PR（已降级，不失败）::GitHub Actions 未被允许创建/批准 PR（仓库设置 Allow GitHub Actions to create and approve pull requests 未开启）。auto-merge 已启用，但分支保护若要求 approval，合并会一直等待。维护者二选一：① 开启该设置（自动合并能力立即恢复，无需再改代码）；② 若安全策略不允许开启，改用 PAT/App token 或改为「标记 + 人工合并」。详见 issue #304。"
+            exit 0
+          fi
+
+          echo "::error title=approve 失败（非权限原因，保持失败）::$output"
+          exit "$status"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -13,7 +13,7 @@
  * fence), the client falls back to this route and receives an fs.read-shaped
  * JSON payload ({ ok, value: { content } }) so the viewer mounts unchanged.
  */
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { basename, isAbsolute, join } from 'node:path';
 import { writeJson } from 'dsh-shared';
 import { sessionCwdOf } from './cwd.js';
@@ -115,18 +115,17 @@ function assertMediaParams(sessionId, raw) {
 }
 /** stat + read + respond with the file's bytes (bounded by MEDIA_LIMIT). */
 async function serveMedia(response, abs, url) {
-    let info;
+    let body;
     try {
-        info = await stat(abs);
+        // Use try-catch instead of stat + readFile to avoid TOCTOU race condition
+        body = await readFile(abs);
     }
     catch {
         throw mediaError(404, 'file not found');
     }
-    if (!info.isFile())
-        throw mediaError(400, 'not a file');
-    if (info.size > MEDIA_LIMIT)
+    // Check file size after reading to avoid race condition
+    if (body.length > MEDIA_LIMIT)
         throw mediaError(413, 'file too large');
-    const body = await readFile(abs);
     const headers = {
         'content-type': mediaTypeForPath(abs),
         'cache-control': 'no-cache',
@@ -151,17 +150,16 @@ async function serveMedia(response, abs, url) {
  * recorded paths only.
  */
 async function serveText(response, abs) {
-    let info;
+    let content;
     try {
-        info = await stat(abs);
+        // Use try-catch instead of stat + readFile to avoid TOCTOU race condition
+        content = await readFile(abs, 'utf8');
     }
     catch {
         throw mediaError(404, 'file not found');
     }
-    if (!info.isFile())
-        throw mediaError(400, 'not a file');
-    if (info.size > TEXT_LIMIT)
+    // Check content length after reading to avoid race condition
+    if (content.length > TEXT_LIMIT)
         throw mediaError(413, 'file too large');
-    const content = await readFile(abs, 'utf8');
     writeJson(response, 200, { ok: true, value: { content } });
 }

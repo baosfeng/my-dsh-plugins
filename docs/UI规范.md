@@ -99,6 +99,13 @@ dsh-file-activity 的 UI 语言由五个要素构成，翻新插件时逐项对�
 
 > 构建脚本读取共享目录的路径约定：`join(root, '..', 'dsh-shared', 'client-parts')`（root 为插件目录），见 `plugins/dsh-file-activity/scripts/build.mjs` 的 `sharedPartsDir`。
 
+> **改了共享部件必须重建并提交所有消费方产物（issue #318 已加门禁）**：`client-parts` 是构建期
+> 拼接的源文件，产物 `lib/client.js` 必须提交（CI 不跑构建）。漏重建会静默陈旧——实测 commit
+> `735e2fa` 加 3 个图标只重建了 2 个消费方，`dsh-file-activity` / `dsh-my-observability` 的产物
+> 少 27 行。现在 `node scripts/check-client-artifacts.mjs`（已接入 `verify-local` 与 CI `quality` job）
+> 会重建所有消费方产物并与已提交版本逐字节比对，不一致即失败并点名插件与共享件；
+> 同时它也覆盖各插件 **server 端 tsc 产物**（`lib/*.js`）的同类陈旧。
+
 5. 新增共享部件时，注入点沿用 `dsh-shared/scripts/splice.mjs` 的三道断言（`spliceExactlyOnce` 恰好一处 + `isPlaceholderOutsideComments` 非注释位置 + 产物锚点声明恰好一份），并补产物级测试断言（"片段逐字节出现在产物里" + "锚点声明恰好一份"）。参考 `plugins/dsh-mermaid-render/test/shared-icons.mjs` / `test/shared-parts.mjs`。
 
 ## 样式前缀规范

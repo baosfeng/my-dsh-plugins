@@ -629,6 +629,12 @@ const CHECK_DEFS = [
     run: () => runCapture('node', ['scripts/check-links.mjs'], root),
   },
   {
+    id: 'artifacts',
+    label: 'client artifacts (node scripts/check-client-artifacts.mjs)',
+    note: 'issue #318（ADR-0002）：消费 dsh-shared/client-parts/* 的插件重建 client bundle + 各插件 server tsc 产物，须与已提交产物逐字节一致（实测 10-12s；纯本地）',
+    run: () => runCapture('node', ['scripts/check-client-artifacts.mjs'], root),
+  },
+  {
     id: 'resource-smoke',
     label: 'resource smoke (node scripts/resource-smoke.mjs)',
     note: 'issue #127 发版前资源回归门禁：长会话写放大 ≤1.6 / 内存有界 / 降级触发与恢复（对齐 CI resource-smoke job）',

@@ -238,7 +238,10 @@ test('media route refuses requests outside the fence (403)', async () => {
   assert.equal(res._status, 403, 'media route fenced')
 })
 
-test('media route rejects directories (400)', async () => {
+// #318：src 的 TOCTOU 加固（commit 76f52ac 用 readFile 取代 stat+readFile）后，
+// 目录不再走 "not a file" 的 400 分支，而是与"读不到的文件"同一条 404 分支——
+// 语义仍是"拒绝"，且不再有 check-then-use 的时间窗。此处断言随之改为 404。
+test('media route rejects directories (404)', async () => {
   const { ctx, getMediaRoute } = await boot()
   const dirPath = join(dir, 'a-directory')
   const { mkdirSync } = await import('node:fs')
@@ -250,7 +253,7 @@ test('media route rejects directories (400)', async () => {
     makeRequest('GET', `/file-activity/file?sessionId=s7&path=${encodeURIComponent(dirPath)}`),
     res,
   )
-  assert.equal(res._status, 400, 'directory is not a file')
+  assert.equal(res._status, 404, 'directory is not a readable file')
   assert.equal(JSON.parse(res._body).ok, false)
 })
 

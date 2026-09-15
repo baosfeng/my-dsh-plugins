@@ -29,6 +29,9 @@
  *   ts-size      → node scripts/check-ts-size.mjs（TS 行数/复杂度基线）
  *   client-modules→ node scripts/check-client-modules.mjs（客户端 bundle 模块白名单，
  *                  issue #321：产物 require 的模块必须能解析，否则整条 client factory 挂掉）
+ *   pack-hygiene → node scripts/check-pack-hygiene.mjs（包发布卫生，issue #323：字段指向的
+ *                  文件存在 / dsh.* 与 exports 互证 / npm pack 内容断言 / README 引用的
+ *                  assets 确实随包发布）
  *   format       → npx prettier --check .
  *   test-scripts → npm run test:scripts（vitest 发版校验）
  *   depcruise    → npx depcruise plugins/
@@ -583,6 +586,19 @@ const CHECK_DEFS = [
           f === 'scripts/client-size-baseline.json',
       )
       return touched ? null : '本次变更不含 plugins/*/{package.json,lib/**,assets/**} 或体积基线'
+    },
+  },
+  {
+    id: 'pack-hygiene',
+    label: 'pack hygiene (node scripts/check-pack-hygiene.mjs)',
+    note: 'issue #323 包发布卫生：exports/main/types/dsh.bundle.patch 指向真实文件、dsh.client 与 exports["./client"] 互证、npm pack 内容「该有的在 / 不该发的没在」、README 引用的 assets 确实随包发布（实测 19 插件 ~1.3s，含 19 次 npm pack，并发 6）',
+    run: () => runCapture('node', ['scripts/check-pack-hygiene.mjs'], root),
+    // 判据全部落在 plugins/<插件> 的包内容与 package.json 上：没有 plugins/ 变更就不可能失败
+    skip: (ctx) => {
+      if (ctx.docsOnly) return '纯文档变更：包发布卫生只与 plugins/ 下的包内容有关'
+      if (!ctx.fast || ctx.escalated || ctx.changedFiles === null) return null
+      const touched = ctx.changedFiles.some((f) => f.startsWith('plugins/'))
+      return touched ? null : '本次变更不含 plugins/（包发布卫生只与插件包内容有关）'
     },
   },
   {

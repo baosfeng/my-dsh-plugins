@@ -21,7 +21,8 @@
     "scripts",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "assets"
   ],
   "license": "MIT",
   "dsh": {

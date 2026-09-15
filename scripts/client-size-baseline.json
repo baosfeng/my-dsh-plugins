@@ -116,8 +116,10 @@
       }
     },
     "dsh-my-guardian": {
-      "total": 192010,
+      "total": 451682,
       "files": {
+        "assets/panel-error-detail.png": 130546,
+        "assets/panel-main.png": 129112,
         "lib/api.js": 8062,
         "lib/client.js": 60170,
         "lib/client.src.js": 2478,
@@ -217,9 +219,12 @@
       }
     },
     "dsh-my-plugin-manager": {
-      "total": 113394,
+      "total": 803732,
       "files": {
-        "lib/api-route.js": 13390,
+        "assets/detail.png": 402308,
+        "assets/market.png": 140796,
+        "assets/screenshot.png": 147171,
+        "lib/api-route.js": 13439,
         "lib/client.js": 69258,
         "lib/client.src.js": 3164,
         "lib/index.js": 1482,
@@ -242,8 +247,9 @@
       }
     },
     "dsh-my-skill-manager": {
-      "total": 88296,
+      "total": 281881,
       "files": {
+        "assets/screenshot.png": 193571,
         "lib/api-route.js": 8682,
         "lib/client.js": 47317,
         "lib/client.src.js": 2193,
@@ -255,12 +261,15 @@
       }
     },
     "dsh-plugin-dev-mode": {
-      "total": 55662,
-      "files": {}
+      "total": 182917,
+      "files": {
+        "assets/preset-selector.png": 127241
+      }
     },
     "dsh-session-title-gen": {
-      "total": 28935,
+      "total": 143687,
       "files": {
+        "assets/session-list.png": 114738,
         "lib/generate.js": 3590,
         "lib/host.js": 2616,
         "lib/index.js": 4244,

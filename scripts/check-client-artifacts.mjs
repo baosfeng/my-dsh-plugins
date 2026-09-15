@@ -13,6 +13,13 @@
  * 删了声明但漏重建"长期不会被发现，表现为插件间行为漂移——实测 commit 735e2fa 加 3 个图标
  * 只重建了 2 个消费方；file-activity 的 lib/media-route.js、lib/store.js 也属同类陈旧。
  *
+ * **只读契约（issue #336，机制保证而非约定）**：本脚本对工作区**绝不写**。所有重建都在
+ * 仓库外的一次性 HEAD 镜像里完成（`git archive HEAD | tar -x` 到 os.tmpdir，`node_modules`
+ * 软链回来），跑完即删。原因：`build.mjs` 会重写各插件的 `lib/parts` 产物并发
+ * `prettier --write`——原地重建既违反"检查只读"，又会与并发 `prettier --check .` 抢同一批文件
+ * 造成假红，还可能覆盖别人未提交的编辑。回归测试见 scripts/test/client-artifacts.test.mjs
+ * 的「只读契约」用例（比对 hash + mtime + inode）。
+ *
  * 用法：
  *   node scripts/check-client-artifacts.mjs             # 全量（client + server）
  *   node scripts/check-client-artifacts.mjs --list      # 只列判定范围（不构建，<1s）
@@ -22,8 +29,8 @@
  *
  * 退出码：0 = 全部同源；1 = 存在漂移 / 无法判定（fail-closed：缺产物、tsc 失败、git 不可用都算失败）。
  */
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -84,43 +91,62 @@ function committed(root, relPath) {
   }
 }
 
-/** 重建单个消费方的 client bundle。 */
-function buildClient(root, plugin) {
-  execFileSync('node', ['scripts/build.mjs'], {
-    cwd: join(root, 'plugins', plugin),
+/**
+ * 在仓库**外部**建一个 HEAD 镜像（`git archive HEAD | tar -x`），所有重建都在镜像里跑——
+ * issue #336：门禁必须对工作区**只读**。
+ *
+ * 为什么不是"原地重建 + 事后还原"：原地重建会重写各插件的 `lib/parts` 产物（`build.mjs`
+ * 里 `writeFileSync` + `prettier --write lib/parts`），后果有三——① 违反"检查只读"契约；
+ * ② 与并发 `prettier --check .` 抢同一批文件（`lib/parts/**` 是 .prettierignore 的显式例外），
+ * 表现为"报不合规但工作区无 diff"的假红；③ 若此刻有人正在编辑某个 `lib/parts/*.js`，
+ * 重建会**覆盖未提交的编辑**（数据风险）。镜像方案把这三条一次消除。
+ *
+ * `node_modules` 用软链指回真实仓库（零拷贝、且是构建唯一的仓外输入）；
+ * `.client-build` 等中间产物也全部落在镜像里。
+ */
+function createWorktreeMirror(sourceRoot, dir) {
+  const tar = spawnSync('bash', ['-c', `git archive HEAD | tar -x -C '${dir}'`], {
+    cwd: sourceRoot,
     stdio: 'ignore',
-    timeout: 600_000,
+    timeout: 300_000,
   })
+  if (tar.status !== 0) throw new Error('git archive HEAD 失败：无法建立只读镜像')
+  const modules = join(sourceRoot, 'node_modules')
+  if (existsSync(modules)) symlinkSync(modules, join(dir, 'node_modules'), 'dir')
+  return dir
+}
+
+/** 重建单个消费方的 client bundle（`cwd` 指向镜像内的插件目录，绝不写工作区）。 */
+function buildClient(pluginDir) {
+  execFileSync('node', ['scripts/build.mjs'], { cwd: pluginDir, stdio: 'ignore', timeout: 600_000 })
 }
 
 /**
- * 把 server 端 tsc 产物编到临时目录（一次 tsc，不逐文件跑），返回 `{文件相对路径: 内容}`
- * 或 null（tsc 失败 → fail-closed）。`--outDir` 覆盖 tsconfig 的 outDir，工作区不被改动；
- * server tsconfig 已 `exclude: src/client`，因此与 client 端产物互不干扰。
+ * 跑一次 server 端 tsc（在镜像里原地编译，产出落到镜像的 `lib/`），返回 `{相对路径: 内容}`
+ * 或 null（tsc 失败 → fail-closed）。server tsconfig 已 `exclude: src/client`，与 client 产物互不干扰。
  */
-function buildServerToTemp(root, plugin) {
-  const dir = mkdtempSync(join(tmpdir(), `dsh-artifact-${plugin}-`))
+function buildServerInPlace(pluginDir) {
   try {
-    execFileSync('npx', ['--no-install', 'tsc', '-p', 'tsconfig.json', '--outDir', dir], {
-      cwd: join(root, 'plugins', plugin),
+    execFileSync('npx', ['--no-install', 'tsc', '-p', 'tsconfig.json'], {
+      cwd: pluginDir,
       stdio: 'ignore',
       timeout: 600_000,
     })
-    const out = {}
-    const walk = (rel) => {
-      for (const entry of readdirSync(join(dir, rel), { withFileTypes: true })) {
-        const next = rel === '' ? entry.name : join(rel, entry.name)
-        if (entry.isDirectory()) walk(next)
-        else if (entry.name.endsWith('.js')) out[next] = readFileSync(join(dir, next))
-      }
-    }
-    walk('')
-    return out
   } catch {
     return null
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
   }
+  const libDir = join(pluginDir, 'lib')
+  if (!existsSync(libDir)) return {}
+  const out = {}
+  const walk = (rel) => {
+    for (const entry of readdirSync(join(libDir, rel), { withFileTypes: true })) {
+      const next = rel === '' ? entry.name : join(rel, entry.name)
+      if (entry.isDirectory()) walk(next)
+      else if (entry.name.endsWith('.js')) out[next] = readFileSync(join(libDir, next))
+    }
+  }
+  walk('')
+  return out
 }
 
 /**
@@ -142,18 +168,30 @@ export function runCheck({
   }
 
   const drifted = []
+  // 所有重建都在仓库外镜像里跑（#336：本脚本对工作区只读——见 createWorktreeMirror 注释）
+  const mirror = mkdtempSync(join(tmpdir(), 'dsh-artifacts-mirror-'))
+  try {
+    createWorktreeMirror(root, mirror)
+  } catch (error) {
+    rmSync(mirror, { recursive: true, force: true })
+    log(`❌ ${error.message}（fail-closed：无法在只读镜像里重建，拒绝原地写工作区）`)
+    return { ok: false, code: 1, checked: 0, drifted: [], ms: Date.now() - started }
+  }
+  // 任何异常路径都必须删掉镜像（临时目录不残留是只读契约的一部分）
+  process.on('exit', () => rmSync(mirror, { recursive: true, force: true }))
+
   // 1. client bundle（只重建受影响插件）
   const buildFailures = new Set()
   for (const { plugin } of list) {
     try {
-      buildClient(root, plugin)
+      buildClient(join(mirror, 'plugins', plugin))
     } catch (error) {
       buildFailures.add(plugin)
       drifted.push({ plugin, parts: [], reason: `client 重建失败：${error.message.split('\n')[0]}` })
     }
   }
   const clientResult = evaluateClientArtifacts(list, (plugin) => {
-    const artifact = join(root, 'plugins', plugin, CLIENT_ARTIFACT)
+    const artifact = join(mirror, 'plugins', plugin, CLIENT_ARTIFACT)
     return {
       expected: buildFailures.has(plugin) || !existsSync(artifact) ? null : readFileSync(artifact),
       actual: committed(root, `plugins/${plugin}/${CLIENT_ARTIFACT}`),
@@ -163,7 +201,7 @@ export function runCheck({
 
   // 2. server 端 tsc 产物
   for (const plugin of servers) {
-    const emitted = buildServerToTemp(root, plugin)
+    const emitted = buildServerInPlace(join(mirror, 'plugins', plugin))
     if (emitted === null) {
       drifted.push({ plugin, parts: [], reason: 'server tsc 编译失败（无法判定产物是否同源）' })
       continue
@@ -188,11 +226,12 @@ export function runCheck({
     }
   }
 
+  rmSync(mirror, { recursive: true, force: true })
   const ms = Date.now() - started
   const scope = `client ${list.length} 个消费方 + server ${servers.length} 个插件`
   if (drifted.length === 0) {
     log(`✅ 产物与源码/共享件同源（${scope}）`)
-    log(`   耗时 ${ms}ms（client 只重建受影响插件；server 走临时 outDir，不改工作区）`)
+    log(`   耗时 ${ms}ms（全部重建在仓库外 HEAD 镜像内完成，工作区只读）`)
     return { ok: true, code: 0, checked: list.length + servers.length, drifted: [], ms }
   }
   if (clientResult.drifted.length > 0) {

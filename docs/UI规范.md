@@ -104,6 +104,8 @@ dsh-file-activity 的 UI 语言由五个要素构成，翻新插件时逐项对�
 
 > 构建脚本读取共享目录的路径约定：`join(root, '..', 'dsh-shared', 'client-parts')`（root 为插件目录），见 `plugins/dsh-file-activity/scripts/build.mjs` 的 `sharedPartsDir`。
 
+> **该门禁对工作区只读（issue #336）**：重建在仓库外的 HEAD 镜像里进行，不会重写你的 `lib/parts` 或 `lib/client.js`，因此与并发 `prettier --check` 不会互相干扰，也不会覆盖未提交的编辑。
+>
 > **改了共享部件必须重建并提交所有消费方产物（issue #318 已加门禁）**：`client-parts` 是构建期
 > 拼接的源文件，产物 `lib/client.js` 必须提交（CI 不跑构建）。漏重建会静默陈旧——实测 commit
 > `735e2fa` 加 3 个图标只重建了 2 个消费方，`dsh-file-activity` / `dsh-my-observability` 的产物

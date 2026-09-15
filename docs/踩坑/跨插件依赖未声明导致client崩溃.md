@@ -1,6 +1,6 @@
 ---
 title: 跨插件依赖未声明导致 client 崩溃
-description: client 端 require('dsh-*') 未声明 peerDependencies 导致插件加载崩溃（issue #39 实例）
+description: client 端 require('dsh-*') / dsh.client.external 未声明或只声明 peerDependencies 导致插件加载崩溃（issue #39 / #290 / #293 实例），以及"缺包场景假通过"的门禁教训（issue #294）
 created: 2026-08-28
 status: 已解决
 ---
@@ -37,5 +37,53 @@ status: 已解决
 
 1. **addons 软链 EEXIST**：生产 profile 已 `link:` 安装的插件在 node_modules 已有同名条目，addons 软链冲突 → 已存在则复用（指向真实源码，效果相同）；
 2. **模拟安装制造重复 id**：已手动安装的插件（cordis.patch.yml 有手动行）被再次写入 bundles → bundle 自动插行 + patch 手动行叠加产生 `duplicate loader entry id` → 模拟安装前检查插件是否已在生产配置（bundles 或 patch 行），已存在则不重复写入。
+
+→ [踩坑记录](README.md)
+
+## 复发与升级（issue #290 / #293 / #294）：声明对了，用户还是崩
+
+#39 的修复只解决了「没声明」。**#290（`dsh-think-zh-expand@0.4.8` 新装必崩）证明声明对了照样崩**，
+#293 又证明「try/catch 降级」也是假的。三个坑逐层剥开：
+
+1. **`dsh.client.external` 的真实语义**：它是「**同 boot 图内的跨插件 client 行请求**」。
+   只有被请求的包成为 loader entry（⇒ 进入 `dsh.profile.bundles`）才会产生 client graph row，
+   浏览器端 `require` 才命中（`dsh-client-modules/lib/client.js` 的 `makeRequire` 只认
+   seed / 已 materialize 行 / 已注册 factory）。缺包时**无 stub、无隔离**：整条 client factory 抛错，
+   插件**全部 UI 席位**一起挂。
+2. **`peerDependencies` 兜不住**：`dsh plugin add` 只是 pnpm 转发器，装完由 `reconcilePlugins` 把
+   **profile `dependencies`** 里声明了 `dsh.bundle.patch` 的包写进 `dsh.profile.bundles`；
+   而 profile 模板是 `autoInstallPeers: false` —— peer **永不安装**。
+   所以「external 依赖只写在 peerDependencies」= 新装用户必然拿不到 ⇒ 必崩。
+3. **假降级**：只 catch `require` 不够。缺包时 `MarkdownView` 为 `null`，渲染期
+   `createElement(null)` 仍抛 `Element type is invalid`。降级必须**换成平台 seed 组件或纯文本回退**，
+   而不是把 `null` 传进渲染树。
+
+**正确修法**（两条必须同时满足）：
+
+- ① 依赖放进 `dependencies`，并在 README/安装说明里保证与插件**同时安装**（只有进 profile
+  dependencies 才可能被 reconcile 激活成 client 图行）；
+- ② 必须有**降级路径**（平台 seed 组件或纯文本回退），依赖缺失时也要能渲染。
+
+## 门禁两个缺口（issue #294 补齐）
+
+| 缺口                          | 表现                                                                                                                               | 修法                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1c 不读 `dsh.client.external` | 全仓 `grep external scripts/*.mjs` 只命中 ship 的"外发"语义，external 零校验                                                       | `release-checks.mjs` 新增 `checkClientExternals`：external 每项必须在 deps/peers 声明；仓库内包必须在 **dependencies** 且已发布 + 已打 tag（复用 `findUnpublishedDeps` 判据）；`release.mjs` 1c 用 `gateFail('1c', …)` 登记；修法文案含"必须同时安装 + 必须有降级路径"并指向本文档                                                                                                                                                                                                 |
+| 3c 结构性假通过               | 隔离实例**无条件复用**生产 profile 的全部 node_modules；本机 profile 已装 `dsh-md-render` ⇒ 「新装用户没装它」这个状态永远验证不到 | `verify-real-profile.mjs` 新增 `--clean-externals`（从 `--addons` 的 `dsh.client.external` 推导缺失集合）与 `--omit-node-modules <pkg>`：节点既不复用真实 profile、也不做 addon 链接，**并且**从隔离 profile 配置（`dependencies` + `dsh.profile.bundles`）里剔除；启动前 `checkOmittedAbsent` fail-closed 校验"确实不可解析"；日志错误扫描补 `failed to import loader entry` / `missed the module table` / `Element type is invalid` / `Cannot find module`。发版门禁 3c 默认开启 |
+
+## 两个"验证本身不可信"的坑（#294 实测踩到，防复发）
+
+1. **只删 node_modules 会得到不一致状态**：配置里还列着该 bundle ⇒ DSH 在 dump-config/boot 阶段
+   直接抛 `cannot resolve profile bundle "dsh-md-render" from the dsh installation or <profileDir>`，
+   实例根本起不来 —— 反而验不到「缺包时插件能否降级」。必须连 `dependencies` + `dsh.profile.bundles`
+   一起剔除（`stripProfileDeclarations`），才是"这个包从来没装过"的真实形态。
+2. **残留实例 ⇒ 0.2s 假就绪**：就绪探测只认「任何 HTTP 响应」，上一轮遗留的隔离实例占着同一端口时，
+   本轮在自己实例还没起来（甚至起不来）时就判"HTTP 200 就绪"（实测 0.2s vs 真实冷启动 ~8s）。
+   现在启动前 `isPortInUse` **fail-closed**：端口被占直接报错，绝不把他人实例当成自己的验证结果。
+
+> 边界（诚实记录）：client 侧崩溃（`Element type is invalid`）发生在**浏览器运行时**，
+> server 启动日志未必留痕。3c 的缺包演练能保证「实例能起、加载无错」，但
+> 「缺包时 UI 是否真的降级渲染」仍需 `skills/verifying-dsh-plugins` 的浏览器步骤确认 ——
+> 不要把 3c 的绿当成这一项已验证。
 
 → [踩坑记录](README.md)

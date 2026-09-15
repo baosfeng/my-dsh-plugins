@@ -26,9 +26,12 @@ import { fileURLToPath } from 'node:url'
 import {
   PLUGIN_STATE_DIRS,
   readAddon,
+  readAddonExternals,
   planNodeModulesLinks,
   linkNodeModules,
   checkAddonResolution,
+  checkOmittedAbsent,
+  stripProfileDeclarations,
   realpathOrNull,
   isIsoTimestamp,
   extractApiToken,
@@ -129,6 +132,41 @@ describe('planNodeModulesLinks', () => {
     expect(plan.reuse).toEqual(['@other', 'react'])
     expect(plan.expand).toEqual([])
   })
+
+  // ── issue #294：omit = external 缺包演练 ────────────────────────────────
+  it('omit 的条目既不复用真实 profile，也不链接（缺包演练的核心）', () => {
+    const plan = planNodeModulesLinks({
+      realEntries: ['react', 'dsh-md-render', 'lodash'],
+      addons: [],
+      omit: ['dsh-md-render'],
+    })
+    expect(plan.reuse).toEqual(['react', 'lodash'])
+    expect(plan.omitted).toEqual(['dsh-md-render'])
+    expect(plan.omittedAddons).toEqual([])
+  })
+
+  it('不传 omit → 与旧版逐条一致（行为不回归）', () => {
+    const plan = planNodeModulesLinks({ realEntries: ['react', 'dsh-md-render'], addons: [] })
+    expect(plan.reuse).toEqual(['react', 'dsh-md-render'])
+    expect(plan.omitted).toEqual([])
+  })
+
+  it('omit 与 addon 同名 → omit 优先并记入 omittedAddons（不静默）', () => {
+    const plan = planNodeModulesLinks({
+      realEntries: ['dsh-md-render'],
+      addons: [{ dir: '/fork/plugins/dsh-md-render', name: 'dsh-md-render' }],
+      omit: ['dsh-md-render'],
+    })
+    expect(plan.addonLinks).toEqual([])
+    expect(plan.omitted).toEqual(['dsh-md-render'])
+    expect(plan.omittedAddons).toEqual(['dsh-md-render'])
+  })
+
+  it('omit 未在真实 profile 安装的包 → 不报错（新装用户本来就没有）', () => {
+    const plan = planNodeModulesLinks({ realEntries: ['react'], addons: [], omit: ['dsh-md-render'] })
+    expect(plan.reuse).toEqual(['react'])
+    expect(plan.omitted).toEqual([])
+  })
 })
 
 // ── linkNodeModules（真实 fs） ────────────────────────────────────────────
@@ -211,6 +249,114 @@ describe('linkNodeModules', () => {
     expect(realpathSync(join(simNode, '@scope/other'))).toBe(realpathSync(other))
     // 模拟目录里的 @scope 是真目录（不是指向真实 profile 的软链）
     expect(lstatSync(join(simNode, '@scope')).isSymbolicLink()).toBe(false)
+  })
+})
+
+// ── issue #294：external 缺包演练（omit / 推导 / fail-closed 校验）──────────
+describe('issue #294 external 缺包演练', () => {
+  it('linkNodeModules 应用 omit：真实 profile 里已装的包不进入隔离实例', () => {
+    const base = tempDir()
+    const realNode = join(base, 'real-node-modules')
+    const mdDir = join(realNode, 'dsh-md-render')
+    mkdirSync(mdDir, { recursive: true })
+    writeFileSync(join(mdDir, 'package.json'), JSON.stringify({ name: 'dsh-md-render', version: '0.1.8' }))
+    const reactDir = join(realNode, 'react')
+    mkdirSync(reactDir, { recursive: true })
+    writeFileSync(join(reactDir, 'package.json'), JSON.stringify({ name: 'react', version: '19.0.0' }))
+    const simNode = join(base, 'sim-node-modules')
+
+    const result = linkNodeModules({ simNode, realNode, addons: [], omit: ['dsh-md-render'] })
+
+    expect(result.omitted).toEqual(['dsh-md-render'])
+    expect(lstatSync(join(simNode, 'dsh-md-render'), { throwIfNoEntry: false })).toBeUndefined()
+    // 其余条目照旧复用（pnpm 依赖解析不受影响）
+    expect(readlinkSync(join(simNode, 'react'))).toBe(join(realNode, 'react'))
+    // 真实 profile 不被改写（仍是真实目录，不是被删/被改写的软链）
+    expect(lstatSync(mdDir).isDirectory()).toBe(true)
+  })
+
+  it('scoped 包走 scope 展开分支时，omit 的子条目同样被跳过', () => {
+    const base = tempDir()
+    const realNode = join(base, 'real-node-modules')
+    mkdirSync(join(realNode, '@deepseek-ai'), { recursive: true })
+    for (const name of ['dsh-client-runtime', 'dsh-web-app']) {
+      const dir = join(realNode, '@deepseek-ai', name)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: `@deepseek-ai/${name}`, version: '1.0.0' }))
+    }
+    const simNode = join(base, 'sim-node-modules')
+    const forkAddon = makeAddon(base, '@scope/pkg', 'fork/pkg')
+
+    const result = linkNodeModules({
+      simNode,
+      realNode,
+      addons: [{ dir: forkAddon, name: '@scope/pkg' }],
+      omit: ['@deepseek-ai/dsh-client-runtime'],
+    })
+
+    expect(result.omitted).toContain('@deepseek-ai/dsh-client-runtime')
+    expect(lstatSync(join(simNode, '@deepseek-ai', 'dsh-client-runtime'), { throwIfNoEntry: false })).toBeUndefined()
+    expect(realpathSync(join(simNode, '@deepseek-ai', 'dsh-web-app'))).toBe(
+      realpathSync(join(realNode, '@deepseek-ai', 'dsh-web-app')),
+    )
+  })
+
+  it('checkOmittedAbsent：条目确实缺席 → ok；被复用进来 → ok=false 并列出 leaked', () => {
+    const base = tempDir()
+    const realNode = join(base, 'real-node-modules')
+    mkdirSync(join(realNode, 'dsh-md-render'), { recursive: true })
+    const simNode = join(base, 'sim-node-modules')
+    mkdirSync(simNode, { recursive: true })
+
+    expect(checkOmittedAbsent({ simNode, omitted: ['dsh-md-render'] }).ok).toBe(true)
+
+    // 接线写错（漏传 omit）→ 该条目被复用进 simNode：必须被抓住，不允许假通过
+    symlinkSync(join(realNode, 'dsh-md-render'), join(simNode, 'dsh-md-render'))
+    const leaked = checkOmittedAbsent({ simNode, omitted: ['dsh-md-render'] })
+    expect(leaked.ok).toBe(false)
+    expect(leaked.leaked.map((item) => item.entry)).toEqual(['dsh-md-render'])
+  })
+
+  it('stripProfileDeclarations：剔除 dependencies + bundles，且不修改原对象', () => {
+    const profilePkg = {
+      name: 'web',
+      dependencies: { 'dsh-md-render': 'link:/x/dsh-md-render', 'dsh-better-sidebar': '^0.18.1' },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', 'dsh-md-render', 'dsh-my-remote'] } },
+    }
+    const { pkg, removed } = stripProfileDeclarations(profilePkg, ['dsh-md-render'])
+
+    expect(removed.sort()).toEqual(['dependencies.dsh-md-render', 'dsh.profile.bundles.dsh-md-render'].sort())
+    expect(pkg.dependencies).toEqual({ 'dsh-better-sidebar': '^0.18.1' })
+    expect(pkg.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-base', 'dsh-my-remote'])
+    // 原对象不被修改（纯函数；调用方可能还要用它做别的判定）
+    expect(profilePkg.dependencies['dsh-md-render']).toBe('link:/x/dsh-md-render')
+    expect(profilePkg.dsh.profile.bundles).toContain('dsh-md-render')
+  })
+
+  it('stripProfileDeclarations：包未在 profile 声明 → removed 为空（不报错）', () => {
+    const { pkg, removed } = stripProfileDeclarations({ dependencies: {}, dsh: { profile: { bundles: [] } } }, [
+      'dsh-x',
+    ])
+    expect(removed).toEqual([])
+    expect(pkg.dependencies).toEqual({})
+  })
+
+  it('readAddonExternals：读 dsh.client.external（去重 + 非法项安全降级）', () => {
+    const base = tempDir()
+    const withExternal = makeAddon(base, 'dsh-consumer', 'consumer')
+    writeFileSync(
+      join(withExternal, 'package.json'),
+      JSON.stringify({
+        name: 'dsh-consumer',
+        version: '1.0.0',
+        dsh: { client: { platform: 'web', external: ['dsh-md-render', 'dsh-md-render', 42, ''] } },
+      }),
+    )
+    expect(readAddonExternals(withExternal)).toEqual(['dsh-md-render'])
+
+    const withoutExternal = makeAddon(base, 'dsh-plain', 'plain')
+    expect(readAddonExternals(withoutExternal)).toEqual([])
+    expect(readAddonExternals(join(base, 'not-exist'))).toEqual([])
   })
 })
 
@@ -387,6 +533,61 @@ describe('verify-real-profile.mjs 接线', () => {
 
   it('不再复用同名真实 profile 软链（旧 EEXIST 绕过的写法已移除）', () => {
     expect(source).not.toContain('if (!existsSync(target)) symlinkSync')
+  })
+
+  // issue #294：缺包演练必须真的被脚本接线（lib 改了脚本没接是最容易的假修复）
+  it('--clean-externals / --omit-node-modules 接线：推导 omit 并传给 linkNodeModules', () => {
+    expect(source).toContain('--clean-externals')
+    expect(source).toContain('--omit-node-modules')
+    expect(source).toContain('readAddonExternals')
+    expect(source).toMatch(/linkNodeModules\(\{[^}]*omit: omitEntries/)
+  })
+
+  it('缺包演练 fail-closed：启动实例前校验 omit 条目确实不可解析，leak 即退出', () => {
+    expect(source).toContain('checkOmittedAbsent')
+    const checkAt = source.indexOf('checkOmittedAbsent({ simNode')
+    const spawnAt = source.indexOf("spawn(dshBin, ['--profile'")
+    expect(checkAt).toBeGreaterThan(-1)
+    expect(spawnAt).toBeGreaterThan(-1)
+    expect(checkAt).toBeLessThan(spawnAt)
+    expect(source).toContain('缺包演练未生效（fail-closed）')
+  })
+
+  it('启动日志扫描覆盖缺包类症状（failed to import loader entry / missed the module table / Element type is invalid）', () => {
+    for (const keyword of [
+      'failed to import loader entry',
+      'missed the module table',
+      'Element type is invalid',
+      'Cannot find module',
+    ]) {
+      expect(source).toContain(keyword)
+    }
+  })
+
+  it('发版门禁 3c 默认启用 --clean-externals（release.mjs 接线，防"开关加了没人用"）', () => {
+    const release = readFileSync(join(repoRoot, 'scripts', 'release.mjs'), 'utf8')
+    const gateAt = release.indexOf('async function realVerifyGate')
+    expect(gateAt).toBeGreaterThan(-1)
+    const gateBody = release.slice(gateAt, gateAt + 2000)
+    expect(gateBody).toContain("'--clean-externals'")
+  })
+
+  it('启动实例前 fail-closed 端口预检（#294 实测：残留实例 → 0.2s 假就绪）', () => {
+    expect(source).toContain('isPortInUse')
+    const portAt = source.indexOf('await isPortInUse(options.port)')
+    const spawnAt = source.indexOf("spawn(dshBin, ['--profile'")
+    expect(portAt).toBeGreaterThan(-1)
+    expect(portAt).toBeLessThan(spawnAt)
+    expect(source).toContain('已被占用')
+  })
+
+  it('缺包演练同时剔除隔离 profile 配置（只删 node_modules 会 boot 失败）', () => {
+    expect(source).toContain('stripProfileDeclarations')
+    const stripAt = source.indexOf('stripProfileDeclarations(')
+    const dumpAt = source.indexOf('dump-config id 唯一性')
+    expect(stripAt).toBeGreaterThan(-1)
+    expect(dumpAt).toBeGreaterThan(-1)
+    expect(stripAt).toBeLessThan(dumpAt) // 必须在 dump-config / 启动之前完成
   })
 })
 

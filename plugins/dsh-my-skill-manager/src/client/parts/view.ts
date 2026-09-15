@@ -85,7 +85,6 @@ function SkillManagerView(): unknown {
     })
   }, [])
 
-  const projectRoot = data === null ? '' : data.projectRoot
   const cwdOf = (scope: string): string => (scope === 'project' ? sessionCwd : '')
   const switchView = (scope: string): void => {
     if (scope === view) return

@@ -16,7 +16,6 @@ import { fileURLToPath } from 'node:url';
 import { createPromptSection } from './prompt.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MERMAID_ASSET_PATH = join(__dirname, '..', 'assets', 'mermaid-10.9.3.min.js');
-const MERMAID_ROUTE_PATH = '/mermaid-render/assets/mermaid-10.9.3.min.js';
 export const name = 'dsh-mermaid-render';
 /**
  * 服务依赖（issue #298）：systemPrompt + webServer。

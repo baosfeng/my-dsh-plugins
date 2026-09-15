@@ -7,7 +7,7 @@
  * 无 import/export = 全局作用域，见 tsconfig.client.json）。
  *
  * 本文件只被 tsconfig.client.json 加载（根 tsconfig 已 exclude
- * plugins/*/ src / client /**），不会污染仓库级类型环境。
+ * plugins/<名>/src/client/**），不会污染仓库级类型环境。
  */
 
 // ── React（由 factory 作用域的 require('react') 注入）────────────────────

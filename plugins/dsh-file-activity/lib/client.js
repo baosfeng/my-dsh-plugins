@@ -685,6 +685,33 @@ const icon = {
       ],
       size,
     ),
+  // 箭头向上（更新图标）：向上的箭头，表示更新操作
+  arrowUp: (size = 16) =>
+    iconSvg(
+      [
+        createElement('line', { x1: 12, y1: 19, x2: 12, y2: 5 }),
+        createElement('polyline', { points: '5 12 12 5 19 12' }),
+      ],
+      size,
+    ),
+  // 电源关（禁用图标）：圆形电源按钮，表示禁用操作
+  powerOff: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M18.36 6.64a9 9 0 1 1-12.73 0' }),
+        createElement('line', { x1: 12, y1: 2, x2: 12, y2: 12 }),
+      ],
+      size,
+    ),
+  // 电源开（启用图标）：圆形电源按钮，表示启用操作
+  powerOn: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M18.36 6.64a9 9 0 1 1-12.73 0' }),
+        createElement('line', { x1: 12, y1: 2, x2: 12, y2: 12 }),
+      ],
+      size,
+    ),
 }
 
 // Common-language / file-type badges (issue #24): brand fill + contrast
@@ -1317,7 +1344,7 @@ function FileActivityView({
   dataStore,
 }) {
   const data = useSyncExternalStore(dataStore.subscribe, dataStore.getSnapshot)
-  const [cwd, setCwd] = useState(scope?.cwd || '')
+  const [, setCwd] = useState(scope?.cwd || '')
   const [error, setError] = useState(false)
   const [recentOpen, setRecentOpen] = useState(true)
   const [collapsedDirs, setCollapsedDirs] = useState(() => new Set())

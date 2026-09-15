@@ -391,7 +391,8 @@ describe('checkAddonResolution', () => {
 
   it('addon 路径经软链别名（/tmp → /private/tmp 场景）时不误报', () => {
     const base = tempDir()
-    const forkAddon = makeAddon(base, 'dsh-demo', 'fork/dsh-demo')
+    // 只为创建 addon 目录（副作用），绑定本身不用（issue #315：去掉未使用绑定，保留调用）
+    makeAddon(base, 'dsh-demo', 'fork/dsh-demo')
     const alias = join(base, 'tmp-alias')
     symlinkSync(base, alias, 'dir')
     const simNode = join(base, 'sim-node-modules')

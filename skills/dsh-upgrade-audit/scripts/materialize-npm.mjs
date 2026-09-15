@@ -33,12 +33,6 @@ function flagValue(name) {
 const supplements = flagValue('--packages')?.split(',') ?? DEFAULT_SUPPLEMENTS
 const useGithub = !args.includes('--no-github')
 
-/** dsh-v0.1.2-alpha.2 -> 0.1.2alpha2 (report-directory naming). */
-function normalizeTag(tag) {
-  const m = tag.match(/^(?:dsh-)?v?(\d+\.\d+\.\d+)(?:-(.+))?$/)
-  return m ? m[1] + (m[2] ? m[2].replace(/\./g, '') : '') : tag
-}
-
 function npm(...a) {
   const commandArgs = [...a, '--loglevel=error']
   if (process.platform === 'win32' && commandArgs.some((arg) => /[&|<>^()%!"`\r\n]/.test(arg))) {

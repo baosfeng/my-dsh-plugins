@@ -37,3 +37,26 @@
     假如 客户端模块已加载
     那么 本插件不导出 MarkdownView 渲染组件
     并且 本插件 bundle 不包含表格渲染逻辑
+
+  # issue #293：三级渲染回退（md-render 首选 → 官方 MarkdownText → <pre>）
+  场景: 未装 dsh-md-render 时用官方 MarkdownText 兜底
+    假如 未装 dsh-md-render 但官方组件可用时渲染器已注册
+    当 渲染文本块 "| 插件 | 版本 |"
+    那么 输出由官方 MarkdownText 渲染
+    并且 传给官方组件的 labels.code.copyLabel 为 "复制"
+    并且 输出包含数据文本 "| 插件 | 版本 |"
+
+  场景: md-render 与官方组件都缺失时回退纯文本
+    假如 未装 dsh-md-render 且官方组件也缺失时渲染器已注册
+    当 渲染文本块 "回退纯文本"
+    那么 输出回退为带 fallback 标记的 pre
+    并且 输出包含数据文本 "回退纯文本"
+
+  # 真实宿主 MarkdownText 是 React.memo 对象（object($$typeof,type,compare)），
+  # 不是函数——用 typeof === 'function' 判可用性会误判为缺失、直接落到 <pre>
+  场景: 官方组件是 memo 对象时仍用官方组件渲染
+    假如 未装 dsh-md-render 且官方组件为 memo 对象时渲染器已注册
+    当 渲染文本块 "memo 形态渲染"
+    那么 输出由官方 MarkdownText 渲染
+    并且 传给官方组件的 labels.code.copyLabel 为 "复制"
+    并且 输出包含数据文本 "memo 形态渲染"

@@ -25,11 +25,19 @@
 内置的思考块（`ReasoningRow`）默认折叠成单行摘要，只显示第一行；本插件替换 `conversation.chat.node` 的 `assistant-step` 渲染器：
 
 - **思考块默认展开**：完整思考内容直接显示，点击标题行可收起（流式生成中强制保持展开）；思考内容**同样走统一 Markdown 渲染**（代码块 / 标题 / 列表 / 引用 / 表格 / 公式 / **Mermaid 图表**），思考里出现的 markdown 语法不再以原始文本显示，mermaid 代码块会渲染成图表卡片；
-- **文本块统一 Markdown 渲染**：由 [dsh-md-render](../dsh-md-render/README.md) 提供（issue #31 渲染职责迁移：本插件不再包含渲染逻辑，经 `dsh.client.external` 跨插件 require 其 MarkdownView 组件）——代码块 / 标题 / 列表 / 引用 / **表格**（含对齐）/ **公式** / 粗体 / 行内代码 / 链接；
+- **文本块统一 Markdown 渲染**：优先由 [dsh-md-render](../dsh-md-render/README.md) 提供（issue #31 渲染职责迁移：本插件不再包含渲染逻辑，经 `dsh.client.external` 跨插件 require 其 MarkdownView 组件）——代码块 / 标题 / 列表 / 引用 / **表格**（含对齐）/ **公式** / 粗体 / 行内代码 / 链接；
 - **图片块**复用内置 `renderMessageImages` 渲染；
 - **tool-call 块**与内置行为一致（由独立节点渲染）。
 
-> ⚠️ **依赖 dsh-md-render**：本插件 client 端硬依赖 `dsh-md-render`（跨插件 require 其 MarkdownView），两个插件须同时启用；MarkdownView 渲染样式（`.tzx-md` 系列）随 dsh-md-render 注入。
+> ℹ️ **渲染三级回退（issue #293）**：本插件 client 端**不再硬依赖** `dsh-md-render`，按以下顺序解析渲染组件：
+>
+> 1. **`dsh-md-render`（推荐同时安装）**：用它提供的 `MarkdownView`，行为与 0.4.9 完全一致（表格增强 / 代码块增强 / 公式结构排版），`.tzx-md` 系列样式随它注入；
+> 2. **宿主官方组件**：未装 `dsh-md-render` 时自动用宿主 staticModules 提供的 `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText`（官方 GFM + KaTeX，实测表格 / 宽表滚动容器 / 代码块 / 公式都能渲染，零安装、零体积、无需 external 声明）——**开箱即可正常渲染**；相比 md-render 缺的是它的增强集：不标准表格容错、`div.md-code-block` 代码块容器（[dsh-mermaid-render](../dsh-mermaid-render/README.md) 靠它把 ```mermaid 渲染成图表卡片）、代码复制按钮 / 语法高亮 / 行号 / 主题、公式结构排版（`\frac` / `\sqrt` 等）、以及跨插件样式契约类（`.tzx-md` / `dsh-md-render-*`）；
+> 3. **纯文本兜底**：极旧/裁剪宿主连官方组件表都没有时，回退 `<pre data-dsh-think-zh-expand-fallback="true">`，渲染期仍不抛错。
+>
+> 0.4.9 及更早版本只把 `require('dsh-md-render')` 包了 try/catch（`MarkdownView = null`）却仍裸调 `createElement(MarkdownView, …)`，渲染期会抛 `Element type is invalid … but got: null`——是**假降级**（见 [踩坑：假降级](../../docs/踩坑/假降级-只catch-require不等于优雅降级.md)）。
+>
+> 📌 `package.json` 的 `dsh.client.externalDegraded: ["dsh-md-render"]` 是对上面这条三级回退的**显式承诺**：`dsh-md-render` 只在 `peerDependencies` 里（`autoInstallPeers: false` 下永不自动安装），按 #294 的规则，仅 peer 的 external 必须在 `externalDegraded` 里声明「缺失时有降级路径」，否则发版门禁 1c 阻断。⚠️ **该字段只是本仓库门禁的声明**：宿主解析 `dsh.client` 只认 `platform` / `inject` / `external` / `immediately`，未知字段被丢弃，**对宿主运行时无任何副作用**。
 
 ### 3. 界面标签中文化（Client 端）
 
@@ -50,11 +58,11 @@
 ## 工作原理
 
 - **Server 端**（`lib/index.js`）：`inject: ['systemPrompt']`，`apply` 里调用 `ctx.systemPrompt.section({ name: 'dsh-think-zh', order: -90, text })`。section 名 `dsh-think-zh`（order -90）。
-- **Client 端**（`lib/client.js`）：`inject: ['slots']`，三个职责——① `ctx.slots.inject('conversation.chat.node', ...)` + `ctx.slots.register({ key: 'assistant-step', priority: -1, registrant: 'dsh-think-zh-expand' }, ...)` 以更低优先级覆盖内置渲染器（与 dsh-better-sidebar 覆盖内置席位的方式一致）；② `systemPrompt` 与渲染器之外，`ctx.effect` 注入样式表（随 fiber 卸载）；③ `ctx.effect` 安装界面中文化（MutationObserver 文本节点精准替换，随 fiber 卸载断开）。渲染器内的 MarkdownView 组件经 `require('dsh-md-render')` 跨插件取得（`dsh.client.external: ["dsh-md-render"]` 声明，ModuleLoader 保证 dsh-md-render 先于本插件 materialize）。
+- **Client 端**（`lib/client.js`）：`inject: ['slots']`，三个职责——① `ctx.slots.inject('conversation.chat.node', ...)` + `ctx.slots.register({ key: 'assistant-step', priority: -1, registrant: 'dsh-think-zh-expand' }, ...)` 以更低优先级覆盖内置渲染器（与 dsh-better-sidebar 覆盖内置席位的方式一致）；② `systemPrompt` 与渲染器之外，`ctx.effect` 注入样式表（随 fiber 卸载）；③ `ctx.effect` 安装界面中文化（MutationObserver 文本节点精准替换，随 fiber 卸载断开）。渲染组件经 factory 顶层三级解析得到并绑定为 `MarkdownView`：`require('dsh-md-render')`（`dsh.client.external: ["dsh-md-render"]` 声明，装了就用）→ `require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText`（宿主静态模块表，官方兜底）→ `<pre data-dsh-think-zh-expand-fallback="true">`（纯文本）。任一级 require 抛错或导出畸形都安全落到下一级，渲染期永不抛错。
 
 ## 安装
 
-> 💡 **npm 安装（普通用户推荐）**：`dsh plugin --profile web add dsh-think-zh-expand dsh-md-render --trust-lockfile`——无需克隆本仓库；以下 link 方式供本仓库开发者使用。
+> 💡 **npm 安装（普通用户推荐）**：`dsh plugin --profile web add dsh-think-zh-expand dsh-md-render --trust-lockfile`——无需克隆本仓库；`dsh-md-render` 可选（不装则自动用官方组件渲染，见上文三级回退），但推荐连装以获得增强表格渲染。以下 link 方式供本仓库开发者使用。
 
 ```bash
 # 1) 克隆本仓库（任意目录）
@@ -73,11 +81,12 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 
 ## 依赖
 
-| 依赖                             | 用途                                                                | 可选                         |
-| -------------------------------- | ------------------------------------------------------------------- | ---------------------------- |
-| `@deepseek-ai/dsh-system-prompt` | host 端 systemPrompt 服务                                           | 是（缺省时 server 端不注入） |
-| `react`                          | client 端组件                                                       | —                            |
-| `dsh-md-render`                  | client 端统一 MarkdownView（跨插件 require，`dsh.client.external`） | 否（须同时启用）             |
+| 依赖                                    | 用途                                                                          | 可选                                            |
+| --------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------- |
+| `@deepseek-ai/dsh-system-prompt`        | host 端 systemPrompt 服务                                                     | 是（缺省时 server 端不注入）                    |
+| `react`                                 | client 端组件                                                                 | —                                               |
+| `dsh-md-render`                         | client 端统一 MarkdownView（跨插件 require，`dsh.client.external`，**首选**） | 是（缺失时回退官方 `MarkdownText`，渲染仍可用） |
+| `@deepseek-ai/dsh-client-ui-primitives` | 兜底渲染组件 `MarkdownText`（宿主 staticModules 提供，无需安装/声明）         | 是（缺失时回退 `<pre>` 纯文本）                 |
 
 ## 相关文档
 

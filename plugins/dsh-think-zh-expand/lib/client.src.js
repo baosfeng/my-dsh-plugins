@@ -17,14 +17,53 @@ window.__ModuleLoader__.load({
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     // useState 由编译后的 client bundle 使用；模板静态分析看不到 bundle 内容。
-    const { createElement, useState } = require('react')
-    // 统一 MarkdownView 由 dsh-md-render 提供（issue #31 渲染职责迁移）。
-    let MarkdownView = null
-    try {
-      MarkdownView = require('dsh-md-render').MarkdownView
-    } catch {
-      MarkdownView = null // 不可用时回退纯文本
+    const { createElement, useState, isValidElementType: reactIsValidElementType } = require('react')
+    // ── MarkdownView：三级渲染回退（issue #293）────────────────────────
+    // 1) dsh-md-render 的 MarkdownView —— 首选渲染内核（issue #31/#186 决策不变）；
+    // 2) 宿主 staticModules 的官方 @deepseek-ai/dsh-client-ui-primitives 的
+    //    MarkdownText —— 未装 md-render 时仍是完整 GFM + KaTeX 渲染（零安装）；
+    // 3) <pre data-dsh-think-zh-expand-fallback="true"> —— 极旧/裁剪宿主纯文本。
+    // 只 catch require 不是降级（0.4.9 的假降级，#290/#293）：必须真的换掉渲染组件，
+    // 否则 createElement(null) 渲染期抛 `Element type is invalid ... but got: null`。
+    // 可用性判定必须用 React 语义：官方 MarkdownText 是 React.memo 返回的**对象**
+    // （宿主实测 object($$typeof,type,compare)），`typeof === 'function'` 会把
+    // memo/forwardRef 组件误判为不可用、直接落到 <pre>。优先用 react 自带的
+    // isValidElementType（react 19 已不再导出 → 退化式是实际生效路径），两者都
+    // 排除宿主标签字符串（垃圾导出值应落级，而不是渲染成未知标签）。
+    const isComponentLike = (value) =>
+      typeof value === 'function' || (typeof value === 'object' && value !== null && typeof value.$$typeof === 'symbol')
+    const isRenderableComponent =
+      typeof reactIsValidElementType === 'function'
+        ? (value) => typeof value !== 'string' && reactIsValidElementType(value)
+        : isComponentLike
+    // labels 无默认值（仅渲染含代码块的 markdown 时才读 labels.code.copyLabel），
+    // 中文文案由本中文化插件提供；codeLabels 兼容早期官方包（npm 0.0.1-rc.1）。
+    const ZH_MD_LABELS = { code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' }
+    const ZH_MD_CODE_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
+    function resolveMarkdownView() {
+      try {
+        const md = require('dsh-md-render')
+        if (md && isRenderableComponent(md.MarkdownView)) return md.MarkdownView
+      } catch {
+        // 未安装 dsh-md-render：落到官方组件
+      }
+      try {
+        const ui = require('@deepseek-ai/dsh-client-ui-primitives')
+        if (ui && isRenderableComponent(ui.MarkdownText)) {
+          const MarkdownText = ui.MarkdownText
+          return (props) =>
+            createElement(MarkdownText, {
+              text: props.text,
+              labels: ZH_MD_LABELS,
+              codeLabels: ZH_MD_CODE_LABELS,
+            })
+        }
+      } catch {
+        // 宿主模块表没有官方组件：落到纯文本
+      }
+      return (props) => createElement('pre', { 'data-dsh-think-zh-expand-fallback': 'true' }, props.text)
     }
+    const MarkdownView = resolveMarkdownView()
 
     // ── 共享图标（issue #54 阶段 0：dsh-shared/client-parts）──────────
     /*__PART_ICONS__*/

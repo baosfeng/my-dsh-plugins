@@ -15,6 +15,7 @@ updated: 2026-09-12
 - [发布 / npm 补发与 latest 覆盖](npm发布补发与latest覆盖.md) — tag 已存在时重推不触发 npm 发布；发布顺序颠倒导致 dist-tags.latest 指向旧版（2026-09-01）
 - [发布 / release.mjs dry-run bump](release脚本dry-run误写版本.md) — dry-run 已写入新版本号，--push 再次 bump 跳版本导致验证清单不匹配（2026-09-01）
 - [发布 / 跨插件依赖](跨插件依赖未声明导致client崩溃.md) — client 端 require('dsh-*') 未声明 peerDependencies 导致插件加载崩溃（已解决，2026-08-28，issue #39）
+- [跨插件依赖 / 假降级](假降级-只catch-require不等于优雅降级.md) — 依赖缺失时只 catch `require` 并把组件置 null，渲染期裸 `createElement(null)` 抛 `Element type is invalid … but got: null`；降级必须真的换渲染组件（三级链：md-render → 官方 MarkdownText → `<pre>`），且测试要覆盖「缺依赖」本身（已解决，2026-09-15，issue #290/#293）
 - [插件集成 / 依赖级联安装](DSH插件依赖级联安装机制.md) — dependencies 中声明 dsh.bundle 的包会被 dsh plugin add 自动加入 profile bundles（2026-09-01）
 - [插件集成 / profile 插件 fiber 回收](profile插件fiber被回收导致监听器静默失效.md) — profile 插件的 `ctx.on`/`ctx.effect` 注册随插件 fiber 被 loader 回收而静默消失（事件 0 触发、路由 404、无报错），须注册到常驻 root；含 3 分钟判定法与修法（2026-09-13，issue #242）
 - [客户端 UI / 样式](插件页签样式丢失.md) — 插件页签偶发"纯文字无样式"：样式注入放在服务判空早退之后，HMR 瞬间跳过注入（已解决，2026-08-23，v0.4.2）

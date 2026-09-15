@@ -59,6 +59,48 @@ const uiPrimitives = require('@deepseek-ai/dsh-client-ui-primitives')
 - **不需要** `dsh.client.inject` 声明（staticModules 全局提供；`inject` 仍是 跨插件 bundle（如 `require('dsh-md-render')` 走 `dsh.client.external`）的机制）。
 - 样式跟随 DSH 主题 token（`--dsw-alias-*`），深浅主题自适应；需覆写时用我们既有的 `<插件>-*` 前缀类名 + DSH token（见 [UI规范.md](../UI规范.md)）。
 
+## 作为渲染兜底（跨插件内核缺失时）
+
+`MarkdownText` 是**官方 GFM + KaTeX 渲染组件**，因此它是「跨插件渲染内核（`dsh-md-render` 之类）缺失」时最合适的兜底：零安装、零体积、零 external 声明，装了宿主就有（0.1.5-rc.1 起在 staticModules 表内）。
+
+**props 契约**（本机宿主主 bundle 实测 `i.labels.code.copyLabel` 直接取值）：
+
+| prop           | 类型                                              | 必填   | 说明                                                                                              |
+| -------------- | ------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------- |
+| `text`         | `string`                                          | 是     | Markdown 源文本                                                                                   |
+| `labels`       | `{ code: { copyLabel, copiedLabel }, footnotes }` | **是** | **无默认值**：实现直接读 `labels.code.copyLabel`，不传即 TypeError；脚注标题读 `labels.footnotes` |
+| `codeLabels`   | `{ copyLabel, copiedLabel }`                      | 否     | **早期官方包（npm latest `0.0.1-rc.1`）的旧字段**，兼容期两个都传                                 |
+| `streaming`    | `boolean`                                         | 否     | 流式态                                                                                            |
+| `fileMentions` | `unknown`                                         | 否     | 文件提及解析                                                                                      |
+| `pathImages`   | `unknown`                                         | 否     | 路径图片解析                                                                                      |
+
+用法（`dsh-think-zh-expand@0.4.10` 三级链的第二级，issue #293）：
+
+```js
+const ui = require('@deepseek-ai/dsh-client-ui-primitives') // 宿主静态模块表
+if (ui && typeof ui.MarkdownText === 'function') {
+  const MarkdownText = ui.MarkdownText
+  return (props) =>
+    createElement(MarkdownText, {
+      text: props.text,
+      labels: { code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' },
+      codeLabels: { copyLabel: '复制', copiedLabel: '已复制' }, // 兼容 0.0.1-rc.1
+    })
+}
+```
+
+- **典型场景**：插件的渲染内核走 `dsh.client.external` 跨插件 require（如 `dsh-md-render`）——`dsh plugin add` **不会**自动安装/激活 external 指向的插件（只激活 profile 直接 dependencies 里声明 `dsh.bundle.patch` 的包；peerDependencies 在 `autoInstallPeers: false` 下永不安装），新装用户开箱即缺，必须自带兜底（见 [踩坑：假降级](../踩坑/假降级-只catch-require不等于优雅降级.md)）。
+- **仍保留三级链**：官方组件也可能不存在（极旧/裁剪宿主）→ 最后一级回退 `<pre data-<插件>-fallback="true">`。只有「真的换了渲染组件」才算降级，把组件变量置 `null` 而渲染路径没有 null 分支会在渲染期抛 `Element type is invalid … but got: null`。
+- **中文文案由插件提供**：`labels` 无默认值正好让中文化插件（如 `dsh-think-zh-expand`）注入自己的中文文案。只渲染不含代码块的 markdown（纯标题/段落）时不会访问 `labels.code.copyLabel`——但契约上仍必须传（含代码块的场景必崩）。
+- **可用性判定必须按 React 语义**：`MarkdownText` 是 `React.memo(...)` 返回的**对象**（宿主实测 `object($$typeof,type,compare)`，`typeof` 为 `'object'` 而非 `'function'`）。`typeof v === 'function'` 会把官方组件误判为不可用 → 直接落到 `<pre>`。判定写成：
+  ```js
+  const { isValidElementType } = require('react') // 取不到时用下面的退化式
+  const isRenderable = (v) =>
+    typeof v === 'function' || (typeof v === 'object' && v !== null && typeof v.$$typeof === 'symbol')
+  ```
+  实测：宿主 shell 主 bundle（React 18.3.1）里 grep 不到 `isValidElementType` 字符串（只有 `isValidElement`），仓库 CI 的 react **19.3.0** 也已不再导出它（`React.isValidElementType === undefined`）→ 实际运行大多走退化式；两种判定都必须排除宿主标签字符串（`'div'` 之类垃圾导出值应落级，而不是渲染成未知标签）。
+- **为什么不是替代 `dsh-md-render`**：官方 `MarkdownText` 是通用 GFM + KaTeX（实测表格 / 宽表滚动容器 / 代码块 / 公式都能渲染），但缺少仓库内 `dsh-md-render` 的增强集：不标准表格容错、`div.md-code-block` 代码块容器（`dsh-mermaid-render` 靠它渲染 ```mermaid 图表）、代码复制 / 语法高亮 / 行号 / 主题、公式结构排版、`.tzx-md` / `dsh-md-render-*` 契约类样式。`dsh-md-render` 仍是**首选**内核（issue #186 决策不变）：external 声明保留、装了就用它，官方组件仅在它缺失时兜底。
+
 ## 与其他方案的对比
 
 | 方案                                  | 判定                                                                                                      |

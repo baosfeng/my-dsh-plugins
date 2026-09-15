@@ -183,6 +183,41 @@ jobs:
       - name: 'Mutation testing (stryker pilot: dsh-file-activity)'
         run: (cd plugins/dsh-file-activity && npx stryker run)
 
+  # 历史相关门禁（issue #324）：secret 扫描（gitleaks）+ 提交信息规范（commitlint）。
+  #
+  # 为什么单独一个 job：这两项都要**完整历史** —— gitleaks 要扫全历史（覆盖本次 diff），
+  # commitlint 要解析 base..head 两个**历史** SHA；而其余 job 的 checkout 是浅克隆
+  # （默认 fetch-depth: 1，两个 SHA 都不在本地，实测只会得到
+  # `fatal: Invalid revision range A..B`）。所以这里显式 fetch-depth: 0。
+  #
+  # 两项的「唯一权威执行点」与本地对应项登记在 scripts/lib/gate-registry.mjs，
+  # 由 gate-parity 门禁做双向交叉校验。
+  history-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 26
+          cache: npm
+
+      # 必须装一次根工具链：check-commit-messages.mjs 用 @commitlint/load + @commitlint/lint
+      # 解析 .commitlintrc.json（与本地 hook 同一份规则）。secret 扫描本身不需要 node_modules
+      # （纯 Node 内置 + 系统 tar），但两个门禁共用一个 job，装一次即可。
+      - name: Install root toolchain (eslint, dependency-cruiser)
+        run: npm ci
+
+      - name: Secret scan (gitleaks, pinned version + SHA256, full history)
+        run: node scripts/check-secrets.mjs
+
+      # 范围：CI 上从 GITHUB_EVENT_PATH 推导（PR = base..head；push = before..after），
+      # 本地等价命令 `npm run lint:commits -- --from origin/main --to HEAD`。
+      - name: Commit messages (changed range only)
+        run: node scripts/check-commit-messages.mjs
+
   # 质量门禁：类型检查 + 代码质量规则 + 尺寸规则 + 依赖结构 + 死代码 + 重复代码 + 文档一致性
   #
   # issue #330：改前这里是 12 个**串行**步骤，每一步都独立启动 npx、独立全仓扫描，彼此无依赖
@@ -202,7 +237,13 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 是**必需的**（issue #324）：本 job 里的 commitlint 只校验变更范围，
+      # 而它要解析 `base.sha..head.sha` 两个**历史** SHA —— 默认 fetch-depth: 1 的浅克隆里
+      # 两者都不存在，git 只会回 `fatal: Invalid revision range A..B`（首个 CI 运行实测）。
+      # 代价：拉全历史约 +3s；换来的是"范围判定在本地/CI 用同一套语义"。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:

@@ -36,6 +36,8 @@
 > 3. **纯文本兜底**：极旧/裁剪宿主连官方组件表都没有时，回退 `<pre data-dsh-think-zh-expand-fallback="true">`，渲染期仍不抛错。
 >
 > 0.4.9 及更早版本只把 `require('dsh-md-render')` 包了 try/catch（`MarkdownView = null`）却仍裸调 `createElement(MarkdownView, …)`，渲染期会抛 `Element type is invalid … but got: null`——是**假降级**（见 [踩坑：假降级](../../docs/踩坑/假降级-只catch-require不等于优雅降级.md)）。
+>
+> 📌 `package.json` 的 `dsh.client.externalDegraded: ["dsh-md-render"]` 是对上面这条三级回退的**显式承诺**：`dsh-md-render` 只在 `peerDependencies` 里（`autoInstallPeers: false` 下永不自动安装），按 #294 的规则，仅 peer 的 external 必须在 `externalDegraded` 里声明「缺失时有降级路径」，否则发版门禁 1c 阻断。⚠️ **该字段只是本仓库门禁的声明**：宿主解析 `dsh.client` 只认 `platform` / `inject` / `external` / `immediately`，未知字段被丢弃，**对宿主运行时无任何副作用**。
 
 ### 3. 界面标签中文化（Client 端）
 

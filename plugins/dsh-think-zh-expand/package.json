@@ -41,6 +41,9 @@
       "platform": "web",
       "external": [
         "dsh-md-render"
+      ],
+      "externalDegraded": [
+        "dsh-md-render"
       ]
     }
   },

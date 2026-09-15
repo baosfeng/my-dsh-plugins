@@ -2,7 +2,7 @@
 title: 踩坑记录
 description: 项目已知问题与解决方案总索引
 created: 2026-08-22
-updated: 2026-09-12
+updated: 2026-09-15
 ---
 
 # 踩坑记录
@@ -39,6 +39,7 @@ updated: 2026-09-12
 - [验证 / 隔离实例静默少加载](隔离实例插件被静默禁用.md) — dshmarket 把启停开关写在 `profiles/<p>/.dsh-market/state.json`，复刻生产 profile 时一起复制 → 隔离实例"继承"生产的禁用名单（实测禁用 6 个插件），client 不进 manifest、API 404，看起来像插件坏了；修法是复刻时剥离该目录**并明确打印**（静默正是它潜伏数轮的原因）（2026-09-13，issue #240）
 - [发布 / 并发化](发版并发化的两个坑.md) — 发版从串行改并发时：并发门禁提前 return 会留下孤儿隔离实例（verify-real-profile 无信号清理），每插件各自 findFreePort 并行必撞端口；附 `pushurl` 优先于 `url` 导致"本地验证"误推 GitHub 的 git 陷阱（2026-09-13，issue #246）
 - [CI / 日志取证](CI日志取证静默缺项.md) — `ghops actions logs` 拿 run 归档当 job 清单 → 失败 job 静默缺失（#217），失败 job 日志 403 被误读成"需仓库 admin"（实为未带凭据）；改为 jobs API 全量分页 + 归档缺项单 job 补齐 + 缺口明确报告，并一并修掉 alerts 的「0 条 ≠ 不存在」（已解决，2026-09-12，issue #224）
+- [安全 / 告警修复反噬](安全告警修复引入资源上限退化.md) — 为消 CodeQL 的 `js/file-system-race` 把「stat 先检查」改成「读完再判」，告警归零但丢了 `isFile()` 类型闸门与字节账（中文源码低估 3 倍、FIFO 可阻塞 / `/dev/zero` 可 OOM），空 `catch {}` 又把 `EISDIR`/`EACCES` 吞成 404（目录明明存在）；正解是 `open` + fd `stat` + fd 读 —— 竞态、闸门、字节账、内存四项同时成立。判据：「先读后判」必须能回答「读之前能否先拒绝」（2026-09-15，issue #327 / #318）
 
 ## 维护规则
 

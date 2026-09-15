@@ -91,8 +91,15 @@ if (ui && typeof ui.MarkdownText === 'function') {
 
 - **典型场景**：插件的渲染内核走 `dsh.client.external` 跨插件 require（如 `dsh-md-render`）——`dsh plugin add` **不会**自动安装/激活 external 指向的插件（只激活 profile 直接 dependencies 里声明 `dsh.bundle.patch` 的包；peerDependencies 在 `autoInstallPeers: false` 下永不安装），新装用户开箱即缺，必须自带兜底（见 [踩坑：假降级](../踩坑/假降级-只catch-require不等于优雅降级.md)）。
 - **仍保留三级链**：官方组件也可能不存在（极旧/裁剪宿主）→ 最后一级回退 `<pre data-<插件>-fallback="true">`。只有「真的换了渲染组件」才算降级，把组件变量置 `null` 而渲染路径没有 null 分支会在渲染期抛 `Element type is invalid … but got: null`。
-- **中文文案由插件提供**：`labels` 无默认值正好让中文化插件（如 `dsh-think-zh-expand`）注入自己的中文文案。
-- **为什么不是替代 `dsh-md-render`**：官方 `MarkdownText` 只有 GFM + KaTeX（无 md-render 的表格容错 / 宽表滚动 / 代码高亮增强）。`dsh-md-render` 仍是**首选**内核（issue #186 决策不变）：external 声明保留、装了就用它，官方组件仅在它缺失时兜底。
+- **中文文案由插件提供**：`labels` 无默认值正好让中文化插件（如 `dsh-think-zh-expand`）注入自己的中文文案。只渲染不含代码块的 markdown（纯标题/段落）时不会访问 `labels.code.copyLabel`——但契约上仍必须传（含代码块的场景必崩）。
+- **可用性判定必须按 React 语义**：`MarkdownText` 是 `React.memo(...)` 返回的**对象**（宿主实测 `object($$typeof,type,compare)`，`typeof` 为 `'object'` 而非 `'function'`）。`typeof v === 'function'` 会把官方组件误判为不可用 → 直接落到 `<pre>`。判定写成：
+  ```js
+  const { isValidElementType } = require('react') // 取不到时用下面的退化式
+  const isRenderable = (v) =>
+    typeof v === 'function' || (typeof v === 'object' && v !== null && typeof v.$$typeof === 'symbol')
+  ```
+  实测：宿主 shell 主 bundle（React 18.3.1）里 grep 不到 `isValidElementType` 字符串（只有 `isValidElement`），仓库 CI 的 react **19.3.0** 也已不再导出它（`React.isValidElementType === undefined`）→ 实际运行大多走退化式；两种判定都必须排除宿主标签字符串（`'div'` 之类垃圾导出值应落级，而不是渲染成未知标签）。
+- **为什么不是替代 `dsh-md-render`**：官方 `MarkdownText` 是通用 GFM + KaTeX（实测表格 / 宽表滚动容器 / 代码块 / 公式都能渲染），但缺少仓库内 `dsh-md-render` 的增强集：不标准表格容错、`div.md-code-block` 代码块容器（`dsh-mermaid-render` 靠它渲染 ```mermaid 图表）、代码复制 / 语法高亮 / 行号 / 主题、公式结构排版、`.tzx-md` / `dsh-md-render-*` 契约类样式。`dsh-md-render` 仍是**首选**内核（issue #186 决策不变）：external 声明保留、装了就用它，官方组件仅在它缺失时兜底。
 
 ## 与其他方案的对比
 

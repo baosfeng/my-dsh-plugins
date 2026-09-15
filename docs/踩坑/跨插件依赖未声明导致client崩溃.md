@@ -58,17 +58,42 @@ status: 已解决
    `createElement(null)` 仍抛 `Element type is invalid`。降级必须**换成平台 seed 组件或纯文本回退**，
    而不是把 `null` 传进渲染树。
 
-**正确修法**（两条必须同时满足）：
+**正确修法**（两条路径，任选其一；门禁按"是否真的能降级"判，不按"声明写在哪个字段"判）：
 
-- ① 依赖放进 `dependencies`，并在 README/安装说明里保证与插件**同时安装**（只有进 profile
-  dependencies 才可能被 reconcile 激活成 client 图行）；
-- ② 必须有**降级路径**（平台 seed 组件或纯文本回退），依赖缺失时也要能渲染。
+- ① **（推荐）显式降级声明**：按 #293 的形态补**真实降级路径**（平台 seed 组件或纯文本回退，
+  绝不让渲染期 `createElement(null)` 抛错），并在 `package.json` 声明：
+  ```json
+  "dsh": { "client": { "external": ["dsh-md-render"], "externalDegraded": ["dsh-md-render"] } }
+  ```
+  语义 = "这个 external 缺失时有降级路径（仍可用，只是能力降级）"。宿主解析 `dsh.client`
+  只认 `platform` / `inject` / `external` / `immediately`，**未知字段一律丢弃** → 该字段对
+  宿主与运行时完全安全（纯门禁/契约元数据，不改变任何加载行为）。
+- ② **移进 `dependencies` 并且保证安装流程同时激活该插件**：注意单独移进 deps **不够**
+  （论证见下节），必须真的进 `dsh.profile.bundles`（例如依赖包自身声明 `dsh.bundle.patch`
+  且被 profile **直接**依赖）。
+
+## 为什么门禁不要求"把依赖移进 dependencies"（关键论证）
+
+一开始的规则是"external 指向仓库内插件时必须在 `dependencies`"，这是**错的**：它要求在
+本架构下**没有实际作用**的东西，还会阻断自己人（`dsh-think-zh-expand` / `dsh-my-plugin-manager`）。
+
+- `dsh plugin add <pkg>` 只是 pnpm 转发器；装完由 `reconcilePlugins` 把 **profile 直接
+  `dependencies`** 里声明了 `dsh.bundle.patch` 的包写进 `dsh.profile.bundles`；
+- 插件**自己的** dependency 只被 pnpm 铺到 `profile/node_modules`（hoisted）——
+  **不会**进 profile 的 dependencies、**不会**被 reconcile 激活；
+- 没有 loader entry ⇒ 没有 client graph row ⇒ 浏览器端 `require` 依旧落空 ⇒ 与 peer-only
+  **行为完全相同**（`peerDependencies` 在 profile 模板 `autoInstallPeers: false` 下更是永不安装）。
+
+也就是说"移进 dependencies"只保证包落盘，属**形式合规**；用形式合规换门禁放行，就抓不到
+#290/#293 这类崩溃。故门禁认的是**显式降级声明**（`externalDegraded`，可被 3c 缺包演练
+客观检验）+ `dependencies` 场景下的「已发布 + 已打 tag」。该字段语义开放，给未来其它
+降级形态留了口（不必改门禁）。
 
 ## 门禁两个缺口（issue #294 补齐）
 
 | 缺口                          | 表现                                                                                                                               | 修法                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1c 不读 `dsh.client.external` | 全仓 `grep external scripts/*.mjs` 只命中 ship 的"外发"语义，external 零校验                                                       | `release-checks.mjs` 新增 `checkClientExternals`：external 每项必须在 deps/peers 声明；仓库内包必须在 **dependencies** 且已发布 + 已打 tag（复用 `findUnpublishedDeps` 判据）；`release.mjs` 1c 用 `gateFail('1c', …)` 登记；修法文案含"必须同时安装 + 必须有降级路径"并指向本文档                                                                                                                                                                                                 |
+| 1c 不读 `dsh.client.external` | 全仓 `grep external scripts/*.mjs` 只命中 ship 的"外发"语义，external 零校验                                                       | `release-checks.mjs` 新增 `checkClientExternals`：① external 每项必须在 deps/peers 声明；② 仓库内包在 `dependencies` → 走「已发布 + 已打 tag」（复用 `findUnpublishedDeps`），**仅**在 `peerDependencies` → 必须显式声明 `dsh.client.externalDegraded`（缺失时有降级路径），否则阻断；冗余声明只 info 不阻断；`release.mjs` 1c 用 `gateFail('1c', …)` 登记；修法文案给出上述两条路径并指向本文档。**判据不认"移进 dependencies"**——理由见上一节                                    |
 | 3c 结构性假通过               | 隔离实例**无条件复用**生产 profile 的全部 node_modules；本机 profile 已装 `dsh-md-render` ⇒ 「新装用户没装它」这个状态永远验证不到 | `verify-real-profile.mjs` 新增 `--clean-externals`（从 `--addons` 的 `dsh.client.external` 推导缺失集合）与 `--omit-node-modules <pkg>`：节点既不复用真实 profile、也不做 addon 链接，**并且**从隔离 profile 配置（`dependencies` + `dsh.profile.bundles`）里剔除；启动前 `checkOmittedAbsent` fail-closed 校验"确实不可解析"；日志错误扫描补 `failed to import loader entry` / `missed the module table` / `Element type is invalid` / `Cannot find module`。发版门禁 3c 默认开启 |
 
 ## 两个"验证本身不可信"的坑（#294 实测踩到，防复发）

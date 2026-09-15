@@ -12,6 +12,7 @@ export default defineConfig({
         'lib/index.js',
         'lib/guard.js',
         'lib/poison.js',
+        'lib/tarball.js',
         'lib/injection.js',
         'lib/store.js',
         'lib/routes.js',

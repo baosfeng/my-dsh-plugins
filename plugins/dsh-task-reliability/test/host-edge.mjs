@@ -170,10 +170,29 @@ function boot(config = {}, services = {}, dirOverride) {
     dir,
     disposeAll,
     store: shared.store,
+    /** 确定性就绪信号（issue #313）：读盘/状态断言前先 await 它，替代固定 sleep。 */
+    drainSaves: shared.drainSaves,
   }
 }
 
 const tick = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * 条件等待：轮询直到条件成立（issue #313，与 #310 同源收敛）。
+ *
+ * 为什么不能用固定 `tick(N)`：重启恢复是 `setTimeout(resumeGraceMs)` → `resume()`
+ * → 置 `resumeAt` → 防抖串行落盘的异步链；CI 高负载下链路未跑完就读断言，会读到
+ * 中间态（`followed[0]` 为 undefined、事件数组为空）→ 假红。固定 `tick` 只表达
+ * "我猜 N 毫秒够了"，不表达任何条件。
+ */
+async function waitFor(predicate, { timeoutMs = 2000, stepMs = 5, what = 'condition' } = {}) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await tick(stepMs)
+  }
+  assert.fail(`等待超时（${timeoutMs}ms）：${what}`)
+}
 
 async function callApi(api, request) {
   const response = mockResponse()
@@ -358,7 +377,8 @@ test('校验结论无法解析时按未完成处理并降级文本', async () =>
   ]
   await registerTask(env, { mode: 'verify' })
   await dispatchEvent(env.listeners, 'agent/status', { agent: env.mainAgent, status: 'idle' })
-  await tick(50)
+  // 等条件（issue #313）：校验结论链路是异步的，等 followup 真的注入再断言
+  await waitFor(() => env.mainAgent.followed.length >= 1, { what: '无结论时默认继续文本注入' })
   assert.equal(env.mainAgent.followed.length, 1)
   assert.ok(env.mainAgent.followed[0].content[0].text.includes('任务自动继续'), '无结论时使用默认继续文本')
 })
@@ -370,10 +390,15 @@ test('重启时 agent 已 live 则直接唤醒不重复 resume', async () => {
   await tick()
   env.disposeAll()
   const env2 = boot({ resumeGraceMs: 0 }, { liveAgentId: 'session-edge' }, env.dir)
-  await tick(30)
-  assert.equal(env2.calls.resume.length, 0, 'live agent 不 resume')
+  // 等条件（issue #313）：先确认唤醒真的发生了，再断言"没有走 resume"——
+  // 顺序反了的话，"不 resume" 可能只是因为恢复压根还没跑（假通过）
+  await waitFor(() => env2.mainAgent.followed.length >= 1, { what: 'live agent 直接唤醒 followup' })
   assert.equal(env2.mainAgent.followed.length, 1, '直接 followup 唤醒')
+  assert.equal(env2.calls.resume.length, 0, 'live agent 不 resume')
   assert.ok(env2.mainAgent.followed[0].content[0].text.includes('系统重启恢复'))
+  // 加强（#313）：唤醒的副作用必须落到状态里
+  await env2.drainSaves()
+  assert.ok(env2.store.tasks[0].resumeAt > 0, 'resumeAt 已记录（唤醒副作用完整发生）')
 })
 
 // ── ask 超时边界（issue #34）─────────────────────────────────────────────

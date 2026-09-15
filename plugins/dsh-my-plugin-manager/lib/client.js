@@ -28,15 +28,148 @@ window.__ModuleLoader__.load({
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
-    // README Markdown 渲染复用 dsh-md-render 的统一 MarkdownView（issue #31
-    // 跨插件 require 模式，package.json dsh.client.external 声明）；该插件
-    // 不可用时回退纯文本 <pre>（issue #90 加载兜底）。
-    let MarkdownView = null
-    try {
-      MarkdownView = require('dsh-md-render').MarkdownView
-    } catch {
-      MarkdownView = null
+
+    // ── README Markdown 渲染：三级回退（issue #299，共享部件）──────────
+    // 1) dsh-md-render 的 MarkdownView（首选内核，issue #31；package.json 的
+    //    dsh.client.external 声明）；
+    // 2) 宿主平台官方 MarkdownText（零安装零体积，缺 md-render 时仍渲染 markdown）；
+    // 3) 本插件自己的 <pre class="dsh-my-plugin-manager-readme-plain">（issue #90）。
+    // 逻辑收口在 dsh-shared/client-parts/markdown-fallback.part.js（issue #299：
+    // 同一段样板 ≥2 处即抽出），构建期 splice 进本 factory 作用域。
+    // ── shared markdown render fallback (dsh-shared/client-parts) ──
+// 单一来源（issue #299）：把「三级渲染回退」这段原本在 dsh-think-zh-expand（#293）
+// 与 dsh-my-plugin-manager（#299）逐字重复的样板（约 40 行：三级解析 + labels
+// 适配 + 组件可用性判定）收口到这里（ADR-0002 / docs/UI规范.md：同一段 UI 样板
+// 出现 ≥2 处即抽出）。消费方各自 scripts/build.mjs 在构建期把本文件拼进
+// __ModuleLoader__ factory 作用域（构建时源文件，不经过 require/exports 解析）。
+//
+// ⚠️ 边界：dsh-shared **npm 包**的 package.json `files` 只有 lib / README /
+// CHANGELOG / LICENSE，**不含 client-parts** → 本部件**只在 monorepo 内有效**，
+// 消费方不能改成 `require('dsh-shared/client-parts/...')`（发布出去的包里没有它）。
+//
+// 为什么必须是「真回退」（#290/#293 教训）：只把 require 包进 try/catch、把组件
+// 变量置 null，而渲染路径没有 null 分支 → 渲染期抛
+// `Element type is invalid: expected a string … but got: null`。那是**假降级**：
+// 用户照样崩，只是崩在渲染而不是加载。降级 = 真的换掉被渲染的组件，且每一级都能
+// 落到下一级（外部内核 → 平台官方组件 → 消费方 <pre>），渲染期永不抛错。
+//
+// 为什么可用性判定不能用 `typeof === 'function'`：宿主官方 MarkdownText 是
+// `React.memo(...)` 返回的**对象**（真实宿主实测 object($$typeof,type,compare)，
+// `typeof` 为 'object'）→ 会被判成不可用、直接落到最后一级（不再崩，但「用官方
+// 组件渲染」落空）。故按 React 语义判定：优先 `react.isValidElementType`，
+// 取不到时退化为「函数 或 带 $$typeof 的 symbol 对象」——实测 react 19 已不再
+// 导出该 API、宿主 shell 里也被 tree-shake 掉，**退化式才是浏览器里实际生效的
+// 路径**。两种判定都排除宿主标签字符串（'div' 之类垃圾导出值应落到下一级，
+// 而不是渲染成未知标签）。
+/**
+ * 解析最终的 Markdown 渲染组件：外部内核 → 宿主平台官方组件 → 消费方兜底 `<pre>`。
+ *
+ * 返回组件签名固定 `(props: { text: string }) => ReactNode`，消费方当 MarkdownView
+ * 直接用（跨插件 `declare const MarkdownView` 无需改动）。**无副作用**，可在 factory
+ * 顶层调用一次。
+ *
+ * @param {{
+ *   require: (spec: string) => any
+ *   createElement: Function
+ *   labels: object
+ *   codeLabels?: object
+ *   fallbackAttribute: string
+ *   fallbackClassName?: string
+ *   external?: string
+ *   externalExport?: string
+ *   platformModule?: string
+ *   platformExport?: string
+ * }} options
+ *   - require / createElement：消费方 factory 作用域里的实例（本件不自行 require）
+ *   - labels：**必填**。透传给平台 MarkdownText —— 它没有默认值，渲染含代码块的
+ *     markdown 时会读 `labels.code.copyLabel`（不传即 TypeError）。文案由消费方
+ *     提供，本共享件**不硬编码任何中文**
+ *   - codeLabels：旧字段（早期官方包 0.0.1-rc.1 的 props 是 `codeLabels?` 而非
+ *     `labels`），同时传以兼容
+ *   - fallbackAttribute：兜底 `<pre>` 的标记属性名（值固定 `'true'`）。消费方各用
+ *     自己的前缀，避免两个插件的 DOM 标记串味
+ *   - fallbackClassName：兜底 `<pre>` 的 class（消费方既有契约可保留，可选）
+ *   - external / externalExport：外部渲染内核（默认 `dsh-md-render` 的 `MarkdownView`，
+ *     即 issue #31/#186 的首选内核）
+ *   - platformModule / platformExport：宿主 staticModules 官方组件（默认
+ *     `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText`，零安装零体积）
+ * @returns {(props: { text: string }) => any} 最终渲染组件（**永远不是 null**）
+ */
+function installMarkdownViewFallback(options) {
+  const req = options.require
+  const createElement = options.createElement
+  const external = options.external ?? 'dsh-md-render'
+  const externalExport = options.externalExport ?? 'MarkdownView'
+  const platformModule = options.platformModule ?? '@deepseek-ai/dsh-client-ui-primitives'
+  const platformExport = options.platformExport ?? 'MarkdownText'
+  const labels = options.labels
+  const codeLabels = options.codeLabels
+  const fallbackAttribute = options.fallbackAttribute
+  const fallbackClassName = options.fallbackClassName
+
+  // 组件可用性判定（React 语义，见文件头注释）：函数，或带 $$typeof 的对象
+  // （memo / forwardRef / lazy）；宿主标签字符串不算组件。
+  const isComponentLike = (value) =>
+    typeof value === 'function' || (typeof value === 'object' && value !== null && typeof value.$$typeof === 'symbol')
+  let reactIsValidElementType = null
+  try {
+    reactIsValidElementType = req('react').isValidElementType ?? null
+  } catch {
+    reactIsValidElementType = null
+  }
+  const isRenderable = (value) => {
+    if (typeof value === 'string') return false
+    if (typeof reactIsValidElementType === 'function') return reactIsValidElementType(value)
+    return isComponentLike(value)
+  }
+
+  // 级 3（兜底）：消费方自己的 <pre>，原文不丢、永不抛错
+  const renderPlain = (props) => {
+    const preProps = { [fallbackAttribute]: 'true' }
+    if (fallbackClassName) preProps.className = fallbackClassName
+    return createElement('pre', preProps, props.text)
+  }
+
+  // 级 1：外部渲染内核（装了就用，行为与迁移前逐字节一致）
+  try {
+    const externalModule = req(external)
+    const externalView = externalModule ? externalModule[externalExport] : null
+    if (isRenderable(externalView)) return externalView
+  } catch {
+    // 外部内核未安装：落到平台官方组件
+  }
+
+  // 级 2：宿主 staticModules 的官方组件（零安装零体积），补 labels 契约
+  try {
+    const platform = req(platformModule)
+    const PlatformView = platform ? platform[platformExport] : null
+    if (isRenderable(PlatformView)) {
+      return (props) => {
+        const platformProps = { ...props, labels }
+        if (codeLabels) platformProps.codeLabels = codeLabels
+        return createElement(PlatformView, platformProps)
+      }
     }
+  } catch {
+    // 宿主模块表里没有官方组件：落到兜底
+  }
+
+  return renderPlain
+}
+
+    const MD_README_LABELS = {
+      code: { copyLabel: '复制', copiedLabel: '已复制' },
+      footnotes: '脚注',
+    }
+    const MD_README_CODE_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
+    const MarkdownView = installMarkdownViewFallback({
+      require,
+      createElement,
+      labels: MD_README_LABELS,
+      codeLabels: MD_README_CODE_LABELS,
+      fallbackAttribute: 'data-dsh-my-plugin-manager-fallback',
+      fallbackClassName: 'dsh-my-plugin-manager-readme-plain',
+    })
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────
@@ -760,7 +893,7 @@ function createDetailActions({ setDetailName, setDetail, setDetailLoading, setDe
     const changeDetailVersion = (version) => loadDetail(detailName, version);
     return { openDetail, closeDetail, changeDetailVersion };
 }
-function PluginManagerView() {
+function usePluginManagerState() {
     const [installed, setInstalled] = useState(null);
     const [updates, setUpdates] = useState(null);
     const [notice, setNotice] = useState('');
@@ -792,16 +925,39 @@ function PluginManagerView() {
         setDetailVersion,
         detailName,
     });
-    useEffect(() => {
-        actions.reloadInstalled();
-    }, []);
-    // Success notices auto-dismiss after 3s (write ops must still show them).
+    return {
+        installed,
+        updates,
+        notice,
+        error,
+        installing,
+        uninstalling,
+        updating,
+        enabling,
+        disabling,
+        detailName,
+        detail,
+        detailLoading,
+        detailError,
+        detailVersion,
+        actions,
+    };
+}
+function useNoticeAutoDismiss(notice, setNotice) {
     useEffect(() => {
         if (notice === '')
             return;
         const timer = window.setTimeout(() => setNotice(''), 3000);
         return () => window.clearTimeout(timer);
     }, [notice]);
+}
+function PluginManagerView() {
+    const state = usePluginManagerState();
+    const { installed, updates, notice, error, installing, uninstalling, updating, enabling, disabling, detailName, detail, detailLoading, detailError, detailVersion, actions, } = state;
+    useEffect(() => {
+        actions.reloadInstalled();
+    }, []);
+    useNoticeAutoDismiss(notice, () => { }); // setNotice is inside actions
     return createElement('div', { className: 'dsh-my-plugin-manager-root' }, createElement('div', { className: 'dsh-my-plugin-manager-hint' }, strings.installHint()), error
         ? createElement('div', { className: 'dsh-my-plugin-manager-error' }, typeof error === 'string' ? `${strings.actionFailed()}：${error}` : strings.loadError())
         : null, notice !== ''
@@ -821,7 +977,7 @@ function PluginManagerView() {
         : null);
 }
 /** 已安装清单 + 更新检查。 */
-function InstalledSection({ installed, updates, actions, uninstalling, updating, enabling, disabling }) {
+function InstalledSection({ installed, updates, actions, uninstalling, updating, enabling, disabling, }) {
     const rows = installed === null
         ? null
         : installed.length === 0
@@ -852,12 +1008,32 @@ function InstalledSection({ installed, updates, actions, uninstalling, updating,
             : null);
 }
 /** One installed plugin row: icon / name / state chip / version chip + uninstall. */
-function InstalledRow({ entry, outdated, onOpen, onUninstall, onUpdate, onEnable, onDisable, uninstalling, updating, enabling, disabling }) {
-    return createElement('div', { className: 'dsh-my-plugin-manager-row' }, createElement('div', { className: 'dsh-my-plugin-manager-row-head' }, createElement('span', { className: 'dsh-my-plugin-manager-row-icon' }, icon.file(16)), createElement('button', { className: 'dsh-my-plugin-manager-name dsh-my-plugin-manager-name-btn', onClick: onOpen }, entry.moduleName), createElement('span', {
+function InstalledRow({ entry, outdated, onOpen, onUninstall, onUpdate, onEnable, onDisable, uninstalling, updating, enabling, disabling, }) {
+    return createElement('div', { className: 'dsh-my-plugin-manager-row' }, createElement(InstalledRowHeader, { entry, onOpen }), entry.updateAvailable !== null && entry.updateAvailable !== undefined
+        ? createElement(UpdateAvailableInfo, { updateAvailable: entry.updateAvailable })
+        : null, createElement(InstalledRowActions, {
+        entry,
+        onOpen,
+        onUninstall,
+        onUpdate,
+        onEnable,
+        onDisable,
+        uninstalling,
+        updating,
+        enabling,
+        disabling,
+    }));
+}
+function InstalledRowHeader({ entry, onOpen }) {
+    return createElement('div', { className: 'dsh-my-plugin-manager-row-head' }, createElement('span', { className: 'dsh-my-plugin-manager-row-icon' }, icon.file(16)), createElement('button', { className: 'dsh-my-plugin-manager-name dsh-my-plugin-manager-name-btn', onClick: onOpen }, entry.moduleName), createElement('span', {
         className: `dsh-my-plugin-manager-state ${entry.enabled ? 'dsh-my-plugin-manager-state-on' : 'dsh-my-plugin-manager-state-off'}`,
-    }, entry.enabled ? strings.running() : strings.disabled()), createElement('span', { className: 'dsh-my-plugin-manager-ver' }, entry.version === '' ? strings.noVersion() : `v${entry.version}`)), entry.updateAvailable !== null && entry.updateAvailable !== undefined
-        ? createElement('div', { className: 'dsh-my-plugin-manager-actions' }, createElement('span', { className: 'dsh-my-plugin-manager-update' }, `${entry.updateAvailable.current} → ${entry.updateAvailable.latest}`))
-        : null, createElement('div', { className: 'dsh-my-plugin-manager-actions' }, createElement('button', { className: 'dsh-my-plugin-manager-btn', onClick: onOpen }, strings.details()), entry.updateAvailable !== null && entry.updateAvailable !== undefined
+    }, entry.enabled ? strings.running() : strings.disabled()), createElement('span', { className: 'dsh-my-plugin-manager-ver' }, entry.version === '' ? strings.noVersion() : `v${entry.version}`));
+}
+function UpdateAvailableInfo({ updateAvailable }) {
+    return createElement('div', { className: 'dsh-my-plugin-manager-actions' }, createElement('span', { className: 'dsh-my-plugin-manager-update' }, `${updateAvailable.current} → ${updateAvailable.latest}`));
+}
+function InstalledRowActions({ entry, onOpen, onUninstall, onUpdate, onEnable, onDisable, uninstalling, updating, enabling, disabling, }) {
+    return createElement('div', { className: 'dsh-my-plugin-manager-actions' }, createElement('button', { className: 'dsh-my-plugin-manager-btn', onClick: onOpen }, strings.details()), entry.updateAvailable !== null && entry.updateAvailable !== undefined
         ? createElement('button', {
             className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-primary',
             onClick: onUpdate,
@@ -877,7 +1053,7 @@ function InstalledRow({ entry, outdated, onOpen, onUninstall, onUpdate, onEnable
         className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-danger',
         onClick: onUninstall,
         disabled: uninstalling,
-    }, icon.trash(14), uninstalling ? strings.uninstalling() : strings.uninstall())));
+    }, icon.trash(14), uninstalling ? strings.uninstalling() : strings.uninstall()));
 }
 /** 市场: npm 搜索 + 一键安装。 */
 function MarketSection({ actions, installing, installed }) {
@@ -929,12 +1105,14 @@ function marketRows(results, install, openDetail, installing, installed) {
         onOpen: () => openDetail(item.name),
         onInstall: () => install(item.name),
         installing: installing === item.name,
-        isInstalled: installed !== null && installed.some(entry => entry.moduleName === item.name),
+        isInstalled: installed !== null && installed.some((entry) => entry.moduleName === item.name),
     }));
 }
 /** One market search result row: npm badge / name / version chip + install. */
 function MarketRow({ item, onOpen, onInstall, installing, isInstalled }) {
-    return createElement('div', { className: 'dsh-my-plugin-manager-row' }, createElement('div', { className: 'dsh-my-plugin-manager-row-head' }, createElement('span', { className: 'dsh-my-plugin-manager-row-icon' }, badgeIcon(NPM_BADGE, 16)), createElement('button', { className: 'dsh-my-plugin-manager-name dsh-my-plugin-manager-name-btn', onClick: onOpen }, item.name), createElement('span', { className: 'dsh-my-plugin-manager-ver' }, `v${item.version}`), item.author !== '' ? createElement('span', { className: 'dsh-my-plugin-manager-author' }, item.author) : null, isInstalled ? createElement('span', { className: 'dsh-my-plugin-manager-state dsh-my-plugin-manager-state-on' }, strings.installed()) : null), createElement('div', { className: 'dsh-my-plugin-manager-desc' }, item.description), createElement('div', { className: 'dsh-my-plugin-manager-actions' }, createElement('button', { className: 'dsh-my-plugin-manager-btn', onClick: onOpen }, strings.details()), isInstalled
+    return createElement('div', { className: 'dsh-my-plugin-manager-row' }, createElement('div', { className: 'dsh-my-plugin-manager-row-head' }, createElement('span', { className: 'dsh-my-plugin-manager-row-icon' }, badgeIcon(NPM_BADGE, 16)), createElement('button', { className: 'dsh-my-plugin-manager-name dsh-my-plugin-manager-name-btn', onClick: onOpen }, item.name), createElement('span', { className: 'dsh-my-plugin-manager-ver' }, `v${item.version}`), item.author !== '' ? createElement('span', { className: 'dsh-my-plugin-manager-author' }, item.author) : null, isInstalled
+        ? createElement('span', { className: 'dsh-my-plugin-manager-state dsh-my-plugin-manager-state-on' }, strings.installed())
+        : null), createElement('div', { className: 'dsh-my-plugin-manager-desc' }, item.description), createElement('div', { className: 'dsh-my-plugin-manager-actions' }, createElement('button', { className: 'dsh-my-plugin-manager-btn', onClick: onOpen }, strings.details()), isInstalled
         ? createElement('button', {
             className: 'dsh-my-plugin-manager-btn',
             disabled: true,
@@ -1019,11 +1197,16 @@ function installSource(name, version, latest) {
 function DetailSection({ title, body }) {
     return createElement('div', { className: 'dsh-my-plugin-manager-detail-section' }, createElement('div', { className: 'dsh-my-plugin-manager-detail-section-title' }, title), body);
 }
-/** README preview: dsh-md-render MarkdownView, falling back to plain <pre>. */
+/**
+ * README preview：统一 MarkdownView（issue #299）。
+ *
+ * 三级回退（dsh-md-render → 平台官方 MarkdownText → 本插件
+ * `<pre class="dsh-my-plugin-manager-readme-plain">`）收口在共享部件
+ * `dsh-shared/client-parts/markdown-fallback.part.js`，模板里解析出的
+ * `MarkdownView` **永远是可用组件**，这里不再需要 null 分支。
+ */
 function ReadmeView({ text }) {
-    if (MarkdownView)
-        return createElement(MarkdownView, { text });
-    return createElement('pre', { className: 'dsh-my-plugin-manager-readme-plain' }, text);
+    return createElement(MarkdownView, { text });
 }
 function DetailTimeline({ versions }) {
     if (!Array.isArray(versions) || versions.length === 0) {

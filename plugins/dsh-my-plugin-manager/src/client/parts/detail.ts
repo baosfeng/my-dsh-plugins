@@ -197,10 +197,16 @@ function DetailSection({ title, body }: DetailSectionProps) {
   )
 }
 
-/** README preview: dsh-md-render MarkdownView, falling back to plain <pre>. */
+/**
+ * README preview：统一 MarkdownView（issue #299）。
+ *
+ * 三级回退（dsh-md-render → 平台官方 MarkdownText → 本插件
+ * `<pre class="dsh-my-plugin-manager-readme-plain">`）收口在共享部件
+ * `dsh-shared/client-parts/markdown-fallback.part.js`，模板里解析出的
+ * `MarkdownView` **永远是可用组件**，这里不再需要 null 分支。
+ */
 function ReadmeView({ text }: ReadmeViewProps) {
-  if (MarkdownView) return createElement(MarkdownView, { text })
-  return createElement('pre', { className: 'dsh-my-plugin-manager-readme-plain' }, text)
+  return createElement(MarkdownView, { text })
 }
 
 function DetailTimeline({ versions }: DetailTimelineProps) {

@@ -19,8 +19,23 @@
  *        [--timeout 90] [--skip] [--keep] [--help]
  *        [--checklist <path>] [--check <path>] [--plugin <name>] [--version <x.y.z>]
  *        [--workspace <dir>] [--workspace-title <title>]
+ *        [--clean-externals] [--omit-node-modules <pkg>]...
  *
  * 退出码：0 = 全部通过；1 = 任一环节失败。
+ *
+ * issue #294（external 缺包演练，防 #290/#293 复发）：
+ *   隔离实例过去**无条件复用生产 profile 的全部 node_modules 条目** —— 本机 profile 已
+ *   装了 dsh-md-render 时，「新装用户拿不到 external 依赖」这个状态永远不可能被验证到
+ *   （实测量化见 PR：#294 之前 3c 对这种插件恒通过）。现在：
+ *     --clean-externals        从 --addons 的 dsh.client.external 自动推导「缺包演练」集合；
+ *     --omit-node-modules <pkg> 显式省略某个 node_modules 条目（可重复；环境噪声隔离也用它）；
+ *   被省略的条目**既不复用真实 profile、也不做 addon 链接**，并在实例启动前
+ *   fail-closed 校验「确实不可解析」（checkOmittedAbsent），随后连同启动日志错误扫描
+ *   一起断言：缺包时插件仍能加载、日志不出现 failed to import loader entry /
+ *   missed the module table / Element type is invalid 等错误。
+ *   注意（诚实记录）：client 侧崩溃（Element type is invalid）发生在浏览器运行时，
+ *   server 启动日志未必留痕 —— 这一项仍需 skills/verifying-dsh-plugins 的浏览器步骤兜底。
+ *   默认不开（旧行为不变）；发版门禁 scripts/release.mjs 3c 默认传 --clean-externals。
  *
  * issue #220（假验证修复）：
  *   --addons 是「待验代码」的显式声明，其 profile node_modules 条目**必须**指向该
@@ -44,15 +59,19 @@ import { spawn } from 'node:child_process'
 import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import {
   checkAddonResolution,
+  checkOmittedAbsent,
   extractApiToken,
   isPluginStatePath,
   linkNodeModules,
   presentStateDirs,
   readAddon,
+  readAddonExternals,
+  stripProfileDeclarations,
   writeWorkspaceStorage,
 } from './lib/verify-profile.mjs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
+import { createServer } from 'node:net'
 import tmp from 'tmp'
 
 // ── args ───────────────────────────────────────────────────────────────────
@@ -78,6 +97,8 @@ function parseArgs(args) {
     version: '',
     workspace: null,
     workspaceTitle: null,
+    cleanExternals: false,
+    omitNodeModules: [],
   }
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i]
@@ -95,6 +116,9 @@ function parseArgs(args) {
     else if (flag === '--version') result.version = value()
     else if (flag === '--workspace') result.workspace = value()
     else if (flag === '--workspace-title') result.workspaceTitle = value()
+    // issue #294：external 缺包演练（默认关，发版门禁 3c 默认开）
+    else if (flag === '--clean-externals') result.cleanExternals = true
+    else if (flag === '--omit-node-modules') result.omitNodeModules.push(value())
     else if (flag === '--help' || flag === '-h') result.help = true
     else {
       console.error(`[verify] unknown flag: ${flag}`)
@@ -123,7 +147,11 @@ function printHelp() {
       '  --plugin <name>    清单头部插件名（配合 --checklist）\n' +
       '  --version <x.y.z>  清单头部版本号（配合 --checklist）\n' +
       '  --workspace <dir>  预置隔离实例的工作区状态（storages/workspace.json；path 自动取 realpath）\n' +
-      '  --workspace-title <t> 工作区标题（配合 --workspace；默认取目录名）\n',
+      '  --workspace-title <t> 工作区标题（配合 --workspace；默认取目录名）\n' +
+      '  --clean-externals  缺包演练（issue #294）：从 --addons 的 dsh.client.external 自动推导\n' +
+      '                     要从隔离实例 node_modules 省略的包（复现"新装用户没装 external 依赖"）。\n' +
+      '                     默认关；发版门禁 release.mjs 3c 默认开。\n' +
+      '  --omit-node-modules <pkg> 显式省略某个 node_modules 条目（可重复；含 scope 展开的子条目）\n',
   )
 }
 
@@ -182,6 +210,22 @@ function entryNames(dumpOutput) {
     if (match !== null) names.push(match[1])
   }
   return names
+}
+
+/**
+ * 端口是否已被占用（issue #294：启动前 fail-closed 预检）。
+ *
+ * 就绪探测只认「任何 HTTP 响应」（#257：新版对无 token 的根路径返回 401），因此
+ * **残留实例**会让自己 spawn 的实例还没起来就被判定"已就绪" —— 实测 0.2s 假就绪
+ * （真实冷启动 ~8s），那一轮的验证结论（尤其"缺包演练"）全部不可信。
+ */
+function isPortInUse(port) {
+  return new Promise((resolve) => {
+    const probe = createServer()
+    probe.once('error', () => resolve(true))
+    probe.once('listening', () => probe.close(() => resolve(false)))
+    probe.listen(port, '127.0.0.1')
+  })
 }
 
 async function httpStatus(port, path = '/', token = null) {
@@ -279,12 +323,46 @@ for (const addon of options.addons) {
   }
   addons.push(entry)
 }
-const linkResult = linkNodeModules({ simNode, realNode, addons })
+// issue #294：omit 集合 = 显式 --omit-node-modules + --clean-externals 从 addon 的
+// dsh.client.external 推导。两者都不传时为空数组 → 链接计划与旧版逐条一致（行为不回归）。
+const derivedExternals = options.cleanExternals ? addons.flatMap((addon) => readAddonExternals(addon.dir)) : []
+const omitEntries = [...new Set([...options.omitNodeModules, ...derivedExternals])]
+if (options.cleanExternals) {
+  log(
+    'external 缺包演练（--clean-externals）：从 --addons 的 dsh.client.external 推导出 ' +
+      (omitEntries.length > 0 ? omitEntries.join('、') : '（无 —— 该插件未声明 external）'),
+  )
+}
+const linkResult = linkNodeModules({ simNode, realNode, addons, omit: omitEntries })
 for (const { entry, was } of linkResult.overridden) {
   log('覆盖生产 profile 的同名条目 ' + entry + '（原指向 ' + was + '）')
 }
 for (const { entry, was } of linkResult.replaced) {
   log('修正已存在的错误软链 ' + entry + '（原指向 ' + was + '）')
+}
+
+// issue #294：external 缺包演练的状态证据 + fail-closed 校验。
+// 不 omit 的话，本机生产 profile 已装 dsh-md-render → 「新装用户没装 external 依赖」
+// 这个状态永远不可能出现在隔离实例里（3c 结构性假通过，正是 #290/#293 漏到用户侧的原因）。
+if (linkResult.omittedAddons.length > 0) {
+  log('注意：以下 --addons 条目同时被 omit 覆盖，未做链接（omit 优先）：' + linkResult.omittedAddons.join('、'))
+}
+if (linkResult.omitted.length > 0) {
+  log('external 缺包演练：隔离实例 node_modules 省略 ' + linkResult.omitted.join('、'))
+  const absent = checkOmittedAbsent({ simNode, omitted: linkResult.omitted })
+  if (!absent.ok) {
+    fail(
+      '缺包演练未生效（fail-closed）：以下条目在隔离实例 node_modules 里仍可解析 —— ' +
+        absent.leaked.map((item) => item.entry + ' → ' + (item.resolved ?? item.link)).join('；'),
+    )
+    await cleanup()
+    process.exit(1)
+  }
+  pass(
+    '缺包演练生效：隔离实例 node_modules 不含 ' +
+      linkResult.omitted.join('、') +
+      '（生产 profile 里已装的同名条目被跳过）',
+  )
 }
 
 // 启动前可见性检查（fail-closed，issue #220）：打印每个 addon 的实际解析路径，
@@ -326,6 +404,24 @@ if (addons.length > 0) {
   }
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2))
   log('模拟安装 ' + addons.length + ' 个插件（bundles + dependencies）')
+}
+
+// ── 2a. 缺包演练：从隔离 profile 配置剔除 omit 条目（issue #294）──────────
+// 只删 node_modules 条目会得到「配置里列着、但装不上」的不一致状态：DSH 在 dump-config
+// 阶段直接抛 cannot resolve profile bundle → 实例根本起不来（本机实测），反而验不到
+// 「缺包时插件能否降级」。这里连 dependencies + dsh.profile.bundles 一起剔除，
+// 才是新装用户「这个包从来没装过」的真实形态。必须在 --addons 写入之后执行。
+if (omitEntries.length > 0) {
+  const simPkgPath = join(simProfile, 'package.json')
+  const stripped = stripProfileDeclarations(JSON.parse(readFileSync(simPkgPath, 'utf8')), omitEntries)
+  writeFileSync(simPkgPath, JSON.stringify(stripped.pkg, null, 2))
+  log(
+    'external 缺包演练：从隔离 profile 配置剔除 ' +
+      (stripped.removed.length > 0 ? stripped.removed.join('、') : '（无 —— 这些包未在 profile 配置中声明）'),
+  )
+  // profile patch（cordis.patch.yml）里对该 id 的 config patch 行**保留**：
+  // 它是对既有 entry 的配置补丁，entry 已被剔除，实测 boot 不会因它失败；
+  // 若哪天变成硬失败，这里会以启动失败形式暴露（不静默）。
 }
 
 // 2b. 预置隔离实例的工作区状态（GUI 合成器前置，issue #220 附带）：
@@ -386,6 +482,21 @@ if (options.skipWeb) {
   process.exit(failed ? 1 : 0)
 }
 
+// ── 3b. 端口预检（issue #294 实测教训：残留实例会让验证静默变成假通过）──────
+// 就绪探测只认「任何 HTTP 响应」。上一轮跑崩/被强杀时遗留的隔离实例若仍占着同一个
+// 端口，本轮会在**自己 spawn 的实例还没起来**（甚至起不来）时就判定 "HTTP 200 就绪"，
+// 于实验证的其实是那个残留实例 —— 结果完全不可信。实测：一次带残留实例的运行
+// 0.2s 就"就绪"（真实冷启动 ~8s），而该轮的"缺包演练"结论也就毫无意义。
+if (await isPortInUse(options.port)) {
+  fail(
+    `端口 ${options.port} 已被占用（多为上一轮残留的隔离实例）—— 就绪探测会命中他人实例，验证结果不可信。` +
+      `请先释放：lsof -ti :${options.port} | xargs kill`,
+  )
+  console.error('[verify] 提示：这是**环境**问题，不是插件问题；不要据此判定插件通过或失败。')
+  await cleanup()
+  process.exit(1)
+}
+
 // ── 4. 启动实例（真实进程） ────────────────────────────────────────────────
 log(`启动验证实例（端口 ${options.port}）…`)
 // issue #257：实例输出重定向到**文件**（而不是 pipe）。
@@ -439,9 +550,15 @@ if (!ready) {
 pass(`实例启动就绪（HTTP 200, 端口 ${options.port}）`)
 
 // 启动日志错误扫描（duplicate / failed to apply / error / exception）
+// issue #294：正则显式覆盖「缺包」类症状 —— failed to import loader entry（loader entry
+// 解析失败）/ missed the module table（client graph 里没有该行）/ Element type is invalid
+// （createElement(null)：require 落空后渲染期抛错，正是 #293 的假降级）/ Cannot find module。
+// 这些关键词原先不在扫描面内，缺包崩溃可能"扫不出来"。
+const STARTUP_ERROR_RE =
+  /(duplicate loader|failed to apply|failed to import loader entry|missed the module table|Element type is invalid|Cannot find module|error|exception|ECONNREFUSED)/i
 const errorHits = []
 for (const line of readWebLog().split('\n')) {
-  if (/(duplicate loader|failed to apply|error|exception|ECONNREFUSED)/i.test(line) && !/(EADDRINUSE)/i.test(line)) {
+  if (STARTUP_ERROR_RE.test(line) && !/(EADDRINUSE)/i.test(line)) {
     errorHits.push(line.trim())
   }
 }
@@ -449,6 +566,15 @@ if (errorHits.length > 0) {
   fail(`启动日志扫描到 ${errorHits.length} 条错误: ${errorHits.slice(0, 5).join(' | ')}`)
 } else {
   pass('启动日志无 error / duplicate 记录')
+  if (linkResult.omitted.length > 0) {
+    // 缺包演练时的针对性留痕：日志没提 external 包缺失（server 侧可见的部分）。
+    // 诚实记录边界：client 侧崩溃发生在浏览器运行时，server 启动日志未必留痕 →
+    // 真实浏览器验证仍需 skills/verifying-dsh-plugins 的步骤（不把这一项说成"已验证"）。
+    pass(
+      `缺包演练下启动日志无 external 缺包相关错误（${linkResult.omitted.join('、')}）；` +
+        'client 侧渲染崩溃需浏览器步骤确认（server 日志看不到）',
+    )
+  }
 }
 
 // ── 5. 插件 API 冒烟（验证 server 端 apply 生效） ──────────────────────────
@@ -513,7 +639,15 @@ async function cleanup() {
 // client UI/插件联动）留空待验证者（人工或 agent）在真实浏览器中验证后勾选。
 // 函数声明（提升）而非 const：main 流程在文件中部调用 writeChecklist()，
 // const 初始化在其后会导致 TDZ ReferenceError（issue #67 实测发现的坑）。
-function checklistTemplate(plugin, version, port) {
+function checklistTemplate(plugin, version, port, extraAuto = []) {
+  const autoLines = [
+    '- [x] 配置组合唯一性（dump-config 无重复插件行 id）',
+    '- [x] 实例启动就绪（HTTP 200）',
+    '- [x] 启动日志无 error / duplicate 记录',
+    '- [x] 插件 API 冒烟（--api-path 全部 200）',
+    // issue #294：缺包演练留痕（只有真的 omit 了条目才写这一行，避免误导）
+    ...extraAuto.map((text) => `- [x] ${text}`),
+  ].join('\n')
   return `# 发版前功能级验证清单 — ${plugin}@${version}
 
 验证时间：${new Date().toISOString()}
@@ -521,10 +655,7 @@ function checklistTemplate(plugin, version, port) {
 
 ## 自动验证项（verify-real-profile.mjs 自动执行）
 
-- [x] 配置组合唯一性（dump-config 无重复插件行 id）
-- [x] 实例启动就绪（HTTP 200）
-- [x] 启动日志无 error / duplicate 记录
-- [x] 插件 API 冒烟（--api-path 全部 200）
+${autoLines}
 
 ## 功能级验证项（需在隔离实例 + 真实浏览器中验证后勾选）
 
@@ -546,7 +677,12 @@ function writeChecklist() {
   if (options.checklist === null) return
   const plugin = options.plugin || (options.addons.length > 0 ? options.addons[0].split('/').pop() : 'unknown')
   const version = options.version || 'x.y.z'
-  let text = checklistTemplate(plugin, version, options.port)
+  // issue #294：缺包演练生效时把这条自动项写进清单（只有真的 omit 了条目才写，避免留痕误导）
+  const extraAuto =
+    linkResult.omitted.length > 0
+      ? [`external 缺包演练：隔离实例 node_modules 不含 ${linkResult.omitted.join('、')}（启动日志无相关错误）`]
+      : []
+  let text = checklistTemplate(plugin, version, options.port, extraAuto)
   let existingText = ''
   try {
     existingText = readFileSync(options.checklist, 'utf8')

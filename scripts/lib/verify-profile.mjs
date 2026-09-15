@@ -14,11 +14,14 @@
  *   1. planNodeModulesLinks —— 链接计划：--addons 显式指定的条目**必须**指向
  *      addon 目录（覆盖真实 profile 的同名软链）；未指定的条目照旧复用真实
  *      profile（保住 pnpm 依赖解析，未指定 addons 时既有行为零回归）；
+ *      omit（issue #294）里的条目一律不链接 —— external 缺包演练；
  *   2. linkNodeModules —— 应用计划（真实 fs；重写软链，不污染真实 profile）；
  *   3. checkAddonResolution —— realpath 解析校验（fail-closed：脚本在实例启动前
  *      打印并断言）。比较一律用 realpath：macOS 上 /tmp 是 /private/tmp 的软链，
  *      直接比字符串会把正确链接误判成错误、把错误链接误判成正确；
- *   4. buildWorkspaceStorage / validateWorkspaceStorage / writeWorkspaceStorage
+ *   4. checkOmittedAbsent —— omit 条目必须真的不可解析（issue #294 第二层防线）；
+ *   5. readAddonExternals —— 读插件 dsh.client.external（推导缺包演练集合）；
+ *   6. buildWorkspaceStorage / validateWorkspaceStorage / writeWorkspaceStorage
  *      —— 预置隔离实例的工作区落盘状态。storages/workspace.json 有**隐性 Zod
  *      校验**（unit 头 + ISO 时间戳 + path 必须是 realpath），格式错误会让实例
  *      启动即失败，故写入后回读校验（fail-closed）。
@@ -60,27 +63,108 @@ export function readAddon(dir) {
  * 未被 addon 指定的条目照旧复用；addon 是 scoped 包时其 scope 目录必须展开
  * （真实 profile 的 scope 目录整体软链会让子条目写入落到真实 profile 里）。
  *
- * @param {{realEntries: string[], addons: Array<{dir: string, name: string}>}} input
- * @returns {{reuse: string[], expand: string[], addonLinks: Array<{entry: string, dir: string}>, overridden: string[]}}
+ * issue #294：omit 是「external 缺包」演练——列在 omit 里的条目**一律不链接**
+ * （既不复用真实 profile，也不做 addon 链接）。这正是新装用户拿不到
+ * dsh.client.external 依赖时的实例状态；不 omit 则本机已装该包，缺陷永远
+ * 不可能被验证到（结构性假通过）。omit 与 addon 同名时 omit 优先并记录
+ * omittedAddons（调用方必须打印，不静默）。
+ *
+ * @param {{realEntries: string[], addons: Array<{dir: string, name: string}>, omit?: string[]}} input
+ * @returns {{reuse: string[], expand: string[], addonLinks: Array<{entry: string, dir: string}>, overridden: string[], omitted: string[], omittedAddons: string[]}}
  */
-export function planNodeModulesLinks({ realEntries, addons }) {
-  const addonLinks = addons.map((addon) => ({ entry: addon.name, dir: addon.dir }))
+export function planNodeModulesLinks({ realEntries, addons, omit = [] }) {
+  const omitSet = new Set(omit)
+  const requested = addons.map((addon) => ({ entry: addon.name, dir: addon.dir }))
+  const omittedAddons = requested.filter((link) => omitSet.has(link.entry)).map((link) => link.entry)
+  const addonLinks = requested.filter((link) => !omitSet.has(link.entry))
   const addonEntries = new Set(addonLinks.map((link) => link.entry))
   const scopes = new Set()
   for (const entry of addonEntries) {
     if (entry.startsWith('@') && entry.includes('/')) scopes.add(entry.split('/')[0])
   }
+  // issue #294：omit 的 scoped 包同样要求展开 scope 目录 —— 否则整目录软链会把
+  // 被省略的包一起带进隔离实例（缺包演练失效，且 checkOmittedAbsent 会误报 leak）。
+  for (const entry of omitSet) {
+    if (entry.startsWith('@') && entry.includes('/')) scopes.add(entry.split('/')[0])
+  }
   const reuse = []
   const expand = []
+  const omitted = []
   for (const entry of realEntries) {
     if (addonEntries.has(entry)) continue // addon 显式指定 → 不复用真实 profile 条目
+    if (omitSet.has(entry)) {
+      omitted.push(entry) // issue #294：缺包演练 → 真实 profile 里也不复用
+      continue
+    }
     if (scopes.has(entry)) {
       expand.push(entry) // scope 目录整体软链会让 addon 写入污染真实 profile → 展开
       continue
     }
     reuse.push(entry)
   }
-  return { reuse, expand, addonLinks, overridden: realEntries.filter((entry) => addonEntries.has(entry)) }
+  return {
+    reuse,
+    expand,
+    addonLinks,
+    overridden: realEntries.filter((entry) => addonEntries.has(entry)),
+    omitted,
+    omittedAddons,
+  }
+}
+
+/**
+ * 读取 addon 插件声明的 dsh.client.external（issue #294）。
+ *
+ * --clean-externals 用它自动推导「缺包演练」集合：external 是「同 boot 图内的跨插件
+ * client 行请求」，新装用户若没装这些包，浏览器端 require 就落空（整条 client factory
+ * 抛错、插件全部 UI 席位挂掉）。隔离实例必须**能复现**这个状态，否则验证永远是假通过。
+ * 缺失/非数组/非法项一律忽略（与 release 门禁的 listClientExternals 同口径）。
+ */
+export function readAddonExternals(dir) {
+  const pkgPath = join(resolve(dir), 'package.json')
+  if (!existsSync(pkgPath)) return []
+  let pkg
+  try {
+    pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+  } catch {
+    return []
+  }
+  const external = pkg?.dsh?.client?.external
+  if (!Array.isArray(external)) return []
+  return [...new Set(external.filter((name) => typeof name === 'string' && name !== ''))]
+}
+
+/**
+ * 从隔离 profile 的 package.json 里剔除指定包声明（issue #294，纯函数；原对象不被修改）。
+ *
+ * 为什么必须连配置一起剔除：只删 node_modules 条目会得到「配置里列着、但装不上」的
+ * **不一致状态** —— DSH 在 dump-config / boot 阶段直接抛
+ * `cannot resolve profile bundle "dsh-md-render" from the dsh installation or <profileDir>`
+ * （本机实测，见 PR 证据），实例根本起不来，于是「缺包时插件能否降级」这个真正要验的
+ * 场景反而验不到。剔除后才是新装用户的真实形态：包既不在 dependencies /
+ * dsh.profile.bundles，也不在 node_modules（浏览器端 require 落空 → #290/#293 场景）。
+ *
+ * @param {object} pkg 隔离 profile 的 package.json 内容
+ * @param {string[]} names 要剔除的包名
+ * @returns {{pkg: object, removed: string[]}} 剔除后的新文档 + 被剔除的声明（供打印留痕）
+ */
+export function stripProfileDeclarations(pkg, names) {
+  const copy = JSON.parse(JSON.stringify(pkg))
+  const removed = []
+  for (const name of names) {
+    if (copy.dependencies && Object.prototype.hasOwnProperty.call(copy.dependencies, name)) {
+      delete copy.dependencies[name]
+      removed.push(`dependencies.${name}`)
+    }
+    const bundles = copy.dsh?.profile?.bundles
+    if (!Array.isArray(bundles)) continue
+    const at = bundles.indexOf(name)
+    if (at >= 0) {
+      bundles.splice(at, 1)
+      removed.push(`dsh.profile.bundles.${name}`)
+    }
+  }
+  return { pkg: copy, removed }
 }
 
 /** lstat 包装：区分「不存在」与「悬空软链」（existsSync 对悬空软链返回 false）。 */
@@ -104,19 +188,28 @@ function removeEntry(path) {
  *
  * addon 条目已存在（真实 profile 同名软链）时**重写**为指向 addon 的新软链，
  * 并把被替换的原目标记入 replaced（供脚本打印"原来指向哪"的证据）。
+ *
+ * issue #294：omit 里的条目**一个都不链接**（缺包演练），并在返回结果里列出
+ * 实际被省略的条目（含 scope 展开时被跳过的子条目）——调用方据此打印 + fail-closed 校验。
  */
-export function linkNodeModules({ simNode, realNode, addons }) {
-  const plan = planNodeModulesLinks({ realEntries: readdirSync(realNode), addons })
+export function linkNodeModules({ simNode, realNode, addons, omit = [] }) {
+  const plan = planNodeModulesLinks({ realEntries: readdirSync(realNode), addons, omit })
+  const omitSet = new Set(omit)
   const addonEntries = new Set(plan.addonLinks.map((link) => link.entry))
   mkdirSync(simNode, { recursive: true })
 
   for (const entry of plan.reuse) symlinkSync(join(realNode, entry), join(simNode, entry))
 
+  const omitted = [...plan.omitted]
   for (const scope of plan.expand) {
     mkdirSync(join(simNode, scope), { recursive: true })
     for (const child of readdirSync(join(realNode, scope))) {
       const entry = `${scope}/${child}`
       if (addonEntries.has(entry)) continue
+      if (omitSet.has(entry)) {
+        omitted.push(entry) // issue #294：scope 展开的子条目同样受 omit 约束
+        continue
+      }
       symlinkSync(join(realNode, scope, child), join(simNode, entry))
     }
   }
@@ -136,7 +229,22 @@ export function linkNodeModules({ simNode, realNode, addons }) {
   }
   // 被 addon 覆盖的真实 profile 条目原目标：脚本据此打印"原来指向主工作区"的证据
   const overridden = plan.overridden.map((entry) => ({ entry, was: rawLink(join(realNode, entry)) }))
-  return { plan, linked, replaced, overridden }
+  return { plan, linked, replaced, overridden, omitted, omittedAddons: plan.omittedAddons }
+}
+
+/**
+ * 校验被 omit 的条目在模拟 profile 里**确实不可解析**（issue #294，fail-closed）。
+ *
+ * 假通过的第二层防线：即使 omit 接线写错（例如漏传、scope 展开路径写错），
+ * 只要该条目仍能在 simNode 里解析到真实 profile 的软链，这里就报 leak ——
+ * 脚本据此在实例启动前退出，绝不把「其实装了包」的实例当成「缺包演练」。
+ */
+export function checkOmittedAbsent({ simNode, omitted }) {
+  const entries = omitted.map((entry) => {
+    const link = join(simNode, entry)
+    return { entry, link, exists: lstatOrNull(link) !== null, resolved: realpathOrNull(link) }
+  })
+  return { ok: entries.every((item) => !item.exists), entries, leaked: entries.filter((item) => item.exists) }
 }
 
 /** 读取软链的原始目标字符串（不解析），用于打印被替换条目"原来指向哪"。 */

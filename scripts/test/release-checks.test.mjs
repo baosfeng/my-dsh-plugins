@@ -3,7 +3,8 @@
  * issue #72：server 端扫描 + npm 404 阻断）。
  *
  * 覆盖：extractDshRequires / findUndeclaredPeers / rangeMin / versionGte /
- * isNpmNotFound / findUnpublishedDeps / collectClientSources / collectServerSources /
+ * isNpmNotFound / findUnpublishedDeps / checkClientExternals / listClientExternals /
+ * collectClientSources / collectServerSources /
  * buildPluginIndex / findFreePort / inspectTagState / tagConflictHint，
  * 外加 workflow 插件清单一致性（防漂移：release-auto.yml options + ci.yml matrix）。
  */
@@ -20,6 +21,11 @@ import {
   versionGte,
   isNpmNotFound,
   findUnpublishedDeps,
+  checkClientExternals,
+  listClientExternals,
+  listDegradedExternals,
+  findRedundantDegradedExternals,
+  CLIENT_EXTERNAL_FIX_HINT,
   collectClientSources,
   collectServerSources,
   buildPluginIndex,
@@ -265,6 +271,150 @@ describe('findUnpublishedDeps', () => {
     const peers = { 'dsh-md-render': '^0.1.1', 'dsh-other': '^0.2.0' }
     const problems = findUnpublishedDeps(peers, pluginIndex, () => false, tagged)
     expect(problems).toHaveLength(2)
+  })
+})
+
+// ── checkClientExternals（issue #294：防 #290/#293 复发；判据按 leader 验收修正）──
+// external 是「同 boot 图内的跨插件 client 行请求」：只有该包成为 loader entry
+// （⇒ 进 dsh.profile.bundles）才有 client graph row，浏览器端 require 才命中；
+// 缺包时无 stub、无隔离，整条 client factory 抛错 → 插件全部 UI 席位挂掉。
+// 判据不认"移进 dependencies"（那只是落盘，插件自己的 deps 不会被 reconcile 激活），
+// 认的是 dsh.client.externalDegraded（显式声明"缺失时有降级路径"）+ 3c 缺包演练。
+describe('checkClientExternals', () => {
+  const pluginIndex = new Map([['dsh-md-render', { dir: 'dsh-md-render', version: '0.1.8' }]])
+  const published = () => true
+  const tagged = () => true
+  /** 构造插件 package.json（只关心 dsh.client.external / externalDegraded / deps / peers）。 */
+  const pkgWith = ({ external, degraded, dependencies, peerDependencies }) => ({
+    name: 'dsh-consumer',
+    version: '1.0.0',
+    ...(dependencies ? { dependencies } : {}),
+    ...(peerDependencies ? { peerDependencies } : {}),
+    ...(external
+      ? { dsh: { client: { platform: 'web', external, ...(degraded ? { externalDegraded: degraded } : {}) } } }
+      : {}),
+  })
+
+  it('无 dsh.client.external → 空（绝大多数插件，行为零变化）', () => {
+    expect(
+      checkClientExternals(pkgWith({ dependencies: { 'dsh-md-render': '^0.1.8' } }), pluginIndex, published, tagged),
+    ).toEqual([])
+  })
+
+  it('合法：仓库内包在 dependencies 且已发布 + 已打 tag → 空（不要求 externalDegraded）', () => {
+    const pkg = pkgWith({ external: ['dsh-md-render'], dependencies: { 'dsh-md-render': '^0.1.8' } })
+    expect(checkClientExternals(pkg, pluginIndex, published, tagged)).toEqual([])
+  })
+
+  it('反例：external 未在 dependencies/peerDependencies 声明 → 阻断', () => {
+    const problems = checkClientExternals(pkgWith({ external: ['dsh-md-render'] }), pluginIndex, published, tagged)
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toMatchObject({ external: 'dsh-md-render', kind: 'undeclared' })
+    expect(problems[0].reason).toContain('未在 peerDependencies/dependencies 声明')
+  })
+
+  it('合法：仓库内包仅 peer 但已声明 externalDegraded → 通过（#293 的真实形态）', () => {
+    const pkg = pkgWith({
+      external: ['dsh-md-render'],
+      degraded: ['dsh-md-render'],
+      peerDependencies: { 'dsh-md-render': '^0.1.8' },
+    })
+    expect(checkClientExternals(pkg, pluginIndex, published, tagged)).toEqual([])
+  })
+
+  it('反例：仓库内包仅 peer 且未声明 externalDegraded → 阻断，且给出两条修法', () => {
+    const pkg = pkgWith({ external: ['dsh-md-render'], peerDependencies: { 'dsh-md-render': '^0.1.8' } })
+    const problems = checkClientExternals(pkg, pluginIndex, published, tagged)
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toMatchObject({ external: 'dsh-md-render', kind: 'peer-only' })
+    expect(problems[0].reason).toContain('autoInstallPeers')
+    expect(problems[0].reason).toContain('externalDegraded')
+    // 修法①（推荐）补降级路径 + 声明；修法②移进 dependencies 且保证被激活
+    expect(problems[0].reason).toContain('修法①')
+    expect(problems[0].reason).toContain('修法②')
+    expect(problems[0].reason).toContain('不被 reconcile 激活')
+  })
+
+  it('仅 peer + externalDegraded 里声明的是别的名字 → 仍阻断（必须逐项声明）', () => {
+    const pkg = pkgWith({
+      external: ['dsh-md-render'],
+      degraded: ['dsh-other'],
+      peerDependencies: { 'dsh-md-render': '^0.1.8' },
+    })
+    expect(checkClientExternals(pkg, pluginIndex, published, tagged)).toHaveLength(1)
+  })
+
+  it('反例：仓库内包在 dependencies 但未发布 → 阻断（复用 findUnpublishedDeps 判据）', () => {
+    const pkg = pkgWith({ external: ['dsh-md-render'], dependencies: { 'dsh-md-render': '^0.1.9' } })
+    const problems = checkClientExternals(pkg, pluginIndex, () => false, tagged)
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toMatchObject({ external: 'dsh-md-render', kind: 'unpublished' })
+    expect(problems[0].reason).toContain('未发布')
+  })
+
+  it('反例：仓库内包在 dependencies 但未打 tag → 阻断（发布顺序）', () => {
+    const pkg = pkgWith({ external: ['dsh-md-render'], dependencies: { 'dsh-md-render': '^0.1.8' } })
+    const problems = checkClientExternals(pkg, pluginIndex, published, () => false)
+    expect(problems).toHaveLength(1)
+    expect(problems[0].reason).toContain('未打 tag')
+  })
+
+  it('仓库外包（官方包）仅 peer 声明 → 通过（安装语义由包管理器负责，取舍显式）', () => {
+    const pkg = pkgWith({
+      external: ['@deepseek-ai/dsh-client-runtime'],
+      peerDependencies: { '@deepseek-ai/dsh-client-runtime': '^0.1.5-rc.2' },
+    })
+    expect(checkClientExternals(pkg, pluginIndex, published, tagged)).toEqual([])
+  })
+
+  it('仓库外包但完全未声明 → 仍阻断（(i) 对所有 external 生效）', () => {
+    const problems = checkClientExternals(pkgWith({ external: ['dsh-better-sidebar'] }), pluginIndex, published, tagged)
+    expect(problems).toHaveLength(1)
+    expect(problems[0].kind).toBe('undeclared')
+  })
+
+  it('多个 external 的问题全部返回（去重：重复项只校验一次）', () => {
+    const pkg = pkgWith({ external: ['dsh-md-render', 'dsh-md-render', 'dsh-unknown'] })
+    const problems = checkClientExternals(pkg, pluginIndex, published, tagged)
+    expect(problems).toHaveLength(2)
+    expect(problems.map((p) => p.external)).toEqual(['dsh-md-render', 'dsh-unknown'])
+  })
+
+  it('listClientExternals：非数组/含非法项/空串一律安全降级', () => {
+    expect(listClientExternals({})).toEqual([])
+    expect(listClientExternals({ dsh: { client: { external: 'dsh-x' } } })).toEqual([])
+    expect(listClientExternals({ dsh: { client: { external: ['dsh-x', '', 42, null, 'dsh-x'] } } })).toEqual(['dsh-x'])
+  })
+
+  it('listDegradedExternals：同样的安全降级口径（去重 + 过滤非法项）', () => {
+    expect(listDegradedExternals({})).toEqual([])
+    expect(listDegradedExternals({ dsh: { client: { externalDegraded: 'dsh-x' } } })).toEqual([])
+    expect(listDegradedExternals({ dsh: { client: { externalDegraded: ['dsh-x', '', 7, 'dsh-x'] } } })).toEqual([
+      'dsh-x',
+    ])
+  })
+
+  it('externalDegraded 声明了不在 external 中的项 → 冗余（不阻断，由发版输出打印 info）', () => {
+    const pkg = pkgWith({
+      external: ['dsh-md-render'],
+      degraded: ['dsh-md-render', 'dsh-ghost'],
+      peerDependencies: { 'dsh-md-render': '^0.1.8' },
+    })
+    expect(checkClientExternals(pkg, pluginIndex, published, tagged)).toEqual([])
+    expect(findRedundantDegradedExternals(pkg)).toEqual(['dsh-ghost'])
+  })
+
+  it('无冗余声明时 findRedundantDegradedExternals 返回空（含无 externalDegraded 的插件）', () => {
+    expect(findRedundantDegradedExternals({})).toEqual([])
+    const pkg = pkgWith({ external: ['dsh-md-render'], degraded: ['dsh-md-render'] })
+    expect(findRedundantDegradedExternals(pkg)).toEqual([])
+  })
+
+  it('修法文案：含 externalDegraded 声明形态、dependencies 备选与踩坑文档', () => {
+    expect(CLIENT_EXTERNAL_FIX_HINT).toContain('externalDegraded')
+    expect(CLIENT_EXTERNAL_FIX_HINT).toContain('dependencies')
+    expect(CLIENT_EXTERNAL_FIX_HINT).toContain('降级')
+    expect(CLIENT_EXTERNAL_FIX_HINT).toContain('docs/踩坑/')
   })
 })
 

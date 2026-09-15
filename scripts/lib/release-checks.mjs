@@ -1,21 +1,27 @@
 /**
  * release-checks.mjs — 发版校验逻辑（issue #39：跨插件依赖校验；issue #72：404 阻断 + server 端扫描；
- * issue #203：源码依赖解析先剔除注释/字符串，消除「注释里的示例 require」假阳性阻断）。
+ * issue #203：源码依赖解析先剔除注释/字符串，消除「注释里的示例 require」假阳性阻断；
+ * issue #294：dsh.client.external（跨插件 client 行请求）校验）。
  *
  * 纯函数（无 IO，可单元测试）：
  *   extractDshRequires / findUndeclaredPeers / rangeMin / versionGte / findUnpublishedDeps / isNpmNotFound
+ *   listClientExternals / listDegradedExternals / findRedundantDegradedExternals / checkClientExternals
  *   tagConflictHint
  * IO 辅助（依赖注入 fs 便于测试）：
  *   collectClientSources / collectServerSources / buildPluginIndex / findFreePort
  *   inspectTagState（git 查询：发版 tag 管理防护）
  *
- * 校验规则（对应 issue #39 期望 1/3 + issue #72 修复）：
+ * 校验规则（对应 issue #39 期望 1/3 + issue #72 修复 + issue #294 修复）：
  *   1. client/server 端 require('dsh-*') / import 的包必须在 package.json
  *      peerDependencies 或 dependencies 声明；
  *   2. 声明的 dsh-* 依赖中属于本仓库插件的，必须已发布（npm）且版本已打 tag
  *      （<目录>@v<版本>）——依赖先发版、依赖方后发版；
  *   3. npm view 返回 404（包从未发布）必须阻断发版，不再被「已打 tag」兜底放行
- *      （issue #72：dsh-shared 未发布 npm 但 tag 已打，4 个插件安装失败/运行崩溃）。
+ *      （issue #72：dsh-shared 未发布 npm 但 tag 已打，4 个插件安装失败/运行崩溃）；
+ *   4. dsh.client.external（同 boot 图内的跨插件 client 行请求）必须声明；指向仓库内插件时，
+ *      在 dependencies 走「已发布 + 已打 tag」检查，仅在 peerDependencies 时必须显式声明
+ *      `dsh.client.externalDegraded`（缺失时有降级路径）—— 移进 dependencies **不等于**
+ *      会被 reconcile 激活（只是落盘），故门禁认"显式降级声明"而非"形式合规"。
  */
 import { execFileSync } from 'node:child_process'
 import { readdirSync, existsSync, readFileSync } from 'node:fs'
@@ -300,6 +306,129 @@ export function findUnpublishedDeps(peers, pluginIndex, isPublished, isTagged) {
       problems.push({
         dep,
         reason: `依赖包 ${dep}（${entry.dir}@v${entry.version}）未打 tag——依赖必须先发版（先发依赖、再发本插件）`,
+      })
+    }
+  }
+  return problems
+}
+
+/**
+ * dsh.client.external 消费者的修法指引（issue #294；leader 验收修正见 PR #297）。
+ *
+ * external 是「同 boot 图内的跨插件 client 行请求」：只有被请求的插件成为 loader entry
+ * （⇒ 进入 dsh.profile.bundles）才会产生 client graph row，浏览器端 require 才命中；
+ * 缺包时**无 stub、无隔离**，整条 client factory 抛错 → 插件全部 UI 席位挂掉。
+ *
+ * ⚠️ 关键事实（决定了校验判据，别再退化成「要求 dependencies」）：
+ *   `dsh plugin add` 只把 **profile 直接 dependencies** 里声明 `dsh.bundle.patch` 的包
+ *   写进 `dsh.profile.bundles`；插件自己的 dependency 只是被 pnpm 铺到
+ *   `profile/node_modules`（hoisted），**不会**进 profile dependencies、**不会**被
+ *   reconcile 激活 → 没有 client graph row → 浏览器 require 依旧落空。
+ *   即「把包移进 dependencies」只保证落盘，属形式合规；真实行为与 peer-only 相同。
+ *   因此本门禁认的是**显式降级声明**（`dsh.client.externalDegraded`）+ 3c 缺包演练。
+ */
+export const CLIENT_EXTERNAL_FIX_HINT = [
+  '  修复: external 指向的包必须「装得到」且「缺了也不崩」（否则整条 client factory 抛错，插件 UI 全挂）:',
+  '  1.（推荐）按 issue #293 的形态补真实降级路径（平台 seed 组件或纯文本回退，绝不让渲染期',
+  '     createElement(null) 抛错），并在 package.json 显式声明该 external 有降级：',
+  '       "dsh": { "client": { "external": ["dsh-md-render"], "externalDegraded": ["dsh-md-render"] } }',
+  '  2.（备选）把包移进 dependencies，**并且**保证安装流程同时激活该插件（profile 的',
+  '     dsh.profile.bundles / 由依赖包自身声明 dsh.bundle.patch 并被 profile 直接依赖）——',
+  '     注意：单纯移进 dependencies 只让包落到 profile/node_modules，不会被 reconcile 激活，',
+  '     浏览器端 require 仍然落空；peerDependencies 在 profile 模板 autoInstallPeers:false 下更是永不安装。',
+  '  3. 判据与教训见 docs/踩坑/跨插件依赖未声明导致client崩溃.md',
+].join('\n')
+
+/** 读取 pkg.dsh.client.external 列表（缺失/非数组/非字符串项一律忽略，返回去重结果）。 */
+export function listClientExternals(pkg) {
+  const external = pkg?.dsh?.client?.external
+  if (!Array.isArray(external)) return []
+  const names = external.filter((name) => typeof name === 'string' && name !== '')
+  return [...new Set(names)]
+}
+
+/**
+ * 读取 pkg.dsh.client.externalDegraded 列表（issue #294：显式声明的「缺失时可降级」集合）。
+ *
+ * 宿主解析 `dsh.client` 只认 `platform` / `inject` / `external` / `immediately`，
+ * **未知字段一律丢弃** —— 因此新增这个声明字段对宿主与本仓库运行时都是安全的
+ * （纯门禁/契约元数据，不改变任何加载行为）。
+ */
+export function listDegradedExternals(pkg) {
+  const degraded = pkg?.dsh?.client?.externalDegraded
+  if (!Array.isArray(degraded)) return []
+  const names = degraded.filter((name) => typeof name === 'string' && name !== '')
+  return [...new Set(names)]
+}
+
+/**
+ * 找出 externalDegraded 里的冗余声明（声明了但不在 dsh.client.external 中的项）。
+ *
+ * 冗余不阻断（只是没用的元数据），由发版输出打印 info —— 既不静默、也不误杀。
+ */
+export function findRedundantDegradedExternals(pkg) {
+  const externals = new Set(listClientExternals(pkg))
+  return listDegradedExternals(pkg).filter((name) => !externals.has(name))
+}
+
+/**
+ * 校验 pkg.dsh.client.external（issue #294，防 #290/#293 复发）。
+ *
+ * 对每一项断言：
+ *   (i)  必须在 dependencies 或 peerDependencies 声明（否则新装用户拿不到该包）→ 未声明即阻断；
+ *   (ii) 若是本仓库内的插件包（pluginIndex 命中，即 plugins/*）：
+ *        - 在 **dependencies** → 保留既有「已发布 + 已打 tag」检查（复用 findUnpublishedDeps，
+ *          不另写一套网络逻辑），**不要求** externalDegraded；
+ *        - **仅在 peerDependencies** → 必须同时在 `dsh.client.externalDegraded` 里显式声明
+ *          「缺失时有降级路径」，否则阻断。为什么不要求移进 dependencies：见
+ *          CLIENT_EXTERNAL_FIX_HINT 的激活语义论证 —— 移进 deps 只是落盘，真实行为与
+ *          peer-only 相同，要求它等于"形式合规换放行"，抓不到 #290/#293 这类崩溃。
+ *
+ * 仓库外的包（官方包/第三方包）只看 (i)：其安装语义由包管理器负责，本仓库无法
+ * 保证「已发布 + 已打 tag」。这一取舍是显式的（单测覆盖），不是漏检。
+ *
+ * @param {object} pkg 插件 package.json 内容
+ * @param {Map<string, {dir: string, version: string}>} pluginIndex 仓库内插件索引
+ * @param {(dep: string, range: string) => boolean} isPublished 依赖是否已发布且满足范围
+ * @param {(dir: string, version: string) => boolean} isTagged 依赖版本是否已打 tag
+ * @returns {{external: string, kind: 'undeclared'|'peer-only'|'unpublished', reason: string}[]} 阻断项列表（空 = 通过）
+ */
+export function checkClientExternals(pkg, pluginIndex, isPublished, isTagged) {
+  const externals = listClientExternals(pkg)
+  if (externals.length === 0) return []
+  const degraded = new Set(listDegradedExternals(pkg))
+  const deps = pkg?.dependencies ?? {}
+  const peers = pkg?.peerDependencies ?? {}
+  const problems = []
+  for (const external of externals) {
+    const inDeps = Object.prototype.hasOwnProperty.call(deps, external)
+    const inPeers = Object.prototype.hasOwnProperty.call(peers, external)
+    if (!inDeps && !inPeers) {
+      problems.push({
+        external,
+        kind: 'undeclared',
+        reason: `dsh.client.external 请求了 ${external} 但未在 peerDependencies/dependencies 声明——新装用户拿不到该包，浏览器端 require 落空`,
+      })
+      continue
+    }
+    if (!pluginIndex.has(external)) continue // 仓库外包：安装语义由包管理器负责（只看 (i)）
+    if (inDeps) {
+      for (const problem of findUnpublishedDeps({ [external]: deps[external] }, pluginIndex, isPublished, isTagged)) {
+        problems.push({ external, kind: 'unpublished', reason: `dsh.client.external ${problem.reason}` })
+      }
+      continue
+    }
+    // 仅 peerDependencies：必须显式声明「缺失时可降级」（issue #293 的形态），否则阻断
+    if (!degraded.has(external)) {
+      problems.push({
+        external,
+        kind: 'peer-only',
+        reason:
+          `dsh.client.external ${external} 只声明在 peerDependencies 且未在 dsh.client.externalDegraded 声明降级——` +
+          `profile 模板 autoInstallPeers:false 下 peer 永不安装、也不会进 dsh.profile.bundles（无 client graph row），` +
+          `浏览器端 require 必然落空、整条 client factory 抛错（issue #290/#293）。` +
+          `修法①（推荐）按 #293 补真实降级路径并在 dsh.client.externalDegraded 声明；` +
+          `修法②移进 dependencies **并且**保证安装流程同时激活该插件（单单移进 deps 只落盘、不被 reconcile 激活，行为不变）`,
       })
     }
   }

@@ -32,6 +32,7 @@
  *   3b. validate README screenshot references under assets/
  *   3c. real-environment verification (issue #39 + #67): verify-real-profile.mjs
  *       --addons plugins/<name> --checklist verification/<name>-<version>.md
+ *       --clean-externals (issue #294: 隔离实例复现「没装 dsh.client.external 依赖」)
  *       (local only; CI auto-skips; --skip-real-verify requires --skip-reason),
  *       then gate on the functional checklist being fully checked (issue #67)
  *   4.  sync the version in root README.md plugin table and AGENTS.md
@@ -54,6 +55,11 @@ import {
   extractDshRequires,
   findUndeclaredPeers,
   findUnpublishedDeps,
+  checkClientExternals,
+  listClientExternals,
+  listDegradedExternals,
+  findRedundantDegradedExternals,
+  CLIENT_EXTERNAL_FIX_HINT,
   collectClientSources,
   collectServerSources,
   buildPluginIndex,
@@ -289,6 +295,11 @@ async function prefetchNpmVersions(deps) {
  * --addons（真实 DSH 实例 + 配置组合检查），失败即阻断；验证通过后校验
  * 「发版前功能级验证清单」功能级项全部勾选，未全勾选即阻断发版。
  * port 由批量调度预分配（issue #246：并行实例必须各占一个端口）。
+ *
+ * issue #294：默认传 --clean-externals —— 隔离实例必须**复现**「新装用户没装
+ * dsh.client.external 依赖」的状态（旧行为无条件复用生产 profile 全部 node_modules，
+ * 本机已装该包时这个状态永远验证不到 → 3c 结构性假通过，#290/#293 因此漏到用户侧）。
+ * 插件未声明 external 时推导集合为空，行为与旧版逐条一致（不回归）。
  */
 async function realVerifyGate(name, version, port, prefix) {
   const checklistPath = join(root, 'verification', `${name}-${version}.md`)
@@ -306,6 +317,7 @@ async function realVerifyGate(name, version, port, prefix) {
       name,
       '--version',
       version,
+      '--clean-externals',
     ],
     { cwd: root, prefix },
   )
@@ -577,6 +589,42 @@ async function processPlugin(name, ctx) {
   }
   if (inRepoDeps.length > 0 && depOk) {
     say(`✓ 仓库内 dsh-* 依赖均已发布且已打 tag（发布顺序正确）: ${inRepoDeps.join(', ')}`)
+  }
+
+  // 1c（external）. dsh.client.external 校验（issue #294，防 #290/#293 复发）：
+  // external 是「同 boot 图内的跨插件 client 行请求」——只有该包成为 loader entry
+  // （⇒ 进 dsh.profile.bundles）才有 client graph row，浏览器端 require 才命中；
+  // 缺包时无 stub、无隔离，整条 client factory 抛错 → 插件全部 UI 席位挂掉。
+  // 判据（leader 验收修正，PR #297）：仓库内包在 dependencies → 走「已发布 + 已打 tag」；
+  // 仅在 peerDependencies → 必须显式声明 dsh.client.externalDegraded（有降级路径）。
+  // 不要求"移进 dependencies"：那只是落盘，插件自己的 deps 不会被 reconcile 激活，
+  // 真实行为与 peer-only 相同（详见 CLIENT_EXTERNAL_FIX_HINT 的激活语义论证）。
+  // npm 判据复用 1c 的 isPublished/isTagged（同一套网络注入）。
+  // 注意：declared 检查已失败（depOk=false）时跳过——此时 npmVersions 为空 Map，
+  // 继续校验会把「无法判定」误报成「未发布」，掩盖真正的首个失败点。
+  const externals = listClientExternals(pkg)
+  if (depOk && externals.length > 0) {
+    const externalProblems = checkClientExternals(pkg, pluginIndex, isPublished, isTagged)
+    if (externalProblems.length > 0) {
+      for (const p of externalProblems) gateFail('1c', p.reason)
+      console.error(CLIENT_EXTERNAL_FIX_HINT)
+      depOk = false
+    } else {
+      const degraded = listDegradedExternals(pkg)
+      say(`✓ dsh.client.external 依赖已声明且已发布/已打 tag: ${externals.join(', ')}`)
+      if (degraded.length > 0) {
+        // 显式降级声明 = 缺包时的能力降级契约；真实行为由 3c 缺包演练（--clean-externals）验证
+        say(
+          `- dsh.client.externalDegraded 已声明（缺失时降级路径）: ${degraded.join(', ')}；` +
+            '对应缺包场景由 3c（--clean-externals）复现验证',
+        )
+      }
+      const redundant = findRedundantDegradedExternals(pkg)
+      if (redundant.length > 0) {
+        // 冗余只是无效元数据：不阻断，但也不静默（否则会留下"以为声明了"的错觉）
+        say(`- 提示: dsh.client.externalDegraded 里的 ${redundant.join(', ')} 不在 external 中（冗余声明，不阻断）`)
+      }
+    }
   }
 
   // 2. CHANGELOG section

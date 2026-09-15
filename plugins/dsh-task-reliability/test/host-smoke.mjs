@@ -209,6 +209,33 @@ function boot(config = {}, services = {}, dirOverride) {
 
 const tick = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * 条件等待：轮询直到条件成立（issue #310）。
+ *
+ * 为什么不能用固定 `tick(N)`：`tick(N)` 只表达"我猜 N 毫秒够了"，不表达任何条件。
+ * 重启恢复路径是 `setTimeout(resumeGraceMs)` → `await agents.resume()` → `save()`
+ * （即使 saveDebounceMs=0，也要等定时器 + 串行写盘链跑完），CI 高负载下这一串可能
+ * 远超 30ms，于是断言读到**中间态**（`calls.resume` 还是 0，或 `resumeAt` 尚未落盘）
+ * → flaky。复现见 #310：把写盘延迟注入成 60ms，「幂等」用例稳定报
+ * `AssertionError: resumeAt 已存在则不恢复`，与 CI 的失败签名逐字一致。
+ *
+ * 语义与 `storeOf()`（先 `drainSaves()` 再读盘）一致：**等条件，不等时间**。
+ */
+async function waitFor(predicate, { timeoutMs = 2000, stepMs = 5, what = 'condition' } = {}) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await tick(stepMs)
+  }
+  assert.fail(`等待超时（${timeoutMs}ms）：${what}`)
+}
+
+/** 重启恢复的确定性就绪信号：先恢复副作用发生，再等状态落盘（issue #310）。 */
+async function waitResumeSettled(env, expectedCalls) {
+  await waitFor(() => env.calls.resume.length >= expectedCalls, { what: `resume 调用数达到 ${expectedCalls}` })
+  await env.drainSaves()
+}
+
 async function callApi(api, request) {
   const response = mockResponse()
   await api.handler(request, response)
@@ -1230,7 +1257,8 @@ test('启动时恢复活动任务（resume + followup 继续）', async () => {
   env.disposeAll() // 关闭第一个实例（阻止其 resume 定时器）
   // 模拟重启：同一目录重新 apply
   const env2 = boot({ resumeGraceMs: 0 }, {}, env.dir)
-  await tick(30) // 等 resumeGraceMs=0 的定时器
+  // 等条件（issue #310）：恢复副作用 + 落盘都就绪后再断言，不再猜 30ms
+  await waitResumeSettled(env2, 1)
   assert.equal(env2.calls.resume.length, 1)
   assert.equal(env2.calls.resume[0].resumeSessionId, 'session-main')
   assert.equal(env2.mainAgent.followed.length, 1)
@@ -1245,11 +1273,17 @@ test('已恢复的任务不重复恢复（幂等）', async () => {
   await tick()
   env.disposeAll()
   const env2 = boot({ resumeGraceMs: 0 }, {}, env.dir)
-  await tick(30)
+  // 等条件而不是猜时间（issue #310）：先确认这一次恢复真的执行了，再确认 resumeAt 落盘，
+  // 之后 env3 读盘才必然看到 resumeAt（否则读到中间态 → 又恢复一次 → 假红）。
+  await waitResumeSettled(env2, 1)
   assert.equal(env2.calls.resume.length, 1, '第一次恢复执行')
   const env3 = boot({ resumeGraceMs: 0 }, {}, env.dir)
-  await tick(30)
+  // env3 的 resumeGraceMs=0 定时器照旧会触发（这里给足窗口，与旧用例的 tick(30) 等价）；
+  // 关键是判据不再是"猜时间"，而是"跳过必须由磁盘上的 resumeAt 解释"（下面 storeOf 断言）。
+  await tick(60)
   assert.equal(env3.calls.resume.length, 0, 'resumeAt 已存在则不恢复')
+  const store3 = await storeOf(env3)
+  assert.ok(store3.tasks[0].resumeAt > 0, 'resumeAt 已落盘（幂等依据是磁盘状态，不是碰巧）')
 })
 
 test('resume 失败任务标记 failed 不阻塞启动', async () => {
@@ -1480,7 +1514,8 @@ test('重启恢复任务输出 info 日志', async () => {
   await tick()
   env.disposeAll()
   const env2 = boot({ resumeGraceMs: 0 }, {}, env.dir)
-  await tick(30)
+  // 等条件（issue #310）：日志是恢复副作用的产物，同样不该用固定 30ms 猜
+  await waitFor(() => env2.logs.some((line) => line.includes('重启恢复任务')), { what: '重启恢复日志出现' })
   const resumeLog = env2.logs.find((line) => line.includes('重启恢复任务'))
   assert.ok(resumeLog !== undefined, 'resume info log emitted')
   assert.ok(resumeLog.startsWith('[dsh-task-reliability]'), 'log carries the unified plugin prefix')

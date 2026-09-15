@@ -74,23 +74,24 @@ const uiPrimitives = require('@deepseek-ai/dsh-client-ui-primitives')
 | `fileMentions` | `unknown`                                         | 否     | 文件提及解析                                                                                      |
 | `pathImages`   | `unknown`                                         | 否     | 路径图片解析                                                                                      |
 
-用法（`dsh-think-zh-expand@0.4.10` 三级链的第二级，issue #293）：
+用法：**不要自己重写三级链**——用共享部件 `dsh-shared/client-parts/markdown-fallback.part.js`（issue #299；`dsh-think-zh-expand` 与 `dsh-my-plugin-manager` 已接入，构建期 splice 进 factory 作用域）：
 
 ```js
-const ui = require('@deepseek-ai/dsh-client-ui-primitives') // 宿主静态模块表
-if (ui && typeof ui.MarkdownText === 'function') {
-  const MarkdownText = ui.MarkdownText
-  return (props) =>
-    createElement(MarkdownText, {
-      text: props.text,
-      labels: { code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' },
-      codeLabels: { copyLabel: '复制', copiedLabel: '已复制' }, // 兼容 0.0.1-rc.1
-    })
-}
+/*__PART_MARKDOWN_FALLBACK__*/ // 占位符注入（三道防线见 dsh-shared/scripts/splice.mjs）
+const MarkdownView = installMarkdownViewFallback({
+  require,
+  createElement,
+  labels: { code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' },
+  codeLabels: { copyLabel: '复制', copiedLabel: '已复制' }, // 兼容 0.0.1-rc.1
+  fallbackAttribute: 'data-dsh-<插件>-fallback', // 各插件自己的 DOM 标记前缀
+  // fallbackClassName?: '…'  // 需要保留消费方既有 <pre> class 契约时传
+})
 ```
 
+（`MarkdownText` 的 props 契约在共享件内部适配；若要自己适配，注意 `labels` 无默认值，且可用性判定必须按下面的 React 语义。）
+
 - **典型场景**：插件的渲染内核走 `dsh.client.external` 跨插件 require（如 `dsh-md-render`）——`dsh plugin add` **不会**自动安装/激活 external 指向的插件（只激活 profile 直接 dependencies 里声明 `dsh.bundle.patch` 的包；peerDependencies 在 `autoInstallPeers: false` 下永不安装），新装用户开箱即缺，必须自带兜底（见 [踩坑：假降级](../踩坑/假降级-只catch-require不等于优雅降级.md)）。
-- **仍保留三级链**：官方组件也可能不存在（极旧/裁剪宿主）→ 最后一级回退 `<pre data-<插件>-fallback="true">`。只有「真的换了渲染组件」才算降级，把组件变量置 `null` 而渲染路径没有 null 分支会在渲染期抛 `Element type is invalid … but got: null`。
+- **仍保留三级链**：官方组件也可能不存在（极旧/裁剪宿主）→ 最后一级回退 `<pre data-<插件>-fallback="true">`。只有「真的换了渲染组件」才算降级，把组件变量置 `null` 而渲染路径没有 null 分支会在渲染期抛 `Element type is invalid … but got: null`。**现成实现就是共享部件** `dsh-shared/client-parts/markdown-fallback.part.js`（`installMarkdownViewFallback`，见上），新插件直接注入使用，不要再抄一遍（ADR-0002：≥2 处重复即抽出）。
 - **中文文案由插件提供**：`labels` 无默认值正好让中文化插件（如 `dsh-think-zh-expand`）注入自己的中文文案。只渲染不含代码块的 markdown（纯标题/段落）时不会访问 `labels.code.copyLabel`——但契约上仍必须传（含代码块的场景必崩）。
 - **可用性判定必须按 React 语义**：`MarkdownText` 是 `React.memo(...)` 返回的**对象**（宿主实测 `object($$typeof,type,compare)`，`typeof` 为 `'object'` 而非 `'function'`）。`typeof v === 'function'` 会把官方组件误判为不可用 → 直接落到 `<pre>`。判定写成：
   ```js

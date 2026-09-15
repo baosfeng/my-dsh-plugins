@@ -271,7 +271,9 @@ Then('本插件 bundle 不包含表格渲染逻辑', async function () {
   const bundleSrc = fs.readFileSync(new URL('../../../lib/client.js', import.meta.url), 'utf8')
   assert.ok(!bundleSrc.includes('function tryTable'), 'tryTable definition removed from bundle')
   assert.ok(!bundleSrc.includes('function MarkdownView'), 'MarkdownView definition removed from bundle')
-  assert.ok(bundleSrc.includes("require('dsh-md-render')"), 'bundle requires dsh-md-render for rendering')
+  // issue #299：三级回退逻辑收口在共享件（构建期注入），bundle 里是共享件内的调用
+  assert.ok(bundleSrc.includes('function installMarkdownViewFallback('), 'shared fallback part injected')
+  assert.ok(bundleSrc.includes("'dsh-md-render'"), 'bundle wires dsh-md-render as the render kernel')
 })
 
 // ── issue #293：三级渲染回退 ───────────────────────────────────────────────

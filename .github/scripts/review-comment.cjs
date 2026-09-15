@@ -123,12 +123,17 @@ function parseReport(md) {
   const conclusion = (/##\s*结论\s*\n+\s*([^\n]+)/.exec(text) || [])[1]
   const stats = (/统计：([^\n]+)/.exec(text) || [])[1]
   const hint = (/^- \*\*提示（非门禁）\*\*：([^\n]+)/m.exec(text) || [])[1]
+  const notCovered = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => /^- \*\*未覆盖检查\*\*：/.test(l))
+    .map((l) => l.replace(/^- \*\*未覆盖检查\*\*：/, ''))
   // 只从「## 关键证据」段里取证据行，避免把「## 建议」里的条目当证据
   const evidenceBlock = (/##\s*关键证据[^\n]*\n([\s\S]*?)(?:\n##\s|$)/.exec(text) || [])[1] || text
   const evidence = evidenceBlock
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => /^-\s+\S/.test(l) && !l.includes('提示（非门禁）'))
+    .filter((l) => /^-\s+\S/.test(l) && !l.includes('提示（非门禁）') && !l.includes('未覆盖检查'))
     .slice(0, 2)
   const detail = conclusion ? conclusion.trim() : OUTCOMES.UNKNOWN
   const normalized = detail.startsWith(OUTCOMES.FAIL)
@@ -142,6 +147,7 @@ function parseReport(md) {
     conclusion: normalized,
     detail,
     hint: hint ? hint.trim() : '',
+    notCovered,
     stats: stats ? stats.trim() : '',
     evidence,
   }
@@ -172,6 +178,18 @@ function buildConsolidated(reports, { maxLines = 30, historyLine = '', historyCo
     const shown = p.detail && p.detail !== p.conclusion ? p.detail : p.conclusion
     const hint = p.hint ? `（${p.hint}）` : ''
     lines.push(`- **${p.name}**：${shown}${first}${hint}`)
+  }
+  const notCovered = parsed.flatMap((p) => p.notCovered)
+  if (notCovered.length > 0) {
+    lines.push(
+      '',
+      `## 未覆盖检查（${notCovered.length} 项）`,
+      '',
+      '不代表通过，也不阻塞合并；需接入自动化才能覆盖。',
+      '',
+    )
+    for (const item of notCovered.slice(0, 5)) lines.push(`- ${item}`)
+    if (notCovered.length > 5) lines.push(`- _（另有 ${notCovered.length - 5} 项，完整见 artifact）_`)
   }
   lines.push('', '## 建议', '', '- 先处理「不通过」项；完整明细见本次运行 artifact 与 CI 日志。')
   if (historyComment) lines.push('', historyComment)

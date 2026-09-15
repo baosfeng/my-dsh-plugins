@@ -79,7 +79,7 @@ jobs:
           source .github/scripts/lib/review-check.sh
           review_init security-report.md "安全审查"
           run_check security-report.md "依赖漏洞审计（npm audit）" npm-audit npm audit --audit-level=moderate
-          review_unknown security-report.md "CodeQL / 密钥扫描" "由平台托管（Security 页），本 job 无法给出即时结论"
+          review_not_covered security-report.md "CodeQL / 密钥扫描" "平台托管（Security 页），本 job 无法给出即时结论"
           review_finish security-report.md "- 高危及以上漏洞请在合并前处理；无修复版本的依赖需评估替代方案（CodeQL/密钥扫描见仓库 Security 页）。"
 
       - name: Upload report
@@ -135,7 +135,7 @@ jobs:
         run: |
           source .github/scripts/lib/review-check.sh
           review_init test-report.md "测试"
-          review_unknown test-report.md "测试与覆盖率" "本 job 不执行测试，避免与 CI workflow 形成两套口径；以 CI 的 test/coverage 结果为准"
+          review_not_covered test-report.md "测试与覆盖率" "不重复执行 CI 已跑的测试（权威结果见 CI workflow 的 test / coverage-finish job）"
           review_finish test-report.md "- 测试与覆盖率结论请看 CI workflow（job: test / coverage-finish）；本 job 不做重复判定。"
 
       - name: Upload report
@@ -191,7 +191,7 @@ jobs:
         run: |
           source .github/scripts/lib/review-check.sh
           review_init api-report.md "API 设计"
-          review_unknown api-report.md "公开 API 兼容性" "尚未接入自动化检查（原实现只输出固定文案，属伪结论）"
+          review_not_covered api-report.md "公开 API 兼容性" "尚未接入自动化检查（原实现只输出固定文案）"
           review_finish api-report.md "- 涉及公开 API 的改动请人工确认兼容性，并同步文档与 CHANGELOG。"
 
       - name: Upload report

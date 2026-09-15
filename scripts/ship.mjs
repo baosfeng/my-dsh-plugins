@@ -65,11 +65,28 @@ if (options.errors.length > 0) {
   process.exit(2)
 }
 
-function git(args, { inherit = false, allowFail = false } = {}) {
+/**
+ * 跑一次 git。
+ *
+ * ⚠️ stdin 语义（issue #337）—— 本文件最容易踩的坑：
+ * `git commit -F -` 里的 `-` 表示「从 **stdin** 读提交信息」，所以提交信息必须通过
+ * `input` 真的写进子进程。旧写法是 `git(['commit','-F','-'], { inherit: true })`，
+ * `stdio: 'inherit'` 让 git 继承父进程的 stdin，脚本从未把 `-m/--message-file` 的内容
+ * 写进去，于是：
+ *   · 非交互（agent / CI / 重定向 / stdin 是 /dev/null）：stdin 立即 EOF →
+ *     `Aborting commit due to empty commit message`，**必然失败**；
+ *   · 交互终端：git 静默等终端输入、不打任何提示 → 看起来"卡住"。
+ * 所以：**只要给了 `input`，stdin 就必须是 `pipe`**（write 得进去才读得到）。
+ * stdout/stderr 仍按 `inherit` 透传 —— pre-commit 门禁的输出照旧实时可见，
+ * 且此处**不加 `--no-verify`**，门禁一行都没被绕过。
+ */
+function git(args, { inherit = false, input, allowFail = false } = {}) {
+  const stdin = input === undefined ? (inherit ? 'inherit' : 'ignore') : 'pipe'
   const result = spawnSync('git', args, {
     cwd: root,
     encoding: 'utf8',
-    stdio: inherit ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+    ...(input === undefined ? {} : { input }),
+    stdio: [stdin, inherit ? 'inherit' : 'pipe', inherit ? 'inherit' : 'pipe'],
   })
   const out = inherit ? '' : `${result.stdout ?? ''}${result.stderr ?? ''}`.trim()
   if (!allowFail && (result.status ?? 1) !== 0) {
@@ -112,8 +129,10 @@ if (options.dryRun) {
 }
 
 // ── 1) 提交（保留 pre-commit 门禁）──────────────────────────────────────────
+// `-m` 与 `-F <文件>` 两个入口在上面的 `message` 处已统一成字符串，这里一律经
+// stdin 交给 `git commit -F -`（见 git() 的 stdin 注释，issue #337）。
 git(['add', '-A'])
-git(['commit', '-F', '-'], { inherit: true })
+git(['commit', '-F', '-'], { inherit: true, input: message })
 const headCommit = git(['log', '--oneline', '-1']).out
 log(`\n✔ commit：${headCommit}`)
 

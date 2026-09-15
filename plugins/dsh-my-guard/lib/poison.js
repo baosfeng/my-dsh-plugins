@@ -12,15 +12,15 @@
  *
  * 扫描只读包内容，绝不执行包内脚本/代码。
  */
-import { createHash } from 'node:crypto';
-import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { constants, open, readdir, rm } from 'node:fs/promises';
 import { join, basename, extname } from 'node:path';
 import { execFile } from 'node:child_process';
 import tmp from 'tmp';
 import { SUSPICIOUS_SCRIPT_PATTERNS, SECRET_PATTERNS, SUSPICIOUS_FILES, MALICIOUS_DEPENDENCIES, SCAN_IGNORE, MAX_SCAN_FILE_BYTES, MAX_SCAN_FILES, } from './constants.js';
-/** 扫描本地包目录；返回 { ok, findings, scannedFiles, scannedBytes }。 */
+import { fetchTarball } from './tarball.js';
+/** 扫描本地包目录；返回 { ok, findings, scannedFiles, scannedBytes, skipped }。 */
 export async function scanPackage(dir) {
-    const handle = { findings: [], files: 0, bytes: 0 };
+    const handle = { findings: [], files: 0, bytes: 0, skipped: {} };
     try {
         await scanDir(dir, dir, handle);
         return {
@@ -28,6 +28,7 @@ export async function scanPackage(dir) {
             findings: handle.findings,
             scannedFiles: handle.files,
             scannedBytes: handle.bytes,
+            skipped: handle.skipped,
         };
     }
     catch (error) {
@@ -74,14 +75,15 @@ export async function scanPackageTarget(pkg, onAlert) {
     }
 }
 /** 解析目标（本地路径/包名）并扫描；返回扫描结果。 */
-export async function resolveAndScan(pkg) {
+export async function resolveAndScan(pkg, options = {}) {
     const local = localPathOf(pkg);
     if (local !== '')
         return scanPackage(local);
-    const tarball = await fetchTarball(pkg);
-    if (tarball === '')
-        return { ok: false, error: 'unable to resolve package tarball' };
-    return scanTarball(tarball);
+    const fetched = await fetchTarball(pkg, options);
+    // 失败原因原样透传（#327：不再压成一句 unable to resolve package tarball）
+    if (!fetched.ok)
+        return { ok: false, error: fetched.error };
+    return scanTarball(fetched.file);
 }
 /** 本地路径解析：link: 前缀或已存在的路径 → 路径；否则空串。 */
 export function localPathOf(pkg) {
@@ -92,53 +94,9 @@ export function localPathOf(pkg) {
         return candidate;
     return '';
 }
-/**
- * 校验 tarball 字节与 registry 声明的 `dist.integrity` 是否一致（#314 js/http-to-file-access）。
- *
- * 为什么必须校验再落盘：这段字节会被写进 `os.tmpdir()` 下的文件并交给 tar 解包扫描，
- * 来源是 HTTP（`registry.npmjs.org` 返回的 `dist.tarball` URL）。provenance 的
- * `dist.integrity`（`sha512-<base64>`）是 registry 对这份 tarball 的摘要声明——
- * 摘要不符说明传输被篡改 / 缓存被投毒 / 拿到的是别的版本，此时宁可不扫（返回 false → 空串），
- * 也不能把未校验的远端字节落盘。
- *
- * 非 `sha512-` 形态（未知算法、空值、格式错）一律拒绝：无法校验就不放行。
- */
-export function verifyTarballIntegrity(buffer, integrity) {
-    if (typeof integrity !== 'string' || !integrity.startsWith('sha512-'))
-        return false;
-    const expected = integrity.slice('sha512-'.length);
-    if (expected === '')
-        return false;
-    return createHash('sha512').update(buffer).digest('base64') === expected;
-}
-/** 从 npm registry 获取并下载 tarball 到临时文件；失败返回空串。 */
-async function fetchTarball(pkg) {
-    try {
-        const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}/latest`, {
-            headers: { accept: 'application/json' },
-        });
-        if (!response.ok)
-            return '';
-        const meta = (await response.json());
-        const dist = meta?.dist;
-        const tarballUrl = dist?.tarball;
-        if (typeof tarballUrl !== 'string' || tarballUrl === '')
-            return '';
-        const tarballResponse = await fetch(tarballUrl);
-        if (!tarballResponse.ok)
-            return '';
-        const buffer = Buffer.from(await tarballResponse.arrayBuffer());
-        // 落盘前先验摘要：不通过就不写文件（调用方会把空串当解析失败处理）。
-        if (!verifyTarballIntegrity(buffer, dist?.integrity))
-            return '';
-        const file = tmp.fileSync({ prefix: 'dsh-guard-', postfix: '.tgz' }).name;
-        await writeFile(file, buffer);
-        return file;
-    }
-    catch {
-        return '';
-    }
-}
+// tarball 获取与摘要校验已拆到独立文件（tsc 尺寸门禁：文件 ≤400 行 / 函数 ≤70 行 /
+// 圈复杂度 ≤10）；这里 re-export 保持 lib/poison.js 的既有导出面不变。
+export { classifyFetchFailure, fetchTarball, verifyTarballIntegrity } from './tarball.js';
 /** 递归扫描目录（跳过 SCAN_IGNORE；文件数/大小上限）。 */
 async function scanDir(root, dir, handle) {
     const entries = await readdir(dir, { withFileTypes: true });
@@ -217,20 +175,60 @@ function checkShellScripts(name, text, rel, handle) {
         }
     }
 }
-/** 读取文件文本（大小上限内；不可读/超限返回 null）。 */
-async function readText(full, handle) {
+/**
+ * errno → 失败类别：`EISDIR`/`ENOTDIR` 非普通文件；`EACCES`/`EPERM` 权限拒绝；
+ * `ENOENT` 不存在；其余归 I/O 错误。类别用于诊断与测试断言，不改变读取结果（仍是 null）。
+ */
+export function classifyReadFailure(error) {
+    const code = error?.code;
+    if (code === 'EISDIR' || code === 'ENOTDIR')
+        return 'not-a-file';
+    if (code === 'EACCES' || code === 'EPERM')
+        return 'permission-denied';
+    if (code === 'ENOENT')
+        return 'not-found';
+    return 'io-error';
+}
+/** 读取文件文本（大小上限内；不可读/超限返回 null 并记入 skipped 类别）。导出供 #327 回归测试直调。 */
+export async function readText(full, handle) {
+    let fh;
     try {
-        // Use try-catch instead of stat + readFile to avoid TOCTOU race condition
-        const content = await readFile(full, 'utf8');
-        // Check content size after reading to avoid race condition
-        if (content.length > MAX_SCAN_FILE_BYTES)
-            return null;
-        handle.bytes += content.length;
-        return content;
+        // O_NONBLOCK：FIFO 在没有写端时 open 会一直等下去（普通文件/目录不受该标志影响），
+        // 非阻塞后立刻拿到 fd，类型判定交给 fd 上的 stat。
+        fh = await open(full, constants.O_RDONLY | constants.O_NONBLOCK);
     }
-    catch {
+    catch (error) {
+        skipFile(handle, classifyReadFailure(error));
         return null;
     }
+    try {
+        // stat 与 read 作用在**同一个 fd** 上：fstat 与随后的 fd 读取同源，既没有 TOCTOU
+        // （js/file-system-race 走的是路径形式的 check-then-use），又保住了下面两道闸门。
+        const info = await fh.stat();
+        if (!info.isFile()) {
+            // 读之前拒掉目录/FIFO/设备：否则 FIFO 可永久阻塞、/dev/zero 可把内存吃光
+            skipFile(handle, 'not-a-file');
+            return null;
+        }
+        if (info.size > MAX_SCAN_FILE_BYTES) {
+            // 读之前按**字节**拒掉超限文件：超大文件不会先被读进内存
+            skipFile(handle, 'too-large');
+            return null;
+        }
+        handle.bytes += info.size;
+        return await fh.readFile('utf8');
+    }
+    catch (error) {
+        skipFile(handle, classifyReadFailure(error));
+        return null;
+    }
+    finally {
+        await fh.close();
+    }
+}
+/** 记一次跳过（按类别计数；#327：errno 不再被裸 catch 吞掉）。 */
+function skipFile(handle, reason) {
+    handle.skipped[reason] = (handle.skipped[reason] ?? 0) + 1;
 }
 /** 是否为 shell 脚本文件（.sh/.bash）。 */
 export function isShellFile(name) {

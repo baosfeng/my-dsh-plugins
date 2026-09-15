@@ -72,7 +72,7 @@
  * 退出码：0 = 全部通过；1 = 存在失效引用。
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -293,6 +293,7 @@ export function runCheck(options = {}) {
     findings: [],
     checked: 0,
     skipped: new Map(),
+    unreadable: new Map(),
     pkgCache: new Map(),
     anchorCache: new Map(),
     dirCache: new Map(),
@@ -300,21 +301,45 @@ export function runCheck(options = {}) {
   }
   for (const file of files) {
     let content
+    let fd = null
     try {
       const abs = join(root, file)
-      // Use try-catch instead of stat + readFileSync to avoid TOCTOU race condition
-      content = readFileSync(abs, 'utf8')
-      // Check file size after reading to avoid race condition
-      if (content.length > MAX_FILE_BYTES) {
+      // stat 与 read 走**同一个 fd**（#327）：fd 上的 fstat 与随后的 fd 读取同源，不存在
+      // 路径形式的 check-then-use 竞态（js/file-system-race），同时又保住了下面两道**读之前**
+      // 的闸门——被本门禁纳入扫描的超大产物因此不会被完整读进内存再丢弃。
+      // O_NONBLOCK：FIFO 无写端时 openSync 会一直等（普通文件不受影响），非阻塞后立刻返回，
+      // 类型判定交给 fstatSync。
+      fd = openSync(abs, constants.O_RDONLY | constants.O_NONBLOCK)
+      const info = fstatSync(fd)
+      if (!info.isFile()) {
+        // 非普通文件（FIFO/设备/目录）不是"文档豁免"，单独记；无论如何都不读它
+        noteUnreadable(ctx, '非普通文件')
+        continue
+      }
+      if (info.size > MAX_FILE_BYTES) {
+        // 上限是**字节**（常量即 MAX_FILE_BYTES）：按 content.length（UTF-16 码元）判会把
+        // 中文文档的字节量最多低估 3 倍
         skip(ctx, '超大文件（构建/压缩产物，非文档）')
         continue
       }
-    } catch {
+      content = readFileSync(fd, 'utf8')
+    } catch (error) {
+      // 按 errno 分类，不再裸 catch 吞掉全部原因；读取失败**不等于**豁免，单独统计
+      noteUnreadable(ctx, readFailureReason(error))
       continue
+    } finally {
+      if (fd !== null) closeSync(fd)
     }
     checkFile(ctx, file, content)
   }
-  return { root, files: files.length, checked: ctx.checked, skipped: ctx.skipped, findings: ctx.findings }
+  return {
+    root,
+    files: files.length,
+    checked: ctx.checked,
+    skipped: ctx.skipped,
+    unreadable: ctx.unreadable,
+    findings: ctx.findings,
+  }
 }
 
 /**
@@ -440,6 +465,26 @@ function checkFile(ctx, file, content) {
 
 function skip(ctx, reason) {
   ctx.skipped.set(reason, (ctx.skipped.get(reason) ?? 0) + 1)
+}
+
+/** 读取失败计数（与「刻意豁免」分开：豁免是门禁设计，读取失败是环境/布局问题）。 */
+function noteUnreadable(ctx, reason) {
+  ctx.unreadable.set(reason, (ctx.unreadable.get(reason) ?? 0) + 1)
+}
+
+/**
+ * 读取失败 errno → 原因文案（#327）。
+ *
+ * 不用裸 `catch { continue }` 吞掉全部 errno：非普通文件（`EISDIR`/`ENOTDIR`）、权限
+ * （`EACCES`/`EPERM`）、不存在（`ENOENT`）是三种不同的运维事实——"权限不足"与"文件不存在"
+ * 必须能区分，否则门禁静默放行时无法定位原因。
+ */
+export function readFailureReason(error) {
+  const code = error?.code
+  if (code === 'EISDIR' || code === 'ENOTDIR') return '非普通文件'
+  if (code === 'EACCES' || code === 'EPERM') return '权限不足'
+  if (code === 'ENOENT') return '文件不存在'
+  return '读取失败'
 }
 
 function report(ctx, kind, file, line, target, detail) {
@@ -947,6 +992,7 @@ function main(argv) {
   const root = rootIdx >= 0 ? resolve(argv[rootIdx + 1] ?? '.') : REPO_ROOT
   const result = runCheck({ root })
   const skippedTotal = [...result.skipped.values()].reduce((a, b) => a + b, 0)
+  const unreadableTotal = [...result.unreadable.values()].reduce((a, b) => a + b, 0)
   if (result.findings.length > 0) {
     console.error(`✗ 引用完整性检查失败（${result.findings.length} 项）：`)
     for (const f of [...result.findings].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)) {
@@ -956,11 +1002,16 @@ function main(argv) {
     return 1
   }
   console.log(
-    `✓ 引用完整性检查通过（扫描 ${result.files} 个文件，校验 ${result.checked} 条引用，豁免 ${skippedTotal} 条）：` +
+    `✓ 引用完整性检查通过（扫描 ${result.files} 个文件，校验 ${result.checked} 条引用，豁免 ${skippedTotal} 条` +
+      (unreadableTotal > 0 ? `，读取失败 ${unreadableTotal} 个（--verbose 看原因）` : '') +
+      '）：' +
       'markdown 链接与锚点 / 路径 token / shell 调用 / npm script / skill 与插件名',
   )
-  if (verbose)
+  if (verbose) {
     for (const [reason, n] of [...result.skipped].sort((a, b) => b[1] - a[1])) console.log(`    豁免 ${n} × ${reason}`)
+    for (const [reason, n] of [...result.unreadable].sort((a, b) => b[1] - a[1]))
+      console.log(`    读取失败 ${n} × ${reason}`)
+  }
   return 0
 }
 

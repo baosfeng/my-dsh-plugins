@@ -123,7 +123,14 @@ let verifyCode = 0
 // ── 2) 推送 + 并行的本地校验 ────────────────────────────────────────────────
 if (options.push && external.required) {
   // 先起本地校验（后台），再推送 —— 两者并行，省掉"等本地校验"的那段墙钟。
-  const verify = spawn(process.execPath, ['scripts/verify-local.mjs', '--fast'], { cwd: root, stdio: 'inherit' })
+  // issue #330 + 规范第十四节「本地绿 ⇒ CI 绿」：与 pre-push 同款，默认跑 **CI 等价全量**
+  // （不再默认 --fast）——本地多花几十秒换掉一次约半小时的 CI 往返。
+  // 显式快速通道：SHIP_VERIFY_MODE=fast node scripts/ship.mjs ...
+  const verifyArgs = process.env.SHIP_VERIFY_MODE === 'fast' ? ['--fast'] : ['--full']
+  const verify = spawn(process.execPath, ['scripts/verify-local.mjs', ...verifyArgs], {
+    cwd: root,
+    stdio: 'inherit',
+  })
   const pushRes = git(['push', '--no-verify', '-u', 'origin', 'HEAD'], { allowFail: true })
   if (pushRes.code === 0) {
     result.push = { ok: true, detail: pushRes.out.split('\n').slice(-1)[0] || 'ok' }

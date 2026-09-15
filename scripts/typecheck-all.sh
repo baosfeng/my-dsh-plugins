@@ -1,25 +1,12 @@
 #!/usr/bin/env bash
-# 遍历全部 TS 插件：server 端 + client 端类型检查。
+# typecheck-all.sh — 兼容入口（issue #330）。
 #
-# 为什么需要本脚本：根 tsconfig.json 的 include 覆盖 plugins/**，但必须
-# exclude plugins/*/src/client/**——client parts 是"拼接片段"（无 import/
-# export，靠 factory 全局作用域共享符号），在根配置的 nodenext 模块模式下
-# 每个片段被当成独立模块，跨文件符号全部解析失败（数百个 TS2304/TS2552）。
-# 因此 client 端的类型检查由各插件自己的 tsconfig.client.json 承担（该配置
-# 用 module: commonjs，无 import/export 的文件是全局脚本，语义与拼接一致），
-# 本脚本在 CI 中统一执行，避免"排除了但没人检查"的盲区。
+# 真正的实现在 `scripts/typecheck-all.mjs`：并发（默认 min(4, CPU)）+ 直调 node_modules/.bin/tsc。
+# 原实现是一个串行 for 循环、每插件一次 `npx tsc`：29 个任务串行 ≈12.6s，其中约 5s 是 npx 自身的
+# 解析开销（每次约 170ms）。优化后本机 ≈2.6s，**门禁语义完全不变**（同样的 tsconfig、同样的插件
+# 集合、同样的 --noEmit；"一个 tsconfig 都没找到"仍然判失败，防"什么都没查却绿"）。
 #
-# 与 .github/workflows/ci.yml 的 quality job 保持一致。
-set -e
-checked=0
-for d in plugins/*/; do
-  [ -f "$d/tsconfig.json" ] || continue
-  echo "== $d server =="
-  (cd "$d" && npx tsc --noEmit -p tsconfig.json)
-  checked=$((checked + 1))
-  if [ -f "$d/tsconfig.client.json" ]; then
-    echo "== $d client =="
-    (cd "$d" && npx tsc --noEmit -p tsconfig.client.json)
-  fi
-done
-echo "ALL PLUGIN TYPE CHECKS PASSED ($checked plugins)"
+# 为什么保留这个 .sh：文档与历史命令都在引用 `bash scripts/typecheck-all.sh`（check-links 门禁会
+# 校验文档里的 shell 调用真实存在），package.json 的 `typecheck:plugins` 也指向它。
+set -euo pipefail
+exec node "$(cd "$(dirname "$0")" && pwd)/typecheck-all.mjs" "$@"

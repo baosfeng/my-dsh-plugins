@@ -24,8 +24,12 @@
  *                  继续其余插件并汇总；支持 --plugin 过滤）
  *   mutation     → (cd plugins/dsh-file-activity && npx stryker run)（默认跳过：
  *                  本地约 20s，push 场景太重，CI 独立 job 强制）
- *   typecheck    → npx tsc --noEmit
- *   lint         → npx eslint plugins/
+ *   typecheck    → npx tsc --noEmit（根 tsconfig：只覆盖 plugins/<插件>/lib/*.d.ts 产物与根级 TS）
+ *   typecheck-plugins → node scripts/typecheck-all.mjs（18 插件的 server + client 端，并发）
+ *                  issue #330：这是 CI 一直在跑、而**本地此前完全没跑**的那一项——client 端
+ *                  类型检查本地零覆盖，本地全绿、CI 红，白等一轮 CI。现已在两种模式下恒跑。
+ *   lint         → npx eslint plugins/（--fast 时按变更裁剪到本次改动的 .js/.mjs，
+ *                  无 .js/.mjs 变更时跳过并打印原因；规则集/根配置变更会退化全量）
  *   ts-size      → node scripts/check-ts-size.mjs（TS 行数/复杂度基线）
  *   client-modules→ node scripts/check-client-modules.mjs（客户端 bundle 模块白名单，
  *                  issue #321：产物 require 的模块必须能解析，否则整条 client factory 挂掉）
@@ -42,14 +46,25 @@
  *   docs         → node scripts/check-docs.mjs（文档一致性，纯本地文件检查）
  *   links        → node scripts/check-links.mjs（文档引用完整性：链接/锚点/路径 token/
  *                  shell 调用/npm script/skill 与插件名，纯本地文件检查）
+ *   artifacts    → node scripts/check-client-artifacts.mjs（issue #318 / ADR-0002：共享部件与
+ *                  server tsc 产物必须与已提交版本逐字节一致，fail-closed）
  *   resource-smoke→ node scripts/resource-smoke.mjs（issue #127 资源回归门禁）
  *   client-size  → node scripts/check-client-size.mjs（客户端产物**体积预算**，issue #322：
  *                  发布面（lib/** 与 assets/**，以插件 package.json 的 files 为准）不得超过
  *                  「基线 + 余量」——#185 曾把 4.48 MB 冗余注入 client bundle，全靠人工发现）
+ *   gate-parity  → node scripts/check-gate-parity.mjs（issue #330：本地检查项集合 ↔ CI 步骤集合
+ *                  的**双向**一致性校验，缺口逐条列出；它自己也跑在 CI，否则「校验一致性」
+ *                  这件事就变成新的静默缺口）
+ *
+ * ⚠️ 检查项与权威执行点的登记表在 `scripts/lib/gate-registry.mjs`（issue #330）：
+ *    每个检查项都有 `command`（本文件实际执行的命令）与 `ciQuality`（是否属于 CI quality job），
+ *    两者与登记表逐字比对（`gate-parity` 门禁），任何一边改了另一边没跟上就红。
  *
  * 用法：
  *   node scripts/verify-local.mjs                    # full：全部检查（跳过 audit/mutation）
  *   node scripts/verify-local.mjs --fast             # fast：按变更裁剪（pre-push 用）
+ *   node scripts/verify-local.mjs --ci-quality       # CI quality job 的执行体（并发跑 ciQuality 项，
+ *                                                    # 并写 GitHub job summary；见 .github/workflows/ci.yml）
  *   node scripts/verify-local.mjs --fast --base <r>  # 指定比较基准（默认 @{upstream} → origin/main）
  *   node scripts/verify-local.mjs --full             # 强制全量（与 --fast 同给时 --full 生效）
  *   node scripts/verify-local.mjs --audit            # 额外执行 npm audit
@@ -58,6 +73,7 @@
  *   node scripts/verify-local.mjs --plugin <name>    # 只跑该插件的 test/--check（可重复）
  *   node scripts/verify-local.mjs --timeout <sec>    # 覆盖整体超时上限（秒；0 = 关闭）
  *   node scripts/verify-local.mjs --list             # 列出全部检查项 id
+ *   node scripts/verify-local.mjs --list --json      # 机器可读清单（供 check-gate-parity 校验）
  *   node scripts/verify-local.mjs --help
  *
  * 环境变量：
@@ -94,7 +110,8 @@
  * 详见 docs/开发指南/构建与测试.md「本地一键校验（verify-local）」。
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -132,9 +149,11 @@ const options = {
   mutation: false,
   fast: false,
   full: false,
+  ciQuality: false,
   base: null,
   timeout: null,
   list: false,
+  json: false,
   help: false,
 }
 for (let i = 0; i < args.length; i += 1) {
@@ -155,6 +174,8 @@ for (let i = 0; i < args.length; i += 1) {
   else if (flag === '--mutation') options.mutation = true
   else if (flag === '--fast' || flag === '--changed-only') options.fast = true
   else if (flag === '--full') options.full = true
+  else if (flag === '--ci-quality') options.ciQuality = true
+  else if (flag === '--json') options.json = true
   else if (flag === '--list') options.list = true
   else if (flag === '--help' || flag === '-h') options.help = true
   else {
@@ -165,6 +186,12 @@ for (let i = 0; i < args.length; i += 1) {
 // --full 优先级最高（显式声明要全量）；二者同给时 --full 生效并提示
 if (options.full && options.fast) {
   console.error('[verify] 同时指定 --fast 与 --full，以 --full 为准（不裁剪）')
+  options.fast = false
+}
+// --ci-quality 是「CI quality job 的执行体」：CI 上永远是全量（不做范围裁剪），
+// 但只跑登记表里 ci.job === 'quality' 的那些检查项（插件测试/资源冒烟/审计/变异各有独立 job）。
+if (options.ciQuality && options.fast) {
+  console.error('[verify] --ci-quality 在 CI 上按全量执行，忽略 --fast')
   options.fast = false
 }
 
@@ -247,6 +274,31 @@ const CHILD_ENV = {
   npm_config_audit: 'false',
   npm_config_progress: 'false',
 }
+
+/**
+ * 用**独立的 TMPDIR** 运行一个检查项（issue #330）。
+ *
+ * 为什么需要：`os.tmpdir()` 读的是全局 `TMPDIR`，而 `os.tmpdir()` 下的目录是**进程间共享**的。
+ * 实测（本仓库真实 race）：`scripts/test/client-artifacts.test.mjs` 有一条「不残留临时目录」断言，
+ * 它枚举 `os.tmpdir()` 里的 `dsh-artifacts-mirror-*`；而并发池里的 `artifacts` 检查项**自己就在**
+ * `os.tmpdir()` 建镜像 → 前者把「别人正在用的目录」误判成自己的残留 → **必然假红**（单跑全绿、
+ * 并发必红，且与代码正确性无关）。
+ *
+ * 这是与「文件争用」不同的一类污染：**全局状态互相看见**。修法不是降并发度（那只是掩盖），
+ * 而是让检查项**不共享全局临时目录**——注入独立 `TMPDIR/TEMP/TMP`，跑完删除。
+ * 同一原则适用于任何「计数/枚举全局资源」的检查或测试（固定端口、共享目录同理）。
+ */
+async function runWithIsolatedTmp(label, fn) {
+  const dir = mkdtempSync(join(tmpdir(), 'verify-isolated-tmp-'))
+  try {
+    return await fn(dir)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/** 独立 TMPDIR 对应的子进程 env。 */
+const isolatedTmpEnv = (dir) => ({ TMPDIR: dir, TEMP: dir, TMP: dir })
 
 /** 本脚本自己调 npx 时统一加的参数：只用本地已装工具，绝不联网 / 临时安装。 */
 const NPX_BASE_ARGS = ['--no-install']
@@ -506,7 +558,47 @@ async function runAudit() {
 }
 
 // ── 检查项定义 ──────────────────────────────────────────────────────────────
-const OPTIONAL_CHECKS = ['audit', 'mutation'] // CI 强制但本地默认跳过的项
+// CI 强制、本地默认跳过的项（= 白名单豁免，理由见 `scripts/lib/gate-registry.mjs` 的 LOCAL_EXEMPTIONS，
+// 由 `gate-parity` 门禁逐条校验「有理由 + CI 侧真有执行点」，防止「本地慢」被塞进白名单）。
+// issue #330 前这里是 ['audit','mutation']；mutation 按规范第十四节改为默认执行。
+const OPTIONAL_CHECKS = ['audit']
+
+/**
+ * CHECK_META（issue #330）：每个检查项的机器可读元数据。
+ *   command   —— 本文件**实际执行**的命令（与 `scripts/lib/gate-registry.mjs` 的 `localCommand`
+ *                逐字比对，见 `scripts/check-gate-parity.mjs`；漂移即门禁变红）
+ *   ciQuality —— 是否属于 CI 的 `quality` job 聚合步骤（`--ci-quality` 只跑这些项）。
+ *                插件测试 / 资源冒烟 / 审计 / 变异各有独立 CI job，因此为 false。
+ *
+ * 为什么集中成一张表：让「检查项定义」与「机器可读声明」在同一屏内可直接对照。
+ * ⚠️ 改任一 `run()` 的命令，必须同步本表与 `gate-registry.mjs`——否则 `gate-parity` 门禁会点名。
+ * 本表的 key 集合与 CHECK_DEFS 的 id 集合由单测钉死（scripts/test/gate-parity.test.mjs），
+ * 且每个 command 的关键可执行名必须出现在对应 `run()` 的源码里（防「声明一套、跑另一套」）。
+ */
+const CHECK_META = {
+  audit: { command: 'npm audit --audit-level=moderate', ciQuality: false },
+  mutation: { command: 'npx --no-install stryker run', ciQuality: false },
+  test: { command: 'npm test（逐插件）', ciQuality: false },
+  typecheck: { command: 'npx --no-install tsc --noEmit', ciQuality: true },
+  'typecheck-plugins': { command: 'node scripts/typecheck-all.mjs', ciQuality: true },
+  lint: { command: 'npx --no-install eslint plugins/', ciQuality: true },
+  'ts-size': { command: 'node scripts/check-ts-size.mjs', ciQuality: true },
+  'client-modules': { command: 'node scripts/check-client-modules.mjs', ciQuality: true },
+  'client-size': { command: 'node scripts/check-client-size.mjs', ciQuality: true },
+  'pack-hygiene': { command: 'node scripts/check-pack-hygiene.mjs', ciQuality: true },
+  format: { command: 'npx --no-install prettier --check --ignore-unknown', ciQuality: true },
+  'test-scripts': { command: 'npm run test:scripts', ciQuality: true },
+  depcruise: { command: 'npx --no-install depcruise plugins/', ciQuality: true },
+  knip: { command: 'npx --no-install knip', ciQuality: true },
+  jscpd: { command: 'npx --no-install jscpd', ciQuality: true },
+  docs: { command: 'node scripts/check-docs.mjs', ciQuality: true },
+  links: { command: 'node scripts/check-links.mjs', ciQuality: true },
+  'test-sleeps': { command: 'node scripts/check-test-sleeps.mjs', ciQuality: true },
+  artifacts: { command: 'node scripts/check-client-artifacts.mjs', ciQuality: true },
+  'merge-ref': { command: 'git merge-base --is-ancestor origin/main HEAD', ciQuality: false },
+  'gate-parity': { command: 'node scripts/check-gate-parity.mjs', ciQuality: true },
+  'resource-smoke': { command: 'node scripts/resource-smoke.mjs', ciQuality: false },
+}
 
 /**
  * CHECK_DEFS：每项 { id, label, note?, optional?, run(ctx), skip?(ctx) }
@@ -522,11 +614,21 @@ const CHECK_DEFS = [
     run: runAudit,
   },
   {
+    // issue #330 + 工程效率规范第十四节「本地绿 ⇒ CI 绿」：CI 的 mutation job 是**阻断性**的，
+    // 因此本地默认也跑。白名单只认「CI 专属环境/凭据」这类理由，**「本地慢」不是理由**
+    // （唯一白名单项是 audit，见 gate-registry 的 LOCAL_EXEMPTIONS）。
+    // 仅显式 `--fast`（快速通道）才跳过，并打印原因与未跑清单。
     id: 'mutation',
     label: 'mutation (npx stryker run @ dsh-file-activity)',
-    note: 'CI 强制；本地约 20s，默认跳过，--mutation 或 --only mutation 开启',
-    optional: true,
+    note: 'issue #13：变异分 ≥70 才算测试有效。CI mutation job 阻断；本地默认执行（约 20s），--fast 才跳过',
     run: () => runCapture('npx', [...NPX_BASE_ARGS, 'stryker', 'run'], join(root, 'plugins', 'dsh-file-activity')),
+    // 独占（issue #330 实测）：stryker **自己就会起多个 worker 吃满 CPU**，与并发池里的
+    // eslint / prettier / test-scripts 叠加会超卖 → 实测在 `--full` 并发下失败、单独跑 11.9s 全绿
+    // （典型资源争抢型 flaky）。「本地绿 ⇒ CI 绿」不允许 flaky，故把它排到并发池之后独占执行。
+    // 代价：`--full` 墙钟 +约 12s；换取 pre-push 不再偶发红（一次 CI 往返约半小时）。
+    exclusive: true,
+    skip: (ctx) =>
+      ctx.fast ? '快速通道（--fast，显式选择）：约 20s，CI mutation job 强制；本地等价全量用 npm run verify' : null,
   },
   {
     id: 'test',
@@ -541,10 +643,44 @@ const CHECK_DEFS = [
     skip: (ctx) => (ctx.docsOnly ? '纯文档变更：tsc 输入仅含 .ts/.tsx，不可能受影响' : null),
   },
   {
+    // issue #330 第 5 条修复：改前 verify-local 只跑根 tsc（根配置 exclude 了 src/client/**），
+    // 于是「插件 client 端类型检查」本地零覆盖 —— 本地全绿、CI 红，白等一轮 CI。
+    // 现在它是恒跑项（fast/full/CI 都跑），内部并发，本机 0.9~2.0s。
+    id: 'typecheck-plugins',
+    label: 'typecheck-plugins (node scripts/typecheck-all.mjs，18 插件的 server + client)',
+    note: '唯一权威执行点是各插件自己的 tsconfig.json / tsconfig.client.json（构建语义），见 gate-registry',
+    run: () => runCapture('node', ['scripts/typecheck-all.mjs'], root),
+    // 只能靠 tsconfig / .ts 变更影响；但 tsconfig 变更属于「根工具链 → 安全退化全量」，
+    // 纯文档变更时确无影响。除此之外恒跑（本地裁剪漏检正是本卡要根治的问题）。
+    skip: (ctx) => (ctx.docsOnly ? '纯文档变更：类型检查只针对 .ts/.tsx' : null),
+  },
+  {
     id: 'lint',
     label: 'lint (npx eslint plugins/)',
-    run: () => runCapture('npx', [...NPX_BASE_ARGS, 'eslint', 'plugins/'], root),
-    skip: (ctx) => (ctx.docsOnly ? '纯文档变更：eslint 只检查 plugins/ 下源码' : null),
+    // issue #330：--fast 时按变更裁剪 scope（改前对「只改 1 个文件」的推送也要全量扫 9~15s）。
+    // 安全性由三层保证：① 只有拿到变更证据才裁剪；② 无 .js/.mjs 变更时**跳过并打印原因**
+    // （eslint 只检查 JS，插件源码未动、规则集未动 ⇒ 结果不可能变）；③ 规则集/根配置变更会
+    // 触发安全退化全量（impact-scope 的根工具链集合含 eslint.config.js），CI 始终全量兜底。
+    run: (ctx) => {
+      const scoped =
+        ctx.fast && !ctx.escalated && ctx.changedFiles !== null && ctx.changedFiles.length > 0
+          ? ctx.changedFiles.filter((p) => /\.(c|m)?js$/.test(p) && existsSync(join(root, p)))
+          : []
+      if (scoped.length > 0) {
+        ctx.report?.(`范围：本次变更 ${scoped.length} 个 .js/.mjs 文件（CI 仍全量兜底）`)
+        return runCapture('npx', [...NPX_BASE_ARGS, 'eslint', ...scoped], root)
+      }
+      ctx.report?.('范围：全仓库（没有可裁剪的 .js/.mjs 变更文件，安全回退）')
+      return runCapture('npx', [...NPX_BASE_ARGS, 'eslint', 'plugins/'], root)
+    },
+    skip: (ctx) => {
+      if (ctx.docsOnly) return '纯文档变更：eslint 只检查 plugins/ 下源码'
+      if (!ctx.fast || ctx.escalated || ctx.changedFiles === null) return null
+      // 变更集为空（`--base` 指向 HEAD 等）：没有证据可裁剪 → 走全量，不跳过
+      if (ctx.changedFiles.length === 0) return null
+      const touched = ctx.changedFiles.some((f) => /\.(c|m)?js$/.test(f))
+      return touched ? null : '本次变更不含 .js/.mjs 文件（eslint 只检查 JS 源码）'
+    },
   },
   {
     id: 'ts-size',
@@ -647,7 +783,12 @@ const CHECK_DEFS = [
   {
     id: 'test-scripts',
     label: 'release checks (npm run test:scripts)',
-    run: () => runCapture('npm', ['run', 'test:scripts'], root),
+    // 独立 TMPDIR：该检查项内含「枚举 os.tmpdir() 判残留」的断言，与并发池里的 artifacts
+    // 镜像会互相看见 → 假红（详见 runWithIsolatedTmp 的注释）。
+    run: () =>
+      runWithIsolatedTmp('test-scripts', (dir) =>
+        runCapture('npm', ['run', 'test:scripts'], root, { env: isolatedTmpEnv(dir) }),
+      ),
     skip: (ctx) => (ctx.docsOnly ? '纯文档变更：发版校验脚本测试与文档无关' : null),
   },
   {
@@ -682,10 +823,54 @@ const CHECK_DEFS = [
     run: () => runCapture('node', ['scripts/check-links.mjs'], root),
   },
   {
+    // issue #330 关键交付物：本地检查项集合 ↔ CI 步骤集合的**双向**一致性校验。
+    // 它自己也在 CI 跑——否则「校验覆盖一致性」这件事本身就成了新的静默缺口。
+    id: 'gate-parity',
+    label: 'gate-parity (node scripts/check-gate-parity.mjs)',
+    note: '登记表 ↔ ci.yml ↔ 本文件的检查项/命令三方交叉校验；缺口逐条列出（含「跑了没声明」「声明了没跑」）',
+    run: () => runCapture('node', ['scripts/check-gate-parity.mjs'], root),
+  },
+  {
     id: 'artifacts',
     label: 'client artifacts (node scripts/check-client-artifacts.mjs)',
-    note: 'issue #318（ADR-0002）：消费 dsh-shared/client-parts/* 的插件重建 client bundle + 各插件 server tsc 产物，须与已提交产物逐字节一致（实测 10-12s；纯本地）',
-    run: () => runCapture('node', ['scripts/check-client-artifacts.mjs'], root),
+    note: 'issue #318（ADR-0002）：消费 dsh-shared/client-parts/* 的插件重建 client bundle + 各插件 server tsc 产物，须与已提交产物逐字节一致（实测 10-12s 独占；纯本地）',
+    // 独立 TMPDIR：它在 os.tmpdir() 建 HEAD 镜像，与 test-scripts 的全局枚举断言互相看见 → 假红。
+    run: () =>
+      runWithIsolatedTmp('artifacts', (dir) =>
+        runCapture('node', ['scripts/check-client-artifacts.mjs'], root, { env: isolatedTmpEnv(dir) }),
+      ),
+    // 历史 race（issue #330 实测、issue #336 根治）：本门禁曾**原地重建工作区**
+    // （`build.mjs` 逐个重写 `plugins/*/lib/parts/*.js` 再 `prettier --write`），与并发的
+    // `format` 抢同一批文件 → 假红（实测：99 次采样中 2 次抓到未格式化的中间态）。
+    // issue #336 把重建整体移进 `os.tmpdir` 的一次性 HEAD 镜像（`git archive HEAD`），
+    // 门禁变为**只读**（`scripts/test/client-artifacts.test.mjs` 的「只读契约」用例钉死）。
+    // 独立核实（issue #330）：806 次采样中 hash / mtime / inode **全部 0 变化** —— 因此
+    // 它不再需要独占，回到并发池。`exclusive` 机制本身保留，供未来任何写工作区的检查项使用。
+  },
+  {
+    // 工程效率规范第十四节：GitHub 在 pull_request 上 checkout 的是**合并结果**（你的分支 + 最新 main），
+    // 而本地跑的是你自己的分支——该差异会让「本地过 ⇒ CI 过」天然不成立（#322 的 agent 就因此得出过
+    // 「CI 与本地差 2.3KB」的错误结论，真因是它拿旧 base 在比）。这里把它**显式化为一条本地检查**。
+    id: 'merge-ref',
+    label: 'merge-ref (HEAD 是否已包含 origin/main)',
+    note: '本地结论要能预测 CI 的 merge ref 结果，分支就必须先包含最新 origin/main（CI 侧天然是 merge ref，故不在 CI 跑）',
+    run: () => {
+      if (!refExists('origin/main')) {
+        return { ok: true, summary: '无 origin/main（新 clone / 单分支环境），跳过 merge ref 一致性判定' }
+      }
+      if (spawnSyncGIT(['merge-base', '--is-ancestor', 'origin/main', 'HEAD']).ok) {
+        return { ok: true, summary: 'HEAD 已包含本地已知的 origin/main（结论适用于 CI 的 merge ref）' }
+      }
+      return {
+        ok: false,
+        out:
+          'HEAD 未包含 origin/main。\n' +
+          '  GitHub PR 上 CI 测的是**合并结果**（你的分支 + 最新 main），本地测的是你自己的分支——\n' +
+          '  两者可能不一致，本地绿不能预测 CI 绿。\n' +
+          '  修法：git fetch origin main && git rebase origin/main（或 merge）后重跑。\n' +
+          '  注：本检查只看**本地已知**的 origin/main，很久没 fetch 时请先 git fetch（本地校验不联网）。',
+      }
+    },
   },
   {
     id: 'resource-smoke',
@@ -708,6 +893,18 @@ if (new Set(CHECK_IDS).size !== CHECK_IDS.length) {
   console.error('[verify] 内部错误：检查项 id 重复')
   process.exit(1)
 }
+// CHECK_META 必须与 CHECK_DEFS 一一对应：`--list --json` 与 gate-parity 门禁都靠它，
+// 少一条会让「该检查项在 CI 侧是否覆盖」变成盲区，多一条会让校验对着一个不存在的项比。
+{
+  const missing = CHECK_IDS.filter((id) => !CHECK_META[id])
+  const extra = Object.keys(CHECK_META).filter((id) => !CHECK_IDS.includes(id))
+  if (missing.length > 0 || extra.length > 0) {
+    console.error(
+      `[verify] 内部错误：CHECK_META 与 CHECK_DEFS 不一致（缺 ${JSON.stringify(missing)}；多 ${JSON.stringify(extra)}）`,
+    )
+    process.exit(1)
+  }
+}
 
 for (const id of options.only) {
   if (!CHECK_IDS.includes(id)) {
@@ -723,6 +920,19 @@ for (const name of options.plugins) {
 }
 
 if (options.list) {
+  if (options.json) {
+    // 机器可读清单（issue #330）：供 scripts/check-gate-parity.mjs 与单测消费。
+    // 走这条路径时不做任何检查、不读 git、不 spawn 子进程，可安全地被门禁脚本反复调用。
+    const checks = CHECK_DEFS.map((c) => ({
+      id: c.id,
+      label: c.label,
+      optional: Boolean(c.optional),
+      ciQuality: Boolean(CHECK_META[c.id].ciQuality),
+      command: CHECK_META[c.id].command,
+    }))
+    process.stdout.write(`${JSON.stringify({ checks }, null, 2)}\n`)
+    process.exit(0)
+  }
   for (const c of CHECK_DEFS) log(`${c.id}\t${c.label}${c.optional ? '（可选，默认跳过）' : ''}`)
   process.exit(0)
 }
@@ -968,6 +1178,37 @@ function armWatchdog() {
   return setTimeout(reportTotalTimeout, TOTAL_TIMEOUT_MS)
 }
 
+/**
+ * 写 GitHub Actions job summary（issue #330）。
+ *
+ * 背景：CI quality job 改前是 12 个串行步骤，Actions 的步骤列表天然给出「哪一步红」；
+ * 并发化后合并成**一个**步骤（`--ci-quality`），必须补回这个可定位性——硬约束要求
+ * 「CI 里也要能在 job 摘要直接看出是哪一项红」。summary 表格列出每一项的结果与耗时，
+ * 失败项置顶并单独点名；同时每项的完整输出仍在日志里按 `[verify] ❌ <label>` 分组打印。
+ * summary 写失败（磁盘/权限）不影响门禁结论，只是少了一份可读报告。
+ */
+function writeJobSummary(results, totalMs) {
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY
+  if (!summaryPath || results.length === 0) return
+  const failed = results.filter((r) => !r.ok)
+  const ordered = [...failed, ...results.filter((r) => r.ok)]
+  const lines = [`## ${failed.length === 0 ? '✅' : '❌'} Quality gates：${results.length} 项 / ${secs(totalMs)}`, '']
+  if (failed.length > 0) {
+    lines.push(`**失败项**：${failed.map((f) => `\`${f.id}\``).join('、')}`, '')
+    lines.push('复现单项：`node scripts/verify-local.mjs --only <id>`', '')
+  }
+  lines.push('| 检查项 | 结果 | 耗时 | 命令 |', '| --- | --- | --- | --- |')
+  for (const r of ordered) {
+    lines.push(`| \`${r.id}\` | ${r.ok ? '✅' : '❌'} | ${secs(r.ms)} | \`${CHECK_META[r.id]?.command ?? ''}\` |`)
+  }
+  lines.push('')
+  try {
+    appendFileSync(summaryPath, `${lines.join('\n')}\n`)
+  } catch {
+    /* summary 只是可读性增强，写不进去不影响门禁结论 */
+  }
+}
+
 // 被 kill（含 pre-push 的 shell 兜底超时）时也要清理子进程组：
 // spawn 用了 detached，没人清理的话孙进程会变成孤儿继续占 CPU 与 coverage 目录。
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
@@ -1030,12 +1271,16 @@ const ctx = {
 }
 
 // 选定要跑的项
-const runList =
-  options.only.length > 0
-    ? CHECK_DEFS.filter((c) => options.only.includes(c.id))
-    : CHECK_DEFS.filter(
-        (c) => !c.optional || (c.id === 'audit' && options.audit) || (c.id === 'mutation' && options.mutation),
-      )
+const runList = (() => {
+  if (options.only.length > 0) return CHECK_DEFS.filter((c) => options.only.includes(c.id))
+  // --ci-quality：CI quality job 的执行体。只跑登记表里标记 ciQuality 的项——
+  // 插件测试（test job matrix）、资源冒烟（resource-smoke job）、审计/变异（各独立 job）
+  // 都不在这里重跑，否则就是把独立 job 的墙钟全加回 quality job。
+  if (options.ciQuality) return CHECK_DEFS.filter((c) => CHECK_META[c.id].ciQuality)
+  return CHECK_DEFS.filter(
+    (c) => !c.optional || (c.id === 'audit' && options.audit) || (c.id === 'mutation' && options.mutation),
+  )
+})()
 
 const SKIPPED_BY_SCOPE_NOTE = new Map() // id → 跳过原因（快速模式裁剪）
 const tasks = []
@@ -1049,6 +1294,7 @@ for (const check of runList) {
     id: check.id,
     label: check.label,
     after: check.after,
+    exclusive: check.exclusive,
     run: async () => {
       const started = Date.now()
       ACTIVE_CHECKS.set(check.id, { label: check.label, startedAt: started })
@@ -1083,7 +1329,7 @@ for (const check of runList) {
 
 const HARD_SKIPPED = CHECK_DEFS.filter((c) => !runList.includes(c))
 /**
- * 检查项并发度（issue #188 实测调优：full 模式 2 → 4）。
+ * 检查项并发度（issue #188 实测调优：full 模式 2 → 4；issue #330 把它同时定为 CI quality job 的并发度）。
  *
  * 为什么 full 模式也要提：full 时 12 项检查里有 10 项是「与插件测试无依赖」的独立检查
  * （typecheck/lint/format/test-scripts/knip/jscpd/docs/links/resource-smoke/ts-size），
@@ -1093,6 +1339,12 @@ const HARD_SKIPPED = CHECK_DEFS.filter((c) => !runList.includes(c))
  *
  * 上界不取更高：插件测试内部已有 6 路并发（pluginConcurrency），10 核机器上再叠加会让
  * 最慢插件被 CPU 争用拖慢（实测并发 8 时 dsh-file-activity 25.4s → 25.8s）。
+ *
+ * issue #330 的 `--ci-quality` 用同一个默认值 4：CI runner（ubuntu-latest）是 4 核，
+ * 这批检查项大多是单线程 Node 进程（eslint / prettier / tsc / knip），并发度超过核数
+ * 只会让每个进程都变慢。实测（本机 10 核，`--ci-quality` 13 项）：并发 2 → 15.7s、
+ * 4 → 10.7s、6 → 10.7s、8 → 11.2s——收益可忽略，
+ * 而 4 路在 4 核 runner 上不会超卖，故钉在 4。需要时用 VERIFY_CHECK_CONCURRENCY 覆盖。
  */
 function checkConcurrency() {
   const raw = Number.parseInt(process.env.VERIFY_CHECK_CONCURRENCY ?? '', 10)
@@ -1103,7 +1355,9 @@ const CONCURRENCY = checkConcurrency()
 
 log('')
 log(
-  `开始校验：${tasks.length} 项${SKIPPED_BY_SCOPE_NOTE.size > 0 ? `，按范围跳过 ${SKIPPED_BY_SCOPE_NOTE.size} 项` : ''}${HARD_SKIPPED.filter((c) => c.optional).length > 0 ? `，默认跳过 ${HARD_SKIPPED.filter((c) => c.optional).length} 项（CI 强制）` : ''}（检查项并发 ${CONCURRENCY}，插件测试并发 ${pluginConcurrency()}）`,
+  options.ciQuality
+    ? `CI quality job：并发执行 ${tasks.length} 项检查（并发 ${CONCURRENCY}；插件测试/资源冒烟/审计/变异各由独立 job 覆盖）`
+    : `开始校验：${tasks.length} 项${SKIPPED_BY_SCOPE_NOTE.size > 0 ? `，按范围跳过 ${SKIPPED_BY_SCOPE_NOTE.size} 项` : ''}${HARD_SKIPPED.filter((c) => c.optional).length > 0 ? `，默认跳过 ${HARD_SKIPPED.filter((c) => c.optional).length} 项（CI 强制）` : ''}（检查项并发 ${CONCURRENCY}，插件测试并发 ${pluginConcurrency()}）`,
 )
 if (options.plugins.length > 0) log(`--plugin 过滤：${options.plugins.join('、')}`)
 log('')
@@ -1121,12 +1375,22 @@ const onTaskDone = (r) => {
   }
 }
 
-// 两阶段调度：先跑互不依赖的检查项（并发），再跑必须等插件测试结束的项（`after` 门控）。
-// 典型例子：depcruise 必须排在 test 之后——插件测试会生成/清理 coverage/ 目录。
-const gated = tasks.filter((t) => t.after)
-const free = tasks.filter((t) => !t.after)
+// 三阶段调度（issue #330 把「独占项」独立成一阶段）：
+//   ① 并发池：互不依赖、且**不写工作区**的检查项
+//   ② `after` 门控项：必须等插件测试结束的（depcruise —— 插件测试会生成/清理 coverage/ 目录）
+//   ③ 独占项（`exclusive: true`）：需要**独占总有资源**的检查项，两类用途——
+//      ① 会写工作区（历史上 artifacts 曾原地重建 `lib/parts/*.js`，现已被 #336 改为只读镜像）；
+//      ② 自身就是重负载（mutation 的 stryker 会起多个 worker 吃满 CPU，与并发池叠加会超卖 → flaky）。
+//      以下是历史上对 ① 的说明：
+//      （artifacts 走各插件 build.mjs，
+//      会重写 lib/parts/*.js 并 `prettier --write`），必须独占，否则并发的 format / lint /
+//      depcruise 会扫到构建中间态而**假红**（实测证据见 CHECK_DEFS 里 artifacts 的注释）。
+// `--ci-quality` 下插件测试由独立 job 承担、本 job 内没有 coverage 目录写入者，故 ② 为空。
+const exclusiveTasks = tasks.filter((t) => t.exclusive)
+const gated = options.ciQuality ? [] : tasks.filter((t) => !t.exclusive && t.after)
+const free = tasks.filter((t) => !t.exclusive && (options.ciQuality ? true : !t.after))
 const results = await runPool(free, CONCURRENCY, onTaskDone)
-for (const task of gated) {
+for (const task of [...gated, ...exclusiveTasks]) {
   const result = await task.run()
   results.push(result)
   onTaskDone(result)
@@ -1156,12 +1420,17 @@ if (options.fast) {
 const optionalSkipped = HARD_SKIPPED.filter((c) => c.optional)
 if (optionalSkipped.length > 0) {
   log('')
-  log('注意：以下检查本地未跑，CI 会强制执行：')
+  log(
+    options.ciQuality
+      ? '以下检查项由独立 CI job 覆盖（不在本 job 内重复执行）：'
+      : '注意：以下检查本地未跑，CI 会强制执行：',
+  )
   for (const c of optionalSkipped) log(`  - ${c.label}（${c.note}）`)
 }
 
 log('')
 log(`结果：${passed.length} 通过 / ${failed.length} 失败 / 总耗时 ${secs(totalMs)}`)
+writeJobSummary(results, totalMs)
 if (failed.length > 0) {
   log(red('❌ 失败项（CI 同样会失败，修复后重跑 npm run verify）：'))
   for (const f of failed) log(`  - ${f.label}${f.timedOut ? red(`（⏱ 单步超时 ${secs(f.timeoutMs)}，已终止）`) : ''}`)
@@ -1200,6 +1469,8 @@ function printHelp() {
   log('  --fast          快速通道（pre-push 默认）：按本次推送变更裁剪插件测试，独立性检查并发')
   log('  --base <ref>    指定范围比较基准（默认 @{upstream} → origin/main；仅在 --fast 生效）')
   log('  --full          强制全量（覆盖 --fast）')
+  log('  --ci-quality    CI quality job 的执行体：并发跑登记表中 ciQuality 的检查项 + 写 job summary')
+  log('  --json          配合 --list 输出机器可读清单（供 scripts/check-gate-parity.mjs 校验）')
   log('  --only <id>     只跑单项（可重复；id 见下）')
   log('  --plugin <name> 只跑该插件的 test/--check（可重复）')
   log('  --timeout <sec> 覆盖整体超时上限（秒；0 = 关闭）')

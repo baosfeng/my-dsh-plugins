@@ -214,6 +214,12 @@ jobs:
 
       # 格式校验（issue #44：prettier 统一全仓格式，CI 强制 prettier --check；
       # 构建产物 client.js / vendor 压缩产物在 .prettierignore 排除）
+      # 客户端 bundle 模块白名单（issue #321）：产物里 require 的模块必须能在用户机器上解析
+      # —— 只认平台 seed 表 / dsh.client.external / 自身包名，否则浏览器端 ModuleLoader 抛
+      # `missed the module table` 并让整条 client factory 挂掉（#39/#290/#293 三次事故同根因）。
+      - name: Client bundle module allowlist (check-client-modules)
+        run: npm run check:client-modules
+
       - name: Format check (prettier)
         run: npx prettier --check .
 

@@ -3,10 +3,14 @@
  * ship.mjs — 「提交 → 推送 → 开 PR」一条命令的流水线（issue #240）。
  *
  *   node scripts/ship.mjs -m "fix(x): #123 修好某问题"                     # 只提交（默认，不外发）
- *   node scripts/ship.mjs -m "..." --push                                # 提交 + 推送
+ *   node scripts/ship.mjs -m "..." --push                                # 提交 + 推送 + CI 等价全量校验
  *   node scripts/ship.mjs -m "..." --push --pr --title "fix(x): #123 ..." # 提交 + 推送 + 开 PR
  *   node scripts/ship.mjs -m "..." --push --pr --issue 240 --draft
  *   node scripts/ship.mjs -m "..." --dry-run                             # 只打印计划
+ *   SHIP_VERIFY_MODE=fast node scripts/ship.mjs -m "..." --push          # 校验走快速通道（默认全量）
+ *
+ * 提交信息一律经 **stdin** 交给 `git commit -F -`（issue #337）：`-m` 与 `-F <文件>` 两个
+ * 入口都支持，且**不要求 TTY**（交互终端 / agent / CI 重定向都能正常提交）。
  *
  * 它解决的痛点是**串行等待**：常见做法是「本地跑 verify → push → 开 PR → 干等 CI」，
  * 其中「本地 verify」与「CI」本可以同时跑。本脚本的顺序是：
@@ -102,13 +106,27 @@ function git(args, { inherit = false, input, allowFail = false } = {}) {
 // 若分支守卫先跑，提交信息写错的人会拿到「拒绝在受保护分支上跑流水线」（exit 1），
 // 而真正的原因（信息不合规，exit 2）被掩盖 —— 退出码再也无法区分
 // 「我命令写错了」和「环境不对」。测试也因此变成"本地过、CI 挂"。
-const message = options.messageFile ? readFileSync(options.messageFile, 'utf8') : options.message
+// `-F <文件>` 读不到文件是**用法错误（exit 2）**，不是环境错误：裸抛 ENOENT 栈会让人
+// 以为脚本崩了，而且退出码也丢了语义（issue #337）。
+let message = options.message
+if (options.messageFile) {
+  try {
+    message = readFileSync(options.messageFile, 'utf8')
+  } catch (err) {
+    console.error(`✖ 读取提交信息文件失败：${options.messageFile}（${err.code ?? err.message}）`)
+    console.error('  检查路径是否正确，或改用 -m "<type>(<scope>): <描述>"')
+    process.exit(2)
+  }
+}
 const messageCheck = validateCommitMessage(message)
 if (!messageCheck.ok) {
   console.error(`✖ 提交信息不合规：${messageCheck.reason}`)
   console.error('  格式：<type>(<scope>): <描述>，type ∈ ' + 'feat/fix/docs/style/refactor/test/chore/ci')
   process.exit(2)
 }
+// 校验模式**只有一个来源**（issue #337）：下面打印的计划、实际 spawn 的参数、结果汇总
+// 全部来自这一个变量 —— 文案不可能再与真实行为脱同步（这正是 #330 改默认值时留下的坑）。
+const verifyMode = process.env.SHIP_VERIFY_MODE === 'fast' ? 'fast' : 'full'
 const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']).out
 const branchGuard = guardProtectedBranch(branch)
 if (!branchGuard.ok) {
@@ -120,7 +138,7 @@ if (!dirty) {
   console.error('✖ 没有可提交的改动（工作区与暂存区都是干净的）')
   process.exit(1)
 }
-const steps = planShipSteps({ push: options.push, pr: options.pr })
+const steps = planShipSteps({ push: options.push, pr: options.pr, verifyMode })
 const external = externalActionPlan({ push: options.push, pr: options.pr, dryRun: options.dryRun })
 log(renderShipPlan({ branch, message, steps, external }))
 if (options.dryRun) {
@@ -145,8 +163,8 @@ if (options.push && external.required) {
   // issue #330 + 规范第十四节「本地绿 ⇒ CI 绿」：与 pre-push 同款，默认跑 **CI 等价全量**
   // （不再默认 --fast）——本地多花几十秒换掉一次约半小时的 CI 往返。
   // 显式快速通道：SHIP_VERIFY_MODE=fast node scripts/ship.mjs ...
-  const verifyArgs = process.env.SHIP_VERIFY_MODE === 'fast' ? ['--fast'] : ['--full']
-  const verify = spawn(process.execPath, ['scripts/verify-local.mjs', ...verifyArgs], {
+  // 注意 `verifyMode` 是**唯一来源**：打印的计划 / 结果汇总与这里的实参同源（issue #337）。
+  const verify = spawn(process.execPath, ['scripts/verify-local.mjs', `--${verifyMode}`], {
     cwd: root,
     stdio: 'inherit',
   })
@@ -190,6 +208,6 @@ if (options.pr && result.verify?.ok && result.push?.ok) {
   result.pr = { ok: false, detail: '前置步骤未通过，已跳过开 PR（fail-closed）' }
 }
 
-const summary = renderShipResult(result)
+const summary = renderShipResult({ ...result, verifyMode })
 log(`\n${summary.text}`)
 process.exit(summary.ok ? 0 : 1)

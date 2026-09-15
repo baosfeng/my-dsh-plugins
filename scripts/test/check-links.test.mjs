@@ -18,7 +18,15 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirSync } from 'tmp'
 import { dirname, join } from 'node:path'
-import { REPO_ROOT, anchorsOfContent, runCheck, skillFromPath, slugify, stripHtmlTags } from '../check-links.mjs'
+import {
+  REPO_ROOT,
+  THIRD_PARTY_RE,
+  anchorsOfContent,
+  runCheck,
+  skillFromPath,
+  slugify,
+  stripHtmlTags,
+} from '../check-links.mjs'
 
 const tmpRoots = []
 afterAll(() => {
@@ -303,6 +311,34 @@ describe('skip 规则不误报', () => {
 
   it('宿主 API 名（skill.list）同行的 skills/ 路径不校验', () => {
     noFindings({ 'docs/guide.md': GUIDE('| `skill.list` | `skills/list` | 列表不激活冷 Agent |') })
+  })
+
+  /**
+   * #314 js/regex/missing-regexp-anchor：THIRD_PARTY_RE 是"外部仓库链接"判据。
+   * 原来的 `/\bgithub\.com\b/` 不是主机名边界：`notgithub.com/...`、`github.com.evil.example/...`
+   * 都会命中，于是同一行的仓库内 scripts/ 引用被静默豁免（**漏检**，方向不安全）。
+   */
+  it('外部仓库链接判据按主机名锚定：只有整段就是 github.com 链接才算第三方', () => {
+    expect(THIRD_PARTY_RE.test('https://github.com/o/r')).toBe(true)
+    expect(THIRD_PARTY_RE.test('github.com/o/r')).toBe(true)
+    expect(THIRD_PARTY_RE.test('[dsh-TUI #622](https://github.com/o/r/pull/622)，见下文')).toBe(true)
+    for (const decoy of [
+      'notgithub.com/o/r',
+      'github.com.evil.example/o/r',
+      'xgithub.com/o/r',
+      'https://notgithub.com/o/r',
+    ]) {
+      expect(THIRD_PARTY_RE.test(decoy), `${decoy} 不该被当外部仓库链接`).toBe(false)
+    }
+  })
+
+  it('形如 notgithub.com 的链接不构成豁免：同行失效的仓库内引用仍被抓住', () => {
+    const root = makeRepo({
+      'docs/guide.md': GUIDE(
+        '见 [x](https://notgithub.com/ccch1mneyyy/dsh-TUI/pull/622)，由 `scripts/verify-tps.mjs` 回归。',
+      ),
+    })
+    expect(hits(root)).toContain('path:scripts/verify-tps.mjs')
   })
 
   it('升级审计语料引用的上游 DSH 文档不校验', () => {

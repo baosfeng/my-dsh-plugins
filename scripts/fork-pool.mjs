@@ -24,16 +24,20 @@
  */
 import { spawnSync } from 'node:child_process'
 import {
+  closeSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
-  writeFileSync,
+  writeSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -162,9 +166,28 @@ function installHooks(forkDir) {
  *
  * 读文件用 fs.readFileSync（与 `cat` 同语义、同 utf8 解码，错误同样向上抛），不派生子进程：
  * 子进程版是多进程/不可移植的（Windows 无 cat），CodeQL js/unnecessary-use-of-cat 也在此报警。
+ *
+ * 写路径（#314 js/insecure-temporary-file）：fork 落在 `os.tmpdir()`（同机其他用户可写）
+ * 下，`writeFileSync(excludeFile, …)` 的 open 会**跟随已存在的符号链接**——攻击者预置一个
+ * 指向任意文件的软链，追加内容就写到那个文件里去了。改成"安全创建 + 原子替换"：
+ *   1. `mkdtempSync(join(dirname(excludeFile), 'tmp-'))` —— 随机名目录，**O_EXCL 建目录**，
+ *      攻击者无法预置/抢占（这是本规则认可的 createTemporaryFile 写法）；
+ *   2. 在新目录里 `openSync(path, 'wx')` 写完整内容（O_CREAT|O_EXCL，绝不跟随软链）；
+ *   3. `renameSync` 原子替换目标 —— 目标即使被预置成软链，也只是把**那个软链本身**换掉，
+ *      不会写到软链指向的文件。
+ * 为什么不能直接对目标用 `'wx'`：`git clone` 已经生成了 `.git/info/exclude`，O_EXCL 会
+ * 必然 EEXIST，等于把功能改坏（现已由 scripts/test/fork-pool.test.mjs 的软链回归用例钉住）。
  */
 function ensureExclude(forkDir) {
   const excludeFile = join(forkDir, '.git', 'info', 'exclude')
+  // 现状必须是"不存在"或"普通文件"：软链/目录/设备一律拒绝（软链正是攻击者预置的形态）。
+  const existing = lstatSync(excludeFile, { throwIfNoEntry: false })
+  if (existing && !existing.isFile()) {
+    return {
+      ok: false,
+      detail: `拒绝写入：${excludeFile} 不是普通文件（${existing.isSymbolicLink() ? '符号链接' : '特殊文件'}）`,
+    }
+  }
   let current = ''
   try {
     current = readFileSync(excludeFile, 'utf8')
@@ -173,11 +196,22 @@ function ensureExclude(forkDir) {
   }
   const appended = excludeAppendContent(current)
   if (!appended) return { ok: true, detail: '已包含 node_modules' }
+  let stagingDir
+  let fd
   try {
-    writeFileSync(excludeFile, appended)
+    stagingDir = mkdtempSync(join(dirname(excludeFile), 'tmp-'))
+    const staged = join(stagingDir, 'exclude')
+    fd = openSync(staged, 'wx')
+    writeSync(fd, appended)
+    closeSync(fd)
+    fd = undefined
+    renameSync(staged, excludeFile)
     return { ok: true, detail: '已写入 node_modules（防 git add -A 误提交软链）' }
   } catch (error) {
     return { ok: false, detail: `写入失败：${error.message}` }
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+    if (stagingDir !== undefined) rmSync(stagingDir, { recursive: true, force: true })
   }
 }
 

@@ -15,6 +15,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseGithubRepo } from './lib/github-repo.mjs'
+import { commitLines, revertLines } from './lib/commit-lines.mjs'
 
 const CLI = '@deepseek-ai/dsh'
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm'
@@ -185,9 +186,11 @@ if (githubRepo) {
     const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/compare/${range}`)
     if (res.ok) {
       const data = await res.json()
-      const commits = (data.commits ?? []).map((c) => `${c.sha.slice(0, 10)} (${c.commit.author.date.slice(0, 10)}) ${c.commit.message.split('\n')[0]}`)
+      // #314 js/http-to-file-access（告警 #29/#30）：提交清单逐字来自 HTTP，落盘前必须净化
+      // （控制字符/换行/超长消息），净化实现与理由见 ./lib/commit-lines.mjs。
+      const commits = commitLines(data.commits)
       writeFileSync(join(out, 'commits.txt'), commits.join('\n') + '\n')
-      const reverts = commits.filter((c) => /revert/i.test(c))
+      const reverts = revertLines(commits)
       writeFileSync(join(out, 'reverts.txt'), reverts.join('\n') + '\n')
       enrichment = {
         attempted: true,

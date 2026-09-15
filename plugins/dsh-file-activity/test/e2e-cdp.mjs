@@ -20,12 +20,18 @@
 import { spawn } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { sanitizeLogField } from './log-sanitize.mjs'
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const PORT = Number(process.env.CDP_PORT || 9225)
 const PROFILE = '/tmp/dsh-fa-cdp2'
 const TARGET = process.env.PROBE_URL || 'http://127.0.0.1:3080/'
-const sanitize = (s) => String(s).replace(/[\n\r]/g, ' ')
+/**
+ * 日志字段净化（#314 js/log-injection）：实现见 ./log-sanitize.mjs（与回归测试共用
+ * 同一份代码）。折平换行 + 转义控制字符 + 引号界定一行，使 `PROBE_URL`（来自
+ * `process.env`）、CDP 返回文本、`error.message` 里的换行无法伪造一条 `[e2e] …` 日志。
+ */
+const sanitize = sanitizeLogField
 const log = (...args) => console.log('[e2e]', ...args.map(sanitize))
 
 rmSync(PROFILE, { recursive: true, force: true })
@@ -178,7 +184,8 @@ try {
   log('=== E2E DONE ===')
   console.log(JSON.stringify(results, null, 2))
 } catch (error) {
-  console.error('[e2e] FAILED:', String(error.message).replace(/[\n\r]/g, ' '))
+  // 同 sanitize：错误信息同样来自网络/DOM（fetch、CDP、页面异常），必须走同一条净化路径。
+  console.error('[e2e] FAILED:', sanitize(error?.message ?? error))
   console.error(JSON.stringify(results, null, 2))
 } finally {
   try {

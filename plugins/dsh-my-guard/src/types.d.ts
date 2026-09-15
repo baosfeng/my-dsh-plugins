@@ -158,7 +158,10 @@ export interface ScanResult {
   ok: boolean
   findings?: Finding[]
   scannedFiles?: number
+  /** 实际扫描的**字节**数（#327：不是 UTF-16 码元数）。 */
   scannedBytes?: number
+  /** 未扫描文件的分类计数（not-a-file / permission-denied / not-found / too-large / io-error）。 */
+  skipped?: Record<string, number>
   error?: string
 }
 

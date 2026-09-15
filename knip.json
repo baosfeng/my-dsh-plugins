@@ -29,7 +29,7 @@
     "@types/react-dom",
     "eslint-formatter-compact"
   ],
-  "ignoreBinaries": ["dsh"],
+  "ignoreBinaries": ["dsh", "mkfifo"],
   "rules": {
     "types": "warn"
   }

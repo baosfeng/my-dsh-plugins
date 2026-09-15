@@ -13,7 +13,8 @@
  * 扫描只读包内容，绝不执行包内脚本/代码。
  */
 import { createHash } from 'node:crypto'
-import { readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { constants, open, readdir, rm, writeFile } from 'node:fs/promises'
+import type { FileHandle } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { execFile } from 'node:child_process'
 import tmp from 'tmp'
@@ -33,11 +34,13 @@ interface ScanHandle {
   findings: Finding[]
   files: number
   bytes: number
+  /** 按类别统计被跳过的文件（诊断用；#327 起不再静默吞掉 errno）。 */
+  skipped: Record<string, number>
 }
 
-/** 扫描本地包目录；返回 { ok, findings, scannedFiles, scannedBytes }。 */
+/** 扫描本地包目录；返回 { ok, findings, scannedFiles, scannedBytes, skipped }。 */
 export async function scanPackage(dir: string): Promise<ScanResult> {
-  const handle: ScanHandle = { findings: [], files: 0, bytes: 0 }
+  const handle: ScanHandle = { findings: [], files: 0, bytes: 0, skipped: {} }
   try {
     await scanDir(dir, dir, handle)
     return {
@@ -45,6 +48,7 @@ export async function scanPackage(dir: string): Promise<ScanResult> {
       findings: handle.findings,
       scannedFiles: handle.files,
       scannedBytes: handle.bytes,
+      skipped: handle.skipped,
     }
   } catch (error) {
     return { ok: false, error: errorMessage(error) }
@@ -226,18 +230,59 @@ function checkShellScripts(name: string, text: string, rel: string, handle: Scan
   }
 }
 
-/** 读取文件文本（大小上限内；不可读/超限返回 null）。 */
-async function readText(full: string, handle: ScanHandle): Promise<string | null> {
+/** 读取失败类别（供诊断与回归测试断言；不用裸 catch 吞掉 errno 语义）。 */
+export type ReadFailure = 'not-a-file' | 'permission-denied' | 'not-found' | 'too-large' | 'io-error'
+
+/**
+ * errno → 失败类别：`EISDIR`/`ENOTDIR` 非普通文件；`EACCES`/`EPERM` 权限拒绝；
+ * `ENOENT` 不存在；其余归 I/O 错误。类别用于诊断与测试断言，不改变读取结果（仍是 null）。
+ */
+export function classifyReadFailure(error: unknown): ReadFailure {
+  const code = (error as NodeJS.ErrnoException | null | undefined)?.code
+  if (code === 'EISDIR' || code === 'ENOTDIR') return 'not-a-file'
+  if (code === 'EACCES' || code === 'EPERM') return 'permission-denied'
+  if (code === 'ENOENT') return 'not-found'
+  return 'io-error'
+}
+
+/** 读取文件文本（大小上限内；不可读/超限返回 null 并记入 skipped 类别）。导出供 #327 回归测试直调。 */
+export async function readText(full: string, handle: ScanHandle): Promise<string | null> {
+  let fh: FileHandle
   try {
-    // Use try-catch instead of stat + readFile to avoid TOCTOU race condition
-    const content = await readFile(full, 'utf8')
-    // Check content size after reading to avoid race condition
-    if (content.length > MAX_SCAN_FILE_BYTES) return null
-    handle.bytes += content.length
-    return content
-  } catch {
+    // O_NONBLOCK：FIFO 在没有写端时 open 会一直等下去（普通文件/目录不受该标志影响），
+    // 非阻塞后立刻拿到 fd，类型判定交给 fd 上的 stat。
+    fh = await open(full, constants.O_RDONLY | constants.O_NONBLOCK)
+  } catch (error) {
+    skipFile(handle, classifyReadFailure(error))
     return null
   }
+  try {
+    // stat 与 read 作用在**同一个 fd** 上：fstat 与随后的 fd 读取同源，既没有 TOCTOU
+    // （js/file-system-race 走的是路径形式的 check-then-use），又保住了下面两道闸门。
+    const info = await fh.stat()
+    if (!info.isFile()) {
+      // 读之前拒掉目录/FIFO/设备：否则 FIFO 可永久阻塞、/dev/zero 可把内存吃光
+      skipFile(handle, 'not-a-file')
+      return null
+    }
+    if (info.size > MAX_SCAN_FILE_BYTES) {
+      // 读之前按**字节**拒掉超限文件：超大文件不会先被读进内存
+      skipFile(handle, 'too-large')
+      return null
+    }
+    handle.bytes += info.size
+    return await fh.readFile('utf8')
+  } catch (error) {
+    skipFile(handle, classifyReadFailure(error))
+    return null
+  } finally {
+    await fh.close()
+  }
+}
+
+/** 记一次跳过（按类别计数；#327：errno 不再被裸 catch 吞掉）。 */
+function skipFile(handle: ScanHandle, reason: ReadFailure): void {
+  handle.skipped[reason] = (handle.skipped[reason] ?? 0) + 1
 }
 
 /** 是否为 shell 脚本文件（.sh/.bash）。 */

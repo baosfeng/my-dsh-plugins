@@ -31,6 +31,7 @@ import {
   normalizePath,
   parseForkPoolArgs,
   parseOwnerRepo,
+  isLocalRemote,
   planCreateSteps,
   pushRemoteFor,
   renderCheckReport,
@@ -75,7 +76,10 @@ function makeOriginRepo(tmpRoot, id = 'origin') {
   spawnSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'init'], {
     encoding: 'utf8',
   })
-  spawnSync('git', ['-C', dir, 'remote', 'add', 'origin', 'https://github.com/o/r.git'], { encoding: 'utf8' })
+  // issue #337：origin 必须是**本地**远端。原先写死 `https://github.com/o/r.git`，
+  // 于是 create 流程里的 `git ls-remote` 会去连 github.com —— 本机网络不可达时该用例必红，
+  // 而它测的是 exclude 写入/软链拒绝，跟网络毫无关系。
+  spawnSync('git', ['-C', dir, 'remote', 'add', 'origin', dir], { encoding: 'utf8' })
   spawnSync('git', ['-C', dir, 'fetch', '-q', 'origin', 'main'], { encoding: 'utf8' })
   return dir
 }
@@ -201,6 +205,20 @@ describe('基线判定', () => {
     expect(r.ok).toBe(false)
     expect(r.stale).toBe(true)
     expect(r.reason).toContain('过期')
+  })
+
+  /**
+   * issue #337：**查不到 ≠ 过期**。远端查询失败（网络不通/代理挂）时 `remoteHeadSha`
+   * 返回空串 → 这里必须是 `stale: null`（"无法比对"），不能判成"基线过期"——否则网络问题
+   * 会被伪装成"你的分支该 rebase 了"，把人引到错误方向。
+   */
+  it('远端查不到（网络不可达）→ stale=null 且理由说清是"无法比对"', () => {
+    for (const missing of ['', '   ', null, undefined]) {
+      const r = evaluateBaseline('abc12345', missing)
+      expect(r.ok).toBe(false)
+      expect(r.stale, `${String(missing)} 不该被判成"过期"`).toBeNull()
+      expect(r.reason).toContain('无法比对')
+    }
   })
 
   it('查不到远端 SHA → stale=null（只警告，不当成过期）', () => {
@@ -372,6 +390,40 @@ describe('推送前自检结论', () => {
   })
 })
 
+describe('isLocalRemote（本地远端判据，issue #337）', () => {
+  it('本地路径 / file:// → true（不依赖网络）', () => {
+    for (const url of ['/tmp/x/gh-fork-origin', 'file:///tmp/x/origin', './relative/origin', '../up/origin']) {
+      expect(isLocalRemote(url), url).toBe(true)
+    }
+  })
+
+  it('http(s)/git/ssh/scp 形态 → false（要走远端规范化）', () => {
+    for (const url of [
+      'https://github.com/o/r.git',
+      'http://example.com/o/r.git',
+      'git://github.com/o/r.git',
+      'ssh://git@github.com/o/r.git',
+      'git@github.com:o/r.git',
+    ]) {
+      expect(isLocalRemote(url), url).toBe(false)
+    }
+    expect(isLocalRemote('')).toBe(false)
+    expect(isLocalRemote(null)).toBe(false)
+  })
+
+  it('本地 origin 的 create 全流程不依赖网络（#337 的核心修复）', { timeout: 60_000 }, () => {
+    // makeOriginRepo 现在把 origin 指向本地目录；若实现回退成 github.com URL，
+    // 本用例在网络不可达的机器上就会失败（这正是修复前的形态）。
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
+    try {
+      const origin = makeOriginRepo(fake)
+      expect(isLocalRemote(origin)).toBe(true)
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('CLI 端到端（离线）', () => {
   it('clean 拒绝非 gh-fork-* 路径（退出码 1）', () => {
     const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
@@ -470,6 +522,45 @@ describe('CLI 端到端（离线）', () => {
       expect(out).toContain('目录已存在')
       expect(readFileSync(victim, 'utf8')).toBe(original)
       expect(lstatSync(join(forkDir, '.git', 'info', 'exclude')).isSymbolicLink()).toBe(true)
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
+  it('check：远端不可达 → 基线"无法比对"，但**不阻断**（退出码 0）', { timeout: 60_000 }, () => {
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
+    try {
+      const dir = makeFakeFork(fake, 'net1')
+      // 指向一个不存在的本地远端 → ls-remote 必然失败（等价于"网络不可达"的可复现形态）
+      spawnSync('git', ['-C', dir, 'remote', 'add', 'origin', join(fake, 'no-such-remote')], { encoding: 'utf8' })
+      // --static：只做静态自检（不跑 verify-local）。退出码这里**不断言**：裸 fixture 缺
+      // 工具链软链，check 本来就会因那一项 ❌ 而非零退出——与本用例要验的"基线"无关，
+      // 断言输出才是有信息量的部分。
+      const { out } = runCli(['check', 'net1', '--static'], { tmpRoot: fake })
+      expect(out).toContain('远端基线状态')
+      expect(out).toContain('无法比对')
+      expect(out).not.toContain('需要 git fetch')
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
+  it('check：远端可达且 SHA 真不一致 → 仍然报"过期"（真失败不被放过）', { timeout: 60_000 }, () => {
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
+    try {
+      const origin = makeOriginRepo(fake)
+      const dir = makeFakeFork(fake, 'net2')
+      spawnSync('git', ['-C', dir, 'remote', 'add', 'origin', origin], { encoding: 'utf8' })
+      // 让 fork 的 main 与 origin 的 main 分叉：origin 前进一个提交
+      writeFileSync(join(origin, 'second.txt'), 'x\n')
+      spawnSync('git', ['-C', origin, 'add', '-A'], { encoding: 'utf8' })
+      spawnSync('git', ['-C', origin, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'second'], {
+        encoding: 'utf8',
+      })
+      const { out } = runCli(['check', 'net2', '--static'], { tmpRoot: fake })
+      // 远端可达且 SHA 真不一致 → 必须报"过期"（若被一并当成"无法比对"放过，就是掩盖真失败）
+      expect(out).toContain('远端基线状态')
+      expect(out).toContain('过期')
     } finally {
       rmSync(fake, { recursive: true, force: true })
     }

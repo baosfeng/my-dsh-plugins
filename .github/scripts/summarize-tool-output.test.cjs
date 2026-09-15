@@ -15,6 +15,7 @@ const {
   summarizeTsc,
   summarizeGeneric,
   summarizeToolOutput,
+  countEscapes,
 } = require('./summarize-tool-output.cjs')
 
 const ESC = '\u001b'
@@ -102,4 +103,41 @@ test('generic：剥色 + 限行 + 截断提示', () => {
 test('空输入不炸，返回占位', () => {
   assert.equal(summarizeToolOutput('eslint', ''), '- 无输出')
   assert.equal(summarizeToolOutput('unknown-kind', ''), '- 无输出')
+})
+
+test('eslint(JSON)：解析 --format json 输出为中文（含相对路径与复杂度数值）', () => {
+  const raw = JSON.stringify([
+    {
+      filePath: '/home/runner/work/my-dsh-plugins/my-dsh-plugins/plugins/dsh-a/test/x.mjs',
+      messages: [
+        {
+          line: 213,
+          severity: 2,
+          ruleId: 'complexity',
+          message: "Function 'walk' has a complexity of 11. Maximum allowed is 10.",
+        },
+        { line: 9, severity: 2, ruleId: 'no-console', message: 'Unexpected console statement.' },
+      ],
+    },
+    { filePath: '/x/plugins/dsh-b/src/index.ts', messages: [] },
+  ])
+  const out = summarizeToolOutput('eslint', raw)
+  assert.ok(out.includes('`plugins/dsh-a/test/x.mjs:213`'), out)
+  assert.ok(out.includes('圈复杂度超标（complexity）：实测 11，阈值 10'), out)
+  assert.ok(out.includes('不应使用 console（no-console）'), out)
+  assert.equal(countEscapes(out), 0)
+})
+
+test('eslint(JSON)：超过 max 条时截断并给中文提示', () => {
+  const messages = Array.from({ length: 9 }, (_, i) => ({
+    line: i + 1,
+    severity: 2,
+    ruleId: 'complexity',
+    message: `Function 'f${i}' has a complexity of ${11 + i}. Maximum allowed is 10.`,
+  }))
+  const out = summarizeToolOutput('eslint', JSON.stringify([{ filePath: '/r/plugins/a/src/x.ts', messages }]), {
+    max: 3,
+  })
+  assert.equal(out.split('\n').filter((l) => l.startsWith('- `')).length, 3)
+  assert.ok(out.includes('共 9 条；完整输出见 CI 日志'), out)
 })

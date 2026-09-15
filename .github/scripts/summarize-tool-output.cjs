@@ -17,7 +17,7 @@
  *   node .github/scripts/summarize-tool-output.cjs --kind eslint --input complexity-report.txt --max 20
  */
 
-const { stripAnsi } = require('./review-comment.cjs')
+const { stripAnsi, countEscapes } = require('./review-comment.cjs')
 
 /** ESLint 规则 → 中文说明（只收录本项目实际会触发的规则，未收录的保留原名）。 */
 const ESLINT_RULE_ZH = {
@@ -84,10 +84,47 @@ function summarizeGeneric(raw, { max = 20 } = {}) {
 }
 
 /**
+ * ESLint `--format json` 输出 → 中文列表（ESLint 9 已移除内置 compact formatter，
+ * 原 `--format compact` 会直接报错，故改为 JSON）。
+ */
+function summarizeEslintJson(raw, { max = 20 } = {}) {
+  let data
+  const text = stripAnsi(String(raw || '')).trim()
+  if (!text.startsWith('[')) return null
+  try {
+    data = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(data)) return null
+  const items = []
+  for (const file of data) {
+    const rel = String(file.filePath || '').replace(/^.*?\/(?=plugins\/|scripts\/|docs\/|\.github\/)/, '')
+    for (const m of file.messages || []) {
+      if (m.severity === 1 && !m.ruleId) continue
+      const rule = m.ruleId || ''
+      const cx = /complexity of (\d+).*Maximum allowed is (\d+)/.exec(m.message || '')
+      if (cx) {
+        items.push(`- \`${rel}:${m.line}\` — ${zhRule(rule || 'complexity')}：实测 ${cx[1]}，阈值 ${cx[2]}`)
+      } else {
+        items.push(`- \`${rel}:${m.line}\` — ${rule ? zhRule(rule) : 'ESLint 问题'}：${m.message}`)
+      }
+    }
+  }
+  const shown = items.slice(0, max)
+  if (items.length > shown.length) {
+    shown.push(`- _（以上为前 ${shown.length} 条，共 ${items.length} 条；完整输出见 CI 日志）_`)
+  }
+  return shown
+}
+
+/**
  * ESLint compact 输出 → 中文列表。
  * 输入形如：`/path/a.js: line 12, col 3, Error - Function 'f' has a complexity of 12. Maximum allowed is 10. (complexity)`
  */
 function summarizeEslint(raw, { max = 20 } = {}) {
+  const asJson = summarizeEslintJson(raw, { max })
+  if (asJson) return asJson
   const lines = cleanLines(raw)
   const items = []
   let matched = 0
@@ -198,10 +235,12 @@ module.exports = {
   cleanLines,
   summarizeGeneric,
   summarizeEslint,
+  summarizeEslintJson,
   summarizePrettier,
   summarizeNpmAudit,
   summarizeTsc,
   summarizeToolOutput,
+  countEscapes,
 }
 
 /* istanbul ignore next -- CLI 入口，逻辑已由上面的函数覆盖 */

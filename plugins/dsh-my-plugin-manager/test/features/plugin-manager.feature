@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/插件管理/需求清单.md（R1-R8）+ issue #28 + issue #90
+# 需求来源：GitHub issue + docs/插件管理/概述.md（R1-R8）+ issue #28 + issue #90
 # 验收基准：host-api.mjs / host-manage.mjs / host-registry.mjs 的 Gherkin 化表达；
 # 新增需求（issue #28：已安装列表只显示用户安装的插件；issue #90：插件详情页）须在此补充场景
 功能: 插件管理

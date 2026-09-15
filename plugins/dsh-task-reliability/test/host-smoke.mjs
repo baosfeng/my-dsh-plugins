@@ -250,7 +250,7 @@ function dispatchOne(listeners, name, ...args) {
 
 async function taskOf(env, id) {
   // await drainSaves()：等到落盘完成再读（固定 sleep 在 CI 高负载下会读到旧状态/ENOENT，
-  // 见 test/persist-race.mjs 的确定性复现与 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md）
+  // 见 test/persist-race.mjs 的确定性复现与 docs/踩坑/README.md）
   await env.drainSaves()
   const body = JSON.parse(readFileSync(join(env.dir, 'task-reliability.json'), 'utf8'))
   return body.tasks.find((task) => task.id === id)

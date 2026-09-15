@@ -20,7 +20,7 @@ assignees: ''
 
 - [ ] **测试通过**：CI 全绿（`node --check` + 插件冒烟测试 + eslint lint + TS 类型检查）
 - [ ] **文档更新**：`docs/` 与 README 已同步（功能/UI 变化时 README 效果图已更新）
-- [ ] **回归检查**：对照插件需求清单逐条回归，既有功能无破坏
+- [ ] **回归检查**：对照对应 issue 的验收标准逐条回归，既有功能无破坏
 - [ ] **发版校验**：涉及发版时版本号 / CHANGELOG / tag 三者一致
 - [ ] **提交规范**：提交信息符合 Conventional Commits（feat/fix/docs/style/refactor/test/chore/ci）
 

@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/md渲染/需求清单.md
+# 需求来源：GitHub issue + docs/md渲染/概述.md
 # 验收基准：table-detect.mjs / client-render.mjs / markdown-view.mjs 的 Gherkin 化表达；新增需求须在此补充场景
 
 功能: Markdown 表格渲染增强

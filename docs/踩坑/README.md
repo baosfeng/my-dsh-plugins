@@ -1,51 +1,60 @@
 ---
 title: 踩坑记录
-description: 项目已知问题与解决方案总索引
-created: 2026-08-22
-updated: 2026-09-15
+description: 症状 → 解法速查表：按报错关键词一行一条，教训已固化在代码里的只留指针
 ---
 
 # 踩坑记录
 
-> 本目录记录项目踩坑与解决方案，按功能域分组。新增踩坑时在对应功能域下创建条目文件。
+> 先在本文件按报错关键词搜（英文报错原文照抄，便于 grep）。教训已由代码/门禁承担的不再留长文，只给固化位置；标「详见」的分组另有分篇。
 
-## 功能域
+## 发布与版本
 
-- [发布 / Release](github-release版本校验失败.md) — release workflow 版本校验格式不一致导致任何 tag 发布失败（已解决，2026-08-23）
-- [发布 / npm 补发与 latest 覆盖](npm发布补发与latest覆盖.md) — tag 已存在时重推不触发 npm 发布；发布顺序颠倒导致 dist-tags.latest 指向旧版（2026-09-01）
-- [发布 / release.mjs dry-run bump](release脚本dry-run误写版本.md) — dry-run 已写入新版本号，--push 再次 bump 跳版本导致验证清单不匹配（2026-09-01）
-- [发布 / 跨插件依赖](跨插件依赖未声明导致client崩溃.md) — client 端 require('dsh-*') 未声明 peerDependencies 导致插件加载崩溃（已解决，2026-08-28，issue #39）
-- [跨插件依赖 / 假降级](假降级-只catch-require不等于优雅降级.md) — 依赖缺失时只 catch `require` 并把组件置 null，渲染期裸 `createElement(null)` 抛 `Element type is invalid … but got: null`；降级必须真的换渲染组件（三级链：md-render → 官方 MarkdownText → `<pre>`），且测试要覆盖「缺依赖」本身（已解决，2026-09-15，issue #290/#293）
-- [插件集成 / 依赖级联安装](DSH插件依赖级联安装机制.md) — dependencies 中声明 dsh.bundle 的包会被 dsh plugin add 自动加入 profile bundles（2026-09-01）
-- [插件集成 / profile 插件 fiber 回收](profile插件fiber被回收导致监听器静默失效.md) — profile 插件的 `ctx.on`/`ctx.effect` 注册随插件 fiber 被 loader 回收而静默消失（事件 0 触发、路由 404、无报错），须注册到常驻 root；含 3 分钟判定法与修法（2026-09-13，issue #242）
-- [客户端 UI / 样式](插件页签样式丢失.md) — 插件页签偶发"纯文字无样式"：样式注入放在服务判空早退之后，HMR 瞬间跳过注入（已解决，2026-08-23，v0.4.2）
-- [插件集成 / llm 流](llm流async处理器误用.md) — `llm/stream` handler 误用 async function 导致 waterfall 返回 Promise，vision-toolkit `yield*` 委托流崩溃（已解决，2026-08-26，dsh-task-reliability）
-- [客户端 UI / React 版本](DSH运行时React版本决定实际渲染.md) — 浏览器端实际渲染的 React 版本由 DSH 运行时（dsh-web-frontend 打包的 seed word）决定，与插件自身 node_modules 无关；peer 声明需与运行时匹配（issue #49，2026-08-28）
-- [插件资源 / 写放大](插件资源占用事故复盘.md) — 事件流型持久化误用全量快照原语导致 #126 高 CPU/内存/300GB 磁盘写入事故；DSH 官方 session_projcache.json 全量重写同模式；防护：增量 append + 自监测降级 + CI 资源冒烟（issue #127，2026-09-04）
-- [协作 / 并行开发](多agent并行测试资源冲突.md) — 两个进程同时跑同一插件 Vitest 时 coverage 目录被另一进程占用、`npm test` 退出 1，易被误判为真实回归；全量遍历须避开并发开发窗口（2026-09-10）
-- [宿主配置 / llm-pi-ai 路由](pi-ai路由模型未收录报needs-an-api.md) — 网关新模型不在 pi-ai catalog 内 + 路由为混合协议 → 模型条目报 `needs an api`；解法是 route 级显式声明 api 并抄同族 compat（同官方讨论 #4856，2026-09-10）
-- [Skill / 写操作防护](非交互默认放行导致真实触发.md) — CLI 写命令在非 TTY 下把"非交互"当成"已同意"，重定向调用即真实触发流水线；改为 fail-closed 前置闸门（零请求拒绝）+ 20 项防回归自测（2026-09-11）
-- [测试 / 环境相关断言](CI容器以root运行导致权限位断言失效.md) — 用 chmod 0555 注入写失败在 root/CAP_DAC_OVERRIDE 下无效导致假失败；2026-09-11 补记另一形态漏网（假定"`/` 根目录不可写"），改用 ENOTDIR/EISDIR 确定性注入（2026-09-10，2026-09-11 补记）
-- [测试 / 时序竞态](固定sleep等异步落盘导致CI-flaky.md) — 用固定 sleep 等异步加载/落盘，CI 容器高负载下等待不足 → 随机红（本地连跑全绿不复现）；修法是实现给确定性就绪信号（whenReady）+ 测试改条件轮询 waitFor、查询路径等就绪，并把"未就绪就落盘"改成"等合并完成再落盘"，而不是把 sleep 调大（2026-09-11；2026-09-12 复发实例二：guardian 第三条启动链 runStartupCheck 不在 bootPromise/teardown 之内，见 issue #217；**2026-09-15 同族第 5 例**：my-context 的 `whenPersisted()` 名不副实（只 drain 写链、加载未完成时立即 resolve）、`handlePreStep` 读路径静默跳过预算检查、`dispose()` 用残缺快照覆盖磁盘 —— 并落地防复发机制`scripts/check-test-sleeps.mjs`（新增固定 sleep 必须写 `// sleep-ok: 理由`）+ 统一工具 `plugins/dsh-shared/test-kit/wait.mjs`，见 issue #335）
-- [CI / 门禁工具](jscpd原生二进制对glibc基线敏感.md) — jscpd 5.x 的 Rust 二进制要求 GLIBC ≥2.33，旧 glibc 容器加载失败 → 门禁项恒红且日志里没有任何重复清单（易误判成代码重复超标）；锁 4.x 纯 JS 版（2026-09-11）
-- [工具 / 全仓扫描](超长单行让全仓正则扫描挂死.md) — 对全仓每一行跑链接正则时撞上 `vendor/mermaid.min.js` 单行 8.9MB → O(n²) 回溯、脚本挂死 180s 无输出；防压缩产物必须同时按"单行长度"设限（2026-09-11）
-- [门禁 / 环境差异](本地绿不等于CI绿.md) — 同一校验脚本本地 exit 0、CI 首跑即红：macOS 不区分大小写，掩盖了 PR 模板真实文件名全大写、文档里却写成小写的差异；校验类工具的判定必须与宿主 FS 语义解耦（2026-09-11）
-- [协作 / 子 agent 工作区](子agent工作区缺失导致卡死.md) — 新会话/隔离实例没有工作区时合成器被禁用，点「选择工作区」命中宿主原生 macOS 目录对话框（`osascript choose folder`），浏览器自动化无法驱动原生弹窗 → agent 静默卡死数天；修法是让用户事先选好工作区，或预置工作区落盘状态 / `--patch` 换 browse 后端（2026-09-12）
-- [协作 / fork 池](fork池基线与squash判定.md) — `git clone --local` 的 `origin/main` 取的是主工作区本地 main（可能落后 GitHub）→ 基于过期基线开发；`git cherry` 靠 patch-id 判定，对 squash 合并必然假阴性 → 误判「遗留工作未落地」；判法是查 main 的 squash 提交/PR 号 + 比对整体 diff 的 `git patch-id --stable`（2026-09-12）
-- [依赖安全 / audit 盲区](npm-audit在镜像源下静默失效.md) — npmmirror 无 advisories 端点 + `--registry` 被 `replace-registry-host` 重写回镜像 + CI 只阻断 high + Dependabot 告警是 `auto_dismissed`，四层叠加让 2 条 moderate 漏洞长期无人发现；修法是钉官方 registry、门槛提为 moderate、并校验「audit 真查过」而非只看退出码（已解决，2026-09-12，issue #199）
-- [验证 / 隔离实例软链](隔离实例复用主工作区插件软链导致假验证.md) — 隔离 profile 把生产 `node_modules` 的 `link:` 软链整体复用，`--addons` 指定的待验代码被主工作区版本顶替（假通过/假失败）；修法是显式优先 + 启动前 `realpath` 校验 + 防回归测试（已解决，2026-09-12，issue #220）
-- [依赖安全 / Dependabot 假阴性](dependabot自动关闭告警造成假阴性.md) — GitHub 对 npm development 传递依赖告警 on-by-default 自动关闭（公开仓库），open 视图「0 条」与「没报过」无法区分；更隐蔽的是依赖升到修复版后 `auto_dismissed` 会被覆盖成 `fixed` 并**清空时间戳**，历史无痕。机制修复：巡检强制复查已关闭告警 + `check-dependabot-closed.sh`（13 例防回归自测）（2026-09-12，issue #214）
-- [协作 / fork 池钩子](fork池钩子与工具链未就绪.md) — `clone --local` 不复制 `.git/config`（`core.hooksPath` 在里面）、`.husky/_/` 又被自身 gitignore，于是 fork 内 pre-commit/pre-push **完全不跑**（PR #239 prettier 红盘根因）；另两条连带坑：shell glob `node_modules/*` 漏掉隐藏的 `.bin` 让本地校验结论不可信、把 `.husky/` 命令简化成变量会让 knip 误报 `Unused devDependencies`。修法：`node scripts/fork-pool.mjs create <编号>`（默认装 hooks）+ `check` 自检四项（2026-09-13，issue #240）
-- [验证 / 隔离实例静默少加载](隔离实例插件被静默禁用.md) — dshmarket 把启停开关写在 `profiles/<p>/.dsh-market/state.json`，复刻生产 profile 时一起复制 → 隔离实例"继承"生产的禁用名单（实测禁用 6 个插件），client 不进 manifest、API 404，看起来像插件坏了；修法是复刻时剥离该目录**并明确打印**（静默正是它潜伏数轮的原因）（2026-09-13，issue #240）
-- [发布 / 并发化](发版并发化的两个坑.md) — 发版从串行改并发时：并发门禁提前 return 会留下孤儿隔离实例（verify-real-profile 无信号清理），每插件各自 findFreePort 并行必撞端口；附 `pushurl` 优先于 `url` 导致"本地验证"误推 GitHub 的 git 陷阱（2026-09-13，issue #246）
-- [CI / 日志取证](CI日志取证静默缺项.md) — `ghops actions logs` 拿 run 归档当 job 清单 → 失败 job 静默缺失（#217），失败 job 日志 403 被误读成"需仓库 admin"（实为未带凭据）；改为 jobs API 全量分页 + 归档缺项单 job 补齐 + 缺口明确报告，并一并修掉 alerts 的「0 条 ≠ 不存在」（已解决，2026-09-12，issue #224）
-- [安全 / 告警修复反噬](安全告警修复引入资源上限退化.md) — 为消 CodeQL 的 `js/file-system-race` 把「stat 先检查」改成「读完再判」，告警归零但丢了 `isFile()` 类型闸门与字节账（中文源码低估 3 倍、FIFO 可阻塞 / `/dev/zero` 可 OOM），空 `catch {}` 又把 `EISDIR`/`EACCES` 吞成 404（目录明明存在）；正解是 `open` + fd `stat` + fd 读 —— 竞态、闸门、字节账、内存四项同时成立。判据：「先读后判」必须能回答「读之前能否先拒绝」（2026-09-15，issue #327 / #318）
-- [验证 / 生成器重写人工文件](生成器重写人工编辑的文件.md) — `verify-real-profile.mjs --checklist` 整文件重写清单：已发布版本末尾 45 行人工「验证记录」被删、头部时间/端口被改写成假 diff（实测 43 删 + 2 改），且以未提交状态留在工作区（历史已实删 4 处留痕）；正解是把「谁拥有哪一段」显式建模 + 幂等合并（重跑零 diff、人工段落逐字节不变、识别不了就 fail-closed 原样返回），并给出「写生成器前先问的四句话」（2026-09-15，issue #329）
+> 详见 [发版坑.md](发版坑.md)、[跨插件依赖与降级.md](跨插件依赖与降级.md)
 
-## 维护规则
+- `tag 与 package.json 版本不一致`、Release workflow 卡在校验 → expected 去掉 `v` 前缀；bump 后先提交再打 tag。
+- `dry-run 也写版本号`、版本连跳两级致验证清单与 CHANGELOG 对不上 → 发版一次跑完 `--bump patch --push`；误 bump 用 git checkout 恢复。固化在 `scripts/release.mjs`
+- 并发发版残留孤儿实例、`EADDRINUSE`、实例互相踢 → 门禁 await 完再退出（失败路径也不提前 kill），端口由调度层预分配。固化在 `scripts/lib/release-checks.mjs`
+- 改了 origin 的 url 却仍推 GitHub → `pushurl` 优先于 `url`，两个都要改；推前用 `git remote get-url --push origin` 自检
+- `dsh plugin add` 后缺依赖、缺 client 注入项 → 插件型依赖写 `dependencies`（peer 永不安装）；详见 [跨插件依赖与降级.md](跨插件依赖与降级.md)
+- `Element type is invalid … but got: null`（新装用户整条 UI 挂掉）→ 缺跨插件 client 依赖且未真降级；门禁见 `scripts/lib/release-checks.mjs`、`scripts/test/release-checks.test.mjs`
 
-- 记录门槛：编译错误、API 不兼容、持续失败测试、执行过程踩坑
-- 每条记录：标题（≤ 30 字）+ 状态 + 解决参考
-- 已解决 & 超过 30 天未复现 → 移入 `归档/`
+## CI 与门禁
 
-→ [索引.md](../索引.md)
+> 详见 [CI门禁与巡检假阴性.md](CI门禁与巡检假阴性.md)、[异步落盘与时序.md](异步落盘与时序.md)
+
+- Dependabot 面板 `0 条 open`、`ghops actions logs` 少一个失败 job → 只列 open 与归档残缺都不等于「不存在」，要显式查 closed 告警与 jobs 清单
+- 本地门禁全绿、CI 首跑就红（报某引用路径不存在）→ 大小写不敏感的文件系统掩盖了真实文件名差异，判定必须枚举真实目录项
+- `GLIBC_2.33 not found`（jscpd 门禁恒红且没有任何 clone 清单）→ 先判「工具没跑起来」而不是重复超标；glibc < 2.34 回退纯 JS 的 4.x
+- `chmod 0555` 后仍写入成功、降级用例捕获到的 warn 为 0 → root 无视权限位，改注入 `EISDIR`／`ENOTDIR`；例见 `plugins/dsh-my-plugin-manager/test/host-api.mjs`
+- `npm audit` 报 0 漏洞而实际有 moderate → 镜像源没有 advisories 端点；固化在 `scripts/lib/npm-audit.mjs`、`scripts/test/npm-audit.test.mjs`
+- 为消 `js/file-system-race` 删掉 stat 导致类型闸门与字节账退化 → 改 `open` + fd `stat` + fd 读；固化在 `scripts/check-links.mjs`、`scripts/test/check-links-limits.test.mjs`
+- CI 随机红一条（只读到 1 条而非 2 条）、本地连跑全绿 → 固定 sleep 等异步落盘；详见 [异步落盘与时序.md](异步落盘与时序.md)（新增固定 sleep 须写 `// sleep-ok: 理由`，门禁 `scripts/check-test-sleeps.mjs`）
+- 同插件两个测试进程撞 `coverage` 目录、失败者没有 `Tests` 行 → 并行按插件划分；固化在 `scripts/test-all.sh`
+
+## 插件运行时与宿主 API
+
+> 详见 [宿主运行时陷阱.md](宿主运行时陷阱.md)、[插件资源占用.md](插件资源占用.md)
+
+- 插件已加载但事件 0 触发、路由 404、日志无报错 → 监听器注册随插件 fiber 被回收，要挂到常驻 root
+- 页签偶发变纯文字、图标与徽标消失、刷新页面即恢复 → 样式注入排在了服务判空早退之后
+- `yield* (intermediate value) is not async iterable` → `llm/stream` 的 handler 写成 async，把流包成了 Promise
+- 长会话 CPU 数百 %、内存 GB 级、磁盘每小时 GB 级写入 → 事件流误用全量快照原语；详见 [插件资源占用.md](插件资源占用.md)
+- 状态文件停在旧内容且不报错，只有 `write blocked … dropping pending snapshot` → 调度器与快照原语双节流互斥；详见 [异步落盘与时序.md](异步落盘与时序.md)
+
+## 验证环境
+
+> 详见 [隔离实例验证.md](隔离实例验证.md)
+
+- 部分插件 client bundle 不进 manifest、server API 404 而日志无报错 → 复刻 profile 时带上了插件管理器的禁用名单
+- 验证全绿但实例加载的是主工作区版本（或反过来假失败）→ `--addons` 待验路径被已存在的软链顶替
+- 点「选择工作区」后 DOM 无菜单、进程挂着 `osascript` 原生目录对话框 → 无工作区时改用参数预置工作区
+- `--checklist` 重跑后人工验证记录被删、头部时间被改成假 diff → 生成器整文件重写；固化在 `scripts/lib/verify-checklist.mjs`、`scripts/test/verify-checklist.test.mjs`
+
+## 工具链与脚本
+
+> 详见 [fork池工作流.md](fork池工作流.md)
+
+- fork 基线落后远端 main、`git cherry` 把已 squash 合并的工作全标未应用 → clone 不复制 remote-tracking refs，判定落地要用 patch-id
+- fork 里 `git commit` 秒过、无 lint-staged 输出，直到 CI 才红 → 钩子挂载信息没随 clone 复制过去
+- 全仓文本扫描脚本无任何输出挂死、被超时杀掉 → 压缩产物的超长单行让正则回溯退化；固化在 `scripts/check-links.mjs`
+- 非 TTY 下写命令只打一行警告就真实执行（曾误触发远端流水线）→ fail-closed 闸门：非 dry-run／`--yes`／TTY 直接退出

@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/远程控制/需求清单.md（issue #75 验收标准的 Gherkin 化表达）
+# 需求来源：GitHub issue + docs/远程控制/概述.md（issue #75 验收标准的 Gherkin 化表达）
 # 验收基准：host-smoke.mjs / events.mjs / commands.mjs / routes.mjs 的 Gherkin 化表达
 
 功能: 远程控制

@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/任务可靠性/需求清单.md（需求 1-12）
+# 需求来源：GitHub issue + docs/任务可靠性/概述.md（需求 1-12）
 # 验收基准：host-smoke.mjs / host-edge.mjs 的 Gherkin 化表达；新增需求须在此补充场景
 
 功能: 任务可靠性保障

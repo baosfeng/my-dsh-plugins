@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/mermaid渲染/需求清单.md
+# 需求来源：GitHub issue + docs/mermaid渲染/概述.md
 # 验收基准：client-render.mjs 的 Gherkin 化表达；新增需求须在此补充场景
 
 功能: Mermaid 渲染

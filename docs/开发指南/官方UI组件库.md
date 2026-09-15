@@ -1,119 +1,45 @@
+---
+title: 官方 UI 组件库
+description: 宿主自带组件库 @deepseek-ai/dsh-client-ui-primitives 的用法、MarkdownText 兜底契约与踩坑
+---
+
 # 官方 UI 组件库（@deepseek-ai/dsh-client-ui-primitives）
 
 > ⚠️ **何时阅读：** 翻新/开发任何插件 client UI 时——**优先使用官方 UI 组件库**，而不是自研组件或引入第三方框架（antd 等）。
-> 本文所有结论均经 **2026-09-04 本机隔离实例实证**（非猜测）。
 
-## 结论（TL;DR）
+## 结论
 
-1. **DSH 官方自带 UI 组件库**：`@deepseek-ai/dsh-client-ui-primitives`（宿主 0.1.5-rc.1 运行时实测导出 123 项；官方仓库 `packages/client/ui-primitives`，npm 已发布 `0.0.1-rc.x`，描述："Pure React atoms for the dsh web UI: controls, icons, markdown, and JSON inspectors (zero cordis)"）。
-2. **插件 client 可直接 `require` 使用，零安装、零打包、零体积**：宿主把它注册进 ModuleLoader 的 **staticModules 静态模块表**（主 bundle `staticModules: Jd()` 显式暴露 `react` / `react/jsx-runtime` / `react-dom` / `@deepseek-ai/cordis` / `@deepseek-ai/dsh-client-ui-slots` / `@deepseek-ai/dsh-client-ui-primitives`），插件 factory 的 `require` 直接命中该表。
-   > 该 staticModules 表的**门禁副本**在 `scripts/check-client-modules.mjs` 的 `SEED_MODULES`（issue #321）：任何 `plugins/*/lib/client.js` 里 require 了既非该表、也非 `dsh.client.external` / 自身包名的模块，CI 的 `quality` job 会直接失败（这类 require 在用户机器上会抛 `client-modules: require("X") missed the module table`，整条 client factory 挂掉）。新增 seed 模块时**两处同步**。
-3. **生态已实证**：社区最流行插件 [DSH-Transparent-UI-Plugin](https://github.com/WYH66666666/DSH-Transparent-UI-Plugin)（401★）的 client 就是 `require("@deepseek-ai/dsh-client-ui-primitives")` 构建的。
-4. **本机实测**：在隔离实例的 dsh-my-memory 插件 client factory 顶层 `require('@deepseek-ai/dsh-client-ui-primitives')` → **解析成功，拿到 123 个导出**，页面正常加载（实验代码已验证后还原）。
+1. 宿主自带 UI 组件库，**插件 client 直接 `require` 即可用：零安装、零打包、零体积**。宿主把它注册进 ModuleLoader 的 **staticModules 静态模块表**（与 `react` / `react/jsx-runtime` / `react-dom` / `@deepseek-ai/cordis` / `dsh-client-ui-slots` 同表），插件 factory 的 `require` 直接命中。
+2. 该表的**门禁副本**在 `scripts/check-client-modules.mjs` 的 `SEED_MODULES`：任何 `plugins/*/lib/client.js` 里 require 了既非该表、也非 `dsh.client.external` / 自身包名的模块，CI `quality` job 直接失败（用户机器上会抛 `client-modules: require("X") missed the module table`，整条 client factory 挂掉）。新增 seed 模块时**两处同步**。
+3. `require` 处**不需要** `dsh.client.inject` 声明（staticModules 全局提供；`inject` 仍是跨插件 bundle 的机制）。
 
-## 组件清单（导出实证，共 123 项）
-
-- **控件**：`Button` `Input` `Menu` `Modal` `Pill` `DisclosureRow` `HoverCard` `StateDot` `FoldToggle` `OnboardingSurface` `ConnectionIndicator`
-- **内容/展示**：`CodeBlock` `JsonTree` `JsonBlock` `MarkdownText` `MessageText` `ReadBlock` `SearchBlock` `TerminalBlock` `WebBlock` `DiffBlock` `RiskConfirmation`
-- **反馈**：`Toast` `Tooltip`
-- **品牌**：`BrandWordmark` `FishLogo` `DocumentFileIcon`
-- **图标（50+ 线性）**：`IconChevronDownOutline14` `IconCheckOutline16` `IconRefreshOutline14` `IconTrashOutline16` `IconCloseOutline16` `IconEditOutline16` `IconSearchOutline16` `IconSettingsOutline14` `IconWarningOutline16` `IconThinkOutline14` 等（命名规则 `Icon<名称><Outline|Fill><尺寸>`）
-- **hooks/工具**：`useAnchoredPosition` `useAnchoredMaxHeight` `useDismissOnOutsidePointer` `writeClipboard` `extractMarkdownPlainText` `DEFAULT_*_MAX_LINES`
-
-组件 API 为标准 React 函数组件（antd 式形态）。例（官方源码实测）：
-
-```js
-// Pill: active 选中态；有 onClick 渲染为 button，否则 static span
-createElement(uiPrimitives.Pill, { active: true, onClick: handler }, '文本')
-```
-
-### 试点实证的 API 用法（issue #143：dsh-my-memory / dsh-my-skill-manager 已落地）
-
-```js
-// Button：variant（primary/ghost/outline/toolbar）+ size（sm 适配侧边栏）+ icon
-createElement(
-  ui.Button,
-  { variant: 'outline', size: 'sm', onClick: retry, icon: createElement(ui.IconRefreshOutline14) },
-  '重试',
-)
-
-// Input：className 在 wrapper，原生属性（value/onChange/placeholder）在内部 input
-createElement(ui.Input, { className: 'dsh-my-memory-input', value, onChange, placeholder })
-
-// Pill：徽标/分段控制（active 选中态；onClick 渲染为 button）
-createElement(ui.Pill, { active: scope === 'global', onClick: () => setScope('global') }, '全局')
-
-// 图标：命名规则 Icon<名称><Outline|Fill><尺寸>，props 透传（className 可加旋转等）
-createElement(ui.IconRefreshOutline14, { className: loading ? 'spin' : undefined })
-```
-
-- 测试 stub：client-render / client-session 测试中 stub 官方组件库（`if (spec === '@deepseek-ai/dsh-client-ui-primitives') return uiPrimitives`），stub 组件带 `data-ui` 标记供「官方组件被使用」断言（见 dsh-my-memory/test/client-render.mjs）。
-- eslint：`import/no-unresolved` 需将 `@deepseek-ai/dsh-client-ui-primitives` 加入 ignore（staticModules 注入，node_modules 无对应包，见 eslint.config.js）。
-
-## 插件内使用方式
+组件形态为标准 React 函数组件，涵盖控件（`Button` / `Input` / `Menu` / `Modal` / `Pill` / `HoverCard` / `StateDot` …）、内容展示（`CodeBlock` / `JsonTree` / `MarkdownText` / `DiffBlock` …）、反馈（`Toast` / `Tooltip`）、品牌与图标（`Icon<名称><Outline|Fill><尺寸>`，50+ 线性图标）、hooks/工具（`useAnchoredPosition` / `writeClipboard` / `extractMarkdownPlainText` 等）。用到的具体 props 以宿主包源码为准。
 
 ```js
 // client factory 内（无需改构建，无需 package.json 声明）
-const uiPrimitives = require('@deepseek-ai/dsh-client-ui-primitives')
+const ui = require('@deepseek-ai/dsh-client-ui-primitives')
 ```
 
-- **不需要** `dsh.client.inject` 声明（staticModules 全局提供；`inject` 仍是 跨插件 bundle（如 `require('dsh-md-render')` 走 `dsh.client.external`）的机制）。
-- 样式跟随 DSH 主题 token（`--dsw-alias-*`），深浅主题自适应；需覆写时用我们既有的 `<插件>-*` 前缀类名 + DSH token（见 [UI规范.md](../UI规范.md)）。
+- 测试 stub：client-render 等测试里按模块名 stub 官方组件库，stub 组件带 `data-ui` 标记供「官方组件被使用」断言。
+- eslint：`import/no-unresolved` 需把该包加入 ignore（staticModules 注入，node_modules 无对应包）。
+- 样式跟随 DSH 主题 token（`--dsw-alias-*`），深浅主题自适应；需覆写时用自己 `<插件>-*` 前缀类名 + token（见 [UI 规范](../UI规范.md)）。
+- **不可行**：antd（拼接单 bundle + ModuleLoader 无法解析其依赖图，硬打包则每插件 200–500KB 且风格冲突）。自研组件包只作补充（补官方没有的控件）。
 
-## 作为渲染兜底（跨插件内核缺失时）
+## `MarkdownText` 作为渲染兜底
 
-`MarkdownText` 是**官方 GFM + KaTeX 渲染组件**，因此它是「跨插件渲染内核（`dsh-md-render` 之类）缺失」时最合适的兜底：零安装、零体积、零 external 声明，装了宿主就有（0.1.5-rc.1 起在 staticModules 表内）。
+`MarkdownText` 是官方 GFM + KaTeX 渲染组件，因此是「跨插件渲染内核缺失」时最合适的兜底：零安装、零体积、零 external 声明。
 
-**props 契约**（本机宿主主 bundle 实测 `i.labels.code.copyLabel` 直接取值）：
+**props 契约**：`text`（Markdown 源文本，必填）；`labels: { code: { copyLabel, copiedLabel }, footnotes }` —— **必填且无默认值**，实现直接读 `labels.code.copyLabel`，不传即 TypeError（早期官方包的旧字段为 `codeLabels`，兼容期两个都传）；`streaming` / `fileMentions` / `pathImages` 可选。
 
-| prop           | 类型                                              | 必填   | 说明                                                                                              |
-| -------------- | ------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------- |
-| `text`         | `string`                                          | 是     | Markdown 源文本                                                                                   |
-| `labels`       | `{ code: { copyLabel, copiedLabel }, footnotes }` | **是** | **无默认值**：实现直接读 `labels.code.copyLabel`，不传即 TypeError；脚注标题读 `labels.footnotes` |
-| `codeLabels`   | `{ copyLabel, copiedLabel }`                      | 否     | **早期官方包（npm latest `0.0.1-rc.1`）的旧字段**，兼容期两个都传                                 |
-| `streaming`    | `boolean`                                         | 否     | 流式态                                                                                            |
-| `fileMentions` | `unknown`                                         | 否     | 文件提及解析                                                                                      |
-| `pathImages`   | `unknown`                                         | 否     | 路径图片解析                                                                                      |
+**用共享部件，不要自己重写三级链**：`dsh-shared/client-parts/markdown-fallback.part.js` 的 `installMarkdownViewFallback({ require, createElement, labels, codeLabels, fallbackAttribute, fallbackClassName? })` 已实现 外部内核 → 宿主 `MarkdownText` → `<pre>` 三级回退（构建期 splice 进 factory 作用域，文案与 DOM 标记由消费方注入），新插件直接注入使用（ADR-0002：≥2 处重复即抽出）。
 
-用法：**不要自己重写三级链**——用共享部件 `dsh-shared/client-parts/markdown-fallback.part.js`（issue #299；`dsh-think-zh-expand` 与 `dsh-my-plugin-manager` 已接入，构建期 splice 进 factory 作用域）：
+- **可用性判定必须按 React 语义**：`MarkdownText` 是 `React.memo(...)` 返回的**对象**（`typeof` 为 `'object'`），`typeof v === 'function'` 会把官方组件误判为不可用。判定用 `typeof v === 'function' || (typeof v === 'object' && v !== null && typeof v.$$typeof === 'symbol')`（`react` 的 `isValidElementType` 在当前宿主与 Node 侧 React 19 上都不再导出），并排除 `'div'` 这类宿主标签字符串。
+- **仍保留三级链**：官方组件也可能不存在（极旧/裁剪宿主）→ 最后一级 `<pre data-<插件>-fallback="true">`。只有「真的换了渲染组件」才算降级；把组件变量置 `null` 而渲染路径没有 null 分支会在渲染期抛 `Element type is invalid … but got: null`（见 [踩坑目录](../踩坑/README.md)「只 catch require 不等于优雅降级」）。
+- **中文文案由插件提供**：`labels` 无默认值正好让中文化插件注入自己的文案；只渲染纯标题/段落时不会访问 `labels.code.copyLabel`，但契约上仍必须传（含代码块必崩）。
+- **为什么不是替代 `dsh-md-render`**：官方缺 `dsh-md-render` 的增强集（非标准表格容错、`div.md-code-block` 容器——`dsh-mermaid-render` 靠它渲染图表、代码复制/高亮/行号/主题、公式结构排版、`.tzx-md` 与 `dsh-md-render-*` 契约类样式）。**`dsh-md-render` 仍是首选内核**：external 声明保留、装了就用它，官方组件仅在它缺失时兜底。
 
-```js
-/*__PART_MARKDOWN_FALLBACK__*/ // 占位符注入（三道防线见 dsh-shared/scripts/splice.mjs）
-const MarkdownView = installMarkdownViewFallback({
-  require,
-  createElement,
-  labels: { code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' },
-  codeLabels: { copyLabel: '复制', copiedLabel: '已复制' }, // 兼容 0.0.1-rc.1
-  fallbackAttribute: 'data-dsh-<插件>-fallback', // 各插件自己的 DOM 标记前缀
-  // fallbackClassName?: '…'  // 需要保留消费方既有 <pre> class 契约时传
-})
-```
+## 踩坑
 
-（`MarkdownText` 的 props 契约在共享件内部适配；若要自己适配，注意 `labels` 无默认值，且可用性判定必须按下面的 React 语义。）
-
-- **典型场景**：插件的渲染内核走 `dsh.client.external` 跨插件 require（如 `dsh-md-render`）——`dsh plugin add` **不会**自动安装/激活 external 指向的插件（只激活 profile 直接 dependencies 里声明 `dsh.bundle.patch` 的包；peerDependencies 在 `autoInstallPeers: false` 下永不安装），新装用户开箱即缺，必须自带兜底（见 [踩坑：假降级](../踩坑/假降级-只catch-require不等于优雅降级.md)）。
-- **仍保留三级链**：官方组件也可能不存在（极旧/裁剪宿主）→ 最后一级回退 `<pre data-<插件>-fallback="true">`。只有「真的换了渲染组件」才算降级，把组件变量置 `null` 而渲染路径没有 null 分支会在渲染期抛 `Element type is invalid … but got: null`。**现成实现就是共享部件** `dsh-shared/client-parts/markdown-fallback.part.js`（`installMarkdownViewFallback`，见上），新插件直接注入使用，不要再抄一遍（ADR-0002：≥2 处重复即抽出）。
-- **中文文案由插件提供**：`labels` 无默认值正好让中文化插件（如 `dsh-think-zh-expand`）注入自己的中文文案。只渲染不含代码块的 markdown（纯标题/段落）时不会访问 `labels.code.copyLabel`——但契约上仍必须传（含代码块的场景必崩）。
-- **可用性判定必须按 React 语义**：`MarkdownText` 是 `React.memo(...)` 返回的**对象**（宿主实测 `object($$typeof,type,compare)`，`typeof` 为 `'object'` 而非 `'function'`）。`typeof v === 'function'` 会把官方组件误判为不可用 → 直接落到 `<pre>`。判定写成：
-  ```js
-  const { isValidElementType } = require('react') // 取不到时用下面的退化式
-  const isRenderable = (v) =>
-    typeof v === 'function' || (typeof v === 'object' && v !== null && typeof v.$$typeof === 'symbol')
-  ```
-  实测：宿主 shell 主 bundle（React 18.3.1）里 grep 不到 `isValidElementType` 字符串（只有 `isValidElement`），仓库 CI 的 react **19.3.0** 也已不再导出它（`React.isValidElementType === undefined`）→ 实际运行大多走退化式；两种判定都必须排除宿主标签字符串（`'div'` 之类垃圾导出值应落级，而不是渲染成未知标签）。
-- **为什么不是替代 `dsh-md-render`**：官方 `MarkdownText` 是通用 GFM + KaTeX（实测表格 / 宽表滚动容器 / 代码块 / 公式都能渲染），但缺少仓库内 `dsh-md-render` 的增强集：不标准表格容错、`div.md-code-block` 代码块容器（`dsh-mermaid-render` 靠它渲染 ```mermaid 图表）、代码复制 / 语法高亮 / 行号 / 主题、公式结构排版、`.tzx-md` / `dsh-md-render-*` 契约类样式。`dsh-md-render` 仍是**首选**内核（issue #186 决策不变）：external 声明保留、装了就用它，官方组件仅在它缺失时兜底。
-
-## 与其他方案的对比
-
-| 方案                                  | 判定                                                                                                      |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| **官方 ui-primitives**                | ✅ 首选：零引入、零打包、require 即用、视觉与 DSH 原生 100% 同源                                          |
-| ant-design                            | ❌ 不可行：拼接单 bundle + ModuleLoader 无法解析 antd 依赖图；esbuild 硬打包则每插件 200-500KB 且风格冲突 |
-| 自研 dsh-ui 组件包                    | 降级为补充：只补官方没有的控件（如自定义确认面板 / 专用表单项）                                           |
-| dsh-shared/client-parts（构建期拼接） | 保留：图标（icons.part.js）/ 碎片复用 / 样式规范                                                          |
-
-## 踩坑记录
-
-- **不存在 `moduleName` 方案**：ModuleLoader 顶层 `window.__ModuleLoader__.load()` 是 bootstrap 外壳，其 `factory` 的 require 不解析 staticModules（实测 `require('@deepseek-ai/dsh-client-ui-primitives')` 在顶层 load 里失败）；**必须在正常插件 bundle（经 cordis-client-runner 加载的插件 client）中 require**。
-- **官方 client 模块不是独立 `/plugins/.../client.js` 资源**：ui-primitives 编译进主 bundle（network 里看不到它的独立请求，但模块表存在）——不要用 network 排查它是否可用。
-- 官方 client 包（`dsh-client-ui-*`）与插件的是同一个 ModuleLoader：插件页签/面板能渲染即证明模块表就绪。
+- **不存在 `moduleName` 方案**：`window.__ModuleLoader__.load()` 顶层是 bootstrap 外壳，其 `factory` 里的 require **不解析 staticModules**——必须在正常插件 bundle（经 cordis-client-runner 加载的插件 client）中 require。
+- **官方 client 模块不是独立 `/plugins/.../client.js` 资源**：ui-primitives 编译进主 bundle，network 里看不到它的独立请求，但模块表存在——不要用 network 排查它是否可用。
+- 官方 client 包与插件共用同一个 ModuleLoader：插件页签/面板能渲染即证明模块表就绪。

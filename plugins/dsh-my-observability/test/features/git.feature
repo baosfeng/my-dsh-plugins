@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/可观测性/需求清单.md（需求 6-8）
+# 需求来源：GitHub issue + docs/可观测性/概述.md（需求 6-8）
 # 验收基准：host-git.mjs 的 Gherkin 化表达；新增需求须在此补充场景
 
 功能: 结构化 Git 工具

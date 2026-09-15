@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/任务可靠性/需求清单.md（需求 16：/task 斜杠命令，issue #35）
+# 需求来源：GitHub issue + docs/任务可靠性/概述.md（需求 16：/task 斜杠命令，issue #35）
 # 验收基准：host-command.mjs 的 Gherkin 化表达
 
 功能: /task 斜杠命令

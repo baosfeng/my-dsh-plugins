@@ -27,7 +27,7 @@ const BRANCH_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,120}$/
  *
  * ⚠️ 别把它们和 workspace 内部包（dsh-shared 等）混为一谈：这三个是**缓存目录**，
  * 必须真实是因为多个 agent 并行时共用同一份 .vite/.cache 会互相踩
- * （见 docs/踩坑/多agent并行测试资源冲突.md）；内部包必须指向 fork 内则是为了
+ * （见 docs/踩坑/README.md）；内部包必须指向 fork 内则是为了
  * **避免假验证**（见 planWorkspaceLinks）。两者解决的是不同问题。
  */
 export const WRITABLE_NODE_MODULES_ENTRIES = ['.cache', '.vite', '.vite-temp']
@@ -124,7 +124,7 @@ export function excludeAppendContent(current) {
 
 /**
  * 基线判定：fork 拿到的 origin/<base> 必须与 GitHub 上 refs/heads/<base> 一致。
- * 历史踩坑（docs/踩坑/fork池基线与squash判定.md）：clone --local 的 origin/<base> 其实是
+ * 历史踩坑（docs/踩坑/README.md）：clone --local 的 origin/<base> 其实是
  * **主工作区本地分支**（clone 把源 refs/heads/* 映射成目标 refs/remotes/origin/*，但不复制
  * remote-tracking refs），主工作区又只 fetch 不 merge —— 于是 fork 常常拿到过期基线，
  * 之后 PR 里混进无关差异。这里把判定固化成显式门禁。

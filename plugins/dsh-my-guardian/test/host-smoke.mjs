@@ -49,7 +49,7 @@ const readStateOrNull = () => {
  *
  *  guardian 的状态写入是异步 promise 链，固定 sleep 在慢 CI 上会赌输——
  *  实测：boot 后立即读 state.json 时文件都还不存在（t0=ENOENT，t100 才有）。
- *  见 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md。
+ *  见 docs/踩坑/README.md。
  *  仅在「等真实时间语义」或「断言某事没有发生」时才保留 sleep。 */
 async function waitFor(check, timeoutMs = 10000, intervalMs = 25) {
   const deadline = Date.now() + timeoutMs

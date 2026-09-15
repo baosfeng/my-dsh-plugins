@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/通知提醒/需求清单.md（需求 1-9）
+# 需求来源：GitHub issue + docs/通知提醒/概述.md（需求 1-9）
 # 验收基准：host-smoke.mjs / host-edge.mjs 的 Gherkin 化表达；新增需求须在此补充场景
 
 功能: 通知提醒

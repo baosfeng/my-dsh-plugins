@@ -50,7 +50,7 @@ ghops search issues "repo:baosfeng/my-dsh-plugins <关键词>"
 ### 2. 现状调研
 
 - 对应插件源码：`plugins/<name>/`。**先 `ls` 确认结构再读**：server 端是 `lib/index.js`；client 端 `lib/client.js` **可能是构建产物**（由 `scripts/build.mjs` 拼接），源码在 `client.src.js` 或 `lib/parts/*.part.js`——不要改/引用构建产物当源码。
-- 对应文档：`docs/<模块>/需求清单.md` 是否已登记相关需求（已登记 → 告知用户，issue 作为跟踪条目）。
+- 查重：先在 issue 列表搜索同类需求（已存在 → 告知用户，不重复开）。
 - 确认现状事实（如"图标目前全部同色、不区分类型"），写进 issue 背景，不凭印象。
 
 ### 3. 方案设计（UI/交互类需求必做）
@@ -81,7 +81,7 @@ ghops search issues "repo:baosfeng/my-dsh-plugins <关键词>"
 
 ### 7. 联动
 
-- 若用户提出要开发该需求 → 交给 `development-lifecycle`，由它在开发启动时把需求登记进 `docs/<模块>/需求清单.md`（需求清单是开发回归基准，本 skill 不代写）
+- 若用户提出要开发该需求 → 交给 `development-lifecycle`，由它在开发启动时把验收标准写进该 issue（issue 是需求与回归基准，本 skill 不代写）
 - 若命中旧 issue（closed 未实现）→ 按第 1 步规则标注关联
 
 ## 标题与正文规范

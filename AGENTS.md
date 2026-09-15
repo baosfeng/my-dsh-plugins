@@ -27,7 +27,8 @@
 - **命令超时**：shell 命令必须设 timeoutMs（快速 ≤15s，长任务 run_in_background 后台运行；禁止无超时前台跑可能超 1 分钟的命令）。
 - **代码查询走知识图谱**：查符号/调用链/影响/架构用 `mcp__codebase-memory__*` 工具（细节见 skill `codebase-memory`），图外事实才 grep/read。
 - **发版门禁**：发版用 `node scripts/release.mjs <插件名> [--push]`，必须过 #67 功能级验证门禁（verifying-dsh-plugins skill），跳过须带 `--skip-reason`。
-- **AGENTS.md 保持精简**（≤50 行）：推荐只保留协作原则/强制规则/入口，其余内容放 skill/docs 按需加载（规范见 docs/开发指南/文档规范.md）。
+- **文档精简（强制）**：写/改任何文档前先读 **docs/开发指南/文档规范.md**——只写「怎么跑 / 防复发 / 指针」，单文件正文 ≤200 行，**不保留历史信息**（日期、issue 编号、复盘、旧版本条目、完成报告），新增文档前过该文自查清单；判不准是否有用时保留。
+- **AGENTS.md 保持精简**（≤50 行）：只保留协作原则/强制规则/入口，其余放 skill/docs 按需加载。
 - **写操作默认拒绝（fail-closed）**：任何会改动外部状态的能力（推送/发布/触发流水线/删除），在非交互环境必须**显式确认参数**才放行，禁止「非交互 = 默认同意」；新增此类能力必须配防回归自测（实测教训见 docs/踩坑/）。
 
 ## 📚 入口
@@ -37,6 +38,6 @@
 - **插件开发**：skills/dsh-plugin-development/（插件形态/目录结构/发布流程）。
 - **质量**：quality-gates skill（10 项门禁：TDD/Gherkin/复杂度 ≤10/函数 ≤70 行/文件 ≤400 行/依赖无环/变异 ≥70%/覆盖率 85-75/防复发/真实环境验证）；资源预算见 skills/resource-budget-review/。
 - **仓库健康**：skills/dsh-github-triage/（issue/PR/CI 处理 + fork 池隔离）；建 fork 用 `node scripts/fork-pool.mjs create <编号>`（一条命令含装 hooks），推送前用 `check` 自检。
-- **升级兼容**：skills/plugin-upgrade/ + skills/dsh-upgrade-audit/（DSH 版本升级/兼容性审计，58 张升级卡）。
+- **升级兼容**：skills/plugin-upgrade/ + skills/dsh-upgrade-audit/（DSH 版本升级/兼容性审计）。
 - **验证**：verifying-dsh-plugins skill（隔离实例 + 浏览器，验证后清理环境）。
-- **踩坑**：docs/踩坑/README.md；术语见 docs/术语表.md。
+- **踩坑**：docs/踩坑/README.md（症状 → 解法速查表，按报错关键词搜）；术语见 docs/术语表.md。

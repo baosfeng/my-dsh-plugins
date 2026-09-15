@@ -7,20 +7,20 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 
 本 skill 是**流程控制器**：判断当前处在哪个阶段、该跑什么命令、过什么门禁、细节找哪个 owner skill。加载它之后按阶段加载对应 skill，**不把别人的规则抄一遍**。
 
-> 适用：本仓库功能开发与插件改动的主线（想法 → release）。跨多个插件/宿主的编排用 `plugin-workflow`（阶段账本 + 确认边界），DSH 宿主版本迁移用 `skills/plugin-upgrade/` + `skills/dsh-upgrade-audit/`。
+> 适用：本仓库功能开发与插件改动的主线（想法 → release）。DSH 宿主版本迁移用 `skills/plugin-upgrade/` + `skills/dsh-upgrade-audit/`。
 
 ## 阶段总览
 
-| #   | 阶段       | 关键动作                                           | Owner skill / 依据                                                                                     | 出阶段门禁                                          |
-| --- | ---------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| 0   | 需求登记   | 口头想法 → 规范 issue（背景/方案/验收）            | `dsh-issue-request`                                                                                    | 有 issue 编号 + 可勾选验收标准                      |
-| 1   | 确认与拆解 | 定位模块与需求清单、定验收标准、定影响面、拆子任务 | 本 skill + `dsh-plugin-development`                                                                    | 需求清单有条目；影响面（改哪些插件/文档）清楚       |
-| 2   | 开发       | 先写失败测试（RED）→ 最简实现（GREEN）→ 重构       | `.reasonix/skills/testing-standards` · `coding-standards` · `quality-gates` · `dsh-plugin-development` | RED 记录可见 + `cd plugins/<name> && npm test` 全绿 |
-| 3   | 验证       | 选测试层级 → 全量校验 → 隔离实例 + 真实浏览器/模型 | `plugin-test` + `verifying-dsh-plugins`                                                                | 需求清单逐条回归 + 功能级验证清单可勾选             |
-| 4   | 提交       | 提交信息规范 + 提交前本地校验                      | `.reasonix/skills/commit-standards`                                                                    | `node scripts/verify-local.mjs --fast` 通过         |
-| 5   | 发版       | bump + CHANGELOG + 门禁 + tag/Release/npm          | `skills/plugin-release/` + `node scripts/release.mjs`                                                  | #67 功能级清单 `verification/<插件>-<版本>.md` 全勾 |
-| 6   | 文档       | README / docs 索引 / 需求清单 / CHANGELOG 同步     | `docs/开发指南/文档规范.md`                                                                            | `node scripts/check-docs.mjs` 退出 0                |
-| 7   | 收尾       | 清理验证残留 + 本地实例生效 + 汇报证据             | `verifying-dsh-plugins`（步骤 4）                                                                      | 无残留进程/目录/端口；`job_list` 无 running         |
+| #   | 阶段       | 关键动作                                             | Owner skill / 依据                                                                                     | 出阶段门禁                                          |
+| --- | ---------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| 0   | 需求登记   | 口头想法 → 规范 issue（背景/方案/验收）              | `dsh-issue-request`                                                                                    | 有 issue 编号 + 可勾选验收标准                      |
+| 1   | 确认与拆解 | 定位模块与相关 issue、定验收标准、定影响面、拆子任务 | 本 skill + `dsh-plugin-development`                                                                    | issue 验收标准明确；影响面（改哪些插件/文档）清楚   |
+| 2   | 开发       | 先写失败测试（RED）→ 最简实现（GREEN）→ 重构         | `.reasonix/skills/testing-standards` · `coding-standards` · `quality-gates` · `dsh-plugin-development` | RED 记录可见 + `cd plugins/<name> && npm test` 全绿 |
+| 3   | 验证       | 选测试层级 → 全量校验 → 隔离实例 + 真实浏览器/模型   | `plugin-test` + `verifying-dsh-plugins`                                                                | issue 验收标准逐条回归 + 功能级验证清单可勾选       |
+| 4   | 提交       | 提交信息规范 + 提交前本地校验                        | `.reasonix/skills/commit-standards`                                                                    | `node scripts/verify-local.mjs --fast` 通过         |
+| 5   | 发版       | bump + CHANGELOG + 门禁 + tag/Release/npm            | `skills/plugin-release/` + `node scripts/release.mjs`                                                  | #67 功能级清单 `verification/<插件>-<版本>.md` 全勾 |
+| 6   | 文档       | README / docs 索引 / CHANGELOG 同步                  | `docs/开发指南/文档规范.md`                                                                            | `node scripts/check-docs.mjs` 退出 0                |
+| 7   | 收尾       | 清理验证残留 + 本地实例生效 + 汇报证据               | `verifying-dsh-plugins`（步骤 4）                                                                      | 无残留进程/目录/端口；`job_list` 无 running         |
 
 ## 0. 需求登记（dsh-issue-request）
 
@@ -29,7 +29,7 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 
 ## 1. 确认与拆解
 
-1. **找模块与需求清单**：`docs/<模块>/需求清单.md`（条目编号 R1/R2/…，注明验证方式）。不存在则先建——它是本插件的**开发回归基准**，规则见 `dsh-plugin-development`「需求清单（强制）」。
+1. **找模块与需求**：需求以 **GitHub issue** 为准（模块定位见 `docs/<模块>/概述.md`）；**回归基准 = 该插件测试套件 + issue 验收标准**。
 2. **确认范围**：本次涉及哪些需求条目、可能连带影响哪些**易碎需求**（重启恢复 / 会话隔离 / 持久化不丢 / 数据不串）——易碎项必须有专门测试断言。
 3. **定影响面**：改动在 `plugins/<name>/**`（只跑该插件与依赖方）还是 `plugins/dsh-shared/**`、`scripts/**`（安全退化为全量）——裁剪规则见 `docs/开发指南/构建与测试.md`「`--fast` 的范围裁剪规则」。
 4. **拆解与派发**：可独立任务（开发/修复/验证/排查/文档）优先派子 agent，并行上限 3；失败用 `send_message` 续接原 agent（`AGENTS.md` 协作原则 4–6）。
@@ -47,7 +47,7 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 | 持久化 / 事件监听 / 轮询 / 后台任务                          | `skills/resource-budget-review/`（五维资源预算未评估不得声称完成）                       |
 | 单点测试                                                     | `cd plugins/<name> && npm test`                                                          |
 
-- **没有失败测试，就不写一行生产代码**；新增功能必须在需求清单补条目 + 补测试（禁止只改代码不补测试）。
+- **没有失败测试，就不写一行生产代码**；新增功能必须补测试并同步 issue 验收标准（禁止只改代码不补测试）。
 - 命令一律设超时：快速命令 ≤15s，长任务后台跑（`AGENTS.md` 强制规则）。
 
 ## 3. 验证
@@ -66,7 +66,7 @@ node scripts/verify-real-profile.mjs --skip    # 只做配置组合检查（不�
 - **选最小充分层级**：`plugin-test` skill（单测 / 覆盖率 / 真实 API e2e / 快照 / Web / 真实组合 / 打包产物冒烟）。
 - **真实环境（issue #39）**：`verify-real-profile.mjs` 复刻生产配置组合 + 独立端口启动 + API 冒烟 + 自动清理；`duplicate loader entry id` 这类炸弹只在这一层暴露，全新实例测不出。
 - **功能级（issue #67）**：发版前必须在隔离实例 + 真实浏览器（或真实模型调用）里把核心功能完整走通一次 → `verifying-dsh-plugins`（起实例、fetch 探针对照组/实验组、client UI 验收、清理）。
-- **需求回归（强制）**：对照 `docs/<模块>/需求清单.md` 逐条验证（跑测试 + 手动验证受影响条目），确认无回归才能提交。
+- **需求回归（强制）**：对照对应 issue 的验收标准 + 插件测试逐条验证（跑测试 + 手动验证受影响条目），确认无回归才能提交。
 
 ## 4. 提交
 
@@ -106,7 +106,7 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | 位置与语言    | 统一放 `docs/` 下，目录与文件名、内容全中文（`docs/开发指南/文档规范.md`）                                               |
 | 一致性强校验  | `node scripts/check-docs.mjs`：根 README 插件表版本 = `package.json`；`docs/索引.md` 有条目；插件 README 有 npm 安装章节 |
-| 需求清单      | 新需求补条目（含验证方式），易碎需求标注专门断言                                                                         |
+| 需求 / issue  | 新需求补 issue 验收标准；易碎需求标注专门断言                                                                            |
 | CHANGELOG     | `--bump` 自动生成，可事后补详情                                                                                          |
 | README / 截图 | 功能或 UI 变化必须同步截图，与代码一起提交、一起发版                                                                     |
 | AGENTS.md     | 只放入口与强制规则且 ≤50 行，细节写 skill/docs（文档规范「AGENTS.md 规范」）                                             |
@@ -127,7 +127,6 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 | 新建插件（形态 / 命名 / 骨架）        | `dsh-plugin-development` + `plugin-write`              |
 | 不知道该跑哪个测试层级                | `plugin-test`                                          |
 | 要真实浏览器 / 真实模型证明           | `verifying-dsh-plugins`                                |
-| 多插件串起来跑（含升级 / 回滚）       | `plugin-workflow`                                      |
 | 发版 / 打包 / 发布轨                  | `skills/plugin-release/` + `docs/开发指南/发版流程.md` |
 | 升级 DSH 宿主版本                     | `skills/plugin-upgrade/` + `skills/dsh-upgrade-audit/` |
 
@@ -135,7 +134,7 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 
 | 反模式                                   | 后果 / 正确做法                                        |
 | ---------------------------------------- | ------------------------------------------------------ |
-| 没 issue、没需求清单就开写               | 无法验收、无回归基准 → 先走阶段 0/1                    |
+| 没 issue 就开写                          | 无法验收、无回归基准 → 先走阶段 0/1                    |
 | 只跑单测就说"功能可用"                   | 真实环境门禁不过 → 隔离实例 + 浏览器/真实模型验证      |
 | 覆盖率达标就以为测住了                   | 变异分数不过 = 测试无效 → 两项都要过                   |
 | 功能级清单留空、或用错版本号文件名就发版 | `release.mjs` 3c 阻断 → 按 bump 后版本对齐文件名并勾选 |
@@ -149,11 +148,10 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 | ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
 | `AGENTS.md`                                                                                      | 协作与项目管理原则、强制规则、入口       |
 | `skills/dsh-issue-request/SKILL.md`                                                              | 需求登记（issue 模板、防重复、验收标准） |
-| `skills/dsh-plugin-development/SKILL.md`                                                         | 插件形态/目录结构/需求清单/开发流程      |
+| `skills/dsh-plugin-development/SKILL.md`                                                         | 插件形态/目录结构/开发流程               |
 | `skills/plugin-test/SKILL.md`                                                                    | 测试层级选择                             |
 | `skills/verifying-dsh-plugins/SKILL.md`                                                          | #67 功能级验证与收尾清理                 |
 | `skills/plugin-release/SKILL.md`                                                                 | 发布轨、打包、语义门禁、回滚             |
-| `skills/plugin-workflow/SKILL.md`                                                                | 多阶段编排与阶段账本                     |
 | `.reasonix/skills/quality-gates/SKILL.md`                                                        | 交付质量门禁（强制）                     |
 | `.reasonix/skills/testing-standards/SKILL.md`                                                    | TDD Red→Green→Refactor                   |
 | `.reasonix/skills/commit-standards/SKILL.md`                                                     | 提交信息格式与确认流程                   |

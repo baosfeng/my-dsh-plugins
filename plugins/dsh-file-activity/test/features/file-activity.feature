@@ -1,5 +1,5 @@
 # language: zh-CN
-# 需求来源：docs/文件活动追踪/需求清单.md（R1-R6、R9、R12）
+# 需求来源：GitHub issue + docs/文件活动追踪/概述.md（R1-R6、R9、R12）
 # 验收基准：host-smoke.mjs / host-edge.mjs 的 Gherkin 化表达；新增需求须在此补充场景
 
 功能: 文件活动追踪

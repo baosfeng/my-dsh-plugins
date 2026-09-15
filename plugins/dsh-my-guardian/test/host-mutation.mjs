@@ -16,7 +16,7 @@ process.env.DSH_HOME = dir
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** 轮询等待异步结果**出现**（#217：不再用固定 sleep 赌启动/落盘跑完）。
- *  见 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md。 */
+ *  见 docs/踩坑/README.md。 */
 async function waitFor(check, timeoutMs = 10000, intervalMs = 10) {
   const deadline = Date.now() + timeoutMs
   for (;;) {

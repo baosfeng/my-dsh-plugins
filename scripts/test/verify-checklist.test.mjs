@@ -30,8 +30,9 @@ import {
 } from '../lib/verify-checklist.mjs'
 
 const repoRoot = join(fileURLToPath(new URL('../../', import.meta.url)))
-/** issue #329 的原始受害文件（已发布版本的清单 + 人工验证记录）。 */
-const REAL_CHECKLIST = join(repoRoot, 'verification', 'dsh-think-zh-expand-0.4.10.md')
+/** issue #329 的原始受害样例（已发布版本的清单 + 人工验证记录）。固定 fixture：
+ *  verification/ 下的是发版产物、按需生成也会被清理，测试不应依赖它。 */
+const REAL_CHECKLIST = join(repoRoot, 'scripts', 'test', 'fixtures', 'verify-checklist-real.md')
 /** 该文件里由 --clean-externals 生成的那条自动项（重跑同参数时逐字相同）。 */
 const REAL_EXTRA_AUTO = 'external 缺包演练：隔离实例 node_modules 不含 dsh-md-render（启动日志无相关错误）'
 

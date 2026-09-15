@@ -9,7 +9,7 @@
  * 它立即 resolve（此时变更还在 `pending` 里，根本没进 state）。
  *
  * 本文件用「注入受控慢 IO」把竞态变成 100% 可复现（不靠造负载，判据见
- * docs/踩坑/固定sleep等异步落盘导致CI-flaky.md）：
+ * docs/踩坑/README.md）：
  *  - 挂起 `readFile` → 确定性地构造「加载慢于事件到达/查询」；
  *  - 断言对象是**可等待的信号**（whenReady / whenPersisted），与机器快慢无关。
  *

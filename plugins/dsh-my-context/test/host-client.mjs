@@ -5,7 +5,7 @@
  * lib/parts/ 片段经 scripts/build.mjs 拼接）。本测试用最小 React 桩加载
  * bundle、校验注册契约，并用组件工厂生成本地渲染树——确保 4 个片段拼接
  * 后无符号引用错误、页签注册成功、面板顶层结构可渲染。完整 GUI 渲染依赖
- * 真实浏览器（见需求清单 R10 手动验证），此处不模拟 hooks/fetch。
+ * 真实浏览器（R10 需人工验证），此处不模拟 hooks/fetch。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'

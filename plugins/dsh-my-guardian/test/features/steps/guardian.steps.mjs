@@ -40,7 +40,7 @@ class World {
 
   /** 条件轮询直到 check() 为真（落盘/挂载都是异步的：固定 sleep 或同步读
    *  都会在慢机器上赌输——#217 负载验证实测 state.json 尚未生成就 ENOENT）。
-   *  见 docs/踩坑/固定sleep等异步落盘导致CI-flaky.md。 */
+   *  见 docs/踩坑/README.md。 */
   async waitFor(check, timeoutMs = 10000, label = '条件') {
     const deadline = Date.now() + timeoutMs
     for (;;) {

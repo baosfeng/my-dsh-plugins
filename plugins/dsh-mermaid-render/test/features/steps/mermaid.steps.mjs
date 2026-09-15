@@ -439,6 +439,10 @@ class World {
   /**
    * 挂载 host 半（issue #194）：mock systemPrompt 服务捕获 section 注册，
    * mock logger 捕获挂载日志。config 省略即默认配置。
+   *
+   * `effect` 是 cordis fiber 的 effect 注册入口（#296 起 apply 第一步就调用它，
+   * 用于注册 mermaid 引擎的静态资源路由）；本场景只关心 prompt section 与日志，
+   * 所以 mock 成「立即执行 + 返回 disposer」——与真实语义一致的最小契约。
    */
   mountHost(config) {
     this.hostSections = []
@@ -446,6 +450,10 @@ class World {
     const world = this
     hostApply(
       {
+        effect(fn) {
+          fn()
+          return () => {}
+        },
         systemPrompt: {
           section(options) {
             world.hostSections.push(options)

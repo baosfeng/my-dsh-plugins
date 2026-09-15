@@ -384,12 +384,8 @@ test('引擎加载失败：无炸弹图残留、错误横幅可见、重试按�
     initialize: () => {},
     render: async (id) => ({ svg: '<svg id="' + id + '"></svg>' }),
   }
-  console.log('DEBUG global.window.mermaid:', !!global.window.mermaid)
-  console.log('DEBUG typeof window:', typeof window)
-  console.log('DEBUG window.mermaid:', !!window.mermaid) // eslint-disable-line no-undef
   const retry = findButton(tree, '重试')
   retry.onClick()
-  console.log('DEBUG after retry, mermaidReady should be null')
   const tree2 = renderCard(env, root)
   assert.ok(
     collectCardText(tree2).some((t) => t.includes('渲染中')),
@@ -397,21 +393,13 @@ test('引擎加载失败：无炸弹图残留、错误横幅可见、重试按�
   )
   await sleep(20)
   const tree3 = renderCard(env, root)
-  // Debug: print tree3 structure
-  console.log(
-    'DEBUG tree3:',
-    JSON.stringify(tree3, (key, val) => (typeof val === 'function' ? '[fn]' : val), 2).slice(0, 2000),
-  )
   const classNames3 = collectClassNames(tree3)
-  const texts3 = collectCardText(tree3)
-  console.log('DEBUG classNames3:', classNames3)
-  console.log('DEBUG texts3:', texts3)
   assert.ok(
     classNames3.includes('dsh-mermaid-render-svg'),
     '重试后成功渲染出 SVG（重试清掉了引擎加载缓存）: classNames=' +
       JSON.stringify(classNames3) +
       ' texts=' +
-      JSON.stringify(texts3),
+      JSON.stringify(collectCardText(tree3)),
   )
 })
 
@@ -537,4 +525,115 @@ test('不回归：非流式块立即挂载；data-streaming 移除后立即挂�
   live.row.removeAttribute('data-streaming') // 消息流式结束
   for (const obs of env.observers) obs.trigger()
   assert.ok(isMounted(live), '流式结束后立即挂载（兜底路径不变）')
+})
+
+// ══ 场景 7（issue #296）：重试必须真的重新拉引擎，而不是复用失败缓存 ══
+test('重试重新拉取引擎：首次 fetch 失败后重试成功（缓存已清、渲染恢复）', async () => {
+  const env = makeEnv()
+  const fx = makeMermaidBlock(env.body, 'flowchart TD\n  A --> B')
+  const fetchCalls = []
+  let engineAvailable = false
+  global.fetch = async (url) => {
+    fetchCalls.push(url)
+    if (!engineAvailable) throw new Error('mock fetch: engine not available')
+    return { ok: true, status: 200, text: async () => '/* mermaid umd */ window.mermaid = __ENGINE__' }
+  }
+  instantiate(env)
+  // 引擎此时仍未加载（window.mermaid 未定义）→ 首轮真的走 fetch 失败路径
+  global.window.mermaid = undefined
+  renderCard(env, env.roots[0]) // 首次渲染触发 effect → ensureMermaid 失败
+  await sleep(20)
+  assert.equal(fetchCalls.length, 1, '首次渲染拉过一次引擎')
+  const tree = renderCard(env, env.roots[0])
+  assert.ok(
+    collectCardText(tree).some((t) => t.includes('engine not available')),
+    '首次加载失败进入错误态：' + JSON.stringify(collectCardText(tree)),
+  )
+
+  // 资源恢复；同时让脚本「注入即生效」（假 DOM 不会执行脚本，只能这样模拟）
+  engineAvailable = true
+  const realCreateElement = env.document.createElement
+  env.document.createElement = (tag) => {
+    if (String(tag).toUpperCase() !== 'SCRIPT') return realCreateElement(tag)
+    const script = makeEl('script')
+    script.onAppend = () => {
+      global.window.mermaid = {
+        initialize: () => {},
+        render: async (id) => ({ svg: '<svg id="' + id + '"></svg>' }),
+      }
+      return script
+    }
+    return script
+  }
+  const origAppend = env.head.appendChild.bind(env.head)
+  env.head.appendChild = (child) => {
+    const out = origAppend(child)
+    if (child && typeof child.onAppend === 'function') child.onAppend()
+    return out
+  }
+  findButton(tree, '重试').onClick()
+  renderCard(env, env.roots[0]) // 重试后的新一轮 effect → 必须再次 fetch
+  await sleep(30)
+  const tree2 = renderCard(env, env.roots[0])
+  assert.ok(fetchCalls.length > 1, '重试必须重新拉引擎（失败缓存不得复用）：' + JSON.stringify(fetchCalls))
+  assert.ok(
+    collectClassNames(tree2).includes('dsh-mermaid-render-svg'),
+    '重试后渲染出 SVG：' + JSON.stringify(collectCardText(tree2)),
+  )
+  assert.deepEqual(bombResidue(env.body), RESIDUE_ZERO, '恢复过程中页面无炸弹图残留')
+  void fx
+})
+
+// ══ 场景 8（issue #296）：上一轮迟到的失败不得覆盖新一轮的成功 ══
+test('重试成功后，被取代那轮迟到的失败不覆盖新结果（渲染令牌）', async () => {
+  const env = makeEnv()
+  const fx = makeMermaidBlock(env.body, 'flowchart TD\n  A --> B')
+  const deferred = []
+  let failMode = 'hold'
+  global.fetch = () =>
+    new Promise((_resolve, reject) => {
+      if (failMode === 'ok') return _resolve({ ok: true, status: 200, text: async () => '/* umd */' })
+      if (failMode === 'reject') return reject(new Error('mock fetch: engine not available'))
+      deferred.push(reject) // hold：留在飞，由用例决定何时落定
+    })
+  instantiate(env)
+  renderCard(env, env.roots[0]) // 第 1 轮：引擎加载挂起（留在飞）
+  await sleep(10)
+  // 第 1 轮的失败落定 → 卡片进入错误态（真实失败路径）
+  failMode = 'reject'
+  for (const reject of deferred.splice(0)) reject(new Error('mock fetch: engine not available'))
+  await sleep(20)
+  const errTree = renderCard(env, env.roots[0])
+  const retry = findButton(errTree, '重试')
+  assert.ok(retry, '失败卡片提供重试：' + JSON.stringify(collectCardText(errTree)))
+
+  // 引擎已被其它路径加载好（资源恢复）→ 点重试，第 2 轮应立刻渲染成功
+  global.window.mermaid = {
+    initialize: () => {},
+    render: async (id) => ({ svg: '<svg id="' + id + '"></svg>' }),
+  }
+  failMode = 'ok'
+  retry.onClick()
+  renderCard(env, env.roots[0])
+  await sleep(20)
+  const tree2 = renderCard(env, env.roots[0])
+  assert.ok(
+    collectClassNames(tree2).includes('dsh-mermaid-render-svg'),
+    '第 2 轮已成功渲染：' + JSON.stringify(collectCardText(tree2)),
+  )
+
+  // 第 1 轮的网络失败「迟到」落定（重试后的第二轮已成功）——不得把卡片打回错误态
+  failMode = 'reject'
+  for (const reject of deferred.splice(0)) reject(new Error('mock fetch: engine not available'))
+  await sleep(20)
+  const tree3 = renderCard(env, env.roots[0])
+  assert.ok(
+    collectClassNames(tree3).includes('dsh-mermaid-render-svg'),
+    '旧一轮的失败不得覆盖新结果：' + JSON.stringify(collectCardText(tree3)),
+  )
+  assert.ok(
+    !collectCardText(tree3).some((t) => t.includes('engine not available')),
+    '错误态不得回退（渲染令牌挡住迟到的失败）',
+  )
+  void fx
 })

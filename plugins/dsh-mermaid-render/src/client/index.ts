@@ -104,12 +104,8 @@ function initEngine(engine: MermaidEngine): MermaidEngine {
 /** Load (or reuse) the mermaid engine. Fetch from assets on first use. */
 function ensureMermaid(): Promise<MermaidEngine> {
   if (typeof window !== 'undefined' && window.mermaid) {
-    console.log('DEBUG ensureMermaid: window.mermaid found, returning directly')
-    const result = Promise.resolve(initEngine(window.mermaid))
-    console.log('DEBUG ensureMermaid: returning promise:', typeof result)
-    return result
+    return Promise.resolve(initEngine(window.mermaid))
   }
-  console.log('DEBUG ensureMermaid: window.mermaid not found, mermaidReady:', !!mermaidReady)
   if (mermaidReady) return mermaidReady
   mermaidReady = new Promise<MermaidEngine>((resolve, reject) => {
     try {
@@ -386,35 +382,45 @@ let noticeTimer: ReturnType<typeof setTimeout> | null = null
 /**
  * 渲染状态机（issue #195）：加载引擎 → **离屏渲染** → 成功取 SVG / 失败留原因。
  * 独立成 hook 是为了让 MermaidCard 保持在函数行数门禁（≤70 行）内。
+ *
+ * 渲染令牌（issue #296）：effect 每次运行（含重试）先作废旧令牌再挂新令牌，异步
+ * 结果落定时令牌已废就丢弃。只靠 effect 的 cancelled 标志不够——引擎加载有缓存层
+ * （mermaidReady）且是慢操作，重试清缓存并发起新一轮后，上一轮仍可能迟到落定，把
+ * 已渲染好的卡片打回错误态（用户看到「重试没生效」）；cancelled 只在 React 真跑
+ * 清理时翻转，挡不住这种迟到。
  */
 function useMermaidRender(entryId: string, source: string, attempt: number) {
   const [status, setStatus] = useState('loading')
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-
+  // 令牌表随组件实例常驻（useState 初值只取一次），键为该卡片的 entryId。
+  const [tokens] = useState(() => new Map<string, object>())
   useEffect(() => {
-    let cancelled = false
+    // 作废旧令牌 → 新一轮尝试拿到唯一令牌，此后旧结果一律不落定。
+    const token = {}
+    tokens.set(entryId, token)
+    const current = (): boolean => tokens.get(entryId) === token
     setStatus('loading')
     ensureMermaid()
       .then((m) => renderSvg(m, entryId, source))
       .then((svgText) => {
-        if (cancelled) return
+        if (!current()) return
         setSvg(svgText)
         setError(null)
         setStatus('ok')
       })
       .catch((err: unknown) => {
-        if (cancelled) return
+        if (!current()) return
         setError(errMsg(err))
         setStatus('error')
       })
     return () => {
-      cancelled = true
+      if (tokens.get(entryId) === token) tokens.delete(entryId)
     }
-  }, [entryId, source, attempt])
-
-  /** 立刻回到 loading（重试时先重置视图，不等 effect 跑完）。 */
+  }, [entryId, source, attempt, tokens])
+  /** 立刻回到 loading（重试时先重置视图、并作废在飞的一轮，不等 effect 跑完）。 */
   function begin(): void {
+    tokens.delete(entryId)
     setError(null)
     setStatus('loading')
   }

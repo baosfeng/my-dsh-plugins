@@ -31,6 +31,13 @@ plugins/*/lib/.client-build/
 # 第三方压缩产物（vendor 内嵌引擎）
 plugins/dsh-mermaid-render/vendor/mermaid.min.js
 
+# 同一份压缩引擎的**运行时副本**（build.mjs 从 vendor copyFileSync 到 assets/，由
+# DSH webServer 静态托管给浏览器，见 test/build-inject.mjs 的逐字节一致断言）。
+# issue #296：此前只忽略了 vendor，asset 被 `prettier --write .` 美化后提交
+# （6.9MB/177k 行进仓库），随后 `test (dsh-mermaid-render)` 长期红 —— 两个文件名
+# 必须一起忽略，否则下一次有人跑 prettier 就会复现。
+plugins/dsh-mermaid-render/assets/mermaid-10.9.3.min.js
+
 # npm 生成的锁文件（格式由 npm 维护，避免与 npm 输出冲突）
 package-lock.json
 

@@ -24,6 +24,9 @@ import { dirSync } from 'tmp'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  bootFailureExcerpt,
+  decideBootOutcome,
+  fatalBootHits,
   PLUGIN_STATE_DIRS,
   readAddon,
   readAddonExternals,
@@ -659,5 +662,76 @@ describe('插件自维护启停状态的剥离（issue #240）', () => {
     const copyAt = script.indexOf('cpSync(realProfile, simProfile')
     expect(copyAt).toBeGreaterThan(-1)
     expect(filterAt).toBeGreaterThan(copyAt)
+  })
+})
+
+// ── issue #305：启动结果判定必须 fail-closed（崩溃不得被判成"就绪"）──────────
+/**
+ * 复现的假通过场景：`dsh web` **先监听端口、后加载插件树**。插件 apply 崩掉时端口
+ * 已经能回 HTTP，旧实现据此 `pass('实例启动就绪')` 并 break，随后进程才带栈退出；
+ * 崩溃栈又在脚本读完日志之后才落盘 → 报「✓ 就绪 / ✓ 日志无 error」，把 P0 放行
+ * （#298 的 inject 缺 webServer 就是这么潜伏到用户侧的）。
+ *
+ * 这组用例把判定逻辑钉成纯函数语义：**正向证据（就绪行）才是通过，崩溃特征一票否决**。
+ */
+describe('启动结果判定 fail-closed（issue #305）', () => {
+  /** 实测的健康就绪行（#305 真机抓取，43 字符 token）。 */
+  const READY_LINE = 'dsh web: http://127.0.0.1:3095/?token=vZdUwaYQaZajU5RckADD4qTem88VJxN678-a5QrABfI'
+  /** 实测的崩溃日志（#298 形态，逐行摘自 dsh-web.log）。 */
+  const CRASH_LOG = [
+    'file:///…/dsh-app-boot/lib/index.js:1545',
+    '\t\tthrow new Error(`${binName}: ${stage}: ${detail}${stack}`, { cause });',
+    '\t\t      ^',
+    'Error: dsh: plugin tree failed to load: failed to apply loader entry include (cordis:include): failed to apply loader entry mermaid-render (dsh-mermaid-render): cannot get property "webServer" without inject',
+    '    at Fiber.<anonymous> (…/dsh-mermaid-render/lib/index.js:67:26)',
+  ].join('\n')
+
+  it('崩溃日志 → failed（旧实现在这里报"就绪 + 无 error"）', () => {
+    const out = decideBootOutcome({ logText: CRASH_LOG, exited: true })
+    expect(out.verdict).toBe('failed')
+    expect(out.hits).toContain('plugin tree failed to load')
+    expect(out.hits).toContain('without inject')
+  })
+
+  it('崩溃特征优先于就绪行（先崩后残留的 token 行不算通过）', () => {
+    const out = decideBootOutcome({ logText: `${CRASH_LOG}\n${READY_LINE}`, exited: false })
+    expect(out.verdict).toBe('failed')
+  })
+
+  it('就绪行 + 进程存活 → ready（健康实例不误伤）', () => {
+    expect(decideBootOutcome({ logText: READY_LINE, exited: false })).toEqual({
+      verdict: 'ready',
+      hits: [],
+      reason: null,
+    })
+  })
+
+  it('就绪行但进程已退出 → failed（起来了又崩同样不可用）', () => {
+    expect(decideBootOutcome({ logText: READY_LINE, exited: true }).verdict).toBe('failed')
+  })
+
+  it('进程退出且无就绪行 → failed（启动即崩，日志可能还没落盘）', () => {
+    expect(decideBootOutcome({ logText: '', exited: true }).verdict).toBe('failed')
+  })
+
+  it('空日志且进程存活 → pending（还没起好，调用方继续轮询）', () => {
+    expect(decideBootOutcome({ logText: '', exited: false }).verdict).toBe('pending')
+  })
+
+  it('关键词表覆盖 dsh/cordis 的真实崩溃文案（含 #294 缺包场景）', () => {
+    for (const text of [
+      'failed to import loader entry x: missed the module table',
+      'duplicate loader entry id: foo',
+      'cannot get property "webServer" without inject',
+    ]) {
+      expect(fatalBootHits({ logText: text }).length, text).toBeGreaterThan(0)
+    }
+    // 无关文本不得误报（避免把正常日志判死）
+    expect(fatalBootHits({ logText: 'dsh web: http://127.0.0.1:3095/?token=abc' })).toEqual([])
+  })
+
+  it('崩溃摘要摘出关键行；空日志给出显式说明而不是空串', () => {
+    expect(bootFailureExcerpt({ logText: CRASH_LOG })).toContain('plugin tree failed to load')
+    expect(bootFailureExcerpt({ logText: '' })).toContain('实例日志为空')
   })
 })

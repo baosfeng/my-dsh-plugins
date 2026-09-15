@@ -30,6 +30,14 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
 - 自动项 **3 条**（配置组合唯一 / 实例就绪 / 日志无 error）由脚本勾选；**功能级 5 条由验证者勾选**。
   API 断言**不在这里** —— 它需要浏览器会话（issue #257），见下方「API 断言怎么算」。
 - 脚本重跑不覆盖已勾选项（按文案合并），所以可以先预验证再发版。
+- **崩溃必须 fail-closed（issue #305）**：实例"就绪"的判据是三条同时满足 —— 端口有 HTTP 响应
+  **+** 日志出现正向就绪行（`dsh web: http://127.0.0.1:<port>/?token=…`）**+** 进程仍存活；
+  并全程扫描致命启动特征（`plugin tree failed to load` / `failed to apply|import loader entry` /
+  `without inject` / `cannot get property` / `missed the module table` / `duplicate loader entry`）。
+  命中即 `exit 1`，输出**崩溃栈关键行 + 隔离实例日志路径**。
+  ⚠️ 为什么这么严：`dsh web` **先监听端口、后加载插件树** —— 插件 `apply` 崩掉时端口已经能回
+  HTTP，只看端口就会把「实例整个起不来」误报成「✓ 就绪 / ✓ 日志无 error」（#298 的 P0 就是这么
+  潜伏到用户侧的）。**看到 `✓ 就绪` 不再等于实例活着**，脚本已把这条判死。
 - 非 bundle 插件（agent preset 等）按自身安装方式验证，手写同格式清单并注明验证方式。
 
 ## 步骤 1：起隔离实例（独立 DSH_HOME + 独立端口）
@@ -68,11 +76,15 @@ cat ~/.dsh/profiles/<profile>/.dsh-market/state.json | head -c 300   # disabled 
 # 复刻生产 profile 配置组合到 /tmp/dsh-verify-real-3099（独立 DSH_HOME），--keep 让实例保持运行
 node scripts/verify-real-profile.mjs --addons plugins/<name> --port 3099 --keep \
   > /tmp/dsh-verify-real-3099.console.log 2>&1
-# 健康检查：新版无 token 时根路径返回 401 也算已就绪（脚本同样只要求有任何 HTTP 响应）
+# 健康检查：新版无 token 时根路径返回 401 也算已监听（脚本据此判"端口活着"，
+# 但**就绪判定还要看日志就绪行 + 进程存活**，见上「崩溃必须 fail-closed」）
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3099/
 ```
 
 - 实例输出自 issue #257 起**落盘**在隔离 DSH_HOME 的 `dsh-web.log`（`--keep` 时可直接读；旧的"日志见 /tmp/…"提示已失效）。
+  **实例起不来 / 崩溃时，第一手证据就在这里**（`plugin tree failed to load`、cordis 栈等），
+  脚本失败时会打印该路径与摘要 —— 不要只看脚本控制台：崩溃栈可能晚于脚本读日志才落盘（issue #305）。
+  健康实例该文件只有一行：`dsh web: http://127.0.0.1:<port>/?token=…`。
 - 隔离 DSH_HOME 会复制生产 profile 的 `.credentials.yaml`（真实凭据），验证后必须删目录。
 - `--api-path /<路由>` 可对 server 端路由做 200 冒烟，但 **⚠️ 需要浏览器会话**：DSH web 有认证层，非交互环境拿不到访问 token，这一项会**显式失败**（issue #257）。
   **API 断言怎么算**：在浏览器步骤（下文「步骤 3」）里带 token 打开实例、从 devtools/Network 或页面行为确认路由可用；**不要**因为 `--api-path` 失败就判定"插件路由异常"，也不要为此删掉检查。

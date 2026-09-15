@@ -97,14 +97,36 @@ jobs:
               }
             }
 
-            // 分配 reviewer
-            if (reviewers.size > 0) {
-              await github.rest.pulls.requestReviewers({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number,
-                reviewers: Array.from(reviewers)
-              });
+            // 分配 reviewer（issue #304）
+            // 旧写法把候选集合原样丢给 requestReviewers，而候选里就含 PR 作者本人
+            // （个人仓库的 PR 作者恒为本人）→ GitHub 返回 422
+            // "Review cannot be requested from pull request author"（run 34969856346），
+            // 整个 job 必然失败、自动指派从未生效。现在改为：
+            //   过滤 PR 作者 → 无可用对象时优雅跳过（打 notice，不失败）→
+            //   其余异常降级为 warning（自动指派是辅助能力，不该给 PR 挂假红灯）。
+            const prAuthor = context.payload.pull_request?.user?.login ?? '';
+            try {
+              const { pathToFileURL } = await import('node:url');
+              const { resolveReviewers, describeAssignment } = await import(
+                pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/reviewer-assignment.mjs`).href
+              );
+
+              const plan = resolveReviewers({ candidateReviewers: Array.from(reviewers), prAuthor });
+              core.info(describeAssignment(plan, prAuthor));
+
+              if (plan.eligible.length === 0) {
+                core.notice(`自动指派已跳过（job 仍成功）：${plan.skipReason === 'only-pr-author' ? '唯一候选是 PR 作者本人，GitHub 不允许请求自审' : '本次改动没有命中任何候选账号'}`);
+              } else {
+                await github.rest.pulls.requestReviewers({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.issue.number,
+                  reviewers: plan.eligible
+                });
+                core.info(`已请求 review：${plan.eligible.join(', ')}`);
+              }
+            } catch (error) {
+              core.warning(`自动指派未完成（降级为警告，job 仍成功）：${error.message}`);
             }
 
             // 添加审查焦点评论

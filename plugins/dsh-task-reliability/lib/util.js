@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto';
 export { withTimeout, userMessage } from 'dsh-shared';
 export function randomId(prefix) {
-    return `${prefix}-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+    // CodeQL js/insecure-randomness 修复：改用 crypto.randomUUID()
+    // （密码学安全随机，无种子碰撞风险）
+    return `${prefix}-${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 export function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));

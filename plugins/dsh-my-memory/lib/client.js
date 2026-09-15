@@ -34,7 +34,7 @@ window.__ModuleLoader__.load({
     try {
       ui = require('@deepseek-ai/dsh-client-ui-primitives')
     } catch {
-      ui = null  // 宿主模块不可用时降级
+      ui = null // 宿主模块不可用时降级
     }
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the

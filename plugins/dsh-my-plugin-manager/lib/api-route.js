@@ -11,7 +11,7 @@
  * cache-control: no-cache.
  */
 import { readJsonBody, writeError, writeJson } from 'dsh-shared';
-import { installedVersionOf, installPlugin, uninstallPlugin, updatePlugin, outdatedPlugins, enablePlugin, disablePlugin } from './manage.js';
+import { installedVersionOf, installPlugin, uninstallPlugin, updatePlugin, outdatedPlugins, enablePlugin, disablePlugin, } from './manage.js';
 import { fetchPackageDetail, searchNpmPlugins } from './registry.js';
 export function createApiHandler({ ctx, profile, profileDir, fence, }) {
     const logger = ctx.logger;
@@ -119,14 +119,16 @@ async function handleInstalled(ctx, profileDir, response) {
         // 更新检查失败不影响已安装列表显示
     }
     // 合并更新信息到 entries
-    const entriesWithUpdates = entries.map(entry => {
-        const update = updates.find(u => u.name === entry.moduleName);
+    const entriesWithUpdates = entries.map((entry) => {
+        const update = updates.find((u) => u.name === entry.moduleName);
         return {
             ...entry,
-            updateAvailable: update ? {
-                current: update.current,
-                latest: update.latest,
-            } : null,
+            updateAvailable: update
+                ? {
+                    current: update.current,
+                    latest: update.latest,
+                }
+                : null,
         };
     });
     writeJson(response, 200, { ok: true, value: { entries: entriesWithUpdates } });

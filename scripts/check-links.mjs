@@ -7,9 +7,13 @@
  * 自动校验**——scripts/check-docs.mjs 只覆盖"插件 ↔ 根 README / docs 索引与模块 / 安装章节"的
  * 一致性，完全不看链接与锚点，所以这类腐烂长期无人发现。本脚本把那次审计固化成门禁。
  *
- * 检查的 5 类（任一失败 exit 1）：
+ * 检查的 6 类（任一失败 exit 1）：
  *   1. link   markdown 相对链接与图片 ](path) ](path#anchor)：按「文件所在目录」与「仓库根」
  *             两种基准解析，任一存在即有效；目录链接（尾部 /）与 #anchor-only 同样处理。
+ *   1b. syntax 残缺的 markdown 链接语法：`](` 到行尾没闭合（rule 1）与 `[文字)` 缺左括号（rule 2）。
+ *             这类文本在 GitHub 上不渲染成链接，是**真坏链**，但路径检查看不见它（没有可解析的目标，
+ *             门禁曾因此全绿放行 4 处 `[docs/踩坑/README.md)`）；排除策略见下方 maskInlineCode
+ *             与 MISPLACED_PAREN_RE 的注释。
  *   2. anchor md 链接的 #fragment 必须命中目标 md 的标题锚点集合（GitHub slug 规则，中文标题的
  *             全角括号等符号按 GitHub 行为剔除：#需求回归（强制要求） → #需求回归强制要求）。
  *   3. path   反引号内的白名单前缀路径 token（docs/ skills/ scripts/ plugins/ verification/
@@ -27,7 +31,9 @@
  *   · 外部 URL（http/https/mailto/data:/tel: 等 scheme）、`~` 家目录路径、工作区外绝对路径；
  *   · glob / 占位符 / 省略号（* ? { } [ ] < > | $、`...`、`<name>`、`url` 这类语法占位词）；
  *   · fenced code block 内的 markdown 链接语法与 `dsh-*`/skill 名（示例文本），但块内的
- *     `node scripts/x.mjs` 与 `npm run x` 仍校验（那是真命令）；
+ *     `node scripts/*.mjs` 与 `npm run x` 仍校验（那是真命令）；
+ *   · 行内代码 span 与代码块内的**残缺链接语法**同样豁免（`console.error('[<包名>] …')`、
+ *     正则/模板串、`grep -rnE '\]\([^)]*$'` 这类自检命令都写在代码里，仓库实测全部命中这两类位置）；
  *   · 历史留痕文件（任意目录下的 CHANGELOG.md、docs/adr/）：记录当时事实，不随改名失效；
  *   · 「有意裁剪」标注（±3 行内的 `not shipped in this trimmed copy`，如 skills/plugin-upgrade/）；
  *   · 宿主仓库布局行（出现 packages/ apps/ bundle/ 的行讲的是 DSH 宿主源码树）与
@@ -59,6 +65,8 @@
  *   · 行内代码 span 与反斜杠转义的 `\[` 已遮蔽（`[标题](./目标.md)` 这类示例不再误报），
  *     但 **HTML 注释**（`<!-- 待补：[稍后](./later.md) -->`）与 **4 空格缩进代码块**里的
  *     链接仍会被当真实引用——当前仓库实测 0 处命中，暂按已知边界记录。
+ *     #351 的残缺链接语法（syntax）沿用同一套遮蔽，因此边界也相同：只扫**已跟踪的 md**的
+ *     非 fenced 行（.mjs/.sh/.yml 里的 `[x)` 是代码，不解析）。
  *   · `npm run "带引号的名字"` 不解析（正则只认裸名）。
  *   · 本地 macOS 文件系统**大小写不敏感**：链接写成 `DOCS/索引.md` 本地会通过、Linux CI 会红
  *     ——失败方向是安全的（CI 拦住），但排查时要知道是这一点。
@@ -458,6 +466,7 @@ function checkFile(ctx, file, content) {
       const masked = maskInlineCode(text)
       lc.linkTargets = mdLinkTargets(masked)
       checkMdLinks(lc, masked)
+      checkBrokenLinkSyntax(lc, masked)
       checkInlinePaths(lc)
       checkSkillNames(lc)
     }
@@ -584,6 +593,57 @@ function mdLinkTargets(text) {
   let m
   while ((m = MD_LINK_RE.exec(text))) out.push(m[1].replace(/^<|>$/g, ''))
   return out
+}
+
+// ── 1b：残缺的 markdown 链接语法 ─────────────────────────────────────────────
+
+/**
+ * rule 1 未闭合：`](` 之后到行尾都没有 `)`。行内代码 span 已被 maskInlineCode 挖空，
+ * 代码块整行走不到这里（mdLine 要求 !inFence）——所以自检命令原文、正则串都不会命中。
+ * 跨行拆开的链接（`[文字](` 换行再写 URL）按本门禁"逐行解析、宁漏报不误报"的一贯口径不认；
+ * 全仓实测 0 处这种写法。
+ */
+const UNCLOSED_LINK_RE = /\]\([^)]*$/
+
+/**
+ * rule 2 错位括号：`[文字)` 缺左括号 —— #341 文档瘦身时 skills/verifying-dsh-plugins/SKILL.md
+ * 真实出现的坏链形态（4 处），GitHub 上不渲染成链接。
+ *
+ * 刻意**不加额外收紧**（例如"方括号里含 `(` 就不算"）：这类收紧会放过标签带括号的真坏链
+ * （`[旧文档 (v2))`），而"放过真坏链"正是本 issue 要修的方向——多报一条是一眼可辨的噪音 +
+ * 一行修复，漏报则是静默腐烂。假阳性只靠两条已有机制排除（各有单测）：
+ *   · 代码块整行走不到这里（checkFile 的 mdLine 要求 !inFence）；
+ *   · 行内代码 span 已被 maskInlineCode 挖成等长空白，因此 `[CmdletBinding()]`、
+ *     `['^react$', '^react-dom(/.*)?$']`、`console.error('[<包名>] …')` 这类仓库里真实存在的
+ *     代码/API 文本都不命中（实测它们全部写在反引号里）。
+ * 残量边界（诚实记录）：**裸露**（无反引号）的 `[xxx(yyy)]` 形态文本会被报——全仓实测 0 处。
+ */
+const MISPLACED_PAREN_RE = /\[[^\]]*\)/
+
+function checkBrokenLinkSyntax(lc, text) {
+  const unclosed = UNCLOSED_LINK_RE.exec(text)
+  if (unclosed) {
+    const tail = text.slice(unclosed.index)
+    report(
+      lc.ctx,
+      'syntax',
+      lc.file,
+      lc.line,
+      tail.slice(0, 60),
+      '未闭合的 markdown 链接：`](` 到行尾没有 `)`，GitHub 上不渲染成链接（真坏链）',
+    )
+  }
+  const misplaced = MISPLACED_PAREN_RE.exec(text)
+  if (misplaced) {
+    report(
+      lc.ctx,
+      'syntax',
+      lc.file,
+      lc.line,
+      misplaced[0].slice(0, 60),
+      '残缺的 markdown 链接：`[文字)` 缺左括号，GitHub 上不渲染成链接（真坏链）',
+    )
+  }
 }
 
 function checkMdLinks(lc, text) {
@@ -1008,7 +1068,7 @@ function main(argv) {
     `✓ 引用完整性检查通过（扫描 ${result.files} 个文件，校验 ${result.checked} 条引用，豁免 ${skippedTotal} 条` +
       (unreadableTotal > 0 ? `，读取失败 ${unreadableTotal} 个（--verbose 看原因）` : '') +
       '）：' +
-      'markdown 链接与锚点 / 路径 token / shell 调用 / npm script / skill 与插件名',
+      'markdown 链接与锚点 / 残缺链接语法 / 路径 token / shell 调用 / npm script / skill 与插件名',
   )
   if (verbose) {
     for (const [reason, n] of [...result.skipped].sort((a, b) => b[1] - a[1])) console.log(`    豁免 ${n} × ${reason}`)

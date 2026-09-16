@@ -44,8 +44,8 @@
  *   knip         → npx knip（死代码）
  *   jscpd        → npx jscpd（重复代码）
  *   docs         → node scripts/check-docs.mjs（文档一致性，纯本地文件检查）
- *   links        → node scripts/check-links.mjs（文档引用完整性：链接/锚点/路径 token/
- *                  shell 调用/npm script/skill 与插件名，纯本地文件检查）
+ *   links        → node scripts/check-links.mjs（文档引用完整性：链接/锚点/残缺链接语法/
+ *                  路径 token/shell 调用/npm script/skill 与插件名，纯本地文件检查）
  *   artifacts    → node scripts/check-client-artifacts.mjs（issue #318 / ADR-0002：共享部件与
  *                  server tsc 产物必须与已提交版本逐字节一致，fail-closed）
  *   secret-scan  → node scripts/check-secrets.mjs（issue #324：gitleaks 扫**全历史**
@@ -858,7 +858,7 @@ const CHECK_DEFS = [
   {
     id: 'links',
     label: 'links integrity (node scripts/check-links.mjs)',
-    note: '文档引用完整性：markdown 链接与锚点 / 路径 token / shell 调用 / npm script / skill 与插件名（<1s，纯本地文件检查，任何变更都跑）',
+    note: '文档引用完整性：markdown 链接与锚点 / 残缺链接语法 / 路径 token / shell 调用 / npm script / skill 与插件名（<1s，纯本地文件检查，任何变更都跑）',
     run: () => runCapture('node', ['scripts/check-links.mjs'], root),
   },
   {

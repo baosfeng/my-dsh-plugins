@@ -138,6 +138,27 @@ describe('失效引用能抓到', () => {
       'plugin:dsh-my-notfy',
     )
   })
+
+  /**
+   * #351 残缺链接语法。背景：#341 文档瘦身时 skills/verifying-dsh-plugins/SKILL.md 出现 4 处
+   * `[docs/踩坑/README.md)`（缺左括号），本地与 CI 全绿——因为这类文本没有任何"可解析的目标"，
+   * 链接/锚点/路径检查全都看不见它，而在 GitHub 上它就是坏文本。
+   */
+  it('残缺链接语法 [path)（缺左括号）→ syntax', () => {
+    const root = makeRepo({ 'docs/guide.md': GUIDE('见 [docs/踩坑/README.md) 说明。') })
+    expect(hits(root)).toContain('syntax:[docs/踩坑/README.md)')
+  })
+
+  it('未闭合链接语法 ]( 到行尾没有 ) → syntax', () => {
+    const root = makeRepo({ 'docs/guide.md': GUIDE('见 [踩坑](docs/踩坑/README.md') })
+    expect(hits(root)).toContain('syntax:](docs/踩坑/README.md')
+  })
+
+  it('残缺链接语法定位到具体行号', () => {
+    const root = makeRepo({ 'docs/guide.md': GUIDE('第一行正常。\n\n见 [docs/踩坑/README.md) 说明。') })
+    const found = check(root).findings.filter((f) => f.kind === 'syntax')
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual(['docs/guide.md:9'])
+  })
 })
 
 // ── 2. 有效引用不能误报 ─────────────────────────────────────────────────────
@@ -406,6 +427,62 @@ describe('skip 规则不误报', () => {
     const longLine = `[缺](./missing.md) ${'x'.repeat(100_001)}`
     expect(check(makeRepo({ 'docs/guide.md': `# 指南\n\n${longLine}\n` })).findings).toEqual([])
   })
+
+  // ── #351 残缺链接语法的假阳性面：每条排除策略一个反例 ────────────────────
+
+  it('代码块内的残缺链接语法是示例文本，不校验（含 console.error 与正则串）', () => {
+    const body = [
+      '```js',
+      "console.error('[<包名>] 缺少参数)')",
+      'const re = /\\]\\([^)]*$/',
+      '```',
+      '',
+      '```md',
+      '[示例](./whatever.md) 写成 [docs/踩坑/README.md) 也算示例',
+      '```',
+    ].join('\n')
+    noFindings({ 'docs/guide.md': GUIDE(body) })
+  })
+
+  it('行内代码里的残缺链接语法是示例文本，不校验（自检命令原文 / 代码 / API 文本）', () => {
+    noFindings({
+      'docs/guide.md': GUIDE(
+        [
+          "自检：`grep -rnE '\\]\\([^)]*$|\\][^\\\\(]*\\)' <文件>` 必须 0 命中，例如 `[path)`。",
+          '',
+          "代码串：`ignore: ['^react$', '^react-dom(/.*)?$']`、`[{ type: 'text', text: String(value.ok) }]`。",
+          '',
+          "API 文本：`[CmdletBinding()]`、`console.error('[<包名>] 缺少参数')`。",
+        ].join('\n'),
+      ),
+    })
+  })
+
+  it('行内代码遮蔽只按 span 生效：同一行的真实残缺链接照报', () => {
+    const body = '示例 `[path)` 不算；真实坏链 [docs/踩坑/README.md) 要报。'
+    expect(hits(makeRepo({ 'docs/guide.md': GUIDE(body) }))).toEqual(['syntax:[docs/踩坑/README.md)'])
+  })
+
+  it('非 markdown 文件（.mjs/.sh/.yml）不做残缺链接语法解析，不误报', () => {
+    noFindings({
+      'scripts/ok.mjs': "console.error('[<包名>] 缺少参数)')\nconst re = /\\]\\([^)]*$/\n",
+      'docs/guide.md': '# 指南\n',
+    })
+  })
+
+  it('mermaid 代码块（fenced）里的残缺链接语法不误报', () => {
+    const body = ['```mermaid', 'graph TD', '  A["节点 [docs/踩坑/README.md)"]', '```'].join('\n')
+    noFindings({ 'docs/guide.md': GUIDE(body) })
+  })
+
+  it('合法的 markdown 链接与图片语法不误报（含标题、锚点、行内代码示例）', () => {
+    const root = makeRepo({
+      'docs/guide.md': GUIDE(
+        '[a](./sub/page.md) [b](./guide.md#安装) ![图](./assets/logo.png) [c](docs/guide.md) 示例 `![alt](url)`',
+      ),
+    })
+    expect(check(root).findings).toEqual([])
+  })
 })
 
 // ── 3a. 大小写敏感（CI run #15 实测教训）───────────────────────────────────
@@ -557,6 +634,25 @@ describe('变异验证（破坏 → 红；修复 → 绿）', () => {
   it('退出码语义：有 finding 时 main 返回 1（runCheck 的 findings 非空即红）', () => {
     const root = makeRepo({ 'docs/guide.md': GUIDE('`docs/missing.md`') })
     expect(check(root).findings.length).toBeGreaterThan(0)
+  })
+
+  /**
+   * #351：残缺链接语法的"红 → 绿"。这条同时是**检测能力的反向验证**——把检测摘掉/写松，
+   * 本用例立刻失败（实测证据见 PR：注释掉 checkBrokenLinkSyntax 的调用后，本用例报
+   * `expected [] to deeply equal [ 'syntax:[docs/guide.md)' ]`）。
+   */
+  it('残缺链接语法：破坏后命中，修复后通过', () => {
+    const root = makeRepo({ 'docs/guide.md': GUIDE('见 [指南](docs/guide.md) 说明。') })
+    expect(check(root).findings).toEqual([])
+
+    writeFileSync(join(root, 'docs/guide.md'), GUIDE('见 [docs/guide.md) 说明。'))
+    expect(hits(root)).toEqual(['syntax:[docs/guide.md)'])
+
+    writeFileSync(join(root, 'docs/guide.md'), GUIDE('见 [指南](docs/guide.md 说明。'))
+    expect(hits(root)).toEqual(['syntax:](docs/guide.md 说明。'])
+
+    writeFileSync(join(root, 'docs/guide.md'), GUIDE('见 [指南](docs/guide.md) 说明。'))
+    expect(check(root).findings).toEqual([])
   })
 })
 

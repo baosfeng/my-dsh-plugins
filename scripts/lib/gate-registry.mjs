@@ -203,6 +203,15 @@ export const GATE_REGISTRY = [
     why: '唯一权威（issue #330 新增）：本表 ↔ `ci.yml` ↔ `verify-local` 三方交叉校验，双向检测「声明了没跑」与「跑了没声明」。它自己也在 CI 跑——否则「校验覆盖一致性」这件事本身就成了新的静默缺口。',
   },
   {
+    id: 'review-scripts',
+    authority: '`.github/scripts/review-verdict.cjs`（PR 审查判定内核）+ 其 `node --test` 单测',
+    local: 'always',
+    localCommand: 'node --test .github/scripts/*.test.cjs',
+    ci: { ...CI_QUALITY_STEP },
+    cost: '~0.3s',
+    why: '唯一权威（issue #311）：审查结论的三态判定（通过 / 不通过 / **未能判定**）、「没能真正跑」不写成通过、同一 commit 结论一致与「疑似抖动只标注不翻转」、历史摘要渲染，全部由该内核的纯函数决定。它的失败模式是「悄悄把没跑成写成通过」（正是 #311 要根治的病），所以必须有单测且单测必须真的跑在门禁里——#303 的同类用例此前只在人工执行时跑过。',
+  },
+  {
     id: 'test-sleeps',
     authority:
       '`scripts/check-test-sleeps.mjs` + `scripts/lib/test-sleeps.mjs` + `scripts/test-sleep-baseline.json`（issue #335）',

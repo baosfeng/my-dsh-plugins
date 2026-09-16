@@ -4,21 +4,32 @@
 # → 每次 push 发两套报告（#295 累计 36 条 bot 评论），已删除该文件。
 #
 # 报告规范（issue #303 + 工程效率规范第十三节）：
-#   - 三段结构：## 结论（通过 / 不通过 / 未能判定）→ ## 关键证据（≤5 条，超出即截断）
+#   - 三段结构：## 结论（通过 / 不通过 / 未能判定）→ ## 关键证据（中文摘要，超出即截断）
 #     → ## 建议；每条 ≤30 行，全中文，禁止裸贴工具原始输出；
-#   - 严禁把「没真正跑」写成通过：命令失败但无输出 / 超时 / 依赖缺失 → 结论必须是「未能判定」；
+#   - 严禁把「没真正跑」写成通过：超时 / 命令缺失 / 依赖或网络不可用 / 无输出 /
+#     统计不出问题 / 一条检查都没执行 → 结论必须是「未能判定」；
 #   - 所有进评论的文本都经剥色（NO_COLOR + FORCE_COLOR=0 + 正则兜底），杜绝 ANSI 乱码；
 #   - 7 个 job 各自上传报告 artifact，由 publish job 汇总成**一条** sticky 评论（含历史结论摘要）。
+#
+# 确定性（issue #311，判定内核：.github/scripts/review-verdict.cjs，纯函数 + 单测）：
+#   - 判定不依赖网络/时序/随机：除「读 CI 已产生的运行结果」外没有其它输入，同一输入必得同一结论；
+#   - 测试类检查**引用 CI 的权威结果**（`gh run list --commit <head sha>`，有界等待），不自己再跑一遍；
+#     同一 commit 的 CI 既有成功又有失败/超时 → 结论仍按成功那次给出（通过），失败按「疑似环境抖动」标注；
+#   - sticky 评论里保留历史结论摘要（`检查 N 次：通过 ×2、疑似抖动 ×1`）+ 本次判定的 commit SHA，
+#     同一 commit 结论不一致时显式给出差异解释，而不是静默翻转。
 
 name: Comprehensive Review
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  # 手动复检（同一 commit 重复检查应得同一结论，用它取证）
+  workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: write
+  actions: read
 
 env:
   NO_COLOR: '1'
@@ -124,19 +135,24 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # 测试审查（本 job 不重复跑测试：权威结果以 CI workflow 为准，避免两套口径矛盾）
+  # 测试审查（issue #311：引用 CI 的权威结果，**不重复跑测试**——自己再跑一遍会把仓库 flaky
+  # 当成「代码不通过」，同一 commit 时红时绿；这里只读该 commit 上 CI 的真实结果）
   test-review:
     runs-on: ubuntu-latest
     if: github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Summarize test status
+      - name: Summarize test status (引用 CI 权威结果)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REVIEW_CI_WAIT: '600'
         run: |
           source .github/scripts/lib/review-check.sh
           review_init test-report.md "测试"
-          review_not_covered test-report.md "测试与覆盖率" "不重复执行 CI 已跑的测试（权威结果见 CI workflow 的 test / coverage-finish job）"
-          review_finish test-report.md "- 测试与覆盖率结论请看 CI workflow（job: test / coverage-finish）；本 job 不做重复判定。"
+          review_ci_authoritative test-report.md "测试与覆盖率（CI 权威结果）" "$HEAD_SHA" ci.yml
+          review_finish test-report.md "- 测试/覆盖率以 CI workflow（job: test / coverage-finish）的结果为准；本 job 不重复执行，不产生第二套口径。"
 
       - name: Upload report
         if: always()
@@ -234,7 +250,7 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # 汇总发布：把 7 份报告合成**一条** sticky 评论（含历史结论摘要，超长即截断）
+  # 汇总发布：把 7 份报告合成**一条** sticky 评论（含「判定对象 commit + 历史结论摘要」，超长即截断）
   publish:
     runs-on: ubuntu-latest
     needs:
@@ -261,13 +277,19 @@ jobs:
             const fs = require('fs')
             const path = require('path')
             const {
-              upsertReviewComment,
+              publishReviewComment,
               buildConsolidated,
-              mergeHistory,
               parseReport,
               reviewMarker,
               OUTCOMES,
             } = require('./.github/scripts/review-comment.cjs')
+            const {
+              parseHistory,
+              mergeHistoryEntry,
+              historyOutcome,
+              explainConsistency,
+              shortSha,
+            } = require('./.github/scripts/review-verdict.cjs')
 
             const ORDER = [
               ['review-code-quality', '代码质量'],
@@ -291,12 +313,43 @@ jobs:
               sections.push({ name, md })
             }
 
+            // 判定对象 = 本次审查的那个 commit；同一 commit 重复检查必须得到同一结论
+            const sha = (context.payload.pull_request && context.payload.pull_request.head.sha) || context.sha || ''
+            const short = shortSha(sha)
+
+            // workflow_dispatch（手动复检）没有 PR payload → 按分支找对应的 open PR
+            let prNumber = context.payload.pull_request ? context.payload.pull_request.number : undefined
+            if (!prNumber) {
+              const branch = String(context.ref || '').replace('refs/heads/', '')
+              const found = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head: `${context.repo.owner}:${branch}`,
+              })
+              prNumber = found.data[0] ? found.data[0].number : undefined
+            }
+            if (!prNumber) {
+              core.notice('未找到对应的 open PR，跳过审查评论（手动复检请指定 PR 所在分支）')
+              return
+            }
+            // ⚠️ 不要用 `{ ...context }`——github-script 的 context 把 repo/payload 等实现为
+            // 原型上的 getter，展开会丢掉它们（真机实测：`context.repo` undefined →
+            // upsertReviewComment 抛 TypeError，publish 变红、评论根本没发出来）。
+            const ctx = {
+              repo: context.repo,
+              issue: { number: prNumber },
+              payload: context.payload,
+              sha: context.sha,
+              ref: context.ref,
+            }
+
             const id = 'comprehensive-review'
             const marker = reviewMarker(id)
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: prNumber,
               per_page: 100,
             })
             const previous = comments.find(
@@ -305,16 +358,46 @@ jobs:
 
             const draft = buildConsolidated(sections, { maxLines: 30 })
             const outcome = parseReport(draft).conclusion
-            const { historyLine, historyComment } = mergeHistory(previous ? previous.body : '', outcome)
-            const report = buildConsolidated(sections, { maxLines: 30, historyLine, historyComment })
+            // 抖动计数从各 job 报告里取（不依赖被截断后的总评论正文）
+            const flaky = sections.reduce((sum, s) => sum + parseReport(s.md).flaky, 0)
+            const recorded = historyOutcome(outcome, flaky)
 
-            const res = await upsertReviewComment({
+            const notes = []
+            if (flaky > 0) {
+              notes.push('同一 commit 的 CI 存在失败/超时运行，已按「疑似环境抖动」标注，不计入代码问题。')
+            }
+            const prevEntries = parseHistory(previous ? previous.body : '')
+            const consistency = explainConsistency(prevEntries, sha, recorded)
+            if (consistency) notes.push(consistency)
+
+            const { historyLine, historyComment } = mergeHistoryEntry(previous ? previous.body : '', {
+              sha,
+              outcome: recorded,
+            })
+            const report = buildConsolidated(sections, {
+              maxLines: 30,
+              historyLine,
+              historyComment,
+              sha: short,
+              notes,
+            })
+
+            const res = await publishReviewComment({
               github,
-              context,
+              context: ctx,
               id,
               heading: '## 🧾 PR 自动审查（结论摘要）',
               report,
+              writeSummary: async (text) => {
+                await core.summary.addRaw(text).write()
+              },
             })
-            console.log(
-              `review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}, sections=${sections.length}, outcome=${outcome}`
+            if (res.forbidden) {
+              core.warning(`审查评论未能发布（无写权限，已把结论写入 job summary）：${res.reason}`)
+            }
+            core.info(
+              `review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}, sections=${sections.length}, ` +
+                `commit=${short}, outcome=${outcome}, recorded=${recorded}, flaky=${flaky}`
             )
+            // 历史行打进日志：评论正文不便于事后取证（也便于确认「同一 commit 结论是否稳定」）
+            core.info(`history: ${historyLine || '(无)'}`)

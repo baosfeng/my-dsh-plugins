@@ -187,13 +187,100 @@ test('truncateLines：超限即截断并给指向说明', () => {
   assert.equal(truncateLines('短文本', 30), '短文本')
 })
 
-test('mergeHistory：累计历史结论（保留最近 N 次）并渲染中文摘要', () => {
-  const { mergeHistory, renderHistory } = require('./review-comment.cjs')
-  const body = '<!-- dsh-review-history: 通过,不通过 -->\n\n## 结论\n\n不通过\n'
-  const r = mergeHistory(body, '通过')
-  assert.deepEqual(r.outcomes, ['通过', '不通过', '通过'])
-  assert.equal(r.historyLine, '最近 3 次检查：通过 ×2、不通过 ×1')
-  assert.ok(r.historyComment.includes('<!-- dsh-review-history: 通过,不通过,通过 -->'))
-  assert.equal(mergeHistory('', '通过').historyLine, '最近 1 次检查：通过 ×1')
-  assert.equal(renderHistory([]), '')
+test('parseReport：识别结论三态 + 抖动标记（issue #311 的历史摘要输入）', () => {
+  const { parseReport, OUTCOMES } = require('./review-comment.cjs')
+  assert.equal(parseReport('## 结论\n\n通过\n').conclusion, OUTCOMES.PASS)
+  assert.equal(parseReport('## 结论\n\n不通过\n').conclusion, OUTCOMES.FAIL)
+  assert.equal(parseReport('## 结论\n\n未能判定（超时（超过 600s 未完成））\n').conclusion, OUTCOMES.UNKNOWN)
+  assert.equal(parseReport('没有结论段\n').conclusion, OUTCOMES.UNKNOWN)
+  assert.equal(parseReport('## 结论\n\n通过\n\n<!-- dsh-flaky: 2 -->\n').flaky, 2)
+  assert.equal(parseReport('## 结论\n\n通过\n').flaky, 0)
+})
+
+test('历史摘要：历史行与隐藏注释由 review-verdict 提供，评论正文可原样承载', () => {
+  const { buildConsolidated } = require('./review-comment.cjs')
+  const out = buildConsolidated([{ name: '代码质量', md: '## 结论\n\n通过\n' }], {
+    historyLine: '检查 2 次：通过 ×2',
+    historyComment: '<!-- dsh-review-history: abc1234:通过,abc1234:通过 -->',
+    sha: 'abc1234',
+  })
+  assert.match(out, /历史：检查 2 次：通过 ×2（本次判定对象 commit abc1234）/)
+  assert.match(out, /<!-- dsh-review-history: abc1234:通过,abc1234:通过 -->/)
+})
+
+test('publishReviewComment：403（fork PR 只读 token）不抛错，结论落到 job summary', async () => {
+  const { publishReviewComment } = require('./review-comment.cjs')
+  const summaries = []
+  const github = {
+    paginate: async () => [],
+    rest: {
+      issues: {
+        listComments: {},
+        createComment: async () => {
+          const error = new Error('Resource not accessible by integration')
+          error.status = 403
+          throw error
+        },
+        updateComment: async () => {
+          throw new Error('不应走到这里')
+        },
+      },
+    },
+  }
+  const res = await publishReviewComment({
+    github,
+    context: { repo: { owner: 'baosfeng', repo: 'my-dsh-plugins' }, issue: { number: 357 } },
+    id: 'comprehensive-review',
+    heading: '## 🧾 PR 自动审查（结论摘要）',
+    report: '## 结论\n\n通过\n',
+    writeSummary: async (text) => summaries.push(text),
+  })
+  assert.equal(res.forbidden, true)
+  assert.equal(res.action, 'forbidden')
+  assert.equal(summaries.length, 1)
+  assert.match(summaries[0], /## 结论\n\n通过/)
+})
+
+test('publishReviewComment：非 403 错误照旧抛出（不掩盖真实故障）', async () => {
+  const { publishReviewComment } = require('./review-comment.cjs')
+  const github = {
+    paginate: async () => {
+      const error = new Error('Bad credentials')
+      error.status = 401
+      throw error
+    },
+    rest: { issues: { listComments: {}, createComment: async () => ({}), updateComment: async () => ({}) } },
+  }
+  await assert.rejects(
+    () =>
+      publishReviewComment({
+        github,
+        context: { repo: { owner: 'o', repo: 'r' }, issue: { number: 1 } },
+        id: 'x',
+        heading: '## h',
+        report: 'r',
+      }),
+    /Bad credentials/,
+  )
+})
+
+test('upsertReviewComment：直接展开 github-script 的 context 会丢 repo（真机实测的 publish 崩溃）', async () => {
+  const { upsertReviewComment } = require('./review-comment.cjs')
+  // actions/github-script 的 context 把 repo/payload 实现为原型 getter → 展开后丢失
+  const proto = { repo: { owner: 'baosfeng', repo: 'my-dsh-plugins' } }
+  const context = Object.create(proto)
+  context.issue = { number: 357 }
+  const spread = { ...context, issue: { number: 357 } }
+  assert.equal(spread.repo, undefined, '前提：展开确实会丢掉 repo')
+
+  const github = {
+    paginate: async () => [],
+    rest: { issues: { listComments: {}, createComment: async () => ({ data: { id: 1 } }) } },
+  }
+  const ok = await upsertReviewComment({ github, context, id: 'x', heading: '## h', report: 'r' })
+  assert.equal(ok.action, 'created')
+  await assert.rejects(
+    () => upsertReviewComment({ github, context: spread, id: 'x', heading: '## h', report: 'r' }),
+    /Cannot read properties of undefined \(reading 'owner'\)/,
+  )
 })

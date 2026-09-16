@@ -376,10 +376,15 @@ describe('skip 规则不误报', () => {
 
   it('超大文件整体跳过（构建/压缩产物，防 markdown 正则退化成 O(n²) 挂死）', () => {
     // 实测：单行 8.9MB 的 mermaid.min.js 会让 ](...) 链接正则永不收敛，门禁必须跳过这类输入
+    //
+    // 判据（issue #353）：本处**只能**用绝对上限——被测对象就是「耗时随输入不爆炸」，
+    // 性能本身即判据，没有可断言的中间行为。10s 相对 120 万字符的线性扫描（实测几十 ms）
+    // 有约两个数量级余量，负载翻十倍也不会顶穿；而 O(n²) 退化会挂死（远超 10s）。
+    // 区别于「把阈值调大换绿」：这里上限本就宽松到与机器负载无关。
     const root = makeRepo({ 'docs/huge.js': `// ${'x'.repeat(1_200_000)}\n` })
-    const started = Date.now()
+    const started = performance.now()
     expect(check(root).findings).toEqual([])
-    expect(Date.now() - started).toBeLessThan(10_000)
+    expect(performance.now() - started).toBeLessThan(10_000)
   })
 
   it('shell 调用后面紧跟中文说明/标点：收缩到路径前缀后仍算命中（真实踩过的误报）', () => {

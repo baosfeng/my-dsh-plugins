@@ -25,15 +25,27 @@ describe('formatTitle', () => {
     expect(formatTitle('[{workspace}] {description}', '', '修复问题')).toBe('修复问题')
   })
 
-  it('大量空格的 template 不触发 ReDoS（快速完成且结果正确）', () => {
+  it('大量空格的 template 不触发 ReDoS（耗时随输入线性，非超线性）', () => {
     // 防复发（CodeQL ReDoS）：原实现 `\s*\[\{workspace\}\]\s*` 在用户配置的
     // template 含大量空白且无 `[{workspace}]` 时灾难性回溯；split/join 无回溯。
-    const spaces = ' '.repeat(100000)
-    const template = `${spaces}{description}${spaces}`
-    const start = Date.now()
-    const result = formatTitle(template, '', '修复问题')
-    expect(Date.now() - start).toBeLessThan(1000)
-    expect(result).toBe('修复问题')
+    //
+    // 判据（issue #353：绝对耗时阈值 → 相对判据）：比较 10 倍输入的耗时**比值**，而不是
+    // 「N 毫秒内完成」。为什么该条件下必然成立：回溯型正则是 O(n²)，输入 ×10 → 耗时 ×100；
+    // 线性实现（split/join + /\s+/g）输入 ×10 → 耗时 ≈ ×10。比值把两侧的机器负载同时约掉，
+    // 所以高负载下比值判据依然成立，而绝对阈值会随负载漂移（原 1000ms 阈值在 CI 高负载下
+    // 测出的是机器慢，不是代码坏）。
+    const measure = (spaces) => {
+      const template = `${spaces}{description}${spaces}`
+      const start = performance.now()
+      const result = formatTitle(template, '', '修复问题')
+      return { ms: performance.now() - start, result }
+    }
+    const small = measure(' '.repeat(100_000))
+    const large = measure(' '.repeat(1_000_000))
+    expect(small.result).toBe('修复问题')
+    expect(large.result).toBe('修复问题')
+    // 阈值 30 ≪ 超线性应有的 ~100，又远大于线性应有的 ~10 —— 留出计时噪声余量
+    expect(large.ms / Math.max(small.ms, 0.05)).toBeLessThan(30)
   })
 })
 

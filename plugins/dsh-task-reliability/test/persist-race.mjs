@@ -184,15 +184,31 @@ test('drain 覆盖防抖窗口：saveDebounceMs=500 时 drain 也会把挂起的
   assert.equal(readState(env).tasks.length, 1)
 })
 
-test('drain 幂等且可重复调用（无挂起写时立即就绪）', async () => {
+test('drain 幂等且可重复调用（无挂起写时不引入任何定时器等待）', async () => {
   const env = boot()
   await callApi(env, '/task-reliability/api/tasks', 'POST', {
     sessionId: 'session-race',
     description: '开发一个功能',
   })
   await env.drainSaves()
-  const started = Date.now()
-  await env.drainSaves()
-  assert.ok(Date.now() - started < 30, '无挂起写时 drain 立即返回（幂等，不引入固定等待）')
+  /*
+   * 判据（issue #353：绝对耗时阈值 → 行为断言）：原判据是「第二次 drain 耗时 < 30ms」，
+   * 在高负载下会被事件循环调度延迟顶穿（机器慢，不是代码坏）。
+   * 改为断言**代码路径**：无挂起写时 drain 必须走 `Promise.resolve()` 快路径，
+   * 不得设置任何定时器 —— 这回答的是「为什么必然立即返回」（没有任何要等的东西），
+   * 而不是「它在我的机器上是几毫秒」。与 CPU 负载无关。
+   */
+  const realSetTimeout = globalThis.setTimeout
+  let timersArmed = 0
+  globalThis.setTimeout = (...args) => {
+    timersArmed += 1
+    return realSetTimeout(...args)
+  }
+  try {
+    await env.drainSaves()
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+  }
+  assert.equal(timersArmed, 0, '无挂起写时 drain 不设任何定时器（幂等快路径，不引入固定等待）')
   await tick(10)
 })

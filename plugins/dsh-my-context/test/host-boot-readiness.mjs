@@ -108,13 +108,22 @@ test('#335 复现 B：host-mutation.mjs:345 的「settle(80) 赌加载」在慢 
     // 复刻 host-mutation.mjs『persist: mutations before load are buffered and replayed』：
     // 立即写入（加载完成前），随后查询 s-1
     store.recordRequest('s-1', { turn: 1, step: 1, usage: { inputTokens: 42 } })
-    const started = Date.now()
-    // 受控慢 IO：加载比任何固定 sleep(80) 都晚 —— CI 高负载下 readFile 回调晚到就是这种形态
-    const releaseTimer = setTimeout(() => releaseIo(), 300) // sleep-ok: 人为延时构造「慢 IO」，不是在等异步副作用
-    await store.whenReady()
-    const elapsed = Date.now() - started
-    clearTimeout(releaseTimer)
-    assert.ok(elapsed >= 250, `whenReady() 必须等到加载真正完成（等了 ${elapsed}ms，任何固定 sleep 都会赌输）`)
+    /*
+     * 判据（issue #353：绝对耗时阈值 → 行为断言）：
+     * 断言的是「whenReady() 在加载 I/O 未完成时**不会 resolve**」，不是「它等了 ≥250ms」。
+     * 为什么该条件下必然成立（与机器负载无关）：readFile 被闸门挂起 → 加载 Promise 必然
+     * pending → whenReady() 若正确等待加载，此刻就不可能已 resolve；只有「提前 resolve 的实现」
+     * 或「sleep 到点即返回」的调用方才会在这里被抓住。机器快慢改变不了闸门状态。
+     */
+    let ready = false
+    const pending = store.whenReady().then(() => {
+      ready = true
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20)) // sleep-ok: 负向观察窗——断言「就绪信号此刻仍未 resolve」，没有正向条件可等
+    assert.equal(ready, false, 'whenReady() 在加载 I/O 未完成前不得 resolve（提前返回等于又一个 sleep）')
+
+    releaseIo()
+    await pending
     const session = store.session('s-1')
     assert.equal(session?.usage.inputTokens, 42, 'whenReady() 之后查询必就绪（与 IO 耗时无关）')
     store.dispose()

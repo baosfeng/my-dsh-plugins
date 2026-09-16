@@ -232,12 +232,41 @@ function buildConsolidated(
   return fitReport(head, body, optional, tail, maxLines, '完整结果见本次运行 artifact 与 CI 日志')
 }
 
+/**
+ * 尽力而为地发布 sticky 评论（issue #311 真机实测的失败形态）。
+ *
+ * 事实来源：本仓库 Actions 历史里 `Comprehensive Review / publish` 以
+ * `HttpError: Resource not accessible by integration … 403` 失败（run 35100596848）
+ * ——fork PR 的 GITHUB_TOKEN 只读，`createComment` 必然 403，整个 publish job 变红，
+ * 而它与被审代码毫无关系（规范第十四节的「本地无、CI 有」形态：CI 环境权限差异）。
+ *
+ * 处理原则：**结论必须仍然可见，但不该判红**——403 时把报告写进 job summary（run 页面直接可看），
+ * 返回 `forbidden: true` 让调用方打 warning；其余错误照旧抛出（不掩盖真实故障）。
+ */
+async function publishReviewComment({ github, context, id, heading, report, writeSummary }) {
+  try {
+    const res = await upsertReviewComment({ github, context, id, heading, report })
+    return { ...res, forbidden: false }
+  } catch (error) {
+    if (Number(error && error.status) !== 403) throw error
+    if (typeof writeSummary === 'function') await writeSummary(`${heading}\n\n${stripAnsi(report)}`)
+    return {
+      action: 'forbidden',
+      commentId: 0,
+      escapeCount: 0,
+      forbidden: true,
+      reason: String((error && error.message) || error),
+    }
+  }
+}
+
 module.exports = {
   ANSI_ESCAPE_RE,
   stripAnsi,
   countEscapes,
   reviewMarker,
   upsertReviewComment,
+  publishReviewComment,
   OUTCOMES,
   FLAKY_RE,
   flakyMarker,

@@ -109,6 +109,10 @@ review_finish() {
     --report "$report" --module "${REVIEW_MODULE:-审查}" --suggest "$suggest" --history "$history" \
     --max-lines "${REVIEW_MAX_LINES:-30}" ||
     printf '## 结论\n\n未能判定（报告汇总失败，请直接查看本 job 日志）\n' >"$report"
+  # 报告同时打进 job 日志：评论发不出去时（如 fork PR 无写权限）结论仍然可见，也便于事后取证
+  printf '\n===== 审查报告（%s）=====\n' "${REVIEW_MODULE:-审查}"
+  cat "$report"
+  printf '\n===== 报告结束 =====\n'
 }
 
 # review_not_covered <报告文件> <检查名> <原因>：**根本没接入自动化**（平台托管 / 不重复执行 CI 已跑的测试）。

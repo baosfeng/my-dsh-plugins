@@ -277,7 +277,7 @@ jobs:
             const fs = require('fs')
             const path = require('path')
             const {
-              upsertReviewComment,
+              publishReviewComment,
               buildConsolidated,
               parseReport,
               reviewMarker,
@@ -333,7 +333,16 @@ jobs:
               core.notice('未找到对应的 open PR，跳过审查评论（手动复检请指定 PR 所在分支）')
               return
             }
-            const ctx = { ...context, issue: { number: prNumber } }
+            // ⚠️ 不要用 `{ ...context }`——github-script 的 context 把 repo/payload 等实现为
+            // 原型上的 getter，展开会丢掉它们（真机实测：`context.repo` undefined →
+            // upsertReviewComment 抛 TypeError，publish 变红、评论根本没发出来）。
+            const ctx = {
+              repo: context.repo,
+              issue: { number: prNumber },
+              payload: context.payload,
+              sha: context.sha,
+              ref: context.ref,
+            }
 
             const id = 'comprehensive-review'
             const marker = reviewMarker(id)
@@ -373,13 +382,19 @@ jobs:
               notes,
             })
 
-            const res = await upsertReviewComment({
+            const res = await publishReviewComment({
               github,
               context: ctx,
               id,
               heading: '## 🧾 PR 自动审查（结论摘要）',
               report,
+              writeSummary: async (text) => {
+                await core.summary.addRaw(text).write()
+              },
             })
+            if (res.forbidden) {
+              core.warning(`审查评论未能发布（无写权限，已把结论写入 job summary）：${res.reason}`)
+            }
             core.info(
               `review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}, sections=${sections.length}, ` +
                 `commit=${short}, outcome=${outcome}, recorded=${recorded}, flaky=${flaky}`

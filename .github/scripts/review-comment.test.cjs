@@ -207,3 +207,80 @@ test('历史摘要：历史行与隐藏注释由 review-verdict 提供，评论�
   assert.match(out, /历史：检查 2 次：通过 ×2（本次判定对象 commit abc1234）/)
   assert.match(out, /<!-- dsh-review-history: abc1234:通过,abc1234:通过 -->/)
 })
+
+test('publishReviewComment：403（fork PR 只读 token）不抛错，结论落到 job summary', async () => {
+  const { publishReviewComment } = require('./review-comment.cjs')
+  const summaries = []
+  const github = {
+    paginate: async () => [],
+    rest: {
+      issues: {
+        listComments: {},
+        createComment: async () => {
+          const error = new Error('Resource not accessible by integration')
+          error.status = 403
+          throw error
+        },
+        updateComment: async () => {
+          throw new Error('不应走到这里')
+        },
+      },
+    },
+  }
+  const res = await publishReviewComment({
+    github,
+    context: { repo: { owner: 'baosfeng', repo: 'my-dsh-plugins' }, issue: { number: 357 } },
+    id: 'comprehensive-review',
+    heading: '## 🧾 PR 自动审查（结论摘要）',
+    report: '## 结论\n\n通过\n',
+    writeSummary: async (text) => summaries.push(text),
+  })
+  assert.equal(res.forbidden, true)
+  assert.equal(res.action, 'forbidden')
+  assert.equal(summaries.length, 1)
+  assert.match(summaries[0], /## 结论\n\n通过/)
+})
+
+test('publishReviewComment：非 403 错误照旧抛出（不掩盖真实故障）', async () => {
+  const { publishReviewComment } = require('./review-comment.cjs')
+  const github = {
+    paginate: async () => {
+      const error = new Error('Bad credentials')
+      error.status = 401
+      throw error
+    },
+    rest: { issues: { listComments: {}, createComment: async () => ({}), updateComment: async () => ({}) } },
+  }
+  await assert.rejects(
+    () =>
+      publishReviewComment({
+        github,
+        context: { repo: { owner: 'o', repo: 'r' }, issue: { number: 1 } },
+        id: 'x',
+        heading: '## h',
+        report: 'r',
+      }),
+    /Bad credentials/,
+  )
+})
+
+test('upsertReviewComment：直接展开 github-script 的 context 会丢 repo（真机实测的 publish 崩溃）', async () => {
+  const { upsertReviewComment } = require('./review-comment.cjs')
+  // actions/github-script 的 context 把 repo/payload 实现为原型 getter → 展开后丢失
+  const proto = { repo: { owner: 'baosfeng', repo: 'my-dsh-plugins' } }
+  const context = Object.create(proto)
+  context.issue = { number: 357 }
+  const spread = { ...context, issue: { number: 357 } }
+  assert.equal(spread.repo, undefined, '前提：展开确实会丢掉 repo')
+
+  const github = {
+    paginate: async () => [],
+    rest: { issues: { listComments: {}, createComment: async () => ({ data: { id: 1 } }) } },
+  }
+  const ok = await upsertReviewComment({ github, context, id: 'x', heading: '## h', report: 'r' })
+  assert.equal(ok.action, 'created')
+  await assert.rejects(
+    () => upsertReviewComment({ github, context: spread, id: 'x', heading: '## h', report: 'r' }),
+    /Cannot read properties of undefined \(reading 'owner'\)/,
+  )
+})

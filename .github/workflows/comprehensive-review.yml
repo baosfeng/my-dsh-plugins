@@ -399,3 +399,5 @@ jobs:
               `review comment ${res.action}: #${res.commentId}, ESC=${res.escapeCount}, sections=${sections.length}, ` +
                 `commit=${short}, outcome=${outcome}, recorded=${recorded}, flaky=${flaky}`
             )
+            // 历史行打进日志：评论正文不便于事后取证（也便于确认「同一 commit 结论是否稳定」）
+            core.info(`history: ${historyLine || '(无)'}`)

@@ -15,7 +15,7 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { rmSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, rmSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { saveStore } from '../lib/store.js'
@@ -51,19 +51,23 @@ function tempDir() {
   return dirSync({ unsafeCleanup: true, prefix: 'tr-store-async-' }).name
 }
 
-test('saveStore：落盘不阻塞事件循环（返回 Promise，调用立即返回）', async () => {
+test('saveStore：落盘不在调用路径上（I/O 项在返回后才完成）', async () => {
   const dir = tempDir()
   try {
     const store = bigStore(20000)
-    const jsonBytes = Buffer.byteLength(JSON.stringify(store, null, 2))
-    const started = process.hrtime.bigint()
+    const target = join(dir, 'task-reliability.json')
     const pending = saveStore(dir, store)
-    const syncMs = Number(process.hrtime.bigint() - started) / 1e6
     assert.equal(typeof pending?.then, 'function', 'saveStore 返回 Promise（异步落盘）')
-    assert.ok(
-      syncMs < 5,
-      `调用返回耗时 ${syncMs.toFixed(2)}ms < 5ms（写盘在后台；JSON ${(jsonBytes / 1024 / 1024).toFixed(1)}MB）`,
-    )
+    /*
+     * 判据（issue #353：绝对耗时阈值 → 行为断言）：
+     * 断言的是「落盘这个 I/O **项**在 saveStore 返回之后才完成」，不是「返回耗时 < Nms」。
+     * 为什么该条件下必然成立（与机器负载无关）：
+     *  - 同步实现（原 writeFileSync + renameSync）在**返回前**就把目标文件写好了 → 此处必有文件；
+     *  - 异步实现（fs/promises 的 writeFile + rename）两者都在 `writeChain.then(run, run)` 的
+     *    微任务里，且 run 内第一个 await 之前不碰目标文件 → 目标文件在同步返回时**必然不存在**。
+     * 所以本谓词与 fs 速度、CPU 负载都无关：它区分的是调用路径形态，不是快慢。
+     */
+    assert.equal(existsSync(target), false, '调用返回时目标文件尚未写出（写盘 I/O 不在调用路径上）')
     await pending
     const parsed = JSON.parse(readFileSync(join(dir, 'task-reliability.json'), 'utf8'))
     assert.equal(parsed.tasks.length, 20000, '异步写仍完整落盘')

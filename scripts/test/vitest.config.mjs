@@ -18,11 +18,18 @@
 // gitleaks-scan.mjs = secret 扫描门禁判据（平台/校验值/版本/报告净化/fail-closed），issue #324；
 // commit-lint.mjs = 提交信息门禁判据（范围推导/空范围 fail-closed/渲染），issue #324），
 // 阈值与根配置一致（行 85 / 分支 75 / 函数 80）。
+//
+// 为什么放宽 testTimeout/hookTimeout 到 60s（issue #353）：本目录大量用例 spawn 真实 CLI
+// （git / node / commitlint / gitleaks / 重建 client bundle），低负载 0.3~0.7s、多 agent 并行
+// 下 6~17s，撞 vitest 默认 5s 上限即假红。放宽的是**框架停机保护（允许慢）**，不是判据
+// （绝不允许用调大阈值换绿）——见 docs/踩坑/异步落盘与时序.md。
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
     include: ['scripts/test/*.test.mjs'],
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
     coverage: {
       provider: 'v8',
       include: [

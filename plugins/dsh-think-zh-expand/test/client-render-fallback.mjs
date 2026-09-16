@@ -155,7 +155,7 @@ function mount(opts) {
   assert.equal(typeof capturedRenderer, 'function', 'assistant-step renderer captured')
   return {
     exportsObj,
-    render: (blocks) => capturedRenderer({ node: { data: { blocks } } }),
+    render: (blocks, extraData) => capturedRenderer({ node: { data: { blocks, ...(extraData ?? {}) } } }),
   }
 }
 
@@ -197,7 +197,7 @@ try {
     const platform = makePlatformStub()
     const { render } = mount({ mdRender: 'throw', platform: platform.ui })
 
-    const reasoning = collectNodes(render([{ kind: 'reasoning', text: REASONING }]))
+    const reasoning = collectNodes(render([{ kind: 'reasoning', text: REASONING }], { status: 'running' }))
     const textNodes = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
 
     for (const [label, out] of [
@@ -230,7 +230,7 @@ try {
   // ── 用例 B：md-render 缺失 + 平台组件也缺失 → <pre> 纯文本兜底 ────────
   {
     const { render } = mount({ mdRender: 'throw', platform: 'throw' })
-    const reasoning = collectNodes(render([{ kind: 'reasoning', text: REASONING }]))
+    const reasoning = collectNodes(render([{ kind: 'reasoning', text: REASONING }], { status: 'running' }))
     const textNodes = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
 
     for (const [label, out] of [
@@ -254,7 +254,7 @@ try {
     assert.equal(typeof platform.ui.MarkdownText, 'object', 'stub reproduces the real memo-object shape')
     const { render } = mount({ mdRender: 'throw', platform: platform.ui })
 
-    const reasoning = collectNodes(render([{ kind: 'reasoning', text: REASONING }]))
+    const reasoning = collectNodes(render([{ kind: 'reasoning', text: REASONING }], { status: 'running' }))
     const textNodes = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
 
     for (const [label, out] of [

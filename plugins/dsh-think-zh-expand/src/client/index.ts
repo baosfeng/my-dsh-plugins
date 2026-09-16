@@ -95,7 +95,8 @@ function stripControlTags(text: string): string {
   return text.replace(CONTROL_TAG_RE, '')
 }
 
-// ── 思考块：默认展开，可点击收起，流式中强制展开 ───────────────────
+// ── 思考块：流式中自动展开（推理过程可见），输出完成后自动收起为摘要，
+//    点击标题行可手动展开 / 收起（open = expanded || running）────────
 interface ThinkBlockProps {
   text: string
   running: boolean
@@ -103,7 +104,10 @@ interface ThinkBlockProps {
 
 function ThinkBlock({ text, running }: ThinkBlockProps): ReactNode {
   const cleanText = stripControlTags(text)
-  const [expanded, setExpanded] = useState(true)
+  // 初值 false：流式中 running 为 true 仍强制展开，running 转 false 后即自动
+  // 收起 —— 这正是 `expanded || running` 的原意（初值为 true 时该分支恒真，
+  // 会退化成"永远展开"）。
+  const [expanded, setExpanded] = useState(false)
   const open = expanded || running
   const firstLine = (t: string): string => {
     const nl = t.indexOf('\n')

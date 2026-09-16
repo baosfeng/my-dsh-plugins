@@ -1,7 +1,7 @@
 # dsh-think-zh-expand bundle patch: inserts the plugin row into the profile
 # roster. The row mounts the host half (system-prompt section injecting the
 # Chinese-thinking instruction) and the client half (assistant-step renderer
-# replacement that expands thinking blocks by default). Install with:
+# replacement that auto-expands reasoning while streaming and collapses it when done). Install with:
 #
 #   git clone https://github.com/baosfeng/my-dsh-plugins.git
 #   dsh plugin --profile web add link:<仓库路径>/plugins/dsh-think-zh-expand

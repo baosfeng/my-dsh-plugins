@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### 变更
+
+- fix(think-zh-expand): #355 思考块改为「流式中自动展开、输出完成后自动收起」——`open = expanded || running` 的 `useState` 初值由 `true` 改为 `false`。初值为 `true` 时 `|| running` 恒真，思考块退化为「永远展开」，且与宿主原生 `ReasoningRow`（`useState(false)`）的折叠基线相反。
+
 ## [0.4.10] - 2026-09-15
 
 ### 变更

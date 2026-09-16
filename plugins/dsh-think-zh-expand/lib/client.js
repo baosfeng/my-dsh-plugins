@@ -597,7 +597,10 @@ function stripControlTags(text) {
 }
 function ThinkBlock({ text, running }) {
     const cleanText = stripControlTags(text);
-    const [expanded, setExpanded] = (0, react_1.useState)(true);
+    // 初值 false：流式中 running 为 true 仍强制展开，running 转 false 后即自动
+    // 收起 —— 这正是 `expanded || running` 的原意（初值为 true 时该分支恒真，
+    // 会退化成"永远展开"）。
+    const [expanded, setExpanded] = (0, react_1.useState)(false);
     const open = expanded || running;
     const firstLine = (t) => {
         const nl = t.indexOf('\n');

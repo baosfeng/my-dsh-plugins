@@ -332,10 +332,11 @@ try {
   )
 
   // 10. 思考块（reasoning）内的双反引号同样渲染为 code（用户场景回归）
+  //     以流式态渲染：默认折叠时思考正文不挂载，本组验的是渲染路径而非展开状态。
   const r10 = collectCode(
     capturedRenderer({
       node: {
-        data: { blocks: [{ kind: 'reasoning', text: '调用 `` `agent/status` `` 查看状态' }] },
+        data: { status: 'running', blocks: [{ kind: 'reasoning', text: '调用 `` `agent/status` `` 查看状态' }] },
       },
     }),
   )
@@ -457,8 +458,11 @@ try {
     return out
   }
 
+  // 以流式态渲染来固定「展开态」：本组验的是 issue #73 的展开态视觉契约
+  // （leading 只有 chevron、无 think 图标 / 无 separator）；默认折叠后非流式
+  // reasoning 不挂载正文与展开态 leading。
   const thinkTree = capturedRenderer({
-    node: { data: { blocks: [{ kind: 'reasoning', text: '第一行\n第二行' }] } },
+    node: { data: { status: 'running', blocks: [{ kind: 'reasoning', text: '第一行\n第二行' }] } },
   })
   const thinkClasses = collectClasses(thinkTree)
   assert.ok(thinkClasses.includes('dsh-think-zh-expand-think'), 'think class (new prefix)')
@@ -500,9 +504,13 @@ try {
   const thinkExpandedTexts = collectTexts(thinkTree)
   assert.ok(!thinkExpandedTexts.includes('▾'), 'no plain chevron glyph (official svg icon)')
   assert.ok(!thinkExpandedTexts.includes('▸'), 'no plain chevron glyph (official svg icon)')
-  const thinkRoot = findClass(thinkTree, 'dsh-think-zh-expand-think')
-  assert.equal(thinkRoot.props['data-state'], 'ok', 'data-state ok when not streaming')
-  assert.equal(thinkRoot.props['data-variant'], 'think', 'data-variant think preserved')
+  // data-state / data-variant 另用非流式渲染验证（上方 thinkTree 已固定为流式态）
+  const thinkRootIdle = findClass(
+    capturedRenderer({ node: { data: { blocks: [{ kind: 'reasoning', text: '第一行\n第二行' }] } } }),
+    'dsh-think-zh-expand-think',
+  )
+  assert.equal(thinkRootIdle.props['data-state'], 'ok', 'data-state ok when not streaming')
+  assert.equal(thinkRootIdle.props['data-variant'], 'think', 'data-variant think preserved')
 
   // 13b. issue #73: #57 的思考正文浅灰覆盖规则已移除——思考正文经
   //      MarkdownView 渲染后颜色跟随其官方默认（primary，与正式回复一致），
@@ -646,6 +654,76 @@ try {
   assert.ok(!bundleSrc.includes("'tzx-stopped"), 'legacy tzx-stopped class removed from bundle')
   assert.ok(bundleSrc.includes('chevronRight:'), 'shared icons spliced into bundle (chevronRight)')
   assert.ok(bundleSrc.includes('clock:'), 'shared icons spliced into bundle (clock)')
+
+  // 17. 流式结束后自动折叠（本次行为变更核心）：running 由 true 转 false、且用户
+  //     未手动展开时，思考正文自动收起为摘要 —— 这正是 `expanded || running`
+  //     的原意（初值为 true 时该分支恒真，退化成"永远展开"）。
+  let autoExpanded = false
+  const autoReact = {
+    ...stubbed,
+    useState: () => [
+      autoExpanded,
+      (v) => {
+        autoExpanded = typeof v === 'function' ? v(autoExpanded) : v
+      },
+    ],
+  }
+  const exportsObj3 = thinkReg.factory((spec) => {
+    if (spec === 'react') return autoReact
+    if (spec === 'dsh-md-render') return mdRenderExports
+    throw new Error('unexpected require: ' + spec)
+  })
+  let registerFn3 = null
+  let capturedRenderer3 = null
+  exportsObj3.apply({
+    effect: (fn) => fn(),
+    slots: {
+      inject: (_name, fn) => {
+        registerFn3 = fn
+        return () => {}
+      },
+      register: (_desc, renderer) => {
+        capturedRenderer3 = renderer
+        return () => {}
+      },
+    },
+  })
+  registerFn3()
+  assert.equal(typeof capturedRenderer3, 'function', 'auto-collapse renderer captured')
+  const renderAuto = (status) =>
+    capturedRenderer3({
+      node: { data: { status, blocks: [{ kind: 'reasoning', text: '思考首行\n思考次行' }] } },
+    })
+  // 流式中：无需手动展开，正文即可见
+  assert.ok(
+    collectTexts(renderAuto('running')).some((t) => t.includes('思考次行')),
+    'streaming: body visible without manual expand',
+  )
+  // 流式结束（status 转 ok，展开状态未被用户改动）：正文自动收起、摘要出现
+  const autoIdleTexts = collectTexts(renderAuto('ok'))
+  assert.ok(
+    !autoIdleTexts.some((t) => t.includes('思考次行')),
+    'after streaming ends: body auto-collapsed (streaming default)',
+  )
+  assert.ok(
+    autoIdleTexts.some((t) => t.includes('思考首行')),
+    'after streaming ends: first-line summary shown',
+  )
+  // 自动收起后用户仍可点击回看
+  const autoHead = findClass(renderAuto('ok'), 'dsh-think-zh-expand-think-head')
+  assert.ok(autoHead, 'think head present after auto-collapse')
+  autoHead.props.onClick()
+  assert.ok(
+    collectTexts(renderAuto('ok')).some((t) => t.includes('思考次行')),
+    'manual expand still works after auto-collapse',
+  )
+  // 上文运行时用例经 stub 注入 useState 返回值，**锁不住源码里的初值**——
+  // 初值只能靠静态断言（否则把 useState(false) 改回 true 测试仍会全绿）。
+  assert.match(
+    bundleSrc,
+    /useState\)\(false\)/,
+    'thinking block starts collapsed in bundle (streaming-collapse default)',
+  )
 
   console.log('ALL CLIENT RENDER-PATH TESTS PASSED')
 } finally {

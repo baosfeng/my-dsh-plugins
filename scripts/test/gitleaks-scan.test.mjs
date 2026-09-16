@@ -26,8 +26,6 @@ import {
 const TOOLS = {
   gitleaks: {
     version: '8.30.1',
-    // 只有路径：主机/协议由调用方（scripts/check-secrets.mjs）用代码内常量提供（issue #108）
-    releasePath: '/v{version}/gitleaks_{version}_{platform}_{arch}.tar.gz',
     checksums: { 'darwin-arm64': 'aa', 'linux-x64': 'bb' },
   },
 }
@@ -40,17 +38,17 @@ describe('platformKey', () => {
 })
 
 describe('toolRelease', () => {
-  it('解析出下载**路径**与期望 SHA256（占位符按版本/平台替换）', () => {
+  it('解析出期望 SHA256 与版本；**不得**产出任何 URL/路径片段', () => {
     const r = toolRelease(TOOLS, 'gitleaks', 'darwin', 'arm64')
     expect(r.ok).toBe(true)
     expect(r.version).toBe('8.30.1')
+    expect(r.key).toBe('darwin-arm64')
     expect(r.sha256).toBe('aa')
-    expect(r.path).toBe('/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz')
-    // issue #108 回归：返回值里**不得**带主机/协议 —— 出站请求的目标只能由代码常量决定，
-    // 配置文件（磁盘数据）不能把下载引到别处。文档见 scripts/check-secrets.mjs 的
-    // TRUSTED_RELEASE_ORIGIN。
-    expect(r.url).toBeUndefined()
-    expect(r.path).not.toMatch(/^[a-z]+:\/\//i)
+    // issue #108 回归：工具表是磁盘数据，其内容不得成为出站请求目标的一部分。
+    // 下载地址由 scripts/check-secrets.mjs 的代码内常量（RELEASE_ORIGIN / RELEASE_PATH_PREFIX /
+    // RELEASE_VERSION）拼装，本函数只返回**本地**用的校验值与版本。
+    expect(Object.keys(r).sort()).toEqual(['key', 'ok', 'sha256', 'version'])
+    expect(JSON.stringify(r)).not.toMatch(/https?:\/\//)
   })
 
   it('平台没有预置校验值 → 判不支持（fail-closed：绝不做无校验下载）', () => {

@@ -111,16 +111,30 @@ const release = toolRelease(tools, 'gitleaks')
 if (!release.ok) fail(`[secrets] ${release.reason}（请在 scripts/ci-tools.json 补该平台的 SHA256 后再启用本门禁）`)
 
 /**
- * 下载源的**协议 + 主机**来自代码内常量，不来自 scripts/ci-tools.json。
+ * 下载地址**完全由代码内常量决定**（协议、主机、仓库路径、版本、产物名），
+ * `scripts/ci-tools.json` 只提供 SHA256 校验值。
  *
- * 为什么要把主机从配置里拿出来（issue #108，CodeQL js/file-access-to-http：
- * 「Outbound network request depends on file data」）：配置文件是磁盘数据，一旦允许它
- * 决定出站请求的主机，一个被篡改的 `ci-tools.json` 就能把「下载 gitleaks 并执行」引到
- * 攻击者的服务器上——而 SHA256 校验是第二道防线，不该被迫承担第一道防线的职责。
- * 现在文件只能影响「GitHub 上的哪一个路径」（release.path），主机恒定是 github.com；
- * 数据流里不再存在「文件内容 → 请求主机」这条边。
+ * 为什么必须做到"零文件数据进入请求 URL"（issue #108，CodeQL js/file-access-to-http：
+ * 「Outbound network request depends on file data」）：只要文件里的任何一个字节构成请求目标
+ * 的一部分，一个被篡改的 `ci-tools.json` 就有能力把「下载 gitleaks 并执行」引到别处，
+ * 而 SHA256 校验只能事后拒绝、不能阻止请求发出。上一版只把**主机**移出配置（路径仍来自
+ * 文件），CodeQL 依然如实报告「文件数据进入出站请求」，这条告警并未消除。
+ *
+ * 现在配置里的 `version` 只用于三件**本地**的事：缓存目录名、二进制版本核对、以及下面这条
+ * 一致性断言（防止代码常量与配置漂移）；它不参与 URL 构造，所以文件数据到请求之间没有边。
  */
-const TRUSTED_RELEASE_ORIGIN = 'https://github.com'
+const RELEASE_ORIGIN = 'https://github.com'
+const RELEASE_PATH_PREFIX = '/gitleaks/gitleaks/releases/download'
+/** 与 scripts/ci-tools.json 的 gitleaks.version 必须一致；升级版本时两处同改（下面有断言兜底）。 */
+const RELEASE_VERSION = '8.30.1'
+if (release.version !== RELEASE_VERSION) {
+  fail(
+    `[secrets] 版本漂移：scripts/ci-tools.json 是 ${release.version}，代码常量 RELEASE_VERSION 是 ${RELEASE_VERSION}` +
+      '（下载地址只认代码常量，请两处同改）',
+  )
+}
+/** 产物名按 GitHub Release 的固定命名规则拼装：全部片段来自代码常量或 process.*，无文件数据。 */
+const releaseAsset = `gitleaks_${RELEASE_VERSION}_${process.platform}_${process.arch}.tar.gz`
 
 /**
  * 下载源覆盖（**仅供回归测试**，见 scripts/test/secret-scan.test.mjs）。
@@ -134,8 +148,10 @@ const overrideUrl = process.env.GITLEAKS_RELEASE_URL ? new URL(process.env.GITLE
 if (overrideUrl && overrideUrl.protocol !== 'http:' && overrideUrl.protocol !== 'https:') {
   fail(`[secrets] GITLEAKS_RELEASE_URL 只支持 http/https（收到 ${overrideUrl.protocol}）`)
 }
-/** 本次运行实际请求的 URL：默认 = 代码常量主机 + 配置提供的路径。 */
-const releaseUrl = overrideUrl ? overrideUrl.href : `${TRUSTED_RELEASE_ORIGIN}${release.path}`
+/** 本次运行实际请求的 URL：生产分支 = 代码常量拼装；测试分支 = 显式覆盖变量。 */
+const releaseUrl = overrideUrl
+  ? overrideUrl.href
+  : `${RELEASE_ORIGIN}${RELEASE_PATH_PREFIX}/v${RELEASE_VERSION}/${releaseAsset}`
 if (process.env.GITLEAKS_SHA256) release.sha256 = process.env.GITLEAKS_SHA256
 
 // ── 取二进制（缓存命中 → 直接用；否则下载 + 校验 SHA256）────────────────────

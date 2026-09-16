@@ -9,7 +9,8 @@
  *   ④ 端到端：对当前仓库跑真实 CLI 必须通过（门禁在 CI 里就是这个命令）。
  */
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -127,5 +128,42 @@ describe('端到端（CI 里跑的就是这条命令）', () => {
     // 基线只允许变少：收缩后 --update-baseline 会写回，此处只校验「不为空且已排序」
     expect(baseline.entries.length).toBeGreaterThan(0)
     expect([...baseline.entries].sort()).toEqual(baseline.entries)
+  })
+
+  /**
+   * issue #107（CodeQL js/file-system-race）回归：`--update-baseline` 的「首建允许、此后只允许
+   * 收缩」判据原先写成 `existsSync(baselineFile)` 再 `writeFileSync`，两行之间文件状态可变。
+   * 现在由 `open(O_CREAT|O_EXCL)` 的 **EEXIST** 给出「此前是否存在」的答案（检查与使用同一次
+   * 系统调用）。这里把两种情形都钉住：文件**不存在** → 允许建基线；文件**已存在** → 走收缩判据。
+   */
+  it('--update-baseline：首次（文件不存在）建基线，已存在时按只收缩判定（issue #107）', () => {
+    const fake = mkdtempSync(join(tmpdir(), 'test-sleeps-baseline-'))
+    try {
+      mkdirSync(join(fake, 'plugins', 'fake', 'test'), { recursive: true })
+      mkdirSync(join(fake, 'scripts', 'test'), { recursive: true })
+      writeFileSync(join(fake, 'plugins', 'fake', 'test', 'waits.mjs'), 'await settle(50)\n')
+      const baselinePath = join(fake, 'scripts', 'test-sleep-baseline.json')
+      const run = () =>
+        spawnSync('node', ['scripts/check-test-sleeps.mjs', '--root', fake, '--update-baseline'], {
+          cwd: root,
+          encoding: 'utf8',
+          env: { ...process.env, NODE_OPTIONS: '' },
+        })
+      // ① 文件不存在 → 建基线（写入扫描到的 1 条），退出 0
+      const first = run()
+      expect(first.status, `stderr: ${first.stderr}`).toBe(0)
+      expect(JSON.parse(readFileSync(baselinePath, 'utf8')).entries).toHaveLength(1)
+      // ② 文件已存在、新条目数未超现有 → 放行（走的是 open(O_EXCL) 的 EEXIST 分支，非 existsSync）
+      const second = run()
+      expect(second.status, `stderr: ${second.stderr}`).toBe(0)
+      expect(JSON.parse(readFileSync(baselinePath, 'utf8')).entries).toHaveLength(1)
+      // ③ 文件已存在且现有更少 → 仍按「只允许收缩」拒绝，证明判据语义没被改坏
+      writeFileSync(baselinePath, JSON.stringify({ note: 'x', entries: [] }, null, 2) + '\n')
+      const third = run()
+      expect(third.status).toBe(1)
+      expect(third.stderr).toContain('只允许收缩')
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
   })
 })

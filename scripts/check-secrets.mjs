@@ -111,12 +111,31 @@ const release = toolRelease(tools, 'gitleaks')
 if (!release.ok) fail(`[secrets] ${release.reason}（请在 scripts/ci-tools.json 补该平台的 SHA256 后再启用本门禁）`)
 
 /**
+ * 下载源的**协议 + 主机**来自代码内常量，不来自 scripts/ci-tools.json。
+ *
+ * 为什么要把主机从配置里拿出来（issue #108，CodeQL js/file-access-to-http：
+ * 「Outbound network request depends on file data」）：配置文件是磁盘数据，一旦允许它
+ * 决定出站请求的主机，一个被篡改的 `ci-tools.json` 就能把「下载 gitleaks 并执行」引到
+ * 攻击者的服务器上——而 SHA256 校验是第二道防线，不该被迫承担第一道防线的职责。
+ * 现在文件只能影响「GitHub 上的哪一个路径」（release.path），主机恒定是 github.com；
+ * 数据流里不再存在「文件内容 → 请求主机」这条边。
+ */
+const TRUSTED_RELEASE_ORIGIN = 'https://github.com'
+
+/**
  * 下载源覆盖（**仅供回归测试**，见 scripts/test/secret-scan.test.mjs）。
  * 存在的理由：SHA256 校验是供应链防线，必须有一条**离线、确定**的用例证明"校验值不符时
  * 真的会拒绝执行"，否则这条防线只能靠线上偶发验证。测试把 URL 指向本地 http 服务并给错校验值，
  * 生产环境（CI / 本地）不设这两个变量，行为完全不变。
+ *
+ * 覆盖路径下仍然只允许 http/https：拒绝 file:/data: 之类的协议，避免"本地源"变成任意读取。
  */
-if (process.env.GITLEAKS_RELEASE_URL) release.url = process.env.GITLEAKS_RELEASE_URL
+const overrideUrl = process.env.GITLEAKS_RELEASE_URL ? new URL(process.env.GITLEAKS_RELEASE_URL) : null
+if (overrideUrl && overrideUrl.protocol !== 'http:' && overrideUrl.protocol !== 'https:') {
+  fail(`[secrets] GITLEAKS_RELEASE_URL 只支持 http/https（收到 ${overrideUrl.protocol}）`)
+}
+/** 本次运行实际请求的 URL：默认 = 代码常量主机 + 配置提供的路径。 */
+const releaseUrl = overrideUrl ? overrideUrl.href : `${TRUSTED_RELEASE_ORIGIN}${release.path}`
 if (process.env.GITLEAKS_SHA256) release.sha256 = process.env.GITLEAKS_SHA256
 
 // ── 取二进制（缓存命中 → 直接用；否则下载 + 校验 SHA256）────────────────────
@@ -151,14 +170,14 @@ function extractBinary(tarball, workDir) {
 }
 
 async function downloadAndVerify() {
-  const tarball = await download(release.url)
+  const tarball = await download(releaseUrl)
   const actual = createHash('sha256').update(tarball).digest('hex')
   console.log(`[secrets] 已下载 gitleaks ${release.version}（${release.key}，${(tarball.length / 1e6).toFixed(1)} MB）`)
   if (!verifyChecksum(release.sha256, actual)) {
     console.error(`[secrets] ✖ SHA256 不符，拒绝执行：`)
     console.error(`[secrets]   期望 ${release.sha256}`)
     console.error(`[secrets]   实际 ${actual}`)
-    console.error(`[secrets]   来源 ${release.url}`)
+    console.error(`[secrets]   来源 ${releaseUrl}`)
     console.error('[secrets]   这可能意味着发布产物被替换/中间人篡改，或 scripts/ci-tools.json 该更新了。')
     process.exit(1)
   }

@@ -25,8 +25,14 @@ export function platformKey(platform = process.platform, arch = process.arch) {
 
 /**
  * 解析「某平台该下载哪个产物 + 期望的 SHA256」。
- * 返回 { ok, url, sha256, version, key } 或 { ok:false, reason }。
+ * 返回 { ok, path, sha256, version, key } 或 { ok:false, reason }。
  * 平台无预置校验值 → ok:false（fail-closed：宁可报「不支持」也不做无校验下载）。
+ *
+ * ⚠️ 只产出**路径**（不含协议与主机）：主机/协议由调用方用**代码内常量**拼装。
+ * 理由：`scripts/ci-tools.json` 是磁盘数据，若让文件内容决定出站请求的主机，被篡改的配置
+ * 就能把「下载 gitleaks」引到任意地址（CodeQL js/file-access-to-http：Outbound network
+ * request depends on file data，issue #108）。现在文件最多影响「GitHub 上的哪一个路径」，
+ * 主机永远是可信常量 `TRUSTED_RELEASE_ORIGIN`。
  */
 export function toolRelease(tools, toolName, platform = process.platform, arch = process.arch) {
   const tool = tools?.[toolName]
@@ -41,7 +47,7 @@ export function toolRelease(tools, toolName, platform = process.platform, arch =
     version: tool.version,
     key,
     sha256,
-    url: String(tool.releaseUrl)
+    path: String(tool.releasePath)
       .replaceAll('{version}', tool.version)
       .replaceAll('{platform}', platform)
       .replaceAll('{arch}', arch),

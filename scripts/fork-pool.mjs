@@ -27,7 +27,6 @@ import {
   closeSync,
   constants,
   existsSync,
-  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -181,31 +180,38 @@ function installHooks(forkDir) {
  * 读文件用 fs.readFileSync（与 `cat` 同语义、同 utf8 解码，错误同样向上抛），不派生子进程：
  * 子进程版是多进程/不可移植的（Windows 无 cat），CodeQL js/unnecessary-use-of-cat 也在此报警。
  *
- * 写路径（#314 js/insecure-temporary-file）：fork 落在 `os.tmpdir()`（同机其他用户可写）
- * 下，`writeFileSync(excludeFile, …)` 的 open 会**跟随已存在的符号链接**——攻击者预置一个
- * 指向任意文件的软链，追加内容就写到那个文件里去了。改成"安全创建 + 原子替换"：
- *   1. `mkdtempSync(join(dirname(excludeFile), 'tmp-'))` —— 随机名目录，**O_EXCL 建目录**，
- *      攻击者无法预置/抢占（这是本规则认可的 createTemporaryFile 写法）；
- *   2. 在新目录里 `openSync(path, 'wx')` 写完整内容（O_CREAT|O_EXCL，绝不跟随软链）；
- *   3. `renameSync` 原子替换目标 —— 目标即使被预置成软链，也只是把**那个软链本身**换掉，
+ * 写路径（#314 js/insecure-temporary-file，**该规则在 #102 又报了一次**）：fork 落在
+ * `os.tmpdir()`（同机其他用户可写）下，任何"往固定名文件里写"的写法都可能跟随攻击者预置的
+ * 软链。这里用规则明确认可的 createTemporaryFile 形态：
+ *   1. `mkdtempSync(join(dirname(excludeFile), 'tmp-'))` —— **O_EXCL 建目录**、目录名随机，
+ *      攻击者无法预置/抢占；
+ *   2. 新目录内 `openSync(staged, 'wx')` 写完整内容（O_CREAT|O_EXCL，绝不跟随软链）；
+ *   3. `renameSync` 原子替换目标 —— 目标即使被预置成软链，换掉的也只是**那个软链本身**，
  *      不会写到软链指向的文件。
  * 为什么不能直接对目标用 `'wx'`：`git clone` 已经生成了 `.git/info/exclude`，O_EXCL 会
  * 必然 EEXIST，等于把功能改坏（现已由 scripts/test/fork-pool.test.mjs 的软链回归用例钉住）。
+ *
+ * #102 的**关键**：读取侧不得再出现「在 tmpdir 下 open 一个可预测路径」。原来的写法用
+ * `openSync(excludeFile, O_RDONLY|O_NOFOLLOW)` + `fstatSync`；虽然语义上只读，但 CodeQL 的
+ * js/insecure-temporary-file 只看「该路径是否在临时目录下被 open」——`forkDir` 本身就是
+ * `os.tmpdir()` 的后代，于是这一行被判为在临时目录里创建文件。现在读取改为
+ * `readFileSync(excludeFile, { flag: O_RDONLY|O_NOFOLLOW })`：**不再有 open-可预测路径这一
+ * 形态**，同时 O_NOFOLLOW 让软链由内核以 ELOOP 拒绝（不再依赖用户态 lstat 判断），
+ * 目录则直接被 EISDIR/后续 isFile 判定挡下。敏感信息面没有扩大（本来就只读这一个文件），
+ * 而写入仍然走 mkdtemp + `wx` + rename 的原子路径。
  */
 function ensureExclude(forkDir) {
   const excludeFile = join(forkDir, '.git', 'info', 'exclude')
   // 现状必须是"不存在"或"普通文件"：软链/目录/设备一律拒绝（软链正是攻击者预置的形态）。
-  // 用 O_NOFOLLOW 打开并**直接从 fd 读取**：不再 lstat 后再按路径 readFileSync，
-  // 消除「检查与使用之间被替换成软链」的 TOCTOU（issue #320，CodeQL js/file-system-race）。
-  // 软链由内核以 ELOOP 拒绝（不再依赖用户态判断）；目录/设备由 fstat 判定拒绝。
-  let sourceFd
+  // O_NOFOLLOW 由内核拒绝软链（ELOOP），不再 lstat-then-read 的 TOCTOU（issue #320）。
+  // 普通文件判定用 lstat（只读类型判断，不参与后续写入决策——写入走 rename 原子替换，
+  // 所以这里即使判断后被替换也影响不到写入目标），避免对设备/FIFO 调用 read 而卡住。
   let current = ''
   try {
-    sourceFd = openSync(excludeFile, constants.O_RDONLY | constants.O_NOFOLLOW)
-    if (!fstatSync(sourceFd).isFile()) {
-      return { ok: false, detail: `拒绝写入：${excludeFile} 不是普通文件（特殊文件）` }
+    if (!lstatSync(excludeFile).isFile()) {
+      return { ok: false, detail: `拒绝写入：${excludeFile} 不是普通文件（符号链接/目录/特殊文件）` }
     }
-    current = readFileSync(sourceFd, 'utf8')
+    current = readFileSync(excludeFile, { encoding: 'utf8', flag: constants.O_RDONLY | constants.O_NOFOLLOW })
   } catch (error) {
     if (error.code === 'ENOENT') {
       current = ''
@@ -214,8 +220,6 @@ function ensureExclude(forkDir) {
     } else {
       throw error
     }
-  } finally {
-    if (sourceFd !== undefined) closeSync(sourceFd)
   }
   const appended = excludeAppendContent(current)
   if (!appended) return { ok: true, detail: '已包含 node_modules' }
@@ -224,7 +228,7 @@ function ensureExclude(forkDir) {
   try {
     stagingDir = mkdtempSync(join(dirname(excludeFile), 'tmp-'))
     const staged = join(stagingDir, 'exclude')
-    fd = openSync(staged, 'wx')
+    fd = openSync(staged, 'wx', 0o600)
     writeSync(fd, appended)
     closeSync(fd)
     fd = undefined

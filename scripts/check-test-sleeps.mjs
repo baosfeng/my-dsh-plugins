@@ -21,7 +21,7 @@
  *
  * 退出码：0 通过；1 有违规或 IO/解析失败（fail-closed）；2 用法错误。
  */
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, constants, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from '@babel/parser'
@@ -106,13 +106,42 @@ const managed = entries.flatMap((e) =>
   e.waits.filter((w) => w.category === 'fixed').map((w) => ({ file: e.file, ...w })),
 )
 
+/**
+ * 尝试**独占创建**文件（O_CREAT|O_EXCL，权限 0o600）。
+ *
+ * 用途：判断「基线文件是否已存在」——`--update-baseline` 的「首建允许、此后只允许收缩」
+ * 判据要区分两者。原来的写法是 `existsSync(baselineFile)` 再 `writeFileSync`，两行之间
+ * 文件状态可变（issue #107，CodeQL js/file-system-race：The file may have changed since
+ * it was checked；规则建议「use file descriptors instead of file names」）。
+ *
+ * 现在由**内核**给出这个答案：open(O_CREAT|O_EXCL) 要么成功（此前不存在，我们刚建了它，
+ * 记得删掉以免留下垃圾），要么以 EEXIST 失败（此前已存在）。检查与使用是同一次系统调用，
+ * 不存在可被插入的时间窗。含 O_CREAT 的调用一律显式给权限位（0o600），不留 umask 默认宽权限。
+ */
+function existsBeforeWrite(file) {
+  let fd
+  try {
+    fd = openSync(file, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600)
+  } catch (error) {
+    if (error.code === 'EEXIST') return true
+    // 首次运行时父目录可能尚不存在（假仓库夹具/新 clone）——原 existsSync 写法同样会返回
+    // false 并让后续 writeFileSync 去报 ENOENT，这里保持"不存在"的语义，交给写入者报错。
+    if (error.code === 'ENOENT') return false
+    throw error
+  }
+  closeSync(fd)
+  rmSync(file, { force: true })
+  return false
+}
+
 if (has('--update-baseline')) {
   const next = managed
     .filter((w) => !w.exempt)
     .map((w) => fingerprint(w.file, w.text))
     .sort()
   // 首次初始化允许建基线（issue #335 落地时一次性冻结存量）；此后只允许收缩。
-  if (existsSync(baselineFile) && next.length > baseline.length) {
+  // 判据来自 existsBeforeWrite（内核原子判定，非 existsSync + 后续写入的 TOCTOU 组合）。
+  if (existsBeforeWrite(baselineFile) && next.length > baseline.length) {
     console.error(
       `拒绝：新基线 ${next.length} 条 > 现有 ${baseline.length} 条（基线只允许收缩，新增点请写 // sleep-ok: 理由）`,
     )

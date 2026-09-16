@@ -330,6 +330,29 @@ function cmdCreate() {
     `   下一步：cd ${forkDir} && git status${options.hooks ? '（hooks 已生效，提交会自动校验）' : '（⚠ 未装 hooks，提交不会跑本地门禁）'}`,
   )
   log(`   推送前自检：node scripts/fork-pool.mjs check ${options.id}（或在本 fork 内直接跑）`)
+  if (!options.json) {
+    // 「环境事实清单」：leader 整段复制进子 agent 的 prompt，子 agent 就不必再用
+    // pwd/ls/git status 去验证环境——实测那是每个子 agent 固定烧掉的前几个 step。
+    const headSha = gitOut(forkDir, ['rev-parse', 'HEAD'])
+    const depsByMode = {
+      none: '未安装（--node-modules none）',
+      copy: '已复制到 fork 内',
+      symlink: '逐包软链到主工作区',
+    }
+    const deps = depsByMode[options.nodeModules] ?? String(options.nodeModules)
+    const hooksNote = options.hooks ? '已装（提交会自动跑本地门禁）' : '**未装**（提交不会跑门禁）'
+    log('\n📋 派发 prompt 用的「环境事实清单」（整段复制，别让子 agent 再去验证）：')
+    log('```markdown')
+    log('## 已确认的环境事实（直接开工，不要验证）')
+    log(`- 工作目录：\`${forkDir}\` —— **唯一允许操作的目录**，严禁 cd 到主工作区或其他 \`gh-fork-*\``)
+    log(`- 分支 \`${branch}\` 已从 \`${options.baseRef}\` 建好，基线 commit \`${headSha}\``)
+    log(`- 依赖：node_modules ${deps}；workspace 内部包已重指向本 fork；git hooks ${hooksNote}`)
+    log(
+      '- ⛔ **不要**再执行 `pwd` / `ls -la <该目录>` / `git status` / `git branch` / `git log` 来确认上述事实 —— 它们已由 leader 保证，**直接开始改代码，不要重复验证**',
+    )
+    log(`- 推送：\`ghops push --dir ${forkDir} --branch ${branch}\``)
+    log('```')
+  }
   if (options.json)
     log(JSON.stringify({ ok: true, forkDir, branch, base: options.baseRef, timingsMs: timings, totalMs }, null, 2))
 }

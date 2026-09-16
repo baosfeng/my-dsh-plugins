@@ -1,10 +1,11 @@
 {
   "$comment": "CI 门禁用到的第三方二进制工具（issue #324）。与 GitHub Actions 一样钉死版本：Action 钉 commit SHA，这里钉「版本 + 发布产物的 SHA256」，下载后校验不符即拒绝执行。校验值取自各自官方的 checksums.txt（gitleaks_<版本>_checksums.txt），可用 shasum -a 256 对发布产物独立复核（见 scripts/test/secret-scan.test.mjs 与 PR 记录）。",
+  "$downloadOrigin": "releasePath 只是**路径**：协议与主机由 scripts/check-secrets.mjs 的代码内常量 TRUSTED_RELEASE_ORIGIN 提供，本文件不得决定出站请求的主机（issue #108）。",
   "gitleaks": {
     "version": "8.30.1",
     "license": "MIT",
     "project": "https://github.com/gitleaks/gitleaks",
-    "releaseUrl": "https://github.com/gitleaks/gitleaks/releases/download/v{version}/gitleaks_{version}_{platform}_{arch}.tar.gz",
+    "releasePath": "/gitleaks/gitleaks/releases/download/v{version}/gitleaks_{version}_{platform}_{arch}.tar.gz",
     "checksums": {
       "darwin-arm64": "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5",
       "darwin-x64": "dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709",

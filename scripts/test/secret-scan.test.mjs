@@ -220,6 +220,21 @@ describe('check-secrets.mjs 参数与失败路径（不需要 gitleaks）', () =
     expect(soft.status).toBe(0)
     expect(soft.stderr).toContain('跳过')
   })
+
+  /**
+   * issue #108（CodeQL js/file-access-to-http）：出站请求的目标不再由 scripts/ci-tools.json
+   * 决定——主机/协议来自代码内常量 TRUSTED_RELEASE_ORIGIN，配置文件只提供路径。
+   * 测试专用覆盖变量仍然存在，但**协议被收窄到 http/https**，避免它变成"读任意 URL"的开关。
+   */
+  it('GITLEAKS_RELEASE_URL 拒绝非 http/https 协议（覆盖口不得变成任意协议读取）', () => {
+    const r = spawnSync(process.execPath, [SCRIPT, '--target', ROOT, '--download-only', '--refresh'], {
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: { ...process.env, GITLEAKS_RELEASE_URL: 'file:///etc/hosts' },
+    })
+    expect(r.status).toBe(2)
+    expect(r.stderr).toContain('只支持 http/https')
+  })
 })
 
 describe('下载 + SHA256 校验（离线：本地 http 服务 + 测试专用覆盖变量）', () => {

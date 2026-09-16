@@ -7,7 +7,18 @@
 //      · 正常态 → exit 0；
 //      · 改了 part 不重建 → exit 1，且报告里点名插件与共享件（issue #318 的验收标准）。
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  mkdtempSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -236,13 +247,23 @@ function artifactSnapshot(root) {
         const full = join(dir, item.name)
         if (item.isDirectory()) walk(full)
         else if (item.name.endsWith('.js') || item.name.endsWith('.d.ts')) {
-          const st = statSync(full)
-          snap.set(full, {
-            hash: createHash('sha256').update(readFileSync(full)).digest('hex'),
-            mtimeMs: st.mtimeMs,
-            ino: st.ino,
-            size: st.size,
-          })
+          // 元数据与内容必须来自**同一个 inode**：先按路径 statSync 再按路径 readFileSync，
+          // 两步之间文件被替换就会记下「A 的 mtime + B 的内容」（issue #106，
+          // CodeQL js/file-system-race：The file may have changed since it was checked）。
+          // 改为 openSync 拿 fd → fstatSync(fd) → readFileSync(fd)：与 scripts/fork-pool.mjs
+          // 的 ensureExclude 同一手法（issue #320），检查与使用锁定在同一个 fd 上。
+          const fd = openSync(full, 'r')
+          try {
+            const st = fstatSync(fd)
+            snap.set(full, {
+              hash: createHash('sha256').update(readFileSync(fd)).digest('hex'),
+              mtimeMs: st.mtimeMs,
+              ino: st.ino,
+              size: st.size,
+            })
+          } finally {
+            closeSync(fd)
+          }
         }
       }
     }

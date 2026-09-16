@@ -15,10 +15,26 @@ import { join } from 'node:path'
 import { sleepFor, waitFor, waitForFile, yieldLoop } from '../test-kit/wait.mjs'
 
 test('waitFor：条件立即成立时立刻返回该值，不做无谓等待', async () => {
-  const started = Date.now()
-  const value = await waitFor(() => 'ready')
+  /*
+   * 判据（issue #353：绝对耗时阈值 → 行为断言）：原为「耗时 < 50ms」。改为断言
+   * **没有发生轮询**：条件在首次求值就成立时，实现不得再设置任何定时器。
+   * 为什么该条件下必然成立（与负载无关）：`waitFor` 首轮求值 → 命中即 `return`，
+   * `setTimeout(interval)` 在 return 之后，根本不会执行；白等一拍的实现才会计时。
+   */
+  const realSetTimeout = globalThis.setTimeout
+  let timersArmed = 0
+  globalThis.setTimeout = (...args) => {
+    timersArmed += 1
+    return realSetTimeout(...args)
+  }
+  let value
+  try {
+    value = await waitFor(() => 'ready')
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+  }
   assert.equal(value, 'ready')
-  assert.ok(Date.now() - started < 50, '条件已满足就不该再等轮询间隔')
+  assert.equal(timersArmed, 0, '条件已满足就不该再排一个轮询定时器（不做无谓等待）')
 })
 
 test('waitFor：异步条件满足即返回（比固定 sleep 更快，语义更强）', async () => {
@@ -48,9 +64,25 @@ test('waitFor：未给 message 时从 predicate 源码生成条件描述', async
 test('sleepFor：必须带理由（否则等于「我不知道什么时候完成」的裸 sleep）', async () => {
   assert.throws(() => sleepFor('', 10), /必须给出等待理由/) // sleep-ok: 被测对象就是「空理由必须抛错」，不产生等待
   assert.throws(() => sleepFor(undefined, 10), /必须给出等待理由/) // sleep-ok: 同上（undefined 理由）
-  const started = Date.now()
-  await sleepFor('观察窗口：断言没有新的告警产生', 20)
-  assert.ok(Date.now() - started >= 15, '带理由的固定等待按给定时长执行')
+  /*
+   * 判据（issue #353：绝对耗时阈值 → 行为断言）：原为「实际等了 ≥15ms」。改为断言
+   * **把调用方给的时长透传给定时器**（探针记录 `setTimeout` 的 ms 参数）。
+   * 为什么该条件下必然成立：`sleepFor('理由', 20)` 的唯一实现路径是
+   * `setTimeout(resolve, ms)`；参数被改写/被忽略（例如固定 10ms）会立刻暴露，
+   * 而「机器慢导致实际等了 11ms」这种与负载相关的偏差不再可能造成假红。
+   */
+  const realSetTimeout = globalThis.setTimeout
+  const armed = []
+  globalThis.setTimeout = (fn, ms, ...rest) => {
+    armed.push(ms)
+    return realSetTimeout(fn, ms, ...rest)
+  }
+  try {
+    await sleepFor('观察窗口：断言没有新的告警产生', 20)
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+  }
+  assert.deepEqual(armed, [20], '固定等待按调用方给定时长执行（时长被透传给定时器，不被改写）')
 })
 
 test('yieldLoop：必然晚于已排队的 microtask（不依赖机器负载）', async () => {

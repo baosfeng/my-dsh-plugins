@@ -14,6 +14,62 @@
  */
 import { createElement, useState, type ReactNode } from 'react'
 
+// ── 配置项 defaultExpanded（issue #355）：展开初值可配置 ──────────────
+// 初值原为硬编码 useState(true)；外部 PR #356 主张直接改成 false（默认折叠）。
+// owner 决策改为配置项：默认仍 true（「思考默认展开」是本插件的产品定位，
+// README / description / 图片 alt 已固化），显式 defaultExpanded:false 才折叠。
+// client 端不能访问 ctx.config（Cordis inject 限制），故经 host 半边注册的
+// 只读路由 GET /think-zh-expand/api/config 拉取。
+// 回退契约（防回归）：配置缺失 / 值非布尔 / 拉取失败 → 一律 true，
+// 绝不因配置面缺失变成折叠。
+
+/** 配置读取地址（host 半边 src/index.ts 的 CONFIG_ROUTE_PREFIX + /config）。 */
+const CONFIG_URL = '/think-zh-expand/api/config'
+
+/** 展开初值默认值：true = 默认展开（既有行为）。 */
+export const DEFAULT_EXPANDED = true
+
+/** 模块级生效值：渲染时作为 useState 初值读取。 */
+let defaultExpanded = DEFAULT_EXPANDED
+
+/** 配置快照 → 生效值：只有布尔 defaultExpanded 生效，其余（含 null/字符串）回退 true。 */
+export function resolveDefaultExpanded(config?: Record<string, unknown> | null): boolean {
+  if (config === null || config === undefined) return DEFAULT_EXPANDED
+  const value = config.defaultExpanded
+  return typeof value === 'boolean' ? value : DEFAULT_EXPANDED
+}
+
+/** 应用一份配置快照，返回生效值。 */
+export function setDefaultExpanded(config?: Record<string, unknown> | null): boolean {
+  defaultExpanded = resolveDefaultExpanded(config)
+  return defaultExpanded
+}
+
+/** 当前生效的展开初值。 */
+export function getDefaultExpanded(): boolean {
+  return defaultExpanded
+}
+
+/**
+ * 异步拉取 host 侧配置并应用（client apply 时调用一次）。
+ * 失败（无 fetch / 网络错误 / ok!==true / value 非对象）一律保持默认展开。
+ */
+export function initConfigFromServer(): Promise<void> {
+  if (typeof fetch !== 'function') return Promise.resolve()
+  return fetch(CONFIG_URL)
+    .then((res) => res.json())
+    .then((body: unknown) => {
+      if (body === null || typeof body !== 'object') return
+      const payload = body as { ok?: boolean; value?: unknown }
+      if (payload.ok !== true) return
+      if (payload.value === null || typeof payload.value !== 'object') return
+      setDefaultExpanded(payload.value as Record<string, unknown>)
+    })
+    .catch(() => {
+      // 服务不可用：保持默认展开，不影响渲染能力。
+    })
+}
+
 // ── DSH 运行时类型（client 端最小契约）──────────────────────────────
 
 /** client 端 Context（cordis Context 最小契约 + slots 服务）。 */
@@ -103,7 +159,11 @@ interface ThinkBlockProps {
 
 function ThinkBlock({ text, running }: ThinkBlockProps): ReactNode {
   const cleanText = stripControlTags(text)
-  const [expanded, setExpanded] = useState(true)
+  // issue #355：初值来自配置项 defaultExpanded（缺省 / 取不到配置 → true）。
+  const [expanded, setExpanded] = useState(defaultExpanded)
+  // 流式生成中强制展开。初值 true 时该条件恒成立（正是 PR #356 指出的冗余），
+  // 但在 defaultExpanded:false 下它给出「流式中自动展开、完成后收起」的语义，
+  // 故保留 `|| running`（外部贡献者的技术论证成立，被本方案采纳）。
   const open = expanded || running
   const firstLine = (t: string): string => {
     const nl = t.indexOf('\n')
@@ -660,6 +720,9 @@ const _exports = module.exports as Record<string, unknown>
 _exports.inject = ['slots']
 
 _exports.apply = function apply(ctx: ClientContext): void {
+  // issue #355：先按 host 侧配置初始化展开初值（异步；失败保持默认 true）。
+  void initConfigFromServer()
+
   // 样式注入走共享实现（issue #186 P2）：与 dsh-md-render / dsh-mermaid-render
   // 同一份「无条件注入 + 随 fiber teardown 卸载」逻辑（style-tag.part.js）。
   installStyles(ctx, 'data-dsh-think-zh-expand', STYLES, 'dsh-think-zh-expand: styles')

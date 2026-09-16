@@ -8,3 +8,10 @@
 - insert:
     - id: think-zh-expand
       name: 'dsh-think-zh-expand'
+      # 配置项 defaultExpanded（issue #355）：思考块展开初值。
+      # 默认 true = 保持本插件「思考默认展开」的产品定位（README / description 已固化）。
+      # 显式设为 false → 初始折叠，流式生成中仍自动展开、完成后收起
+      # （即外部 PR #356 诉求的「流式展开 → 完成收起」语义）。
+      # 配置缺失 / 非布尔值时一律回退 true，不会因配置面缺失变成折叠。
+      config:
+        defaultExpanded: true

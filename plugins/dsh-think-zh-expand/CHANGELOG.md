@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.11] - 未发布
+
+### 新增
+
+- feat(think-zh-expand): #355 思考块展开初值做成配置项 `defaultExpanded`（默认 `true`，保持本插件「默认展开」定位；显式设 `false` 得到「流式展开 → 完成收起」，即外部 PR #356 的诉求）。host 半边新增 `webServer` 只读路由 `GET /think-zh-expand/api/config` 暴露配置（client 端不能访问 `ctx.config`）；配置缺失 / 非布尔 / 读取失败一律回退 `true`，不会因配置面缺失变成折叠。
+
 ## [0.4.10] - 2026-09-15
 
 ### 变更

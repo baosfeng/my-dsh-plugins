@@ -31,7 +31,22 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-think-zh-expand
 
 ## 配置
 
-无配置项，插件激活即生效。
+| 配置项            | 类型    | 默认值 | 说明                                                                                                                                     |
+| ----------------- | ------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `defaultExpanded` | boolean | `true` | 思考块**展开初值**。`true`（默认）= 保持本插件的产品定位「思考默认展开」；`false` = 初始折叠，流式生成中仍自动展开、**生成完成后收起**。 |
+
+在 profile patch 的插件行里显式声明（`~/.dsh/profiles/<profile>.patch.yml`）：
+
+```yaml
+- insert:
+    - id: think-zh-expand
+      name: 'dsh-think-zh-expand'
+      config:
+        defaultExpanded: false # 想要「流式展开 → 完成收起」就设为 false
+```
+
+- 缺失该配置、值非布尔、或**配置读取通道不可用**（非 web 宿主、路由未注册）时，一律回退 `true` —— 配置面永远不会让插件从「默认展开」静默变成「默认折叠」。
+- 读取通道：host 半边经 `webServer` 注册只读路由 `GET /think-zh-expand/api/config`（仅 loopback 可读），client 半边在渲染前拉取该值作为展开初值。
 
 ## 相关文档
 

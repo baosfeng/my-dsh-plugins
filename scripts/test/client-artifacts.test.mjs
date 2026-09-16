@@ -7,7 +7,7 @@
 //      · 正常态 → exit 0；
 //      · 改了 part 不重建 → exit 1，且报告里点名插件与共享件（issue #318 的验收标准）。
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -279,13 +279,31 @@ describe('只读契约（issue #336：检查项不得写工作区）', () => {
   })
 
   it('重建过程不残留临时目录（镜像建在 os.tmpdir 且用后即删）', { timeout: 300_000 }, () => {
-    const leftovers = () => readdirSync(tmpdir()).filter((n) => n.startsWith('dsh-artifacts-mirror-'))
-    const before = leftovers().length
-    execFileSync('node', [scriptPath, '--client-only', '--root', REPO_ROOT], {
-      cwd: REPO_ROOT,
-      stdio: 'ignore',
-      timeout: 300_000,
-    })
-    expect(leftovers().length).toBe(before)
+    /**
+     * 判据：**本次运行自己**不得留下镜像目录。为了让"自己"可判定，给子进程一个**私有 TMPDIR**
+     * （`os.tmpdir()` 认 `TMPDIR`），于是这个目录里理应"跑完就空"——既严格又不吃外部干扰。
+     *
+     * 原写法 `expect(leftovers().length).toBe(before)` 数的是全机共享 `os.tmpdir()` 里所有
+     * `dsh-artifacts-mirror-*`。并行开发时别的 fork 池工作区（`/tmp/gh-fork-3xx/`）各自也在跑
+     * 同一个脚本，它们的镜像目录创建/删除会直接改这个计数。实测（2026-09-15，issue #324 开发期）：
+     * 同机 3 个 fork 在跑 check-client-artifacts，本用例**单独跑也必红**（计数两个方向都错过：
+     * before=1→after=2、before=3→after=2），与本次改动毫无关系；更糟的是它在 `verify-local` 里，
+     * 会把 `git push` 随机挡掉。
+     */
+    const scope = mkdtempSync(join(tmpdir(), 'client-artifacts-scope-'))
+    try {
+      execFileSync('node', [scriptPath, '--client-only', '--root', REPO_ROOT], {
+        cwd: REPO_ROOT,
+        stdio: 'ignore',
+        timeout: 300_000,
+        env: { ...process.env, TMPDIR: scope },
+      })
+      // 私有作用域里跑完不得留下镜像 —— 脚本忘了删自己的镜像照样被抓住。
+      // 只看镜像前缀：Node 自己会在 TMPDIR 里建 node-compile-cache（与本门禁无关）。
+      const leaked = readdirSync(scope).filter((n) => n.startsWith('dsh-artifacts-mirror-'))
+      expect(leaked, `本次运行残留了镜像目录：${leaked.join(', ')}`).toEqual([])
+    } finally {
+      rmSync(scope, { recursive: true, force: true })
+    }
   })
 })

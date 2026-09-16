@@ -1,0 +1,73 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# gitleaks 配置（issue #324 需求 A）
+#
+# 规则集：不在此重复维护 —— `[extend] useDefault = true` 直接继承 gitleaks 内置
+# 规则表（内置规则表随二进制版本走，已由 ci-actions.toml 的 SHA256 钉死）。
+# 本文件**只写 allowlist**，因此不会出现「内置规则升级后本地副本悄悄陈旧」的漂移。
+#
+# allowlist 的准入标准（唯一的判断依据，别放宽）：
+#   只豁免「在仓库里能一眼判定为样例/夹具」的具体字面量，且必须说明它是哪来的。
+#   禁止写「忽略整个目录 / 忽略某条规则」这类宽口径豁免 —— 那会变成给真凭据留后门。
+#
+# 为什么下面每条正则都锚定了具体字面量、而不是「按路径跳过」：
+#   · 锚定字面量后，只有当**这一串具体的样例值**出现时才豁免；把该样例替换成真凭据
+#     （换个 token 值）时正则不再匹配，门禁立刻变红 —— 即"豁免的是值，不是位置"。
+#   · 若写成 paths = ['scripts/test/.*']，那么以后任何人在测试目录里误提交真凭据都会被静默放过。
+#   · regexTarget = "match"（而不是默认 "secret"）：按 finding 所在文本片段匹配，
+#     片段包含 token=/x-remote-token: 这类**上下文关键字**，比只匹配密钥本体更精确。
+#
+# 现有 6 条豁免全部来自 692 个提交的实测全历史扫描（2026-09-15，v8.30.1，命中 6 条：
+# 5 × generic-api-key + 1 × private-key），逐条核对上下文后确认均为本地样例：
+# ─────────────────────────────────────────────────────────────────────────────
+
+title = "my-dsh-plugins gitleaks allowlist（issue #324）"
+
+[extend]
+useDefault = true
+
+# 1. 本机 DSH 实例的 loopback 启动 token（43 字符，`dsh web` 启动时随机生成，
+#    只对 127.0.0.1 的本机实例有效）。两处样本：
+#      · scripts/test/verify-profile.test.mjs:679 —— 「实测的健康就绪行」夹具（issue #305）
+#      · 插件启动测试报告.md:144（历史提交中所含）—— 浏览器测试步骤里的本机 URL
+#    注意：**不含** `dsh-my-guard` / `dsh-my-remote` 等任何服务凭据；这两个值泄漏
+#    只能用于访问提交者自己机器上的 127.0.0.1 实例，进过公开仓库后也不构成凭据风险。
+[[allowlists]]
+description = "本机 DSH web 实例的 loopback 就绪 token（实测记录/夹具，仅对本机 127.0.0.1 有效）"
+regexTarget = "match"
+regexes = [
+  '''token=vZdUwaYQaZajU5RckADD4qTem88VJxN678-a5QrABfI''',
+  '''token=Fz0X5jwLN_ZXGxRoW-wXS9Sr3hbF-uxo3zavNP3RgPQ''',
+]
+
+# 2. scripts/test/verify-profile.test.mjs 里刻意编造的**假** token（issue #305 用例：
+#    「就绪行 token 短于 40 字符 → 判未就绪」）。值本身就是 abc123DEF456ghi 这种
+#    一眼假的占位串，不是任何真实 token 的脱敏形式。
+[[allowlists]]
+description = "verify-profile 测试夹具里的自造占位 token（abc123DEF456ghi）"
+regexTarget = "match"
+regexes = [
+  '''token=abc123DEF456ghi''',
+  '''token: 'abc123DEF456ghi\'''',
+]
+
+# 3. verification/dsh-my-remote-0.1.0.md 的隔离实例实测记录：token 由验证脚本自造成
+#    `verify-tok-<端口>`（如 verify-tok-3083），实例与端口都是临时的，验证结束后即销毁。
+#    正则放宽到 `verify-tok-\d+` 是刻意的：这个词根在任何真实凭据里都不会出现，
+#    即"允许任意端口下的自造 token"，不会顺带放过别的东西。
+[[allowlists]]
+description = "隔离验证实例的自造 token（verify-tok-<端口>，验证后即销毁）"
+regexTarget = "match"
+regexes = [
+  '''x-remote-token:\s*verify-tok-\d+''',
+]
+
+# 4. plugins/dsh-my-guard/test/host-poison.mjs:64 —— 恶意包扫描器的测试夹具，用**非法**
+#    私钥字面量（只有头尾与一行 MIIEowIBAAKCAQEA，不是可用的 PEM）触发
+#    `secret`/`private-key` finding。正则只锚定那一行 MIIEowIBAAKCAQEA：
+#    这是典型的「示例密钥体」首行，真实私钥的 base64 体不会恰好是这一串。
+[[allowlists]]
+description = "dsh-my-guard 恶意包扫描测试夹具里的假私钥（占位密钥体 MIIEowIBAAKCAQEA）"
+regexTarget = "match"
+regexes = [
+  '''MIIEowIBAAKCAQEA''',
+]

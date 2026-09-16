@@ -25,6 +25,12 @@ export interface JsonlHandleInterface {
     snapshot: (lines: string[]) => Promise<void>;
     dispose: () => Promise<void>;
     stats: () => JsonlStats;
+    /**
+     * **已排空信号**（issue #343）：清防抖/compact 定时器 → 冲刷队列 → 等写链（含回调触发的
+     * 快照）全部跑完再 resolve。`append()`/`flush()` 是同步排队语义，调用方无法 await 到
+     * "确已落盘"；补上本方法后，用例不必再用 `await sleep(flushMs + 余量)` 赌防抖窗口到期。
+     */
+    drained: () => Promise<void>;
 }
 /**
  * 创建 jsonl 追加器句柄（file 为绝对/相对路径）。

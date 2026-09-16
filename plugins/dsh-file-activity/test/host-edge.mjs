@@ -94,8 +94,8 @@ async function boot() {
       return disposer
     },
   }
-  apply(ctx)
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  const store = apply(ctx)
+  await store.whenReady()
   return { ctx, getRoute: () => apiHolder.get(), getMediaRoute: () => mediaHolder.get() }
 }
 
@@ -175,8 +175,8 @@ test('trustedHosts entry without explicit port matches host:port requests', asyn
       return disposer
     },
   }
-  apply(ctx)
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  const store = apply(ctx)
+  await store.whenReady()
   const r = await callRoute(() => apiHolder.get(), 'GET', '/file-activity/api/stats?sessionId=s', undefined, {
     headers: { host: 'dsh.example.com:3080', origin: 'http://dsh.example.com:3080' },
   })
@@ -262,7 +262,7 @@ test('records arriving before state load are buffered and applied', async () => 
       return () => {}
     },
   }
-  apply(ctx)
+  const store = apply(ctx)
   // Record immediately — before the 50ms async state load completes.
   const { listener } = ctx.events.find((e) => e.name === 'fs/observed')
   listener(
@@ -270,7 +270,7 @@ test('records arriving before state load are buffered and applied', async () => 
     { kind: 'present' },
     { name: 'read', agent: { id: 'edge-session' }, arguments: {} },
   )
-  await new Promise((resolve) => setTimeout(resolve, 100))
+  await store.whenReady()
   const r = await callRoute(() => apiHolder.get(), 'GET', '/file-activity/api/stats?sessionId=edge-session')
   assert.equal(r.status, 200)
   assert.equal(r.json.value.counts['/work/buffered.txt'].read, 1, 'buffered record drained after load')
@@ -326,8 +326,8 @@ test('teardown flushes pending persistence', async () => {
       return disposer
     },
   }
-  apply(ctx)
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  const store = apply(ctx)
+  await store.whenReady()
   const { listener } = ctx.events.find((e) => e.name === 'fs/observed')
   listener(
     { displayPath: '/work/teardown.txt' },

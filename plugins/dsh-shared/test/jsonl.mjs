@@ -40,7 +40,6 @@ afterAll(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const noop = { warn() {} }
 
 /**
@@ -79,7 +78,7 @@ test('jsonlAppender: 高频追加为增量写（无写放大）+ 防抖合并', 
     appender.append(ev)
   }
   appender.flush()
-  await sleep(120)
+  await appender.drained()
   const text = readFileSync(file, 'utf8')
   const eventBytes = events.reduce((acc, e) => acc + JSON.stringify(e).length + 1, 0)
   assert.ok(text.length <= Math.ceil(eventBytes * 1.6) + 64, `写放大：文件 ${text.length}B vs 事件 ${eventBytes}B`)
@@ -104,7 +103,7 @@ test('jsonlAppender: compact 阈值回调 + 快照重置 + dispose 冲刷', asyn
   })
   for (let i = 0; i < 120; i += 1) appender.append({ i })
   appender.dispose() // compact timer 未触发时 dispose 兜底执行 onCompact
-  await sleep(150)
+  await appender.drained()
   assert.ok(compacted >= 1, 'compact 阈值回调触发')
   assert.ok(linesOf(file).length >= 100, 'dispose 后事件落盘')
   // 句柄快照（宿主提供全量行）→ 文件 = 快照内容 + 队列/阈值计数重置
@@ -161,7 +160,8 @@ test('jsonlAppender: io 错误降级——确定性 I/O 失败（EISDIR/ENOTDIR�
   appenderB.flush()
   await appenderB.snapshot(['{"b":2}'])
   appenderB.dispose()
-  await sleep(50)
+  await appenderA.drained()
+  await appenderB.drained()
 
   assert.equal(warns.length, 4, `flush/snapshot 失败均有 warn（got ${warns.length}）`)
   assert.deepEqual(
@@ -192,10 +192,10 @@ test('jsonlAppender: io 错误降级——flush/snapshot 失败仅警告不抛�
   try {
     for (let i = 0; i < 8; i += 1) appender.append({ i })
     appender.flush()
-    await sleep(100)
+    await appender.drained()
     await appender.snapshot(['{"a":1}'])
     appender.dispose()
-    await sleep(50)
+    await appender.drained()
   } finally {
     chmodSync(join(dir, 'readonly'), 0o755)
   }

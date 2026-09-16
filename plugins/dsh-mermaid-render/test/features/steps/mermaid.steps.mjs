@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 // host 半（issue #194：system-prompt 注入）——与 client 半同一份产物入口
 import { apply as hostApply } from '../../../lib/index.js'
+import { sleepFor, waitFor } from '../../../../dsh-shared/test-kit/wait.mjs'
 
 function makeElement(tag, attrs = {}) {
   const el = {
@@ -571,6 +572,16 @@ class World {
     return this.live.block.querySelector('.dsh-mermaid-render-card-host') !== null
   }
 
+  /**
+   * 卡片渲染态（issue #343）：实现把状态机当前值写在卡片 host 的真实 DOM 属性上
+   * （`data-dsh-mermaid-render-state` = loading / ok / error），步骤据此条件轮询
+   * 渲染是否落定，替代原先「固定 sleep 20–900ms 赌渲染时长」。
+   */
+  liveRenderState() {
+    const host = this.live.block.querySelector('[data-dsh-mermaid-render-state]')
+    return host ? host.getAttribute('data-dsh-mermaid-render-state') : null
+  }
+
   /** 页面上的「炸弹图」残留（引擎自带错误图形 + 离屏容器）。 */
   liveResidue() {
     return {
@@ -760,7 +771,7 @@ Then('消息流式结束前该块未被渲染', async function () {
 })
 
 When('该代码块内容在稳定窗口内保持不变', async function () {
-  await new Promise((r) => setTimeout(r, 900))
+  await waitFor(() => this.liveMounted(), { message: '内容稳定后应挂载图表卡片' })
   this.triggerLiveObserver()
 })
 
@@ -772,7 +783,7 @@ Then('消息流式结束前该块已渲染为图表卡片', async function () {
 
 When('该代码块内容持续增长', async function () {
   for (const chunk of ['\n  A --> B', '\n  B --> C', '\n  C --> D']) {
-    await new Promise((r) => setTimeout(r, 200))
+    await sleepFor('模拟流式更新间隔：负向观察窗（稳定窗口未到且内容又变，不得挂载）', 200)
     this.live.code.textContent += chunk
     this.triggerLiveObserver()
     assert.equal(this.liveMounted(), false, '内容增长中不挂载')
@@ -780,21 +791,21 @@ When('该代码块内容持续增长', async function () {
 })
 
 Then('该块始终未被渲染为图表卡片', async function () {
-  await new Promise((r) => setTimeout(r, 200))
+  await sleepFor('负向观察窗：内容仍在增长，不得渲染残缺中间态', 200)
   assert.equal(this.liveMounted(), false, '残缺中间态未被渲染成卡片')
 })
 
 Given('渲染插件已启动且引擎渲染必定失败', async function () {
   this.loadAndApplyLive({ engine: 'boom', source: 'flowchart TD\n  A[Start --> B' })
   this.renderLiveCard() // 触发 effect → mermaid.render 失败
-  await new Promise((r) => setTimeout(r, 20))
+  await waitFor(() => this.liveRenderState() === 'error', { message: '引擎渲染失败后应进入 error 渲染态' })
   this.renderLiveCard() // 错误态
 })
 
 Given('渲染插件已启动且内联引擎不可用', async function () {
   this.loadAndApplyLive({ engine: 'missing' })
   this.renderLiveCard()
-  await new Promise((r) => setTimeout(r, 20))
+  await waitFor(() => this.liveRenderState() === 'error', { message: '引擎不可用时应进入 error 渲染态' })
   this.renderLiveCard()
 })
 

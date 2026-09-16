@@ -23,7 +23,7 @@ function compactLinesFor(stateBytes) {
     const scaled = Math.ceil((stateBytes * 12) / AVG_EVENT_BYTES);
     return Math.min(MAX_COMPACT_LINES, Math.max(MIN_COMPACT_LINES, scaled));
 }
-/** Build the per-apply store: { state, record, schedulePersist, stats, dispose }. */
+/** Build the per-apply store: { state, record, schedulePersist, stats, whenReady, dispose }. */
 export function createStore(ctx, deps = {}) {
     const limits = normalizeLimits(deps.limits);
     const store = {
@@ -32,6 +32,7 @@ export function createStore(ctx, deps = {}) {
         schedulePersist: () => { },
         stats: () => zeroStats(limits),
         dispose: () => { },
+        whenReady: () => Promise.resolve(),
     };
     const handle = {
         ctx,
@@ -39,6 +40,7 @@ export function createStore(ctx, deps = {}) {
         store,
         pending: [],
         ready: false,
+        readyPromise: Promise.resolve(),
         limits,
         evicted: emptyEvicted(),
         facts: [],
@@ -49,6 +51,13 @@ export function createStore(ctx, deps = {}) {
         compactedEvents: 0,
         compactLinesFixed: deps.compactLines !== undefined,
     };
+    // 加载就绪信号（issue #343）：onLoaded 完成「磁盘状态合并 + pending 回放」后 resolve。
+    // 与 #310/#313/#335 同款能力 —— 该插件此前**没有任何就绪信号**，测试只能固定等 50–100ms 赌加载。
+    let markReady = () => { };
+    handle.readyPromise = new Promise((resolve) => {
+        markReady = resolve;
+    });
+    handle.markReady = markReady;
     handle.persist = createPersist({
         file: handle.file,
         ctx,
@@ -61,6 +70,7 @@ export function createStore(ctx, deps = {}) {
     store.schedulePersist = () => enqueueFlush(handle, true);
     store.stats = () => snapshotStats(handle);
     store.dispose = () => dispose(handle);
+    store.whenReady = () => handle.readyPromise;
     void loadState(handle.file, limits, ctx.logger).then((loaded) => onLoaded(handle, loaded));
     return store;
 }
@@ -133,6 +143,9 @@ function onLoaded(handle, loaded) {
         flushFacts(handle);
         schedulePersist(handle);
     }
+    // **顺序关键**：缓冲记录回放之后才兑现就绪信号 ——
+    // `await store.whenReady()` 之后查询必含加载期间记录的内容（issue #343）。
+    handle.markReady?.();
 }
 /** Apply every record buffered before the state load finished (deferred flush). */
 function drainPending(handle) {

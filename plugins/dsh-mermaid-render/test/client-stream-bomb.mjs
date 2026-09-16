@@ -17,6 +17,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { sleepFor, waitFor, yieldLoop } from '../../dsh-shared/test-kit/wait.mjs'
 
 // ── 假 DOM ────────────────────────────────────────────────────────────────
 function makeEl(tag, attrs = {}) {
@@ -285,7 +286,15 @@ function isMounted(fx) {
   return fx.cardHost() !== null && fx.pre.style.display === 'none'
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+/**
+ * 卡片渲染态（issue #343 C 簇）：实现把状态机当前值写在卡片 host 的真实 DOM 属性上
+ * （`data-dsh-mermaid-render-state` = loading / ok / error），测试据此**条件轮询**
+ * 渲染是否落定，替代原先「固定 sleep 20–900ms 赌渲染时长」。
+ */
+function renderStateOf(body) {
+  const el = body.querySelector('[data-dsh-mermaid-render-state]')
+  return el ? el.getAttribute('data-dsh-mermaid-render-state') : null
+}
 
 /** 「炸弹图」残留检查：mermaid 自带错误图形 = #d<id> 容器 + .error-icon/.error-text。 */
 function bombResidue(body) {
@@ -369,7 +378,7 @@ test('引擎加载失败：无炸弹图残留、错误横幅可见、重试按�
   assert.ok(isMounted(fx), '卡片已挂载（失败在渲染阶段暴露）')
   const root = env.roots[0]
   renderCard(env, root) // 首次渲染触发 effect → ensureMermaid 失败
-  await sleep(20)
+  await waitFor(() => renderStateOf(env.body) === 'error', { message: '引擎加载失败后卡片应进入 error 渲染态' })
   const tree = renderCard(env, root)
   const texts = collectCardText(tree)
   assert.ok(
@@ -391,7 +400,7 @@ test('引擎加载失败：无炸弹图残留、错误横幅可见、重试按�
     collectCardText(tree2).some((t) => t.includes('渲染中')),
     '重试后回到渲染中状态：' + JSON.stringify(collectCardText(tree2)),
   )
-  await sleep(20)
+  await waitFor(() => renderStateOf(env.body) === 'ok', { message: '重试后卡片应回到 ok 渲染态' })
   const tree3 = renderCard(env, root)
   const classNames3 = collectClassNames(tree3)
   assert.ok(
@@ -430,7 +439,7 @@ test('引擎渲染失败：引擎错误图形不落进页面，错误横幅 + �
   const fx = makeMermaidBlock(env.body, 'flowchart TD\n  A[Start --> B')
   instantiate(env)
   renderCard(env, env.roots[0]) // 首次渲染触发 effect → mermaid.render
-  await sleep(20)
+  await waitFor(() => calls.length === 1, { message: '引擎 render 应被调用一次' })
   assert.equal(calls.length, 1, '引擎被调用一次')
   assert.ok(calls[0].container, '渲染必须给引擎一个容器（离屏），否则引擎会把错误图形插进 body')
   assert.ok(calls[0].container.getAttribute('data-dsh-mermaid-render-offscreen') !== undefined, '渲染容器带离屏标记')
@@ -460,10 +469,10 @@ test('流式块内容稳定：data-streaming 仍在时即渲染（不等消息�
   const fx = makeMermaidBlock(env.body, 'flowchart TD\n  A --> B', { streaming: true })
   instantiate(env)
   assert.equal(isMounted(fx), false, '刚出现（未确认稳定）时不挂载')
-  await sleep(150)
+  await sleepFor('稳定窗口（400ms）未到：负向观察窗，证明未提前挂载', 150)
   assert.equal(isMounted(fx), false, '稳定窗口未到时仍不挂载')
   for (const obs of env.observers) obs.trigger()
-  await sleep(700)
+  await waitFor(() => isMounted(fx), { message: '内容稳定后在流式过程中即挂载卡片' })
   assert.equal(fx.row.getAttribute('data-streaming'), '1', '消息仍在流式（data-streaming 未移除）')
   assert.ok(isMounted(fx), '内容稳定后在流式过程中即挂载卡片')
 })
@@ -478,12 +487,12 @@ test('流式块内容持续变化：不挂载，稳定后才渲染', async () =>
   const fx = makeMermaidBlock(env.body, 'flowchart TD', { streaming: true })
   instantiate(env)
   for (const chunk of ['\n  A --> B', '\n  B --> C', '\n  C --> D']) {
-    await sleep(200)
+    await sleepFor('模拟流式更新间隔：负向观察窗（稳定窗口未到且内容又变，不得挂载）', 200)
     fx.code.textContent += chunk
     for (const obs of env.observers) obs.trigger()
     assert.equal(isMounted(fx), false, '内容仍在增长时不挂载：' + JSON.stringify(chunk))
   }
-  await sleep(800)
+  await waitFor(() => isMounted(fx), { message: '内容停止增长（围栏闭合）后才挂载' })
   assert.ok(isMounted(fx), '内容停止增长（围栏闭合）后才挂载')
   assert.ok(fx.code.textContent.includes('C --> D'), '卡片用的是完整源码')
 })
@@ -497,16 +506,16 @@ test('挂载后源码继续变化：卡片自愈卸载并恢复原始代码块',
   }
   const fx = makeMermaidBlock(env.body, 'flowchart TD\n  A --> B', { streaming: true })
   instantiate(env)
-  await sleep(700)
+  await waitFor(() => isMounted(fx), { message: '先正常挂载' })
   assert.ok(isMounted(fx), '先正常挂载')
   // 误判场景：流式仍在写同一个块（内容继续增长）
   fx.code.textContent += '\n  B --> C'
   for (const obs of env.observers) obs.trigger()
-  await sleep(30)
+  await waitFor(() => !isMounted(fx), { message: '内容变化后卡片应被卸载' })
   assert.equal(isMounted(fx), false, '内容变化后卡片被卸载（不留残缺失败卡片）')
   assert.equal(fx.pre.style.display, '', '原始 pre 恢复可见')
   assert.ok(env.roots[0].unmounted, 'React root 已卸载')
-  await sleep(900)
+  await waitFor(() => isMounted(fx), { message: '内容再次稳定后重新渲染' })
   assert.ok(isMounted(fx), '内容再次稳定后重新渲染')
 })
 
@@ -542,7 +551,7 @@ test('重试重新拉取引擎：首次 fetch 失败后重试成功（缓存已�
   // 引擎此时仍未加载（window.mermaid 未定义）→ 首轮真的走 fetch 失败路径
   global.window.mermaid = undefined
   renderCard(env, env.roots[0]) // 首次渲染触发 effect → ensureMermaid 失败
-  await sleep(20)
+  await waitFor(() => renderStateOf(env.body) === 'error', { message: '首次加载失败后进入 error 渲染态' })
   assert.equal(fetchCalls.length, 1, '首次渲染拉过一次引擎')
   const tree = renderCard(env, env.roots[0])
   assert.ok(
@@ -573,7 +582,7 @@ test('重试重新拉取引擎：首次 fetch 失败后重试成功（缓存已�
   }
   findButton(tree, '重试').onClick()
   renderCard(env, env.roots[0]) // 重试后的新一轮 effect → 必须再次 fetch
-  await sleep(30)
+  await waitFor(() => renderStateOf(env.body) === 'ok', { message: '重试后应渲染出 SVG（ok 渲染态）' })
   const tree2 = renderCard(env, env.roots[0])
   assert.ok(fetchCalls.length > 1, '重试必须重新拉引擎（失败缓存不得复用）：' + JSON.stringify(fetchCalls))
   assert.ok(
@@ -598,11 +607,11 @@ test('重试成功后，被取代那轮迟到的失败不覆盖新结果（渲�
     })
   instantiate(env)
   renderCard(env, env.roots[0]) // 第 1 轮：引擎加载挂起（留在飞）
-  await sleep(10)
+  await waitFor(() => deferred.length === 1, { message: '第 1 轮引擎加载应已进入在飞状态' })
   // 第 1 轮的失败落定 → 卡片进入错误态（真实失败路径）
   failMode = 'reject'
   for (const reject of deferred.splice(0)) reject(new Error('mock fetch: engine not available'))
-  await sleep(20)
+  await waitFor(() => renderStateOf(env.body) === 'error', { message: '第 1 轮失败落定后卡片进入 error 态' })
   const errTree = renderCard(env, env.roots[0])
   const retry = findButton(errTree, '重试')
   assert.ok(retry, '失败卡片提供重试：' + JSON.stringify(collectCardText(errTree)))
@@ -615,7 +624,7 @@ test('重试成功后，被取代那轮迟到的失败不覆盖新结果（渲�
   failMode = 'ok'
   retry.onClick()
   renderCard(env, env.roots[0])
-  await sleep(20)
+  await waitFor(() => renderStateOf(env.body) === 'ok', { message: '第 2 轮应立刻渲染成功' })
   const tree2 = renderCard(env, env.roots[0])
   assert.ok(
     collectClassNames(tree2).includes('dsh-mermaid-render-svg'),
@@ -625,7 +634,8 @@ test('重试成功后，被取代那轮迟到的失败不覆盖新结果（渲�
   // 第 1 轮的网络失败「迟到」落定（重试后的第二轮已成功）——不得把卡片打回错误态
   failMode = 'reject'
   for (const reject of deferred.splice(0)) reject(new Error('mock fetch: engine not available'))
-  await sleep(20)
+  // 迟到失败落定（负向断言：不得把已成功的卡片打回 error 态）
+  for (let i = 0; i < 5; i += 1) await yieldLoop()
   const tree3 = renderCard(env, env.roots[0])
   assert.ok(
     collectClassNames(tree3).includes('dsh-mermaid-render-svg'),
@@ -636,4 +646,29 @@ test('重试成功后，被取代那轮迟到的失败不覆盖新结果（渲�
     '错误态不得回退（渲染令牌挡住迟到的失败）',
   )
   void fx
+})
+
+// ══ 场景 9（issue #343 C 簇）：渲染态可观测 —— 受控慢引擎下固定等待必误判 ══
+test('渲染态可观测：慢引擎下「固定等 20ms」看不到 ok，轮询渲染态必正确', async () => {
+  const env = makeEnv()
+  global.window.mermaid = {
+    initialize: () => {},
+    render: async (id) => {
+      // 受控慢引擎：本用例构造的就是「渲染耗时 300ms」这个条件（受控 IO 手法），不是等结果；
+      // sleep-ok: 延时是构造项 —— 判据由下方 waitFor(渲染态) 承担，不靠等一段时间
+      await new Promise((r) => setTimeout(r, 300))
+      return { svg: '<svg id="' + id + '"></svg>' }
+    },
+  }
+  makeMermaidBlock(env.body, 'flowchart TD\n  A --> B')
+  instantiate(env)
+  renderCard(env, env.roots[0])
+
+  // ── 改动前的写法：固定等 20ms 赌渲染完成 ──
+  await sleepFor('复刻改动前的固定等待（20ms）：慢引擎下必然早于渲染完成（对照证据）', 20)
+  assert.notEqual(renderStateOf(env.body), 'ok', '慢引擎下固定等待必看不到 ok 渲染态（这就是 CI 上必红的形态）')
+
+  // ── 修复后：轮询渲染态（实现写在卡片 host 上的确定性信号） ──
+  await waitFor(() => renderStateOf(env.body) === 'ok', { message: '慢引擎渲染完成后渲染态应变为 ok' })
+  assert.equal(renderStateOf(env.body), 'ok')
 })

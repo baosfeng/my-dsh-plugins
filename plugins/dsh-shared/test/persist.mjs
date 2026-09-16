@@ -17,6 +17,7 @@ import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { atomicWriteJson, atomicWriteStats, DEFAULT_MAX_BYTES, DEFAULT_MIN_INTERVAL_MS } from '../lib/persist.js'
+import { sleepFor } from '../test-kit/wait.mjs'
 
 const dirs = []
 function tempDir() {
@@ -28,7 +29,6 @@ afterAll(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 
 test('atomicWriteJson 默认护栏：1s 窗口内第二次写被拒（warn + 计数可外部读取）', async () => {
@@ -90,7 +90,9 @@ test('atomicWriteJson：显式 minIntervalMs 可覆盖默认（收紧不等于�
   const logger = { warn() {} }
   assert.equal(await atomicWriteJson(file, { v: 1 }, logger, '[t]', { minIntervalMs: 30 }), true)
   assert.equal(await atomicWriteJson(file, { v: 2 }, logger, '[t]', { minIntervalMs: 30 }), false, '30ms 窗口内被拒')
-  await sleep(50)
+  // 真实时间语义：等的是实现**自己的** minIntervalMs=30 节流窗口过期（窗口内必拒、窗口外才允许），
+  // 条件本身就是墙钟，无法用 waitFor 轮询表达 —— 理由写在第一参数里（issue #343）
+  await sleepFor('等实现自己的 30ms 节流窗口过期：窗口内写必被拒，只能等真实时间', 50)
   assert.equal(await atomicWriteJson(file, { v: 3 }, logger, '[t]', { minIntervalMs: 30 }), true, '窗口过期后可写')
   assert.equal(readJson(file).v, 3)
   // 显式 0 = 关闭节流（调用方显式承担节奏责任，如低频人工操作）

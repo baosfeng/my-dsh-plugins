@@ -67,7 +67,14 @@ function bashBaseDirOf(exec: unknown, ctx: DshContext, sessionId: string): strin
   return typeof workdir === 'string' && workdir !== '' ? workdir : sessionCwdOf(ctx, sessionId)
 }
 
-export function apply(ctx: DshContext): void {
+/**
+ * 装配插件并返回本实例的 store。
+ *
+ * 返回 store 是为了让宿主/测试拿到**确定性就绪信号**（`await store.whenReady()`，
+ * issue #343）：此前该插件没有就绪信号，测试只能固定等 50–100ms 赌异步状态加载完成。
+ * 返回值是新增能力，调用方忽略它时行为与此前完全一致。
+ */
+export function apply(ctx: DshContext): ActivityStore {
   const store = createStore(ctx)
 
   // ── agent-side file operations ──────────────────────────────────────────
@@ -124,4 +131,6 @@ export function apply(ctx: DshContext): void {
 
   // Tear down on unload: flush pending persistence.
   ctx.effect(() => store.dispose, 'dsh-file-activity: persistence teardown')
+
+  return store
 }

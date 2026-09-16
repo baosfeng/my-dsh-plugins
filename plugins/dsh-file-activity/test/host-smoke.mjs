@@ -91,9 +91,9 @@ async function boot() {
       return disposer
     },
   }
-  apply(ctx)
+  const store = apply(ctx)
   // wait for async state load
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  await store.whenReady()
   return { ctx, getRoute: () => apiHolder.get(), getMediaRoute: () => mediaHolder.get() }
 }
 
@@ -313,6 +313,8 @@ test('host smoke suite', async () => {
     // 11. persisted history longer than the cap is trimmed on load (and
     // duplicate paths are deduped)
     // (wait out the clear's debounced persist first, then seed an oversized file)
+    // sleep-ok: E 类并发争用（#343 明确不在本卡，归 #330/#336）：等实现自己的 500ms 防抖写盘窗口结束，
+    // 否则紧随其后的 writeFileSync 会与插件的防抖写竞争重写同一文件（不是"实现未就绪"）
     await new Promise((resolve) => setTimeout(resolve, 600))
     writeFileSync(
       statePath,
@@ -351,7 +353,7 @@ test('host smoke suite', async () => {
       const sid = 'status-query-session'
       // record some activity so stats are non-trivial
       emitObserved(ctxStatus, 'create_file', sid, '/work/status-query.txt')
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      // 记录同步生效（boot 已 whenReady），不再固定等待
       const ev = ctxStatus.events.find((e) => e.name === 'plugin:status-query')
       assert.ok(ev, 'status-query handler registered')
       const result = ev.listener({ plugin: 'dsh-file-activity' })

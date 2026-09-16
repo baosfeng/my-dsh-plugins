@@ -47,6 +47,7 @@ export function jsonlAppender(file, options = {}) {
         snapshot: (lines) => snapshot(handle, lines),
         dispose: () => dispose(handle),
         stats: () => ({ total: handle.total, bytesWritten: handle.bytesWritten, writes: handle.writes }),
+        drained: () => drained(handle),
     };
 }
 /** 追加一个可序列化对象（行入队；防抖批量落盘；达阈值调度 compact 回调）。 */
@@ -134,6 +135,40 @@ function dispose(handle) {
         }
     }
     return handle.dirtyChain;
+}
+/**
+ * 已排空信号（issue #343）：把「挂起的 compact 回调 + 防抖窗口 + 写链」全部走完再 resolve。
+ *
+ * 与 `createWriteScheduler.drain()` 同款能力 —— 之前只有调度器有"已排空"信号，
+ * jsonl 原语没有，于是用例只能 `await sleep(flushMs + 余量)` 赌防抖窗口到期（高负载下必输）。
+ * 幂等：已静默时立即 resolve；`dispose()` 之后依然可用（写链已结算时直接返回）。
+ */
+async function drained(handle) {
+    // 1) 兑现已到期的 compact 回调（宿主回调通常调 snapshot()，把新写推进 dirtyChain）
+    if (handle.compactTimer !== null) {
+        clearTimeout(handle.compactTimer);
+        handle.compactTimer = null;
+        handle.compacting = true;
+        try {
+            handle.onCompact?.();
+        }
+        finally {
+            handle.compacting = false;
+        }
+    }
+    // 2) 清防抖窗口并立即冲刷队列（把「排队中的行」交给写链）
+    if (handle.flushTimer !== null) {
+        clearTimeout(handle.flushTimer);
+        handle.flushTimer = null;
+    }
+    flushNow(handle);
+    // 3) 等写链；回调/快照期间可能又入队（见 onCompact 内 append 的竞争用例），循环到真正静默
+    for (let i = 0; i < 100; i += 1) {
+        await handle.dirtyChain;
+        if (handle.queue.length === 0)
+            return;
+        flushNow(handle);
+    }
 }
 /** 解析 jsonl 文本为行数组（空行/非 JSON 行跳过）。 */
 export function parseJsonlLines(text) {

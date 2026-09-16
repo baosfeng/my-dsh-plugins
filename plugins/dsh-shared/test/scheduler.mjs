@@ -17,11 +17,10 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { createWriteScheduler, DEFAULT_DEBOUNCE_MS, DEFAULT_MIN_WRITE_INTERVAL_MS } from '../lib/scheduler.js'
 import { atomicWriteJson } from '../lib/persist.js'
+import { yieldLoop } from '../test-kit/wait.mjs'
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 test('createWriteScheduler：默认参数与默认护栏一致（防抖 500ms / 最小间隔 1s）', () => {
   assert.equal(DEFAULT_DEBOUNCE_MS, 500, '默认防抖窗口')
@@ -70,24 +69,31 @@ test('createWriteScheduler：写串行（写回调不并发）+ drain 等 in-fli
   const gate = new Promise((resolve) => {
     release = resolve
   })
+  /** 第一次写真正开始的信号（替代「sleep 10ms 猜它已进 in-flight」）。 */
+  let markFirstWriteStarted = () => {}
+  const firstWriteStarted = new Promise((resolve) => {
+    markFirstWriteStarted = resolve
+  })
   const scheduler = createWriteScheduler({
     debounceMs: 0,
     minIntervalMs: 0,
     write: async () => {
       inflight += 1
       maxInflight = Math.max(maxInflight, inflight)
+      markFirstWriteStarted()
       await gate
       inflight -= 1
     },
   })
   scheduler.schedule()
-  await sleep(10) // 让第一次写进入 in-flight
+  await firstWriteStarted // 等第一次写真正进入 in-flight（条件，不猜时间）
   scheduler.schedule()
   let drained = false
   const drainedPromise = scheduler.drain().then(() => {
     drained = true
   })
-  await sleep(10)
+  // 让出事件循环若干轮：drain 若错误地立即 resolve，这里就会观察到（不是墙钟语义）
+  for (let i = 0; i < 5; i += 1) await yieldLoop()
   assert.equal(drained, false, 'drain 必须等待 in-flight 写完成（不是猜时间）')
   release()
   await drainedPromise

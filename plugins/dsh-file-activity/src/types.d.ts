@@ -182,6 +182,12 @@ export interface ActivityStore {
   state: ActivityState
   record(sessionId: string, path: string, op: string, time?: number): boolean
   schedulePersist(): void
+  /**
+   * **加载就绪信号**（issue #343）：磁盘状态已合并 + 加载期间缓冲的记录已回放之后 resolve。
+   * 就绪后立即 resolve（无可感知延迟）；未就绪的 `record()` 只入 `pending`，
+   * 所以「await whenReady() 之后查询」与 IO 耗时无关 —— 调用方不要再固定 sleep 赌加载完成。
+   */
+  whenReady(): Promise<void>
   /** 资源上界 + 淘汰计数 + 落盘统计（写放大断言/看门狗读取）。 */
   stats(): StoreStats
   dispose(): void
@@ -252,6 +258,10 @@ export interface StoreHandle {
   store: ActivityStore
   pending: PendingRecord[]
   ready: boolean
+  /** 加载就绪信号（磁盘状态合并 + pending 回放完成）；store.whenReady() 的载体。 */
+  readyPromise: Promise<void>
+  /** onLoaded 末尾调用的 resolve（readyPromise 的触发器）。 */
+  markReady?: () => void
   limits: QuotaLimits
   evicted: EvictedStats
   /** 已应用但尚未落盘的事件事实（防抖窗口合并）。 */

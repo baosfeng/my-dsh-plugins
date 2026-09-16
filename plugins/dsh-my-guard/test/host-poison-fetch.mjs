@@ -7,16 +7,21 @@
  *
  * 断言口径：**分类到具体类别 + 错误信息带可诊断信息**（HTTP 状态码 / URL / 缺失字段），
  * 而不是"抛了个错 / 返回了 false"。用本地 `http` server 当 registry，失败原因是构造出来的。
+ *
+ * #105 追加：远端字节经摘要校验后**不再落盘**（`fetchTarball` 返回内存字节，解包走 tar stdin），
+ * 且远端链路与本地链路一样先逐个 entry 校验再解包——逃逸路径整包拒绝。
  */
 import { afterAll, test } from 'vitest'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import tmp from 'tmp'
 import { classifyFetchFailure, fetchTarball, resolveAndScan, scanTarball } from '../lib/poison.js'
+import { entry, tgz } from './lib/tar-craft.mjs'
 
 const tmpDirs = []
 function tempDir(prefix = 'dsh-guard-fetch-') {
@@ -31,16 +36,21 @@ afterAll(() => {
 /**
  * 用本地 http server 冒充 registry：routes 的 key 是 req.url，值为 handler；
  * 未登记的 URL 一律 404。回调拿到 `http://127.0.0.1:<port>` 基址。
+ *
+ * 查表走 `Map` + **只调用函数值**（#104 js/unvalidated-dynamic-method-call）：
+ * 查表键 `request.url` 是外部可控的，用 `routes[request.url]` 直接当函数调用会顺着原型链
+ * 落到 `constructor`/`toString` 这类意外目标（或对非函数值抛 TypeError）。
  */
 async function withRegistry(routes, fn) {
+  const table = new Map(Object.entries(routes))
   const server = createServer((request, response) => {
-    const handler = routes[request.url]
-    if (handler === undefined) {
-      response.writeHead(404, { 'content-type': 'application/json' })
-      response.end('{"error":"Not found"}')
+    const handler = table.get(request.url)
+    if (typeof handler === 'function') {
+      handler(request, response)
       return
     }
-    handler(request, response)
+    response.writeHead(404, { 'content-type': 'application/json' })
+    response.end('{"error":"Not found"}')
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const base = `http://127.0.0.1:${server.address().port}`
@@ -52,8 +62,12 @@ async function withRegistry(routes, fn) {
   }
 }
 
-/** 造一个真实 tarball（含可疑 postinstall），返回 { path, buffer, integrity }。 */
-function makeTarball() {
+/** os.tmpdir() 下 `dsh-guard-*.tgz` 的数量（#105 之前 fetchTarball 会把远端字节落盘成这种文件）。 */
+function tarballTempCount() {
+  return readdirSync(tmpdir()).filter((name) => name.startsWith('dsh-guard-') && name.endsWith('.tgz')).length
+}
+
+/** 造一个真实 tarball（含可疑 postinstall），返回 { path, buffer, integrity }。 */ function makeTarball() {
   const src = tempDir('dsh-guard-fetch-src-')
   writeFileSync(
     join(src, 'package.json'),
@@ -76,6 +90,25 @@ function metaResponse(response, tarballUrl, integrity) {
   response.writeHead(200, { 'content-type': 'application/json' })
   response.end(JSON.stringify({ name: 'evil-pkg', dist: { tarball: tarballUrl, integrity } }))
 }
+
+// ── 路由表取值：只调用函数值（#104）───────────────────────────────────────
+
+test('#104 registry mock：非函数的路由值一律 404（不把查表结果当函数调用）', async () => {
+  await withRegistry({ '/evil-pkg/latest': 'not-a-function' }, async (base) => {
+    const response = await fetch(`${base}/evil-pkg/latest`)
+    assert.equal(response.status, 404)
+    assert.equal(await response.json().then((body) => body.error), 'Not found')
+  })
+})
+
+test('#104 registry mock：原型链上的键名不会被当成 handler 调用', async () => {
+  await withRegistry({}, async (base) => {
+    for (const name of ['/toString', '/constructor', '/__proto__', '/hasOwnProperty']) {
+      const response = await fetch(`${base}${name}`)
+      assert.equal(response.status, 404, `${name} 必须是 404（而不是落到 Object.prototype 上）`)
+    }
+  })
+})
 
 // ── 类别：HTTP 状态码 ──────────────────────────────────────────────────────
 
@@ -216,7 +249,7 @@ test('#327 classifyFetchFailure 的 errno/错误名 → 类别映射', () => {
 
 // ── 正常路径必须仍然可用（防"一律报错"的假绿）──────────────────────────────
 
-test('#327 tarball 获取：摘要匹配时正常落盘，且解包扫描仍能抓到可疑脚本', async () => {
+test('#105 tarball 获取：摘要匹配后字节不再落盘，解包扫描仍能抓到可疑脚本', async () => {
   const { buffer, integrity } = makeTarball()
   const routes = {
     '/evil-pkg/latest': (request, response) =>
@@ -227,16 +260,42 @@ test('#327 tarball 获取：摘要匹配时正常落盘，且解包扫描仍能�
     },
   }
   await withRegistry(routes, async (base) => {
+    const before = tarballTempCount()
     const result = await fetchTarball('evil-pkg', { registryBase: base })
     assert.equal(result.ok, true, result.ok === false ? result.error : '')
-    assert.ok(existsSync(result.file), 'tarball 已落盘')
+    assert.ok(Buffer.isBuffer(result.body), '校验通过的字节留在内存里返回')
+    assert.equal(result.file, undefined, '不再返回落盘路径（远端字节不写文件系统）')
+    assert.equal(tarballTempCount(), before, '临时目录里不得新增落盘的 tarball')
 
-    const scanned = await scanTarball(result.file)
-    assert.equal(scanned.ok, true)
+    // 远端链路端到端：内存字节经 tar stdin 解包后照样扫出可疑脚本
+    const scanned = await resolveAndScan('evil-pkg', { registryBase: base })
+    assert.equal(scanned.ok, true, scanned.ok === false ? scanned.error : '')
     assert.ok(
       scanned.findings.some((f) => f.id === 'suspicious-script'),
       '包内可疑 postinstall 仍被抓到',
     )
+  })
+})
+
+test('#105 远端 tarball 含逃逸路径时整包拒绝（远端链路与本地同样先校验再解包）', async () => {
+  // 绝对路径 entry：系统 tar 只会剥掉 `/` 前缀后照常落盘，必须在解包前拒绝
+  const escaped = join(tempDir(), 'escaped-remote.txt')
+  const evil = tgz([entry(escaped, { data: 'PWNED' })])
+  const integrity = `sha512-${createHash('sha512').update(evil).digest('base64')}`
+  const routes = {
+    '/evil-pkg/latest': (request, response) =>
+      metaResponse(response, `http://127.0.0.1:${request.socket.localPort}/evil.tgz`, integrity),
+    '/evil.tgz': (_request, response) => {
+      response.writeHead(200)
+      response.end(evil)
+    },
+  }
+  await withRegistry(routes, async (base) => {
+    const scanned = await resolveAndScan('evil-pkg', { registryBase: base })
+    assert.equal(scanned.ok, false)
+    assert.match(scanned.error, /拒绝解包/)
+    assert.match(scanned.error, /绝对路径/)
+    assert.equal(existsSync(escaped), false, '逃逸目标不得被写出')
   })
 })
 

@@ -196,27 +196,30 @@ function installHooks(forkDir) {
  * js/insecure-temporary-file 只看「该路径是否在临时目录下被 open」——`forkDir` 本身就是
  * `os.tmpdir()` 的后代，于是这一行被判为在临时目录里创建文件。现在读取改为
  * `readFileSync(excludeFile, { flag: O_RDONLY|O_NOFOLLOW })`：**不再有 open-可预测路径这一
- * 形态**，同时 O_NOFOLLOW 让软链由内核以 ELOOP 拒绝（不再依赖用户态 lstat 判断），
- * 目录则直接被 EISDIR/后续 isFile 判定挡下。敏感信息面没有扩大（本来就只读这一个文件），
- * 而写入仍然走 mkdtemp + `wx` + rename 的原子路径。
+ * 形态**（该规则的创建原语是 `openSync`，不是 `readFileSync`），软链仍由内核以 ELOOP 拒绝。
+ *
+ * 读取侧**刻意不做前置 `lstatSync(...).isFile()` 检查**：那会构成「按路径 check → 按路径 use」，
+ * 正是 CodeQL js/file-system-race（The file may have changed since it was checked）的形态
+ * （实测：加上它立刻换回一条 high 告警）。代价是设备/FIFO 不再被提前拒绝，但与威胁模型一致：
+ * fork 目录由 `git clone` 建立（同机其他用户不可写），预置整个 forkDir 会被 `cmdCreate` 的
+ * `existsSync(forkDir)` 直接拒绝；目录由 `readFileSync` 抛 EISDIR、软链由 ELOOP 挡下。
+ * 写入仍走 mkdtemp + `wx` + rename 的原子路径，与「读到的哪个 inode」无关，所以
+ * 「检查与使用之间被替换」影响不到写入目标——敏感面没有扩大。
  */
 function ensureExclude(forkDir) {
   const excludeFile = join(forkDir, '.git', 'info', 'exclude')
-  // 现状必须是"不存在"或"普通文件"：软链/目录/设备一律拒绝（软链正是攻击者预置的形态）。
-  // O_NOFOLLOW 由内核拒绝软链（ELOOP），不再 lstat-then-read 的 TOCTOU（issue #320）。
-  // 普通文件判定用 lstat（只读类型判断，不参与后续写入决策——写入走 rename 原子替换，
-  // 所以这里即使判断后被替换也影响不到写入目标），避免对设备/FIFO 调用 read 而卡住。
+  // 现状必须是"不存在"或"普通文件"：软链/目录一律拒绝（软链正是攻击者预置的形态）。
+  // O_NOFOLLOW 让内核拒绝软链（ELOOP），不 lstat-then-read，避免 #320/#109 那类 TOCTOU。
   let current = ''
   try {
-    if (!lstatSync(excludeFile).isFile()) {
-      return { ok: false, detail: `拒绝写入：${excludeFile} 不是普通文件（符号链接/目录/特殊文件）` }
-    }
     current = readFileSync(excludeFile, { encoding: 'utf8', flag: constants.O_RDONLY | constants.O_NOFOLLOW })
   } catch (error) {
     if (error.code === 'ENOENT') {
       current = ''
     } else if (error.code === 'ELOOP') {
       return { ok: false, detail: `拒绝写入：${excludeFile} 不是普通文件（符号链接）` }
+    } else if (error.code === 'EISDIR') {
+      return { ok: false, detail: `拒绝写入：${excludeFile} 不是普通文件（目录）` }
     } else {
       throw error
     }

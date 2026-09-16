@@ -25,14 +25,14 @@ export function platformKey(platform = process.platform, arch = process.arch) {
 
 /**
  * 解析「某平台该下载哪个产物 + 期望的 SHA256」。
- * 返回 { ok, path, sha256, version, key } 或 { ok:false, reason }。
+ * 返回 { ok, sha256, version, key } 或 { ok:false, reason }。
  * 平台无预置校验值 → ok:false（fail-closed：宁可报「不支持」也不做无校验下载）。
  *
- * ⚠️ 只产出**路径**（不含协议与主机）：主机/协议由调用方用**代码内常量**拼装。
- * 理由：`scripts/ci-tools.json` 是磁盘数据，若让文件内容决定出站请求的主机，被篡改的配置
- * 就能把「下载 gitleaks」引到任意地址（CodeQL js/file-access-to-http：Outbound network
- * request depends on file data，issue #108）。现在文件最多影响「GitHub 上的哪一个路径」，
- * 主机永远是可信常量 `TRUSTED_RELEASE_ORIGIN`。
+ * ⚠️ **不产出任何 URL/路径**：下载地址完全由调用方（scripts/check-secrets.mjs）用代码内常量
+ * 拼装。理由：`scripts/ci-tools.json` 是磁盘数据，只要文件内容能进入请求 URL，被篡改的配置
+ * 就可能把「下载 gitleaks 并执行」引到别处（CodeQL js/file-access-to-http：Outbound network
+ * request depends on file data，issue #108）。本函数只负责从配置里取**校验值**（只用于本地
+ * 比对，不进入任何网络请求），版本号仅用于缓存路径与版本核对。
  */
 export function toolRelease(tools, toolName, platform = process.platform, arch = process.arch) {
   const tool = tools?.[toolName]
@@ -42,16 +42,7 @@ export function toolRelease(tools, toolName, platform = process.platform, arch =
   if (!sha256) {
     return { ok: false, reason: `${toolName} ${tool.version} 没有为平台 ${key} 预置 SHA256（不支持的平台）` }
   }
-  return {
-    ok: true,
-    version: tool.version,
-    key,
-    sha256,
-    path: String(tool.releasePath)
-      .replaceAll('{version}', tool.version)
-      .replaceAll('{platform}', platform)
-      .replaceAll('{arch}', arch),
-  }
+  return { ok: true, version: tool.version, key, sha256 }
 }
 
 /** 十六进制摘要比较（大小写无关；任一侧为空 → 不一致）。 */

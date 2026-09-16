@@ -5,7 +5,8 @@
  *  - scanPackage(dir)      — 扫描本地包目录：package.json scripts 可疑命令、
  *    恶意依赖名、文件内容密钥模式、可疑文件扩展名；
  *  - scanTarball(path)     — 解压 tarball 到临时目录（tar 命令，不执行任何
- *    包内代码）后扫描；
+ *    包内代码）后扫描；解包前先用 `inspectTarStream` 逐个 entry 校验（穿越 / 绝对路径 /
+ *    软硬链接逃逸 / 解压炸弹），命中即拒（CodeQL #105 加固）；
  *  - scanPackageTarget(pkg, onAlert) — 从包名/路径触发扫描（guard.js 联动）：
  *    link:/本地路径直接扫目录；包名经 npm registry 取 tarball 下载后扫描；
  *    发现可疑内容逐条回调告警。
@@ -14,6 +15,8 @@
  */
 import { constants, open, readdir, rm } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { Readable } from 'node:stream'
 import { join, basename, extname } from 'node:path'
 import { execFile } from 'node:child_process'
 import tmp from 'tmp'
@@ -29,6 +32,7 @@ import {
 import type { Finding, ScanResult, Alert, Severity } from './types.js'
 import { fetchTarball } from './tarball.js'
 import type { TarballFetchOptions } from './tarball.js'
+import { inspectTarStream } from './tar-safety.js'
 
 /** 扫描句柄（内部状态）。 */
 interface ScanHandle {
@@ -56,17 +60,61 @@ export async function scanPackage(dir: string): Promise<ScanResult> {
   }
 }
 
-/** 解压 tarball 到临时目录后扫描（不执行包内代码）；返回扫描结果。 */
-export async function scanTarball(tarballPath: string): Promise<ScanResult> {
+/** 解包输入：本地 tarball 路径，或内存字节（远端下载的 tarball 走这条，不再落盘）。 */
+type TarballInput = { readonly file: string } | { readonly buffer: Buffer }
+
+/** tarball 扫描参数。 */
+export interface TarballScanOptions {
+  /** 声明解包体积上限（字节）；默认 256 MiB（tar-safety 内定义）。 */
+  maxUnpackedBytes?: number
+}
+
+/**
+ * 解压 tarball 到临时目录后扫描（不执行包内代码）；返回扫描结果。
+ *
+ * 解包**之前**先流式校验每个 entry：路径穿越 / 绝对路径 / 软硬链接逃逸 / 解压炸弹一律 fail-closed
+ * 拒绝（#105）——安全判定不外包给系统 tar 的版本行为（CheckPoint：bsdtar 3.5 对绝对路径只剥掉
+ * `/` 前缀后照常落盘）。校验与解包读同一份字节，因此不存在 check-then-use 的 TOCTOU。
+ */
+export async function scanTarball(tarballPath: string, options: TarballScanOptions = {}): Promise<ScanResult> {
+  return scanTarballSource({ file: tarballPath }, options)
+}
+
+/** 解包 + 扫描的公共实现：来源可以是路径或内存字节。 */
+async function scanTarballSource(input: TarballInput, options: TarballScanOptions): Promise<ScanResult> {
   const tmpDir = tmp.dirSync({ prefix: 'dsh-guard-scan-', unsafeCleanup: true }).name
   try {
-    await execFileAsync('tar', ['-xzf', tarballPath, '-C', tmpDir])
+    const safety = await inspectTarStream(sourceStream(input), options.maxUnpackedBytes)
+    if (!safety.ok) return { ok: false, error: `拒绝解包：${safety.reason}` }
+    await extractTarball(tmpDir, input)
     return await scanPackage(tmpDir)
   } catch (error) {
     return { ok: false, error: errorMessage(error) }
   } finally {
     await rm(tmpDir, { recursive: true, force: true })
   }
+}
+
+/** 校验用的字节流：路径形式读文件，内存形式直接包成可读流。 */
+function sourceStream(input: TarballInput): Readable {
+  return 'file' in input ? createReadStream(input.file) : Readable.from([input.buffer])
+}
+
+/**
+ * 交给系统 tar 解包：路径形式直接给文件，内存形式经 **stdin** 喂入（`-f -`）。
+ *
+ * 走 stdin 而不是先写临时文件：远端字节不再由本进程写进文件系统，且省掉「落盘 → tar 再读」
+ * 的窗口与一次额外磁盘写。
+ */
+function extractTarball(tmpDir: string, input: TarballInput): Promise<void> {
+  const args = 'file' in input ? ['-xzf', input.file, '-C', tmpDir] : ['-xz', '-f', '-', '-C', tmpDir]
+  return new Promise((resolve, reject) => {
+    const child = execFile('tar', args, (error) => (error === null ? resolve() : reject(error)))
+    // 子进程提前退出（结构非法）时 stdin 写入会 EPIPE：真正的原因由 execFile 回调统一报出，
+    // 这里必须吞掉流错误，否则会变成 unhandled 'error' 把进程带崩。
+    child.stdin?.on('error', () => undefined)
+    if (!('file' in input)) child.stdin?.end(input.buffer)
+  })
 }
 
 /**
@@ -96,13 +144,17 @@ export async function scanPackageTarget(pkg: string, onAlert: (alert: Alert) => 
 }
 
 /** 解析目标（本地路径/包名）并扫描；返回扫描结果。 */
-export async function resolveAndScan(pkg: string, options: TarballFetchOptions = {}): Promise<ScanResult> {
+export async function resolveAndScan(
+  pkg: string,
+  options: TarballFetchOptions & TarballScanOptions = {},
+): Promise<ScanResult> {
   const local = localPathOf(pkg)
   if (local !== '') return scanPackage(local)
   const fetched = await fetchTarball(pkg, options)
   // 失败原因原样透传（#327：不再压成一句 unable to resolve package tarball）
   if (!fetched.ok) return { ok: false, error: fetched.error }
-  return scanTarball(fetched.file)
+  // 已过摘要校验的字节直接进内存解包链路（#105：不再写临时 tarball 文件）
+  return scanTarballSource({ buffer: fetched.body }, options)
 }
 
 /** 本地路径解析：link: 前缀或已存在的路径 → 路径；否则空串。 */
@@ -313,10 +365,4 @@ function inspectDependencies(deps: unknown, file: string, findings: Finding[]): 
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function execFileAsync(command: string, args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    execFile(command, args, (error) => (error === null ? resolve() : reject(error)))
-  })
 }

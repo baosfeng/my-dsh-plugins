@@ -2,15 +2,18 @@
  * dsh-my-guard — npm registry tarball 获取与摘要校验（#327 从 poison.ts 拆出）。
  *
  * 为什么单独成文件：tsc 尺寸门禁（文件 ≤400 行 / 函数 ≤70 行 / 圈复杂度 ≤10）——把编排与
- * 「取元数据 / 下载 / 落盘」各自拆成小函数后，任一函数都不再逼近阈值。
+ * 「取元数据 / 下载 / 校验」各自拆成小函数后，任一函数都不再逼近阈值。
  *
- * 失败必须按**真实原因**返回（网络/超时、HTTP 状态码、元数据缺失或非法、摘要不符、落盘 I/O），
+ * 失败必须按**真实原因**返回（网络/超时、HTTP 状态码、元数据缺失或非法、摘要不符、I/O），
  * 而不是一句对用户毫无诊断价值的 `unable to resolve package tarball`——那与 `readText` 把
- * errno 吞成 null 是同一个模式。下载的字节先过 `dist.integrity` 校验才落盘（#314）。
+ * errno 吞成 null 是同一个模式。下载的字节先过 `dist.integrity` 校验（#314）。
+ *
+ * **字节不落盘**（#105 js/http-to-file-access）：本模块只把校验过的字节交回内存（`body`），
+ * 由调用方经 tar 的 stdin 解包——这样「HTTP 响应字节 → 文件系统写 API」这条边在代码里根本
+ * 不存在（CodeQL 的 sink 是文件写 API 的 data 参数，不是路径），源头上不再有把远端字节写成
+ * 本地文件、以及落盘与解包之间被替换的窗口。
  */
 import { createHash } from 'node:crypto'
-import { writeFile } from 'node:fs/promises'
-import tmp from 'tmp'
 
 /** tarball 获取失败类别。 */
 export type TarballFailure = 'network' | 'timeout' | 'http-status' | 'bad-metadata' | 'integrity' | 'io-error'
@@ -22,8 +25,8 @@ export interface TarballFetchFailure {
   error: string
 }
 
-/** tarball 获取结果：成功带落盘路径。 */
-export type TarballFetch = { ok: true; file: string } | TarballFetchFailure
+/** tarball 获取结果：成功时带**已过摘要校验的内存字节**（不落盘）。 */
+export type TarballFetch = { ok: true; body: Buffer } | TarballFetchFailure
 
 /** 获取参数（registry 基址与超时可注入，便于回归测试）。 */
 export interface TarballFetchOptions {
@@ -70,9 +73,9 @@ interface RegistryMeta {
 }
 
 /**
- * 从 npm registry 获取并下载 tarball 到临时文件（不执行包内代码）。
+ * 从 npm registry 获取并下载 tarball 的**字节**（不落盘、不执行包内代码）。
  *
- * 用户看到"解析不了"时必须能分辨：网断了 / 404 了 / 元数据坏了 / 包被篡改 / 盘写不进去。
+ * 用户看到"解析不了"时必须能分辨：网断了 / 404 了 / 元数据坏了 / 包被篡改。
  */
 export async function fetchTarball(pkg: string, options: TarballFetchOptions = {}): Promise<TarballFetch> {
   const registryBase = options.registryBase ?? DEFAULT_REGISTRY
@@ -88,7 +91,8 @@ export async function fetchTarball(pkg: string, options: TarballFetchOptions = {
       error: `tarball 字节与 dist.integrity 不符（可能被篡改或缓存投毒）: ${meta.tarballUrl}`,
     }
   }
-  return persistTarball(download.body)
+  // 校验通过的字节留在内存里交给解包链路（#105：不写本地文件）
+  return { ok: true, body: download.body }
 }
 
 /** 取 `/<pkg>/latest`：HTTP 状态、JSON 合法性、`dist.tarball` 与 `dist.integrity` 逐个校验。 */
@@ -153,17 +157,6 @@ async function downloadTarball(
     return { ok: true, body: Buffer.from(await response.arrayBuffer()) }
   } catch (error) {
     return fetchFailure(error, 'tarball 下载', url, timeoutMs)
-  }
-}
-
-/** 落盘到临时文件（摘要校验通过后才写）。 */
-async function persistTarball(body: Buffer): Promise<TarballFetch> {
-  try {
-    const file = tmp.fileSync({ prefix: 'dsh-guard-', postfix: '.tgz' }).name
-    await writeFile(file, body)
-    return { ok: true, file }
-  } catch (error) {
-    return { ok: false, kind: 'io-error', error: `tarball 落盘失败: ${errorMessage(error)}` }
   }
 }
 

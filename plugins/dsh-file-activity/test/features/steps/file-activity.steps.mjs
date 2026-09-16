@@ -45,8 +45,8 @@ class World {
       },
     }
     this.ctx = ctx
-    apply(ctx)
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    this.store = apply(ctx)
+    await this.store.whenReady()
   }
 
   emitAgent(sessionId, toolName, path, opts) {
@@ -182,6 +182,8 @@ When('查询会话 {string} 的统计', async function (sessionId) {
 })
 
 When('等待持久化完成', async function () {
+  // sleep-ok: 等实现自己的落盘链排空（flush→compact→dispose）；本卡只补了加载就绪信号 whenReady（写就绪面留待落盘原语统一），
+  // 这里的语义是"等一段大于防抖窗口（500ms）的真实时间"
   await new Promise((resolve) => setTimeout(resolve, 600))
 })
 

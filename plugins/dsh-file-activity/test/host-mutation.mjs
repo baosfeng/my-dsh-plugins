@@ -94,8 +94,8 @@ async function boot() {
       return disposer
     },
   }
-  apply(ctx)
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  const store = apply(ctx)
+  await store.whenReady()
   return { ctx, getRoute: () => apiHolder.get(), getMediaRoute: () => mediaHolder.get() }
 }
 
@@ -355,8 +355,8 @@ test('stats carries the session cwd when the session provides one', async () => 
       return d
     },
   }
-  apply(ctxWithCwd)
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  const store = apply(ctxWithCwd)
+  await store.whenReady()
   const r = await callRoute(() => apiHolder2.get(), 'GET', '/file-activity/api/stats?sessionId=s11')
   assert.equal(r.status, 200)
   assert.equal(r.json.value.cwd, '/work/alpha', 'session cwd surfaced')
@@ -687,8 +687,8 @@ test('trustedHosts entry with an explicit port is honored', async () => {
       return d
     },
   }
-  apply(ctxT)
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  const store = apply(ctxT)
+  await store.whenReady()
   const r = await callRoute(() => apiHolder3.get(), 'GET', '/file-activity/api/stats?sessionId=s17', undefined, {
     headers: { host: 'trusted.example.com:9443', origin: 'http://trusted.example.com:9443' },
   })
@@ -716,7 +716,7 @@ test('explicit numeric time is preserved in the record', async () => {
   // fs/observed 使用 Date.now()；通过 record API 无法传 time，因此用 applyRecord 间接验证：
   // 两次记录后 lastSeen 递增、firstSeen 保持（time 分支在内部使用）
   emitObserved(ctx, 'write', 's19', '/work/timed.txt')
-  await new Promise((resolve) => setTimeout(resolve, 60))
+  // 两次 record 都是同步生效（boot 已 whenReady）：不再固定等 60ms
   emitObserved(ctx, 'write', 's19', '/work/timed.txt')
   await settle()
   const r = await callRoute(getRoute, 'GET', '/file-activity/api/stats?sessionId=s19')
@@ -924,8 +924,8 @@ test('tools/pre-execute: relative paths resolve against the session cwd', async 
       return () => {}
     },
   }
-  apply(ctx5)
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  const store = apply(ctx5)
+  await store.whenReady()
   await emitPreExecute(ctx5, 'bash', 'rel-s', 'rm -f tmp/old.txt')
   await settle()
   const stats = await callRoute(() => apiHolder5.get(), 'GET', '/file-activity/api/stats?sessionId=rel-s')

@@ -329,11 +329,22 @@ test('finishReport：三段结构、唯一定论、全中文、≤30 行、无 A
   assert.ok(out.split('\n').length <= 30, `行数 ${out.split('\n').length}`)
 })
 
-test('finishReport：一条检查都没执行（只有未覆盖项）→ 未能判定，绝不写成通过', () => {
+test('finishReport：结构化覆盖缺口（只有未覆盖项、无自动化检查）→ 通过但必须显式标注', () => {
+  // 边界（真机验证后确定，PR #357 首次运行 outcome=未能判定）：把「这个 job 本来就没有自动化」
+  // 判成「未能判定」会让 PR 级结论永远停在未能判定，读者反而看不出 PR 到底行不行；
+  // 它是**覆盖缺口**（报告里显式写明不代表通过），不是「已接入但没跑成」。
   const md = '- **未覆盖检查**：公开 API 兼容性 — 尚未接入自动化检查（需接入自动化才能覆盖）\n'
   const out = finishReport({ md, moduleName: 'API 设计', suggest: '- 人工确认。' })
+  assert.ok(out.startsWith('## 结论\n\n通过（1 项未覆盖，不参与判定）'), out)
+  assert.match(out, /提示：本 job 未执行任何自动化检查（1 项未覆盖）——不代表通过，也不阻塞合并。/)
+  assert.match(out, /## 未覆盖检查（1 项）/)
+  assert.match(out, /不代表通过，也不阻塞合并/)
+})
+
+test('finishReport：报告里什么都没有（job 崩在收尾前）→ 未能判定，绝不写成通过', () => {
+  const out = finishReport({ md: '', moduleName: '代码质量' })
   assert.ok(out.startsWith('## 结论\n\n未能判定'), out)
-  assert.match(out, /未能判定（本次未执行任何检查（1 项未覆盖））/)
+  assert.match(out, /本次未产出任何检查结果/)
   assert.equal(out.includes('## 结论\n\n通过'), false)
 })
 

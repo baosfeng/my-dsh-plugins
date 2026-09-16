@@ -387,13 +387,26 @@ function finishReport({ md, moduleName = '审查', suggest = '', history = '', m
   const flaky = countFlaky(text)
   const overall = aggregateOutcomes(sections.map((s) => s.outcome))
 
+  /**
+   * 结论文案（唯一权威判定）。
+   *
+   * 这里有一处必须区分清楚的边界（真机验证后确定，issue #311）：
+   *   - 「**已接入的检查本次没跑成**」（超时/跳过/依赖不可用/统计不出）→ 未能判定，且参与总结论；
+   *   - 「**这个 job 结构上就没有自动化检查**」（只声明了未覆盖项，如 API 设计）→ **不是**未能判定：
+   *     它是覆盖缺口（未覆盖），报告已显式写明「不代表通过」，换成「未能判定」会让 PR 级结论
+   *     永远停在「未能判定」，读者反而无法一眼看出「这个 PR 到底行不行」——那等于用另一种方式
+   *     把结论变得不可用（PR #357 首次真机运行的实测结论：outcome=未能判定）。
+   *   - 真正危险的「什么都没产出」（job 崩在收尾之前、报告为空）→ 仍判未能判定（见上面的 aggregate）。
+   */
   let headline = overall
-  if (overall === OUTCOMES.UNKNOWN) {
+  if (sections.length === 0 && notCovered.length > 0) {
+    headline = `通过（${notCovered.length} 项未覆盖，不参与判定）`
+  } else if (overall === OUTCOMES.UNKNOWN) {
     const firstUnknown = sections.find((s) => s.outcome === OUTCOMES.UNKNOWN)
     headline = `未能判定（${
       firstUnknown && firstUnknown.detail
         ? firstUnknown.detail.replace(/^未能判定（?/, '').replace(/）$/, '')
-        : `本次未执行任何检查${notCovered.length > 0 ? `（${notCovered.length} 项未覆盖）` : ''}`
+        : '本次未产出任何检查结果（job 可能未跑完，见日志）'
     }）`
   } else if (overall === OUTCOMES.PASS && notCovered.length > 0) {
     headline = `通过（${notCovered.length} 项未覆盖，不参与判定）`
@@ -412,7 +425,9 @@ function finishReport({ md, moduleName = '审查', suggest = '', history = '', m
     optional.push([
       `## 未覆盖检查（${notCovered.length} 项）`,
       '',
-      '- 以下检查没接入自动化：不代表通过，也不阻塞合并。',
+      sections.length === 0
+        ? '- ⚠️ 本 job **未执行任何自动化检查**（以下为覆盖缺口）：不代表通过，也不阻塞合并；需接入自动化才能覆盖。'
+        : '- 以下检查没接入自动化：不代表通过，也不阻塞合并。',
       ...notCovered.slice(0, 5),
       ...(notCovered.length > 5 ? [`- _（另有 ${notCovered.length - 5} 项，完整见 artifact）_`] : []),
     ])
@@ -431,6 +446,9 @@ function finishReport({ md, moduleName = '审查', suggest = '', history = '', m
     '边界：未覆盖=没接入自动化（不代表通过，也不阻塞合并）；未能判定=已接入但本次没跑成（**不等于通过**）。',
   ]
   if (flaky > 0) head.push('', `提示：同一 commit 观测到疑似环境抖动 ×${flaky}（已与代码问题分开表述）。`)
+  if (sections.length === 0 && notCovered.length > 0) {
+    head.push('', `提示：本 job 未执行任何自动化检查（${notCovered.length} 项未覆盖）——不代表通过，也不阻塞合并。`)
+  }
   if (history) head.push('', `历史：${history}`)
   head.push('', `## 关键证据（模块：${moduleName}）`)
   const tail = [
@@ -438,7 +456,8 @@ function finishReport({ md, moduleName = '审查', suggest = '', history = '', m
     '',
     suggest || '- 先处理「不通过」与「未能判定」项；完整明细见本次运行 artifact 与 CI 日志。',
   ]
-  return fitReport(head, verdicts.flat(), optional, tail, maxLines, '完整结果见本次运行的 artifact 与 CI 日志')
+  const essential = verdicts.length > 0 ? verdicts.flat() : ['_（本 job 未执行自动化检查，详见下方「未覆盖检查」）_']
+  return fitReport(head, essential, optional, tail, maxLines, '完整结果见本次运行的 artifact 与 CI 日志')
 }
 
 /* ─────────────────────────── CLI（shell 的唯一判定入口） ─────────────────────────── */

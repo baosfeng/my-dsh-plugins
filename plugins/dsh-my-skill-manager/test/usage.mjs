@@ -66,7 +66,8 @@ test('debounced persist writes the file without an explicit flush', async () => 
   await store.readyPromise
   recordUsage(store, 'web-search', 'user')
   assert.ok(!existsSync(file), 'not written before the debounce window')
-  await new Promise((resolve) => setTimeout(resolve, 700))
+  // 确定性落盘信号（scheduler.drain）：不再固定等 700ms 赌防抖窗口到期（issue #343）
+  await drainUsage(store)
   assert.ok(existsSync(file), 'written after the debounce window')
   const raw = JSON.parse(readFileSync(file, 'utf8'))
   assert.equal(raw.skills['web-search'].count, 1)

@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { apply, inject } from '../lib/index.js'
 import { globalConfigFile } from '../lib/config.js'
+import { waitForFile } from '../../dsh-shared/test-kit/wait.mjs'
 
 const dir = dirSync({ unsafeCleanup: true, prefix: 'dsm-api-test-' }).name
 process.env.DSH_HOME = dir
@@ -578,8 +579,11 @@ test('usage persists to $DSH_HOME/skills.usage.json (issue #91)', async () => {
     await ctx.skills.get('web-search')
     const r = await callRoute(getRoute, 'GET', '/my-skill-manager/api/list?cwd=')
     assert.equal(r.json.value.usage['web-search'].count, 1)
-    // 防抖窗口后落盘
-    await new Promise((resolve) => setTimeout(resolve, 700))
+    // 等落盘：轮询文件内容（原语此前无「已排空」的外部可观测面，固定等 700ms 赌防抖窗口 —— issue #343）
+    await waitForFile(
+      join(usageDir, 'skills.usage.json'),
+      (text) => JSON.parse(text).skills?.['web-search']?.count === 1,
+    )
     const { readFileSync } = await import('node:fs')
     const raw = JSON.parse(readFileSync(join(usageDir, 'skills.usage.json'), 'utf8'))
     assert.equal(raw.skills['web-search'].count, 1, 'usage file written under DSH_HOME')

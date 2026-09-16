@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { apply, inject } from '../lib/index.js'
 import { projectMemoryDir, projectIdOf, resolveProjectMemory } from '../lib/store.js'
+import { waitForFile } from '../../dsh-shared/test-kit/wait.mjs'
 
 const dir = dirSync({ unsafeCleanup: true, prefix: 'dmm-api-test-' }).name
 process.env.DSH_HOME = dir
@@ -283,10 +284,9 @@ test('POST /memory persists to disk after the debounce flush', async () => {
     desc: '持久化条目',
     confirmed: true,
   })
-  // 等待防抖窗口 + 写盘
-  await new Promise((resolve) => setTimeout(resolve, 400))
-  const { readFileSync } = await import('node:fs')
-  const onDisk = JSON.parse(readFileSync(`${process.env.DSH_HOME}/memory.json`, 'utf8'))
+  // 等落盘：轮询文件内容（不再固定等 400ms 赌防抖窗口 —— issue #343）
+  await waitForFile(join(process.env.DSH_HOME, 'memory.json'), (text) => JSON.parse(text).items?.length === 1)
+  const onDisk = JSON.parse(readFileSync(join(process.env.DSH_HOME, 'memory.json'), 'utf8'))
   assert.equal(onDisk.items.length, 1, 'persisted after the debounce window')
   assert.equal(onDisk.items[0].desc, '持久化条目')
 })

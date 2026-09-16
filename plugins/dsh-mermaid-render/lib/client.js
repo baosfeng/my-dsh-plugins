@@ -836,6 +836,7 @@ function useMermaidRender(entryId, source, attempt) {
         tokens.set(entryId, token);
         const current = () => tokens.get(entryId) === token;
         setStatus('loading');
+        noteRenderState(entryId, 'loading');
         ensureMermaid()
             .then((m) => renderSvg(m, entryId, source))
             .then((svgText) => {
@@ -844,12 +845,14 @@ function useMermaidRender(entryId, source, attempt) {
             setSvg(svgText);
             setError(null);
             setStatus('ok');
+            noteRenderState(entryId, 'ok');
         })
             .catch((err) => {
             if (!current())
                 return;
             setError(errMsg(err));
             setStatus('error');
+            noteRenderState(entryId, 'error');
         });
         return () => {
             if (tokens.get(entryId) === token)
@@ -861,6 +864,7 @@ function useMermaidRender(entryId, source, attempt) {
         tokens.delete(entryId);
         setError(null);
         setStatus('loading');
+        noteRenderState(entryId, 'loading');
     }
     return { status, svg, error, begin };
 }
@@ -976,6 +980,17 @@ const STREAM_MIN_OBSERVATIONS = 2;
 const MAX_SOURCE_CHARS = 50000;
 const mounts = new Map();
 const streamWatch = new Map();
+/**
+ * 记录一条渲染态转移（issue #343）：把状态写到卡片 host 的真实 DOM 属性上。
+ * 与 React 的提交时机解耦 —— 无论组件是否已重渲染，宿主/CSS/测试都能立刻观察到。
+ */
+function noteRenderState(entryId, state) {
+    if (typeof document === 'undefined' || document === null)
+        return;
+    const host = document.querySelector('[data-dsh-mermaid-render-entry="' + entryId + '"]');
+    if (host && typeof host.setAttribute === 'function')
+        host.setAttribute('data-dsh-mermaid-render-state', state);
+}
 /** Mount a card into the block, hiding the original <pre>. */
 function mountCard(block, source) {
     if (mounts.has(block))
@@ -990,6 +1005,10 @@ function mountCard(block, source) {
     const entryId = 'dsh-mermaid-' + ++seq;
     mounts.set(block, { root, host, pre, text: source });
     clearStreamWatch(block);
+    // 渲染态可观测（issue #343）：状态机每次转移都写真实 DOM 属性（loading / ok / error），
+    // 宿主 / CSS / 测试可据此**条件轮询**渲染是否落定，不必固定 sleep 赌渲染时长。
+    host.setAttribute('data-dsh-mermaid-render-entry', entryId);
+    host.setAttribute('data-dsh-mermaid-render-state', 'loading');
     root.render((0, react_1.createElement)(MermaidCard, { entryId, source }));
 }
 /** 自愈卸载：源码在挂载后又变了（流式其实还没写完）→ 拆卡片、恢复原始块。 */

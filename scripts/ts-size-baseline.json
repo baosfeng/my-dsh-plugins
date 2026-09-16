@@ -11,7 +11,7 @@
       "functions": {}
     },
     "plugins/dsh-mermaid-render/src/client/index.ts": {
-      "lines": 864,
+      "lines": 886,
       "functions": {}
     },
     "plugins/dsh-my-guard/src/index.ts": {
@@ -121,7 +121,7 @@
       }
     },
     "plugins/dsh-my-skill-manager/src/client/parts/view.ts": {
-      "lines": 482,
+      "lines": 481,
       "functions": {}
     },
     "plugins/dsh-task-reliability/src/client/parts/settings.ts": {

@@ -62,6 +62,9 @@
  *   gate-parity  → node scripts/check-gate-parity.mjs（issue #330：本地检查项集合 ↔ CI 步骤集合
  *                  的**双向**一致性校验，缺口逐条列出；它自己也跑在 CI，否则「校验一致性」
  *                  这件事就变成新的静默缺口）
+ *   review-scripts → node --test .github/scripts/*.test.cjs（issue #311：PR 审查判定内核
+ *                  review-verdict.cjs 的三态判定/抖动区分/历史摘要单测。此前这类测试只在
+ *                  人工执行时跑过，没人跑就没人知道判定分支坏了 —— 判定逻辑必须进门禁）
  *
  * ⚠️ 检查项与权威执行点的登记表在 `scripts/lib/gate-registry.mjs`（issue #330）：
  *    每个检查项都有 `command`（本文件实际执行的命令）与 `ciQuality`（是否属于 CI quality job），
@@ -606,6 +609,9 @@ const CHECK_META = {
   artifacts: { command: 'node scripts/check-client-artifacts.mjs', ciQuality: true },
   'merge-ref': { command: 'git merge-base --is-ancestor origin/main HEAD', ciQuality: false },
   'gate-parity': { command: 'node scripts/check-gate-parity.mjs', ciQuality: true },
+  // issue #311：PR 审查的判定内核（三态判定 / 未能判定显式 / 抖动区分 / 历史摘要）必须有单测，
+  // 且单测必须真的跑在门禁里——判定分支写错时靠它拦住（此前这些用例从没进过 CI）。
+  'review-scripts': { command: 'node --test .github/scripts/*.test.cjs', ciQuality: true },
   // issue #324：两项都需要**完整历史**（gitleaks 扫全历史；commitlint 解析 base..head 两个历史 SHA），
   // 而 quality job 的 checkout 是浅克隆 → 它们由独立的 history-gates job 执行（fetch-depth: 0），
   // 故 ciQuality 为 false（与 test / resource-smoke 同理）。
@@ -862,6 +868,23 @@ const CHECK_DEFS = [
     label: 'gate-parity (node scripts/check-gate-parity.mjs)',
     note: '登记表 ↔ ci.yml ↔ 本文件的检查项/命令三方交叉校验；缺口逐条列出（含「跑了没声明」「声明了没跑」）',
     run: () => runCapture('node', ['scripts/check-gate-parity.mjs'], root),
+  },
+  {
+    // issue #311：PR 审查的判定内核（通过 / 不通过 / 未能判定三态、抖动区分、历史摘要）
+    // 由 .github/scripts/review-verdict.cjs 承担，这里跑它的单测——判定分支写错必须有人拦住。
+    // 文件用 glob 动态发现（新增 test 文件自动纳入），避免"加了用例却没人跑"。
+    id: 'review-scripts',
+    label: 'review verdict kernel (node --test .github/scripts/*.test.cjs)',
+    note: 'issue #311：三态判定（含超时/跳过/依赖不可用/无输出/未执行任何检查）与「同一 commit 结论一致 + 抖动只标注不翻转」的防回归单测',
+    run: () => {
+      const dir = join(root, '.github', 'scripts')
+      const files = readdirSync(dir)
+        .filter((f) => f.endsWith('.test.cjs'))
+        .sort()
+        .map((f) => join('.github', 'scripts', f))
+      return runCapture('node', ['--test', ...files], root)
+    },
+    skip: (ctx) => (ctx.docsOnly ? '纯文档变更：审查判定逻辑与文档无关' : null),
   },
   {
     id: 'artifacts',

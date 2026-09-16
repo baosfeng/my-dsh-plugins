@@ -129,15 +129,17 @@ jobs:
               core.warning(`自动指派未完成（降级为警告，job 仍成功）：${error.message}`);
             }
 
-            // 添加审查焦点评论
+            // 添加审查焦点评论（issue #311：sticky——同一 PR 只保留一条，不再每次 push 追加刷屏）
             if (focusAreas.size > 0) {
+              const { upsertReviewComment } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/review-comment.cjs`);
               const focusList = Array.from(focusAreas).map(area => `- ${area}`).join('\n');
-              const body = `## 🔍 审查焦点\n\n本次 PR 涉及以下方面，请重点关注：\n\n${focusList}`;
-              
-              await github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: body
+              const report = `本次 PR 涉及以下方面，请重点关注：\n\n${focusList}`;
+              const res = await upsertReviewComment({
+                github,
+                context,
+                id: 'review-focus',
+                heading: '## 🔍 审查焦点',
+                report,
               });
+              core.info(`审查焦点评论 ${res.action}：#${res.commentId}`);
             }

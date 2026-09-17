@@ -41,10 +41,18 @@ import {
 const scriptPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'fork-pool.mjs')
 
 /** 在临时目录里跑一次 CLI，返回 { code, out }。 */
-function runCli(args, { tmpRoot } = {}) {
+function runCli(args, { tmpRoot, mainDir, templateDir } = {}) {
   const result = spawnSync(process.execPath, [scriptPath, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, ...(tmpRoot ? { FORK_POOL_TMP: tmpRoot } : {}) },
+    env: {
+      ...process.env,
+      ...(tmpRoot ? { FORK_POOL_TMP: tmpRoot } : {}),
+      // issue #362：把「主工作区」指向一个本地 origin 仓，create 的远端就落在本地路径上，
+      // fetch 与基线 ls-remote 全程不碰网络（这才是"离线用例"该有的形态）。
+      ...(mainDir ? { FORK_POOL_MAIN: mainDir } : {}),
+      // issue #362：用模板注入「预置成软链的 .git/info/exclude」，构造 exclude 写入失败。
+      ...(templateDir ? { GIT_TEMPLATE_DIR: templateDir } : {}),
+    },
     timeout: 60_000,
   })
   return { code: result.status ?? 1, out: `${result.stdout ?? ''}${result.stderr ?? ''}` }
@@ -491,14 +499,53 @@ describe('CLI 端到端（离线）', () => {
    * fork 落在 `os.tmpdir()`（同机其他用户可写）下，攻击者可以预置软链把"追加 node_modules"
    * 变成"往任意文件里追加内容"。修复用 mkdtemp + `wx` + rename 原子替换。
    */
-  it('create 正常路径写入 .git/info/exclude（git clone 已建该文件，不能被 O_EXCL 判死）', { timeout: 60_000 }, () => {
+  it('create 正常路径写入 .git/info/exclude（注入本地 remote，全程离线）', { timeout: 60_000 }, () => {
     const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
     try {
-      makeOriginRepo(fake)
-      const { code, out } = runCli(['create', 'test9', '--dir', join(fake, 'gh-fork-test9')], { tmpRoot: fake })
+      const origin = makeOriginRepo(fake)
+      // issue #362：此前这里用的是主工作区的 https origin，create 会 `git fetch origin main`
+      // 真连 github.com —— 本机 HTTPS 不可达时该用例 60s 超时（单跑绿 / 全量并发跑红），
+      // 而它测的是 exclude 写入，跟网络毫无关系。
+      // 现在把 FORK_POOL_MAIN 指向本地 origin 仓：fetch 与基线 ls-remote 全部落在本地路径上。
+      // 基线校验**仍然执行**（下面断言"基线一致"），不是被跳过/削弱。
+      const { code, out } = runCli(
+        ['create', 'test9', '--dir', join(fake, 'gh-fork-test9'), '--node-modules', 'none', '--no-hooks'],
+        { tmpRoot: fake, mainDir: origin },
+      )
       expect(code, out).toBe(0)
+      expect(out).toContain('基线一致')
       const exclude = readFileSync(join(fake, 'gh-fork-test9', '.git', 'info', 'exclude'), 'utf8')
       expect(exclude).toContain('node_modules')
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
+  /**
+   * issue #362 缺陷 1：`record('exclude', ensureExclude(forkDir), true)` 把 ok **硬编码为 true**，
+   * ensureExclude 失败时只打印 ✖ 就继续 —— fork 照建，但防误提交的 `.git/info/exclude` 没写成功，
+   * 之后在 fork 里 `git add -A` 可能把 node_modules 软链误提交（正是该机制要防的事故形态）。
+   *
+   * 失败构造：GIT_TEMPLATE_DIR 让 `git clone` 直接产出**软链形态**的 `.git/info/exclude`
+   * （#314 威胁模型里攻击者预置的形态）。clone 本身完全成功，失败只应发生在 exclude 一步。
+   */
+  it('exclude 写入失败 → create 非零退出（不得静默吞掉）', { timeout: 60_000 }, () => {
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
+    try {
+      const origin = makeOriginRepo(fake)
+      const victim = join(fake, 'victim.txt')
+      writeFileSync(victim, 'keep-me\n')
+      const tmpl = join(fake, 'tmpl')
+      mkdirSync(join(tmpl, 'info'), { recursive: true })
+      symlinkSync(victim, join(tmpl, 'info', 'exclude'))
+      const { code, out } = runCli(
+        ['create', 'test7', '--dir', join(fake, 'gh-fork-test7'), '--node-modules', 'none', '--no-hooks'],
+        { tmpRoot: fake, mainDir: origin, templateDir: tmpl },
+      )
+      expect(code, out).not.toBe(0)
+      expect(out).toContain('创建中断')
+      expect(out).toContain('.git/info/exclude') // 必须点出就是这一步失败，而不是别处先炸
+      expect(readFileSync(victim, 'utf8')).toBe('keep-me\n') // #314：受害者文件一字不改
     } finally {
       rmSync(fake, { recursive: true, force: true })
     }

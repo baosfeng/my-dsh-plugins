@@ -77,6 +77,7 @@ import {
   inspectTagState,
   tagConflictHint,
   readmeVersionRowRe,
+  releaseCommitPlan,
 } from './lib/release-checks.mjs'
 import { verifyPostRelease } from './lib/post-release.mjs'
 import { checkScreenshotGate } from './lib/screenshot-gate.mjs'
@@ -906,21 +907,9 @@ if (push && succeeded.length > 0) {
   console.log(`Pushing ${succeeded.length} successful plugin(s)`)
   console.log(`${'='.repeat(60)}`)
 
-  // Collect all files to commit
-  const filesToCommit = new Set(['README.md', 'AGENTS.md'])
-  const commitMessages = []
-
-  for (const result of succeeded) {
-    const name = result.name
-    const version = result.version
-    if (result.bumped) {
-      filesToCommit.add(`plugins/${name}/package.json`)
-      filesToCommit.add(`plugins/${name}/CHANGELOG.md`)
-      commitMessages.push(`chore(release): ${name} v${version}（自动 bump ${bump} + CHANGELOG 生成）`)
-    } else {
-      commitMessages.push(`docs: 同步 ${name} 版本号至 ${version}（发版）`)
-    }
-  }
+  // Collect all files to commit（版本文件无条件入列，理由见 releaseCommitPlan 注释：
+  // --bump 与 --push 分两步跑时 bumped=false，漏提交会让 tag 的版本校验失败）
+  const { files: filesToCommit, messages: commitMessages } = releaseCommitPlan(succeeded, bump)
 
   // Stage all files
   const files = [...filesToCommit].join(' ')

@@ -33,6 +33,7 @@ import {
   inspectTagState,
   tagConflictHint,
   readmeVersionRowRe,
+  releaseCommitPlan,
 } from '../lib/release-checks.mjs'
 
 // ── extractDshRequires ────────────────────────────────────────────────────
@@ -835,5 +836,33 @@ describe('readmeVersionRowRe（README 插件表版本同步）', () => {
   it('只匹配同名插件行：前缀相同的插件名不会误伤', () => {
     const re = readmeVersionRowRe('dsh-shared')
     expect(re.test('| [dsh-shared-extra](plugins/dsh-shared-extra/README.md) | 0.1.5 | x |')).toBe(false)
+  })
+})
+
+/**
+ * 防复发：版本文件必须无条件进入提交集合。
+ * `--bump` 与 `--push` 分两步跑时 bumped=false，但工作区里的版本变更仍需提交，
+ * 否则 tag 指向的 commit 里 package.json 版本是旧的 → CI 的 tag↔版本校验拒绝发布。
+ */
+describe('releaseCommitPlan（发版提交计划）', () => {
+  const plan = (succeeded, bump = 'patch') => releaseCommitPlan(succeeded, bump)
+
+  it('bumped=false（版本由上一次运行写入）也要提交 package.json 与 CHANGELOG', () => {
+    const { files } = plan([{ name: 'dsh-md-render', version: '0.1.9', bumped: false }])
+    expect(files).toContain('plugins/dsh-md-render/package.json')
+    expect(files).toContain('plugins/dsh-md-render/CHANGELOG.md')
+    expect(files).toContain('README.md')
+    expect(files).toContain('AGENTS.md')
+  })
+
+  it('bumped=true 的 commit 消息带 bump 类型，bumped=false 的是文档同步', () => {
+    const { messages } = plan([
+      { name: 'a-plugin', version: '1.2.4', bumped: true },
+      { name: 'b-plugin', version: '0.1.0', bumped: false },
+    ])
+    expect(messages[0]).toContain('a-plugin v1.2.4')
+    expect(messages[0]).toContain('自动 bump patch')
+    expect(messages[1]).toContain('b-plugin')
+    expect(messages[1]).not.toContain('自动 bump')
   })
 })

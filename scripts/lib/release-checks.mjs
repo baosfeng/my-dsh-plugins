@@ -581,3 +581,28 @@ export function readmeVersionRowRe(name) {
   const esc = escapeRegExp(name)
   return new RegExp(`(\\| \\[${esc}\\]\\(plugins/${esc}/README\\.md\\)\\s+\\|\\s*)\\d+\\.\\d+\\.\\d+(\\s*\\|)`)
 }
+
+/**
+ * 发版提交计划：待提交文件集合 + commit 消息列表（release.mjs --push 流程用）。
+ *
+ * `plugins/<name>/package.json` 与 `CHANGELOG.md` **无条件**入列：版本号可能是由
+ * **上一次**运行写的（`--bump` 与 `--push` 分两步跑时，本次 `bumped === false`，
+ * 但工作区里躺着未提交的版本变更）。旧实现只在 `bumped` 为真时 add，于是
+ * 「先 bump 预览、再 push」会漏提交版本变更 —— tag 指向的 commit 里 package.json
+ * 仍是旧版本，CI 的「tag 版本 == package.json 版本」校验直接拒绝发布。
+ * `git add` 无变更的文件是 no-op，无条件入列不引入噪声。
+ */
+export function releaseCommitPlan(succeeded, bumpType) {
+  const files = new Set(['README.md', 'AGENTS.md'])
+  const messages = []
+  for (const { name, version, bumped } of succeeded) {
+    files.add(`plugins/${name}/package.json`)
+    files.add(`plugins/${name}/CHANGELOG.md`)
+    messages.push(
+      bumped
+        ? `chore(release): ${name} v${version}（自动 bump ${bumpType} + CHANGELOG 生成）`
+        : `docs: 同步 ${name} 版本号至 ${version}（发版）`,
+    )
+  }
+  return { files: [...files].sort(), messages }
+}

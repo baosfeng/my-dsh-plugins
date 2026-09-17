@@ -44,6 +44,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  EXCLUDE_ENTRIES,
   REQUIRED_TOOLS,
   WRITABLE_NODE_MODULES_ENTRIES,
   branchNameFor,
@@ -164,6 +165,40 @@ function provisionNodeModules(sourceNm, targetNm, mode) {
   return { ok: true, detail: `逐包软链 ${links} 项 + ${dirs} 个可写真实目录` }
 }
 
+/**
+ * 复用主工作区的 gitleaks 二进制缓存（issue #373）。
+ *
+ * 为什么必须做：`git clone --local` 只带**已跟踪文件**，`.gitleaks-cache/` 在 .gitignore 里，
+ * 于是每个新 fork 首次 `secret-scan` 都要重新下载约 20MB 的 gitleaks 二进制（走 HTTPS_PROXY）。
+ * 代理不稳时这一步直接撞 `VERIFY_STEP_TIMEOUT`（默认 120s）→ pre-push 失败、push 被拒，
+ * 报错只有一句 "failed to push some refs"，与新 fork 的**代码**毫无关系。软链到主工作区后，
+ * 二进制只下载一次、跨 fork 复用；缓存目录与 node_modules 一样是**软链**，因此必须同时
+ * 写进 `.git/info/exclude`（见 lib 里 EXCLUDE_ENTRIES：`.gitleaks-cache/` 的尾斜杠规则不匹配软链）。
+ *
+ * 主工作区没有该缓存时**不做任何事**：不创建空目录、不报错、不阻塞 create —— 首次仍由
+ * check-secrets.mjs 自己下载并落到本 fork 内（下次 create 就能复用了）。
+ */
+function linkGitleaksCache(mainWorkdir, forkDir) {
+  const source = join(mainWorkdir, '.gitleaks-cache')
+  const target = join(forkDir, '.gitleaks-cache')
+  if (!existsSync(source)) {
+    return { ok: true, skipped: true, detail: '主工作区无 .gitleaks-cache，跳过（首次仍由 check-secrets 自行下载）' }
+  }
+  let exists = true
+  try {
+    lstatSync(target)
+  } catch {
+    exists = false
+  }
+  if (exists) return { ok: true, skipped: true, detail: '已存在，保持原样' }
+  try {
+    symlinkSync(source, target)
+  } catch (error) {
+    return { ok: false, detail: `软链失败：${error.message}` }
+  }
+  return { ok: true, skipped: false, detail: `已复用主工作区缓存 ${source}` }
+}
+
 /** 装回 hooks。根因见文件头：clone 不带 config，husky 的 _ 目录又被 gitignore。 */
 function installHooks(forkDir) {
   const huskyBin = join(forkDir, 'node_modules', '.bin', 'husky')
@@ -233,7 +268,7 @@ function ensureExclude(forkDir) {
     }
   }
   const appended = excludeAppendContent(current)
-  if (!appended) return { ok: true, detail: '已包含 node_modules' }
+  if (!appended) return { ok: true, detail: '已包含全部本地产物条目（node_modules / .gitleaks-cache）' }
   let stagingDir
   let fd
   try {
@@ -244,7 +279,7 @@ function ensureExclude(forkDir) {
     closeSync(fd)
     fd = undefined
     renameSync(staged, excludeFile)
-    return { ok: true, detail: '已写入 node_modules（防 git add -A 误提交软链）' }
+    return { ok: true, detail: '已写入 node_modules / .gitleaks-cache（防 git add -A 误提交软链）' }
   } catch (error) {
     return { ok: false, detail: `写入失败：${error.message}` }
   } finally {
@@ -352,6 +387,13 @@ function cmdCreate() {
     const started = performance.now()
     const ws = relinkWorkspacePackages(forkDir)
     record('workspace-links', { ms: performance.now() - started }, ws.ok, ws.detail)
+  }
+  // issue #373：复用主工作区的 gitleaks 二进制缓存（与 node_modules 策略无关）。这一步
+  // 决定 fork 内首次 secret-scan 是"秒级复用"还是"重新下载 20M"，正是 push 超时的根因环节。
+  if (steps.some((s) => s.id === 'gitleaks-cache')) {
+    const started = performance.now()
+    const cache = linkGitleaksCache(mainWorkdir, forkDir)
+    record('gitleaks-cache', { ms: performance.now() - started }, cache.ok, cache.detail)
   }
   if (options.hooks) {
     const started = performance.now()
@@ -524,9 +566,11 @@ function cmdCheck() {
     }
   }
 
+  // 本地产物软链一律不许进提交（issue #240 的 node_modules + issue #373 的 .gitleaks-cache）：
+  // 判定用 EXCLUDE_ENTRIES，与写进 .git/info/exclude 的清单同源，避免两处清单漂移。
   const staged = gitOut(forkDir, ['diff', '--cached', '--name-only'])
     .split('\n')
-    .filter((f) => f.includes('node_modules'))
+    .filter((f) => EXCLUDE_ENTRIES.some((entry) => f.includes(entry)))
   const items = buildCheckItems({
     forkExists,
     hooksPath,

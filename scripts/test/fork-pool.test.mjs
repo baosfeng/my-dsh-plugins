@@ -11,7 +11,16 @@
  *     全部在临时目录里构造，不依赖 GitHub 网络（CI 里也必须能跑）。
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirSync } from 'tmp'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -93,20 +102,34 @@ function makeOriginRepo(tmpRoot, id = 'origin') {
 }
 
 describe('excludeAppendContent（.git/info/exclude 幂等追加，CodeQL #18）', () => {
-  it('已含 node_modules 行 → null（不重复写、不破坏原文件）', () => {
-    expect(excludeAppendContent('node_modules\n')).toBeNull()
-    expect(excludeAppendContent('# 注释\nnode_modules\n')).toBeNull()
-    expect(excludeAppendContent('node_modules')).toBeNull()
+  it('两项都已含 → null（不重复写、不破坏原文件）', () => {
+    expect(excludeAppendContent('node_modules\n.gitleaks-cache\n')).toBeNull()
+    expect(excludeAppendContent('# 注释\nnode_modules\n.gitleaks-cache\n')).toBeNull()
+    expect(excludeAppendContent('node_modules\n.gitleaks-cache')).toBeNull()
   })
 
-  it('缺 node_modules → 保留原内容并补一行（无尾随换行的文件也补齐）', () => {
-    expect(excludeAppendContent('')).toBe('\nnode_modules\n')
-    expect(excludeAppendContent('# 注释\n')).toBe('# 注释\nnode_modules\n')
-    expect(excludeAppendContent('# 注释')).toBe('# 注释\nnode_modules\n')
+  it('缺项 → 保留原内容并补齐（无尾随换行的文件也补齐）', () => {
+    expect(excludeAppendContent('')).toBe('\nnode_modules\n.gitleaks-cache\n')
+    expect(excludeAppendContent('# 注释\n')).toBe('# 注释\nnode_modules\n.gitleaks-cache\n')
+    expect(excludeAppendContent('# 注释')).toBe('# 注释\nnode_modules\n.gitleaks-cache\n')
   })
 
-  it('子串不算命中（node_modules_backup 仍要补 node_modules）', () => {
-    expect(excludeAppendContent('node_modules_backup\n')).toBe('node_modules_backup\nnode_modules\n')
+  /**
+   * issue #373：`node_modules` 之外还必须挡住 `.gitleaks-cache`。
+   * 两者形态完全相同：都是 **fork 内指向主工作区的软链目录**，而 .gitignore 里写的是
+   * `node_modules/` / `.gitleaks-cache/`（尾斜杠只匹配目录）—— git 不把软链当目录，
+   * 于是这两条 gitignore 规则**都不匹配软链**，`git add -A` 会把软链本身暂存进提交。
+   * 只挡 node_modules 的话，`git add -A` 会把 20M gitleaks 缓存软链提交进 PR。
+   */
+  it('只含 node_modules → 必须补 .gitleaks-cache（否则软链被 git add -A 误提交）', () => {
+    expect(excludeAppendContent('node_modules\n')).toBe('node_modules\n.gitleaks-cache\n')
+    expect(excludeAppendContent('node_modules')).toBe('node_modules\n.gitleaks-cache\n')
+  })
+
+  it('子串不算命中（node_modules_backup / .gitleaks-cache-old 仍要补对应行）', () => {
+    expect(excludeAppendContent('node_modules_backup\n.gitleaks-cache-old\n')).toBe(
+      'node_modules_backup\n.gitleaks-cache-old\nnode_modules\n.gitleaks-cache\n',
+    )
   })
 })
 
@@ -249,7 +272,7 @@ describe('clean 安全护栏（rm -rf 的最后一道闸）', () => {
 })
 
 describe('create 步骤清单（流程完整性）', () => {
-  it('默认 9 步，且必须包含基线校验 / workspace 重指向 / hooks 安装', () => {
+  it('默认 10 步，且必须包含基线校验 / workspace 重指向 / gitleaks 缓存复用 / hooks 安装', () => {
     const ids = planCreateSteps({ hooks: true, nodeModules: 'symlink' }).map((s) => s.id)
     expect(ids).toEqual([
       'clone',
@@ -260,8 +283,13 @@ describe('create 步骤清单（流程完整性）', () => {
       'exclude',
       'node_modules',
       'workspace-links',
+      'gitleaks-cache',
       'hooks',
     ])
+  })
+
+  it('issue #373：gitleaks 缓存复用与 node_modules 策略无关（--node-modules none 也要做）', () => {
+    expect(planCreateSteps({ nodeModules: 'none' }).map((s) => s.id)).toContain('gitleaks-cache')
   })
 
   it('--no-hooks 去掉 hooks 步；--node-modules none 同时去掉就位与重指向步', () => {
@@ -516,6 +544,58 @@ describe('CLI 端到端（离线）', () => {
       expect(out).toContain('基线一致')
       const exclude = readFileSync(join(fake, 'gh-fork-test9', '.git', 'info', 'exclude'), 'utf8')
       expect(exclude).toContain('node_modules')
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
+  /**
+   * issue #373：fork 内必须有**可复用**的 gitleaks 二进制缓存。
+   *
+   * 为什么：clone --local 只带已跟踪文件，`.gitleaks-cache/` 被 gitignore → 每个新 fork 首次
+   * secret-scan 都要重新下载 ~20M 二进制（走 HTTPS_PROXY）；代理不稳时直接撞
+   * VERIFY_STEP_TIMEOUT 默认 120s → pre-push 拒绝，这正是 issue #373 的现象。
+   * 这里断言：软链就位 + 指向主工作区同一份（不重复下载）+ 且**不被 git add -A 误提交**。
+   */
+  it('create 把主工作区 .gitleaks-cache 软链进 fork（复用同一份二进制，且不被误提交）', { timeout: 60_000 }, () => {
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
+    try {
+      const origin = makeOriginRepo(fake)
+      const cacheDir = join(origin, '.gitleaks-cache')
+      mkdirSync(join(cacheDir, '8.30.1-test'), { recursive: true })
+      writeFileSync(join(cacheDir, '8.30.1-test', 'gitleaks'), 'bin\n')
+      const forkDir = join(fake, 'gh-fork-test13')
+      const { code, out } = runCli(['create', 'test13', '--dir', forkDir, '--node-modules', 'none', '--no-hooks'], {
+        tmpRoot: fake,
+        mainDir: origin,
+      })
+      expect(code, out).toBe(0)
+      const link = join(forkDir, '.gitleaks-cache')
+      expect(lstatSync(link).isSymbolicLink(), out).toBe(true)
+      expect(realpathSync(link)).toBe(realpathSync(cacheDir)) // 同一份 → 不重复下载
+      expect(readFileSync(join(link, '8.30.1-test', 'gitleaks'), 'utf8')).toBe('bin\n')
+      // 核实结论：.gitignore 里写的是 `.gitleaks-cache/`（尾斜杠只匹配目录）→ **不匹配软链**，
+      // 必须由 .git/info/exclude 挡住，否则 `git add -A` 会把 20M 缓存软链提交进 PR。
+      expect(readFileSync(join(forkDir, '.git', 'info', 'exclude'), 'utf8')).toContain('.gitleaks-cache')
+      const dry = spawnSync('git', ['-C', forkDir, 'add', '-A', '--dry-run'], { encoding: 'utf8' })
+      expect(`${dry.stdout ?? ''}${dry.stderr ?? ''}`).not.toContain('.gitleaks-cache')
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
+  it('主工作区没有 .gitleaks-cache → create 照常成功（不创建、不报错、不阻塞）', { timeout: 60_000 }, () => {
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
+    try {
+      const origin = makeOriginRepo(fake)
+      const forkDir = join(fake, 'gh-fork-test14')
+      const { code, out } = runCli(['create', 'test14', '--dir', forkDir, '--node-modules', 'none', '--no-hooks'], {
+        tmpRoot: fake,
+        mainDir: origin,
+      })
+      expect(code, out).toBe(0)
+      expect(out).toContain('✅ fork 就位')
+      expect(existsSync(join(forkDir, '.gitleaks-cache'))).toBe(false)
     } finally {
       rmSync(fake, { recursive: true, force: true })
     }

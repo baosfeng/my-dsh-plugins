@@ -551,6 +551,70 @@ describe('CLI 端到端（离线）', () => {
     }
   })
 
+  /**
+   * issue #371 缺陷 1：`record('clone', run('git', ['clone', ...]), true)` 把 ok 又硬编码成 true。
+   * clone 失败时 forkDir 根本没建出来，后续步骤只是"连带"炸掉 —— 于是第一步显示 ✔ 克隆、
+   * 第二步才 ✖，输出与事实自相矛盾。要求与 #362 对 exclude 的处理一致：失败即中断，
+   * 且必须中断在真正失败的那一步上。
+   *
+   * 失败构造：让 forkDir 的父路径落在一个普通文件下面 —— `git clone` 无法创建目标目录
+   * （fatal: could not create leading directories ... Not a directory），主仓与远端都完全正常。
+   */
+  it('clone 失败 → create 非零退出且中断在 clone 这一步（不得静默吞掉）', { timeout: 60_000 }, () => {
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
+    try {
+      const origin = makeOriginRepo(fake)
+      const blocker = join(fake, 'not-a-dir')
+      writeFileSync(blocker, 'x\n')
+      const { code, out } = runCli(
+        ['create', 'test11', '--dir', join(blocker, 'gh-fork-test11'), '--node-modules', 'none', '--no-hooks'],
+        { tmpRoot: fake, mainDir: origin },
+      )
+      expect(code, out).not.toBe(0)
+      expect(out).toContain('创建中断')
+      expect(out).toContain('✖ 克隆') // 必须点出就是这一步失败，而不是别处先炸
+      expect(out).not.toContain('分流 remotes') // 失败即中断，不带着坏状态继续往下走
+      expect(out).not.toContain('✅ fork 就位')
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
+  /**
+   * issue #371 缺陷 2（更危险）：`record('branch', git(forkDir, ['checkout', '-b', ...]), true)`。
+   * checkout -b 失败时 create 仍以 0 退出，fork 实际停在基线分支上，之后「fork 内改代码 →
+   * commit → push」就发生在 main 上（破坏"一任务一分支"的隔离前提，存在误推主分支的风险）。
+   *
+   * 失败构造：`--branch main` —— clone 出来的 fork 本来就带着基线分支 `main`，
+   * `git checkout -b main main` 必然报 "a branch named 'main' already exists"。
+   */
+  it('branch 失败（分支名已存在）→ create 非零退出（不得静默吞掉）', { timeout: 60_000 }, () => {
+    const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
+    try {
+      const origin = makeOriginRepo(fake)
+      const { code, out } = runCli(
+        [
+          'create',
+          'test12',
+          '--branch',
+          'main',
+          '--dir',
+          join(fake, 'gh-fork-test12'),
+          '--node-modules',
+          'none',
+          '--no-hooks',
+        ],
+        { tmpRoot: fake, mainDir: origin },
+      )
+      expect(code, out).not.toBe(0)
+      expect(out).toContain('创建中断')
+      expect(out).toContain('✖ 建工作分支') // 必须点出就是这一步失败
+      expect(out).not.toContain('✅ fork 就位')
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
   it('exclude 位置已被软链占据 → 拒绝写入，受害者文件一字不改', { timeout: 60_000 }, () => {
     const { name: fake } = dirSync({ unsafeCleanup: true, prefix: 'fork-pool-test-' })
     try {

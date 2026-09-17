@@ -102,6 +102,14 @@ const gitOut = (dir, gitArgs) => {
   return res.code === 0 ? res.out : ''
 }
 
+/** 取输出里最后一行非空内容：让 ✖ 行直接点出失败原因，而不是把 git 的整段报错刷进日志。 */
+const lastLine = (out) =>
+  (out ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1) ?? ''
+
 /**
  * 分支上报 ①：只读远程。失败返回空串，由调用方判定。
  *
@@ -284,7 +292,11 @@ function cmdCreate() {
     }
   }
 
-  record('clone', run('git', ['clone', '--local', '--quiet', mainWorkdir, forkDir]), true)
+  // issue #371：这里的 ok 也曾**硬编码为 true** —— clone 失败（目标目录建不出来、源不可读）时只
+  // 打印 ✖ 就继续往下走，后续步骤只是"连带"炸掉：第一步显示 ✔ 克隆、第二步才 ✖，输出与事实自相
+  // 矛盾。现在用 clone 的真实结论，失败即经 record 中断 create（exit 1），与 #362 对 exclude 一致。
+  const cloneStep = run('git', ['clone', '--local', '--quiet', mainWorkdir, forkDir])
+  record('clone', cloneStep, cloneStep.code === 0, cloneStep.code === 0 ? '' : lastLine(cloneStep.out))
   const remoteStep = (() => {
     const started = performance.now()
     // 本地远端原样沿用（离线语义）；仅 http(s)/scp 形态才做 https fetch + SSH push 分流。
@@ -308,7 +320,12 @@ function cmdCreate() {
   const baseline = evaluateBaseline(forkSha, remoteSha)
   record('baseline', baselineStep, baseline.ok, baseline.reason)
 
-  record('branch', git(forkDir, ['checkout', '--quiet', '-b', branch, options.baseRef]), true)
+  // issue #371（比 clone 更危险）：这里的 ok 也曾**硬编码为 true** —— `checkout -b <branch>` 失败
+  // （分支名已存在、baseRef 取不到）时 create 仍以 0 退出，fork 实际停在基线分支上。之后「在 fork
+  // 内改代码 → commit → push」就发生在基线分支（通常是 main）上，破坏"一任务一分支"的隔离前提，
+  // 存在误推主分支的风险。现在用 checkout 的真实结论：失败即经 record 中断 create（exit 1）。
+  const branchStep = git(forkDir, ['checkout', '--quiet', '-b', branch, options.baseRef])
+  record('branch', branchStep, branchStep.code === 0, branchStep.code === 0 ? '' : lastLine(branchStep.out))
   // issue #362：这里的 ok 曾**硬编码为 true** —— ensureExclude 失败时只打印 ✖ 就继续建 fork，
   // 于是防误提交的 `.git/info/exclude` 没写成功，之后在 fork 里 `git add -A` 可能把 node_modules
   // 软链误提交（正是该机制要防的事故形态）。现在用 ensureExclude 的真实结论：失败即经 record

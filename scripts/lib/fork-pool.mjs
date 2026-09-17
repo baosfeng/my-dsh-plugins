@@ -111,15 +111,29 @@ export const fetchRemoteFor = (owner, repo) => `https://github.com/${owner}/${re
 export const pushRemoteFor = (owner, repo) => `git@github.com:${owner}/${repo}.git`
 
 /**
- * `.git/info/exclude` 的追加内容：已含 node_modules 时返回 null（幂等）。
+ * 必须在 fork 的 `.git/info/exclude` 里挡住的条目 —— 都是 fork 内**指向主工作区的软链目录**。
  *
- * 为什么抽成纯函数：这段判据一旦写错，`git add -A` 就会把 node_modules 软链提交进仓库
- * （node_modules/ 规则**不匹配软链**，见 ensureExclude 的注释），必须能被单测直接覆盖。
+ * 为什么 .gitignore 挡不住：仓库里写的是 `node_modules/` 与 `.gitleaks-cache/`（尾斜杠只匹配
+ * **目录**），而 git 把软链当**文件**看待 —— 这两条 gitignore 规则都不匹配软链，于是
+ * `git add -A` 会把软链本身暂存进提交。`node_modules` 是 issue #240 的形态；
+ * `.gitleaks-cache`（20M gitleaks 二进制缓存）是 issue #373 发现的**同类漏项**：
+ * 原先只挡 node_modules，于是 fork 里 `git add -A` 会把缓存软链提交进 PR。
+ * 新增同类本地产物时必须往这里加一行，别只改 .gitignore（尾斜杠规则对软链无效）。
  */
-export function excludeAppendContent(current) {
+export const EXCLUDE_ENTRIES = ['node_modules', '.gitleaks-cache']
+
+/**
+ * `.git/info/exclude` 的追加内容：所需条目全部已含时返回 null（幂等）。
+ *
+ * 为什么抽成纯函数：这段判据一旦写错，`git add -A` 就会把本地产物软链提交进仓库
+ * （见 EXCLUDE_ENTRIES 的注释），必须能被单测直接覆盖。
+ */
+export function excludeAppendContent(current, entries = EXCLUDE_ENTRIES) {
   const text = String(current ?? '')
-  if (text.split('\n').includes('node_modules')) return null
-  return `${text.replace(/\n?$/, '\n')}node_modules\n`
+  const lines = text.split('\n')
+  const missing = entries.filter((entry) => !lines.includes(entry))
+  if (missing.length === 0) return null
+  return `${text.replace(/\n?$/, '\n')}${missing.join('\n')}\n`
 }
 
 /**
@@ -198,6 +212,12 @@ export function planCreateSteps({ hooks = true, nodeModules = 'symlink' } = {}) 
       label: 'workspace 内部包重指向（dsh-shared 等必须指向本 fork，否则验证的是主工作区的旧包）',
     })
   }
+  // issue #373：与 node_modules 策略无关 —— 缓存复用只影响 secret-scan 的下载耗时，所以
+  // `--node-modules none` 时也要做。主工作区没有该缓存时本步是空操作（不报错、不阻塞 create）。
+  steps.push({
+    id: 'gitleaks-cache',
+    label: 'gitleaks 二进制缓存复用（软链主工作区 .gitleaks-cache，避免每个 fork 重新下载 ~20M）',
+  })
   if (hooks) steps.push({ id: 'hooks', label: '安装 git hooks（恢复 pre-commit / pre-push 门禁）' })
   return steps
 }
@@ -283,11 +303,13 @@ export function buildCheckItems({
     id: 'exclude',
     ok: stagedNodeModules.length === 0,
     fatal: true,
-    label: 'node_modules 未被误暂存',
+    // issue #373：判定范围从 node_modules 扩到全部 EXCLUDE_ENTRIES（含 .gitleaks-cache）——
+    // 后者同为 fork 内本地软链，漏检会让 20M 缓存软链随 `git add -A` 混进 PR。
+    label: 'node_modules / .gitleaks-cache 未被误暂存',
     detail:
       stagedNodeModules.length === 0
         ? '干净'
-        : `发现 ${stagedNodeModules.length} 个 node_modules 相关暂存项（git add -A 会误提交软链）：${stagedNodeModules.slice(0, 3).join('、')}`,
+        : `发现 ${stagedNodeModules.length} 个本地产物软链暂存项（git add -A 会误提交软链）：${stagedNodeModules.slice(0, 3).join('、')}`,
   })
   return items
 }

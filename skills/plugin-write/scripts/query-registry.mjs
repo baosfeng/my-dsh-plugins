@@ -194,7 +194,7 @@ function pushMatch(matches, plugin, severity, kind, claim, reason, context) {
 
 export function checkNamingAgainstIndex(manifest, index, { harnessVersion } = {}) {
   if (harnessVersion && !parseSemver(harnessVersion)) {
-    throw new RegistryQueryInputError('--harness-version must be a semantic version such as 0.1.2-alpha.2')
+    throw new RegistryQueryInputError('--harness-version must be a semantic version such as x.y.z-alpha.1')
   }
   validateIndex(index)
   const coordinate = manifest.plugin.coordinate

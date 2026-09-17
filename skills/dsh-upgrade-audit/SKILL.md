@@ -11,14 +11,14 @@ description: 使用当 需要审计两个 DSH 版本之间仓库外消费者可�
 
 ## Phase 0 — 解析输入与模式
 
-输入：两个版本标识（接受 `0.1.2-alpha.2`、`dsh-v0.1.2-alpha.2`、dist-tag `alpha`/`latest`/`next`）。按特异性从高到低选分析模式：
+输入：两个版本标识（接受裸版本号、`dsh-v` 前缀 tag、dist-tag `alpha`/`latest`/`next`）。按特异性从高到低选分析模式：
 
 1. **上下文路径**——用户在消息里点名了 deepseek-harness 检出目录。验证：根 `package.json` + `packages/` + `AGENTS.md` 齐备。
 2. **`DSH_SOURCE_PATH` 环境变量**——同样验证。（可选 `DSH_NPM_REGISTRY` 覆盖 npm registry。）
 3. **CWD 启发**——当前目录本身就是 deepseek-harness 检出（同样标记）。
 4. **npm 模式**——以上皆无（第三方 repo 的默认路径）：下载两个版本的已发布包做分析。
 
-源码模式审计 git tag；npm 模式审计发布工件。审计核心（侦察面、分类、核验、报告）两者共享，物化方式和部分证据源不同。选 npm 模式前要知道它的边界：**npm 版本集 ≠ git tag 集**（如 `0.1.2-alpha.1` 打了 tag 但从未发布——物化脚本会带已发布清单退出，应把缺口摆给用户，不要自行替换版本对）；CLI 闭包不含全部可发布包（SQLite 持久化后端不是 CLI 依赖，脚本以补充包形式安装）。
+源码模式审计 git tag；npm 模式审计发布工件。审计核心（侦察面、分类、核验、报告）两者共享，物化方式和部分证据源不同。选 npm 模式前要知道它的边界：**npm 版本集 ≠ git tag 集**（打了 tag 但从未发布的版本——物化脚本会带已发布清单退出，应把缺口摆给用户，不要自行替换版本对）；CLI 闭包不含全部可发布包（SQLite 存储/查询后端不是 CLI 依赖，脚本以补充包形式安装，当前为 `@deepseek-ai/dsh-storage-sqlite` 与 `@deepseek-ai/dsh-session-query-sqlite`）。
 
 ## 输出契约
 
@@ -49,7 +49,7 @@ git merge-base <from> <to>   # 必须等于 <from> 的 commit
 node <skill-dir>/scripts/materialize-npm.mjs <from> <to> tmp/<pair>
 ```
 
-脚本向 registry 解析两个版本（缺失则 exit 1 并带已发布清单——把缺口摆给用户），以 `--ignore-scripts` 把 `@deepseek-ai/dsh` 依赖闭包加 SQLite 补充包装进 `a/` 与 `b/`，对每个 `@deepseek-ai/*` 包做 manifest diff 生成 `manifest-diff.txt`，并从公开 GitHub 仓库富化（`commits.txt`、`reverts.txt`）——所以没有源码检出也能做回滚检测。
+脚本向 registry 解析两个版本（缺失则 exit 1 并带已发布清单——把缺口摆给用户），以 `--ignore-scripts` 把 `@deepseek-ai/dsh` 依赖闭包加 SQLite 补充包装进 `a/` 与 `b/`，对每个 `@deepseek-ai/*` 包做 manifest diff 生成 `manifest-diff.txt`，并从公开 GitHub 仓库富化（`commits.txt`、`reverts.txt`）——所以没有源码检出也能做回滚检测。补充包默认是 `@deepseek-ai/dsh-storage-sqlite` 与 `@deepseek-ai/dsh-session-query-sqlite`；`from` 落在这两个包拆分之前时，用 `--packages` 指定该版本实际发布的 SQLite 包名（旧包已从官方树删除，默认值对它无效）。
 
 按 stats 输出定侦察规模：≤40 个非合并 commit → 按侦察面清单单跑内联；40–250 → 合并 3–4 个面；更多 → 全量六面。密度对比要翻上一对的 `commits.txt`——按**时间序**取紧邻前一对，永远不要只抓 `tmp/` 里最新的目录。
 
@@ -57,7 +57,7 @@ node <skill-dir>/scripts/materialize-npm.mjs <from> <to> tmp/<pair>
 
 跑一次，喂给每个子代理，免得各自重复推导：
 
-- **格式守卫**——源码模式读两个 tag 上的 `SESSION_FORMAT_VERSION`（`packages/core/session/src/types.ts`）与 SQLite `SCHEMA_VERSION`（`packages/session/session-persistence-sqlite/src/schema.ts`）；npm 模式从 `dsh-session` 与补充包的已发布 `lib/*.js` 里 grep 同名常量。守卫跳号且无迁移路径 = 硬数据破坏，放报告最前面。
+- **格式守卫**——源码模式读两个 tag 上的 `SESSION_FORMAT_VERSION`（`packages/core/session/src/types.ts`）与两个 SQLite 守卫：`STORAGE_SQLITE_SCHEMA_VERSION`（`packages/storage/storage-sqlite/src/schema.ts`）、`SESSION_QUERY_SQLITE_SCHEMA_VERSION`（`packages/session-query/session-query-sqlite/src/schema.ts`）；npm 模式从 `dsh-session` 与补充包的已发布 `lib/*.js` 里 grep 同名常量。**`from` 落在 SQLite 落盘简化之前时，守卫来自一个现已被删除的独立持久化补充包，包名与 schema 路径都与 to 侧不同**——按该版本的发布清单取证，不要套用 to 侧路径。守卫跳号且无迁移路径 = 硬数据破坏，放报告最前面。
 - **回滚清单**——源码模式：`git log --grep='[Rr]evert' <from>..<to>`；npm 模式：富化的 `reverts.txt`（没有 → 回滚*意图*不可检测，明说，只做 from→to 差量审计）。
 - **Python SDK**——源码模式：diff `python/`；npm 模式：超出 npm 工件范围，一句话说明即可。
 
@@ -83,4 +83,4 @@ node <skill-dir>/scripts/materialize-npm.mjs <from> <to> tmp/<pair>
 
 ## 与 plugin-upgrade 的关系
 
-本 skill 产出**宿主版本间的兼容性证据**（报告 + 边界签名表）；[plugin-upgrade](https://github.com/oh-my-dsh/dsh-plugin-upgrade-skill/blob/main/skills/plugin-upgrade/) 消费这类证据（版本变更卡片）执行单个插件的迁移。审计发现可直接供给卡片「实战批注」；给 `plugin-upgrade` 补卡时引用本 skill 的报告目录而非凭记忆转述。
+本 skill 产出**宿主版本间的兼容性证据**（报告 + 边界签名表）；[plugin-upgrade](../plugin-upgrade/SKILL.md) 消费这类证据（版本变更卡片）执行单个插件的迁移。审计发现可直接供给卡片「实战批注」；给 `plugin-upgrade` 补卡时引用本 skill 的报告目录而非凭记忆转述。

@@ -1,6 +1,6 @@
 # my-dsh-plugins — 个人 DSH（DeepSeek Harness）插件集合仓库
 
-> 19 个插件（plugins/）+ 13 个 skill（skills/）+ 文档（docs/）。技术栈：Node.js + Cordis 4 + React 18/19 + dsh-better-sidebar。
+> 19 个插件（plugins/）+ 12 个 skill（skills/）+ 文档（docs/）。技术栈：Node.js + Cordis 4 + React 18/19 + 宿主原生 sidebarRightTabs。
 
 ## 🤝 协作与项目管理原则（所有 agent 必读）
 
@@ -34,6 +34,7 @@
 ## 📚 入口
 
 - **文档**：docs/索引.md（完整导航）；各插件文档在 docs/<模块>/，源码在 plugins/<插件名>/。
+- **官方文档**：docs/官方文档/索引.md — 官方 docs 分类导航 + 接入 / 调试 / 宿主 API 速查；本地参考源 `~/.dsh-refs/deepseek-harness`。
 - **开发/发版**：skills/development-lifecycle/（需求→确认→梳理→开发→验证→发版→文档→release 全流程）。
 - **插件开发**：skills/dsh-plugin-development/（插件形态/目录结构/发布流程）。
 - **质量**：quality-gates skill（10 项门禁：TDD/Gherkin/复杂度 ≤10/函数 ≤70 行/文件 ≤400 行/依赖无环/变异 ≥70%/覆盖率 85-75/防复发/真实环境验证）；资源预算见 skills/resource-budget-review/。

@@ -172,8 +172,8 @@ export function apply(ctx: ClientContext): void {
 | 维度    | 官方仓库内包                                        | 社区独立插件（本仓库）                                    |
 | ------- | --------------------------------------------------- | --------------------------------------------------------- |
 | 挂载    | bundle 组合 patch 装配                              | 自带 `cordis.patch.yml` + `package.json.dsh.bundle.patch` |
-| 依赖    | `workspace:^` peer                                  | npm/link peer（cordis、dsh-better-sidebar…）              |
+| 依赖    | `workspace:^` peer                                  | npm/link peer（cordis、react…）                           |
 | 配置    | schemastery `z.object` + Loader 默认                | 同（schemastery 或手写）                                  |
-| UI 注册 | slots.inject/register + locale + conversationEvents | 官方同款 API 或 `ctx.betterSidebar.registerTab`（消费方） |
+| UI 注册 | slots.inject/register + locale + conversationEvents | 官方同款 API（`inject` 服务名 + keyed 席位）              |
 | 构建    | tsdown（tsdown.client.ts 协议）                     | tsdown/tsc 或纯 JS ESM                                    |
 | 工具    | `ctx.tools.register(defineTool(...))`               | 相同                                                      |

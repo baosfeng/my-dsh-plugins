@@ -4,12 +4,15 @@
  *
  * Usage: node materialize-npm.mjs <versionA> <versionB> <out-dir> [--packages name1,name2] [--no-github]
  *
- * Versions accept npm versions (0.1.2-alpha.2), dsh tag spellings (dsh-v0.1.2-alpha.2),
+ * Versions accept npm versions (x.y.z-alpha.1), dsh tag spellings (dsh-vx.y.z-alpha.1),
  * or dist-tags (alpha, latest, next). Installs the CLI dependency closure (plus any
- * supplement packages, default: the SQLite persistence backend) into <out-dir>/a and
- * /b with scripts disabled, then emits a manifest diff and GitHub commit enrichment
+ * supplement packages, default: the SQLite storage and session-query backends) into
+ * <out-dir>/a and /b with scripts disabled, then emits a manifest diff and GitHub commit enrichment
  * when the repository is public. Prints a stats JSON to stdout; exits 1 with the
  * published version list when a requested version is not on the registry.
+ *
+ * A from-side older than the storage/session-query split publishes a since-removed standalone
+ * SQLite persistence package instead; pass --packages with that version's own package names.
  */
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs'
@@ -19,7 +22,7 @@ import { commitLines, revertLines } from './lib/commit-lines.mjs'
 
 const CLI = '@deepseek-ai/dsh'
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const DEFAULT_SUPPLEMENTS = ['@deepseek-ai/dsh-session-persistence-sqlite']
+const DEFAULT_SUPPLEMENTS = ['@deepseek-ai/dsh-storage-sqlite', '@deepseek-ai/dsh-session-query-sqlite']
 const args = process.argv.slice(2)
 const [va, vb, out] = args.filter((a) => !a.startsWith('--'))
 if (!va || !vb || !out) {

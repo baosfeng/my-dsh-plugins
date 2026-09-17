@@ -31,7 +31,7 @@ description: 使用当 需要处理 DSH 宿主或插件的版本升级时——�
 
 1. 阅读目标仓库的 `AGENTS.md` / `CLAUDE.md` 等规则；检查 branch、HEAD、working tree、submodule。发现陌生修改或未跟踪文件就停止并报告，不自动 stash/reset/clean/checkout。
 2. 分开记录代码来源与安装身份：registry 包、Git checkout、workspace/junction 或复制安装；记录来源仓库/URL、Git SHA、实际包名、插件自身版本、declared/resolved DSH 依赖 cohort 与当前 DSH/Node 版本。插件发版版本（如 `0.6.4 → 0.7.0-alpha.0`）不是 DSH 宿主走廊（如 `0.1.0-rc.6 → 0.1.2-alpha.4`）。GitHub owner/repo 与 registry scope/package 是独立坐标，不能从前者推导或改写后者。
-3. 区分文件所有权：`package.json` / lockfile 是包与依赖；社区标准 manifest `dsh-plugin.json`（若采用）；`cordis.patch.yml` / `agent.cordis.yml` / 历史 `cordis.yml` 是 profile composition；resolved config 是运行时组合结果，只用于核对，不整对象回写。
+3. 区分文件所有权：`package.json` / lockfile 是包与依赖；`cordis.patch.yml` / `agent.cordis.yml` / 历史 `cordis.yml` 是 profile composition；resolved config 是运行时组合结果，只用于核对，不整对象回写。官方 manifest 只有 `package.json` 下的 `dsh.bundle` / `dsh.profile` / `dsh.client`；社区标准 manifest `dsh-plugin.json` 是**可选社区产物、非官方**，仅在目标仓库确实采用时才列入清单。
 4. 核对目标版本来源、tag/包名、兼容范围、release notes、安装脚本与已知 breaking changes。不读取、打印或提交 token、`.npmrc` 内容、凭据或会话日志。
 5. 记录回滚基线：当前 HEAD/包版本、lockfile 与将改配置的 hash/路径；说明失败后如何恢复本次明确路径，不要承诺回滚第三方安装脚本的任意副作用。
 

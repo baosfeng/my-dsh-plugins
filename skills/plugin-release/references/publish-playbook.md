@@ -7,17 +7,17 @@
 
 ## Unpublished cohort installation (recipe R-01)
 
-0.1.2-alpha.* is published on GitHub only; npm lookups return 404. Isolated installation on the consumer side:
+When a release line exists as a GitHub tag only (npm lookups return 404), install it in isolation on the consumer side — substitute the exact target version for `<目标版本>`:
 
 ```sh
 git clone https://github.com/deepseek-ai/deepseek-harness.git /tmp/dsh-build
-cd /tmp/dsh-build && git checkout dsh-v0.1.2-alpha.2
+cd /tmp/dsh-build && git checkout dsh-v<目标版本>
 pnpm install && pnpm run build
-mkdir -p ~/.dsh-cohorts/0.1.2-alpha.2
-pnpm -r exec pnpm pack --pack-destination ~/.dsh-cohorts/0.1.2-alpha.2
+mkdir -p ~/.dsh-cohorts/<目标版本>
+pnpm -r exec pnpm pack --pack-destination ~/.dsh-cohorts/<目标版本>
 ```
 
-In the manifest, write the range as `^0.1.2-alpha.2` and pin it to a `file:` tarball with `overrides`; once the official release is out, removing the overrides returns resolution to the registry.
+In the manifest, write the range for that tag and pin it to a `file:` tarball with `overrides`; once the official release is out, removing the overrides returns resolution to the registry.
 
 > **To be confirmed (single field report, not reproduced)**: with third-party peers present, pnpm 11.9.0
 > resolves the transitive dependencies of `file:` tarballs by bypassing overrides and looking for a
@@ -25,25 +25,12 @@ In the manifest, write the range as `^0.1.2-alpha.2` and pin it to a `file:` tar
 > it correctly. Reproduce minimally in the target repository before adopting it, and backfill the
 > conclusion once verified.
 
-## Dual-compatibility pattern (core strategy for the alpha era)
+## Cross-track signature drift
 
-Public repositories use the npm release line (currently 0.1.1-rc.2) as the type baseline for devDependencies, while the code must also run on the local harness at the GitHub tag. For APIs with signature drift, compromise as: "the npm release line's types are authoritative; the alpha runtime semantics stay unchanged". Real case: the third argument of `rpc.handle` was removed starting with 0.1.2-alpha.1 (authentication is now handled uniformly by the connection), but the rc.2 types still require it:
+Never keep an argument alive just to satisfy an older type baseline. `rpc.handle` is `handle(channel, handler)` — two parameters — and there is no method-specific loopback tier to pass into it (official [rpc.ts](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/connection/src/rpc.ts); the connection README states this explicitly). If a pinned devDependency baseline disagrees with the runtime you actually target, move the baseline instead of writing a call the host ignores; semantic API changes go through the version cards of the `plugin-upgrade` skill, never a silent compromise.
 
-```ts
-// The devDependencies baseline is the npm release line (rc.2), whose handle() type requires the
-// third argument; harness handle() ignores that argument since 0.1.2-alpha.1. Keeping it lets the
-// repository typecheck against rc.2 types while the alpha runtime behavior stays unchanged.
-const dispose = connection.rpc.handle(
-  '/tariff',
-  handler,
-  { authority: 'loopback' },
-)
-```
-
-- Use this compromise only for APIs with **signature drift where the runtime ignores the extra argument**; APIs with semantic changes must be migrated via the version cards of
-  [plugin-upgrade](https://github.com/oh-my-dsh/dsh-plugin-upgrade-skill/blob/main/skills/plugin-upgrade/SKILL.md), never silently compromised;
 - Type-only imports (`import type`) are erased at compile time and carry no runtime cost across cohorts;
-- Never write local junction/file: absolute paths into a committed manifest.
+- Never write local junction/`file:` absolute paths into a committed manifest.
 
 ## CI and release gates (unpublished cohort)
 

@@ -19,8 +19,8 @@ Create the config outside this Skill directory, preferably in the operating syst
 {
   "schema": 1,
   "image": "node:24-bookworm",
-  "dshVersion": "0.1.2-alpha.2",
-  "pnpmVersion": "11.24.0",
+  "dshVersion": "<目标版本>",
+  "pnpmVersion": "<目标 pnpm 版本>",
   "profile": "web",
   "startCommand": ["dsh", "web", "--no-open"],
   "readyPattern": "dsh web:",
@@ -31,6 +31,8 @@ Create the config outside this Skill directory, preferably in the operating syst
 ```
 
 All commands are argv arrays and run without a shell. `readyPattern` is a JavaScript regular expression matched against combined DSH stdout and stderr. `timeoutSeconds` is the cold-start readiness timeout. The optional `probeCommand` runs after readiness and must exit successfully; keep it empty when startup itself is the intended functional proof.
+
+Fill the two placeholders from the target tag and lockfile under test (target tag is the judge); never carry a version over from an older run.
 
 ## Run
 

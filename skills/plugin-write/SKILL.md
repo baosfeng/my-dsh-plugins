@@ -23,34 +23,23 @@ Cordis/Schemastery/DSH 包名与版本范围从精确目标版本的 manifest �
 
 ## 再分类插件形态
 
-| 能力需求 | 形态 | 参考 |
-|---|---|---|
-| 模型可调用的工具（读文件/跑命令/搜网页） | 工具插件 | `references/tool-plugin.md`（已裁剪，见 dsh-plugin-development 工具型速览） |
-| 新模型 provider | LLM 适配器插件 | `references/llm-adapter-plugin.md`（已裁剪） |
-| 请求/工具/回合拦截（权限/策略/指标/遥测） | Hook 插件 | `references/hook-plugin.md`（已裁剪） |
-| 被其他插件经 `ctx` 消费的能力 | Service 插件 | `references/service-plugin.md`（已裁剪） |
-| 经 `cordis.yml` 提供的用户可配置行为 | Config 插件 | `references/config-plugin.md`（已裁剪） |
+| 能力需求 | 形态 |
+|---|---|
+| 模型可调用的工具（读文件/跑命令/搜网页） | 工具插件 |
+| 新模型 provider | LLM 适配器插件 |
+| 请求/工具/回合拦截（权限/策略/指标/遥测） | Hook 插件 |
+| 被其他插件经 `ctx` 消费的能力 | Service 插件 |
+| 经 `cordis.yml` 提供的用户可配置行为 | Config 插件 |
 
-> 本仓库裁剪了 5 个形态参考文件（形态覆盖见 `dsh-plugin-development` skill 的「插件形态」表）；形态可自由组合，每个包含的形态仍须满足自身契约。需求不匹配五形态时，映射到既有扩展点注册，**绝不直接改 agent loop**。
+> 各形态的目录结构与骨架见 `dsh-plugin-development` skill 的「插件形态」表，官方形态总览见 [extension-cookbook](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/extension-cookbook.zh.md)；形态可自由组合，每个包含的形态仍须满足自身契约。需求不匹配五形态时，映射到既有扩展点注册，**绝不直接改 agent loop**。
 
 | 目标 | 机制 |
 |---|---|
 | 加模型可调用能力 | 注册到 `ctx.tools` |
 | 加模型 provider | 注册 adapter 到 `ctx.llm` |
-| 单会话不同能力集 | 组装进 Agent preset |
-| 加 Shell 执行 | 实现并注册 `ctx.bash` 后端 |
-| 加持久终端执行 | 注册 `ctx.pty` 后端并加载 `dsh-tool-pty` |
-| 加人类命令 | 注册到 `ctx.commands` |
-| 加后台任务 | 注册到 `ctx.tasks` |
-| 加文件系统访问/策略 | 实现 `ctx.fs` provider 或监听 `fs/*` 策略事件 |
-| 约束启动的进程 | 用 `ctx.sandbox` 后端 |
-| 拦截请求/工具/回合 | 用 `agent/*` 或 `tools/*` 事件；`agent/turn-stopping` 是回合停止事件 |
-| 加模型可见上下文 | 调 `agent.inject()` |
-| 加 UI/编辑器集成 | 驱动 `ctx.agents` 并从 `session/event` 渲染 |
-| 加 Web 客户端会话节点 | 注册 `ConversationNodeDefinition` 与 keyed renderers |
-| 加持久会话状态 | 扩展 `SessionEventMap`，从日志渲染与回放 |
-| 分叉活动会话 | 调 `ctx.sessions.fork(source, boundary?, childSessionId?)` |
-| 注册限定到某 Agent | 用该 Agent 的 `agent.ctx` |
+| 加用户可配置项 | 在 `ctx.settings` 上注册命名空间 schema（`ctx.settings.installSection(...)`） |
+
+> 其余扩展点（shell 执行、持久终端、后台工作、文件系统、沙箱、事件拦截、Webhook、会话标题、fork 会话…）以及各 `ctx.*` 服务的 Definition/Provider/Consumer 三方归属，一律以官方文档为准：[architecture.zh.md 扩展点映射表](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.zh.md) + [capability-seams.zh.md 的 `ctx.*` seam 表](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/capability-seams.zh.md)。官方表更全且随版本更新，本地手抄必然漂移；**按名字猜服务名会注册到不存在的服务——静默不生效且不报错**，注册前先在上表核对真名。
 
 ## 包检查清单
 
@@ -82,5 +71,6 @@ Cordis/Schemastery/DSH 包名与版本范围从精确目标版本的 manifest �
 | [references/naming-policy.v1.json](references/naming-policy.v1.json) | 命名策略（防撞名 profile） |
 | [references/registry-check.md](references/registry-check.md) | 中央注册表查询契约 |
 | [references/version-adaptation.md](references/version-adaptation.md) | 现有插件跨 DSH 版本适配流程 |
+| [接入速查](../../docs/官方文档/接入速查.md) + [宿主API速查](../../docs/官方文档/宿主API速查.md) | 官方权威路径与按任务查 API |
 | [scripts/validate-names.mjs](scripts/validate-names.mjs) | 离线命名校验器 |
 | [scripts/query-registry.mjs](scripts/query-registry.mjs) | 中央注册表查询器 |

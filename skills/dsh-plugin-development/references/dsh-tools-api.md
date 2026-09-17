@@ -1,6 +1,6 @@
 # 工具型插件：defineTool API 参考（官方权威）
 
-> 权威来源：`dsh-io/dsh-plugin-skill`（https://github.com/dsh-io/dsh-plugin-skill），已对照 `@deepseek-ai/dsh-tools` 验证。
+> 权威来源（官方，逐条可复核）：[`docs/subsystems/tools.zh.md`](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/tools.zh.md)（`ToolDefinition` 逐字段权威）、[`docs/user/develop/basic/tool.zh.md`](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/tool.zh.md)（最小可用例）、官方源码 [`schema.ts`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/tools/src/schema.ts) 的 `defineTool` 定义。本文是前两处的压缩副本 + 本仓库 JS 约定差异，冲突时以官方为准。
 > 这是 dsh 插件**最核心的形态**：注册工具（tools）供 agent 调用，不依赖 better-sidebar。
 
 ## 最小骨架
@@ -92,16 +92,18 @@ my-tool/
 
 **tsconfig.json：** `module/moduleResolution: NodeNext`、`target: ES2022`、`strict: true`、`rootDir: src`、`outDir: lib`、`declaration: true`。
 
-**pnpm-workspace.yaml（仅 pnpm）：** `@deepseek-ai/dsh-session` 声明了未发布的 peer `@deepseek-ai/dsh-type-meta`（npm 会优雅跳过，pnpm 硬失败）：
+**pnpm-workspace.yaml（仅 pnpm）：** 曾有版本让 `@deepseek-ai/dsh-session` 声明未发布的 peer `@deepseek-ai/dsh-type-meta`（npm 会优雅跳过，pnpm 硬失败）：
 
 ```yaml
 overrides:
   '@deepseek-ai/dsh-type-meta': 'npm:@deepseek-ai/dsh-invariants@0.0.1-rc.1'
 ```
 
+> ⚠️ **待人工确认**：官方 refs（`0.1.6-alpha.1`）与本机安装的 `0.1.5-rc.1` 的 `@deepseek-ai/*` 包中都没命中 `dsh-type-meta`，该 peer 是否仍存在未核实。仅当 pnpm 安装**真的报这个 peer 缺失**时才加上述 override——先读报错，不要预防性写入。
+
 ## 开发流程
 
-1. **脚手架**：`npx @dsh-io/dsh-dev scaffold my-tool`（生成上述布局）；或手写 + `npm install`。
+1. **起手式（官方无 scaffold 命令）**：`mkdir -p scratch-plugin/src` 写模块，再手写 `package.json` 与 patch 文件挂到活 harness（官方 [index.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/index.zh.md)）。社区脚手架 `npx @dsh-io/dsh-dev scaffold <name>` 是**第三方、非官方**产物，官方没有 scaffold 命令；用前自行核实其可用性。
 2. **构建**：`npm run build` → 确认 `lib/index.js` 存在。
 3. **对活 harness 开发**：`npx @deepseek-ai/dsh --profile web --patch <abs-path>/cordis.patch.yml`（CLI 把 patch 作为 overlay 文件；重跑命令生效）。
 4. **验证加载**：启动后确认工具已注册（harness 日志 + agent 工具列表应含工具名）；可用 CLI 的 config dump 预检配置合并。
@@ -120,7 +122,7 @@ overrides:
 | 从 `koishi` / `@koishijs/...` 导入                    | dsh 用 `@deepseek-ai/cordis`；类型来自 `@deepseek-ai/dsh-tools`（augment cordis 的 Context） |
 | patch 的 `id` 与 `export const name` 不一致           | 合并按 id 进行；不一致会静默导致工具未注册                                                   |
 | patch 相对路径错误                                    | `dsh.bundle.patch` 必须是相对包根目录的路径，且 patch 文件必须在 `files` 里随包发布          |
-| pnpm 安装失败（`@deepseek-ai/dsh-type-meta`）         | 加 `pnpm-workspace.yaml` override（见上）                                                    |
+| pnpm 安装报未发布 peer `@deepseek-ai/dsh-type-meta` 缺失 | 先确认报错内容；确为该 peer（**待人工确认**，见上）才加 `pnpm-workspace.yaml` override |
 | 工具注册了但 agent 从不调用                           | description 写得不够好 —— 那是 agent 决策的依据                                              |
 
 ## 快速参考
@@ -135,7 +137,7 @@ overrides:
 | render 块类型   | `@deepseek-ai/dsh-llm` → `ContentBlock`              |
 | bundle manifest | `package.json` → `dsh.bundle.patch`                  |
 | 配置合并        | `cordis.patch.yml` → `- insert: [{ id, name }]`      |
-| 脚手架 CLI      | `npx @dsh-io/dsh-dev scaffold <name>`                |
+| 起手式          | 手写 manifest + `dsh web --patch <patch>`（官方无 scaffold 命令） |
 | 活体开发        | `dsh web` + patch overlay，或 `dsh plugin add <dir>` |
 | 发现            | GitHub topic `dsh-plugin`；npm scoped 包             |
 

@@ -7,8 +7,6 @@
 | 资源                        | 地址                                                                                                          | 说明                                                                                                                  |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | 官方插件开发 skill          | https://github.com/dsh-io/dsh-plugin-skill                                                                    | 权威 `defineTool` API、schema 规则、项目布局与工作流；适配 Claude Code / Codex / Cursor / Gemini CLI / opencode       |
-| better-sidebar 外部插件指南 | https://github.com/omdsh-dev/DSH-better-sidebar/blob/main/docs/external-plugin-guide.md                       | 消费插件（tab / viewer）完整 API：TabDescriptor 字段、fetchStrategy、matchFileViewer 算法、声明式设置、生命周期与 HMR |
-| better-sidebar 仓库         | https://github.com/omdsh-dev/DSH-better-sidebar                                                               | 内置 7 tab + 6 viewer 是同一套 API 注册（吃自己的狗粮），是参考实现                                                   |
 | 脚手架 CLI                  | `npx @dsh-io/dsh-dev scaffold <name>`                                                                         | 生成官方工具型插件布局                                                                                                |
 | 核心包                      | `@deepseek-ai/cordis`（容器）、`@deepseek-ai/dsh-tools`（defineTool）、`@deepseek-ai/dsh-llm`（ContentBlock） | 官方 TS 骨架用；本仓库纯 JS 插件用 `cordis` peer + link 安装                                                          |
 
@@ -32,12 +30,12 @@
 | 形态                          | 关键 API                                                         | 例子                                       |
 | ----------------------------- | ---------------------------------------------------------------- | ------------------------------------------ |
 | 工具型（agent 可调用函数）    | `ctx.tools.register(defineTool(...))`                            | 天气、记忆、搜索等纯工具                   |
-| 页面型（better-sidebar 消费） | client 端 `ctx.betterSidebar.registerTab` / `registerFileViewer` | 本仓库 dsh-file-activity                   |
+| 页面型（宿主原生侧边栏）      | client 端 `ctx.sidebarRightTabs.register` + keyed 席位 `sidebar.right.pane.tab` | 本仓库 dsh-file-activity                   |
 | 混合型                        | 工具 + 页面 + server 事件/路由                                   | 常见于需要 UI 的完整插件                   |
 | 市场嵌入型                    | 把插件市场装进 dsh 本体                                          | dsh1024（`dsh plugin add dsh1024@latest`） |
 
 ## 常见生态差异提醒
 
-- **双 cordis 实例**：外部插件在 DSH monorepo 之外解析，拿不到官方 cordis 的类型 augmentation——TS 项目用 `import type {} from 'dsh-better-sidebar'` 触发 `declare module 'cordis'` 类型合并（type-only import，编译期擦除，无运行时依赖）。
-- **服务只在 client half**：`ctx.betterSidebar` 只在浏览器侧；host 半要数据走 `/sidebar/api/*`、`/sidebar/file`、`/sidebar/ws/*` HTTP/WS 路由。
+- **双 cordis 实例**：外部插件在 DSH monorepo 之外解析，拿不到官方 cordis 的类型 augmentation——TS 项目用 type-only import 宿主类型包触发 `declare module 'cordis'` 类型合并（编译期擦除，无运行时依赖），或按本仓库做法内联声明最小契约（`src/client/globals.d.ts`）。
+- **侧边栏服务只在 client 端**：`ctx.sidebarRightTabs` / `ctx.slots` / `ctx.sidebarRight` 只在浏览器侧；server 半要数据走本插件自己的 HTTP 路由（`/<插件名>/api/*`）。
 - **`@deepseek-ai/cordis` vs `cordis`**：官方工具型骨架依赖 `@deepseek-ai/cordis`；本仓库插件用 `cordis` peer + link 安装（全链统一一个 cordis，避免双实例/类型分裂）。

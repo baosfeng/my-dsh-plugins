@@ -22,14 +22,12 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 1. 用仓库唯一的包管理器与 lockfile（有 `package-lock.json` 用 npm，有 `pnpm-lock.yaml` 用 pnpm）；
 2. 跑完整门禁（见第 3 步），再 `npm pack` / `pnpm pack`；
-3. 解包校验：`files` 覆盖全部运行时相对导入与资产；产物里没有 `.ts` 残留；`cordis.patch.yml`/`dsh.plugin.json`/`SKILL.md` 等形态文件齐全；
+3. 解包校验：`files` 覆盖全部运行时相对导入与资产；产物里没有 `.ts` 残留；`cordis.patch.yml`、`package.json`（`dsh.bundle` / 有 UI 时 `dsh.client` + `exports["./client"]`）、`SKILL.md` 等形态文件齐全；
 4. tarball 装入隔离 profile 做消费验证（`dsh --profile compat --dump-config` 出现本插件 row → 工具真实注册与执行）。
 
-## 第 2 步：版本依赖基线（alpha 时代）
+## 第 2 步：版本依赖基线
 
-- devDependencies 使用 **npm 发布线**（当前 0.1.1-rc.2）作为类型基线，保证公开仓库在任何机器上 `npm install` 后 typecheck 可用；
-- peer 范围用宽范围（如 `<0.2.0`）覆盖未发布的 alpha/rc；
-- 代码需要兼容本地 harness（GitHub tag）与 npm 发布线两侧时，用**双兼容写法**：保留 npm 发布线类型要求的形态，同时在 alpha 运行时语义不变（见 playbook 的“双兼容写法”节）；
+- 版本基线与 peer 范围以各插件 `package.json` 与目标版本卡为准，不写死在 skill 里——写死的基线会让插件锁定到不存在的 peer 范围；
 - 不要把本机绝对路径（junction/file:）写进提交的 package.json。
 
 ## 第 3 步：发布门禁（逐层，前层不过不进后层）
@@ -133,5 +131,5 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 | 文件 | 内容 |
 |---|---|
-| [references/publish-playbook.md](references/publish-playbook.md) | 未发布 cohort 安装、双兼容写法、CI/发布门禁、真实坑位清单与回滚配方 |
+| [references/publish-playbook.md](references/publish-playbook.md) | 未发布 cohort 安装、跨轨签名漂移、CI/发布门禁、真实坑位清单与回滚配方 |
 | [references/profile-dependency-management.md](references/profile-dependency-management.md) | profile 安装/更新配方：github 依赖锁缓存、包改名三处同步、junction 清理与宿主升级联动 |

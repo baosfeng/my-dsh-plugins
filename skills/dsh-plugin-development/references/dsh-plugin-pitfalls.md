@@ -8,7 +8,7 @@
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`webServer` / `httpServer` 键名变动**         | npm `latest`（rc.1）服务键是 `ctx.httpServer`，`next`（rc.2）重命名为 `ctx.webServer`                                                 | 过渡期双键回退：`ctx.get('webServer') ?? ctx.get('httpServer')`（新键优先、旧键回退）；`internal/service` 事件同时监听两组键再补注册                                   |
 | **`workspace` → `workspaceRegistry` 重命名**    | 同上一并发生                                                                                                                          | 同上双键回退                                                                                                                                                           |
-| **settings slot 形状变化**                      | DSH 0.1.0-rc.6 起 loader entry 应用阶段直接拒绝 keyed slot `settings.plugin.item` 缺 `key` 的注册 → "Failed to load plugins" 启动失败 | 用 `settings.section` 一级分区注册（0.1.18+）；或给 keyed slot 传 `key` 而非 `id`                                                                                      |
+| **settings slot 形状变化**                      | DSH 0.1.0-rc.6 起 loader entry 应用阶段直接拒绝 keyed slot `settings.plugin.item` 缺 `key` 的注册 → "Failed to load plugins" 启动失败 | 卡片 keyed slot 必须传 `key`（= 命名空间）而非 `id`；整页式需求另走一级分区 slot `settings.section`                                                                                       |
 | **DSH 破坏面清单**                              | 大版本升级后静默不兼容                                                                                                                | plugin-hub 归纳破坏点：patch 语义、`webServer.register` 形状、loader entry 形状、`dsh.client` bundle 格式、`settings.plugins.tab` slot；升级后显示兼容警告而非静默失败 |
 | **pnpm 安装 `@deepseek-ai/dsh-type-meta` 失败** | 官方 SDK 声明了未发布 peer，pnpm 硬失败（npm 优雅跳过）                                                                               | `pnpm-workspace.yaml` 加 `overrides: { "@deepseek-ai/dsh-type-meta": "npm:@deepseek-ai/dsh-invariants@0.0.1-rc.1" }`                                                   |
 
@@ -45,7 +45,7 @@
 | **`declare module` 不生效**   | TS2664 / 事件 union 里没有你的类型                                             | 模块增强只对**已加载进 program** 的模块生效：合并文件顶部加 `import type {} from '<目标模块>'`（编译期擦除） |
 | **会话事件类型文件零 import** | 事件类型文件引入 host 类型导致 client 打包污染                                 | event-types.ts（`SessionEventMap` 合并）**必须零 import**；definition 文件可以带 type-only import            |
 | **闭包内窄化失效**            | `if (event.type==='x') { arr.map(() => event.data.field) }` 报 Property 不存在 | 守卫后先 `const field = ...` 提取局部变量，闭包内用局部变量                                                  |
-| **双 cordis 类型分裂**        | `ctx.betterSidebar` 不在 Context 类型上                                        | `import type {} from 'dsh-better-sidebar'` 触发 `declare module 'cordis'` 类型合并                           |
+| **双 cordis 类型分裂**        | 宿主 client 服务（如 `ctx.sidebarRightTabs`）不在 Context 类型上               | 在 `src/client/globals.d.ts` 内联声明最小契约（本仓库做法），或 type-only import 宿主类型包触发 `declare module 'cordis'` 合并 |
 
 ## 六、运行时/数据（UI 类高频）
 
@@ -72,12 +72,12 @@
 
 | 载体                             | 适用                        | 机制                                                                            |
 | -------------------------------- | --------------------------- | ------------------------------------------------------------------------------- |
-| 官方 Slot（settings.section 等） | 设置页分区/开关             | `@deepseek-ai/dsh-settings` 的 `installSettingsSection` + `settingsNamespace`   |
+| 官方 Slot（设置卡片等）          | 设置页卡片/开关             | Host 半 `ctx.settings.installSection(...)` + 浏览器半 keyed slot `settings.plugin.item`（key = 命名空间）或一级分区 slot `settings.section`（完整设置区） |
 | 会话槽位 SlotMap                 | 嵌入会话 UI（输入框芯片等） | `declare module '@deepseek-ai/dsh-client-ui-slots'` 扩展 SlotMap + inject slots |
 | 对话流卡片                       | 会话内展示工具结果/流程     | 会话事件 → 对话流节点（client 渲染）                                            |
 | slash command                    | 命令弹窗                    | `/context` 式注册命令                                                           |
 | 全局悬浮                         | 无会话维度 UI（宠物等）     | `createRoot(document.body)` 独立 React root                                     |
-| 消费方 API                       | 侧边栏 tab/viewer           | `ctx.betterSidebar.registerTab`                                                 |
+| 宿主原生侧边栏                   | 侧边栏 tab/viewer           | `inject: ['slots', 'sidebarRightTabs']`：`ctx.sidebarRightTabs.register` + keyed 席位 `sidebar.right.pane.tab` |
 
 ## 九、其他备忘
 

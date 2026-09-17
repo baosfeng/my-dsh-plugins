@@ -6,15 +6,15 @@ a global lock.
 
 ## Query
 
-Run the bundled read-only client and supply the exact target Harness version when known:
+Run the bundled read-only client and supply the exact target Harness version when known (`<目标版本>` is a placeholder — the tag you actually ship against is the judge):
 
 ```sh
 node <plugin-write-skill>/scripts/query-registry.mjs \
   --manifest ./dsh-plugin.naming.json \
-  --harness-version 0.1.2-alpha.2
+  --harness-version <目标版本>
 ```
 
-The default index is:
+The default index is a **community registry — a community service, not an official DeepSeek Harness authority**:
 
 ```text
 https://raw.githubusercontent.com/oh-my-dsh/dsh-plugin-registry/main/registry/index.json

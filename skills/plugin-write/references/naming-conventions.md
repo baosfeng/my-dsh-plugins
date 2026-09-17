@@ -1,6 +1,6 @@
 # External Plugin Naming Compatibility
 
-This is a community compatibility profile, not an official DeepSeek Harness naming standard. It was verified on 2026-08-31 against [`dsh-v0.1.2-alpha.2`](https://github.com/deepseek-ai/deepseek-harness/tree/0a53fb55bea101816fa226bb964ae2bed71c343b). Recheck the exact target Harness version before treating an upstream grammar or collision rule as current.
+This is a community compatibility profile, not an official DeepSeek Harness naming standard. Its upstream claims were verified against `<目标版本>` — a placeholder: the tag you actually ship against is the judge, so recheck the official pages for that tag before treating a grammar or collision rule below as current.
 
 The profile has two layers:
 
@@ -27,7 +27,7 @@ Official Harness uses several independent identities rather than one universal p
 | Settings namespace | Official grammar is `^[a-z][a-z0-9-]*$`; duplicate registration fails | Recommend a publisher-aware kebab prefix |
 | Web route | HTTP routes collide only for the same `kind` and `path`; exact, prefix, and upgrade registrations are distinct | Record `{ kind, path }` instead of losing the route kind |
 
-Primary sources: [first plugin](https://github.com/deepseek-ai/deepseek-harness/blob/0a53fb55bea101816fa226bb964ae2bed71c343b/docs/user/develop/basic/index.zh.md), [bundle publishing and Loader layers](https://github.com/deepseek-ai/deepseek-harness/blob/0a53fb55bea101816fa226bb964ae2bed71c343b/docs/user/develop/basic/publish.zh.md), [services and isolation](https://github.com/deepseek-ai/deepseek-harness/blob/0a53fb55bea101816fa226bb964ae2bed71c343b/docs/user/develop/framework/service.zh.md), [commands](https://github.com/deepseek-ai/deepseek-harness/blob/0a53fb55bea101816fa226bb964ae2bed71c343b/packages/interaction/commands/README.zh.md), [Skills](https://github.com/deepseek-ai/deepseek-harness/blob/0a53fb55bea101816fa226bb964ae2bed71c343b/packages/skill/skill/README.zh.md), [settings](https://github.com/deepseek-ai/deepseek-harness/blob/0a53fb55bea101816fa226bb964ae2bed71c343b/packages/settings/settings/src/index.ts), and [Web routes](https://github.com/deepseek-ai/deepseek-harness/blob/0a53fb55bea101816fa226bb964ae2bed71c343b/packages/host/webserver/src/index.ts).
+Primary sources: [first plugin](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/index.zh.md), [bundle publishing and Loader layers](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.zh.md), [services and isolation](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/framework/service.zh.md), [commands](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/interaction/commands/README.zh.md), [Skills](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/skill/skill/README.zh.md), [settings](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/settings/settings/src/index.ts), and [Web routes](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/host/webserver/src/index.ts).
 
 ## Community coordinate and recommendations
 

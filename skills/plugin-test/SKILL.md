@@ -42,6 +42,8 @@ description: 使用当 需要为 DSH 插件编写或审查测试，或验证 DSH
 - provider 行为（新 adapter/真实 provider 功能）→ 凭据可用且授权时跑真实 API e2e。
 - 用户会实际运行的插件 → 执行非单测的真实组合测试；绝不只测手工拼装的 `ctx.plugin(...)`。
 
+官方测试机制与夹具位置见官方 [docs/testing.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/testing.zh.md)；按任务查宿主能力见 [宿主API速查](../../docs/官方文档/宿主API速查.md)。
+
 ## 测试真实入口路径
 
 - 用户可见插件需要真实组合测试：经 Loader 与应用/进程入口启动测试用 `cordis.yml`；只 mock 外部服务或非确定性输入；断言模型可见请求/日志、持久化状态或用户可见输出；不把测试选项加进发布默认值。

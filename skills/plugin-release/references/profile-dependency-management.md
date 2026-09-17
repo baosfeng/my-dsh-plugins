@@ -1,7 +1,7 @@
 # Profile dependency management recipes
 
-> Carries on the release-track choice of [../SKILL.md](../SKILL.md). This document covers the dependency-resolution facts and operational recipes for installing/updating plugins into `$DSH_HOME/profiles/*`, drawn from the continuous migration of the 17 plugin repositories across four version steps (0.1.0-rc.8 → 0.1.1-rc.2 → 0.1.2-alpha.1 → 0.1.2-alpha.2 → 0.1.2-alpha.3). Technical migration pitfalls
-> (tsbuildinfo, oxc parsing, etc.) are covered in [migration-hygiene](https://github.com/oh-my-dsh/dsh-plugin-upgrade-skill/blob/main/skills/plugin-upgrade/references/migration-hygiene.md);
+> Carries on the release-track choice of [../SKILL.md](../SKILL.md). This document covers the dependency-resolution facts and operational recipes for installing/updating plugins into `$DSH_HOME/profiles/*`, drawn from the continuous migration of 17 plugin repositories across several version steps. Technical migration pitfalls
+> (tsbuildinfo, oxc parsing, etc.) are covered in [migration-hygiene](../../plugin-upgrade/references/migration-hygiene.md);
 > this document does not repeat them.
 
 ## 1. Resolution facts for the two install tracks
@@ -43,7 +43,7 @@ When the package name changes from `@deepseek-ai/dsh-x` to `@org/dsh-x`, the fol
 ## 4. Update semantics of the shared fallback node_modules and directory junctions
 
 - The profile's own `node_modules` contains only the profile's declared dependencies; when a bare row name fails to resolve, resolution falls back to the shared `$DSH_HOME/profiles/node_modules` (which holds copies of the app's and each bundle's declared dependencies).
-- When a directory junction points at a local workspace package, **a workspace source update takes effect once dsh is restarted**; host-half changes require a restart, and only then can the client half hard-refresh (see item 3 of [migration-hygiene](https://github.com/oh-my-dsh/dsh-plugin-upgrade-skill/blob/main/skills/plugin-upgrade/references/migration-hygiene.md)).
+- When a directory junction points at a local workspace package, **a workspace source update takes effect once dsh is restarted**; host-half changes require a restart, and only then can the client half hard-refresh (see item 3 of [migration-hygiene](../../plugin-upgrade/references/migration-hygiene.md)).
 - The profile root `cordis.yml` is rewritten to `[]` at boot (composition facts live in the patch layer) — **do not edit it by hand**; edit `cordis.patch.yml` instead.
 
 ## 5. Profile linkage order after a host tag upgrade
@@ -110,8 +110,10 @@ of the plugin README:
 
 | Your DSH | Plugin version to install |
 |---|---|
-| `0.1.1-rc.2` (npm latest) | the old (rc.1/rc.2-compatible) version, using its pinned tag |
-| `0.1.2-alpha.1 / alpha.2` | the new version (the default command) |
+| older track (e.g. `0.1.1-rc.x`) | the matching older build, installed by its pinned tag |
+| newer track (e.g. `0.1.2-alpha.x`) | the matching newer build |
+
+> Version ranges shift with every release: always install the build published against your exact DSH version, never the default "latest".
 
 Give consumers a self-check clue in a README callout: *a wrong pick crashes; common symptom
 `useConversation is not a function`*. Do not expose only a "latest version" default command — that

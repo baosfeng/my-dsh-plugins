@@ -120,7 +120,7 @@ dsh --profile headless-verify "只回复 PONG，不要调用任何工具"
 ```
 
 - **对照组 = `--profile headless`（不带插件）**，实验组 = `--profile headless-verify`（带插件）；其余环境完全相同。
-- `--from-default-profile <x>` 的 `<x>` 必须是 shipped 模板名（headless/web/tui），profile 名要另取一个。
+- `--from-default-profile <x>` 的 `<x>` 必须是 shipped 模板名（`acp` / `web` / `headless` / `sdk` / `sdk-minimal`——以本机 `dsh` 版本的模板表为准），profile 名要另取一个。
 
 ## 步骤 2：真实模型调用 —— fetch 探针（对照组 + 实验组）
 

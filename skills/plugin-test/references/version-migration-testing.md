@@ -44,9 +44,9 @@ Typechecking, config parsing, mock Contexts, and credential-free pipelines are n
 
 After the upgrade, take output produced *before* it — old session messages, stored renders, earlier exports — and re-verify it in place on the new version. The payload is identical by construction, so any change isolates to the layer that interprets it. This is the cheapest control experiment available: no new fixture, no new session, one reload.
 
-Two rules from a measured case (2026-08-31, empty-table forensics against a 0.1.2-alpha.2 host):
+Two rules from a measured case (empty-table forensics against a prerelease host):
 
 1. **When a third-party plugin owns the rendering, the new host version is not the first suspect.** A message surface that broke "after the upgrade" turned out to be a third-party UI widget dropping data during extraction; the host's own markdown pipeline, driven with the real parse chain, reproduced all seven table-syntax variants correctly. Attribution flipped only when the same old message was re-rendered in place after upgrading the widget — same payload, 1 row × 0 cells before, 17 rows × 51 cells after. Without the in-place control, the bug would have been filed upstream against the wrong owner.
 2. **Change one layer at a time and re-check the same artifact between steps.** In-place re-verification of unchanged payloads turns "which layer broke it" from an argument into a bisect: host upgrade first, re-check; renderer upgrade next, re-check. The artifact never changes, so every diff belongs to exactly one step.
 
-Full case write-up with the forensic chain: [dsh-assembler migration ledger, "empty-table" section](https://github.com/TT-Wang/dsh-assembler/blob/main/docs/research/dsh-alpha2-migration.md).
+Full case write-up with the forensic chain: [dsh-assembler migration ledger](https://github.com/TT-Wang/dsh-assembler) (third-party repository, not an official source).

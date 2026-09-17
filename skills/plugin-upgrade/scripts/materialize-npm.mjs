@@ -26,7 +26,9 @@ const DEFAULT_SUPPLEMENTS = ['@deepseek-ai/dsh-storage-sqlite', '@deepseek-ai/ds
 const args = process.argv.slice(2)
 const [va, vb, out] = args.filter((a) => !a.startsWith('--'))
 if (!va || !vb || !out) {
-  console.error('Usage: node materialize-npm.mjs <versionA> <versionB> <out-dir> [--packages name1,name2] [--no-github]')
+  console.error(
+    'Usage: node materialize-npm.mjs <versionA> <versionB> <out-dir> [--packages name1,name2] [--no-github]',
+  )
   process.exit(2)
 }
 function flagValue(name) {
@@ -64,11 +66,19 @@ function resolve(spec) {
 }
 const published = JSON.parse(npm('view', CLI, 'versions', '--json'))
 const distTags = JSON.parse(npm('view', CLI, 'dist-tags', '--json'))
-const repository = npm('view', CLI, 'repository.url').trim().replace(/^git\+|\.git$/g, '')
+const repository = npm('view', CLI, 'repository.url')
+  .trim()
+  .replace(/^git\+|\.git$/g, '')
 const [a, b] = [resolve(va), resolve(vb)]
 const missing = [a, b].filter((r) => !r.resolved)
 if (missing.length) {
-  console.log(JSON.stringify({ error: 'requested version(s) not published', requested: missing.map((m) => m.spec), published, distTags }, null, 2))
+  console.log(
+    JSON.stringify(
+      { error: 'requested version(s) not published', requested: missing.map((m) => m.spec), published, distTags },
+      null,
+      2,
+    ),
+  )
   process.exit(1)
 }
 
@@ -89,7 +99,10 @@ const supplementsResolved = supplements.map((pkg) => ({
 /** Install one root: CLI closure plus the supplements available for that side. */
 function materialize(root, version, side) {
   mkdirSync(root, { recursive: true })
-  writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'dsh-upgrade-audit-root', private: true }, null, 2) + '\n')
+  writeFileSync(
+    join(root, 'package.json'),
+    JSON.stringify({ name: 'dsh-upgrade-run-root', private: true }, null, 2) + '\n',
+  )
   const specs = [
     `${CLI}@${version}`,
     ...supplementsResolved
@@ -97,7 +110,15 @@ function materialize(root, version, side) {
       .filter((supplement) => supplement.resolved)
       .map((supplement) => `${supplement.pkg}@${supplement.resolved}`),
   ]
-  const installArgs = ['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', '--loglevel=error', ...specs]
+  const installArgs = [
+    'install',
+    '--ignore-scripts',
+    '--omit=dev',
+    '--no-audit',
+    '--no-fund',
+    '--loglevel=error',
+    ...specs,
+  ]
   if (process.platform === 'win32' && installArgs.some((arg) => /[&|<>^()%!"`\r\n]/.test(arg))) {
     throw new Error('npm arguments contain unsupported Windows shell characters')
   }
@@ -146,7 +167,17 @@ function scopedPkgs(root) {
 }
 const pkgsA = scopedPkgs(join(out, 'a'))
 const pkgsB = scopedPkgs(join(out, 'b'))
-const manifestFields = ['version', 'bin', 'files', 'exports', 'dependencies', 'peerDependencies', 'main', 'types', 'engines']
+const manifestFields = [
+  'version',
+  'bin',
+  'files',
+  'exports',
+  'dependencies',
+  'peerDependencies',
+  'main',
+  'types',
+  'engines',
+]
 
 let manifestDiff = `# package.json manifest diff: ${CLI} ${a.resolved} -> ${b.resolved}\n\n`
 for (const name of new Set([...pkgsA.keys(), ...pkgsB.keys()].sort())) {

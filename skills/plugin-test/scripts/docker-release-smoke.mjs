@@ -37,12 +37,7 @@ export function validateConfig(input) {
     startCommand: requireCommand(input.startCommand, 'config.startCommand', false),
     readyPattern: requireString(input.readyPattern, 'config.readyPattern'),
     timeoutSeconds: requireInteger(input.timeoutSeconds, 'config.timeoutSeconds', 1, 1800),
-    shutdownGraceSeconds: requireInteger(
-      input.shutdownGraceSeconds,
-      'config.shutdownGraceSeconds',
-      1,
-      60,
-    ),
+    shutdownGraceSeconds: requireInteger(input.shutdownGraceSeconds, 'config.shutdownGraceSeconds', 1, 60),
     probeCommand: requireCommand(input.probeCommand ?? [], 'config.probeCommand', true),
   }
 
@@ -140,13 +135,10 @@ export function classifyFailure(containerResult, containerExitCode, infrastructu
 export function buildReport(input) {
   const stdout = redactLogs(input.stdout)
   const stderr = redactLogs(input.stderr)
-  const classification = classifyFailure(
-    input.containerResult,
-    input.containerExitCode,
-    input.infrastructureError,
-  )
+  const classification = classifyFailure(input.containerResult, input.containerExitCode, input.infrastructureError)
   const passed = classification === null
-  const failureMessage = input.infrastructureError?.message ?? input.containerResult?.failure?.message ?? 'Smoke test failed'
+  const failureMessage =
+    input.infrastructureError?.message ?? input.containerResult?.failure?.message ?? 'Smoke test failed'
   return {
     schema: 1,
     generatedAt: new Date().toISOString(),
@@ -214,7 +206,10 @@ export function renderMarkdown(report) {
     `- Peak CPU sample: ${report.measurements.peakCpuPercent ?? 'not sampled'}${report.measurements.peakCpuPercent == null ? '' : '%'}`,
   ]
   if (report.failureClassification) {
-    lines.push(`- Failure class: \`${report.failureClassification}\``, `- Failure: ${escapeMarkdown(report.failureMessage)}`)
+    lines.push(
+      `- Failure class: \`${report.failureClassification}\``,
+      `- Failure: ${escapeMarkdown(report.failureMessage)}`,
+    )
   }
   lines.push('', '## Steps', '')
   if (report.steps.length === 0) lines.push('_No container step result was produced._')
@@ -245,7 +240,9 @@ function escapeMarkdown(value) {
 }
 
 function escapeTable(value) {
-  return String(value ?? '').replaceAll('|', '\\|').replaceAll('\n', ' ')
+  return String(value ?? '')
+    .replaceAll('|', '\\|')
+    .replaceAll('\n', ' ')
 }
 
 function fencedText(value) {
@@ -379,9 +376,7 @@ export async function runDockerSmoke({ config, pluginPath, reportDirectory, cach
   let containerResult = null
 
   try {
-    dockerServerVersion = (
-      await checkedProcess('docker', ['version', '--format', '{{.Server.Version}}'])
-    ).stdout.trim()
+    dockerServerVersion = (await checkedProcess('docker', ['version', '--format', '{{.Server.Version}}'])).stdout.trim()
     const dockerArguments = [
       'create',
       '--name',
@@ -445,12 +440,7 @@ export async function runDockerSmoke({ config, pluginPath, reportDirectory, cach
     const attachResult = await attached.done
     attachedStdout = attachResult.stdout
     attachedStderr = attachResult.stderr
-    const inspectState = await checkedProcess('docker', [
-      'inspect',
-      '--format',
-      '{{.State.ExitCode}}',
-      containerName,
-    ])
+    const inspectState = await checkedProcess('docker', ['inspect', '--format', '{{.State.ExitCode}}', containerName])
     containerExitCode = Number.parseInt(inspectState.stdout.trim(), 10)
     containerResult = await loadContainerResult(outputDirectory)
   } catch (error) {

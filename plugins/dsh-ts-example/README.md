@@ -23,14 +23,14 @@
 ## 安装
 
 ```bash
-# npm 安装（GitHub Release 发布后可用）
+# npm 安装（该包尚未发布到 npm，发版后可用）
 dsh plugin --profile web add dsh-ts-example --trust-lockfile
 
-# 本地 link（开发调试）
+# 本地 link（当前可用方式）
 git clone https://github.com/baosfeng/my-dsh-plugins.git
 dsh plugin --profile web add link:<仓库路径>/plugins/dsh-ts-example
 ```
 
 ## 相关文档
 
-→ [TS 示例概述](../../docs/TS示例/概述.md)
+→ [TS 示例概述](../../docs/TS示例/概述.md) · [CHANGELOG](CHANGELOG.md)

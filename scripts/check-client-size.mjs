@@ -9,12 +9,12 @@
  *   全程无人报警。同类风险还有 dsh-shared/client-parts 被 11 个插件构建期拼接——
  *   共享件"顺带膨胀"会被放大 11 倍。而 CI 不跑构建、也不量体积，所以必须独立设卡。
  *
- * 门禁范围（issue #322 的**范围修正**，leader 实测 2026-09-15）：
+ * 门禁范围（issue #322 的**范围修正**）：
  *   只查 `plugins/*\/lib/client.js` 会漏掉真正的 99% —— 14 个 client 产物合计仅
  *   924 KB（最大 md-render 152.5 KB），而 `dsh-mermaid-render/assets/mermaid-10.9.3.min.js`
  *   单个就 3.18 MB（该插件 `npm pack` unpacked 3.44 MB，引擎占 92%）。因此本脚本扫描
- *   **每个插件的完整发布面**，且以 `package.json` 的 `files` 字段为唯一权威（实测有插件
- *   的 `assets/` 并不发布，例如 dsh-my-plugin-manager / dsh-my-guardian）：
+ *   **每个插件的完整发布面**，且以 `package.json` 的 `files` 字段为唯一权威（`assets/` 等目录
+ *   是否随包发布完全由它决定）：
  *     · `files` 里的目录被递归展开，逐文件量体积；
  *     · 另有「每插件发布面合计」兜底，防"新增一堆中等文件"绕过逐文件检查。
  *
@@ -50,8 +50,8 @@ import { fileURLToPath } from 'node:url'
 /**
  * 绝对余量底（64 KB）。
  *
- * 依据：`git log` 全历史实测（2026-09-15，649 个提交、136 次 `lib/client.js` **增长**事件，
- * 已排除 #185 异常期）的**单次提交绝对增量**分布：
+ * 依据：`git log` 全历史实测（649 个提交、136 次 `lib/client.js` **增长**事件，已排除 #185 异常期）的
+ * **单次提交绝对增量**分布：
  *   p50 = 1.7 KB ／ p90 = 14.7 KB ／ p95 = 17.4 KB ／ p99 = 24.3 KB ／ max = 27.0 KB
  * （含"改一次 dsh-shared/client-parts、11 个插件产物同时增长"这类连带效应，
  *   因为 client-parts 是构建期拼接进各产物的）。
@@ -370,8 +370,7 @@ export function buildBaseline({ root = DEFAULT_ROOT, previous = null }) {
         'files = 逐个冻结的产物（lib/** 与 assets/**）。未登记的文件与插件只受默认上限（1 MB/文件）约束。' +
         '刷新：node scripts/check-client-size.mjs --update-baseline（须在 PR 说明体积变化原因）。',
     measuredAt,
-    source:
-      'npm pack --dry-run --json（19 个插件，2026-09-15 与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）',
+    source: 'npm pack --dry-run --json（19 个插件与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）',
     margin: {
       absFloorBytes: ABS_FLOOR_BYTES,
       relMargin: REL_MARGIN,

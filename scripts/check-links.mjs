@@ -2,17 +2,17 @@
 /**
  * check-links.mjs — 文档引用完整性门禁（markdown 链接/锚点/路径 token/npm script/skill 名）。
  *
- * 背景：一次全仓引用审计发现并修复了 37 处失效引用（markdown 相对链接层级写错、锚点不匹配、
- * 指向早已删除的文件，其中还包括一个被 13 个文件引用却根本不存在的 skill）。根因是**没有任何
- * 自动校验**——scripts/check-docs.mjs 只覆盖"插件 ↔ 根 README / docs 索引与模块 / 安装章节"的
- * 一致性，完全不看链接与锚点，所以这类腐烂长期无人发现。本脚本把那次审计固化成门禁。
+ * 背景：失效引用会长期腐烂——markdown 相对链接层级写错、锚点不匹配、指向早已删除的文件、
+ * 引用根本不存在的 skill。根因是**没有任何自动校验**——scripts/check-docs.mjs 只覆盖
+ * "插件 ↔ 根 README / docs 索引与模块 / 安装章节"的一致性，完全不看链接与锚点。本脚本把
+ * 这类校验固化成门禁。
  *
  * 检查的 6 类（任一失败 exit 1）：
  *   1. link   markdown 相对链接与图片 ](path) ](path#anchor)：按「文件所在目录」与「仓库根」
  *             两种基准解析，任一存在即有效；目录链接（尾部 /）与 #anchor-only 同样处理。
  *   1b. syntax 残缺的 markdown 链接语法：`](` 到行尾没闭合（rule 1）与 `[文字)` 缺左括号（rule 2）。
  *             这类文本在 GitHub 上不渲染成链接，是**真坏链**，但路径检查看不见它（没有可解析的目标，
- *             门禁曾因此全绿放行 4 处 `[docs/踩坑/README.md)`）；排除策略见下方 maskInlineCode
+ *             门禁曾因此全绿放行 `[docs/踩坑/README.md)` 这类写法）；排除策略见下方 maskInlineCode
  *             与 MISPLACED_PAREN_RE 的注释。
  *   2. anchor md 链接的 #fragment 必须命中目标 md 的标题锚点集合（GitHub slug 规则，中文标题的
  *             全角括号等符号按 GitHub 行为剔除：#需求回归（强制要求） → #需求回归强制要求）。
@@ -140,7 +140,7 @@ const HOST_API_RE = /`[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z][a-zA-Z0-9.]*`/
  */
 export const THIRD_PARTY_RE = /(?:^|[/\s([<"'\`])github\.com(?![\w.-])/
 /** 升级审计语料：按设计引用上游 DSH 仓库的文档（如 docs/config-catalog.md）。 */
-const UPSTREAM_CORPUS_RE = /^skills\/(?:dsh-upgrade-audit|plugin-upgrade)\//
+const UPSTREAM_CORPUS_RE = /^skills\/plugin-upgrade\//
 
 /** 历史留痕：记录当时事实，不参与改名后的失效判定。 */
 const HISTORY_FILE_RE = [/(^|\/)CHANGELOG\.md$/i, /(^|\/)docs\/adr\//]
@@ -607,8 +607,7 @@ function mdLinkTargets(text) {
 const UNCLOSED_LINK_RE = /\]\([^)]*$/
 
 /**
- * rule 2 错位括号：`[文字)` 缺左括号 —— #341 文档瘦身时 skills/verifying-dsh-plugins/SKILL.md
- * 真实出现的坏链形态（4 处），GitHub 上不渲染成链接。
+ * rule 2 错位括号：`[文字)` 缺左括号 —— 仓库里真实出现过的坏链形态，GitHub 上不渲染成链接。
  *
  * 刻意**不加额外收紧**（例如"方括号里含 `(` 就不算"）：这类收紧会放过标签带括号的真坏链
  * （`[旧文档 (v2))`），而"放过真坏链"正是本 issue 要修的方向——多报一条是一眼可辨的噪音 +
@@ -708,8 +707,8 @@ function dirEntries(ctx, absDir) {
  *
  * 为什么不能直接 existsSync：macOS/Windows 文件系统大小写不敏感，`DOCS/索引.md` 会命中
  * `docs/索引.md`；Linux CI 不命中 —— 于是门禁在本地**永远测不出**大小写写错，第一次上 CI
- * 就红（2026-09-11 CI run #15 实测：文档写 `.github/pull_request_template.md`，真实文件是
- * `.github/PULL_REQUEST_TEMPLATE.md`，同时打红 12/13 门禁与 7/13 的真实仓库自检测试）。
+ * 就红（文档写 `.github/pull_request_template.md`，真实文件是 `.github/PULL_REQUEST_TEMPLATE.md`，
+ * 一处大小写写错会同时打红多道门禁）。
  * 自己核对名字才能让本地与 CI 判定一致。
  */
 export function fsExistsCaseSensitive(ctx, absPath) {

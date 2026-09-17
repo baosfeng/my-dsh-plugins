@@ -279,7 +279,7 @@ cannedResponses.push({
     skills: [
       ...catalog.value.skills,
       {
-        name: 'dsh-issue-request',
+        name: 'mock-skill-newly-scanned',
         description: '新需求',
         source: 'user-dsh',
         provider: 'filesystem',
@@ -312,7 +312,7 @@ const tree3 = renderView()
 const texts3 = []
 walkText(tree3, texts3)
 const joined3 = texts3.join('|')
-assert.ok(joined3.includes('dsh-issue-request'), 'new skill visible after rescan')
+assert.ok(joined3.includes('mock-skill-newly-scanned'), 'new skill visible after rescan')
 assert.ok(joined3.includes('未收录'), 'not-cataloged note rendered in meta line')
 assert.ok(joined3.includes('扫描诊断'), 'diagnostics bar rendered after rescan')
 assert.ok(!joined3.includes('ego-browser'), 'diagnostics body hidden while collapsed')

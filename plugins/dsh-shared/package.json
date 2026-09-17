@@ -9,7 +9,7 @@
     "url": "https://github.com/baosfeng/my-dsh-plugins"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "npx tsc -p tsconfig.json",

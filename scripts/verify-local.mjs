@@ -765,7 +765,7 @@ const CHECK_DEFS = [
   {
     id: 'test-sleeps',
     label: 'fixed sleeps in tests (node scripts/check-test-sleeps.mjs)',
-    note: 'issue #335 固定 sleep 门禁：plugins/*/test/** 里**新增**的固定时长等待（setTimeout(N>0)/settle(N)/sleep(N)）必须写 `// sleep-ok: <为什么不能用条件轮询>`，否则失败；存量冻结在 scripts/test-sleep-baseline.json（只允许变少）。判据与分类见 scripts/lib/test-sleeps.mjs 文件头（同族根因已复发 5 次：CI 高负载下固定 sleep 赌异步必输）',
+    note: 'issue #335 固定 sleep 门禁：plugins/*/test/** 里**新增**的固定时长等待（setTimeout(N>0)/settle(N)/sleep(N)）必须写 `// sleep-ok: <为什么不能用条件轮询>`，否则失败；存量冻结在 scripts/test-sleep-baseline.json（只允许变少）。判据与分类见 scripts/lib/test-sleeps.mjs 文件头（同族根因反复复发：CI 高负载下固定 sleep 赌异步必输）',
     run: () => runCapture('node', ['scripts/check-test-sleeps.mjs'], root),
     // 判据只落在 plugins/*/test/** 与基线文件上：没有测试变更就不可能失败
     skip: (ctx) => {

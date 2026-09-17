@@ -5,12 +5,7 @@
   "description": "Community compatibility declaration for one external DSH plugin. It supplements package.json and does not reserve names globally.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schemaVersion",
-    "policy",
-    "plugin",
-    "names"
-  ],
+  "required": ["schemaVersion", "policy", "plugin", "names"],
   "properties": {
     "$schema": {
       "type": "string",
@@ -25,12 +20,7 @@
     "plugin": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "namespace",
-        "name",
-        "coordinate",
-        "packageName"
-      ],
+      "required": ["namespace", "name", "coordinate", "packageName"],
       "properties": {
         "namespace": {
           "type": "string",
@@ -184,17 +174,10 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "kind",
-          "path"
-        ],
+        "required": ["kind", "path"],
         "properties": {
           "kind": {
-            "enum": [
-              "exact",
-              "prefix",
-              "upgrade"
-            ]
+            "enum": ["exact", "prefix", "upgrade"]
           },
           "path": {
             "type": "string",

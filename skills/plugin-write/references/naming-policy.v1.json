@@ -15,24 +15,12 @@
     "contract": "dsh-plugin-registry/v2",
     "defaultIndexUrl": "https://raw.githubusercontent.com/oh-my-dsh/dsh-plugin-registry/main/registry/index.json"
   },
-  "reservedNamespacePrefixes": [
-    "core",
-    "deepseek",
-    "dsh",
-    "internal",
-    "official",
-    "runtime",
-    "system"
-  ],
+  "reservedNamespacePrefixes": ["core", "deepseek", "dsh", "internal", "official", "runtime", "system"],
   "reservedExactNames": {
-    "skillProviders": [
-      "runtime"
-    ]
+    "skillProviders": ["runtime"]
   },
   "knownBuiltInExactNames": {
-    "tools": [
-      "run_code"
-    ]
+    "tools": ["run_code"]
   },
   "collisionSemantics": {
     "pluginNames": "module-metadata-not-a-global-registry",

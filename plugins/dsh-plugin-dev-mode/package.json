@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-dev-mode",
   "version": "0.1.0",
-  "description": "DSH agent preset 资产包：插件开发模式（plugin-dev）。唯一的 Cordis 工具集启用模式，含精简工具组合与配套技能，一键安装到 $DSH_HOME/.agent-presets/。",
+  "description": "DSH agent preset 资产包：插件开发模式（plugin-dev）。启用 Cordis 工具集（动态插件生命周期）的精简模式，含配套技能，一键安装到 $DSH_HOME/.agent-presets/。",
   "type": "module",
   "repository": {
     "type": "git",

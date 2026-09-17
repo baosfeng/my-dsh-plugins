@@ -1,11 +1,12 @@
-// skills/dsh-upgrade-audit/scripts/lib/commit-lines.mjs 的回归测试（CodeQL #314 告警 #29/#30）。
+// plugin-upgrade skill 的 scripts/lib/commit-lines.mjs 的回归测试（原属已并入的 dsh-upgrade-audit skill）。（CodeQL #314 告警 #29/#30）。
 //
 // 这是**落盘前的净化判据**：commits.txt / reverts.txt 的每一行都来自
 // `api.github.com` 的响应，然后被 writeFileSync 写进产物目录。原实现直接把
 // `c.commit.message.split('\n')[0]` 拼进文件——多行消息、`\r`、ANSI 转义都能进产物。
 // 下面每个用例都是那类输入，必须被折平/剥掉。
 import { describe, expect, it } from 'vitest'
-import { commitLines, revertLines, scrubField } from '../../skills/dsh-upgrade-audit/scripts/lib/commit-lines.mjs'
+// 权威来源（本仓库内 skill 资产）：skills/plugin-upgrade/scripts/lib/commit-lines.mjs
+import { commitLines, revertLines, scrubField } from '../../skills/plugin-upgrade/scripts/lib/commit-lines.mjs'
 
 describe('scrubField', () => {
   it('折平换行/回车/制表，剥掉其余控制字符（含 NUL 与 DEL）', () => {

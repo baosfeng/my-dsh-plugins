@@ -24,19 +24,13 @@
       "id": 3,
       "slug": "internal-services",
       "name": "internal service probes / Remote",
-      "patterns": [
-        "APIProxy|apiProxy|ctx\\.get\\(|ctx\\.remote|@Remote",
-        "@deepseek-ai/dsh-api-.+/client|/internal"
-      ]
+      "patterns": ["APIProxy|apiProxy|ctx\\.get\\(|ctx\\.remote|@Remote", "@deepseek-ai/dsh-api-.+/client|/internal"]
     },
     {
       "id": 4,
       "slug": "host-filesystem",
       "name": "direct host directory reads/writes",
-      "patterns": [
-        "DSH_HOME|\\.dsh[/\\\\]|profiles[/\\\\]|homedir\\(",
-        "readFile|writeFile|mkdir|openPath"
-      ]
+      "patterns": ["DSH_HOME|\\.dsh[/\\\\]|profiles[/\\\\]|homedir\\(", "readFile|writeFile|mkdir|openPath"]
     },
     {
       "id": 5,
@@ -62,10 +56,7 @@
       "id": 7,
       "slug": "subprocess-output",
       "name": "subprocess / stdout / stderr parsing",
-      "patterns": [
-        "node:child_process|spawn\\(|exec(File)?Sync\\(|execa|Bun\\.spawn",
-        "headless|--profile"
-      ]
+      "patterns": ["node:child_process|spawn\\(|exec(File)?Sync\\(|execa|Bun\\.spawn", "headless|--profile"]
     }
   ]
 }

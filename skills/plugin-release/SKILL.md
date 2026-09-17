@@ -9,12 +9,12 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 ## 第 0 步：确认目标版本与发布轨
 
-| 发布轨 | 适用 | 关键事实 |
-|---|---|---|
-| GitHub 直装 | `dsh plugin --profile <p> add github:owner/repo` | 消费者解析默认分支 HEAD；发布=推送到 main，**推前必须跑完整门禁** |
-| npm registry | `npm publish` | 仅正式发布线可用；`@deepseek-ai/*` 的 alpha/rc 前缀版本**不一定**在 npm 上，发布前先 `npm view <pkg> versions` 核实 |
-| hub 收录 | 在 hub catalog 登记 | 登记是独立动作，不代替打包验证 |
-| collection | 把成员插件 vendored 成 pack artifact | 见所属 collection 仓库的自有流程 |
+| 发布轨       | 适用                                             | 关键事实                                                                                                            |
+| ------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| GitHub 直装  | `dsh plugin --profile <p> add github:owner/repo` | 消费者解析默认分支 HEAD；发布=推送到 main，**推前必须跑完整门禁**                                                   |
+| npm registry | `npm publish`                                    | 仅正式发布线可用；`@deepseek-ai/*` 的 alpha/rc 前缀版本**不一定**在 npm 上，发布前先 `npm view <pkg> versions` 核实 |
+| hub 收录     | 在 hub catalog 登记                              | 登记是独立动作，不代替打包验证                                                                                      |
+| collection   | 把成员插件 vendored 成 pack artifact             | 见所属 collection 仓库的自有流程                                                                                    |
 
 未发布 cohort（目标 cohort 的部分版本可能从未发到 npm，只在 GitHub 上）**不要**在 npm 上找不存在的版本，也不要因此切换包管理器；按目标 tag 走版本走廊（或用 `pnpm -r exec pnpm pack` 物化 cohort tarball + `overrides` 固定到 `file:`）。判定发布轨前先 `npm view <pkg> versions` 核实实际可用版本，不要凭 tag 推断。
 
@@ -42,11 +42,11 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 `plugins/` 下的目录不都是 profile 插件。发版门禁按 `package.json` 的**显式形态声明**决定适用性——不写插件名单（名单会腐烂）：
 
-| 形态 | 显式声明 | 门禁差异 |
-|---|---|---|
-| profile 插件（bundle） | `dsh.bundle.patch`（有 UI 时另有 `dsh.client`） | 全部门禁：`peerDependencies.cordis`、跨插件依赖、真实挂载 |
-| 共享工具包 | `dsh.kind=library` | 豁免 `peerDependencies.cordis`（1b）与 profile 组合验证（3c） |
-| **agent preset 资产包** | `dsh.kind=preset` + 非空 `dsh.presetReason` | 同上豁免 1b + 3c；跨插件依赖（1c）、CHANGELOG、测试、效果图门禁照旧 |
+| 形态                    | 显式声明                                        | 门禁差异                                                            |
+| ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------- |
+| profile 插件（bundle）  | `dsh.bundle.patch`（有 UI 时另有 `dsh.client`） | 全部门禁：`peerDependencies.cordis`、跨插件依赖、真实挂载           |
+| 共享工具包              | `dsh.kind=library`                              | 豁免 `peerDependencies.cordis`（1b）与 profile 组合验证（3c）       |
+| **agent preset 资产包** | `dsh.kind=preset` + 非空 `dsh.presetReason`     | 同上豁免 1b + 3c；跨插件依赖（1c）、CHANGELOG、测试、效果图门禁照旧 |
 
 - preset 资产包 = `agent.cordis.yml`（预设组合，宿主 `@deepseek-ai/dsh-agent-presets` 的 `COMPOSITION_FILE`，**目录名即 preset id**）+ `preset.yml`（模式选择器的 name/description 显示元数据，`METADATA_FILE`），由安装脚本复制到 `$DSH_HOME/.agent-presets/<id>/`；它**不挂 profile**、没有 `cordis.patch.yml`，所以**不该**补 `peerDependencies.cordis`（那会让 npm 消费者以为它是 cordis 插件包）；
 - 判据与仓库不变量（`scripts/lib/preset-gate.mjs`，单测 `scripts/test/preset-gate.test.mjs`）：`dsh.kind=preset` 必须真的有 `agent.cordis.yml` + `preset.yml` 且内容成形（组合含插件行、元数据含非空 `name`）；与 `dsh.bundle` / `dsh.client` 互斥；目录里有 preset 资产却不声明也会被拦下，并提示正确修复方式（而不是误报缺 cordis peer）；
@@ -89,10 +89,10 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 所有插件共享同一个 bump 类型，两个入口：
 
-| 入口 | 怎么发 | 能力边界 |
-|---|---|---|
+| 入口           | 怎么发                                                                                                                                      | 能力边界                                                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | GitHub Actions | Actions → **Release (auto)** → Run workflow：`plugins` 填多个目录名（**逗号或空格**分隔，如 `dsh-md-render,dsh-my-guard`），`bump` 下拉单选 | `plugins` 是文本框不是下拉——GitHub Actions 的 `choice` 原生不支持 `multiple`；workflow 内先跑白名单校验（允许值运行时取自 `plugins/` 目录），非法名 fail-fast 并列出全部允许值 |
-| 本地 | `node scripts/release.mjs a b c --bump patch --push` | 与 CI 同一脚本、同一门禁 |
+| 本地           | `node scripts/release.mjs a b c --bump patch --push`                                                                                        | 与 CI 同一脚本、同一门禁                                                                                                                                                       |
 
 批量不降低门禁：每个插件仍独立走第 1-4 步（一个失败不影响其他），全部通过才一次提交 + 逐个打 tag。细节见 `docs/开发指南/发版流程.md` 的「批量发版」节。
 
@@ -100,14 +100,14 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 发版慢在哪**有实测数字**，不必猜：每次发版结束脚本都会打印阶段耗时表。
 
-| 阶段 | 单插件实测 | 占全链路 |
-|---|---|---|
-| **3c 真实环境验证（隔离实例）** | **~9.8s** | **73%** |
-| └ 其中：实例冷启动到 HTTP 200 | ~8.7s | 65% |
-| 1a npm latest 防降级查询 | 0.3–2.5s | 19% |
-| 1d 包发布卫生（`npm pack`，issue #323，与 1a/3/3c 并发） | **235–390ms** | 0.6–2% |
-| 3 `npm test` | 0.8–8.8s | 6–95%（取决于插件） |
-| 1b / 1b-pre / 1c / 2 / 3b / 4 | 合计 < 50ms | ~0% |
+| 阶段                                                     | 单插件实测    | 占全链路            |
+| -------------------------------------------------------- | ------------- | ------------------- |
+| **3c 真实环境验证（隔离实例）**                          | **~9.8s**     | **73%**             |
+| └ 其中：实例冷启动到 HTTP 200                            | ~8.7s         | 65%                 |
+| 1a npm latest 防降级查询                                 | 0.3–2.5s      | 19%                 |
+| 1d 包发布卫生（`npm pack`，issue #323，与 1a/3/3c 并发） | **235–390ms** | 0.6–2%              |
+| 3 `npm test`                                             | 0.8–8.8s      | 6–95%（取决于插件） |
+| 1b / 1b-pre / 1c / 2 / 3b / 4                            | 合计 < 50ms   | ~0%                 |
 
 **结论：发版链路的瓶颈是隔离实例冷启动，不是 CHANGELOG / 文档同步。** 想再优化先看这里。
 
@@ -129,7 +129,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 ## 参考材料
 
-| 文件 | 内容 |
-|---|---|
-| [references/publish-playbook.md](references/publish-playbook.md) | 发布语义四不变量（与 verify-release.mjs 对应）、真实坑位表与回滚配方 |
+| 文件                                                                                       | 内容                                                                                    |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| [references/publish-playbook.md](references/publish-playbook.md)                           | 发布语义四不变量（与 verify-release.mjs 对应）、真实坑位表与回滚配方                    |
 | [references/profile-dependency-management.md](references/profile-dependency-management.md) | profile 依赖 recipe：两轨解析、github 锁缓存、改名三处同步、junction 语义、烘焙版本常量 |

@@ -2,9 +2,8 @@
 /**
  * 固定 sleep 门禁 —— scripts/check-test-sleeps.mjs（issue #335）
  *
- * 背景：`plugins/<name>/test/` 里用固定 sleep 赌异步完成，让 CI 上**同一个根因复发 5 次**
- * （#310 host-smoke / #313 host-mutation·host-emit·host-edge / #317 / #335 dsh-my-context
- * host-mutation.mjs:345）。前 4 次都是「发现一处、修一处」，没有一条机制阻止第 5 处被写出来。
+ * 背景：`plugins/<name>/test/` 里用固定 sleep 赌异步完成，同一根因在 CI 高负载下反复复发
+ * ——「发现一处、修一处」，没有一条机制阻止下一处被写出来。
  *
  * 本门禁把默认反转：**新增的固定时长等待必须自己解释为什么不能用条件轮询**
  * （写 `// sleep-ok: <理由>`，理由 ≥8 字符），否则 CI 红；存量点冻结在基线里

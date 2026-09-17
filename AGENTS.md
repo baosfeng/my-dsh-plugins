@@ -38,7 +38,7 @@
 - **开发/发版**：skills/development-lifecycle/（需求→确认→梳理→开发→验证→发版→文档→release 全流程）。
 - **插件开发**：skills/dsh-plugin-development/（插件形态/目录结构/发布流程）。
 - **质量**：quality-gates skill（10 项门禁：TDD/Gherkin/复杂度 ≤10/函数 ≤70 行/文件 ≤400 行/依赖无环/变异 ≥70%/覆盖率 85-75/防复发/真实环境验证）；资源预算见 skills/resource-budget-review/。
-- **仓库健康**：skills/dsh-github-triage/（issue/PR/CI 处理 + fork 池隔离）；建 fork 用 `node scripts/fork-pool.mjs create <编号>`（一条命令含装 hooks），推送前用 `check` 自检。
-- **升级兼容**：skills/plugin-upgrade/ + skills/dsh-upgrade-audit/（DSH 版本升级/兼容性审计）。
+- **仓库健康**：skills/dsh-github-triage/（issue/PR/CI 处理 + 需求登记 + fork 池隔离）；建 fork 用 `node scripts/fork-pool.mjs create <编号>`（一条命令含装 hooks），推送前用 `check` 自检。
+- **升级兼容**：skills/plugin-upgrade/（DSH 版本升级 / 插件迁移 / 两版本间兼容性审计）。
 - **验证**：verifying-dsh-plugins skill（隔离实例 + 浏览器，验证后清理环境）。
 - **踩坑**：docs/踩坑/README.md（症状 → 解法速查表，按报错关键词搜）；术语见 docs/术语表.md。

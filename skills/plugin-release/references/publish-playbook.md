@@ -27,14 +27,14 @@ npm publish --access public --tag "$NPM_TAG"
 
 ## 真实坑位
 
-| 坑                                                             | 症状                                                                     | 处置                                                                                     |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| pnpm 不在 PATH（只有 corepack）                                | 构建脚本里嵌套 `pnpm --filter …` 报 `'pnpm' is not recognized`           | 生成转发到 corepack 的 `pnpm.cmd` 垫片并置于 PATH 前；启动/构建包装脚本负责 bootstrap     |
-| Windows PowerShell 5.1 把 `npm` 解析成 `npm.ps1`               | 参数被吞（`Unknown command: "pm"`）                                      | 包装脚本显式调用 `npm.cmd` / `pnpm.cmd`                                                   |
-| PowerShell 5.1 默认参数值里 `$PSScriptRoot` 为空（带 `[CmdletBinding()]`） | `Join-Path` 收到空字符串报错                                             | 把默认值解析移到脚本体内                                                                 |
-| PowerShell 只读自动变量 `$Host`                                | 参数 `-Host` 无法覆盖                                                    | 改名，例如 `-BindHost`                                                                   |
-| `git rebase --continue` 卡在编辑器                             | 无 TTY 时挂住                                                            | 续前设 `GIT_EDITOR=true`（或 `core.editor=true`）                                        |
-| 远端已前进、推送被拒                                           | `[ahead 1, behind 1]`                                                    | `git pull --rebase` 后用 `--force-with-lease` 重推；**绝不裸 `--force`**                  |
+| 坑                                                                         | 症状                                                           | 处置                                                                                  |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| pnpm 不在 PATH（只有 corepack）                                            | 构建脚本里嵌套 `pnpm --filter …` 报 `'pnpm' is not recognized` | 生成转发到 corepack 的 `pnpm.cmd` 垫片并置于 PATH 前；启动/构建包装脚本负责 bootstrap |
+| Windows PowerShell 5.1 把 `npm` 解析成 `npm.ps1`                           | 参数被吞（`Unknown command: "pm"`）                            | 包装脚本显式调用 `npm.cmd` / `pnpm.cmd`                                               |
+| PowerShell 5.1 默认参数值里 `$PSScriptRoot` 为空（带 `[CmdletBinding()]`） | `Join-Path` 收到空字符串报错                                   | 把默认值解析移到脚本体内                                                              |
+| PowerShell 只读自动变量 `$Host`                                            | 参数 `-Host` 无法覆盖                                          | 改名，例如 `-BindHost`                                                                |
+| `git rebase --continue` 卡在编辑器                                         | 无 TTY 时挂住                                                  | 续前设 `GIT_EDITOR=true`（或 `core.editor=true`）                                     |
+| 远端已前进、推送被拒                                                       | `[ahead 1, behind 1]`                                          | `git pull --rebase` 后用 `--force-with-lease` 重推；**绝不裸 `--force`**              |
 
 > 发布前 Web Client 插件的冒烟最低面：宿主 boot 名单（`window.__DSH_BOOT__`）里的 bundle 入口可达、bundle 注册成功、DOM 挂载完成、无 page error——`--dump-config` 只证明行存在，不替代这一检查。
 

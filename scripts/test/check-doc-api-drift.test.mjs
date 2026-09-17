@@ -410,7 +410,7 @@ describe('真实仓库自检', () => {
     expect(surface.services.has('config')).toBe(false)
     expect(surface.members.has('config')).toBe(false)
     // 反面：真实调用必须在
-    expect(surface.services.has('bundler')).toBe(true)
+    expect(surface.services.has('pluginInventory')).toBe(true)
     expect(surface.services.has('webServer')).toBe(true)
   })
 })

@@ -23,15 +23,15 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 - **调试**：注册冲突、挂载不生效、页面不刷新不生效、重复挂载
 - **发布**：版本号、CHANGELOG、tag、GitHub Release
 - **开发工具型插件**（agent 可调用的函数）：官方 `defineTool` 权威 API 直接查本地官方参考源（[tools.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/tools.zh.md) + [tool.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/tool.zh.md)；本 skill 不再维护副本）
-- **调研生态/分发渠道**：官方资源与插件市场收录直接查官方 `docs/`（导航见[官方文档索引](../../docs/官方文档/索引.md)）；本仓库自身的双通道分发约定见下「外部生态与分发」
+- **调研生态/分发渠道**：官方资源与插件市场收录直接查官方 `docs/`（导航见[官方文档索引](../../docs/官方文档/索引.md)）；本仓库自身的双通道分发约定见 [references/tool-plugin-and-ecosystem.md](references/tool-plugin-and-ecosystem.md)
 - **查宿主 API 精确语义**：判**存在性 / 定义点 / 契约**（serial 还是 parallel、有没有 `next()`）用**本地官方参考源 + 知识图谱**（参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`，命令见[官方文档索引](../../docs/官方文档/索引.md) 第十节）——官方 docs 只列事件名与概览，这类契约必须回源码；**不要按 API 名字猜**（同名不同义的坑见[本仓库重点](../../docs/官方文档/本仓库重点.md)）。
 
 ## 相关 skill（交叉引用）
 
 - `plugin-write`（skills/plugin-write/）：写新插件 + 命名规范/查重（结构化命名清单 + 离线/在线校验，见「命名阶段」增量）
-- `plugin-runtime-debug`（skills/plugin-runtime-debug/）：运行时故障排查（读宿主源码契约，见「运行时故障排查」增量）
+- `plugin-runtime-debug`（skills/plugin-runtime-debug/）：运行时故障排查（读宿主源码契约，增量见 [references/troubleshooting.md](references/troubleshooting.md)）
 - `plugin-upgrade`（skills/plugin-upgrade/）：DSH 版本升级/插件兼容性迁移（三模式 + 版本走廊 + 宿主升级纪律）
-- `dsh-upgrade-audit`（skills/dsh-upgrade-audit/）：两 DSH 版本间兼容性审计（npm 模式物化 + playbook 输出契约）
+- `plugin-upgrade` 的模式 D（两 DSH 版本间兼容性审计，npm 模式物化 + playbook 输出契约）已并入同 skill
 - `plugin-test`（skills/plugin-test/）：测试 + docker 冒烟（发布前对打包产物冷启动验证）
 - `plugin-release`（skills/plugin-release/）：打包发布 + 发布前自动检查（5 层 gate + 语义 gate）
 
@@ -89,7 +89,7 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 plugins/<name>/                  # 插件目录（小写连字符命名，如 dsh-file-activity）
 ├── lib/
 │   ├── index.js                 # server 端入口（export { name, inject, apply }）
-│   └── client.js                # client 端入口（__ModuleLoader__ 格式，见下）
+│   └── client.js                # client 端入口（__ModuleLoader__ 格式，见 references/client-file-format.md）
 ├── test/                        # 测试（CI 只跑 node test/host-smoke.mjs）
 ├── assets/                      # README 截图等
 ├── package.json
@@ -112,110 +112,26 @@ plugins/<name>/                  # 插件目录（小写连字符命名，如 ds
 
 0. **先读需求**：读该插件相关 issue 的验收标准，想清楚本次改动涉及哪些条目、可能影响哪些。**新建插件时先做命名阶段 npm 包名检索**（见「插件形态 · 命名阶段」），候选名与占用情况记入命名 issue。
 1. **搭骨架**：按上面目录结构创建 `plugins/<name>/`，复制现有插件（`plugins/dsh-file-activity/`）的 `cordis.patch.yml`、LICENSE 作参照。
-2. **写 package.json**（见下方字段说明）。
+2. **写 package.json**（字段说明见 [references/package-and-patch.md](references/package-and-patch.md)）。
 3. **写 server 端** `lib/index.js`：`export const name / inject / apply(ctx)`。用 `ctx.on(...)` 监听事件、`ctx.effect(() => ...)` 注册副作用（返回 disposer）。HTTP 路由注入 `webServer`：`ctx.webServer.register({ kind: 'prefix', path: '/<插件名>/api', handler: async (request, response) => {...} })`，handler 内先做 loopback 信任围栏（参考现有插件的 `fence(request)`，403 拒绝非本机来源）。
-4. **写 client 端** `lib/client.js`（格式见下节）：声明 `inject: ['slots', 'sidebarRightTabs']`，用 `ctx.effect(() => ctx.sidebarRightTabs.register({...}))` 注册页签**类型**，再经 `ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, Body))` 注册**正文**（disposer 必须被 fiber 持有，否则 HMR/禁用后残留注册、下次激活报 `"already registered"`）。
+4. **写 client 端** `lib/client.js`（格式见 [references/client-file-format.md](references/client-file-format.md)）：声明 `inject: ['slots', 'sidebarRightTabs']`，用 `ctx.effect(() => ctx.sidebarRightTabs.register({...}))` 注册页签**类型**，再经 `ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, Body))` 注册**正文**（disposer 必须被 fiber 持有，否则 HMR/禁用后残留注册、下次激活报 `"already registered"`）。
 5. **写测试**：`test/` 下放纯 Node 冒烟测试（mock ctx / mock webServer / mock `slots` + `sidebarRightTabs`），CI 只跑 `npm test`（即 `node test/host-smoke.mjs`）；依赖浏览器/真实 GUI 的测试留在本机手动跑。**新增功能必须补测试**，易碎需求（重启恢复/会话隔离）必须有专门断言（可参考 `dsh-file-activity/test/host-smoke.mjs` 的"重启恢复"测试段落）。
 6. **回归验证（强制）**：跑全部测试 + 对照 issue 验收标准逐条验证（尤其与本次改动相邻的功能），确认无回归后再提交。
 7. **本地验证**：`dsh plugin --profile web add link:<路径>` → 浏览器硬刷新（Cmd/Ctrl+Shift+R）。client 改动热加载无需重启；**server 端改动需重启 `dsh web`**。
 8. **清理验证环境（强制）**：验证完成后必须清干净——停掉后台验证实例（job_kill）、删除临时验证目录（`/tmp/dsh-<port>`）、关闭验证用专用浏览器（`browser_close` + 杀 `chrome-cdp-profile` 实例）、确认端口已释放（`curl` 应无响应）、`job_list` 确认无 running 任务。**用户可能同时在开发多个插件，残留环境会互相干扰**。完整清单见 [verifying-dsh-plugins](../verifying-dsh-plugins/SKILL.md) 的「步骤 4：收尾清理」章节（仓库内 skill）。
-9. **发布**：`node scripts/release.mjs <插件名> --bump patch --push`（自动 bump 版本 + 生成 CHANGELOG + 同步文档 + 推 tag `<包名>@v<版本>`）→ `.github/workflows/release.yml` 自动测试 + 创建 GitHub Release + npm 发布（NPM_TOKEN 已配置）。详见 [发布流程](#发布流程自动--手动)。
+9. **发布**：`node scripts/release.mjs <插件名> --bump patch --push`（自动 bump 版本 + 生成 CHANGELOG + 同步文档 + 推 tag `<包名>@v<版本>`）→ `.github/workflows/release.yml` 自动测试 + 创建 GitHub Release + npm 发布（NPM_TOKEN 已配置）。详见 [references/tool-plugin-and-ecosystem.md](references/tool-plugin-and-ecosystem.md) 的「发布流程」。
 
-## Client 端文件形态（必须用这个格式）
+## 细节参考（按需加载）
 
-client bundle 由浏览器模块加载器装载，**不是 Node ESM**。照抄这个骨架：
+正文只留决策流程与要点，细节按需加载：
 
-```js
-// lib/client.js
-window.__ModuleLoader__.load({
-  id: 'dsh-<功能>', // = 包名
-  factory: (require) => {
-    var module = { exports: {} }
-    var exports = module.exports
-    Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
-    const { createElement } = require('react')
-
-    // 宿主原生扩展点：声明式 inject = 硬依赖（服务就绪后插件才激活，不会静默不注册）
-    exports.inject = ['slots', 'sidebarRightTabs']
-    const TAB_ID = 'dsh-<功能>' // 注册表身份：全局唯一 + 正文席位的 key
-    const TAB_KIND = 'dsh-<功能>:<页面>' // 类型判别符：openTab(kind) 按它打开
-
-    exports.apply = function apply(ctx) {
-      // 第一步：页签「类型」（disposer 必须包在 effect 里）
-      ctx.effect(() =>
-        ctx.sidebarRightTabs.register({
-          id: TAB_ID,
-          kind: TAB_KIND, // 省略 patterns = 页面类型（按 kind 打开）
-          title: () => '页面名', // chip 初始文本，打开时捕获
-          guide: [{ order: 20, title: () => '页面名' }], // 省略 guide = 进不了侧边栏引导页
-        }),
-      )
-      // 第二步：「正文」keyed 席位（key = 上面定义的 id，官方形态）
-      ctx.effect(() =>
-        ctx.slots.inject('sidebar.right.pane.tab', () =>
-          ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, ({ useTabInfo, sessionId }) =>
-            createElement(Page, {
-              sessionId,
-              visible: useTabInfo().tab.visible !== false, // 折叠或非激活时暂停轮询
-            }),
-          ),
-        ),
-      )
-    }
-
-    return module.exports
-  },
-})
-```
-
-- `inject: [...]` = **硬依赖**：所列服务宿主自带，缺任一服务时插件进入等待、**不激活**——且**不报错**，静默不激活是排查成本最高的一种失败形态。
-- 只有 keyed 席位（`key` = 定义的 `id`）能拿到 `useTabInfo()`；`tab.visible === false`（侧边栏折叠或该页签非激活）时暂停轮询/订阅，`tab.signal` 在记录消失或插件卸载时中止。
-- 页面组件里用 `sessionId` 调本插件自己的 HTTP 路由；文本用 `navigator.language` 判断中英文（参考现有插件 `isZh()` 模式）。
-- 文件预览器不走 tab：`ctx.documentPreviews.register({ id, extensions, title, priority })` 由 `text` 页签的工具栏调用。
-
-## package.json 关键字段
-
-```jsonc
-{
-  "name": "dsh-<功能>",
-  "version": "0.1.0",
-  "type": "module",
-  "main": "lib/index.js",
-  "exports": {
-    ".": { "default": "./lib/index.js" },
-    "./client": { "default": "./lib/client.js" },
-    "./package.json": "./package.json",
-  },
-  "files": ["lib", "cordis.patch.yml", "README.md", "CHANGELOG.md", "LICENSE"],
-  "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-runtime"] },
-  },
-  "peerDependencies": {
-    "cordis": "^4.0.0-rc.10",
-    "react": "^18.2.0 || ^19.3.0",
-  },
-  "peerDependenciesMeta": {
-    "cordis": { "optional": true },
-  },
-  "scripts": { "test": "node test/host-smoke.mjs" },
-}
-```
-
-要点：
-
-- `dsh.bundle.patch` 指向的 `cordis.patch.yml` 会被 `dsh plugin add` 自动应用，**不要在 profile 里手动重复 insert 同一行**（会报 duplicate loader entry）。
-- peer 依赖（cordis / react）由宿主 profile 提供；`optional: true` 表示缺省也可加载（注册代码判空跳过）。**不声明任何第三方侧边栏包**——侧边栏能力全部经宿主服务名获取。
-
-## cordis.patch.yml
-
-```yaml
-- insert:
-    - id: <插件短名>
-      name: '<包名>'
-```
-
-`id` 在 profile 内全局唯一。挂载行只负责装载：不要在这里写配置，配置经 `config` 字段且由插件自行校验。
+| 需要什么                                                        | 去哪里                                                                             |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Client 端文件形态（`__ModuleLoader__` 骨架、inject/席位硬约束） | [references/client-file-format.md](references/client-file-format.md)               |
+| `package.json` 关键字段 · `cordis.patch.yml`                    | [references/package-and-patch.md](references/package-and-patch.md)                 |
+| 工具型插件（defineTool）速览 · 外部生态与分发 · 发布流程        | [references/tool-plugin-and-ecosystem.md](references/tool-plugin-and-ecosystem.md) |
+| 常见错误表 · 运行时故障排查 · 需要避免的坑                      | [references/troubleshooting.md](references/troubleshooting.md)                     |
+| 社区实战踩坑清单（版本兼容 / 生命周期 / 构建 TS / 类型合并…）   | [references/dsh-plugin-pitfalls.md](references/dsh-plugin-pitfalls.md)             |
 
 ## Server 端要点
 
@@ -236,90 +152,3 @@ window.__ModuleLoader__.load({
 - **类型检查**：根 `tsconfig.json`（strict）+ `npm run typecheck`（`tsc --noEmit`，CI 强制）——编译期发现模块不存在（TS2307）/类型不匹配/未定义变量；#39 的 `require('dsh-md-render')` 类错误在 TS 下不可能发版出去。
 - **运行时类型**：`ctx` / `webServer` / 请求响应用 `src/types.d.ts` 手写最小契约（DSH 运行时模块由宿主提供，不装 cordis 类型包）；client 端 `ctx.sidebarRightTabs` / `ctx.slots` / `ctx.sidebarRight` / `ctx.documentPreviews` 等类型在 `src/client/globals.d.ts` 内联声明（参考 `plugins/dsh-file-activity/src/client/globals.d.ts`）。
 - **踩坑**：TS 7 移除了 `moduleResolution: node10`（用 `bundler`）；注释里不写 `/*`（提前闭合块注释 → TS1127）；typescript-eslint 尚不兼容 TS 7（eslint 只查 JS，TS 由 tsc 负责）；tsc 产物（`lib/index.js` 等）加入 `.prettierignore` + `eslint.config.js` ignores。
-
-## 工具型插件（defineTool）速览
-
-> 官方权威 API（dsh 插件最核心形态）：注册 agent 可调用的工具函数。完整细节见官方 [tool.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/tool.zh.md) 与 [cookbook/adding-a-tool.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/adding-a-tool.zh.md)。
-
-```js
-import { defineTool } from '@deepseek-ai/dsh-tools'
-
-export const name = 'my-tool' // 必须与 cordis.patch.yml 的 id 一致
-export const inject = ['tools'] // 必须：否则 ctx.tools undefined
-
-export function apply(ctx) {
-  ctx.tools.register(
-    defineTool({
-      name: 'my_tool_func',
-      description: '做某件事（agent 据此决定是否调用）',
-      parameters: { arg: { type: 'string', description: '参数说明', required: true } },
-      output: {
-        schema: {
-          type: 'object',
-          properties: { ok: { type: 'boolean', required: true } },
-          additionalProperties: false,
-        },
-        render: (_args, value) => [{ type: 'text', text: String(value.ok) }],
-      },
-      async execute(args) {
-        return { ok: true }
-      }, // 是 execute 不是 run
-    }),
-  )
-}
-```
-
-**schema 硬规则：** ① `required` 是属性级（写 `required: true`，无 `required` 数组、无 `required: false`）；② 对象 schema 必须显式 `additionalProperties: false`；③ `output` 必填（schema + render 返回 `{ type: 'text', text }`）；④ 用 `execute(args)` 不是 `run`。
-
-**开发调试：** `npx @dsh-io/dsh-dev scaffold <name>` 生成 TS 骨架（**第三方、非官方**脚手架，官方没有 scaffold 命令） → `npm run build` → `npx @deepseek-ai/dsh --profile web --patch <abs-path>/cordis.patch.yml` 对活 harness 调试 → `dsh plugin add <dir>` 永久注册。**本仓库 JS 约定差异**：官方骨架是 TypeScript（`@deepseek-ai/dsh-tools` 提供类型增强），本仓库插件为纯 JS（`lib/index.js` ESM）——API 相同、`defineTool` 同样可用，但**没有类型检查兜底，必须手动遵守上面的 schema 硬规则**。
-
-## 外部生态与分发
-
-- **本仓库分发约定（双通道）**：GitHub Release + **npm 官方 registry**（release.yml 读仓库 `NPM_TOKEN` secret 自动发布；未配置时仅警告跳过）。完整流程见 [docs/开发指南/发版流程.md](../../docs/开发指南/发版流程.md)。
-- **第三方脚手架（非官方）**：`npx @dsh-io/dsh-dev scaffold <name>` 生成 TS 骨架；官方没有 scaffold 命令，用前自行核实。
-- **市场收录（本仓库已用）**：给公开仓库打 GitHub topic `dsh-plugin` 即被 dshfind.com 与 DSH 1024Store（deepseek1024.com）自动聚合收录；1024Store 收录前静态校验 `package.json` + `dsh.bundle.patch` + patch 文件齐备——可当发布自检参考。
-
-## 发布流程（自动 / 手动）
-
-**方式 A（推荐，全自动）**：仓库 Actions → **Release (auto)** workflow（选插件 + bump 类型）→ 自动 bump 版本、生成 CHANGELOG（git log 提取）、同步文档、打 tag、触发 GitHub Release + npm 发布。
-
-**方式 B（本地手动，等价）**：`node scripts/release.mjs <插件名> --bump patch --push`（bump 版本 + CHANGELOG 生成 + 根 README/AGENTS 版本同步 + tag + push）。版本已手动改好时省略 `--bump`。
-
-发版门禁（release.mjs 自动校验）：`peerDependencies.cordis` 已声明且 major 一致（**agent preset 资产包 `dsh.kind=preset` 豁免**，见「插件形态」）→ CHANGELOG 有当前版本段 → npm test 全绿 → README 效果截图引用有效（`./assets/` 或 unpkg URL）→ 文档版本同步 → tag。**验证发布结果**：GitHub Releases 页面确认 Release + `.tgz` 附件、npmjs.com 确认新版本（或 `npm view <包名> version --registry=https://registry.npmjs.org`）；失败时去 Actions 页看失败步骤（历史校验 bug 见 [踩坑：release 版本校验失败](../../docs/踩坑/README.md)）。
-
-## 常见错误
-
-| 症状                                                                       | 根因                                                                                          | 解决                                                                                                                                                                          |
-| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `"tab type ... already registered"`                                        | 重复注册：HMR 残留或 id 冲突                                                                  | 注册必须包 `ctx.effect`；id 全局唯一（内置 explorer/git/terminal 等不可占用）                                                                                                 |
-| `"no service available"`（tools）                                          | 工具型插件没声明 `inject: ['tools']`                                                          | `export const inject = ['tools']`                                                                                                                                             |
-| 工具注册了但 agent 从不调用                                                | `description` 写得不够好                                                                      | description 是 agent 决策依据，写清用途与参数                                                                                                                                 |
-| Release workflow 在 `Verify the git tag matches package.json version` 失败 | 校验比较格式不一致（历史 bug：`expected` 带 `v` 前缀而 tag 解析的 `VERSION` 不带）            | 校验必须比较**裸版本**：`expected="$(node -p ...)"`（不带 v），与 tag `@v` 后部分一致；改后删 tag 重推（`git tag -d <tag> && git push origin :refs/tags/<tag>`）              |
-| schema 类型推断/校验失败                                                   | `required` 数组、`required: false`、缺 `additionalProperties`                                 | 属性级 `required: true`；对象 schema 显式 `additionalProperties: false`（官方 tools.zh.md）                                                                                   |
-| 页面没效果                                                                 | 只改了 server 端没重启；或没硬刷新                                                            | server 改动重启 `dsh web`；client 改动 Cmd/Ctrl+Shift+R                                                                                                                       |
-| `duplicate loader entry id`                                                | profile 里手动 insert + bundle patch 自动插入重复                                             | 删掉手动行，只用 `dsh plugin` 安装                                                                                                                                            |
-| `ctx.sidebarRightTabs` undefined                                           | 没声明 inject，或服务未加载                                                                   | `inject: ['slots', 'sidebarRightTabs']`；可选场景用 `ctx.get` 判空降级                                                                                                        |
-| 双 Cordis / 类型分裂                                                       | 同时引用 unscoped 与 scoped cordis                                                            | 全链统一一个 cordis（本仓库用 `cordis` peer + link 安装）                                                                                                                     |
-| HMR 后状态错乱                                                             | disposer 没被 fiber 持有                                                                      | `ctx.effect(() => register(...))`，绝不裸调                                                                                                                                   |
-| 页签偶发"纯文字无样式"                                                     | 样式注入放在服务判空早退（`if (service === undefined) return`）之后，HMR/服务重载瞬间跳过注入 | **样式注入必须放 `apply` 最前、无条件执行**（不依赖任何服务），每个 fiber 持自己的 `<style>`、disposer 只删自己的（详见 [踩坑：插件页签样式丢失](../../docs/踩坑/README.md)） |
-
-## 运行时故障排查（plugin-runtime-debug 增量）
-
-> 插件在浏览器运行时行为异常（粘贴/附件/合成器"第一次成功后续失败"、chips/面板陈旧占位、版本芯片报错）时，**先读宿主源码契约，不要按 API 名字猜**——对方 skill 的排查方法补充到本仓库调试场景：
-
-1. **读宿主源码契约**（npm 全局安装的 `~/.npm-global/lib/node_modules/@deepseek-ai/dsh/`）：打开插件调用的宿主 API 实现，读 doc 注释、guards、比较的类型。三个问题覆盖多数事故：
-   - **offset 数的是哪个字符串**？发布快照字段与内部编辑器投影不一定是同一个字符串，喂错表示会静默失败（返回 false/no-op，不抛错）。
-   - **每个"单位"在各表示中占多宽**？chips/tokens/attachments 等不透明内联单位在发布字段与 verb guard 的投影中宽度不同时，offset 只在无单位时正确。
-   - **verb 拒绝时谁发现**？布尔返回的 verb 静默失败会变成下游状态 bug（调用方照删自己的簿记，UI 渲染"缺失"占位符）——审计每个调用点的"fire, ignore result, clean up anyway"形态。
-2. **症状族定位**：首次成功后续失败 → 前次调用写入了状态改变了映射（修正推导后应用到**每个**传 offset 的调用点）；删除按钮留行 + 占位标签 → verb 拒绝但簿记已删（确认返回值后再退役簿记）；陈旧/幻影条目 → 从权威源派生视图，缓存只当加速器；版本芯片报错 latest → CDN 缓存滞后，用运行版本判定"当前 vs 更新"；整个 slot 静默消失 → slot 组件内 throw 被错误边界卸载（console-only），用防御性读取（`x?.items ?? []`）加固。
-3. **修复纪律**：先精确陈述不匹配（哪个表示/哪个 guard/哪些调用点）再写修复；修**所有**传表示相关值的调用点，不只报错那个；用失败交互序列复现证明（连续两次操作行为一致 + 删除路径清空所有视图）。
-
-## 需要避免的坑
-
-> ⚠️ **开发前先读 [references/dsh-plugin-pitfalls.md](references/dsh-plugin-pitfalls.md)** — 14+ 个社区项目的实战踩坑清单（版本兼容 / 激活生命周期 / bundle 名册 / 构建 TS / 类型合并 / 运行时数据 / 安全进程 / UI 载体选型）。
-
-- **不要**在 `apply` 里裸调 `registerTab`（不包 effect）——HMR/禁用后残留，下次激活报 already registered。
-- **不要**在 client value-import 宿主 `@deepseek-ai/dsh-client-ui-*` 包——构建纯度门会挡；宿主能力只经 `inject` 服务名取，数据用 fetch 自己请求。
-- **不要**在 README/文档里写 "Host 半"——本项目统一叫 **Server 端 / Client 端**。
-- **不要**把 `.dsh-vision-toolkit/`、`node_modules/` 等提交进 git。
-- 发版前核对：`package.json` 版本号、CHANGELOG 段落、tag 三者一致（workflow 会强校验版本，tag 格式错则直接失败）。

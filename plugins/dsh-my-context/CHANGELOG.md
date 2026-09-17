@@ -8,4 +8,4 @@
 
 - feat(ts): 补齐 dsh-my-context / dsh-my-guardian 的 client 端迁移
 - feat(dsh-my-guard): migrate to TypeScript
-- chore(plugins): #165 清理失效的 dsh.client.inject 声明（13 插件） (#167)
+- chore(plugins): 清理失效的 dsh.client.inject 声明（13 插件）

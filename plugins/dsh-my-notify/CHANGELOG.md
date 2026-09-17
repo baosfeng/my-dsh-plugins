@@ -11,4 +11,4 @@
 - feat(dsh-my-notify): migrate server to TypeScript
 - fix(dsh-my-notify): 设置页 slots 首屏时序修复（ctx.get strict=false + 防回归测试）
 - feat(release): 支持批量发版 + 文档修复
-- chore(plugins): #165 清理失效的 dsh.client.inject 声明（13 插件） (#167)
+- chore(plugins): 清理失效的 dsh.client.inject 声明（13 插件）

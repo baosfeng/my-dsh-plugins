@@ -66,7 +66,11 @@ export function classifyProbeReply(status, body) {
 export function argvReferencesCheckout(argv, checkoutRealPath, resolvePath) {
   const paths = argv.match(/\/[^\s:]+/g) ?? []
   return paths.some((candidate) => {
-    try { return resolvePath(candidate).startsWith(checkoutRealPath) } catch { return false }
+    try {
+      return resolvePath(candidate).startsWith(checkoutRealPath)
+    } catch {
+      return false
+    }
   })
 }
 
@@ -84,7 +88,11 @@ async function main() {
   }
 
   let lstart = ''
-  try { lstart = run('ps', ['-o', 'lstart=', '-p', pidArg]) } catch { /* fall through */ }
+  try {
+    lstart = run('ps', ['-o', 'lstart=', '-p', pidArg])
+  } catch {
+    /* fall through */
+  }
   if (lstart === '') {
     console.error(`process ${pidArg} not found`)
     process.exit(2)
@@ -102,7 +110,9 @@ async function main() {
     lastChange = new Date(run('git', ['-C', checkoutArg, 'log', '-1', '--format=%cI']))
     describe = run('git', ['-C', checkoutArg, 'describe', '--tags', '--always'])
   } catch (error) {
-    console.error(`cannot read the checkout at ${checkoutArg}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
+    console.error(
+      `cannot read the checkout at ${checkoutArg}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`,
+    )
     process.exit(2)
   }
   if (Number.isNaN(lastChange.getTime())) {
@@ -120,30 +130,49 @@ async function main() {
   try {
     const argv = run('ps', ['-o', 'command=', '-p', pidArg])
     if (!argvReferencesCheckout(argv, realpathSync(checkoutArg), (p) => realpathSync(p))) {
-      console.log('note: no path in the process argv resolves into this checkout — confirm the process actually runs this checkout before trusting the verdict.')
+      console.log(
+        'note: no path in the process argv resolves into this checkout — confirm the process actually runs this checkout before trusting the verdict.',
+      )
     }
-  } catch { /* argv unavailable: nothing to add */ }
+  } catch {
+    /* argv unavailable: nothing to add */
+  }
 
-  console.log(ghost
-    ? 'verdict: GHOST — the process predates the checkout\'s last change and is running the old code from memory. Restart the host, or pin the corridor\'s `from` to the process\'s actual generation (safety side: rollup R-12).'
-    : 'verdict: process is newer than the checkout\'s last change — memory and disk agree.')
+  console.log(
+    ghost
+      ? "verdict: GHOST — the process predates the checkout's last change and is running the old code from memory. Restart the host, or pin the corridor's `from` to the process's actual generation (safety side: rollup R-12)."
+      : "verdict: process is newer than the checkout's last change — memory and disk agree.",
+  )
 
   if (portArg !== undefined) {
     try {
       const res = await fetch(`http://127.0.0.1:${portArg}/api/agentPreset.list`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ type: 'client-request', rpcId: 'ghost-host-probe', method: 'agentPreset.list', payload: {} }),
+        body: JSON.stringify({
+          type: 'client-request',
+          rpcId: 'ghost-host-probe',
+          method: 'agentPreset.list',
+          payload: {},
+        }),
         signal: AbortSignal.timeout(8000),
       })
       let body = null
-      try { body = await res.json() } catch { /* non-JSON reply */ }
+      try {
+        body = await res.json()
+      } catch {
+        /* non-JSON reply */
+      }
       const generation = classifyProbeReply(res.status, body)
-      console.log(generation === 'unknown'
-        ? `probe: port ${portArg} replied HTTP ${res.status} with an unrecognized shape — treat the generation as unknown, do not guess.`
-        : `probe: port ${portArg} speaks ${generation === 'new-wire' ? 'the NEW wire (401 without auth; auth gate present)' : 'the OLD wire (unauthenticated reply; no auth gate)'}.`)
+      console.log(
+        generation === 'unknown'
+          ? `probe: port ${portArg} replied HTTP ${res.status} with an unrecognized shape — treat the generation as unknown, do not guess.`
+          : `probe: port ${portArg} speaks ${generation === 'new-wire' ? 'the NEW wire (401 without auth; auth gate present)' : 'the OLD wire (unauthenticated reply; no auth gate)'}.`,
+      )
     } catch (error) {
-      console.log(`probe: port ${portArg} unreachable (${error instanceof Error ? error.message : String(error)}) — host down, or wrong port.`)
+      console.log(
+        `probe: port ${portArg} unreachable (${error instanceof Error ? error.message : String(error)}) — host down, or wrong port.`,
+      )
     }
   }
   process.exit(ghost ? 1 : 0)

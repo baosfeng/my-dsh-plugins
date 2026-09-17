@@ -1,11 +1,12 @@
-// skills/dsh-upgrade-audit/scripts/lib/github-repo.mjs 的回归测试（CodeQL #13 的修复）。
+// plugin-upgrade skill 的 scripts/lib/github-repo.mjs 的回归测试（原属已并入的 dsh-upgrade-audit skill）。（CodeQL #13 的修复）。
 //
 // 这是**安全判据**：判定通过就真去请求 https://api.github.com/repos/<owner>/<repo>。
 // 原实现是 `repository.includes('github.com')`——子串判定会放行 "任意 host + 路径里塞
 // github.com" 的 URL（CodeQL js/incomplete-url-substring-sanitization）；下面每个
 // 「伪造 host」用例都是那类输入，必须返回 null。
 import { describe, expect, it } from 'vitest'
-import { parseGithubRepo } from '../../skills/dsh-upgrade-audit/scripts/lib/github-repo.mjs'
+// 权威来源（本仓库内 skill 资产）：skills/plugin-upgrade/scripts/lib/github-repo.mjs
+import { parseGithubRepo } from '../../skills/plugin-upgrade/scripts/lib/github-repo.mjs'
 
 const REAL = { owner: 'deepseek-ai', repo: 'deepseek-harness' }
 

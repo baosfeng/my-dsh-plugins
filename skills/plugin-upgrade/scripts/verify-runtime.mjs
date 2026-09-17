@@ -30,9 +30,11 @@ import tmp from 'tmp'
 // --- Signature regexes (priority order; see diagnoseBootLog) ----------------
 // The bare word "network" is deliberately NOT a transport signature — matching
 // it anywhere in a stack path misfires (fleet-proven).
-const TRANSPORT_RE = /TRANSPORT|STREAM_CLOSED|EMPTY_RESPONSE|ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up|fetch failed/i
+const TRANSPORT_RE =
+  /TRANSPORT|STREAM_CLOSED|EMPTY_RESPONSE|ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up|fetch failed/i
 const MODULE_RESOLVE_RE = /ERR_MODULE_NOT_FOUND|esm\/loader|Cannot find module/i
-const ACTIVATION_RE = /1 entry did not activate|plugin tree failed to load|did not activate|must be a top-level YAML array of loader patch entries/
+const ACTIVATION_RE =
+  /1 entry did not activate|plugin tree failed to load|did not activate|must be a top-level YAML array of loader patch entries/
 // Only a wait for the webServer service means "wrong environment, re-probe
 // under the web host": a plugin waiting for a REMOVED service is an activation
 // failure that migration must fix.
@@ -169,7 +171,12 @@ export function listKeyFor(spec, route, originalSpec = spec) {
   if (route === 'npm-name') return spec
   if (route === 'git-url') {
     const pathPart = spec.replace(/^[a-z]+:\/\/[^/]+\//i, '').replace(/^git@[^:]+:/, '')
-    return pathPart.replace(/\.git$/, '').split('/').pop() || spec
+    return (
+      pathPart
+        .replace(/\.git$/, '')
+        .split('/')
+        .pop() || spec
+    )
   }
   const pkgPath = join(originalSpec, 'package.json')
   if (existsSync(pkgPath)) {
@@ -208,7 +215,9 @@ function toolMissing(cmd) {
 function tail(text, maxBytes = 500) {
   // Strip ANSI/OSC escape sequences first: evidence is echoed into terminals
   // and reports, and plugin-controlled bytes must not reach the clipboard.
-  const flat = String(text ?? '').replaceAll(ANSI_RE, '').replaceAll('\n', ' ')
+  const flat = String(text ?? '')
+    .replaceAll(ANSI_RE, '')
+    .replaceAll('\n', ' ')
   return flat.length > maxBytes ? `…${flat.slice(-maxBytes)}` : flat
 }
 
@@ -244,9 +253,13 @@ function writeProfilePatches(profileDir) {
  * The `pinned` flag is surfaced in the result: a silent fallback to the
  * caller's mirror means the verdict was reached on a possibly-stale version. */
 function pinNpmSpec(pkgName) {
-  const view = run('npm', ['view', pkgName, 'dist-tags.latest', '--registry=https://registry.npmjs.org'], { timeoutSeconds: 60 })
+  const view = run('npm', ['view', pkgName, 'dist-tags.latest', '--registry=https://registry.npmjs.org'], {
+    timeoutSeconds: 60,
+  })
   const latest = (view.stdout ?? '').trim().replace(/^["']|["']$/g, '')
-  return view.status === 0 && latest ? { installSpec: `${pkgName}@${latest}`, pinned: true } : { installSpec: pkgName, pinned: false }
+  return view.status === 0 && latest
+    ? { installSpec: `${pkgName}@${latest}`, pinned: true }
+    : { installSpec: pkgName, pinned: false }
 }
 
 /** Shared probe environment. Placeholder key: without one the agent stalls
@@ -278,9 +291,7 @@ function shapeProbe(child) {
 }
 
 function probeHeadless(dshHome, profile, cwd, timeoutSeconds) {
-  return shapeProbe(
-    run('dsh', ['--profile', profile, 'ok'], { timeoutSeconds, env: probeEnv(dshHome), cwd }),
-  )
+  return shapeProbe(run('dsh', ['--profile', profile, 'ok'], { timeoutSeconds, env: probeEnv(dshHome), cwd }))
 }
 
 /** Web-plane plugins need the web host: headless profiles expose no webServer
@@ -310,7 +321,11 @@ function ensureWebProfileInstall(dshHome, installSpec, cwd) {
   if (add.status !== 0) {
     const blocked = parseBlockedBuilds(`${add.stdout ?? ''}\n${add.stderr ?? ''}`)
     if (blocked.length > 0) {
-      add = run('dsh', ['plugin', '--profile', 'web', 'add', installSpec, ...blocked.map((name) => `--allow-build=${name}`)], { timeoutSeconds: 300, env, cwd })
+      add = run(
+        'dsh',
+        ['plugin', '--profile', 'web', 'add', installSpec, ...blocked.map((name) => `--allow-build=${name}`)],
+        { timeoutSeconds: 300, env, cwd },
+      )
     }
   }
   return add.status === 0
@@ -323,12 +338,14 @@ function ensureWebProfileInstall(dshHome, installSpec, cwd) {
 function parseBlockedBuilds(log) {
   const match = /Ignored build scripts:\s*(.+)/.exec(log)
   if (!match) return []
-  return [...new Set(
-    match[1]
-      .split(/,\s*/)
-      .map((entry) => entry.trim().split('@').slice(0, -1).join('@') || entry.trim())
-      .filter((name) => /^[^@\s]/.test(name) || name.startsWith('@')),
-  )]
+  return [
+    ...new Set(
+      match[1]
+        .split(/,\s*/)
+        .map((entry) => entry.trim().split('@').slice(0, -1).join('@') || entry.trim())
+        .filter((name) => /^[^@\s]/.test(name) || name.startsWith('@')),
+    ),
+  ]
 }
 
 /** Git-hosted plugins build via their prepare script, which pnpm gates behind
@@ -358,7 +375,14 @@ function writeAllowBuilds(profileDir, key) {
 export async function verifyRuntime(rawSpec, options = {}) {
   const timeoutSeconds = options.timeoutSeconds ?? 120
   const stages = []
-  const result = { spec: rawSpec, status: 'inconclusive', verdict: '', attribution: null, stages, startedAt: new Date().toISOString() }
+  const result = {
+    spec: rawSpec,
+    status: 'inconclusive',
+    verdict: '',
+    attribution: null,
+    stages,
+    startedAt: new Date().toISOString(),
+  }
   const stage = (name, ok, durationMs, error = '') => stages.push({ stage: name, ok, durationMs, error })
 
   const route = classifySpec(rawSpec)
@@ -368,7 +392,9 @@ export async function verifyRuntime(rawSpec, options = {}) {
     return result
   }
 
-  const missing = ['dsh', ...(route === 'git-url' ? ['git'] : []), ...(route === 'npm-name' ? ['npm'] : [])].filter(toolMissing)
+  const missing = ['dsh', ...(route === 'git-url' ? ['git'] : []), ...(route === 'npm-name' ? ['npm'] : [])].filter(
+    toolMissing,
+  )
   if (missing.length > 0) {
     result.verdict = `missing-tools:${missing.join(',')}`
     return result
@@ -407,7 +433,11 @@ export async function verifyRuntime(rawSpec, options = {}) {
     let t0 = Date.now()
     const pin = route === 'npm-name' ? pinNpmSpec(spec) : { installSpec: spec, pinned: false }
     result.npmPinned = pin.pinned // surfaced even on later failure: provenance of the verdict
-    let add = run('dsh', ['plugin', '--profile', profile, 'add', pin.installSpec], { timeoutSeconds: 300, env: dshEnv, cwd: home })
+    let add = run('dsh', ['plugin', '--profile', profile, 'add', pin.installSpec], {
+      timeoutSeconds: 300,
+      env: dshEnv,
+      cwd: home,
+    })
     let l1Log = `${add.stdout ?? ''}\n${add.stderr ?? ''}`
     if (add.status !== 0) {
       // pnpm v10+ build-script gates. Registry deps: retry with --allow-build
@@ -416,7 +446,11 @@ export async function verifyRuntime(rawSpec, options = {}) {
       // detached flag value (fleet-verified).
       const blocked = parseBlockedBuilds(l1Log)
       if (blocked.length > 0) {
-        add = run('dsh', ['plugin', '--profile', profile, 'add', pin.installSpec, ...blocked.map((name) => `--allow-build=${name}`)], { timeoutSeconds: 300, env: dshEnv, cwd: home })
+        add = run(
+          'dsh',
+          ['plugin', '--profile', profile, 'add', pin.installSpec, ...blocked.map((name) => `--allow-build=${name}`)],
+          { timeoutSeconds: 300, env: dshEnv, cwd: home },
+        )
         l1Log = `${add.stdout ?? ''}\n${add.stderr ?? ''}`
       } else {
         // Git-hosted deps: the gate is an allowBuilds map key in the profile
@@ -424,7 +458,11 @@ export async function verifyRuntime(rawSpec, options = {}) {
         const gitKey = parseGitAllowBuildsKey(l1Log)
         if (gitKey) {
           writeAllowBuilds(join(dshHome, 'profiles', profile), gitKey)
-          add = run('dsh', ['plugin', '--profile', profile, 'add', pin.installSpec], { timeoutSeconds: 300, env: dshEnv, cwd: home })
+          add = run('dsh', ['plugin', '--profile', profile, 'add', pin.installSpec], {
+            timeoutSeconds: 300,
+            env: dshEnv,
+            cwd: home,
+          })
           l1Log = `${add.stdout ?? ''}\n${add.stderr ?? ''}`
         }
       }
@@ -492,7 +530,10 @@ export async function verifyRuntime(rawSpec, options = {}) {
       outcome = { status: 'pass', verdict: 'pass-boot-probe' }
     } else if (diagnosis?.verdict === 'env-needs-service-host') {
       outcome = { status: 'skipped', verdict: 'env-needs-service-host', attribution: diagnosis.attribution }
-    } else if (diagnosis && (diagnosis.verdict === 'service-wait-unresolved' || diagnosis.verdict === 'ambiguous-error-signature')) {
+    } else if (
+      diagnosis &&
+      (diagnosis.verdict === 'service-wait-unresolved' || diagnosis.verdict === 'ambiguous-error-signature')
+    ) {
       // Honest inconclusives: a non-webServer service wait or a mixed error
       // signature cannot be attributed automatically — do NOT let these fall
       // through to the liveness pass.
@@ -562,8 +603,13 @@ function parseArgs(argv) {
     else if (arg.startsWith('--')) throw new Error(`unknown option: ${arg}`)
     else options.positional.push(arg)
   }
-  if (options.timeoutSeconds !== undefined && (!Number.isFinite(options.timeoutSeconds) || options.timeoutSeconds <= 0)) {
-    throw new Error(`invalid value for --timeout: ${argv.includes('--timeout') ? 'must be a positive number of seconds' : options.timeoutSeconds}`)
+  if (
+    options.timeoutSeconds !== undefined &&
+    (!Number.isFinite(options.timeoutSeconds) || options.timeoutSeconds <= 0)
+  ) {
+    throw new Error(
+      `invalid value for --timeout: ${argv.includes('--timeout') ? 'must be a positive number of seconds' : options.timeoutSeconds}`,
+    )
   }
   if (options.profile !== undefined && !PROFILE_NAME_RE.test(options.profile)) {
     throw new Error(`invalid value for --profile: ${options.profile} (letters, digits, dots, dashes, underscores only)`)
@@ -577,9 +623,13 @@ function renderHuman(result) {
   for (const s of result.stages) {
     // Keep the TAIL of error strings: the newest, most relevant lines are at
     // the end (slice from the front once showed stale mid-log content).
-    lines.push(`  ${s.ok ? 'PASS' : 'FAIL'}  ${s.stage}  ${(s.durationMs / 1000).toFixed(1)}s${s.error ? `  ${s.error.slice(-200)}` : ''}`)
+    lines.push(
+      `  ${s.ok ? 'PASS' : 'FAIL'}  ${s.stage}  ${(s.durationMs / 1000).toFixed(1)}s${s.error ? `  ${s.error.slice(-200)}` : ''}`,
+    )
   }
-  lines.push(`verdict: ${result.verdict}  status: ${result.status}${result.attribution ? `  attribution: ${result.attribution}` : ''}`)
+  lines.push(
+    `verdict: ${result.verdict}  status: ${result.status}${result.attribution ? `  attribution: ${result.attribution}` : ''}`,
+  )
   if (result.evidence) lines.push(`evidence: ${result.evidence.slice(-300)}`)
   if (result.workspace) lines.push(`workspace kept: ${result.workspace}`)
   return lines.join('\n')
@@ -619,7 +669,19 @@ if (isMain) {
     .catch((err) => {
       // Internal errors must surface as structured inconclusive (exit 2), not
       // as an unhandled rejection that CI would misread as FAIL (exit 1).
-      if (options.json) console.log(JSON.stringify({ spec: options.positional[0], status: 'inconclusive', verdict: 'internal-error', error: String(err?.message ?? err) }, null, 2))
+      if (options.json)
+        console.log(
+          JSON.stringify(
+            {
+              spec: options.positional[0],
+              status: 'inconclusive',
+              verdict: 'internal-error',
+              error: String(err?.message ?? err),
+            },
+            null,
+            2,
+          ),
+        )
       else console.error(`verify-runtime: internal error: ${err?.message ?? err}`)
       process.exit(2)
     })

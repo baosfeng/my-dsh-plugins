@@ -24,13 +24,13 @@ description: 使用当 需要为 DSH 插件编写或审查测试，或验证 DSH
 
 ## 测试层级
 
-| 层级 | 证明什么 |
-|---|---|
-| 单元测试 | 边界情况、错误路径、事件顺序、并发竞争、契约回归；每个注册都需要 HMR 安全测试（dispose 贡献注册的 fiber 并断言资源被移除） |
-| 覆盖率门禁 | 只证明行被执行，不证明发布功能真的可用；外部插件按仓库声明的阈值 |
-| 真实 API e2e | 有 provider 凭据且授权时跑（含 DeepSeek 模型与 provider 冒烟）；凭据缺失时套件自跳过保持 CI 绿；免凭据测试只证明管线连通，只有带凭据的运行证明 agent 能配合真实模型工作 |
-| 快照测试 | 免凭据输出，钉住传输契约与呈现；模型/协议/用户可见行为变更必须加或更新免凭据快照 |
-| Web 浏览器快照 | Chromium 回放输出对比；CI 强制只读回放，绝不写期望输出；本地录制并审阅每个差异 |
+| 层级           | 证明什么                                                                                                                                                                |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 单元测试       | 边界情况、错误路径、事件顺序、并发竞争、契约回归；每个注册都需要 HMR 安全测试（dispose 贡献注册的 fiber 并断言资源被移除）                                              |
+| 覆盖率门禁     | 只证明行被执行，不证明发布功能真的可用；外部插件按仓库声明的阈值                                                                                                        |
+| 真实 API e2e   | 有 provider 凭据且授权时跑（含 DeepSeek 模型与 provider 冒烟）；凭据缺失时套件自跳过保持 CI 绿；免凭据测试只证明管线连通，只有带凭据的运行证明 agent 能配合真实模型工作 |
+| 快照测试       | 免凭据输出，钉住传输契约与呈现；模型/协议/用户可见行为变更必须加或更新免凭据快照                                                                                        |
+| Web 浏览器快照 | Chromium 回放输出对比；CI 强制只读回放，绝不写期望输出；本地录制并审阅每个差异                                                                                          |
 
 ## 按变更面选层级
 
@@ -63,8 +63,8 @@ description: 使用当 需要为 DSH 插件编写或审查测试，或验证 DSH
 
 ## 参考材料
 
-| 文件 | 内容 |
-|---|---|
+| 文件                                                                     | 内容                                                          |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------- |
 | [references/docker-release-smoke.md](references/docker-release-smoke.md) | Docker 发布冒烟配方（pin 版本/隔离 Profile/冷启动/argv 探针） |
-| [scripts/docker-release-smoke.mjs](scripts/docker-release-smoke.mjs) | Docker 冒烟 runner |
-| [scripts/container-runner.mjs](scripts/container-runner.mjs) | 容器运行器（docker 冒烟依赖） |
+| [scripts/docker-release-smoke.mjs](scripts/docker-release-smoke.mjs)     | Docker 冒烟 runner                                            |
+| [scripts/container-runner.mjs](scripts/container-runner.mjs)             | 容器运行器（docker 冒烟依赖）                                 |

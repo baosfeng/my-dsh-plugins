@@ -144,22 +144,22 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 
 ## 参考
 
-| 文件 / skill                                                                                     | 内容                                     |
-| ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `AGENTS.md`                                                                                      | 协作与项目管理原则、强制规则、入口       |
-| `skills/dsh-issue-request/SKILL.md`                                                              | 需求登记（issue 模板、防重复、验收标准） |
-| `skills/dsh-plugin-development/SKILL.md`                                                         | 插件形态/目录结构/开发流程               |
-| `skills/plugin-test/SKILL.md`                                                                    | 测试层级选择                             |
-| `skills/verifying-dsh-plugins/SKILL.md`                                                          | #67 功能级验证与收尾清理                 |
-| `skills/plugin-release/SKILL.md`                                                                 | 发布轨、打包、语义门禁、回滚             |
+| 文件 / skill                                                                                     | 内容                                                                                            |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `AGENTS.md`                                                                                      | 协作与项目管理原则、强制规则、入口                                                              |
+| `skills/dsh-issue-request/SKILL.md`                                                              | 需求登记（issue 模板、防重复、验收标准）                                                        |
+| `skills/dsh-plugin-development/SKILL.md`                                                         | 插件形态/目录结构/开发流程                                                                      |
+| `skills/plugin-test/SKILL.md`                                                                    | 测试层级选择                                                                                    |
+| `skills/verifying-dsh-plugins/SKILL.md`                                                          | #67 功能级验证与收尾清理                                                                        |
+| `skills/plugin-release/SKILL.md`                                                                 | 发布轨、打包、语义门禁、回滚                                                                    |
 | `docs/官方文档/索引.md`                                                                          | 官方 docs 分类导航；接入 / 调试 / 宿主 API 速查（**与官方冲突时以官方 docs + 本机运行包为准**） |
-| `.reasonix/skills/quality-gates/SKILL.md`                                                        | 交付质量门禁（强制）                     |
-| `.reasonix/skills/testing-standards/SKILL.md`                                                    | TDD Red→Green→Refactor                   |
-| `.reasonix/skills/commit-standards/SKILL.md`                                                     | 提交信息格式与确认流程                   |
-| `.reasonix/skills/coding-standards/SKILL.md` · `.reasonix/skills/engineering-standards/SKILL.md` | 代码规范 · 工程规范                      |
-| `docs/开发指南/构建与测试.md`                                                                    | verify-local、真实环境验证、需求回归     |
-| `docs/开发指南/发版流程.md`                                                                      | semver、发布通道、踩坑                   |
-| `docs/开发指南/文档规范.md`                                                                      | 文档与 AGENTS.md 规范                    |
-| `docs/踩坑/README.md`                                                                            | 已知踩坑（防复发输入）                   |
+| `.reasonix/skills/quality-gates/SKILL.md`                                                        | 交付质量门禁（强制）                                                                            |
+| `.reasonix/skills/testing-standards/SKILL.md`                                                    | TDD Red→Green→Refactor                                                                          |
+| `.reasonix/skills/commit-standards/SKILL.md`                                                     | 提交信息格式与确认流程                                                                          |
+| `.reasonix/skills/coding-standards/SKILL.md` · `.reasonix/skills/engineering-standards/SKILL.md` | 代码规范 · 工程规范                                                                             |
+| `docs/开发指南/构建与测试.md`                                                                    | verify-local、真实环境验证、需求回归                                                            |
+| `docs/开发指南/发版流程.md`                                                                      | semver、发布通道、踩坑                                                                          |
+| `docs/开发指南/文档规范.md`                                                                      | 文档与 AGENTS.md 规范                                                                           |
+| `docs/踩坑/README.md`                                                                            | 已知踩坑（防复发输入）                                                                          |
 
 > `.reasonix/skills/` 不在 git 版本控制内，只存在于已初始化的本机检出；缺失时按同名 skill 走全局技能目录（降级路径），不要据此判定流程缺失。

@@ -35,12 +35,12 @@ my-plugin/
 
 ## 三、Client 端 UI 注册方式（重点）
 
-| 方式                       | 机制                                                                                                                                                                                        | 代表                                               |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| **官方 Slot 系统**（推荐） | `declare module '@deepseek-ai/dsh-client-ui-slots'` 扩展 `SlotMap` 声明槽位 + `inject: ['slots', ...]` 后向槽位注册组件；`context`（如 `conversation.input.selector.context` 分支选择器座） | dsh-web-ui/dsh-git-graph                           |
+| 方式                       | 机制                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 代表                                               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| **官方 Slot 系统**（推荐） | `declare module '@deepseek-ai/dsh-client-ui-slots'` 扩展 `SlotMap` 声明槽位 + `inject: ['slots', ...]` 后向槽位注册组件；`context`（如 `conversation.input.selector.context` 分支选择器座）                                                                                                                                                                                                                                                                                                                                                                                                                              | dsh-web-ui/dsh-git-graph                           |
 | **设置卡片（推荐）**       | 本仓库做法：client 半 `ctx.effect(() => ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({ name: 'settings.plugins.tab', id, order, label }, Component)))`，偏好存 localStorage（**无 host 半**）；**必须用 `slots.inject`**——该 seat 只在分区挂载时存在，直接 register 会静默无效果。官方另有两级：列表页 `settings.plugins.tab`（即本仓库用的）、keyed 卡片 `settings.plugin.item`、分区 `settings.section`，host 半走 `ctx.settings.installSection` + `ctx.settingsScope`（官方 [cookbook](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/adding-a-settings-card.zh.md)） | dsh-web-ui/dsh-pet、community-plugins、skin-center |
-| **全局悬浮（不走 slot）**  | 全局 UI（宠物等）直接 `createRoot(document.body)` 挂独立 React root——新会话页无 session，会话级 slot 会消失                                                                                 | dsh-web-ui/dsh-pet                                 |
-| **侧边栏页签（宿主原生）** | `inject: ['slots', 'sidebarRightTabs']`：`ctx.sidebarRightTabs.register` 注册类型 + keyed 席位 `sidebar.right.pane.tab` 挂正文（第三方 `dsh-better-sidebar` 已弃用）                          | 本仓库 dsh-file-activity                            |
+| **全局悬浮（不走 slot）**  | 全局 UI（宠物等）直接 `createRoot(document.body)` 挂独立 React root——新会话页无 session，会话级 slot 会消失                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | dsh-web-ui/dsh-pet                                 |
+| **侧边栏页签（宿主原生）** | `inject: ['slots', 'sidebarRightTabs']`：`ctx.sidebarRightTabs.register` 注册类型 + keyed 席位 `sidebar.right.pane.tab` 挂正文（第三方 `dsh-better-sidebar` 已弃用）                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 本仓库 dsh-file-activity                           |
 
 > **i18n 是标配**：`declare module ... LocaleNamespaceMap` 注入语言包；官方有 `@deepseek-ai/dsh-client-locale`。
 > **SDK 依赖**：`@deepseek-ai/dsh-client-runtime`、`dsh-client-ui-slots`、`dsh-client-locale`、`dsh-client-ui-conversation`、`dsh-settings` 等（type-only import 触发类型合并）。
@@ -69,7 +69,7 @@ my-plugin/
 | **slash command 载体** | dsh-context      | 除面板外，`/context` 命令弹窗展示上下文洞察——命令是 UI 的第二出口                                                                                                                                             |
 | **事件驱动状态行**     | working-activity | 监听 `tool_execution_start/end/update` 实时渲染"正在跑什么"；无进度事件时退化为耗时显示                                                                                                                       |
 | **插件管理面板**       | dsh-plugin-hub   | 插件 toggle = `- id: xxx / disabled: true` 两行 YAML（HMR ~1s 重组）；安装链：curl 手动装 tarball（node 网络受限）→ git 通道 → EPERM stale-dir 清理重试；**升级后兼容警告**而非静默失败                       |
-| **设置面板多分区**     | dsh-skill-viewer | 设置页注册多个一级分区（技能 + MCP）；管理 `cordis.patch.yml` 受管块，保存后 HMR 热加载；技能实体按**工作区作用域**（全局 `~/.dsh/skills` vs 工作区 `.dsh/skills`）精确操作，同名不互相影响   |
+| **设置面板多分区**     | dsh-skill-viewer | 设置页注册多个一级分区（技能 + MCP）；管理 `cordis.patch.yml` 受管块，保存后 HMR 热加载；技能实体按**工作区作用域**（全局 `~/.dsh/skills` vs 工作区 `.dsh/skills`）精确操作，同名不互相影响                   |
 | **子进程管理**         | dsh-ios          | serve-sim 子进程：专用端口段（3181-3244）避免冲突、`--host` 永不使用、崩溃自动重启、无消费者自动停、**孤儿进程收养/回收**（`-k` 再拉起）                                                                      |
 | **跨平台适配**         | working-activity | 同一 UI 想法适配 pi CLI + DSH 双平台，各自独立 npm 包；DSH 版可能需要 **runtime 补丁**（patches/*.patch）                                                                                                     |
 | **对话流卡片**         | dsh-agent-teams  | 会话事件（`SessionEventMap` 合并）→ 对话内流程卡片；**面板类 UI 以磁盘为真相源**（host 快照），事件只用于节点展示                                                                                             |
@@ -78,13 +78,13 @@ my-plugin/
 
 ## 六、对本仓库的启示（对比）
 
-| 维度     | 本仓库 dsh-file-activity   | 生态成熟做法                                                                  |
-| -------- | -------------------------- | ----------------------------------------------------------------------------- |
-| 注册方式 | 宿主原生 `sidebarRightTabs` + keyed 席位 | 一致：官方 Slot 系统 + 设置卡片是通用正路 |
-| 通信     | fetch 轮询 stats           | 轮询 + SSE 流；UI 事件用同源 JSON 路由                                        |
-| 安全     | loopback 围栏 ✅           | + workspace 门（路径必须属于注册 workspace）                                  |
-| 持久化   | $DSH_HOME 防抖原子写 ✅    | 一致                                                                          |
-| 生命周期 | ctx.effect ✅              | 一致；另有 mount-once 防重复挂载                                              |
-| 构建     | 纯 JS ESM                  | TS 双端编译 + tsdown                                                          |
+| 维度     | 本仓库 dsh-file-activity                 | 生态成熟做法                                 |
+| -------- | ---------------------------------------- | -------------------------------------------- |
+| 注册方式 | 宿主原生 `sidebarRightTabs` + keyed 席位 | 一致：官方 Slot 系统 + 设置卡片是通用正路    |
+| 通信     | fetch 轮询 stats                         | 轮询 + SSE 流；UI 事件用同源 JSON 路由       |
+| 安全     | loopback 围栏 ✅                         | + workspace 门（路径必须属于注册 workspace） |
+| 持久化   | $DSH_HOME 防抖原子写 ✅                  | 一致                                         |
+| 生命周期 | ctx.effect ✅                            | 一致；另有 mount-once 防重复挂载             |
+| 构建     | 纯 JS ESM                                | TS 双端编译 + tsdown                         |
 
 > 生态验证：官方 Slot 系统是 UI 插件的正路（设置卡片、会话槽位、全局挂载各有适用场景）；本仓库侧边栏统一用宿主原生 `sidebarRightTabs` + keyed 席位。

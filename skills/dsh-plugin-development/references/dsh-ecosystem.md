@@ -4,11 +4,11 @@
 
 ## 官方资源
 
-| 资源                        | 地址                                                                                                          | 说明                                                                                                                  |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| 官方插件开发 skill          | https://github.com/dsh-io/dsh-plugin-skill                                                                    | 权威 `defineTool` API、schema 规则、项目布局与工作流；适配 Claude Code / Codex / Cursor / Gemini CLI / opencode       |
-| 脚手架 CLI                  | `npx @dsh-io/dsh-dev scaffold <name>`                                                                         | 生成官方工具型插件布局                                                                                                |
-| 核心包                      | `@deepseek-ai/cordis`（容器）、`@deepseek-ai/dsh-tools`（defineTool）、`@deepseek-ai/dsh-llm`（ContentBlock） | 官方 TS 骨架用；本仓库纯 JS 插件用 `cordis` peer + link 安装                                                          |
+| 资源               | 地址                                                                                                          | 说明                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 官方插件开发 skill | https://github.com/dsh-io/dsh-plugin-skill                                                                    | 权威 `defineTool` API、schema 规则、项目布局与工作流；适配 Claude Code / Codex / Cursor / Gemini CLI / opencode |
+| 脚手架 CLI         | `npx @dsh-io/dsh-dev scaffold <name>`                                                                         | 生成官方工具型插件布局                                                                                          |
+| 核心包             | `@deepseek-ai/cordis`（容器）、`@deepseek-ai/dsh-tools`（defineTool）、`@deepseek-ai/dsh-llm`（ContentBlock） | 官方 TS 骨架用；本仓库纯 JS 插件用 `cordis` peer + link 安装                                                    |
 
 ## 插件市场与收录
 
@@ -27,12 +27,12 @@
 
 ## 生态中的常见插件形态
 
-| 形态                          | 关键 API                                                         | 例子                                       |
-| ----------------------------- | ---------------------------------------------------------------- | ------------------------------------------ |
-| 工具型（agent 可调用函数）    | `ctx.tools.register(defineTool(...))`                            | 天气、记忆、搜索等纯工具                   |
-| 页面型（宿主原生侧边栏）      | client 端 `ctx.sidebarRightTabs.register` + keyed 席位 `sidebar.right.pane.tab` | 本仓库 dsh-file-activity                   |
-| 混合型                        | 工具 + 页面 + server 事件/路由                                   | 常见于需要 UI 的完整插件                   |
-| 市场嵌入型                    | 把插件市场装进 dsh 本体                                          | dsh1024（`dsh plugin add dsh1024@latest`） |
+| 形态                       | 关键 API                                                                        | 例子                                       |
+| -------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------ |
+| 工具型（agent 可调用函数） | `ctx.tools.register(defineTool(...))`                                           | 天气、记忆、搜索等纯工具                   |
+| 页面型（宿主原生侧边栏）   | client 端 `ctx.sidebarRightTabs.register` + keyed 席位 `sidebar.right.pane.tab` | 本仓库 dsh-file-activity                   |
+| 混合型                     | 工具 + 页面 + server 事件/路由                                                  | 常见于需要 UI 的完整插件                   |
+| 市场嵌入型                 | 把插件市场装进 dsh 本体                                                         | dsh1024（`dsh plugin add dsh1024@latest`） |
 
 ## 常见生态差异提醒
 

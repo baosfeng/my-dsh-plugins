@@ -51,13 +51,13 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 
 ## 插件形态（先决策）
 
-| 形态                                           | 面向                                                | 关键 API                                                                                                                                                     |
-| ---------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **工具型插件**（注册 agent 工具）              | 提供 agent 可调用的函数（天气/搜索/记忆等纯工具）   | server 端 `ctx.tools.register(defineTool(...))`，详见 [dsh-tools-api.md](references/dsh-tools-api.md)                                                        |
-| **侧边栏页签 / 预览器**（宿主原生扩展点）                                       | 在侧边栏提供新页面或文件预览                        | client 端 `ctx.sidebarRightTabs.register(...)` + keyed 席位 `sidebar.right.pane.tab`；文件预览器 `ctx.documentPreviews`（见 [references/better-sidebar-api.md](references/better-sidebar-api.md)） |
-| **纯 server 插件**                             | 事件监听 / HTTP 路由 / 持久化                       | `apply(ctx)` + `ctx.on` / `webServer`                                                                                                                        |
-| **两者混合**（最常见）                         | 页面 + 后端逻辑                                     | 两端都写，client 通过 HTTP 路由或事件上报 server                                                                                                             |
-| **agent preset 资产包**                        | 提供模式选择器里的 agent 预设（如「插件开发模式」） | `agent.cordis.yml` + `preset.yml` + 自带 `skills/`；**不挂 profile**，复制到 `$DSH_HOME/.agent-presets/<id>/` 后由宿主 `@deepseek-ai/dsh-agent-presets` 发现 |
+| 形态                                      | 面向                                                | 关键 API                                                                                                                                                                                           |
+| ----------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **工具型插件**（注册 agent 工具）         | 提供 agent 可调用的函数（天气/搜索/记忆等纯工具）   | server 端 `ctx.tools.register(defineTool(...))`，详见 [dsh-tools-api.md](references/dsh-tools-api.md)                                                                                              |
+| **侧边栏页签 / 预览器**（宿主原生扩展点） | 在侧边栏提供新页面或文件预览                        | client 端 `ctx.sidebarRightTabs.register(...)` + keyed 席位 `sidebar.right.pane.tab`；文件预览器 `ctx.documentPreviews`（见 [references/better-sidebar-api.md](references/better-sidebar-api.md)） |
+| **纯 server 插件**                        | 事件监听 / HTTP 路由 / 持久化                       | `apply(ctx)` + `ctx.on` / `webServer`                                                                                                                                                              |
+| **两者混合**（最常见）                    | 页面 + 后端逻辑                                     | 两端都写，client 通过 HTTP 路由或事件上报 server                                                                                                                                                   |
+| **agent preset 资产包**                   | 提供模式选择器里的 agent 预设（如「插件开发模式」） | `agent.cordis.yml` + `preset.yml` + 自带 `skills/`；**不挂 profile**，复制到 `$DSH_HOME/.agent-presets/<id>/` 后由宿主 `@deepseek-ai/dsh-agent-presets` 发现                                       |
 
 > `ctx.sidebarRightTabs` / `ctx.slots` / `ctx.sidebarRight` / `ctx.documentPreviews` **只存在于 client 端**。server 端需要侧边栏数据时走本插件自己的 HTTP 路由（`/<插件名>/api/*`），不要假设这些服务存在。
 
@@ -142,20 +142,25 @@ window.__ModuleLoader__.load({
 
     exports.apply = function apply(ctx) {
       // 第一步：页签「类型」（disposer 必须包在 effect 里）
-      ctx.effect(() => ctx.sidebarRightTabs.register({
-        id: TAB_ID,
-        kind: TAB_KIND, // 省略 patterns = 页面类型（按 kind 打开）
-        title: () => '页面名', // chip 初始文本，打开时捕获
-        guide: [{ order: 20, title: () => '页面名' }], // 省略 guide = 进不了侧边栏引导页
-      }))
-      // 第二步：「正文」keyed 席位（key = 上面定义的 id，官方形态）
-      ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
-        { name: 'sidebar.right.pane.tab', key: TAB_ID },
-        ({ useTabInfo, sessionId }) => createElement(Page, {
-          sessionId,
-          visible: useTabInfo().tab.visible !== false, // 折叠或非激活时暂停轮询
+      ctx.effect(() =>
+        ctx.sidebarRightTabs.register({
+          id: TAB_ID,
+          kind: TAB_KIND, // 省略 patterns = 页面类型（按 kind 打开）
+          title: () => '页面名', // chip 初始文本，打开时捕获
+          guide: [{ order: 20, title: () => '页面名' }], // 省略 guide = 进不了侧边栏引导页
         }),
-      )))
+      )
+      // 第二步：「正文」keyed 席位（key = 上面定义的 id，官方形态）
+      ctx.effect(() =>
+        ctx.slots.inject('sidebar.right.pane.tab', () =>
+          ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, ({ useTabInfo, sessionId }) =>
+            createElement(Page, {
+              sessionId,
+              visible: useTabInfo().tab.visible !== false, // 折叠或非激活时暂停轮询
+            }),
+          ),
+        ),
+      )
     }
 
     return module.exports

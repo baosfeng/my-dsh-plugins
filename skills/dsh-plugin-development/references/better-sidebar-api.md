@@ -7,19 +7,24 @@
 
 **本仓库实测用到的四个服务**（只经 Cordis 服务名取，不 require 宿主包）：
 
-| 服务名 | 用途 |
-| --- | --- |
-| `sidebarRightTabs` | 页签**类型**注册表：`register({ id, kind, patterns?, priority?, canOpen?, title, guide? })` |
-| `slots` | keyed 席位注册：正文 `sidebar.right.pane.tab`、标题 `sidebar.right.pane.tab.title`，key = 类型 `id` |
-| `sidebarRight` | 导航控制器：`openTab(kind, opts)` / `openResource(address, opts)` / `close` / `split` / `float` |
-| `documentPreviews` | 文件预览器注册表（`extensions` / `priority`），由 `text` 页签工具栏调用 |
+| 服务名             | 用途                                                                                                |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| `sidebarRightTabs` | 页签**类型**注册表：`register({ id, kind, patterns?, priority?, canOpen?, title, guide? })`         |
+| `slots`            | keyed 席位注册：正文 `sidebar.right.pane.tab`、标题 `sidebar.right.pane.tab.title`，key = 类型 `id` |
+| `sidebarRight`     | 导航控制器：`openTab(kind, opts)` / `openResource(address, opts)` / `close` / `split` / `float`     |
+| `documentPreviews` | 文件预览器注册表（`extensions` / `priority`），由 `text` 页签工具栏调用                             |
 
 ```js
 exports.inject = ['slots', 'sidebarRightTabs'] // 声明式依赖：服务就绪后插件才激活
 exports.apply = function apply(ctx) {
   ctx.effect(() => ctx.sidebarRightTabs.register({ id: PKG, kind: PKG + ':page', title: () => '页面名' }), 'tab type')
-  ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () =>
-    ctx.slots.register({ name: 'sidebar.right.pane.tab', key: PKG }, Body)), 'tab body')
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.right.pane.tab', () =>
+        ctx.slots.register({ name: 'sidebar.right.pane.tab', key: PKG }, Body),
+      ),
+    'tab body',
+  )
 }
 ```
 

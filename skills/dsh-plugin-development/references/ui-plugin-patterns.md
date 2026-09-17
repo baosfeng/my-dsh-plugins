@@ -1,8 +1,6 @@
-# dsh UI 插件实现思路调研（2026-08）
+# dsh UI 插件实现思路
 
-> 调研样本：zhu1090093659/dsh-web-ui（5500★，UI 插件全家桶 monorepo，18+ 插件包）、omdsh-dev/DSH-better-sidebar（右侧面板服务）、nexu-io/open-design（dsh-runtime 设计引擎）、amruthpillai/reactive-resume（dsh-plugin 简历应用）、官方 dsh-io/dsh-plugin-skill；第二轮：Nagi-ovo/dsh-visualize（生成式 UI）、bowenliang123/dsh-context（上下文面板+slash 命令）、toolclub/dsh-agent-team-gui、Fishquito7/dsh-skill-viewer（技能/MCP 面板）、Noob-stupid/dsh-plugin-hub（插件管理面板）、ccch1mneyyy/dsh-TUI + working-activity、ZSeven-W/dsh-ios（iOS 模拟器）、NanmiCoder/dsh-agent-teams（开发文档踩坑蒸馏）。
->
-> ⚠️ **实战踩坑清单（14+ 项目蒸馏）见 [dsh-plugin-pitfalls.md](dsh-plugin-pitfalls.md)**——开发前必读。
+> ⚠️ **实战踩坑清单见 [dsh-plugin-pitfalls.md](dsh-plugin-pitfalls.md)**——开发前必读。
 
 ## 一、项目形态：monorepo 全家桶 vs 单包
 
@@ -61,7 +59,7 @@ my-plugin/
 - CSS Modules（如 `pet.module.css`）+ 主题。
 - 皮肤/主题类 UI：`skin.json` 清单 + 资产目录，由**皮肤中心**唯一加载器动态加载（插件负责逻辑、皮肤负责外观）。
 
-## 五·二、第二轮调研：新发现模式（2026-08）
+## 五·二、新发现模式
 
 | 模式                   | 代表             | 思路                                                                                                                                                                                                          |
 | ---------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

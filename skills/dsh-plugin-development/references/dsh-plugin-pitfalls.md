@@ -1,16 +1,13 @@
 # dsh 插件开发踩坑清单（社区实战蒸馏）
 
-> 来源：调研 dsh-web-ui、better-sidebar、dsh-agent-teams、dsh-plugin-hub、dsh-skill-viewer、dsh-ios、dsh-visualize、dsh-TUI、working-activity 等 14+ 项目的 README / 开发文档 / 已知限制，均为实战遇到并修复过的问题。按类别组织，开发前过一遍。
+> 来源：社区实战踩坑蒸馏（各项目 README / 开发文档 / 已知限制），均为实战遇到并修复过的问题。按类别组织，开发前过一遍。
 
 ## A. 版本兼容（最常踩）
 
-| 坑                                              | 现象                                                                                                                                  | 解决                                                                                                                                                                   |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`webServer` / `httpServer` 键名变动**         | npm `latest`（rc.1）服务键是 `ctx.httpServer`，`next`（rc.2）重命名为 `ctx.webServer`                                                 | 过渡期双键回退：`ctx.get('webServer') ?? ctx.get('httpServer')`（新键优先、旧键回退）；`internal/service` 事件同时监听两组键再补注册                                   |
-| **`workspace` → `workspaceRegistry` 重命名**    | 同上一并发生                                                                                                                          | 同上双键回退                                                                                                                                                           |
-| **settings slot 形状变化**                      | DSH 0.1.0-rc.6 起 loader entry 应用阶段直接拒绝 keyed slot `settings.plugin.item` 缺 `key` 的注册 → "Failed to load plugins" 启动失败 | 列表席位 `settings.plugins.tab` 必须传 `id`（本仓库用法）；keyed 卡片 `settings.plugin.item` 必须传 `key`（= 命名空间）；整页式需求走分区 slot `settings.section`      |
-| **DSH 破坏面清单**                              | 大版本升级后静默不兼容                                                                                                                | plugin-hub 归纳破坏点：patch 语义、`webServer.register` 形状、loader entry 形状、`dsh.client` bundle 格式、`settings.plugins.tab` slot；升级后显示兼容警告而非静默失败 |
-| **pnpm 安装 `@deepseek-ai/dsh-type-meta` 失败** | 官方 SDK 声明了未发布 peer，pnpm 硬失败（npm 优雅跳过）                                                                               | `pnpm-workspace.yaml` 加 `overrides: { "@deepseek-ai/dsh-type-meta": "npm:@deepseek-ai/dsh-invariants@0.0.1-rc.1" }`                                                   |
+| 坑                         | 现象                                                                                                                | 解决                                                                                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **settings slot 形状变化** | loader entry 应用阶段直接拒绝 keyed slot `settings.plugin.item` 缺 `key` 的注册 → "Failed to load plugins" 启动失败 | 列表席位 `settings.plugins.tab` 必须传 `id`（本仓库用法）；keyed 卡片 `settings.plugin.item` 必须传 `key`（= 命名空间）；整页式需求走分区 slot `settings.section`      |
+| **DSH 破坏面清单**         | 大版本升级后静默不兼容                                                                                              | plugin-hub 归纳破坏点：patch 语义、`webServer.register` 形状、loader entry 形状、`dsh.client` bundle 格式、`settings.plugins.tab` slot；升级后显示兼容警告而非静默失败 |
 
 ## 二、激活/生命周期
 

@@ -1,6 +1,6 @@
 ---
 title: 官方文档 · 宿主 API 速查
-description: 按「要做什么」定位宿主 API 的官方页面与一句话语义，杜绝按名字猜语义 — 三条查询正路 + 任务入口表 + Cordis 心智模型 + 能力接缝 + 术语译名
+description: 按「要做什么」定位宿主 API 的官方页面与一句话语义，杜绝按名字猜语义 — 四条查询正路 + 任务入口表 + Cordis 心智模型 + 能力接缝 + 术语译名
 ---
 
 # 宿主 API 速查（查哪里 + 一句话语义）
@@ -9,7 +9,7 @@ description: 按「要做什么」定位宿主 API 的官方页面与一句话�
 >
 > 链接前缀均为 `https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/`（中文版 `*.zh.md`）。本地参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`，可直接 grep。分域导航见同目录 [子系统地图](子系统地图.md)、文档总览见 [索引](索引.md)。
 
-## 一、查 API 的三条正路
+## 一、查 API 的四条正路
 
 **正路 1 — 精准语义：子系统页（首选）**
 
@@ -17,10 +17,10 @@ description: 按「要做什么」定位宿主 API 的官方页面与一句话�
 
 ```bash
 cd /Users/bsfeng/IdeaProjects/deepseek-harness/docs
-ls subsystems                                          # 58 页清单，文件名即子系统名
-grep -rln '^## Cordis API' subsystems/*.zh.md          # 49 页带 Cordis API 小节
-grep -rh '^### `ctx\.' subsystems/*.zh.md              # 全部 76 个 ctx 服务小节
-grep -rh '^### `[a-z-]*/\*` events' subsystems/*.zh.md # 全部 26 个事件域小节
+ls subsystems                                          # 子系统页清单（文件名即子系统名；页数随版本增删，别记数字）
+grep -rln '^## Cordis API' subsystems/*.zh.md          # 带 Cordis API 小节的页
+grep -rh '^### `ctx\.' subsystems/*.zh.md              # 全部 ctx 服务小节
+grep -rh '^### `[a-z-]*/\*` events' subsystems/*.zh.md # 全部事件域小节
 ```
 
 **正路 2 — 判定「谁能替换、谁发谁收」**
@@ -42,6 +42,18 @@ grep -n '<包名>' module-graph.zh.md                              # peer 依赖
 ```
 
 四份在线目录：[tool-catalog](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/tool-catalog.zh.md) · [config-catalog](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/config-catalog.zh.md) · [persistence-catalog](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/persistence-catalog.zh.md) · [module-graph](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/module-graph.zh.md)。四者都是生成物：**不要通读、不要手改、不要整篇复制进本仓库**。`module-graph` 没有小节标题，只能按包名 grep。
+
+**正路 4 — 定义点与调用链：本地知识图谱（补官方 docs 的盲区）**
+
+官方 subsystems 页（在参考源的 `/Users/bsfeng/IdeaProjects/deepseek-harness/docs/subsystems/` 下）只覆盖**有页面的**子系统。判「这个 API 到底存不存在、定义在哪个包哪一行、谁调用谁」用图谱（full 索引已建）：
+
+```bash
+CBM=~/.local/bin/codebase-memory-mcp; P=Users-bsfeng-IdeaProjects-deepseek-harness
+$CBM cli search_graph --project $P --query "<符号名>"     # 定义点 → 限定名 + 文件:行
+$CBM cli trace_path  --project $P --function-name "<qn>" --direction outbound --depth 2
+```
+
+实测：`webRuntime` 官方**无文档页**，图谱给出 `packages/web/web/src/index.ts:90` 的 `WebRuntime` 类；`agent/turn-stopping` 的 serial 契约由 `packages/core/agent-loop/src/agent.ts:317` 的 `dispatch.serial(...)` 证明（官方事件页只列事件名，不给 serial/parallel）。**注意：单看 `--query` 返回 0 不能判"不存在"——四个通道全空才可以**（判据与通道清单见[索引](索引.md) 第十节；`ctx.bundler` 即四通道全空，见[本仓库重点](本仓库重点.md)）。索引边界与重建方式见[索引](索引.md) 第十节。
 
 ## 二、按「我要做什么」找入口
 

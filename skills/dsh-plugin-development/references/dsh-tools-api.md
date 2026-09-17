@@ -92,15 +92,6 @@ my-tool/
 
 **tsconfig.json：** `module/moduleResolution: NodeNext`、`target: ES2022`、`strict: true`、`rootDir: src`、`outDir: lib`、`declaration: true`。
 
-**pnpm-workspace.yaml（仅 pnpm）：** 曾有版本让 `@deepseek-ai/dsh-session` 声明未发布的 peer `@deepseek-ai/dsh-type-meta`（npm 会优雅跳过，pnpm 硬失败）：
-
-```yaml
-overrides:
-  '@deepseek-ai/dsh-type-meta': 'npm:@deepseek-ai/dsh-invariants@0.0.1-rc.1'
-```
-
-> ⚠️ **待人工确认**：官方 refs（已复核到 `0.1.6-alpha.2`）与本机安装的 `0.1.5-rc.1` 的 `@deepseek-ai/*` 包中都没命中 `dsh-type-meta`，该 peer 是否仍存在未核实。仅当 pnpm 安装**真的报这个 peer 缺失**时才加上述 override——先读报错，不要预防性写入。
-
 ## 开发流程
 
 1. **起手式（官方无 scaffold 命令）**：`mkdir -p scratch-plugin/src` 写模块，再手写 `package.json` 与 patch 文件挂到活 harness（官方 [index.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/index.zh.md)）。社区脚手架 `npx @dsh-io/dsh-dev scaffold <name>` 是**第三方、非官方**产物，官方没有 scaffold 命令；用前自行核实其可用性。
@@ -112,18 +103,17 @@ overrides:
 
 ## 常见错误
 
-| 错误                                                     | 修复                                                                                         |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `ctx.tools.register('name', { run(...) })` 或对象映射    | API 是 `ctx.tools.register(defineTool({...}))` —— 每个工具一个对象，用 `execute` 不是 `run`  |
-| 忘记 `export const inject = ['tools']`                   | 运行时 `ctx.tools` 是 undefined，插件崩溃 "no service available"                             |
-| 省略 `output`                                            | 类型不合法，defineTool 必填                                                                  |
-| `required: ['city']` 数组或 `required: false`            | 只用属性级 `required: true`；其他写法破坏类型推断                                            |
-| 对象 schema 缺 `additionalProperties`                    | 显式加 `additionalProperties: false`                                                         |
-| 从 `koishi` / `@koishijs/...` 导入                       | dsh 用 `@deepseek-ai/cordis`；类型来自 `@deepseek-ai/dsh-tools`（augment cordis 的 Context） |
-| patch 的 `id` 与 `export const name` 不一致              | 合并按 id 进行；不一致会静默导致工具未注册                                                   |
-| patch 相对路径错误                                       | `dsh.bundle.patch` 必须是相对包根目录的路径，且 patch 文件必须在 `files` 里随包发布          |
-| pnpm 安装报未发布 peer `@deepseek-ai/dsh-type-meta` 缺失 | 先确认报错内容；确为该 peer（**待人工确认**，见上）才加 `pnpm-workspace.yaml` override       |
-| 工具注册了但 agent 从不调用                              | description 写得不够好 —— 那是 agent 决策的依据                                              |
+| 错误                                                  | 修复                                                                                         |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `ctx.tools.register('name', { run(...) })` 或对象映射 | API 是 `ctx.tools.register(defineTool({...}))` —— 每个工具一个对象，用 `execute` 不是 `run`  |
+| 忘记 `export const inject = ['tools']`                | 运行时 `ctx.tools` 是 undefined，插件崩溃 "no service available"                             |
+| 省略 `output`                                         | 类型不合法，defineTool 必填                                                                  |
+| `required: ['city']` 数组或 `required: false`         | 只用属性级 `required: true`；其他写法破坏类型推断                                            |
+| 对象 schema 缺 `additionalProperties`                 | 显式加 `additionalProperties: false`                                                         |
+| 从 `koishi` / `@koishijs/...` 导入                    | dsh 用 `@deepseek-ai/cordis`；类型来自 `@deepseek-ai/dsh-tools`（augment cordis 的 Context） |
+| patch 的 `id` 与 `export const name` 不一致           | 合并按 id 进行；不一致会静默导致工具未注册                                                   |
+| patch 相对路径错误                                    | `dsh.bundle.patch` 必须是相对包根目录的路径，且 patch 文件必须在 `files` 里随包发布          |
+| 工具注册了但 agent 从不调用                           | description 写得不够好 —— 那是 agent 决策的依据                                              |
 
 ## 快速参考
 

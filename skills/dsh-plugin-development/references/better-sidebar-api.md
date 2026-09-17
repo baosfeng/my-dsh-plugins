@@ -39,4 +39,4 @@ exports.apply = function apply(ctx) {
 - `registerFileViewer`（已废弃）→ `ctx.documentPreviews.register(...)`（字节由文档 owner 读，职责与旧 API 相反）
 - `openTab`/`closeTab`/`activateTab`/`updateTab`/`getTabs`（已废弃）→ `ctx.sidebarRight.openTab`/`openResource`；其余无原生等价（本仓库 0 命中）
 
-> 迁移期取舍、浮窗与降级语义见 [侧边栏原生 API 迁移指南](../../../docs/开发指南/侧边栏原生API迁移指南.md)。
+> 迁移期取舍、浮窗与降级语义见 [宿主原生侧边栏扩展点](../../../docs/开发指南/侧边栏原生API迁移指南.md)。

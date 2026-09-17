@@ -8,7 +8,7 @@
 // disk report the new version. Measured on one machine with an identical
 // `git describe`: the pre-upgrade process answered unauthenticated
 // `agentPreset.list` with `ok:true`, the post-upgrade process answered 401
-// (see DSH-0.1.2-A1-08). The disk cannot tell the two apart; only replies can.
+// (the auth gate). The disk cannot tell the two apart; only replies can.
 //
 // Three checks:
 //   1. process start time (`ps -o lstart=`) vs the checkout's last change
@@ -50,8 +50,8 @@ export function judgeGhost(processStart, checkoutLastChange) {
 
 /**
  * Classify a host's wire generation by its reply to an unauthenticated
- * `agentPreset.list` POST: 401 ⇒ new wire (0.1.2-alpha.1+ auth gate),
- * `result.ok === true` ⇒ old wire (pre-0.1.2), anything else ⇒ unknown.
+ * `agentPreset.list` POST: 401 ⇒ new wire (the auth gate is present),
+ * `result.ok === true` ⇒ old wire (no auth gate), anything else ⇒ unknown.
  */
 export function classifyProbeReply(status, body) {
   if (status === 401) return 'new-wire'
@@ -72,7 +72,7 @@ export function argvReferencesCheckout(argv, checkoutRealPath, resolvePath) {
 
 function run(cmd, args) {
   // LC_ALL=C pins `ps -o lstart=` to the English month grammar parseLstart expects —
-  // localized output (e.g. French) would otherwise parse to Invalid Date (#94 review).
+  // localized output (e.g. French) would otherwise parse to Invalid Date.
   return execFileSync(cmd, args, { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } }).trim()
 }
 
@@ -141,7 +141,7 @@ async function main() {
       const generation = classifyProbeReply(res.status, body)
       console.log(generation === 'unknown'
         ? `probe: port ${portArg} replied HTTP ${res.status} with an unrecognized shape — treat the generation as unknown, do not guess.`
-        : `probe: port ${portArg} speaks ${generation === 'new-wire' ? 'the NEW wire (401 without auth; 0.1.2-alpha.1+)' : 'the OLD wire (unauthenticated reply; pre-0.1.2)'}.`)
+        : `probe: port ${portArg} speaks ${generation === 'new-wire' ? 'the NEW wire (401 without auth; auth gate present)' : 'the OLD wire (unauthenticated reply; no auth gate)'}.`)
     } catch (error) {
       console.log(`probe: port ${portArg} unreachable (${error instanceof Error ? error.message : String(error)}) — host down, or wrong port.`)
     }

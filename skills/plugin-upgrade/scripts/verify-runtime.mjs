@@ -10,8 +10,8 @@
 // endpoint lets boot reach the model stage with a deterministic transport
 // signature, because DSH asserts plugin-tree activation BEFORE any model call.
 // A broken plugin fails activation in ~1s; a healthy one only fails later at
-// the (dead) transport stage. On DSH 0.1.2 the agent retries the dead endpoint
-// silently, so liveness through the probe window is the pass signal there.
+// the (dead) transport stage. When the host retries a dead endpoint silently,
+// liveness through the probe window is the pass signal.
 //
 // Usage: node skills/plugin-upgrade/scripts/verify-runtime.mjs <plugin-spec> [options] — the full
 // contract (options, exit codes, the honest NOT-a-sandbox security boundary,
@@ -34,8 +34,8 @@ const TRANSPORT_RE = /TRANSPORT|STREAM_CLOSED|EMPTY_RESPONSE|ECONNREFUSED|ECONNR
 const MODULE_RESOLVE_RE = /ERR_MODULE_NOT_FOUND|esm\/loader|Cannot find module/i
 const ACTIVATION_RE = /1 entry did not activate|plugin tree failed to load|did not activate|must be a top-level YAML array of loader patch entries/
 // Only a wait for the webServer service means "wrong environment, re-probe
-// under the web host": a plugin waiting for a REMOVED service (e.g. apiProxy,
-// the #5120 signature) is an activation failure that migration must fix.
+// under the web host": a plugin waiting for a REMOVED service is an activation
+// failure that migration must fix.
 // Plural form included: a host-side wait can list several services; matching
 // only the singular form missed those cases (root cause of a mass
 // misjudgement batch in the original fleet).
@@ -79,8 +79,8 @@ available on Windows.
 
 Verdict semantics: pass requires either a transport-only signature (pass-boot-
 probe), a clean exit 0 (pass-exit-0), or a genuine probe timeout with neither
-a failure signature nor any non-transport error line (pass-timeout-alive — on
-DSH 0.1.2 the agent retries a dead model endpoint silently, so liveness
+a failure signature nor any non-transport error line (pass-timeout-alive — when
+the host retries a dead model endpoint silently, liveness
 through the window is the pass signal; error noise downgrades to
 inconclusive). Service waits other than webServer and mixed error signatures
 are reported as inconclusive on purpose: they need human judgement.`
@@ -103,7 +103,7 @@ export function hasNonTransportError(log) {
  * wait (inconclusive) > non-transport Error veto (inconclusive) > transport
  * signature (= tree loaded, PASS). The activation ASSERTION outranks a plain
  * service wait because the host's own "entry did not activate" text is the
- * authoritative migration signal (#5120: waiting for a removed service IS an
+ * authoritative migration signal (waiting for a removed service IS an
  * activation failure). Returns null when nothing matches. */
 export function diagnoseBootLog(log) {
   if (HOST_WAIT_RE.test(log)) return { verdict: 'env-needs-service-host', attribution: 'profile-config' }
@@ -505,9 +505,9 @@ export async function verifyRuntime(rawSpec, options = {}) {
       // A spawnSync ETIMEDOUT with no failure signature AND no non-transport
       // error line: the host booted, the activation assertion passed (broken
       // plugins fail it loudly in ~1s) and the session stayed alive until the
-      // probe window closed. On 0.1.2 the agent retries a dead model endpoint
+      // probe window closed. When the agent retries a dead model endpoint
       // silently instead of printing TRANSPORT (error-stream contract
-      // change), so liveness-through-the-window IS the pass signal. A timeout
+      // change), liveness-through-the-window IS the pass signal. A timeout
       // WITH unrelated error noise is inconclusive, not a pass (cross-model
       // review decision: three independent reviewers flagged the noise-free
       // requirement).

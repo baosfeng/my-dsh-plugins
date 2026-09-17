@@ -3,7 +3,7 @@
  *
  * 为什么单独成模块：这两个文件的内容**逐字来自 HTTP**（`api.github.com` 的
  * `commits[].commit.message` 等字段），随后被 `writeFileSync` 落盘。CodeQL
- * js/http-to-file-access 标注的正是这条"网络数据 → 文件"路径（#314 告警 #29/#30）。
+ * js/http-to-file-access 标注的正是这条"网络数据 → 文件"路径。
  *
  * 判定与处置：属**设计使然**（本脚本的产物就是"两个版本之间的提交清单"），
  * 因此不做"阻断"，而是把不可信字段**净化后再写**：

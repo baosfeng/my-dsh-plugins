@@ -1,14 +1,14 @@
 # dsh 插件生态参考（外部资源与分发通道）
 
-> 调研整理（2026-08）。本仓库插件开发遇到生态问题时参考。
+> 本仓库插件开发遇到生态问题（官方资源、市场价格、分发通道）时参考。
 
 ## 官方资源
 
-| 资源               | 地址                                                                                                          | 说明                                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| 官方插件开发 skill | https://github.com/dsh-io/dsh-plugin-skill                                                                    | 权威 `defineTool` API、schema 规则、项目布局与工作流；适配 Claude Code / Codex / Cursor / Gemini CLI / opencode |
-| 脚手架 CLI         | `npx @dsh-io/dsh-dev scaffold <name>`                                                                         | 生成官方工具型插件布局                                                                                          |
-| 核心包             | `@deepseek-ai/cordis`（容器）、`@deepseek-ai/dsh-tools`（defineTool）、`@deepseek-ai/dsh-llm`（ContentBlock） | 官方 TS 骨架用；本仓库纯 JS 插件用 `cordis` peer + link 安装                                                    |
+| 资源               | 地址                                                                                                          | 说明                                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 官方插件开发 skill | https://github.com/dsh-io/dsh-plugin-skill                                                                    | 权威 `defineTool` API、schema 规则、项目布局与工作流；适配 Claude Code / Codex / Cursor / Gemini CLI / opencode             |
+| 脚手架 CLI         | `npx @dsh-io/dsh-dev scaffold <name>`                                                                         | **第三方、非官方**产物：生成工具型插件布局；官方没有 scaffold 命令，用前自行核实（见 [dsh-tools-api.md](dsh-tools-api.md)） |
+| 核心包             | `@deepseek-ai/cordis`（容器）、`@deepseek-ai/dsh-tools`（defineTool）、`@deepseek-ai/dsh-llm`（ContentBlock） | 官方 TS 骨架用；本仓库纯 JS 插件用 `cordis` peer + link 安装                                                                |
 
 ## 插件市场与收录
 

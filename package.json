@@ -33,7 +33,8 @@
     "deps:matrix": "node scripts/deps-matrix.mjs",
     "deps:matrix:md": "node scripts/deps-matrix.mjs --markdown",
     "deps:matrix:offline": "node scripts/deps-matrix.mjs --offline",
-    "harness:ref": "node scripts/harness-ref.mjs"
+    "harness:ref": "node scripts/harness-ref.mjs",
+    "index:self": "node scripts/index-self.mjs"
   },
   "lint-staged": {
     "*.{js,mjs}": [

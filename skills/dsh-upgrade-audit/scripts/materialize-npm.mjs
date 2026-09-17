@@ -183,7 +183,7 @@ if (githubRepo) {
     const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/compare/${range}`)
     if (res.ok) {
       const data = await res.json()
-      // #314 js/http-to-file-access（告警 #29/#30）：提交清单逐字来自 HTTP，落盘前必须净化
+      // CodeQL js/http-to-file-access：提交清单逐字来自 HTTP，落盘前必须净化
       // （控制字符/换行/超长消息），净化实现与理由见 ./lib/commit-lines.mjs。
       const commits = commitLines(data.commits)
       writeFileSync(join(out, 'commits.txt'), commits.join('\n') + '\n')

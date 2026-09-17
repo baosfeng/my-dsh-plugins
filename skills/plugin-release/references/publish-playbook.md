@@ -1,8 +1,7 @@
 # publish-playbook · Packaging, publishing, and distribution recipes
 
 > Load-on-demand operational recipes that carry on the decision flow of [../SKILL.md](../SKILL.md).
-> All conclusions come from two rounds of real publishing practice across the 17 plugin repositories
-> in the omdsh-dev organization (rc.2 → alpha.1 → alpha.2); where a scenario is not covered,
+> All conclusions come from real publishing practice; where a scenario is not covered,
 > defer to primary sources and mark the item as pending confirmation.
 
 ## Unpublished cohort installation (recipe R-01)
@@ -97,8 +96,3 @@ The script only validates inputs and never publishes, tags, or queries the netwo
 2. GitHub direct-install track: delete/move the tag; consumers re-point at the old commit as needed;
 3. Do migrations and publishing in an isolated workspace (branch/worktree), never mixed into one commit with feature changes;
 4. On failure, roll back only the paths owned by this run (tag, lockfile, manifest) and report residual side effects of third-party install scripts.
-
-## Pending confirmation
-
-- After the 0.1.2 final dist-tag and final tag name are published, re-verify the unpublished-cohort recipes;
-- The pnpm version sensitivity (see above) comes from a single field report; keep it marked as pending confirmation until reproduced.

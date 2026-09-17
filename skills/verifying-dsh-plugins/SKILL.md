@@ -40,7 +40,7 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
   `without inject` / `cannot get property` / `missed the module table` / `duplicate loader entry`）。
   命中即 `exit 1`，输出**崩溃栈关键行 + 隔离实例日志路径**。
   ⚠️ 为什么这么严：`dsh web` **先监听端口、后加载插件树** —— 插件 `apply` 崩掉时端口已经能回
-  HTTP，只看端口就会把「实例整个起不来」误报成「✓ 就绪 / ✓ 日志无 error」（#298 的 P0 就是这么
+  HTTP，只看端口就会把「实例整个起不来」误报成「✓ 就绪 / ✓ 日志无 error」（这类误报就是这么
   潜伏到用户侧的）。**看到 `✓ 就绪` 不再等于实例活着**，脚本已把这条判死。
 - 非 bundle 插件（agent preset 等）按自身安装方式验证，手写同格式清单并注明验证方式。
 
@@ -138,7 +138,7 @@ NODE_OPTIONS="--import $PROBE" PROBE_LOG=/tmp/probe-test.jsonl PROBE_MATCH=openc
 cat /tmp/probe-control.jsonl /tmp/probe-test.jsonl     # JSONL：{url,hasSessionHeader,sessionHeader,hasAuthorization}
 ```
 
-实测样例（2026-09-11，`dsh-my-opencode-session-header@0.1.0`）：
+实测样例（`dsh-my-opencode-session-header@0.1.0`）：
 
 | 组               | CLI 结果                                                    | 探针记录                                                                                                          |
 | ---------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |

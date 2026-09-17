@@ -1,6 +1,6 @@
 # Profile dependency management recipes
 
-> Carries on the release-track choice of [../SKILL.md](../SKILL.md). This document covers the dependency-resolution facts and operational recipes for installing/updating plugins into `$DSH_HOME/profiles/*`, drawn from the continuous migration of 17 plugin repositories across several version steps. Technical migration pitfalls
+> Carries on the release-track choice of [../SKILL.md](../SKILL.md). This document covers the dependency-resolution facts and operational recipes for installing/updating plugins into `$DSH_HOME/profiles/*`. Technical migration pitfalls
 > (tsbuildinfo, oxc parsing, etc.) are covered in [migration-hygiene](../../plugin-upgrade/references/migration-hygiene.md);
 > this document does not repeat them.
 
@@ -55,8 +55,8 @@ When the package name changes from `@deepseek-ai/dsh-x` to `@org/dsh-x`, the fol
 
 ## 6. Browser-free authentication smoke for custom channels
 
-Since 0.1.2-alpha.1, dsh web uses bootstrap-token + signed-Cookie authentication (see
-[DSH-0.1.2-A1-08 · Web/API channel authentication](https://github.com/oh-my-dsh/dsh-plugin-upgrade-skill/blob/main/skills/plugin-upgrade/references/v0.1.2-alpha.1.md)).
+dsh web authenticates with bootstrap-token + signed-Cookie: the startup output prints an auth URL
+carrying the bootstrap token.
 When a plugin has its own HTTP/RPC channel (such as `/tariff/status`), use the flow below before publishing to prove that "the channel really sits behind the unified authentication", without relying on a browser/Playwright. Known behavior: the token can be exchanged repeatedly within the same process and only rotates on restart; a custom route inherits authentication only when registered through `connection` — a bare `ctx.webServer.register()` does not inherit.
 
 PowerShell (with its own Cookie container):
@@ -101,17 +101,16 @@ degrade gracefully — it crashes at runtime with a symptom that looks unrelated
 **Symptom**: console `TypeError: useConversation is not a function` (or another missing slot seat);
 "restart, hot-reload, edit cordis.patch.yml" all fail to fix it.
 
-**Root cause**: a plugin built against the `0.1.2-alpha.1` client API was installed into
-`0.1.1-rc.2` (npm latest). The two client contracts differ, so the plugin reads a seat the host
-never provided.
+**Root cause**: a plugin built against the newer track's client API was installed into a host from
+the older track. The two client contracts differ, so the plugin reads a seat the host never provided.
 
 **Fix**: pick the plugin version matching the DSH version. Put a one-glance version matrix at the top
 of the plugin README:
 
 | Your DSH | Plugin version to install |
 |---|---|
-| older track (e.g. `0.1.1-rc.x`) | the matching older build, installed by its pinned tag |
-| newer track (e.g. `0.1.2-alpha.x`) | the matching newer build |
+| older track | the matching older build, installed by its pinned tag |
+| newer track | the matching newer build |
 
 > Version ranges shift with every release: always install the build published against your exact DSH version, never the default "latest".
 
@@ -172,8 +171,8 @@ and let the chip distribute them.
 **Symptom**: right after publishing `vX.Y.Z+1`, a consumer on the *latest* install clicks the
 plugin's update chip, installs the new tag, and the chip **still** offers an update to
 `vX.Y.Z+1`. The README matrix, the git tag, and `package.json` all say the new version; only the
-running plugin disagrees. (Real case: dsh-file-trace v0.3.1, 2026-09-04 — the update chip kept
-prompting immediately after the release was pushed.)
+running plugin disagrees. (Real case: the update chip kept prompting immediately after the release
+was pushed.)
 
 **Root cause**: the plugin reads its version via `import pkg from '../../package.json'` in
 **source**, but what ships is the **built bundle** (`lib/client.js`): the bundler replaces the

@@ -5,7 +5,7 @@ description: Use when 开发或修改任何持续运行逻辑（持久化/事件
 
 # 资源预算评审（resource-budget-review）
 
-**核心原则：正确 ≠ 便宜。** 功能正确性（测试覆盖）与资源成本（写放大/CPU/内存）是两件事，后者必须**显式评估并用数字守住**——只验证"它工作"就等于假设"它便宜"，9/2 dsh-my-observability 写放大事故（每 3s 全量重写 3.3MB 状态，24h≈300GB 磁盘、CPU 423%、内存 4.7G）正是这条假设的代价。
+**核心原则：正确 ≠ 便宜。** 功能正确性（测试覆盖）与资源成本（写放大/CPU/内存）是两件事，后者必须**显式评估并用数字守住**——只验证"它工作"就等于假设"它便宜"，dsh-my-observability 写放大事故（每 3s 全量重写 3.3MB 状态，24h≈300GB 磁盘、CPU 423%、内存 4.7G）正是这条假设的代价。
 
 ## 什么时候必须做
 
@@ -26,13 +26,13 @@ description: Use when 开发或修改任何持续运行逻辑（持久化/事件
 | 网络               | SSE/心跳/LLM 流字节 × 频率                            | **< 5 MB/分钟**                         | 每事件全量回传 / 无节流轮询               |
 | 磁盘存量           | 文件大小上界 + 轮转/compact 策略                      | **< 500MB** 且大小有界                  | 只设"条目上限"不设"字节上限"              |
 
-> 三处上限（250MB/5GB）之外的任何预期超限，必须写明理由并让用户确认。
+> 上表六项上限（磁盘 IO <10MB/小时、写放大 ≤1.5、CPU <5% 单核、内存 <200MB、网络 <5MB/分钟、磁盘存量 <500MB）之外的任何预期超限，必须写明理由并让用户确认。
 
 ## 写放大判定（最常踩的坑）
 
 持久化设计的四个问题，按危害排序：
 
-1. **全量序列化 + 高频防抖**（9/2 事故模式）：`debounce(500ms) → writeFile(tmp, JSON.stringify(整个状态))`。事件流持续时写放大 = 状态大小/事件大小 ≈ 数百~数千倍。
+1. **全量序列化 + 高频防抖**（写放大事故模式）：`debounce(500ms) → writeFile(tmp, JSON.stringify(整个状态))`。事件流持续时写放大 = 状态大小/事件大小 ≈ 数百~数千倍。
    **正解**：增量 append（jsonl/追加日志）+ 周期 compact（阈值触发原子快照）。落盘字节 ≈ 事件本体字节。
 2. **条目上限 ≠ 字节上限**：2000 条/会话 × 20000 条全局只限"数量"，不限"每次重写的字节数"和"写入频率"。字节上限同样必须显式设计。
 3. **O(n) 计数/查询在热路径**：每事件全量遍历计数（`countOf`）、每事件全量拷贝。用维护计数器/索引。
@@ -61,7 +61,7 @@ description: Use when 开发或修改任何持续运行逻辑（持久化/事件
 
 没有 profiler 时用系统工具实测：macOS `sample -p <pid> 5`（CPU 栈）、`iostat -d 1`（磁盘吞吐）、`ps -o pid,rss,vsz -p <pid>`（内存）、`lsof -p <pid> | grep REG`（打开文件与偏移）。
 
-## 自动降级（9/2 复盘缺口 3 的对策，issue #127）
+## 自动降级（写放大失控的对策）
 
 **只监控告警不动作 = 事故仍要等人手动介入**。持续运行逻辑必须设计降级路径：
 
@@ -77,7 +77,7 @@ description: Use when 开发或修改任何持续运行逻辑（持久化/事件
 
 要求：判定是纯函数（可单测）；降级中内存/文件仍有界；恢复全量快照一次（内存=真相）；阈值可配置。**不要自己实现看门狗**：用 `dsh-shared` 的 `createResourceGuard`（`collect` 注入采样源、`enterConfirmCount`/`exitConfirmCount` 连续确认、`onDegrade`/`onRecover` 交给宿主动作、`now` 可注入做确定性三态测试），采样源用 `createProcessSampler`。消费方示例：`plugins/dsh-my-observability/src/resource-monitor.ts`（L2 停落盘 + 恢复全量快照）。
 
-## CI 资源冒烟（9/2 复盘缺口 2 的对策，issue #127）
+## CI 资源冒烟
 
 发版前必须有资源回归门禁：`scripts/resource-smoke.mjs`（CI `resource-smoke` job）模拟长会话高频事件流，断言写放大 ≤1.6 / 内存有界 / 降级触发与恢复。新插件接入：在冒烟脚本或自身测试中加入「写放大复现测试」（先 RED 后 GREEN）。
 
@@ -85,8 +85,8 @@ description: Use when 开发或修改任何持续运行逻辑（持久化/事件
 
 - 插件资源安全规范（文档细则）：`docs/开发指南/插件资源安全规范.md`
 - **共享工具包原语清单 + 每个原语的适用边界与反例**：`docs/共享工具包/概述.md`（选型先读这里）
-- 事故复盘与高频插件热点清单：#126 根因、各插件写模式分级见 `docs/踩坑/README.md`
-- dsh-shared 原语（issue #198 统一收口，**默认安全**）：
+- 高频插件热点清单与各插件写模式分级：见 `docs/踩坑/README.md`
+- dsh-shared 原语（统一收口，**默认安全**）：
   - `plugins/dsh-shared/lib/jsonl.js` — 事件流增量 append（`jsonlAppender`）；
   - `lib/persist.js` — 快照原子写（`atomicWriteJson`，默认 1s 节流 + 1MB 上限，`atomicWriteStats()` 计数可观测）；
   - `lib/scheduler.js` — 写入调度（`createWriteScheduler`：防抖 + 最小间隔 + 串行 + `drain()` 确定性就绪信号，替掉测试里的固定 sleep）；

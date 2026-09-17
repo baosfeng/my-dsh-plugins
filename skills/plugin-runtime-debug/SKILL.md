@@ -1,17 +1,17 @@
 ---
 name: plugin-runtime-debug
-description: 使用当 已安装的 DSH Web 插件只在浏览器运行时行为异常——粘贴/附件/合成器功能第一次成功后续失败、chips/面板显示陈旧占位状态、更新芯片报错版本——且修复必须对照精确宿主 API 语义诊断而非按名字猜测时。也用于发版前审查插件对 input-machine/facade verb（insert/consume/remove/subscribe）的调用。
+description: 使用当 已安装的 DSH Web 插件只在浏览器运行时行为异常——粘贴/附件/合成器功能第一次成功后续失败、chips/面板显示陈旧占位状态、更新芯片报错版本——且修复必须对照精确宿主 API 语义诊断而非按名字猜测时。也用于发版前对照宿主源码契约，审查插件对 ctx.slots / ctx.sidebarRightTabs / settings.plugins.tab 等宿主服务的调用。
 ---
 
 # 调试 DSH Web 插件运行时行为（plugin-runtime-debug）
 
 外部 Web 插件调用宿主 client API，其契约在 DSH 源码树里，不在插件自己的类型里。运行时行为偏离意图时，失败几乎总是契约误读——诊断必须来自宿主源码，绝不来自 API 名字。
 
-> **适用范围提示**：下文的 `input-machine`/`facade` verb 是**示例载体**——本仓库 `plugins/` 当前没有任何插件调用它们（实测 0 命中）。方法论（读宿主源码契约、逐个值核对）通用，换成实际在用的 `ctx.slots` / `ctx.sidebarRightTabs` / `settings.plugins.tab` 同样适用；各能力的本仓库实际用法与官方页对照见 [本仓库重点](../../docs/官方文档/本仓库重点.md)。
+> **适用范围提示**：下文以 `ctx.slots` / `ctx.sidebarRightTabs` / `settings.plugins.tab` 等**本仓库实际在用的宿主服务**为示例载体。方法论（读宿主源码契约、逐个值核对）通用，换成插件实际调用的任何宿主服务同样适用；各能力的本仓库实际用法与官方页对照见 [本仓库重点](../../docs/官方文档/本仓库重点.md)。
 
 ## 铁律：先在宿主源码里读 verb 的契约
 
-> 官方契约页导航见 [调试速查](../../docs/官方文档/调试速查.md)；查 `ctx.*` 服务语义先读 [宿主API速查](../../docs/官方文档/宿主API速查.md)。
+> 官方契约页导航见 [调试速查](../../docs/官方文档/调试速查.md)；查 `ctx.*` 服务语义先读 [宿主API速查](../../docs/官方文档/宿主API速查.md)。**判「这个服务/事件是否存在、定义在哪个包哪一行、serial 还是 parallel」用知识图谱**（官方参考源 project `Users-bsfeng-IdeaProjects-deepseek-harness`；查本仓库代码同理，但索引会过期，否定结论前先 `npm run index:self --status`；命令见[官方文档索引](../../docs/官方文档/索引.md) 第十节）——**四个通道全空**才说明它不是宿主能力（别只看 `--query`，它会对真实服务返回 0；通道清单见[官方文档索引](../../docs/官方文档/索引.md) 第十节）。
 
 改任何宿主 API 调用前，打开宿主源码树（npm 全局安装的 `~/.npm-global/lib/node_modules/@deepseek-ai/dsh/`）里实现该 API 的包，读实际方法——doc 注释、guards、比较的类型。对插件传入的每个值重复。三个问题覆盖多数事故：
 

@@ -16,7 +16,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 | hub 收录 | 在 hub catalog 登记 | 登记是独立动作，不代替打包验证 |
 | collection | 把成员插件 vendored 成 pack artifact | 见所属 collection 仓库的自有流程 |
 
-未发布 cohort（例如某个 cohort 版本从未发到 npm——alpha.1 只有 GitHub 来源；alpha.2 到 alpha.4 已通过 `alpha` 通道标签发布）走 [references/publish-playbook.md](references/publish-playbook.md) 的 overrides 流程，**不要**在 npm 上找不存在的版本，也不要因此切换包管理器。
+未发布 cohort（目标 cohort 的部分版本可能从未发到 npm，只在 GitHub 上）走 [references/publish-playbook.md](references/publish-playbook.md) 的 overrides 流程，**不要**在 npm 上找不存在的版本，也不要因此切换包管理器。判定发布轨前先 `npm view <pkg> versions` 核实实际可用版本，不要凭 tag 推断。
 
 ## 第 1 步：打包与产物校验
 
@@ -66,7 +66,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 - **字段**：`exports`（递归所有条件值）/ `main` / `types` / `dsh.bundle.patch` 指向的文件必须真实存在；声明 `dsh.client` ⇒ `platform === 'web'` 且 `exports["./client"]` 存在；有 `exports["./client"]` ⇒ 必须声明 `dsh.client`；有 `cordis.patch.yml` ⇒ 必须声明 `dsh.bundle.patch`；有 `lib/client.js` ⇒ 必须有 `exports["./client"]` + `dsh.client`；
 - **pack 内容**（`npm pack --dry-run --json`）：README / CHANGELOG / LICENSE / package.json 与所有声明目标**必须在包里**；`test/` `src/` `coverage/` `reports/` `node_modules/` `.DS_Store` `*.log` **不得在包里**；
-- **README 引用面**：README 引用的 assets（相对路径或 `unpkg.com/<本包>/...`）必须**存在且随包发布**——这是 3b 的盲区（3b 只查文件在仓库里是否存在，查不到 `files` 白名单没带它；#323 靠这条抓出 5 个插件 8 张图的裂图问题）；
+- **README 引用面**：README 引用的 assets（相对路径或 `unpkg.com/<本包>/...`）必须**存在且随包发布**——这是 3b 的盲区（3b 只查文件在仓库里是否存在，查不到 `files` 白名单没带它；本条能抓出「README 引用了 assets 但没随包发布」的线上裂图）；
 - **「源在仓库但故意不发布」**：判据是「被已发布面引用才必须在包内」，`vendor/`、`src/`、`test/`、`scripts/`、`client-parts/` 不被引用 → 只作 info 列出、不报警（**不要**改成"不在 files 就报警"）；
 - 本地单独跑：`node scripts/check-pack-hygiene.mjs`（`--json` / `--list` / `--plugin <名>` / `--root <dir>`）；判定是纯函数（`scripts/lib/pack-hygiene.mjs`，单测 `scripts/test/pack-hygiene.test.mjs`）；
 - **fail-closed**：pack 失败 / JSON 解析失败 / 找不到插件一律阻断。**选型已论证**：不用 `publint`（它不认 `dsh.*` 字段、恒定噪声、+428K 依赖，详见 `docs/开发指南/发版流程.md`），勿重复引入。
@@ -91,7 +91,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 | 入口 | 怎么发 | 能力边界 |
 |---|---|---|
-| GitHub Actions | Actions → **Release (auto)** → Run workflow：`plugins` 填多个目录名（**逗号或空格**分隔，如 `dsh-md-render,dsh-my-guard`），`bump` 下拉单选 | `plugins` 是文本框不是下拉——GitHub Actions 的 `choice` 原生不支持 `multiple`（issue #204）；workflow 内先跑白名单校验（允许值运行时取自 `plugins/` 目录），非法名 fail-fast 并列出全部允许值 |
+| GitHub Actions | Actions → **Release (auto)** → Run workflow：`plugins` 填多个目录名（**逗号或空格**分隔，如 `dsh-md-render,dsh-my-guard`），`bump` 下拉单选 | `plugins` 是文本框不是下拉——GitHub Actions 的 `choice` 原生不支持 `multiple`；workflow 内先跑白名单校验（允许值运行时取自 `plugins/` 目录），非法名 fail-fast 并列出全部允许值 |
 | 本地 | `node scripts/release.mjs a b c --bump patch --push` | 与 CI 同一脚本、同一门禁 |
 
 批量不降低门禁：每个插件仍独立走第 1-4 步（一个失败不影响其他），全部通过才一次提交 + 逐个打 tag。细节见 `docs/开发指南/发版流程.md` 的「批量发版」节。

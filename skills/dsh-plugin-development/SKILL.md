@@ -1,6 +1,6 @@
 ---
 name: dsh-plugin-development
-description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发布 DSH 插件时使用。覆盖三种插件形态：工具型（defineTool 注册 agent 工具）、侧边栏页签/预览器（宿主原生扩展点 sidebarRightTabs + slots + documentPreviews）、纯 server（事件/HTTP 路由）。也适用于处理注册冲突（already registered）、挂载不生效、HMR 不热更新、profile 双挂载、GitHub Release 发版与 tag 规则等错误场景。仓库内插件均为 plugins/<name> 自包含 bundle；工具型与生态参考见 references/。
+description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发布 DSH 插件时使用。覆盖五种插件形态：工具型（defineTool 注册 agent 工具）、侧边栏页签/预览器（宿主原生扩展点 sidebarRightTabs + slots + documentPreviews）、纯 server（事件/HTTP 路由）、两者混合、agent preset 资产包（agent.cordis.yml + preset.yml）。也适用于处理注册冲突（already registered）、挂载不生效、HMR 不热更新、profile 双挂载、GitHub Release 发版与 tag 规则等错误场景。仓库内插件均为 plugins/<name> 自包含 bundle；工具型与生态参考见 references/。
 ---
 
 # 本仓库 DSH 插件开发
@@ -24,7 +24,7 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 - **发布**：版本号、CHANGELOG、tag、GitHub Release
 - **开发工具型插件**（agent 可调用的函数）：读 [references/dsh-tools-api.md](references/dsh-tools-api.md) 的官方 `defineTool` 权威 API
 - **调研生态/分发渠道**（npm、GitHub topic、插件市场收录）：读 [references/dsh-ecosystem.md](references/dsh-ecosystem.md)
-- **查宿主 API 精确语义**：先读 [宿主API速查](../../docs/官方文档/宿主API速查.md)，再读对应官方子系统页；不要按 API 名字猜。
+- **查宿主 API 精确语义**：先读 [宿主API速查](../../docs/官方文档/宿主API速查.md)；判**存在性 / 定义点 / 契约**（serial 还是 parallel、有没有 `next()`）用**本地官方参考源 + 知识图谱**（参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`，命令见[官方文档索引](../../docs/官方文档/索引.md) 第十节）——官方 docs 只列事件名与概览，这类契约必须回源码；**不要按 API 名字猜**（同名不同义的坑见[本仓库重点](../../docs/官方文档/本仓库重点.md)）。
 
 ## 相关 skill（交叉引用）
 
@@ -35,19 +35,19 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 - `plugin-test`（skills/plugin-test/）：测试 + docker 冒烟（发布前对打包产物冷启动验证）
 - `plugin-release`（skills/plugin-release/）：打包发布 + 发布前自动检查（5 层 gate + 语义 gate）
 
-## 宿主能力缺口：一律插件侧接管（项目决策 2026-09-12）
+## 宿主能力缺口：一律插件侧接管（项目决策）
 
 **宿主渲染/能力缺口一律由本仓库插件侧接管处理，不依赖上游修改、不向上游提 issue。** 用户决策原话：「全由我们自己的插件进行处理」。
 
 - **不接受**在文档里写「宿主如此设计，故不支持」，也**不接受**以「等上游修复」为由推迟；
-- **落地模式**（issue #196 已验证；issue #205 轨迹视图按此模式覆盖）：
+- **落地模式**（轨迹视图等后续能力按此模式覆盖）：
   1. **先确证宿主 DOM 契约**——拿到 `文件:行号` / bundle 证据（如上下文注入块由 `@deepseek-ai/dsh-client-ui-chat` 的 `ContextBody` 渲染为 `<pre data-context-text="true">` + CSS `white-space:pre-wrap`），不靠猜；
   2. **幂等标记**——用内容签名标记已接管节点，重复扫描不重复处理；
   3. **可降级**——宿主契约不匹配时静默退让为宿主原文（不报错、不误伤）；
   4. **MutationObserver 兜底**——应对 React 重渲染（宿主重建 DOM 后重新接管）；
   5. **性能保护**——超长内容跳过处理。
 - 参考实现：`dsh-md-render` 对宿主纯文本注入块的 DOM 接管（[插件 README](../../plugins/dsh-md-render/README.md) · [md 渲染模块文档](../../docs/md渲染/概述.md)）；遇到同类缺口不要新开「等上游修复」类 issue，直接在本仓库插件里覆盖。
-- **profile 插件的 fiber 会被 loader 回收 → 注册必须落到常驻 root**（issue #242 实测，2026-09-13）：注册在插件自身 ctx 上的 `ctx.on('session/event', …)` 与 `ctx.effect(() => webServer.register(…))` 会**静默消失**——事件 0 触发、路由 404，**没有任何报错**。新插件写事件监听/路由时默认用 `const listenCtx = ctx.root ?? ctx` + `{ global: true }`，并以 root 为键去重（避免重复 apply 累积）。判定方法（3 分钟探针）与完整修法：[踩坑：profile 插件 fiber 回收导致监听器静默失效](../../docs/踩坑/README.md)；参考实现 `plugins/dsh-my-context`（`rootListeners` / `rootRoutes`）与防回归测试 `plugins/dsh-my-context/test/host-root-registration.mjs`。
+- **profile 插件的 fiber 会被 loader 回收 → 注册必须落到常驻 root**（实测）：注册在插件自身 ctx 上的 `ctx.on('session/event', …)` 与 `ctx.effect(() => webServer.register(…))` 会**静默消失**——事件 0 触发、路由 404，**没有任何报错**。新插件写事件监听/路由时默认用 `const listenCtx = ctx.root ?? ctx` + `{ global: true }`，并以 root 为键去重（避免重复 apply 累积）。判定方法（3 分钟探针）与完整修法：[踩坑：profile 插件 fiber 回收导致监听器静默失效](../../docs/踩坑/README.md)；参考实现 `plugins/dsh-my-context`（`rootListeners` / `rootRoutes`）与防回归测试 `plugins/dsh-my-context/test/host-root-registration.mjs`。
 
 ## 插件形态（先决策）
 
@@ -226,7 +226,7 @@ window.__ModuleLoader__.load({
 - HTTP 路由：`ctx.webServer.register({ kind: 'prefix', path: '/<插件名>/api', handler })`；handler 签名 `(request, response)`，用 `request.url` 分发，`writeHead` + `end` 返回 JSON；先做 loopback 信任围栏。
 - 持久化：写 `$DSH_HOME` 下 JSON（防抖 + 原子写 tmp+rename），按会话隔离。
 
-## TypeScript 开发（TS 插件，issue #47）
+## TypeScript 开发（TS 插件）
 
 > 新插件可用 TypeScript 开发（server 端 tsc 编译 + client 端构建时编译 + CI 类型检查）。**完整示例照抄 `plugins/dsh-ts-example/`**，详细说明见 [docs/TS示例/概述.md](../../docs/TS示例/概述.md)。
 
@@ -271,15 +271,15 @@ export function apply(ctx) {
 
 **schema 硬规则：** ① `required` 是属性级（写 `required: true`，无 `required` 数组、无 `required: false`）；② 对象 schema 必须显式 `additionalProperties: false`；③ `output` 必填（schema + render 返回 `{ type: 'text', text }`）；④ 用 `execute(args)` 不是 `run`。
 
-**开发调试：** `npx @dsh-io/dsh-dev scaffold <name>` 生成官方 TS 骨架 → `npm run build` → `npx @deepseek-ai/dsh --profile web --patch <abs-path>/cordis.patch.yml` 对活 harness 调试 → `dsh plugin add <dir>` 永久注册。本仓库纯 JS 插件同样可用 `defineTool`（无类型检查时手动遵守硬规则）。
+**开发调试：** `npx @dsh-io/dsh-dev scaffold <name>` 生成 TS 骨架（**第三方、非官方**脚手架，官方没有 scaffold 命令，见 [dsh-tools-api.md](references/dsh-tools-api.md)） → `npm run build` → `npx @deepseek-ai/dsh --profile web --patch <abs-path>/cordis.patch.yml` 对活 harness 调试 → `dsh plugin add <dir>` 永久注册。本仓库纯 JS 插件同样可用 `defineTool`（无类型检查时手动遵守硬规则）。
 
 ## 外部生态与分发
 
-> 调研整理（2026-08）：官方资源、插件市场收录机制、生态差异。完整参考见 [references/dsh-ecosystem.md](references/dsh-ecosystem.md)。
+> 官方资源、插件市场收录机制、生态差异。完整参考见 [references/dsh-ecosystem.md](references/dsh-ecosystem.md)。
 
 - **官方权威 skill**：`dsh-io/dsh-plugin-skill`（defineTool API 唯一权威，第三方）；侧边栏扩展点以宿主官方 [sidebar-right.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/sidebar-right.zh.md) 为准。
 - **官方仓库写法（最高权威）**：DeepSeek-Harness 仓库 `packages/` 实际代码——工具型看 `workflow/tool-workflow`（schemastery Config、prompt section、ToolCallView），UI 型看 `client/ui-workflow-run`（slots.inject/register keyed slot、locale.register、conversationEvents），组合看 `bundle/web-app/cordis.patch.yml`（`!!js` 表达式、行覆盖），打包看 `client/tsdown.client.ts`（**ModuleLoader** 协议、纯度门）。完整提炼见 [references/dsh-official-writing.md](references/dsh-official-writing.md)。
-- **UI 插件实现思路**：调研了 dsh-web-ui 全家桶（18+ 包）、open-design、reactive-resume 等 5 个项目——官方 Slot 系统 / settings 分区 / 全局挂载三种注册方式、host 安全双层（loopback + workspace 门）、SSE/轮询通信。完整分析见 [references/ui-plugin-patterns.md](references/ui-plugin-patterns.md)。
+- **UI 插件实现思路**：官方 Slot 系统 / settings 分区 / 全局挂载等注册方式、host 安全双层（loopback + workspace 门）、SSE/轮询通信。完整分析见 [references/ui-plugin-patterns.md](references/ui-plugin-patterns.md)。
 - **市场收录**：给公开仓库打 GitHub topic `dsh-plugin` 即被 dshfind.com 与 DSH 1024Store（deepseek1024.com，4100+ 插件）自动聚合收录；1024Store 收录前静态校验 `package.json` + `dsh.bundle.patch` + patch 文件齐备。
 - **本仓库分发约定（双通道）**：GitHub Release + **npm 官方 registry**（release.yml 读仓库 `NPM_TOKEN` secret 自动发布；未配置时仅警告跳过）。完整流程见 [docs/开发指南/发版流程.md](../../docs/开发指南/发版流程.md)。
 

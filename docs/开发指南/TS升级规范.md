@@ -49,26 +49,7 @@ description: 全量 TypeScript 迁移规范 — 目录结构、tsconfig、类型
 - client 端类型内联在入口或 `globals.d.ts`（按宿主服务的真实契约声明形状）。
 - **禁止**写 `declare module 'dsh-shared'` 这类 ambient 声明：根配置加载所有 `.d.ts`，它会**全局覆盖**真实模块类型，让别的插件报「模块没有导出成员」。
 
-## 五、迁移步骤
-
-1. 先提交一份当前代码作回退点。
-2. 建 `src/`、`tsconfig.json`（及 `tsconfig.client.json`），更新 `package.json` scripts。
-3. 迁源码：server `lib/*.js` → `src/*.ts`（补类型注解）；client `lib/parts/*.part.js` → `src/client/parts/*.ts`（或合并为单文件）。
-4. `npm run build` 生成产物并**提交**。只改产物不改源码 = 下次构建即丢失；改完源码必须重新构建并补防回归测试。
-5. 验证（下节）后提交。
-
-## 六、验收标准
-
-| 检查项   | 命令                                              | 预期       |
-| -------- | ------------------------------------------------- | ---------- |
-| TS 编译  | `npm run build`                                   | exit 0     |
-| 类型检查 | `npm run typecheck`                               | exit 0     |
-| 单元测试 | `npm test`                                        | 全绿       |
-| 产物语法 | `node --check lib/index.js`（及 `lib/client.js`） | exit 0     |
-| ESLint   | `npx eslint plugins/<name>/`                      | 无新增错误 |
-| Prettier | `npx prettier --check plugins/<name>/`            | exit 0     |
-
-### 仓库级门禁（插件级通过 ≠ 迁移完成）
+## 五、仓库级门禁
 
 | 门禁           | 命令                            | 常见失败原因与修法                                                                                                            |
 | -------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -80,7 +61,7 @@ description: 全量 TypeScript 迁移规范 — 目录结构、tsconfig、类型
 | 依赖结构       | `npx depcruise plugins/`        | 构建临时目录 `lib/.client-build/` 残留导致 ENOENT                                                                             |
 | TS 源码尺寸    | `npm run lint:size`             | 阈值与修法见 [lint 配置建议](lint配置建议.md)                                                                                 |
 
-## 七、常见问题
+## 六、常见问题
 
 - **client 端为什么用 CommonJS 且必须单文件**：DSH 的 `__ModuleLoader__` 在浏览器端注入 `require`/`exports`/`module`，且**不支持相对路径 require**——所有代码必须在同一个 factory 作用域内。
 - **产物必须提交吗**：是。CI 只跑 `node --check` + 测试，不跑构建。

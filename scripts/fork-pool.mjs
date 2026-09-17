@@ -257,8 +257,14 @@ function cmdCreate() {
     console.error(`✖ 目录已存在：${forkDir}（先 node scripts/fork-pool.mjs clean ${options.id} --yes，或换编号）`)
     process.exit(1)
   }
-  const ownerRepo = parseOwnerRepo(gitOut(mainWorkdir, ['remote', 'get-url', 'origin']))
-  if (!ownerRepo) {
+  // 主工作区 origin 可能是**本地**远端（issue #362：本地夹具 / 完全本地场景）。本地远端必须
+  // 原样沿用：`parseOwnerRepo` 对任何 `a/b` 形态都会给出 owner/repo，无脑拼 github.com 会让
+  // fetch 退回 HTTPS —— 既是「标称离线的用例在网络不可达时必红」的根因，也把 fetch 指向了
+  // 一个不存在的仓库。判据与 remoteHeadSha（#337）共用同一个 isLocalRemote。
+  const mainOriginUrl = gitOut(mainWorkdir, ['remote', 'get-url', 'origin'])
+  const ownerRepo = parseOwnerRepo(mainOriginUrl)
+  const localMain = isLocalRemote(mainOriginUrl)
+  if (!ownerRepo && !localMain) {
     console.error('✖ 无法从主工作区 origin 解析 owner/repo（先确认 git remote -v）')
     process.exit(1)
   }
@@ -281,8 +287,13 @@ function cmdCreate() {
   record('clone', run('git', ['clone', '--local', '--quiet', mainWorkdir, forkDir]), true)
   const remoteStep = (() => {
     const started = performance.now()
-    const a = git(forkDir, ['remote', 'set-url', 'origin', fetchRemoteFor(ownerRepo.owner, ownerRepo.repo)])
-    const b = git(forkDir, ['config', 'remote.origin.pushurl', pushRemoteFor(ownerRepo.owner, ownerRepo.repo)])
+    // 本地远端原样沿用（离线语义）；仅 http(s)/scp 形态才做 https fetch + SSH push 分流。
+    // 后续 `git fetch origin <base>` 与基线 ls-remote 因此落在同一个（本地或远端）仓库上，
+    // 基线校验语义不变：到不了网络时 evaluateBaseline 仍报「无法比对」，绝不静默放过。
+    const fetchUrl = localMain ? mainOriginUrl : fetchRemoteFor(ownerRepo.owner, ownerRepo.repo)
+    const pushUrl = localMain ? mainOriginUrl : pushRemoteFor(ownerRepo.owner, ownerRepo.repo)
+    const a = git(forkDir, ['remote', 'set-url', 'origin', fetchUrl])
+    const b = git(forkDir, ['config', 'remote.origin.pushurl', pushUrl])
     return { code: a.code || b.code, ms: performance.now() - started, out: `${a.out}${b.out}` }
   })()
   record('remote', remoteStep, remoteStep.code === 0)
@@ -298,7 +309,14 @@ function cmdCreate() {
   record('baseline', baselineStep, baseline.ok, baseline.reason)
 
   record('branch', git(forkDir, ['checkout', '--quiet', '-b', branch, options.baseRef]), true)
-  record('exclude', ensureExclude(forkDir), true)
+  // issue #362：这里的 ok 曾**硬编码为 true** —— ensureExclude 失败时只打印 ✖ 就继续建 fork，
+  // 于是防误提交的 `.git/info/exclude` 没写成功，之后在 fork 里 `git add -A` 可能把 node_modules
+  // 软链误提交（正是该机制要防的事故形态）。现在用 ensureExclude 的真实结论：失败即经 record
+  // 中断 create（exit 1），保留原有的 ✖ 输出与"已生成目录可 clean 后重试"语义。
+  const excludeStarted = performance.now()
+  const exclude = ensureExclude(forkDir)
+  exclude.ms = performance.now() - excludeStarted
+  record('exclude', exclude, exclude.ok, exclude.detail)
   // 把"创建时的基线 SHA"记进 fork 的 local config：check 用它判断 fork 有没有被
   // rebase/改写（真异常），而"远端 main 前进"只是正常生命周期（提示，不阻塞）。
   git(forkDir, ['config', '--local', 'forkPool.baselineSha', remoteSha])

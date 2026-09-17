@@ -2,6 +2,12 @@
 
 本文件记录 dsh-shared 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.6] - 2026-09-17
+
+### 变更
+
+- docs: skill 合并 12→10 并拆分超限文件，修 observability 聚合端点缺陷
+
 ## [0.1.5] - 2026-09-16
 
 ### 变更

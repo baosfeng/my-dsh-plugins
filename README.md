@@ -50,7 +50,7 @@
 | [dsh-my-opencode-session-header](plugins/dsh-my-opencode-session-header/README.md) | 0.1.0  | OpenCode 会话头：为 opencode 路由注入按会话稳定的 `x-opencode-session` 头                     |
 | [dsh-plugin-dev-mode](plugins/dsh-plugin-dev-mode/README.md)                       | 0.1.0  | 插件开发模式 agent preset：启用 Cordis 工具集（动态插件生命周期），附随包技能                 |
 | [dsh-ts-example](plugins/dsh-ts-example/README.md)                                 | 0.1.0  | TypeScript 插件开发示例：server 端 tsc 编译 + client 端构建期编译 + CI 类型检查               |
-| [dsh-shared](plugins/dsh-shared/README.md)                                         | 0.1.5  | 共享工具包：多插件共用的 server 端工具（信任围栏 / HTTP JSON / 配置持久化 / 原子写）          |
+| [dsh-shared](plugins/dsh-shared/README.md)                                         | 0.1.6  | 共享工具包：多插件共用的 server 端工具（信任围栏 / HTTP JSON / 配置持久化 / 原子写）          |
 
 ## 🚀 快速开始
 

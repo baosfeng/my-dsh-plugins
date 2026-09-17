@@ -8,7 +8,7 @@
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`webServer` / `httpServer` 键名变动**         | npm `latest`（rc.1）服务键是 `ctx.httpServer`，`next`（rc.2）重命名为 `ctx.webServer`                                                 | 过渡期双键回退：`ctx.get('webServer') ?? ctx.get('httpServer')`（新键优先、旧键回退）；`internal/service` 事件同时监听两组键再补注册                                   |
 | **`workspace` → `workspaceRegistry` 重命名**    | 同上一并发生                                                                                                                          | 同上双键回退                                                                                                                                                           |
-| **settings slot 形状变化**                      | DSH 0.1.0-rc.6 起 loader entry 应用阶段直接拒绝 keyed slot `settings.plugin.item` 缺 `key` 的注册 → "Failed to load plugins" 启动失败 | 卡片 keyed slot 必须传 `key`（= 命名空间）而非 `id`；整页式需求另走一级分区 slot `settings.section`                                                                                       |
+| **settings slot 形状变化**                      | DSH 0.1.0-rc.6 起 loader entry 应用阶段直接拒绝 keyed slot `settings.plugin.item` 缺 `key` 的注册 → "Failed to load plugins" 启动失败 | 列表席位 `settings.plugins.tab` 必须传 `id`（本仓库用法）；keyed 卡片 `settings.plugin.item` 必须传 `key`（= 命名空间）；整页式需求走分区 slot `settings.section`                                                                                       |
 | **DSH 破坏面清单**                              | 大版本升级后静默不兼容                                                                                                                | plugin-hub 归纳破坏点：patch 语义、`webServer.register` 形状、loader entry 形状、`dsh.client` bundle 格式、`settings.plugins.tab` slot；升级后显示兼容警告而非静默失败 |
 | **pnpm 安装 `@deepseek-ai/dsh-type-meta` 失败** | 官方 SDK 声明了未发布 peer，pnpm 硬失败（npm 优雅跳过）                                                                               | `pnpm-workspace.yaml` 加 `overrides: { "@deepseek-ai/dsh-type-meta": "npm:@deepseek-ai/dsh-invariants@0.0.1-rc.1" }`                                                   |
 
@@ -72,7 +72,7 @@
 
 | 载体                             | 适用                        | 机制                                                                            |
 | -------------------------------- | --------------------------- | ------------------------------------------------------------------------------- |
-| 官方 Slot（设置卡片等）          | 设置页卡片/开关             | Host 半 `ctx.settings.installSection(...)` + 浏览器半 keyed slot `settings.plugin.item`（key = 命名空间）或一级分区 slot `settings.section`（完整设置区） |
+| 宿主 Slot（设置页）              | 设置页开关 / 卡片           | 本仓库：client 半 `ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({ name: 'settings.plugins.tab', id, order, label }, C))` + localStorage；官方另有 keyed 卡片 `settings.plugin.item`、分区 `settings.section`、host 半 `ctx.settings.installSection` |
 | 会话槽位 SlotMap                 | 嵌入会话 UI（输入框芯片等） | `declare module '@deepseek-ai/dsh-client-ui-slots'` 扩展 SlotMap + inject slots |
 | 对话流卡片                       | 会话内展示工具结果/流程     | 会话事件 → 对话流节点（client 渲染）                                            |
 | slash command                    | 命令弹窗                    | `/context` 式注册命令                                                           |

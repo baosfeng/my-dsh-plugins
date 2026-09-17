@@ -108,6 +108,7 @@ export const EXTERNAL_SKILLS = [
   'quality-gates',
   'scan-to-docs',
   'ssh-ops',
+  'systematic-debugging',
   'testing-standards',
 ]
 

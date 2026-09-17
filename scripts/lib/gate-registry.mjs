@@ -185,6 +185,15 @@ export const GATE_REGISTRY = [
     why: '唯一权威：插件 ↔ README / AGENTS.md / docs 索引 / 安装章节的一致性（防「插件部署了文档没更新」）。',
   },
   {
+    id: 'doc-api',
+    authority: '`scripts/check-doc-api-drift.mjs`',
+    local: 'always',
+    localCommand: 'node scripts/check-doc-api-drift.mjs',
+    ci: { ...CI_QUALITY_STEP },
+    cost: '0.12~0.14s',
+    why: '唯一权威：`docs/官方文档/本仓库重点.md` 的 API 面是**从 `plugins/*/src` 取证**的派生内容（实际调用哪些宿主能力 / 事件 / 6 个 UI 槽位 / 哪些 API 代码零使用），靠人工维护必然漂移。它拦住过两次真实事故：① skill 长期主推第三方 `ctx.betterSidebar`，而 19 个插件实测 0 使用；② 文档写 `ctx.config`，而该 API **根本不存在**（11 处出现全在注释里，配置入口是 `apply(ctx, config)` 第二实参）。因此本门禁**双向**判定：文档提到代码里不存在的 API → 红；代码在用而文档未登记 → 红。扫描 `plugins/*/src` 时**先剥注释**再匹配，否则注释里的 `ctx.config` 会被当成"代码在用"，第一条事故就再也抓不到。范例坐标 `path:line` 另做校验（文件存在 / 行号在范围内 / 该文件确实含所声明的 API；行号允许漂移，避免每次改代码都红）。零外部依赖（不读 `~/.dsh-refs`、不需官方仓库检出），CI 可直接跑。',
+  },
+  {
     id: 'links',
     authority: '`scripts/check-links.mjs`',
     local: 'always',

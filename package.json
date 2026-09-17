@@ -22,6 +22,7 @@
     "typecheck:plugins": "bash scripts/typecheck-all.sh",
     "check:ts-size": "node scripts/check-ts-size.mjs",
     "check:links": "node scripts/check-links.mjs",
+    "check:doc-api": "node scripts/check-doc-api-drift.mjs",
     "check:client-modules": "node scripts/check-client-modules.mjs",
     "check:client-size": "node scripts/check-client-size.mjs",
     "check:pack-hygiene": "node scripts/check-pack-hygiene.mjs",

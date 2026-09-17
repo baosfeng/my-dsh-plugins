@@ -604,6 +604,9 @@ const CHECK_META = {
   knip: { command: 'npx --no-install knip', ciQuality: true },
   jscpd: { command: 'npx --no-install jscpd', ciQuality: true },
   docs: { command: 'node scripts/check-docs.mjs', ciQuality: true },
+  // 文档-代码漂移门禁：docs/官方文档/本仓库重点.md 的 API 面是**从 plugins/*/src 取证**的
+  // 派生内容，靠它双向守护（文档提到了代码没有的 API / 代码新增了 API 文档没登记）。
+  'doc-api': { command: 'node scripts/check-doc-api-drift.mjs', ciQuality: true },
   links: { command: 'node scripts/check-links.mjs', ciQuality: true },
   'test-sleeps': { command: 'node scripts/check-test-sleeps.mjs', ciQuality: true },
   artifacts: { command: 'node scripts/check-client-artifacts.mjs', ciQuality: true },
@@ -854,6 +857,14 @@ const CHECK_DEFS = [
     id: 'docs',
     label: 'docs consistency (node scripts/check-docs.mjs)',
     run: () => runCapture('node', ['scripts/check-docs.mjs'], root),
+  },
+  {
+    // 派生文档（docs/官方文档/本仓库重点.md）的 API 面双向守护：文档提到代码里不存在的
+    // API（betterSidebar / ctx.config 两次真实事故）与代码新增 API 未登记，都必须变红。
+    id: 'doc-api',
+    label: 'doc-api drift (node scripts/check-doc-api-drift.mjs)',
+    note: '文档-代码 API 漂移：同一 API 既要在文档声明又要在代码里真实存在；范例坐标校验文件存在 / 行号在范围内 / 文件含该 API（行号允许漂移）。<0.2s，纯本地文件检查，任何变更都跑',
+    run: () => runCapture('node', ['scripts/check-doc-api-drift.mjs'], root),
   },
   {
     id: 'links',

@@ -34,8 +34,8 @@
 | ---------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------- |
 | [dsh-file-activity](plugins/dsh-file-activity/README.md)                           | 0.5.10 | 侧边栏文件活动页签：记录文件读取/新增/修改与统计，文件夹树形展示，点击浮窗预览                |
 | [dsh-think-zh-expand](plugins/dsh-think-zh-expand/README.md)                       | 0.4.11 | 思考增强：强制中文思考与回复，思考块默认展开且支持 Markdown/表格/Mermaid 渲染                 |
-| [dsh-mermaid-render](plugins/dsh-mermaid-render/README.md)                         | 0.1.8  | 对话 mermaid 代码块渲染为图表卡片，引擎随包分发、不依赖 CDN                                   |
-| [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.1.8  | 非思考模式 markdown 表格渲染增强：识别不标准表格，宽表格横向滚动                              |
+| [dsh-mermaid-render](plugins/dsh-mermaid-render/README.md)                         | 0.1.9  | 对话 mermaid 代码块渲染为图表卡片，引擎随包分发、不依赖 CDN                                   |
+| [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.1.9  | 非思考模式 markdown 表格渲染增强：识别不标准表格，宽表格横向滚动                              |
 | [dsh-my-notify](plugins/dsh-my-notify/README.md)                                   | 0.3.9  | 通知提醒：会话结束 / ask / 审批时浏览器通知 + 提示音，点击跳转；远程 hook 触发 + 出站 webhook |
 | [dsh-my-remote](plugins/dsh-my-remote/README.md)                                   | 0.1.2  | 远程控制：ask / approval / 会话结束事件下行到手机或 IM，可远程回答、批准、查询、继续          |
 | [dsh-my-guardian](plugins/dsh-my-guardian/README.md)                               | 0.4.1  | 插件治理：新装插件先进候选区逐个热挂载，失败自动隔离，一键安全模式 + 诊断面板                 |
@@ -48,7 +48,7 @@
 | [dsh-my-context](plugins/dsh-my-context/README.md)                                 | 0.1.4  | 上下文透镜：token 用量与上下文构成可视化、KV 缓存命中率、每轮/每会话预算控制                  |
 | [dsh-session-title-gen](plugins/dsh-session-title-gen/README.md)                   | 0.1.0  | 会话标题自动生成：LLM 生成结构化标题（先工作区后描述）并写入，重启保留                        |
 | [dsh-my-opencode-session-header](plugins/dsh-my-opencode-session-header/README.md) | 0.1.0  | OpenCode 会话头：为 opencode 路由注入按会话稳定的 `x-opencode-session` 头                     |
-| [dsh-plugin-dev-mode](plugins/dsh-plugin-dev-mode/README.md)                       | 0.1.0  | 插件开发模式 agent preset：启用 Cordis 工具集（动态插件生命周期），附随包技能                 |
+| [dsh-plugin-dev-mode](plugins/dsh-plugin-dev-mode/README.md)                       | 0.1.1  | 插件开发模式 agent preset：启用 Cordis 工具集（动态插件生命周期），附随包技能                 |
 | [dsh-ts-example](plugins/dsh-ts-example/README.md)                                 | 0.1.0  | TypeScript 插件开发示例：server 端 tsc 编译 + client 端构建期编译 + CI 类型检查               |
 | [dsh-shared](plugins/dsh-shared/README.md)                                         | 0.1.6  | 共享工具包：多插件共用的 server 端工具（信任围栏 / HTTP JSON / 配置持久化 / 原子写）          |
 

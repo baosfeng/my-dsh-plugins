@@ -4,6 +4,17 @@
 
 > 公共 API 承诺面：`MarkdownView`（导出 / props / 输出类名清单见 [README「公共 API 契约」](README.md)）；改类名清单 = 破坏性变更，须同步 README 与本文件。
 
+## [0.1.9] - 2026-09-17
+
+### 变更
+
+- docs: skill 合并 12→10 并拆分超限文件，修 observability 聚合端点缺陷
+- docs(清理): #341 文档瘦身 23765 → 8309 行并固化精简规范 (#348)
+- fix(test): cucumber-js --import glob 改用双引号，兼容 Windows
+- fix(security): 批量修复 'Insecure temporary file' 安全漏洞
+- fix: rebuild client.js for mermaid-render and md-render
+- chore: 项目全面优化和完善
+
 ## [0.1.8] - 2026-09-10
 
 ### 变更

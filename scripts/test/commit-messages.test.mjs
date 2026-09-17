@@ -93,6 +93,34 @@ function shallowClone(srcDir) {
   return { dir: dst, rules: FIXTURE_CONFIG }
 }
 
+/**
+ * 造一个**含 merge commit** 的夹具，返回 `{ dir, rules, from }`（from = 分叉点）。
+ *
+ * 回归点：提交**计数**与**枚举**必须同口径。历史缺陷是计数走 `rev-list --count`（含 merge）
+ * 而枚举走 `log --no-merges`（不含），于是出现"范围含 N 条但只校验 N-1 条（不一致）"的
+ * 自相矛盾判失败 —— merge commit 的信息由 git 生成、不属于"本次变更里人写的提交信息"，
+ * 两边都应排除它。
+ */
+function fixtureRepoWithMerge() {
+  const dir = mkdtempSync(join(tmpdir(), 'commits-merge-'))
+  created.push(dir)
+  const git = (args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' })
+  git(['init', '-q', '-b', 'main', '.'])
+  git(['config', 'user.email', 'test@example.invalid'])
+  git(['config', 'user.name', 'test'])
+  writeFileSync(join(dir, 'base.txt'), 'base\n')
+  git(['add', '-A'])
+  git(['commit', '-q', '--no-verify', '-m', GOOD_NO_SCOPE])
+  const from = git(['rev-parse', 'HEAD']).trim()
+  git(['checkout', '-q', '-b', 'feature'])
+  writeFileSync(join(dir, 'f.txt'), 'f\n')
+  git(['add', '-A'])
+  git(['commit', '-q', '--no-verify', '-m', GOOD])
+  git(['checkout', '-q', 'main'])
+  git(['merge', '-q', '--no-ff', 'feature', '-m', 'chore: 合并 feature'])
+  return { dir, rules: FIXTURE_CONFIG, from }
+}
+
 function runLint(repo, extra = [], rules = repo.rules) {
   const r = spawnSync(process.execPath, [SCRIPT, ...extra], {
     cwd: repo.dir,
@@ -116,6 +144,16 @@ describe('check-commit-messages.mjs 端到端', () => {
     expect(r.code).toBe(0)
     expect(r.stdout).toContain('✅ 通过')
     expect(r.stdout).toContain('2 条提交全部符合规范')
+  })
+
+  it('范围含 merge commit → 计数与校验数同口径（不因"含 N 条只校验 N-1 条"假失败）', E2E_TIMEOUT, () => {
+    const repo = fixtureRepoWithMerge()
+    const r = runLint(repo, ['--from', repo.from, '--to', 'HEAD'])
+    expect(r.code).toBe(0)
+    expect(r.stdout).toContain('✅ 通过')
+    // 该范围 = 1 条普通提交 + 1 个 merge；merge 不参与校验，计数也必须排除它
+    expect(r.stdout).toContain('1 条提交全部符合规范')
+    expect(r.stdout).not.toContain('不一致')
   })
 
   it('反例：不合规提交信息（缺 type）→ 红，并指出规则与提交首行', E2E_TIMEOUT, () => {

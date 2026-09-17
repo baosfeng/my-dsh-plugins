@@ -323,7 +323,10 @@ function countCommits(spec) {
       return { error: `rev-parse 无法解析提交 ${spec.to}（对象不存在？浅克隆？）` }
     return 1
   }
-  const out = git(['rev-list', '--count', `${spec.from}..${spec.to}`])
+  // 与 listCommits 的 `--no-merges` 保持一致：merge commit 的信息由 git 生成（或
+  // 依赖 merge 时的 -m），不属于"本次变更范围里人写的提交信息"，不参与校验；
+  // 计数若含 merge 就会出现"范围 9 条但只校验 8 条"的不一致（曾因此挡住推送）。
+  const out = git(['rev-list', '--count', '--no-merges', `${spec.from}..${spec.to}`])
   if (typeof out === 'object') return out
   return Number.parseInt(out, 10)
 }

@@ -562,3 +562,22 @@ export function tagConflictHint(tag) {
     '  b. 不重打本次：等下一个版本再发（tag 指向旧 commit，本流程不提供 --force-tag 自动覆盖）',
   ]
 }
+
+/** 包名转正则字面量（版本号里的 `.` 也必须转义，否则会当通配符假通过）。 */
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * 根 README.md 插件表里 <name> 那一行的版本同步正则。
+ *
+ * prettier 表格按列宽填充空格：表里存在 6 字符版本（如 `0.5.10`）时，5 字符版本
+ * 会被写成 `| 0.1.5  |`（版本号**两侧**都有多余空白）。因此这里必须与
+ * scripts/check-docs.mjs 的 `\\s*` 口径一致 —— 旧实现只容忍版本号后一个空格
+ * （`( ?\\|)`），同步会**静默失败**（调用方只打印「no row」，不报错），随后
+ * pre-push 的 docs consistency 门禁把这次 push 拦下。
+ */
+export function readmeVersionRowRe(name) {
+  const esc = escapeRegExp(name)
+  return new RegExp(`(\\| \\[${esc}\\]\\(plugins/${esc}/README\\.md\\)\\s+\\|\\s*)\\d+\\.\\d+\\.\\d+(\\s*\\|)`)
+}

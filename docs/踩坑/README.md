@@ -13,6 +13,7 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 
 - `tag 与 package.json 版本不一致`、Release workflow 卡在校验 → expected 去掉 `v` 前缀；bump 后先提交再打 tag。
 - `dry-run 也写版本号`、版本连跳两级致验证清单与 CHANGELOG 对不上 → 发版一次跑完 `--bump patch --push`；误 bump 用 git checkout 恢复。固化在 `scripts/release.mjs`
+- push 被 pre-push 拦下报 `根 README.md 插件表缺少 <插件> 行（或版本不是 x.y.z）`、发版输出只有 `README.md: no row` → prettier 按列宽给短版本补空格（表里存在 `0.5.10` 时 `0.1.5` 写成 `| 0.1.5  |`），同步正则必须与 `check-docs.mjs` 同口径容忍空白。固化在 `scripts/lib/release-checks.mjs` 的 `readmeVersionRowRe`（防复发单测在 `scripts/test/release-checks.test.mjs`）
 - 并发发版残留孤儿实例、`EADDRINUSE`、实例互相踢 → 门禁 await 完再退出（失败路径也不提前 kill），端口由调度层预分配。固化在 `scripts/lib/release-checks.mjs`
 - 改了 origin 的 url 却仍推 GitHub → `pushurl` 优先于 `url`，两个都要改；推前用 `git remote get-url --push origin` 自检
 - `dsh plugin add` 后缺依赖、缺 client 注入项 → 插件型依赖写 `dependencies`（peer 永不安装）；详见 [跨插件依赖与降级.md](跨插件依赖与降级.md)

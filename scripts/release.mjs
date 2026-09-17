@@ -76,6 +76,7 @@ import {
   isNpmNotFound,
   inspectTagState,
   tagConflictHint,
+  readmeVersionRowRe,
 } from './lib/release-checks.mjs'
 import { verifyPostRelease } from './lib/post-release.mjs'
 import { checkScreenshotGate } from './lib/screenshot-gate.mjs'
@@ -798,10 +799,9 @@ async function processPlugin(name, ctx) {
   let changed = false
 
   // README plugin table: | [<name>](plugins/<name>/README.md) | <old> | ...
-  // 注意：表格对齐会产生多个空格（`README.md)   | 0.1.0 |`），用 [^|]* 容忍。
-  const readmeRe = new RegExp(
-    `(\\| \\[${escapeRegExp(name)}\\]\\(plugins/${escapeRegExp(name)}/README\\.md\\)[^|]*\\| ?)\\d+\\.\\d+\\.\\d+( ?\\|)`,
-  )
+  // 正则构造放在 lib 里（readmeVersionRowRe）并带单测：口径必须与 check-docs.mjs
+  // 的 `\s*` 一致，否则同步静默失败 + pre-push 的 docs consistency 拦下 push。
+  const readmeRe = readmeVersionRowRe(name)
   if (readmeRe.test(readme)) {
     const next = readme.replace(readmeRe, `$1${version}$2`)
     if (next !== readme) {

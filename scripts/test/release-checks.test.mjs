@@ -32,6 +32,7 @@ import {
   findFreePort,
   inspectTagState,
   tagConflictHint,
+  readmeVersionRowRe,
 } from '../lib/release-checks.mjs'
 
 // ── extractDshRequires ────────────────────────────────────────────────────
@@ -798,5 +799,41 @@ describe('workflow 插件清单一致性与输入语义（#204 防漂移）', ()
     const listed = optionsAfter('.github/workflows/ci.yml', /^ {8}plugin:$/m, /^ {4}steps:$/m)
     expect(listed.length).toBeGreaterThan(0)
     expect(listed).toEqual(pluginDirs)
+  })
+})
+
+/**
+ * 发版时同步根 README 插件表版本的正则（防复发：与 check-docs.mjs 同口径）。
+ * 背景：表里出现 6 字符版本（0.5.10）后，prettier 会按列宽把 5 字符版本写成
+ * `| 0.1.5  |`；旧正则只容忍 1 个空格 → 同步静默失败 → pre-push 的
+ * docs consistency 门禁拦下 push（发版脚本写的文档过不了自己的门禁）。
+ */
+describe('readmeVersionRowRe（README 插件表版本同步）', () => {
+  const row = (version, pad) =>
+    `| [dsh-shared](plugins/dsh-shared/README.md)${' '.repeat(pad)} | ${version}${' '.repeat(7 - version.length)}| 共享工具包 |`
+
+  it('容忍 prettier 列对齐：版本号后 2 个空格也能同步', () => {
+    const re = readmeVersionRowRe('dsh-shared')
+    const line = row('0.1.5', 41)
+    expect(line).toContain('| 0.1.5  |')
+    expect(re.test(line)).toBe(true)
+    const replaced = line.replace(re, (_m, p1, p2) => `${p1}0.1.6${p2}`)
+    expect(replaced).toContain('| 0.1.6')
+    expect(replaced).not.toContain('0.1.5')
+  })
+
+  it('同样容忍版本号后 1 个空格（无对齐填充）', () => {
+    const re = readmeVersionRowRe('dsh-shared')
+    expect(re.test('| [dsh-shared](plugins/dsh-shared/README.md) | 0.1.5 | x |')).toBe(true)
+  })
+
+  it('版本号里的 . 已转义：不会把 0x1x5 当成匹配', () => {
+    const re = readmeVersionRowRe('dsh-shared')
+    expect(re.test('| [dsh-shared](plugins/dsh-shared/README.md) | 0x1x5 | x |')).toBe(false)
+  })
+
+  it('只匹配同名插件行：前缀相同的插件名不会误伤', () => {
+    const re = readmeVersionRowRe('dsh-shared')
+    expect(re.test('| [dsh-shared-extra](plugins/dsh-shared-extra/README.md) | 0.1.5 | x |')).toBe(false)
   })
 })

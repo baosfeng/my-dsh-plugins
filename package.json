@@ -32,7 +32,8 @@
     "secret:scan": "node scripts/check-secrets.mjs",
     "deps:matrix": "node scripts/deps-matrix.mjs",
     "deps:matrix:md": "node scripts/deps-matrix.mjs --markdown",
-    "deps:matrix:offline": "node scripts/deps-matrix.mjs --offline"
+    "deps:matrix:offline": "node scripts/deps-matrix.mjs --offline",
+    "harness:ref": "node scripts/harness-ref.mjs"
   },
   "lint-staged": {
     "*.{js,mjs}": [

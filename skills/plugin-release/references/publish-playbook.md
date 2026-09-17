@@ -1,56 +1,21 @@
-# publish-playbook · Packaging, publishing, and distribution recipes
+# publish-playbook · 发布语义不变量与真实坑位
 
-> Load-on-demand operational recipes that carry on the decision flow of [../SKILL.md](../SKILL.md).
-> All conclusions come from real publishing practice; where a scenario is not covered,
-> defer to primary sources and mark the item as pending confirmation.
+> 承接 [../SKILL.md](../SKILL.md) 的发布决策流；只放**发布语义不变量**与**实测坑位**，通用打包/分发说明不在这里维护。
 
-## Unpublished cohort installation (recipe R-01)
+## 发布语义四不变量
 
-When a release line exists as a GitHub tag only (npm lookups return 404), install it in isolation on the consumer side — substitute the exact target version for `<目标版本>`:
-
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git /tmp/dsh-build
-cd /tmp/dsh-build && git checkout dsh-v<目标版本>
-pnpm install && pnpm run build
-mkdir -p ~/.dsh-cohorts/<目标版本>
-pnpm -r exec pnpm pack --pack-destination ~/.dsh-cohorts/<目标版本>
-```
-
-In the manifest, write the range for that tag and pin it to a `file:` tarball with `overrides`; once the official release is out, removing the overrides returns resolution to the registry.
-
-> **To be confirmed (single field report, not reproduced)**: with third-party peers present, pnpm 11.9.0
-> resolves the transitive dependencies of `file:` tarballs by bypassing overrides and looking for a
-> nonexistent version on the registry; the report says pinning `packageManager: pnpm@11.24.0` resolves
-> it correctly. Reproduce minimally in the target repository before adopting it, and backfill the
-> conclusion once verified.
-
-## Cross-track signature drift
-
-Never keep an argument alive just to satisfy an older type baseline. `rpc.handle` is `handle(channel, handler)` — two parameters — and there is no method-specific loopback tier to pass into it (official [rpc.ts](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/connection/src/rpc.ts); the connection README states this explicitly). If a pinned devDependency baseline disagrees with the runtime you actually target, move the baseline instead of writing a call the host ignores; semantic API changes go through the version cards of the `plugin-upgrade` skill, never a silent compromise.
-
-- Type-only imports (`import type`) are erased at compile time and carry no runtime cost across cohorts;
-- Never write local junction/`file:` absolute paths into a committed manifest.
-
-## CI and release gates (unpublished cohort)
-
-- Materialize the cohort tarballs through the actions cache (keyed by the manifest hash), shared by all pnpm consumer jobs, so that machine-specific paths recorded in a frozen lockfile do not leave a clean runner without the store;
-- `pnpm/action-setup` does not pin `version`, making `packageManager` the single version source;
-- Add an `NPM_PUBLISH_ENABLED` switch to the release workflow: tag-triggered runs still execute the full gate and smoke, but skip `npm publish` until the cohort is officially released.
-
-## Release semantic gate recipe (release workflow)
-
-Before publishing, run the following checks in order; stop on any failure (the four invariants of Step 4 in the SKILL):
+发布前按序跑，任一失败即停（与 [../scripts/verify-release.mjs](../scripts/verify-release.mjs) 一一对应；该脚本只校验入参，**不发布、不打 tag、不联网**）：
 
 ```sh
 VERSION="$(node -p "require('./package.json').version")"
-# 1) GitHub Release tag must equal v${VERSION}
+# 1) GitHub Release tag 必须等于 v${VERSION}
 [ "$RELEASE_TAG" = "v$VERSION" ] || { echo "tag mismatch"; exit 1; }
-# 2) prerelease state must match ('-' comes before '+' build metadata)
+# 2) prerelease 状态必须一致（'-' 在 '+' build metadata 之前）
 V_PRERELEASE="$(node -e 'console.log(process.argv[1].split("+")[0].includes("-") ? "true" : "false")' "$VERSION")"
 [ "$RELEASE_PRERELEASE" = "$V_PRERELEASE" ] || { echo "prerelease state mismatch"; exit 1; }
-# 3) dist-tag routing: prereleases only go to a project-declared non-latest tag (NEXT_TAG is chosen by the project); only stable goes to latest
+# 3) dist-tag 分轨：prerelease 只进项目声明的非 latest tag（NEXT_TAG 由项目定）；stable 才进 latest
 if [ "$RELEASE_PRERELEASE" = "true" ]; then NPM_TAG="$NEXT_TAG"; else NPM_TAG="latest"; fi
-# 4) before a stable publish, refuse to move latest backwards to a lower version (semver comparison)
+# 4) stable 发布前拒绝把 latest 回退到更低版本（semver 比较）
 if [ "$NPM_TAG" = "latest" ]; then
   CURRENT="$(npm view "$PKG" dist-tags.latest 2>/dev/null || echo 0.0.0)"
   node -e "const semver=require('semver'); if (semver.lt(process.argv[1], process.argv[2])) { console.error('refusing to move latest backwards'); process.exit(1) }" "$VERSION" "$CURRENT"
@@ -58,41 +23,24 @@ fi
 npm publish --access public --tag "$NPM_TAG"
 ```
 
-The no-network semantic check can be run before the publish command with values already
-retrieved by the release workflow:
+验收矩阵与发布通道对应：prerelease 通道固定 alpha 系 tag、stable 通道固定 rc 系 tag——**绝不跟 master/main 冒充验收**。
 
-```sh
-node skills/plugin-release/scripts/verify-release.mjs \
-  --version "$VERSION" \
-  --release-tag "$RELEASE_TAG" \
-  --release-prerelease "$RELEASE_PRERELEASE" \
-  --npm-dist-tag "$NPM_TAG" \
-  --current-latest "$CURRENT_LATEST"
-```
+## 真实坑位
 
-The script only validates inputs and never publishes, tags, or queries the network.
+| 坑                                                             | 症状                                                                     | 处置                                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| pnpm 不在 PATH（只有 corepack）                                | 构建脚本里嵌套 `pnpm --filter …` 报 `'pnpm' is not recognized`           | 生成转发到 corepack 的 `pnpm.cmd` 垫片并置于 PATH 前；启动/构建包装脚本负责 bootstrap     |
+| Windows PowerShell 5.1 把 `npm` 解析成 `npm.ps1`               | 参数被吞（`Unknown command: "pm"`）                                      | 包装脚本显式调用 `npm.cmd` / `pnpm.cmd`                                                   |
+| PowerShell 5.1 默认参数值里 `$PSScriptRoot` 为空（带 `[CmdletBinding()]`） | `Join-Path` 收到空字符串报错                                             | 把默认值解析移到脚本体内                                                                 |
+| PowerShell 只读自动变量 `$Host`                                | 参数 `-Host` 无法覆盖                                                    | 改名，例如 `-BindHost`                                                                   |
+| `git rebase --continue` 卡在编辑器                             | 无 TTY 时挂住                                                            | 续前设 `GIT_EDITOR=true`（或 `core.editor=true`）                                        |
+| 远端已前进、推送被拒                                           | `[ahead 1, behind 1]`                                                    | `git pull --rebase` 后用 `--force-with-lease` 重推；**绝不裸 `--force`**                  |
 
-- The host acceptance matrix matches the release channel: the prerelease channel pins alpha-series tags and the stable channel pins rc-series tags — **never follow master/main to masquerade as acceptance**;
-- Pre-publish smoke for Web Client plugins must cover: the bundle entry announced in the host boot manifest (`window.__DSH_BOOT__`) is reachable, the bundle registers successfully, the DOM mount completes, and there are no page errors; `--dump-config` only proves the row exists and does not replace this check;
-- Auditable reference implementations: [dsh-genui#86](https://github.com/omdsh-dev/dsh-genui/pull/86),
-  [dsh-annotation#40](https://github.com/omdsh-dev/dsh-annotation/pull/40) (both implement
-  items 1–3 and dual-host smoke; item 4, the latest-backwards protection, is a community-suggested
-  addition not present in the reference implementations).
+> 发布前 Web Client 插件的冒烟最低面：宿主 boot 名单（`window.__DSH_BOOT__`）里的 bundle 入口可达、bundle 注册成功、DOM 挂载完成、无 page error——`--dump-config` 只证明行存在，不替代这一检查。
 
-## Real pitfall list (two rounds of practice)
+## 回滚配方
 
-| Pitfall | Symptom | Handling |
-|---|---|---|
-| pnpm not on PATH (corepack only) | Nested `pnpm --filter …` in build scripts fails with `'pnpm' is not recognized` | Generate a `pnpm.cmd` shim that forwards to corepack and prepend it to PATH; startup/build wrappers bootstrap the shim |
-| Windows PowerShell 5.1 resolves `npm` to `npm.ps1` | Arguments get mangled (`Unknown command: "pm"`) | Wrapper scripts explicitly invoke `npm.cmd` / `pnpm.cmd` |
-| `$PSScriptRoot` is empty in PowerShell 5.1 default parameter values (with `[CmdletBinding()]`) | `Join-Path` errors on an empty string | Move default-value resolution into the script body |
-| PowerShell's read-only automatic variable `$Host` | Parameter name `-Host` fails to override | Rename it, e.g. to `-BindHost` |
-| `git rebase --continue` blocks on the editor | Hangs without a TTY | Use `GIT_EDITOR=true` (or `core.editor=true`) before continuing |
-| Remote advanced and the push is rejected | `[ahead 1, behind 1]` | `git pull --rebase`, then re-push with `--force-with-lease`; never a bare `--force` |
-
-## Rollback recipe
-
-1. Tag before publishing and record the lockfile/composition baseline hashes;
-2. GitHub direct-install track: delete/move the tag; consumers re-point at the old commit as needed;
-3. Do migrations and publishing in an isolated workspace (branch/worktree), never mixed into one commit with feature changes;
-4. On failure, roll back only the paths owned by this run (tag, lockfile, manifest) and report residual side effects of third-party install scripts.
+1. 发布前先打 tag 并记录 lockfile / composition 基线 hash；
+2. GitHub 直装轨：删除或移动 tag，消费者按需重指回旧 commit；
+3. 迁移与发布都在隔离工作区（branch/worktree）里做，**不和功能改动混在一个 commit**；
+4. 失败时只回滚本次拥有的路径（tag、lockfile、manifest），并报告第三方安装脚本的残留副作用。

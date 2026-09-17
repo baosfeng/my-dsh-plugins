@@ -39,7 +39,7 @@ import { fileURLToPath } from 'node:url'
  * 平台 seed 表：宿主主 bundle 的 `staticModules` 显式暴露、插件 client 可直接 `require`
  * 的模块（零安装/零打包）。
  *
- * 来源：`docs/开发指南/官方UI组件库.md:9`（实测 `staticModules: Jd()` 暴露 react /
+ * 来源：`docs/开发指南/官方UI组件库.md` 的「接入契约」节（实测 `staticModules: Jd()` 暴露 react /
  * react/jsx-runtime / react-dom / @deepseek-ai/cordis / @deepseek-ai/dsh-client-ui-slots /
  * @deepseek-ai/dsh-client-ui-primitives）。issue #321 另列了 react-dom/client、
  * @deepseek-ai/dsh-client-store、@deepseek-ai/dsh-client-ui-dockkit —— 一并收录，

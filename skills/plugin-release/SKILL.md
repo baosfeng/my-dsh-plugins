@@ -16,7 +16,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 | hub 收录 | 在 hub catalog 登记 | 登记是独立动作，不代替打包验证 |
 | collection | 把成员插件 vendored 成 pack artifact | 见所属 collection 仓库的自有流程 |
 
-未发布 cohort（目标 cohort 的部分版本可能从未发到 npm，只在 GitHub 上）走 [references/publish-playbook.md](references/publish-playbook.md) 的 overrides 流程，**不要**在 npm 上找不存在的版本，也不要因此切换包管理器。判定发布轨前先 `npm view <pkg> versions` 核实实际可用版本，不要凭 tag 推断。
+未发布 cohort（目标 cohort 的部分版本可能从未发到 npm，只在 GitHub 上）**不要**在 npm 上找不存在的版本，也不要因此切换包管理器；按目标 tag 走版本走廊（或用 `pnpm -r exec pnpm pack` 物化 cohort tarball + `overrides` 固定到 `file:`）。判定发布轨前先 `npm view <pkg> versions` 核实实际可用版本，不要凭 tag 推断。
 
 ## 第 1 步：打包与产物校验
 
@@ -83,7 +83,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 - 发布前：干净提交 + 打 tag；记录 lockfile 与 composition 基线 hash；
 - 发布后：以消费者身份重装一次并冒烟；
 - 回滚：优先回退发布（删 tag/重新指向旧 commit），不发布“兼容两边”的补丁掩盖问题；
-- 未发布 cohort 的 CI 见 playbook 的“CI 与发布门禁”节（缓存 cohort store、`NPM_PUBLISH_ENABLED` 开关）。
+- 未发布 cohort 的 CI：发布 workflow 加 `NPM_PUBLISH_ENABLED` 开关——tag 触发仍跑完整门禁与冒烟，但在 cohort 正式发布前跳过 `npm publish`（细节见 `docs/开发指南/发版流程.md`）。
 
 ## 批量发版（一次多个插件）
 
@@ -131,5 +131,5 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 | 文件 | 内容 |
 |---|---|
-| [references/publish-playbook.md](references/publish-playbook.md) | 未发布 cohort 安装、跨轨签名漂移、CI/发布门禁、真实坑位清单与回滚配方 |
-| [references/profile-dependency-management.md](references/profile-dependency-management.md) | profile 安装/更新配方：github 依赖锁缓存、包改名三处同步、junction 清理与宿主升级联动 |
+| [references/publish-playbook.md](references/publish-playbook.md) | 发布语义四不变量（与 verify-release.mjs 对应）、真实坑位表与回滚配方 |
+| [references/profile-dependency-management.md](references/profile-dependency-management.md) | profile 依赖 recipe：两轨解析、github 锁缓存、改名三处同步、junction 语义、烘焙版本常量 |

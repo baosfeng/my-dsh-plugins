@@ -2,7 +2,7 @@
 /**
  * 官方参考源（deepseek-ai/deepseek-harness）的获取 / 更新 / 索引入口。
  *
- * 为什么需要它：`docs/官方文档/` 那批速查是从官方仓库取证写成的，官方代码演进后要能
+ * 为什么需要它：`docs/官方文档/` 里的结论是从官方仓库取证的，官方代码演进后要能
  * 一键对齐；但本机是 **shallow clone**（`--depth 1`，140M），直接 `git pull` 会失败，
  * 必须走 `fetch --depth 1` + `reset --hard`。
  *

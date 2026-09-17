@@ -13,7 +13,7 @@ description: 使用当 需要新建 DSH 插件、为外部 DSH 插件选择公�
 |---|---|
 | 官方 `deepseek-harness` monorepo 内的包 | 用仓库内 package/tsconfig/文档与根门禁规则 |
 | 外部可安装的 DSH 插件 | 保留该仓库的包布局与脚本；只用精确目标 DSH 版本已发布的包与导出；不复制 `private`、workspace 版本、根 tsconfig 注册或 monorepo 专属 README 门禁 |
-| 现有插件适配新 DSH 宿主 | 读 [references/version-adaptation.md](references/version-adaptation.md)，建完整版本走廊并跑七类触点 preflight；`breaking` 变更且用户未授权实施时，先展示迁移计划等确认 |
+| 现有插件适配新 DSH 宿主 | 本仓库走 `plugin-upgrade` skill（三模式 + 七类触点 preflight）与 `dsh-upgrade-audit` skill（两版本间审计）；`breaking` 变更且用户未授权实施时，先展示迁移计划等确认 |
 
 Cordis/Schemastery/DSH 包名与版本范围从精确目标版本的 manifest 推导（当前示例用 `@deepseek-ai/*` 标识符；旧目标按各自发布契约）。
 
@@ -70,7 +70,6 @@ Cordis/Schemastery/DSH 包名与版本范围从精确目标版本的 manifest �
 | [references/plugin-naming.schema.json](references/plugin-naming.schema.json) | dsh-plugin.naming.json 的 JSON Schema |
 | [references/naming-policy.v1.json](references/naming-policy.v1.json) | 命名策略（防撞名 profile） |
 | [references/registry-check.md](references/registry-check.md) | 中央注册表查询契约 |
-| [references/version-adaptation.md](references/version-adaptation.md) | 现有插件跨 DSH 版本适配流程 |
-| [接入速查](../../docs/官方文档/接入速查.md) + [宿主API速查](../../docs/官方文档/宿主API速查.md) | 官方权威路径与按任务查 API |
+| 官方 [文档索引](../../docs/官方文档/索引.md) | 官方权威路径导航（按任务找官方页 + 本地官方参考源入口） |
 | [scripts/validate-names.mjs](scripts/validate-names.mjs) | 离线命名校验器 |
 | [scripts/query-registry.mjs](scripts/query-registry.mjs) | 中央注册表查询器 |

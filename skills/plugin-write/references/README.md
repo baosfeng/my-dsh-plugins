@@ -6,7 +6,6 @@ Read only the file needed for the task:
 |---|---|
 | [naming-conventions.md](naming-conventions.md) | Check official naming compatibility and optional community collision recommendations |
 | [registry-check.md](registry-check.md) | Query reviewed central registrations after offline naming validation and prepare a contextual registration |
-| [version-adaptation.md](version-adaptation.md) | Adapt an existing plugin to a new Harness version |
 | Tool form (reference trimmed) | Write a model-callable tool |
 | LLM adapter form (reference trimmed) | Connect a model provider |
 | Hook form (reference trimmed) | Write event and policy hooks |
@@ -18,5 +17,5 @@ Read only the file needed for the task:
 > table, and the mapping is in `SKILL.md`「再分类插件形态」.
 
 For a new external plugin, read `naming-conventions.md`, then `registry-check.md` when a central lookup
-or registration is needed, plus the matching form reference. For a version adaptation, read
-`version-adaptation.md` first and then the matching form reference.
+or registration is needed, plus the matching form reference. For a version adaptation, use the
+`plugin-upgrade` skill (three modes plus the seven-touchpoint pre-flight) instead of this reference set.

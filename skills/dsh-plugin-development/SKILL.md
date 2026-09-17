@@ -22,9 +22,9 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 - **修改**现有插件（server / client 任一端）
 - **调试**：注册冲突、挂载不生效、页面不刷新不生效、重复挂载
 - **发布**：版本号、CHANGELOG、tag、GitHub Release
-- **开发工具型插件**（agent 可调用的函数）：读 [references/dsh-tools-api.md](references/dsh-tools-api.md) 的官方 `defineTool` 权威 API
-- **调研生态/分发渠道**（npm、GitHub topic、插件市场收录）：读 [references/dsh-ecosystem.md](references/dsh-ecosystem.md)
-- **查宿主 API 精确语义**：先读 [宿主API速查](../../docs/官方文档/宿主API速查.md)；判**存在性 / 定义点 / 契约**（serial 还是 parallel、有没有 `next()`）用**本地官方参考源 + 知识图谱**（参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`，命令见[官方文档索引](../../docs/官方文档/索引.md) 第十节）——官方 docs 只列事件名与概览，这类契约必须回源码；**不要按 API 名字猜**（同名不同义的坑见[本仓库重点](../../docs/官方文档/本仓库重点.md)）。
+- **开发工具型插件**（agent 可调用的函数）：官方 `defineTool` 权威 API 直接查本地官方参考源（[tools.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/tools.zh.md) + [tool.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/tool.zh.md)；本 skill 不再维护副本）
+- **调研生态/分发渠道**：官方资源与插件市场收录直接查官方 `docs/`（导航见[官方文档索引](../../docs/官方文档/索引.md)）；本仓库自身的双通道分发约定见下「外部生态与分发」
+- **查宿主 API 精确语义**：判**存在性 / 定义点 / 契约**（serial 还是 parallel、有没有 `next()`）用**本地官方参考源 + 知识图谱**（参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`，命令见[官方文档索引](../../docs/官方文档/索引.md) 第十节）——官方 docs 只列事件名与概览，这类契约必须回源码；**不要按 API 名字猜**（同名不同义的坑见[本仓库重点](../../docs/官方文档/本仓库重点.md)）。
 
 ## 相关 skill（交叉引用）
 
@@ -51,13 +51,13 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 
 ## 插件形态（先决策）
 
-| 形态                                      | 面向                                                | 关键 API                                                                                                                                                                                           |
-| ----------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **工具型插件**（注册 agent 工具）         | 提供 agent 可调用的函数（天气/搜索/记忆等纯工具）   | server 端 `ctx.tools.register(defineTool(...))`，详见 [dsh-tools-api.md](references/dsh-tools-api.md)                                                                                              |
-| **侧边栏页签 / 预览器**（宿主原生扩展点） | 在侧边栏提供新页面或文件预览                        | client 端 `ctx.sidebarRightTabs.register(...)` + keyed 席位 `sidebar.right.pane.tab`；文件预览器 `ctx.documentPreviews`（见 [references/better-sidebar-api.md](references/better-sidebar-api.md)） |
-| **纯 server 插件**                        | 事件监听 / HTTP 路由 / 持久化                       | `apply(ctx)` + `ctx.on` / `webServer`                                                                                                                                                              |
-| **两者混合**（最常见）                    | 页面 + 后端逻辑                                     | 两端都写，client 通过 HTTP 路由或事件上报 server                                                                                                                                                   |
-| **agent preset 资产包**                   | 提供模式选择器里的 agent 预设（如「插件开发模式」） | `agent.cordis.yml` + `preset.yml` + 自带 `skills/`；**不挂 profile**，复制到 `$DSH_HOME/.agent-presets/<id>/` 后由宿主 `@deepseek-ai/dsh-agent-presets` 发现                                       |
+| 形态                                      | 面向                                                | 关键 API                                                                                                                                                                                                                                                                         |
+| ----------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **工具型插件**（注册 agent 工具）         | 提供 agent 可调用的函数（天气/搜索/记忆等纯工具）   | server 端 `ctx.tools.register(defineTool(...))`，官方权威：[tools.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/tools.zh.md) + [tool.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/tool.zh.md) |
+| **侧边栏页签 / 预览器**（宿主原生扩展点） | 在侧边栏提供新页面或文件预览                        | client 端 `ctx.sidebarRightTabs.register(...)` + keyed 席位 `sidebar.right.pane.tab`；文件预览器 `ctx.documentPreviews`（签名查官方 [sidebar-right.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/sidebar-right.zh.md)）                     |
+| **纯 server 插件**                        | 事件监听 / HTTP 路由 / 持久化                       | `apply(ctx)` + `ctx.on` / `webServer`                                                                                                                                                                                                                                            |
+| **两者混合**（最常见）                    | 页面 + 后端逻辑                                     | 两端都写，client 通过 HTTP 路由或事件上报 server                                                                                                                                                                                                                                 |
+| **agent preset 资产包**                   | 提供模式选择器里的 agent 预设（如「插件开发模式」） | `agent.cordis.yml` + `preset.yml` + 自带 `skills/`；**不挂 profile**，复制到 `$DSH_HOME/.agent-presets/<id>/` 后由宿主 `@deepseek-ai/dsh-agent-presets` 发现                                                                                                                     |
 
 > `ctx.sidebarRightTabs` / `ctx.slots` / `ctx.sidebarRight` / `ctx.documentPreviews` **只存在于 client 端**。server 端需要侧边栏数据时走本插件自己的 HTTP 路由（`/<插件名>/api/*`），不要假设这些服务存在。
 
@@ -222,7 +222,7 @@ window.__ModuleLoader__.load({
 - `export const name = '<包名>'`、`export const inject = [...]`（可用 `webServer`、`sessions`、`webRuntime` 等服务）、`export function apply(ctx)`。
 - 可选服务用 `ctx.get('服务名')` 读取并处理 undefined；硬依赖才放 inject。
 - 监听 DSH 事件用 `ctx.on('事件名', handler)`；所有副作用包 `ctx.effect(() => {...})`（返回 disposer 的注册函数直接返回其返回值）。
-- 注册 agent 工具：`inject: ['tools']` 后 `ctx.tools.register(defineTool({ name, description, parameters, output, execute }))`——完整权威 API 与 schema 硬规则见 [references/dsh-tools-api.md](references/dsh-tools-api.md)。
+- 注册 agent 工具：`inject: ['tools']` 后 `ctx.tools.register(defineTool({ name, description, parameters, output, execute }))`——完整权威 API 与 schema 硬规则见官方 [tools.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/tools.zh.md)。
 - HTTP 路由：`ctx.webServer.register({ kind: 'prefix', path: '/<插件名>/api', handler })`；handler 签名 `(request, response)`，用 `request.url` 分发，`writeHead` + `end` 返回 JSON；先做 loopback 信任围栏。
 - 持久化：写 `$DSH_HOME` 下 JSON（防抖 + 原子写 tmp+rename），按会话隔离。
 
@@ -239,7 +239,7 @@ window.__ModuleLoader__.load({
 
 ## 工具型插件（defineTool）速览
 
-> 官方权威 API（dsh 插件最核心形态）：注册 agent 可调用的工具函数。完整细节见 [references/dsh-tools-api.md](references/dsh-tools-api.md)。
+> 官方权威 API（dsh 插件最核心形态）：注册 agent 可调用的工具函数。完整细节见官方 [tool.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/tool.zh.md) 与 [cookbook/adding-a-tool.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/adding-a-tool.zh.md)。
 
 ```js
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -271,17 +271,13 @@ export function apply(ctx) {
 
 **schema 硬规则：** ① `required` 是属性级（写 `required: true`，无 `required` 数组、无 `required: false`）；② 对象 schema 必须显式 `additionalProperties: false`；③ `output` 必填（schema + render 返回 `{ type: 'text', text }`）；④ 用 `execute(args)` 不是 `run`。
 
-**开发调试：** `npx @dsh-io/dsh-dev scaffold <name>` 生成 TS 骨架（**第三方、非官方**脚手架，官方没有 scaffold 命令，见 [dsh-tools-api.md](references/dsh-tools-api.md)） → `npm run build` → `npx @deepseek-ai/dsh --profile web --patch <abs-path>/cordis.patch.yml` 对活 harness 调试 → `dsh plugin add <dir>` 永久注册。本仓库纯 JS 插件同样可用 `defineTool`（无类型检查时手动遵守硬规则）。
+**开发调试：** `npx @dsh-io/dsh-dev scaffold <name>` 生成 TS 骨架（**第三方、非官方**脚手架，官方没有 scaffold 命令） → `npm run build` → `npx @deepseek-ai/dsh --profile web --patch <abs-path>/cordis.patch.yml` 对活 harness 调试 → `dsh plugin add <dir>` 永久注册。**本仓库 JS 约定差异**：官方骨架是 TypeScript（`@deepseek-ai/dsh-tools` 提供类型增强），本仓库插件为纯 JS（`lib/index.js` ESM）——API 相同、`defineTool` 同样可用，但**没有类型检查兜底，必须手动遵守上面的 schema 硬规则**。
 
 ## 外部生态与分发
 
-> 官方资源、插件市场收录机制、生态差异。完整参考见 [references/dsh-ecosystem.md](references/dsh-ecosystem.md)。
-
-- **官方权威 skill**：`dsh-io/dsh-plugin-skill`（defineTool API 唯一权威，第三方）；侧边栏扩展点以宿主官方 [sidebar-right.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/sidebar-right.zh.md) 为准。
-- **官方仓库写法（最高权威）**：DeepSeek-Harness 仓库 `packages/` 实际代码——工具型看 `workflow/tool-workflow`（schemastery Config、prompt section、ToolCallView），UI 型看 `client/ui-workflow-run`（slots.inject/register keyed slot、locale.register、conversationEvents），组合看 `bundle/web-app/cordis.patch.yml`（`!!js` 表达式、行覆盖），打包看 `client/tsdown.client.ts`（**ModuleLoader** 协议、纯度门）。完整提炼见 [references/dsh-official-writing.md](references/dsh-official-writing.md)。
-- **UI 插件实现思路**：官方 Slot 系统 / settings 分区 / 全局挂载等注册方式、host 安全双层（loopback + workspace 门）、SSE/轮询通信。完整分析见 [references/ui-plugin-patterns.md](references/ui-plugin-patterns.md)。
-- **市场收录**：给公开仓库打 GitHub topic `dsh-plugin` 即被 dshfind.com 与 DSH 1024Store（deepseek1024.com，4100+ 插件）自动聚合收录；1024Store 收录前静态校验 `package.json` + `dsh.bundle.patch` + patch 文件齐备。
 - **本仓库分发约定（双通道）**：GitHub Release + **npm 官方 registry**（release.yml 读仓库 `NPM_TOKEN` secret 自动发布；未配置时仅警告跳过）。完整流程见 [docs/开发指南/发版流程.md](../../docs/开发指南/发版流程.md)。
+- **第三方脚手架（非官方）**：`npx @dsh-io/dsh-dev scaffold <name>` 生成 TS 骨架；官方没有 scaffold 命令，用前自行核实。
+- **市场收录（本仓库已用）**：给公开仓库打 GitHub topic `dsh-plugin` 即被 dshfind.com 与 DSH 1024Store（deepseek1024.com）自动聚合收录；1024Store 收录前静态校验 `package.json` + `dsh.bundle.patch` + patch 文件齐备——可当发布自检参考。
 
 ## 发布流程（自动 / 手动）
 
@@ -299,7 +295,7 @@ export function apply(ctx) {
 | `"no service available"`（tools）                                          | 工具型插件没声明 `inject: ['tools']`                                                          | `export const inject = ['tools']`                                                                                                                                             |
 | 工具注册了但 agent 从不调用                                                | `description` 写得不够好                                                                      | description 是 agent 决策依据，写清用途与参数                                                                                                                                 |
 | Release workflow 在 `Verify the git tag matches package.json version` 失败 | 校验比较格式不一致（历史 bug：`expected` 带 `v` 前缀而 tag 解析的 `VERSION` 不带）            | 校验必须比较**裸版本**：`expected="$(node -p ...)"`（不带 v），与 tag `@v` 后部分一致；改后删 tag 重推（`git tag -d <tag> && git push origin :refs/tags/<tag>`）              |
-| schema 类型推断/校验失败                                                   | `required` 数组、`required: false`、缺 `additionalProperties`                                 | 属性级 `required: true`；对象 schema 显式 `additionalProperties: false`（见 dsh-tools-api.md）                                                                                |
+| schema 类型推断/校验失败                                                   | `required` 数组、`required: false`、缺 `additionalProperties`                                 | 属性级 `required: true`；对象 schema 显式 `additionalProperties: false`（官方 tools.zh.md）                                                                                   |
 | 页面没效果                                                                 | 只改了 server 端没重启；或没硬刷新                                                            | server 改动重启 `dsh web`；client 改动 Cmd/Ctrl+Shift+R                                                                                                                       |
 | `duplicate loader entry id`                                                | profile 里手动 insert + bundle patch 自动插入重复                                             | 删掉手动行，只用 `dsh plugin` 安装                                                                                                                                            |
 | `ctx.sidebarRightTabs` undefined                                           | 没声明 inject，或服务未加载                                                                   | `inject: ['slots', 'sidebarRightTabs']`；可选场景用 `ctx.get` 判空降级                                                                                                        |

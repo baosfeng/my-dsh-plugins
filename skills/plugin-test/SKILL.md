@@ -11,7 +11,7 @@ description: 使用当 需要为 DSH 插件编写或审查测试，或验证 DSH
 
 把现有插件适配到新 DSH 宿主版本时：
 
-1. 读 [references/version-migration-testing.md](references/version-migration-testing.md)，为精确 from/to 版本建迁移账本，扫描全部七类触点。
+1. 为精确 from/to 版本建迁移账本（按版本顺序读完整条走廊，合并中间版本的删除/恢复成净状态），扫描全部七类触点——方法见 `plugin-upgrade` skill 的 [pre-flight.md](../plugin-upgrade/references/pre-flight.md)。
 2. 为每个适用的 `breaking`/`behavior` 变更加针对性回归测试（变更级测试只证明该映射，不证明整个插件有效）。
 3. 用真实产品入口冷启动精确目标版本并完成一个完整用户回合。类型检查、配置解析、Loader 冒烟、mock Context **不能替代**这个运行时证明。
 4. 诚实报告不可用的凭据/provider/OS/浏览器/PTY/破坏性迁移边界；有未验证项不得声称全面兼容。
@@ -24,13 +24,13 @@ description: 使用当 需要为 DSH 插件编写或审查测试，或验证 DSH
 
 ## 测试层级
 
-| 层级 | 证明什么 |
-|---|---|
-| 单元测试 | 边界情况、错误路径、事件顺序、并发竞争、契约回归；每个注册都需要 HMR 安全测试（dispose 贡献注册的 fiber 并断言资源被移除） |
-| 覆盖率门禁 | 只证明行被执行，不证明发布功能真的可用；外部插件按仓库声明的阈值 |
-| 真实 API e2e | 有 provider 凭据且授权时跑（含 DeepSeek 模型与 provider 冒烟）；凭据缺失时套件自跳过保持 CI 绿；免凭据测试只证明管线连通，只有带凭据的运行证明 agent 能配合真实模型工作 |
-| 快照测试 | 免凭据输出，钉住传输契约与呈现；模型/协议/用户可见行为变更必须加或更新免凭据快照 |
-| Web 浏览器快照 | Chromium 回放输出对比；CI 强制只读回放，绝不写期望输出；本地录制并审阅每个差异 |
+| 层级           | 证明什么                                                                                                                                                                |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 单元测试       | 边界情况、错误路径、事件顺序、并发竞争、契约回归；每个注册都需要 HMR 安全测试（dispose 贡献注册的 fiber 并断言资源被移除）                                              |
+| 覆盖率门禁     | 只证明行被执行，不证明发布功能真的可用；外部插件按仓库声明的阈值                                                                                                        |
+| 真实 API e2e   | 有 provider 凭据且授权时跑（含 DeepSeek 模型与 provider 冒烟）；凭据缺失时套件自跳过保持 CI 绿；免凭据测试只证明管线连通，只有带凭据的运行证明 agent 能配合真实模型工作 |
+| 快照测试       | 免凭据输出，钉住传输契约与呈现；模型/协议/用户可见行为变更必须加或更新免凭据快照                                                                                        |
+| Web 浏览器快照 | Chromium 回放输出对比；CI 强制只读回放，绝不写期望输出；本地录制并审阅每个差异                                                                                          |
 
 ## 按变更面选层级
 
@@ -41,6 +41,8 @@ description: 使用当 需要为 DSH 插件编写或审查测试，或验证 DSH
 - 用户可见行为（CLI 转录/交互终端/GUI 流）→ 用产品入口测试套件。
 - provider 行为（新 adapter/真实 provider 功能）→ 凭据可用且授权时跑真实 API e2e。
 - 用户会实际运行的插件 → 执行非单测的真实组合测试；绝不只测手工拼装的 `ctx.plugin(...)`。
+
+官方测试机制与夹具位置见官方 [docs/testing.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/testing.zh.md)；按任务查宿主能力直接查本地官方参考源（导航见[官方文档索引](../../docs/官方文档/索引.md)）。
 
 ## 测试真实入口路径
 
@@ -61,9 +63,8 @@ description: 使用当 需要为 DSH 插件编写或审查测试，或验证 DSH
 
 ## 参考材料
 
-| 文件 | 内容 |
-|---|---|
+| 文件                                                                     | 内容                                                          |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------- |
 | [references/docker-release-smoke.md](references/docker-release-smoke.md) | Docker 发布冒烟配方（pin 版本/隔离 Profile/冷启动/argv 探针） |
-| [references/version-migration-testing.md](references/version-migration-testing.md) | 版本迁移测试（七触点 + 回归 + 冷启动证明） |
-| [scripts/docker-release-smoke.mjs](scripts/docker-release-smoke.mjs) | Docker 冒烟 runner |
-| [scripts/container-runner.mjs](scripts/container-runner.mjs) | 容器运行器（docker 冒烟依赖） |
+| [scripts/docker-release-smoke.mjs](scripts/docker-release-smoke.mjs)     | Docker 冒烟 runner                                            |
+| [scripts/container-runner.mjs](scripts/container-runner.mjs)             | 容器运行器（docker 冒烟依赖）                                 |

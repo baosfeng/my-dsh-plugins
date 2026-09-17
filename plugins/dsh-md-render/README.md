@@ -57,7 +57,7 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 
 装完后**重启 `dsh web`**（bundle 层在启动时组合），再硬刷新浏览器。
 
-> 与 [dsh-think-zh-expand](../dsh-think-zh-expand/README.md) 配合：该插件替换消息渲染器后，text / reasoning 块走本插件的 MarkdownView（`tzx-md` 容器）。**依赖方向**：think-zh-expand 依赖本插件（`dsh.client.external`），两者须同时启用。
+> 与 [dsh-think-zh-expand](../dsh-think-zh-expand/README.md) 配合：该插件替换消息渲染器后，text / reasoning 块优先走本插件的 MarkdownView（`tzx-md` 容器）。**依赖方向**：think-zh-expand 把本插件声明为**可选**外部内核（`dsh.client.external` + `externalDegraded`），未安装时回退宿主官方 `MarkdownText`，不要求两者同时启用。
 
 ## 公共 API 契约（semver 承诺）
 
@@ -82,7 +82,7 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 
 - 表格必须能从段落文本中识别：需含 `|` 且 ≥2 列 + 分隔行；纯空格分隔的「表格」无法识别。
 - 公式结构覆盖高频结构，非完整 LaTeX 排版（零依赖约束）；无法解析的公式与异常公式（未闭合 `$`、空公式等）保持原文或标错误，不静默吞掉。
-- 宿主自行渲染、不经过本插件管线的 markdown（如轨迹视图）不在增强范围内。
+- 轨迹视图（宿主 `div[data-trajectory-scroll]` 子树）也在增强范围内，但走**内容门控**：只接管确实含表格 / 公式 / 围栏代码块的块；单块超长或取不到 markdown 原文时保持宿主渲染（不报错、不改 DOM）。
 
 ## 相关文档
 

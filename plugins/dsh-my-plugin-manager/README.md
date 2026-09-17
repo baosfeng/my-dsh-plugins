@@ -29,6 +29,10 @@ git clone https://github.com/baosfeng/my-dsh-plugins.git
 dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-plugin-manager
 ```
 
+## 配置
+
+无插件级配置项。
+
 ## 使用
 
 1. 打开 DSH Web 设置 → 插件 → **插件管理**；

@@ -154,7 +154,8 @@ async function coldStart(config, environment, logs) {
     })
   }
   if (!readyFound) {
-    const reason = child.exitCode === null ? `readiness timeout after ${config.timeoutSeconds}s` : `exit code ${child.exitCode}`
+    const reason =
+      child.exitCode === null ? `readiness timeout after ${config.timeoutSeconds}s` : `exit code ${child.exitCode}`
     if (child.exitCode === null && child.signalCode === null) {
       child.kill('SIGTERM')
       if (!(await waitForExit(child, config.shutdownGraceSeconds * 1000))) {

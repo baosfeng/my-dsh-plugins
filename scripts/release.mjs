@@ -928,9 +928,9 @@ if (push && succeeded.length > 0) {
 
   // Create commit
   // commitlint 限制 header ≤ 100 字符：批量发版时插件清单必须放 body，
-  // 不能 join 进 header —— 原先 12 个插件即 242 字符，commit 被 commitlint
-  // 以 header-max-length 拦下，导致整个批量发版在最后一步失败（实测踩到：
-  // 版本已 bump、CHANGELOG 已生成，但 commit/tag/push 全部未执行）。
+  // 不能 join 进 header —— 插件一多 header 就超 header-max-length 被拦下，
+  // 整个批量发版在最后一步失败（此时版本已 bump、CHANGELOG 已生成，但
+  // commit/tag/push 全部未执行）。
   const header = succeeded.length === 1 ? commitMessages[0] : `chore(release): 批量发版 ${succeeded.length} 个插件`
   const body = succeeded.map((r) => `- ${r.name}@${r.version}`).join('\n')
   const commitArgs = succeeded.length === 1 ? ['commit', '-m', header] : ['commit', '-m', header, '-m', body]

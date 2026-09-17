@@ -2,14 +2,17 @@
 
 import { pathToFileURL } from 'node:url'
 
-const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
+const versionPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
 
 export function parseSemver(value) {
   if (typeof value !== 'string') return null
   const match = versionPattern.exec(value)
   if (!match) return null
   const identifiers = match[4]?.split('.') ?? []
-  if (identifiers.some((identifier) => /^\d+$/.test(identifier) && identifier.length > 1 && identifier.startsWith('0'))) {
+  if (
+    identifiers.some((identifier) => /^\d+$/.test(identifier) && identifier.length > 1 && identifier.startsWith('0'))
+  ) {
     return null
   }
   const major = Number(match[1])

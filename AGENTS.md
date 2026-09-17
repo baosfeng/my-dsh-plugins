@@ -1,6 +1,6 @@
 # my-dsh-plugins — 个人 DSH（DeepSeek Harness）插件集合仓库
 
-> 19 个插件（plugins/）+ 13 个 skill（skills/）+ 文档（docs/）。技术栈：Node.js + Cordis 4 + React 18/19 + dsh-better-sidebar。
+> 19 个插件（plugins/）+ 12 个 skill（skills/）+ 文档（docs/）。技术栈：Node.js + Cordis 4 + React 18/19 + 宿主原生 sidebarRightTabs。
 
 ## 🤝 协作与项目管理原则（所有 agent 必读）
 
@@ -25,7 +25,7 @@
 - **本地绿 ⇒ CI 绿（不许靠 CI 发现问题）**：CI 的每个阻断性检查本地都要有对应项**并默认执行**；出现「本地全绿、CI 却红」**是门禁缺陷，必须定位并修掉**（补本地检查／修 flaky／显式白名单），不得当成正常现象。推送前跑 **`npm run verify`**（CI 等价全量）；`--fast` 是显式选择且必须打印未跑项。一次 CI 往返约半小时，本地多花几分钟换掉它是划算的（规则见工程效率规范第十四节）。
 - **测试必跑**：`cd plugins/<插件名> && npm test`（CI 遍历 plugins/*/ 执行 node --check + 冒烟测试）；提交前全量测试并修复失败。
 - **命令超时**：shell 命令必须设 timeoutMs（快速 ≤15s，长任务 run_in_background 后台运行；禁止无超时前台跑可能超 1 分钟的命令）。
-- **代码查询走知识图谱**：查符号/调用链/影响/架构用 `mcp__codebase-memory__*` 工具（细节见 skill `codebase-memory`），图外事实才 grep/read。
+- **代码查询走知识图谱**：查**本仓库**符号/调用链/影响/架构用 `mcp__codebase-memory__*`（细节见 skill `codebase-memory`），图外事实才 grep/read——**下否定结论前先 `npm run index:self --status`**（过期索引会让真实存在的符号返回 0 结果，实测曾落后 3 周 / 509 个提交）；查**官方宿主**源码坐标同理（参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`，`npm run harness:ref` 刷新，命令见 docs/官方文档/索引.md 第十节）。
 - **发版门禁**：发版用 `node scripts/release.mjs <插件名> [--push]`，必须过 #67 功能级验证门禁（verifying-dsh-plugins skill），跳过须带 `--skip-reason`。
 - **文档精简（强制）**：写/改任何文档前先读 **docs/开发指南/文档规范.md**——只写「怎么跑 / 防复发 / 指针」，单文件正文 ≤200 行，**不保留历史信息**（日期、issue 编号、复盘、旧版本条目、完成报告），新增文档前过该文自查清单；判不准是否有用时保留。
 - **AGENTS.md 保持精简**（≤50 行）：只保留协作原则/强制规则/入口，其余放 skill/docs 按需加载。
@@ -34,10 +34,11 @@
 ## 📚 入口
 
 - **文档**：docs/索引.md（完整导航）；各插件文档在 docs/<模块>/，源码在 plugins/<插件名>/。
+- **官方文档**：docs/官方文档/索引.md（检索入口：本地参考源 + 知识图谱 + grep 用法，**官方内容不在此维护副本**）· docs/官方文档/本仓库重点.md（我们实际调用什么、官方答不了什么）；本地参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`。
 - **开发/发版**：skills/development-lifecycle/（需求→确认→梳理→开发→验证→发版→文档→release 全流程）。
 - **插件开发**：skills/dsh-plugin-development/（插件形态/目录结构/发布流程）。
 - **质量**：quality-gates skill（10 项门禁：TDD/Gherkin/复杂度 ≤10/函数 ≤70 行/文件 ≤400 行/依赖无环/变异 ≥70%/覆盖率 85-75/防复发/真实环境验证）；资源预算见 skills/resource-budget-review/。
-- **仓库健康**：skills/dsh-github-triage/（issue/PR/CI 处理 + fork 池隔离）；建 fork 用 `node scripts/fork-pool.mjs create <编号>`（一条命令含装 hooks），推送前用 `check` 自检。
-- **升级兼容**：skills/plugin-upgrade/ + skills/dsh-upgrade-audit/（DSH 版本升级/兼容性审计）。
+- **仓库健康**：skills/dsh-github-triage/（issue/PR/CI 处理 + 需求登记 + fork 池隔离）；建 fork 用 `node scripts/fork-pool.mjs create <编号>`（一条命令含装 hooks），推送前用 `check` 自检。
+- **升级兼容**：skills/plugin-upgrade/（DSH 版本升级 / 插件迁移 / 两版本间兼容性审计）。
 - **验证**：verifying-dsh-plugins skill（隔离实例 + 浏览器，验证后清理环境）。
 - **踩坑**：docs/踩坑/README.md（症状 → 解法速查表，按报错关键词搜）；术语见 docs/术语表.md。

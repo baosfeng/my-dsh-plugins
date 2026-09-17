@@ -5,20 +5,15 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { loadNamingPolicy, validateNamingManifest } from './validate-names.mjs'
 
-export const DEFAULT_REGISTRY_URL = 'https://raw.githubusercontent.com/oh-my-dsh/dsh-plugin-registry/main/registry/index.json'
+export const DEFAULT_REGISTRY_URL =
+  'https://raw.githubusercontent.com/oh-my-dsh/dsh-plugin-registry/main/registry/index.json'
 export const REGISTRY_CONTRACT = 'dsh-plugin-registry/v2'
 
 const MAX_INDEX_BYTES = 5 * 1024 * 1024
-const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+const semverPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 const scopedKinds = ['services', 'tools', 'commands', 'skillProviders', 'settingsNamespaces']
-const requiredClaimKinds = [
-  'pluginNames',
-  'loaderIds',
-  ...scopedKinds,
-  'skills',
-  'events',
-  'routes',
-]
+const requiredClaimKinds = ['pluginNames', 'loaderIds', ...scopedKinds, 'skills', 'events', 'routes']
 
 export class RegistryQueryInputError extends Error {
   constructor(message, options) {
@@ -75,31 +70,50 @@ function compareSemver(leftValue, rightValue) {
 function supportsHarnessVersion(plugin, version) {
   if (!version) return true
   const range = plugin.compatibility.harness
-  return compareSemver(range.min, version) <= 0 && (!range.maxExclusive || compareSemver(version, range.maxExclusive) < 0)
+  return (
+    compareSemver(range.min, version) <= 0 && (!range.maxExclusive || compareSemver(version, range.maxExclusive) < 0)
+  )
 }
 
 function validateIndex(index) {
-  if (!isObject(index) || index.schemaVersion !== 2 || index.contract !== REGISTRY_CONTRACT || !Array.isArray(index.plugins)) {
+  if (
+    !isObject(index) ||
+    index.schemaVersion !== 2 ||
+    index.contract !== REGISTRY_CONTRACT ||
+    !Array.isArray(index.plugins)
+  ) {
     throw new RegistryQueryInputError(`registry index must use ${REGISTRY_CONTRACT}`)
   }
   for (let offset = 0; offset < index.plugins.length; offset += 1) {
     const plugin = index.plugins[offset]
     const path = `index.plugins[${offset}]`
-    if (!isObject(plugin?.plugin) || typeof plugin.plugin.id !== 'string' || typeof plugin.plugin.repository !== 'string'
-      || typeof plugin.plugin.package !== 'string' || typeof plugin.plugin.status !== 'string') {
+    if (
+      !isObject(plugin?.plugin) ||
+      typeof plugin.plugin.id !== 'string' ||
+      typeof plugin.plugin.repository !== 'string' ||
+      typeof plugin.plugin.package !== 'string' ||
+      typeof plugin.plugin.status !== 'string'
+    ) {
       throw new RegistryQueryInputError(`${path}.plugin is invalid`)
     }
-    if (!isObject(plugin.compatibility?.harness) || !parseSemver(plugin.compatibility.harness.min)
-      || (plugin.compatibility.harness.maxExclusive !== undefined && !parseSemver(plugin.compatibility.harness.maxExclusive))) {
+    if (
+      !isObject(plugin.compatibility?.harness) ||
+      !parseSemver(plugin.compatibility.harness.min) ||
+      (plugin.compatibility.harness.maxExclusive !== undefined &&
+        !parseSemver(plugin.compatibility.harness.maxExclusive))
+    ) {
       throw new RegistryQueryInputError(`${path}.compatibility.harness is invalid`)
     }
-    if (plugin.compatibility.harness.maxExclusive
-      && compareSemver(plugin.compatibility.harness.min, plugin.compatibility.harness.maxExclusive) >= 0) {
+    if (
+      plugin.compatibility.harness.maxExclusive &&
+      compareSemver(plugin.compatibility.harness.min, plugin.compatibility.harness.maxExclusive) >= 0
+    ) {
       throw new RegistryQueryInputError(`${path}.compatibility.harness is empty`)
     }
     if (!isObject(plugin.claims)) throw new RegistryQueryInputError(`${path}.claims is invalid`)
     for (const kind of requiredClaimKinds) {
-      if (!Array.isArray(plugin.claims[kind])) throw new RegistryQueryInputError(`${path}.claims.${kind} must be an array`)
+      if (!Array.isArray(plugin.claims[kind]))
+        throw new RegistryQueryInputError(`${path}.claims.${kind} must be an array`)
     }
     if (!plugin.claims.loaderIds.every((claim) => isObject(claim) && typeof claim.name === 'string')) {
       throw new RegistryQueryInputError(`${path}.claims.loaderIds is invalid`)
@@ -109,7 +123,11 @@ function validateIndex(index) {
         throw new RegistryQueryInputError(`${path}.claims.${kind} is invalid`)
       }
     }
-    if (!plugin.claims.routes.every((claim) => isObject(claim) && typeof claim.kind === 'string' && typeof claim.path === 'string')) {
+    if (
+      !plugin.claims.routes.every(
+        (claim) => isObject(claim) && typeof claim.kind === 'string' && typeof claim.path === 'string',
+      )
+    ) {
       throw new RegistryQueryInputError(`${path}.claims.routes is invalid`)
     }
   }
@@ -118,9 +136,11 @@ function validateIndex(index) {
 
 async function readBoundedResponse(response) {
   const length = Number(response.headers.get('content-length'))
-  if (Number.isFinite(length) && length > MAX_INDEX_BYTES) throw new RegistryQueryInputError('registry index is too large')
+  if (Number.isFinite(length) && length > MAX_INDEX_BYTES)
+    throw new RegistryQueryInputError('registry index is too large')
   const text = await response.text()
-  if (Buffer.byteLength(text, 'utf8') > MAX_INDEX_BYTES) throw new RegistryQueryInputError('registry index is too large')
+  if (Buffer.byteLength(text, 'utf8') > MAX_INDEX_BYTES)
+    throw new RegistryQueryInputError('registry index is too large')
   return text
 }
 
@@ -130,7 +150,9 @@ export async function readRegistryIndex({ indexPath, registryUrl = DEFAULT_REGIS
     try {
       text = await readFile(resolve(indexPath), 'utf8')
     } catch (error) {
-      throw new RegistryQueryInputError(`cannot read registry index ${resolve(indexPath)}: ${error.message}`, { cause: error })
+      throw new RegistryQueryInputError(`cannot read registry index ${resolve(indexPath)}: ${error.message}`, {
+        cause: error,
+      })
     }
   } else {
     let response
@@ -142,7 +164,8 @@ export async function readRegistryIndex({ indexPath, registryUrl = DEFAULT_REGIS
     } catch (error) {
       throw new RegistryQueryInputError(`registry query unavailable: ${error.message}`, { cause: error })
     }
-    if (!response.ok) throw new RegistryQueryInputError(`registry query unavailable: HTTP ${response.status} ${response.statusText}`)
+    if (!response.ok)
+      throw new RegistryQueryInputError(`registry query unavailable: HTTP ${response.status} ${response.statusText}`)
     text = await readBoundedResponse(response)
   }
   try {
@@ -170,7 +193,9 @@ function centralNames(plugin) {
 
 function localNames(manifest) {
   return {
-    ...Object.fromEntries(requiredClaimKinds.filter((kind) => kind !== 'routes').map((kind) => [kind, [...manifest.names[kind]].sort()])),
+    ...Object.fromEntries(
+      requiredClaimKinds.filter((kind) => kind !== 'routes').map((kind) => [kind, [...manifest.names[kind]].sort()]),
+    ),
     routes: manifest.names.routes.map((claim) => `${claim.kind}\u0000${claim.path}`).sort(),
   }
 }
@@ -186,7 +211,9 @@ function pluginSummary(plugin) {
 }
 
 function pushMatch(matches, plugin, severity, kind, claim, reason, context) {
-  const existing = matches.find((match) => match.severity === severity && match.kind === kind && match.claim === claim && match.reason === reason)
+  const existing = matches.find(
+    (match) => match.severity === severity && match.kind === kind && match.claim === claim && match.reason === reason,
+  )
   const registration = { ...pluginSummary(plugin), context }
   if (existing) existing.registrations.push(registration)
   else matches.push({ severity, kind, claim, reason, registrations: [registration] })
@@ -194,23 +221,38 @@ function pushMatch(matches, plugin, severity, kind, claim, reason, context) {
 
 export function checkNamingAgainstIndex(manifest, index, { harnessVersion } = {}) {
   if (harnessVersion && !parseSemver(harnessVersion)) {
-    throw new RegistryQueryInputError('--harness-version must be a semantic version such as 0.1.2-alpha.2')
+    throw new RegistryQueryInputError('--harness-version must be a semantic version such as x.y.z-alpha.1')
   }
   validateIndex(index)
   const coordinate = manifest.plugin.coordinate
   const eligible = index.plugins.filter((plugin) => supportsHarnessVersion(plugin, harnessVersion))
-  const registered = eligible.find((plugin) => plugin.plugin.id === coordinate)
-    ?? index.plugins.find((plugin) => plugin.plugin.id === coordinate)
+  const registered =
+    eligible.find((plugin) => plugin.plugin.id === coordinate) ??
+    index.plugins.find((plugin) => plugin.plugin.id === coordinate)
   const matches = []
   if (registered) {
     if (registered.plugin.package !== manifest.plugin.packageName) {
-      pushMatch(matches, registered, 'error', 'registration', coordinate, 'registered package differs from the local naming declaration')
+      pushMatch(
+        matches,
+        registered,
+        'error',
+        'registration',
+        coordinate,
+        'registered package differs from the local naming declaration',
+      )
     }
     const local = localNames(manifest)
     const central = centralNames(registered)
     for (const kind of requiredClaimKinds) {
       if (JSON.stringify(local[kind]) !== JSON.stringify(central[kind])) {
-        pushMatch(matches, registered, 'warning', kind, coordinate, 'the reviewed registration is stale relative to the local naming declaration')
+        pushMatch(
+          matches,
+          registered,
+          'warning',
+          kind,
+          coordinate,
+          'the reviewed registration is stale relative to the local naming declaration',
+        )
       }
     }
   }
@@ -218,8 +260,14 @@ export function checkNamingAgainstIndex(manifest, index, { harnessVersion } = {}
   for (const plugin of index.plugins) {
     if (plugin.plugin.id === coordinate) continue
     if (plugin.plugin.package === manifest.plugin.packageName) {
-      pushMatch(matches, plugin, plugin.plugin.status === 'archived' ? 'notice' : 'warning', 'packages', manifest.plugin.packageName,
-        'another reviewed coordinate declares the same package; package identity is independent of Harness runtime range')
+      pushMatch(
+        matches,
+        plugin,
+        plugin.plugin.status === 'archived' ? 'notice' : 'warning',
+        'packages',
+        manifest.plugin.packageName,
+        'another reviewed coordinate declares the same package; package identity is independent of Harness runtime range',
+      )
     }
   }
 
@@ -228,45 +276,91 @@ export function checkNamingAgainstIndex(manifest, index, { harnessVersion } = {}
     const archived = plugin.plugin.status === 'archived'
     for (const name of manifest.names.pluginNames) {
       if (plugin.claims.pluginNames.includes(name)) {
-        pushMatch(matches, plugin, 'notice', 'pluginNames', name,
-          'plugin module names are indexed for discovery but are not global exclusive IDs')
+        pushMatch(
+          matches,
+          plugin,
+          'notice',
+          'pluginNames',
+          name,
+          'plugin module names are indexed for discovery but are not global exclusive IDs',
+        )
       }
     }
     for (const name of manifest.names.loaderIds) {
       for (const claim of plugin.claims.loaderIds.filter((candidate) => candidate.name === name)) {
-        pushMatch(matches, plugin, archived ? 'notice' : 'warning', 'loaderIds', name,
-          'Loader composition, layer, and replacement intent must be compared in a full registration', claim)
+        pushMatch(
+          matches,
+          plugin,
+          archived ? 'notice' : 'warning',
+          'loaderIds',
+          name,
+          'Loader composition, layer, and replacement intent must be compared in a full registration',
+          claim,
+        )
       }
     }
     for (const kind of scopedKinds) {
       for (const name of manifest.names[kind]) {
         for (const claim of plugin.claims[kind].filter((candidate) => candidate.name === name)) {
-          pushMatch(matches, plugin, archived ? 'notice' : 'warning', kind, name,
-            'the local naming manifest has no runtime scope; review the registered scope before composing plugins', claim)
+          pushMatch(
+            matches,
+            plugin,
+            archived ? 'notice' : 'warning',
+            kind,
+            name,
+            'the local naming manifest has no runtime scope; review the registered scope before composing plugins',
+            claim,
+          )
         }
       }
     }
     for (const name of manifest.names.skills) {
       for (const claim of plugin.claims.skills.filter((candidate) => candidate.name === name)) {
-        pushMatch(matches, plugin, archived ? 'notice' : 'warning', 'skills', name,
-          'Skill selection depends on scope, provider, rank, and local order', claim)
+        pushMatch(
+          matches,
+          plugin,
+          archived ? 'notice' : 'warning',
+          'skills',
+          name,
+          'Skill selection depends on scope, provider, rank, and local order',
+          claim,
+        )
       }
     }
     for (const name of manifest.names.events) {
       for (const claim of plugin.claims.events.filter((candidate) => candidate.name === name)) {
-        pushMatch(matches, plugin, 'notice', 'events', name,
-          'events are shared channels; compare publisher roles and schemas instead of treating the name as exclusive', claim)
+        pushMatch(
+          matches,
+          plugin,
+          'notice',
+          'events',
+          name,
+          'events are shared channels; compare publisher roles and schemas instead of treating the name as exclusive',
+          claim,
+        )
       }
     }
     for (const route of manifest.names.routes) {
-      for (const claim of plugin.claims.routes.filter((candidate) => candidate.kind === route.kind && candidate.path === route.path)) {
-        pushMatch(matches, plugin, archived ? 'notice' : 'warning', 'routes', `${route.kind} ${route.path}`,
-          'the same route kind and path may collide in an overlapping router scope', claim)
+      for (const claim of plugin.claims.routes.filter(
+        (candidate) => candidate.kind === route.kind && candidate.path === route.path,
+      )) {
+        pushMatch(
+          matches,
+          plugin,
+          archived ? 'notice' : 'warning',
+          'routes',
+          `${route.kind} ${route.path}`,
+          'the same route kind and path may collide in an overlapping router scope',
+          claim,
+        )
       }
     }
   }
-  matches.sort((left, right) =>
-    left.severity.localeCompare(right.severity) || left.kind.localeCompare(right.kind) || left.claim.localeCompare(right.claim),
+  matches.sort(
+    (left, right) =>
+      left.severity.localeCompare(right.severity) ||
+      left.kind.localeCompare(right.kind) ||
+      left.claim.localeCompare(right.claim),
   )
   return {
     status: 'checked',
@@ -294,7 +388,9 @@ export async function queryManifestFile({ manifestPath, indexPath, registryUrl, 
   const policy = await loadNamingPolicy()
   const validation = validateNamingManifest(manifest, policy)
   if (!validation.valid) {
-    throw new RegistryQueryInputError(`local naming validation failed: ${validation.errors.map((error) => `${error.path} [${error.code}] ${error.message}`).join('; ')}`)
+    throw new RegistryQueryInputError(
+      `local naming validation failed: ${validation.errors.map((error) => `${error.path} [${error.code}] ${error.message}`).join('; ')}`,
+    )
   }
   const index = await readRegistryIndex({ indexPath, registryUrl, fetchImpl })
   return checkNamingAgainstIndex(manifest, index, { harnessVersion })
@@ -307,9 +403,12 @@ export function renderRegistryQuery(result, source) {
     `- Harness version: ${result.harnessVersion ?? 'not supplied; all registered ranges were considered'}`,
     `- Registration: ${result.registration ? `${result.registration.status} at ${result.registration.repository}` : 'not present in the reviewed registry'}`,
   ]
-  if (!result.matches.length) lines.push('- No reviewed cross-plugin matches found. This is not a global uniqueness proof.')
+  if (!result.matches.length)
+    lines.push('- No reviewed cross-plugin matches found. This is not a global uniqueness proof.')
   for (const match of result.matches) {
-    lines.push(`- ${match.severity.toUpperCase()} ${match.kind} ${JSON.stringify(match.claim)}: ${match.reason}; registrations: ${match.registrations.map((entry) => entry.id).join(', ')}`)
+    lines.push(
+      `- ${match.severity.toUpperCase()} ${match.kind} ${JSON.stringify(match.claim)}: ${match.reason}; registrations: ${match.registrations.map((entry) => entry.id).join(', ')}`,
+    )
   }
   return lines.join('\n')
 }
@@ -328,11 +427,12 @@ function parseArgs(args) {
     }
     const value = args[++index]
     if (!value || value.startsWith('--')) throw new RegistryQueryInputError(`${argument} requires a value`)
-    const key = argument === '--manifest'
-      ? 'manifestPath'
-      : argument === '--index'
-        ? 'indexPath'
-        : argument.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
+    const key =
+      argument === '--manifest'
+        ? 'manifestPath'
+        : argument === '--index'
+          ? 'indexPath'
+          : argument.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
     options[key] = value
   }
   if (!options.manifestPath) throw new RegistryQueryInputError('--manifest is required')
@@ -361,7 +461,11 @@ if (invokedPath === import.meta.url) {
       format = options.format
       const result = await queryManifestFile(options)
       const source = options.indexPath ? resolve(options.indexPath) : options.registryUrl
-      console.log(options.format === 'json' ? JSON.stringify({ ...result, source }, null, 2) : renderRegistryQuery(result, source))
+      console.log(
+        options.format === 'json'
+          ? JSON.stringify({ ...result, source }, null, 2)
+          : renderRegistryQuery(result, source),
+      )
       if (result.summary.errors > 0 || (options.strict && result.summary.warnings > 0)) process.exitCode = 1
     }
   } catch (error) {

@@ -1,3 +1,8 @@
+---
+title: 插件 README 模板
+description: 新建或修改 plugins/<包名>/README.md 时对照的标准章节、精简要求与图片路径约定
+---
+
 # 插件 README 模板
 
 > ⚠️ **何时阅读：** 新建插件，或修改任一 `plugins/<包名>/README.md` 时对照本模板。

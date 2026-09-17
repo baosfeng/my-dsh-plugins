@@ -7,33 +7,20 @@
   "appliesTo": "external-community-plugin",
   "officialBaseline": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness",
-    "ref": "dsh-v0.1.2-alpha.2",
-    "commit": "0a53fb55bea101816fa226bb964ae2bed71c343b",
-    "verifiedAt": "2026-08-31"
+    "ref": "<目标版本>",
+    "note": "占位符：以目标 tag 为准，落笔前按该 tag 复核本 profile"
   },
   "centralRegistry": {
     "repository": "https://github.com/oh-my-dsh/dsh-plugin-registry",
     "contract": "dsh-plugin-registry/v2",
     "defaultIndexUrl": "https://raw.githubusercontent.com/oh-my-dsh/dsh-plugin-registry/main/registry/index.json"
   },
-  "reservedNamespacePrefixes": [
-    "core",
-    "deepseek",
-    "dsh",
-    "internal",
-    "official",
-    "runtime",
-    "system"
-  ],
+  "reservedNamespacePrefixes": ["core", "deepseek", "dsh", "internal", "official", "runtime", "system"],
   "reservedExactNames": {
-    "skillProviders": [
-      "runtime"
-    ]
+    "skillProviders": ["runtime"]
   },
   "knownBuiltInExactNames": {
-    "tools": [
-      "run_code"
-    ]
+    "tools": ["run_code"]
   },
   "collisionSemantics": {
     "pluginNames": "module-metadata-not-a-global-registry",

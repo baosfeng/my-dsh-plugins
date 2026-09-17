@@ -4,12 +4,15 @@
  *
  * Usage: node materialize-npm.mjs <versionA> <versionB> <out-dir> [--packages name1,name2] [--no-github]
  *
- * Versions accept npm versions (0.1.2-alpha.2), dsh tag spellings (dsh-v0.1.2-alpha.2),
+ * Versions accept npm versions (x.y.z-alpha.1), dsh tag spellings (dsh-vx.y.z-alpha.1),
  * or dist-tags (alpha, latest, next). Installs the CLI dependency closure (plus any
- * supplement packages, default: the SQLite persistence backend) into <out-dir>/a and
- * /b with scripts disabled, then emits a manifest diff and GitHub commit enrichment
+ * supplement packages, default: the SQLite storage and session-query backends) into
+ * <out-dir>/a and /b with scripts disabled, then emits a manifest diff and GitHub commit enrichment
  * when the repository is public. Prints a stats JSON to stdout; exits 1 with the
  * published version list when a requested version is not on the registry.
+ *
+ * A from-side older than the storage/session-query split publishes a since-removed standalone
+ * SQLite persistence package instead; pass --packages with that version's own package names.
  */
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs'
@@ -19,11 +22,13 @@ import { commitLines, revertLines } from './lib/commit-lines.mjs'
 
 const CLI = '@deepseek-ai/dsh'
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const DEFAULT_SUPPLEMENTS = ['@deepseek-ai/dsh-session-persistence-sqlite']
+const DEFAULT_SUPPLEMENTS = ['@deepseek-ai/dsh-storage-sqlite', '@deepseek-ai/dsh-session-query-sqlite']
 const args = process.argv.slice(2)
 const [va, vb, out] = args.filter((a) => !a.startsWith('--'))
 if (!va || !vb || !out) {
-  console.error('Usage: node materialize-npm.mjs <versionA> <versionB> <out-dir> [--packages name1,name2] [--no-github]')
+  console.error(
+    'Usage: node materialize-npm.mjs <versionA> <versionB> <out-dir> [--packages name1,name2] [--no-github]',
+  )
   process.exit(2)
 }
 function flagValue(name) {
@@ -61,11 +66,19 @@ function resolve(spec) {
 }
 const published = JSON.parse(npm('view', CLI, 'versions', '--json'))
 const distTags = JSON.parse(npm('view', CLI, 'dist-tags', '--json'))
-const repository = npm('view', CLI, 'repository.url').trim().replace(/^git\+|\.git$/g, '')
+const repository = npm('view', CLI, 'repository.url')
+  .trim()
+  .replace(/^git\+|\.git$/g, '')
 const [a, b] = [resolve(va), resolve(vb)]
 const missing = [a, b].filter((r) => !r.resolved)
 if (missing.length) {
-  console.log(JSON.stringify({ error: 'requested version(s) not published', requested: missing.map((m) => m.spec), published, distTags }, null, 2))
+  console.log(
+    JSON.stringify(
+      { error: 'requested version(s) not published', requested: missing.map((m) => m.spec), published, distTags },
+      null,
+      2,
+    ),
+  )
   process.exit(1)
 }
 
@@ -86,7 +99,10 @@ const supplementsResolved = supplements.map((pkg) => ({
 /** Install one root: CLI closure plus the supplements available for that side. */
 function materialize(root, version, side) {
   mkdirSync(root, { recursive: true })
-  writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'dsh-upgrade-audit-root', private: true }, null, 2) + '\n')
+  writeFileSync(
+    join(root, 'package.json'),
+    JSON.stringify({ name: 'dsh-upgrade-run-root', private: true }, null, 2) + '\n',
+  )
   const specs = [
     `${CLI}@${version}`,
     ...supplementsResolved
@@ -94,7 +110,15 @@ function materialize(root, version, side) {
       .filter((supplement) => supplement.resolved)
       .map((supplement) => `${supplement.pkg}@${supplement.resolved}`),
   ]
-  const installArgs = ['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', '--loglevel=error', ...specs]
+  const installArgs = [
+    'install',
+    '--ignore-scripts',
+    '--omit=dev',
+    '--no-audit',
+    '--no-fund',
+    '--loglevel=error',
+    ...specs,
+  ]
   if (process.platform === 'win32' && installArgs.some((arg) => /[&|<>^()%!"`\r\n]/.test(arg))) {
     throw new Error('npm arguments contain unsupported Windows shell characters')
   }
@@ -143,7 +167,17 @@ function scopedPkgs(root) {
 }
 const pkgsA = scopedPkgs(join(out, 'a'))
 const pkgsB = scopedPkgs(join(out, 'b'))
-const manifestFields = ['version', 'bin', 'files', 'exports', 'dependencies', 'peerDependencies', 'main', 'types', 'engines']
+const manifestFields = [
+  'version',
+  'bin',
+  'files',
+  'exports',
+  'dependencies',
+  'peerDependencies',
+  'main',
+  'types',
+  'engines',
+]
 
 let manifestDiff = `# package.json manifest diff: ${CLI} ${a.resolved} -> ${b.resolved}\n\n`
 for (const name of new Set([...pkgsA.keys(), ...pkgsB.keys()].sort())) {
@@ -180,7 +214,7 @@ if (githubRepo) {
     const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/compare/${range}`)
     if (res.ok) {
       const data = await res.json()
-      // #314 js/http-to-file-access（告警 #29/#30）：提交清单逐字来自 HTTP，落盘前必须净化
+      // CodeQL js/http-to-file-access：提交清单逐字来自 HTTP，落盘前必须净化
       // （控制字符/换行/超长消息），净化实现与理由见 ./lib/commit-lines.mjs。
       const commits = commitLines(data.commits)
       writeFileSync(join(out, 'commits.txt'), commits.join('\n') + '\n')

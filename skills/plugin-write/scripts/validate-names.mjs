@@ -61,10 +61,13 @@ function validatePolicyShape(policy, source) {
   if (!isObject(policy.surfaces)) throw new NamingInputError(`Naming policy has no surfaces: ${source}`)
   for (const surface of ['namespace', 'pluginName', 'packageName', ...SURFACE_NAMES]) {
     const rule = policy.surfaces[surface]
-    if (!isObject(rule) || typeof rule.pattern !== 'string'
-      || (rule.maxLength !== undefined && !Number.isInteger(rule.maxLength))
-      || (rule.recommendedPattern !== undefined && typeof rule.recommendedPattern !== 'string')
-      || (rule.recommendedMaxLength !== undefined && !Number.isInteger(rule.recommendedMaxLength))) {
+    if (
+      !isObject(rule) ||
+      typeof rule.pattern !== 'string' ||
+      (rule.maxLength !== undefined && !Number.isInteger(rule.maxLength)) ||
+      (rule.recommendedPattern !== undefined && typeof rule.recommendedPattern !== 'string') ||
+      (rule.recommendedMaxLength !== undefined && !Number.isInteger(rule.recommendedMaxLength))
+    ) {
       throw new NamingInputError(`Naming policy has an invalid ${surface} rule: ${source}`)
     }
     try {
@@ -129,7 +132,13 @@ function validateRecommendation(value, rule, path, warnings) {
 
 function kebabToCamel(value) {
   const parts = value.split('-')
-  return parts[0] + parts.slice(1).map((part) => part[0].toUpperCase() + part.slice(1)).join('')
+  return (
+    parts[0] +
+    parts
+      .slice(1)
+      .map((part) => part[0].toUpperCase() + part.slice(1))
+      .join('')
+  )
 }
 
 function hasDelimitedPrefix(value, base, separator) {
@@ -161,13 +170,7 @@ function validateSurfaceList(names, surface, policy, errors, warnings) {
     const itemPath = `${path}[${index}]`
     let duplicateKey = value
     if (surface === 'routes') {
-      const routeOk = validateKeys(
-        value,
-        new Set(['kind', 'path']),
-        ['kind', 'path'],
-        itemPath,
-        errors,
-      )
+      const routeOk = validateKeys(value, new Set(['kind', 'path']), ['kind', 'path'], itemPath, errors)
       if (!routeOk) continue
       if (!['exact', 'prefix', 'upgrade'].includes(value.kind)) {
         addError(errors, `${itemPath}.kind`, 'enum', 'must be exact, prefix, or upgrade')
@@ -198,7 +201,12 @@ function validateOwnership(values, surface, bases, policy, errors, warnings) {
     const itemPath = surface === 'routes' ? `${path}[${index}].path` : `${path}[${index}]`
     if (reserved.has(value)) addError(errors, itemPath, 'reserved-name', `${JSON.stringify(value)} is reserved`)
     if (knownBuiltIns.has(value)) {
-      addError(warnings, itemPath, 'known-built-in', `${JSON.stringify(value)} is built into the verified Harness baseline`)
+      addError(
+        warnings,
+        itemPath,
+        'known-built-in',
+        `${JSON.stringify(value)} is built into the verified Harness baseline`,
+      )
     }
 
     if (surface === 'pluginNames') continue
@@ -211,14 +219,20 @@ function validateOwnership(values, surface, bases, policy, errors, warnings) {
     else owned = hasDelimitedPrefix(value, bases.kebab, '-')
 
     if (!owned) {
-      const expected = surface === 'services'
-        ? bases.camel
-        : surface === 'tools'
-          ? bases.snake
-          : surface === 'routes'
-            ? bases.route
-            : bases.kebab
-      addError(warnings, itemPath, 'recommended-prefix', `does not use the collision-resistant prefix ${JSON.stringify(expected)}`)
+      const expected =
+        surface === 'services'
+          ? bases.camel
+          : surface === 'tools'
+            ? bases.snake
+            : surface === 'routes'
+              ? bases.route
+              : bases.kebab
+      addError(
+        warnings,
+        itemPath,
+        'recommended-prefix',
+        `does not use the collision-resistant prefix ${JSON.stringify(expected)}`,
+      )
     }
   }
 }
@@ -258,14 +272,14 @@ export function validateNamingManifest(manifest, policy) {
       '$.plugin.namespace',
       errors,
     )
-    const nameOk = validateString(
-      manifest.plugin.name,
-      policy.surfaces.pluginName,
-      '$.plugin.name',
-      errors,
-    )
+    const nameOk = validateString(manifest.plugin.name, policy.surfaces.pluginName, '$.plugin.name', errors)
     if (namespaceOk && isReservedNamespace(manifest.plugin.namespace, policy.reservedNamespacePrefixes ?? [])) {
-      addError(warnings, '$.plugin.namespace', 'reserved-namespace', 'resembles a publisher namespace reserved by community convention')
+      addError(
+        warnings,
+        '$.plugin.namespace',
+        'reserved-namespace',
+        'resembles a publisher namespace reserved by community convention',
+      )
     }
     if (namespaceOk && nameOk) {
       const kebab = `${manifest.plugin.namespace}-${manifest.plugin.name}`
@@ -286,13 +300,7 @@ export function validateNamingManifest(manifest, policy) {
     validateRecommendation(manifest.plugin.packageName, policy.surfaces.packageName, '$.plugin.packageName', warnings)
   }
 
-  const namesOk = validateKeys(
-    manifest.names,
-    new Set(SURFACE_NAMES),
-    SURFACE_NAMES,
-    '$.names',
-    errors,
-  )
+  const namesOk = validateKeys(manifest.names, new Set(SURFACE_NAMES), SURFACE_NAMES, '$.names', errors)
   let declarationCount = 0
   if (namesOk) {
     for (const surface of SURFACE_NAMES) {

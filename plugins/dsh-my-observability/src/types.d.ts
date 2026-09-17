@@ -2,8 +2,8 @@
  * dsh-my-observability — DSH 运行时类型声明（server 端）。
  *
  * 手写最小契约：插件只消费 ctx 的少量 API（webServer / webRuntime / logger /
- * effect / on / get / emit / bundler）与 HTTP 请求/响应对象。DSH 运行时
- * （cordis Context、宿主 webServer / webRuntime / agents 服务）由宿主提供，
+ * effect / on / get / serial）与 HTTP 请求/响应对象。DSH 运行时
+ * （cordis Context、宿主 webServer / webRuntime / pluginInventory 服务）由宿主提供，
  * 本文件是插件与运行时之间的类型契约。
  *
  * 说明：本文件是 .d.ts（纯类型，无产物输出）；server 端源码经
@@ -72,10 +72,12 @@ export interface DshContext {
   effect(callback: () => void | (() => void), label?: string): void
   /** 注册事件监听（返回 disposer）。 */
   on(event: string, listener: EventListener): () => void
-  /** 读取可选服务（webRuntime / agents 等）。 */
+  /** 读取可选服务（webRuntime / agents / pluginInventory 等，未激活时 undefined）。 */
   get<T = unknown>(name: string, strict?: boolean): T | undefined
-  /** 广播事件（plugin:status-query 用；返回值可能为 Promise）。 */
-  emit(event: string, ...args: unknown[]): Promise<unknown> | unknown
-  /** 插件树（插件状态聚合用，不可用时缺省）。 */
-  bundler?: { plugins?: unknown[] }
+  /**
+   * 事件分发。收集监听器返回值必须用 `serial`（顺序 await，返回首个
+   * 非 null/false/undefined 的返回值）：`emit` 同步派发不收集返回值，
+   * `parallel` 只处理异常、不返回结果（宿主 @deepseek-ai/cordis 实测）。
+   */
+  serial(event: string, ...args: unknown[]): Promise<unknown>
 }

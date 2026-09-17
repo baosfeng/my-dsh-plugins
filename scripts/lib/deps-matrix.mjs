@@ -129,7 +129,7 @@ export const DEP_POLICY = [
     blocked: false,
     source: 'host',
     reason: '由 DSH 宿主提供（host-provided）：插件改声明不会改变运行时实际版本，只能跟随宿主升级',
-    verify: '按 skills/plugin-upgrade + dsh-upgrade-audit 的宿主升级流程，不能只看 npm 版本号',
+    verify: '按 plugin-upgrade skill 的升级流程，不能只看 npm 版本号',
   },
   {
     name: 'dsh-shared',
@@ -194,7 +194,7 @@ export function resolveTier({ name, gap, baseline }) {
       blocked: false,
       source,
       reason: 'DSH 宿主随包：插件只声明 peer 范围，实际版本由宿主决定',
-      verify: '随宿主升级流程（plugin-upgrade / dsh-upgrade-audit）',
+      verify: '随宿主升级流程（plugin-upgrade skill）',
     }
   }
   const level = gap.level

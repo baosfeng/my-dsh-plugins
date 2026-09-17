@@ -15,9 +15,6 @@ build/
 # ignores 保持一致——只格式化 client.src.js 模板与 parts 片段源码。
 plugins/*/lib/client.js
 
-# 一次性调研探针（issue #187 批 2 的能力实测；不属于仓库交付物）
-probe-native-sidebar/
-
 # TS 插件（issue #47 / TS 全量迁移）：tsc 编译产物（src/*.ts → lib/*.js +
 # lib/*.d.ts）与 client 构建临时目录（lib/.client-build/），格式由编译器决定，
 # 下次构建即覆盖——对手写源码做 prettier --check 才有意义。手写的
@@ -43,17 +40,6 @@ package-lock.json
 .dsh/
 .reasonix/
 .DS_Store
-
-# 外部引入的升级 skill 体系（源码: oh-my-dsh/dsh-plugin-upgrade-skill，保持原样
-# 不格式化；后续统一格式时移除本排除并 prettier --write）
-skills/dsh-upgrade-audit/
-skills/plugin-release/
-skills/plugin-runtime-debug/
-skills/plugin-test/
-skills/plugin-upgrade/
-skills/plugin-write/
-skills/README.md
-skills/README.en.md
 
 # CI 自产审查报告（issue #303）：审查 job 在仓库根生成 *-report.md / *-check.txt / *-report.json
 # 等中间产物，`prettier --check .` 会扫到它们 → 「格式检查」必然失败（假警报；

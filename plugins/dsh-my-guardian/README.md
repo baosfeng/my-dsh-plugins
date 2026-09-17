@@ -1,5 +1,7 @@
 # dsh-my-guardian — 插件守护
 
+[![插件生态](https://img.shields.io/badge/插件生态-topic%20dsh-4d6bfe)](https://github.com/topics/dsh)
+
 **dsh-my-guardian**：DSH 插件隔离与失败兜底——新装/刚更新的插件先进候选区，启动完成后由守护插件逐个热挂载，成功自动转正、失败自动隔离、连续失败冻结，附一键安全模式与侧边栏诊断面板。
 
 ![插件守护面板：候选失败隔离 + 转正运行中 + 安全模式开关](https://unpkg.com/dsh-my-guardian/assets/panel-main.png)

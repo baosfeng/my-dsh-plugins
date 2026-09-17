@@ -45,4 +45,4 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-context
 
 ## 相关文档
 
-→ [上下文透镜模块文档](../../docs/上下文透镜/概述.md)
+→ [上下文透镜模块文档](../../docs/上下文透镜/概述.md) · [CHANGELOG](CHANGELOG.md)

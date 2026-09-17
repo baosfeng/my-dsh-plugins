@@ -148,9 +148,9 @@
 # ── Cordis toolset ──────────────────────────────────────────────────────────
 
 # The self-referential Cordis toolset: inspect the live runtime, define, run,
-# stop, and undefine dynamic Plugins. This preset is the only one that enables
-# it — every other preset leaves it out, so ordinary sessions pay no prompt
-# cost for it. The toolset is a trust boundary, not a sandbox — see this
-# file's header.
+# stop, and undefine dynamic Plugins. This preset enables it — as does the
+# shipped `cordis` preset; the difference here is the slimmer tool mix below
+# (no plan mode, delegation, or web search), so prompt cost is lower.
+# The toolset is a trust boundary, not a sandbox — see this file's header.
 - id: tool-cordis
   name: '@deepseek-ai/dsh-tool-cordis'

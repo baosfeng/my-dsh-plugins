@@ -197,40 +197,91 @@ function statusValue(
   }
 }
 
+/** 聚合查询默认超时（3s）：超时未响应的插件标记 { running: false, error: 'timeout' }。 */
+export const PLUGIN_STATUS_TIMEOUT_MS = 3000
+
+/** 监听方返回的聚合状态（自研契约：{ ok: true, value: { plugin, running, … } }）。 */
+interface PluginStatusValue {
+  plugin?: string
+  running?: boolean
+  [key: string]: unknown
+}
+
+/** 超时哨兵（区分「超时」与「监听方返回值恰好是 undefined」）。 */
+const STATUS_TIMEOUT = Symbol('plugin-status-timeout')
+
 /**
- * 插件状态聚合：广播 plugin:status-query 事件，收集所有插件状态。
- * 每个插件返回 { plugin, config, running, lastActions }（config 脱敏，lastActions ≤5）。
- * 超时 3s 未响应的插件标记为 { plugin, running: false, error: 'timeout' }。
+ * 读取插件清单（机会性：服务未激活时 ctx.get 返回 undefined → 空清单）。
+ *
+ * 官方服务是 `ctx.pluginInventory`（host 半边），`list()` 是 **async**——
+ * 同步解引用 `entries` 会抛错。清单名取 `entry.moduleName`（**完整包名**），
+ * 因为监听方正是按完整包名比对自己。
  */
-async function handlePluginStatus(ctx: DshContext, response: ServerResponse): Promise<void> {
-  const TIMEOUT_MS = 3000
-  const results: unknown[] = []
+async function readPluginNames(ctx: DshContext): Promise<string[]> {
+  const service = ctx.get<{ list(): Promise<{ entries?: { moduleName?: string }[] }> }>('pluginInventory')
+  if (service === undefined || service === null) return []
   try {
-    // 广播查询事件，带超时
-    const statuses = await Promise.allSettled(
-      (ctx.bundler?.plugins ?? []).map(async (p) => {
-        // 类型断言内联（不引入额外语句：lib/routes.js 的 v8 语句计数与迁移前一致）
-        const name =
-          (p as { name?: string; constructor?: { name?: string } }).name ??
-          (p as { name?: string; constructor?: { name?: string } }).constructor?.name ??
-          'unknown'
-        try {
-          const result = await Promise.race([
-            ctx.emit('plugin:status-query', { plugin: name }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)),
-          ])
-          return result ?? { plugin: name, running: true, config: {}, lastActions: [] }
-        } catch {
-          return { plugin: name, running: false, error: 'timeout' }
-        }
-      }),
-    )
-    for (const s of statuses) {
-      results.push(s.status === 'fulfilled' ? s.value : { plugin: 'unknown', running: false, error: 'rejected' })
-    }
+    const snapshot = await service.list()
+    return (snapshot?.entries ?? [])
+      .map((entry) => entry.moduleName)
+      .filter((name): name is string => typeof name === 'string' && name !== '')
   } catch {
-    // bundler 不可用时返回空列表
+    return []
   }
+}
+
+/** 从分发结果挑出匹配本插件的 value（`ok === true` 且 `value.plugin` 同名）。 */
+function pickStatusValue(collected: unknown, name: string): PluginStatusValue | undefined {
+  for (const item of Array.isArray(collected) ? collected : [collected]) {
+    const response = item as { ok?: boolean; value?: PluginStatusValue } | null | undefined
+    if (response?.ok === true && response.value?.plugin === name) return response.value
+  }
+  return undefined
+}
+
+/**
+ * 单插件状态查询：用 `ctx.serial` 收集监听方返回值。
+ *
+ * cordis 三种派发对返回值的处理各不相同（本机 @deepseek-ai/cordis@4.0.2 实测）：
+ * `emit` 同步派发**不收集**；`parallel` 只处理异常、**不返回结果**（Promise<void>）；
+ * 只有 `serial` 顺序 await 并返回首个非 null/false/undefined 的返回值。逐插件
+ * 查询时非匹配监听方一律 `return undefined`，因此 serial 恰好命中唯一那一条。
+ * 无匹配响应一律如实标记（`no-response`），**绝不编造 running: true**。
+ */
+async function queryPluginStatus(
+  ctx: DshContext,
+  name: string,
+  timeoutMs: number,
+): Promise<PluginStatusValue | { plugin: string; running: false; error: string }> {
+  // 期望态包装成永不 reject：超时后已丢弃的分发不得变成 unhandled rejection。
+  const dispatch = Promise.resolve()
+    .then(() => ctx.serial('plugin:status-query', { plugin: name }))
+    .then(
+      (value) => value,
+      () => undefined,
+    )
+  const timer = new Promise<typeof STATUS_TIMEOUT>((resolve) => {
+    const handle = setTimeout(() => resolve(STATUS_TIMEOUT), timeoutMs)
+    handle.unref?.()
+  })
+  const outcome = await Promise.race([dispatch, timer])
+  if (outcome === STATUS_TIMEOUT) return { plugin: name, running: false, error: 'timeout' }
+  return pickStatusValue(outcome, name) ?? { plugin: name, running: false, error: 'no-response' }
+}
+
+/**
+ * 插件状态聚合：按插件清单逐个查询 `plugin:status-query`，汇总监听方真实状态。
+ * 每条为监听方返回的 { plugin, config, running, stats?, lastActions? }；超时 3s
+ * 未响应标 { running: false, error: 'timeout' }，无匹配响应标 no-response。
+ * 清单不可用（服务未激活）时返回空列表 `{ ok: true, value: [] }`。
+ */
+export async function handlePluginStatus(
+  ctx: DshContext,
+  response: ServerResponse,
+  timeoutMs = PLUGIN_STATUS_TIMEOUT_MS,
+): Promise<void> {
+  const names = await readPluginNames(ctx)
+  const results = await Promise.all(names.map((name) => queryPluginStatus(ctx, name, timeoutMs)))
   writeJson(response, 200, { ok: true, value: results })
 }
 

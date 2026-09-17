@@ -23,7 +23,15 @@ const sensitiveNames = new Set(['.env', '.npmrc', '.yarnrc', '.pypirc', 'credent
 // Markdown is deliberately not scanned: prose about a touchpoint is not a touchpoint.
 const allowedExtensions = new Set(['.cjs', '.js', '.jsx', '.json', '.mjs', '.toml', '.ts', '.tsx', '.yaml', '.yml'])
 const codeExtensions = new Set(['.cjs', '.js', '.jsx', '.mjs', '.ts', '.tsx'])
-const alwaysReadNames = new Set(['Dockerfile', 'Makefile', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock', 'bun.lockb'])
+const alwaysReadNames = new Set([
+  'Dockerfile',
+  'Makefile',
+  'pnpm-lock.yaml',
+  'package-lock.json',
+  'yarn.lock',
+  'bun.lock',
+  'bun.lockb',
+])
 const maxFileBytes = 1024 * 1024
 const execFileAsync = promisify(execFile)
 const darwinStatBatchSize = 256
@@ -246,7 +254,12 @@ export async function buildMigrationPlan({ root, from, to, maxHits = 20, manualT
     from,
     to,
     scan,
-    corridor: corridor.sets.map(({ file, from: setFrom, to: setTo, coverage }) => ({ file, from: setFrom, to: setTo, coverage })),
+    corridor: corridor.sets.map(({ file, from: setFrom, to: setTo, coverage }) => ({
+      file,
+      from: setFrom,
+      to: setTo,
+      coverage,
+    })),
     gaps: corridor.gaps,
     cards: { applicable, review, skipped },
   }
@@ -268,8 +281,11 @@ export function renderMarkdown(plan) {
     '|---:|---|---|---:|',
   ]
   for (const entry of plan.scan.touchpoints) {
-    const source = [entry.detected ? 'detected' : undefined, entry.manual ? 'manual' : undefined].filter(Boolean).join('+') || 'none'
-    lines.push(`| #${entry.id} | ${entry.name} | ${source} | ${entry.hits.length}/${entry.totalHits ?? entry.hits.length} |`)
+    const source =
+      [entry.detected ? 'detected' : undefined, entry.manual ? 'manual' : undefined].filter(Boolean).join('+') || 'none'
+    lines.push(
+      `| #${entry.id} | ${entry.name} | ${source} | ${entry.hits.length}/${entry.totalHits ?? entry.hits.length} |`,
+    )
   }
   lines.push('', '## Hit locations', '')
   const hits = plan.scan.touchpoints.flatMap((entry) => entry.hits.map((hit) => ({ id: entry.id, ...hit })))
@@ -280,7 +296,8 @@ export function renderMarkdown(plan) {
   for (const set of plan.corridor) lines.push(`- \`${set.from}\` → \`${set.to}\`: \`${set.file}\` (${set.coverage})`)
   lines.push('', '## Applicable cards', '')
   if (!plan.cards.applicable.length) lines.push('- None detected.')
-  for (const card of plan.cards.applicable) lines.push(`- **${card.id}** (${card.type}/${card.action}, \`${card.sourceFile}\`) — ${card.title}`)
+  for (const card of plan.cards.applicable)
+    lines.push(`- **${card.id}** (${card.type}/${card.action}, \`${card.sourceFile}\`) — ${card.title}`)
   lines.push('', '## Manual review cards', '')
   if (!plan.cards.review.length) lines.push('- None.')
   for (const card of plan.cards.review) lines.push(`- **${card.id}** (${card.type}/${card.action}) — ${card.title}`)

@@ -364,7 +364,7 @@ describe('skip 规则不误报', () => {
 
   it('升级审计语料引用的上游 DSH 文档不校验', () => {
     noFindings({
-      'skills/dsh-upgrade-audit/references/playbook.md':
+      'skills/plugin-upgrade/references/playbook.md':
         '# 审计\n\n~19 plugins, see `docs/config-catalog.md` `Requires:`。\n',
     })
   })

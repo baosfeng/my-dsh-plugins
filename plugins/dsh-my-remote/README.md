@@ -2,7 +2,7 @@
 
 **dsh-my-remote**：离开电脑后依然可以掌控 DSH——ask / approval / 会话结束事件实时下发到外部通道（手机 / IM），在手机上回答 ask、批准 approval、查询会话状态、继续任务。
 
-![npm 版本](https://img.shields.io/badge/dsh--my--remote-v0.1.0-blue) ![DSH 插件](https://img.shields.io/badge/DSH%20Plugin-server--only-lightgrey) ![License](https://img.shields.io/badge/License-MIT-green)
+![npm 版本](https://img.shields.io/badge/dsh--my--remote-v0.1.2-blue) ![DSH 插件](https://img.shields.io/badge/DSH%20Plugin-server--only-lightgrey) ![License](https://img.shields.io/badge/License-MIT-green)
 
 ![远程回答 ask：GUI 等待回答卡片](./assets/ask-push.png)
 
@@ -57,11 +57,9 @@ config:
 
 > 远程调用（非本机）需把 DSH 的 `trustedHosts` 配置为你的中转服务域名，并用 `apiToken` 鉴权。详见 [docs/远程控制/概述.md](../../docs/远程控制/概述.md)。
 
-## 通道扩展（微信/QQ/飞书机器人）
+## 相关文档
 
-事件帧与指令格式**渠道无关**：新增 IM 渠道只需实现适配器契约（事件帧转 IM 消息卡片、IM 回调转指令），无需改动事件层/指令层/安全层。契约与示例见 [docs/远程控制/概述.md](../../docs/远程控制/概述.md)。
-
-## 相关
+→ [远程控制概述](../../docs/远程控制/概述.md) · [CHANGELOG](CHANGELOG.md)
 
 - 事件监听模式参考 `dsh-my-notify`；ask 拦截/steer 参考 `dsh-task-reliability`；approval 决议契约来自 DSH `dsh-user-approval`（`'allowed-once'` 是唯一批准）。
 - 安全围栏与 HTTP 工具来自 `dsh-shared`（`isTrustedApiRequest` / `readJsonBody` / `writeJson`）。

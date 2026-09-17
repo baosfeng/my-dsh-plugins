@@ -7,13 +7,13 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 
 本 skill 是**流程控制器**：判断当前处在哪个阶段、该跑什么命令、过什么门禁、细节找哪个 owner skill。加载它之后按阶段加载对应 skill，**不把别人的规则抄一遍**。
 
-> 适用：本仓库功能开发与插件改动的主线（想法 → release）。DSH 宿主版本迁移用 `skills/plugin-upgrade/` + `skills/dsh-upgrade-audit/`。
+> 适用：本仓库功能开发与插件改动的主线（想法 → release）。DSH 宿主版本迁移/版本间审计用 `skills/plugin-upgrade/`。
 
 ## 阶段总览
 
 | #   | 阶段       | 关键动作                                             | Owner skill / 依据                                                                                     | 出阶段门禁                                          |
 | --- | ---------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| 0   | 需求登记   | 口头想法 → 规范 issue（背景/方案/验收）              | `dsh-issue-request`                                                                                    | 有 issue 编号 + 可勾选验收标准                      |
+| 0   | 需求登记   | 口头想法 → 规范 issue（背景/方案/验收）              | `dsh-github-triage`（需求登记节）                                                                      | 有 issue 编号 + 可勾选验收标准                      |
 | 1   | 确认与拆解 | 定位模块与相关 issue、定验收标准、定影响面、拆子任务 | 本 skill + `dsh-plugin-development`                                                                    | issue 验收标准明确；影响面（改哪些插件/文档）清楚   |
 | 2   | 开发       | 先写失败测试（RED）→ 最简实现（GREEN）→ 重构         | `.reasonix/skills/testing-standards` · `coding-standards` · `quality-gates` · `dsh-plugin-development` | RED 记录可见 + `cd plugins/<name> && npm test` 全绿 |
 | 3   | 验证       | 选测试层级 → 全量校验 → 隔离实例 + 真实浏览器/模型   | `plugin-test` + `verifying-dsh-plugins`                                                                | issue 验收标准逐条回归 + 功能级验证清单可勾选       |
@@ -22,9 +22,9 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 | 6   | 文档       | README / docs 索引 / CHANGELOG 同步                  | `docs/开发指南/文档规范.md`                                                                            | `node scripts/check-docs.mjs` 退出 0                |
 | 7   | 收尾       | 清理验证残留 + 本地实例生效 + 汇报证据               | `verifying-dsh-plugins`（步骤 4）                                                                      | 无残留进程/目录/端口；`job_list` 无 running         |
 
-## 0. 需求登记（dsh-issue-request）
+## 0. 需求登记（dsh-github-triage 的需求登记节）
 
-- **先有 issue 再动手**：用 `dsh-issue-request` 把想法整理成 `[需求]` issue 提交到 `baosfeng/my-dsh-plugins`；issue 的「验收」段就是阶段 1 的验收标准来源。已在 issue 列表里的（如"实现 #67"）跳过登记。
+- **先有 issue 再动手**：用 `dsh-github-triage` 的需求登记流程把想法整理成 `[需求]` issue 提交到 `baosfeng/my-dsh-plugins`；issue 的「验收」段就是阶段 1 的验收标准来源。已在 issue 列表里的（如"实现 #67"）跳过登记。
 - 目标仓库不是本仓库（例如给 `deepseek-ai/deepseek-harness` 提建议）→ 不走本条，先确认对方仓库惯例。
 
 ## 1. 确认与拆解
@@ -122,13 +122,13 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 
 | 情形                                  | 去处                                                   |
 | ------------------------------------- | ------------------------------------------------------ |
-| 只是登记想法/需求                     | `dsh-issue-request`                                    |
+| 只是登记想法/需求                     | `dsh-github-triage`（需求登记节）                      |
 | 修 BUG / 安全告警 / CI 失败 / PR 健康 | `dsh-github-triage`（`[需求]` 类 issue 不走它）        |
 | 新建插件（形态 / 命名 / 骨架）        | `dsh-plugin-development` + `plugin-write`              |
 | 不知道该跑哪个测试层级                | `plugin-test`                                          |
 | 要真实浏览器 / 真实模型证明           | `verifying-dsh-plugins`                                |
 | 发版 / 打包 / 发布轨                  | `skills/plugin-release/` + `docs/开发指南/发版流程.md` |
-| 升级 DSH 宿主版本                     | `skills/plugin-upgrade/` + `skills/dsh-upgrade-audit/` |
+| 升级 DSH 宿主版本 / 两版本间审计      | `skills/plugin-upgrade/`                               |
 
 ## 反模式
 
@@ -144,19 +144,22 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 
 ## 参考
 
-| 文件 / skill                                                                                     | 内容                                     |
-| ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `AGENTS.md`                                                                                      | 协作与项目管理原则、强制规则、入口       |
-| `skills/dsh-issue-request/SKILL.md`                                                              | 需求登记（issue 模板、防重复、验收标准） |
-| `skills/dsh-plugin-development/SKILL.md`                                                         | 插件形态/目录结构/开发流程               |
-| `skills/plugin-test/SKILL.md`                                                                    | 测试层级选择                             |
-| `skills/verifying-dsh-plugins/SKILL.md`                                                          | #67 功能级验证与收尾清理                 |
-| `skills/plugin-release/SKILL.md`                                                                 | 发布轨、打包、语义门禁、回滚             |
-| `.reasonix/skills/quality-gates/SKILL.md`                                                        | 交付质量门禁（强制）                     |
-| `.reasonix/skills/testing-standards/SKILL.md`                                                    | TDD Red→Green→Refactor                   |
-| `.reasonix/skills/commit-standards/SKILL.md`                                                     | 提交信息格式与确认流程                   |
-| `.reasonix/skills/coding-standards/SKILL.md` · `.reasonix/skills/engineering-standards/SKILL.md` | 代码规范 · 工程规范                      |
-| `docs/开发指南/构建与测试.md`                                                                    | verify-local、真实环境验证、需求回归     |
-| `docs/开发指南/发版流程.md`                                                                      | semver、发布通道、踩坑                   |
-| `docs/开发指南/文档规范.md`                                                                      | 文档与 AGENTS.md 规范                    |
-| `docs/踩坑/README.md`                                                                            | 已知踩坑（防复发输入）                   |
+| 文件 / skill                                                                                     | 内容                                                               |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `AGENTS.md`                                                                                      | 协作与项目管理原则、强制规则、入口                                 |
+| `skills/dsh-github-triage/SKILL.md`                                                              | 需求登记（issue 模板、防重复、验收标准）                           |
+| `skills/dsh-plugin-development/SKILL.md`                                                         | 插件形态/目录结构/开发流程                                         |
+| `skills/plugin-test/SKILL.md`                                                                    | 测试层级选择                                                       |
+| `skills/verifying-dsh-plugins/SKILL.md`                                                          | #67 功能级验证与收尾清理                                           |
+| `skills/plugin-release/SKILL.md`                                                                 | 发布轨、打包、语义门禁、回滚                                       |
+| `docs/官方文档/索引.md`                                                                          | 官方 docs 分类导航（**与官方冲突时以官方 docs + 本机运行包为准**） |
+| `.reasonix/skills/quality-gates/SKILL.md`                                                        | 交付质量门禁（强制）                                               |
+| `.reasonix/skills/testing-standards/SKILL.md`                                                    | TDD Red→Green→Refactor                                             |
+| `.reasonix/skills/commit-standards/SKILL.md`                                                     | 提交信息格式与确认流程                                             |
+| `.reasonix/skills/coding-standards/SKILL.md` · `.reasonix/skills/engineering-standards/SKILL.md` | 代码规范 · 工程规范                                                |
+| `docs/开发指南/构建与测试.md`                                                                    | verify-local、真实环境验证、需求回归                               |
+| `docs/开发指南/发版流程.md`                                                                      | semver、发布通道、踩坑                                             |
+| `docs/开发指南/文档规范.md`                                                                      | 文档与 AGENTS.md 规范                                              |
+| `docs/踩坑/README.md`                                                                            | 已知踩坑（防复发输入）                                             |
+
+> `.reasonix/skills/` 不在 git 版本控制内，只存在于已初始化的本机检出；缺失时按同名 skill 走全局技能目录（降级路径），不要据此判定流程缺失。

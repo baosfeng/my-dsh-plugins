@@ -1,215 +1,83 @@
-# Profile dependency management recipes
+# profile 依赖管理（本仓库 recipe）
 
-> Carries on the release-track choice of [../SKILL.md](../SKILL.md). This document covers the dependency-resolution facts and operational recipes for installing/updating plugins into `$DSH_HOME/profiles/*`, drawn from the continuous migration of the 17 plugin repositories across four version steps (0.1.0-rc.8 → 0.1.1-rc.2 → 0.1.2-alpha.1 → 0.1.2-alpha.2 → 0.1.2-alpha.3). Technical migration pitfalls
-> (tsbuildinfo, oxc parsing, etc.) are covered in [migration-hygiene](https://github.com/oh-my-dsh/dsh-plugin-upgrade-skill/blob/main/skills/plugin-upgrade/references/migration-hygiene.md);
-> this document does not repeat them.
+> 承接 [../SKILL.md](../SKILL.md) 的发布轨选择。只记**本仓库实测过的 profile 依赖因果与配方**；官方解析细节与通用说明不在这里维护（查官方参考源）。
+> 版本无关的工具链坑（tsbuildinfo、oxc 解析等）见 [migration-hygiene](../../plugin-upgrade/references/migration-hygiene.md)，本文不重复。
 
-## 1. Resolution facts for the two install tracks
+## 1. 两条安装轨的解析事实
 
-| Declaration | Resolution behavior | Applies to |
-|---|---|---|
-| `link:<absolute path>` | Directory junction/symlink straight to the local directory; no version resolution | Local development, during batch migration |
-| `github:owner/repo` | Resolves the default-branch HEAD; the lockfile records the exact commit of the source archive URL (codeload) | Release installs, consumer side |
+| 声明                | 解析行为                                                             | 本仓库用途         |
+| ------------------- | -------------------------------------------------------------------- | ------------------ |
+| `link:<绝对路径>`   | 目录 junction/symlink 直指本地目录，**不做版本解析**                 | 开发期、批量迁移期 |
+| `github:owner/repo` | 解析默认分支 HEAD，lockfile 记录 codeload 归档 URL 的**精确 commit** | 发布安装、消费者侧 |
 
-The two tracks can be mixed within one profile; handle renames, migration, and wrap-up per the items below.
+两轨可在同一 profile 内混用；改名、迁移、收尾按下面各条处理。
 
-## 2. The github dependency lock-cache pitfall: `Already up to date` does not mean you got the new commit
+## 2. github 依赖的锁缓存坑：`Already up to date` ≠ 拿到了新 commit
 
-**Symptom**: a new commit was pushed upstream, `pnpm install` prints `Already up to date`, and the codeload URL in the lockfile is still the old commit; the code loaded at startup is still the old code.
+- **症状**：上游推了新 commit，`pnpm install` 打印 `Already up to date`，lockfile 里 codeload URL 仍是旧 commit，启动加载的还是旧代码。
+- **根因**：pnpm 缓存 github 依赖的 HEAD 解析，普通 `install` 不会重新解析。
+- **修法**：对该依赖强制重解析并核对 commit（web / headless profile 各跑一次）：
 
-**Cause**: pnpm caches HEAD resolution for github dependencies; a regular `install` does not re-resolve.
+  ```sh
+  cd "$DSH_HOME/profiles/web" && pnpm update <pkg>
+  grep 'codeload.*<pkg>' pnpm-lock.yaml   # 应为 tar.gz/<40 位 commit>
+  ```
 
-**Fix**:
+批量迁移收尾时，每个 github 轨依赖都跑一次 `pnpm update` 再核对 commit。
 
-```sh
-# Force re-resolution of the github dependency (run for the web and headless profiles separately)
-cd "$DSH_HOME/profiles/web" && pnpm update <pkg>
-# Verify that the commit in the lockfile equals the expected HEAD
-grep 'codeload.*<pkg>' pnpm-lock.yaml   # should be tar.gz/<40-char commit>
-```
+## 3. 包改名（前缀变更）三处同步
 
-During batch-migration wrap-up, run `pnpm update` once for every github-track dependency, then verify the commit.
+包名从 `@deepseek-ai/dsh-x` 变成 `@org/dsh-x` 时，三处必须一致，否则 Loader 解析失败：
 
-## 3. Three-place sync when a plugin's npm package is renamed (package name prefix change)
+1. profile `package.json` 的 dependencies key（安装名）；
+2. profile `dsh.profile.bundles` 条目（bundle 名）；
+3. 插件自身 `cordis.patch.yml` 的 `name` 行。
 
-When the package name changes from `@deepseek-ai/dsh-x` to `@org/dsh-x`, the following three places must agree, or the Loader fails to resolve:
+**残留清理**：改名后 `pnpm install` 可能保留旧名目录 junction（新旧目录并存）；确认 lockfile 只剩新名后，手工删除残留的 `node_modules/@旧前缀/旧包` 目录。
 
-1. the dependencies key in the profile `package.json` (install name);
-2. the profile `dsh.profile.bundles` entry (bundle name);
-3. the `name` line in the plugin's own `cordis.patch.yml`.
+## 4. junction 语义与共享 fallback
 
-**Residue cleanup**: after a rename, `pnpm install` may keep the old-name directory junction (old and new directories coexist). After confirming that the lockfile contains only the new name, manually delete the leftover `node_modules/@old-prefix/old-package` directory.
+- **junction 指向本地工作区包时，仓库工作树就是已装副本**——不需要任何复制步骤，也不需要 rename-aside；绕过未解析路径去 rename 等于移走唯一副本。宿主侧产物改动**重启 `dsh web` 才生效**，之后 client 侧才谈硬刷新（见 [migration-hygiene](../../plugin-upgrade/references/migration-hygiene.md) 第 3 条）。
+- profile 自己的 `node_modules` 只含本 profile 声明的依赖；裸行名解析失败会回退到共享的 `$DSH_HOME/profiles/node_modules`（各 bundle 声明依赖的副本）。
+- profile 根 `cordis.yml` 在启动时被改写成 `[]`（配置事实在 patch 层）——**不要手工编辑它**，要改 composition 就改 `cordis.patch.yml`。
 
-## 4. Update semantics of the shared fallback node_modules and directory junctions
+## 5. 构建期烘焙的版本常量：打 tag 前必须重建，否则 tag 自相矛盾
 
-- The profile's own `node_modules` contains only the profile's declared dependencies; when a bare row name fails to resolve, resolution falls back to the shared `$DSH_HOME/profiles/node_modules` (which holds copies of the app's and each bundle's declared dependencies).
-- When a directory junction points at a local workspace package, **a workspace source update takes effect once dsh is restarted**; host-half changes require a restart, and only then can the client half hard-refresh (see item 3 of [migration-hygiene](https://github.com/oh-my-dsh/dsh-plugin-upgrade-skill/blob/main/skills/plugin-upgrade/references/migration-hygiene.md)).
-- The profile root `cordis.yml` is rewritten to `[]` at boot (composition facts live in the patch layer) — **do not edit it by hand**; edit `cordis.patch.yml` instead.
+- **症状**：发布 `vX.Y.Z+1` 后，_latest_ 的消费者点更新芯片装上新 tag，芯片**仍然**提示有 `vX.Y.Z+1` 可更新；README 矩阵、git tag、`package.json` 都说新版本，只有运行中的插件不同意。
+- **根因**：插件在**源码**里 `import pkg from '../../package.json'` 读版本，而发布的是**构建产物**（`lib/client.js`）——打包器在构建时把当时的版本字符串**烘进产物**。只 bump manifest + 打 tag 而不重建，就发出一个 manifest 说 `X.Y.Z+1`、产物仍带 `X.Y.Z` 的自相矛盾 tag；所有读产物的版本比较面（更新芯片、about 面板、诊断）从此永远比出"有更新"。**提交构建产物（`lib/` 入库）的仓库踩得最狠**——"只改 manifest"看起来像一次完整的纯文档发版。
+- **修法**：① **bump → 重建 → 一起提交**，再打 tag（纯文档发版时，重建后的 bundle 就是本次唯一的实质变更）；② **加门禁**：从构建产物里提取更新检查真正消费的版本常量，要求与 `package.json.version` **字符串精确相等**（含 prerelease 与 build metadata），缺失/歧义/不匹配即阻断打 tag——整包 grep 不够（`0.3.1` 也会命中 `0.3.1-rc.1`，依赖的版本也不代表插件版本）。
+- **已推错 tag 的补救**：先记录每个镜像当前 branch/tag ref OID → 重建、amend（或补 fix commit）、重指 tag → 用**分离的显式租约**把分支与 tag 一起推：
 
-## 5. Profile linkage order after a host tag upgrade
+  ```sh
+  git push --atomic \
+    --force-with-lease=refs/heads/<branch>:<old-branch-oid> \
+    --force-with-lease=refs/tags/<tag>:<old-tag-oid> \
+    <remote> refs/heads/<branch>:refs/heads/<branch> refs/tags/<tag>:refs/tags/<tag>
+  ```
 
-1. Check out the exact tag → `pnpm install` → `pnpm run clean` → `pnpm run build` (clean rules out tsbuildinfo false positives);
-2. After the batch plugin migration is done and pushed to each repository, return to the profile: `pnpm update` re-resolves the github-track dependencies;
-3. Verify the row set with `dsh --profile <p> --dump-config`;
-4. Real cold boot: once dsh at the target tag is up, the plugin's entry in the plugin inventory (pluginInventory) is `active`, with no `pending`.
+  注解 tag 的租约要写 **tag 对象 OID**，不是 peeled commit SHA；租约失败即停下看并发改动，**不要改 `-f` 重试**。只在该 tag 足够新、固定它的消费者已知时适用，否则直接发 `X.Y.Z+2`。
 
-## 6. Browser-free authentication smoke for custom channels
+## 6. 插件版本按 DSH 版本分轨（挑错直接崩）
 
-Since 0.1.2-alpha.1, dsh web uses bootstrap-token + signed-Cookie authentication (see
-[DSH-0.1.2-A1-08 · Web/API channel authentication](https://github.com/oh-my-dsh/dsh-plugin-upgrade-skill/blob/main/skills/plugin-upgrade/references/v0.1.2-alpha.1.md)).
-When a plugin has its own HTTP/RPC channel (such as `/tariff/status`), use the flow below before publishing to prove that "the channel really sits behind the unified authentication", without relying on a browser/Playwright. Known behavior: the token can be exchanged repeatedly within the same process and only rotates on restart; a custom route inherits authentication only when registered through `connection` — a bare `ctx.webServer.register()` does not inherit.
+- **症状**：console 报 `TypeError: useConversation is not a function`（或其他"某个 slot 席位不存在"）；重启、热重载、改 `cordis.patch.yml` 都无效。
+- **根因**：DSH client API **跨 rc.x → alpha.x 不向前兼容**——为较新轨构建的插件装进较旧轨宿主后不会优雅降级，而是读一个宿主从未提供的席位，**崩在看起来与插件无关的地方**。
+- **修法**：按 DSH 版本挑插件版本，README 顶部放一眼可见的版本矩阵；**不要只给"装 latest"**（那会把 rc.x 用户送到向前不兼容的构建上）。README 里再给一条自检线索（"挑错会崩、典型症状 `useConversation is not a function`"）。
 
-PowerShell (with its own Cookie container):
+## 7. 文档引用的每个 tag 必须存在于每个镜像
 
-```powershell
-# 1. Grab the auth URL from the startup output: dsh web: http://127.0.0.1:3190/?token=<T>
-# 2. Exchange the Cookie
-$sess = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-Invoke-WebRequest "http://127.0.0.1:3190/?token=$token" -WebSession $sess -UseBasicParsing
-# 3. Call the custom channel with the session → assert 200
-$body = @{ type = 'client-request'; rpcId = 'smoke'; method = 'status'; payload = $null } | ConvertTo-Json
-Invoke-WebRequest 'http://127.0.0.1:3190/tariff/status' -Method POST -ContentType 'application/json' -Body $body -WebSession $sess
-# 4. Resend without authentication → assert 401 (proves the channel is protected)
-Invoke-WebRequest 'http://127.0.0.1:3190/tariff/status' -Method POST -ContentType 'application/json' -Body $body
-```
+- **症状**：按 README 固定 tag 安装失败：`Could not resolve vN.N.N to a commit of ...`。
+- **根因**：仓库分发在多个镜像（私有主仓 + 公开镜像）上，而发布/同步脚本只推分支、从不推 tag，历史 tag 从未到达公开镜像。
+- **修法**：① 同步脚本每次推分支后追加 `git push <remote> --tags`（非强制）；② 消费者先用 `git ls-remote --tags <repo>` 确认 tag 存在。发版后自检：按 tag 逐个查 `repos/<org>/<repo>/git/refs/tags/<tag>`，缺的重推——与第 2 条同类："文档说能装，就必须真的能装"。
 
-curl equivalent (`-c/-b` cookie jar):
+## 8. 插件内更新提示必须自带分轨与救援信息
 
-```sh
-curl -s -c jar.txt "http://127.0.0.1:3190/?token=$TOKEN" >/dev/null      # exchange the Cookie (303→/)
-curl -s -b jar.txt -X POST -H 'content-type: application/json' \
-  -d '{"type":"client-request","rpcId":"smoke","method":"status","payload":null}' \
-  http://127.0.0.1:3190/tariff/status        # expect 200
-curl -s -o /dev/null -w '%{http_code}\n' -X POST \
-  http://127.0.0.1:3190/tariff/status        # expect 401
-```
+- **症状**：消费者点插件"有新版本"芯片、粘贴复制的更新提示，agent 照字面执行——装到该 tag 从未适配的 DSH 版本上，或装失败时完全不知道去哪查；README 的版本矩阵此时完全不在视野里（**提示词是用户那一刻唯一的指引**）。
+- **修法**：芯片复制的提示必须自足——① 第 0 步先 `dsh --version` 对 README 兼容表，tag 与消费者 DSH 不匹配就改装表里匹配的 tag；② 带固定 tag 的安装命令 + pnpm 11 `approve-builds` 逃生口；③ 装后硬刷新提醒；④ 最后一步：装失败/版本不匹配/启动报错先查 README 的兼容与已知限制节。一个插件族共用一个提示模板（只有包名与仓库 URL 不同），改口径只发一次；提示词措辞变更按行为变更对待（bump + 发版，让芯片把它分发出去）。
 
-## 7. Validation checklist
+## 9. 验证清单
 
-- [ ] Every github dependency's commit in the lockfile equals the expected HEAD;
-- [ ] A renamed plugin uses the same name in the lockfile, the bundles list, and `cordis.patch.yml`, and the old directory junction has been cleaned up;
-- [ ] The `--dump-config` row set matches expectations;
-- [ ] Real cold boot leaves the entry active;
-- [ ] Custom-channel authentication smoke: 401 without authentication, 200 after exchanging the Cookie (Section 6 flow).
-
-## 8. Plugin version must be routed by DSH version (a wrong pick crashes)
-
-Different versions of the same plugin target different DSH versions. The DSH client API is
-**forward-incompatible across rc.x → alpha.x**: a plugin built for the wrong DSH version does not
-degrade gracefully — it crashes at runtime with a symptom that looks unrelated to the plugin.
-
-**Symptom**: console `TypeError: useConversation is not a function` (or another missing slot seat);
-"restart, hot-reload, edit cordis.patch.yml" all fail to fix it.
-
-**Root cause**: a plugin built against the `0.1.2-alpha.1` client API was installed into
-`0.1.1-rc.2` (npm latest). The two client contracts differ, so the plugin reads a seat the host
-never provided.
-
-**Fix**: pick the plugin version matching the DSH version. Put a one-glance version matrix at the top
-of the plugin README:
-
-| Your DSH | Plugin version to install |
-|---|---|
-| `0.1.1-rc.2` (npm latest) | the old (rc.1/rc.2-compatible) version, using its pinned tag |
-| `0.1.2-alpha.1 / alpha.2` | the new version (the default command) |
-
-Give consumers a self-check clue in a README callout: *a wrong pick crashes; common symptom
-`useConversation is not a function`*. Do not expose only a "latest version" default command — that
-sends rc.x users to a forward-incompatible build.
-
-## 9. Every tag referenced by the docs must exist on every mirror
-
-**Symptom**: installing by the README's pinned tag fails with
-`Could not resolve vN.N.N to a commit of https://github.com/<org>/<repo>.git`.
-
-**Root cause**: the repo is distributed across mirrors (private primary + public mirrors), but the
-publish/sync script pushes branches only, never tags — historical tags never reached the public
-mirrors, so the version pinned in the docs cannot be resolved.
-
-**Fix** (both parts):
-
-1. The publish/sync script must append `git push <remote> --tags` (non-forced) after each branch
-   push, so every release tag is synced to all mirrors;
-2. Consumers can confirm a tag exists first with
-   `git ls-remote --tags https://github.com/<org>/<repo>`.
-
-**Maintainer self-check after a release**: verify across mirrors with the API — query
-`repos/<org>/<repo>/git/refs/tags/<tag>` per tag and re-push any that are missing. This is the same
-class of check as "lockfile commit equals expected HEAD" (Section 2): if the docs say it installs,
-it must actually install.
-
-## 10. The in-plugin update prompt must carry its own routing and rescue notes
-
-**Symptom**: a consumer clicks the plugin's "new version available" chip, pastes the copied update
-prompt, and the agent runs it verbatim — against a DSH version the tag was never built for, or with
-no idea where to look when the install fails. The README's version matrix (Section 8) never enters
-the picture: **the prompt is the only guidance the user sees at that moment.**
-
-**Root cause**: the update prompt is generated inside the plugin with a single pinned tag and only
-the mechanical install steps. Version routing lived one browser tab away, and troubleshooting
-pointers lived only in the README — so the most common failure paths (wrong DSH version, pnpm 11
-build-script block, install errors) hit the user with zero context.
-
-**Fix** — the prompt a chip copies must be self-sufficient:
-
-1. **Step 0, before any command**: run `dsh --version` and check it against the README
-   compatibility table; if the prompt's tag does not match the consumer's DSH version, install the
-   table's matching tag instead (a wrong pick crashes — Section 8's symptom applies unchanged).
-2. **The install command** with the pinned tag, plus the pnpm 11 `approve-builds` escape hatch.
-3. **The hard-refresh reminder** after the install.
-4. **A final troubleshooting step**: on install failure / version mismatch / startup errors, consult
-   the README's compatibility and known-limitations sections first.
-
-Keep one prompt template across a plugin family (only the package spec and repo URL differ), so a
-fix to the routing wording ships once and every plugin's next release carries it. This is a
-documentation-in-code contract: treat prompt wording changes like behavior changes — bump, release,
-and let the chip distribute them.
-
-## 11. Version constants baked at build time: rebuild before tagging, or the tag lies about itself
-
-**Symptom**: right after publishing `vX.Y.Z+1`, a consumer on the *latest* install clicks the
-plugin's update chip, installs the new tag, and the chip **still** offers an update to
-`vX.Y.Z+1`. The README matrix, the git tag, and `package.json` all say the new version; only the
-running plugin disagrees. (Real case: dsh-file-trace v0.3.1, 2026-09-04 — the update chip kept
-prompting immediately after the release was pushed.)
-
-**Root cause**: the plugin reads its version via `import pkg from '../../package.json'` in
-**source**, but what ships is the **built bundle** (`lib/client.js`): the bundler replaces the
-import at build time and bakes the then-current version string into the artifact. Bumping
-`package.json` and tagging **without rebuilding** publishes a tag whose manifest says
-`X.Y.Z+1` while its artifact still carries `X.Y.Z` — a self-inconsistent tag. Every
-version-comparison surface that reads the artifact (update chip, about panel, diagnostics) now
-compares old-against-new and reports an update forever. This bites hardest for repos that commit
-build outputs (`lib/` tracked in git) precisely because "just bump the manifest" *looks* like a
-complete doc-only release.
-
-**Fix** — make the artifact part of the release, not an afterthought:
-
-1. **Bump → rebuild → commit together**: change `package.json`, run the full build, and commit
-   manifest + rebuilt artifacts in the same commit before tagging. For a doc-only release the
-   rebuilt bundle is the *only* functional change — it is the release.
-2. **Gate**: extract the version constant actually consumed by the update check from the built
-   artifact (or read it by executing the bundle in an isolated test harness), and require exact
-   string equality with `package.json.version`, including prerelease and build metadata. A missing,
-   ambiguous, or mismatched value blocks tagging. A whole-bundle grep is insufficient: `0.3.1`
-   also matches `0.3.1-rc.1`, and a dependency's version does not identify the plugin's version.
-3. **Recovery for an already-pushed inconsistent tag**: record each mirror's current branch and
-   tag ref OIDs before the repair. Rebuild, amend the release commit (or add a fix commit), and
-   re-point the tag. Push the intended branch and tag together with **separate explicit leases**:
-
-   ```sh
-   git push --atomic \
-     --force-with-lease=refs/heads/<branch>:<old-branch-oid> \
-     --force-with-lease=refs/tags/<tag>:<old-tag-oid> \
-     <remote> refs/heads/<branch>:refs/heads/<branch> refs/tags/<tag>:refs/tags/<tag>
-   ```
-
-   Use the OIDs recorded for that mirror; for an annotated tag, the lease needs the tag object's
-   OID, not its peeled commit SHA. If a lease fails, stop and inspect the concurrent change; do
-   not retry with `-f`. Repeat for every mirror, then verify each mirror's branch and tag target
-   SHAs. Acceptable only while the tag is fresh enough that consumers pinning it are known;
-   otherwise cut `X.Y.Z+2`.
-
-Related: Section 9 (the re-pointed tag must land on **every** mirror) and Section 10 (the update
-chip is the surface where this bug becomes user-visible — a chip that never clears is this section's
-signature symptom, not a prompt-wording problem).
+- [ ] 每个 github 依赖在 lockfile 里的 commit == 期望 HEAD；
+- [ ] 改名插件在 lockfile / bundles 列表 / `cordis.patch.yml` 三处同名，旧目录 junction 已清；
+- [ ] `dsh --profile <p> --dump-config` 的行集符合预期；
+- [ ] 真实冷启动后 entry active、无 pending；
+- [ ] 构建产物里烘焙的版本常量 == `package.json.version`（第 5 条）。

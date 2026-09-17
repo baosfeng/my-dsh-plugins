@@ -35,7 +35,7 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-think-zh-expand
 | ----------------- | ------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `defaultExpanded` | boolean | `true` | 思考块**展开初值**。`true`（默认）= 保持本插件的产品定位「思考默认展开」；`false` = 初始折叠，流式生成中仍自动展开、**生成完成后收起**。 |
 
-在 profile patch 的插件行里显式声明（`~/.dsh/profiles/<profile>.patch.yml`）：
+在 profile patch 的插件行里显式声明（`$DSH_HOME/profiles/<profile>/cordis.patch.yml`，默认 `~/.dsh/profiles/web/cordis.patch.yml`）：
 
 ```yaml
 - insert:

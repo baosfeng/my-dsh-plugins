@@ -9,5 +9,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 变更
 
-- feat(observability): #155 插件状态查询聚合——统一 status-query 事件 + /plugin-status API (#170)
-- chore(plugins): #165 清理失效的 dsh.client.inject 声明（13 插件） (#167)
+- feat(observability): 插件状态查询聚合——统一 status-query 事件 + /plugin-status API
+- chore(plugins): 清理失效的 dsh.client.inject 声明（13 插件）

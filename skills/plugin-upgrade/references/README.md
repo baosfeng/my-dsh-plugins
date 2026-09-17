@@ -5,7 +5,8 @@
 - [pre-flight.md](pre-flight.md)：七类触点自查、版本走廊构建、ghost host 钉定与迁移任务摘要模板；
 - [pre-flight-patterns.json](pre-flight-patterns.json)：触点扫描正则的唯一定义源，供可执行检查读取；
 - [migration-hygiene.md](migration-hygiene.md)：与版本无关的工具链坑（增量误报、解析器严格度、改动生效面、依赖构建脚本拦截、测试语法）；
-- [troubleshooting.md](troubleshooting.md)：迁移后症状 → 最可能根因速查。
+- [troubleshooting.md](troubleshooting.md)：迁移后症状 → 最可能根因速查；
+- [audit-playbook.md](audit-playbook.md)：模式 D（版本间审计）的六面侦察目标清单、派发模板、核验规则与报告骨架。
 
 ## 将来新增版本迁移卡时的最小约定
 

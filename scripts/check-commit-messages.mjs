@@ -27,8 +27,8 @@
  *
  * 退出码：0 = 范围内提交全部合规；1 = 有不合格提交 / 范围为空 / 范围解析失败；2 = 用法错误。
  *
- * ⚠️ 只校验指定范围，绝不校验整个历史：实测 639 个非 merge 提交里 61 条不符合默认规则
- * （9.5%，2026-09-15），全历史校验会让门禁恒红。详见 lib/commit-lint.mjs 头注释。
+ * ⚠️ 只校验指定范围，绝不校验整个历史：历史欠账（不符合默认规则的存量提交）比例不低，
+ * 全历史校验会让门禁恒红。详见 lib/commit-lint.mjs 头注释。
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'

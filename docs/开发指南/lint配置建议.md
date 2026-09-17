@@ -11,7 +11,7 @@ description: 本仓库 lint 门禁现状 — ESLint flat config 分块、import 
 
 | 维度     | 现状                                                                                                                        |
 | -------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 工具链   | ESLint 9+ Flat Config（根 `eslint.config.js`）+ Prettier（`.prettierrc.json`）+ Knip（`knip.json`）+ jscpd（`.jscpd.json`） |
+| 工具链   | ESLint 10 Flat Config（根 `eslint.config.js`）+ Prettier（`.prettierrc.json`）+ Knip（`knip.json`）+ jscpd（`.jscpd.json`） |
 | 尺寸门禁 | 圈复杂度 ≤10、单文件 ≤400 行、单函数 ≤70 行——手写 JS 由 ESLint 强制，TS 源码由 `scripts/check-ts-size.mjs` 强制             |
 | 其它规则 | `import/no-unresolved`（server + client）、server 端 `no-undef`；knip 死代码、jscpd 重复代码（min-tokens 100，阈值 5%）     |
 | 提交拦截 | Husky + lint-staged（pre-commit：eslint --fix + prettier --write）、commitlint（commit-msg，Conventional Commits）          |

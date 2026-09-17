@@ -19,8 +19,16 @@
 
 ## 4. pnpm 默认拦截依赖构建脚本
 
-- 症状：在新环境安装插件时，带原生构建的依赖安装被拒绝。
-- 修法：在 profile 目录执行 `pnpm approve-builds --all`；插件文档要把这一步写清楚。
+- 症状：pnpm ≥10 拒绝运行 git 依赖的 `prepare` / 原生构建脚本，新环境第一次 `dsh plugin add` 直接失败。
+- 修法（官方）：把 pnpm 打印的**确切包键**逐个复制进该 profile 的 `pnpm-workspace.yaml` 的 `allowBuilds`，再重跑 add：
+
+  ```yaml
+  allowBuilds:
+    <包键>: true
+  ```
+
+- ⚠️ 这项授权等于**允许该包的代码在安装时于你的机器上执行**，且不在 agent 运行的任何沙箱之内——只授权源码可信的包，并用 `#<sha>` 锁定 commit。见官方 [publish.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.zh.md)。
+- **不要用 `pnpm approve-builds --all`**：它一次放开所有包的构建脚本，正是绕过上面这条逐包审查警告的做法。不想让用户授权就改发预构建产物（npm publish 或 `pnpm pack` tarball），两者都不需要构建权限。
 
 ## 5. 测试代码里的 readonly / as-in-JSX
 

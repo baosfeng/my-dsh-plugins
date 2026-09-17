@@ -3,9 +3,8 @@
  *
  * 为什么 CI 层还要一道（本地已有 .husky/commit-msg + commitlint）：
  *   1. hook 可被 `--no-verify` / 网页端编辑 / 其他客户端绕过；
- *   2. 直接把整个历史丢给 commitlint 会**恒红**——实测 639 个非 merge 提交里 61 条
- *      不合格（9.5%：body-max-line-length 28 / header-max-length 14 / subject-case 11 /
- *      type-enum 5 / subject-empty 4 / type-empty 4，2026-09-15 实测）。
+ *   2. 直接把整个历史丢给 commitlint 会**恒红**——历史欠账（body-max-line-length /
+ *      header-max-length / subject-case / type-enum 等存量不合格提交）比例不低。
  *      所以本门禁**只校验本次变更范围内的提交**（PR 的 base..head；main 上是本次推送区间）。
  *      历史欠账不进门禁，但也不被"顺手"当作可通过的现状（见 renderCommitReport 的提示）。
  *

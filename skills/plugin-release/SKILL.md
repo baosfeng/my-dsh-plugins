@@ -9,27 +9,25 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 ## 第 0 步：确认目标版本与发布轨
 
-| 发布轨 | 适用 | 关键事实 |
-|---|---|---|
-| GitHub 直装 | `dsh plugin --profile <p> add github:owner/repo` | 消费者解析默认分支 HEAD；发布=推送到 main，**推前必须跑完整门禁** |
-| npm registry | `npm publish` | 仅正式发布线可用；`@deepseek-ai/*` 的 alpha/rc 前缀版本**不一定**在 npm 上，发布前先 `npm view <pkg> versions` 核实 |
-| hub 收录 | 在 hub catalog 登记 | 登记是独立动作，不代替打包验证 |
-| collection | 把成员插件 vendored 成 pack artifact | 见所属 collection 仓库的自有流程 |
+| 发布轨       | 适用                                             | 关键事实                                                                                                            |
+| ------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| GitHub 直装  | `dsh plugin --profile <p> add github:owner/repo` | 消费者解析默认分支 HEAD；发布=推送到 main，**推前必须跑完整门禁**                                                   |
+| npm registry | `npm publish`                                    | 仅正式发布线可用；`@deepseek-ai/*` 的 alpha/rc 前缀版本**不一定**在 npm 上，发布前先 `npm view <pkg> versions` 核实 |
+| hub 收录     | 在 hub catalog 登记                              | 登记是独立动作，不代替打包验证                                                                                      |
+| collection   | 把成员插件 vendored 成 pack artifact             | 见所属 collection 仓库的自有流程                                                                                    |
 
-未发布 cohort（例如某个 cohort 版本从未发到 npm——alpha.1 只有 GitHub 来源；alpha.2 到 alpha.4 已通过 `alpha` 通道标签发布）走 [references/publish-playbook.md](references/publish-playbook.md) 的 overrides 流程，**不要**在 npm 上找不存在的版本，也不要因此切换包管理器。
+未发布 cohort（目标 cohort 的部分版本可能从未发到 npm，只在 GitHub 上）**不要**在 npm 上找不存在的版本，也不要因此切换包管理器；按目标 tag 走版本走廊（或用 `pnpm -r exec pnpm pack` 物化 cohort tarball + `overrides` 固定到 `file:`）。判定发布轨前先 `npm view <pkg> versions` 核实实际可用版本，不要凭 tag 推断。
 
 ## 第 1 步：打包与产物校验
 
 1. 用仓库唯一的包管理器与 lockfile（有 `package-lock.json` 用 npm，有 `pnpm-lock.yaml` 用 pnpm）；
 2. 跑完整门禁（见第 3 步），再 `npm pack` / `pnpm pack`；
-3. 解包校验：`files` 覆盖全部运行时相对导入与资产；产物里没有 `.ts` 残留；`cordis.patch.yml`/`dsh.plugin.json`/`SKILL.md` 等形态文件齐全；
+3. 解包校验：`files` 覆盖全部运行时相对导入与资产；产物里没有 `.ts` 残留；`cordis.patch.yml`、`package.json`（`dsh.bundle` / 有 UI 时 `dsh.client` + `exports["./client"]`）、`SKILL.md` 等形态文件齐全；
 4. tarball 装入隔离 profile 做消费验证（`dsh --profile compat --dump-config` 出现本插件 row → 工具真实注册与执行）。
 
-## 第 2 步：版本依赖基线（alpha 时代）
+## 第 2 步：版本依赖基线
 
-- devDependencies 使用 **npm 发布线**（当前 0.1.1-rc.2）作为类型基线，保证公开仓库在任何机器上 `npm install` 后 typecheck 可用；
-- peer 范围用宽范围（如 `<0.2.0`）覆盖未发布的 alpha/rc；
-- 代码需要兼容本地 harness（GitHub tag）与 npm 发布线两侧时，用**双兼容写法**：保留 npm 发布线类型要求的形态，同时在 alpha 运行时语义不变（见 playbook 的“双兼容写法”节）；
+- 版本基线与 peer 范围以各插件 `package.json` 与目标版本卡为准，不写死在 skill 里——写死的基线会让插件锁定到不存在的 peer 范围；
 - 不要把本机绝对路径（junction/file:）写进提交的 package.json。
 
 ## 第 3 步：发布门禁（逐层，前层不过不进后层）
@@ -44,11 +42,11 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 `plugins/` 下的目录不都是 profile 插件。发版门禁按 `package.json` 的**显式形态声明**决定适用性——不写插件名单（名单会腐烂）：
 
-| 形态 | 显式声明 | 门禁差异 |
-|---|---|---|
-| profile 插件（bundle） | `dsh.bundle.patch`（有 UI 时另有 `dsh.client`） | 全部门禁：`peerDependencies.cordis`、跨插件依赖、真实挂载 |
-| 共享工具包 | `dsh.kind=library` | 豁免 `peerDependencies.cordis`（1b）与 profile 组合验证（3c） |
-| **agent preset 资产包** | `dsh.kind=preset` + 非空 `dsh.presetReason` | 同上豁免 1b + 3c；跨插件依赖（1c）、CHANGELOG、测试、效果图门禁照旧 |
+| 形态                    | 显式声明                                        | 门禁差异                                                            |
+| ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------- |
+| profile 插件（bundle）  | `dsh.bundle.patch`（有 UI 时另有 `dsh.client`） | 全部门禁：`peerDependencies.cordis`、跨插件依赖、真实挂载           |
+| 共享工具包              | `dsh.kind=library`                              | 豁免 `peerDependencies.cordis`（1b）与 profile 组合验证（3c）       |
+| **agent preset 资产包** | `dsh.kind=preset` + 非空 `dsh.presetReason`     | 同上豁免 1b + 3c；跨插件依赖（1c）、CHANGELOG、测试、效果图门禁照旧 |
 
 - preset 资产包 = `agent.cordis.yml`（预设组合，宿主 `@deepseek-ai/dsh-agent-presets` 的 `COMPOSITION_FILE`，**目录名即 preset id**）+ `preset.yml`（模式选择器的 name/description 显示元数据，`METADATA_FILE`），由安装脚本复制到 `$DSH_HOME/.agent-presets/<id>/`；它**不挂 profile**、没有 `cordis.patch.yml`，所以**不该**补 `peerDependencies.cordis`（那会让 npm 消费者以为它是 cordis 插件包）；
 - 判据与仓库不变量（`scripts/lib/preset-gate.mjs`，单测 `scripts/test/preset-gate.test.mjs`）：`dsh.kind=preset` 必须真的有 `agent.cordis.yml` + `preset.yml` 且内容成形（组合含插件行、元数据含非空 `name`）；与 `dsh.bundle` / `dsh.client` 互斥；目录里有 preset 资产却不声明也会被拦下，并提示正确修复方式（而不是误报缺 cordis peer）；
@@ -68,7 +66,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 - **字段**：`exports`（递归所有条件值）/ `main` / `types` / `dsh.bundle.patch` 指向的文件必须真实存在；声明 `dsh.client` ⇒ `platform === 'web'` 且 `exports["./client"]` 存在；有 `exports["./client"]` ⇒ 必须声明 `dsh.client`；有 `cordis.patch.yml` ⇒ 必须声明 `dsh.bundle.patch`；有 `lib/client.js` ⇒ 必须有 `exports["./client"]` + `dsh.client`；
 - **pack 内容**（`npm pack --dry-run --json`）：README / CHANGELOG / LICENSE / package.json 与所有声明目标**必须在包里**；`test/` `src/` `coverage/` `reports/` `node_modules/` `.DS_Store` `*.log` **不得在包里**；
-- **README 引用面**：README 引用的 assets（相对路径或 `unpkg.com/<本包>/...`）必须**存在且随包发布**——这是 3b 的盲区（3b 只查文件在仓库里是否存在，查不到 `files` 白名单没带它；#323 靠这条抓出 5 个插件 8 张图的裂图问题）；
+- **README 引用面**：README 引用的 assets（相对路径或 `unpkg.com/<本包>/...`）必须**存在且随包发布**——这是 3b 的盲区（3b 只查文件在仓库里是否存在，查不到 `files` 白名单没带它；本条能抓出「README 引用了 assets 但没随包发布」的线上裂图）；
 - **「源在仓库但故意不发布」**：判据是「被已发布面引用才必须在包内」，`vendor/`、`src/`、`test/`、`scripts/`、`client-parts/` 不被引用 → 只作 info 列出、不报警（**不要**改成"不在 files 就报警"）；
 - 本地单独跑：`node scripts/check-pack-hygiene.mjs`（`--json` / `--list` / `--plugin <名>` / `--root <dir>`）；判定是纯函数（`scripts/lib/pack-hygiene.mjs`，单测 `scripts/test/pack-hygiene.test.mjs`）；
 - **fail-closed**：pack 失败 / JSON 解析失败 / 找不到插件一律阻断。**选型已论证**：不用 `publint`（它不认 `dsh.*` 字段、恒定噪声、+428K 依赖，详见 `docs/开发指南/发版流程.md`），勿重复引入。
@@ -85,16 +83,16 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 - 发布前：干净提交 + 打 tag；记录 lockfile 与 composition 基线 hash；
 - 发布后：以消费者身份重装一次并冒烟；
 - 回滚：优先回退发布（删 tag/重新指向旧 commit），不发布“兼容两边”的补丁掩盖问题；
-- 未发布 cohort 的 CI 见 playbook 的“CI 与发布门禁”节（缓存 cohort store、`NPM_PUBLISH_ENABLED` 开关）。
+- 未发布 cohort 的 CI：发布 workflow 加 `NPM_PUBLISH_ENABLED` 开关——tag 触发仍跑完整门禁与冒烟，但在 cohort 正式发布前跳过 `npm publish`（细节见 `docs/开发指南/发版流程.md`）。
 
 ## 批量发版（一次多个插件）
 
 所有插件共享同一个 bump 类型，两个入口：
 
-| 入口 | 怎么发 | 能力边界 |
-|---|---|---|
-| GitHub Actions | Actions → **Release (auto)** → Run workflow：`plugins` 填多个目录名（**逗号或空格**分隔，如 `dsh-md-render,dsh-my-guard`），`bump` 下拉单选 | `plugins` 是文本框不是下拉——GitHub Actions 的 `choice` 原生不支持 `multiple`（issue #204）；workflow 内先跑白名单校验（允许值运行时取自 `plugins/` 目录），非法名 fail-fast 并列出全部允许值 |
-| 本地 | `node scripts/release.mjs a b c --bump patch --push` | 与 CI 同一脚本、同一门禁 |
+| 入口           | 怎么发                                                                                                                                      | 能力边界                                                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GitHub Actions | Actions → **Release (auto)** → Run workflow：`plugins` 填多个目录名（**逗号或空格**分隔，如 `dsh-md-render,dsh-my-guard`），`bump` 下拉单选 | `plugins` 是文本框不是下拉——GitHub Actions 的 `choice` 原生不支持 `multiple`；workflow 内先跑白名单校验（允许值运行时取自 `plugins/` 目录），非法名 fail-fast 并列出全部允许值 |
+| 本地           | `node scripts/release.mjs a b c --bump patch --push`                                                                                        | 与 CI 同一脚本、同一门禁                                                                                                                                                       |
 
 批量不降低门禁：每个插件仍独立走第 1-4 步（一个失败不影响其他），全部通过才一次提交 + 逐个打 tag。细节见 `docs/开发指南/发版流程.md` 的「批量发版」节。
 
@@ -102,14 +100,14 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 发版慢在哪**有实测数字**，不必猜：每次发版结束脚本都会打印阶段耗时表。
 
-| 阶段 | 单插件实测 | 占全链路 |
-|---|---|---|
-| **3c 真实环境验证（隔离实例）** | **~9.8s** | **73%** |
-| └ 其中：实例冷启动到 HTTP 200 | ~8.7s | 65% |
-| 1a npm latest 防降级查询 | 0.3–2.5s | 19% |
-| 1d 包发布卫生（`npm pack`，issue #323，与 1a/3/3c 并发） | **235–390ms** | 0.6–2% |
-| 3 `npm test` | 0.8–8.8s | 6–95%（取决于插件） |
-| 1b / 1b-pre / 1c / 2 / 3b / 4 | 合计 < 50ms | ~0% |
+| 阶段                                                     | 单插件实测    | 占全链路            |
+| -------------------------------------------------------- | ------------- | ------------------- |
+| **3c 真实环境验证（隔离实例）**                          | **~9.8s**     | **73%**             |
+| └ 其中：实例冷启动到 HTTP 200                            | ~8.7s         | 65%                 |
+| 1a npm latest 防降级查询                                 | 0.3–2.5s      | 19%                 |
+| 1d 包发布卫生（`npm pack`，issue #323，与 1a/3/3c 并发） | **235–390ms** | 0.6–2%              |
+| 3 `npm test`                                             | 0.8–8.8s      | 6–95%（取决于插件） |
+| 1b / 1b-pre / 1c / 2 / 3b / 4                            | 合计 < 50ms   | ~0%                 |
 
 **结论：发版链路的瓶颈是隔离实例冷启动，不是 CHANGELOG / 文档同步。** 想再优化先看这里。
 
@@ -131,7 +129,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 
 ## 参考材料
 
-| 文件 | 内容 |
-|---|---|
-| [references/publish-playbook.md](references/publish-playbook.md) | 未发布 cohort 安装、双兼容写法、CI/发布门禁、真实坑位清单与回滚配方 |
-| [references/profile-dependency-management.md](references/profile-dependency-management.md) | profile 安装/更新配方：github 依赖锁缓存、包改名三处同步、junction 清理与宿主升级联动 |
+| 文件                                                                                       | 内容                                                                                    |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| [references/publish-playbook.md](references/publish-playbook.md)                           | 发布语义四不变量（与 verify-release.mjs 对应）、真实坑位表与回滚配方                    |
+| [references/profile-dependency-management.md](references/profile-dependency-management.md) | profile 依赖 recipe：两轨解析、github 锁缓存、改名三处同步、junction 语义、烘焙版本常量 |

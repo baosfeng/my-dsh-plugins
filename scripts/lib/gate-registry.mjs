@@ -185,6 +185,15 @@ export const GATE_REGISTRY = [
     why: '唯一权威：插件 ↔ README / AGENTS.md / docs 索引 / 安装章节的一致性（防「插件部署了文档没更新」）。',
   },
   {
+    id: 'doc-api',
+    authority: '`scripts/check-doc-api-drift.mjs`',
+    local: 'always',
+    localCommand: 'node scripts/check-doc-api-drift.mjs',
+    ci: { ...CI_QUALITY_STEP },
+    cost: '0.12~0.14s',
+    why: '唯一权威：`docs/官方文档/本仓库重点.md` 的 API 面是**从 `plugins/*/src` 取证**的派生内容（实际调用哪些宿主能力 / 事件 / UI 槽位 / 哪些 API 代码零使用），靠人工维护必然漂移。典型漂移两类：① 文档与 skill 主推代码里零使用的 API（如第三方 `ctx.betterSidebar`）；② 文档写**根本不存在**的 API（如 `ctx.config`，全仓只在注释里出现，配置入口是 `apply(ctx, config)` 第二实参）。因此本门禁**双向**判定：文档提到代码里不存在的 API → 红；代码在用而文档未登记 → 红。扫描 `plugins/*/src` 时**先剥注释**再匹配，否则注释里的 `ctx.config` 会被当成"代码在用"，第一条事故就再也抓不到。范例坐标 `path:line` 另做校验（文件存在 / 行号在范围内 / 该文件确实含所声明的 API；行号允许漂移，避免每次改代码都红）。零外部依赖（不读 `~/.dsh-refs`、不需官方仓库检出），CI 可直接跑。',
+  },
+  {
     id: 'links',
     authority: '`scripts/check-links.mjs`',
     local: 'always',
@@ -219,7 +228,7 @@ export const GATE_REGISTRY = [
     localCommand: 'node scripts/check-test-sleeps.mjs',
     ci: { ...CI_QUALITY_STEP },
     cost: '~0.2s',
-    why: '唯一权威（issue #335）：`plugins/*/test/**` 里**新增**的固定时长等待（setTimeout(N>0)/settle(N)/sleep(N)）必须写 `// sleep-ok: <为什么不能用条件轮询>`，存量冻结在基线里只许变少。同族根因已复发 5 次（CI 高负载下固定 sleep 赌异步必输）。',
+    why: '唯一权威（issue #335）：`plugins/*/test/**` 里**新增**的固定时长等待（setTimeout(N>0)/settle(N)/sleep(N)）必须写 `// sleep-ok: <为什么不能用条件轮询>`，存量冻结在基线里只许变少。同族根因反复复发：CI 高负载下固定 sleep 赌异步必输。',
   },
   {
     id: 'artifacts',
@@ -278,8 +287,8 @@ export const GATE_REGISTRY = [
     },
     cost: '1~5 条提交 0.3~0.5s',
     why:
-      '唯一权威（issue #324）：**只校验本次变更范围**的提交信息。不查全历史是刻意的——实测 639 个非 merge 提交里' +
-      '61 条不符合默认规则（9.5%：body-max-line-length 28 / header-max-length 14 / subject-case 11 / type-enum 5 / …），' +
+      '唯一权威（issue #324）：**只校验本次变更范围**的提交信息。不查全历史是刻意的——历史欠账' +
+      '（body-max-line-length / header-max-length / subject-case / type-enum 等存量不合格提交）比例不低，' +
       '全历史校验会**恒红**，等于把门禁做成摆设。范围推导与 CI 同源（读 GITHUB_EVENT_PATH：PR 的 base..head、push 的 before..after），' +
       '本地自动退化为 @{upstream} → origin/main，也可用 --from/--to 显式指定来复现任意 CI 范围；' +
       '范围不可解析时显式报「**不是**提交信息不合规」（浅克隆实测踩过：CI 首个运行因此红，见 PR 记录）。',

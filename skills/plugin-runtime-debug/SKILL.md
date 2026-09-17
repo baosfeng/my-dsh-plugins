@@ -1,15 +1,19 @@
 ---
 name: plugin-runtime-debug
-description: 使用当 已安装的 DSH Web 插件只在浏览器运行时行为异常——粘贴/附件/合成器功能第一次成功后续失败、chips/面板显示陈旧占位状态、更新芯片报错版本——且修复必须对照精确宿主 API 语义诊断而非按名字猜测时。也用于发版前审查插件对 input-machine/facade verb（insert/consume/remove/subscribe）的调用。
+description: 使用当 已安装的 DSH Web 插件只在浏览器运行时行为异常——粘贴/附件/合成器功能第一次成功后续失败、chips/面板显示陈旧占位状态、更新芯片报错版本——且修复必须对照精确宿主 API 语义诊断而非按名字猜测时。也用于发版前对照宿主源码契约，审查插件对 ctx.slots / ctx.sidebarRightTabs / settings.plugins.tab 等宿主服务的调用。
 ---
 
 # 调试 DSH Web 插件运行时行为（plugin-runtime-debug）
 
 外部 Web 插件调用宿主 client API，其契约在 DSH 源码树里，不在插件自己的类型里。运行时行为偏离意图时，失败几乎总是契约误读——诊断必须来自宿主源码，绝不来自 API 名字。
 
+> **适用范围提示**：下文以 `ctx.slots` / `ctx.sidebarRightTabs` / `settings.plugins.tab` 等**本仓库实际在用的宿主服务**为示例载体。方法论（读宿主源码契约、逐个值核对）通用，换成插件实际调用的任何宿主服务同样适用；各能力的本仓库实际用法与官方页对照见 [本仓库重点](../../docs/官方文档/本仓库重点.md)。
+
 ## 铁律：先在宿主源码里读 verb 的契约
 
-改任何宿主 API 调用前，打开 DSH 源码检出（`~/.dsh/source/current`，或 npm 全局安装的 `~/.npm-global/lib/node_modules/@deepseek-ai/dsh/`）里实现该 API 的包，读实际方法——doc 注释、guards、比较的类型。对插件传入的每个值重复。三个问题覆盖多数事故：
+> 官方契约页导航见 [调试速查](../../docs/官方文档/调试速查.md)；查 `ctx.*` 服务语义直接读本地官方参考源（导航见[官方文档索引](../../docs/官方文档/索引.md)）。**判「这个服务/事件是否存在、定义在哪个包哪一行、serial 还是 parallel」用知识图谱**（官方参考源 project `Users-bsfeng-IdeaProjects-deepseek-harness`；查本仓库代码同理，但索引会过期，否定结论前先 `npm run index:self --status`；命令见[官方文档索引](../../docs/官方文档/索引.md) 第十节）——**四个通道全空**才说明它不是宿主能力（别只看 `--query`，它会对真实服务返回 0；通道清单见[官方文档索引](../../docs/官方文档/索引.md) 第十节）。
+
+改任何宿主 API 调用前，打开宿主源码树（npm 全局安装的 `~/.npm-global/lib/node_modules/@deepseek-ai/dsh/`）里实现该 API 的包，读实际方法——doc 注释、guards、比较的类型。对插件传入的每个值重复。三个问题覆盖多数事故：
 
 1. **offset 数的是哪个字符串？** verb 接受 span/offset 时，弄清这些数字索引的是什么字符串。发布快照字段与内部编辑器投影不总是同一个字符串；把一种表示的 offset 喂给 guard 比较另一种表示的 verb，会静默失败（返回 `false` 或 no-op，不抛错）。
 2. **每个"单位"在各表示中占多宽？** 文档含不透明内联单位（chips/tokens/attachments）时，检查单位在发布字段与 verb guard 的投影中是否同宽。宽度不同时，offset 只在无单位时正确——"第一次成功、之后每次失败"就是信号。
@@ -22,7 +26,7 @@ description: 使用当 已安装的 DSH Web 插件只在浏览器运行时行为
 - **派生 UI 显示陈旧/幻影条目**——找到事实的权威源并从它派生视图。带订阅的插件侧缓存会在任何瞬时快照（reconcile/remount 的空档）退役活条目；优先在决策时读实时发布状态，缓存只当加速器。
 - **更新/版本芯片报错"latest"**——远程 tag 与 raw-file 端点被 CDN 缓存，滞后真实推送数分钟。绝不把取回的远程值当真相（可能比运行构建旧）；用运行版本判定"当前 vs 更新"，显示两者中较新者。
 - **发布后整个 slot 的 UI 静默消失**——slot 组件内 throw（典型：悬空标识符——越作用域引用另一组件的状态变量）被框架的 slot 级错误边界捕获并卸载整个 entry；错误只在 console，用户只报"chips/面板没了"。两个延迟机制藏住它：`||` 短路让表达式在左操作数为 false 前不求值；空状态早退的组件在真实数据渲染前不求值。不要默认怪最新 diff——按回滚或带数据的最小渲染挂载二分，检查抛错行是否更早发布，修复=移除引用（状态局部化）。slot 组件加固：防御性读取（`x?.items ?? []`）与可选链 DOM 访问（`target.closest?.()`）——错误边界内任何 throw 都赔掉整个 slot。
-- **仓库改动到不了 GUI / profile 的 node_modules 下 EBUSY**——先确定安装模式（`Get-Item <profile>/node_modules/<pkg> | Select LinkType, Target`，或 cordis.patch.yml 的 `link:<path>` 标记）。Junction/link 安装 = 仓库工作树就是已装副本，无需复制步骤；EBUSY 持有者是运行中的 dsh 宿主进程（关浏览器不释放），宿主重启后浏览器仍可能服务缓存的 client bundle。link 安装的 lib-only 插件激活：完全停宿主 → 重启 `dsh web` → 硬刷新 → 核验加载的版本标记。绝不在未解析路径下 rename-aside 文件：junction 下"两个"目录是一个，rename 会移走唯一副本。
+- **仓库改动到不了 GUI / profile 的 node_modules 下 EBUSY**——先确定安装模式：`Get-Item <profile>/node_modules/<pkg> | Select LinkType, Target`，或看 profile 的 `package.json` 依赖 spec 是否为 `link:<插件目录绝对路径>`（`dsh plugin --profile web add link:<路径>` 装出来的形态；`cordis.patch.yml` 的 patch 行只有 `insert`/`id`/`name`/`config`，**不含 `link:`**）。Junction/link 安装 = 仓库工作树就是已装副本，无需复制步骤；EBUSY 持有者是运行中的 dsh 宿主进程（关浏览器不释放），宿主重启后浏览器仍可能服务缓存的 client bundle。link 安装的 lib-only 插件激活：完全停宿主 → 重启 `dsh web` → 硬刷新 → 核验加载的版本标记。绝不在未解析路径下 rename-aside 文件：junction 下"两个"目录是一个，rename 会移走唯一副本。
 
 ## 工作流
 

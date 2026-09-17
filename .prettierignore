@@ -48,3 +48,8 @@ package-lock.json
 *-report.txt
 *-report.json
 *-check.txt
+
+# Markdown 不做格式门禁（README / CHANGELOG / docs）：内容优先于排版，表格对齐、
+# 换行风格由作者掌握。文档正确性由 scripts/check-docs.mjs 承担（它用 \s* 容忍空白，
+# 不依赖 prettier 对齐）；lint-staged 也不再对 md 跑 prettier --write。
+*.md

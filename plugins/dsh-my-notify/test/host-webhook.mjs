@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
 import { createFailureLog, createWebhookStore, FAILURE_LOG_LIMIT } from '../lib/webhook-store.js'
+import { RETRY_MAX } from '../lib/webhook/pusher.js'
 import { patchFileOf } from 'dsh-shared'
 
 const tmpDirs = []
@@ -141,6 +142,46 @@ function flush() {
   return new Promise((resolve) => setTimeout(resolve, 20))
 }
 
+/**
+ * 失败记录等待上限 —— **停机保护，不是判据**。
+ *
+ * 失败记录在真实重试链走完时写入（退避 1s+2s+4s ≈ 7s 墙钟）。上限给 100s 是为了
+ * 容纳「进程可用时间与墙钟脱钩」的环境（CI 容器 CPU 配额节流 / runner 抢占 /
+ * 进程被暂停）：此时链的墙钟会膨胀，但**条件终会成立**。判据始终是「链终结后
+ * 记录必须恰好 1 条」，不是「12s 内必须出现」。
+ */
+const FAILURE_WAIT_MS = 100_000
+
+/** 集成用例总超时：必须显著大于 FAILURE_WAIT_MS + 其余场景耗时。 */
+const SUITE_TIMEOUT_MS = 120_000
+
+/** 让出一轮事件循环到 check 阶段（晚于全部已排队 microtask），不依赖墙钟时长。 */
+function yieldLoop() {
+  return new Promise((resolve) => setImmediate(resolve))
+}
+
+/**
+ * 等待条件成立（轮询间隔为递增的动态延时），超时抛出**带诊断**的错误。
+ *
+ * 判据是「条件成立」而非墙钟：`timeoutMs` 只是停机保护。超时信息里带上进度
+ * 诊断，让下一次红能一眼区分「环境把进程饿死了（链没走完）」与「链路缺陷
+ * （链走完了但没留痕）」——后者会以断言失败呈现，而不是超时。
+ */
+async function waitFor(condition, { timeoutMs, label, diagnose }) {
+  const started = Date.now()
+  const deadline = started + timeoutMs
+  let interval = 1
+  for (;;) {
+    if (condition()) return
+    if (Date.now() >= deadline) {
+      const progress = diagnose === undefined ? '' : `（${diagnose()}）`
+      throw new Error(`等待超时 ${timeoutMs}ms：${label}${progress}，已等待 ${Date.now() - started}ms`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, interval))
+    interval = Math.min(interval * 2, 100)
+  }
+}
+
 /** 覆盖 global fetch 的 mock（记录调用，返回固定响应）。 */
 function installFetch(handler) {
   const calls = []
@@ -161,12 +202,15 @@ function urlHost(url) {
   return new URL(url).host
 }
 
-// 测试 7 需等待真实重试退避（≈7s），默认 20s 超时在高负载下会偶发超时
-// （实测：本机并发跑 3 个迁移 agent 时该用例耗时 900s+ → flaky 让 CI 随机红），
-// 显式放宽到 120s，只影响"等多久算超时"，不改变任何断言。
+// 测试 7 要等真实重试退避（≈7s）走完才能看到失败记录；用例超时是**停机保护**
+// （环境把进程暂停/节流时链的墙钟会膨胀，实测该用例在并发跑迁移 agent 时可达 900s+），
+// 只决定"等多久算超时"，不改变任何断言。断言本身见场景 7：等「链终结」这一条件，
+// 而不是墙钟时长。
 test(
   'webhook integration suite',
-  { timeout: 120_000 },
+  {
+    timeout: SUITE_TIMEOUT_MS,
+  },
   async () => {
     try {
       // ── 1. 事件触发推送：end 事件 → 匹配 webhook 收到推送 ──────────────
@@ -481,27 +525,33 @@ test(
         const webhooks = [
           { name: 'w', channel: 'generic', url: 'https://a.example/hook', events: ['end'], enabled: true },
         ]
-        const { api, listeners } = boot({ webhooks })
+        // dedupeMs 显式归零：去重窗口只作用于 SSE 广播（notice.ts 的 bus 内部），
+        // 本用例断言的是 webhook 分发与留痕——固定它，消除「窗口撞车」这一变量。
+        const { api, listeners } = boot({ webhooks, dedupeMs: 0 })
         const mock = installFetch(() => {
           throw new Error('boom')
         })
         try {
           await dispatchEvent(listeners, 'agent/status', { agent: topAgent('f1'), status: 'idle' })
-          // 失败记录只在重试耗尽（1s+2s+4s ≈ 7s）后写入：轮询等待出现
-          const deadline = Date.now() + 12_000
-          let failures = []
-          while (Date.now() < deadline) {
-            const res = mockResponse()
-            await invoke(api, mockRequest({ url: '/notify/api/webhooks' }), res)
-            const body = JSON.parse(res.written.join(''))
-            assert.deepEqual(body.value.webhooks, webhooks, 'webhooks listed')
-            failures = body.value.failures
-            if (failures.length > 0) break
-            await new Promise((resolve) => setTimeout(resolve, 200))
-          }
-          assert.equal(failures.length, 1, 'one failure recorded after retries exhausted')
-          assert.equal(failures[0].webhookName, 'w')
-          assert.equal(failures[0].error, 'boom')
+          // 失败记录在「重试链走完」那一刻写入（onFailure 在 pushWebhook 内同步调用）。
+          // 等的是**链终结这一条件**——第 RETRY_MAX+1 次尝试已发生即代表链已走到末尾，
+          // 不再猜「1s+2s+4s ≈ 7s」这种墙钟时长：进程被暂停/节流时链的墙钟会膨胀，
+          // 旧写法（固定 12s deadline）会在链完成前放弃轮询，报出误导性的 0 !== 1。
+          await waitFor(() => mock.calls.length >= RETRY_MAX + 1, {
+            timeoutMs: FAILURE_WAIT_MS,
+            label: 'webhook 重试链未终结',
+            diagnose: () => `已 fetch ${mock.calls.length}/${RETRY_MAX + 1} 次`,
+          })
+          // 链终结后 onFailure 已同步调用；让出到 check 阶段确保 microtask 收尾
+          await yieldLoop()
+          const res = mockResponse()
+          await invoke(api, mockRequest({ url: '/notify/api/webhooks' }), res)
+          const body = JSON.parse(res.written.join(''))
+          assert.deepEqual(body.value.webhooks, webhooks, 'webhooks listed')
+          // 语义门禁：重试耗尽必须留痕，且恰好 1 条（不因等待放宽而放宽判据）
+          assert.equal(body.value.failures.length, 1, 'one failure recorded after retries exhausted')
+          assert.equal(body.value.failures[0].webhookName, 'w')
+          assert.equal(body.value.failures[0].error, 'boom')
         } finally {
           mock.restore()
         }
@@ -585,7 +635,6 @@ test(
       for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
     }
   },
-  20_000,
 )
 
 // ── 10. URL host 精确校验：substring 检查可被构造 URL 绕过，host 精确匹配须拒绝 ──

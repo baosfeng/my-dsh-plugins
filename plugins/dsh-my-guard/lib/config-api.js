@@ -45,7 +45,7 @@ function boolOr(value, current, fallback) {
  * 合并设置页提交的配置补丁 → 新 options + 被丢弃的非法规则数。
  * 未提交的字段保持现值（两个写入口可以只提交自己那一部分，互不覆盖）。
  */
-export function mergeConfigPatch(options, payload) {
+function mergeConfigPatch(options, payload) {
     const raw = payload.customRules;
     const customRules = raw === undefined ? options.customRules : compileCustomRules(raw);
     const dropped = raw === undefined ? 0 : rawCountOf(raw) - customRules.length;

@@ -58,7 +58,7 @@ function boolOr(value: unknown, current: boolean, fallback: boolean): boolean {
  * 合并设置页提交的配置补丁 → 新 options + 被丢弃的非法规则数。
  * 未提交的字段保持现值（两个写入口可以只提交自己那一部分，互不覆盖）。
  */
-export function mergeConfigPatch(
+function mergeConfigPatch(
   options: GuardOptions,
   payload: Record<string, unknown>,
 ): { next: GuardOptions; dropped: number } {

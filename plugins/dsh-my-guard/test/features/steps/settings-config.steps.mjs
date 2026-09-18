@@ -8,11 +8,14 @@ import { Given, When, Then } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { yieldLoop } from '../../../../dsh-shared/test-kit/wait.mjs'
 
 // ── Given ─────────────────────────────────────────────────────────────────
 Given('安全护栏插件已启动且配置 {string} 为 {string}', async function (key, value) {
   this.boot({ [key]: value })
-  await new Promise((resolve) => setTimeout(resolve, 60))
+  // 让出事件循环等 apply 里已排队的初始化任务跑完：不赌固定时长（负载无关），
+  // 也不引入条件——本 feature 的断言只看配置值与 patch 文件，与 store 加载无关。
+  await yieldLoop()
 })
 
 // ── When ─────────────────────────────────────────────────────────────────

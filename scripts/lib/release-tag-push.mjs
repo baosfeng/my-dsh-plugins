@@ -21,7 +21,7 @@
  *
  *   1. `pushTagsIndividually`：逐个推（一次网络往返 → 一个 ref），保序、失败即停；
  *   2. `confirmTagTriggered`：推完逐个轮询 GitHub API「该 tag 下有没有 run」，把
- *      **静默零触发**变成显式可见——没触发就不必再干等 post-release 的 5 分钟超时；
+ *      **静默零触发**变成显式可见——没触发就不必再干等发版后校验的 5 分钟超时；
  *   3. `retriggerHint`：确认不到时给出的补救命令（人工确认后执行）。
  *
  * **绝不自动删远端 tag**：删除 ref 是破坏性外发动作，只提示、不代做（fail-closed）。

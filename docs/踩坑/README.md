@@ -17,6 +17,7 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 - 一次 `git push` 推了十几个 tag，**GitHub Actions 一个 run 都不触发**（远端 tag 齐全、Release/npm 全无动静）→ 一次 push 只应承载一个 ref，批量推 tag 时事件会被合并/丢弃；改成**逐个推**（`pushTagsIndividually`）+ 推后逐个确认触发（`confirmTagTriggered`），固化在 `scripts/lib/release-tag-push.mjs`。已推上去却没触发才用「删远端 tag → 稍等几秒 → 重推」补救（间隔太短也被节流，实测 ≥5s 有效）。发布后必须核对 `git ls-remote --tags` 与 Actions run 两侧
 - `Error saving asset` / `Error creating asset temp dir` / `Error uploading` / action-gh-release 步骤吐 `<!DOCTYPE html>`（上传挂住数分钟）→ 两套 release workflow 同监听 `push: tags` 时**并发抢建同一个 Release**、互删同名 tgz；一个 tag 只留一套发布 workflow（`release-optimized.yml` 已删）+ 同 tag `concurrency` 串行。**判定看 Release/npm 交付物是否到位，不看单个 run 的红绿**。详见 [发版坑.md](发版坑.md)
 - 并发发版残留孤儿实例、`EADDRINUSE`、实例互相踢 → 门禁 await 完再退出（失败路径也不提前 kill），端口由调度层预分配。固化在 `scripts/lib/release-checks.mjs`
+- 发版脚本报 `npm <包>@<版本> 未在 5 分钟内发布` 而 npm 上其实已发布（或反之）→ 本机 npm 版本查询走镜像且缓存陈旧（实测本机某包显示旧版本、官方 registry 已是新版本），本地判定 npm 既慢又不准；已改为**发版后不再轮询 npm**（只等 GitHub Release）。核对以官方源为准：`npm view <包> version --registry=https://registry.npmjs.org`。固化在 `scripts/lib/post-release.mjs`、`scripts/test/post-release.test.mjs`
 - 改了 origin 的 url 却仍推 GitHub → `pushurl` 优先于 `url`，两个都要改；推前用 `git remote get-url --push origin` 自检
 - `dsh plugin add` 后缺依赖、缺 client 注入项 → 插件型依赖写 `dependencies`（peer 永不安装）；详见 [跨插件依赖与降级.md](跨插件依赖与降级.md)
 - `Element type is invalid … but got: null`（新装用户整条 UI 挂掉）→ 缺跨插件 client 依赖且未真降级；门禁见 `scripts/lib/release-checks.mjs`、`scripts/test/release-checks.test.mjs`

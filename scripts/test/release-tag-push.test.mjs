@@ -167,7 +167,7 @@ describe('release.mjs 集成（防回退：不许回到「一次推 N 个 tag」
     expect(source).toContain('confirmTagTriggered')
   })
 
-  it('未触发（pending）的 tag 跳过 post-release 空等并判失败', () => {
+  it('未触发（pending）的 tag 跳过发版后校验空等并判失败', () => {
     expect(source).toContain('notTriggeredTags')
     expect(source).toContain('retriggerHint')
   })

@@ -10,7 +10,9 @@
  *      （1a→1b-pre→1b→1c→1d→2→3→3c→3b）重排，「首个失败门禁」与串行版同口径；
  *      每个门禁都必须通过，判定权没有交给调度器；
  *   2. 批量发版的多个插件流水线并发（--concurrency，默认 3；单插件恒为 1，行为与串行版一致）；
- *   3. tag 全部创建后一次性推送，再并发等待全部 Release/npm（N × ~55s → ~55s）；
+ *   3. tag 全部创建后逐个推送，再并发等待全部 GitHub Release（实测 workflow 建
+ *      Release 38–51s，N 个并发 ≈ 单个耗时）；npm 发布状态不由本地判定
+ *      （本机 npm 版本查询走镜像且缓存陈旧，见 lib/post-release.mjs 文件头）；
  *   4. 结束打印各阶段实测耗时表；失败时给出失败点与断点续跑提示。
  * 并发**不改变失败语义**：任一插件任一子门禁失败 → 该插件失败 → exit 1（fail-closed）。
  * 代价（诚实记录）：并发后早期门禁失败时，已启动的重门禁仍需跑完才退出——不能 kill，
@@ -43,9 +45,9 @@
  *       (local only; CI auto-skips; --skip-real-verify requires --skip-reason),
  *       then gate on the functional checklist being fully checked (issue #67)
  *   4.  sync the version in root README.md plugin table and AGENTS.md
- *   5.  --push: commit doc sync, tag <name>@v<version> for all plugins, push tags in
- *       one round trip (triggers the release workflow), then verify Release + npm
- *       for all tags concurrently
+ *   5.  --push: commit doc sync, tag <name>@v<version> for all plugins, push tags
+ *       individually (each push triggers the release workflow), then verify the
+ *       GitHub Release for all tags concurrently (npm 发布状态不由本地判定)
  *
  * Batch mode (multiple plugins):
  *   - Each plugin is validated independently (one failure doesn't block others)
@@ -945,8 +947,10 @@ if (push && succeeded.length > 0) {
   // 串行版是「打一个 tag → 推一个 tag → 立刻等这个 tag 的 Release（~55s）→ 下一个」，
   // N 个插件 = N × ~55s 的纯等待。现在拆成三段流水线：
   //   ① 全部 tag 先创建（含 tag 管理防护，冲突即停，绝不自动 force）
-  //   ② 一次性推送全部 tag（一次网络往返；tag 推送本身触发各自的 workflow）
-  //   ③ 并发等待全部 Release/npm，最后统一报告
+  //   ② 逐个推送 tag（每个 tag 一次 push——一次推多个 ref 会被 GitHub 合并/丢弃
+  //      push 事件导致零触发，实测见下方「逐个推送」段）
+  //   ③ 并发等待全部 Release（npm 发布状态不由本地判定——本机查询走镜像且缓存
+  //      陈旧，既慢又假报警；见 lib/post-release.mjs 文件头），最后统一报告
   const tagTargets = []
   for (const result of succeeded) {
     const name = result.name
@@ -997,10 +1001,10 @@ if (push && succeeded.length > 0) {
   console.log('  watch: https://github.com/baosfeng/my-dsh-plugins/actions')
 
   // 触发确认（issue #375-#380）：把「静默零触发」变成显式事实，且不再为一个注定失败的
-  // tag 干等 post-release 的 5 分钟超时。三态处置（判定口径只收紧、不放松）：
-  //   · created             → 正常进入 post-release 等待；
+  // tag 干等发版后校验的 5 分钟超时。三态处置（判定口径只收紧、不放松）：
+  //   · created             → 正常进入发版后校验等待；
   //   · pending（确实没触发）→ 该 tag 直接判失败 + 打印补救命令，跳过等待；
-  //   · unknown / skipped   → 无法判定（限流 / 无 GH_TOKEN）→ 只警告，仍走 post-release 兜底
+  //   · unknown / skipped   → 无法判定（限流 / 无 GH_TOKEN）→ 只警告，仍走发版后校验兜底
   //                           （把「查不到」当「没触发」会制造「本地红、CI 绿」的假红）。
   const triggerStatus = new Map()
   const triggerChecks = await mapWithConcurrency(
@@ -1023,13 +1027,14 @@ if (push && succeeded.length > 0) {
   }
   if (unconfirmed.length > 0) {
     const cause = triggerStatus.get(unconfirmed[0].tag) === 'skipped' ? 'GH_TOKEN 未配置' : 'GitHub API 非 200'
-    console.warn(
-      `\n⚠ ${unconfirmed.length} 个 tag 的触发情况无法确认（${cause}）——不据此判失败，仍走 post-release 校验`,
-    )
+    console.warn(`\n⚠ ${unconfirmed.length} 个 tag 的触发情况无法确认（${cause}）——不据此判失败，仍走发版后校验`)
   }
 
-  // 6. 发版后校验（issue #36 + #246）：N 个 tag 的 Release/npm 等待并发执行
+  // 6. 发版后校验（issue #36 + #246）：N 个 tag 的 GitHub Release 等待并发执行
   // （每个 tag 的 Release workflow 在 GitHub 侧本来就是并行的，串行等待纯属浪费）。
+  // npm 发布状态不由本地判定：npm publish 由 release.yml 负责，本地查询走镜像且
+  // 缓存陈旧——既耗满 5 分钟超时窗口，又对已发布成功的包报「未发布」假警报
+  // （详见 lib/post-release.mjs 文件头）。
   const notTriggeredTags = new Set(notTriggered.map((target) => target.tag))
   const postResults = await mapWithConcurrency(
     tagTargets,

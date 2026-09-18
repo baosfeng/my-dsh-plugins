@@ -33,6 +33,14 @@ export interface WebServerService {
   }): () => void
 }
 
+/** inject 子 scope（cordis `ctx.inject(deps, cb)` 的回调实参）。 */
+export interface InjectableScope {
+  webServer?: WebServerService
+  logger?: DshContext['logger']
+  get<T = unknown>(name: string): T | undefined
+  effect(callback: () => void | (() => void), label?: string): void
+}
+
 /** Cordis 事件监听器。 */
 export type EventHandler = (...args: any[]) => any
 
@@ -55,6 +63,20 @@ export interface DshContext {
   effect(callback: () => void | (() => void), label?: string): void
   /** 读取可选服务（未加载返回 undefined）。 */
   get<T = unknown>(name: string): T | undefined
+  /**
+   * 局部等待服务就绪（cordis `ctx.inject(deps, cb)`）：deps 全部 active 才执行
+   * cb，服务晚到会补执行（`ctx.get` 带严格就绪检查且**没有重试**，晚就绪就永久
+   * 错过 —— 路由注册必须走 inject，不能一次性取值）。
+   *
+   * 可选：极简/老宿主 ctx 可能没有 —— 调用方自行降级（见 routes.ts 的 mountOnRoot）。
+   */
+  inject?(deps: string[], callback: (scope: InjectableScope) => void): unknown
+  /**
+   * 常驻应用根 ctx。profile 插件自身的 fiber 在 apply 结束后被 loader 回收，
+   * 挂在它上面的 `ctx.effect`（含路由注册）会一并注销 → 真实环境 404；
+   * 注册必须落到 `ctx.root ?? ctx`。
+   */
+  root?: DshContext
   /** webServer 服务（inject 声明后可用）。 */
   webServer?: WebServerService
   /** 日志器。 */

@@ -12,13 +12,16 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "npx tsc -p tsconfig.json",
+    "build": "npx tsc -p tsconfig.json && node scripts/build.mjs",
     "typecheck": "npx tsc --noEmit -p tsconfig.json",
     "test": "npx vitest run --coverage && cucumber-js test/features --import \"test/features/steps/*.mjs\""
   },
   "exports": {
     ".": {
       "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
     },
     "./package.json": "./package.json"
   },
@@ -33,6 +36,9 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "peerDependencies": {

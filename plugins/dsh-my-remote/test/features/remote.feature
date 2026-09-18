@@ -47,3 +47,15 @@
     那么 事件下行到外部通道，帧含 kind=end
     并且 该会话未决议的 approval 被按 rejected 处理
     并且 该未决议的 ask 被视为过期，不再可回答
+
+  场景: 设置页读取配置时不回显 token 明文
+    假如 插件已配置 apiToken、一个手写 webhook 列表与手写的 end 开关
+    当 设置页读取当前配置
+    那么 响应里只有 apiToken 是否已配置，绝不回显 token 明文
+
+  场景: 设置页保存 webhook 列表且不破坏用户手写的其它配置
+    假如 插件已配置 apiToken、一个手写 webhook 列表与手写的 end 开关
+    当 设置页提交新的回答超时 9000，并把手写 webhook 的 URL 改成 "https://hand.example.com/v2"
+    那么 设置页保存后立即生效：再次读取即为新值
+    并且 未提交的 apiToken 保持原值
+    并且 手写的 end 开关保留，且该 webhook 未暴露的 headers 被继承

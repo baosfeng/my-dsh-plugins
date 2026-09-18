@@ -76,7 +76,10 @@ function boot(config) {
   expect(api, 'prefix route /remote/api registered').toBeDefined()
   const disposeAll = () => {
     for (const dispose of disposers.splice(0)) dispose()
-    process.env.DSH_HOME = oldHome
+    // 精确还原：原本未设置时**删除**，否则会写成字符串 "undefined"
+    // （那会让后续 patchFileOf 指向相对路径 undefined/... —— 真实事故的同类缺陷）
+    if (oldHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = oldHome
   }
   disposeAlls.push(disposeAll)
   return { api, disposeAll }

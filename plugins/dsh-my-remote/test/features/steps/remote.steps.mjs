@@ -5,18 +5,53 @@
  */
 import { Given, When, Then } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
+import { extractConfig } from 'dsh-shared'
 import { topAgent } from './world.mjs'
 
 const neverNext = () => new Promise(() => {})
 
 // ── Given ─────────────────────────────────────────────────────────────────
 
-Given('远程控制插件已启用', function () {
-  this.boot({})
+Given('远程控制插件已启用', async function () {
+  await this.boot({})
 })
 
-Given('插件配置了 apiToken {string} 与一个接收事件的中转 webhook', function (token) {
-  this.boot({ apiToken: token, webhooks: [{ name: '中转', url: 'https://relay.example.com/hook' }] })
+Given('插件配置了 apiToken {string} 与一个接收事件的中转 webhook', async function (token) {
+  await this.boot({ apiToken: token, webhooks: [{ name: '中转', url: 'https://relay.example.com/hook' }] })
+})
+
+Given('插件已配置 apiToken、一个手写 webhook 列表与手写的 end 开关', async function () {
+  // 真实语义：这些内容由用户**手写在 profile 层 cordis.patch.yml**，loader 读它
+  // 得到 apply 的 config；故这里同时给出「文件内容」与「已加载的 config」。
+  const handlers = [
+    {
+      name: '手写渠道',
+      url: 'https://hand.example.com/hook',
+      events: ['ask'],
+      enabled: true,
+      headers: { Authorization: 'Bearer abc' },
+    },
+  ]
+  // 先 boot（它会设置本次场景的临时 DSH_HOME），再把手写内容写进该 profile 的 patch 文件。
+  await this.boot({ apiToken: 'original-token', end: false, webhooks: handlers })
+  this.writePatchFile(
+    [
+      '- id: remote',
+      '  config:',
+      '    end: false',
+      "    apiToken: 'original-token'",
+      '    askTimeoutMs: 0',
+      '    approvalTimeoutMs: 0',
+      '    webhooks:',
+      '      - name: 手写渠道',
+      '        url: https://hand.example.com/hook',
+      "        events: ['ask']",
+      '        enabled: true',
+      '        headers:',
+      "          Authorization: 'Bearer abc'",
+      '',
+    ].join('\n'),
+  )
 })
 
 // ── When ──────────────────────────────────────────────────────────────────
@@ -62,6 +97,18 @@ When('查询状态接口', async function () {
 
 When('查询审计接口', async function () {
   await this.getAudit()
+})
+
+When('设置页读取当前配置', async function () {
+  await this.callSettings()
+})
+
+When('设置页提交新的回答超时 {int}，并把手写 webhook 的 URL 改成 {string}', async function (askTimeoutMs, url) {
+  // 保持**同名**：设置页按名称继承该条目未暴露的 headers（用户改 URL 不该丢鉴权头）。
+  await this.callSettings({
+    method: 'PUT',
+    body: JSON.stringify({ askTimeoutMs, webhooks: [{ name: '手写渠道', url }] }),
+  })
 })
 
 // ── Then ──────────────────────────────────────────────────────────────────
@@ -146,4 +193,31 @@ Then('该未决议的 ask 被视为过期，不再可回答', async function () 
   await this.sendCommand({ action: 'answer', sessionId: 's-end', answers: [{ id: 'q1', selected: ['x'] }] })
   assert.strictEqual(this.lastStatus, 400)
   assert.ok(this.lastBody.error.message.includes('no pending ask'))
+})
+
+Then('响应里只有 apiToken 是否已配置，绝不回显 token 明文', function () {
+  assert.strictEqual(this.lastStatus, 200)
+  assert.strictEqual(this.lastBody.value.apiTokenSet, true, 'apiTokenSet 为 true')
+  assert.ok(!('apiToken' in this.lastBody.value), '响应体不含 apiToken 字段')
+  assert.ok(!JSON.stringify(this.lastBody).includes('original-token'), '响应体任何位置都没有 token 明文')
+})
+
+Then('设置页保存后立即生效：再次读取即为新值', async function () {
+  await this.callSettings()
+  assert.strictEqual(this.lastStatus, 200, 'PUT 成功')
+  assert.strictEqual(this.lastBody.value.askTimeoutMs, 9000, 'askTimeoutMs 已是新值')
+  assert.strictEqual(this.lastBody.value.webhooks.length, 1, 'webhook 列表已更新')
+  assert.strictEqual(this.lastBody.value.webhooks[0].url, 'https://hand.example.com/v2', 'URL 已更新')
+})
+
+Then('未提交的 apiToken 保持原值', function () {
+  const text = this.readPatchFile()
+  assert.ok(text.includes("apiToken: 'original-token'"), 'token 未被空值覆盖：\n' + text)
+})
+
+Then('手写的 end 开关保留，且该 webhook 未暴露的 headers 被继承', function () {
+  const text = this.readPatchFile()
+  assert.strictEqual(extractConfig(text, 'remote').end, false, '手写的 end 开关保留：\n' + text)
+  assert.ok(text.includes('Bearer abc'), '该条目未暴露的 headers 按名称继承（不丢鉴权头）：\n' + text)
+  assert.ok(text.includes('https://hand.example.com/v2'), 'URL 更新已落盘')
 })

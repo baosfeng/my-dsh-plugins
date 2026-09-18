@@ -13,7 +13,10 @@
 - **远程批准 approval**：外部提交批准（`allowed-once`）或拒绝（`rejected`），approval 等待方立即决议，工具放行或拦截。
 - **状态查询 / 继续会话**：查询活动会话、待回答 ask、待批准 approval 快照；`continue` 指令唤醒或继续对应会话。
 - **安全**：loopback 信任围栏 + `apiToken` 鉴权（写指令带 `x-remote-token` 头）+ 指令白名单 + 操作审计。
+- **设置页**：`设置 → 插件 → 远程控制` 可视化编辑 4 项配置（token 掩码、两个超时、webhook 列表增删改），保存即生效。
 - **通道可扩展**：适配器契约渠道无关（事件帧 + 指令格式），HTTP 通道先行，微信/QQ/飞书机器人按同一接口扩展。
+
+![设置 → 插件 → 远程控制：token 掩码、两个超时与 webhook 列表编辑器](./assets/settings-panel.png)
 
 ## 安装
 
@@ -28,6 +31,20 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-remote
 
 ## 配置
 
+### 设置页（推荐）
+
+**设置 → 插件 → 远程控制** 面板可视化编辑 4 项配置，保存即生效（写回 profile 层 `cordis.patch.yml` 的 `remote` 行）：
+
+| 项                                   | 说明                                                   |
+| ------------------------------------ | ------------------------------------------------------ |
+| `apiToken`                           | 密码型输入框；已配置时提示「留空则不修改」，不回显原文 |
+| `askTimeoutMs` / `approvalTimeoutMs` | 毫秒，0 = 无限等待                                     |
+| `webhooks`                           | 列表编辑器：增 / 改 / 删 / 启停（名称、URL、事件多选） |
+
+两处刻意的边界：**webhook 的自定义 `headers`** 与 **`end`/`ask`/`approval` 事件开关**不在面板里，仍需在 yml 手写；面板保存会先读该行已有配置再合并，**不会覆盖这些手写项**。
+
+### 手写配置
+
 `cordis.patch.yml` 中插件行的 `config:` 字段，全部可选：
 
 ```yaml
@@ -38,8 +55,10 @@ config:
   webhooks:
     - name: '我的中转服务'
       url: 'https://relay.example.com/hook'
-      events: ['ask', 'approval', 'end'] # 缺省 = 全部；headers 可加附加请求头
+      events: ['ask', 'approval', 'end'] # 缺省 = 全部
       enabled: true
+      headers: # 自定义请求头（中转服务鉴权等）；设置页不暴露，保存时按名称保留
+        Authorization: 'Bearer xxx'
 ```
 
 ## 使用（外部通道侧）

@@ -27,16 +27,20 @@
  *
  * 可选服务一律经 ctx.get 读取（agents / sessionTitle / webRuntime）。
  */
+import { isTrustedApiRequest } from 'dsh-shared';
 import { attachEvents } from './events.js';
 import { createAskRegistry, createApprovalRegistry } from './registries.js';
 import { createChannels } from './channels.js';
 import { registerRemoteRoutes } from './routes.js';
 import { createAuditLog } from './audit.js';
+import { createSettingsPort, persistSettings } from './settings.js';
 import { titleOf, isTopLevelAgent } from './session.js';
 export const name = 'dsh-my-remote';
 export const inject = ['webServer'];
 export function apply(ctx, config) {
     // ── 配置（应用层 config 覆盖，默认全部开启）─────────────────────────
+    // options 是**所有层的单一共享对象**：设置页保存时由 settings 端口原地更新，
+    // events / channels / routes 捕获的是同一个引用 → 保存即热生效。
     const options = buildOptions(config);
     // ── 共享上下文：注册表 + 审计 + 渠道（监听与路由共享）───────────────
     const shared = {
@@ -52,9 +56,17 @@ export function apply(ctx, config) {
     };
     // ── 事件层（end/ask/approval 监听 + 远程回答/批准 race）──────────────
     attachEvents(ctx, shared);
-    // ── 路由（/remote/api：command/status/audit/info + fence + token）────
-    registerRemoteRoutes(ctx, shared);
+    // ── 路由（/remote/api：command/status/audit/info + settings 读写）────
+    registerRemoteRoutes(ctx, shared, createSettingsPort({ options, fence: fenceOf(shared), persist: persistSettings }));
     ctx.logger?.info(`[dsh-my-remote] 远程控制已启用（end=${options.end ? 'on' : 'off'}，ask=${options.ask ? 'on' : 'off'}，approval=${options.approval ? 'on' : 'off'}，webhooks=${(options.webhooks ?? []).length}）`);
+}
+/** 信任围栏（loopback 或 webRuntime.trustedHosts 配置的受信权威）。 */
+function fenceOf(shared) {
+    const webRuntime = shared.ctx.get?.('webRuntime');
+    const trustedHosts = webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
+        ? webRuntime.trustedHosts
+        : [];
+    return (request) => isTrustedApiRequest(request, trustedHosts);
 }
 /** 应用层配置 → options（默认值 + 类型规整）。 */
 function buildOptions(config) {

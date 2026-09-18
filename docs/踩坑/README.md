@@ -36,6 +36,7 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 - 为消 `js/file-system-race` 删掉 stat 导致类型闸门与字节账退化 → 改 `open` + fd `stat` + fd 读；固化在 `scripts/check-links.mjs`、`scripts/test/check-links-limits.test.mjs`
 - CI 随机红一条（只读到 1 条而非 2 条）、本地连跑全绿 → 固定 sleep 等异步落盘；详见 [异步落盘与时序.md](异步落盘与时序.md)（新增固定 sleep 须写 `// sleep-ok: 理由`，门禁 `scripts/check-test-sleeps.mjs`）
 - 同插件两个测试进程撞 `coverage` 目录、失败者没有 `Tests` 行 → 并行按插件划分；固化在 `scripts/test-all.sh`
+- 本机 `~/.dsh` 配置莫名变成**测试夹具**、插件禁用状态丢失、用户配置回默认 → 测试里 `writeFileSync(patchFileOf(...))` 是**整文件覆盖**写入，而 `patchFileOf` 读 `process.env.DSH_HOME`、**为空时回退真实 `~/.dsh`**；cucumber 在同一进程串行跑场景、`process.env` 全局共享，场景间没有隔离保证，于是 `boot()` 设置/恢复 DSH_HOME 的窗口一漏就命中真实配置。修法：写入侧加 **fail-closed 路径断言**（目标落在真实 home 即抛错，绝不静默写）+ DSH_HOME 隔离提前到 `Before` / `beforeEach`，并加「DSH_HOME 缺失时写入必须抛错且真实文件 hash/mtime 零变化」的防回归用例
 
 ## 插件运行时与宿主 API
 

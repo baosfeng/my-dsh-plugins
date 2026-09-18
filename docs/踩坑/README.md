@@ -14,7 +14,8 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 - `tag 与 package.json 版本不一致`、Release workflow 卡在校验 → expected 去掉 `v` 前缀；bump 后先提交再打 tag。
 - `dry-run 也写版本号`、版本连跳两级致验证清单与 CHANGELOG 对不上 → 发版一次跑完 `--bump patch --push`；误 bump 用 git checkout 恢复。固化在 `scripts/release.mjs`
 - push 被 pre-push 拦下报 `根 README.md 插件表缺少 <插件> 行（或版本不是 x.y.z）`、发版输出只有 `README.md: no row` → prettier 按列宽给短版本补空格（表里存在 `0.5.10` 时 `0.1.5` 写成 `| 0.1.5  |`），同步正则必须与 `check-docs.mjs` 同口径容忍空白。固化在 `scripts/lib/release-checks.mjs` 的 `readmeVersionRowRe`（防复发单测在 `scripts/test/release-checks.test.mjs`）
-- 一次 `git push` 推了十几个 tag，**GitHub Actions 一个 run 都不触发**（远端 tag 齐全、Release/npm 全无动静）→ 批量推 tag 时事件不派发（实测 14 个 tag 零触发）；对每个 tag 逐个「删远端 tag → 稍等几秒 → 重推」才会触发（间隔太短也会被节流，实测 ≥5s 有效）。发布后必须核对 `git ls-remote --tags` 与 Actions run 两侧，不能只看 tag 推上去了
+- 一次 `git push` 推了十几个 tag，**GitHub Actions 一个 run 都不触发**（远端 tag 齐全、Release/npm 全无动静）→ 一次 push 只应承载一个 ref，批量推 tag 时事件会被合并/丢弃；改成**逐个推**（`pushTagsIndividually`）+ 推后逐个确认触发（`confirmTagTriggered`），固化在 `scripts/lib/release-tag-push.mjs`。已推上去却没触发才用「删远端 tag → 稍等几秒 → 重推」补救（间隔太短也被节流，实测 ≥5s 有效）。发布后必须核对 `git ls-remote --tags` 与 Actions run 两侧
+- `Error saving asset` / `Error creating asset temp dir` / `Error uploading` / action-gh-release 步骤吐 `<!DOCTYPE html>`（上传挂住数分钟）→ 两套 release workflow 同监听 `push: tags` 时**并发抢建同一个 Release**、互删同名 tgz；一个 tag 只留一套发布 workflow（`release-optimized.yml` 已删）+ 同 tag `concurrency` 串行。**判定看 Release/npm 交付物是否到位，不看单个 run 的红绿**。详见 [发版坑.md](发版坑.md)
 - 并发发版残留孤儿实例、`EADDRINUSE`、实例互相踢 → 门禁 await 完再退出（失败路径也不提前 kill），端口由调度层预分配。固化在 `scripts/lib/release-checks.mjs`
 - 改了 origin 的 url 却仍推 GitHub → `pushurl` 优先于 `url`，两个都要改；推前用 `git remote get-url --push origin` 自检
 - `dsh plugin add` 后缺依赖、缺 client 注入项 → 插件型依赖写 `dependencies`（peer 永不安装）；详见 [跨插件依赖与降级.md](跨插件依赖与降级.md)

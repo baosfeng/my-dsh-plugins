@@ -8,6 +8,7 @@
 // ship-pipeline.mjs = 提交流水线的 fail-closed 判据/步骤清单/结果渲染，issue #240；
 // release-timing.mjs = 发版阶段耗时表，issue #246；
 // release-concurrency.mjs = 发版有界并发调度，issue #246；
+// release-tag-push.mjs = tag 逐个推送与触发确认（一次推 N 个 tag = 零触发的根因），issue #375-#380；
 // pack-hygiene.mjs = 包发布卫生判定（字段自洽 / pack 内容 / README 引用面），issue #323；
 // verify-checklist.mjs = 验证清单的渲染/幂等合并/#67 门禁判定，issue #329；
 // test-sleeps.mjs = 测试里固定 sleep 的分类/豁免/基线判定，issue #335；
@@ -43,6 +44,7 @@ export default defineConfig({
         'scripts/lib/ship-pipeline.mjs',
         'scripts/lib/release-timing.mjs',
         'scripts/lib/release-concurrency.mjs',
+        'scripts/lib/release-tag-push.mjs',
         'scripts/lib/pack-hygiene.mjs',
         'scripts/lib/verify-checklist.mjs',
         'scripts/lib/test-sleeps.mjs',

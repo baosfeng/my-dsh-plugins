@@ -16,6 +16,16 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # 同一 tag 的发布串行化（issue #375-#380 根因之二）：
+    # 曾经 release.yml 与 release-optimized.yml 同时监听 `push: tags ['*@v*']`，
+    # 同一 tag 两个 run 并发调 action-gh-release，互相删/建同名 <pkg>-<ver>.tgz，
+    # 报 `Error saving asset` / `Error creating asset temp dir` / `Error uploading`，
+    # 或因上传挂住 5 分钟后返回 HTML 错误页（`<!DOCTYPE html>`）。
+    # release-optimized.yml 已删除（它与本文件功能重复，且其 matrix 只含一个元素）；
+    # 这里再加一道以 tag 名为组的串行兜底：重复推送/重试同一 tag 时不再并发。
+    concurrency:
+      group: release-${{ github.ref_name }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

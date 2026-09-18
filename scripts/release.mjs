@@ -84,6 +84,7 @@ import { checkScreenshotGate } from './lib/screenshot-gate.mjs'
 import { resolvePresetAsset } from './lib/preset-gate.mjs'
 import { createTimeline } from './lib/release-timing.mjs'
 import { mapWithConcurrency, normalizeConcurrency, DEFAULT_CONCURRENCY } from './lib/release-concurrency.mjs'
+import { pushTagsIndividually, confirmTagTriggered, retriggerHint } from './lib/release-tag-push.mjs'
 import { checkPlugin as checkPackHygiene } from './check-pack-hygiene.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -976,24 +977,67 @@ if (push && succeeded.length > 0) {
     tagTargets.push({ tag, name, version, pkgName: result.pkgName })
   }
 
-  console.log(`\n推送 ${tagTargets.length} 个 tag（一次网络往返；origin = GitHub）…`)
-  const pushTags = await runChild('git', ['push', 'origin', ...tagTargets.map((t) => t.tag)], { cwd: root })
-  if (pushTags.code !== 0) {
+  // 逐个推送（issue #375-#380）：一次 `git push origin t1 … tN` 带多个 tag ref 时，
+  // GitHub 可能**一个 workflow 都不触发**——实测 2026-09-17 批量发版 14 个插件：
+  // 16:14:45Z 推完 tag，第一个 run 18:27:42Z 才出现（2h12m57s 零 run），整批
+  // 4h43m39s 才收尾。逐个推 = 每个 tag 一个独立 push 事件 → 各自触发 release.yml。
+  console.log(`\n逐个推送 ${tagTargets.length} 个 tag（每个 tag 一次 push；origin = GitHub）…`)
+  const pushOutcome = await pushTagsIndividually(
+    tagTargets,
+    (argv) => runChild('git', argv, { cwd: root }),
+    (line) => console.log(line),
+  )
+  if (!pushOutcome.ok) {
     // fail-closed：tag 没推上去 = 发版没发生，绝不当作成功继续。
-    console.error('✗ tag 推送失败 — 发版未完成（fail-closed，不继续等待 Release）')
+    console.error(`✗ tag 推送失败（${pushOutcome.failedTag}）— 发版未完成（fail-closed，不继续等待 Release）`)
     process.exit(1)
   }
-  for (const target of tagTargets) {
-    // origin = GitHub（唯一远程）。tag 推上去后由 GitHub Actions 接手发版：
-    // .github/workflows/release.yml（校验 → npm pack → 建 Release；带 NPM_TOKEN 时发布 npm）。
-    console.log(`✓ tag ${target.tag} pushed → origin（GitHub）：GitHub Actions 接手发版`)
-  }
+  // origin = GitHub（唯一远程）。tag 推上去后由 GitHub Actions 接手发版：
+  // .github/workflows/release.yml（校验 → npm pack → 建 Release；带 NPM_TOKEN 时发布 npm）。
   console.log('  watch: https://github.com/baosfeng/my-dsh-plugins/actions')
+
+  // 触发确认（issue #375-#380）：把「静默零触发」变成显式事实，且不再为一个注定失败的
+  // tag 干等 post-release 的 5 分钟超时。三态处置（判定口径只收紧、不放松）：
+  //   · created             → 正常进入 post-release 等待；
+  //   · pending（确实没触发）→ 该 tag 直接判失败 + 打印补救命令，跳过等待；
+  //   · unknown / skipped   → 无法判定（限流 / 无 GH_TOKEN）→ 只警告，仍走 post-release 兜底
+  //                           （把「查不到」当「没触发」会制造「本地红、CI 绿」的假红）。
+  const triggerStatus = new Map()
+  const triggerChecks = await mapWithConcurrency(
+    tagTargets,
+    Math.min(tagTargets.length, DEFAULT_CONCURRENCY),
+    (target) => confirmTagTriggered(target.tag),
+  )
+  for (const [index, item] of triggerChecks.entries()) {
+    triggerStatus.set(tagTargets[index].tag, item.status === 'fulfilled' ? item.value.status : 'unknown')
+  }
+  const notTriggered = tagTargets.filter((target) => triggerStatus.get(target.tag) === 'pending')
+  const unconfirmed = tagTargets.filter((target) => ['unknown', 'skipped'].includes(triggerStatus.get(target.tag)))
+  if (notTriggered.length > 0) {
+    console.error(
+      `\n✗ ${notTriggered.length}/${tagTargets.length} 个 tag 未确认到 workflow run（GitHub 合并/丢弃了 push 事件）`,
+    )
+    for (const target of notTriggered) {
+      for (const line of retriggerHint(target.tag)) console.error(`  ${line}`)
+    }
+  }
+  if (unconfirmed.length > 0) {
+    const cause = triggerStatus.get(unconfirmed[0].tag) === 'skipped' ? 'GH_TOKEN 未配置' : 'GitHub API 非 200'
+    console.warn(
+      `\n⚠ ${unconfirmed.length} 个 tag 的触发情况无法确认（${cause}）——不据此判失败，仍走 post-release 校验`,
+    )
+  }
 
   // 6. 发版后校验（issue #36 + #246）：N 个 tag 的 Release/npm 等待并发执行
   // （每个 tag 的 Release workflow 在 GitHub 侧本来就是并行的，串行等待纯属浪费）。
-  const postResults = await mapWithConcurrency(tagTargets, Math.min(tagTargets.length, DEFAULT_CONCURRENCY), (target) =>
-    verifyPostRelease(target.pkgName, target.name, target.version),
+  const notTriggeredTags = new Set(notTriggered.map((target) => target.tag))
+  const postResults = await mapWithConcurrency(
+    tagTargets,
+    Math.min(tagTargets.length, DEFAULT_CONCURRENCY),
+    (target) =>
+      notTriggeredTags.has(target.tag)
+        ? { ok: false, lines: retriggerHint(target.tag).map((text) => ({ level: 'error', text })) }
+        : verifyPostRelease(target.pkgName, target.name, target.version),
   )
   let postFailed = false
   for (const [index, item] of postResults.entries()) {

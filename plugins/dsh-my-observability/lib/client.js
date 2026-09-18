@@ -1720,7 +1720,31 @@ function saveSettings(draft, setSaved, setSaveError) {
 function SettingsLoadError({ onRetry }) {
     return createElement('div', { className: 'dsh-my-observability-settings' }, createElement('div', { className: 'dsh-my-observability-settings-error' }, strings.loadError()), createElement('div', { className: 'dsh-my-observability-settings-status' }, strings.settingsLoadFailedHint()), createElement('div', { className: 'dsh-my-observability-settings-actions' }, createElement('button', { className: 'dsh-my-observability-settings-btn', onClick: onRetry }, strings.retry())));
 }
-/** 设置页视图：GET 回填 → 编辑 → 保存。 */
+/** 加载态（配置未返回前的占位，避免先渲染出默认值表单再被回填覆盖）。 */
+function SettingsLoading() {
+    return createElement('div', { className: 'dsh-my-observability-settings' }, createElement('div', { className: 'dsh-my-observability-settings-status' }, strings.loading()));
+}
+/** 配置区块：区块标题 + 两个配置行（AI 审查开关 / 超时）。 */
+function SettingsConfigSection({ draft, patch, }) {
+    return createElement('div', { className: 'dsh-my-observability-settings-section' }, createElement('div', { className: 'dsh-my-observability-settings-section-title' }, strings.settingsSectionTitle()), createElement(SettingsToggleRow, {
+        label: strings.settingsAiReviewLabel(),
+        hint: strings.settingsAiReviewHint(),
+        on: draft.aiReview !== false,
+        onChange: (value) => patch('aiReview', value),
+    }), createElement(SettingsNumberRow, {
+        label: strings.settingsAiTimeoutLabel(),
+        hint: strings.settingsAiTimeoutHint(),
+        value: draft.aiTimeoutMs,
+        onChange: (value) => patch('aiTimeoutMs', value),
+    }));
+}
+/** 保存区块：保存按钮 + 成功/失败提示（互斥，保存失败绝不显示"已保存"）。 */
+function SettingsActions({ save, saved, saveError, }) {
+    return createElement('div', { className: 'dsh-my-observability-settings-actions' }, createElement('button', { className: 'dsh-my-observability-settings-btn', onClick: save }, strings.settingsSave()), saved ? createElement('span', { className: 'dsh-my-observability-settings-saved' }, strings.settingsSaved()) : null, saveError
+        ? createElement('span', { className: 'dsh-my-observability-settings-error' }, strings.settingsSaveFailed())
+        : null);
+}
+/** 设置页视图：GET 回填 → 编辑 → 保存（各区块拆成子组件，控制单函数长度）。 */
 function ObservabilitySettingsView() {
     const [draft, setDraft] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -1744,26 +1768,16 @@ function ObservabilitySettingsView() {
     useEffect(() => {
         load();
     }, []);
-    if (loading) {
-        return createElement('div', { className: 'dsh-my-observability-settings' }, createElement('div', { className: 'dsh-my-observability-settings-status' }, strings.loading()));
-    }
+    if (loading)
+        return createElement(SettingsLoading, null);
     if (draft === null)
         return createElement(SettingsLoadError, { onRetry: load });
     const patch = (key, value) => setDraft({ ...draft, [key]: value });
-    const save = () => saveSettings(draft, setSaved, setSaveError);
-    return createElement('div', { className: 'dsh-my-observability-settings' }, createElement('div', { className: 'dsh-my-observability-settings-section' }, createElement('div', { className: 'dsh-my-observability-settings-section-title' }, strings.settingsSectionTitle()), createElement(SettingsToggleRow, {
-        label: strings.settingsAiReviewLabel(),
-        hint: strings.settingsAiReviewHint(),
-        on: draft.aiReview !== false,
-        onChange: (value) => patch('aiReview', value),
-    }), createElement(SettingsNumberRow, {
-        label: strings.settingsAiTimeoutLabel(),
-        hint: strings.settingsAiTimeoutHint(),
-        value: draft.aiTimeoutMs,
-        onChange: (value) => patch('aiTimeoutMs', value),
-    })), createElement('div', { className: 'dsh-my-observability-settings-actions' }, createElement('button', { className: 'dsh-my-observability-settings-btn', onClick: save }, strings.settingsSave()), saved ? createElement('span', { className: 'dsh-my-observability-settings-saved' }, strings.settingsSaved()) : null, saveError
-        ? createElement('span', { className: 'dsh-my-observability-settings-error' }, strings.settingsSaveFailed())
-        : null));
+    return createElement('div', { className: 'dsh-my-observability-settings' }, createElement(SettingsConfigSection, { draft, patch }), createElement(SettingsActions, {
+        save: () => saveSettings(draft, setSaved, setSaveError),
+        saved,
+        saveError,
+    }));
 }
 /** 附加设置页签：slots 服务缺失（精简上下文 / 宿主未提供）时静默跳过。 */
 function attachObservabilitySettingsTab(ctx) {

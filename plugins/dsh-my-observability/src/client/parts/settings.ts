@@ -125,7 +125,64 @@ function SettingsLoadError({ onRetry }: { onRetry: () => void }): unknown {
   )
 }
 
-/** 设置页视图：GET 回填 → 编辑 → 保存。 */
+/** 加载态（配置未返回前的占位，避免先渲染出默认值表单再被回填覆盖）。 */
+function SettingsLoading(): unknown {
+  return createElement(
+    'div',
+    { className: 'dsh-my-observability-settings' },
+    createElement('div', { className: 'dsh-my-observability-settings-status' }, strings.loading()),
+  )
+}
+
+/** 配置区块：区块标题 + 两个配置行（AI 审查开关 / 超时）。 */
+function SettingsConfigSection({
+  draft,
+  patch,
+}: {
+  draft: any
+  patch: (key: string, value: unknown) => void
+}): unknown {
+  return createElement(
+    'div',
+    { className: 'dsh-my-observability-settings-section' },
+    createElement('div', { className: 'dsh-my-observability-settings-section-title' }, strings.settingsSectionTitle()),
+    createElement(SettingsToggleRow, {
+      label: strings.settingsAiReviewLabel(),
+      hint: strings.settingsAiReviewHint(),
+      on: draft.aiReview !== false,
+      onChange: (value: boolean) => patch('aiReview', value),
+    }),
+    createElement(SettingsNumberRow, {
+      label: strings.settingsAiTimeoutLabel(),
+      hint: strings.settingsAiTimeoutHint(),
+      value: draft.aiTimeoutMs,
+      onChange: (value: number) => patch('aiTimeoutMs', value),
+    }),
+  )
+}
+
+/** 保存区块：保存按钮 + 成功/失败提示（互斥，保存失败绝不显示"已保存"）。 */
+function SettingsActions({
+  save,
+  saved,
+  saveError,
+}: {
+  save: () => void
+  saved: boolean
+  saveError: boolean
+}): unknown {
+  return createElement(
+    'div',
+    { className: 'dsh-my-observability-settings-actions' },
+    createElement('button', { className: 'dsh-my-observability-settings-btn', onClick: save }, strings.settingsSave()),
+    saved ? createElement('span', { className: 'dsh-my-observability-settings-saved' }, strings.settingsSaved()) : null,
+    saveError
+      ? createElement('span', { className: 'dsh-my-observability-settings-error' }, strings.settingsSaveFailed())
+      : null,
+  )
+}
+
+/** 设置页视图：GET 回填 → 编辑 → 保存（各区块拆成子组件，控制单函数长度）。 */
 function ObservabilitySettingsView(): unknown {
   const [draft, setDraft] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -151,56 +208,19 @@ function ObservabilitySettingsView(): unknown {
     load()
   }, [])
 
-  if (loading) {
-    return createElement(
-      'div',
-      { className: 'dsh-my-observability-settings' },
-      createElement('div', { className: 'dsh-my-observability-settings-status' }, strings.loading()),
-    )
-  }
+  if (loading) return createElement(SettingsLoading, null)
   if (draft === null) return createElement(SettingsLoadError, { onRetry: load })
 
   const patch = (key: string, value: unknown) => setDraft({ ...draft, [key]: value })
-  const save = () => saveSettings(draft, setSaved, setSaveError)
   return createElement(
     'div',
     { className: 'dsh-my-observability-settings' },
-    createElement(
-      'div',
-      { className: 'dsh-my-observability-settings-section' },
-      createElement(
-        'div',
-        { className: 'dsh-my-observability-settings-section-title' },
-        strings.settingsSectionTitle(),
-      ),
-      createElement(SettingsToggleRow, {
-        label: strings.settingsAiReviewLabel(),
-        hint: strings.settingsAiReviewHint(),
-        on: draft.aiReview !== false,
-        onChange: (value: boolean) => patch('aiReview', value),
-      }),
-      createElement(SettingsNumberRow, {
-        label: strings.settingsAiTimeoutLabel(),
-        hint: strings.settingsAiTimeoutHint(),
-        value: draft.aiTimeoutMs,
-        onChange: (value: number) => patch('aiTimeoutMs', value),
-      }),
-    ),
-    createElement(
-      'div',
-      { className: 'dsh-my-observability-settings-actions' },
-      createElement(
-        'button',
-        { className: 'dsh-my-observability-settings-btn', onClick: save },
-        strings.settingsSave(),
-      ),
-      saved
-        ? createElement('span', { className: 'dsh-my-observability-settings-saved' }, strings.settingsSaved())
-        : null,
-      saveError
-        ? createElement('span', { className: 'dsh-my-observability-settings-error' }, strings.settingsSaveFailed())
-        : null,
-    ),
+    createElement(SettingsConfigSection, { draft, patch }),
+    createElement(SettingsActions, {
+      save: () => saveSettings(draft, setSaved, setSaveError),
+      saved,
+      saveError,
+    }),
   )
 }
 

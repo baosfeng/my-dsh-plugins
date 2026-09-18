@@ -38,6 +38,8 @@ server 端改动需重启 `dsh web`；client 端改动硬刷新浏览器（Cmd/C
 | `aiReview`    | 增量 diff 审查启用 AI 增强（默认 `true`；agents 服务不可用时自动降级） |
 | `aiTimeoutMs` | AI 审查超时（毫秒，默认 60000）                                        |
 
+`aiReview` 与 `aiTimeoutMs` 可在 **设置 → 插件 → 可观测性** 里可视化编辑：保存即写回 profile 层 `cordis.patch.yml` 的插件行（行 id `observability`，其余手写键原样保留），DSH 热重载后立即生效，无需重启。其余字段（`aiProvider` / `aiModel` / `aiCwd` / `resourceIntervalMs` 等）仍按上表在 `cordis.patch.yml` 手写；非法值不会写坏配置（`aiReview` 非布尔忽略，`aiTimeoutMs` 非正/非有限回退 60000）。
+
 ## 限制与说明
 
 - **Git 工具作用于本机仓库**：仓库路径由你在面板输入（localStorage 记住），仅本机可访问（loopback 围栏）。

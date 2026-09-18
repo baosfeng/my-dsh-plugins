@@ -54,6 +54,9 @@ const PARTS = [
   ['/*__PART_RESOURCE__*/', 'resource.js'],
   ['/*__PART_REPLAY_EXT__*/', 'replay-ext.js'],
   ['/*__PART_GIT__*/', 'git.js'],
+  // 设置页签（issue #383）：引用 i18n 片段（strings）与 replay 片段（apiJson），
+  // 因此必须排在这两者之后。
+  ['/*__PART_SETTINGS__*/', 'settings.js'],
   ['/*__PART_STYLES__*/', 'styles.js'],
 ]
 

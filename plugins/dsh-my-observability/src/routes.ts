@@ -9,8 +9,10 @@
  *  - GET  /git/diff?repo=&staged=  — 差异文本
  *  - POST /git/commit              — 类型化提交（Conventional Commits）
  *  - POST /review                  — 增量 diff 审查（规则引擎 + 可选 AI）
+ *  - GET/PUT /config               — 设置页配置读写（aiReview / aiTimeoutMs）
  */
 import { isTrustedApiRequest, readJsonBody, writeJson, writeError } from 'dsh-shared'
+import { dispatchConfigRoutes } from './config-routes.js'
 import { gitStatus, gitDiff, gitCommit } from './git.js'
 import { parseDiff } from './diff.js'
 import { reviewRules } from './review.js'
@@ -39,6 +41,7 @@ export function registerObservabilityRoutes(
   store: AuditStore,
   monitor: ResourceMonitor,
   options: ObservabilityOptions,
+  onConfigChange: (next: Pick<ObservabilityOptions, 'aiReview' | 'aiTimeoutMs'>) => Promise<void>,
 ): void {
   const webRuntime = ctx.get ? ctx.get<{ trustedHosts?: string[] }>('webRuntime') : undefined
   const trustedHosts =
@@ -52,7 +55,7 @@ export function registerObservabilityRoutes(
       ctx.webServer.register({
         kind: 'prefix',
         path: '/observability/api',
-        handler: apiHandler(ctx, fence, store, monitor, options),
+        handler: apiHandler(ctx, fence, store, monitor, options, onConfigChange),
       }),
     'dsh-my-observability: /observability/api routes',
   )
@@ -65,6 +68,7 @@ function apiHandler(
   store: AuditStore,
   monitor: ResourceMonitor,
   options: ObservabilityOptions,
+  onConfigChange: (next: Pick<ObservabilityOptions, 'aiReview' | 'aiTimeoutMs'>) => Promise<void>,
 ): (request: ServerRequest, response: ServerResponse) => Promise<void> {
   return async (request, response) => {
     if (!fence(request)) {
@@ -79,7 +83,7 @@ function apiHandler(
       // 状态（曾经的 CI flaky：固定 40ms sleep 赌 readFile 跑完，慢机器上
       // 查询读到 0 条事件 → 0 !== 1）。whenReady 就绪后立即 resolve，无延迟。
       await store.whenReady()
-      const handled = await dispatchMethod(method, request, response, url, ctx, store, monitor, options)
+      const handled = await dispatchMethod(method, request, response, url, ctx, store, monitor, options, onConfigChange)
       if (!handled) {
         writeJson(response, 404, {
           ok: false,
@@ -107,10 +111,11 @@ async function dispatchMethod(
   store: AuditStore,
   monitor: ResourceMonitor,
   options: ObservabilityOptions,
+  onConfigChange: (next: Pick<ObservabilityOptions, 'aiReview' | 'aiTimeoutMs'>) => Promise<void>,
 ): Promise<boolean> {
-  const handled = await dispatchCore(method, request, response, url, ctx, store, monitor, options)
-  if (handled) return true
-  return dispatchExtended(method, request, response, url, ctx, store)
+  if (await dispatchCore(method, request, response, url, ctx, store, monitor, options)) return true
+  if (dispatchExtended(method, request, response, url, ctx, store)) return true
+  return dispatchConfigRoutes(method, request, response, options, onConfigChange)
 }
 
 /** 核心路由（复杂度 ≤10）。 */
@@ -380,14 +385,8 @@ async function aiOutcome(
 
 // ── HTTP helpers ───────────────────────────────────────────────────────────
 
-function queryOf(url: URL, name: string): string {
-  return url.searchParams.get(name) ?? ''
-}
-
-function repoOf(url: URL): string {
-  const repo = url.searchParams.get('repo')
-  return typeof repo === 'string' ? repo : ''
-}
+const queryOf = (url: URL, name: string): string => url.searchParams.get(name) ?? ''
+const repoOf = (url: URL): string => url.searchParams.get('repo') ?? ''
 
 function limitOf(url: URL): number {
   const raw = url.searchParams.get('limit')

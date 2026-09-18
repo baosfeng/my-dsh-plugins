@@ -22,7 +22,9 @@
 import { createStore } from './store.js'
 import { attachAuditListeners } from './audit.js'
 import { registerObservabilityRoutes } from './routes.js'
+import { persistSettingsConfig, normalizeTimeout } from './config-routes.js'
 import { createResourceMonitor } from './resource-monitor.js'
+import type { SettingsConfig } from './config-routes.js'
 import type { ObservabilityOptions } from './routes.js'
 import type { DshContext } from './types.js'
 
@@ -48,10 +50,31 @@ function buildOptions(config?: ObservabilityConfig): ObservabilityOptions {
     aiModel: config?.aiModel,
     aiCwd: config?.aiCwd,
     aiReview: config?.aiReview !== false,
-    aiTimeoutMs:
-      Number.isFinite(config?.aiTimeoutMs) && (config?.aiTimeoutMs as number) > 0
-        ? (config?.aiTimeoutMs as number)
-        : 60000,
+    // 与设置页保存共用同一默认值口径（config-routes.normalizeTimeout）。
+    aiTimeoutMs: normalizeTimeout(config?.aiTimeoutMs),
+  }
+}
+
+/**
+ * 设置页保存回调（issue #383）：**先写回 profile patch 文件、再更新内存**——
+ * 写盘失败时保持内存旧值（内存与磁盘不劈叉），并把失败如实抛给路由层；
+ * DSH 的 watchUserPatches 会热重载 patch 文件，保存即生效。
+ */
+function settingsChangeHandler(
+  ctx: DshContext,
+  options: ObservabilityOptions,
+): (next: SettingsConfig) => Promise<void> {
+  return async (next) => {
+    try {
+      await persistSettingsConfig(next)
+    } catch (error) {
+      ctx.logger.warn(
+        `[dsh-my-observability] 配置保存失败（操作=config/save，原因=${error instanceof Error ? error.message : String(error)}）`,
+      )
+      throw error
+    }
+    Object.assign(options, next)
+    ctx.logger.info?.(`[dsh-my-observability] 设置已保存（aiReview=${next.aiReview}, aiTimeoutMs=${next.aiTimeoutMs}）`)
   }
 }
 
@@ -83,8 +106,8 @@ export function apply(ctx: DshContext, config?: ObservabilityConfig): void {
   })
   monitor.start()
 
-  // ── 路由（查询 / git 工具 / diff 审查 / 资源）───────────────────────
-  registerObservabilityRoutes(ctx, store, monitor, options)
+  // ── 路由（查询 / git 工具 / diff 审查 / 资源 / 设置页配置）──────────
+  registerObservabilityRoutes(ctx, store, monitor, options, settingsChangeHandler(ctx, options))
 
   // ── 卸载冲刷：清防抖定时器 + 立即落盘 + 停采样 ──────────────────────
   ctx.effect(() => {

@@ -101,4 +101,24 @@ const strings = {
   loading: () => (isZh() ? '加载中…' : 'Loading…'),
   emptyDiff: () => (isZh() ? '（空）' : '(empty)'),
   noRepo: () => (isZh() ? '请输入仓库路径' : 'Enter a repo path'),
+  // 设置页（设置 → 插件 → 可观测性，issue #383）
+  settingsTitle: () => (isZh() ? '可观测性' : 'Observability'),
+  settingsSectionTitle: () => (isZh() ? 'AI 审查' : 'AI review'),
+  settingsAiReviewLabel: () => (isZh() ? 'AI 审查增强' : 'AI review enhancement'),
+  settingsAiReviewHint: () =>
+    isZh()
+      ? '增量 diff 审查调用 AI agent 补充规则引擎结论（agents 服务不可用或超时自动降级为纯规则）'
+      : 'Let an AI agent augment the rule-engine review of the incremental diff (degrades to rules only when the agents service is unavailable)',
+  settingsAiTimeoutLabel: () => (isZh() ? 'AI 审查超时（ms）' : 'AI review timeout (ms)'),
+  settingsAiTimeoutHint: () =>
+    isZh()
+      ? '单次 AI 审查的最长等待；非正数或非有限值在保存时回退为 60000'
+      : 'Max wait per AI review; non-positive or non-finite values fall back to 60000 on save',
+  settingsSave: () => (isZh() ? '保存' : 'Save'),
+  settingsSaved: () => (isZh() ? '已保存并生效' : 'Saved and applied'),
+  settingsSaveFailed: () => (isZh() ? '保存失败' : 'Save failed'),
+  settingsLoadFailedHint: () =>
+    isZh()
+      ? '无法读取 /observability/api/config：请确认服务端插件已加载（改过 server 端后需重启 dsh web）'
+      : 'Cannot read /observability/api/config: make sure the host half is loaded (restart dsh web after host-side changes)',
 }

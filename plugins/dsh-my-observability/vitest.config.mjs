@@ -21,6 +21,7 @@ export default defineConfig({
         'lib/review.js',
         'lib/ai.js',
         'lib/routes.js',
+        'lib/config-routes.js',
         'lib/fence.js',
         'lib/constants.js',
       ],

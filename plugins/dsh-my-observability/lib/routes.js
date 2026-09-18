@@ -9,14 +9,16 @@
  *  - GET  /git/diff?repo=&staged=  — 差异文本
  *  - POST /git/commit              — 类型化提交（Conventional Commits）
  *  - POST /review                  — 增量 diff 审查（规则引擎 + 可选 AI）
+ *  - GET/PUT /config               — 设置页配置读写（aiReview / aiTimeoutMs）
  */
 import { isTrustedApiRequest, readJsonBody, writeJson, writeError } from 'dsh-shared';
+import { dispatchConfigRoutes } from './config-routes.js';
 import { gitStatus, gitDiff, gitCommit } from './git.js';
 import { parseDiff } from './diff.js';
 import { reviewRules } from './review.js';
 import { runAiReview } from './ai.js';
 /** 注册 /observability/api 路由（effect 持有 disposer）。 */
-export function registerObservabilityRoutes(ctx, store, monitor, options) {
+export function registerObservabilityRoutes(ctx, store, monitor, options, onConfigChange) {
     const webRuntime = ctx.get ? ctx.get('webRuntime') : undefined;
     const trustedHosts = webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
         ? webRuntime.trustedHosts
@@ -25,11 +27,11 @@ export function registerObservabilityRoutes(ctx, store, monitor, options) {
     ctx.effect(() => ctx.webServer.register({
         kind: 'prefix',
         path: '/observability/api',
-        handler: apiHandler(ctx, fence, store, monitor, options),
+        handler: apiHandler(ctx, fence, store, monitor, options, onConfigChange),
     }), 'dsh-my-observability: /observability/api routes');
 }
 /** 统一 handler：fence → 方法分派 → 404/错误兜底。 */
-function apiHandler(ctx, fence, store, monitor, options) {
+function apiHandler(ctx, fence, store, monitor, options, onConfigChange) {
     return async (request, response) => {
         if (!fence(request)) {
             writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } });
@@ -43,7 +45,7 @@ function apiHandler(ctx, fence, store, monitor, options) {
             // 状态（曾经的 CI flaky：固定 40ms sleep 赌 readFile 跑完，慢机器上
             // 查询读到 0 条事件 → 0 !== 1）。whenReady 就绪后立即 resolve，无延迟。
             await store.whenReady();
-            const handled = await dispatchMethod(method, request, response, url, ctx, store, monitor, options);
+            const handled = await dispatchMethod(method, request, response, url, ctx, store, monitor, options, onConfigChange);
             if (!handled) {
                 writeJson(response, 404, {
                     ok: false,
@@ -61,11 +63,12 @@ function isMethod(method, request, name, verb) {
     return method === name && request.method === verb;
 }
 /** 按 method 分派到具体 handler；未识别返回 false（调用方回 404）。 */
-async function dispatchMethod(method, request, response, url, ctx, store, monitor, options) {
-    const handled = await dispatchCore(method, request, response, url, ctx, store, monitor, options);
-    if (handled)
+async function dispatchMethod(method, request, response, url, ctx, store, monitor, options, onConfigChange) {
+    if (await dispatchCore(method, request, response, url, ctx, store, monitor, options))
         return true;
-    return dispatchExtended(method, request, response, url, ctx, store);
+    if (dispatchExtended(method, request, response, url, ctx, store))
+        return true;
+    return dispatchConfigRoutes(method, request, response, options, onConfigChange);
 }
 /** 核心路由（复杂度 ≤10）。 */
 async function dispatchCore(method, request, response, url, ctx, store, monitor, options) {
@@ -275,13 +278,8 @@ async function aiOutcome(ctx, payload, options, diffText, report) {
     });
 }
 // ── HTTP helpers ───────────────────────────────────────────────────────────
-function queryOf(url, name) {
-    return url.searchParams.get(name) ?? '';
-}
-function repoOf(url) {
-    const repo = url.searchParams.get('repo');
-    return typeof repo === 'string' ? repo : '';
-}
+const queryOf = (url, name) => url.searchParams.get(name) ?? '';
+const repoOf = (url) => url.searchParams.get('repo') ?? '';
 function limitOf(url) {
     const raw = url.searchParams.get('limit');
     const parsed = raw === null ? 0 : Number(raw);

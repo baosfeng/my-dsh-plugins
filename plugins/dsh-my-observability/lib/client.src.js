@@ -37,8 +37,7 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
 
-    // 原生页签身份（issue #187 批 1）：id/kind = 迁移前 better-sidebar 的 tab id
-    // （每个面板一个类型，id 全局唯一且是席位的 key），order = 迁移前的指南页顺序。
+    // 原生页签身份（issue #187 批 1）：id/kind 沿用迁移前 better-sidebar 的 tab id（每面板一个类型，id 全局唯一且是席位 key），order 为指南页顺序。
     const REPLAY_TAB_ID = 'dsh-my-observability:replay'
     const GIT_TAB_ID = 'dsh-my-observability:git'
     const REPLAY_TAB_ORDER = 40
@@ -53,6 +52,7 @@ window.__ModuleLoader__.load({
     /*__PART_RESOURCE__*/
     /*__PART_REPLAY_EXT__*/
     /*__PART_GIT__*/
+    /*__PART_SETTINGS__*/
     /*__PART_STYLES__*/
 
     // ── 插件体：样式注入 + 两个原生页签注册 ─────────────────────────────
@@ -73,8 +73,10 @@ window.__ModuleLoader__.load({
       // 样式先注入：不依赖任何服务（服务缺失/时序未就绪也不影响面板配色）。
       ctx.effect(() => injectStyles(), 'dsh-my-observability: styles')
 
-      const tabs = ctx.sidebarRightTabs
-      const slots = ctx.slots
+      // 设置页签（issue #383）：只依赖 slots（strict=false 读取），与侧边栏面板所需的 sidebarRightTabs 无关，故先于判空注册。
+      attachObservabilitySettingsTab(ctx)
+
+      const { sidebarRightTabs: tabs, slots } = ctx
       // 判空必须同时覆盖 null 与 undefined（typeof null 是 object，会骗过 === undefined）。
       if (tabs == null || slots == null) return
 

@@ -50,8 +50,26 @@ declare const module: { exports: Record<string, unknown> }
 /** client 端 Context（cordis Context 最小契约 + 原生扩展点服务）。 */
 interface ClientContext {
   effect(callback: () => void | (() => void), label?: string): void
+  /**
+   * 读取可选服务。设置页 slots 必须用 strict=false 读取：首屏时提供者 fiber
+   * 可能尚未 active，strict 模式返回 undefined 会让页签静默消失。
+   */
+  get?<T = unknown>(name: string, strict?: boolean): T | undefined
   slots?: SlotsService
   sidebarRightTabs?: SidebarRightTabsService
+}
+
+/**
+ * 设置页槽位服务（`settings.plugins.tab` 是 list 型槽位：descriptor 用
+ * **id**（tab key，必须全局唯一，复用别人的 id 会顶掉对方那一格），
+ * 而侧边栏的 keyed 席位用 key。
+ */
+interface SettingsSlotsService {
+  inject(name: string, factory: () => unknown): () => void
+  register(
+    options: { name: string; id: string; order: number; label: () => string },
+    component: (props: any) => unknown,
+  ): unknown
 }
 
 /** keyed 席位注册表（@deepseek-ai/dsh-client-ui-slots 的服务面子集）。 */

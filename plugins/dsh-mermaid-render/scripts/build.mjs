@@ -1,8 +1,8 @@
 /**
- * Build: compile the client TypeScript source (src/client/index.ts) to a
- * CommonJS bundle with tsc, then splice it into the lib/client.src.js template
- * and write lib/client.js — the file DSH actually serves at
- * /plugins/dsh-mermaid-render/client.js.
+ * Build: compile the client TypeScript sources (src/client/index.ts plus the
+ * part fragments such as src/client/settings.ts) to CommonJS with tsc, then
+ * splice them into the lib/client.src.js template and write lib/client.js —
+ * the file DSH actually serves at /plugins/dsh-mermaid-render/client.js.
  *
  *   node scripts/build.mjs
  *
@@ -42,10 +42,14 @@ const ICONS_PLACEHOLDER = '/*__PART_ICONS__*/'
 const STYLE_PLACEHOLDER = '/*__PART_STYLE_TAG__*/'
 /** 共享 DOM 扫描骨架位（issue #186 P2）。 */
 const SCANNER_PLACEHOLDER = '/*__PART_DOM_SCANNER__*/'
+/** 设置页 part 注入位（src/client/settings.ts 的 tsc 产物，issue #383）。 */
+const SETTINGS_PLACEHOLDER = '/*__PART_SETTINGS__*/'
+/** 设置页 part 的锚点：注入后必须**恰好一份**（片段丢失/重复注入即失败）。 */
+const SETTINGS_ANCHOR = 'function attachSettingsTab('
 /** 图标实现的锚点声明：注入后必须**恰好一份**（内联副本复活即失败）。 */
 const ICONS_ANCHOR = 'const ICON_STROKE = 1.8'
 
-// 1. tsc 编译 client TS → lib/.client-build/index.js（CommonJS 单文件）
+// 1. tsc 编译 client TS → lib/.client-build/（index.js 主产物 + part 片段如 settings.js）
 execSync('npx tsc -p tsconfig.client.json', { cwd: root, stdio: 'inherit' })
 
 // 2. 注入模板（恰好一处，否则抛错）
@@ -85,6 +89,20 @@ for (const [placeholder, file, anchor] of [
   if (decls !== 1) {
     throw new Error(`client.js must contain exactly 1 "${anchor}" declaration, found ${decls}`)
   }
+}
+
+// 2d. 注入设置页 part（src/client/settings.ts 的 tsc 产物，issue #383）
+//     同款两道防线（占位符恰好一处 + 不在注释里）；锚点计数保证注入的是真正
+//     的函数声明而不是注释文本 —— 设置页「静默消失」是这类注入最典型的故障。
+if (!isPlaceholderOutsideComments(template, SETTINGS_PLACEHOLDER)) {
+  throw new Error(
+    `${SETTINGS_PLACEHOLDER} in client.src.js is inside a comment: injection would \`succeed\` but the settings tab would never be registered`,
+  )
+}
+out = spliceExactlyOnce(out, SETTINGS_PLACEHOLDER, readFileSync(join(BUILD_DIR, 'settings.js'), 'utf8'))
+const settingsDecls = out.split(SETTINGS_ANCHOR).length - 1
+if (settingsDecls !== 1) {
+  throw new Error(`client.js must contain exactly 1 "${SETTINGS_ANCHOR}" declaration, found ${settingsDecls}`)
 }
 
 // 3. 校验发布用的 mermaid 引擎（assets/，由 DSH webServer 在运行时按需 fetch，而非 base64 内联）。

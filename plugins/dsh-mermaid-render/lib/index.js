@@ -5,15 +5,19 @@
  *  1. **client 半**（\`lib/client.js\`，\`__ModuleLoader__\` bundle）：把对话里的
  *     mermaid/mmd 代码块渲染为图表卡片（预览/代码切换、导出、失败兜底）；
  *  2. **host 半**（本文件）：注册 system-prompt section（issue #194）+ 静态文件
- *     路由（mermaid 引擎按需加载，替代 4.3MB base64 内联）。
+ *     路由（mermaid 引擎按需加载，替代 4.3MB base64 内联）+ 设置面板配置端点
+ *     `/mermaid-render/api/config`（issue #383，读写 `injectPrompt` 并写回
+ *     profile patch）。
  *
- * 默认注入；\`config.injectPrompt = false\` 时不注册 prompt section（client 渲染不受影响）。
+ * 默认注入；`config.injectPrompt = false` 时不注册 prompt section（client 渲染不受影响）。
  * 本文件编译为 lib/index.js（产物必须提交，CI 只跑产物、不跑构建）。
  */
 import { readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createConfigState, persistConfig } from './config.js';
 import { createPromptSection } from './prompt.js';
+import { registerConfigRoutes } from './routes.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MERMAID_ASSET_PATH = join(__dirname, '..', 'assets', 'mermaid-10.9.3.min.js');
 export const name = 'dsh-mermaid-render';
@@ -72,17 +76,49 @@ function createMermaidAssetHandler() {
     };
 }
 export function apply(ctx, config) {
+    const state = createConfigState(config);
     // Register static asset route for mermaid engine (lazy-loaded by client)
     ctx.effect(() => ctx.webServer?.register({
         kind: 'prefix',
         path: '/mermaid-render/assets',
         handler: createMermaidAssetHandler(),
     }), 'dsh-mermaid-render: /mermaid-render/assets static route');
-    const section = createPromptSection(config);
-    if (section === null) {
-        ctx.logger?.info('[dsh-mermaid-render] 已挂载（client 端 mermaid 渲染；系统提示词注入已关闭）');
-        return;
-    }
-    ctx.systemPrompt?.section(section);
-    ctx.logger?.info('[dsh-mermaid-render] 已挂载（client 端 mermaid 渲染 + 系统提示词能力说明注入）');
+    // 系统提示词能力说明（issue #194）。经 syncSection 注册：设置页保存后当即
+    // 撤销/按新值重注册（先撤销再注册，同名 section 重复注册宿主会抛错），
+    // 不必等 patch 热重载。
+    const syncSection = createSectionSync(ctx);
+    syncSection(state.injectPrompt);
+    // 设置面板配置端点（issue #383）：保存 → 持久化 profile patch + 内存 +
+    // section 重同步（热生效）；持久化失败则抛错 → 路由回错误码，内存不动。
+    registerConfigRoutes(ctx, state, async (next) => {
+        await persistConfig(next);
+        state.injectPrompt = next.injectPrompt;
+        syncSection(state.injectPrompt);
+        ctx.logger?.info(`[dsh-mermaid-render] 配置已保存（injectPrompt=${next.injectPrompt}）`);
+    });
+    ctx.logger?.info(state.injectPrompt
+        ? '[dsh-mermaid-render] 已挂载（client 端 mermaid 渲染 + 系统提示词能力说明注入）'
+        : '[dsh-mermaid-render] 已挂载（client 端 mermaid 渲染；系统提示词注入已关闭）');
+}
+/**
+ * 注册/撤销 systemPrompt section：可重入 + **幂等**（保存后调用即热生效）。
+ * 幂等很重要：重复注册同名 section 宿主会抛错，而无谓的撤销+重注册会让
+ * 「保存一个与原值相同的配置」也惊动宿主（也可能丢掉其它插件的顺序假设）。
+ */
+function createSectionSync(ctx) {
+    let dispose = null;
+    let current = null;
+    return (inject) => {
+        if (current === inject)
+            return;
+        if (dispose !== null) {
+            dispose();
+            dispose = null;
+        }
+        current = inject;
+        const section = createPromptSection({ injectPrompt: inject });
+        if (section === null)
+            return;
+        dispose = ctx.systemPrompt?.section(section) ?? null;
+    };
 }

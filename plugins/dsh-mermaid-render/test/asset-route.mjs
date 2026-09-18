@@ -58,7 +58,9 @@ function makeRes() {
 function bootRoute() {
   const { ctx, registrations, sections } = makeCtx()
   apply(ctx)
-  const route = registrations[0]
+  // issue #383 起 apply 还会注册 /mermaid-render/api（设置面板配置端点），
+  // 故按 path 定位本条契约要钉的静态资源路由，而不是取第一条/断言总数。
+  const route = registrations.find((r) => r.path === ROUTE_PATH)
   assert.ok(route, 'apply 必须注册静态资源路由')
   assert.equal(route.path, ROUTE_PATH, '路由前缀必须是 client 端 fetch 的那个 path')
   assert.equal(route.kind, 'prefix', '按前缀托管 assets 目录')
@@ -68,7 +70,10 @@ function bootRoute() {
 
 test('apply 注册静态资源路由，并把 systemPrompt section 交给宿主', () => {
   const { registrations, sections } = bootRoute()
-  assert.equal(registrations.length, 1, '只注册一条路由')
+  assert.ok(
+    registrations.every((r) => r.kind === 'prefix'),
+    '注册的每条路由都按前缀托管',
+  )
   assert.equal(sections.length, 1, '默认配置下注入一条 systemPrompt section')
   assert.ok(inject.includes('systemPrompt'), 'inject 声明了 systemPrompt')
 })

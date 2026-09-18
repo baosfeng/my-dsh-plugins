@@ -51,6 +51,9 @@
       "optional": true
     }
   },
+  "dependencies": {
+    "dsh-shared": "^0.1.4"
+  },
   "license": "MIT",
   "devDependencies": {
     "@types/react": "^19.3.0",

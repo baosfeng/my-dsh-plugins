@@ -8,6 +8,11 @@
 import { Given, When, Then, After, setWorldConstructor } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+// 配置持久化契约（issue #383）：写回 profile 层 cordis.patch.yml 的插件行
+import { extractConfig, patchFileOf } from 'dsh-shared'
 // host 半（issue #194：system-prompt 注入）——与 client 半同一份产物入口
 import { apply as hostApply } from '../../../lib/index.js'
 import { sleepFor, waitFor } from '../../../../dsh-shared/test-kit/wait.mjs'
@@ -471,6 +476,74 @@ class World {
     )
   }
 
+  /**
+   * 挂载 host 半并捕获设置面板配置端点（issue #383）。DSH_HOME 指向临时目录
+   * —— 用例会真的写 cordis.patch.yml，绝不能碰用户真实 profile。
+   */
+  mountHostApi(config) {
+    this.apiHome = mkdtempSync(join(tmpdir(), 'dsh-mermaid-render-cfg-'))
+    this.apiOldHome = process.env.DSH_HOME
+    process.env.DSH_HOME = this.apiHome
+    this.apiSections = []
+    this.apiDisposed = []
+    this.apiRoutes = []
+    const world = this
+    hostApply(
+      {
+        effect(fn) {
+          fn()
+          return () => {}
+        },
+        get: () => undefined,
+        logger: { info: () => {}, warn: () => {}, error: () => {} },
+        webServer: {
+          register(options) {
+            world.apiRoutes.push(options)
+            return () => {}
+          },
+        },
+        systemPrompt: {
+          section(options) {
+            world.apiSections.push(options)
+            return () => world.apiDisposed.push(options.name)
+          },
+        },
+      },
+      config,
+    )
+    this.apiRoute = this.apiRoutes.find((route) => route.path === '/mermaid-render/api')
+    assert.ok(this.apiRoute, 'apply 必须注册 /mermaid-render/api 配置路由')
+  }
+
+  /** 发一次配置请求（rawBody 为字符串时原样发送，用于非法 JSON）。 */
+  async callConfigApi(method, body, rawBody) {
+    const response = {
+      status: 0,
+      payload: '',
+      writeHead(code) {
+        this.status = code
+      },
+      end(chunk) {
+        if (chunk !== undefined) this.payload = String(chunk)
+      },
+    }
+    const payload = rawBody === undefined ? JSON.stringify(body) : rawBody
+    await this.apiRoute.handler(
+      {
+        url: '/mermaid-render/api/config',
+        method,
+        headers: { host: '127.0.0.1:3080' },
+        async *[Symbol.asyncIterator]() {
+          if (payload !== undefined) yield payload
+        },
+      },
+      response,
+    )
+    this.apiStatus = response.status
+    this.apiBody = response.payload
+    return response
+  }
+
   /** 按 aria-label 点击卡片内按钮（导出场景用）。 */
   clickExportButton(label) {
     const btn = this.cardButtons().find((b) => (b.props['aria-label'] || '') === label)
@@ -650,6 +723,11 @@ After(async function () {
       }
     }
   }
+  if (this.apiHome !== undefined) {
+    if (this.apiOldHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = this.apiOldHome
+    rmSync(this.apiHome, { recursive: true, force: true })
+  }
   delete global.window
   delete global.document
   delete global.Element
@@ -695,8 +773,10 @@ Then('不生成任何图表卡片', async function () {
 })
 
 Then('页面注入包含卡片规则的样式', async function () {
-  assert.ok(this.styleTags.length === 1, 'stylesheet injected')
-  assert.ok(this.styleTags[0].textContent.includes('.dsh-mermaid-render-card'), 'stylesheet has card rules')
+  // issue #383 起设置页也注入样式表，故按标识属性定位卡片样式表。
+  const cardStyle = this.styleTags.find((s) => s['data-dsh-mermaid-render'] === 'styles')
+  assert.ok(cardStyle, 'card stylesheet injected')
+  assert.ok(cardStyle.textContent.includes('.dsh-mermaid-render-card'), 'stylesheet has card rules')
 })
 
 // ── 导出（issue #85）──────────────────────────────────────────────────────
@@ -833,4 +913,53 @@ Then('卡片内保留原始 mermaid 源码', async function () {
     texts.some((t) => t.includes('flowchart TD')),
     '源码保留在卡片里：' + JSON.stringify(texts),
   )
+})
+
+// ── 设置面板配置端点（issue #383）────────────────────────────────────────
+Given('渲染插件 host 半以默认配置挂载到临时 profile', async function () {
+  this.mountHostApi(undefined)
+})
+
+Then('配置端点返回注入开关默认开启', async function () {
+  await this.callConfigApi('GET')
+  assert.equal(this.apiStatus, 200, 'GET /mermaid-render/api/config 返回 200')
+  assert.equal(JSON.parse(this.apiBody).value.injectPrompt, true, '默认注入开启')
+})
+
+When('用户通过配置端点关闭注入开关', async function () {
+  await this.callConfigApi('PUT', { injectPrompt: false })
+  assert.equal(this.apiStatus, 200, 'PUT 保存成功')
+})
+
+Then('配置写回 profile patch 的 mermaid-render 行', async function () {
+  const text = readFileSync(patchFileOf('web'), 'utf8')
+  assert.ok(text.includes('- id: mermaid-render'), 'patch 行 id 与 cordis.patch.yml 一致')
+  assert.equal(extractConfig(text, 'mermaid-render').injectPrompt, false, '布尔值落盘（重启后仍关闭）')
+})
+
+Then('当前进程不再注入能力说明段', async function () {
+  assert.deepEqual(this.apiDisposed, ['dsh-mermaid-render'], '保存后当即撤销已注册的说明段')
+  assert.equal(this.apiSections.length, 1, '撤销后不再有生效的说明段（未重复注册）')
+})
+
+When('用户提交非布尔的注入开关值', async function () {
+  await this.callConfigApi('PUT', { injectPrompt: 'yes' })
+  assert.equal(this.apiStatus, 200, '非法值按默认处理（不是拒绝，也不静默关能力）')
+})
+
+Then('配置以布尔默认值 true 落盘', async function () {
+  const saved = extractConfig(readFileSync(patchFileOf('web'), 'utf8'), 'mermaid-render')
+  assert.equal(typeof saved.injectPrompt, 'boolean', '落盘必须是布尔值（非法值不得写进 patch）')
+  assert.equal(saved.injectPrompt, true, '非法值回退默认 true')
+})
+
+When('用户提交非对象的请求体', async function () {
+  await this.callConfigApi('PUT', undefined, '[]')
+  assert.equal(this.apiStatus, 400, '非对象请求体被拒')
+})
+
+Then('请求被拒且已落盘的配置未被破坏', async function () {
+  const saved = extractConfig(readFileSync(patchFileOf('web'), 'utf8'), 'mermaid-render')
+  assert.equal(saved.injectPrompt, true, '既有配置未被非法请求改动')
+  assert.equal(existsSync(patchFileOf('web')), true, '被拒的请求不删除已有配置')
 })

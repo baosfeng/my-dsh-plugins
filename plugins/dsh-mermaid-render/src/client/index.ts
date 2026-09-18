@@ -1,25 +1,24 @@
 /**
- * dsh-mermaid-render — client 端入口（TypeScript 源码，单文件）。
+ * dsh-mermaid-render — client 端入口（TypeScript 源码）。
  *
- * 构建流程：`tsc -p tsconfig.client.json` 把本文件编译为 CommonJS 单文件
- * （lib/.client-build/index.js），scripts/build.mjs 再注入
- * lib/client.src.js 模板的 __CLIENT_BUNDLE__ 占位符，写出
- * lib/client.js（DSH 实际服务的 __ModuleLoader__ bundle）。
+ * 构建流程：`tsc -p tsconfig.client.json` 编译本文件为 CommonJS
+ * （lib/.client-build/index.js），scripts/build.mjs 把它与 dsh-shared
+ * client-parts、src/client/settings.ts 的产物一起注入 lib/client.src.js 的
+ * 占位符，写出 lib/client.js（DSH 实际服务的 __ModuleLoader__ bundle）。
  *
- * 约束：client 端 TS 源码为单文件（无运行时相对 import——编译产物内联进
- * factory 作用域后，require 只认识 DSH 运行时注入的模块，如 react）。
- * 类型声明可拆文件（import type 编译期擦除）；需要多文件/复杂打包时可用
- * esbuild/tsdown（官方 tsdown.client.ts 协议）。
+ * 约束：客户端 TS 源码不得出现运行时相对 import——require 只认识 DSH 运行时
+ * 注入的模块（如 react）。需要拆分时用「无 import/export 的 part 片段 +
+ * 模板占位符」（如 settings.ts）；复杂打包可用 esbuild/tsdown。
  *
- * 功能：渲染 mermaid/mmd 代码块为图表卡片，支持预览/代码切换、导出 PNG/SVG、
- * 复制源码。引擎内联（base64 vendored），完全离线可用。
+ * 功能：会话里的 mermaid/mmd 代码块 → 图表卡片（预览/代码切换、导出、复制）
+ * + 设置页签（设置 → 插件 → Mermaid 渲染，issue #383）。
  */
-
-// ── DSH 运行时类型（client 端最小契约，内联声明）──────────────────────
 
 /** client 端 Context（cordis Context 最小契约）。 */
 interface ClientContext {
   effect(callback: () => void | (() => void), label?: string): void
+  /** cordis 服务查找；strict=false 时服务提供者 fiber 未 active 也返回实例。 */
+  get?(name: string, strict?: boolean): unknown
 }
 
 // ── 导入 React（DSH 运行时注入的模块）────────────────────────────────
@@ -53,8 +52,6 @@ interface Notice {
   type: 'ok' | 'error'
   text: string
 }
-
-// ── 全局声明 ─────────────────────────────────────────────────────────
 
 // Client 端运行在浏览器环境，window.mermaid 由 vendored 引擎注入
 // 使用 any 类型避免复杂的全局声明
@@ -852,8 +849,6 @@ const STYLES = `
 @keyframes dsh-mermaid-render-spin{to{transform:rotate(360deg)}}
 `
 
-// ── apply part：导出 inject 和 apply ──────────────────────────────────
-
 /** 共享样式注入 / DOM 扫描骨架（dsh-shared/client-parts，构建期拼接；issue #186 P2）。 */
 declare function installStyles(
   ctx: { effect: (fn: () => void | (() => void), label?: string) => void },
@@ -876,6 +871,10 @@ exports.apply = function apply(ctx: ClientContext): void {
   // 位置仍在最前、不进任何早退分支（dsh-file-activity 踩坑：挂在服务判空之后，
   // HMR / 服务缺省时样式会丢）。
   installStyles(ctx, 'data-dsh-mermaid-render', STYLES, 'dsh-mermaid-render: styles')
+
+  // 设置页签（issue #383）：注册「设置 → 插件 → Mermaid 渲染」；part 片段见
+  // src/client/settings.ts（由 scripts/build.mjs 按模板占位符注入本作用域）。
+  attachSettingsTab(ctx)
 
   ctx.effect(() => installScanner(), 'dsh-mermaid-render: scanner')
 }

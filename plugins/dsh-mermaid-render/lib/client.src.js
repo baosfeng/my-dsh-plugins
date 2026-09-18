@@ -2,16 +2,17 @@
  * dsh-mermaid-render — client half (browser). SOURCE TEMPLATE.
  *
  * BUILD NOTE: 本文件是模板源码，不是 DSH 实际服务的文件。scripts/build.mjs
- * 先运行 `tsc -p tsconfig.client.json` 把 src/client/index.ts 编译成
- * CommonJS 单文件（lib/.client-build/index.js），再注入下方
+ * 先运行 `tsc -p tsconfig.client.json` 编译 src/client/index.ts 与
+ * src/client/settings.ts（设置页 part 片段），再按各占位符注入下方片段
  * /*__CLIENT_BUNDLE__* / 占位符（函数式 replaceAll，避免 $&/$1 特殊解释），
  * 写出 lib/client.js —— 即 DSH 实际服务的产物（单一 __ModuleLoader__ bundle）。
  * 产物必须提交；CI 只对产物执行 node --check（见 .github/workflows/ci.yml）。
  *
  * 编译产物为 CommonJS 格式：require / exports / module 均为本 factory 作用域
  * 变量（require 由 __ModuleLoader__ 注入，exports/module 为上方局部变量），
- * 因此产物可直接内联。client 端 TS 源码为单文件（无运行时相对 import），
- * 需要多文件/复杂打包时可用 esbuild/tsdown（官方 tsdown.client.ts 协议）。
+ * 因此产物可直接内联。client 端 TS 源码不得有运行时相对 import；UI 多文件
+ * 一律拆成「无 import/export 的 part 片段」共享本作用域（如设置页），需要
+ * 复杂打包时可用 esbuild/tsdown（官方 tsdown.client.ts 协议）。
  */
 // 引擎载荷的占位符只由 src/client/index.ts 的编译产物承载（位于其字符串字面量内，
 // 注入必须**恰好一处**，
@@ -28,12 +29,17 @@ window.__ModuleLoader__.load({
     // ── 共享图标（dsh-shared/client-parts，issue #186 P1）────────────
     // 注入的 icons part 用裸 createElement（与 dsh-md-render 等 10 个插件
     // 同一份片段），故在此显式解构；tsc 产物自带 react_1 引用，两者互不影响。
-    const { createElement } = require('react')
+    // useState/useEffect 供设置页 part（settings.ts 产物）使用——part 片段无
+    // import，只能靠本作用域解构出来的变量。
+    const { createElement, useState, useEffect } = require('react')
     /*__PART_ICONS__*/
 
     // ── 共享样式注入 / DOM 扫描骨架（dsh-shared/client-parts，#186 P2）──
     /*__PART_STYLE_TAG__*/
     /*__PART_DOM_SCANNER__*/
+
+    // ── 设置页 part（src/client/settings.ts 产物，issue #383）──────────
+    /*__PART_SETTINGS__*/
 
     // ── TS 编译产物（scripts/build.mjs 注入）────────────────────────
     /*__CLIENT_BUNDLE__*/

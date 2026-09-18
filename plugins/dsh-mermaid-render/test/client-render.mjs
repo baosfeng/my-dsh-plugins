@@ -224,8 +224,12 @@ exportsObj.apply(ctx)
 
 try {
   // stylesheet injected first
-  assert.ok(styleTags.length === 1, 'stylesheet injected')
-  assert.ok(styleTags[0].textContent.includes('.dsh-mermaid-render-card'), 'stylesheet has card rules')
+  // issue #383 起还会注入设置页样式表，故按标识属性定位卡片样式表
+  // （断言卡片规则照样注入，而不是断言样式表总数）。
+  // （本例的假 DOM 元素把 setAttribute 的属性直接挂在元素自身上）
+  const cardStyle = styleTags.find((s) => (s.attrs ?? s)['data-dsh-mermaid-render'] === 'styles')
+  assert.ok(cardStyle, 'card stylesheet injected')
+  assert.ok(cardStyle.textContent.includes('.dsh-mermaid-render-card'), 'stylesheet has card rules')
 
   // scanner mounted a card for the mermaid block (createRoot captured)
   assert.ok(capturedRender, 'card element captured via createRoot')

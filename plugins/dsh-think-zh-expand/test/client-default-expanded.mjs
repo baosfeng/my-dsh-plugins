@@ -165,13 +165,19 @@ test('③b 拉取失败（reject / 非 ok / value 非对象）→ 保持默认�
   global.fetch = saved
 })
 
-test('④ 静态断言：源码初值来自配置项，不再有硬编码 useState(true)', () => {
+test('④ 静态断言：思考块展开初值来自配置项，不再有硬编码 useState(true)', () => {
   const bundleSrc = fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
   // tsc 的 CommonJS 产物把 useState 调用 emit 成 (0, react_1.useState)(...)
   assert.ok(/useState\)?\(defaultExpanded\)/.test(bundleSrc), '展开初值读取配置项（源码级锁定）')
-  // 只看可执行代码行：注释里提到「原硬编码 useState(true)」是文档，不算初值
+  // 只看可执行代码行：注释里提到「原硬编码 useState(true)」是文档，不算初值。
+  // 断言**按定位**落在「思考块展开初值」那一行：产物里还有别的 useState
+  // （设置页的开关/加载态等 UI 初值，issue #383），全局「不许出现 useState(true)」
+  // 是过宽断言——它会在与思考块无关的新代码上误报。
   const codeLines = bundleSrc.split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-  assert.ok(!codeLines.some((line) => /useState\)?\(true\)/.test(line)), '硬编码 useState(true) 已移除')
+  const expandedInit = codeLines.find((line) => line.includes('setExpanded]') && line.includes('useState'))
+  assert.ok(expandedInit, '产物里找得到思考块展开初值的 useState 行')
+  assert.ok(expandedInit.includes('defaultExpanded'), '该行初值来自配置项：' + expandedInit.trim())
+  assert.ok(!/useState\)?\(true\)/.test(expandedInit), '思考块展开初值不是硬编码 true：' + expandedInit.trim())
   assert.ok(bundleSrc.includes("'/think-zh-expand/api/config'"), '读取地址与 host 侧路由一致')
   const hostSrc = fs.readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
   // host 侧前缀常量 + '/config' 拼接（client 的 CONFIG_URL 与之一致）

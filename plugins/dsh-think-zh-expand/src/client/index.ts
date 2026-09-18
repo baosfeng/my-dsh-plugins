@@ -1,27 +1,23 @@
 /**
- * dsh-think-zh-expand — client 端入口（TypeScript 源码，单文件）。
+ * dsh-think-zh-expand — client 端入口（TypeScript 源码）。
  *
- * 构建流程：`tsc -p tsconfig.client.json` 把本文件编译为 CommonJS 单文件
- * （lib/.client-build/index.js），scripts/build.mjs 再注入
- * lib/client.src.js 模板的 __CLIENT_BUNDLE__ 占位符，写出
- * lib/client.js（DSH 实际服务的 __ModuleLoader__ bundle）。
+ * 构建：`tsc -p tsconfig.client.json` 编译本文件与设置页 part
+ * （src/client/settings.ts）为 CommonJS，scripts/build.mjs 注入 lib/client.src.js
+ * 模板的占位符后写出 lib/client.js（DSH 实际服务的 __ModuleLoader__ bundle）。
+ * 约束：产物内联进 factory 作用域，故源码不得有运行时相对 import
+ * （require 只认识宿主注入的模块，如 react）。
  *
- * 约束：client 端 TS 源码为单文件（无运行时相对 import——编译产物内联进
- * factory 作用域后，require 只认识 DSH 运行时注入的模块，如 react）。
- *
- * 功能 2：思考（reasoning）内容默认展开显示。
- * 功能 3：界面标签中文化。
+ * 功能 2：思考（reasoning）内容默认展开显示（配置项 defaultExpanded，#355）。
+ * 功能 3：界面标签中文化。功能 4：宿主设置面板（#383，视图见 settings.ts）。
  */
 import { createElement, useState, type ReactNode } from 'react'
 
-// ── 配置项 defaultExpanded（issue #355）：展开初值可配置 ──────────────
-// 初值原为硬编码 useState(true)；外部 PR #356 主张直接改成 false（默认折叠）。
-// owner 决策改为配置项：默认仍 true（「思考默认展开」是本插件的产品定位，
-// README / description / 图片 alt 已固化），显式 defaultExpanded:false 才折叠。
-// client 端不能访问 ctx.config（Cordis inject 限制），故经 host 半边注册的
-// 只读路由 GET /think-zh-expand/api/config 拉取。
-// 回退契约（防回归）：配置缺失 / 值非布尔 / 拉取失败 → 一律 true，
-// 绝不因配置面缺失变成折叠。
+// ── 配置项 defaultExpanded（issue #355 / #383）：展开初值可配置 ──────────
+// owner 决策（否决 PR #356 的「默认折叠」反转）：默认仍 true——「思考默认展开」
+// 是本插件的产品定位（README / description / 图片 alt 已固化），显式设 false 才
+// 折叠。client 不能访问 ctx.config（Cordis inject 限制），故经 host 半的配置路由
+// GET /think-zh-expand/api/config 拉取（设置页保存走同一地址的 PUT）。
+// 回退契约（防回归）：配置缺失 / 值非布尔 / 拉取失败 → 一律 true，绝不变成折叠。
 
 /** 配置读取地址（host 半边 src/index.ts 的 CONFIG_ROUTE_PREFIX + /config）。 */
 const CONFIG_URL = '/think-zh-expand/api/config'
@@ -747,4 +743,8 @@ _exports.apply = function apply(ctx: ClientContext): void {
 
   // UI 标签中文化
   ctx.effect(() => installUiLocalize(), 'dsh-think-zh-expand: ui localization')
+
+  // 设置页签（issue #383）：注册「设置 → 插件 → 思考增强」（part 视图与注册
+  // 逻辑在 src/client/settings.ts，构建期由 build.mjs 注入同一 factory 作用域）。
+  attachSettingsTab(ctx)
 }

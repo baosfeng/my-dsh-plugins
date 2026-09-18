@@ -10,6 +10,10 @@
  * 从 dsh-mermaid-render 收口为共享实现；原实现是宽松 replaceAll：占位符缺失时
  * 静默跳过、重复时注入两份）。
  *
+ * 设置页 part（issue #383）：src/client/settings.ts 的 tsc 产物（lib/.client-build
+ * /settings.js）注入 /*__PART_SETTINGS__* / 占位符 —— 它是无 import/export 的片段，
+ * 与本 bundle 共享同一 factory 作用域（React API 与 installStyles 由上方解构/注入）。
+ *
  *   node scripts/build.mjs
  *
  * lib/client.js is the build artifact and MUST be committed (CI runs
@@ -30,6 +34,10 @@ const PLACEHOLDER = '/*__CLIENT_BUNDLE__*/'
 const ICONS_PLACEHOLDER = '/*__PART_ICONS__*/'
 const STYLE_PLACEHOLDER = '/*__PART_STYLE_TAG__*/'
 const MARKDOWN_FALLBACK_PLACEHOLDER = '/*__PART_MARKDOWN_FALLBACK__*/'
+/** 设置页 part 注入位（src/client/settings.ts 的 tsc 产物，issue #383）。 */
+const SETTINGS_PLACEHOLDER = '/*__PART_SETTINGS__*/'
+/** 设置页 part 的锚点：注入后必须**恰好一份**（片段丢失/重复注入即失败）。 */
+const SETTINGS_ANCHOR = 'function attachSettingsTab('
 
 // 共享 client parts 位于 dsh-shared 包（issue #54 阶段 0；#186 P2 起含样式样板；
 // #299 起含三级 Markdown 渲染回退——与 dsh-my-plugin-manager 共用单一来源）
@@ -66,12 +74,26 @@ for (const [placeholder, file, anchor] of SHARED_PARTS) {
   }
 }
 
-// 5. 剔除仅供 src 模板静态 lint 使用的注释
+// 5. 注入设置页 part（src/client/settings.ts 的 tsc 产物，issue #383）
+//    同款两道防线（占位符恰好一处 + 不在注释里）；锚点计数保证注入的是真正的
+//    函数声明而不是注释文本 —— 设置页「静默消失」是这类注入最典型的故障。
+if (!isPlaceholderOutsideComments(template, SETTINGS_PLACEHOLDER)) {
+  throw new Error(
+    `${SETTINGS_PLACEHOLDER} in client.src.js is inside a comment: injection would \`succeed\` but the settings tab would never be registered`,
+  )
+}
+out = spliceExactlyOnce(out, SETTINGS_PLACEHOLDER, readFileSync(join(BUILD_DIR, 'settings.js'), 'utf8'))
+const settingsDecls = out.split(SETTINGS_ANCHOR).length - 1
+if (settingsDecls !== 1) {
+  throw new Error(`client.js must contain exactly 1 "${SETTINGS_ANCHOR}" declaration, found ${settingsDecls}`)
+}
+
+// 6. 剔除仅供 src 模板静态 lint 使用的注释
 out = out.replaceAll('/* global AssistantStepView, installUiLocalize */\n', '')
 out = out.replaceAll('    // eslint-disable-next-line no-unused-vars\n', '')
 
 writeFileSync(join(root, 'lib/client.js'), out)
 
-// 6. 清理临时编译目录
+// 7. 清理临时编译目录
 rmSync(BUILD_DIR, { recursive: true, force: true })
 console.log(`built lib/client.js (${out.length} chars, ${out.split('\n').length} lines)`)

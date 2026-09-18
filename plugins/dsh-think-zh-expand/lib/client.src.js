@@ -16,8 +16,9 @@ window.__ModuleLoader__.load({
     var module = { exports: {} }
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
-    // useState 由编译后的 client bundle 使用；模板静态分析看不到 bundle 内容。
-    const { createElement, useState } = require('react')
+    // useState 由编译后的 client bundle 使用，useEffect 供设置页 part 使用；
+    // 模板静态分析看不到 bundle / part 的内容，故在此一并解构。
+    const { createElement, useState, useEffect } = require('react')
 
     // ── MarkdownView：三级渲染回退（issue #293；逻辑收口于共享部件 #299）──
     // 1) dsh-md-render 的 MarkdownView —— 首选渲染内核（issue #31/#186 决策不变）；
@@ -44,6 +45,11 @@ window.__ModuleLoader__.load({
 
     // ── 共享样式注入（dsh-shared/client-parts，issue #186 P2）────────
     /*__PART_STYLE_TAG__*/
+
+    // ── 设置页 part（src/client/settings.ts 产物，issue #383）──────────
+    // 无 import/export 的片段：与上方共享件、下方编译产物共享本 factory 作用域
+    // （React API 来自上方解构，installStyles 来自上方共享样式件）。
+    /*__PART_SETTINGS__*/
 
     // ── Client bundle（编译自 src/client/index.ts）──────────────────
     /*__CLIENT_BUNDLE__*/

@@ -60,3 +60,12 @@
     那么 输出由官方 MarkdownText 渲染
     并且 传给官方组件的 labels.code.copyLabel 为 "复制"
     并且 输出包含数据文本 "memo 形态渲染"
+
+  # issue #383：宿主设置面板（设置 → 插件 → 思考增强）——可视化编辑 defaultExpanded，
+  # 保存写回 profile patch 文件（行 id think-zh-expand）并即时生效
+  场景: 设置页保存配置写回 profile patch 并即时生效
+    假如 思考增强插件已带配置路由启动
+    当 通过配置接口保存 defaultExpanded 为 false
+    那么 配置接口返回生效值 false
+    并且 profile patch 中行 "think-zh-expand" 的 defaultExpanded 为 false
+    并且 profile patch 中行 "think-zh-expand" 恰好一条

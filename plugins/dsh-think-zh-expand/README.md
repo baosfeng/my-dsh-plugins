@@ -35,7 +35,9 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-think-zh-expand
 | ----------------- | ------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `defaultExpanded` | boolean | `true` | 思考块**展开初值**。`true`（默认）= 保持本插件的产品定位「思考默认展开」；`false` = 初始折叠，流式生成中仍自动展开、**生成完成后收起**。 |
 
-在 profile patch 的插件行里显式声明（`$DSH_HOME/profiles/<profile>/cordis.patch.yml`，默认 `~/.dsh/profiles/web/cordis.patch.yml`）：
+**可视化编辑（推荐）**：DSH Web 里打开 **设置 → 插件 → 思考增强**，切换开关「思考默认展开」后点「保存」。host 半会把值写回 profile patch 文件（`$DSH_HOME/profiles/<profile>/cordis.patch.yml` 的 `- id: think-zh-expand` 行），并立即生效（无需重启 `dsh web`）。
+
+也可以直接在 profile patch 的插件行里手写（`$DSH_HOME/profiles/<profile>/cordis.patch.yml`，默认 `~/.dsh/profiles/web/cordis.patch.yml`）：
 
 ```yaml
 - insert:
@@ -45,8 +47,10 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-think-zh-expand
         defaultExpanded: false # 想要「流式展开 → 完成收起」就设为 false
 ```
 
-- 缺失该配置、值非布尔、或**配置读取通道不可用**（非 web 宿主、路由未注册）时，一律回退 `true` —— 配置面永远不会让插件从「默认展开」静默变成「默认折叠」。
-- 读取通道：host 半边经 `webServer` 注册只读路由 `GET /think-zh-expand/api/config`（仅 loopback 可读），client 半边在渲染前拉取该值作为展开初值。
+- 保存只改 `defaultExpanded` 一个键：该行**其它已有配置项原样保留**（不会因保存被抹掉）。
+- 取值只认布尔：非法值 / 缺失一律回退 `true`，脏值不会写进文件。
+- 缺失该配置、值非布尔、或**配置读写通道不可用**（非 web 宿主、路由未注册）时，一律回退 `true` —— 配置面永远不会让插件从「默认展开」静默变成「默认折叠」。
+- 读写通道：host 半边经 `webServer` 注册 `GET` / `PUT /think-zh-expand/api/config`（仅 loopback 可访问）；写盘失败返回 500，设置页据此提示「保存失败」。
 
 ## 相关文档
 

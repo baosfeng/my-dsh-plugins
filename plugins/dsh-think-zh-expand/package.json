@@ -11,6 +11,9 @@
   "engines": {
     "node": ">=22"
   },
+  "dependencies": {
+    "dsh-shared": "^0.1.4"
+  },
   "scripts": {
     "build": "npx tsc -p tsconfig.json && node scripts/build.mjs",
     "typecheck": "npx tsc --noEmit -p tsconfig.json && npx tsc --noEmit -p tsconfig.client.json",

@@ -6,7 +6,12 @@
  * 功能 2：思考块展开初值经配置项 defaultExpanded 暴露给 client 端（issue #355）——
  * 默认 true（保持本插件「思考默认展开」的产品定位），显式设 false 即得到
  * 「流式展开 → 完成收起」。client 端不能访问 ctx.config（Cordis inject 限制），
- * 读取通道由 host 侧经 webServer 只读路由 GET /think-zh-expand/api/config 暴露。
+ * 读取通道由 host 侧经 webServer 路由 GET /think-zh-expand/api/config 暴露。
+ *
+ * 功能 3：宿主设置面板（issue #383）——设置 → 插件 → 思考增强 可视化编辑该配置。
+ * PUT 同地址校验后写回 profile 层 patch 文件（行 id think-zh-expand）并立即热生效；
+ * 写回复用 dsh-shared 的 currentProfile / patchFileOf / writePatchConfig（写前先合并
+ * 该行已有键——writePatchConfig 是「删旧条目 → 追加新条目」，不合并会抹掉用户手写项）。
  *
  * 注册一条固定 system-prompt section（order -90，persona 之前最先读到），
  * 让 agent 无论用户使用什么语言，思考（reasoning/thinking）与回复都使用
@@ -18,6 +23,9 @@
  * 本文件是 TS 插件 server 端：`tsc -p tsconfig.json` 编译为
  * lib/index.js（产物必须提交，CI 只跑 node --check + 测试，不跑构建）。
  */
+import { readFile } from 'node:fs/promises'
+
+import { currentProfile, extractConfig, patchFileOf, writePatchConfig } from 'dsh-shared'
 import type { DshContext, ServerRequest, ServerResponse, WebServerService } from './types.js'
 
 export const name = 'dsh-think-zh-expand'
@@ -120,17 +128,96 @@ function writeJson(response: ServerResponse, status: number, value: unknown): vo
   response.end(JSON.stringify(value))
 }
 
-/** 构造只读配置 handler：fence → GET <prefix>/config → 403/404 兜底。 */
-export function createConfigHandler(read: () => boolean): (request: ServerRequest, response: ServerResponse) => void {
-  return (request: ServerRequest, response: ServerResponse): void => {
+// ── 配置写入（issue #383：宿主设置面板）──────────────────────────────
+// 设置页保存 → PUT <prefix>/config → 写回 profile 层 patch 文件 + 更新内存生效值
+// （保存即生效，不必等 watchUserPatches 热重载；重启后由 patch 文件读回）。
+
+/** 配置行 id：与 cordis.patch.yml 的插件行 id 一致（写错 = 幽灵行、配置永不生效）。 */
+export const CONFIG_ROW_ID = 'think-zh-expand'
+
+/**
+ * 请求体 → 生效配置：非对象（null / 数组 / 标量）返回 undefined，调用方回 400
+ * 且**不落盘**；对象内 defaultExpanded 非布尔 / 缺失一律回退默认 true —— 配置面
+ * 永远不能让本插件从「默认展开」静默变成折叠，脏值也不写进 patch 文件。
+ */
+export function normalizeConfigPayload(payload: unknown): ThinkZhConfig | undefined {
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return undefined
+  const raw = (payload as ThinkZhConfig).defaultExpanded
+  return { defaultExpanded: typeof raw === 'boolean' ? raw : DEFAULT_EXPANDED }
+}
+
+/** 读取 patch 文件里该行已有的 config（文件不存在 / 无该条目 → 空对象）。 */
+async function readRowConfig(file: string): Promise<Record<string, unknown>> {
+  try {
+    return extractConfig(await readFile(file, 'utf8'), CONFIG_ROW_ID) ?? {}
+  } catch {
+    // 首次保存（文件还不存在）或文件不可读：按空配置合并，写入侧会创建目录。
+    return {}
+  }
+}
+
+/**
+ * 写回 profile 层 patch 文件。**写前先合并该行已有键**：writePatchConfig 的语义是
+ * 「删除同 id 旧条目 → 追加新条目」，直接写会把用户手写的其它配置项抹掉。
+ */
+export async function persistConfig(next: ThinkZhConfig): Promise<void> {
+  const file = patchFileOf(currentProfile())
+  await writePatchConfig(file, CONFIG_ROW_ID, { ...(await readRowConfig(file)), ...next })
+}
+
+/** 读取请求体并解析 JSON（空 body / 非法 JSON / 不可迭代 → 抛错，调用方回 400）。 */
+async function readJson(request: ServerRequest): Promise<unknown> {
+  let body = ''
+  for await (const chunk of request as unknown as AsyncIterable<string>) body += chunk
+  return JSON.parse(body) as unknown
+}
+
+/** PUT 处理：校验 → 落盘（失败 500、内存不动）→ 回新值；非法 payload → 400 不落盘。 */
+async function handleConfigPut(
+  request: ServerRequest,
+  response: ServerResponse,
+  write: (next: ThinkZhConfig) => Promise<void>,
+): Promise<void> {
+  let next: ThinkZhConfig | undefined
+  try {
+    next = normalizeConfigPayload(await readJson(request))
+  } catch {
+    next = undefined
+  }
+  if (next === undefined) {
+    writeJson(response, 400, { ok: false, error: { message: 'invalid config' } })
+    return
+  }
+  try {
+    await write(next)
+  } catch (error) {
+    // 落盘失败绝不当成成功：client 侧据此提示「保存失败」，内存生效值保持原样。
+    writeJson(response, 500, { ok: false, error: { message: `config write failed: ${String(error)}` } })
+    return
+  }
+  writeJson(response, 200, { ok: true, value: next })
+}
+
+/** 构造读写配置 handler：fence → GET/PUT <prefix>/config → 403/404 兜底。 */
+export function createConfigHandler(
+  read: () => boolean,
+  write: (next: ThinkZhConfig) => Promise<void>,
+): (request: ServerRequest, response: ServerResponse) => Promise<void> {
+  return async (request: ServerRequest, response: ServerResponse): Promise<void> => {
     if (!isTrustedRequest(request)) {
       writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
       return
     }
     const pathname = new URL(request.url ?? '/', 'http://dsh.internal').pathname
-    if (pathname === `${CONFIG_ROUTE_PREFIX}/config` && request.method === 'GET') {
-      writeJson(response, 200, { ok: true, value: { defaultExpanded: read() } })
-      return
+    if (pathname === `${CONFIG_ROUTE_PREFIX}/config`) {
+      if (request.method === 'GET') {
+        writeJson(response, 200, { ok: true, value: { defaultExpanded: read() } })
+        return
+      }
+      if (request.method === 'PUT') {
+        await handleConfigPut(request, response, write)
+        return
+      }
     }
     writeJson(response, 404, { ok: false, error: { message: 'unknown dsh-think-zh-expand API method' } })
   }
@@ -148,23 +235,31 @@ function getWebServer(ctx: DshContext): WebServerService | undefined {
   }
 }
 
-/** 注册只读配置路由；无 webServer 时只警告（client 端回退默认展开）。 */
+/** 注册配置读写路由；无 webServer 时只警告（client 端回退默认展开）。 */
 function registerConfigRoute(ctx: DshContext, defaultExpanded: boolean): void {
   const webServer = getWebServer(ctx)
   if (webServer === undefined) {
     // ctx 完全没有服务查询能力（纯 CLI 宿主 / 极简测试 ctx）时静默降级；
     // 只有「查得到服务但没有可用 webServer」才告警——避免无意义噪音。
     if (typeof ctx.get === 'function') {
-      ctx.logger?.warn('[dsh-think-zh-expand] webServer 不可用：配置读取路由未注册，client 端回退默认展开')
+      ctx.logger?.warn('[dsh-think-zh-expand] webServer 不可用：配置路由未注册，client 端回退默认展开')
     }
     return
   }
+  // 内存生效值：PUT 落盘成功后立即更新 → 设置页保存即生效（GET 立刻回新值）。
+  const state = { defaultExpanded }
   ctx.effect?.(
     () =>
       webServer.register({
         kind: 'prefix',
         path: CONFIG_ROUTE_PREFIX,
-        handler: createConfigHandler(() => defaultExpanded),
+        handler: createConfigHandler(
+          () => state.defaultExpanded,
+          async (next) => {
+            await persistConfig(next)
+            state.defaultExpanded = resolveDefaultExpanded(next)
+          },
+        ),
       }),
     'dsh-think-zh-expand: config route',
   )

@@ -153,12 +153,17 @@ test('isTrustedRequest：header 读取与 IPv4 loopback 判定（含伪装域名
   assert.equal(isTrustedRequest({ headers: { host: 127 } }), false, '非字符串 host 不通过')
 })
 
-test('未识别的 path / 方法 → 404（只提供读接口）', () => {
+test('未识别的 path / 方法 → 404（按 path 定位的行为断言）', () => {
   const handler = createConfigHandler(() => true)
   const wrongPath = call(handler, fakeRequest({ url: '/think-zh-expand/api/other' }))
-  assert.equal(wrongPath.status, 404)
-  assert.equal(wrongPath.json.ok, false)
-  assert.equal(call(handler, fakeRequest({ method: 'PUT' })).status, 404, 'PUT 未实现 → 404')
+  assert.equal(wrongPath.status, 404, '未知 path → 404')
+  assert.equal(wrongPath.json.ok, false, '404 体 ok:false')
+  assert.equal(
+    call(handler, fakeRequest({ method: 'PUT', url: '/think-zh-expand/api/other' })).status,
+    404,
+    'PUT 到未知 path → 404（config 端点的 PUT 已实现，见 config-write.mjs）',
+  )
+  assert.equal(call(handler, fakeRequest({ method: 'DELETE' })).status, 404, 'DELETE /config 未实现 → 404')
   assert.equal(call(handler, fakeRequest({ url: undefined })).status, 404, '缺 url → 404')
 })
 

@@ -7,7 +7,11 @@
 import { Given, When, Then, After, setWorldConstructor } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { apply, PROMPT_TEXT } from '../../../lib/index.js'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { currentProfile, extractConfig, patchFileOf } from 'dsh-shared'
+import { apply, CONFIG_ROUTE_PREFIX, PROMPT_TEXT } from '../../../lib/index.js'
 
 class World {
   constructor() {
@@ -171,6 +175,12 @@ setWorldConstructor(World)
 After(async function () {
   delete global.window
   delete global.localStorage
+  // issue #383：设置页保存场景用临时 DSH_HOME 落盘，用例结束恢复并清理（真实 ~/.dsh 不触碰）
+  if (this.home !== undefined) {
+    if (this.previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = this.previousHome
+    rmSync(this.home, { recursive: true, force: true })
+  }
 })
 
 // ── Given ─────────────────────────────────────────────────────────────────
@@ -300,4 +310,76 @@ Then('输出回退为带 fallback 标记的 pre', async function () {
     nodes.some((n) => n.type === 'pre' && n.props['data-dsh-think-zh-expand-fallback'] === 'true'),
     `expected <pre data-dsh-think-zh-expand-fallback>, got tags: ${this.lastRender.tags.join(',')}`,
   )
+})
+
+// ── issue #383：宿主设置面板（设置 → 插件 → 思考增强）─────────────────────
+// 设置页保存 → PUT 配置端点 → 写回 profile patch（行 id think-zh-expand）并热生效。
+// 落盘一律写临时 DSH_HOME（见上述 After 钩子）。
+
+/** 最小响应桩（记录 status / body）。 */
+function settingsResponse() {
+  return {
+    status: 0,
+    body: '',
+    writeHead(status) {
+      this.status = status
+    },
+    end(payload) {
+      this.body = payload ?? ''
+    },
+  }
+}
+
+/** 最小请求桩：本机 host + 可异步迭代的 JSON body。 */
+function settingsRequest(method, body) {
+  return {
+    method,
+    url: `${CONFIG_ROUTE_PREFIX}/config`,
+    headers: { host: '127.0.0.1:3080' },
+    async *[Symbol.asyncIterator]() {
+      if (body !== undefined) yield JSON.stringify(body)
+    },
+  }
+}
+
+Given('思考增强插件已带配置路由启动', async function () {
+  this.home = mkdtempSync(join(tmpdir(), 'dsh-think-zh-expand-cucumber-'))
+  this.previousHome = process.env.DSH_HOME
+  process.env.DSH_HOME = this.home
+  this.routes = []
+  const routes = this.routes
+  const ctx = {
+    systemPrompt: { section: () => () => {} },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    get: (name) => (name === 'webServer' ? { register: (route) => (routes.push(route), () => {}) } : undefined),
+    effect: (fn) => fn(),
+  }
+  apply(ctx)
+  assert.equal(this.routes.length, 1, '配置路由恰好注册一次')
+  this.api = this.routes[0]
+  this.patchFile = patchFileOf(currentProfile())
+})
+
+When('通过配置接口保存 defaultExpanded 为 {word}', async function (raw) {
+  const response = settingsResponse()
+  await this.api.handler(settingsRequest('PUT', { defaultExpanded: raw === 'true' }), response)
+  assert.equal(response.status, 200, '保存成功，响应体：' + response.body)
+})
+
+Then('配置接口返回生效值 {word}', async function (raw) {
+  const response = settingsResponse()
+  await this.api.handler(settingsRequest('GET'), response)
+  assert.equal(response.status, 200, 'GET 配置成功')
+  const value = JSON.parse(response.body).value
+  assert.deepEqual(value, { defaultExpanded: raw === 'true' }, '保存即生效（无需等 patch 热重载）')
+})
+
+Then('profile patch 中行 {string} 的 defaultExpanded 为 {word}', async function (rowId, raw) {
+  const text = fs.readFileSync(this.patchFile, 'utf8')
+  assert.deepEqual(extractConfig(text, rowId), { defaultExpanded: raw === 'true' }, 'patch 内容：\n' + text)
+})
+
+Then('profile patch 中行 {string} 恰好一条', async function (rowId) {
+  const text = fs.readFileSync(this.patchFile, 'utf8')
+  assert.equal(text.split(`- id: ${rowId}`).length - 1, 1, '不产生幽灵行，patch 内容：\n' + text)
 })

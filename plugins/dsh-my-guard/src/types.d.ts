@@ -173,17 +173,35 @@ export interface InjectionHit {
   explain: string
 }
 
-/** 配置保存接口 */
+/** 生效配置快照（GET /guard/api/config 与 /guard/api/status 的配置部分同形）。 */
+export interface GuardConfigValue {
+  mode: GuardMode
+  poisonScan: boolean
+  injection: boolean
+  customRulesCount: number
+  notifyEnabled: boolean
+  notifyCooldownMs: number
+}
+
+/** 配置保存接口（两个写入口共用：POST /guard/api/rules 与 PUT /guard/api/config）。 */
 export interface SaveConfigPayload {
+  /** 请求体是任意 JSON 对象，字段逐个校验（见 config-api.ts 的 mergeConfigPatch）。 */
+  [key: string]: unknown
+  mode?: unknown
+  poisonScan?: boolean
+  injection?: boolean
   customRules?: unknown[]
   notifyEnabled?: boolean
   notifyCooldownMs?: number
 }
 
-/** 配置保存结果 */
-export interface SaveConfigResult {
+/** 配置保存控制接口（routes.ts 与设置页端点共用的注入点）。 */
+export interface SaveConfigControl {
+  saveConfig?: (next: SaveConfigPayload) => Promise<SaveConfigResult>
+}
+
+/** 配置保存结果（= 生效配置快照 + 自定义规则明细 + 丢弃计数）。 */
+export interface SaveConfigResult extends GuardConfigValue {
   customRules: Array<{ id: string; pattern: string; mode: string; severity: string; description: string }>
-  notifyEnabled: boolean
-  notifyCooldownMs: number
   dropped: number
 }

@@ -3,6 +3,8 @@
  *
  * 所有请求先做 loopback 信任围栏（与 /api 网关一致的契约）。方法分派：
  *  - GET  /status                  — 状态 + 护栏配置
+ *  - GET  /config                  — 生效配置（设置页页签用）
+ *  - PUT  /config                  — 保存配置（校验 → profile patch → 热生效）
  *  - GET  /alerts?sessionId&type&limit — 告警列表（最新在前）
  *  - POST /scan                    — 投毒扫描（body { target: 包名或路径 }）
  *  - POST /scan-prompt             — 提示注入检测（body { text }）
@@ -12,27 +14,25 @@ import { resolveAndScan, localPathOf } from './poison.js'
 import { detectPromptInjection } from './injection.js'
 import { DESTRUCTIVE_PATTERNS } from './constants.js'
 import { decideDestructive, rawRulesOf } from './custom-rules.js'
+import { configValue, dispatchConfigApi } from './config-api.js'
+import { limitOf, queryOf, readJsonBody, writeError, writeJson } from './http.js'
 import type {
   DshContext,
   ServerRequest,
   ServerResponse,
   AlertStore,
   GuardOptions,
+  SaveConfigControl,
   SaveConfigPayload,
   SaveConfigResult,
 } from './types.js'
-
-/** 配置保存控制接口。 */
-interface SaveControl {
-  saveConfig?: (next: SaveConfigPayload) => Promise<SaveConfigResult>
-}
 
 /** 注册 /guard/api 路由（effect 持有 disposer）。 */
 export function registerGuardRoutes(
   ctx: DshContext,
   store: AlertStore,
   options: GuardOptions,
-  control?: SaveControl,
+  control?: SaveConfigControl,
 ): void {
   const webRuntime = ctx.get ? ctx.get<{ trustedHosts?: string[] }>('webRuntime') : undefined
   const trustedHosts =
@@ -74,7 +74,7 @@ function apiHandler(
   fence: (request: ServerRequest) => boolean,
   store: AlertStore,
   options: GuardOptions,
-  control?: SaveControl,
+  control?: SaveConfigControl,
 ) {
   return async (request: ServerRequest, response: ServerResponse): Promise<void> => {
     if (!fence(request)) {
@@ -115,8 +115,11 @@ async function dispatchMethod(
   url: URL,
   store: AlertStore,
   options: GuardOptions,
-  control?: SaveControl,
+  control?: SaveConfigControl,
 ): Promise<boolean> {
+  // 设置页配置端点（GET/PUT /config）单独成对分派：一个判定点换来两条路由，
+  // 保持本函数的分支数在复杂度门禁（≤10）之内。
+  if (await dispatchConfigApi(method, request, response, options, control)) return true
   if (isMethod(method, request, 'status', 'GET')) {
     writeJson(response, 200, { ok: true, value: statusValue(store, options) })
     return true
@@ -157,17 +160,9 @@ async function dispatchMethod(
 
 // ── handlers ───────────────────────────────────────────────────────────────
 
-/** 状态：告警统计 + 护栏配置。 */
+/** 状态：告警统计 + 护栏配置（配置部分与设置页端点同一形状，避免两处漂移）。 */
 function statusValue(store: AlertStore, options: GuardOptions) {
-  return {
-    alertCount: store.count(),
-    mode: options.mode,
-    poisonScan: options.poisonScan,
-    injection: options.injection,
-    customRulesCount: Array.isArray(options.customRules) ? options.customRules.length : 0,
-    notifyEnabled: options.notifyEnabled === true,
-    notifyCooldownMs: options.notifyCooldownMs,
-  }
+  return { alertCount: store.count(), ...configValue(options) }
 }
 
 /** 规则列表：内置规则 + 用户自定义规则（设置页展示 + 测试）。 */
@@ -221,7 +216,11 @@ async function handleRulesTest(request: ServerRequest, response: ServerResponse,
 }
 
 /** 保存自定义规则 + 通知设置：校验 → 持久化 patch → 更新内存（saveConfig）。 */
-async function handleRulesSave(request: ServerRequest, response: ServerResponse, control?: SaveControl): Promise<void> {
+async function handleRulesSave(
+  request: ServerRequest,
+  response: ServerResponse,
+  control?: SaveConfigControl,
+): Promise<void> {
   if (control === undefined || typeof control.saveConfig !== 'function') {
     writeJson(response, 400, { ok: false, error: { message: 'config not available' } })
     return
@@ -283,59 +282,4 @@ async function scanTarget(target: string) {
   const local = localPathOf(target)
   if (local !== '') return resolveAndScan(local)
   return resolveAndScan(target)
-}
-
-// ── HTTP helpers ───────────────────────────────────────────────────────────
-
-function queryOf(url: URL, name: string): string {
-  return url.searchParams.get(name) ?? ''
-}
-
-function limitOf(url: URL): number {
-  const raw = url.searchParams.get('limit')
-  const parsed = raw === null ? 0 : Number(raw)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
-}
-
-/** 读取 JSON 请求体。 */
-async function readJsonBody(request: ServerRequest): Promise<Record<string, unknown>> {
-  const chunks: string[] = []
-  const req = request as unknown as {
-    [key: string]: unknown
-    [Symbol.asyncIterator]?: () => AsyncIterator<string>
-    on?: (event: string, handler: (chunk: Buffer) => void) => void
-  }
-  // 支持 async iterator（测试 mock）或 Node.js 可读流
-  if (typeof req[Symbol.asyncIterator] === 'function') {
-    const iterator = req[Symbol.asyncIterator]!()
-    let result = await iterator.next()
-    while (!result.done) {
-      chunks.push(typeof result.value === 'string' ? result.value : String(result.value))
-      result = await iterator.next()
-    }
-  } else if (typeof req.on === 'function') {
-    await new Promise<void>((resolve, reject) => {
-      const buffers: Buffer[] = []
-      req.on!.call(req, 'data', (chunk: Buffer) => buffers.push(chunk))
-      req.on!.call(req, 'end', () => {
-        chunks.push(Buffer.concat(buffers).toString('utf8'))
-        resolve()
-      })
-      req.on!.call(req, 'error', reject)
-    })
-  }
-  const body = chunks.join('')
-  return body ? JSON.parse(body) : {}
-}
-
-/** 写 JSON 响应。 */
-function writeJson(response: ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
-  response.end(JSON.stringify(body))
-}
-
-/** 写错误响应。 */
-function writeError(response: ServerResponse, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error)
-  writeJson(response, 500, { ok: false, error: { message } })
 }

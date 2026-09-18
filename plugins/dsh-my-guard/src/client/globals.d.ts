@@ -29,6 +29,8 @@ declare const module: { exports: Record<string, unknown> }
 // @deepseek-ai/dsh-client-ui-* 包，也不消费第三方 dsh-better-sidebar 服务。
 interface ClientContext {
   effect(callback: () => void | (() => void), label?: string): void
+  /** 读取可选服务；strict=false 时未就绪返回 undefined（设置页页签注册依赖它）。 */
+  get?<T = unknown>(name: string, strict?: boolean): T | undefined
   slots?: SlotsService
   sidebarRightTabs?: SidebarRightTabsService
 }
@@ -37,7 +39,19 @@ interface ClientContext {
 interface SlotsService {
   /** 槽位声明后执行 register；返回 dispose。 */
   inject(name: string, factory: () => () => void): () => void
-  register(descriptor: { name: string; key: string }, component: (props: NativeTabProps) => unknown): () => void
+  register(descriptor: SlotsDescriptor, component: (props: any) => unknown): () => void
+}
+
+/**
+ * 席位描述符：keyed 席位（侧边栏正文/标题）用 `key`；list 型槽位
+ * （`settings.plugins.tab`）用 `id`（宿主注册表的唯一键）+ `order` + `label`。
+ */
+interface SlotsDescriptor {
+  name: string
+  key?: string
+  id?: string
+  order?: number
+  label?: () => string
 }
 
 /** 页签类型注册表（@deepseek-ai/dsh-client-ui-sidebar-right 的服务面子集）。 */
@@ -215,4 +229,66 @@ interface GuardRuleSettingsView {
   save: () => Promise<void>
   setNotifyEnabled: (v: boolean) => void
   setNotifyCooldownSec: (v: number) => void
+}
+
+// ── 设置页契约（设置 → 插件 → 安全护栏；GET/PUT /guard/api/config）────────
+
+/** 模式选项（三选一：id 与 host 端 GUARD_MODES 一致，label/hint 惰性求值）。 */
+interface GuardSettingsModeOption {
+  id: string
+  label: () => string
+  hint: () => string
+}
+
+/** 检测开关项（key 必须是草稿里的布尔字段名，渲染时按 key 取值）。 */
+interface GuardSettingsSwitchSpec {
+  key: 'poisonScan' | 'injection'
+  label: () => string
+  hint: () => string
+}
+
+/** 设置页草稿（服务端 value 规整后形态；冷却以秒呈现）。 */
+interface GuardSettingsDraft {
+  mode: string
+  poisonScan: boolean
+  injection: boolean
+  notifyEnabled: boolean
+  notifyCooldownSec: number
+  customRulesCount: number
+}
+
+/** 保存流程的状态设置器组合。 */
+interface GuardSettingsSetters {
+  setDraft: (v: GuardSettingsDraft) => void
+  setBusy: (v: boolean) => void
+  setSaved: (v: boolean) => void
+  setSaveError: (v: boolean) => void
+}
+
+/** 设置页纯视图入参（便于单测直接调用）。 */
+interface GuardSettingsViewState extends GuardSettingsDraft {
+  busy: boolean
+  saved: boolean
+  saveError: boolean
+  setMode: (v: string) => void
+  setPoisonScan: (v: boolean) => void
+  setInjection: (v: boolean) => void
+  setNotifyEnabled: (v: boolean) => void
+  setNotifyCooldownSec: (v: number) => void
+  save: () => Promise<void>
+}
+
+/** 开关行 props。 */
+interface GuardSettingsSwitchProps {
+  label: string
+  hint: string
+  on: boolean
+  onChange: (v: boolean) => void
+}
+
+/** 选择行 props（模式三选一）。 */
+interface GuardSettingsSelectProps {
+  value: string
+  options: GuardSettingsModeOption[]
+  onChange: (v: string) => void
 }

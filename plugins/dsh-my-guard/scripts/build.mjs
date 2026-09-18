@@ -42,7 +42,8 @@ execSync('npx tsc -p tsconfig.client.json', { cwd: root, stdio: 'inherit' })
  *  i18n 先于 panel/rules-panel（strings），panel 先于 states/rules-panel
  *  （apiJson/severityLabel/timeText），states 先于 rules-panel
  *  （busyState/cleanFeedback/errorFeedback，见 rules-panel.ts 头注释），
- *  styles 最后（注入器）。片段是函数/常量声明文本，跨片段引用依赖此顺序。
+ *  settings 在 panel/rules-panel 之后（用 apiJson/strings），styles 最后
+ *  （注入器）。片段是函数/常量声明文本，跨片段引用依赖此顺序。
  *  opts.shared: true 从 dsh-shared/client-parts 读取（不经本插件 TS 编译）。 */
 const pieces = [
   ['/*__PART_I18N__*/', 'i18n'],
@@ -50,6 +51,7 @@ const pieces = [
   ['/*__PART_PANEL__*/', 'panel'],
   ['/*__PART_STATES__*/', 'states'],
   ['/*__PART_RULES__*/', 'rules-panel'],
+  ['/*__PART_SETTINGS__*/', 'settings'],
   ['/*__PART_STYLES__*/', 'styles'],
 ]
 

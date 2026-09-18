@@ -17,6 +17,10 @@
  * 恢复），侧边栏「安全护栏」面板展示 + 用户确认机制；高严重级告警（deny
  * 拦截/密钥泄露等）经 dsh-my-notify 推送通知（可选集成 + 同类型冷却）。
  *
+ * 配置有两个可视化入口，都写同一份 profile patch（共用 createConfigSaver）：
+ * 侧边栏面板编辑 customRules + 通知设置；设置 → 插件 →「安全护栏」页签编辑
+ * mode / poisonScan / injection / 通知设置（见 config-api.js）。
+ *
  * 模块结构：
  *  - guard.js    — 执行前护栏（tools/pre-execute 拦截/确认 + 投毒扫描联动）
  *  - custom-rules.js — 自定义护栏规则（编译/匹配/合并决策，issue #88）
@@ -25,15 +29,16 @@
  *  - injection.js — 提示注入检测（纯函数：规则 + 启发式）
  *  - store.js    — 告警存储（持久化 / 上限 / 确认）
  *  - routes.js   — /guard/api 路由（状态 / 告警 / 扫描 / 确认 / 规则）
+ *  - config-api.js — 配置读写（GET/PUT /guard/api/config：校验 → patch → 热生效）
+ *  - http.js     — HTTP helpers（请求体解析 / JSON 响应写法）
  */
 import { createStore } from './store.js';
 import { attachGuardListener, normalizeMode } from './guard.js';
 import { attachInjectionListener } from './injection.js';
 import { registerGuardRoutes } from './routes.js';
-import { compileCustomRules, rawRulesOf } from './custom-rules.js';
+import { compileCustomRules } from './custom-rules.js';
 import { createNotifier } from './notify.js';
-import { DEFAULT_NOTIFY_COOLDOWN_MS } from './constants.js';
-import { currentProfile, patchFileOf, writePatchConfig } from 'dsh-shared';
+import { createConfigSaver, normalizeCooldown } from './config-api.js';
 export const name = 'dsh-my-guard';
 export const inject = ['webServer'];
 export function apply(ctx, config) {
@@ -62,37 +67,17 @@ export function apply(ctx, config) {
         notifier.notify(alert);
         return item;
     };
-    // ── 配置保存：自定义规则 + 通知设置 → profile patch + 更新内存 ─────
-    // 设置页保存即生效；DSH 的 watchUserPatches 会热重载 patch 文件。
-    const saveConfig = async (next) => {
-        const customRules = next.customRules === undefined ? options.customRules : compileCustomRules(next.customRules);
-        const merged = {
-            mode: options.mode,
-            poisonScan: options.poisonScan,
-            injection: options.injection,
-            customRules,
-            notifyEnabled: typeof next.notifyEnabled === 'boolean' ? next.notifyEnabled : options.notifyEnabled,
-            notifyCooldownMs: normalizeCooldown(next.notifyCooldownMs ?? options.notifyCooldownMs),
-            notifyToken: options.notifyToken,
-            notifyBaseUrl: options.notifyBaseUrl,
-        };
-        // 持久化到 profile patch
-        await writePatchConfig(patchFileOf(currentProfile()), 'guard', patchConfigOf(merged));
-        Object.assign(options, merged);
-        const dropped = next.customRules === undefined ? 0 : rawCountOf(next.customRules) - customRules.length;
-        return {
-            customRules: rawRulesOf(options.customRules),
-            notifyEnabled: options.notifyEnabled,
-            notifyCooldownMs: options.notifyCooldownMs,
-            dropped,
-        };
-    };
+    // ── 配置保存（设置页 + 侧边栏共用）：校验 → profile patch → 更新内存 ─
+    // DSH 的 watchUserPatches 会热重载 patch 文件；同一实例内 options 立即
+    // 被改写，因此保存即生效（见 config-api.js）。
+    const saveConfig = createConfigSaver(options);
     // ── 执行前护栏（破坏性命令拦截/确认 + 投毒扫描联动）────────────────
     attachGuardListener(ctx, options, recordAlert);
-    // ── 提示注入检测（user/message 监听）─────────────────────────────────
-    if (options.injection)
-        attachInjectionListener(ctx, recordAlert);
-    // ── 路由（状态 / 告警 / 扫描 / 确认 / 规则）────────────────────────
+    // ── 提示注入检测（user/message 监听）───────────────────────────────
+    // 监听器常驻、开关在监听器内读 options.injection：设置页保存后立即生效，
+    // 不必等 patch 热重载重新 apply（apply 一次只挂一次监听，语义等价）。
+    attachInjectionListener(ctx, options, recordAlert);
+    // ── 路由（状态 / 配置 / 告警 / 扫描 / 确认 / 规则）─────────────────
     registerGuardRoutes(ctx, store, options, { saveConfig });
     // ── 卸载冲刷：清防抖定时器 + 立即落盘 ───────────────────────────────
     ctx.effect(() => store.dispose, 'dsh-my-guard: persistence teardown');
@@ -110,10 +95,6 @@ function normalizeCustomRules(value) {
     }
     return compileCustomRules(value);
 }
-/** 通知冷却时长规整（非法回退默认 60s）。 */
-function normalizeCooldown(value) {
-    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : DEFAULT_NOTIFY_COOLDOWN_MS;
-}
 /** 从 webServer 派生 loopback 基础地址（无端口/未注入返回空串）。 */
 function deriveNotifyBaseUrl(ctx, config) {
     if (typeof config?.notifyBaseUrl === 'string' && config.notifyBaseUrl !== '')
@@ -124,19 +105,4 @@ function deriveNotifyBaseUrl(ctx, config) {
     }
     const host = typeof webServer.host === 'string' && webServer.host !== '' ? webServer.host : '127.0.0.1';
     return `http://${host}:${webServer.port}`;
-}
-/** 原始规则条数（定制化设置错误提示：被丢弃数 = 原始条数 - 编译通过条数）。 */
-function rawCountOf(value) {
-    return Array.isArray(value) ? value.length : 0;
-}
-/** 序列化为 patch 配置（customRules 对象数组 → JSON 字符串，YAML 子集可写）。 */
-function patchConfigOf(options) {
-    return {
-        mode: options.mode,
-        poisonScan: options.poisonScan,
-        injection: options.injection,
-        customRules: JSON.stringify(rawRulesOf(options.customRules)),
-        notifyEnabled: options.notifyEnabled,
-        notifyCooldownMs: options.notifyCooldownMs,
-    };
 }

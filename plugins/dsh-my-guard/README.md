@@ -16,6 +16,7 @@
 - **三种模式**：`observe`（默认，只告警不改变工具与审批流程）/ `ask`（触发 DSH 原生审批，用户确认后才执行）/ `deny`（直接拦截，工具返回错误）。
 - **投毒扫描**：识别到 `dsh plugin add <pkg>` 后异步扫描包内容（`link:` / 本地路径直接扫目录，包名经 npm registry 下载 tarball 扫描，**绝不执行包内代码**），检测可疑 install / postinstall 脚本、私钥与各类 Token、已知恶意包名、二进制与脚本文件；也可在面板或 `POST /guard/api/scan` 手动扫描。
 - **提示注入检测**：监听 `session/event` 的 `user/message`（过滤 `source.kind === 'plugin'` 的插件注入消息，避免误报），命中忽略指令 / 覆盖系统提示词 / jailbreak / 角色提权 / 密钥外泄 / 编码混淆 / 关闭安全机制等规则即记 injection 告警（high / medium）。
+- **可视化配置**：设置 → 插件 →「安全护栏」页签编辑模式 / 检测开关 / 通知（保存即写回 profile patch 并热生效）；自定义正则规则在侧边栏「安全护栏」面板编辑。
 - **自定义护栏规则**：可添加自定义 bash 危险模式（正则 + 模式 + 严重级 + 描述），与内置规则合并生效，命中取最严格模式（deny > ask > observe）与最严重级；自定义规则**只升不降**，内置 deny 不会被降级；面板「规则测试」可实时预览合并决策。
 - **告警记录 + 确认**：三类告警统一持久化 `$DSH_HOME/guard/alerts.json`（防抖 + 原子写，重启恢复），上限 500 条 FIFO 淘汰；侧边栏「安全护栏」页签查看告警并逐条「确认」。
 - **高严重级通知**（可选）：经 dsh-my-notify 的 `POST /notify/api/trigger` 推送，同类告警冷却防刷屏，异步 fire-and-forget、失败静默。
@@ -35,8 +36,15 @@
         notifyEnabled: false # 高严重级告警经 dsh-my-notify 推送
         notifyCooldownMs: 60000 # 同类型告警通知冷却（ms）
         # customRules: '[{"pattern":"touch /etc/evil","mode":"deny","severity":"high"}]'
-        #   ↑ 自定义护栏规则（JSON 字符串；设置页保存后自动写入）
+        #   ↑ 自定义护栏规则（JSON 字符串；在侧边栏「安全护栏」面板编辑保存）
 ```
+
+**可视化编辑（两个入口，都写回 profile patch 并热生效）**：
+
+- **设置 → 插件 →「安全护栏」页签**：`mode`（三选一）、`poisonScan`、`injection`、`notifyEnabled`、`notifyCooldownMs`（界面按秒编辑，写回毫秒）；自定义规则只显示条数并指引到侧边栏面板。
+- **侧边栏「安全护栏」面板**：`customRules`（正则 + 模式 + 严重级）与通知开关 / 冷却，并提供规则测试。
+
+两个入口走同一份配置写回通道（写 `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 的 `guard` 行，DSH 的 watchUserPatches 热重载），并立即更新内存——当前实例无需重启即生效。非法值（未知 mode、非布尔开关、负冷却、非法正则）一律回退默认或丢弃，不会写坏配置。
 
 ## 安装
 

@@ -42,6 +42,7 @@ const PIECES = [
   ['/*__PART_PANEL__*/', 'lib/parts/panel.js'],
   ['/*__PART_STATES__*/', 'lib/parts/states.js'],
   ['/*__PART_RULES__*/', 'lib/parts/rules-panel.js'],
+  ['/*__PART_SETTINGS__*/', 'lib/parts/settings.js'],
   ['/*__PART_STYLES__*/', 'lib/parts/styles.js'],
 ]
 
@@ -91,7 +92,7 @@ test('构建契约：产物零未解析占位符，且每个片段都有对应 T
     )
     assert.ok(/^(?:function|const)\s/m.test(ts), `${name}.ts 应为纯声明片段`)
   }
-  assert.deepEqual(OWN_PARTS.slice().sort(), ['i18n', 'panel', 'rules-panel', 'states', 'styles'])
+  assert.deepEqual(OWN_PARTS.slice().sort(), ['i18n', 'panel', 'rules-panel', 'settings', 'states', 'styles'])
 })
 
 test('构建契约：拼接顺序锁定（pieces 顺序有跨片段引用依赖，不可调整）', () => {
@@ -286,6 +287,16 @@ const EXPOSE = [
   'RuleTest',
   'RuleSettings',
   'ruleSettingsView',
+  'SETTINGS_TAB_ID',
+  'SETTINGS_STYLES',
+  'injectSettingsStyles',
+  'SETTINGS_MODE_OPTIONS',
+  'settingsSwitchRow',
+  'settingsSelectRow',
+  'guardSettingsView',
+  'GuardSettingsView',
+  'settingsSlotsOf',
+  'attachSettingsTab',
 ]
 const EXPOSED_RETURN = `return Object.assign(module.exports, { __t: { ${EXPOSE.join(', ')} } })`
 const EXPOSED_BUNDLE = BUNDLE.replace('return module.exports', EXPOSED_RETURN)
@@ -353,23 +364,28 @@ function boot({ language = 'zh-CN', withDocument = true, fetch: fetchImpl } = {}
  * 构造宿主原生扩展点的 mock ctx（issue #187 批 1）：
  *  - `slots`：keyed 席位注册表（`inject` 声明槽位后回调 `register`）；
  *  - `sidebarRightTabs`：页签类型注册表；
- *  - `effect`：立即执行并记录 cleanup（fiber 持有 disposer 的等价物）。
+ *  - `effect`：立即执行并记录 cleanup（fiber 持有 disposer 的等价物）；
+ *  - `get('slots', false)`：非 strict 取服务（设置页 tab 走这条路，见
+ *    dsh-my-notify settings.ts 的注释：首屏 provider fiber 未 active 时
+ *    strict 取值为 undefined 会导致注册被静默跳过）。
  */
 function nativeCtx({ cleanups = [], onType = () => () => {}, onSeat = () => {} } = {}) {
+  const slots = {
+    inject: (name, factory) => factory(),
+    register: (descriptor, component) => {
+      onSeat({ descriptor, component })
+      return () => {}
+    },
+  }
   return {
     effect: (fn, label) => {
       cleanups.push({ label, cleanup: fn() })
     },
-    slots: {
-      inject: (name, factory) => factory(),
-      register: (descriptor, component) => {
-        onSeat({ descriptor, component })
-        return () => {}
-      },
-    },
+    slots,
     sidebarRightTabs: {
       register: (definition) => onType(definition),
     },
+    get: (name) => (name === 'slots' ? slots : undefined),
   }
 }
 
@@ -426,7 +442,9 @@ test('client 插件体：apply 经原生扩展点注册「安全护栏」页签�
   )
   // 两个 keyed 席位（body + title），key = 类型 id
   assert.deepEqual(
-    seats.map((seat) => ({ name: seat.descriptor.name, key: seat.descriptor.key })),
+    seats
+      .filter((seat) => seat.descriptor.name.startsWith('sidebar.right.pane.tab'))
+      .map((seat) => ({ name: seat.descriptor.name, key: seat.descriptor.key })),
     [
       { name: 'sidebar.right.pane.tab', key: 'dsh-my-guard' },
       { name: 'sidebar.right.pane.tab.title', key: 'dsh-my-guard' },
@@ -436,18 +454,30 @@ test('client 插件体：apply 经原生扩展点注册「安全护栏」页签�
     cleanups.map((entry) => entry.label),
     [
       'dsh-my-guard: styles',
+      'dsh-my-guard: settings styles',
+      'dsh-my-guard: settings tab',
       'dsh-my-guard: guard tab type',
       'dsh-my-guard: guard tab body',
       'dsh-my-guard: guard tab title',
     ],
-    '样式 + 页签类型 + body/title 席位各由一个 effect 持有（label 锁定）',
+    '样式 + 设置页（样式/tab）+ 页签类型 + body/title 席位各由一个 effect 持有（label 锁定）',
   )
 
-  // 样式注入：一次激活恰好一个 <style>，带标识属性，内容即 STYLES
-  assert.equal(env.dom.nodes.length, 1)
-  assert.equal(env.dom.nodes[0].tagName, 'style')
-  assert.equal(env.dom.nodes[0].attrs['data-dsh-my-guard'], 'styles')
-  assert.equal(env.dom.nodes[0].textContent, env.internals.STYLES)
+  // 设置页页签（官方 slots 扩展点：设置 → 插件 → 安全护栏）
+  const settingsSeat = seats.find((seat) => seat.descriptor.name === 'settings.plugins.tab')
+  assert.ok(settingsSeat, '注册设置页页签席位 settings.plugins.tab')
+  assert.equal(settingsSeat.descriptor.id, 'guard-settings', '页签 id 稳定（宿主按它去重）')
+  assert.equal(settingsSeat.descriptor.order, 92, '页签顺序与并存插件错开')
+  assert.equal(settingsSeat.descriptor.label(), '安全护栏', '页签文案惰性求值，跟随语言')
+  assert.equal(settingsSeat.component, env.internals.GuardSettingsView, '渲染设置页视图')
+
+  // 样式注入：一次激活恰好两个 <style>（面板 + 设置页），带标识属性，内容即对应样式表
+  assert.equal(env.dom.nodes.length, 2, '面板样式与设置页样式各注入一个 <style>')
+  const nodesWith = (attr) => env.dom.nodes.filter((node) => node.attrs[attr] !== undefined)
+  assert.equal(nodesWith('data-dsh-my-guard')[0].tagName, 'style')
+  assert.equal(nodesWith('data-dsh-my-guard')[0].textContent, env.internals.STYLES)
+  assert.equal(nodesWith('data-dsh-my-guard-settings')[0].tagName, 'style')
+  assert.equal(nodesWith('data-dsh-my-guard-settings')[0].textContent, env.internals.SETTINGS_STYLES)
 
   // teardown：样式节点卸载 + 页签类型注销
   for (const { cleanup } of cleanups) cleanup()
@@ -456,15 +486,34 @@ test('client 插件体：apply 经原生扩展点注册「安全护栏」页签�
   assert.doesNotThrow(() => cleanups[0].cleanup(), '重复 teardown 安全')
   assert.equal(env.dom.nodes.length, 0)
 
-  // 重新激活（HMR/重新启用）后仍只有一个样式节点
+  // 重新激活（HMR/重新启用）后仍只有两个样式节点（不叠加）
   env.api.apply(ctx)
-  assert.equal(env.dom.nodes.length, 1, '重复激活不叠加样式')
+  assert.equal(env.dom.nodes.length, 2, '重复激活不叠加样式')
 })
 
 test('client 插件体：原生扩展点服务缺失时只注入样式不抛错；无 document 时样式注入降级为空操作', () => {
   const env = boot()
   assert.doesNotThrow(() => env.api.apply({ effect: (fn) => fn(), slots: undefined, sidebarRightTabs: undefined }))
   assert.equal(env.dom.nodes.length, 1)
+
+  // slots 服务经 ctx.get(name, false) 取到 undefined（首屏 provider 未就绪）：
+  // 侧边栏与设置页都静默跳过，同样不抛错、不残留样式。
+  const notReady = boot()
+  const cleanups = []
+  assert.doesNotThrow(() =>
+    notReady.api.apply({
+      effect: (fn, label) => cleanups.push({ label, cleanup: fn() }),
+      get: () => undefined,
+      slots: undefined,
+      sidebarRightTabs: undefined,
+    }),
+  )
+  assert.deepEqual(
+    cleanups.map((entry) => entry.label),
+    ['dsh-my-guard: styles'],
+    '仅面板样式注入',
+  )
+  assert.equal(notReady.dom.nodes.length, 1)
 
   const headless = boot({ withDocument: false })
   const cleanup = headless.internals.injectStyles()
@@ -545,8 +594,46 @@ test('styles：语义 token 样式表契约（关键选择器/视觉类别族/ke
   }
 })
 
-// ══ 4. i18n 文案与回退 ═══════════════════════════════════════════════════
+test('settings styles：设置页样式表契约（独立前缀 + 关键选择器 + 语义 token）', () => {
+  const { SETTINGS_STYLES, STYLES } = boot().internals
+  const css = SETTINGS_STYLES.replace(/\/\*[\s\S]*?\*\//g, '')
+  assert.ok(SETTINGS_STYLES.length > 500, '设置页样式表不应为空壳')
 
+  assert.ok(css.includes('var(--dsw-alias-'), '设置页样式必须走 DSH 语义 token')
+  assert.ok(css.includes('var(--dsw-font-'), '字体走 DSH token')
+  assert.ok(!css.includes('!important'), '不使用 !important')
+  assert.ok(!/\.dsh-my-(?!guard-)/.test(css), '不得出现其他插件类名前缀（会跨插件误伤）')
+  assert.ok(!/\[class\*="/.test(css), '不得使用全局子串选择器')
+  assert.equal((css.match(/\{/g) ?? []).length, (css.match(/\}/g) ?? []).length, 'CSS 花括号必须配对')
+
+  // 设置页类名一律 dsh-my-guard-settings- 前缀，与侧边栏面板样式隔离
+  assert.ok(css.includes('.dsh-my-guard-settings{'), '缺少设置页容器选择器')
+  for (const selector of [
+    '.dsh-my-guard-settings-section{',
+    '.dsh-my-guard-settings-section-title{',
+    '.dsh-my-guard-settings-row{',
+    '.dsh-my-guard-settings-label{',
+    '.dsh-my-guard-settings-hint{',
+    '.dsh-my-guard-settings-toggle{',
+    '.dsh-my-guard-settings-select{',
+    '.dsh-my-guard-settings-input{',
+    '.dsh-my-guard-settings-rules-value{',
+    '.dsh-my-guard-settings-actions{',
+    '.dsh-my-guard-settings-btn{',
+    '.dsh-my-guard-settings-status{',
+    '.dsh-my-guard-settings-saved{',
+    '.dsh-my-guard-settings-error{',
+  ]) {
+    assert.ok(css.includes(selector), `设置页样式缺少关键选择器 ${selector}`)
+  }
+  // 开关开态可辨识（data-on 属性驱动，同 dsh-md-render / dsh-my-notify 方案）
+  assert.ok(css.includes('.dsh-my-guard-settings-toggle[data-on="true"]'), '开关开态样式')
+
+  // 设置页样式与侧边栏样式是两张独立的表（各自注入、各自卸载）
+  assert.notEqual(SETTINGS_STYLES, STYLES)
+})
+
+// ══ 4. i18n 文案与回退 ═══════════════════════════════════════════════════
 test('i18n：中文文案', () => {
   const { strings } = boot({ language: 'zh-CN' }).internals
   assert.equal(strings.tabTitle(), '安全护栏')
@@ -580,6 +667,25 @@ test('i18n：中文文案', () => {
   assert.equal(strings.modeObserve(), '观察（只告警）')
   assert.equal(strings.modeAsk(), '确认（审批）')
   assert.equal(strings.modeDeny(), '拦截')
+  // 设置页（设置 → 插件 → 安全护栏）
+  assert.equal(strings.settingsTab(), '安全护栏')
+  assert.equal(strings.settingsModeTitle(), '护栏模式')
+  assert.equal(strings.settingsScanTitle(), '检测开关')
+  assert.equal(strings.settingsNotifyTitle(), '告警通知')
+  assert.equal(strings.settingsRulesTitle(), '自定义护栏规则')
+  assert.equal(strings.settingsModeObserveHint(), '只记录告警，不改变工具执行与审批流程')
+  assert.equal(strings.settingsModeAskHint(), '命中时触发 DSH 原生审批，确认后才执行')
+  assert.equal(strings.settingsModeDenyHint(), '命中时直接拦截，工具返回错误')
+  assert.equal(strings.settingsPoisonLabel(), '投毒扫描')
+  assert.equal(strings.settingsInjectionLabel(), '提示注入检测')
+  assert.equal(strings.settingsRulesCount(2), '2 条')
+  assert.ok(strings.settingsRulesHint().includes('侧边栏'), 'customRules 指引到侧边栏面板')
+  assert.ok(strings.settingsRulesHint().includes('安全护栏'))
+  assert.equal(strings.settingsSave(), '保存设置')
+  assert.equal(strings.settingsSaved(), '已保存并生效')
+  assert.equal(strings.settingsSaveFailed(), '保存失败')
+  assert.equal(strings.settingsLoadFailed(), '配置加载失败')
+  assert.equal(strings.settingsRetry(), '重试')
 })
 
 test('i18n：英文文案 + 未知语言/缺失 navigator 回退英文', () => {
@@ -599,6 +705,12 @@ test('i18n：英文文案 + 未知语言/缺失 navigator 回退英文', () => {
   assert.equal(en.strings.emptyRules(), 'No custom rules — click "Add rule" to create one')
   assert.equal(en.strings.droppedRule(2), 'Saved, 2 invalid rule(s) dropped')
   assert.equal(en.strings.ruleHitSource('builtin'), 'builtin', '英文下规则来源原样回显')
+  assert.equal(en.strings.settingsTab(), 'Guard')
+  assert.equal(en.strings.settingsSave(), 'Save settings')
+  assert.equal(en.strings.settingsSaved(), 'Saved and active')
+  assert.equal(en.strings.settingsLoadFailed(), 'Failed to load config')
+  assert.equal(en.strings.settingsRulesCount(2), '2 rule(s)')
+  assert.ok(en.strings.settingsRulesHint().includes('sidebar'), '英文下同样指引到侧边栏')
 
   // 非 zh 语言（如 fr）与 navigator 缺失都回退英文，且不抛异常
   for (const language of ['fr-FR', null]) {
@@ -1265,4 +1377,229 @@ test('ruleSettingsView：busy/error/feedback 三态可同时呈现（纯视图�
   assert.equal(deepText(byClass(tree, 'dsh-my-guard-feedback-error')), '规则加载失败：boom')
   assert.equal(deepText(byClass(tree, 'dsh-my-guard-state')), '加载中…')
   assert.equal(buttonByText(tree, '保存规则').props.disabled, true)
+})
+
+// ══ 9. 设置页（设置 → 插件 → 安全护栏）═══════════════════════════════════
+
+const SETTINGS_LOADED = {
+  mode: 'observe',
+  poisonScan: true,
+  injection: true,
+  customRulesCount: 2,
+  notifyEnabled: false,
+  notifyCooldownMs: 120000,
+}
+
+/** 设置页请求桩：GET /guard/api/config 给初始值，PUT 交给 save 回调。 */
+function settingsFetch({ initial, save } = {}) {
+  return (path, init) => {
+    if (path === '/guard/api/config' && (!init || init.method === undefined)) {
+      return typeof initial === 'function' ? initial() : (initial ?? okValue(SETTINGS_LOADED))
+    }
+    return typeof save === 'function' ? save(init) : (save ?? okValue(SETTINGS_LOADED))
+  }
+}
+
+const settingsCalls = (env) => env.fetchCalls.filter((call) => call.path === '/guard/api/config')
+
+test('GuardSettingsView 渲染：模式三选一、三个开关、冷却秒数、自定义规则只读条数 + 侧边栏指引', async () => {
+  const env = boot({ fetch: settingsFetch() })
+  env.render(env.internals.GuardSettingsView, {})
+  await flush()
+  const tree = env.render(env.internals.GuardSettingsView, {})
+
+  assert.ok(hasClass(tree, 'dsh-my-guard-settings'), '设置页根容器类名')
+  assert.deepEqual(
+    allByClass(tree, 'dsh-my-guard-settings-section-title').map((el) => deepText(el)),
+    ['护栏模式', '检测开关', '告警通知', '自定义护栏规则'],
+  )
+  assert.equal(settingsCalls(env).length, 1, '挂载即拉取一次生效配置')
+  assert.equal(settingsCalls(env)[0].path, '/guard/api/config')
+
+  // 模式三选一 + 当前模式说明跟随取值
+  const select = byClass(tree, 'dsh-my-guard-settings-select')
+  assert.equal(select.props.value, 'observe')
+  assert.deepEqual(
+    select.props.children.map((option) => ({ value: option.props.value, text: deepText(option) })),
+    [
+      { value: 'observe', text: '观察（只告警）' },
+      { value: 'ask', text: '确认（审批）' },
+      { value: 'deny', text: '拦截' },
+    ],
+  )
+  assert.ok(deepText(tree).includes('只记录告警，不改变工具执行与审批流程'), '模式说明跟随当前模式')
+
+  // 三个开关：投毒扫描 / 提示注入检测 / 告警通知
+  const toggles = allByClass(tree, 'dsh-my-guard-settings-toggle')
+  assert.equal(toggles.length, 3)
+  assert.deepEqual(
+    toggles.map((el) => el.props['data-on']),
+    ['true', 'true', 'false'],
+  )
+  assert.equal(toggles[0].props.role, 'switch')
+  assert.equal(toggles[2].props['aria-checked'], 'false')
+
+  // 冷却：毫秒 → 秒（与侧边栏面板同一换算口径）
+  const cooldown = byClass(tree, 'dsh-my-guard-settings-input')
+  assert.equal(cooldown.props.type, 'number')
+  assert.equal(cooldown.props.min, '0')
+  assert.equal(cooldown.props.value, 120)
+
+  // 自定义规则：只读条数 + 指引到侧边栏面板（本页不重复实现 JSON 编辑器）
+  assert.equal(deepText(byClass(tree, 'dsh-my-guard-settings-rules-value')), '2 条')
+  assert.ok(deepText(tree).includes('侧边栏'), 'customRules 指引到侧边栏面板')
+  assert.equal(byClass(tree, 'dsh-my-guard-rule-pattern'), undefined, '设置页不提供正则编辑器')
+  assert.ok(buttonByText(tree, '保存设置'), '提供保存按钮')
+})
+
+test('GuardSettingsView 编辑与保存：草稿回写、毫秒换算、busy 态、响应回写与成功文案', async () => {
+  let saved = null
+  const saveResult = {
+    ...SETTINGS_LOADED,
+    mode: 'deny',
+    poisonScan: false,
+    notifyEnabled: true,
+    notifyCooldownMs: 45000,
+  }
+  const env = boot({
+    fetch: settingsFetch({
+      save: (init) => {
+        saved = JSON.parse(init.body)
+        return okValue(saveResult)
+      },
+    }),
+  })
+  env.render(env.internals.GuardSettingsView, {})
+  await flush()
+  const render = () => env.render(env.internals.GuardSettingsView, {})
+
+  // 模式下拉
+  byClass(render(), 'dsh-my-guard-settings-select').props.onChange({ target: { value: 'deny' } })
+  assert.equal(byClass(render(), 'dsh-my-guard-settings-select').props.value, 'deny')
+  assert.ok(deepText(render()).includes('命中时直接拦截，工具返回错误'), '模式说明随选择变化')
+
+  // 开关点击翻转
+  allByClass(render(), 'dsh-my-guard-settings-toggle')[0].props.onClick()
+  assert.equal(allByClass(render(), 'dsh-my-guard-settings-toggle')[0].props['data-on'], 'false')
+  allByClass(render(), 'dsh-my-guard-settings-toggle')[2].props.onClick()
+  assert.equal(allByClass(render(), 'dsh-my-guard-settings-toggle')[2].props['data-on'], 'true')
+  assert.equal(allByClass(render(), 'dsh-my-guard-settings-toggle')[1].props['data-on'], 'true', '未点击的开关保持')
+
+  // 冷却秒输入（含非法输入回退 0）
+  byClass(render(), 'dsh-my-guard-settings-input').props.onChange({ target: { value: '45' } })
+  assert.equal(byClass(render(), 'dsh-my-guard-settings-input').props.value, 45)
+  byClass(render(), 'dsh-my-guard-settings-input').props.onChange({ target: { value: 'abc' } })
+  assert.equal(byClass(render(), 'dsh-my-guard-settings-input').props.value, 0, '非法输入回退 0')
+  byClass(render(), 'dsh-my-guard-settings-input').props.onChange({ target: { value: '45' } })
+
+  buttonByText(render(), '保存设置').props.onClick()
+  const busyTree = render()
+  assert.equal(buttonByText(busyTree, '保存设置').props.disabled, true, '保存中禁用按钮')
+  assert.equal(deepText(byClass(busyTree, 'dsh-my-guard-settings-status')), '加载中…')
+
+  await flush()
+  const putCall = settingsCalls(env).find((call) => call.init?.method === 'PUT')
+  assert.ok(putCall, '保存走 PUT /guard/api/config')
+  assert.equal(putCall.init.headers['content-type'], 'application/json')
+  assert.deepEqual(saved, {
+    mode: 'deny',
+    poisonScan: false,
+    injection: true,
+    notifyEnabled: true,
+    notifyCooldownMs: 45000,
+  })
+
+  const tree = render()
+  assert.equal(deepText(byClass(tree, 'dsh-my-guard-settings-saved')), '已保存并生效')
+  assert.equal(buttonByText(tree, '保存设置').props.disabled, false, '保存结束后恢复可用')
+  assert.equal(byClass(tree, 'dsh-my-guard-settings-input').props.value, 45, '响应回写冷却秒数')
+  assert.equal(allByClass(tree, 'dsh-my-guard-settings-toggle')[0].props['data-on'], 'false', '响应回写开关')
+  assert.equal(deepText(byClass(tree, 'dsh-my-guard-settings-rules-value')), '2 条', '条数只读展示，不参与保存')
+})
+
+test('GuardSettingsView 失败路径：加载失败可重试、保存失败显示错误', async () => {
+  let loadFail = true
+  const env = boot({
+    fetch: settingsFetch({
+      initial: () => (loadFail ? errValue('config unreadable') : okValue(SETTINGS_LOADED)),
+      save: () => errValue('write failed'),
+    }),
+  })
+  env.render(env.internals.GuardSettingsView, {})
+  await flush()
+  let tree = env.render(env.internals.GuardSettingsView, {})
+  assert.equal(deepText(byClass(tree, 'dsh-my-guard-settings-error')), '配置加载失败')
+  assert.ok(deepText(tree).includes('config unreadable'), '展示失败原因')
+  assert.equal(byClass(tree, 'dsh-my-guard-settings-select'), undefined, '加载失败不渲染半成品表单')
+
+  loadFail = false
+  buttonByText(tree, '重试').props.onClick()
+  // 迷你 hooks 运行时不会自动重渲染：先渲染一次让重试 effect 发起请求，
+  // 等 promise 解析，再渲染拿到表单（与其它用例同一节奏）。
+  env.render(env.internals.GuardSettingsView, {})
+  await flush()
+  tree = env.render(env.internals.GuardSettingsView, {})
+  assert.ok(byClass(tree, 'dsh-my-guard-settings-select'), '重试后渲染表单')
+  assert.equal(byClass(tree, 'dsh-my-guard-settings-error'), undefined, '重试后清除错误')
+
+  buttonByText(tree, '保存设置').props.onClick()
+  await flush()
+  assert.equal(
+    deepText(byClass(env.render(env.internals.GuardSettingsView, {}), 'dsh-my-guard-settings-error')),
+    '保存失败',
+  )
+})
+
+test('guardSettingsView：纯视图函数契约（busy/saved/saveError 三态可同时呈现）', () => {
+  const { internals: t, harness } = boot()
+  const view = {
+    mode: 'ask',
+    poisonScan: false,
+    injection: true,
+    notifyEnabled: false,
+    notifyCooldownSec: 60,
+    customRulesCount: 3,
+    busy: true,
+    saved: true,
+    saveError: true,
+    setMode: () => {},
+    setPoisonScan: () => {},
+    setInjection: () => {},
+    setNotifyEnabled: () => {},
+    setNotifyCooldownSec: () => {},
+    save: async () => {},
+  }
+  const tree = expand(t.guardSettingsView(view), harness)
+  assert.equal(deepText(byClass(tree, 'dsh-my-guard-settings-status')), '加载中…')
+  assert.equal(deepText(byClass(tree, 'dsh-my-guard-settings-saved')), '已保存并生效')
+  assert.equal(deepText(byClass(tree, 'dsh-my-guard-settings-error')), '保存失败')
+  assert.equal(buttonByText(tree, '保存设置').props.disabled, true)
+  assert.equal(byClass(tree, 'dsh-my-guard-settings-select').props.value, 'ask')
+  assert.equal(byClass(tree, 'dsh-my-guard-settings-input').props.value, 60)
+  assert.deepEqual(
+    allByClass(tree, 'dsh-my-guard-settings-toggle').map((el) => el.props['data-on']),
+    ['false', 'true', 'false'],
+  )
+  assert.equal(deepText(byClass(tree, 'dsh-my-guard-settings-rules-value')), '3 条')
+})
+
+test('settings tab id 唯一性：不与其它插件的 settings.plugins.tab id 冲突', () => {
+  const { SETTINGS_TAB_ID } = boot().internals
+  assert.equal(SETTINGS_TAB_ID, 'guard-settings', '页签 id 常量锁定（宿主注册表的 key）')
+  // 宿主契约：registerOptions.id 是 tab key —— 复用别人的 id 会顶掉对方那一格
+  // （静默故障），故从各插件产物里提取已占用 id 做防复发断言。
+  const pluginsDir = new URL('../../', import.meta.url)
+  const taken = new Set()
+  for (const entry of fs.readdirSync(pluginsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === 'dsh-my-guard') continue
+    const bundle = new URL(`${entry.name}/lib/client.js`, pluginsDir)
+    if (!fs.existsSync(bundle)) continue
+    for (const match of fs
+      .readFileSync(bundle, 'utf8')
+      .matchAll(/settings\.plugins\.tab[\s\S]{0,160}?id:\s*'([^']+)'/g)) {
+      taken.add(match[1])
+    }
+  }
+  assert.ok(taken.size > 0, '应检出其它插件已占用的 settings 页签 id（检出 0 说明提取正则失效）')
+  assert.ok(!taken.has(SETTINGS_TAB_ID), `页签 id 与其它插件冲突：${SETTINGS_TAB_ID}`)
 })

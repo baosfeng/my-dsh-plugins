@@ -94,4 +94,43 @@ const strings = {
   effectiveDecision: () => (isZh() ? '合并决策' : 'Effective'),
   emptyRules: () =>
     isZh() ? '暂无自定义规则——点击「添加规则」创建' : 'No custom rules — click "Add rule" to create one',
+  // ── 设置页（设置 → 插件 → 安全护栏，issue #383）─────────────────────
+  settingsTab: () => (isZh() ? '安全护栏' : 'Guard'),
+  settingsModeTitle: () => (isZh() ? '护栏模式' : 'Guard mode'),
+  settingsScanTitle: () => (isZh() ? '检测开关' : 'Detections'),
+  settingsNotifyTitle: () => (isZh() ? '告警通知' : 'Alert notification'),
+  settingsRulesTitle: () => (isZh() ? '自定义护栏规则' : 'Custom guard rules'),
+  settingsModeObserveHint: () =>
+    isZh()
+      ? '只记录告警，不改变工具执行与审批流程'
+      : 'Records alerts only; tool execution and approval flow stay unchanged',
+  settingsModeAskHint: () =>
+    isZh()
+      ? '命中时触发 DSH 原生审批，确认后才执行'
+      : 'Triggers the native DSH approval prompt; runs only after confirmation',
+  settingsModeDenyHint: () =>
+    isZh() ? '命中时直接拦截，工具返回错误' : 'Blocks the tool call outright and returns an error',
+  settingsPoisonLabel: () => (isZh() ? '投毒扫描' : 'Poison scan'),
+  settingsPoisonHint: () =>
+    isZh()
+      ? '检测 dsh plugin add 安装的包内容（可疑脚本 / 密钥 / 恶意依赖）'
+      : 'Scans packages installed via dsh plugin add (suspicious scripts / secrets / malicious deps)',
+  settingsInjectionLabel: () => (isZh() ? '提示注入检测' : 'Injection detection'),
+  settingsInjectionHint: () =>
+    isZh()
+      ? '检测用户消息中的 prompt injection / jailbreak 尝试'
+      : 'Detects prompt-injection / jailbreak attempts in user messages',
+  settingsCooldownHint: () =>
+    isZh() ? '同一类型告警的通知间隔' : 'Minimum interval between notifications of the same alert type',
+  settingsCooldownUnit: () => (isZh() ? '秒' : 's'),
+  settingsRulesCount: (count: number) => (isZh() ? `${count} 条` : `${count} rule(s)`),
+  settingsRulesHint: () =>
+    isZh()
+      ? '正则规则列表在侧边栏「安全护栏」面板编辑保存；本页只显示条数'
+      : 'Edit the regex rule list in the sidebar "Guard" panel; this page only shows the count',
+  settingsSave: () => (isZh() ? '保存设置' : 'Save settings'),
+  settingsSaved: () => (isZh() ? '已保存并生效' : 'Saved and active'),
+  settingsSaveFailed: () => (isZh() ? '保存失败' : 'Save failed'),
+  settingsLoadFailed: () => (isZh() ? '配置加载失败' : 'Failed to load config'),
+  settingsRetry: () => (isZh() ? '重试' : 'Retry'),
 }

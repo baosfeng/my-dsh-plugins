@@ -45,6 +45,7 @@ window.__ModuleLoader__.load({
     /*__PART_PANEL__*/
     /*__PART_STATES__*/
     /*__PART_RULES__*/
+    /*__PART_SETTINGS__*/
     /*__PART_STYLES__*/
 
     // ── 插件体：样式注入 + 原生页签注册 ─────────────────────────────────
@@ -53,21 +54,12 @@ window.__ModuleLoader__.load({
     /** 指南页胶囊与页签标题共用的惰性文案。 */
     const guideEntry = { order: TAB_ORDER, title: () => strings.tabTitle() }
 
-    /** 原生 tab body 席位：适配成 GuardPanel 的 { visible } 契约。 */
-    function GuardTabBody(props) {
-      const info = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
-      return createElement(GuardPanel, { visible: info?.tab?.visible !== false })
-    }
-
-    /** 原生 tab title 席位：宿主给定标题优先，否则回退本插件文案。 */
-    function GuardTabTitle(props) {
-      const info = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
-      return createElement('span', null, info?.tab?.title ?? strings.tabTitle())
-    }
-
     exports.apply = function apply(ctx) {
       // 样式先注入：不依赖任何服务（服务缺失/时序未就绪也不影响面板配色）。
       ctx.effect(() => injectStyles(), 'dsh-my-guard: styles')
+
+      // 设置页页签（设置 → 插件 → 安全护栏）：只依赖 slots，侧边栏服务缺失也照常可用。
+      attachSettingsTab(ctx)
 
       const tabs = ctx.sidebarRightTabs
       const slots = ctx.slots

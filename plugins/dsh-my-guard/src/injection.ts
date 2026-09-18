@@ -6,14 +6,21 @@
  *    返回命中规则列表 [{ id, severity, message }]；
  *  - extractUserText(message)    — 从 user/message 的 data 提取文本；
  *  - attachInjectionListener     — 监听 `session/event` 的 user/message
- *    （过滤插件注入消息），命中规则时逐条记录告警。
+ *    （过滤插件注入消息），命中规则时逐条记录告警。开关 options.injection
+ *    在**监听器内部**实时判断：设置页保存后立刻生效，无需等 patch 热重载
+ *    重新 apply（常驻监听器的开销只是每个事件一次布尔判断）。
  */
 import { INJECTION_RULES } from './constants.js'
-import type { DshContext, Alert, InjectionHit } from './types.js'
+import type { DshContext, Alert, GuardOptions, InjectionHit } from './types.js'
 
 /** 注册提示注入检测监听器；返回 disposer。 */
-export function attachInjectionListener(ctx: DshContext, recordAlert: (alert: Alert) => Alert): () => void {
+export function attachInjectionListener(
+  ctx: DshContext,
+  options: GuardOptions,
+  recordAlert: (alert: Alert) => Alert,
+): () => void {
   return ctx.on('session/event', (session: unknown, event: unknown) => {
+    if (options.injection === false) return
     handleSessionEvent(session, event, recordAlert)
   })
 }

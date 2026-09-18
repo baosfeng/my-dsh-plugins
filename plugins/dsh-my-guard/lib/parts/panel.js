@@ -355,3 +355,17 @@ function GuardPanel(props) {
     createElement(RuleSettings, null),
   )
 }
+// ── 原生页签席位适配（sidebar.right.pane.tab / .title）──────────────────
+// 放在本片段（而非 client.src.js 模板）的原因：模板的 factory 受 eslint
+// max-lines-per-function(70) 约束，宿主适配层与面板同属「渲染」职责，挪到
+// 这里既保持模板精简，也让两个席位的 props 契约紧挨 GuardPanel。
+/** 原生 tab body 席位：适配成 GuardPanel 的 { visible } 契约。 */
+function GuardTabBody(props) {
+  const info = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
+  return createElement(GuardPanel, { visible: info?.tab?.visible !== false })
+}
+/** 原生 tab title 席位：宿主给定标题优先，否则回退本插件文案。 */
+function GuardTabTitle(props) {
+  const info = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
+  return createElement('span', null, info?.tab?.title ?? strings.tabTitle())
+}

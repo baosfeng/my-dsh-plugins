@@ -17,6 +17,8 @@ export default defineConfig({
         'lib/injection.js',
         'lib/store.js',
         'lib/routes.js',
+        'lib/config-api.js',
+        'lib/http.js',
         'lib/fence.js',
         'lib/constants.js',
         'lib/custom-rules.js',

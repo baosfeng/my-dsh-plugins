@@ -62,6 +62,13 @@ description: 插件 UI 统一规范 — 视觉基准、共享图标系统、样�
 | 错误    | 错误色文字，可换行（`white-space: pre-wrap`）                    | 说明失败原因，可操作时给重试入口     |
 | 禁用    | `opacity: .4` + `cursor: default`，不响应 hover                  | 保持原文案，不额外解释               |
 
+## 文案与国际化
+
+- **按当前语言返回单语**，禁止「中文 / English」并排写在同一段（实测：并排把设置行 hint 撑到 4 行、把开关架空，且与走了 i18n 的插件表现不一致）。
+- 文案取值必须是 **惰性函数**（`() => string`）：宿主靠重注册跟随语言切换，硬编码字符串切语言后不会更新（`slots.register` 的 `label` 尤其如此）。
+- 语言判据沿用既有实现：`plugins/*/src/client/parts/i18n.ts` 的 `navigator.language` 前缀判 `zh`，try/catch 兜底英文；能读到 `<html lang>`（宿主 locale 写入）时优先它，避免"浏览器英文 + 宿主中文"错配。
+- 与**插件自身的 DOM 词表替换**冲突时（如 `dsh-think-zh-expand` 的 `Thinking → 思考`）不要直接使用会被改写的全等英文串，改选不被词表命中的措辞，并用测试钉死（`enLabel !== 'Thinking'`）。
+
 ## 交互规范
 
 - **开关组件**：设置类布尔项必须用 `<button role="switch">` + `aria-checked`（或宿主提供的 switch），**禁止**原生 checkbox 与"开/关"文字按钮；开 = `--dsw-alias-state-success-primary`（或品牌色），关 = 中性表面色，过渡走 `--ds-transition-duration-slow`。

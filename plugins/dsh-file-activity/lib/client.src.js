@@ -46,6 +46,8 @@ window.__ModuleLoader__.load({
     const PREVIEW_ID = 'dsh-file-activity-preview'
     const AUTO_OPEN_KEY = 'dsh-file-activity:auto-opened:'
     const AUTO_OPEN_PREF_KEY = 'dsh-file-activity:autoOpen'
+    // Right column default width ratio in percent (issue #384).
+    const RIGHTBAR_PREF_KEY = 'dsh-file-activity:rightbarWidth'
     const POLL_MS = 6000
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
@@ -64,6 +66,7 @@ window.__ModuleLoader__.load({
     __PART_VIEW__
     __PART_PREVIEW_DATA__
     __PART_PREVIEW__
+    __PART_RIGHTBAR_WIDTH__
     __PART_SETTINGS__
     __PART_APPLY__
 

@@ -95,6 +95,12 @@ exports.apply = function apply(ctx) {
   registerPreviewOverlay(ctx, dataStore)
   registerSettingsTab(ctx)
   guarded('previews', () => registerDocumentPreviews(ctx))
+  // Right column default width (issue #384) BEFORE the auto-open below: the
+  // host fills its own 45% default the moment the panel first opens
+  // (stores.ts `rightbar ??= …`), so whoever writes first wins. Auto-opening
+  // our tab opens that panel — applying the width afterwards would always
+  // find a non-null preference and never take effect.
+  ctx.effect(() => installRightbarDefaultWidth(ctx), 'dsh-file-activity: rightbar default width')
   // sidebar operations → host record route
   ctx.effect(() => installFetchInterceptor(), 'dsh-file-activity: sidebar fetch observation')
   // auto-open once per session (default on)

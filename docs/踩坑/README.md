@@ -45,6 +45,7 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 - 监听器 `return` 了值、发送方只拿到 `undefined`（聚合端点给每个插件编造"运行中"）→ `emit` 不收集返回值、`parallel` 不返回结果，收集返回值只能用 `serial`；详见 [宿主运行时陷阱.md](宿主运行时陷阱.md)
 - 长会话 CPU 数百 %、内存 GB 级、磁盘每小时 GB 级写入 → 事件流误用全量快照原语；详见 [插件资源占用.md](插件资源占用.md)
 - 状态文件停在旧内容且不报错，只有 `write blocked … dropping pending snapshot` → 调度器与快照原语双节流互斥；详见 [异步落盘与时序.md](异步落盘与时序.md)
+- 要靠改宿主「硬编码且不持久化」的布局值（如右侧边栏首次打开宽度 45%），而 `ctx.layout` / `ctx.sidebarRight` 都没有宽度面 → 走**已注册 root 席位的 store 座位**：`ctx.slots.entries('root')` 找到 ui-layout 条目 → `entry.store.create()`（handle 形态；AppFrame 订阅的同一实例）→ `actions.setRightbar(px)`。只在快照字段为 `null`（本次运行尚无偏好）时写、非 handle 形态一律不猜调用、全链路 detect 静默降级 + `ctx.slots.subscribe('root', …)` 应对 HMR 重挂载；固化在 `plugins/dsh-file-activity/src/client/parts/rightbar-width.ts`，防回归 `plugins/dsh-file-activity/test/client-rightbar-width.mjs`
 
 ## 验证环境
 

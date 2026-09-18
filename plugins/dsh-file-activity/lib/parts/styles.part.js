@@ -116,7 +116,7 @@ const STYLES = `
   border:1px solid var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent); }
 .dfa-degraded-title { font:var(--dsw-font-xs-13); color:var(--dsw-alias-state-error-primary); }
 .dfa-degraded-hint { margin-top:2px; font:var(--dsw-font-xxs-12); opacity:.8; }
-/* 设置页（settings.plugins.tab）：开关行。 */
+/* 设置页（settings.plugins.tab）：开关行 + 百分比输入行（issue #384）。 */
 .dfa-set { display:flex; flex-direction:column; gap:10px; padding:10px 2px; }
 .dfa-set-title { font:var(--dsw-font-sm-14); }
 .dfa-set-row { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; }
@@ -124,6 +124,12 @@ const STYLES = `
 .dfa-set-label { font:var(--dsw-font-xs-13); }
 .dfa-set-hint { font:var(--dsw-font-xxs-12); opacity:.75; }
 .dfa-set-switch { flex:none; width:16px; height:16px; accent-color:var(--dsw-alias-accent); cursor:pointer; }
+.dfa-set-row-static { cursor:default; }
+.dfa-set-field { flex:none; display:inline-flex; align-items:center; gap:4px; cursor:default; }
+.dfa-set-number { box-sizing:border-box; width:60px; padding:4px 6px; text-align:right; color:inherit;
+  background:transparent; border:1px solid var(--dsw-alias-border-l1); border-radius:6px; font:var(--dsw-font-xs-13); }
+.dfa-set-number:focus { outline:none; border-color:var(--dsw-alias-accent); }
+.dfa-set-unit { font:var(--dsw-font-xs-13); opacity:.75; }
 /* 浮窗正文：Markdown / 代码 / 纯文本 / 图片四种渲染体。 */
 .dfa-fp-md { height:100%; overflow:auto; padding:2px 4px; }
 .dfa-fp-code { height:100%; overflow:auto; }

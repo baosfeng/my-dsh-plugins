@@ -40,6 +40,8 @@ declare const TAB_ID: string
 declare const PREVIEW_ID: string
 declare const AUTO_OPEN_KEY: string
 declare const AUTO_OPEN_PREF_KEY: string
+/** 右侧边栏默认宽度比例的持久化键（issue #384）。 */
+declare const RIGHTBAR_PREF_KEY: string
 declare const POLL_MS: number
 
 // ── CommonJS（apply.ts 使用 exports.inject / exports.apply / exports.__test）
@@ -79,6 +81,36 @@ interface SlotRegisterOptions {
 interface SlotsService {
   inject(slot: string, factory: () => () => void): void
   register(options: SlotRegisterOptions, component: (props: never) => unknown): () => void
+  /** 席位当前条目快照（宿主 SlotRegistry.entries；本插件只读 'root'）。 */
+  entries(key: string): readonly SlotEntrySnapshot[]
+  /** 席位注册变化订阅（宿主 SlotRegistry.subscribe），返回注销函数。 */
+  subscribe(key: string, listener: () => void): () => void
+}
+
+/** 席位条目快照里本插件消费的公开字段（宿主 StoredEntry 的子集）。 */
+interface SlotEntrySnapshot {
+  options?: { key?: string; id?: string; order?: number }
+  /** 子席位声明表；ui-layout 的 root 条目声明 rightbar 等四个子席位。 */
+  children?: Record<string, unknown>
+  /** 声明的 store 座位：handle（有 create()）或 factory（函数形态）。 */
+  store?: SlotStoreSeat | ((...args: never[]) => unknown)
+}
+
+/** store 座位的最小面：create() 给出框架正在用的那一个实例。 */
+interface SlotStoreSeat {
+  create?: (scopeKey?: string) => SlotStoreInstance | null | undefined
+}
+
+/** store 实例的最小面（本插件只读快照 + 调一次 setRightbar）。 */
+interface SlotStoreInstance {
+  getSnapshot?: () => { layoutInfo?: RightbarLayoutInfo } | null | undefined
+  actions?: { setRightbar?: (px: number) => void }
+}
+
+/** 宿主 LayoutState.layoutInfo 里本插件读取的字段。 */
+interface RightbarLayoutInfo {
+  rightbar?: number | null
+  viewportWidth?: number
 }
 
 /** 右栏 tab 类型的静态面（原生注册契约）。 */

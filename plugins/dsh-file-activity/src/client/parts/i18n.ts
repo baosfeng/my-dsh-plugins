@@ -52,6 +52,11 @@ const strings = {
     isZh()
       ? '每个会话首次打开时自动显示本页；关闭后仍可从侧边栏右上角的「新标签页」手动打开。'
       : 'Shows this page once per session. When off, open it from the sidebar new-tab control.',
+  rightbarWidthLabel: () => (isZh() ? '右侧边栏默认宽度' : 'Right sidebar default width'),
+  rightbarWidthHint: () =>
+    isZh()
+      ? '启动时右侧边栏按此比例展开（10%–70%）。手动拖拽过宽度后不再覆盖；宿主最小宽度 300px，窄窗口下实际会更宽。'
+      : 'Opens the right sidebar at this ratio (10%–70%). A manual drag wins for the rest of the run; the host floor is 300px, so narrow windows land wider.',
   tabUnavailable: () => (isZh() ? '侧边栏扩展点不可用' : 'Sidebar extension point unavailable'),
   tabUnavailableHint: () =>
     isZh()

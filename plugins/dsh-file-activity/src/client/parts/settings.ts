@@ -46,9 +46,41 @@ function settingsRow(label: string, hint: string, checked: boolean, onChange: (n
   )
 }
 
-/** Settings panel body: the auto-open switch plus its explanatory hint. */
+/** One labeled percent row (issue #384: the right column's default width). */
+function settingsPercentRow(label: string, hint: string, value: number, onCommit: (raw: unknown) => void): unknown {
+  return createElement(
+    'div',
+    { className: 'dfa-set-row dfa-set-row-static' },
+    createElement(
+      'span',
+      { className: 'dfa-set-text' },
+      createElement('span', { className: 'dfa-set-label' }, label),
+      createElement('span', { className: 'dfa-set-hint' }, hint),
+    ),
+    createElement(
+      'span',
+      { className: 'dfa-set-field' },
+      createElement('input', {
+        type: 'number',
+        className: 'dfa-set-number',
+        min: RIGHTBAR_RATIO_MIN,
+        max: RIGHTBAR_RATIO_MAX,
+        step: 1,
+        value,
+        onChange: (event: { target?: { value?: string } }) => onCommit(event?.target?.value),
+      }),
+      createElement('span', { className: 'dfa-set-unit' }, '%'),
+    ),
+  )
+}
+
+/**
+ * Settings panel body: the auto-open switch, the right-sidebar default width,
+ * and their explanatory hints.
+ */
 function FileActivitySettings(): unknown {
   const [enabled, setEnabled] = useState(autoOpenEnabled)
+  const [ratio, setRatio] = useState(storedRightbarRatio)
   return createElement(
     'div',
     { className: 'dfa-set', 'data-dfa-settings': '1' },
@@ -56,6 +88,12 @@ function FileActivitySettings(): unknown {
     settingsRow(strings.autoOpenLabel(), strings.autoOpenHint(), enabled, (next) => {
       setAutoOpenEnabled(next)
       setEnabled(next)
+    }),
+    settingsPercentRow(strings.rightbarWidthLabel(), strings.rightbarWidthHint(), ratio, (raw) => {
+      // An illegal / out-of-range edit is rejected outright: the control keeps
+      // showing the stored preference instead of a value we would not apply.
+      if (!saveRightbarRatio(raw)) return
+      setRatio(Number(raw))
     }),
   )
 }

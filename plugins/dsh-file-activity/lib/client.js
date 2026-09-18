@@ -46,6 +46,8 @@ window.__ModuleLoader__.load({
     const PREVIEW_ID = 'dsh-file-activity-preview'
     const AUTO_OPEN_KEY = 'dsh-file-activity:auto-opened:'
     const AUTO_OPEN_PREF_KEY = 'dsh-file-activity:autoOpen'
+    // Right column default width ratio in percent (issue #384).
+    const RIGHTBAR_PREF_KEY = 'dsh-file-activity:rightbarWidth'
     const POLL_MS = 6000
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
@@ -104,6 +106,11 @@ const strings = {
     isZh()
       ? '每个会话首次打开时自动显示本页；关闭后仍可从侧边栏右上角的「新标签页」手动打开。'
       : 'Shows this page once per session. When off, open it from the sidebar new-tab control.',
+  rightbarWidthLabel: () => (isZh() ? '右侧边栏默认宽度' : 'Right sidebar default width'),
+  rightbarWidthHint: () =>
+    isZh()
+      ? '启动时右侧边栏按此比例展开（10%–70%）。手动拖拽过宽度后不再覆盖；宿主最小宽度 300px，窄窗口下实际会更宽。'
+      : 'Opens the right sidebar at this ratio (10%–70%). A manual drag wins for the rest of the run; the host floor is 300px, so narrow windows land wider.',
   tabUnavailable: () => (isZh() ? '侧边栏扩展点不可用' : 'Sidebar extension point unavailable'),
   tabUnavailableHint: () =>
     isZh()
@@ -986,7 +993,7 @@ const STYLES = `
   border:1px solid var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent); }
 .dfa-degraded-title { font:var(--dsw-font-xs-13); color:var(--dsw-alias-state-error-primary); }
 .dfa-degraded-hint { margin-top:2px; font:var(--dsw-font-xxs-12); opacity:.8; }
-/* 设置页（settings.plugins.tab）：开关行。 */
+/* 设置页（settings.plugins.tab）：开关行 + 百分比输入行（issue #384）。 */
 .dfa-set { display:flex; flex-direction:column; gap:10px; padding:10px 2px; }
 .dfa-set-title { font:var(--dsw-font-sm-14); }
 .dfa-set-row { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; }
@@ -994,6 +1001,12 @@ const STYLES = `
 .dfa-set-label { font:var(--dsw-font-xs-13); }
 .dfa-set-hint { font:var(--dsw-font-xxs-12); opacity:.75; }
 .dfa-set-switch { flex:none; width:16px; height:16px; accent-color:var(--dsw-alias-accent); cursor:pointer; }
+.dfa-set-row-static { cursor:default; }
+.dfa-set-field { flex:none; display:inline-flex; align-items:center; gap:4px; cursor:default; }
+.dfa-set-number { box-sizing:border-box; width:60px; padding:4px 6px; text-align:right; color:inherit;
+  background:transparent; border:1px solid var(--dsw-alias-border-l1); border-radius:6px; font:var(--dsw-font-xs-13); }
+.dfa-set-number:focus { outline:none; border-color:var(--dsw-alias-accent); }
+.dfa-set-unit { font:var(--dsw-font-xs-13); opacity:.75; }
 /* 浮窗正文：Markdown / 代码 / 纯文本 / 图片四种渲染体。 */
 .dfa-fp-md { height:100%; overflow:auto; padding:2px 4px; }
 .dfa-fp-code { height:100%; overflow:auto; }
@@ -1799,6 +1812,183 @@ function PdfPreview({ src, download, title }) {
 }
 
     'use strict'
+// ── right column default width (issue #384) ───────────────────────────
+//
+// Why this half exists: the host hardcodes the right column's first-open width
+// at 45% of the frame (ui-layout columns.ts RIGHTBAR_DEFAULT_RATIO) and
+// persists nothing, and it exposes NO width face on ctx.layout or
+// ctx.sidebarRight. The one reachable channel is the layout entry's declared
+// store seat: ctx.slots.entries('root') yields the ui-layout registration,
+// whose store.create() returns the very instance AppFrame subscribes to (the
+// framework itself goes through handle.create()).
+//
+// Semantics = DEFAULT, not override: the host fills layoutInfo.rightbar with
+// the 45% value on the panel's first opening (stores.ts rightbar ??= …), so
+// `rightbar === null` means "nothing opened or dragged it in this run". We
+// write ONLY then; a value the user dragged is never touched.
+//
+// Every contract mismatch (no entry, factory-shaped store, no create(), a
+// throwing create()/getSnapshot(), no setRightbar, an unexpected snapshot) is
+// a SILENT skip with at most one debug line. Breaking the tab, the auto-open
+// or the preview over a nicety like this would be far worse than doing
+// nothing, so the whole path is detect-and-degrade.
+/** Allowed ratio range in percent; the ceiling matches the host's own cap (70%). */
+const RIGHTBAR_RATIO_MIN = 10
+const RIGHTBAR_RATIO_MAX = 70
+/** Ratio used when nothing valid is stored: the issue #384 default. */
+const RIGHTBAR_RATIO_DEFAULT = 20
+/** One-shot skip log gate, so a churning root seat cannot flood the console. */
+let rightbarSkipLogged = false
+/** Debug-only skip report; never throws, never warns (degradation is silent). */
+function logRightbarSkip(reason, error) {
+  if (rightbarSkipLogged) return
+  rightbarSkipLogged = true
+  try {
+    if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+      console.debug('[dsh-file-activity] 右侧边栏默认宽度未应用: ' + reason, error ?? '')
+    }
+  } catch {
+    // logging must never break activation
+  }
+}
+/** Whether a raw value is a usable percent ratio (finite, inside the range). */
+function rightbarRatioValid(value) {
+  const ratio = Number(value)
+  return Number.isFinite(ratio) && ratio >= RIGHTBAR_RATIO_MIN && ratio <= RIGHTBAR_RATIO_MAX
+}
+/** Persisted ratio, falling back to the default for missing/illegal values. */
+function storedRightbarRatio() {
+  let raw
+  try {
+    raw = window.localStorage.getItem(RIGHTBAR_PREF_KEY)
+  } catch {
+    return RIGHTBAR_RATIO_DEFAULT
+  }
+  if (raw === null || !rightbarRatioValid(raw)) return RIGHTBAR_RATIO_DEFAULT
+  return Number(raw)
+}
+/** Persist a ratio; an illegal value is rejected instead of poisoning storage. */
+function saveRightbarRatio(value) {
+  if (!rightbarRatioValid(value)) return false
+  try {
+    window.localStorage.setItem(RIGHTBAR_PREF_KEY, String(Number(value)))
+  } catch {
+    // storage unavailable (private mode): the control still shows the value
+  }
+  return true
+}
+/**
+ * The entry's store seat in HANDLE form (create() present), or null.
+ * A factory-shaped seat is deliberately not guessed at: calling it would build
+ * a second, unsubscribed instance instead of the one AppFrame renders.
+ * @param entry - one 'root' seat snapshot.
+ * @returns the handle-shaped seat, or null.
+ */
+function rightbarStoreSeat(entry) {
+  const store = entry && entry.store
+  if (!store || typeof store !== 'object') return null
+  if (typeof store.create !== 'function') return null
+  return store
+}
+/**
+ * The instance's layoutInfo when it is writable, or null.
+ * @param instance - handle-created store instance.
+ * @returns layoutInfo, or null when the shape is foreign or a width exists.
+ */
+function rightbarWritableInfo(instance) {
+  if (typeof instance.getSnapshot !== 'function') return null
+  const snapshot = instance.getSnapshot()
+  const info = snapshot && snapshot.layoutInfo
+  if (!info || typeof info !== 'object') return null
+  // NULL is the only green light: any number means this run already owns a
+  // width (the host's own 45% first-open default, or a user drag).
+  if (info.rightbar !== null) return null
+  return info
+}
+/**
+ * Turn a handle-created instance into a write target, or null.
+ * @param instance - handle-created store instance.
+ * @returns the write target, or null.
+ */
+function rightbarTargetFromInstance(instance) {
+  if (!instance) return null
+  const info = rightbarWritableInfo(instance)
+  if (!info) return null
+  if (!instance.actions || typeof instance.actions.setRightbar !== 'function') return null
+  return { setRightbar: instance.actions.setRightbar, info }
+}
+/**
+ * Resolve the ui-layout instance behind the 'root' seat, or null when the host
+ * contract does not match. The snapshot shape is the test: writing the width
+ * goes through exactly that shape, so a shape we cannot read is a channel we
+ * must not use.
+ * @param ctx - client root context.
+ * @returns the write target, or null (caller stays silent).
+ */
+function rightbarLayoutTarget(ctx) {
+  const slots = ctx && ctx.slots
+  if (!slots || typeof slots.entries !== 'function') {
+    logRightbarSkip('ctx.slots.entries 不可用')
+    return null
+  }
+  const entries = slots.entries('root') || []
+  for (const entry of entries) {
+    try {
+      const target = rightbarTargetFromInstance(rightbarStoreSeat(entry)?.create?.())
+      if (target) return target
+    } catch (error) {
+      logRightbarSkip('读取 root 席位 store 失败', error)
+    }
+  }
+  logRightbarSkip('未找到可写的 ui-layout root 席位')
+  return null
+}
+/**
+ * Apply the configured default width once, if the panel has no width yet.
+ * @param ctx - client root context.
+ */
+function applyRightbarDefaultWidth(ctx) {
+  try {
+    const target = rightbarLayoutTarget(ctx)
+    if (!target) return
+    // The snapshot's own viewportWidth is the value the host's clamp uses, so
+    // prefer it; window.innerWidth only covers a snapshot that omits it.
+    const viewport = Number.isFinite(target.info.viewportWidth) ? target.info.viewportWidth : window.innerWidth
+    if (!Number.isFinite(viewport)) {
+      logRightbarSkip('viewportWidth 不可用')
+      return
+    }
+    const px = Math.round(viewport * (storedRightbarRatio() / 100))
+    if (!Number.isFinite(px) || px <= 0) {
+      logRightbarSkip('计算出的宽度非法')
+      return
+    }
+    target.setRightbar(px)
+  } catch (error) {
+    logRightbarSkip('应用宽度失败', error)
+  }
+}
+/**
+ * Install the preference: apply once at activation, then re-resolve the
+ * instance after a 'root' seat change (HMR / remount must not keep a stale
+ * instance). The returned disposer releases the subscription with the fiber.
+ * @param ctx - client root context.
+ * @returns the subscription disposer, when one was taken.
+ */
+function installRightbarDefaultWidth(ctx) {
+  applyRightbarDefaultWidth(ctx)
+  const slots = ctx && ctx.slots
+  if (!slots || typeof slots.subscribe !== 'function') return undefined
+  try {
+    const dispose = slots.subscribe('root', () => applyRightbarDefaultWidth(ctx))
+    return typeof dispose === 'function' ? () => dispose() : undefined
+  } catch (error) {
+    logRightbarSkip('订阅 root 席位失败', error)
+    return undefined
+  }
+}
+
+    'use strict'
 // ── settings tab (replaces 迁移前的 settings.pluginToggles) ────
 //
 // The host renders no per-plugin toggle UI for third-party tabs, so this
@@ -1843,9 +2033,40 @@ function settingsRow(label, hint, checked, onChange) {
     }),
   )
 }
-/** Settings panel body: the auto-open switch plus its explanatory hint. */
+/** One labeled percent row (issue #384: the right column's default width). */
+function settingsPercentRow(label, hint, value, onCommit) {
+  return createElement(
+    'div',
+    { className: 'dfa-set-row dfa-set-row-static' },
+    createElement(
+      'span',
+      { className: 'dfa-set-text' },
+      createElement('span', { className: 'dfa-set-label' }, label),
+      createElement('span', { className: 'dfa-set-hint' }, hint),
+    ),
+    createElement(
+      'span',
+      { className: 'dfa-set-field' },
+      createElement('input', {
+        type: 'number',
+        className: 'dfa-set-number',
+        min: RIGHTBAR_RATIO_MIN,
+        max: RIGHTBAR_RATIO_MAX,
+        step: 1,
+        value,
+        onChange: (event) => onCommit(event?.target?.value),
+      }),
+      createElement('span', { className: 'dfa-set-unit' }, '%'),
+    ),
+  )
+}
+/**
+ * Settings panel body: the auto-open switch, the right-sidebar default width,
+ * and their explanatory hints.
+ */
 function FileActivitySettings() {
   const [enabled, setEnabled] = useState(autoOpenEnabled)
+  const [ratio, setRatio] = useState(storedRightbarRatio)
   return createElement(
     'div',
     { className: 'dfa-set', 'data-dfa-settings': '1' },
@@ -1853,6 +2074,12 @@ function FileActivitySettings() {
     settingsRow(strings.autoOpenLabel(), strings.autoOpenHint(), enabled, (next) => {
       setAutoOpenEnabled(next)
       setEnabled(next)
+    }),
+    settingsPercentRow(strings.rightbarWidthLabel(), strings.rightbarWidthHint(), ratio, (raw) => {
+      // An illegal / out-of-range edit is rejected outright: the control keeps
+      // showing the stored preference instead of a value we would not apply.
+      if (!saveRightbarRatio(raw)) return
+      setRatio(Number(raw))
     }),
   )
 }
@@ -1967,6 +2194,12 @@ exports.apply = function apply(ctx) {
   registerPreviewOverlay(ctx, dataStore)
   registerSettingsTab(ctx)
   guarded('previews', () => registerDocumentPreviews(ctx))
+  // Right column default width (issue #384) BEFORE the auto-open below: the
+  // host fills its own 45% default the moment the panel first opens
+  // (stores.ts `rightbar ??= …`), so whoever writes first wins. Auto-opening
+  // our tab opens that panel — applying the width afterwards would always
+  // find a non-null preference and never take effect.
+  ctx.effect(() => installRightbarDefaultWidth(ctx), 'dsh-file-activity: rightbar default width')
   // sidebar operations → host record route
   ctx.effect(() => installFetchInterceptor(), 'dsh-file-activity: sidebar fetch observation')
   // auto-open once per session (default on)

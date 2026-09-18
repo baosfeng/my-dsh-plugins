@@ -27,6 +27,7 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 - 本地 pre-push 门禁「假红」：同一个插件 `npm test` 在 verify / release.mjs 里失败、单独跑却全绿，`release checks` 报 `单步超时 120.0s` → 先 `uptime` 看负载再判缺陷（实测批量发版把这台机 load 5 分钟均值压到 35+，依赖真实时钟的用例——如 webhook 重试链 1s+2s+4s——墙钟随之膨胀）；用 `VERIFY_CONCURRENCY=1` + 放宽 `VERIFY_STEP_TIMEOUT` / `VERIFY_TIMEOUT` 串行复跑，仍红才按真实失败处理
 - Dependabot 面板 `0 条 open`、`ghops actions logs` 少一个失败 job → 只列 open 与归档残缺都不等于「不存在」，要显式查 closed 告警与 jobs 清单
 - 本地门禁全绿、CI 首跑就红（报某引用路径不存在）→ 大小写不敏感的文件系统掩盖了真实文件名差异，判定必须枚举真实目录项
+- 隔离实例里插件「少了 / client 不进 manifest / 设置页签不出现 / API 404」而代码与产物都正常 → 生产 profile 的 `cordis.patch.yml` 写着 `- id: <插件>` + `disabled: true`（与 `.dsh-market/state.json` 是**两处独立禁用来源**，`verify-real-profile.mjs` 只剥离后者，于是被复刻进隔离实例）；验证前 `grep -B1 'disabled: true' <隔离 profile>/cordis.patch.yml`，把待验插件改成 `false` 后 `watchUserPatches` 热重载即生效（实测改后页签立即出现）
 - `GLIBC_2.33 not found`（jscpd 门禁恒红且没有任何 clone 清单）→ 先判「工具没跑起来」而不是重复超标；glibc < 2.34 回退纯 JS 的 4.x
 - `chmod 0555` 后仍写入成功、降级用例捕获到的 warn 为 0 → root 无视权限位，改注入 `EISDIR`／`ENOTDIR`；例见 `plugins/dsh-my-plugin-manager/test/host-api.mjs`
 - `npm audit` 报 0 漏洞而实际有 moderate → 镜像源没有 advisories 端点；固化在 `scripts/lib/npm-audit.mjs`、`scripts/test/npm-audit.test.mjs`

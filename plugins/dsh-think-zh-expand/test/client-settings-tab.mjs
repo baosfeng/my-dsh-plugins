@@ -17,7 +17,10 @@ import { test } from 'vitest'
  *     界面中文化照旧挂载 —— 设置页不得挤掉本插件的核心能力；
  *  5. 视图行为：加载 → 开关显示当前值 → 点击翻转 → 保存（PUT body 正确）→
  *     立即生效 + 「已保存」提示；保存失败 / 加载失败都有明确提示（不静默）；
- *  6. 文案双语（中文 + 英文对照，沿用本插件界面中文化的英中对照风格）。
+ *  6. **文案按当前语言返回单语**（与 dsh-my-guard / dsh-my-observability 的
+ *     设置页同一惯例）：label 惰性 + 跟随 navigator.language；中文 locale 下
+ *     hint 压到一行且**不含英文对照**（「中文 (English)」并排写法是回归），
+ *     英文 locale 下只有英文、不含中文。
  *
  * 断言对象是构建产物 lib/client.js（CI 只跑产物，不跑构建）。
  */
@@ -85,6 +88,15 @@ global.document = {
 }
 // 刻意**不**提供 MutationObserver：界面中文化的 DOM 扫描链路由 client-render.mjs
 // 覆盖，本文件只断言它的 effect 仍挂载（installUiLocalize 在无 observer 时是 no-op）。
+
+// ── locale 控制：设置页文案按浏览器语言返回单语 ───────────────────────────
+// 判据与本仓库设置页惯例一致（dsh-my-guard / dsh-my-observability 的
+// navigator.language 前缀 zh）。默认中文（本插件的中文界面基准），英文用例
+// 显式切换并在 finally 复位；文案是惰性函数，所以**切完语言再取**才有效。
+function setLocale(lang) {
+  Object.defineProperty(globalThis, 'navigator', { value: { language: lang }, configurable: true, writable: true })
+}
+setLocale('zh-CN')
 
 // ── 载入产物 bundle ───────────────────────────────────────────────────────
 let registered = null
@@ -196,10 +208,27 @@ test('设置页 tab 注册：id 精确唯一、slots 未 active 时也能注册�
     '页签 id 精确 = think-zh-expand-settings（不与其它插件撞名）',
   )
   assert.equal(typeof state.tab.options.order, 'number', 'order 为数字')
+  assert.equal(typeof state.tab.options.label, 'function', 'label 是惰性函数（宿主靠重注册跟随语言切换）')
   const label = state.tab.options.label()
   assert.equal(typeof label, 'string', 'label 惰性求值返回字符串')
-  assert.ok(label.includes('思考'), 'label 含插件语义「思考」：' + label)
+  assert.equal(label, '思考增强', '中文 locale 下页签 label 单语：' + label)
   assert.equal(typeof state.tab.component, 'function', '页签组件是函数')
+
+  // 同一份注册、同一个惰性函数重取 → 跟随语言（无模块级缓存）
+  setLocale('en-US')
+  try {
+    const enLabel = state.tab.options.label()
+    assert.equal(enLabel, 'Thinking blocks', '英文 locale 下页签 label 单语：' + enLabel)
+    assert.ok(!/[\u4e00-\u9fff]/.test(enLabel), '英文页签 label 不含中文：' + enLabel)
+    // 不能用 'Thinking'：本插件自己的界面中文化词表有 'Thinking' → '思考'
+    // （installUiLocalize 全局扫 document.body，宿主渲染的页签文字会被改写），
+    // 英文界面下页签会变成中文 —— 故取不与词表全等的名称。
+    assert.notEqual(enLabel, 'Thinking', '英文页签名不得等于中文化词表键（会被改写成「思考」）')
+    assert.equal(exportsObj.zhCardTitle(enLabel), null, '英文页签 label 不被卡片标题词表命中')
+  } finally {
+    setLocale('zh-CN')
+  }
+  assert.equal(state.tab.options.label(), '思考增强', '复位中文后 label() 又返回中文（惰性、无缓存）')
 })
 
 test('设置页样式走共享 installStyles，类名前缀与宿主变量（不硬编码色值）', () => {
@@ -325,7 +354,7 @@ test('视图：开关显示当前值，点击翻转后保存成功（PUT body �
   assert.equal(exportsObj.getDefaultExpanded(), false, '保存即生效：client 生效值同步为新值')
 })
 
-test('视图：保存失败有提示（不静默），文案双语且说明「关闭后仍可手动展开」', async () => {
+test('视图：保存失败有提示（不静默），中文 locale 下开关行文案单语且压到一行', async () => {
   const { slots, state } = makeSlots()
   exportsObj.apply(makeBootCtx({ slots }))
   stubFetch((method) => {
@@ -344,7 +373,43 @@ test('视图：保存失败有提示（不静默），文案双语且说明「�
   assert.ok(hint, '有说明文案')
   const hintText = textOf(collect(hint))
   assert.ok(hintText.includes('展开'), '说明文案写清开关语义：' + hintText)
-  assert.ok(/expand/i.test(hintText), '说明文案含英文对照（双语）：' + hintText)
+  assert.ok(hintText.includes('手动展开'), '保留关键信息「关闭后仍可手动展开」：' + hintText)
+  assert.ok(!hintText.includes('Expand thinking blocks'), '中文 locale 下 hint 不得含英文对照：' + hintText)
+  assert.ok(!/[A-Za-z]/.test(hintText), '中文 locale 下 hint 不含任何英文（中英并排防回归）：' + hintText)
+  assert.ok(hintText.length <= 35, '中文 hint 压到一行（≤35 字），实测 ' + hintText.length + ' 字：' + hintText)
+  const labelEl = findByClass(failed, 'dsh-think-zh-expand-settings-label')
+  assert.equal(textOf(collect(labelEl)), '思考默认展开', '中文 label 单语（无英文括注）')
+})
+
+test('视图：英文 locale（navigator.language=en）下开关行与按钮文案只英文', async () => {
+  const { slots, state } = makeSlots()
+  exportsObj.apply(makeBootCtx({ slots }))
+  stubFetch((method) =>
+    method === 'GET' ? jsonRes({ ok: true, value: { defaultExpanded: true } }) : jsonRes({ ok: true }),
+  )
+  setLocale('en-US')
+  try {
+    const view = await renderSettings(state.tab.component)
+    const labelEl = findByClass(view.nodes, 'dsh-think-zh-expand-settings-label')
+    const hintEl = findByClass(view.nodes, 'dsh-think-zh-expand-settings-hint')
+    const labelText = textOf(collect(labelEl))
+    assert.equal(labelText, 'Expand thinking by default', '英文 label 单语：' + labelText)
+    assert.ok(!/[\u4e00-\u9fff]/.test(labelText), '英文 label 不含中文：' + labelText)
+    const hintText = textOf(collect(hintEl))
+    assert.ok(/expand/i.test(hintText), '英文 hint 写清展开语义：' + hintText)
+    assert.ok(!/[\u4e00-\u9fff]/.test(hintText), '英文 locale 下 hint 不含中文：' + hintText)
+    assert.ok(hintText.includes('title'), '英文 hint 保留「点标题仍可手动展开」：' + hintText)
+    // 语义两层缺一不可：① 开关「默认开」 ②「关闭后」仍可手动展开。
+    // 回归样式（已被下面的断言挡住）：'Thinking blocks start expanded; click the title to …'
+    // —— 前半说已展开、后半无条件地说去点标题展开，自相矛盾且丢了「关闭后」这个前提。
+    assert.ok(/by default/i.test(hintText), '英文 hint 说明「默认展开」：' + hintText)
+    assert.ok(/\boff\b/i.test(hintText), '英文 hint 保留「关闭开关后」这个前提：' + hintText)
+    assert.ok(!/start expanded/i.test(hintText), '英文 hint 不得用「已展开 + 无条件点标题」的自相矛盾句式：' + hintText)
+    const saveText = textOf(collect(findByClass(view.nodes, 'dsh-think-zh-expand-settings-btn')))
+    assert.equal(saveText, 'Save', '英文保存按钮单语（不再「保存 (Save)」）：' + saveText)
+  } finally {
+    setLocale('zh-CN')
+  }
 })
 
 test('视图：配置加载失败有提示与重试（区分 404 = 路由未注册）', async () => {

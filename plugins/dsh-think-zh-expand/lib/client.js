@@ -585,11 +585,52 @@ const THINK_SETTINGS_STYLES = `
 .dsh-think-zh-expand-settings-saved{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-success-primary)}
 .dsh-think-zh-expand-settings-error{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}
 `;
-// 文案双语：中文在前（本插件的界面语言），英文对照在后（沿用界面中文化
-// 词表的「英中对照」思路，英文使用者也能读懂设置项含义）。
-/** 开关行文案。 */
-const THINK_SETTINGS_LABEL = '思考默认展开';
-const THINK_SETTINGS_HINT = '思考块默认展开显示；关闭后仍可点击标题手动展开 (Expand thinking blocks by default; you can still expand them by clicking the title)';
+// ── i18n（浏览器语言判定）────────────────────────────────────────────
+// 判据照抄本仓库设置页惯例（dsh-my-guard / dsh-my-observability 的
+// parts/i18n.ts）：navigator.language 前缀 zh；取不到时按英文。
+//
+// **文案一律写成惰性函数**（宿主 `settings.plugins.tab` 的 label 靠重注册跟随
+// 语言切换），且**每种语言只出一份**——「中文 (English)」并排塞进同一段会让
+// 设置行视觉臃肿，是本仓库已纠正的写法（原 THINK_SETTINGS_HINT 即此形态）。
+function isZh() {
+    try {
+        const lang = (navigator.language || 'en').toLowerCase();
+        return lang.startsWith('zh');
+    }
+    catch {
+        return false;
+    }
+}
+/** 设置页文案（按当前语言返回单语；每次调用重新判定语言，不缓存）。 */
+const THINK_SETTINGS_STRINGS = {
+    // 页签名**不能**叫 'Thinking'：本插件自己的界面中文化词表（index.ts 的
+    // ZH_TABLE）有 'Thinking' → '思考' 且全局扫 document.body，宿主渲染出的
+    // 页签文字会被改写成中文——英文界面下页签反而显示中文。
+    tabLabel: () => (isZh() ? '思考增强' : 'Thinking blocks'),
+    rowLabel: () => (isZh() ? '思考默认展开' : 'Expand thinking by default'),
+    // 英文 hint 语义两层：① 开关默认开 ②「关闭后」点标题仍可手动展开。刻意不用
+    // 「已展开 + 无条件去点标题展开」的句式（自相矛盾，且丢了「关闭后」这个前提）。
+    rowHint: () => isZh()
+        ? '思考块默认展开；关闭后仍可点击标题手动展开'
+        : 'On by default; when turned off you can still expand a thinking block by clicking its title',
+    loading: () => (isZh() ? '加载中…' : 'Loading…'),
+    loadFailed: () => (isZh() ? '配置加载失败' : 'Failed to load settings'),
+    retry: () => (isZh() ? '重试' : 'Retry'),
+    save: () => (isZh() ? '保存' : 'Save'),
+    saved: () => (isZh() ? '已保存' : 'Saved'),
+    saveFailed: () => (isZh() ? '保存失败' : 'Save failed'),
+    errorRouteMissing: () => isZh()
+        ? '服务端插件未加载：' + THINK_SETTINGS_API + ' 不存在（请确认已安装并启用 dsh-think-zh-expand 后重启 DSH）'
+        : 'Server plugin not loaded: ' +
+            THINK_SETTINGS_API +
+            ' is missing (install and enable dsh-think-zh-expand, then restart DSH)',
+    errorForbidden: () => isZh()
+        ? '请求被安全围栏拒绝（403）：请检查网络/代理设置'
+        : 'Rejected by the security fence (403): check network/proxy settings',
+    errorNetwork: () => isZh()
+        ? '网络错误或响应异常：请检查 DSH 服务是否正常运行'
+        : 'Network error or unexpected response: check that the DSH server is running',
+};
 /** 开关行（布尔配置项）。 */
 function ThinkSettingsToggleRow({ label, hint, on, onChange, }) {
     return createElement('div', { className: 'dsh-think-zh-expand-settings-row' }, createElement('div', { className: 'dsh-think-zh-expand-settings-info' }, createElement('div', { className: 'dsh-think-zh-expand-settings-label' }, label), createElement('div', { className: 'dsh-think-zh-expand-settings-hint' }, hint)), createElement('div', {
@@ -617,16 +658,15 @@ function applySavedValue(value) {
 }
 /** 加载失败提示：区分 404（服务端插件未加载）/ 403（安全围栏）/ 网络异常。 */
 function thinkSettingsErrorHint(errorKind) {
-    if (errorKind === 'http:404') {
-        return '服务端插件未加载：' + THINK_SETTINGS_API + ' 不存在（请确认已安装并启用 dsh-think-zh-expand 后重启 DSH）';
-    }
+    if (errorKind === 'http:404')
+        return THINK_SETTINGS_STRINGS.errorRouteMissing();
     if (errorKind === 'http:403')
-        return '请求被安全围栏拒绝（403）：请检查网络/代理设置';
-    return '网络错误或响应异常：请检查 DSH 服务是否正常运行';
+        return THINK_SETTINGS_STRINGS.errorForbidden();
+    return THINK_SETTINGS_STRINGS.errorNetwork();
 }
 /** 配置加载失败视图：失败原因（http 状态 / 网络）+ 针对性提示 + 重试。 */
 function ThinkSettingsLoadError({ errorKind, onRetry }) {
-    return createElement('div', { className: 'dsh-think-zh-expand-settings' }, createElement('div', { className: 'dsh-think-zh-expand-settings-error' }, '配置加载失败 (Failed to load settings)'), createElement('div', { className: 'dsh-think-zh-expand-settings-status' }, thinkSettingsErrorHint(errorKind)), createElement('div', { className: 'dsh-think-zh-expand-settings-actions' }, createElement('button', { className: 'dsh-think-zh-expand-settings-btn', onClick: onRetry }, '重试 (Retry)')));
+    return createElement('div', { className: 'dsh-think-zh-expand-settings' }, createElement('div', { className: 'dsh-think-zh-expand-settings-error' }, THINK_SETTINGS_STRINGS.loadFailed()), createElement('div', { className: 'dsh-think-zh-expand-settings-status' }, thinkSettingsErrorHint(errorKind)), createElement('div', { className: 'dsh-think-zh-expand-settings-actions' }, createElement('button', { className: 'dsh-think-zh-expand-settings-btn', onClick: onRetry }, THINK_SETTINGS_STRINGS.retry())));
 }
 /** 拉取当前配置并回填视图（成功 / 失败都落到状态上，不静默）。 */
 function loadThinkSettings(apply, setLoading, setErrorKind) {
@@ -680,18 +720,20 @@ function ThinkSettingsView() {
         load();
     }, []);
     if (loading) {
-        return createElement('div', { className: 'dsh-think-zh-expand-settings' }, createElement('div', { className: 'dsh-think-zh-expand-settings-status' }, '加载中… (Loading…)'));
+        return createElement('div', { className: 'dsh-think-zh-expand-settings' }, createElement('div', { className: 'dsh-think-zh-expand-settings-status' }, THINK_SETTINGS_STRINGS.loading()));
     }
     if (errorKind !== '') {
         return createElement(ThinkSettingsLoadError, { errorKind, onRetry: load });
     }
     return createElement('div', { className: 'dsh-think-zh-expand-settings' }, createElement(ThinkSettingsToggleRow, {
-        label: THINK_SETTINGS_LABEL,
-        hint: THINK_SETTINGS_HINT,
+        label: THINK_SETTINGS_STRINGS.rowLabel(),
+        hint: THINK_SETTINGS_STRINGS.rowHint(),
         on: value,
         onChange: setValue,
-    }), createElement('div', { className: 'dsh-think-zh-expand-settings-actions' }, createElement('button', { className: 'dsh-think-zh-expand-settings-btn', onClick: () => saveThinkSettings(value, setSaved, setFailed) }, '保存 (Save)'), saved ? createElement('span', { className: 'dsh-think-zh-expand-settings-saved' }, '已保存 (Saved)') : null, failed
-        ? createElement('span', { className: 'dsh-think-zh-expand-settings-error' }, '保存失败 (Save failed)')
+    }), createElement('div', { className: 'dsh-think-zh-expand-settings-actions' }, createElement('button', { className: 'dsh-think-zh-expand-settings-btn', onClick: () => saveThinkSettings(value, setSaved, setFailed) }, THINK_SETTINGS_STRINGS.save()), saved
+        ? createElement('span', { className: 'dsh-think-zh-expand-settings-saved' }, THINK_SETTINGS_STRINGS.saved())
+        : null, failed
+        ? createElement('span', { className: 'dsh-think-zh-expand-settings-error' }, THINK_SETTINGS_STRINGS.saveFailed())
         : null));
 }
 /**
@@ -713,7 +755,8 @@ function attachSettingsTab(ctx) {
             name: 'settings.plugins.tab',
             id: THINK_SETTINGS_TAB_ID,
             order: 92,
-            label: () => '思考增强',
+            // 惰性：宿主靠重注册跟随语言切换，这里每次取都按当前 navigator.language 判定。
+            label: () => THINK_SETTINGS_STRINGS.tabLabel(),
         }, ThinkSettingsView));
         return undefined;
     }, 'dsh-think-zh-expand: settings tab registration');

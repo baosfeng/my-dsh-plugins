@@ -34,6 +34,7 @@ import {
   normalizeConfigPayload,
 } from '../lib/index.js'
 import { currentProfile, extractConfig, patchFileOf } from 'dsh-shared'
+import { createHostCtx } from './helpers/host-ctx.mjs'
 
 const CONFIG_PATH = `${CONFIG_ROUTE_PREFIX}/config`
 
@@ -97,20 +98,15 @@ async function call(handler, request) {
   }
 }
 
-/** 构造带 webServer 的 ctx（捕获注册的路由）并 apply，返回路由与 patch 路径。 */
-function boot(config, { home, patchFile } = {}) {
+/** 用真实契约宿主桩（helpers/host-ctx.mjs）apply，返回注册的路由与 patch 路径。 */
+async function boot(config, { home, patchFile } = {}) {
   const env = home === undefined ? tempHome() : { home, patchFile, restore: () => {} }
-  const routes = []
-  const ctx = {
-    systemPrompt: { section: () => () => {} },
-    logger: { info: () => {}, warn: () => {}, error: () => {} },
-    get: (name) => (name === 'webServer' ? { register: (route) => (routes.push(route), () => {}) } : undefined),
-    effect: (fn) => fn(),
-  }
-  apply(ctx, config)
-  const api = routes[0]
-  assert.ok(api, 'apply 必须注册配置路由')
-  return { api, routes, patchFile: env.patchFile, home: env.home }
+  const host = createHostCtx({ webServer: 'ready' })
+  apply(host.ctx, config)
+  await host.settle()
+  const api = host.routes[0]
+  assert.ok(api, 'apply 必须注册配置路由（经 ctx.inject 局部等待服务、注册落常驻 root）')
+  return { api, routes: host.routes, patchFile: env.patchFile, home: env.home }
 }
 
 /** 写盘后读回该行 config（模拟 loader 重新解析 patch 文件）。 */
@@ -136,7 +132,7 @@ test('normalizeConfigPayload：只认布尔，其余（含缺失 / 字符串 / �
 })
 
 test('PUT 合法布尔：写回 profile patch（行 id = think-zh-expand）并立即热生效', async () => {
-  const { api, patchFile } = boot({ defaultExpanded: true })
+  const { api, patchFile } = await boot({ defaultExpanded: true })
   const before = await call(api.handler, fakeRequest())
   assert.deepEqual(before.json.value, { defaultExpanded: true }, 'GET 初始为 true')
 
@@ -173,7 +169,7 @@ test('PUT 合并该行已有键：不抹掉用户手写的其它配置项，也�
       '',
     ].join('\n'),
   )
-  const { api } = boot(undefined, { home: env.home, patchFile: env.patchFile })
+  const { api } = await boot(undefined, { home: env.home, patchFile: env.patchFile })
   const saved = await call(api.handler, fakeRequest({ method: 'PUT', body: JSON.stringify({ defaultExpanded: true }) }))
   assert.equal(saved.status, 200, '合法 payload → 200')
   const text = readFileSync(env.patchFile, 'utf8')
@@ -190,7 +186,7 @@ test('该行尚不存在（patch 里只有别的插件行）时追加新条目�
   const env = tempHome()
   mkdirSync(join(env.home, 'profiles', currentProfile()), { recursive: true })
   writeFileSync(env.patchFile, ['- id: some-other-plugin', '  config:', '    keep: 1', ''].join('\n'))
-  const { api } = boot(undefined, { home: env.home, patchFile: env.patchFile })
+  const { api } = await boot(undefined, { home: env.home, patchFile: env.patchFile })
   const saved = await call(
     api.handler,
     fakeRequest({ method: 'PUT', body: JSON.stringify({ defaultExpanded: false }) }),
@@ -202,7 +198,7 @@ test('该行尚不存在（patch 里只有别的插件行）时追加新条目�
 })
 
 test('行为断言：非法 payload → 400 且不落盘（空 body / null / 数组 / 标量 / 坏 JSON）', async () => {
-  const { api, patchFile } = boot(undefined)
+  const { api, patchFile } = await boot(undefined)
   for (const body of ['', 'null', '[]', '"x"', '42', 'not json']) {
     const res = await call(api.handler, fakeRequest({ method: 'PUT', body }))
     assert.equal(res.status, 400, `body=${JSON.stringify(body)} → 400`)
@@ -212,7 +208,7 @@ test('行为断言：非法 payload → 400 且不落盘（空 body / null / 数
 })
 
 test('非法字段值回退默认 true 写盘（脏值绝不落盘）+ 重启闭环读到该值', async () => {
-  const { api, patchFile } = boot({ defaultExpanded: false })
+  const { api, patchFile } = await boot({ defaultExpanded: false })
   const saved = await call(
     api.handler,
     fakeRequest({ method: 'PUT', body: JSON.stringify({ defaultExpanded: 'false' }) }),
@@ -227,12 +223,12 @@ test('非法字段值回退默认 true 写盘（脏值绝不落盘）+ 重启闭
   assert.ok(!text.includes("'false'"), 'patch 文件里没有字符串脏值')
 
   // 重启闭环：新 ctx 用 patch 里的 config 重新 apply → 生效值为 true
-  const restarted = boot(extractConfig(text, CONFIG_ROW_ID), { patchFile })
+  const restarted = await boot(extractConfig(text, CONFIG_ROW_ID), { patchFile })
   assert.deepEqual((await call(restarted.api.handler, fakeRequest())).json.value, { defaultExpanded: true })
 })
 
 test('安全契约：围栏对 PUT 同样生效（403 且不落盘），未知 path / 方法 404', async () => {
-  const { api, patchFile } = boot(undefined)
+  const { api, patchFile } = await boot(undefined)
   const forged = await call(
     api.handler,
     fakeRequest({
@@ -269,7 +265,7 @@ test('写盘失败 → 500 + ok:false，且内存生效值不被污染（不假�
   const env = tempHome()
   // patch 路径被目录占用 → 原子写的 rename 目标不是文件，落盘必然失败。
   mkdirSync(env.patchFile, { recursive: true })
-  const { api } = boot({ defaultExpanded: true }, { home: env.home, patchFile: env.patchFile })
+  const { api } = await boot({ defaultExpanded: true }, { home: env.home, patchFile: env.patchFile })
   const failed = await call(
     api.handler,
     fakeRequest({ method: 'PUT', body: JSON.stringify({ defaultExpanded: false }) }),

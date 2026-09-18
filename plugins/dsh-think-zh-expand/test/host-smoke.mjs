@@ -4,32 +4,22 @@
  * thinking instruction). The client half is browser-only; CI checks its syntax
  * with `node --check`.
  *
+ * ctx 桩用 helpers/host-ctx.mjs（按 cordis 4 真实契约：`ctx.inject` 局部等待、
+ * `ctx.root` 常驻），不是宽松 mock —— 宽松 mock 会让路由注册的缺陷在测试里隐形。
+ *
  * NOTE: assertions live INSIDE test() (not at module top level) so Stryker's
  * vitest-runner correctly attributes mutant kills to this test file.
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { apply, PROMPT_TEXT } from '../lib/index.js'
+import { createHostCtx } from './helpers/host-ctx.mjs'
 
 /** Build a mocked plugin context and run apply, returning registered sections. */
 function boot() {
-  const sections = []
-  const logs = []
-  const ctx = {
-    systemPrompt: {
-      section(section) {
-        sections.push(section)
-        return () => {}
-      },
-    },
-    logger: {
-      info: (message) => logs.push(message),
-      warn: (message) => logs.push(message),
-      error: (message) => logs.push(message),
-    },
-  }
-  apply(ctx)
-  return { sections, logs }
+  const host = createHostCtx({ webServer: 'never' })
+  apply(host.ctx)
+  return { sections: host.sections, logs: host.logs }
 }
 
 test('registers exactly one system-prompt section with the Chinese instruction', async () => {
@@ -66,13 +56,15 @@ test('inject list declares the systemPrompt hard dependency', async () => {
 test('apply logs an info line with the [dsh-think-zh-expand] prefix (issue #155)', async () => {
   const { logs } = boot()
   assert.ok(logs.length >= 1, 'at least one log line emitted')
-  assert.ok(logs[0].startsWith('[dsh-think-zh-expand]'), 'log line carries the unified plugin prefix')
+  assert.ok(
+    logs[0].startsWith('info:[dsh-think-zh-expand]'),
+    `log line carries the unified plugin prefix, got ${logs[0]}`,
+  )
   assert.ok(logs[0].includes('已启用'), 'log line describes the enabled behavior')
 })
 
 test('apply tolerates a missing logger (optional chaining)', async () => {
-  const sections = []
-  const ctx = { systemPrompt: { section: (section) => sections.push(section) } }
-  apply(ctx)
-  assert.equal(sections.length, 1, 'section still registered without a logger')
+  const host = createHostCtx({ logger: false })
+  apply(host.ctx)
+  assert.equal(host.sections.length, 1, 'section still registered without a logger')
 })

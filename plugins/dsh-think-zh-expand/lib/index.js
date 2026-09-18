@@ -53,10 +53,9 @@ export const CONFIG_ROUTE_PREFIX = '/think-zh-expand/api';
 export function resolveDefaultExpanded(config) {
     return typeof config?.defaultExpanded === 'boolean' ? config.defaultExpanded : DEFAULT_EXPANDED;
 }
-// ── 配置读取路由（host → browser 的唯一通道）────────────────────────
-// 与 dsh-md-render 的分工一致：host 侧注册只读路由，client 侧 fetch 读取。
-// 本插件只需「读」（写入由使用者在 profile patch 里显式声明），故不提供 PUT。
-// 安全：loopback 信任围栏，与 /api 网关同一契约（读接口仅本机可读）。
+// ── 配置读写路由（host ↔ browser 的唯一通道）────────────────────────
+// 与 dsh-md-render 的分工一致：host 侧注册路由（GET 读 / PUT 写），client 侧 fetch。
+// 安全：loopback 信任围栏，与 /api 网关同一契约（仅本机可访问）。
 const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
 /** 127.0.0.0/8 的完整四段写法（`127.0.0.1.evil.com` 这类伪装前缀必须被挡住）。 */
 const LOOPBACK_IPV4 = /^127(?:\.\d{1,3}){3}$/;
@@ -187,39 +186,62 @@ export function createConfigHandler(read, write) {
         writeJson(response, 404, { ok: false, error: { message: 'unknown dsh-think-zh-expand API method' } });
     };
 }
-/** 可选获取 webServer：不在 inject 里声明，缺服务时降级而非 apply 失败。 */
-function getWebServer(ctx) {
-    try {
-        const service = ctx.get?.('webServer');
-        const usable = service !== undefined && service !== null && typeof service.register === 'function';
-        return usable ? service : undefined;
-    }
-    catch {
-        // 未注册的服务在部分 cordis 版本下直接抛错：视作不可用。
-        return undefined;
-    }
-}
-/** 注册配置读写路由；无 webServer 时只警告（client 端回退默认展开）。 */
-function registerConfigRoute(ctx, defaultExpanded) {
-    const webServer = getWebServer(ctx);
-    if (webServer === undefined) {
-        // ctx 完全没有服务查询能力（纯 CLI 宿主 / 极简测试 ctx）时静默降级；
-        // 只有「查得到服务但没有可用 webServer」才告警——避免无意义噪音。
-        if (typeof ctx.get === 'function') {
-            ctx.logger?.warn('[dsh-think-zh-expand] webServer 不可用：配置路由未注册，client 端回退默认展开');
+// ── 配置路由注册（host → browser 的唯一通道）──────────────────────────
+// 注册契约（真实环境「设置页恒报配置加载失败」的修复依据）：
+//  1. 服务经 `ctx.inject(['webServer'], cb)` **局部等待**，不用 `ctx.get('webServer')`
+//     一次性取值 —— cordis 的 get 带严格就绪检查（provider fiber 非 ACTIVE 即
+//     undefined，vendor/cordis src/reflect.ts:233-247）且**没有重试**，webServer 晚于
+//     本插件就绪时永久错过，路由从未注册 → client 端 404。
+//  2. 注册承载在**常驻 root**（`ctx.root ?? ctx`）的 inject 子 fiber 上 —— profile
+//     插件自身 fiber 在 apply 结束后被 loader 回收，挂在它上面的 `ctx.effect` 会
+//     一并注销（路由同样消失 → 404）。范式同 dsh-my-context / dsh-my-guardian。
+//  3. 顶层 `inject` **不**声明 webServer：那会让整个插件在无 webServer 的 profile
+//     （tui / headless）里 fiber PENDING、apply 根本不执行 —— 中文思考注入是主功能，
+//     不能陪葬。
+/** 已注册配置路由的 disposer（以常驻 root ctx 为键，用于重复 apply 去重）。 */
+const configRouteDisposers = new WeakMap();
+/** 在 inject 子 scope 上挂载配置路由；注册失败只告警，绝不让插件 fatal。 */
+function mountConfigRoute(hostCtx, scope, state) {
+    // loader 会多次 apply 同一插件：root 常驻意味着上一轮注册不会自动消失，而宿主
+    // `WebServer.register` 对重复 (kind, path) 直接抛错 → 先撤上一轮再注册。
+    configRouteDisposers.get(hostCtx)?.();
+    scope.effect(() => {
+        try {
+            const dispose = scope.webServer?.register({
+                kind: 'prefix',
+                path: CONFIG_ROUTE_PREFIX,
+                handler: createConfigHandler(() => state.defaultExpanded, async (next) => {
+                    await persistConfig(next);
+                    state.defaultExpanded = resolveDefaultExpanded(next);
+                }),
+            });
+            if (dispose === undefined)
+                return undefined;
+            configRouteDisposers.set(hostCtx, dispose);
+            return () => {
+                if (configRouteDisposers.get(hostCtx) === dispose)
+                    configRouteDisposers.delete(hostCtx);
+                dispose();
+            };
         }
-        return;
-    }
-    // 内存生效值：PUT 落盘成功后立即更新 → 设置页保存即生效（GET 立刻回新值）。
+        catch (error) {
+            // 宿主拒绝注册（同 path 已被占用等）：降级为「无配置路由」，不冒泡成 fatal。
+            scope.logger?.warn(`[dsh-think-zh-expand] 配置路由注册被宿主拒绝：${String(error)}`);
+            return undefined;
+        }
+    }, 'dsh-think-zh-expand: config route');
+}
+/** 注册配置读写路由（契约见上方注释）；无 webServer 的 profile 下静默不注册。 */
+function registerConfigRoute(ctx, defaultExpanded) {
+    const hostCtx = ctx.root ?? ctx;
     const state = { defaultExpanded };
-    ctx.effect?.(() => webServer.register({
-        kind: 'prefix',
-        path: CONFIG_ROUTE_PREFIX,
-        handler: createConfigHandler(() => state.defaultExpanded, async (next) => {
-            await persistConfig(next);
-            state.defaultExpanded = resolveDefaultExpanded(next);
-        }),
-    }), 'dsh-think-zh-expand: config route');
+    try {
+        hostCtx.inject(['webServer'], (scope) => mountConfigRoute(hostCtx, scope, state));
+    }
+    catch (error) {
+        // inactive ctx 上建 inject 子 fiber 可能抛错：降级为「无配置路由」，不 fatal。
+        ctx.logger?.warn(`[dsh-think-zh-expand] webServer 局部注入失败，配置路由未注册：${String(error)}`);
+    }
 }
 export function apply(ctx, config) {
     ctx.systemPrompt.section({

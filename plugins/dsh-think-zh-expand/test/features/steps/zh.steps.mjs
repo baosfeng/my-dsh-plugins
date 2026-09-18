@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { currentProfile, extractConfig, patchFileOf } from 'dsh-shared'
 import { apply, CONFIG_ROUTE_PREFIX, PROMPT_TEXT } from '../../../lib/index.js'
+import { createHostCtx } from '../../helpers/host-ctx.mjs'
 
 class World {
   constructor() {
@@ -23,16 +24,11 @@ class World {
   }
 
   bootServer() {
-    const sections = this.sections
-    const ctx = {
-      systemPrompt: {
-        section(section) {
-          sections.push(section)
-          return () => {}
-        },
-      },
-    }
-    apply(ctx)
+    // 真实契约宿主桩（helpers/host-ctx.mjs）：无 webServer 时 section 注入仍须生效
+    const host = createHostCtx({ webServer: 'never' })
+    apply(host.ctx)
+    this.host = host
+    this.sections = host.sections
   }
 
   /**
@@ -346,18 +342,33 @@ Given('思考增强插件已带配置路由启动', async function () {
   this.home = mkdtempSync(join(tmpdir(), 'dsh-think-zh-expand-cucumber-'))
   this.previousHome = process.env.DSH_HOME
   process.env.DSH_HOME = this.home
-  this.routes = []
-  const routes = this.routes
-  const ctx = {
-    systemPrompt: { section: () => () => {} },
-    logger: { info: () => {}, warn: () => {}, error: () => {} },
-    get: (name) => (name === 'webServer' ? { register: (route) => (routes.push(route), () => {}) } : undefined),
-    effect: (fn) => fn(),
-  }
-  apply(ctx)
-  assert.equal(this.routes.length, 1, '配置路由恰好注册一次')
+  const host = createHostCtx({ webServer: 'ready' })
+  apply(host.ctx)
+  await host.settle()
+  this.host = host
+  this.routes = host.routes
+  assert.equal(this.routes.length, 1, '配置路由恰好注册一次（ctx.inject 局部等待服务就绪）')
   this.api = this.routes[0]
   this.patchFile = patchFileOf(currentProfile())
+})
+
+// 回归场景：webServer 晚于本插件就绪（旧实现用 ctx.get 一次性取值 + 无重试 → 永久 404）
+Given('思考增强插件在 webServer 就绪前启动', async function () {
+  this.host = createHostCtx({ webServer: 'late' })
+  apply(this.host.ctx)
+  await this.host.settle()
+  assert.equal(this.host.routes.length, 0, '服务未就绪时不注册（也不抛错）')
+})
+
+When('webServer 服务就绪', async function () {
+  this.host.provideWebServer()
+  await this.host.settle()
+})
+
+Then('配置路由注册为 {string}', function (path) {
+  assert.equal(this.host.routes.length, 1, '服务就绪后恰好注册一条路由')
+  assert.equal(this.host.routes[0].kind, 'prefix', 'prefix 路由')
+  assert.equal(this.host.routes[0].path, path, '路由前缀与 client 端契约一致')
 })
 
 When('通过配置接口保存 defaultExpanded 为 {word}', async function (raw) {

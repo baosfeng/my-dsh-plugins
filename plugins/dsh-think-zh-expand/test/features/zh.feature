@@ -69,3 +69,11 @@
     那么 配置接口返回生效值 false
     并且 profile patch 中行 "think-zh-expand" 的 defaultExpanded 为 false
     并且 profile patch 中行 "think-zh-expand" 恰好一条
+
+  # 回归：设置页曾恒报「配置加载失败 … 不存在」（路由 404）。webServer 服务晚于
+  # 本插件就绪时，一次性 ctx.get 取值（无重试）会永久错过 → 路由从未注册。
+  # 现改为 ctx.inject(['webServer'], cb) 局部等待：服务就绪（含晚到）才注册。
+  场景: webServer 晚于插件就绪时配置路由仍注册
+    假如 思考增强插件在 webServer 就绪前启动
+    当 webServer 服务就绪
+    那么 配置路由注册为 "/think-zh-expand/api"

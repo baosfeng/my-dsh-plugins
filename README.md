@@ -32,9 +32,9 @@
 
 | 插件                                                                               | 版本   | 简介                                                                                          |
 | ---------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------- |
-| [dsh-file-activity](plugins/dsh-file-activity/README.md)                           | 0.5.10 | 侧边栏文件活动页签：记录文件读取/新增/修改与统计，文件夹树形展示，点击浮窗预览                |
-| [dsh-think-zh-expand](plugins/dsh-think-zh-expand/README.md)                       | 0.4.12 | 思考增强：强制中文思考与回复，思考块默认展开且支持 Markdown/表格/Mermaid 渲染                 |
-| [dsh-mermaid-render](plugins/dsh-mermaid-render/README.md)                         | 0.1.9  | 对话 mermaid 代码块渲染为图表卡片，引擎随包分发、不依赖 CDN                                   |
+| [dsh-file-activity](plugins/dsh-file-activity/README.md)                           | 0.5.12 | 侧边栏文件活动页签：记录文件读取/新增/修改与统计，文件夹树形展示，点击浮窗预览                |
+| [dsh-think-zh-expand](plugins/dsh-think-zh-expand/README.md)                       | 0.4.14 | 思考增强：强制中文思考与回复，思考块默认展开且支持 Markdown/表格/Mermaid 渲染                 |
+| [dsh-mermaid-render](plugins/dsh-mermaid-render/README.md)                         | 0.1.11  | 对话 mermaid 代码块渲染为图表卡片，引擎随包分发、不依赖 CDN                                   |
 | [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.1.9  | 非思考模式 markdown 表格渲染增强：识别不标准表格，宽表格横向滚动                              |
 | [dsh-my-notify](plugins/dsh-my-notify/README.md)                                   | 0.4.0  | 通知提醒：会话结束 / ask / 审批时浏览器通知 + 提示音，点击跳转；远程 hook 触发 + 出站 webhook |
 | [dsh-my-remote](plugins/dsh-my-remote/README.md)                                   | 0.1.3  | 远程控制：ask / approval / 会话结束事件下行到手机或 IM，可远程回答、批准、查询、继续          |
@@ -43,8 +43,8 @@
 | [dsh-my-skill-manager](plugins/dsh-my-skill-manager/README.md)                     | 0.1.9  | Skill 管理：分全局/项目查看 skill，按项目启用/禁用（禁用即不注入会话）                        |
 | [dsh-my-memory](plugins/dsh-my-memory/README.md)                                   | 0.1.9  | 记忆：全局/项目两级持久化，会话开始注入系统提示词；设置页面板 + 写操作确认                    |
 | [dsh-my-plugin-manager](plugins/dsh-my-plugin-manager/README.md)                   | 0.1.6  | 插件管理面板：市场浏览/搜索、一键安装卸载、更新检查、已安装清单                               |
-| [dsh-my-observability](plugins/dsh-my-observability/README.md)                     | 0.3.2  | 可观测性：事件审计、轨迹回放时间轴、结构化 Git 类型化提交、提交前增量 diff 审查               |
-| [dsh-my-guard](plugins/dsh-my-guard/README.md)                                     | 0.1.6  | 安全护栏：破坏性命令执行前拦截、安装前投毒扫描、提示注入检测 + 告警面板                       |
+| [dsh-my-observability](plugins/dsh-my-observability/README.md)                     | 0.3.4  | 可观测性：事件审计、轨迹回放时间轴、结构化 Git 类型化提交、提交前增量 diff 审查               |
+| [dsh-my-guard](plugins/dsh-my-guard/README.md)                                     | 0.1.8  | 安全护栏：破坏性命令执行前拦截、安装前投毒扫描、提示注入检测 + 告警面板                       |
 | [dsh-my-context](plugins/dsh-my-context/README.md)                                 | 0.1.5  | 上下文透镜：token 用量与上下文构成可视化、KV 缓存命中率、每轮/每会话预算控制                  |
 | [dsh-session-title-gen](plugins/dsh-session-title-gen/README.md)                   | 0.1.0  | 会话标题自动生成：LLM 生成结构化标题（先工作区后描述）并写入，重启保留                        |
 | [dsh-my-opencode-session-header](plugins/dsh-my-opencode-session-header/README.md) | 0.1.0  | OpenCode 会话头：为 opencode 路由注入按会话稳定的 `x-opencode-session` 头                     |

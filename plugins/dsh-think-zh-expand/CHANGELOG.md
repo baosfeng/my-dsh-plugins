@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.14] - 2026-09-18
+
+### 变更
+
+- docs(mermaid-render,think-zh-expand): 文案单语化后的设置页效果图
+- fix(think-zh-expand): 设置页文案改按语言切换的单语
+- fix(think-zh-expand): 配置路由从未注册（设置页报 404）改为 root 承载注册
+- feat(think-zh-expand): 设置页配置面板（defaultExpanded 可视化编辑）
+
+## [0.4.13] - 2026-09-18
+
+### 变更
+
+- docs(mermaid-render,think-zh-expand): 文案单语化后的设置页效果图
+- fix(think-zh-expand): 设置页文案改按语言切换的单语
+- fix(think-zh-expand): 配置路由从未注册（设置页报 404）改为 root 承载注册
+- feat(think-zh-expand): 设置页配置面板（defaultExpanded 可视化编辑）
+
 ## [0.4.12] - 2026-09-17
 
 ### 变更

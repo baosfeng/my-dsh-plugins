@@ -2,6 +2,18 @@
 
 本文件记录 dsh-file-activity 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.5.12] - 2026-09-18
+
+### 变更
+
+- feat(file-activity): 右侧边栏默认宽度配置（默认 20%）
+
+## [0.5.11] - 2026-09-18
+
+### 变更
+
+- feat(file-activity): 右侧边栏默认宽度配置（默认 20%）
+
 ## [0.5.10] - 2026-09-16
 
 ### 变更

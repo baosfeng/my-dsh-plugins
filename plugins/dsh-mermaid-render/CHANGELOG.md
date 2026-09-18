@@ -2,6 +2,26 @@
 
 本文件记录 dsh-mermaid-render 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.11] - 2026-09-18
+
+### 变更
+
+- docs(mermaid-render,think-zh-expand): 文案单语化后的设置页效果图
+- fix(mermaid-render): 设置页文案改为按语言切换的单语（对齐仓库惯例）
+- fix(mermaid-render): 去掉仅内部使用的导出（knip 死代码门禁）
+- docs(guard,observability,mermaid-render): 设置页面板真实截图 + README 效果图
+- feat(mermaid-render): 设置页配置面板（injectPrompt 可视化编辑）
+
+## [0.1.10] - 2026-09-18
+
+### 变更
+
+- docs(mermaid-render,think-zh-expand): 文案单语化后的设置页效果图
+- fix(mermaid-render): 设置页文案改为按语言切换的单语（对齐仓库惯例）
+- fix(mermaid-render): 去掉仅内部使用的导出（knip 死代码门禁）
+- docs(guard,observability,mermaid-render): 设置页面板真实截图 + README 效果图
+- feat(mermaid-render): 设置页配置面板（injectPrompt 可视化编辑）
+
 ## [0.1.9] - 2026-09-17
 
 ### 变更

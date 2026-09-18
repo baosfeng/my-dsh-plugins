@@ -13,8 +13,12 @@
  * 本文件编译为 lib/config.js（产物必须提交，CI 只跑产物、不跑构建）。
  */
 import { currentProfile, patchFileOf, writePatchConfig } from 'dsh-shared';
-/** 配置行 id：与 cordis.patch.yml 的插件行 id 一致（不是包名、不是插件名前缀）。 */
-export const CONFIG_ROW_ID = 'mermaid-render';
+/**
+ * 配置行 id：与 cordis.patch.yml 的插件行 id 一致（不是包名、不是插件名前缀）。
+ * 仅本模块的 persistConfig 使用——对外契约由测试用字面量钉住（不导出，避免
+ * 「实现改了测试跟着改」的自证循环，也避免 knip 误报未使用导出）。
+ */
+const CONFIG_ROW_ID = 'mermaid-render';
 /** 应用层 config（patch 行的 config）→ 生效配置：仅显式 false 关闭。 */
 export function createConfigState(config) {
     return { injectPrompt: config?.injectPrompt !== false };

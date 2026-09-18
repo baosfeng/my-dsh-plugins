@@ -15,8 +15,12 @@
  */
 import { isTrustedApiRequest, readJsonBody, writeError, writeJson } from 'dsh-shared';
 import { normalizeConfigPayload } from './config.js';
-/** API 前缀；client 端 part（src/client/settings.ts）的端点必须与之一致。 */
-export const API_PREFIX = '/mermaid-render/api';
+/**
+ * API 前缀（仅本模块使用）。**跨半边契约**：client 端 part
+ * （src/client/settings.ts 的 MERMAID_SETTINGS_API）必须与之保持一致 ——
+ * 两边无法互相 import（client 是 bundle 片段），故由测试用字面量同时钉住两侧。
+ */
+const API_PREFIX = '/mermaid-render/api';
 /** 注册 `/mermaid-render/api` 前缀路由（一个 effect，disposer 随 fiber 卸载）。 */
 export function registerConfigRoutes(ctx, state, onConfigChange) {
     const fence = createFence(ctx);

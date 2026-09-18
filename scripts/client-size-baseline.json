@@ -341,12 +341,13 @@
       }
     },
     "dsh-think-zh-expand": {
-      "total": 299511,
+      "total": 397189,
       "files": {
+        "assets/settings-panel.png": 73441,
         "assets/think-markdown.png": 227686,
-        "lib/client.js": 52704,
-        "lib/client.src.js": 2787,
-        "lib/index.js": 1433
+        "lib/client.js": 70435,
+        "lib/client.src.js": 3204,
+        "lib/index.js": 13610
       }
     },
     "dsh-ts-example": {

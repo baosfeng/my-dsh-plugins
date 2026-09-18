@@ -4,6 +4,8 @@
 
 <div align="center">
   <img alt="思考块默认展开并渲染 Markdown 与 Mermaid 图表" src="https://unpkg.com/dsh-think-zh-expand/assets/think-markdown.png" width="340" />
+  <br/>
+  <img alt="设置页配置面板（设置 → 插件 → 思考增强）：思考默认展开开关" src="https://unpkg.com/dsh-think-zh-expand/assets/settings-panel.png" width="640" />
 </div>
 
 **DSH 思考增强插件**：让 agent 的思考（reasoning）与回复强制使用中文，对话里的思考内容**默认展开显示**（替代内置的单行折叠），并把界面残留的硬编码英文（Thinking / Tool Call 等）**中文化**。

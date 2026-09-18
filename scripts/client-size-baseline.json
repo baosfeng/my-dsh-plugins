@@ -241,17 +241,30 @@
       }
     },
     "dsh-my-remote": {
-      "total": 184669,
+      "total": 367800,
       "files": {
         "assets/ask-push.png": 127358,
+        "assets/settings-panel.png": 92500,
         "lib/audit.js": 1582,
         "lib/channels.js": 5770,
+        "lib/client.js": 32822,
+        "lib/client.src.js": 2343,
         "lib/commands.js": 8329,
         "lib/events.js": 10192,
-        "lib/index.js": 4352,
+        "lib/index.js": 5154,
+        "lib/parts/settings-config.js": 3936,
+        "lib/parts/settings-i18n.js": 5251,
+        "lib/parts/settings-panel.js": 6316,
+        "lib/parts/settings-styles.js": 3870,
+        "lib/parts/settings-views.js": 2376,
+        "lib/parts/settings-webhooks.js": 7123,
         "lib/registries.js": 6522,
-        "lib/routes.js": 5758,
-        "lib/session.js": 3533
+        "lib/routes.js": 8997,
+        "lib/session.js": 3533,
+        "lib/settings-model.js": 7866,
+        "lib/settings-store.js": 2116,
+        "lib/settings-yaml.js": 9413,
+        "lib/settings.js": 4816
       }
     },
     "dsh-my-skill-manager": {
@@ -275,12 +288,17 @@
       }
     },
     "dsh-session-title-gen": {
-      "total": 143687,
+      "total": 271585,
       "files": {
         "assets/session-list.png": 114738,
+        "assets/settings-panel.png": 86245,
+        "lib/client.js": 25456,
+        "lib/client.src.js": 2079,
+        "lib/config-routes.js": 7401,
+        "lib/config.js": 6293,
         "lib/generate.js": 3590,
-        "lib/host.js": 2616,
-        "lib/index.js": 4244,
+        "lib/host.js": 3229,
+        "lib/index.js": 4387,
         "lib/title.js": 8647,
         "lib/workspace.js": 708
       }

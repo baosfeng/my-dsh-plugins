@@ -22,23 +22,24 @@ export interface SettingsConfig {
   aiTimeoutMs: number
 }
 
-/** aiTimeoutMs 默认值（与 src/index.ts buildOptions 的兜底保持同一常量语义）。 */
-export const DEFAULT_AI_TIMEOUT_MS = 60000
+/** aiTimeoutMs 默认值（与 src/index.ts buildOptions 的兜底共用同一口径）。 */
+const DEFAULT_AI_TIMEOUT_MS = 60000
 
 /**
  * 写回行 id：必须与 plugins/dsh-my-observability/cordis.patch.yml 里的插件行
  * id 一致——loader 按行 id 匹配配置，id 不符会新增孤儿行、原行配置不变。
  */
-export const CONFIG_ROW_ID = 'observability'
+const CONFIG_ROW_ID = 'observability'
 
 /** aiTimeoutMs 规整：非数字 / 非有限 / 非正 → 回退默认（绝不把 0/NaN 写进 patch）。
- *  导出供 src/index.ts 的 buildOptions 复用，保证「默认值口径」只有一处定义。 */
+ *  导出供 src/index.ts 的 buildOptions 复用，保证「默认值口径」只有一处定义。
+ *  （其余仅本文件内部使用的符号不导出：knip 会把无外部引用的导出判为 dead code。） */
 export function normalizeTimeout(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : DEFAULT_AI_TIMEOUT_MS
 }
 
 /** 当前生效配置（GET 的 value，也是设置页表单的回填源）。 */
-export function configValueOf(options: SettingsConfig): SettingsConfig {
+function configValueOf(options: SettingsConfig): SettingsConfig {
   return { aiReview: options.aiReview !== false, aiTimeoutMs: normalizeTimeout(options.aiTimeoutMs) }
 }
 
@@ -50,7 +51,7 @@ export function configValueOf(options: SettingsConfig): SettingsConfig {
  * 默认」）；aiTimeoutMs 非法时回退默认而非保留旧值，与 README 记录的默认口径
  * 一致。
  */
-export function normalizeConfigPatch(payload: unknown, current: SettingsConfig): SettingsConfig | undefined {
+function normalizeConfigPatch(payload: unknown, current: SettingsConfig): SettingsConfig | undefined {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return undefined
   const raw = payload as Record<string, unknown>
   const next: SettingsConfig = { aiReview: current.aiReview, aiTimeoutMs: current.aiTimeoutMs }

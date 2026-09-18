@@ -5,6 +5,8 @@
 <div align="center">
   <img alt="轨迹回放面板：侧边栏时间轴展示 agent 行为（状态/模型流/工具调用）" src="https://unpkg.com/dsh-my-observability/assets/replay-panel.png" width="640" />
   <img alt="Git 工具面板：仓库状态 / 差异 / 提交前审查 / 类型化提交" src="https://unpkg.com/dsh-my-observability/assets/git-panel.png" width="640" />
+  <br/>
+  <img alt="设置页配置面板（设置 → 插件 → 可观测性）：AI 审查增强开关 + AI 审查超时" src="https://unpkg.com/dsh-my-observability/assets/settings-panel.png" width="640" />
 </div>
 
 **dsh-my-observability**：DSH 可观测性 + Git 工程工具插件——**事件审计**记录 agent 的每一次行为（状态变化 / 模型流 / 工具调用与结果），**轨迹回放面板**按时间轴回放会话轨迹；**结构化 Git 工具**提供 Conventional Commits 类型化提交；**增量 diff 审查**在提交前用规则引擎（可选 AI 增强）检查调试残留、密钥泄露等问题。

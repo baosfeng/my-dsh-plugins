@@ -4,6 +4,8 @@
 
 <div align="center">
   <img alt="mermaid 代码块自动渲染为图表卡片（预览 / 代码切换）" src="https://unpkg.com/dsh-mermaid-render/assets/mermaid-card.png" width="360" />
+  <br/>
+  <img alt="设置页配置面板（设置 → 插件 → Mermaid）：系统提示词注入开关" src="https://unpkg.com/dsh-mermaid-render/assets/mermaid-settings-panel.png" width="640" />
 </div>
 
 **DSH 对话 Mermaid 图表渲染插件**：把对话消息里的 `mermaid` / `mmd` 代码块自动渲染成**图表卡片**（预览 / 代码切换）；mermaid 引擎随包分发、由 DSH webServer 静态托管，**不依赖任何 CDN**。

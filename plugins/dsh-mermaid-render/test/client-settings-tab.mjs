@@ -22,6 +22,25 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
+// ── locale 桩（#383 显示效果修复）────────────────────────────────────────
+// 设置页文案的语言来源两级：宿主 UI 语言（dsh-client-locale 同步到
+// `<html lang>`）优先，其次 navigator.language（zh* → 中文，其余 → 英文）。
+// Node 自带 navigator.language = 'en-US'，故必须显式钉住基线，否则断言随
+// 机器语言飘。`null` 表示不提供 navigator（测异常回退分支）。
+let navigatorLanguage = 'zh-CN'
+function setNavigatorLanguage(language) {
+  navigatorLanguage = language
+  Object.defineProperty(globalThis, 'navigator', {
+    value: language === null ? undefined : { language },
+    configurable: true,
+  })
+}
+/** 宿主 `<html lang>`（'' = 宿主 locale 尚未同步 → 回退浏览器语言）。 */
+function setDocumentLanguage(language) {
+  global.document.documentElement.lang = language
+}
+setNavigatorLanguage(navigatorLanguage)
+
 // ── react stub：createElement + 带状态槽的 useState/useEffect ─────────────
 // hook 索引按渲染顺序共享（与 React 的 hook 链表语义一致）：每次渲染前
 // resetHooks() 归零，但状态槽与 effect deps 跨渲染保留。
@@ -116,6 +135,9 @@ const head = {
 global.document = {
   head,
   body: makeEl('body'),
+  // 宿主 dsh-client-locale 把当前 UI 语言同步到 <html lang>（设置页文案优先
+  // 读它）；'' 表示尚未同步 → 回退浏览器语言。
+  documentElement: { lang: '' },
   createElement: (tag) => (tag === 'style' ? makeStyleEl() : makeEl(tag)),
   querySelector: () => null,
   querySelectorAll: () => [],
@@ -201,6 +223,12 @@ function textOf(nodes) {
 function findByClass(nodes, fragment) {
   return nodes.find((n) => typeof n.props?.className === 'string' && n.props.className.includes(fragment))
 }
+
+/** 开关行的标题文案（label）与说明文案（hint）。 */
+const labelTextOf = (nodes) => textOf(collect(findByClass(nodes, 'dsh-mermaid-render-settings-label')))
+const hintTextOf = (nodes) => textOf(collect(findByClass(nodes, 'dsh-mermaid-render-settings-hint')))
+/** 抽出字符串里的 ASCII 单词（用于断言"中文 locale 下没有英文对照"）。 */
+const asciiWords = (text) => text.match(/[A-Za-z]+/g) || []
 
 /** fetch 桩：按 method 分派，记录调用。 */
 function stubFetch(handler) {
@@ -343,7 +371,8 @@ test('视图：保存失败有提示（不静默），说明文案写明关闭�
   assert.ok(hint, '有说明文案')
   const hintText = textOf(collect(hint))
   assert.ok(hintText.includes('照常渲染'), '说明「关闭后已有 mermaid 代码块照常渲染」：' + hintText)
-  assert.ok(/render/i.test(hintText), '说明文案含英文对照（双语）：' + hintText)
+  assert.ok(hintText.includes('主动引导'), '说明「只是不再主动引导模型画图」：' + hintText)
+  assert.deepEqual(asciiWords(hintText), [], '中文 locale 下 hint 只含中文（不得并排英文对照）：' + hintText)
 })
 
 test('视图：配置加载失败有提示与重试（区分 404=路由未注册）', async () => {
@@ -363,4 +392,97 @@ test('视图：配置加载失败有提示与重试（区分 404=路由未注册
   retry.props.onClick()
   await flush()
   assert.ok(attempts >= 2, '重试真的重新拉取配置')
+})
+
+// ── #383 显示效果修复：设置页文案按语言单语化（不再中英并排塞一行）────────
+
+test('i18n：label/hint 按浏览器语言返回单语（渲染期惰性求值，切语言即跟随）', async () => {
+  setNavigatorLanguage('zh-CN')
+  const { slots, state } = makeSlots()
+  exportsObj.apply(makeBootCtx({ slots }))
+  stubFetch((method) =>
+    method === 'GET' ? jsonRes({ ok: true, value: { injectPrompt: true } }) : jsonRes({ ok: true }),
+  )
+  const view = await renderSettings(state.tab.component)
+
+  const labelZh = labelTextOf(view.nodes)
+  const hintZh = hintTextOf(view.nodes)
+  assert.equal(labelZh, '向系统提示词注入 mermaid 能力说明', '中文 label 为单语')
+  assert.ok(hintZh.startsWith('默认开启'), '中文 hint 说明默认开启：' + hintZh)
+  assert.ok(hintZh.includes('照常渲染') && hintZh.includes('主动引导'), '中文 hint 保留关键信息：' + hintZh)
+  assert.ok(hintZh.length <= 40, '中文 hint 压到一行左右（≤40 字，实测 ' + hintZh.length + '）：' + hintZh)
+  assert.deepEqual(asciiWords(labelZh), ['mermaid'], '中文 label 只留专有名词 mermaid，不并排英文对照')
+  assert.deepEqual(asciiWords(hintZh), [], '中文 hint 全中文，不并排英文对照')
+  assert.ok(
+    !/Save|Saved|Loading|Retry/i.test(textOf(view.nodes)),
+    '中文 locale 下操作区也不并排英文：' + textOf(view.nodes),
+  )
+
+  // 切到英文：组件重新渲染即取到英文文案 —— 证明是**渲染期惰性求值**，而不是
+  // 模块加载期定死（宿主靠重注册 + 惰性函数跟随语言切换）。
+  setNavigatorLanguage('en-US')
+  const en = view.render()
+  const labelEn = labelTextOf(en)
+  const hintEn = hintTextOf(en)
+  assert.equal(labelEn, 'Inject mermaid capability note', '英文 label 为单语')
+  assert.ok(hintEn.includes('render'), '英文 hint 保留「已有代码块照常渲染」：' + hintEn)
+  assert.ok(/nudg/i.test(hintEn), '英文 hint 保留「不再主动引导」：' + hintEn)
+  assert.ok(!/[\u4e00-\u9fa5]/.test(hintEn), '英文 hint 不含中文：' + hintEn)
+  assert.ok(!/[\u4e00-\u9fa5]/.test(textOf(en)), '英文 locale 下设置页无中文残留：' + textOf(en))
+
+  // navigator 缺失（非浏览器 / 精简环境）回退英文且不抛错
+  setNavigatorLanguage(null)
+  const fallback = view.render()
+  assert.equal(labelTextOf(fallback), 'Inject mermaid capability note', 'navigator 缺失时回退英文')
+  setNavigatorLanguage('zh-CN')
+
+  // ── 宿主 locale（<html lang>）优先于浏览器语言 ──────────────────────
+  // 宿主 UI 语言由 dsh-client-locale 同步到 <html lang>；只看 navigator.language
+  // 会让文案与宿主 UI 语言不一致（浏览器英文 + 宿主中文时最明显）。
+  setNavigatorLanguage('en-US')
+  setDocumentLanguage('zh-CN')
+  assert.equal(
+    labelTextOf(view.render()),
+    '向系统提示词注入 mermaid 能力说明',
+    '宿主 <html lang>=zh-CN 时返回中文（即便浏览器是英文）',
+  )
+  setNavigatorLanguage('zh-CN')
+  setDocumentLanguage('en')
+  assert.equal(
+    labelTextOf(view.render()),
+    'Inject mermaid capability note',
+    '宿主 <html lang>=en 时返回英文（即便浏览器是中文）',
+  )
+  // 宿主 locale 尚未同步（''）→ 回退浏览器语言
+  setDocumentLanguage('')
+  assert.equal(labelTextOf(view.render()), '向系统提示词注入 mermaid 能力说明', '<html lang> 为空回退浏览器语言')
+  // 外部语言包（如 ja）：宿主 `<html lang>` 非中英 → 回退浏览器语言
+  setDocumentLanguage('ja')
+  setNavigatorLanguage('en-US')
+  assert.equal(labelTextOf(view.render()), 'Inject mermaid capability note', '不支持的语言包回退浏览器语言')
+  setNavigatorLanguage('zh-CN')
+  assert.equal(labelTextOf(view.render()), '向系统提示词注入 mermaid 能力说明', '不支持的语言包 + 中文浏览器 → 中文')
+  setDocumentLanguage('')
+})
+
+test('防回归（#383 显示效果）：产物里不得残留中英并排的硬编码设置页文案', () => {
+  const bundle = fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
+  const legacyDualLanguage = [
+    '向系统提示词注入 mermaid 能力说明 / Inject mermaid capability note',
+    '默认开启：模型在用户没写出',
+    '照常渲染，只是不再主动引导 / When on',
+    '加载中… / Loading…',
+    '保存 / Save',
+    '已保存 / Saved',
+    '保存失败 / Save failed',
+    '重试 / Retry',
+    '配置加载失败 / Failed to load config',
+  ]
+  for (const legacy of legacyDualLanguage) {
+    assert.ok(!bundle.includes(legacy), '产物不得残留中英并排文案：' + legacy)
+  }
+  assert.ok(bundle.includes('navigator.language'), 'locale 检测在产物里（i18n 不得被删）')
+  assert.ok(bundle.includes('document.documentElement.lang'), '宿主 locale（<html lang>）检测在产物里')
+  assert.ok(bundle.includes('Inject mermaid capability note'), '产物含英文单语文案')
+  assert.ok(bundle.includes('向系统提示词注入 mermaid 能力说明'), '产物含中文单语文案')
 })

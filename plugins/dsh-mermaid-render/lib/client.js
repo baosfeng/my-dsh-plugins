@@ -488,12 +488,77 @@ function installDomScanner(options) {
 const MERMAID_SETTINGS_TAB_ID = 'mermaid-render-settings';
 /** 配置端点（与 host 半 lib/routes.js 的 API_PREFIX 拼法一致）。 */
 const MERMAID_SETTINGS_API = '/mermaid-render/api/config';
+// ── i18n（#383 显示效果修复）：设置页文案按语言取**单语**，不再中英并排 ────
+// 语言来源两级（都是浏览器全局，与单文件 bundle 形态无关）：
+//  1. **宿主 locale 优先**：dsh-client-locale 把当前 UI 语言同步到 `<html lang>`
+//     （syncDocumentLanguage：'zh-CN' | 'en' | 外部语言 id），宿主切语言即更新。
+//     只看 navigator.language 会停在浏览器语言、与宿主 UI 语言不一致（浏览器
+//     英文 + 宿主中文时最明显）。
+//  2. 回退 `navigator.language`（宿主 locale 尚未同步 / 精简环境），与
+//     dsh-my-guard / dsh-my-observability / dsh-my-notify 的 client i18n 同款。
+// 函数名带 mermaid 前缀：本文件是 part 片段，与 index.ts 产物、dsh-shared 共享
+// parts 同处一个 factory 作用域，带前缀才不会与将来的共享 part 撞名。
+/** 宿主当前 UI 语言（读不到 / 未同步时返回空串）。 */
+function mermaidHostLang() {
+    try {
+        const lang = document.documentElement.lang;
+        return typeof lang === 'string' ? lang : '';
+    }
+    catch {
+        return '';
+    }
+}
+/** 浏览器语言（宿主 locale 不可用时的回退；navigator 缺失回退英文）。 */
+function mermaidBrowserLang() {
+    try {
+        return (navigator.language || 'en').toLowerCase();
+    }
+    catch {
+        return 'en';
+    }
+}
+/** 当前是否中文：宿主 `<html lang>` 优先，其次浏览器语言，再其次英文。 */
+function mermaidIsZh() {
+    const host = mermaidHostLang().toLowerCase();
+    if (host.startsWith('zh'))
+        return true;
+    if (host.startsWith('en'))
+        return false;
+    // 非中英（未同步 / 外部语言包如 ja）：交给浏览器语言判定
+    return mermaidBrowserLang().startsWith('zh');
+}
+/**
+ * 设置页文案：全部是**惰性函数**（渲染期求值）。宿主切语言后重注册页签 / 重渲染
+ * 组件即取到新语言；写成模块加载期的常量就跟随不了语言切换。
+ */
+const MERMAID_SETTINGS_STRINGS = {
+    tab: () => 'Mermaid',
+    toggleLabel: () => (mermaidIsZh() ? '向系统提示词注入 mermaid 能力说明' : 'Inject mermaid capability note'),
+    toggleHint: () => mermaidIsZh()
+        ? '默认开启；关闭后已有代码块照常渲染，只是不再主动引导模型画图'
+        : 'On by default; when off, existing blocks still render — the model is just no longer nudged',
+    loading: () => (mermaidIsZh() ? '加载中…' : 'Loading…'),
+    save: () => (mermaidIsZh() ? '保存' : 'Save'),
+    saved: () => (mermaidIsZh() ? '已保存' : 'Saved'),
+    saveFailed: () => (mermaidIsZh() ? '保存失败' : 'Save failed'),
+    loadFailed: () => (mermaidIsZh() ? '配置加载失败' : 'Failed to load config'),
+    retry: () => (mermaidIsZh() ? '重试' : 'Retry'),
+    errorMissingRoute: () => mermaidIsZh()
+        ? '服务端插件未加载：/mermaid-render/api 路由不存在（确认已安装并启用 dsh-mermaid-render 后重启 DSH，HTTP 404）'
+        : 'Host half not loaded: the /mermaid-render/api route is missing (install and enable dsh-mermaid-render, then restart DSH — HTTP 404)',
+    errorForbidden: () => mermaidIsZh()
+        ? '请求被安全围栏拒绝（403）：请检查网络/代理设置'
+        : 'Blocked by the trust fence (403): check your network/proxy settings',
+    errorNetwork: () => mermaidIsZh()
+        ? '网络错误或响应异常：请检查 DSH 服务是否正常运行'
+        : 'Network error or bad response: check that the DSH server is running',
+};
 /** 设置页样式：只用宿主语义变量（--dsw-* / --ds-*），跟随深浅主题。 */
 const MERMAID_SETTINGS_STYLES = `
 .dsh-mermaid-render-settings{display:flex;flex-direction:column;gap:10px;padding:12px}
 .dsh-mermaid-render-settings-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .dsh-mermaid-render-settings-info{display:flex;flex-direction:column;gap:2px;min-width:0}
-.dsh-mermaid-render-settings-label{font:var(--dsw-font-xs-strong-13)}
+.dsh-mermaid-render-settings-label{font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}
 .dsh-mermaid-render-settings-hint{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);line-height:1.5}
 .dsh-mermaid-render-settings-toggle{flex:none;width:34px;height:20px;border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--dsw-alias-label-tertiary) 30%, transparent);position:relative;cursor:pointer;transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .dsh-mermaid-render-settings-toggle[data-on="true"]{background:var(--dsw-alias-state-success-primary);border-color:transparent}
@@ -506,9 +571,9 @@ const MERMAID_SETTINGS_STYLES = `
 .dsh-mermaid-render-settings-saved{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-success-primary)}
 .dsh-mermaid-render-settings-error{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}
 `;
-/** 开关行（布尔配置项）。 */
+/** 开关行（布尔配置项）：文案与开关垂直居中，hint 单语一行。 */
 function MermaidSettingsToggle(props) {
-    return createElement('div', { className: 'dsh-mermaid-render-settings-row' }, createElement('div', { className: 'dsh-mermaid-render-settings-info' }, createElement('div', { className: 'dsh-mermaid-render-settings-label' }, props.label), createElement('div', { className: 'dsh-mermaid-render-settings-hint' }, props.hint)), createElement('div', {
+    return createElement('div', { className: 'dsh-mermaid-render-settings-row' }, createElement('div', { className: 'dsh-mermaid-render-settings-info' }, createElement('div', { className: 'dsh-mermaid-render-settings-label' }, props.label()), createElement('div', { className: 'dsh-mermaid-render-settings-hint' }, props.hint())), createElement('div', {
         className: 'dsh-mermaid-render-settings-toggle',
         'data-on': String(props.on),
         role: 'switch',
@@ -522,25 +587,25 @@ function MermaidSettingsToggle(props) {
  */
 function MermaidSettingsLoadError(props) {
     const hint = props.kind === 'http:404'
-        ? '服务端插件未加载：/mermaid-render/api 路由不存在（请确认已安装并启用 dsh-mermaid-render 后重启 DSH，HTTP 404）/ Host half not loaded (HTTP 404)'
+        ? MERMAID_SETTINGS_STRINGS.errorMissingRoute()
         : props.kind === 'http:403'
-            ? '请求被安全围栏拒绝（403）：请检查网络/代理设置 / Blocked by the trust fence (403)'
-            : '网络错误或响应异常：请检查 DSH 服务是否正常运行 / Network or bad response';
-    return createElement('div', { className: 'dsh-mermaid-render-settings' }, createElement('div', { className: 'dsh-mermaid-render-settings-error' }, '配置加载失败 / Failed to load config'), createElement('div', { className: 'dsh-mermaid-render-settings-status' }, hint), createElement('div', { className: 'dsh-mermaid-render-settings-actions' }, createElement('button', { className: 'dsh-mermaid-render-settings-btn', onClick: props.onRetry }, '重试 / Retry')));
+            ? MERMAID_SETTINGS_STRINGS.errorForbidden()
+            : MERMAID_SETTINGS_STRINGS.errorNetwork();
+    return createElement('div', { className: 'dsh-mermaid-render-settings' }, createElement('div', { className: 'dsh-mermaid-render-settings-error' }, MERMAID_SETTINGS_STRINGS.loadFailed()), createElement('div', { className: 'dsh-mermaid-render-settings-status' }, hint), createElement('div', { className: 'dsh-mermaid-render-settings-actions' }, createElement('button', { className: 'dsh-mermaid-render-settings-btn', onClick: props.onRetry }, MERMAID_SETTINGS_STRINGS.retry())));
 }
-/** 注入开关说明（灰字）：默认开，关闭只影响「主动引导」，不影响渲染本身。 */
-const MERMAID_SETTINGS_HINT = '默认开启：模型在用户没写出「mermaid」字样时也会主动输出 ```mermaid 代码块。关闭后已有 mermaid 代码块照常渲染，只是不再主动引导 / When on, the model proactively emits ```mermaid blocks; when off, existing blocks still render — the model is just no longer nudged.';
 /** 操作区：保存按钮 + 成功/失败提示（成功失败都留在原地，不弹窗、不静默）。 */
 function MermaidSettingsActions(props) {
-    return createElement('div', { className: 'dsh-mermaid-render-settings-actions' }, createElement('button', { className: 'dsh-mermaid-render-settings-btn', onClick: props.onSave }, '保存 / Save'), props.saved ? createElement('span', { className: 'dsh-mermaid-render-settings-saved' }, '已保存 / Saved') : null, props.failed
-        ? createElement('span', { className: 'dsh-mermaid-render-settings-error' }, '保存失败 / Save failed')
+    return createElement('div', { className: 'dsh-mermaid-render-settings-actions' }, createElement('button', { className: 'dsh-mermaid-render-settings-btn', onClick: props.onSave }, MERMAID_SETTINGS_STRINGS.save()), props.saved
+        ? createElement('span', { className: 'dsh-mermaid-render-settings-saved' }, MERMAID_SETTINGS_STRINGS.saved())
+        : null, props.failed
+        ? createElement('span', { className: 'dsh-mermaid-render-settings-error' }, MERMAID_SETTINGS_STRINGS.saveFailed())
         : null);
 }
 /** 配置视图（开关 + 操作区）；加载中/加载失败由主视图提前返回。 */
 function MermaidSettingsConfigView(props) {
     return createElement('div', { className: 'dsh-mermaid-render-settings' }, createElement(MermaidSettingsToggle, {
-        label: '向系统提示词注入 mermaid 能力说明 / Inject mermaid capability note',
-        hint: MERMAID_SETTINGS_HINT,
+        label: MERMAID_SETTINGS_STRINGS.toggleLabel,
+        hint: MERMAID_SETTINGS_STRINGS.toggleHint,
         on: props.draft.injectPrompt !== false,
         onChange: props.onPatch,
     }), createElement(MermaidSettingsActions, { saved: props.saved, failed: props.failed, onSave: props.onSave }));
@@ -600,7 +665,7 @@ function MermaidRenderSettingsView() {
         load();
     }, []);
     if (loading) {
-        return createElement('div', { className: 'dsh-mermaid-render-settings' }, createElement('div', { className: 'dsh-mermaid-render-settings-status' }, '加载中… / Loading…'));
+        return createElement('div', { className: 'dsh-mermaid-render-settings' }, createElement('div', { className: 'dsh-mermaid-render-settings-status' }, MERMAID_SETTINGS_STRINGS.loading()));
     }
     if (config === null)
         return createElement(MermaidSettingsLoadError, { kind: errorKind, onRetry: load });
@@ -637,7 +702,8 @@ function attachSettingsTab(ctx) {
             name: 'settings.plugins.tab',
             id: MERMAID_SETTINGS_TAB_ID,
             order: 95,
-            label: () => 'Mermaid',
+            // 惰性函数：宿主靠重注册 + 每次求值跟随语言切换（不得写成常量）。
+            label: MERMAID_SETTINGS_STRINGS.tab,
         }, MermaidRenderSettingsView));
         return undefined;
     }, 'dsh-mermaid-render: settings tab registration');

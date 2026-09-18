@@ -21,13 +21,30 @@ const rootListeners = new WeakMap();
  * Register the session/event listener where the host actually dispatches it.
  * @param listenCtx - the context to register on (root when available).
  * @param handler - listener receiving (session, event).
- * @returns the registered context (for diagnostics/tests).
+ * @returns disposer removing exactly this registration (idempotent).
  */
 export function listenSessionEvents(listenCtx, handler) {
-    rootListeners.get(listenCtx)?.();
+    stopSessionEvents(listenCtx);
     // { global: true } 跳过 cordis 的 scope 过滤（@deepseek-ai/dsh-scope 的 carrier
     // filter）；缺了它，打有 scope tag 的监听器会被静默排除。
-    rootListeners.set(listenCtx, listenCtx.on('session/event', handler, { global: true }));
+    const dispose = listenCtx.on('session/event', handler, { global: true });
+    const wrapped = () => {
+        if (rootListeners.get(listenCtx) === wrapped)
+            rootListeners.delete(listenCtx);
+        dispose();
+    };
+    rootListeners.set(listenCtx, wrapped);
+    return wrapped;
+}
+/**
+ * Remove the session/event listener registered by {@link listenSessionEvents}.
+ *
+ * 热生效用（issue #385）：设置页把 `enabled` 关掉时立刻停止监听（零开销），
+ * 重新打开时再挂回来 —— 不必重启 DSH。
+ * @param listenCtx - the context the listener was registered on.
+ */
+export function stopSessionEvents(listenCtx) {
+    rootListeners.get(listenCtx)?.();
 }
 /**
  * Resolve the llm service from a listener-safe source.

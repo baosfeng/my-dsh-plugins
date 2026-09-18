@@ -32,10 +32,41 @@ export interface DshContext {
   root?: DshContext
   /** 注册副作用（返回 disposer 的注册函数直接返回其返回值）。 */
   effect(callback: () => void | (() => void), label?: string): void
+  /**
+   * 局部等待服务就绪：deps 全部就绪才执行 callback（**服务晚到也补执行**），
+   * 始终缺失则 callback 不执行且不抛错 —— 故无该服务的 profile（tui / headless）
+   * 不会让插件 fatal。极简/老宿主可能没有该方法（调用方判存在）。
+   */
+  inject?(names: readonly string[], callback: (scope: DshContext) => void): unknown
+  /** webServer 服务：经 `ctx.inject(['webServer'], cb)` 的 scope 上可用（issue #385）。 */
+  webServer?: WebServerService
   /** 日志器。 */
   logger?: Logger
   /** LLM 服务（inject 声明后可用）。 */
   llm: LlmService
+}
+
+/** DSH webServer 服务（HTTP 路由注册；issue #385 设置页配置通道）。 */
+export interface WebServerService {
+  register(route: {
+    kind: 'prefix'
+    path: string
+    handler: (request: ServerRequest, response: ServerResponse) => void | Promise<void>
+  }): (() => void) | undefined
+}
+
+/** HTTP 请求最小契约（node:http IncomingMessage 的子集；body 走异步迭代器）。
+ *  headers 与 dsh-shared 的 IncomingHeaders 同形（可直传 isTrustedApiRequest）。 */
+export interface ServerRequest {
+  method?: string
+  url?: string
+  headers: Record<string, string | string[] | undefined>
+}
+
+/** HTTP 响应最小契约（与 dsh-shared 的 writeJson 契约兼容）。 */
+export interface ServerResponse {
+  writeHead(status: number, headers: Record<string, string>): void
+  end(payload?: string): void
 }
 
 /** 最小日志器契约。 */

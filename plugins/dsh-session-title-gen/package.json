@@ -12,15 +12,18 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "npx tsc -p tsconfig.json",
-    "typecheck": "npx tsc --noEmit -p tsconfig.json",
+    "build": "npx tsc -p tsconfig.json && node scripts/build.mjs",
+    "typecheck": "npx tsc --noEmit -p tsconfig.json && npx tsc --noEmit -p tsconfig.client.json",
     "test": "npx vitest run --coverage && cucumber-js test/features --import \"test/features/steps/*.mjs\""
   },
   "exports": {
     ".": {
       "default": "./lib/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./client": {
+      "default": "./lib/client.js"
+    }
   },
   "files": [
     "lib",
@@ -33,14 +36,21 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "peerDependencies": {
     "cordis": "^4.0.0-rc.10",
-    "dsh-shared": "^0.1.4"
+    "dsh-shared": "^0.1.4",
+    "react": "^18.2.0 || ^19.3.0"
   },
   "peerDependenciesMeta": {
     "cordis": {
+      "optional": true
+    },
+    "react": {
       "optional": true
     }
   },

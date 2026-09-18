@@ -1,5 +1,5 @@
 /**
- * dsh-session-title-gen — structured session title generation (issue #160).
+ * dsh-session-title-gen — structured session title generation (issue #160)。
  *
  * 监听会话首条人类消息，用 LLM 生成类似 git commit 的结构化标题
  * （先归属后描述，如 `[my-dsh-plugins] 修复 #143 记忆页签崩溃`），经核心
@@ -15,72 +15,59 @@
  * 宿主契约适配见 host.ts（issue #232：profile 插件的 events 实例隔离、
  * Session.events 私有化、插件 ctx 在监听器执行时已 inactive），
  * 单会话生成流程见 generate.ts。
+ *
+ * 配置面（issue #385）：8 项配置经「设置 → 插件 → 会话标题生成」可视化编辑，
+ * 保存写回 profile 的 cordis.patch.yml 并**热生效** —— 配置端点与注册契约见
+ * config-routes.ts，默认值与规整口径见 config.ts。
  */
-
+import { resolveConfig, toTitleConfig } from './config.js'
+import type { Config, SettingsConfig } from './config.js'
+import { registerConfigRoute } from './config-routes.js'
+import type { ConfigState } from './config-routes.js'
 import { generateSessionTitle, isUserMessage, shouldSkip } from './generate.js'
-import { createWarn, listenSessionEvents, selectLlm } from './host.js'
-import { DEFAULT_TEMPLATE } from './title.js'
+import { createWarn, listenSessionEvents, selectLlm, stopSessionEvents } from './host.js'
 import type { DshContext, Session, SessionEvent } from './types.js'
 
 export const name = 'dsh-session-title-gen'
 export const inject = ['llm']
 
-/** 插件配置（应用层 config 覆盖）。 */
-export interface Config {
-  enabled?: boolean
-  template?: string
-  provider?: string
-  model?: string
-  maxTitleBytes?: number
-  maxInputBytes?: number
-  maxOutputTokens?: number
-  timeoutMs?: number
-}
-
-/** 插件运行时配置字段（字面量类型，供 nonEmptyString / positiveInt 使用）。 */
-type ConfigValue = string | number | boolean | undefined
-
-/** 解析后的完整配置（所有字段非可选）。 */
-interface ResolvedConfig {
-  enabled: boolean
-  template: string
-  provider: string | undefined
-  model: string | undefined
-  maxTitleBytes: number
-  maxInputBytes: number
-  maxOutputTokens: number
-  timeoutMs: number
-}
-
-/** 默认配置（可被 cordis.patch.yml config 覆盖）。 */
-const DEFAULTS: ResolvedConfig = {
-  enabled: true,
-  template: DEFAULT_TEMPLATE,
-  provider: undefined,
-  model: undefined,
-  maxTitleBytes: 80,
-  maxInputBytes: 4096,
-  maxOutputTokens: 64,
-  timeoutMs: 30000,
-}
+/** 插件配置（应用层 config 覆盖）；设置页可写字段与之同源（见 config.ts）。 */
+export type { Config }
 
 export function apply(ctx: DshContext, config: Config): void {
-  const cfg = resolveConfig(config)
-  if (!cfg.enabled) return
-  const state = new Map<string, { generating: Promise<void> }>()
+  // 生效值容器：设置页保存后原地更新（热生效），生成逻辑每次读最新值。
+  const state: ConfigState = { current: resolveConfig(config) }
+  const generating = new Map<string, { generating: Promise<void> }>()
 
   // 注册点与服务都必须按宿主 root 规则取（详见 host.ts）：会话事件只在 root 的
   // events 实例上派发，而插件 ctx 在监听器执行时已 inactive，动态取服务会抛错。
   const listenCtx = ctx.root ?? ctx
   const llm = selectLlm(listenCtx, ctx.llm)
   const warn = createWarn(ctx.logger)
-  listenSessionEvents(listenCtx, onSessionEvent)
+  let listening = false
+
+  /** 挂载 / 卸载 session/event 监听（设置页保存 enabled 后立即热切换）。 */
+  function syncListeners(enabled: boolean): void {
+    if (enabled === listening) return
+    listening = enabled
+    if (enabled) listenSessionEvents(listenCtx, onSessionEvent)
+    else stopSessionEvents(listenCtx)
+  }
+
+  // 配置路由**无条件注册**（含禁用状态）：否则用户在设置页里没有入口把插件重新打开；
+  // enabled=false 只影响标题生成，不影响配置面。
+  registerConfigRoute(ctx, state, (next: SettingsConfig) => syncListeners(next.enabled))
+  syncListeners(state.current.enabled)
 
   ctx.effect(
     () => () => {
-      state.clear()
+      generating.clear()
     },
     'dsh-session-title-gen: state lifecycle',
+  )
+
+  ctx.logger?.info(
+    `[dsh-session-title-gen] 结构化会话标题${state.current.enabled ? '已启用' : '已禁用（可在「设置 → 插件」中开启）'}`,
   )
 
   /** session/event 监听器：人类消息或标题事件触发结构化标题生成。 */
@@ -99,38 +86,14 @@ export function apply(ctx: DshContext, config: Config): void {
   async function maybeGenerate(session: Session | null): Promise<void> {
     if (session === null || typeof session !== 'object' || typeof session.id !== 'string') return
     if (shouldSkip(session)) return
-    if (state.get(session.id)?.generating) return
-    const promise = generateSessionTitle({ session, llm, warn, config: cfg })
-    state.set(session.id, { generating: promise })
+    if (state.current.enabled === false) return
+    if (generating.get(session.id)?.generating) return
+    const promise = generateSessionTitle({ session, llm, warn, config: toTitleConfig(state.current) })
+    generating.set(session.id, { generating: promise })
     try {
       await promise
     } finally {
-      state.delete(session.id)
+      generating.delete(session.id)
     }
   }
-}
-
-/** 配置解析：缺省值 + 类型护栏。 */
-function resolveConfig(config: Config): ResolvedConfig {
-  const candidate = config ?? {}
-  return {
-    enabled: candidate.enabled !== false,
-    template: nonEmptyString(candidate.template, DEFAULTS.template),
-    provider: nonEmptyString(candidate.provider, DEFAULTS.provider),
-    model: nonEmptyString(candidate.model, DEFAULTS.model),
-    maxTitleBytes: positiveInt(candidate.maxTitleBytes, DEFAULTS.maxTitleBytes),
-    maxInputBytes: positiveInt(candidate.maxInputBytes, DEFAULTS.maxInputBytes),
-    maxOutputTokens: positiveInt(candidate.maxOutputTokens, DEFAULTS.maxOutputTokens),
-    timeoutMs: positiveInt(candidate.timeoutMs, DEFAULTS.timeoutMs),
-  }
-}
-
-function nonEmptyString(value: string | undefined, fallback: string): string
-function nonEmptyString(value: string | undefined, fallback: string | undefined): string | undefined
-function nonEmptyString(value: string | undefined, fallback: string | undefined): string | undefined {
-  return typeof value === 'string' && value !== '' ? value : fallback
-}
-
-function positiveInt(value: number | undefined, fallback: number): number {
-  return Number.isInteger(value) && (value as number) > 0 ? (value as number) : fallback
 }

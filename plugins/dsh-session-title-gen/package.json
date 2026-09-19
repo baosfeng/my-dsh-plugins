@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-title-gen",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DSH 会话标题自动生成插件：监听会话首条人类消息，用 LLM 生成类似 git commit 的结构化标题（先标明归属工作区，再写简要描述），经核心 session/title 事件写入（重启保留），失败自动回退核心标题机制。DSH web plugin: structured session titles like git commit messages (workspace first, then description), written through the core session/title event.",
   "type": "module",
   "main": "lib/index.js",

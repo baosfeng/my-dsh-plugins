@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-09-19
+
+### 变更
+
+- docs(session-title-gen): 在 README 接入真实设置页效果图
+- feat(session-title-gen): 新增设置页面板，8 项配置可视化编辑（#385）
+
 ## [0.1.0] - 2026-09-06
 
 ### Added

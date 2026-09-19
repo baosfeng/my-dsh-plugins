@@ -855,6 +855,20 @@ describe('releaseCommitPlan（发版提交计划）', () => {
     expect(files).toContain('AGENTS.md')
   })
 
+  it('发版前功能级验证清单随发版提交（漏了它清单会留在工作区未跟踪、丢失留痕）', () => {
+    const { files } = plan([{ name: 'dsh-my-remote', version: '0.1.4', bumped: true }])
+    expect(files).toContain('verification/dsh-my-remote-0.1.4.md')
+  })
+
+  it('批量发版时每个插件各自的清单都入列（版本号各自对应，不串味）', () => {
+    const { files } = plan([
+      { name: 'a-plugin', version: '1.0.0', bumped: true },
+      { name: 'b-plugin', version: '2.0.0', bumped: false },
+    ])
+    expect(files).toContain('verification/a-plugin-1.0.0.md')
+    expect(files).toContain('verification/b-plugin-2.0.0.md')
+  })
+
   it('bumped=true 的 commit 消息带 bump 类型，bumped=false 的是文档同步', () => {
     const { messages } = plan([
       { name: 'a-plugin', version: '1.2.4', bumped: true },

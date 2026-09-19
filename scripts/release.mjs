@@ -914,8 +914,9 @@ if (push && succeeded.length > 0) {
   // --bump 与 --push 分两步跑时 bumped=false，漏提交会让 tag 的版本校验失败）
   const { files: filesToCommit, messages: commitMessages } = releaseCommitPlan(succeeded, bump)
 
-  // Stage all files
-  const files = [...filesToCommit].join(' ')
+  // Stage all files（过滤不存在的路径：`git add` 只要有一个 pathspec 不存在就**整体失败**，
+  // 而验证清单在 --skip-real-verify 等场景下不会生成）
+  const files = [...filesToCommit].filter((f) => existsSync(join(root, f))).join(' ')
   execSync(`git add ${files}`, { cwd: root, stdio: 'inherit' })
 
   // Create commit

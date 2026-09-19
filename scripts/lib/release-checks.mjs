@@ -598,6 +598,10 @@ export function releaseCommitPlan(succeeded, bumpType) {
   for (const { name, version, bumped } of succeeded) {
     files.add(`plugins/${name}/package.json`)
     files.add(`plugins/${name}/CHANGELOG.md`)
+    // 发版前功能级验证清单（issue #67 留痕）由 3c 阶段生成，必须随发版一起提交：
+    // 漏了它，清单就留在工作区**未跟踪**、最终丢失留痕（上一批 2 个插件的清单就是这么丢的）。
+    // 存在性由调用方过滤 —— 本函数是纯函数、不做 IO，且 --skip-real-verify 时不生成清单。
+    files.add(`verification/${name}-${version}.md`)
     messages.push(
       bumped
         ? `chore(release): ${name} v${version}（自动 bump ${bumpType} + CHANGELOG 生成）`

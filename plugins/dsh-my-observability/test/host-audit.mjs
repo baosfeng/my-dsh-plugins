@@ -3,8 +3,9 @@
  * llm/stream wrap, tools/*), record shapes, session isolation, persistence
  * + restart recovery, per-session and global caps.
  */
-import { test, afterAll } from 'vitest'
+import { test, afterAll, vi } from 'vitest'
 import assert from 'node:assert/strict'
+import { join } from 'node:path'
 import {
   bootPlugin,
   createTempHome,
@@ -16,14 +17,91 @@ import {
   invoke,
   jsonOf,
 } from './lib/helpers.mjs'
+import { waitForFile } from '../../dsh-shared/test-kit/wait.mjs'
+
+/**
+ * 慢 IO 注入（防复发用例 24）：给 store 的落盘/加载路径加 N ms 延迟，在**本地确定性
+ * 复现「CI 慢机器」**——本地磁盘快，40ms 墙钟恰好够；CI 高负载下落盘更慢，于是出现
+ * 「本地绿、CI 红」。把慢环境搬进本地，回归才有拦截力。
+ *
+ * 注入开关与计数都在 `globalThis.__obsSlowIo`（默认 undefined = 不注入，其它用例零开销）；
+ * 计数让用例能自检「注入真的生效」——否则 mock 一旦失效，用例会静默退化成空转。
+ * 延迟时长是变量而非字面量：语义是可控注入，不是墙钟猜测。
+ */
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal()
+  const slow = (kind) => {
+    const config = globalThis.__obsSlowIo
+    const ms = kind === 'read' ? (config?.readMs ?? 0) : (config?.writeMs ?? 0)
+    if (config !== undefined) {
+      if (kind === 'read') config.reads += 1
+      else config.writes += 1
+    }
+    return ms
+  }
+  function delayed(kind, fn) {
+    return async (...args) => {
+      const ms = slow(kind)
+      if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms))
+      return fn(...args)
+    }
+  }
+  return {
+    ...actual,
+    default: actual.default ?? actual,
+    readFile: delayed('read', actual.readFile),
+    appendFile: delayed('write', actual.appendFile),
+    writeFile: delayed('write', actual.writeFile),
+  }
+})
 
 const disposeAlls = []
 afterAll(() => {
   for (const disposeAll of disposeAlls.splice(0)) disposeAll()
 })
 
-/** 等待 store 异步加载/防抖落盘 settle。 */
+/** 让出事件循环 / 等 store 异步加载折返（与负载无关的短等待）。
+ *  ⚠️ **不要用它等落盘**：落盘等待只走 `await disposeAll()` + `waitPersisted(...)` 两个
+ *  确定性信号。固定墙钟赌 IO 完成正是 CI run #35411633023「0 !== 3」的根因。 */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 40))
+
+/** 审计 jsonl 中某会话的事件行数（不可读 → 0，便于在轮询里表达「还没落盘」）。 */
+function persistedCount(text, sessionId) {
+  let count = 0
+  for (const line of text.split('\n')) {
+    if (line === '') continue
+    try {
+      if (JSON.parse(line).sessionId === sessionId) count += 1
+    } catch {
+      // 截断/损坏行跳过（与 store-persist.parseJsonl 同口径）
+    }
+  }
+  return count
+}
+
+/**
+ * 等「预期条数已落盘」这一**可观测条件**成立；超时上限 5s（test-kit waitForFile 默认），
+ * 超时抛错并说明等的是什么条件（不静默过期、不靠墙钟长度赌）。
+ */
+function waitPersisted(home, sessionId, expected) {
+  const file = join(home, 'observability', 'audit.jsonl')
+  return waitForFile(file, (text) => persistedCount(text, sessionId) >= expected, {
+    message: `${file} 已落盘会话 ${sessionId} 的 ${expected} 条事件`,
+  })
+}
+
+/** 产生「status + llm start/end」三条事件（重启恢复类用例共用）。 */
+async function recordThreeEvents(listeners, sessionId) {
+  await dispatchEvent(listeners, 'agent/status', { agent: topAgent(sessionId), status: 'running' })
+  const wrapped = await dispatchEvent(listeners, 'llm/stream', { sessionId }, () =>
+    (async function* () {
+      yield { type: 'text-delta', index: 0, text: 'hi' }
+    })(),
+  )
+  for await (const chunk of wrapped) {
+    void chunk
+  }
+}
 
 function boot(config, opts) {
   const handle = bootPlugin(config, opts)
@@ -301,24 +379,15 @@ test('audit suite', async () => {
     try {
       const first = bootPlugin({}, { home: sharedHome })
       await settle()
-      await dispatchEvent(first.listeners, 'agent/status', {
-        agent: topAgent('persist-1'),
-        status: 'running',
-      })
-      const wrapped = await dispatchEvent(first.listeners, 'llm/stream', { sessionId: 'persist-1' }, () =>
-        (async function* () {
-          yield { type: 'text-delta', index: 0, text: 'hi' }
-        })(),
-      )
-      for await (const chunk of wrapped) {
-        void chunk
-      }
-      await settle()
-      first.disposeAll() // flush
-      await settle()
+      await recordThreeEvents(first.listeners, 'persist-1')
+      // 落盘等待只认两个确定性信号，不认墙钟：
+      //   ① await disposeAll() —— store.dispose() 返回落盘链（写完成即 resolve）；
+      //   ② waitPersisted —— 磁盘上「该会话已有 N 条事件」这一可观测条件（超时 5s）。
+      await first.disposeAll()
+      await waitPersisted(sharedHome, 'persist-1', 3)
 
       const second = bootPlugin({}, { home: sharedHome })
-      await settle()
+      // 重启实例查询不必等待：路由侧 await store.whenReady()（见用例 22）
       const events = await eventsOf(second.api, '?sessionId=persist-1')
       assert.equal(events.length, 3, 'events survive restart (status + llm start/end)')
       assert.equal(events[0].type, 'agent_status')
@@ -328,7 +397,7 @@ test('audit suite', async () => {
         await invoke(second.api, mockRequest({ url: '/observability/api/sessions' }), mockResponse()),
       ).value
       assert.equal(sessions[0].sessionId, 'persist-1')
-      second.disposeAll()
+      await second.disposeAll()
     } finally {
       cleanupHome(sharedHome)
     }
@@ -461,12 +530,10 @@ test('audit suite', async () => {
         reason: 'turn-stopping',
         taskId: 'task-1',
       })
-      await settle()
-      first.disposeAll() // flush
-      await settle()
+      await first.disposeAll() // await 落盘链
+      await waitPersisted(sharedHome, 'persist-plugin', 1)
 
       const second = bootPlugin({}, { home: sharedHome })
-      await settle()
       const events = await eventsOf(second.api, '?sessionId=persist-plugin')
       assert.equal(events.length, 1, 'plugin event survives restart')
       assert.equal(events[0].type, 'plugin_event')
@@ -492,8 +559,8 @@ test('audit suite', async () => {
         action: 'steer-continue',
         reason: 'turn-stopping',
       })
-      await settle()
-      await first.disposeAll() // await 落盘链：此刻磁盘上已有该事件
+      await first.disposeAll() // await 落盘链
+      await waitPersisted(sharedHome, 'zero-wait', 1) // 磁盘已含该事件
 
       const second = bootPlugin({}, { home: sharedHome })
       // 刻意不等待：boot 后立即查询，加载必然还没完成（至少一个 IO tick）
@@ -521,6 +588,39 @@ test('audit suite', async () => {
     assert.equal(events.length, 2000, 'per-session cap enforced for plugin events')
     assert.equal(events[0].data.reason, 'r50', 'oldest dropped (FIFO)')
     assert.equal(events[1999].data.reason, 'r2049', 'newest kept')
+  }
+
+  // ── 24. 慢 IO（模拟 CI 高负载）下重启恢复仍成立（防复发）──────────────
+  //  CI run #35411633023 的 test (dsh-my-observability) 唯一失败点就是用例 14 的
+  //  `0 !== 3`：旧写法「`disposeAll()` 不 await + `await settle()` 40ms 墙钟赌 append
+  //  落盘」在 CI 慢磁盘上 append 超过 40ms，重启后读到 0 条。本地磁盘快 → 复现不到。
+  //  本用例把 appendFile/writeFile 注入 250ms、readFile 注入 120ms（都 > 40ms 墙钟），
+  //  把慢环境搬进本地，于是「靠墙钟等落盘」必然红、「等磁盘可观测条件」必然绿。
+  {
+    // 写 250ms > 「dispose 后 settle(40)」+「重启实例 readFile 120ms」能覆盖的范围：
+    // 旧写法读到 0 条；读 120ms 同时验证「查询侧 whenReady 与加载耗时解耦」。
+    const io = { writeMs: 250, readMs: 120, writes: 0, reads: 0 }
+    globalThis.__obsSlowIo = io
+    const sharedHome = createTempHome()
+    try {
+      const first = bootPlugin({}, { home: sharedHome })
+      await settle()
+      await recordThreeEvents(first.listeners, 'slow-io-1')
+      await first.disposeAll()
+      await waitPersisted(sharedHome, 'slow-io-1', 3)
+      const second = bootPlugin({}, { home: sharedHome })
+      const events = await eventsOf(second.api, '?sessionId=slow-io-1')
+      assert.ok(io.writes >= 1, '落盘延迟已注入（否则本用例是空转）')
+      assert.ok(io.reads >= 1, '加载延迟已注入（否则本用例是空转）')
+      assert.equal(events.length, 3, '慢 IO 下事件仍全部恢复（status + llm start/end）')
+      assert.equal(events[0].type, 'agent_status')
+      assert.equal(events[1].type, 'llm_stream')
+      assert.equal(events[2].type, 'llm_stream')
+      await second.disposeAll()
+    } finally {
+      globalThis.__obsSlowIo = undefined
+      cleanupHome(sharedHome)
+    }
   }
 
   console.log('ALL AUDIT TESTS PASSED')

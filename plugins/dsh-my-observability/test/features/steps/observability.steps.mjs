@@ -87,8 +87,10 @@ When('代理 {string} 调用 bash 工具并成功返回', async function (id) {
 })
 
 When('插件重启', async function () {
-  this.handle.disposeAll()
-  await settle()
+  // 落盘等待用确定性信号：disposeAll 内部 store.dispose() 返回落盘链 promise，
+  // await 它返回即「本进程事件已写完」——不靠墙钟赌 IO 完成（同一根因见
+  // test/host-audit.mjs 用例 14：CI 上固定 sleep 不足 → 重启后读到 0 条）。
+  await this.handle.disposeAll()
   this.handle = null
   this.boot({})
   await settle()

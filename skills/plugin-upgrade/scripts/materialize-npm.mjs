@@ -216,7 +216,8 @@ if (githubRepo) {
       const data = await res.json()
       // CodeQL js/http-to-file-access：提交清单逐字来自 HTTP，落盘前必须净化
       // （控制字符/换行/超长消息），净化实现与理由见 ./lib/commit-lines.mjs。
-      const commits = commitLines(data.commits)
+      const rawCommits = Array.isArray(data.commits) ? data.commits : []
+      const commits = commitLines(rawCommits)
       writeFileSync(join(out, 'commits.txt'), commits.join('\n') + '\n')
       const reverts = revertLines(commits)
       writeFileSync(join(out, 'reverts.txt'), reverts.join('\n') + '\n')
@@ -226,7 +227,7 @@ if (githubRepo) {
         range,
         totalCommits: data.total_commits,
         commitsListed: commits.length,
-        truncated: commits.length < data.total_commits,
+        truncated: commits.length < data.total_commits || commits.length < rawCommits.length,
         reverts: reverts.length,
       }
     } else {

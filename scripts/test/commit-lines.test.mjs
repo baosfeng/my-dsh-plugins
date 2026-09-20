@@ -26,6 +26,20 @@ describe('scrubField', () => {
     expect(scrubField(42)).toBe('42')
     expect(scrubField({ a: 1 })).toBe('[object Object]')
   })
+
+  it('Unicode 行分隔符 U+2028/U+2029 语义等同换行 → 折成空格', () => {
+    // 有些消费者（编辑器/日志行解析/`split(/\r?\n/)` 之外的宽松按行处理）把这两个字符当行分隔，
+    // 只处理 \r\n\t 时它们会穿透净化落盘，从而在产物里伪造出第二行。
+    expect(scrubField('a\u2028b')).toBe('a b')
+    expect(scrubField('a\u2029b')).toBe('a b')
+    expect(scrubField('a\u2028\u2029b')).toBe('a b')
+  })
+
+  it('双向控制符（Trojan Source 类显示欺骗）→ 删除', () => {
+    const bidi = '\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069'
+    expect(scrubField(`fix ${bidi}evil`)).toBe('fix evil')
+    expect(scrubField('\u202erelease\u202c')).toBe('release')
+  })
 })
 
 describe('commitLines', () => {
@@ -53,6 +67,38 @@ describe('commitLines', () => {
     expect(commitLines([null])).toEqual([' () '])
     expect(commitLines(undefined)).toEqual([])
     expect(commitLines('not-an-array')).toEqual([])
+  })
+
+  it('Unicode 行分隔符与双向控制符不能穿透到行文本', () => {
+    const lines = commitLines([
+      {
+        sha: 'a'.repeat(40),
+        commit: { author: { date: '2026-01-02T00:00:00Z' }, message: 'fix\u2028[fake] 2026-01-02 injected' },
+      },
+      {
+        sha: 'b'.repeat(40),
+        commit: { author: { date: '2026-01-03T00:00:00Z' }, message: '\u202erevert\u202c x' },
+      },
+    ])
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toBe('aaaaaaaaaa (2026-01-02) fix [fake] 2026-01-02 injected')
+    expect(lines[1]).toBe('bbbbbbbbbb (2026-01-03) revert x')
+    expect(lines.join('\n')).not.toMatch(/[\u2028\u2029\u202a-\u202e\u2066-\u2069]/)
+  })
+
+  it('条数上限：超长数组按 MAX_COMMITS 截断（保留前若干条，顺序不变）', () => {
+    // 上限取 1000 = GitHub compare API 单页实际上限（250）的 4 倍余量：
+    // 正常响应永远够用，异常/恶意响应无法把产物撑爆。
+    const many = Array.from({ length: 1000 + 500 }, (_, i) => ({
+      sha: `sha${i}`,
+      commit: { author: { date: '2026-01-02T00:00:00Z' }, message: `m${i}` },
+    }))
+    const lines = commitLines(many)
+    expect(lines).toHaveLength(1000)
+    expect(lines[0]).toContain('m0')
+    expect(lines.at(-1)).toContain('m999')
+    // 未超限时不做任何改动（不误截断）
+    expect(commitLines(many.slice(0, 250))).toHaveLength(250)
   })
 })
 

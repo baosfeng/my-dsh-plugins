@@ -18,6 +18,7 @@
 - **表格增强**：表头与数据行只需含 `|` 且 ≥2 列即可识别（分隔行支持 `--- | ---`、`-|-|-`、`---` 变体），`:---` / `:---:` / `---:` 对齐逐列生效；宽表格自动横向滚动。
 - **公式**：行内 `$…$` 与块级 `$$…$$`；常见结构（分数 / 根号 / 上下标 / 求和积分 / 希腊字母）自实现轻量排版，不引 KaTeX / MathJax；**无法解析的公式保持原文**，货币 `$5`、变量 `a$b` 不被误伤，异常公式以错误标记显示原文。
 - **代码块**：语法高亮（未知语言与超长代码块回退纯文本）、语言标签（js→javascript 等别名归一）、行号、5 套代码主题。
+- **text 围栏块按 markdown 渲染**：语言标记为 `text` / `plaintext` / `txt` 的围栏代码块，块内内容按 markdown 渲染（标题 / 列表 / 表格 / 公式等既有能力一并生效），每块带**独立**的「查看原文」切换（切回原始代码块，状态逐块独立）；**默认启用、一律渲染**（不做内容启发式判定），其他语言标记（`js` / `ts` / `json` / `bash` …）与无语言标记的块行为完全不变。
 - **一键复制**：代码块与整段 markdown 各带复制按钮（hover 显示，位置可配，流式渲染中不显示）。
 - **上下文注入块渲染**：宿主以纯文本 `pre[data-context-text="true"]` 呈现的上下文注入正文（**子 agent 回传消息**、AGENTS.md 等）在 DOM 层渲染为 markdown；原文节点保留并置 `hidden`。
 - **增强可配置**：全部增强独立开关、默认开启，可在设置 → 插件 → 渲染 页签可视化编辑，保存即生效、重启不丢。
@@ -75,13 +76,15 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 | `dsh-md-render-code-head` / `dsh-md-render-code-lang`                          | 代码块头部与语言标签                                     |
 | `dsh-md-render-math` / `dsh-md-render-math-block` / `dsh-md-render-math-error` | 行内公式 / 块级公式 / 公式错误标记                       |
 | `dsh-md-render-copy`                                                           | 复制按钮                                                 |
+| `dsh-md-render-text-md` / `dsh-md-render-text-toggle`                          | text 围栏块的 markdown 渲染容器 / 「查看原文」切换按钮（视图状态在块属性 `data-dsh-md-render-text-view`） |
 
-其余 exports（`parseTable` / `renderTable` / `setRenderOptions` / `applyContextMarkdown` 等）属内部实现面，随重构变动，下游不得依赖。契约由 `test/markdown-view-contract.mjs` 钉住；改契约需同步本 README 与 `CHANGELOG.md`。
+其余 exports（`parseTable` / `renderTable` / `setRenderOptions` / `applyContextMarkdown` 等）属内部实现面，随重构变动，下游不得依赖。契约由 `test/markdown-view-contract.mjs` 钉住；text 围栏块（`text` / `plaintext` / `txt`）的 DOM 增强契约由 `test/text-fence-markdown.mjs` 钉住；改契约需同步本 README 与 `CHANGELOG.md`。
 
 ## 已知限制
 
 - 表格必须能从段落文本中识别：需含 `|` 且 ≥2 列 + 分隔行；纯空格分隔的「表格」无法识别。
 - 公式结构覆盖高频结构，非完整 LaTeX 排版（零依赖约束）；无法解析的公式与异常公式（未闭合 `$`、空公式等）保持原文或标错误，不静默吞掉。
+- **text 围栏块的接管口径**：非思考模式下模型输出经本插件 MarkdownView 渲染（代码块为 `div.md-code-block`），`text` / `plaintext` / `txt` 块必然被接管；思考模式的推理文本由宿主内置渲染组件输出，只要其代码块仍是同一 DOM 契约（`div.md-code-block` + `code.language-xxx` —— `dsh-mermaid-render` 依赖的同一契约）同样生效，契约不同的宿主版本保持原样（不报错、不改 DOM）。单块超长（>10 万字符）保持原代码块。
 - 轨迹视图（宿主 `div[data-trajectory-scroll]` 子树）也在增强范围内，但走**内容门控**：只接管确实含表格 / 公式 / 围栏代码块的块；单块超长或取不到 markdown 原文时保持宿主渲染（不报错、不改 DOM）。
 
 ## 相关文档

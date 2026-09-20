@@ -434,7 +434,9 @@ test('用户手写的 webhooks 嵌套列表：未提交该字段时原样保留�
   assert.equal(saved.status, 200)
   const text = readFileSync(patchFile, 'utf8')
   const block = configBlock(text)
-  assert.ok(block.includes('https://hand.example.com/hook'), '手写 webhook url 保留：\n' + text)
+  // 解析出 webhook url 列表后精确比较（而非裸 URL 子串）：子串断言既会被 CodeQL
+  // 判成「不完整 URL 主机校验」，也抓不住「url 被改写成别的地址」的回归。
+  assert.deepEqual(webhookUrls(text), ['https://hand.example.com/hook'], '手写 webhook url 保留：\n' + text)
   assert.ok(block.includes('手写渠道'), '手写 webhook 名称保留')
   assert.ok(block.includes('Bearer abc'), 'webhook 自定义 headers 保留（写坏 = 用户渠道鉴权失效）')
   assert.equal(extractConfig(text, 'remote').askTimeoutMs, 200, '本次修改落盘')
@@ -474,7 +476,8 @@ test('发来的 webhook 未带 headers 时按名称继承原条目（隐藏字�
   assert.equal(saved.status, 200)
   const text = readFileSync(patchFile, 'utf8')
   assert.ok(text.includes('Bearer keep'), '同名单条的 headers 被继承（不丢鉴权头）：\n' + text)
-  assert.ok(text.includes('https://relay.example.com/v2'), '本次修改的 url 落盘')
+  // 同上：解析后精确比较，断言「恰好一条且就是新 url」，裸子串会被 CodeQL 误判。
+  assert.deepEqual(webhookUrls(text), ['https://relay.example.com/v2'], '本次修改的 url 落盘')
   assert.ok(text.includes('enabled: false'), 'enabled 落盘')
 })
 

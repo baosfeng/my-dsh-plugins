@@ -219,5 +219,11 @@ Then('手写的 end 开关保留，且该 webhook 未暴露的 headers 被继承
   const text = this.readPatchFile()
   assert.strictEqual(extractConfig(text, 'remote').end, false, '手写的 end 开关保留：\n' + text)
   assert.ok(text.includes('Bearer abc'), '该条目未暴露的 headers 按名称继承（不丢鉴权头）：\n' + text)
-  assert.ok(text.includes('https://hand.example.com/v2'), 'URL 更新已落盘')
+  // 按 YAML 键 + 值的**整行**严格匹配（而非裸 URL 子串）：子串断言会被 CodeQL 判成
+  // 「不完整 URL 主机校验」，也抓不住「url 被改写成别的地址」。嵌套 webhooks 的
+  // 视图 extractConfig 解析不了，故这里退一步用带键整行相等——同样能拦住丢失/改写。
+  assert.ok(
+    text.split('\n').some((line) => line.trim() === "url: 'https://hand.example.com/v2'"),
+    'URL 更新已落盘：\n' + text,
+  )
 })

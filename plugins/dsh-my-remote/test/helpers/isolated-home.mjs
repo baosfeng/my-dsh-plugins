@@ -17,7 +17,17 @@
  *     指向真实目录」，断言抛错且真实文件内容与 mtime 均未变化。
  */
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
+import {
+  closeSync,
+  fstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 
@@ -146,12 +156,19 @@ export function isolatedHome(prefix = 'dsh-my-remote-test-') {
  * 防回归测试用它证明「测试前后真实配置零变化」（只读，绝不写）。
  */
 export function snapshotRealConfig(file = defaultRealConfigPath()) {
+  // 用**同一个 fd** 取 stat 与内容：`statSync(path)` + `readFileSync(path)` 是
+  // check-then-use，两步之间文件可能被替换/改写（TOCTOU，CodeQL js/file-system-race），
+  // 快照就会自相矛盾（size/mtimeMs 来自旧文件、sha256 来自新文件）。
+  let fd
   try {
-    const stat = statSync(file)
-    const sha256 = createHash('sha256').update(readFileSync(file)).digest('hex')
+    fd = openSync(file, 'r')
+    const stat = fstatSync(fd)
+    const sha256 = createHash('sha256').update(readFileSync(fd)).digest('hex')
     return { exists: true, size: stat.size, mtimeMs: stat.mtimeMs, sha256 }
   } catch {
     return { exists: false, size: 0, mtimeMs: 0, sha256: '' }
+  } finally {
+    if (fd !== undefined) closeSync(fd)
   }
 }
 

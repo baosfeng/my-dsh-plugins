@@ -22,7 +22,7 @@ import { test, beforeAll, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { currentProfile, patchFileOf } from 'dsh-shared'
 import {
   assertDshHomeIsolated,
@@ -104,10 +104,14 @@ test('目标路径在临时目录之外时拒绝写入（不只看 DSH_HOME 一�
     /拒绝写入真实 DSH 配置/,
     '真实路径必须被拒',
   )
+  // 该用例只用「按构造就在临时目录之外」的路径：**不用 process.cwd() / 仓库根**定位 ——
+  // fork 池等工作区位于 $TMPDIR 之下的场景里，二者本身就落在临时目录内，用例会必然假红
+  // （并让 pre-push 全量门禁形同虚设）。tmpdir() 上溯一级即保证在临时目录之外，
+  // 不依赖「主目录不在 tmpdir 下」这类环境假设。
   assert.throws(
-    () => assertIsolatedPatchPath(join(process.cwd(), 'cordis.patch.yml')),
+    () => assertIsolatedPatchPath(join(dirname(tmpdir()), 'cordis.patch.yml')),
     /拒绝写入临时目录之外/,
-    '仓库内路径也必须被拒（避免污染工作区）',
+    '非临时目录的绝对路径也必须被拒（避免污染工作区/用户主目录）',
   )
   assertRealConfigUntouched('越界路径场景')
 })

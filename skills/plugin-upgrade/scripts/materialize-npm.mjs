@@ -19,6 +19,7 @@ import { mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync } from 
 import { join } from 'node:path'
 import { parseGithubRepo } from './lib/github-repo.mjs'
 import { commitLines, revertLines } from './lib/commit-lines.mjs'
+import { manifestDiffText } from './lib/manifest-diff.mjs'
 
 const CLI = '@deepseek-ai/dsh'
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm'
@@ -167,34 +168,31 @@ function scopedPkgs(root) {
 }
 const pkgsA = scopedPkgs(join(out, 'a'))
 const pkgsB = scopedPkgs(join(out, 'b'))
-const manifestFields = [
-  'version',
-  'bin',
-  'files',
-  'exports',
-  'dependencies',
-  'peerDependencies',
-  'main',
-  'types',
-  'engines',
-]
 
-let manifestDiff = `# package.json manifest diff: ${CLI} ${a.resolved} -> ${b.resolved}\n\n`
-for (const name of new Set([...pkgsA.keys(), ...pkgsB.keys()].sort())) {
-  const pa = pkgsA.get(name)
-  const pb = pkgsB.get(name)
-  const fa = pa ? JSON.parse(readFileSync(join(pa, 'package.json'), 'utf8')) : null
-  const fb = pb ? JSON.parse(readFileSync(join(pb, 'package.json'), 'utf8')) : null
-  if (!fa || !fb) {
-    manifestDiff += `## ${name}: ${fa ? 'REMOVED in b' : 'ADDED in b'}\n\n`
-    continue
-  }
-  const deltas = manifestFields
-    .filter((f) => JSON.stringify(fa[f] ?? null) !== JSON.stringify(fb[f] ?? null))
-    .map((f) => `- ${f}:\n  a: ${JSON.stringify(fa[f] ?? null)}\n  b: ${JSON.stringify(fb[f] ?? null)}`)
-  if (deltas.length) manifestDiff += `## ${name} (${fa.version} -> ${fb.version})\n\n${deltas.join('\n')}\n\n`
+/** 包名 → 已解析的 package.json（读取行为与净化前的循环内读取等价）。 */
+function readManifests(pkgs) {
+  const manifests = new Map()
+  for (const [name, dir] of pkgs) manifests.set(name, JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')))
+  return manifests
 }
-writeFileSync(join(out, 'manifest-diff.txt'), manifestDiff)
+
+/**
+ * manifest-diff.txt：字段同样来自网络（版本头来自 `npm view --json`，包名与 manifest 字段来自
+ * 下载包的 package.json），落盘前必须与 commits.txt / reverts.txt 用**同一套净化**——
+ * 判据不是"代码扫描报不报"（js/http-to-file-access 不追踪 execFileSync 的 npm CLI 响应，
+ * 所以这条路径当时没被一并处置，见 issue #388），而是字段可不可信。
+ * 净化与拼接实现见 ./lib/manifest-diff.mjs（复用 ./lib/commit-lines.mjs 的 scrubField）。
+ */
+writeFileSync(
+  join(out, 'manifest-diff.txt'),
+  manifestDiffText({
+    cli: CLI,
+    from: a.resolved,
+    to: b.resolved,
+    packagesA: readManifests(pkgsA),
+    packagesB: readManifests(pkgsB),
+  }),
+)
 
 /**
  * GitHub compare enrichment: commit list + revert detection across the tag pair.

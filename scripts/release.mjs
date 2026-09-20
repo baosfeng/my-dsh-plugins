@@ -28,7 +28,10 @@
  *   1b. validate peerDependencies.cordis declared and consistent across plugins
  *   1b-pre. 形态判定：agent preset 资产包 dsh.kind=preset 豁免（issue #231，lib/preset-gate.mjs）
  *   1c. cross-plugin dependency check (issue #39): client require('dsh-*') must
- *       be declared in peerDependencies; in-repo dsh-* deps published + tagged
+ *       be declared in peerDependencies; in-repo dsh-* deps published + tagged.
+ *       npm 判据（1a/1c）一律钉官方 registry（lib/npm-registry.mjs，issue #386）：
+ *       本机镜像缓存陈旧会把官方已是 0.1.1 的包读成 0.1.0、刚发布的依赖返回 404，
+ *       据此判定会得到 1a 假绿（查询失败静默放行）与 1c 假红（误判「从未发布」）。
  *   1d. package publish-hygiene check (issue #323): exports/main/types/dsh.bundle.patch
  *       point at real files; dsh.client consistent with exports["./client"]; npm pack
  *       content assertions (required files present, test/src/coverage/reports/node_modules
@@ -73,9 +76,6 @@ import {
   collectServerSources,
   buildPluginIndex,
   findFreePorts,
-  versionGte,
-  rangeMin,
-  isNpmNotFound,
   inspectTagState,
   tagConflictHint,
   readmeVersionRowRe,
@@ -87,6 +87,7 @@ import { resolvePresetAsset } from './lib/preset-gate.mjs'
 import { createTimeline } from './lib/release-timing.mjs'
 import { mapWithConcurrency, normalizeConcurrency, DEFAULT_CONCURRENCY } from './lib/release-concurrency.mjs'
 import { pushTagsIndividually, confirmTagTriggered, retriggerHint } from './lib/release-tag-push.mjs'
+import { npmLatestGate, prefetchNpmVersions, createIsPublished } from './lib/npm-registry.mjs'
 import { checkPlugin as checkPackHygiene } from './check-pack-hygiene.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -178,15 +179,22 @@ const batchConcurrency = normalizeConcurrency(concurrencyRaw, names.length)
  *
  * @param {string} command
  * @param {string[]} argv
- * @param {{cwd?: string, prefix?: string, quiet?: boolean}} [options]
+ * `env` 用于给子进程注入 npm 配置（门禁 1a/1c 把 npm 查询钉在官方 registry，
+ * issue #386；env 优先级高于用户 ~/.npmrc，见 lib/npm-registry.mjs）。
+ *
+ * @param {{cwd?: string, prefix?: string, quiet?: boolean, env?: Record<string, string>}} [options]
  * @returns {Promise<{code: number, stdout: string, stderr: string}>}
  */
 function runChild(command, argv, options = {}) {
-  const { cwd = root, prefix = '', quiet = false } = options
+  const { cwd = root, prefix = '', quiet = false, env } = options
   return new Promise((resolve) => {
     let child
     try {
-      child = spawn(command, argv, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn(command, argv, {
+        cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: env === undefined ? process.env : { ...process.env, ...env },
+      })
     } catch (err) {
       resolve({ code: -1, stdout: '', stderr: String(err?.message ?? err) })
       return
@@ -236,71 +244,16 @@ function runChild(command, argv, options = {}) {
   })
 }
 
-/** 子进程失败的简短归因（取 stderr 首行，没有则取 stdout 首行）。 */
-const failureLine = (result) => String(result.stderr || result.stdout || '').split('\n')[0]
-
 // ── 门禁实现（每个门禁一个函数，返回 { ok, message } 而不是直接退出）──────────
-/**
- * 1a. 语义 gate（plugin-release 增量）：stable 版本发布前查 npm latest 防降级。
- * 当前版本低于 npm 已发布 latest 时拒绝发布（防止 latest 回退到更低版本）；
- * 首次发布（404）跳过；查询失败（网络/限流）只警告不阻断。
- */
-async function npmLatestGate(name, pkg, version, say) {
-  if (!/^\d+\.\d+\.\d+$/.test(version)) return { ok: true }
-  const result = await runChild('npm', ['view', pkg.name, 'dist-tags.latest'], {
-    quiet: true,
-  })
-  if (result.code === 0) {
-    const latest = result.stdout.trim().split('\n').pop()
-    if (latest && !versionGte(version, latest)) {
-      return {
-        ok: false,
-        message: `${name} 版本 ${version} 低于 npm latest ${latest} — 拒绝发布（防止 latest 回退，plugin-release 语义 gate）`,
-      }
-    }
-    say(`✓ npm latest ${latest} ≤ 当前版本 ${version}（无降级）`)
-    return { ok: true }
-  }
-  if (isNpmNotFound(result.stderr)) {
-    say(`- ${pkg.name} 尚未发布到 npm（首次发布，跳过 latest 防降级检查）`)
-  } else {
-    say(`- npm latest 查询失败（${failureLine(result)}）— 跳过防降级检查`)
-  }
-  return { ok: true }
-}
+// 1a（npm latest 防降级）与 1c 的 npm 查询实现在 lib/npm-registry.mjs：那里的 npm view
+// 一律钉官方 registry（本机镜像缓存陈旧/未同步会给出错误结论 → 1a 假绿、1c 假红，
+// issue #386），且把判定抽成可注入 exec 的纯件便于防回归测试。
 
 /** 3. 插件测试（npm test）。返回 ok/message，不抛异常。 */
 async function testsGate(pluginDir, prefix) {
   const result = await runChild('npm', ['test'], { cwd: pluginDir, prefix })
   if (result.code !== 0) return { ok: false, message: 'tests failed — fix before releasing' }
   return { ok: true }
-}
-
-/**
- * 1c 依赖发布状态预热：把仓库内依赖的 `npm view` 并发跑完，再交给纯函数
- * `findUnpublishedDeps` 做同步判定——判定规则一字未改，只是把原来「每个依赖
- * 一次同步 execFileSync」（实测单次 0.3–2.5s）并发化。
- */
-async function prefetchNpmVersions(deps) {
-  const settled = await mapWithConcurrency(deps, Math.min(4, DEFAULT_CONCURRENCY + 1), async (dep) => {
-    const result = await runChild('npm', ['view', dep, 'version'], {
-      quiet: true,
-    })
-    if (result.code === 0)
-      return [
-        dep,
-        {
-          version: result.stdout.trim().split('\n').pop() ?? '',
-          notFound: false,
-        },
-      ]
-    return [dep, { version: '', notFound: isNpmNotFound(result.stderr) }]
-  })
-  const map = new Map()
-  for (const item of settled) {
-    if (item.status === 'fulfilled') map.set(item.value[0], item.value[1])
-  }
-  return map
 }
 
 /**
@@ -591,31 +544,14 @@ async function processPlugin(name, ctx) {
     }
   }
   // 仓库内依赖的 npm 发布状态并发预热（issue #246；判定规则见 findUnpublishedDeps）
+  // query 钉官方 registry（issue #386），判定纯件 createIsPublished 规则未变。
   const inRepoDeps = Object.keys(declared).filter((d) => pluginIndex.has(d))
   const npmVersions = depOk
-    ? await timeline.phase('1c 仓库内依赖 npm 查询', () => prefetchNpmVersions(inRepoDeps))
+    ? await timeline.phase('1c 仓库内依赖 npm 查询', () =>
+        prefetchNpmVersions(runChild, inRepoDeps, Math.min(4, DEFAULT_CONCURRENCY + 1)),
+      )
     : new Map()
-  const isPublished = (dep, range) => {
-    const min = rangeMin(range)
-    if (!min) return false
-    const cached = npmVersions.get(dep)
-    if (cached === undefined) return false
-    // npm view 成功：版本满足范围即通过
-    if (!cached.notFound && cached.version) return versionGte(cached.version, min)
-    // 404（npm 从未发布）→ 必须阻断：依赖方安装/运行必然失败（issue #72）。
-    if (cached.notFound) return false
-    // 429 限流等临时错误：仓库内依赖（pluginIndex）认可「已打 tag」——
-    // tag push 必触发 Release workflow，GitHub Release 为仓库主交付物（issue #12）；
-    // npm 发布失败不阻塞依赖顺序校验（发布后可手动重试）。
-    const entry = pluginIndex.get(dep)
-    if (entry !== undefined && isTagged(entry.dir, entry.version)) {
-      // 但 library 依赖（dsh.kind=library）是运行时 import 的共享工具包：
-      // npm 未发布 = 依赖方安装失败，必须确认 npm 发布成功才放行（issue #72）。
-      if (isLibraryDep(entry.dir)) return false
-      return true
-    }
-    return false
-  }
+  const isPublished = createIsPublished({ npmVersions, pluginIndex, isTagged, isLibraryDep })
   const depProblems = findUnpublishedDeps(declared, pluginIndex, isPublished, isTagged)
   if (depProblems.length > 0) {
     for (const p of depProblems) gateFail('1c', p.reason)
@@ -755,7 +691,9 @@ async function processPlugin(name, ctx) {
   say(
     `- 并发门禁：1a npm latest 防降级 + 1d 包发布卫生 + 3 插件测试${realPlan.mode === 'run' ? ' + 3c 真实环境验证' : ''}…`,
   )
-  const npmLatestPromise = timeline.phase('1a npm latest 防降级', () => npmLatestGate(name, pkg, version, say))
+  const npmLatestPromise = timeline.phase('1a npm latest 防降级', () =>
+    npmLatestGate({ exec: runChild, name, pkgName: pkg.name, version, say }),
+  )
   const packHygienePromise = timeline.phase('1d 包发布卫生（npm pack）', () => packHygieneGate(name))
   const testsPromise = timeline.phase('3 插件测试 (npm test)', () => testsGate(pluginDir, `${prefix}    `))
   let realVerifyPromise = null

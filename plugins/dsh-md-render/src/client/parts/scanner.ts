@@ -7,6 +7,8 @@
 // issue #196：上下文注入块（pre[data-context-text]，宿主 ContextBody 的
 // 纯文本渲染——子 agent 消息 / AGENTS.md 注入等）走 context-markdown
 // 的 DOM markdown 渲染；幂等标记在 pre/容器上，宿主重渲染后可重做。
+// issue #393：text / plaintext / txt 围栏块走 text-markdown 的 markdown
+// 渲染 + 每块「查看原文」切换（流式门控 / 兜底重扫同一口径）。
 function scanContainer(seen: Set<Node>, container: Element): void {
   if (container.closest && container.closest('[data-streaming]')) return
   const paragraphs = container.querySelectorAll('p.tzx-p')
@@ -29,6 +31,8 @@ function scanNode(seen: Set<Node>, node: Node): void {
   scanContextBlocks(el)
   // issue #205：轨迹视图（div[data-trajectory-scroll]）内 markdown 的接管。
   scanTrajectoryBlocks(el)
+  // issue #393：text / plaintext / txt 围栏块按 markdown 渲染（含「查看原文」切换）。
+  scanTextBlocks(el)
   if (typeof el.matches === 'function' && (el.matches('div.tzx-md') || el.matches('div.md-table-wide'))) {
     scanContainer(seen, el)
     return

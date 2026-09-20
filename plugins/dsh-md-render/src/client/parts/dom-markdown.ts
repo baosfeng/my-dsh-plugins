@@ -3,7 +3,8 @@
 // 「宿主渲染后的 HTML」存在于 DOM 中，md-render 的 React 渲染管线
 // （MarkdownView）完全不介入。本模块把 markdown 原文渲染为**原生 DOM**
 // （不经 React，因此可以安全地插入 React 管理的树旁），供轨迹视图接管层
-// 使用，能力与 MarkdownView 对齐：
+// 与 text / plaintext / txt 围栏块接管层（issue #393）使用，能力与
+// MarkdownView 对齐：
 //  - 表格：parseTable（宽容格式：无首尾管道符 / 分隔行变体 / 对齐标记）
 //    + renderTable（滚动容器 + 滚动提示 + 表头排序 + 长表格折叠）；
 //  - 公式：$$`…`$$ 块级与 $…$ 行内 → parseMath + 结构 DOM（分数 / 根号 /

@@ -126,4 +126,16 @@ div.dsh-md-render-math-error{margin:0;text-align:center;justify-content:center;p
 .dsh-md-render-task-checkbox{width:14px;height:14px;margin:0 6px 0 0;vertical-align:-2px;accent-color:var(--dsw-alias-accent-primary);cursor:pointer;flex:none}
 .dsh-md-render-img{display:block;max-width:100%;max-height:40vh;margin:4px 0;border-radius:8px;object-fit:contain}
 .dsh-md-render-img-fallback{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px dashed var(--dsw-alias-border-l2);border-radius:6px;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12)}
+/* ── text / plaintext / txt 围栏块按 markdown 渲染（issue #393）────────
+   宿主与 MarkdownView 的围栏块结构是 md-code-block > head + pre.tzx-pre
+   （契约见 README）；渲染容器与「查看原文」按钮由 text-markdown.ts 追加，
+   视图状态写在块属性上（每块独立）。视图切换只切显示，原文 pre 始终留在
+   DOM——复制按钮 / 文本读取与切回原文都不受影响；流式中按钮不显示。 */
+.md-code-block[data-dsh-md-render-text-view="markdown"]>pre.tzx-pre{display:none}
+.md-code-block[data-dsh-md-render-text-view="source"]>.dsh-md-render-text-md{display:none}
+.dsh-md-render-text-md{padding:12px 16px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-markdown-code-block)}
+.dsh-md-render-text-toggle{display:inline-flex;align-items:center;align-self:flex-end;margin-top:4px;padding:2px 10px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:transparent;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;cursor:pointer;transition:color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
+.dsh-md-render-text-toggle:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2)}
+.dsh-md-render-text-toggle[aria-pressed="true"]{color:var(--dsw-alias-accent-primary);border-color:var(--dsw-alias-accent-primary)}
+[data-streaming] .dsh-md-render-text-toggle{display:none}
 `

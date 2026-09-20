@@ -15,6 +15,7 @@
  *    数据 tbody / 对齐 style），外层 `div.dsh-md-render-table-scroll`
  *    提供宽表格横向滚动 + 滚动提示条；已渲染的表格（`table.tzx-table`
  *    等）跳过，不重复处理；
+ *  - text / plaintext / txt 围栏块（issue #393）按 markdown 渲染 + 每块「查看原文」切换；
  *  - MutationObserver 跟随流式渲染，流式中的容器等内容稳定后再处理。
  *
  * 样式走 DSH 语义 token（--dsw-alias-* / --dsw-font-*），随 activation
@@ -78,6 +79,7 @@ window.__ModuleLoader__.load({
     // ── 轨迹视图 markdown 接管（issue #205）：DOM 渲染器 + 接管层 ───
     /*__PART_DOM_MARKDOWN__*/
     /*__PART_TRAJECTORY_MARKDOWN__*/
+    /*__PART_TEXT_MARKDOWN__*/
 
     // ── 扫描器骨架（共享，issue #186 P2）+ MutationObserver 跟随流式渲染 ──
     /*__PART_DOM_SCANNER__*/

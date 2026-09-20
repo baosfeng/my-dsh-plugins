@@ -55,6 +55,8 @@ git ls-remote origin refs/heads/main     # 期望：<10s 返回 SHA
 
 **排障对照**：`git clone` 报 `HTTP2 framing layer` → 第 1 层丢失；`ghops` 命令长时间无响应 → 第 2 层丢失；`git ls-remote` 报 `Empty reply from server` → 代理进程没起（`lsof -nP -iTCP:7890 -sTCP:LISTEN` 确认）或跑 `gh-net fix`。
 
+🚨 **`gh-net check` 报「代理探测失败」≠ 代理真挂，先别跑 `fix`**：`check` 的代理探测只给 6s 超时，瞬时抖动即误判；而 `fix` 会**按这个误判清空** git `http.proxy` 与 ghops 代理文件，全局退化为 ~10 KB/s 直连（实测 `git ls-remote` 直接超时、并发子代理的 GitHub 操作全部不可用）。判定顺序固定为：① `curl -s -o /dev/null -w '%{http_code}' --max-time 15 -x http://127.0.0.1:7890 https://api.github.com`（200 = 代理正常，**跳过 fix**）；② 确已被清空才按上文三层配置重设；③ 顺手删掉 ghops 的探测缓存 `~/.dsh/secrets/github-proxy-probe`（它会把一次 `ok:false` 锁住、持续降级为直连）。
+
 **并发预算**：克隆/推送是唯一重负载。fork 池用 `git clone --local` **本地派生**（零网络，正是为本节问题设计的）——**不要在 fork 内 clone 远程仓库**，也不要把多条 `git fetch` 并发堆在一起。
 
 ### Dependabot 已关闭告警必须单独复查（假阴性防线，issue #214）

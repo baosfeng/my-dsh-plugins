@@ -18,6 +18,7 @@
 // ci-workflow.mjs = ci.yml 极简解析（job/steps/run），issue #330；
 // gitleaks-scan.mjs = secret 扫描门禁判据（平台/校验值/版本/报告净化/fail-closed），issue #324；
 // commit-lint.mjs = 提交信息门禁判据（范围推导/空范围 fail-closed/渲染），issue #324），
+// npm-registry.mjs = 发版门禁 1a/1c 的 npm 查询钉官方源与判定（假绿/假红），issue #386，
 // 阈值与根配置一致（行 85 / 分支 75 / 函数 80）。
 //
 // 为什么放宽 testTimeout/hookTimeout 到 60s（issue #353）：本目录大量用例 spawn 真实 CLI
@@ -52,6 +53,7 @@ export default defineConfig({
         'scripts/lib/ci-workflow.mjs',
         'scripts/lib/gitleaks-scan.mjs',
         'scripts/lib/commit-lint.mjs',
+        'scripts/lib/npm-registry.mjs',
       ],
       thresholds: {
         lines: 85,

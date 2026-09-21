@@ -8,6 +8,8 @@
   <img alt="公式结构渲染：分数 / 根号 / 上下标 / 求和 / 块级公式" src="./assets/math-frac.png" width="480" />
   <br />
   <img alt="设置 → 插件 → 渲染：增强功能开关" src="./assets/settings-tab.png" width="480" />
+  <br />
+  <img alt="text 围栏块按 markdown 渲染（标题 / 列表 / 表格 / 加粗 / 链接），每块带「查看原文」切换" src="./assets/text-fence-markdown.png" width="480" />
 </div>
 
 **DSH 对话统一 Markdown 渲染插件**：提供跨插件复用的统一 **MarkdownView** 组件，并在 DOM 层做**表格渲染增强**——非思考模式下模型输出的不标准 markdown 表格（无首尾管道符、分隔行变体）自动识别并渲染为真正的表格；另含公式结构、代码块高亮与一键复制等增强，全部自实现、零依赖。

@@ -4,6 +4,13 @@
 
 > 公共 API 承诺面：`MarkdownView`（导出 / props / 输出类名清单见 [README「公共 API 契约」](README.md)）；改类名清单 = 破坏性变更，须同步 README 与本文件。
 
+## [0.2.0] - 2026-09-21
+
+### 变更
+
+- docs(dsh-md-render): #393 补 text 围栏块渲染效果图与 README 引用
+- feat(dsh-md-render): #393 text/plaintext/txt 围栏块按 markdown 渲染（含查看原文切换） (#395)
+
 ## [0.1.9] - 2026-09-17
 
 ### 变更

@@ -35,7 +35,7 @@
 | [dsh-file-activity](plugins/dsh-file-activity/README.md)                           | 0.5.12 | 侧边栏文件活动页签：记录文件读取/新增/修改与统计，文件夹树形展示，点击浮窗预览                |
 | [dsh-think-zh-expand](plugins/dsh-think-zh-expand/README.md)                       | 0.4.14 | 思考增强：强制中文思考与回复，思考块默认展开且支持 Markdown/表格/Mermaid 渲染                 |
 | [dsh-mermaid-render](plugins/dsh-mermaid-render/README.md)                         | 0.1.11  | 对话 mermaid 代码块渲染为图表卡片，引擎随包分发、不依赖 CDN                                   |
-| [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.1.9  | 非思考模式 markdown 表格渲染增强：识别不标准表格，宽表格横向滚动                              |
+| [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.2.0  | 非思考模式 markdown 表格渲染增强：识别不标准表格，宽表格横向滚动                              |
 | [dsh-my-notify](plugins/dsh-my-notify/README.md)                                   | 0.4.0  | 通知提醒：会话结束 / ask / 审批时浏览器通知 + 提示音，点击跳转；远程 hook 触发 + 出站 webhook |
 | [dsh-my-remote](plugins/dsh-my-remote/README.md)                                   | 0.1.4  | 远程控制：ask / approval / 会话结束事件下行到手机或 IM，可远程回答、批准、查询、继续          |
 | [dsh-my-guardian](plugins/dsh-my-guardian/README.md)                               | 0.4.2  | 插件治理：新装插件先进候选区逐个热挂载，失败自动隔离，一键安全模式 + 诊断面板                 |

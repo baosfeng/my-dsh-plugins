@@ -15,7 +15,7 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { satisfies } from '../lib/dep-version.js'
-import { checkPeerDependencies, buildDependencyMessage, classifyFailure } from '../lib/dep-precheck.js'
+import { basePackage, checkPeerDependencies, buildDependencyMessage, classifyFailure } from '../lib/dep-precheck.js'
 import { apply } from '../lib/index.js'
 
 const createdDirs = []
@@ -108,6 +108,32 @@ test('precheck: missing plugin package.json is skipped, not blocked', () => {
   const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-ghost' })
   assert.equal(result.ok, true)
   assert.equal(result.warnings.length, 1)
+})
+
+// ── unit: host-provided packages + subpath specifiers ───────────────────────
+test('basePackage reduces subpath specifiers to their package root', () => {
+  assert.equal(basePackage('dsh-shared'), 'dsh-shared')
+  assert.equal(basePackage('@deepseek-ai/dsh-tools'), '@deepseek-ai/dsh-tools')
+  assert.equal(basePackage('dsh-openwrite/bridge'), 'dsh-openwrite')
+  assert.equal(basePackage('@deepseek-ai/dsh-tools/sub'), '@deepseek-ai/dsh-tools')
+})
+
+test('precheck: a peer installed in the profiles-root node_modules resolves', () => {
+  const root = freshDir()
+  const profileDir = join(root, 'profiles', 'web')
+  writePlugin(profileDir, 'dsh-app', { peerDependencies: { '@deepseek-ai/dsh-tools': '^0.1.5-rc.1' } })
+  writeDep(join(root, 'profiles'), '@deepseek-ai/dsh-tools', '0.1.5-rc.3')
+  const result = checkPeerDependencies({ profileDir, pluginName: 'dsh-app' })
+  assert.equal(result.ok, true, 'the host fallback root counts as installed')
+  assert.deepEqual(result.missing, [])
+})
+
+test('precheck: a subpath plugin name resolves through its base package', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-openwrite', { peerDependencies: { react: '^18.2.0' } })
+  writeDep(dir, 'react', '18.3.1')
+  const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-openwrite/bridge' })
+  assert.equal(result.ok, true)
 })
 
 test('buildDependencyMessage lists every problem dependency', () => {

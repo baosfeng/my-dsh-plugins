@@ -14,7 +14,7 @@
  * tree simply yields no roster and an empty report.
  */
 import { join } from 'node:path';
-import { findModuleDir, checkPeerDependencies, buildDependencyMessage } from './dep-precheck.js';
+import { findModuleDir, checkPeerDependencies, buildDependencyMessage, basePackage } from './dep-precheck.js';
 import { writeStartupIssuesFile } from './state.js';
 import { logEvent } from './events.js';
 /** Profile-node_modules root used for roster resolvability checks. */
@@ -133,12 +133,17 @@ function checkPluginItem(issues, item, nmRoot, profileDir) {
     const label = name !== '' ? name : id;
     if (label === '' || !label.startsWith('dsh-'))
         return;
-    const pluginDir = findModuleDir(nmRoot, label);
+    // A row may name a subpath export ('dsh-openwrite/bridge'), which is not a
+    // directory under node_modules; the installable package is the base and the
+    // export map resolves the subpath at import time. Treating the whole name
+    // as a directory produced a false "unresolvable" for every subpath row.
+    const base = basePackage(label);
+    const pluginDir = findModuleDir(nmRoot, base);
     if (pluginDir === null) {
         issues.push(unresolvedIssue(id, label));
         return;
     }
-    const precheck = checkPeerDependencies({ profileDir, pluginName: label });
+    const precheck = checkPeerDependencies({ profileDir, pluginName: base });
     if (!precheck.ok)
         issues.push(dependencyIssue(id, label, precheck));
 }

@@ -112,6 +112,23 @@ export function resolveConcurrency({ requested = null, kind = 'plugin', cpus, lo
   return { ...common, value: base, mode: 'adaptive', reason: `按核数 ${cores} 推导` }
 }
 
+/**
+ * 每路插件测试的 vitest worker 上限（issue #418）。
+ *
+ * 为什么必须单独管：插件并发度只决定「几路 npm test 同时跑」，而每一路内部 vitest 会按
+ * availableParallelism()-1 再开 worker（仓库所有 vitest 配置都未设 maxWorkers）。实测 10 核机、
+ * 插件并发 5 时峰值 load 仍达 42.09 —— 与「5 路 × 9 worker ≈ 45」吻合，即**只降并发倍数不足以
+ * 达标**。故按「核数 / 插件并发」分配每路预算，使「插件并发 × 每路 worker ≈ 核数」。
+ *
+ * 经 VITEST_MAX_WORKERS 环境变量下达（vitest 官方支持，见 node_modules/vitest/dist）。
+ * fail-closed：任何输入（核数 0/负数/NaN、并发 0/NaN）都返回 ≥1。
+ */
+export function resolveVitestWorkers({ cpus, concurrency } = {}) {
+  const cores = normalizeCpus(cpus)
+  const lanes = Number.isInteger(concurrency) && concurrency >= 1 ? concurrency : 1
+  return Math.max(MIN_CONCURRENCY, Math.floor(cores / lanes))
+}
+
 /** 报告用的一句话描述（可见、不静默；降级时带上原因）。 */
 export function describeConcurrency(label, decision) {
   const origin =

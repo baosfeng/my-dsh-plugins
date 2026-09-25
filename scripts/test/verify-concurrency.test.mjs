@@ -14,6 +14,7 @@ import {
   normalizeLoad,
   parseRequested,
   MIN_CONCURRENCY,
+  resolveVitestWorkers,
 } from '../lib/verify-concurrency.mjs'
 
 const V = (input) => resolveConcurrency(input).value
@@ -120,4 +121,46 @@ test('#418 防绕过：verify-local 的并发取值只来自 resolveConcurrency 
   const checkBody = bodyOf('checkConcurrency')
   assert.ok(checkBody.includes('concurrencyFor'), 'checkConcurrency 必须经 concurrencyFor 走单一来源')
   assert.ok(!checkBody.includes('return 4'), 'checkConcurrency 不得保留硬编码默认值 4')
+})
+
+test('#418 vitest worker 预算：插件并发 × 每路 worker ≈ 核数', () => {
+  assert.equal(resolveVitestWorkers({ cpus: 10, concurrency: 5 }), 2, '10 核 / 5 路 → 每路 2')
+  assert.equal(resolveVitestWorkers({ cpus: 10, concurrency: 1 }), 10, '串行时单路可用满核')
+  assert.equal(resolveVitestWorkers({ cpus: 4, concurrency: 2 }), 2, '4 核 runner')
+  assert.equal(resolveVitestWorkers({ cpus: 64, concurrency: 6 }), 10, '64 核 / 6 路 → 每路 10')
+  for (const [cores, lanes] of [
+    [10, 5],
+    [4, 2],
+    [64, 6],
+    [1, 1],
+    [10, 6],
+    [2, 2],
+  ]) {
+    const w = resolveVitestWorkers({ cpus: cores, concurrency: lanes })
+    assert.ok(Number.isInteger(w) && w >= 1, `${cores} 核 × ${lanes} 路 → 每路 ${w} 必须 ≥1`)
+    assert.ok(lanes * w <= Math.max(cores, lanes), `${cores} 核 × ${lanes} 路 → 乘积 ${lanes * w} 不得超过核数`)
+  }
+})
+
+test('#418 vitest worker 预算 fail-closed + 显式覆盖下的取值', () => {
+  const bads = [
+    {},
+    { cpus: 0 },
+    { cpus: -1 },
+    { cpus: NaN, concurrency: 3 },
+    { cpus: 10, concurrency: 0 },
+    { cpus: 10, concurrency: NaN },
+  ]
+  for (const bad of bads) {
+    const w = resolveVitestWorkers(bad)
+    assert.ok(Number.isInteger(w) && w >= 1, `${JSON.stringify(bad)} → ${w} 必须 ≥1，绝不 0`)
+  }
+  // 显式 VERIFY_CONCURRENCY 优先 → worker 预算跟随显式值计算（不被负载改写）
+  const explicit = resolveConcurrency({ requested: '8', kind: 'plugin', cpus: 10, load1: 999 })
+  assert.equal(explicit.value, 8, '显式覆盖不被负载改写')
+  assert.equal(
+    resolveVitestWorkers({ cpus: explicit.cpus, concurrency: explicit.value }),
+    1,
+    '8 路 → 每路 1 worker（乘积 8 ≤ 核数 10）',
+  )
 })

@@ -148,7 +148,7 @@ import {
 import { isValidTimeoutMs, parseTimeoutSeconds, timeoutConfigError } from './lib/verify-timeout.mjs'
 import { looksLikeConcurrencyConflict } from './lib/verify-flaky-classify.mjs'
 // 自适应并发度（issue #418）：核数 + load 双约束，纯函数便于单测
-import { resolveConcurrency, describeConcurrency } from './lib/verify-concurrency.mjs'
+import { resolveConcurrency, describeConcurrency, resolveVitestWorkers } from './lib/verify-concurrency.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -1062,7 +1062,11 @@ async function runOnePlugin(name) {
       }
     }
   }
-  const r = await runCapture('npm', ['test'], dir, { label: `test ${name}（npm test @ plugins/${name}）` })
+  const r = await runCapture('npm', ['test'], dir, {
+    label: `test ${name}（npm test @ plugins/${name}）`,
+    // issue #418：限制每路 vitest 的 worker 数，使「插件并发 × 每路 worker ≈ 核数」
+    env: { VITEST_MAX_WORKERS: String(vitestWorkersBudget()) },
+  })
   return { name, ok: r.ok, out: r.out, error: r.error, stage: 'npm test', timedOut: r.timedOut, timeoutMs: r.timeoutMs }
 }
 
@@ -1239,6 +1243,15 @@ function concurrencyFor(kind) {
 
 function pluginConcurrency() {
   return concurrencyFor('plugin').value
+}
+
+/**
+ * 每路插件测试可用的 vitest worker 上限（issue #418）：把「插件并发 × 每路 worker」压到 ≈ 核数。
+ * 实测：只把插件并发 6→5 时峰值 load 仍 42.09（≈5×9），故必须同时管住每路 worker。
+ */
+function vitestWorkersBudget() {
+  const decision = concurrencyFor('plugin')
+  return resolveVitestWorkers({ cpus: decision.cpus, concurrency: decision.value })
 }
 
 // ── 超时看门狗与进度登记 ────────────────────────────────────────────────────
@@ -1483,7 +1496,7 @@ log('')
 log(
   options.ciQuality
     ? `CI quality job：并发执行 ${tasks.length} 项检查（${describeConcurrency('检查项', concurrencyFor('check'))}；插件测试/资源冒烟/审计/变异各由独立 job 覆盖）`
-    : `开始校验：${tasks.length} 项${SKIPPED_BY_SCOPE_NOTE.size > 0 ? `，按范围跳过 ${SKIPPED_BY_SCOPE_NOTE.size} 项` : ''}${HARD_SKIPPED.filter((c) => c.optional).length > 0 ? `，默认跳过 ${HARD_SKIPPED.filter((c) => c.optional).length} 项（CI 强制）` : ''}（${describeConcurrency('检查项', concurrencyFor('check'))}，${describeConcurrency('插件测试', concurrencyFor('plugin'))}）`,
+    : `开始校验：${tasks.length} 项${SKIPPED_BY_SCOPE_NOTE.size > 0 ? `，按范围跳过 ${SKIPPED_BY_SCOPE_NOTE.size} 项` : ''}${HARD_SKIPPED.filter((c) => c.optional).length > 0 ? `，默认跳过 ${HARD_SKIPPED.filter((c) => c.optional).length} 项（CI 强制）` : ''}（${describeConcurrency('检查项', concurrencyFor('check'))}，${describeConcurrency('插件测试', concurrencyFor('plugin'))} × 每路 vitest worker ${vitestWorkersBudget()}）`,
 )
 if (options.plugins.length > 0) log(`--plugin 过滤：${options.plugins.join('、')}`)
 log('')

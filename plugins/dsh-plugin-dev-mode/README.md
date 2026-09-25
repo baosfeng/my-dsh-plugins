@@ -29,11 +29,11 @@ plugin_manager { action: "set_bundle", target: "dsh-plugin-dev-mode", enabled: t
 
 > ⚠️ **别用 `install_bundle`**：在 `link:` 布局下它 `pnpm add <绝对目录>` 不改变依赖值 → 判定不到 `installed`，兜底只认裸包名（会把 link 换成 registry 版本）；`dsh plugin --profile <p> add <目录>` 同理，不追加 `dsh.profile.bundles`。
 
-> ⚠️ **0.1.5-rc.1 及更早宿主不可用**：preset 目录资产机制（`$DSH_HOME/.agent-presets/<id>/` + `preset.yml` + `agent.cordis.yml`，由 `@deepseek-ai/dsh-agent-presets` 读取）在 0.1.7-rc.2 已被移除，本包也已不再提供该形态资产；而本包的声明行需要宿主提供 `@deepseek-ai/dsh-agent-preset` 与 `agent-preset-registry`（0.1.5-rc.1 没有）。升级宿主前，本插件在该宿主下**不可用**。
+> ⚠️ **要求宿主 DSH ≥ 0.1.7-rc.2**：声明行需要宿主提供 `@deepseek-ai/dsh-agent-preset` 与 `agent-preset-registry`；低于该版本的宿主下本插件**不可用**。
 
 ## 配置
 
-无配置项：声明行的 `config` 只有 `id`（`plugin-dev`）、`name`、`description` 与 `plugins` 列表（`order` 有意留空，与原 `preset.yml` 一致）。本包不含 JS 代码，不挂 cordis service。
+无配置项：声明行的 `config` 只有 `id`（`plugin-dev`）、`name`、`description` 与 `plugins` 列表（`order` 有意留空）。本包不含 JS 代码，不挂 cordis service。
 
 ## 注意事项
 

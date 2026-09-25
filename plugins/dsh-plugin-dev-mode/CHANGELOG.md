@@ -2,6 +2,18 @@
 
 本文件记录 dsh-plugin-dev-mode 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-09-25
+
+### ⚠️ 破坏性变更
+
+- **preset 机制迁移**：`plugin-dev` 不再以 `$DSH_HOME/.agent-presets/plugin-dev/`（`agent.cordis.yml` + `preset.yml`）目录资产提供 —— 宿主的目录发现机制已随 `@deepseek-ai/dsh-agent-presets` 一并移除。现在它由本 bundle 的 `cordis.patch.yml` 里**一行声明**承载：`id: preset-plugin-dev` + `name: '@deepseek-ai/dsh-agent-preset'`（`config.id=plugin-dev`，`config.plugins` 为该 preset 的插件清单），经 `plugin_manager` 的 `install_bundle` 装载、注册进宿主的 `agent-preset-registry`。
+- **宿主要求 ≥ 0.1.7-rc.2**：声明行需要宿主提供 `@deepseek-ai/dsh-agent-preset` 与 `agent-preset-registry` 两个包（0.1.5-rc.1 只有旧的 `@deepseek-ai/dsh-agent-presets`）。**在 0.1.5-rc.1 上 preset 不再出现** —— 实测把本包装进 profile 后启动直接失败：`dsh: plugin tree failed to load: failed to import loader entry preset-plugin-dev (@deepseek-ai/dsh-agent-preset): Cannot find package '@deepseek-ai/dsh-agent-preset'`（`ERR_MODULE_NOT_FOUND`）。
+- **升级路径**：先把宿主升到 ≥ 0.1.7-rc.2，再按 bundle 方式安装本包（`dsh plugin --profile <p> add dsh-plugin-dev-mode`）。旧目录资产无需清理（宿主已不再读取），升级后 preset 花名册里会重新出现「插件开发模式」。
+
+### 变更
+
+- feat(dsh-plugin-dev-mode)!: 迁移为 bundle preset 声明包
+
 ## [0.1.1] - 2026-09-17
 
 ### 变更

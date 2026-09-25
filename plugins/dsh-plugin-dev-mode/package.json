@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-dev-mode",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "DSH agent preset bundle：插件开发模式（plugin-dev）。以 bundle patch（cordis.patch.yml）声明一行 @deepseek-ai/dsh-agent-preset，经 plugin_manager 的 install_bundle 装载；启用 Cordis 工具集（动态插件生命周期）的精简模式。",
   "type": "module",
   "repository": {

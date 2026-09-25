@@ -135,6 +135,8 @@ function createShared({ tree, profileDir }) {
         // startup-roster pre-check (issue #144): filled by runStartupCheck
         startupIssues: [],
         startupCheckedAt: null,
+        startupSkippedHostRows: 0,
+        startupNotes: [],
         persistSoon: () => { },
         persistFinal: () => { },
         flushPersist: () => Promise.resolve(),

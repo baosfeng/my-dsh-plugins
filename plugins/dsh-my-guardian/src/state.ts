@@ -86,6 +86,10 @@ export interface StartupIssuesPayload {
   checkedAt: number
   profileDir: string
   issues: StartupIssue[]
+  /** 被跳过的宿主供给行数（#424 A′）：不误报，但也绝不静默跳过。 */
+  skippedHostRows: number
+  /** 人类可读的跳过说明（skippedHostRows > 0 时非空）。 */
+  notes: string[]
 }
 
 /** One startup issue. */
@@ -156,6 +160,10 @@ export interface SharedContext {
   stagedFile: string
   startupIssues: StartupIssue[]
   startupCheckedAt: number | null
+  /** 预检跳过统计（#424 A′）：宿主供给行被跳过但可见。 */
+  startupSkippedHostRows: number
+  /** 预检跳过说明（#424 A′）。 */
+  startupNotes: string[]
   persistSoon: () => void
   /** 写链 drain：await 它即保证此前所有 persistSoon 都已落盘完成。
    *  卸载/disposer 返回它，调用方不必再用固定 sleep 赌写盘跑完。 */

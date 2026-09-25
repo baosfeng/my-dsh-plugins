@@ -19,9 +19,12 @@ import { join } from 'node:path';
 import { satisfies } from './dep-version.js';
 // Locate a package directory below a node_modules root, following symlinks
 // (pnpm store / npm link both expose package.json through the mirrored dir).
-// Exported for the startup-roster pre-check (issue #144): resolvability of a
-// roster plugin's own package is verified before peer dependencies.
-export function findModuleDir(nmRoot, packageName) {
+// Module-private since #423: the startup-roster pre-check used to import it
+// directly for its own-package lookup, but every caller now goes through
+// resolvePackageDir() — keeping it exported would leave a dead public export
+// behind (knip rejects that), and a second copy of the lookup is what #423 set
+// out to remove.
+function findModuleDir(nmRoot, packageName) {
     const dir = join(nmRoot, packageName);
     return existsSync(join(dir, 'package.json')) ? dir : null;
 }
@@ -32,14 +35,24 @@ export function basePackage(spec) {
     const parts = spec.split('/');
     return spec.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
-// Resolve a dependency from the plugin's nested node_modules, the profile
-// node_modules (hoisted installs), or the profiles-root node_modules where the
-// harness installs its host-provided @deepseek-ai/* packages. The pre-check
-// previously stopped at the profile dir, so every plugin declaring a host
-// package as a peer was reported as missing even though Node resolves it by
-// walking up to $DSH_HOME/profiles/node_modules. Returns the dir or null.
-function resolveDependencyDir(profileDir, pluginDir, dep) {
-    const base = basePackage(dep);
+/**
+ * Resolve a package directory along the same node_modules sequence Node itself
+ * walks from the profile directory: the plugin's own nested node_modules (when
+ * pluginDir is known), the profile node_modules (hoisted installs), then the
+ * profiles root — `$DSH_HOME/profiles/node_modules`, where the harness links
+ * its host-provided @deepseek-ai/* packages. Stopping at the profile dir made
+ * every plugin declaring a host package as a peer look "missing" even though
+ * Node resolves it by walking up to the profiles root (#412).
+ *
+ * Single source of truth (#423): the staged-mount peer pre-check, the roster
+ * row's own-package check and the roster peer check all resolve through here,
+ * so they can never drift into contradicting reports for the same tree. Pass
+ * pluginDir = null for the "profile → profiles root" sequence a roster row's
+ * own package needs. Returns the package directory, or null when both roots
+ * miss it.
+ */
+export function resolvePackageDir(profileDir, pluginDir, spec) {
+    const base = basePackage(spec);
     const nested = pluginDir === null ? null : findModuleDir(join(pluginDir, 'node_modules'), base);
     if (nested !== null)
         return nested;
@@ -64,7 +77,7 @@ function installedVersion(dir) {
 }
 // Inspect a single peer dependency and classify the outcome.
 function examinePeer(dep, range, optional, pluginDir, profileDir) {
-    const depDir = resolveDependencyDir(profileDir, pluginDir, dep);
+    const depDir = resolvePackageDir(profileDir, pluginDir, dep);
     if (depDir === null) {
         if (optional)
             return { kind: 'warn', message: `可选依赖 ${dep} 缺失（未安装）` };
@@ -150,15 +163,23 @@ function skippedResult(reason) {
  *  - warnings: non-blocking notes (plugin unreadable / optional peers missing)
  * When the plugin or its package.json cannot be located the check is skipped
  * (ok: true) so an unusual install layout is never a false block.
+ *
+ * pluginDir: the caller may hand over an already-resolved package directory —
+ * the startup-roster pre-check resolves a roster row through resolvePackageDir()
+ * (profile → profiles root, #423) and passes it, so a row whose package lives
+ * only in the profiles root still gets a REAL peer check instead of the skip.
+ * Leaving it null keeps the candidate (staged) path byte-identical: it only
+ * ever looks in the profile node_modules, and a miss stays a skip — never a
+ * block (#423 expected behaviour 4).
  */
-export function checkPeerDependencies({ profileDir, pluginName, }) {
-    const pluginDir = findModuleDir(join(profileDir, 'node_modules'), basePackage(pluginName));
-    if (pluginDir === null)
+export function checkPeerDependencies({ profileDir, pluginName, pluginDir = null, }) {
+    const dir = pluginDir ?? findModuleDir(join(profileDir, 'node_modules'), basePackage(pluginName));
+    if (dir === null)
         return skippedResult(`无法定位插件 ${pluginName}（未在 profile node_modules 找到 package.json）`);
-    const pkg = readPackageJson(pluginDir);
+    const pkg = readPackageJson(dir);
     if (pkg === null)
         return skippedResult(`无法解析 ${pluginName} 的 package.json`);
-    const { missing, mismatched, warnings } = classifyPeers(objectOrEmpty(pkg.peerDependencies), objectOrEmpty(pkg.peerDependenciesMeta), pluginDir, profileDir);
+    const { missing, mismatched, warnings } = classifyPeers(objectOrEmpty(pkg.peerDependencies), objectOrEmpty(pkg.peerDependenciesMeta), dir, profileDir);
     return {
         ok: missing.length === 0 && mismatched.length === 0,
         missing,

@@ -19,6 +19,10 @@ import {
   normalizeRoster,
   runStartupCheck,
 } from '../lib/startup-check.js'
+// 命名空间导入：修复前 hostSkipNotes 尚不存在，用命名导入会让整个文件在链接期就挂掉，
+// 掩盖「每个行为断言各自先失败」的证据（#424 A′）。
+import * as startupModule from '../lib/startup-check.js'
+import { checkPeerDependencies } from '../lib/dep-precheck.js'
 import { apply } from '../lib/index.js'
 
 const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-guardian-startup-' }).name
@@ -67,6 +71,27 @@ function writePkg(name, { version = '1.0.0', peers = {}, peersMeta = {} } = {}) 
   if (Object.keys(peers).length > 0) pkg.peerDependencies = peers
   if (Object.keys(peersMeta).length > 0) pkg.peerDependenciesMeta = peersMeta
   writeFileSync(join(pkgDir, 'package.json'), JSON.stringify(pkg), 'utf8')
+}
+
+/** 写包到任意 node_modules 父目录（writePkg 的通用版，夹具用）。 */
+function writePkgIn(parentDir, name, { version = '1.0.0', peers = {}, peersMeta = {} } = {}) {
+  const pkgDir = join(parentDir, 'node_modules', name)
+  mkdirSync(pkgDir, { recursive: true })
+  const pkg = { name, version }
+  if (Object.keys(peers).length > 0) pkg.peerDependencies = peers
+  if (Object.keys(peersMeta).length > 0) pkg.peerDependenciesMeta = peersMeta
+  writeFileSync(join(pkgDir, 'package.json'), JSON.stringify(pkg), 'utf8')
+}
+
+/** #423 夹具：`<fixture>/web` 是 profileDir，`<fixture>/node_modules` 是 profiles 根
+ *  （= profileDir/../node_modules，宿主链接 @deepseek-ai/* 的地方）。用嵌套目录而不是共享的
+ *  DSH_HOME，避免与其它用例的 node_modules 互相污染。 */
+function makeProfileFixture(tag) {
+  const rootDir = join(dir, `fixture-${tag}`)
+  const profileDir = join(rootDir, 'web')
+  mkdirSync(join(profileDir, 'node_modules'), { recursive: true })
+  mkdirSync(join(rootDir, 'node_modules'), { recursive: true })
+  return { rootDir, profileDir }
 }
 
 test('collectTreeEntries reads real-style trees (entries()) and mock trees (store walk)', () => {
@@ -193,20 +218,24 @@ test('#410: host-provided peers produce no dsh plugin add fix at all', () => {
   assert.ok(issue.message.includes('宿主提供'), 'the message says the host supplies it')
 })
 
-test('healthy dsh-* entry and non-dsh-* entries produce no issues', () => {
+test('healthy dsh-* entries and host-provided rows produce no issues', () => {
   writePkg('dsh-healthy', { version: '0.1.0' })
   writePkg('dsh-cordis-dep', { version: '0.1.0', peers: { cordis: '^4.0.0' } })
   writePkg('cordis', { version: '4.0.1' })
-  const { issues } = checkStartupRoster({
+  const { issues, skippedHostRows } = checkStartupRoster({
     entries: [
       { id: 'h', name: 'dsh-healthy', disabled: false },
       { id: 'c', name: 'dsh-cordis-dep', disabled: false },
-      { id: 'plain', name: 'some-lib', disabled: false },
       { id: 'scoped', name: '@deepseek-ai/dsh-bundles', disabled: false },
     ],
     profileDir: dir,
   })
-  assert.deepEqual(issues, [], 'no issues for resolvable dsh-* with satisfied peers, nor non-dsh-* entries')
+  assert.deepEqual(
+    issues,
+    [],
+    'no issues for resolvable dsh-* with satisfied peers, nor for a host-provided scoped row',
+  )
+  assert.equal(skippedHostRows, 1, 'the skipped host row is counted, never silently dropped (#424 A′)')
 })
 
 test('subpath roster entry resolves through its base package (no unresolvable issue)', () => {
@@ -253,6 +282,143 @@ test('normalizeRoster carries disabled flags through', () => {
     { id: 'a', name: 'dsh-a', disabled: false },
     { id: 'b', name: 'dsh-b', disabled: true },
   ])
+})
+
+// ── #423: roster 行「插件自身」也回退 profiles 根 ──────────────────────────
+
+test('#423: a roster package that only exists in the profiles root is resolvable', () => {
+  const { rootDir, profileDir } = makeProfileFixture('423-root-hit')
+  writePkgIn(rootDir, 'dsh-hostonly', { version: '0.1.0' })
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'hostonly', name: 'dsh-hostonly', disabled: false }],
+    profileDir,
+  })
+  assert.deepEqual(issues, [], 'a profiles-root hit must not be reported unresolvable')
+
+  // 语义未变（#423 期望 4）：候选区路径仍以 skip 告警收场（ok:true），不误拦挂载。
+  const precheck = checkPeerDependencies({ profileDir, pluginName: 'dsh-hostonly' })
+  assert.equal(precheck.ok, true, 'the candidate path still skips instead of blocking')
+  assert.ok(precheck.warnings[0].includes('跳过依赖预检'), 'skip is reported as a warning, not a hard failure')
+})
+
+test('#423: a profiles-root hit does not mask that row peer check', () => {
+  const { rootDir, profileDir } = makeProfileFixture('423-root-hit-peer')
+  writePkgIn(rootDir, 'dsh-hostonly-peer', { peers: { 'dsh-shared': '^9.0.0' } })
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'hostonly-peer', name: 'dsh-hostonly-peer', disabled: false }],
+    profileDir,
+  })
+  assert.equal(issues.length, 1)
+  assert.equal(
+    issues[0].type,
+    'dependency-missing',
+    'the peer check runs even when the package came from the profiles root',
+  )
+  assert.deepEqual(issues[0].missingDeps, ['dsh-shared'])
+})
+
+test('#423: a packages missing from both node_modules roots is unresolvable', () => {
+  const { profileDir } = makeProfileFixture('423-both-miss')
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'nowhere', name: 'dsh-nowhere', disabled: false }],
+    profileDir,
+  })
+  assert.equal(issues.length, 1, 'both roots miss → exactly one unresolvable issue')
+  assert.equal(issues[0].type, 'unresolvable')
+  assert.equal(issues[0].fix, 'dsh plugin add dsh-nowhere')
+  assert.ok(issues[0].message.includes('dsh-nowhere'), 'message names the package')
+})
+
+test('#423: a scoped subpath row resolves through its base package', () => {
+  const { profileDir } = makeProfileFixture('423-scoped-subpath')
+  writePkgIn(profileDir, '@myorg/dsh-openwrite', { version: '0.1.0' })
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'bridge', name: '@myorg/dsh-openwrite/bridge', disabled: false }],
+    profileDir,
+  })
+  assert.deepEqual(issues, [], 'basePackage() normalises scoped subpath rows before the lookup')
+})
+
+// ── #424（方案 A′）：可解析性放开到所有行，宿主供给行显式跳过并计数 ──────────
+
+test('#424 A′: a third-party scoped row that is missing is unresolvable', () => {
+  const { profileDir } = makeProfileFixture('424-scoped-miss')
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'priv', name: '@myorg/dsh-internal', disabled: false }],
+    profileDir,
+  })
+  assert.equal(issues.length, 1, 'scoped rows are no longer silently exempt')
+  assert.equal(issues[0].type, 'unresolvable')
+  assert.equal(issues[0].fix, 'dsh plugin add @myorg/dsh-internal', 'install target is the base package')
+  assert.ok(issues[0].message.includes('@myorg/dsh-internal'), 'message names the package')
+})
+
+test('#424 A′: a third-party scoped row also resolves through the profiles root', () => {
+  const { rootDir, profileDir } = makeProfileFixture('424-scoped-root')
+  writePkgIn(rootDir, '@myorg/dsh-internal', { version: '0.2.0' })
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'priv', name: '@myorg/dsh-internal', disabled: false }],
+    profileDir,
+  })
+  assert.deepEqual(issues, [], 'same two-root sequence as #423')
+})
+
+test('#424 A′: plain non-dsh rows are checked too (no silent exempt left)', () => {
+  const { profileDir } = makeProfileFixture('424-plain')
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'plain', name: 'some-lib', disabled: false }],
+    profileDir,
+  })
+  assert.equal(issues.length, 1, 'a plain row name is a package specifier like any other')
+  assert.equal(issues[0].type, 'unresolvable')
+})
+
+test('#424 A′: host-provided rows are skipped, counted, and never reported', () => {
+  const { profileDir } = makeProfileFixture('424-host-skip')
+  const result = checkStartupRoster({
+    entries: [
+      { id: 'ui-chat', name: '@deepseek-ai/dsh-client-ui-chat', disabled: false },
+      { id: 'api-key', name: '@deepseek-ai/dsh-llm-deepseek-api-key', disabled: false },
+      { id: 'react', name: 'react', disabled: false },
+    ],
+    profileDir,
+  })
+  assert.deepEqual(result.issues, [], 'host rows must not be reported unresolvable even when both roots miss')
+  assert.equal(result.skippedHostRows, 3, 'every skipped host row is counted')
+})
+
+test('#424 A′: the skip is spelled out, not silent', () => {
+  const notes = startupModule.hostSkipNotes(2)
+  assert.equal(notes.length, 1, 'one report line per pre-check run')
+  assert.ok(notes[0].includes('2'), 'the line carries the count')
+  assert.ok(notes[0].includes('宿主供给'), 'the line says why the rows were skipped')
+  assert.ok(notes[0].includes('@deepseek-ai/*'), 'the line names the host-provided family')
+  assert.deepEqual(startupModule.hostSkipNotes(0), [], 'nothing to report when no host row was present')
+})
+
+test('#424 A′: the peer policy stays non-scoped (scoped rows: resolvability only)', () => {
+  const { profileDir } = makeProfileFixture('424-scoped-peer')
+  writePkgIn(profileDir, '@myorg/dsh-scoped', { peers: { 'dsh-absent-peer': '^1.0.0' } })
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'scoped-peer', name: '@myorg/dsh-scoped', disabled: false }],
+    profileDir,
+  })
+  assert.deepEqual(issues, [], 'peer 判定维持非 scoped：scoped 行只做可解析性检查（#424 A′，README 写明）')
+})
+
+test('#424 A′: the host row skip never suppresses a real third-party row issue', () => {
+  const { profileDir } = makeProfileFixture('424-mixed')
+  const result = checkStartupRoster({
+    entries: [
+      { id: 'host', name: '@deepseek-ai/dsh-client-ui-theme', disabled: false },
+      { id: 'priv', name: '@myorg/dsh-ghost', disabled: false },
+    ],
+    profileDir,
+  })
+  assert.equal(result.skippedHostRows, 1, 'only the host row is skipped')
+  assert.equal(result.issues.length, 1, 'the third-party row is still reported')
+  assert.equal(result.issues[0].entryId, 'priv')
+  assert.equal(result.issues[0].type, 'unresolvable')
 })
 
 // ── host integration (through apply) ─────────────────────────────────────
@@ -379,6 +545,8 @@ test('host: startup pre-check writes the report and never blocks staged mounts',
   resetState()
   const fake = makeLoaderAndTree()
   fake.store['needy'] = { options: { id: 'needy', name: 'dsh-needy' } }
+  // 宿主供给行（不在任何 node_modules 里）：必须只进「跳过计数」，不进问题列表（#424 A′）
+  fake.store['hostrow'] = { options: { id: 'hostrow', name: '@deepseek-ai/dsh-client-ui-chat' } }
   writePkg('dsh-needy', { peers: { 'dsh-shared': '^0.1.0' } })
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify([{ id: 'ok', name: 'dsh-ok' }], null, 2), 'utf8')
   writePkg('dsh-ok', { version: '0.1.0' })
@@ -400,6 +568,9 @@ test('host: startup pre-check writes the report and never blocks staged mounts',
   assert.equal(report.issues.length, 1, 'report carries the dependency issue')
   assert.equal(report.issues[0].type, 'dependency-missing')
   assert.equal(report.issues[0].fix, 'dsh plugin add dsh-shared')
+  assert.equal(report.skippedHostRows, 1, 'the report counts the skipped host row instead of hiding it')
+  assert.equal(report.notes.length, 1, 'the report spells the skip out (#424 A′)')
+  assert.ok(report.notes[0].includes('宿主供给'), 'the note says who supplies the row')
 
   await waitFor(() => readStateOrNull()?.events?.some((e) => e.type === 'startup-issue'))
   const state = JSON.parse(readFileSync(join(dir, 'guardian', 'state.json'), 'utf8'))
@@ -412,6 +583,8 @@ test('host: startup pre-check writes the report and never blocks staged mounts',
   assert.equal(snapshot.startupIssues.length, 1, 'snapshot carries startupIssues')
   assert.equal(snapshot.startupIssues[0].type, 'dependency-missing')
   assert.ok(typeof snapshot.startupCheckedAt === 'number', 'snapshot carries startupCheckedAt')
+  assert.equal(snapshot.startupSkippedHostRows, 1, 'snapshot carries the host-row skip count')
+  assert.equal(snapshot.startupNotes.length, 1, 'snapshot carries the skip note')
 })
 
 test('host: healthy roster writes an empty report and logs nothing', async () => {

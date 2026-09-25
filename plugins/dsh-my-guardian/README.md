@@ -39,7 +39,17 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-guardian
 
 写入后自动挂载：成功则该条从候选文件移除（转正），失败则保留。面板状态：运行中（可移除）/ 待加载（安全模式等）/ 失败 ×N（重试或移除）/ 冻结（连续失败 3 次，重试解除冻结）。失败条目带失败类型徽标（依赖缺失 / 版本不满足 / 代码错误 / 其他），并在存在**可执行**的修复命令时附安装建议（宿主提供的包、含空格/管道的版本范围不给命令）。
 
-**启动名册静态预检**：直接写进 `cordis.patch.yml` / profile / bundles 的插件仍由 DSH 启动时 all-or-nothing 加载，守护每次启动对名册做静态预检（包可解析、`peerDependencies` 满足、无重复 entry id），问题写入 `$DSH_HOME/guardian/startup-issues.json`（`type` 区分 `unresolvable` / `dependency-missing` / `dependency-mismatch` / `duplicate-id`，依赖字段分 `missingDeps` / `mismatchedDeps`）并在面板「最近事件」置顶展示；**预检只记录告警，不阻断启动**。
+**启动名册静态预检**：直接写进 `cordis.patch.yml` / profile / bundles 的插件仍由 DSH 启动时 all-or-nothing 加载，守护每次启动对名册做静态预检，问题写入 `$DSH_HOME/guardian/startup-issues.json`（`type` 区分 `unresolvable` / `dependency-missing` / `dependency-mismatch` / `duplicate-id`，依赖字段分 `missingDeps` / `mismatchedDeps`）并在面板「最近事件」置顶展示；**预检只记录告警，不阻断启动**。
+
+检查范围与解析顺序（逐行显式，不留静默免检）：
+
+| 检查 | 覆盖范围 | 解析顺序 |
+| --- | --- | --- |
+| 包可解析（`unresolvable`） | **所有行**（含 scoped `@scope/pkg` 与子路径 `pkg/sub`，按 `basePackage()` 归一） | `<profileDir>/node_modules` → `<profileDir>/../node_modules`（`$DSH_HOME/profiles/node_modules`），两处都无才报 |
+| `peerDependencies` | **仅非 scoped 行**（保持既有范围，不因 scoped 行放开而扩大） | 插件自身 nested → profile → profiles 根 |
+| 重复 entry id | 全名册 | — |
+
+**宿主供给行**（`@deepseek-ai/*`、`react` / `react-dom`）跳过可解析性检查：它们由宿主安装目录供给，不在上述两段根内，硬查只会误报。跳过**不是静默的**——报告里有 `skippedHostRows` 计数与 `notes` 说明（例如「已跳过 8 个宿主供给行…」），快照同步携带，用来区分「都查过且没问题」与「有 N 行没查」。
 
 ## 配置
 

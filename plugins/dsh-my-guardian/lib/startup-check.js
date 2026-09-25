@@ -1,26 +1,6 @@
-/**
- * dsh-my-guardian — startup-roster static pre-check (issue #144).
- *
- * DSH boots its plugin roster all-or-nothing: any roster row (cordis.patch.yml /
- * profile / bundles — everything merged into the loader's include tree) that
- * fails to import, throws during apply, or stays pending takes the whole
- * `dsh web` process down, and the guardian (itself a roster row) has no
- * chance to quarantine anything after the fact. This module closes that gap
- * with a STATIC, best-effort pre-flight that runs right after the guardian's
- * own apply.
- *
- * Guardrails (watchdog self-protection, R15): the pre-check itself NEVER
- * fails the boot — every step is wrapped, failures only log; a broken loader
- * tree simply yields no roster and an empty report.
- */
-import { join } from 'node:path';
-import { findModuleDir, checkPeerDependencies, buildDependencyMessage, dependencyFailureType, basePackage, } from './dep-precheck.js';
+import { resolvePackageDir, checkPeerDependencies, buildDependencyMessage, dependencyFailureType, basePackage, isHostProvided, } from './dep-precheck.js';
 import { writeStartupIssuesFile } from './state.js';
 import { logEvent } from './events.js';
-/** Profile-node_modules root used for roster resolvability checks. */
-function profileNodeModules(profileDir) {
-    return join(profileDir, 'node_modules');
-}
 /** Collect every entry of a tree, tolerantly: entries() when present (real
  *  IncludeTree includes nested subtrees), otherwise a plain store walk
  *  (mocked trees in tests). Never throws — a broken tree yields []. */
@@ -91,7 +71,7 @@ function unresolvedIssue(id, name, installTarget) {
         type: 'unresolvable',
         entryId: id,
         name,
-        message: `插件包 ${name} 无法解析（profile node_modules 中不存在），启动 import 将失败`,
+        message: `插件包 ${name} 无法解析（profile 与 profiles 根 node_modules 中均不存在），启动 import 将失败`,
         fix: `dsh plugin add ${installTarget}`,
         remove: REMOVE_HINT,
     };
@@ -135,24 +115,45 @@ function addSeen(map, id, item) {
     else
         group.push(item);
 }
-/** Static checks for one roster row: resolvability + peers (dsh-* only). */
-function checkPluginItem(issues, item, nmRoot, profileDir) {
+/**
+ * Static checks for one roster row (#144, reshaped by #423 / #424 A′):
+ *  - resolvability: EVERY row with a non-empty label is checked (scoped and
+ *    subpath rows included), through the same resolvePackageDir() sequence as
+ *    #423 (profile node_modules → profiles root). Only a miss on both roots is
+ *    'unresolvable';
+ *  - host-provided rows (@deepseek-ai/*, react / react-dom) are SKIPPED and
+ *    counted: their real root is the harness install directory, which neither
+ *    of the two roots reaches, so checking them could only produce false
+ *    "unresolvable" reports (#424 A′). The count is surfaced in the report;
+ *  - peers: still non-scoped rows only (#424 A′ does not widen the peer scope).
+ */
+function checkPluginItem(issues, item, profileDir, stats) {
     const id = typeof item.id === 'string' ? item.id : '';
     const name = typeof item.name === 'string' ? item.name : '';
     const label = name !== '' ? name : id;
-    if (label === '' || !label.startsWith('dsh-'))
+    if (label === '')
         return;
+    if (isHostProvided(label)) {
+        stats.skippedHostRows += 1;
+        return;
+    }
     // A row may name a subpath export ('dsh-openwrite/bridge'), which is not a
     // directory under node_modules; the installable package is the base and the
     // export map resolves the subpath at import time. Treating the whole name
     // as a directory produced a false "unresolvable" for every subpath row.
     const base = basePackage(label);
-    const pluginDir = findModuleDir(nmRoot, base);
+    // #423: the row's own package resolves through the SAME sequence as its
+    // peers — a hit must not mask the peer check below (it used to return early).
+    const pluginDir = resolvePackageDir(profileDir, null, label);
     if (pluginDir === null) {
         issues.push(unresolvedIssue(id, label, base));
         return;
     }
-    const precheck = checkPeerDependencies({ profileDir, pluginName: base });
+    // 非 scoped 行才做 peer 检查：#424 A′ 保持 peer 判定范围不变（宿主 scoped 行的
+    // peer 由宿主运行时供给，纳入判定只会制造 #407/#410 式的噪声）。
+    if (label.startsWith('@'))
+        return;
+    const precheck = checkPeerDependencies({ profileDir, pluginName: base, pluginDir });
     if (!precheck.ok)
         issues.push(dependencyIssue(id, label, precheck));
 }
@@ -165,15 +166,26 @@ function collectDuplicateIssues(issues, byId) {
     }
 }
 /**
+ * 报告里显式写出被跳过的宿主供给行（#424 A′）：跳过是为了不误报，但绝不能让这些行
+ * 在报告里无声消失——「0 条问题」必须能区分「都查过且没问题」与「有几行没查」。
+ */
+export function hostSkipNotes(count) {
+    if (!(typeof count === 'number' && count > 0))
+        return [];
+    return [
+        `已跳过 ${count} 个宿主供给行（@deepseek-ai/* / react / react-dom，由宿主安装目录提供，不在 profile 两段根内）`,
+    ];
+}
+/**
  * Core static pre-check over one roster's normalized entries.
- * entries: [{ id, name, disabled }] (see normalizeRoster). Checks dsh-*
- * plugins for package resolvability + peer deps, and the whole roster for
- * duplicate ids. Never throws — returns { issues }.
+ * entries: [{ id, name, disabled }] (see normalizeRoster). Checks every row
+ * for package resolvability, non-scoped rows for peer deps, and the whole
+ * roster for duplicate ids. Never throws — returns { issues, skippedHostRows }.
  */
 export function checkStartupRoster({ entries, profileDir }) {
     const issues = [];
     const roster = Array.isArray(entries) ? entries : [];
-    const nmRoot = profileNodeModules(profileDir);
+    const stats = { skippedHostRows: 0 };
     const byId = new Map();
     for (const item of roster) {
         if (item === null || typeof item !== 'object')
@@ -181,10 +193,10 @@ export function checkStartupRoster({ entries, profileDir }) {
         const id = typeof item.id === 'string' ? item.id : '';
         if (id !== '')
             addSeen(byId, id, item);
-        checkPluginItem(issues, item, nmRoot, profileDir);
+        checkPluginItem(issues, item, profileDir, stats);
     }
     collectDuplicateIssues(issues, byId);
-    return { issues };
+    return { issues, skippedHostRows: stats.skippedHostRows };
 }
 /** Normalize raw tree entries into { id, name, disabled } roster rows. */
 export function normalizeRoster(entries) {
@@ -201,12 +213,22 @@ export function normalizeRoster(entries) {
 export async function runStartupCheck(ctx, shared) {
     const entries = collectTreeEntries(shared.tree);
     const roster = normalizeRoster(entries).filter((item) => !item.disabled);
-    const { issues } = checkStartupRoster({ entries: roster, profileDir: shared.profileDir });
+    const { issues, skippedHostRows } = checkStartupRoster({ entries: roster, profileDir: shared.profileDir });
     const checkedAt = Date.now();
-    const payload = { version: 1, checkedAt, profileDir: shared.profileDir, issues };
+    const notes = hostSkipNotes(skippedHostRows);
+    const payload = {
+        version: 1,
+        checkedAt,
+        profileDir: shared.profileDir,
+        issues,
+        skippedHostRows,
+        notes,
+    };
     await writeStartupIssuesFile(payload);
     shared.startupIssues = issues;
     shared.startupCheckedAt = checkedAt;
+    shared.startupSkippedHostRows = skippedHostRows;
+    shared.startupNotes = notes;
     if (issues.length > 0) {
         const names = [...new Set(issues.map((issue) => issue.name))].slice(0, 3).join('、');
         logEvent(shared, 'startup-issue', `启动名册静态预检发现 ${issues.length} 个问题（${names}…）— 详见 guardian/startup-issues.json`);

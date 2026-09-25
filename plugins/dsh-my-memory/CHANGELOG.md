@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.10] - 2026-09-25
+
+### 变更
+
+- fix(dsh-my-memory): 逐项兜底 ui 导出，修 0.1.7 下设置面板白屏
+- fix: 适配宿主 0.1.7-rc.2 的事件名与席位契约，修正失效文档断言
+- chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#405)
+- chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#398)
+
 ## [0.1.9] - 2026-09-17
 
 ### 变更

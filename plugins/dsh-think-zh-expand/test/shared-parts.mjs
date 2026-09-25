@@ -4,7 +4,8 @@
  * 归一范围：`src/client/index.ts` 的样式注入样板 → 共享 `installStyles`；
  * `lib/client.src.js` 的三级渲染回退样板（#293）→ 共享 `installMarkdownViewFallback`
  * （#299，与 dsh-my-plugin-manager 单一来源，ADR-0002）。
- * 本插件自己的 MutationObserver（界面中文化）不在归一范围，必须保留。
+ * issue #428 起本插件不再有界面中文化 MutationObserver（官方 zh locale 是文案真源），
+ * 也不再有跨插件渲染内核取值——两者都在下方新增的用例里钉死。
  *
  * 变异验证：把 apply 里的样式样板改回内联 → 样式组变红；把客户端三级链改回内联 →
  * markdown 回退组变红。
@@ -42,8 +43,36 @@ describe('样式注入走共享实现（#186 P2）', () => {
     expect(styleTagCount(read('lib/client.js'))).toBe(1)
   })
 
-  it('中文化用的自有 MutationObserver 保留', () => {
-    expect(countOf(read('lib/client.js'), 'new MutationObserver')).toBeGreaterThanOrEqual(1)
+  it('中文化 MutationObserver 已移除（官方 zh locale 是文案真源）', () => {
+    expect(countOf(read('lib/client.js'), 'new MutationObserver')).toBe(0)
+  })
+})
+
+/**
+ * issue #428：跨插件 external 违规的防回归门禁。
+ * 官方明令禁止特性插件 runtime-import 另一个特性插件的值，也禁止用
+ * dsh.client.external 获取它们（packages/client/AGENTS.md；
+ * 官方 scripts/verify-client-packages.ts 对此直接判违规）。
+ */
+describe('issue #428：跨插件 external 违规已消除', () => {
+  it('package.json 不含 dsh.client.external / externalDegraded', () => {
+    const pkg = JSON.parse(read('package.json'))
+    expect(pkg.dsh?.client?.external).toBeUndefined()
+    expect(pkg.dsh?.client?.externalDegraded).toBeUndefined()
+    expect(JSON.stringify(pkg.dsh ?? {})).not.toContain('dsh-md-render')
+  })
+
+  it('client 源码与依赖清单不再出现 dsh-md-render', () => {
+    for (const rel of ['src/client/index.ts', 'src/client/settings.ts', 'lib/client.src.js', 'package.json']) {
+      expect(countOf(read(rel), 'dsh-md-render'), rel).toBe(0)
+    }
+  })
+
+  it('产物没有跨插件 require，external 内核级被旁路到平台 seed 模块', () => {
+    const artifact = read('lib/client.js')
+    expect(countOf(artifact, "require('dsh-md-render')")).toBe(0)
+    expect(artifact.includes('external: PLATFORM_PRIMITIVES')).toBe(true)
+    expect(artifact.includes("externalExport: 'externalRendererDisabled'")).toBe(true)
   })
 })
 

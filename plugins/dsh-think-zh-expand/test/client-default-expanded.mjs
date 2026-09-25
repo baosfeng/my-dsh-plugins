@@ -9,8 +9,9 @@ import { test } from 'vitest'
  *  ④ 静态断言锁死源码初值走配置项（沿用外部 PR #356 的思路：运行时 stub
  *     锁不住源码字面量，必须直接断言随包产物的源码）。
  *
- * 加载方式与 client-render.mjs 一致：eval 两个 __ModuleLoader__ bundle，
- * 先 materialize dsh-md-render（本插件 require 它），react 用最小 stub。
+ * 加载方式与 client-render.mjs 一致：只 eval 本插件产物，react 用最小 stub。
+ * issue #428 后本插件不跨插件取渲染器：factory 的 require 只认 react（不提供
+ * 平台组件 → 渲染落到 <pre> 兜底，文本仍在）；产物若 require 别的模块直接抛错。
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -42,18 +43,13 @@ global.document = {
 }
 global.fetch = () => Promise.resolve({ json: () => Promise.resolve({ ok: true, value: {} }) })
 
-eval(fs.readFileSync(new URL('../../dsh-md-render/lib/client.js', import.meta.url), 'utf8'))
 eval(fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8'))
-const mdRenderReg = registrations.find((r) => r.id === 'dsh-md-render')
+assert.equal(registrations.length, 1, 'only the think-zh-expand bundle is loaded')
 const thinkReg = registrations.find((r) => r.id === 'dsh-think-zh-expand')
-assert.ok(mdRenderReg && thinkReg, 'two bundles registered')
-const mdRenderExports = mdRenderReg.factory((spec) => {
-  if (spec === 'react') return stubbed
-  throw new Error('unexpected require: ' + spec)
-})
+assert.ok(thinkReg, 'think-zh-expand bundle registered')
+// 只认 react：产物若仍跨插件取渲染器，这里直接抛 'unexpected require'（issue #428）
 const exportsObj = thinkReg.factory((spec) => {
   if (spec === 'react') return stubbed
-  if (spec === 'dsh-md-render') return mdRenderExports
   throw new Error('unexpected require: ' + spec)
 })
 

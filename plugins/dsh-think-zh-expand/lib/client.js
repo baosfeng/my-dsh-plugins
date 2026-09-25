@@ -2,7 +2,9 @@
  * dsh-think-zh-expand — client half (browser).
  *
  * 功能 2：思考（reasoning）内容默认展开显示。
- * 功能 3：界面标签中文化。
+ * 功能 3：宿主设置面板（设置 → 插件 → 思考增强）。
+ *
+ * issue #428：界面标签中文化词表已移除（官方 zh locale 已是文案真源）。
  *
  * BUILD NOTE: 本文件是源码模板（骨架）。scripts/build.mjs 先 tsc 编译
  * src/client/index.ts → lib/.client-build/index.js（CommonJS 单文件），
@@ -20,13 +22,18 @@ window.__ModuleLoader__.load({
     // 模板静态分析看不到 bundle / part 的内容，故在此一并解构。
     const { createElement, useState, useEffect } = require('react')
 
-    // ── MarkdownView：三级渲染回退（issue #293；逻辑收口于共享部件 #299）──
-    // 1) dsh-md-render 的 MarkdownView —— 首选渲染内核（issue #31/#186 决策不变）；
-    // 2) 宿主 staticModules 的官方 MarkdownText（零安装，缺 md-render 时仍渲染）；
-    // 3) <pre data-dsh-think-zh-expand-fallback="true"> —— 极旧/裁剪宿主纯文本。
-    // 三级链、组件可用性判定（React 语义，兼容 memo/forwardRef 对象）与假降级教训
-    // 都在 dsh-shared/client-parts/markdown-fallback.part.js（issue #299：与
-    // dsh-my-plugin-manager 共用单一来源，ADR-0002），构建期 splice 进本 factory 作用域。
+    // ── MarkdownView：宿主官方 baseline 组件（issue #428）──────────────
+    // 1) 宿主 staticModules 的官方 MarkdownText —— 唯一渲染内核（平台 seed 模块
+    //    @deepseek-ai/dsh-client-ui-primitives，零安装零体积，官方推荐路线）；
+    // 2) <pre data-dsh-think-zh-expand-fallback="true"> —— 极旧/裁剪宿主纯文本。
+    // **不再有「另一个特性插件提供渲染器」这一级**：官方明令禁止特性插件
+    // runtime-import 彼此的值，也禁止用 dsh.client.external 获取它们
+    // （packages/client/AGENTS.md；官方 scripts/verify-client-packages.ts 判违规）。
+    // 三级链与组件可用性判定（React 语义，兼容 memo/forwardRef 对象）与假降级教训
+    // 仍在 dsh-shared/client-parts/markdown-fallback.part.js（#299 单一来源，ADR-0002），
+    // 构建期 splice 进本 factory 作用域；共享件的外部内核级由下方两个参数显式旁路
+    // （external 指向平台模块 + 一个不存在的导出名 → 该级恒不命中），共享件本身与
+    // 其它消费方（dsh-my-plugin-manager）行为不变。
     // ── shared markdown render fallback (dsh-shared/client-parts) ──
 // 单一来源（issue #299）：把「三级渲染回退」这段原本在 dsh-think-zh-expand（#293）
 // 与 dsh-my-plugin-manager（#299）逐字重复的样板（约 40 行：三级解析 + labels
@@ -148,8 +155,11 @@ function installMarkdownViewFallback(options) {
   return renderPlain
 }
 
-    // labels 无默认值（仅渲染含代码块的 markdown 时才读 labels.code.copyLabel），
-    // 中文文案由本中文化插件提供；codeLabels 兼容早期官方包（npm 0.0.1-rc.1）。
+    // labels 无默认值（渲染含代码块的 markdown 时才读 labels.code.copyLabel）——
+    // 这是官方组件的**必填调用契约**，不是界面文案替换；codeLabels 兼容早期
+    // 官方包（npm 0.0.1-rc.1）。
+    /** 官方 baseline 模块（平台 seed 表，可直接 require）。 */
+    const PLATFORM_PRIMITIVES = '@deepseek-ai/dsh-client-ui-primitives'
     const ZH_MD_LABELS = { code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' }
     const ZH_MD_CODE_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
     const MarkdownView = installMarkdownViewFallback({
@@ -158,6 +168,9 @@ function installMarkdownViewFallback(options) {
       labels: ZH_MD_LABELS,
       codeLabels: ZH_MD_CODE_LABELS,
       fallbackAttribute: 'data-dsh-think-zh-expand-fallback',
+      // 显式旁路共享件的外部内核级（见上方注释）：本插件不跨插件取渲染内核
+      external: PLATFORM_PRIMITIVES,
+      externalExport: 'externalRendererDisabled',
     })
 
     // ── 共享图标（issue #54 阶段 0：dsh-shared/client-parts）──────────
@@ -603,9 +616,8 @@ function isZh() {
 }
 /** 设置页文案（按当前语言返回单语；每次调用重新判定语言，不缓存）。 */
 const THINK_SETTINGS_STRINGS = {
-    // 页签名**不能**叫 'Thinking'：本插件自己的界面中文化词表（index.ts 的
-    // ZH_TABLE）有 'Thinking' → '思考' 且全局扫 document.body，宿主渲染出的
-    // 页签文字会被改写成中文——英文界面下页签反而显示中文。
+    // 页签名按浏览器语言切换。历史上英文页签刻意避开 'Thinking'（当时本插件有
+    // 全局 DOM 中文化词表会改写它）；该词表已随 issue #428 移除。
     tabLabel: () => (isZh() ? '思考增强' : 'Thinking blocks'),
     rowLabel: () => (isZh() ? '思考默认展开' : 'Expand thinking by default'),
     // 英文 hint 语义两层：① 开关默认开 ②「关闭后」点标题仍可手动展开。刻意不用
@@ -742,7 +754,7 @@ function ThinkSettingsView() {
  *    `ctx.get(name, strict = true)` 在服务提供者 fiber 尚未 active（首屏）时返回
  *    undefined，页签会消失到下次 HMR；只有 strict=false 才拿得到实例。
  *  - 服务缺失（精简上下文 / 老宿主）时静默跳过：设置页是增强，不能因为拿不到
- *    slots 就让整个 client（含思考块渲染与中文化）挂掉。
+ *    slots 就让整个 client（含思考块渲染）挂掉。
  */
 function attachSettingsTab(ctx) {
     // 样式注入走共享实现，位置在任何早退分支之前（服务判空 / HMR 时样式不会丢）。
@@ -771,10 +783,6 @@ exports.resolveDefaultExpanded = resolveDefaultExpanded;
 exports.setDefaultExpanded = setDefaultExpanded;
 exports.getDefaultExpanded = getDefaultExpanded;
 exports.initConfigFromServer = initConfigFromServer;
-exports.zhToolName = zhToolName;
-exports.zhToolDesc = zhToolDesc;
-exports.zhCardTitle = zhCardTitle;
-exports.zhCardSummary = zhCardSummary;
 /**
  * dsh-think-zh-expand — client 端入口（TypeScript 源码）。
  *
@@ -785,7 +793,11 @@ exports.zhCardSummary = zhCardSummary;
  * （require 只认识宿主注入的模块，如 react）。
  *
  * 功能 2：思考（reasoning）内容默认展开显示（配置项 defaultExpanded，#355）。
- * 功能 3：界面标签中文化。功能 4：宿主设置面板（#383，视图见 settings.ts）。
+ * 功能 3：宿主设置面板（#383，视图见 settings.ts）。
+ *
+ * issue #428：界面硬编码英文的中文化词表已移除 —— 官方 zh locale 已是文案真源
+ * （ui-chat/src/client/locale.ts 的 message.think、ui-conversation/src/client/locales.ts
+ * 的「工具调用」），本插件再扫 DOM 改写文本属重复实现且会误伤宿主文案。
  */
 const react_1 = require("react");
 // ── 配置项 defaultExpanded（issue #355 / #383）：展开初值可配置 ──────────
@@ -901,7 +913,7 @@ function ThinkBlock({ text, running }) {
         (0, react_1.createElement)('span', { className: 'dsh-think-zh-expand-think-separator', 'aria-hidden': 'true' }),
         (0, react_1.createElement)('span', { className: 'dsh-think-zh-expand-think-summary' }, firstLine(cleanText)),
     ]), 
-    // 思考内容走统一 Markdown 渲染（dsh-md-render 的 MarkdownView）
+    // 思考内容走统一 Markdown 渲染（宿主官方 baseline MarkdownText）
     open &&
         (0, react_1.createElement)('div', { className: 'dsh-think-zh-expand-think-body' }, (0, react_1.createElement)(MarkdownView, { text: cleanText })));
 }
@@ -965,373 +977,6 @@ function AssistantStepView({ node, renderMessageImages }) {
     }
     return (0, react_1.createElement)('div', { className: 'dsh-think-zh-expand-assistant', 'data-streaming': streaming || undefined }, (0, react_1.createElement)('div', { className: 'dsh-think-zh-expand-assistant-body' }, rendered));
 }
-// ── 界面中文化词表 ─────────────────────────────────────────────────
-const ZH_TABLE = {
-    Thinking: '思考',
-    'Tool Call': '工具调用',
-    'Tool calls': '工具调用',
-    'Tool call': '工具调用',
-    'Tool call only': '仅工具调用',
-    Tools: '工具',
-    'No content': '无内容',
-    'Tools Updated': '工具已更新',
-    Duration: '用时',
-    'Use actual duration': '使用实际耗时',
-    'Use equal-width operations': '使用等宽操作',
-    Turns: '轮次',
-    'Expand turns': '展开轮次',
-    'Collapse turns': '收起轮次',
-    Calls: '调用',
-    'Expand calls': '展开调用',
-    'Collapse calls': '收起调用',
-    'Load earlier history': '加载更早历史',
-    'Loading earlier history…': '正在加载更早历史…',
-    'Loading earlier history': '正在加载更早历史',
-    ASSISTANT: '助手',
-    TOOL: '工具',
-    USER: '用户',
-    'Session log': '会话日志',
-    'Cordis Plugin': 'Cordis 插件',
-    'System prompt': '系统提示',
-    Messages: '消息',
-    Files: '文件',
-    'Full access': '完全访问',
-    'Enable Full access': '启用完全访问',
-    Cancel: '取消',
-};
-const ZH_PATTERNS = [
-    [/^Turn (\d+)$/, '第 $1 轮'],
-    [/^Tool call (.+)$/, '工具调用 $1'],
-    [/^Input ([\d.]+) tok · Output ([\d.]+) tok$/, '输入 $1 tok · 输出 $2 tok'],
-    [/^LLM (.+)$/, '模型调用 $1'],
-];
-const ZH_SKIP_TAGS = new Set(['PRE', 'CODE', 'SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'KBD', 'SAMP']);
-const CARD_TITLE_ZH = {
-    Search: '搜索',
-    Read: '读取',
-    Bash: '命令行',
-    Write: '写入',
-    Edit: '编辑',
-    Code: '代码',
-    Inspect: '检查',
-    'Run Cordis Plugin': '运行 Cordis 插件',
-    'Stop Cordis Plugin': '停止 Cordis 插件',
-    'Remove Cordis Plugin': '移除 Cordis 插件',
-};
-const TOOL_NAME_ZH = {
-    web_search: '网络搜索',
-    bash: '命令行',
-    read: '读取文件',
-    write: '写入文件',
-    edit: '编辑文件',
-    glob: '搜索文件',
-    grep: '搜索内容',
-    read_image: '读取图片',
-    skill: '技能',
-    workflow: '工作流',
-    subagent: '子代理',
-    subagent_fork: '子代理（继承）',
-    todo_write: '任务清单',
-    ask_user_question: '询问用户',
-    exit_plan_mode: '退出计划模式',
-    create_goal: '创建目标',
-    get_goal: '查看目标',
-    update_goal: '更新目标',
-    job_list: '任务列表',
-    job_output: '任务输出',
-    job_kill: '终止任务',
-    list_agents: '代理列表',
-    send_message: '发送消息',
-    interrupt_agent: '中断代理',
-    cordis_define: '定义插件',
-    cordis_run: '运行插件',
-    cordis_stop: '停止插件',
-    cordis_undefine: '删除插件',
-    cordis_inspect_list: '查看提供者',
-    cordis_inspect_query: '查询提供者',
-    cordis_inspect_self: '查看自身',
-    'mcp__codebase-memory__check_index_coverage': '检查索引覆盖',
-    'mcp__codebase-memory__delete_project': '删除项目',
-    'mcp__codebase-memory__detect_changes': '变更影响分析',
-    'mcp__codebase-memory__get_architecture': '架构总览',
-    'mcp__codebase-memory__get_code_snippet': '代码片段',
-    'mcp__codebase-memory__get_graph_schema': '图结构',
-    'mcp__codebase-memory__index_repository': '索引仓库',
-    'mcp__codebase-memory__index_status': '索引状态',
-    'mcp__codebase-memory__ingest_traces': '导入运行时轨迹',
-    'mcp__codebase-memory__list_projects': '项目列表',
-    'mcp__codebase-memory__manage_adr': '架构决策记录',
-    'mcp__codebase-memory__query_graph': '图查询',
-    'mcp__codebase-memory__search_code': '代码搜索',
-    'mcp__codebase-memory__search_graph': '图搜索',
-    'mcp__codebase-memory__trace_path': '调用路径追踪',
-    agent_teams_add_member: '添加成员',
-    agent_teams_claim_task: '认领任务',
-    agent_teams_create: '创建团队',
-    agent_teams_create_task: '创建任务',
-    agent_teams_delete: '删除团队',
-    agent_teams_reassign_task: '重新指派任务',
-    agent_teams_remove_member: '移除成员',
-    agent_teams_send_message: '团队消息',
-    agent_teams_status: '团队状态',
-    agent_teams_update_task: '更新任务',
-    vision_toolkit_activate: '激活视觉工具',
-};
-const TOOL_DESC_ZH = {
-    web_search: '搜索网络获取最新信息。',
-    bash: '执行命令并返回输出（可设置工作目录、超时）。',
-    read: '读取 UTF-8 文本文件并返回带行号的内容。',
-    write: '创建或完整替换一个 UTF-8 文本文件。',
-    edit: '对现有文本文件做精确的局部替换修改。',
-    glob: '按路径模式查找文件，包含隐藏与忽略文件。',
-    grep: '用正则搜索文件内容并返回匹配行。',
-    read_image: '读取图片文件并返回图片本身。',
-    skill: '加载指定技能（skill）的完整指令。',
-    workflow: '编写脚本编排多个子代理，并行扇出执行。',
-    subagent: '把独立任务委托给后台子代理。',
-    subagent_fork: '把任务委托给继承当前对话上下文的子代理。',
-    todo_write: '记录并更新当前工作的结构化任务清单。',
-    ask_user_question: '需要确认、选择或补充信息时向用户提问。',
-    exit_plan_mode: '呈现完整计划并退出计划模式。',
-    create_goal: '创建持久化的同会话完成目标。',
-    get_goal: '读取当前目标的准确 id 与状态。',
-    update_goal: '更新目标的执行状态、暂停或恢复。',
-    job_list: '列出当前启动的后台任务。',
-    job_output: '读取后台任务的输出。',
-    job_kill: '请求终止运行中的后台任务。',
-    list_agents: '按持久 id 列出可续接的后台子代理。',
-    send_message: '向后台子代理发送消息，继续其同一对话。',
-    interrupt_agent: '请求中断后台代理的当前轮次。',
-    cordis_define: '定义新的不可变 Cordis 插件包（不运行）。',
-    cordis_run: '启动或更新 Cordis 插件包。',
-    cordis_stop: '停止当前 Cordis 插件并保留定义。',
-    cordis_undefine: '永久删除 Cordis 插件及其所有包。',
-    cordis_inspect_list: '列出当前已知的检查提供者。',
-    cordis_inspect_query: '执行检查提供者的只读查询。',
-    cordis_inspect_self: '查看当前会话的插件、包与诊断。',
-    'mcp__codebase-memory__check_index_coverage': '检查文件的索引覆盖情况。',
-    'mcp__codebase-memory__delete_project': '把项目从索引中删除。',
-    'mcp__codebase-memory__detect_changes': '把 git 变更映射为影响半径。',
-    'mcp__codebase-memory__get_architecture': '获取项目高层架构总览。',
-    'mcp__codebase-memory__get_code_snippet': '读取函数或类的源码。',
-    'mcp__codebase-memory__get_graph_schema': '获取知识图谱的节点与边类型。',
-    'mcp__codebase-memory__index_repository': '把仓库索引进知识图谱。',
-    'mcp__codebase-memory__index_status': '查看项目索引状态与覆盖报告。',
-    'mcp__codebase-memory__ingest_traces': '导入运行时调用轨迹。',
-    'mcp__codebase-memory__list_projects': '列出已索引的项目。',
-    'mcp__codebase-memory__manage_adr': '创建或更新架构决策记录。',
-    'mcp__codebase-memory__query_graph': '执行 Cypher 图查询。',
-    'mcp__codebase-memory__search_code': '图增强的代码搜索。',
-    'mcp__codebase-memory__search_graph': '按关键词、正则或语义搜索代码图谱。',
-    'mcp__codebase-memory__trace_path': '追踪调用链、数据流与跨服务路径。',
-    agent_teams_add_member: '向团队添加可续命的成员。',
-    agent_teams_claim_task: '为团队成员认领一个就绪任务。',
-    agent_teams_create: '创建多代理团队，你成为队长。',
-    agent_teams_create_task: '在团队创建任务并关联依赖。',
-    agent_teams_delete: '删除团队：中断成员并移除状态。',
-    agent_teams_reassign_task: '重试、重新指派任务或由队长接管。',
-    agent_teams_remove_member: '安全移除成员并回收任务。',
-    agent_teams_send_message: '给队长或团队成员发送消息。',
-    agent_teams_status: '查看团队快照：成员与任务状态。',
-    agent_teams_update_task: '更新任务状态或产出摘要。',
-    vision_toolkit_activate: '激活视觉工具集。',
-};
-// ── 界面中文化 DOM 精准替换逻辑 ────────────────────────────────────
-function inSkipped(element) {
-    let node = element;
-    while (node && node.nodeType === 1) {
-        if (ZH_SKIP_TAGS.has(node.nodeName))
-            return true;
-        node = node.parentElement;
-    }
-    return false;
-}
-function inToolCallRow(element) {
-    let node = element;
-    while (node && node.nodeType === 1) {
-        if (node.hasAttribute && node.hasAttribute('data-chat-call-id'))
-            return true;
-        node = node.parentElement;
-    }
-    return false;
-}
-function inToolCatalog(element) {
-    let node = element;
-    while (node && node.nodeType === 1) {
-        const cls = node.className;
-        if (typeof cls === 'string' && cls.indexOf('toolCatalog') !== -1)
-            return true;
-        node = node.parentElement;
-    }
-    return false;
-}
-function catalogItemOf(element) {
-    let node = element;
-    while (node && node.nodeType === 1) {
-        const cls = node.className;
-        if (typeof cls === 'string' && cls.indexOf('toolCatalogItem') !== -1)
-            return node;
-        node = node.parentElement;
-    }
-    return null;
-}
-function localizeCatalogDesc(item, zhDesc) {
-    const descEls = item.querySelectorAll('[class*="toolCatalogDescription"], [class*="toolCatalogFullDescription"]');
-    for (const el of descEls) {
-        if (el.firstChild && el.firstChild.nodeType === 3) {
-            ;
-            el.firstChild.nodeValue = zhDesc;
-        }
-    }
-}
-function localizeParamsJsonLabel(item) {
-    const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
-    let t;
-    while ((t = walker.nextNode()) !== null) {
-        const v = String(t.nodeValue);
-        if (v.indexOf(' parameters JSON') !== -1) {
-            t.nodeValue = v.replace(' parameters JSON', ' 参数 JSON');
-        }
-    }
-}
-function localizeCatalogItem(item, localizedItems) {
-    if (localizedItems.has(item))
-        return;
-    localizedItems.add(item);
-    const nameEl = item.querySelector('[class*="toolCatalogName"]');
-    if (!nameEl || !nameEl.firstChild || nameEl.firstChild.nodeType !== 3)
-        return;
-    const nameNode = nameEl.firstChild;
-    const en = String(nameNode.nodeValue).trim();
-    const zhName = TOOL_NAME_ZH[en];
-    if (zhName === undefined)
-        return;
-    nameNode.nodeValue = String(nameNode.nodeValue).replace(en, zhName);
-    const zhDesc = TOOL_DESC_ZH[en];
-    if (zhDesc !== undefined)
-        localizeCatalogDesc(item, zhDesc);
-    localizeParamsJsonLabel(item);
-}
-function tryCardTitle(textNode, trimmed) {
-    const cardTitle = CARD_TITLE_ZH[trimmed];
-    if (cardTitle === undefined)
-        return false;
-    const nv = textNode.nodeValue;
-    if (nv !== null)
-        textNode.nodeValue = nv.replace(trimmed, cardTitle);
-    return true;
-}
-function trySummaryPrefix(textNode, trimmed) {
-    const m = trimmed.match(/^([a-zA-Z][a-zA-Z0-9_]*) · /);
-    if (!m || TOOL_NAME_ZH[m[1]] === undefined)
-        return false;
-    const nv = textNode.nodeValue;
-    if (nv !== null)
-        textNode.nodeValue = nv.replace(m[1], TOOL_NAME_ZH[m[1]]);
-    return true;
-}
-function tryExactText(textNode, trimmed) {
-    const exact = ZH_TABLE[trimmed];
-    if (exact === undefined)
-        return false;
-    const nv = textNode.nodeValue;
-    if (nv !== null)
-        textNode.nodeValue = nv.replace(trimmed, exact);
-    return true;
-}
-function tryPatternText(textNode, trimmed) {
-    for (const [pattern, replacement] of ZH_PATTERNS) {
-        if (pattern.test(trimmed)) {
-            const nv = textNode.nodeValue;
-            if (nv !== null)
-                textNode.nodeValue = nv.replace(pattern, replacement);
-            return true;
-        }
-    }
-    return false;
-}
-function translateToolCallText(textNode, trimmed) {
-    if (tryCardTitle(textNode, trimmed))
-        return true;
-    return trySummaryPrefix(textNode, trimmed);
-}
-function translateTextNode(textNode, localizedItems) {
-    const raw = textNode.nodeValue;
-    if (typeof raw !== 'string' || raw === '')
-        return;
-    const trimmed = raw.trim();
-    if (trimmed === '')
-        return;
-    const parent = textNode.parentElement;
-    if (!parent || inSkipped(parent))
-        return;
-    if (inToolCallRow(parent)) {
-        translateToolCallText(textNode, trimmed);
-        return;
-    }
-    if (inToolCatalog(parent)) {
-        const item = catalogItemOf(parent);
-        if (item) {
-            localizeCatalogItem(item, localizedItems);
-            return;
-        }
-    }
-    if (tryExactText(textNode, trimmed))
-        return;
-    tryPatternText(textNode, trimmed);
-}
-function installUiLocalize() {
-    if (typeof document === 'undefined' || document === null || typeof MutationObserver === 'undefined')
-        return () => { };
-    const localizedItems = new WeakSet();
-    const scan = (root) => {
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-        const hits = [];
-        let node;
-        while ((node = walker.nextNode()) !== null)
-            hits.push(node);
-        for (const hit of hits)
-            translateTextNode(hit, localizedItems);
-    };
-    scan(document.body);
-    const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            if (mutation.type === 'characterData' && mutation.target.nodeType === 3) {
-                translateTextNode(mutation.target, localizedItems);
-            }
-            else if (mutation.type === 'childList') {
-                for (const added of mutation.addedNodes) {
-                    if (added.nodeType === 1)
-                        scan(added);
-                    else if (added.nodeType === 3)
-                        translateTextNode(added, localizedItems);
-                }
-            }
-        }
-    });
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    return () => observer.disconnect();
-}
-// ── 纯函数导出（供纯 Node 测试断言映射，不依赖 DOM）─────────────────
-/** 工具名中文化映射。 */
-function zhToolName(name) {
-    return TOOL_NAME_ZH[name] ?? null;
-}
-/** 工具描述中文化映射。 */
-function zhToolDesc(name) {
-    return TOOL_DESC_ZH[name] ?? null;
-}
-/** 卡片标题中文化映射。 */
-function zhCardTitle(title) {
-    return CARD_TITLE_ZH[title] ?? null;
-}
-/** others 卡片摘要 `工具名 · …` 的工具名前缀替换。 */
-function zhCardSummary(text) {
-    const m = String(text).match(/^([a-zA-Z][a-zA-Z0-9_]*) · /);
-    if (m && TOOL_NAME_ZH[m[1]] !== undefined)
-        return String(text).replace(m[1], TOOL_NAME_ZH[m[1]]);
-    return null;
-}
 // ── 样式 ───────────────────────────────────────────────────────────
 const STYLES = `
 .dsh-think-zh-expand-assistant{display:flex;flex-direction:column;color:var(--dsw-alias-label-primary);font-size:16px;line-height:28px}
@@ -1358,7 +1003,7 @@ _exports.inject = ['slots'];
 _exports.apply = function apply(ctx) {
     // issue #355：先按 host 侧配置初始化展开初值（异步；失败保持默认 true）。
     void initConfigFromServer();
-    // 样式注入走共享实现（issue #186 P2）：与 dsh-md-render / dsh-mermaid-render
+    // 样式注入走共享实现（issue #186 P2）：与同仓其它 client 插件
     // 同一份「无条件注入 + 随 fiber teardown 卸载」逻辑（style-tag.part.js）。
     installStyles(ctx, 'data-dsh-think-zh-expand', STYLES, 'dsh-think-zh-expand: styles');
     // Replace the built-in assistant-step renderer
@@ -1368,8 +1013,6 @@ _exports.apply = function apply(ctx) {
         priority: -1,
         registrant: 'dsh-think-zh-expand',
     }, (props) => (0, react_1.createElement)(AssistantStepView, props))), 'dsh-think-zh-expand: assistant-step renderer');
-    // UI 标签中文化
-    ctx.effect(() => installUiLocalize(), 'dsh-think-zh-expand: ui localization');
     // 设置页签（issue #383）：注册「设置 → 插件 → 思考增强」（part 视图与注册
     // 逻辑在 src/client/settings.ts，构建期由 build.mjs 注入同一 factory 作用域）。
     attachSettingsTab(ctx);

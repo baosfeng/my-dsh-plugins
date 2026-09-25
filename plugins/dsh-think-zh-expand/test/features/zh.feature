@@ -14,40 +14,21 @@
     并且 section 文本要求思考与回复使用中文
     并且 section 文本覆盖关键场景与代码术语
 
-  场景: 工具卡片标题中文化
-    假如 客户端模块已加载
-    那么 "Search" 的卡片标题为 "搜索"
-    并且 "Bash" 的卡片标题为 "命令行"
-    并且 "Inspect" 的卡片标题为 "检查"
-
-  场景: 工具名与描述中文化
-    假如 客户端模块已加载
-    那么 工具名 "web_search" 映射为 "网络搜索"
-    并且 工具名 "bash" 映射为 "命令行"
-    并且 未覆盖的工具名 "NoSuchTool" 映射为空
-
-  场景: Markdown 表格渲染为表格
-    假如 渲染器已注册
-    当 渲染含分隔行的文本块
-    那么 输出包含 table 标签
-    并且 输出包含表头文本 "插件"
-    并且 输出包含数据文本 "dsh-file-activity"
-
-  场景: 渲染职责由 dsh-md-render 提供
+  场景: 渲染职责由宿主官方 baseline 组件提供
     假如 客户端模块已加载
     那么 本插件不导出 MarkdownView 渲染组件
     并且 本插件 bundle 不包含表格渲染逻辑
 
-  # issue #293：三级渲染回退（md-render 首选 → 官方 MarkdownText → <pre>）
-  场景: 未装 dsh-md-render 时用官方 MarkdownText 兜底
-    假如 未装 dsh-md-render 但官方组件可用时渲染器已注册
+  # issue #428：跨插件取渲染器那一级已移除 —— 只剩 官方 baseline 组件 → <pre> 兜底
+  场景: 官方 baseline 组件可用时由它渲染
+    假如 官方组件可用时渲染器已注册
     当 渲染文本块 "| 插件 | 版本 |"
     那么 输出由官方 MarkdownText 渲染
     并且 传给官方组件的 labels.code.copyLabel 为 "复制"
     并且 输出包含数据文本 "| 插件 | 版本 |"
 
-  场景: md-render 与官方组件都缺失时回退纯文本
-    假如 未装 dsh-md-render 且官方组件也缺失时渲染器已注册
+  场景: 官方组件也缺失时回退纯文本
+    假如 官方组件缺失时渲染器已注册
     当 渲染文本块 "回退纯文本"
     那么 输出回退为带 fallback 标记的 pre
     并且 输出包含数据文本 "回退纯文本"
@@ -55,7 +36,7 @@
   # 真实宿主 MarkdownText 是 React.memo 对象（object($$typeof,type,compare)），
   # 不是函数——用 typeof === 'function' 判可用性会误判为缺失、直接落到 <pre>
   场景: 官方组件是 memo 对象时仍用官方组件渲染
-    假如 未装 dsh-md-render 且官方组件为 memo 对象时渲染器已注册
+    假如 官方组件为 memo 对象时渲染器已注册
     当 渲染文本块 "memo 形态渲染"
     那么 输出由官方 MarkdownText 渲染
     并且 传给官方组件的 labels.code.copyLabel 为 "复制"

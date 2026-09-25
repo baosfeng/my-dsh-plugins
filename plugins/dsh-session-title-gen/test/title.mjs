@@ -25,27 +25,47 @@ describe('formatTitle', () => {
     expect(formatTitle('[{workspace}] {description}', '', '修复问题')).toBe('修复问题')
   })
 
-  it('大量空格的 template 不触发 ReDoS（耗时随输入线性，非超线性）', () => {
-    // 防复发（CodeQL ReDoS）：原实现 `\s*\[\{workspace\}\]\s*` 在用户配置的
-    // template 含大量空白且无 `[{workspace}]` 时灾难性回溯；split/join 无回溯。
+  it('大量空格的 template 不触发 ReDoS：退化输入与同规模对照的耗时同数量级（相对判据）', () => {
+    // 防复发（CodeQL ReDoS）：原实现 `\s*\[\{workspace\}\]\s*` 在用户配置的 template
+    // 含大段空白且无 `[{workspace}]` 时灾难性回溯（O(n²)）；现实现 split/join + /\s+/g
+    // 无回溯。本用例的输入就是那类退化形态。
     //
-    // 判据（issue #353：绝对耗时阈值 → 相对判据）：比较 10 倍输入的耗时**比值**，而不是
-    // 「N 毫秒内完成」。为什么该条件下必然成立：回溯型正则是 O(n²)，输入 ×10 → 耗时 ×100；
-    // 线性实现（split/join + /\s+/g）输入 ×10 → 耗时 ≈ ×10。比值把两侧的机器负载同时约掉，
-    // 所以高负载下比值判据依然成立，而绝对阈值会随负载漂移（原 1000ms 阈值在 CI 高负载下
-    // 测出的是机器慢，不是代码坏）。
-    const measure = (spaces) => {
-      const template = `${spaces}{description}${spaces}`
-      const start = performance.now()
-      const result = formatTitle(template, '', '修复问题')
-      return { ms: performance.now() - start, result }
+    // 判据演进（为什么既不是绝对阈值，也不是「10 倍输入耗时比」）：
+    //  1) 绝对墙钟阈值（原 <1000ms）测的是机器快慢，负载高必假红 → issue #353 已废；
+    //  2) 「10 倍输入的耗时比 < 30」的分子分母**规模不同**（0.2ms vs 2.2ms），负载/GC 抖动
+    //     只砸在大输入一侧：实测 min-of-5 仍出现 52.2 的比值（阈值 30 被击穿，1/12 轮），
+    //     因为信号（线性 ≈10 vs 二次 ≈100）只留 3 倍余量 —— 这是本用例 flaky 的根因；
+    //  3) 本判据把**同规模的安全形态**当基线：退化形态（大段空白、无占位符）与对照形态
+    //     （等长、无空白）交错各测 K 次取**最小值**。min 是「无争用成本」的下界估计——
+    //     调度抖动只能抬高单次测量，取 min 就把负载噪声滤掉，且同规模下负载对分子分母
+    //     同向作用。线性实现两者成本同数量级（实测 0.79~0.93，负载 16 仍稳定）；
+    //     二次实现退化形态是对照的 O(n) 倍（n=2 万时实测比值 ≈2×10^4）——余量 ≥20 倍。
+    //  4) 兜底（负载无关）：O(n²) 实现在 n=100 万退化模板上需 ~10^12 步，不可能在线性实现
+    //     的 2.5ms 与框架停机保护之间返回，故最后一条行为断言对超线性实现必然超时红灯。
+    const N = 20_000
+    const K = 5
+    const degraded = `${' '.repeat(N)}{description}${' '.repeat(N)}`
+    const baseline = `${'x'.repeat(N)}{description}${'x'.repeat(N)}`
+    /** 交错测 K 次取最小值：无争用成本的下界估计。 */
+    const minCost = (template) => {
+      let best = Infinity
+      for (let i = 0; i < K; i++) {
+        const start = performance.now()
+        formatTitle(template, '', '修复问题')
+        best = Math.min(best, performance.now() - start)
+      }
+      return best
     }
-    const small = measure(' '.repeat(100_000))
-    const large = measure(' '.repeat(1_000_000))
-    expect(small.result).toBe('修复问题')
-    expect(large.result).toBe('修复问题')
-    // 阈值 30 ≪ 超线性应有的 ~100，又远大于线性应有的 ~10 —— 留出计时噪声余量
-    expect(large.ms / Math.max(small.ms, 0.05)).toBeLessThan(30)
+
+    // 行为判据（确定性）：退化/对照形态都返回正确结果
+    expect(formatTitle(degraded, '', '修复问题')).toBe('修复问题')
+    expect(formatTitle(baseline, '', '修复问题')).toBe(`${'x'.repeat(N)}修复问题${'x'.repeat(N)}`)
+    // 复杂度判据（相对基线比值，阈值 20 ≫ 线性实测 ~0.9，≪ 二次实测 ~2.5×10^4）
+    expect(minCost(degraded) / Math.max(minCost(baseline), 0.01)).toBeLessThan(20)
+    // 兜底：退化的 100 万字符模板必须在停机保护内返回（超线性实现必然超时）
+    expect(formatTitle(`${' '.repeat(1_000_000)}{description}${' '.repeat(1_000_000)}`, '', '修复问题')).toBe(
+      '修复问题',
+    )
   })
 })
 

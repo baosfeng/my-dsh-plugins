@@ -40,6 +40,7 @@ window.__ModuleLoader__.load({
     //    const initializers below run in splice order) ─────────────────────
     __PART_I18N__
     __PART_ICONS__
+    __PART_UI_FALLBACK__
     __PART_STYLES__
     __PART_API__
     __PART_VIEW__

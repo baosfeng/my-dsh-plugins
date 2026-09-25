@@ -33,6 +33,7 @@ const sharedPartsDir = join(root, '..', 'dsh-shared', 'client-parts')
 const pieces = [
   ['__PART_I18N__', 'i18n.js'],
   ['__PART_ICONS__', 'icons.part.js', { shared: true }],
+  ['__PART_UI_FALLBACK__', 'ui-fallback.js'],
   ['__PART_STYLES__', 'styles.js'],
   ['__PART_API__', 'api.js'],
   ['__PART_VIEW__', 'view.js'],

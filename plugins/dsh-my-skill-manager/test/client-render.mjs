@@ -59,17 +59,15 @@ const effectState = { ran: false }
  */
 const VIEW_HOOK_COUNT = 8
 
-/** Render the tab component once (hooks restart at index 0 each render). */
-function renderView() {
-  hookIndex = 0
-  return capturedTab.component({})
-}
-
-// ── stubbed official UI primitives (issue #143 试点) ───────────────────────
+// ── stubbed official UI primitives：只暴露宿主 0.1.7-rc.2 真实存在的导出 ──
+// 防回归要点（issue：settings.plugins.tab 白屏）：stub 必须复刻宿主的真实
+// 导出集，否则测试会替宿主补齐并不存在的导出、把真实缺陷掩盖成绿色。
+// @deepseek-ai/dsh-client-ui-primitives@0.1.7-rc.2 的 279 个导出里，本插件
+// 只用到 Button / Pill；官方图标导出是 IconXxxOutlineMedium /
+// IconXxxOutlineRegular，**没有** IconRefreshOutline14 这类数字后缀名。
 // 官方组件库由宿主 staticModules 提供，测试用最小 stub 渲染（data-ui 标记
 // 供「官方组件被使用」断言）。Button → <button data-ui=button>；Pill → 有
-// onClick 渲染 button、否则 span（data-ui=pill，className 透传）；图标 →
-// <svg data-icon=.../>。
+// onClick 渲染 button、否则 span（data-ui=pill，className 透传）。
 const uiPrimitives = {
   Button: ({ variant: _variant, size: _size, icon, className, children, ...rest }) =>
     createElement('button', { type: 'button', 'data-ui': 'button', className, ...rest }, icon, children),
@@ -77,7 +75,46 @@ const uiPrimitives = {
     onClick
       ? createElement('button', { type: 'button', 'data-ui': 'pill', className, onClick, ...rest }, children)
       : createElement('span', { 'data-ui': 'pill', className }, children),
-  IconRefreshOutline14: (props) => createElement('svg', { 'data-icon': 'refresh', ...props }),
+}
+
+/**
+ * 防回归（React error #130）：require 成功 ≠ 每个导出都存在。
+ * 遍历渲染树（展开函数组件），断言不存在 `undefined` / 非法元素类型——
+ * 宿主 0.1.7-rc.2 下 `createElement(ui.IconRefreshOutline14)` 正是
+ * "Element type is invalid … got: undefined"，导致整块内容区白屏。
+ */
+function assertRenderableTypes(node, path = 'tab[settings.plugins.tab]') {
+  if (node === null || node === undefined || typeof node === 'boolean') return
+  if (typeof node === 'string' || typeof node === 'number') return
+  if (Array.isArray(node)) {
+    node.forEach((child, i) => assertRenderableTypes(child, `${path}[${i}]`))
+    return
+  }
+  const type = node.type
+  if (type === undefined || type === null) {
+    throw new Error(`React error #130: Element type is invalid at ${path} (got: ${String(type)})`)
+  }
+  if (typeof type === 'string') {
+    assertRenderableTypes(node.props?.children, `${path}<${type}>`)
+    return
+  }
+  if (typeof type === 'function') {
+    assertRenderableTypes(type(node.props ?? {}), `${path}<${type.name || 'anonymous'}>`)
+    return
+  }
+  throw new Error(`React error #130: Element type is invalid at ${path} (got: ${typeof type})`)
+}
+
+/** Render the tab component once (hooks restart at index 0 each render).
+ *  每次渲染都验证元素类型合法（校验用独立渲染，hookIndex 复位，既有断言不受影响）。 */
+function renderView() {
+  hookIndex = 0
+  const tree = capturedTab.component({})
+  const afterRender = hookIndex
+  hookIndex = 0
+  assertRenderableTypes(capturedTab.component({}))
+  hookIndex = afterRender
+  return tree
 }
 
 // ── browser globals ────────────────────────────────────────────────────────

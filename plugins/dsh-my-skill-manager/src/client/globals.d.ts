@@ -13,11 +13,9 @@ declare function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => 
 declare function useEffect(effect: () => void | (() => void), deps?: unknown[]): void
 
 // ── 官方 UI 组件库（require('@deepseek-ai/dsh-client-ui-primitives')）─────
-declare const ui: {
-  Button: unknown
-  Pill: unknown
-  IconRefreshOutline14: unknown
-}
+// ui-fallback part 把它归一化成「逐项兜底」的安全表（require 成功 ≠ 每个
+// 导出都存在：0.1.7-rc.2 缺 IconRefreshOutline14 等数字后缀图标导出），故为 let。
+declare let ui: Record<string, unknown>
 
 // ── icon（dsh-shared/client-parts/icons.part.js，构建期拼接）─────────────
 declare const icon: Record<string, (size?: number) => unknown>

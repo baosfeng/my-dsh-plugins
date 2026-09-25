@@ -8,6 +8,9 @@
  *   1. dump-config 配置组合检查：插件行 id 必须全局唯一
  *      （duplicate loader entry id 是真实启动最常见的配置组合炸弹——全新
  *      独立实例永远测不出它，只有复用真实配置组合才能复现/验证）；
+ *      --addons 的插件还必须在组合配置里**处于启用态**：`disabled: true` 的行虽然
+ *      出现在 dump 里（旧判据据此判通过），插件却被加载而不运行 —— 禁用位在 profile
+ *      的 cordis.patch.yml 里（dshmarket 启停开关也落到那里），不在 `.dsh-market`；
  *   2. 启动独立实例（真实进程，插件树加载 + apply + 路由注册）；
  *   3. 健康检查（HTTP 200）+ 启动日志错误扫描；
  *   4. 可选 --api-path 对已挂载插件的 API 做冒烟（验证 server 端 apply 生效）；
@@ -71,6 +74,7 @@ import { spawn } from 'node:child_process'
 import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import {
   bootFailureExcerpt,
+  checkAddonEntriesEnabled,
   checkAddonResolution,
   checkOmittedAbsent,
   decideBootOutcome,
@@ -224,16 +228,6 @@ function entryIds(dumpOutput) {
     if (match !== null) ids.push(match[1])
   }
   return ids
-}
-
-/** 从 dump-config 输出里收集所有 insert 的插件 name（用于 addons 断言）。 */
-function entryNames(dumpOutput) {
-  const names = []
-  for (const line of dumpOutput.split('\n')) {
-    const match = /^\s*-?\s*name:\s*'?([A-Za-z0-9@._/-]+)'?/.exec(line)
-    if (match !== null) names.push(match[1])
-  }
-  return names
 }
 
 /**
@@ -501,14 +495,19 @@ if (duplicates.length > 0) {
   process.exit(1)
 }
 pass(`配置组合唯一：${ids.length} 个 id 无重复`)
-for (const addon of addons) {
-  const name = addon.name
-  if (!entryNames(dump.stdout).includes(name)) {
-    fail(`模拟安装的插件 ${name} 未出现在组合配置中（bundles 声明可能未生效）`)
+// 3c 判据（修复后口径）：被验证的插件必须在组合配置里**处于启用态**。
+// 旧判据只看「全文有没有这个 name 行」，会被 `disabled: true` 骗过：插件被加载但不运行
+// （client bundle 不进 window.__DSH_BOOT__.entries、侧边栏页签不出现），门禁却判通过。
+// 生产 profile 的 cordis.patch.yml 里确实存在这类行（实测：guardian / task-reliability /
+// ts-example / my-context / observability），故改按 entry 块判定，命中禁用位即 fail-closed。
+const combination = checkAddonEntriesEnabled({ dumpOutput: dump.stdout, addons })
+for (const item of combination.entries) {
+  if (!item.ok) {
+    fail(`模拟安装的插件 ${item.name} ${item.reason}`)
     await cleanup()
     process.exit(1)
   }
-  pass(`模拟插件 ${name} 已出现在组合配置`)
+  pass(`模拟插件 ${item.name} 已出现在组合配置（启用态）`)
 }
 
 if (options.skipWeb) {

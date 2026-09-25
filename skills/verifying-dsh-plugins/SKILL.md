@@ -27,7 +27,8 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
 ```
 
 - **版本约定**：清单文件名里的版本 = bump 后的 next 版本（当前 package.json 版本 +1）。手动预验证时 `--version` 必须与之一致，文件名对不上会被当成新清单重新生成（已勾选状态丢失 → 阻断）。
-- 自动项 **4 条**（配置组合唯一性 / 实例就绪 / 日志无 error / 插件 API 冒烟）由脚本勾选；**功能级 5 条由验证者勾选**。API 断言**不在这里**——它需要浏览器会话，见 [references/isolation-instance.md](references/isolation-instance.md) 的 `--api-path` 说明。
+- 自动项 **4 条**（配置组合唯一性 + **待验插件处于启用态** / 实例就绪 / 日志无 error / 插件 API 冒烟）由脚本勾选；**功能级 5 条由验证者勾选**。API 断言**不在这里**——它需要浏览器会话，见 [references/isolation-instance.md](references/isolation-instance.md) 的 `--api-path` 说明。
+- **禁用位不得骗过门禁**：`--addons` 的插件必须在组合配置里**处于启用态**。`disabled: true` 的行虽然出现在 `dump-config` 输出里，插件却被加载而不运行（client bundle 不进 manifest、页签不出现、API 404）——只看"插件行在不在"就是假通过。禁用位来自 `<profile>/cordis.patch.yml`（与 `.dsh-market/state.json` 是**两处独立来源**，脚本只剥离后者）；判失败后按 [references/isolation-instance.md](references/isolation-instance.md)「正确做法」**在隔离副本内去掉 `disabled`，生产配置不动**。判据只针对本次 `--addons` 的插件，dump 里别的插件被故意禁用不受影响。
 - **重跑清单是幂等的（放心重跑）**：目标清单已存在时**绝不整文件重写**——头部「验证时间 / 验证环境」保持原值（换端口重跑**零 diff**）、人工追加的 `## 验证记录` 段**逐字节保留**、已勾选状态原样留存；脚本只刷新自己拥有的「自动验证项」。确需把本轮环境写进头部时加 `--refresh-header`。
 - **崩溃必须 fail-closed**：实例"就绪"的判据是三条同时满足——端口有 HTTP 响应 **+** 日志出现正向就绪行（`dsh web: http://127.0.0.1:<port>/?token=…`）**+** 进程仍存活；并全程扫描致命启动特征（`plugin tree failed to load` / `failed to apply|import loader entry` / `without inject` / `cannot get property` / `missed the module table` / `duplicate loader entry`）。命中即 `exit 1`，输出**崩溃栈关键行 + 隔离实例日志路径**。
   ⚠️ 为什么这么严：`dsh web` **先监听端口、后加载插件树**——插件 `apply` 崩掉时端口已经能回 HTTP，只看端口就会把「实例整个起不来」误报成「✓ 就绪 / ✓ 日志无 error」（这类误报就是这么潜伏到用户侧的）。**看到 `✓ 就绪` 不再等于实例活着**。
@@ -49,7 +50,7 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
 
 | 文件                                                                 | 内容                                                                    |
 | -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [references/isolation-instance.md](references/isolation-instance.md) | 步骤 1 全文：端口/禁用名单/工作区预置/realpath 前置检查/web 与 headless |
+| [references/isolation-instance.md](references/isolation-instance.md) | 步骤 1 全文：端口/两处禁用来源与副本内去 disabled/工作区预置/realpath 前置检查/web 与 headless |
 | [references/verification-steps.md](references/verification-steps.md) | 步骤 2–5 全文：探针、浏览器验收表、清理复查、报告结构                   |
 | [scripts/fetch-probe.mjs](scripts/fetch-probe.mjs)                   | `NODE_OPTIONS=--import` fetch 探针（JSONL 记录会话头/鉴权头）           |
 | `scripts/verify-real-profile.mjs`                                    | 隔离实例 + 配置组合检查 + 清单生成/校验（release.mjs 3c 调用）          |

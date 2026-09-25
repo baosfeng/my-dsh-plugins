@@ -283,6 +283,88 @@ export function checkAddonResolution({ simNode, addons }) {
   return { ok: entries.every((entry) => entry.ok), entries, mismatches: entries.filter((entry) => !entry.ok) }
 }
 
+// ── 组合配置（dump-config）启用态判据（门禁 3c 盲区）────────────────────────
+
+/**
+ * 解析 `--dump-config` 输出为 entry 块列表（纯函数）。
+ *
+ * 块边界 = **顶层列表项**（行首 `- `，缩进 0）；`id:` / `name:` / `disabled:` 是 entry 的
+ * **直接属性**（缩进 1–3 空格），而 `config:` 的子键缩进 ≥4 —— 只认直接属性，才谈得上
+ * 「禁用位归属于被验证插件自己那一块」，不会与相邻 entry 或 config 内部字段串味。
+ *
+ * 为什么必须有它：旧判据只收集全文的 `name:` 行，于是
+ *
+ *     - id: my-context
+ *       name: dsh-my-context
+ *       disabled: true
+ *
+ * 这种块照样被算作「已出现在组合配置」——插件其实**被加载但处于禁用态**
+ * （client bundle 不进 `window.__DSH_BOOT__.entries`、侧边栏页签不出现），门禁却判通过。
+ * 生产 `~/.dsh/profiles/web/cordis.patch.yml` 里确实存在这种被 `disabled: true` 的插件行
+ * （实测：guardian / task-reliability / ts-example / my-context / observability）。
+ *
+ * @param {string} dumpOutput `dsh --profile <p> --dump-config` 的 stdout
+ * @returns {Array<{id: string|null, name: string|null, disabled: boolean}>}
+ */
+export function parseDumpEntries(dumpOutput) {
+  const entries = []
+  let current = null
+  for (const line of String(dumpOutput ?? '').split('\n')) {
+    if (/^- /.test(line)) {
+      current = { id: null, name: null, disabled: false }
+      entries.push(current)
+    }
+    if (current === null) continue
+    // id 只在顶层项首行（`- id: x`）；name/disabled 是 1–3 空格缩进的直接属性。
+    const idMatch = /^- id:\s*'?([A-Za-z0-9._-]+)'?\s*$/.exec(line)
+    if (idMatch !== null && current.id === null) current.id = idMatch[1]
+    const nameMatch = /^\s{1,3}name:\s*'?([A-Za-z0-9@._/-]+)'?\s*$/.exec(line)
+    if (nameMatch !== null && current.name === null) current.name = nameMatch[1]
+    if (/^\s{1,3}disabled:\s*true\s*$/.test(line)) current.disabled = true
+  }
+  return entries.filter((entry) => entry.id !== null || entry.name !== null)
+}
+
+/**
+ * 发版门禁 3c 的核心判据（修复后口径）：被验证的 addon 必须在组合配置里**处于启用态**。
+ *
+ * 判据分三态，全部 fail-closed（任一不成立即 `ok: false` 并给出 `reason`）：
+ *   1. 命中 entry 块且**没有**禁用位 → 通过；
+ *   2. 命中 entry 块但该块 `disabled: true` → 判失败，原因点名「被禁用」——
+ *      这正是被修复的盲区：插件被加载但不运行，功能级验证的前提根本不存在；
+ *   3. 完全没有命中 → 判失败（原口径，bundles 声明可能未生效）。
+ *
+ * 范围严格限定在 `addons`（**本次要验证的那几个插件**）：dump 里其他插件被故意禁用
+ * 不产生任何影响（不是「一票否决整份配置」），所以不误伤正当的禁用场景。
+ *
+ * @param {{dumpOutput: string, addons: Array<{name: string}>}} input
+ * @returns {{ok: boolean, entries: Array<object>, missing: Array<object>, disabledAddons: Array<object>}}
+ */
+export function checkAddonEntriesEnabled({ dumpOutput, addons }) {
+  const entries = parseDumpEntries(dumpOutput)
+  const results = (addons ?? []).map((addon) => {
+    const name = addon.name
+    const matched = entries.filter((entry) => entry.name === name || entry.id === name)
+    const enabled = matched.find((entry) => !entry.disabled) ?? null
+    const disabled = matched.find((entry) => entry.disabled) ?? null
+    let reason = null
+    if (matched.length === 0) {
+      reason = '未出现在组合配置中（bundles 声明可能未生效）'
+    } else if (enabled === null) {
+      reason =
+        `在组合配置中被禁用（entry id=${disabled.id ?? '?'} 带 disabled: true）` +
+        '—— 插件被加载但不会真正运行（client bundle 不进 manifest、页签不出现），功能级验证前提不成立'
+    }
+    return { name, matched, enabled, disabled, ok: reason === null, reason }
+  })
+  return {
+    ok: results.every((item) => item.ok),
+    entries: results,
+    missing: results.filter((item) => item.matched.length === 0),
+    disabledAddons: results.filter((item) => item.matched.length > 0 && !item.ok),
+  }
+}
+
 // ── 工作区落盘状态预置（隔离实例 GUI 前置） ────────────────────────────────
 
 /** workspace 存储单元的头部（dsh-workspace 的 domain spec：name='workspace', version=2）。 */

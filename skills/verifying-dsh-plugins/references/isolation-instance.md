@@ -6,16 +6,38 @@
 
 先确认端口空闲：`lsof -ti :3099 || echo 空闲`。**不要**用主实例端口，也不要重复用别人的验证端口。
 
-## 前置：隔离实例可能"继承"生产的插件禁用名单
+## 前置（硬性）：两处禁用来源 —— 隔离实例可能"继承"生产的插件禁用名单
 
-dshmarket 把启停开关写在 `<DSH_HOME>/profiles/<profile>/.dsh-market/state.json`（`{"disabled":[...]}`），启动时按它**强制 off** 名单里的插件。`verify-real-profile.mjs` 复刻 profile 时已剥离该目录并打印提示；但你若手工搭实例、或看到「插件少了几个 / client 不进 manifest / API 404」，**先查这里再查插件代码**：
+**禁用位有两处独立来源**，只处理其一不等于干净：
+
+| 来源                | 位置                                                            | `verify-real-profile.mjs` 复刻时  |
+| ------------------- | --------------------------------------------------------------- | --------------------------------- |
+| dshmarket 启停开关  | `<profile>/.dsh-market/state.json`（`{"disabled":[...]}`）        | 已剥离并打印提示                  |
+| profile 的 patch 行 | `<profile>/cordis.patch.yml` 里 `- id: <插件>` + `disabled: true` | **不剥离** → 被原样复刻进隔离实例 |
 
 ```bash
-cat ~/.dsh/profiles/<profile>/.dsh-market/state.json | head -c 300   # disabled 非空 = 生产里被关掉的插件
+cat ~/.dsh/profiles/<profile>/.dsh-market/state.json | head -c 300    # 来源 1
+grep -B1 'disabled: true' ~/.dsh/profiles/<profile>/cordis.patch.yml  # 来源 2
 ```
 
-判定与修法见 [docs/踩坑/README.md](../../../docs/踩坑/README.md)。
-**验证环境的"少加载"与插件的"坏掉"表现一样，排查方向却完全相反。**
+被禁用的插件**被加载但不运行**：client bundle 不进 `window.__DSH_BOOT__.entries`、侧边栏页签不出现、API 404 —— 与"插件坏了"表现一样，排查方向却完全相反：**先查这里，再查插件代码**。
+
+### 正确做法：在隔离副本内去掉 `disabled`，生产配置不动
+
+功能级验证要求待验插件**处于启用态**。修法**只在隔离副本里**做（`~/.dsh/profiles/` 一个字节都不改）：
+
+```bash
+# 1) 起隔离实例（副本目录 /tmp/dsh-verify-real-<port>）；--keep 让它留存
+node scripts/verify-real-profile.mjs --addons plugins/<名> --port 3099 --keep
+# 2) 只在副本的 patch 里删掉待验插件那一行的禁用位（生产不动）
+perl -0pi -e 's/^- id: <插件id>\n  disabled: true\n/- id: <插件id>\n/m' \
+  /tmp/dsh-verify-real-3099/profiles/web/cordis.patch.yml
+grep -A1 '^- id: <插件id>' /tmp/dsh-verify-real-3099/profiles/web/cordis.patch.yml  # 确认已无 disabled
+```
+
+- 隔离实例的 `watchUserPatches` **热重载** patch 改动，不必重启实例；页签/client 席位随即出现。
+- **3c 门禁已对禁用位 fail-closed**：`--addons` 的插件若在组合配置里带 `disabled: true`，`dump-config` 阶段直接判失败，原因点名「在组合配置中被禁用（entry id=… ）—— 插件被加载但不会真正运行」，不会再静默通过。判据只针对**本次 `--addons` 的那几个插件**，dump 里别的插件被故意禁用不受影响。
+- 排查口径判定见 [docs/踩坑/README.md](../../../docs/踩坑/README.md)。**验证环境的"少加载"与插件的"坏掉"表现一样，排查方向却完全相反。**
 
 ## 前置（硬性）：工作区 —— 没有工作区 = 合成器禁用 = 可能卡死
 

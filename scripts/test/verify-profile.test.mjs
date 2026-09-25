@@ -25,6 +25,8 @@ import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   bootFailureExcerpt,
+  checkAddonEntriesEnabled,
+  parseDumpEntries,
   decideBootOutcome,
   fatalBootHits,
   PLUGIN_STATE_DIRS,
@@ -734,5 +736,112 @@ describe('启动结果判定 fail-closed（issue #305）', () => {
   it('崩溃摘要摘出关键行；空日志给出显式说明而不是空串', () => {
     expect(bootFailureExcerpt({ logText: CRASH_LOG })).toContain('plugin tree failed to load')
     expect(bootFailureExcerpt({ logText: '' })).toContain('实例日志为空')
+  })
+})
+
+/**
+ * 发版门禁 3c 的启用态判据（门禁盲区防回归）。
+ *
+ * 复现的盲区：3c 过去只看「dump-config 输出里有没有这个插件的 `name:` 行」，
+ * 而生产 profile 的 `cordis.patch.yml` 里可能写着 `- id: <插件>\n  disabled: true`
+ * （dshmarket 的启停位、手工禁用都会落到这里）。此时插件**被加载但处于禁用态**：
+ * client bundle 不进 window.__DSH_BOOT__.entries、侧边栏页签不出现 —— 即"没有真正在跑"，
+ * 而旧判据照样判通过（门禁绿了，功能实际未生效）。
+ *
+ * 判据修正后的口径：被验证的 addon 必须在组合配置里**处于启用态**；
+ * 命中 `disabled: true` 的同一 entry 块 → 明确判失败并给出原因。
+ * 注意范围：只对**本次要验证的那几个插件**判定，dump 里别的插件被故意禁用不受影响。
+ */
+describe('3c 启用态判据 — dump-config 解析（disabled: true 不得判通过）', () => {
+  // 与 `dsh --profile web --dump-config` 的真实输出同形态（缩进/引号逐字节对齐）
+  const DUMP = [
+    '# == @deepseek-ai/dsh-base',
+    '- id: hmr',
+    "  name: '@deepseek-ai/cordis-plugin-hmr'",
+    '  disabled: true',
+    '  config:',
+    '    root:',
+    '      - .',
+    '# == dsh-my-context, patched by /Users/x/.dsh/profiles/web/cordis.patch.yml',
+    '- id: my-context',
+    '  name: dsh-my-context',
+    '  disabled: true',
+    '# == dsh-my-guard',
+    '- id: guard',
+    '  name: dsh-my-guard',
+    '# == dsh-my-guardian, patched by /Users/x/.dsh/profiles/web/cordis.patch.yml',
+    '- id: guardian',
+    '  name: dsh-my-guardian',
+    '  disabled: true',
+    '# == dsh-my-memory',
+    '- id: my-memory',
+    '  name: dsh-my-memory',
+    '- id: notify',
+    '  name: dsh-notify',
+    '  disabled: false',
+    '  config:',
+    '    end: true',
+  ].join('\n')
+
+  it('parseDumpEntries 按 entry 块收集 id / name / disabled（不跨块串味）', () => {
+    const entries = parseDumpEntries(DUMP)
+    const byName = new Map(entries.map((e) => [e.name, e]))
+    expect(byName.get('dsh-my-context')).toMatchObject({ id: 'my-context', disabled: true })
+    // 相邻块：guard 启用、guardian 禁用 —— 不得把 guardian 的 disabled 算到 guard 头上
+    expect(byName.get('dsh-my-guard')).toMatchObject({ id: 'guard', disabled: false })
+    expect(byName.get('dsh-my-guardian')).toMatchObject({ id: 'guardian', disabled: true })
+    // 显式 disabled: false 视为启用态
+    expect(byName.get('dsh-notify')).toMatchObject({ id: 'notify', disabled: false })
+  })
+
+  it('盲区复现：被验证插件在组合配置里是 disabled: true → 判失败且原因点名禁用', () => {
+    const result = checkAddonEntriesEnabled({
+      dumpOutput: DUMP,
+      addons: [{ name: 'dsh-my-context' }],
+    })
+    expect(result.ok).toBe(false)
+    expect(result.entries[0].disabled).toMatchObject({ id: 'my-context' })
+    expect(result.entries[0].reason).toContain('禁用')
+    expect(result.disabledAddons.map((item) => item.name)).toEqual(['dsh-my-context'])
+  })
+
+  it('启用态才通过：同一份 dump 里的启用插件不受别的禁用块影响（不误伤）', () => {
+    const result = checkAddonEntriesEnabled({
+      dumpOutput: DUMP,
+      addons: [{ name: 'dsh-my-memory' }, { name: 'dsh-my-guard' }, { name: 'dsh-notify' }],
+    })
+    expect(result.ok).toBe(true)
+    expect(result.entries.map((item) => item.ok)).toEqual([true, true, true])
+    expect(result.disabledAddons).toEqual([])
+  })
+
+  it('真缺失（name 根本不在组合配置里）仍按原口径判失败', () => {
+    const result = checkAddonEntriesEnabled({
+      dumpOutput: DUMP,
+      addons: [{ name: 'dsh-not-installed' }],
+    })
+    expect(result.ok).toBe(false)
+    expect(result.entries[0].reason).toContain('未出现在组合配置中')
+    expect(result.missing.map((item) => item.name)).toEqual(['dsh-not-installed'])
+  })
+
+  it('禁用位是"被验证插件自己那一块"的判据：多插件混合输入逐个给出结论', () => {
+    const result = checkAddonEntriesEnabled({
+      dumpOutput: DUMP,
+      addons: [{ name: 'dsh-my-guardian' }, { name: 'dsh-my-memory' }],
+    })
+    expect(result.ok).toBe(false)
+    expect(result.entries.map((item) => [item.name, item.ok])).toEqual([
+      ['dsh-my-guardian', false],
+      ['dsh-my-memory', true],
+    ])
+  })
+
+  it('脚本接线：verify-real-profile.mjs 必须调用启用态判据（lib 改了脚本没接 = 假修复）', () => {
+    const script = readFileSync(join(repoRoot, 'scripts', 'verify-real-profile.mjs'), 'utf8')
+    expect(script).toContain('checkAddonEntriesEnabled')
+    expect(script).toContain('checkAddonEntriesEnabled({ dumpOutput: dump.stdout')
+    // 旧判据（只看 name 行）必须已退场，否则盲区仍在
+    expect(script).not.toContain('entryNames(dump.stdout).includes(name)')
   })
 })

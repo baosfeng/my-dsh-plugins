@@ -20,6 +20,7 @@
 // commit-lint.mjs = 提交信息门禁判据（范围推导/空范围 fail-closed/渲染），issue #324），
 // npm-registry.mjs = 发版门禁 1a/1c 的 npm 查询钉官方源与判定（假绿/假红），issue #386，
 // verify-timeout.mjs = verify-local 超时配置解析（fail-closed：0 / 负数 / 空 / 非法一律报错，none 才是显式关闭），
+// verify-credentials.mjs = 隔离实例凭据 refs 解析 / provider 段按需继承 / 启动前自检 / 真实调用探针判定（issue #403），
 // 阈值与根配置一致（行 85 / 分支 75 / 函数 80）。
 //
 // 为什么放宽 testTimeout/hookTimeout 到 60s（issue #353）：本目录大量用例 spawn 真实 CLI
@@ -56,6 +57,7 @@ export default defineConfig({
         'scripts/lib/commit-lint.mjs',
         'scripts/lib/npm-registry.mjs',
         'scripts/lib/verify-timeout.mjs',
+        'scripts/lib/verify-credentials.mjs',
       ],
       thresholds: {
         lines: 85,

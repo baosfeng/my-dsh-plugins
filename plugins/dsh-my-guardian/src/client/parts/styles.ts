@@ -73,12 +73,22 @@ const STYLES = `
 .dsh-my-guardian-badge-pending { color:var(--dsw-alias-accent); background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent); }
 .dsh-my-guardian-badge-failed { color:var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
 .dsh-my-guardian-badge-frozen { color:var(--dsw-alias-state-warn-primary); background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
-/* failure-classification badge chips (issue #86): dependency / code / other */
+/* failure-classification badge chips (issue #86, split by #410):
+   dependency-missing / dependency-mismatch (+ legacy dependency) / code / other */
 .dsh-my-guardian-category { flex:none; display:inline-flex; align-items:center; justify-content:center; height:17px; padding:0 5px; border-radius:4px;
   font:var(--dsw-font-xxxs-strong-11); }
+.dsh-my-guardian-category-dependency-missing,
 .dsh-my-guardian-category-dependency { color:var(--dsw-alias-state-warn-primary); background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
+.dsh-my-guardian-category-dependency-mismatch { color:var(--dsw-alias-state-accent-primary); background:color-mix(in srgb, var(--dsw-alias-state-accent-primary) 14%, transparent); }
 .dsh-my-guardian-category-code { color:var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent); }
 .dsh-my-guardian-category-other { color:var(--dsw-alias-label-tertiary); background:var(--dsw-alias-interactive-bg-hover); }
+/* version-mismatch detail: 声明范围 vs 实装版本 (issue #410) */
+.dsh-my-guardian-mismatch { display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding:3px 6px; border-radius:6px;
+  background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 6%, transparent); font:var(--dsw-font-xxxs-11);
+  color:var(--dsw-alias-label-tertiary); }
+.dsh-my-guardian-mismatch-label { flex:none; }
+.dsh-my-guardian-mismatch code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:var(--dsw-font-xxxs-11);
+  color:var(--dsw-alias-label-secondary); word-break:break-all; }
 /* install-suggestion line for dependency failures */
 .dsh-my-guardian-install-hint { display:flex; align-items:center; gap:5px; padding:3px 6px; border-radius:6px;
   background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 6%, transparent);
@@ -167,7 +177,9 @@ const STYLES = `
   font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
 .dsh-my-guardian-startup-issue-badge-unresolvable { color:var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
 .dsh-my-guardian-startup-issue-badge-duplicate-id { color:var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
+.dsh-my-guardian-startup-issue-badge-dependency-missing,
 .dsh-my-guardian-startup-issue-badge-dependency { color:var(--dsw-alias-state-warn-primary); background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
+.dsh-my-guardian-startup-issue-badge-dependency-mismatch { color:var(--dsw-alias-state-accent-primary); background:color-mix(in srgb, var(--dsw-alias-state-accent-primary) 14%, transparent); }
 .dsh-my-guardian-startup-issue-message { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-secondary); line-height:1.6; }
 .dsh-my-guardian-startup-issue-line { display:flex; align-items:flex-start; gap:5px; padding:2px 0;
   font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); line-height:1.6; min-width:0; }

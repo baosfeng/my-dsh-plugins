@@ -143,7 +143,7 @@ test('unresolvable dsh-* roster entry produces an unresolvable issue', () => {
   assert.ok(issue.remove.length > 0, 'removal hint provided')
 })
 
-test('missing peer dependency produces a dependency issue with install hint', () => {
+test('missing peer dependency produces a dependency-missing issue with install hint', () => {
   writePkg('dsh-needy', { peers: { 'dsh-shared': '^0.1.0' } })
   const { issues } = checkStartupRoster({
     entries: [{ id: 'needy', name: 'dsh-needy', disabled: false }],
@@ -151,10 +151,46 @@ test('missing peer dependency produces a dependency issue with install hint', ()
   })
   assert.equal(issues.length, 1)
   const issue = issues[0]
-  assert.equal(issue.type, 'dependency')
+  assert.equal(issue.type, 'dependency-missing')
   assert.ok(issue.message.includes('缺少依赖 dsh-shared'), 'message mentions the missing dep')
   assert.equal(issue.fix, 'dsh plugin add dsh-shared', 'install hint as fix command')
   assert.deepEqual(issue.missingDeps, ['dsh-shared'])
+  assert.deepEqual(issue.mismatchedDeps, [], 'a hard miss is not a mismatch')
+})
+
+// ── #410: 名册预检也要把两种结论分开、不给宿主包安装命令 ───────────────────
+test('#410: a version mismatch is a dependency-mismatch issue, not dependency-missing', () => {
+  writePkg('dsh-stale', { peers: { 'dsh-md-render': '^0.1.8' } })
+  writePkg('dsh-md-render', { version: '0.2.0' })
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'stale', name: 'dsh-stale', disabled: false }],
+    profileDir: dir,
+  })
+  assert.equal(issues.length, 1)
+  const issue = issues[0]
+  assert.equal(issue.type, 'dependency-mismatch')
+  assert.deepEqual(issue.missingDeps, [], 'the package is installed — never listed as missing')
+  assert.deepEqual(issue.mismatchedDeps, [{ name: 'dsh-md-render', expected: '^0.1.8', found: '0.2.0' }])
+  assert.equal(issue.message, '依赖版本不满足 dsh-md-render：声明 ^0.1.8，当前 0.2.0')
+  assert.ok(!issue.message.includes('缺少依赖'), 'the missing wording is not reused')
+  assert.equal(issue.fix, 'dsh plugin add dsh-md-render@^0.1.8', 'the pinned version is installable')
+})
+
+test('#410: host-provided peers produce no dsh plugin add fix at all', () => {
+  writePkg('dsh-hostly', { peers: { react: '^18.2.0', '@deepseek-ai/dsh-llm': '^0.1.5-rc.1' } })
+  writePkg('react', { version: '19.3.0' })
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'hostly', name: 'dsh-hostly', disabled: false }],
+    profileDir: dir,
+  })
+  assert.equal(issues.length, 1)
+  const issue = issues[0]
+  assert.deepEqual(issue.missingDeps, ['@deepseek-ai/dsh-llm'])
+  assert.deepEqual(issue.mismatchedDeps, [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }])
+  assert.equal(issue.installHint, null, 'no install hint for host-provided packages')
+  assert.equal(issue.fix, null, 'no repair command: executing it would install a second host copy (#407)')
+  assert.ok(!JSON.stringify(issue).includes('dsh plugin add'), 'no install command anywhere in the issue')
+  assert.ok(issue.message.includes('宿主提供'), 'the message says the host supplies it')
 })
 
 test('healthy dsh-* entry and non-dsh-* entries produce no issues', () => {
@@ -362,7 +398,7 @@ test('host: startup pre-check writes the report and never blocks staged mounts',
   assert.equal(report.version, 1)
   assert.equal(report.profileDir, dir)
   assert.equal(report.issues.length, 1, 'report carries the dependency issue')
-  assert.equal(report.issues[0].type, 'dependency')
+  assert.equal(report.issues[0].type, 'dependency-missing')
   assert.equal(report.issues[0].fix, 'dsh plugin add dsh-shared')
 
   await waitFor(() => readStateOrNull()?.events?.some((e) => e.type === 'startup-issue'))
@@ -374,7 +410,7 @@ test('host: startup pre-check writes the report and never blocks staged mounts',
 
   const snapshot = apiState.json.value
   assert.equal(snapshot.startupIssues.length, 1, 'snapshot carries startupIssues')
-  assert.equal(snapshot.startupIssues[0].type, 'dependency')
+  assert.equal(snapshot.startupIssues[0].type, 'dependency-missing')
   assert.ok(typeof snapshot.startupCheckedAt === 'number', 'snapshot carries startupCheckedAt')
 })
 

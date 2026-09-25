@@ -10,6 +10,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { atomicWriteJson, createWriteScheduler } from 'dsh-shared'
 import type { Logger } from 'dsh-shared'
+import type { MismatchIssue } from './dep-precheck.js'
 
 /** Consecutive failures before an entry freezes (manual retry required). */
 export const FREEZE_LIMIT = 3
@@ -52,8 +53,13 @@ export interface EntryRecord {
   lastError: string | null
   lastFailedAt: number | null
   frozen: boolean
+  /** 'dependency-missing' / 'dependency-mismatch' / 'code' / 'other'（#410 起细分）。
+   *  旧快照里的 'dependency' 仍被 client 端渲染（向后兼容）。 */
   failureType: string | null
+  /** 硬缺失的 peer（与 mismatchedDeps 分开：装着但版本不满足的不算缺失，#410）。 */
   missingDeps: string[]
+  /** 版本不满足的 peer：声明范围 vs 实装版本（#410）。 */
+  mismatchedDeps: MismatchIssue[]
   installHint: string | null
   promotedAt?: number
 }
@@ -84,13 +90,17 @@ export interface StartupIssuesPayload {
 
 /** One startup issue. */
 export interface StartupIssue {
+  /** 'unresolvable' / 'dependency-missing' / 'dependency-mismatch' / 'duplicate-id'。
+   *  旧报告里的 'dependency' 仍被 client 端渲染（向后兼容）。 */
   type: string
   entryId: string
   name: string
   message: string
+  /** 可执行的修复命令；没有可安全执行的命令时为 null（宿主提供的包不给命令，#410）。 */
   fix: string | null
   remove?: string
   missingDeps?: string[]
+  mismatchedDeps?: MismatchIssue[]
   installHint?: string | null
 }
 

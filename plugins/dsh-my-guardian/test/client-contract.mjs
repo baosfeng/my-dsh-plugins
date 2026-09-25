@@ -627,7 +627,9 @@ test('渲染契约：失败分类徽章、安装建议与冻结提示', async ()
     status: 'failed',
     attempts: 3,
     lastError: '缺少依赖 dsh-shared（请先安装）',
-    failureType: 'dependency',
+    failureType: 'dependency-missing',
+    missingDeps: ['dsh-shared'],
+    mismatchedDeps: [],
     installHint: 'dsh plugin add dsh-shared',
     lastFailedAt: 1756000000000,
   })
@@ -656,6 +658,28 @@ test('渲染契约：失败分类徽章、安装建议与冻结提示', async ()
   const otherJoined = texts(otherNodes).join('|')
   assert.ok(otherJoined.includes('其他'), 'other 分类徽章')
   assert.ok(!otherJoined.includes('安装建议'), '非依赖失败不显示安装建议')
+
+  // #410: 版本不满足是独立的分类徽章 + 独立的「声明/当前」明细，且不给宿主包安装建议
+  const { nodes: mismatchNodes } = await renderLoaded({
+    staged: [
+      makeEntry({
+        id: 'dsh-mismatch',
+        name: 'dsh-mismatch',
+        status: 'failed',
+        attempts: 1,
+        lastError: '依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0（宿主提供，无需安装）',
+        failureType: 'dependency-mismatch',
+        missingDeps: [],
+        mismatchedDeps: [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }],
+        installHint: null,
+      }),
+    ],
+  })
+  const mismatchJoined = texts(mismatchNodes).join('|')
+  assert.ok(mismatchJoined.includes('版本不满足'), 'dependency-mismatch 分类徽章')
+  assert.ok(!mismatchJoined.includes('依赖缺失'), '版本不满足不得渲染成依赖缺失')
+  assert.ok(mismatchJoined.includes('声明 ^18.2.0，当前 19.3.0'), '声明/当前明细渲染')
+  assert.ok(!mismatchJoined.includes('安装建议'), '宿主提供的包不给安装建议')
 })
 
 test('渲染契约：错误详情可折叠，重试按钮仅出现在失败/冻结行', async () => {
@@ -764,15 +788,29 @@ test('渲染契约：启动区问题置顶展示修复命令与移除提示', as
         fix: null,
         remove: '每个 id 保留一条',
       },
+      {
+        type: 'dependency-mismatch',
+        entryId: 'pet',
+        name: 'dsh-pet',
+        message: '依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0（宿主提供，无需安装）',
+        missingDeps: [],
+        mismatchedDeps: [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }],
+        installHint: null,
+        fix: null,
+        remove: '从启动名册中删除该条目行',
+      },
     ],
     startupCheckedAt: 1756000000000,
   })
   const joined = texts(nodes).join('|')
   assert.ok(joined.includes('启动区问题'), '启动区问题区块标题')
   assert.ok(joined.includes('包不可解析') && joined.includes('重复 id'), '两类问题徽章')
+  assert.ok(joined.includes('版本不满足') && joined.includes('dsh-pet'), '版本不满足独立徽章（#410）')
+  assert.ok(joined.includes('依赖版本不满足 react'), '版本不满足独立文案（#410）')
+  assert.ok(!joined.includes('dsh plugin add react'), '宿主提供的包不给安装命令（#410）')
   assert.ok(joined.includes('dsh plugin add dsh-ghost'), '修复命令')
   assert.ok(joined.includes('每个 id 保留一条'), '移除提示')
-  assert.equal(byClassPrefix(nodes, 'dsh-my-guardian-startup-issue').length, 2, '两条问题各渲染一块')
+  assert.equal(byClassPrefix(nodes, 'dsh-my-guardian-startup-issue').length, 3, '三条问题各渲染一块')
 
   const { nodes: healthy } = await renderLoaded({ startupIssues: [], startupCheckedAt: 1756000000000 })
   assert.equal(byClass(healthy, 'dsh-my-guardian-startup-issues'), undefined, '名册健康时不渲染该区块')
@@ -810,8 +848,11 @@ test('i18n 契约：中文/英文双语文案，未提供 navigator 时回退英
   assert.equal(zh.strings.confirmRemove(), '确认移除')
   assert.equal(zh.strings.loading(), '加载中…')
   assert.equal(zh.strings.attempts(4), '失败 4 次')
-  assert.equal(zh.strings.failureDependency(), '依赖缺失')
+  assert.equal(zh.strings.failureDependencyMissing(), '依赖缺失')
+  assert.equal(zh.strings.failureDependencyMismatch(), '版本不满足')
+  assert.equal(zh.strings.failureDependencyUnknown(), '依赖错误')
   assert.equal(zh.strings.startupIssueDuplicate(), '重复 id')
+  assert.equal(zh.strings.mismatchLine({ expected: '^18.2.0', found: '19.3.0' }), '声明 ^18.2.0，当前 19.3.0')
 
   const en = loadUtil('en-US')
   assert.equal(en.isZh(), false)
@@ -820,7 +861,8 @@ test('i18n 契约：中文/英文双语文案，未提供 navigator 时回退英
   assert.equal(en.strings.retry(), 'Retry')
   assert.equal(en.strings.remove(), 'Remove')
   assert.equal(en.strings.attempts(2), 'failed ×2')
-  assert.equal(en.strings.failureDependency(), 'Dependency')
+  assert.equal(en.strings.failureDependencyMissing(), 'Missing dependency')
+  assert.equal(en.strings.failureDependencyMismatch(), 'Version mismatch')
   assert.equal(en.strings.startupIssues(), 'Startup roster issues')
 
   const none = loadUtil(undefined)
@@ -836,7 +878,9 @@ test('i18n 契约：未知状态/分类/事件类型原样回显（不产生空�
   assert.equal(statusLabel('frozen'), '冻结')
   assert.equal(statusLabel('brand-new'), 'brand-new', '未知状态原样回显')
 
-  assert.equal(failureTypeLabel('dependency'), '依赖缺失')
+  assert.equal(failureTypeLabel('dependency-missing'), '依赖缺失')
+  assert.equal(failureTypeLabel('dependency-mismatch'), '版本不满足')
+  assert.equal(failureTypeLabel('dependency'), '依赖错误', 'pre-#410 记录仍渲染出徽章')
   assert.equal(failureTypeLabel('code'), '代码错误')
   assert.equal(failureTypeLabel('other'), '其他')
   assert.equal(failureTypeLabel('weird'), 'weird')
@@ -852,7 +896,9 @@ test('i18n 契约：未知状态/分类/事件类型原样回显（不产生空�
   assert.equal(eventVariant('unknown-event'), 'neutral')
 
   assert.equal(startupIssueLabel('unresolvable'), '包不可解析')
-  assert.equal(startupIssueLabel('dependency'), '依赖缺失')
+  assert.equal(startupIssueLabel('dependency-missing'), '依赖缺失')
+  assert.equal(startupIssueLabel('dependency-mismatch'), '版本不满足')
+  assert.equal(startupIssueLabel('dependency'), '依赖错误', 'pre-#410 报告仍渲染出徽章')
   assert.equal(startupIssueLabel('duplicate-id'), '重复 id')
   assert.equal(startupIssueLabel('weird'), 'weird')
 

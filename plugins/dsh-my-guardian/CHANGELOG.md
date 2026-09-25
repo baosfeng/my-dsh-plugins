@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 变更
 
 - fix(guardian): 依赖预检解析 profiles 根 node_modules 的宿主包与子路径导出，消除「缺少依赖」误报
+- fix(guardian): #410 依赖预检出口把「版本不满足」与「缺失」分成独立文案/字段/徽标（`dependency-missing` / `dependency-mismatch`），宿主提供的包不再给 `dsh plugin add` 建议，消除含空格/管道的畸形安装命令
 
 ## [0.4.3] - 2026-09-25
 

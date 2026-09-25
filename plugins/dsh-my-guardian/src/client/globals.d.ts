@@ -102,11 +102,22 @@ interface GuardianEntry {
   attempts: number
   lastError?: string | null
   lastFailedAt?: number | null
-  /** 失败分类（issue #86）：'dependency' / 'code' / 'other'。 */
+  /** 失败分类：#410 起为 'dependency-missing' / 'dependency-mismatch'，另有
+   *  'code' / 'other'；pre-#410 的旧记录是 'dependency'（仍渲染出徽章）。 */
   failureType?: string | null
-  /** 依赖缺失时的安装建议命令。 */
+  /** 依赖的安装建议命令；宿主提供的包不提供命令时为 null（#410）。 */
   installHint?: string | null
+  /** 硬缺失的 peer（#410 起不含版本不满足者）。 */
   missingDeps?: string[]
+  /** 版本不满足的 peer：声明范围 vs 实装版本（#410）。 */
+  mismatchedDeps?: MismatchedDep[]
+}
+
+/** 一个版本不满足的 peer（server 端 dep-precheck 的 MismatchIssue）。 */
+interface MismatchedDep {
+  name: string
+  expected: string
+  found: string
 }
 
 /** 一条守护事件（EventList 渲染源）。 */
@@ -118,14 +129,17 @@ interface GuardianEvent {
 
 /** 启动名册预检发现的问题（issue #144，StartupIssuesBlock 渲染源）。 */
 interface StartupIssue {
-  /** 'unresolvable' / 'dependency' / 'duplicate-id'（未知类型原样回显）。 */
+  /** 'unresolvable' / 'dependency-missing' / 'dependency-mismatch' / 'duplicate-id'
+   *  （未知类型与 pre-#410 的 'dependency' 原样/兼容回显）。 */
   type: string
   entryId: string
   name: string
   message: string
+  /** 修复命令；宿主提供的包无可执行命令时为 null（#410）。 */
   fix?: string | null
   remove?: string | null
   missingDeps?: string[]
+  mismatchedDeps?: MismatchedDep[]
 }
 
 /** GET /guardian/api/state 的 value。 */

@@ -117,12 +117,22 @@ const STYLES = `
 .dsh-my-guardian-badge-pending { color:var(--dsw-alias-accent); background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent); }
 .dsh-my-guardian-badge-failed { color:var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
 .dsh-my-guardian-badge-frozen { color:var(--dsw-alias-state-warn-primary); background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
-/* failure-classification badge chips (issue #86): dependency / code / other */
+/* failure-classification badge chips (issue #86, split by #410):
+   dependency-missing / dependency-mismatch (+ legacy dependency) / code / other */
 .dsh-my-guardian-category { flex:none; display:inline-flex; align-items:center; justify-content:center; height:17px; padding:0 5px; border-radius:4px;
   font:var(--dsw-font-xxxs-strong-11); }
+.dsh-my-guardian-category-dependency-missing,
 .dsh-my-guardian-category-dependency { color:var(--dsw-alias-state-warn-primary); background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
+.dsh-my-guardian-category-dependency-mismatch { color:var(--dsw-alias-state-accent-primary); background:color-mix(in srgb, var(--dsw-alias-state-accent-primary) 14%, transparent); }
 .dsh-my-guardian-category-code { color:var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent); }
 .dsh-my-guardian-category-other { color:var(--dsw-alias-label-tertiary); background:var(--dsw-alias-interactive-bg-hover); }
+/* version-mismatch detail: 声明范围 vs 实装版本 (issue #410) */
+.dsh-my-guardian-mismatch { display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding:3px 6px; border-radius:6px;
+  background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 6%, transparent); font:var(--dsw-font-xxxs-11);
+  color:var(--dsw-alias-label-tertiary); }
+.dsh-my-guardian-mismatch-label { flex:none; }
+.dsh-my-guardian-mismatch code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:var(--dsw-font-xxxs-11);
+  color:var(--dsw-alias-label-secondary); word-break:break-all; }
 /* install-suggestion line for dependency failures */
 .dsh-my-guardian-install-hint { display:flex; align-items:center; gap:5px; padding:3px 6px; border-radius:6px;
   background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 6%, transparent);
@@ -211,7 +221,9 @@ const STYLES = `
   font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
 .dsh-my-guardian-startup-issue-badge-unresolvable { color:var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
 .dsh-my-guardian-startup-issue-badge-duplicate-id { color:var(--dsw-alias-state-error-primary); background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
+.dsh-my-guardian-startup-issue-badge-dependency-missing,
 .dsh-my-guardian-startup-issue-badge-dependency { color:var(--dsw-alias-state-warn-primary); background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
+.dsh-my-guardian-startup-issue-badge-dependency-mismatch { color:var(--dsw-alias-state-accent-primary); background:color-mix(in srgb, var(--dsw-alias-state-accent-primary) 14%, transparent); }
 .dsh-my-guardian-startup-issue-message { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-secondary); line-height:1.6; }
 .dsh-my-guardian-startup-issue-line { display:flex; align-items:flex-start; gap:5px; padding:2px 0;
   font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); line-height:1.6; min-width:0; }
@@ -271,16 +283,25 @@ const strings = {
     isZh()
       ? '已冻结：连续失败停止自动重试——点击刷新按钮手动重试，或移除该条目'
       : 'Frozen: auto-retry stopped after repeated failures — retry manually or remove the entry',
-  failureDependency: () => (isZh() ? '依赖缺失' : 'Dependency'),
+  // #410: 「依赖缺失」与「版本不满足」是两种结论，徽标文案必须能区分；
+  // 'dependency' 是 pre-#410 的旧分类（含运行期 module 解析失败），按「依赖错误」渲染。
+  failureDependencyMissing: () => (isZh() ? '依赖缺失' : 'Missing dependency'),
+  failureDependencyMismatch: () => (isZh() ? '版本不满足' : 'Version mismatch'),
+  failureDependencyUnknown: () => (isZh() ? '依赖错误' : 'Dependency error'),
   failureCode: () => (isZh() ? '代码错误' : 'Code error'),
   failureOther: () => (isZh() ? '其他' : 'Other'),
   installHint: () => (isZh() ? '安装建议' : 'Install'),
+  /** 版本不满足的明细行：声明范围 vs 实装版本（#410）。 */
+  mismatchLine: (item) =>
+    isZh() ? `声明 ${item.expected}，当前 ${item.found}` : `declared ${item.expected}, installed ${item.found}`,
   // ── startup-roster issues (issue #144) ─────────────────────────────────
   startupIssues: () => (isZh() ? '启动区问题' : 'Startup roster issues'),
   startupIssueFix: () => (isZh() ? '修复' : 'Fix'),
   startupIssueRemove: () => (isZh() ? '移除' : 'Remove'),
   startupIssueUnresolvable: () => (isZh() ? '包不可解析' : 'Unresolvable'),
-  startupIssueDependency: () => (isZh() ? '依赖缺失' : 'Dependency'),
+  startupIssueDependencyMissing: () => (isZh() ? '依赖缺失' : 'Missing dependency'),
+  startupIssueDependencyMismatch: () => (isZh() ? '版本不满足' : 'Version mismatch'),
+  startupIssueDependencyUnknown: () => (isZh() ? '依赖错误' : 'Dependency error'),
   startupIssueDuplicate: () => (isZh() ? '重复 id' : 'Duplicate id'),
 }
 // ── api ───────────────────────────────────────────────────────────────
@@ -323,11 +344,17 @@ function statusLabel(status) {
       return status
   }
 }
-/** Failure-classification badge label (issue #86): dependency / code / other. */
+/** Failure-classification badge label (issue #86, split by #410):
+ *  dependency-missing / dependency-mismatch / legacy dependency / code / other. */
 function failureTypeLabel(type) {
   switch (type) {
+    case 'dependency-missing':
+      return strings.failureDependencyMissing()
+    case 'dependency-mismatch':
+      return strings.failureDependencyMismatch()
     case 'dependency':
-      return strings.failureDependency()
+      // pre-#410 的记录（也含 mount 期 module 解析失败）仍渲染出徽章
+      return strings.failureDependencyUnknown()
     case 'code':
       return strings.failureCode()
     case 'other':
@@ -335,6 +362,13 @@ function failureTypeLabel(type) {
     default:
       return type
   }
+}
+/** 版本不满足时的明细文本（声明 vs 当前）；无明细时返回空数组（不渲染该行）。 */
+function mismatchLabels(entry) {
+  const items = Array.isArray(entry.mismatchedDeps) ? entry.mismatchedDeps : []
+  return items
+    .filter((item) => item !== null && typeof item === 'object')
+    .map((item) => `${item.name}：${strings.mismatchLine(item)}`)
 }
 // ── event log ─────────────────────────────────────────────────────────
 // Event type → badge label + color variant (mirrors the dfa-op chip style).
@@ -370,13 +404,18 @@ function eventVariant(type) {
       return 'neutral'
   }
 }
-/** Startup-issue badge label (issue #144): unresolvable / dependency / dup. */
+/** Startup-issue badge label (issue #144, split by #410): unresolvable /
+ *  dependency-missing / dependency-mismatch / legacy dependency / dup. */
 function startupIssueLabel(type) {
   switch (type) {
     case 'unresolvable':
       return strings.startupIssueUnresolvable()
+    case 'dependency-missing':
+      return strings.startupIssueDependencyMissing()
+    case 'dependency-mismatch':
+      return strings.startupIssueDependencyMismatch()
     case 'dependency':
-      return strings.startupIssueDependency()
+      return strings.startupIssueDependencyUnknown()
     case 'duplicate-id':
       return strings.startupIssueDuplicate()
     default:
@@ -870,6 +909,26 @@ function RowActions({ entry, busy, onRetry, onRemove }) {
     ),
   )
 }
+/** 依赖类失败（#410 分两类；'dependency' 是 pre-#410 的旧分类，含 mount 期 module 解析失败）。 */
+function isDependencyFailure(type) {
+  return type === 'dependency' || type === 'dependency-missing' || type === 'dependency-mismatch'
+}
+/** 依赖失败行展示的安装命令；其他失败类型、空命令、宿主提供的包（无命令）都不展示（#410）。 */
+function installCommandOf(entry) {
+  if (!isDependencyFailure(entry.failureType)) return null
+  return typeof entry.installHint === 'string' && entry.installHint !== '' ? entry.installHint : null
+}
+/** 版本不满足明细行（#410）：声明范围 vs 实装版本；无明细时不渲染。 */
+function MismatchHint({ entry }) {
+  const labels = mismatchLabels(entry)
+  if (labels.length === 0) return null
+  return createElement(
+    'div',
+    { className: 'dsh-my-guardian-mismatch' },
+    createElement('span', { className: 'dsh-my-guardian-mismatch-label' }, strings.failureDependencyMismatch()),
+    labels.map((label, index) => createElement('code', { key: index }, label)),
+  )
+}
 /** 冻结行提示（连败停止自动重试，需手动操作）。 */
 function FrozenHint({ status }) {
   if (status !== 'frozen') return null
@@ -886,9 +945,7 @@ function EntryRow({ entry, source, onAction }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const hasError = typeof entry.lastError === 'string' && entry.lastError !== ''
-  const isDepFailure = entry.failureType === 'dependency'
-  const installHint =
-    isDepFailure && typeof entry.installHint === 'string' && entry.installHint !== '' ? entry.installHint : null
+  const installHint = installCommandOf(entry)
   const run = (kind) => {
     setBusy(true)
     Promise.resolve(onAction(kind, entry)).finally(() => setBusy(false))
@@ -899,6 +956,7 @@ function EntryRow({ entry, source, onAction }) {
     createElement(RowHead, { entry, source }),
     createElement(RowMeta, { entry }),
     createElement(FrozenHint, { status: entry.status }),
+    createElement(MismatchHint, { entry }),
     installHint
       ? createElement(
           'div',

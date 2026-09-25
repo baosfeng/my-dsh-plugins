@@ -140,11 +140,44 @@ const dependencyEntry = {
   frozen: false,
   lastError: '缺少依赖 dsh-shared（请先安装）',
   lastFailedAt: Date.now(),
-  failureType: 'dependency',
+  failureType: 'dependency-missing',
   missingDeps: ['dsh-shared'],
+  mismatchedDeps: [],
   installHint: 'dsh plugin add dsh-shared',
   status: 'failed',
 }
+
+// #410: 版本不满足是另一类失败，徽标与文案都要跟「依赖缺失」区分开。
+const mismatchEntry = {
+  id: 'dsh-mismatch',
+  name: 'dsh-mismatch',
+  attempts: 1,
+  frozen: false,
+  lastError: '依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0（宿主提供，无需安装）',
+  lastFailedAt: Date.now(),
+  failureType: 'dependency-mismatch',
+  missingDeps: [],
+  mismatchedDeps: [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }],
+  installHint: null,
+  status: 'failed',
+}
+
+test('mismatch-failure row shows the version badge, the declared/current detail and no install hint', () => {
+  const texts = renderTexts({ safeMode: false, staged: [mismatchEntry], promoted: [], events: [], loaded: true })
+  const joined = texts.join('|')
+  assert.ok(joined.includes('版本不满足'), 'mismatch category badge rendered')
+  assert.ok(!joined.includes('依赖缺失'), 'a mismatch is never badged as a missing dependency')
+  assert.ok(joined.includes('声明 ^18.2.0，当前 19.3.0'), 'declared vs installed detail rendered')
+  assert.ok(!joined.includes('安装建议'), 'no install hint for the host-provided react')
+})
+
+test('legacy dependency failure records still render a category badge', () => {
+  const legacyEntry = { ...dependencyEntry, id: 'dsh-legacy', failureType: 'dependency' }
+  const texts = renderTexts({ safeMode: false, staged: [legacyEntry], promoted: [], events: [], loaded: true })
+  const joined = texts.join('|')
+  assert.ok(joined.includes('依赖错误'), 'the pre-#410 classification still renders a badge')
+  assert.ok(joined.includes('dsh plugin add dsh-shared'), 'its install suggestion still renders')
+})
 
 test('dependency-failure row shows the category badge and install suggestion', () => {
   const texts = renderTexts({
@@ -195,13 +228,25 @@ test('startup roster issues block renders pinned with fix command and removal hi
         remove: '从启动名册（cordis.patch.yml / profile）中删除该条目行，或标记 disabled: true 暂缓加载',
       },
       {
-        type: 'dependency',
+        type: 'dependency-missing',
         entryId: 'needy',
         name: 'dsh-needy',
         message: '缺少依赖 dsh-shared（请先安装）',
         missingDeps: ['dsh-shared'],
+        mismatchedDeps: [],
         installHint: 'dsh plugin add dsh-shared',
         fix: 'dsh plugin add dsh-shared',
+        remove: '从启动名册（cordis.patch.yml / profile）中删除该条目行，或标记 disabled: true 暂缓加载',
+      },
+      {
+        type: 'dependency-mismatch',
+        entryId: 'pet',
+        name: 'dsh-pet',
+        message: '依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0（宿主提供，无需安装）',
+        missingDeps: [],
+        mismatchedDeps: [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }],
+        installHint: null,
+        fix: null,
         remove: '从启动名册（cordis.patch.yml / profile）中删除该条目行，或标记 disabled: true 暂缓加载',
       },
       {
@@ -222,6 +267,9 @@ test('startup roster issues block renders pinned with fix command and removal hi
   assert.ok(joined.includes('dsh plugin add dsh-ghost'), 'repair command rendered')
   assert.ok(joined.includes('dsh plugin add dsh-shared'), 'dependency repair command rendered')
   assert.ok(joined.includes('缺少依赖 dsh-shared'), 'dependency message rendered')
+  assert.ok(joined.includes('版本不满足') && joined.includes('dsh-pet'), 'mismatch badge + name rendered')
+  assert.ok(joined.includes('依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0'), 'mismatch sentence rendered')
+  assert.ok(!joined.includes('dsh plugin add react'), 'no install command is offered for a host-provided mismatch')
   assert.ok(joined.includes('重复 id') && joined.includes('dsh-first'), 'duplicate-id badge + name rendered')
   assert.ok(joined.includes('从启动名册（cordis.patch.yml / profile）中删除该条目行'), 'removal hint rendered')
   assert.ok(joined.includes('修复') && joined.includes('移除'), 'fix/remove labels rendered')

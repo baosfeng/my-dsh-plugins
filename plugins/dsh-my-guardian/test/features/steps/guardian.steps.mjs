@@ -319,7 +319,23 @@ Then('状态记录包含失败原因', async function () {
 
 Then('条目 {string} 处于依赖缺失失败', async function (id) {
   const state = await this.readStateWhen((s) => s.staged?.[id]?.failureType !== undefined)
-  assert.equal(state.staged[id]?.failureType, 'dependency')
+  assert.equal(state.staged[id]?.failureType, 'dependency-missing')
+})
+
+Then('条目 {string} 处于依赖版本不匹配失败', async function (id) {
+  const state = await this.readStateWhen((s) => s.staged?.[id]?.failureType !== undefined)
+  assert.equal(state.staged[id]?.failureType, 'dependency-mismatch')
+})
+
+// #410: 结构化字段必须把「真缺失」与「版本不满足」分开，宿主提供的包不给安装建议
+Then('状态记录区分缺失与版本不满足', async function () {
+  const state = await this.readStateWhen((s) => s.staged?.['dep-stale']?.mismatchedDeps !== undefined)
+  const record = state.staged['dep-stale']
+  assert.deepEqual(record?.mismatchedDeps, [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }])
+  assert.deepEqual(record?.missingDeps, [], '版本不满足不算缺失')
+  assert.equal(record?.installHint, null, '宿主提供的 react 不给安装建议')
+  assert.ok(record?.lastError?.includes('依赖版本不满足 react'), `版本不满足文案: ${record?.lastError}`)
+  assert.ok(!record?.lastError?.includes('缺少依赖'), '不得复用「缺少依赖（请先安装）」文案')
 })
 
 Then('条目 {string} 处于代码错误失败', async function (id) {
@@ -377,7 +393,7 @@ Then('预检报告写入启动区问题', async function () {
   const report = JSON.parse(readFileSync(issuesFile, 'utf8'))
   assert.equal(report.version, 1)
   assert.ok(report.issues.length >= 1, 'report carries at least one issue')
-  assert.equal(report.issues[0].type, 'dependency')
+  assert.equal(report.issues[0].type, 'dependency-missing')
   assert.ok(report.issues[0].fix.includes('dsh plugin add'), 'fix command present')
 })
 

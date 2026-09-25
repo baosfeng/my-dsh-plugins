@@ -46,16 +46,25 @@ const strings = {
     isZh()
       ? '已冻结：连续失败停止自动重试——点击刷新按钮手动重试，或移除该条目'
       : 'Frozen: auto-retry stopped after repeated failures — retry manually or remove the entry',
-  failureDependency: () => (isZh() ? '依赖缺失' : 'Dependency'),
+  // #410: 「依赖缺失」与「版本不满足」是两种结论，徽标文案必须能区分；
+  // 'dependency' 是 pre-#410 的旧分类（含运行期 module 解析失败），按「依赖错误」渲染。
+  failureDependencyMissing: () => (isZh() ? '依赖缺失' : 'Missing dependency'),
+  failureDependencyMismatch: () => (isZh() ? '版本不满足' : 'Version mismatch'),
+  failureDependencyUnknown: () => (isZh() ? '依赖错误' : 'Dependency error'),
   failureCode: () => (isZh() ? '代码错误' : 'Code error'),
   failureOther: () => (isZh() ? '其他' : 'Other'),
   installHint: () => (isZh() ? '安装建议' : 'Install'),
+  /** 版本不满足的明细行：声明范围 vs 实装版本（#410）。 */
+  mismatchLine: (item: MismatchedDep) =>
+    isZh() ? `声明 ${item.expected}，当前 ${item.found}` : `declared ${item.expected}, installed ${item.found}`,
   // ── startup-roster issues (issue #144) ─────────────────────────────────
   startupIssues: () => (isZh() ? '启动区问题' : 'Startup roster issues'),
   startupIssueFix: () => (isZh() ? '修复' : 'Fix'),
   startupIssueRemove: () => (isZh() ? '移除' : 'Remove'),
   startupIssueUnresolvable: () => (isZh() ? '包不可解析' : 'Unresolvable'),
-  startupIssueDependency: () => (isZh() ? '依赖缺失' : 'Dependency'),
+  startupIssueDependencyMissing: () => (isZh() ? '依赖缺失' : 'Missing dependency'),
+  startupIssueDependencyMismatch: () => (isZh() ? '版本不满足' : 'Version mismatch'),
+  startupIssueDependencyUnknown: () => (isZh() ? '依赖错误' : 'Dependency error'),
   startupIssueDuplicate: () => (isZh() ? '重复 id' : 'Duplicate id'),
 }
 
@@ -102,11 +111,17 @@ function statusLabel(status: string): string {
   }
 }
 
-/** Failure-classification badge label (issue #86): dependency / code / other. */
+/** Failure-classification badge label (issue #86, split by #410):
+ *  dependency-missing / dependency-mismatch / legacy dependency / code / other. */
 function failureTypeLabel(type: string): string {
   switch (type) {
+    case 'dependency-missing':
+      return strings.failureDependencyMissing()
+    case 'dependency-mismatch':
+      return strings.failureDependencyMismatch()
     case 'dependency':
-      return strings.failureDependency()
+      // pre-#410 的记录（也含 mount 期 module 解析失败）仍渲染出徽章
+      return strings.failureDependencyUnknown()
     case 'code':
       return strings.failureCode()
     case 'other':
@@ -114,6 +129,14 @@ function failureTypeLabel(type: string): string {
     default:
       return type
   }
+}
+
+/** 版本不满足时的明细文本（声明 vs 当前）；无明细时返回空数组（不渲染该行）。 */
+function mismatchLabels(entry: GuardianEntry): string[] {
+  const items = Array.isArray(entry.mismatchedDeps) ? entry.mismatchedDeps : []
+  return items
+    .filter((item) => item !== null && typeof item === 'object')
+    .map((item) => `${item.name}：${strings.mismatchLine(item)}`)
 }
 
 // ── event log ─────────────────────────────────────────────────────────
@@ -152,13 +175,18 @@ function eventVariant(type: string): string {
   }
 }
 
-/** Startup-issue badge label (issue #144): unresolvable / dependency / dup. */
+/** Startup-issue badge label (issue #144, split by #410): unresolvable /
+ *  dependency-missing / dependency-mismatch / legacy dependency / dup. */
 function startupIssueLabel(type: string): string {
   switch (type) {
     case 'unresolvable':
       return strings.startupIssueUnresolvable()
+    case 'dependency-missing':
+      return strings.startupIssueDependencyMissing()
+    case 'dependency-mismatch':
+      return strings.startupIssueDependencyMismatch()
     case 'dependency':
-      return strings.startupIssueDependency()
+      return strings.startupIssueDependencyUnknown()
     case 'duplicate-id':
       return strings.startupIssueDuplicate()
     default:

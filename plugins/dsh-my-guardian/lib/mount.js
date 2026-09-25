@@ -9,7 +9,7 @@
 import { dirname } from 'node:path';
 import { FREEZE_LIMIT, errorSnip, loadState, readStagedFile, writeStagedFile } from './state.js';
 import { logEvent } from './events.js';
-import { checkPeerDependencies, buildDependencyMessage, classifyFailure } from './dep-precheck.js';
+import { checkPeerDependencies, buildDependencyMessage, classifyFailure, dependencyFailureType, } from './dep-precheck.js';
 /**
  * Find the root Include tree of the profile. The loader tree's entries carry
  * nested subtrees; the profile root include is the one whose config file is
@@ -100,9 +100,11 @@ async function mountWithState(shared, kind, id, entry) {
     const precheck = precheckEntry(shared, name);
     if (precheck !== null) {
         recordFailure(shared, recordKey, id, name, entry, record, {
-            failureType: 'dependency',
+            // #410: 硬缺失与版本不满足是两个失败分类；结构化字段也分开（不再互相污染）
+            failureType: dependencyFailureType(precheck),
             message: buildDependencyMessage(precheck),
-            missingDeps: [...precheck.missing, ...precheck.mismatched.map((item) => item.name)],
+            missingDeps: precheck.missing,
+            mismatchedDeps: precheck.mismatched,
             installHint: precheck.suggestions[0] ?? null,
         });
         return 'failed';
@@ -139,6 +141,7 @@ async function promote(shared, recordKey, id, name, entry, record) {
             frozen: false,
             failureType: null,
             missingDeps: [],
+            mismatchedDeps: [],
             installHint: null,
             promotedAt: Date.now(),
         };
@@ -159,11 +162,23 @@ async function promote(shared, recordKey, id, name, entry, record) {
             frozen: false,
             failureType: null,
             missingDeps: [],
+            mismatchedDeps: [],
             installHint: null,
         };
     }
     logEvent(shared, 'promote', `mounted ${name} (${id})`);
     shared.persistSoon();
+}
+/** 失败记录的分类字段（#410：真缺失与版本不满足各自独立，互不混写）。 */
+function failureClassification(name, entry, info) {
+    return {
+        name,
+        config: entry.config ?? undefined,
+        failureType: info.failureType ?? 'code',
+        missingDeps: info.missingDeps ?? [],
+        mismatchedDeps: info.mismatchedDeps ?? [],
+        installHint: info.installHint ?? null,
+    };
 }
 /** Failure path: attempts counter + error recorded; freeze at the limit. */
 function recordFailure(shared, recordKey, id, name, entry, record, info) {
@@ -171,15 +186,11 @@ function recordFailure(shared, recordKey, id, name, entry, record, info) {
     const frozen = attempts >= FREEZE_LIMIT;
     const message = typeof info.message === 'string' ? info.message : String(info.message ?? info);
     shared.state[recordKey][id] = {
-        name,
-        config: entry.config ?? undefined,
+        ...failureClassification(name, entry, info),
         attempts,
         lastError: errorSnip(message),
         lastFailedAt: Date.now(),
         frozen,
-        failureType: info.failureType ?? 'code',
-        missingDeps: info.missingDeps ?? [],
-        installHint: info.installHint ?? null,
         ...(recordKey === 'promoted' ? { promotedAt: record.promotedAt } : {}),
     };
     logEvent(shared, frozen ? 'freeze' : 'quarantine', `${name} (${id}) failed ${attempts}x: ${message}`);
@@ -257,6 +268,7 @@ async function retryEntry(shared, id) {
             frozen: false,
             failureType: null,
             missingDeps: [],
+            mismatchedDeps: [],
             installHint: null,
         };
         shared.persistSoon();

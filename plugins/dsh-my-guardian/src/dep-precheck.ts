@@ -3,10 +3,16 @@
  *
  * Reads a candidate plugin's package.json peerDependencies (from the profile
  * node_modules) and verifies each dependency is installed and version-satisfying
- * BEFORE the plugin is mounted. A hard-missing dependency is reported as a
- * pre-check failure (failureType 'dependency') with an install suggestion, and
- * the mount is skipped — the plugin never enters the runtime load path with a
- * hole in its dependency graph (issue #72: dsh-shared was not published).
+ * BEFORE the plugin is mounted. A failure is reported with its own classification
+ * ('dependency-missing' / 'dependency-mismatch', #410) plus the separated
+ * missingDeps / mismatchedDeps fields, and the mount is skipped — the plugin never
+ * enters the runtime load path with a hole in its dependency graph
+ * (issue #72: dsh-shared was not published).
+ *
+ * 安装建议（suggestions）只给**可执行**的命令：宿主（DSH 安装）自带的包
+ * （@deepseek-ai/*、react / react-dom）不给命令——按提示执行会把宿主自有包的
+ * 另一份拷贝装进 profile（#407/#410）；声明范围含空格 / 管道 / 比较符时也不给
+ * 命令（拼出来无法执行）。
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -18,7 +24,8 @@ interface PackageJson {
   peerDependenciesMeta?: Record<string, { optional?: boolean }>
 }
 
-interface MismatchIssue {
+/** 一个「版本不满足」的 peer：声明范围 vs 实装版本（结构化字段的载荷形状）。 */
+export interface MismatchIssue {
   name: string
   expected: string
   found: string
@@ -121,9 +128,45 @@ function examinePeer(
   return { kind: 'ok' }
 }
 
+/** 宿主（DSH 安装）自带的包：装进 profile 只会多出一份拷贝并可能遮蔽宿主版本（#407）。 */
+const HOST_PACKAGE_NAMES = new Set(['react', 'react-dom'])
+
+/**
+ * 该依赖是否由宿主（DSH 安装 / 宿主前端）提供，而不是「用户装进 profile 的包」。
+ * @deepseek-ai/* 是宿主 runtime 供给的包；react / react-dom 由宿主前端运行时注入。
+ * 对这类包给出 `dsh plugin add …` 建议 = 把宿主自有包的另一份拷贝装进 profile（#407/#410）。
+ */
+export function isHostProvided(spec: string): boolean {
+  const base = basePackage(spec)
+  return base.startsWith('@deepseek-ai/') || HOST_PACKAGE_NAMES.has(base)
+}
+
+/**
+ * 声明范围能否直接拼进 `dsh plugin add <name>@<range>`：只接受单一 ^ / ~ / 精确
+ * 版本。含空格、管道、比较符或空版本的范围（`^18.2.0 || ^19.3.0`）拼出来的命令
+ * 在 shell 里无法执行（#410：畸形 installHint），一律不生成命令。
+ */
+const INSTALLABLE_RANGE = /^[~^]?\d+(\.\d+){0,2}(-[0-9A-Za-z.-]+)?$/
+
+function installableRange(range: unknown): string | null {
+  return typeof range === 'string' && INSTALLABLE_RANGE.test(range) ? range : null
+}
+
+/**
+ * 可执行的修复命令（#410）：宿主提供的包不给命令；版本不满足只在声明范围本身
+ * 可安全拼进命令时给出钉住版本的命令，否则不给（宁缺勿畸形）。
+ */
 function buildSuggestions(missing: string[], mismatched: MismatchIssue[]): string[] {
-  const suggestions = missing.map((dep) => `dsh plugin add ${dep}`)
-  for (const item of mismatched) suggestions.push(`dsh plugin add ${item.name}@${item.expected}`)
+  const suggestions: string[] = []
+  for (const dep of missing) {
+    if (isHostProvided(dep)) continue
+    suggestions.push(`dsh plugin add ${dep}`)
+  }
+  for (const item of mismatched) {
+    if (isHostProvided(item.name)) continue
+    const range = installableRange(item.expected)
+    if (range !== null) suggestions.push(`dsh plugin add ${item.name}@${range}`)
+  }
   return suggestions
 }
 
@@ -191,11 +234,39 @@ export function checkPeerDependencies({
   }
 }
 
-/** Build the "缺少依赖 X（请先安装）" message recorded for a failed pre-check. */
+/** 缺失一句：宿主提供的包不提示安装（#410：按提示执行会装错）。 */
+function missingSentence(dep: string): string {
+  return isHostProvided(dep)
+    ? `宿主提供的依赖 ${dep} 未在 profile 解析（由宿主运行时供给，无需安装）`
+    : `缺少依赖 ${dep}（请先安装）`
+}
+
+/** 版本不满足一句：单独成句，绝不复用「缺少依赖（请先安装）」文案（#410）。 */
+function mismatchSentence(item: MismatchIssue): string {
+  const sentence = `依赖版本不满足 ${item.name}：声明 ${item.expected}，当前 ${item.found}`
+  return isHostProvided(item.name) ? `${sentence}（宿主提供，无需安装）` : sentence
+}
+
+/**
+ * Build the message recorded for a failed pre-check. 缺失与版本不满足是两种结论，
+ * 各自成句（#410）：此前二者被合并渲染成「缺少依赖 X（请先安装）」，把「装着但
+ * 版本不在声明范围」误诊成缺失，并诱导用户把宿主自有包装进 profile。
+ */
 export function buildDependencyMessage(result: PrecheckResult): string {
-  const names = [...result.missing, ...result.mismatched.map((item) => item.name)]
-  if (names.length === 0) return '依赖预检失败'
-  return names.map((name) => `缺少依赖 ${name}（请先安装）`).join('；')
+  const missing = Array.isArray(result.missing) ? result.missing : []
+  const mismatched = Array.isArray(result.mismatched) ? result.mismatched : []
+  const sentences = [...missing.map(missingSentence), ...mismatched.map(mismatchSentence)]
+  if (sentences.length === 0) return '依赖预检失败'
+  return sentences.join('；')
+}
+
+/**
+ * 预检失败的分类（#410）：硬缺失与版本不满足在面板/失败分类徽标上必须能区分。
+ * 两者同时存在时记硬缺失（单一徽标字段只承载一个值，两类文案都进 message）。
+ */
+export function dependencyFailureType(result: Pick<PrecheckResult, 'missing' | 'mismatched'>): string {
+  const missing = Array.isArray(result.missing) ? result.missing : []
+  return missing.length > 0 ? 'dependency-missing' : 'dependency-mismatch'
 }
 
 /** Classify a mount failure for the isolation record (issue #86). */

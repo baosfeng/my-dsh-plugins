@@ -32,6 +32,7 @@ import {
   PLUGIN_STATE_DIRS,
   readAddon,
   readAddonExternals,
+  readTextIfExists,
   planNodeModulesLinks,
   linkNodeModules,
   checkAddonResolution,
@@ -969,5 +970,53 @@ describe('--enable-plugins：只在隔离副本内去掉禁用位', () => {
     const script = readFileSync(join(repoRoot, 'scripts', 'verify-real-profile.mjs'), 'utf8')
     expect(script).toContain('--enable-plugins')
     expect(script).toContain('enableEntryInPatch(')
+  })
+})
+
+// ── CodeQL js/file-system-race：按路径预检 → 按路径使用（告警 #118）────────
+describe('按 fd 读文件：消除 check-then-use（CodeQL js/file-system-race）', () => {
+  it('✓ 文件存在 → 同一个 fd 上读完，返回内容', () => {
+    const dir = tempDir('vrace-')
+    const file = join(dir, 'cordis.patch.yml')
+    writeFileSync(file, '- id: demo\n')
+    expect(readTextIfExists(file)).toBe('- id: demo\n')
+  })
+
+  it('✓ 不存在 → null（直接读并判 ENOENT，不做 existsSync 预检）', () => {
+    const dir = tempDir('vrace-')
+    expect(readTextIfExists(join(dir, 'absent.yml'))).toBe(null)
+  })
+
+  it('✓ 非 ENOENT 错误原样抛出（不静默吞成"不存在"，否则故障被当成空配置）', () => {
+    const dir = tempDir('vrace-')
+    expect(() => readTextIfExists(dir)).toThrow()
+  })
+
+  it('脚本接线：verify-real-profile.mjs 用 readTextIfExists 取代 existsSync 预检', () => {
+    const script = readFileSync(join(repoRoot, 'scripts', 'verify-real-profile.mjs'), 'utf8')
+    expect(script).toContain('readTextIfExists(')
+    // 旧写法（预检 + 按路径读/写）必须已退场，否则 TOCTOU 窗口仍在
+    expect(script).not.toContain('existsSync(patchPath)')
+    expect(script).not.toContain('existsSync(settingsSource)')
+    expect(script).not.toContain('existsSync(credentialFile)')
+  })
+
+  it('防复发自查：脚本里不存在「同变量先 stat/exists/access 再按路径读写」', () => {
+    const source = readFileSync(join(repoRoot, 'scripts', 'verify-real-profile.mjs'), 'utf8')
+    // 先剥注释：注释里的示例不是可执行路径，不该被当违规
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+    const checks = new Set(
+      [...code.matchAll(/\b(?:statSync|existsSync|lstatSync|accessSync)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g)].map(
+        (match) => match[1],
+      ),
+    )
+    const raced = [
+      ...code.matchAll(
+        /\b(?:readFileSync|writeFileSync|appendFileSync|rmSync|unlinkSync)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g,
+      ),
+    ]
+      .map((match) => match[1])
+      .filter((name) => checks.has(name))
+    expect(raced, '同变量先检查再按路径操作 = TOCTOU 窗口（CodeQL js/file-system-race）').toEqual([])
   })
 })

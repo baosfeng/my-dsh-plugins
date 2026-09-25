@@ -27,9 +27,11 @@
  *      启动即失败，故写入后回读校验（fail-closed）。
  */
 import {
+  closeSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   readlinkSync,
@@ -41,6 +43,30 @@ import {
 } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join, resolve } from 'node:path'
+
+// ── 文件读取（fd 化，消 CodeQL js/file-system-race） ──────────────────────
+
+/**
+ * 按 **fd** 读文本；文件不存在（`ENOENT`）返回 null，其它错误原样抛出。
+ *
+ * 为什么不用 `existsSync(p) ? readFileSync(p, 'utf8') : null`：那是按**路径名**先检查、
+ * 再按路径名使用 —— 两次系统调用之间文件可被替换/删除（TOCTOU，CWE-367），CodeQL
+ * `js/file-system-race`（security_severity=high）正是报这个（告警 #118 命中
+ * `verify-real-profile.mjs` 的 `writeFileSync(patchPath, …)`）。仓库既有惯例是
+ * `openSync` 拿 fd 直接读（见 `scripts/check-links.mjs`、`scripts/fork-pool.mjs`）。
+ */
+export function readTextIfExists(path) {
+  let fd = null
+  try {
+    fd = openSync(path, 'r')
+    return readFileSync(fd, 'utf8')
+  } catch (error) {
+    if (error.code === 'ENOENT') return null
+    throw error
+  } finally {
+    if (fd !== null) closeSync(fd)
+  }
+}
 
 // ── 插件条目与软链计划 ─────────────────────────────────────────────────────
 

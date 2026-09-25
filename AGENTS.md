@@ -1,6 +1,6 @@
 # my-dsh-plugins — 个人 DSH（DeepSeek Harness）插件集合仓库
 
-> 19 个插件（plugins/）+ 12 个 skill（skills/）+ 文档（docs/）。技术栈：Node.js + Cordis 4 + React 18/19 + 宿主原生 sidebarRightTabs。
+> 18 个插件（plugins/）+ 10 个 skill（skills/）+ 文档（docs/）。技术栈：Node.js + Cordis 4 + React 18/19 + 宿主原生 sidebarRightTabs。
 
 ## 🤝 协作与项目管理原则（所有 agent 必读）
 
@@ -28,7 +28,7 @@
 - **全量门禁单点 + load 熔断 + 派发时间盒**：同一时刻最多 **1 路** `npm run verify`（子 agent 只跑改动范围内的定向测试，写操作全停后由 leader 单点跑一次）；启动重型测试前 `uptime` 1 分钟均值 > 核数 × 1.5 则不得启动；派发 prompt 必须写明预期完成时间与「超时即报告」，超过预期未收到报告 leader **必须主动巡检**（`git status` + 关键文件 mtime），不得被动等待（规则见 docs/开发指南/leader行为规范.md 第六节）。
 - **leader 默认委派 + 自执行熔断**：可独立任务默认派发（自做须同时满足三条，见原则 4）；单轮 leader 自执行 bash/read/grep/edit/write **≤ 3 次**，超出必须**当轮逐条说明「为何不可派」**；上下文占用 **50%**（不可见时以「本轮累计自执行调用总数」为代理）即**熔断**——禁止新增任何自执行的调查类工作，一律派发；**验收 = 判读证据 + 抽检最关键 1~2 条断言**，重跑取证须派发、例外必须当轮声明（规则见 docs/开发指南/leader行为规范.md 第二、三、四节）。
 - **派发闸门 = 耗时 / 工作量（更严者生效）**：预估 > 约 5 分钟、或需多步操作 / 多轮取证，**必须派发**；**验收取证、发版、真实环境 / 浏览器验证、全量门禁、翻日志、调研**点名必派（即使 leader 能做）——都是「要很久才能看到效果」的工作。**验收「结论」归 leader、「取证」默认派发**，发版属单向外发必须派发（详见 docs/开发指南/leader行为规范.md 第二、四节）。
-- **代码查询走知识图谱**：查**本仓库**符号/调用链/影响/架构用 `mcp__codebase-memory__*`（细节见 skill `codebase-memory`），图外事实才 grep/read——**下否定结论前先 `npm run index:self --status`**（过期索引会让真实存在的符号返回 0 结果，实测曾落后 3 周 / 509 个提交）；查**官方宿主**源码坐标同理（参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`，`npm run harness:ref` 刷新，命令见 docs/官方文档/索引.md 第二节）。
+- **代码查询走知识图谱**：查**本仓库**符号/调用链/影响/架构用 codebase-memory skill 的 CLI 模式（命令见 docs/官方文档/索引.md 第二节），图外事实才 grep/read——**下否定结论前先 `npm run index:self --status`**（过期索引会让真实存在的符号返回 0 结果，实测曾落后 3 周 / 509 个提交）；查**官方宿主**源码坐标同理（参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`，`npm run harness:ref` 刷新，命令见 docs/官方文档/索引.md 第二节）。
 - **发版门禁**：发版用 `node scripts/release.mjs <插件名> [--push]`，必须过 #67 功能级验证门禁（verifying-dsh-plugins skill），跳过须带 `--skip-reason`。
 - **文档精简（强制）**：写/改任何文档前先读 **docs/开发指南/文档规范.md**——只写「怎么跑 / 防复发 / 指针」，单文件正文 ≤200 行，**不保留历史信息**（日期、issue 编号、复盘、旧版本条目、完成报告），新增文档前过该文自查清单；判不准是否有用时保留。
 - **AGENTS.md 保持精简**（≤50 行）：只保留协作原则/强制规则/入口，其余放 skill/docs 按需加载。

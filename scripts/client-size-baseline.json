@@ -287,22 +287,6 @@
         "assets/preset-selector.png": 127241
       }
     },
-    "dsh-session-title-gen": {
-      "total": 271585,
-      "files": {
-        "assets/session-list.png": 114738,
-        "assets/settings-panel.png": 86245,
-        "lib/client.js": 25456,
-        "lib/client.src.js": 2079,
-        "lib/config-routes.js": 7401,
-        "lib/config.js": 6293,
-        "lib/generate.js": 3590,
-        "lib/host.js": 3229,
-        "lib/index.js": 4387,
-        "lib/title.js": 8647,
-        "lib/workspace.js": 708
-      }
-    },
     "dsh-shared": {
       "total": 97662,
       "files": {

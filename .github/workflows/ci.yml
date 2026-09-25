@@ -74,7 +74,6 @@ jobs:
           - dsh-task-reliability
           - dsh-ts-example
           - dsh-my-remote
-          - dsh-session-title-gen
           - dsh-my-opencode-session-header
           - dsh-shared
     steps:

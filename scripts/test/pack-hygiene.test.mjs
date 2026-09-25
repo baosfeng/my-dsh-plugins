@@ -417,7 +417,7 @@ describe('CLI 端到端（真实 npm pack）', () => {
   })
 })
 
-describe('真实仓库回归（19 个插件：0 问题）', () => {
+describe('真实仓库回归（18 个插件：0 问题）', () => {
   it('全仓库通过，且报出实测耗时', () => {
     const cli = runCli(['--root', repoRoot])
     expect(cli.status).toBe(0)

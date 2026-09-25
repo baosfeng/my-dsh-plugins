@@ -9,7 +9,7 @@
  * `import type { ... } from './types.js'` 引用（nodenext 的 .js → .d.ts 映射）。
  */
 
-/** Cordis 事件监听器（DSH 事件如 session/start、agent/status）。 */
+/** Cordis 事件监听器（DSH 事件如 session/created、agent/status）。 */
 export type EventHandler = (...args: unknown[]) => void
 
 /** DSH HTTP 请求（node:http IncomingMessage 的最小契约）。 */
@@ -66,11 +66,32 @@ export interface TimerService {
   interval(callback: () => void, ms: number): void
 }
 
+/** cordis 结构化日志消息（ctx.logger.exporter 的导出器收到的记录；args 未格式化）。 */
+export interface LogMessage {
+  /** 严重级别：error / info / warn / debug。 */
+  type: string
+  /** 派生自 fiber 的 logger 名（同一 ctx 打出的消息同名）。 */
+  name?: string
+  /** 原始参数：首参是格式串，其余是占位符实参。 */
+  args?: unknown[]
+}
+
+/** cordis 日志导出器（结构化日志 sink；levels.default 为 verbosity 阈值）。 */
+export interface LogExporter {
+  levels?: Record<string, number>
+  export(message: LogMessage): void
+}
+
 /** logger 服务。 */
 export interface LoggerService {
   warn(msg: string): void
   info(msg: string): void
   error(msg: string): void
+  /**
+   * 注册日志导出器（DSH 0.1.7-rc.2 删除了 hmr/config-update-failed 事件后的
+   * 降级观测通道）。返回随注册 fiber 释放的退订器；老/最小 ctx 可能没有。
+   */
+  exporter?(exporter: LogExporter): unknown
 }
 
 /** DSH server 端 Context（cordis Context 的最小契约）。 */

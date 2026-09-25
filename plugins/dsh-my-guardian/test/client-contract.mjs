@@ -477,6 +477,13 @@ test('应用契约：原生扩展点缺失时静默跳过；strict=false 取法�
     [80],
     'guide.order 沿用迁移前 better-sidebar 的 order(80)',
   )
+  // guide 条目 `id` 是宿主必填字段：缺了它注册不报错，但宿主把 entryId: undefined
+  // 传给 sidebar.right.tab.guide.entry 席位，且同类型多条目的重复检测静默失效。
+  assert.equal(
+    typeof type.guide[0].id === 'string' && type.guide[0].id !== '',
+    true,
+    'guide 条目必须有非空 id（宿主 SidebarRightGuideEntry 必填字段）',
+  )
   assert.deepEqual(
     withService.seats.map((seat) => seat.descriptor),
     [

@@ -64,7 +64,7 @@ test('apply registers the route and the session listener', () => {
   assert.equal(registrations[0].kind, 'prefix')
   assert.equal(registrations[0].path, '/ts-example/api')
   assert.equal(typeof registrations[0].handler, 'function')
-  assert.equal(typeof listeners['session/start'], 'function', 'session listener')
+  assert.equal(typeof listeners['session/created'], 'function', 'session listener')
 })
 
 test('greeting route returns JSON for a trusted request', () => {
@@ -111,8 +111,8 @@ test('apply with an explicit undefined config falls back to the default language
 test('stats route reports the session count', () => {
   const { registrations, listeners, ctx } = createMockCtx()
   apply(ctx, {})
-  listeners['session/start']()
-  listeners['session/start']()
+  listeners['session/created']()
+  listeners['session/created']()
   const response = createMockResponse()
   registrations[0].handler({ url: '/ts-example/api/stats', headers: { host: 'localhost:3080' } }, response)
   assert.equal(response.status, 200)

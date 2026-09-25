@@ -9,7 +9,7 @@
  * `import type { ... } from './types.js'` 引用（nodenext 的 .js → .d.ts 映射）。
  */
 
-/** Cordis 事件监听器（DSH 事件如 session/start、agent/status）。 */
+/** Cordis 事件监听器（DSH 事件如 session/created、agent/status）。 */
 export type EventHandler = (...args: any[]) => void
 
 /** DSH server 端 Context（cordis Context 的最小契约）。 */

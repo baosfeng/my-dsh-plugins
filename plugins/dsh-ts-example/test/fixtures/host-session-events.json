@@ -1,0 +1,7 @@
+{
+  "reference": {
+    "version": "0.1.7-rc.2",
+    "source": "packages/core/session/src 的 interface Events 声明与事件名派发字面量",
+    "events": ["session/created", "session/disposed", "session/event", "session/flush"]
+  }
+}

@@ -71,7 +71,9 @@ function apply(ctx) {
         id: TAB_ID,
         kind: TAB_KIND,
         title: () => 'TS 示例',
-        guide: [{ order: TAB_ORDER, title: () => 'TS 示例' }],
+        // guide 条目 id 必填（宿主 SidebarRightGuideEntry）：缺了它注册不报错，但宿主
+        // 会把 entryId: undefined 传给 sidebar.right.tab.guide.entry 席位（静默降级）。
+        guide: [{ id: TAB_ID, order: TAB_ORDER, title: () => 'TS 示例' }],
     }), 'dsh-ts-example: tab');
     ctx.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, GreetingTabBody)), 'dsh-ts-example: greeting tab body');
     ctx.effect(() => slots.inject('sidebar.right.pane.tab.title', () => slots.register({ name: 'sidebar.right.pane.tab.title', key: TAB_ID }, GreetingTabTitle)), 'dsh-ts-example: greeting tab title');

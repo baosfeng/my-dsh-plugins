@@ -63,8 +63,8 @@ interface SidebarTabDefinition {
   kind: string
   /** 页签胶囊标题（打开时捕获）。 */
   title: (address: string) => string
-  /** 指南页条目：order 决定相对顺序（沿用迁移前的数字 order）。 */
-  guide?: Array<{ order: number; title: () => string; description?: () => string }>
+  /** 指南页条目：`id` 在提供方内稳定唯一（宿主必填），order 决定相对顺序（沿用迁移前的数字 order）。 */
+  guide?: Array<{ id: string; order: number; title: () => string; description?: () => string }>
 }
 
 /** 原生 keyed 席位注入的运行面（tab body / title 共用）。 */

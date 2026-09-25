@@ -130,6 +130,9 @@ export const INTENTIONALLY_ABSENT = [
   'settings.section',
   'installSection',
   'settingsScope',
+  // 第四节：「`ctx.settings` 当前只提供 describe() / openSettingsDocument() / write」——
+  // 服务本身存在（packages/api/settings-controller），但本仓库 0 调用，登记为"易误导"项
+  'settings',
   // 第一节：「侧边栏页签注册（宿主原生，已弃用第三方 better-sidebar）」
   'betterSidebar',
   // 第三节 3.4：「权威结果在同步的 `tools/result`」是**反面提示**（"在 tools/execute 里取最终结果
@@ -139,9 +142,9 @@ export const INTENTIONALLY_ABSENT = [
   // 第二节：「`todo`（只读 `todo/write` 判未完成）」——文档明确标注"只读"，本仓库不监听该事件
   'todo/write',
   // 第二节同段的一次性订阅：`agent/pre-step` 是 dsh-my-context 的预算拦截点（插件私有用法），
-  // `session/start` 只在 dsh-ts-example 演示插件里计数——两者真实存在，但**不进"事件面"总表**
+  // `session/created` 只在 dsh-ts-example 演示插件里计数——均为**单个插件的私有订阅**，不进"事件面"总表
   'agent/pre-step',
-  'session/start',
+  'session/created',
   // 第三节 3.3：`dsh.bundle` / `dsh.client` 是**宿主清单的必填基础字段**（官方 DshManifest），
   // 不是本仓库自造约定，因此不逐条登记进"自造字段"一行（登记的是 kind/ui/uiReason/presetReason）
   'bundle',

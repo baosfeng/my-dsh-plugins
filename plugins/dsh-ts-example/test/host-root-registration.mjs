@@ -57,8 +57,8 @@ test('路由与事件监听注册在常驻 root（profile 语义）', () => {
     '路由必须注册在 root 的 webServer',
   )
   assert.ok(
-    root.on.some((e) => e.name === 'session/start'),
-    'session/start 必须注册在 root',
+    root.on.some((e) => e.name === 'session/created'),
+    'session/created 必须注册在 root',
   )
   assert.equal(self.on.length, 0, '不得注册在插件自身 ctx')
 })

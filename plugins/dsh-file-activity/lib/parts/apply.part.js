@@ -30,6 +30,10 @@ function registerTabType(ctx) {
         // place (host GuideBody → actions.openTab(kind, { replaceTab: true })).
         guide: [
           {
+            // Required by the host guide-entry contract: without it the host hands
+            // `entryId: undefined` to `sidebar.right.tab.guide.entry` and the
+            // per-type duplicate-id check silently stops working.
+            id: TAB_ID,
             order: 20,
             title: () => strings.title(),
             description: () => strings.guideDescription(),

@@ -37,7 +37,7 @@ Cordis/Schemastery/DSH 包名与版本范围从精确目标版本的 manifest �
 | ---------------- | ----------------------------------------------------------------------------- |
 | 加模型可调用能力 | 注册到 `ctx.tools`                                                            |
 | 加模型 provider  | 注册 adapter 到 `ctx.llm`                                                     |
-| 加用户可配置项   | 在 `ctx.settings` 上注册命名空间 schema（`ctx.settings.installSection(...)`） |
+| 加用户可配置项   | 声明插件 `Config` schema（`ctx.config` 不存在；`ctx.settings` 只提供 `describe`/`openSettingsDocument`/`write`），设置页 UI 走 `plugins.detail.*` 席位 |
 
 > 其余扩展点（shell 执行、持久终端、后台工作、文件系统、沙箱、事件拦截、Webhook、会话标题、fork 会话…）以及各 `ctx.*` 服务的 Definition/Provider/Consumer 三方归属，一律以官方文档为准：[architecture.zh.md 扩展点映射表](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.zh.md) + [capability-seams.zh.md 的 `ctx.*` seam 表](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/capability-seams.zh.md)。官方表更全且随版本更新，本地手抄必然漂移；**按名字猜服务名会注册到不存在的服务——静默不生效且不报错**，注册前先在上表核对真名。
 

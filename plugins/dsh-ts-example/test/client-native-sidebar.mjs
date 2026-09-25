@@ -149,6 +149,13 @@ test('原生页签类型：id/kind 用包名与页面 kind，guide 保留原 ord
     [{ order: 90, title: 'TS 示例' }],
     'guide.order 沿用原 better-sidebar 的 order(90)，保证相对顺序',
   )
+  // guide 条目 `id` 是宿主必填字段：缺了它 → 注册不报错，但宿主把 `entryId: undefined`
+  // 传给 `sidebar.right.tab.guide.entry` 席位，且同类型多条目的重复检测失效（静默降级）。
+  assert.equal(
+    typeof type.guide[0].id === 'string' && type.guide[0].id !== '',
+    true,
+    'guide 条目必须有非空 id（宿主 SidebarRightGuideEntry 必填字段）',
+  )
 
   // 两个 keyed 席位：body + title，key 都是类型注册的 id
   assert.deepEqual(state.injects, ['sidebar.right.pane.tab', 'sidebar.right.pane.tab.title'])

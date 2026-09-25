@@ -738,7 +738,9 @@ function attachSidebarTab(ctx) {
         id: TAB_ID_PKG,
         kind: TAB_ID,
         title: () => strings.title(),
-        guide: [{ order: TAB_ORDER, title: () => strings.title() }],
+        // guide 条目 id 必填（宿主 SidebarRightGuideEntry）：缺了它注册不报错，但宿主
+        // 会把 entryId: undefined 传给 sidebar.right.tab.guide.entry 席位（静默降级）。
+        guide: [{ id: TAB_ID_PKG, order: TAB_ORDER, title: () => strings.title() }],
     }), 'dsh-task-reliability: tab');
     ctx.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID_PKG }, TaskReliabilityTabBody)), 'dsh-task-reliability: tab body');
     ctx.effect(() => slots.inject('sidebar.right.pane.tab.title', () => slots.register({ name: 'sidebar.right.pane.tab.title', key: TAB_ID_PKG }, TaskReliabilityTabTitle)), 'dsh-task-reliability: tab title');

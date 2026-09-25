@@ -11,7 +11,7 @@
 ## 功能
 
 - **问候语路由**：`GET /ts-example/api/greeting?name=xxx` → `{ "greeting": "Hello, xxx!" }`（支持 `zh` / `en` 语言配置）；
-- **会话计数**：`GET /ts-example/api/stats` → `{ "sessions": N }`（监听 `session/start` 事件计数）；
+- **会话计数**：`GET /ts-example/api/stats` → `{ "sessions": N }`（监听宿主 `session/created` 事件计数）；
 - **侧边栏页签「TS 示例」**：显示当前会话的问候语（client 端 TS → server 端 TS 全链路），经宿主原生侧边栏扩展点注册，零第三方依赖——同时作为「原生扩展点 + TS 构建」的活样例。
 
 ## 配置

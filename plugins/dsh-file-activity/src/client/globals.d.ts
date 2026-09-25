@@ -123,7 +123,7 @@ interface SidebarRightTabDefinition {
   patterns?: readonly string[]
   priority?: 'extension' | 'builtin' | 'fallback'
   title: (address: string) => string
-  guide?: readonly { order: number; title: () => string; description?: () => string }[]
+  guide?: readonly { id: string; order: number; title: () => string; description?: () => string }[]
 }
 
 /** 原生右栏 tab 类型注册表。 */

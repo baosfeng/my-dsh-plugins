@@ -11,7 +11,7 @@
 
 // ── Cordis 事件监听器 ───────────────────────────────────────────────
 
-/** Cordis 事件监听器（DSH 事件如 session/start、agent/status）。 */
+/** Cordis 事件监听器（DSH 事件如 session/created、agent/status）。 */
 export type EventHandler = (...args: unknown[]) => void
 
 // ── DSH server 端 Context（cordis Context 的最小契约）──────────────

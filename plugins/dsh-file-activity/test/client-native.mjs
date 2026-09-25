@@ -202,6 +202,14 @@ assert.equal(typeof guideEntry.order, 'number', 'guide order is numeric')
 assert.equal(guideEntry.title(), '文件活动', 'the guide capsule carries the plugin title')
 assert.equal(typeof guideEntry.description, 'function', 'the guide capsule has a description thunk')
 assert.ok(guideEntry.description().length > 0, 'the description is non-empty')
+// `id` is a required SidebarRightGuideEntry field on the host side: without it the
+// registration still succeeds, but the host hands `entryId: undefined` to the
+// `sidebar.right.tab.guide.entry` seat and the per-type duplicate-id check goes dead.
+assert.equal(
+  typeof guideEntry.id === 'string' && guideEntry.id !== '',
+  true,
+  'the guide entry carries a non-empty id (required by the host guide-entry contract)',
+)
 assert.equal(calls.panes.length, 1, 'body seat registered')
 assert.equal(calls.panes[0].options.key, 'dsh-file-activity', 'body seat keyed by the definition id')
 assert.equal(calls.titles.length, 1, 'chip title seat registered')

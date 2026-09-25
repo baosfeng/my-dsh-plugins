@@ -11,7 +11,7 @@ description: 使用当 已安装的 DSH Web 插件只在浏览器运行时行为
 
 ## 铁律：先在宿主源码里读 verb 的契约
 
-> 官方契约页导航见 [调试速查](../../docs/官方文档/调试速查.md)；查 `ctx.*` 服务语义直接读本地官方参考源（导航见[官方文档索引](../../docs/官方文档/索引.md)）。**判「这个服务/事件是否存在、定义在哪个包哪一行、serial 还是 parallel」用知识图谱**（官方参考源 project `Users-bsfeng-IdeaProjects-deepseek-harness`；查本仓库代码同理，但索引会过期，否定结论前先 `npm run index:self --status`；命令见[官方文档索引](../../docs/官方文档/索引.md) 第十节）——**四个通道全空**才说明它不是宿主能力（别只看 `--query`，它会对真实服务返回 0；通道清单见[官方文档索引](../../docs/官方文档/索引.md) 第十节）。
+> 官方契约页导航见 [调试速查](../../docs/官方文档/调试速查.md)；查 `ctx.*` 服务语义直接读本地官方参考源（导航见[官方文档索引](../../docs/官方文档/索引.md)）。**判「这个服务/事件是否存在、定义在哪个包哪一行、serial 还是 parallel」用知识图谱**（官方参考源 project `Users-bsfeng-IdeaProjects-deepseek-harness`；查本仓库代码同理，但索引会过期，否定结论前先 `npm run index:self --status`；命令见[官方文档索引](../../docs/官方文档/索引.md) 第二节）——**四个通道全空**才说明它不是宿主能力（别只看 `--query`，它会对真实服务返回 0；通道清单见[官方文档索引](../../docs/官方文档/索引.md) 第二节）。
 
 改任何宿主 API 调用前，打开宿主源码树（npm 全局安装的 `~/.npm-global/lib/node_modules/@deepseek-ai/dsh/`）里实现该 API 的包，读实际方法——doc 注释、guards、比较的类型。对插件传入的每个值重复。三个问题覆盖多数事故：
 

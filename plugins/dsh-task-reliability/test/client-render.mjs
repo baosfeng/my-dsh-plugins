@@ -68,6 +68,13 @@ test('client bundle registers sidebar tab and renders panel structure', () => {
     [70],
     'guide.order 沿用迁移前 better-sidebar 的 order(70)',
   )
+  // guide 条目 `id` 是宿主必填字段：缺了它 → 注册不报错，但宿主把 `entryId: undefined`
+  // 传给 `sidebar.right.tab.guide.entry` 席位，且同类型多条目的重复检测失效（静默降级）。
+  assert.equal(
+    typeof native.types[0].guide[0].id === 'string' && native.types[0].guide[0].id !== '',
+    true,
+    'guide 条目必须有非空 id（宿主 SidebarRightGuideEntry 必填字段）',
+  )
 
   // ── build the panel element（原生 body 席位：sessionId + useTabInfo）───
   const body = native.seat('sidebar.right.pane.tab')

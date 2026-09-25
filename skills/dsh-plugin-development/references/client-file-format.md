@@ -26,7 +26,9 @@ window.__ModuleLoader__.load({
           id: TAB_ID,
           kind: TAB_KIND, // 省略 patterns = 页面类型（按 kind 打开）
           title: () => '页面名', // chip 初始文本，打开时捕获
-          guide: [{ order: 20, title: () => '页面名' }], // 省略 guide = 进不了侧边栏引导页
+          // guide 条目 id 必填（宿主 SidebarRightGuideEntry）：缺了注册不报错，但宿主把
+          // entryId: undefined 传给 sidebar.right.tab.guide.entry 席位，同类型重复检测也失效
+          guide: [{ id: TAB_ID, order: 20, title: () => '页面名' }], // 省略 guide = 进不了侧边栏引导页
         }),
       )
       // 第二步：「正文」keyed 席位（key = 上面定义的 id，官方形态）
@@ -50,4 +52,4 @@ window.__ModuleLoader__.load({
 - `inject: [...]` = **硬依赖**：所列服务宿主自带，缺任一服务时插件进入等待、**不激活**——且**不报错**，静默不激活是排查成本最高的一种失败形态。
 - 只有 keyed 席位（`key` = 定义的 `id`）能拿到 `useTabInfo()`；`tab.visible === false`（侧边栏折叠或该页签非激活）时暂停轮询/订阅，`tab.signal` 在记录消失或插件卸载时中止。
 - 页面组件里用 `sessionId` 调本插件自己的 HTTP 路由；文本用 `navigator.language` 判断中英文（参考现有插件 `isZh()` 模式）。
-- 文件预览器不走 tab：`ctx.documentPreviews.register({ id, extensions, title, priority })` 由 `text` 页签的工具栏调用。
+- 文件预览器不走 tab：`ctx.documentPreviews.register({ id, extensions, title: () => '名称', loading: 'text-pages', priority: 'extension' })` 由 `text` 页签的工具栏调用。必填 `id` / `extensions` / `title`(thunk) / `loading`（取值 `'text-pages' | 'bytes-complete' | 'renderer'`）；`priority` 可选，取值 `'builtin' | 'extension'`（默认 extension）。

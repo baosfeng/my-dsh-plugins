@@ -8,7 +8,7 @@
 
 ## 功能
 
-- **事件下发**：`ask`（提问等待回答）/ `approval`（等待批准）/ `end`（会话结束）实时下行到外部通道（HTTP webhook / 中转服务 / IM 机器人网关），帧含会话标题、问题文本与选项、审批原因与工具名。
+- **事件下发**：`ask`（提问等待回答）/ `approval`（等待批准）/ `end`（会话结束）实时下行到外部通道（HTTP webhook / 中转服务 / IM 机器人网关），帧含会话标题、问题文本与选项、审批原因与工具名。这三个是**本插件下行帧的 `kind`**（不是宿主事件名）：宿主侧监听 `agent/status`（`idle` 且顶层 agent ⇒ `end`）/ `tools/execute`（⇒ `ask`）/ `approval/request`（⇒ `approval`）。
 - **远程回答 ask**：外部调用入站 API 提交答案（选项或自由文本），agent 立即收到注入的 answers 并继续执行。
 - **远程批准 approval**：外部提交批准（`allowed-once`）或拒绝（`rejected`），approval 等待方立即决议，工具放行或拦截。
 - **状态查询 / 继续会话**：查询活动会话、待回答 ask、待批准 approval 快照；`continue` 指令唤醒或继续对应会话。

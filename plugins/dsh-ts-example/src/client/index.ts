@@ -36,8 +36,8 @@ interface SidebarTabDefinition {
   kind: string
   /** 页签胶囊标题（打开时捕获；本节席另有 .title 席位负责实时标题）。 */
   title: (address: string) => string
-  /** 指南页条目：order 决定相对顺序。 */
-  guide?: Array<{ order: number; title: () => string; description?: () => string }>
+  /** 指南页条目：`id` 在提供方内稳定唯一（宿主必填），`order` 决定相对顺序。 */
+  guide?: Array<{ id: string; order: number; title: () => string; description?: () => string }>
 }
 
 /** keyed 席位注册表（@deepseek-ai/dsh-client-ui-slots 的服务面）。 */
@@ -96,7 +96,9 @@ export function apply(ctx: ClientContext): void {
         id: TAB_ID,
         kind: TAB_KIND,
         title: () => 'TS 示例',
-        guide: [{ order: TAB_ORDER, title: () => 'TS 示例' }],
+        // guide 条目 id 必填（宿主 SidebarRightGuideEntry）：缺了它注册不报错，但宿主
+        // 会把 entryId: undefined 传给 sidebar.right.tab.guide.entry 席位（静默降级）。
+        guide: [{ id: TAB_ID, order: TAB_ORDER, title: () => 'TS 示例' }],
       }),
     'dsh-ts-example: tab',
   )

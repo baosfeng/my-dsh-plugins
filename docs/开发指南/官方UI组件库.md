@@ -10,7 +10,7 @@ description: @deepseek-ai/dsh-client-ui-primitives 的接入契约、staticModul
 
 ## 接入契约
 
-1. **插件 client 直接 `require` 即可用：零安装、零打包、零体积**。宿主把它注册进 ModuleLoader 的 **staticModules 静态模块表**（与 `react` / `react-dom` / `@deepseek-ai/cordis` / `dsh-client-ui-slots` 同表），插件 factory 的 `require` 直接命中。`require` 处**不需要** `dsh.client.inject` 声明（`inject` 仍是跨插件 bundle 的机制）。
+1. **插件 client 直接 `require` 即可用：零安装、零打包、零体积**。宿主把它注册进 ModuleLoader 的 **staticModules 静态模块表**（种子表 9 项：`react`、`react/jsx-runtime`、`react-dom`、`react-dom/client`、`@deepseek-ai/cordis`、`@deepseek-ai/dsh-client-store`、`@deepseek-ai/dsh-client-ui-slots`、`@deepseek-ai/dsh-client-ui-primitives`、`@deepseek-ai/dsh-client-ui-dockkit`——权威清单在宿主 `packages/client/web/src/seed.ts`，本仓库 `scripts/check-client-modules.mjs` 的 `SEED_MODULES` 与之逐项一致），插件 factory 的 `require` 直接命中。**包名必须带 `@deepseek-ai/` 前缀**（`dsh-client-ui-slots` 这种裸名 require 会 miss）。`require` 处**不需要** `dsh.client.inject` 声明（`inject` 仍是跨插件 bundle 的机制）。
 
 ```js
 // client factory 内（无需改构建，无需 package.json 声明）

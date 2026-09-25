@@ -8,7 +8,7 @@
  *  - 类型检查：import 不存在的模块 → TS2307 编译期报错（#39 的
  *    require('dsh-md-render') 类错误在 TS 下不可能发版出去）；
  *  - 路由：GET /ts-example/api/greeting?name=xxx → { greeting }；
- *  - 事件：session/start 计数，GET /ts-example/api/stats → { sessions }；
+ *  - 事件：session/created 计数，GET /ts-example/api/stats → { sessions }；
  *  - 信任围栏：非 loopback 来源 403（与 /api 网关一致的契约）。
  */
 import { buildGreeting } from './greeting.js'
@@ -45,10 +45,13 @@ export function apply(ctx: DshContext, config?: Config): void {
   for (const dispose of rootRegistrations.get(listenCtx) ?? []) dispose()
   const disposers: Array<() => void> = []
 
-  // ── 事件监听：会话开始计数（演示 ctx.on；注册在常驻 root）──────────
+  // ── 事件监听：会话创建计数（演示 ctx.on；注册在常驻 root）──────────
+  // ⚠️ 事件名必须与宿主事件表一致：cordis 运行时不校验事件名，写错只是**静默不触发**
+  // （计数恒为 0，无任何报错）。宿主会话创建事件是 `session/created`。
+  // test/host-event-contract.mjs 会拿宿主真实事件表比对，改名即红。
   disposers.push(
     listenCtx.on(
-      'session/start',
+      'session/created',
       () => {
         sessionCount += 1
       },

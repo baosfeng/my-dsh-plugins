@@ -16,6 +16,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
+import { waitFor } from '../../dsh-shared/test-kit/wait.mjs'
 
 /** 受控慢 IO：只挂起 startup-issues.json 的写入（其余 IO 直通真实实现）。 */
 const gate = vi.hoisted(() => {
@@ -210,10 +211,14 @@ test('#217 API dispatch never observes a half-loaded startup pre-check', async (
     const { fake, ctx } = bootInstance('half-', [])
 
     // 先等 initialScan 把自己那条链跑完（API 注册是它的最后一步）。
-    for (let i = 0; i < 200 && fake.apiRoute === undefined; i += 1) {
-      await new Promise((resolve) => setImmediate(resolve))
-    }
-    assert.ok(fake.apiRoute, 'initialScan 已完成（API 已注册）')
+    // issue #402：等待预算必须是**真实墙钟**，不能是事件循环轮转次数。原实现
+    // `for (200 次) await setImmediate` 的预算与 IO 完成时间解耦：高负载下（CI runner、
+    // 门禁并发池 6+4 路）CPU 被抢，200 轮轮转先耗尽而 initialScan 的真实 IO 链尚未跑完
+    // → fake.apiRoute 仍为 undefined → 假红。CI 实证（run 36120528494，main）：
+    // AssertionError: initialScan 已完成（API 已注册）@ host-boot-readiness.mjs:216。
+    // 轮询在条件满足时立即返回，条件不满足时等到墙钟上限后由下面的 assert 照常判红
+    // ——等待语义只加强不削弱（不会静默通过）。
+    await waitFor(() => fake.apiRoute !== undefined, { message: 'initialScan 已完成（API 已注册）' })
 
     const pending = callApi(fake, 'GET', 'state')
     gate.release()

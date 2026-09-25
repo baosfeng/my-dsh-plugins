@@ -54,6 +54,31 @@ describe('sweepStaleTempDirs（globalSetup 清扫器）', () => {
     }
   })
 
+  it('清扫 verify-local 的隔离 TMPDIR 残留（该前缀此前不在白名单 → 结构性扫不到）', () => {
+    const now = Date.now()
+    const root = mkdtempSync(join(tmpdir(), 'sweep-iso-'))
+    const stale = new Date(now - DEFAULT_TTL_MS - 60_000)
+    const fresh = new Date(now - 60_000)
+    try {
+      for (const [name, mtime] of [
+        ['verify-isolated-tmp-BjA8ox', stale],
+        ['verify-isolated-tmp-9xERc0', fresh],
+      ]) {
+        const p = join(root, name)
+        mkdirSync(p, { recursive: true })
+        writeFileSync(join(p, 'payload.json'), '{}')
+        utimesSync(p, mtime, mtime)
+      }
+      const r = sweepStaleTempDirs({ dir: root, now })
+      expect(r.removed, '陈旧的隔离 TMPDIR 残留必须被清掉').toBe(1)
+      expect(existsSync(join(root, 'verify-isolated-tmp-BjA8ox'))).toBe(false)
+      expect(existsSync(join(root, 'verify-isolated-tmp-9xERc0')), '近期残留必须保留（排障现场）').toBe(true)
+      expect(r.errors).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('清扫有界：不得超过 maxSweep 上限', () => {
     const now = Date.now()
     const root = mkdtempSync(join(tmpdir(), 'sweep-bound-'))

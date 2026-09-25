@@ -262,6 +262,14 @@ describe('下载 + SHA256 校验（离线：本地 http 服务 + 测试专用覆
     server = spawn(process.execPath, [join(ROOT, 'scripts', 'test', 'ci-tools-server.mjs'), tarballPath], {
       stdio: ['ignore', 'pipe', 'pipe'],
     })
+    /**
+     * 兜底回收：afterAll 并非在所有路径都会执行（hook 抛错、用例提前结束、进程提前退出都跳过它）。
+     * 强杀形态（SIGKILL）连 exit 钩子也不跑 —— 那一形态由 ci-tools-server.mjs 自身的
+     * 父进程死亡看门狗保证回收；这里补的是「JS 还能跑但 afterAll 没轮到」的窗口。
+     */
+    process.once('exit', () => {
+      if (server && server.exitCode === null && server.signalCode === null) server.kill('SIGKILL')
+    })
     baseUrl = await new Promise((resolve, reject) => {
       let buf = ''
       const timer = setTimeout(() => reject(new Error('本地下载服务未在 10s 内就绪')), 10_000)
@@ -278,7 +286,9 @@ describe('下载 + SHA256 校验（离线：本地 http 服务 + 测试专用覆
   })
 
   afterAll(async () => {
-    if (server) {
+    // 只在确实还活着时 kill 并等待 close —— 已退出时 'close' 不会再触发，
+    // 无条件 await 会把 afterAll 挂到 hookTimeout（60s 假红）。
+    if (server && server.exitCode === null && server.signalCode === null) {
       server.kill('SIGKILL')
       await new Promise((r) => server.on('close', r))
     }

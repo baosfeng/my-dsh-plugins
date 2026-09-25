@@ -52,6 +52,10 @@ export const OWNED_PREFIXES = [
   'dpm-feature-',
   'ts-size-',
   'approve-step-',
+  // scripts/verify-local.mjs 单步用的隔离 TMPDIR（verify-isolated-tmp-*）。实测该前缀残留 3 次
+  // （Sep 18 / Sep 19 / Sep 25，后者正是被孤儿进程持有的 BjA8ox）；此前不在白名单 →
+  // 兜底清扫**结构性扫不到**（连 scanned 都不计），是本清扫最实质的盲区。
+  'verify-isolated-tmp-',
 ]
 
 const isOwned = (name, prefixes) => prefixes.some((p) => name.startsWith(p) && name.length > p.length)

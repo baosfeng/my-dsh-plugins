@@ -1,4 +1,4 @@
-import { test, vi } from 'vitest'
+import { test, vi, afterAll } from 'vitest'
 /**
  * 启动就绪契约（issue #217 —— 残留时序 flaky 的防回归）。
  *
@@ -13,7 +13,7 @@ import { test, vi } from 'vitest'
  * 受控 gate 把「预检慢于 API 分派」变成确定性时序（注入而非造负载）。
  */
 import assert from 'node:assert/strict'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 
@@ -42,7 +42,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 const { apply } = await import('../lib/index.js')
 
+/** 临时 DSH_HOME 收集；配对清理见文件末尾 afterAll。 */
+const tmpDirs = []
 const root = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-guardian-boot-' }).name
+tmpDirs.push(root)
 process.env.DSH_HOME = root
 
 /** Fake loader tree; `healthy` drops the unresolvable roster row so the
@@ -148,6 +151,7 @@ const readIssuesOrNull = (dir) => {
 /** Boot one instance for a fresh profile dir. */
 function bootInstance(tag, staged, treeOpts) {
   const dir = dirSync({ unsafeCleanup: true, prefix: tag }).name
+  tmpDirs.push(dir)
   process.env.DSH_HOME = dir
   const fake = makeLoaderAndTree(dir, treeOpts)
   writeFileSync(join(dir, 'cordis.staged.json'), JSON.stringify(staged), 'utf8')
@@ -258,4 +262,8 @@ test('#217 a torn-down instance ignores poll ticks that fire afterwards', async 
     readStateOrNull(dir)?.promoted?.sentinel,
     'teardown 之后的轮询 tick 不得再写 state.json（否则会覆盖下一个用例块）',
   )
+})
+
+afterAll(() => {
+  for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })

@@ -17,7 +17,7 @@
  * `GitHub Actions is not permitted to approve pull requests`）。
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync, mkdtempSync, writeFileSync, chmodSync } from 'node:fs'
+import { readFileSync, mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -70,22 +70,27 @@ esac
 /** 在临时目录里用假 gh 执行真实的 approve run 段，返回 { status, stdout }。 */
 function runApproveStep(mode) {
   const dir = mkdtempSync(join(tmpdir(), 'approve-step-'))
-  const ghPath = join(dir, 'gh')
-  writeFileSync(ghPath, FAKE_GH)
-  chmodSync(ghPath, 0o755)
-  const scriptPath = join(dir, 'step.sh')
-  writeFileSync(scriptPath, extractRunBlock(readWorkflow(AUTO_MERGE_WORKFLOW), 'Approve minor and patch updates'))
+  try {
+    const ghPath = join(dir, 'gh')
+    writeFileSync(ghPath, FAKE_GH)
+    chmodSync(ghPath, 0o755)
+    const scriptPath = join(dir, 'step.sh')
+    writeFileSync(scriptPath, extractRunBlock(readWorkflow(AUTO_MERGE_WORKFLOW), 'Approve minor and patch updates'))
 
-  const result = spawnSync('bash', ['-e', scriptPath], {
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      PATH: `${dir}:${process.env.PATH}`,
-      PR_URL: 'https://example.invalid/pull/1',
-      GH_STUB_MODE: mode,
-    },
-  })
-  return { status: result.status, stdout: `${result.stdout}${result.stderr}` }
+    const result = spawnSync('bash', ['-e', scriptPath], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${dir}:${process.env.PATH}`,
+        PR_URL: 'https://example.invalid/pull/1',
+        GH_STUB_MODE: mode,
+      },
+    })
+    return { status: result.status, stdout: `${result.stdout}${result.stderr}` }
+  } finally {
+    // mkdtempSync 的目录不被 tmp 包回收（非 tmp 创建）—— 必须显式删，否则永久残留。
+    rmSync(dir, { recursive: true, force: true })
+  }
 }
 
 describe('resolveReviewers：自审过滤与优雅跳过（issue #304）', () => {

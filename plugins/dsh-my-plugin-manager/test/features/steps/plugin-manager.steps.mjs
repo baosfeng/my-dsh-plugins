@@ -4,8 +4,9 @@
  * mirroring host-api.mjs: installed filtering (issue #28), official
  * namespace classification, market search and the trust fence.
  */
-import { Given, When, Then, setWorldConstructor } from '@cucumber/cucumber'
+import { After, Given, When, Then, setWorldConstructor } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
+import { rmSync } from 'node:fs'
 
 import { dirSync } from 'tmp'
 import { createApiHandler, isOfficialModule } from '../../../lib/api-route.js'
@@ -244,4 +245,10 @@ Then('搜索结果包含 {string}', function (name) {
 
 Then('响应状态码为 {int}', function (status) {
   assert.equal(this.lastStatus, status)
+})
+
+// 配对清理：每个场景的 profileDir 必须回收，否则 tmp 的 process-exit 钩子在
+// worker 被强杀（超时 / CI 取消 / SIGKILL）时不执行，目录永久残留。
+After(function () {
+  if (this.profileDir) rmSync(this.profileDir, { recursive: true, force: true })
 })

@@ -4,9 +4,9 @@
  * 这些模块由各插件抽取合并（issue #45），依赖方插件的测试已通过
  * dsh-shared import 覆盖其行为；本文件补充 dsh-shared 自包含的核心断言。
  */
-import { test } from 'vitest'
+import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import {
@@ -28,6 +28,12 @@ function tempDir() {
   tmpDirs.push(dir)
   return dir
 }
+
+// 配对清理：tmp 的 process-exit 钩子在 worker 被强杀（超时 / CI 取消 / SIGKILL）时
+// 不执行，目录会永久残留在 os.tmpdir()。实测该前缀曾累积 505 个残留目录。
+afterAll(() => {
+  for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+})
 
 test('config-store: currentProfile / profileDirOf / patchFileOf', () => {
   const dir = tempDir()

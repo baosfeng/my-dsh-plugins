@@ -12,12 +12,12 @@
  * 解析失败必须显式失败（exit 2），不允许静默跳过。
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirSync } from 'tmp'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ESLint } from 'eslint'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { analyzeSource, buildBaseline, countLines, diffAgainstBaseline, THRESHOLDS } from '../check-ts-size.mjs'
 
 const scriptPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'check-ts-size.mjs')
@@ -43,9 +43,13 @@ const complexityOf = (body) => analyze(`function f(a, b) {\n${body}\n}\n`).funct
 /** 复杂度 = 1 + times 的函数。 */
 const fnWithComplexity = (times) => `function f(a) {\n${'  if (a) {}\n'.repeat(times)}}\n`
 
+/** 临时仓库目录收集；配对清理见文件末尾 afterAll。 */
+const tmpDirs = []
+
 /** 在临时目录里造一个最小仓库（plugins/<name>/src/**）。 */
 function makeRepo(files) {
   const { name: root } = dirSync({ unsafeCleanup: true, prefix: 'ts-size-' })
+  tmpDirs.push(root)
   for (const [rel, content] of Object.entries(files)) {
     const full = join(root, rel)
     mkdirSync(dirname(full), { recursive: true })
@@ -440,4 +444,8 @@ describe('真实仓库门禁', () => {
     const parsed = JSON.parse(runCli(['--json']).stdout)
     expect(parsed.stats.scannedFiles).toBeGreaterThan(200)
   })
+})
+
+afterAll(() => {
+  for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })

@@ -20,7 +20,7 @@ import { test, beforeAll, afterAll } from 'vitest'
  *  - 隔离正常时写入照常成功（防护不能把正常功能一起挡掉）。
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, realpathSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { currentProfile, patchFileOf } from 'dsh-shared'
@@ -38,6 +38,9 @@ const REAL_CONFIG = defaultRealConfigPath()
 /** 用例期间真实配置的快照（before/after 各取一次做比对）。 */
 let before = null
 
+/** 用例创建的临时 DSH_HOME；配对清理见下方独立 afterAll。 */
+const guardHomeDirs = []
+
 beforeAll(() => {
   before = snapshotRealConfig(REAL_CONFIG)
 })
@@ -48,6 +51,13 @@ afterAll(() => {
     before,
     '整套防护测试**不得**触碰真实配置（内容 / size / mtime 必须完全不变）',
   )
+})
+
+// 配对清理：独立于上面的断言 hook —— 即使断言抛错也必须回收临时目录。
+// 注意这些目录由 mkdtempSync 创建，**不受 tmp 包管理**（没有 process-exit 兜底），
+// 不显式删就 100% 残留。
+afterAll(() => {
+  for (const dir of guardHomeDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
 /** 断言真实配置此刻仍与用例开始时逐字节一致。 */
@@ -118,6 +128,7 @@ test('目标路径在临时目录之外时拒绝写入（不只看 DSH_HOME 一�
 
 test('隔离正常时写入照常成功（防护不得挡住正常功能）', () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-my-remote-guard-'))
+  guardHomeDirs.push(home)
   const saved = process.env.DSH_HOME
   process.env.DSH_HOME = home
   try {

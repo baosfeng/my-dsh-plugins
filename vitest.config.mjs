@@ -12,6 +12,11 @@
 //   负载无关的（行为/相对/分布判据），绝不允许用「调大阈值」换绿 —— 见
 //   docs/踩坑/异步落盘与时序.md「绝对耗时断言」一节。
 import { defineConfig } from 'vitest/config'
+import { fileURLToPath } from 'node:url'
+
+// 测试临时目录兜底清扫（有界策略）：见 scripts/test/tmp-residue-sweep.mjs。
+// 必须用绝对路径 —— 插件 config 以 `...root` 继承本配置，相对路径会相对插件目录解析。
+const tmpResidueSweep = fileURLToPath(new URL('./scripts/test/tmp-residue-sweep.mjs', import.meta.url))
 
 export default defineConfig({
   test: {
@@ -19,6 +24,7 @@ export default defineConfig({
     exclude: ['**/e2e-cdp.mjs', '**/node_modules/**'],
     testTimeout: 60_000,
     hookTimeout: 60_000,
+    globalSetup: [tmpResidueSweep],
     coverage: {
       provider: 'v8',
       include: ['lib/index.js'],

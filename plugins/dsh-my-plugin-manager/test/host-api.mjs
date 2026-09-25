@@ -4,14 +4,18 @@
  * manage.js / registry.js are mocked: install/uninstall/updates exercise the
  * route wiring without spawning real CLI or hitting the npm registry.
  */
-import { test } from 'vitest'
+import { test, afterAll } from 'vitest'
 import { vi } from 'vitest'
 import assert from 'node:assert/strict'
 
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 
+/** 临时 DSH_HOME 收集；配对清理见文件末尾 afterAll。 */
+const tmpDirs = []
 const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-api-test-' }).name
+tmpDirs.push(dir)
 
 // ── mocks ──────────────────────────────────────────────────────────────────
 const manageMock = vi.hoisted(() => ({
@@ -556,4 +560,8 @@ test('disable success logs an info line', async () => {
   assert.ok(disableLog !== undefined, 'disable info log emitted')
   assert.ok(disableLog.startsWith('[dsh-my-plugin-manager]'), 'disable log carries the unified plugin prefix')
   assert.ok(disableLog.includes('dsh-x'), 'disable log carries the name')
+})
+
+afterAll(() => {
+  for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })

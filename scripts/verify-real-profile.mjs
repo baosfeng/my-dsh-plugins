@@ -89,6 +89,8 @@ import {
   writeWorkspaceStorage,
 } from './lib/verify-profile.mjs'
 import { DEFAULT_AUTO_ITEMS, checkChecklistFile, mergeChecklist, renderChecklist } from './lib/verify-checklist.mjs'
+// 超时配置解析：复用 verify-local 的同一套 fail-closed 规则（scripts/lib/verify-timeout.mjs），不另造一套
+import { parseTimeoutSeconds } from './lib/verify-timeout.mjs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { createServer } from 'node:net'
@@ -99,6 +101,31 @@ const options = parseArgs(process.argv.slice(2))
 if (options.help) {
   printHelp()
   process.exit(0)
+}
+
+/**
+ * 解析 --timeout（启动就绪超时）。
+ *
+ * 复用 verify-local 的**同一套**解析规则（scripts/lib/verify-timeout.mjs），两处规则不漂移。
+ * 为什么必须校验：旧实现是裸 `Number(value())` 直接进第 576 行的
+ * `const deadline = Date.now() + options.timeoutSec * 1000` + `while (Date.now() < deadline)`：
+ *   · `--timeout Infinity` / `1e999` → deadline 非有限 → 等待循环**恒真** → 实例挂死时无限
+ *     等待（fail-open；release.mjs 的 runChild 没有上游超时，整条发版门禁会一起挂住）；
+ *   · `--timeout 0` / 负数 / `abc` → deadline 已过期或为 NaN → 判「未就绪」，但报错文案是
+ *     「实例 NaNs 内未就绪」，把配置错误伪装成「实例没起来」。
+ * 本脚本**不提供关闭上限的开关**（verify-local 家族里的 none / off 在这里一并拒绝）：
+ * 启动就绪必须有上限 —— 该脚本没有信号清理，被强杀会残留隔离实例与临时目录。
+ */
+function resolveTimeoutSec(raw) {
+  const parsed = parseTimeoutSeconds(raw)
+  if (parsed.ok && typeof parsed.seconds === 'number' && parsed.seconds >= 1) return parsed.seconds
+  const shown = raw === undefined ? '(缺少值)' : JSON.stringify(String(raw))
+  console.error(`[verify] --timeout 配置非法：${shown} —— 合法值是正秒数（如 30 / 90 / 300）。`)
+  console.error(
+    '[verify] 0 / 负数 / 空 / 非数字 / Infinity（含 verify-local 家族的 none / off）都不接受：' +
+      '启动就绪必须有上限，否则实例挂死时会无限等待（fail-open），发版门禁也会一起挂住。',
+  )
+  process.exit(1)
 }
 
 function parseArgs(args) {
@@ -128,7 +155,7 @@ function parseArgs(args) {
     else if (flag === '--port') result.port = Number(value())
     else if (flag === '--addons') result.addons.push(value())
     else if (flag === '--api-path') result.apiPaths.push(value())
-    else if (flag === '--timeout') result.timeoutSec = Number(value())
+    else if (flag === '--timeout') result.timeoutSec = resolveTimeoutSec(value())
     else if (flag === '--skip') result.skipWeb = true
     else if (flag === '--keep') result.keep = true
     else if (flag === '--checklist') result.checklist = value()
@@ -163,7 +190,7 @@ function printHelp() {
       '                     ⚠️ 需要浏览器会话（issue #257）：DSH web 有认证层，非交互环境下脚本\n' +
       '                     拿不到访问 token，这一项会**显式失败**并提示"这是脚本问题"。\n' +
       '                     要做 API 断言请走 skills/verifying-dsh-plugins 的浏览器步骤。\n' +
-      '  --timeout <sec>    启动就绪超时（默认 90）\n' +
+      '  --timeout <sec>    启动就绪超时（默认 90；必须为正秒数，不接受 0 / Infinity / none）\n' +
       '  --skip             只做配置组合检查（dump-config），不启动实例\n' +
       '  --keep             失败/完成后保留临时目录（默认清理）\n' +
       '  --checklist <path> 验证通过后生成发版前功能级验证清单（issue #67 留痕）。\n' +

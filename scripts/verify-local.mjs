@@ -81,7 +81,7 @@
  *   node scripts/verify-local.mjs --mutation         # 额外执行 stryker 变异测试
  *   node scripts/verify-local.mjs --only <id>        # 只跑单项（可重复，如 --only knip）
  *   node scripts/verify-local.mjs --plugin <name>    # 只跑该插件的 test/--check（可重复）
- *   node scripts/verify-local.mjs --timeout <sec>    # 覆盖整体超时上限（秒；0 = 关闭）
+ *   node scripts/verify-local.mjs --timeout <sec>    # 覆盖整体超时上限（秒；none = 显式关闭）
  *   node scripts/verify-local.mjs --list             # 列出全部检查项 id
  *   node scripts/verify-local.mjs --list --json      # 机器可读清单（供 check-gate-parity 校验）
  *   node scripts/verify-local.mjs --help
@@ -89,9 +89,11 @@
  * 环境变量：
  *   VERIFY_CONCURRENCY=1..8   覆盖插件测试并发度（默认 6；怀疑并发冲突时设 1 串行）
  *   VERIFY_CHECK_CONCURRENCY=1..8 覆盖检查项并发度（默认 4）
- *   VERIFY_TIMEOUT=<sec>      整体墙钟上限（默认 300；0/off/none = 关闭）
- *   VERIFY_STEP_TIMEOUT=<sec> 单个子进程上限（默认 min(整体上限, 120)；0 = 关闭）
- *   VERIFY_NO_TIMEOUT=1       等价于 VERIFY_TIMEOUT=0
+ *   VERIFY_TIMEOUT=<sec>      整体墙钟上限（默认 300；none = 显式关闭）
+ *   VERIFY_STEP_TIMEOUT=<sec> 单个子进程上限（默认 min(整体上限, 120)；none = 显式关闭）
+ *   VERIFY_NO_TIMEOUT=1       等价于 VERIFY_TIMEOUT=none（只关整体上限，单步仍默认 120s）
+ *   注意：0 / 负数 / 空 / 非数字一律报错退出 —— 「设成 0 即关闭上限」是 fail-open，已废除；
+ *         需要「无上限」必须显式写 none（关闭是看得见的选择，并在 stderr 打印警告）。
  *   VERIFY_NO_RETRY=1         关闭「疑似并发冲突 → 串行自动复测」（见下）
  *
  * 退出码：0 = 全部通过（跳过项不计失败）；1 = 任一检查失败、或参数/基准不可解析；
@@ -141,6 +143,8 @@ import {
   diffPackageJsonRuntimeFields,
   listChangedFiles,
 } from './lib/impact-scope.mjs'
+// 超时配置解析抽成纯函数模块（fail-closed：0 / 负数 / 空 / 非法一律报错，见该文件头注释）
+import { isValidTimeoutMs, parseTimeoutSeconds, timeoutConfigError } from './lib/verify-timeout.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -224,43 +228,57 @@ const secs = (ms) => `${(ms / 1000).toFixed(1)}s`
 
 // ── 超时配置（pre-push 绝不能静默挂死）──────────────────────────────────────
 /**
- * 解析「秒」配置：未设置 → null（回落默认值）；0/off/none → 0（显式关闭）。
- * 0 与 null 语义不同：0 = 用户明确要求关闭，null = 没配。
+ * 解析一项超时配置：未设置 → null（回落默认值）；显式 none/off → 0（关闭该上限）。
+ *
+ * 0 / 负数 / 空 / 非数字 **一律报错退出**（fail-closed）：旧实现把「0 / false / no / disable」
+ * 当成「关闭上限」（fail-open —— 非交互环境里「配置为 0」= 「无限制放行」，见 AGENTS.md
+ * 「写操作默认拒绝（fail-closed）」），把非法值静默回落默认（掩盖配置错误）。
+ * 纯函数与边界单测：scripts/lib/verify-timeout.mjs / scripts/test/verify-timeout-parse.test.mjs。
  */
-function parseSeconds(raw) {
-  if (raw === undefined || raw === null) return null
-  const text = String(raw).trim().toLowerCase()
-  if (text === '') return null
-  if (['0', 'off', 'none', 'false', 'no', 'disable', 'disabled'].includes(text)) return 0
-  const n = Number(text)
-  if (!Number.isFinite(n) || n <= 0) return null
-  return Math.round(n)
+function resolveTimeoutSec(name, raw, { closeForm = `${name}=none`, hint = '' } = {}) {
+  const parsed = parseTimeoutSeconds(raw)
+  if (parsed.ok) return parsed.seconds
+  console.error(timeoutConfigError({ name, raw, closeForm, hint }))
+  process.exit(1)
 }
 
 const DEFAULT_TOTAL_TIMEOUT_SEC = 300
 const DEFAULT_STEP_TIMEOUT_SEC = 120
 
 const totalTimeoutSec = (() => {
+  // VERIFY_NO_TIMEOUT=1 是显式开关（严格等号，不是 falsy 判断）：等价于 VERIFY_TIMEOUT=none
   if (String(process.env.VERIFY_NO_TIMEOUT ?? '') === '1') return 0
   if (options.timeout !== null) {
-    const parsed = parseSeconds(options.timeout)
-    if (parsed === null) {
-      console.error(`[verify] --timeout 参数非法: ${options.timeout}（需要正秒数，或 0 表示关闭）`)
-      process.exit(1)
-    }
-    return parsed
+    return resolveTimeoutSec('--timeout', options.timeout, {
+      closeForm: '--timeout none',
+      hint: '整体上限也可用 VERIFY_NO_TIMEOUT=1 显式关闭。',
+    })
   }
-  const fromEnv = parseSeconds(process.env.VERIFY_TIMEOUT)
+  const fromEnv = resolveTimeoutSec('VERIFY_TIMEOUT', process.env.VERIFY_TIMEOUT, {
+    hint: '整体上限也可用 VERIFY_NO_TIMEOUT=1 显式关闭。',
+  })
   return fromEnv === null ? DEFAULT_TOTAL_TIMEOUT_SEC : fromEnv
 })()
 const stepTimeoutSec = (() => {
-  const fromEnv = parseSeconds(process.env.VERIFY_STEP_TIMEOUT)
+  const fromEnv = resolveTimeoutSec('VERIFY_STEP_TIMEOUT', process.env.VERIFY_STEP_TIMEOUT)
   if (fromEnv !== null) return fromEnv
   if (totalTimeoutSec === 0) return DEFAULT_STEP_TIMEOUT_SEC
   return Math.min(totalTimeoutSec, DEFAULT_STEP_TIMEOUT_SEC)
 })()
 const TOTAL_TIMEOUT_MS = totalTimeoutSec * 1000
 const STEP_TIMEOUT_MS = stepTimeoutSec * 1000
+
+// 「无上限」必须是看得见的选择：显式关闭时在 stderr 明确告知「挂死时不会有东西来杀它」。
+// 刻意走 stderr 而不是 stdout —— `--list --json` 的 stdout 必须保持纯 JSON（门禁脚本消费）。
+if (totalTimeoutSec === 0) {
+  console.error(
+    `[verify] ⚠ 整体墙钟上限已显式关闭（VERIFY_NO_TIMEOUT=1 / VERIFY_TIMEOUT=none）：脚本挂死时不会有任何东西来终止它（单步上限仍为 ${secs(STEP_TIMEOUT_MS)}）`,
+  )
+}
+if (stepTimeoutSec === 0) {
+  console.error('[verify] ⚠ 单步子进程超时已显式关闭（VERIFY_STEP_TIMEOUT=none）：任一步挂死都不会被终止')
+}
+
 /** git 只读查询的超时（正常 <1s；卡住说明 git / 文件系统异常）。 */
 const GIT_TIMEOUT_MS = 30_000
 const globalStartedAt = Date.now()
@@ -351,6 +369,15 @@ function killAllChildren(signal = 'SIGKILL') {
  */
 function runCapture(cmd, cmdArgs, cwd, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? STEP_TIMEOUT_MS
+  // 执行层防线（fail-closed）：0 只允许来自解析层的「显式关闭」（none/off/VERIFY_NO_TIMEOUT=1）；
+  // NaN / 负数 / 非整数（例如调用方传错 opts.timeoutMs）必须硬失败，绝不落进
+  // 「falsy → 静默无上限」的老路径。
+  if (!isValidTimeoutMs(timeoutMs)) {
+    console.error(
+      `[verify] 内部错误：runCapture 收到非法 timeoutMs=${String(timeoutMs)}（需要非负整数毫秒；0 仅表示已显式关闭）`,
+    )
+    process.exit(1)
+  }
   const cmdline = [cmd, ...cmdArgs].join(' ')
   const label = opts.label ?? cmdline
   return new Promise((resolveRun) => {
@@ -381,6 +408,7 @@ function runCapture(cmd, cmdArgs, cwd, opts = {}) {
       resolveRun({ cmd: cmdline, ms: Date.now() - startedAt, ...result })
     }
 
+    // 只有「已显式关闭」（timeoutMs === 0，来自 none/off/VERIFY_NO_TIMEOUT=1）才走无上限分支。
     if (timeoutMs > 0) {
       timer = setTimeout(() => {
         killChildTree(child.pid, 'SIGKILL')
@@ -393,7 +421,7 @@ function runCapture(cmd, cmdArgs, cwd, opts = {}) {
           error:
             `命令超过单步上限 ${secs(timeoutMs)} 仍未返回，已强制终止其进程组（含孙进程）。\n` +
             `  命令：${cmdline}（cwd: ${cwd}）\n` +
-            `  放宽单步上限：VERIFY_STEP_TIMEOUT=<秒>；完全关闭超时：VERIFY_NO_TIMEOUT=1`,
+            `  放宽单步上限：VERIFY_STEP_TIMEOUT=<秒>；显式关闭该上限：VERIFY_STEP_TIMEOUT=none`,
         })
       }, timeoutMs)
     }
@@ -1545,7 +1573,7 @@ function printHelp() {
   log('  --json          配合 --list 输出机器可读清单（供 scripts/check-gate-parity.mjs 校验）')
   log('  --only <id>     只跑单项（可重复；id 见下）')
   log('  --plugin <name> 只跑该插件的 test/--check（可重复）')
-  log('  --timeout <sec> 覆盖整体超时上限（秒；0 = 关闭）')
+  log('  --timeout <sec> 覆盖整体超时上限（秒；none = 显式关闭）')
   log('  --audit         额外执行 npm audit（默认跳过：本地 registry 可能不支持 audit API）')
   log('  --mutation      额外执行 stryker 变异测试（默认跳过：约 20s）')
   log('  --list          列出检查项 id')
@@ -1554,10 +1582,15 @@ function printHelp() {
   log('默认跳过（CI 强制，本地可显式开启）: ' + OPTIONAL_CHECKS.join(' / '))
   log('环境变量: VERIFY_CONCURRENCY=<1-8> 覆盖插件测试并发度（默认 6）')
   log('           VERIFY_CHECK_CONCURRENCY=<1-8> 覆盖检查项并发度（默认 4）')
-  log(`           VERIFY_TIMEOUT=<秒> 整体超时上限（当前 ${totalTimeoutSec === 0 ? '已关闭' : `${totalTimeoutSec}s`}）`)
   log(
-    `           VERIFY_STEP_TIMEOUT=<秒> 单个子进程超时（当前 ${stepTimeoutSec === 0 ? '已关闭' : `${stepTimeoutSec}s`}）`,
+    `           VERIFY_TIMEOUT=<秒> 整体超时上限（当前 ${totalTimeoutSec === 0 ? '已显式关闭' : `${totalTimeoutSec}s`}）`,
   )
-  log('           VERIFY_NO_TIMEOUT=1 关闭全部超时；VERIFY_NO_RETRY=1 关闭「并发冲突 → 串行复测」')
+  log(
+    `           VERIFY_STEP_TIMEOUT=<秒> 单个子进程超时（当前 ${stepTimeoutSec === 0 ? '已显式关闭' : `${stepTimeoutSec}s`}）`,
+  )
+  log('           0 / 负数 / 空 / 非数字一律报错（fail-closed）；「无上限」只能显式写 none / off')
+  log(
+    '           VERIFY_NO_TIMEOUT=1 关闭整体墙钟上限（单步仍默认 120s）；VERIFY_NO_RETRY=1 关闭「并发冲突 → 串行复测」',
+  )
   log('超时行为: 单步超时杀该步进程组并判该步失败；整体超时打印「卡在哪一步」后以退出码 124 结束')
 }

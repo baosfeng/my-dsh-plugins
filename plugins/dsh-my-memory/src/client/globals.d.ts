@@ -26,7 +26,8 @@ declare namespace React {
 declare const icon: Record<string, (size?: number) => ReactNode>
 
 // ── ui（client.src.js 里 require('@deepseek-ai/dsh-client-ui-primitives')）──
-declare const ui: Record<string, unknown>
+// ui-fallback part 会把它归一化成「逐项兜底」的安全表，故为 let。
+declare let ui: Record<string, unknown>
 
 // ── CommonJS（factory 作用域的 module/exports/require）───────────────────
 declare const exports: Record<string, unknown>

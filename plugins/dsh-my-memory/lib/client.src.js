@@ -43,6 +43,7 @@ window.__ModuleLoader__.load({
     __PART_STYLES__
     __PART_API__
     __PART_ICONS__
+    __PART_UI_FALLBACK__
     __PART_UTILS__
     __PART_CONFIRM_UI__
     __PART_VIEW_ROWS__

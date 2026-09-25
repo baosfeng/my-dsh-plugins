@@ -50,12 +50,16 @@ const stubbed = {
   })(),
 }
 
-// ── 官方组件库 stub（issue #143 试点：模拟真实渲染结构）──────────────────
+// ── 官方组件库 stub：只暴露宿主 0.1.7-rc.2 真实存在的导出 ────────────────
+// 防回归要点（issue：settings.plugins.tab 白屏）：stub 必须复刻宿主的真实
+// 导出集，否则测试会替宿主补齐并不存在的导出、把真实缺陷掩盖成绿色。
+// @deepseek-ai/dsh-client-ui-primitives@0.1.7-rc.2 的 279 个导出里，本插件
+// 只用到 Button / Input / Pill；官方图标导出是 IconXxxOutlineMedium /
+// IconXxxOutlineRegular，**没有** IconRefreshOutline14 这类数字后缀名。
 // Button → <button type=button data-ui=button className=... {...rest}>（icon
 // 与 children 直接作为子节点）；Input → <span data-ui=input className=...>
 // <input {...rest}/></span>（className 在 wrapper，原生属性在内部 input）；
-// Pill → 有 onClick 渲染 button、否则 span（data-ui=pill，className 透传）；
-// 图标 → <svg data-icon=.../>。data-ui 标记供「官方组件被使用」断言。
+// Pill → 有 onClick 渲染 button、否则 span（data-ui=pill，className 透传）。
 const uiPrimitives = {
   Button: ({ variant: _variant, size: _size, icon, className, children, ...rest }) =>
     createElement('button', { type: 'button', 'data-ui': 'button', className, ...rest }, icon, children),
@@ -65,18 +69,46 @@ const uiPrimitives = {
     onClick
       ? createElement('button', { type: 'button', 'data-ui': 'pill', className, onClick, ...rest }, children)
       : createElement('span', { 'data-ui': 'pill', className }, children),
-  IconRefreshOutline14: (props) => createElement('svg', { 'data-icon': 'refresh', ...props }),
-  IconFolderOpenOutline16: (props) => createElement('svg', { 'data-icon': 'folder', ...props }),
-  IconCheckOutline16: (props) => createElement('svg', { 'data-icon': 'check', ...props }),
-  IconPlusOutline16: (props) => createElement('svg', { 'data-icon': 'plus', ...props }),
-  IconChevronDownOutline14: (props) => createElement('svg', { 'data-icon': 'chevron-down', ...props }),
-  IconCloseOutline16: (props) => createElement('svg', { 'data-icon': 'close', ...props }),
 }
 
-/** Render the tab component once (hooks restart at index 0 each render). */
+/**
+ * 防回归（React error #130）：require 成功 ≠ 每个导出都存在。
+ * 遍历渲染树（展开函数组件），断言不存在 `undefined` / 非法元素类型——
+ * 宿主 0.1.7-rc.2 下 `createElement(ui.IconRefreshOutline14)` 正是
+ * "Element type is invalid … got: undefined" 导致整块内容区白屏。
+ */
+function assertRenderableTypes(node, path = 'tab[settings.plugins.tab]') {
+  if (node === null || node === undefined || typeof node === 'boolean') return
+  if (typeof node === 'string' || typeof node === 'number') return
+  if (Array.isArray(node)) {
+    node.forEach((child, i) => assertRenderableTypes(child, `${path}[${i}]`))
+    return
+  }
+  const type = node.type
+  if (type === undefined || type === null) {
+    throw new Error(`React error #130: Element type is invalid at ${path} (got: ${String(type)})`)
+  }
+  if (typeof type === 'string') {
+    assertRenderableTypes(node.props?.children, `${path}<${type}>`)
+    return
+  }
+  if (typeof type === 'function') {
+    assertRenderableTypes(type(node.props ?? {}), `${path}<${type.name || 'anonymous'}>`)
+    return
+  }
+  throw new Error(`React error #130: Element type is invalid at ${path} (got: ${typeof type})`)
+}
+
+/** Render the tab component once (hooks restart at index 0 each render).
+ *  每次渲染都验证元素类型合法（校验用独立渲染，hookIndex 复位，既有断言不受影响）。 */
 function renderView() {
   hookIndex = 0
-  return capturedTab.component({})
+  const tree = capturedTab.component({})
+  const afterRender = hookIndex
+  hookIndex = 0
+  assertRenderableTypes(capturedTab.component({}))
+  hookIndex = afterRender
+  return tree
 }
 
 // ── browser globals ────────────────────────────────────────────────────────
@@ -220,11 +252,13 @@ function countUi(node, marker) {
   return count + countUi(props.children, marker)
 }
 
-/** Count official-icon markers (data-icon) in the tree (issue #143 试点). */
+/** Count locally-fallbacked icon markers (data-ui-icon=local:*) in the tree。
+ *  宿主 0.1.7-rc.2 没有 IconRefreshOutline14 / IconFolderOpenOutline16 等导出，
+ *  这些图标由 ui-fallback part 用 dsh-shared 的本地图标集兜底渲染。 */
 function countIcon(node, name) {
   if (node === null || typeof node !== 'object') return 0
   const props = node.props ?? {}
-  let count = props['data-icon'] === name ? 1 : 0
+  let count = props['data-ui-icon'] === `local:${name}` ? 1 : 0
   if (Array.isArray(node)) {
     for (const c of node) count += countIcon(c, name)
     return count
@@ -330,8 +364,9 @@ assert.ok(hasIcon(tree2), 'view renders inline svg icons')
 assert.ok(countUi(tree2, 'input') >= 3, 'official Input used (path + both add inputs)')
 assert.ok(countUi(tree2, 'pill') >= 2, 'official Pill used (section badges + sort)')
 assert.ok(countUi(tree2, 'button') >= 2, 'official Button used (load + refresh)')
-assert.ok(countIcon(tree2, 'refresh') >= 1, 'official refresh icon used')
-assert.ok(countIcon(tree2, 'folder') >= 1, 'official folder icon used')
+// 图标：宿主 0.1.7-rc.2 缺这几个导出 → 必须由 ui-fallback 用本地图标集兜底渲染
+assert.ok(countIcon(tree2, 'refresh') >= 1, 'refresh icon rendered via local fallback')
+assert.ok(countIcon(tree2, 'folder') >= 1, 'folder icon rendered via local fallback')
 
 const listCalls = fetchCalls.filter((c) => c.url.startsWith('/my-memory/api/memory') && c.options === undefined)
 assert.equal(listCalls.length, 1, 'initial load fetches only the global scope')

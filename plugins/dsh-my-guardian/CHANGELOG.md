@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-09-25
+
+### 变更
+
+- fix(guardian): #407 依赖预检解析 profiles 根宿主包与子路径导出 (#412)
+- fix(dsh-my-guardian): 适配 0.1.7 HMR 重构，取证不绑包名并登记退役事件
+- fix(test): 补测试临时目录配对清理，加有界兜底清扫防陈旧残留
+
 ## [Unreleased]
 
 ### 变更

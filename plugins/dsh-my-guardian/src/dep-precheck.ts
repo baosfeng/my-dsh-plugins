@@ -62,12 +62,27 @@ export function findModuleDir(nmRoot: string, packageName: string): string | nul
   return existsSync(join(dir, 'package.json')) ? dir : null
 }
 
-// Resolve a dependency from the plugin's nested node_modules or the profile
-// node_modules (hoisted installs). Returns the dir or null when absent.
+// Base package of a specifier: 'pkg' -> 'pkg', '@scope/pkg' -> '@scope/pkg',
+// 'pkg/sub' -> 'pkg', '@scope/pkg/sub' -> '@scope/pkg'. Peer specs are package
+// roots today, but resolving the base keeps the lookup correct for any spec.
+export function basePackage(spec: string): string {
+  const parts = spec.split('/')
+  return spec.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]
+}
+
+// Resolve a dependency from the plugin's nested node_modules, the profile
+// node_modules (hoisted installs), or the profiles-root node_modules where the
+// harness installs its host-provided @deepseek-ai/* packages. The pre-check
+// previously stopped at the profile dir, so every plugin declaring a host
+// package as a peer was reported as missing even though Node resolves it by
+// walking up to $DSH_HOME/profiles/node_modules. Returns the dir or null.
 function resolveDependencyDir(profileDir: string, pluginDir: string | null, dep: string): string | null {
-  const nested = pluginDir === null ? null : findModuleDir(join(pluginDir, 'node_modules'), dep)
+  const base = basePackage(dep)
+  const nested = pluginDir === null ? null : findModuleDir(join(pluginDir, 'node_modules'), base)
   if (nested !== null) return nested
-  return findModuleDir(join(profileDir, 'node_modules'), dep)
+  const inProfile = findModuleDir(join(profileDir, 'node_modules'), base)
+  if (inProfile !== null) return inProfile
+  return findModuleDir(join(profileDir, '..', 'node_modules'), base)
 }
 
 function readPackageJson(dir: string | null): PackageJson | null {
@@ -156,7 +171,7 @@ export function checkPeerDependencies({
   profileDir: string
   pluginName: string
 }): PrecheckResult {
-  const pluginDir = findModuleDir(join(profileDir, 'node_modules'), pluginName)
+  const pluginDir = findModuleDir(join(profileDir, 'node_modules'), basePackage(pluginName))
   if (pluginDir === null)
     return skippedResult(`无法定位插件 ${pluginName}（未在 profile node_modules 找到 package.json）`)
   const pkg = readPackageJson(pluginDir)

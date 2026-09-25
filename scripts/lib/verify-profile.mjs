@@ -406,6 +406,33 @@ export function findDuplicateEntryIds(dumpOutput) {
   return [...duplicates]
 }
 
+/**
+ * 在**隔离副本**的 `cordis.patch.yml` 文本里去掉某个 entry 的 `disabled: true`（纯函数）。
+ *
+ * 用途（verify-real-profile 的 `--enable-plugins`）：生产 profile 里确实存在被
+ * `disabled: true` 的插件行（实测：guardian）——被禁用的插件「被加载但不运行」
+ * （client bundle 不进 manifest、页签不出现），功能级验证前提不成立，3c 因此 fail-closed。
+ * 手册 `skills/verifying-dsh-plugins/references/isolation-instance.md` 认可的做法是
+ * **只在隔离副本内**去掉该禁用位、生产配置一字不动；本函数把这一步变成可测的纯函数。
+ *
+ * **判据没有放宽**：调用方随后仍要过「entry 必须在组合配置中处于启用态」
+ * （checkAddonEntriesEnabled）——本函数只是让副本里它真的启用，而不是跳过检查。
+ * 未命中目标行时原样返回 `enabled: false`（fail-closed，不静默放过）。
+ *
+ * @param {string} patchText 隔离副本里 cordis.patch.yml 的文本
+ * @param {string} entryId dump-config 里的 entry id（如 `guardian`）
+ * @returns {{text: string, enabled: boolean}} 新文本（不改输入）+ 是否真的去掉了禁用位
+ */
+export function enableEntryInPatch(patchText, entryId) {
+  const text = String(patchText ?? '')
+  const id = String(entryId ?? '')
+  if (id === '') return { text, enabled: false }
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(`^- id: ${escaped}\n  disabled: true\n`, 'm')
+  if (!pattern.test(text)) return { text, enabled: false }
+  return { text: text.replace(pattern, `- id: ${id}\n`), enabled: true }
+}
+
 // ── 工作区落盘状态预置（隔离实例 GUI 前置） ────────────────────────────────
 
 /** workspace 存储单元的头部（dsh-workspace 的 domain spec：name='workspace', version=2）。 */

@@ -40,6 +40,7 @@ import {
   realpathOrNull,
   isIsoTimestamp,
   extractApiToken,
+  enableEntryInPatch,
   findDuplicateEntryIds,
   isPluginStatePath,
   presentStateDirs,
@@ -908,5 +909,53 @@ describe('重复 loader entry 检查（顶格口径）', () => {
     const script = readFileSync(join(repoRoot, 'scripts', 'verify-real-profile.mjs'), 'utf8')
     expect(script).toContain('findDuplicateEntryIds(dump.stdout)')
     expect(script).not.toContain('function entryIds(')
+  })
+})
+
+// ── 隔离副本内启用被禁用的待验插件（--enable-plugins，生产配置不动）────────
+describe('--enable-plugins：只在隔离副本内去掉禁用位', () => {
+  const PATCH = ['- id: guardian', '  disabled: true', '- id: other-plugin', '  disabled: true', '- id: memory'].join(
+    '\n',
+  )
+
+  it('① 不传参（未启用）时禁用位仍在 → 启用态门禁照样判失败（判据未被放宽）', () => {
+    const dump = ['- id: guardian', "  name: 'dsh-my-guardian'", '  disabled: true'].join('\n')
+    const res = checkAddonEntriesEnabled({ dumpOutput: dump, addons: [{ name: 'dsh-my-guardian' }] })
+    expect(res.ok).toBe(false)
+    expect(res.entries[0].reason).toContain('禁用')
+  })
+
+  it('② 传参后在副本内启用 → 只去掉目标 entry 的禁用位，别的禁用行原样保留', () => {
+    const { text, enabled } = enableEntryInPatch(PATCH, 'guardian')
+    expect(enabled).toBe(true)
+    expect(text).toContain('- id: guardian\n- id: other-plugin')
+    expect(text).toContain('- id: other-plugin\n  disabled: true')
+    expect(text).not.toContain('- id: guardian\n  disabled: true')
+  })
+
+  it('③ 启用后的组合配置判为「启用态」→ 3c 前提成立', () => {
+    const { text } = enableEntryInPatch(PATCH, 'guardian')
+    expect(text).toContain('- id: guardian')
+    const dump = ['- id: guardian', "  name: 'dsh-my-guardian'"].join('\n')
+    const res = checkAddonEntriesEnabled({ dumpOutput: dump, addons: [{ name: 'dsh-my-guardian' }] })
+    expect(res.ok).toBe(true)
+  })
+
+  it('④ 纯函数：输入文本不被就地修改（零副作用，写盘由调用方负责）', () => {
+    const before = PATCH
+    enableEntryInPatch(PATCH, 'guardian')
+    expect(PATCH).toBe(before)
+  })
+
+  it('⑤ 未命中的 entry → enabled=false 且文本原样（fail-closed，不静默放过）', () => {
+    const { text, enabled } = enableEntryInPatch(PATCH, 'not-there')
+    expect(enabled).toBe(false)
+    expect(text).toBe(PATCH)
+  })
+
+  it('脚本接线：verify-real-profile.mjs 提供 --enable-plugins 并调用纯函数', () => {
+    const script = readFileSync(join(repoRoot, 'scripts', 'verify-real-profile.mjs'), 'utf8')
+    expect(script).toContain('--enable-plugins')
+    expect(script).toContain('enableEntryInPatch(')
   })
 })

@@ -78,6 +78,7 @@ import {
   checkAddonResolution,
   checkOmittedAbsent,
   decideBootOutcome,
+  enableEntryInPatch,
   extractApiToken,
   fatalBootHits,
   findDuplicateEntryIds,
@@ -172,7 +173,16 @@ function parseArgs(args) {
     // issue #294：external 缺包演练（默认关，发版门禁 3c 默认开）
     else if (flag === '--clean-externals') result.cleanExternals = true
     else if (flag === '--omit-node-modules') result.omitNodeModules.push(value())
-    else if (flag === '--help' || flag === '-h') result.help = true
+    // issue #67 补充：在**隔离副本内**启用被生产配置禁用的待验插件（逗号分隔或重复传参）
+    else if (flag === '--enable-plugins') {
+      const raw = value()
+      result.enablePlugins = (result.enablePlugins ?? []).concat(
+        raw
+          .split(',')
+          .map((item) => item.trim())
+          .filter((item) => item !== ''),
+      )
+    } else if (flag === '--help' || flag === '-h') result.help = true
     else {
       console.error(`[verify] unknown flag: ${flag}`)
       process.exit(1)
@@ -208,7 +218,11 @@ function printHelp() {
       '  --clean-externals  缺包演练（issue #294）：从 --addons 的 dsh.client.external 自动推导\n' +
       '                     要从隔离实例 node_modules 省略的包（复现"新装用户没装 external 依赖"）。\n' +
       '                     默认关；发版门禁 release.mjs 3c 默认开。\n' +
-      '  --omit-node-modules <pkg> 显式省略某个 node_modules 条目（可重复；含 scope 展开的子条目）\n',
+      '  --omit-node-modules <pkg> 显式省略某个 node_modules 条目（可重复；含 scope 展开的子条目）\n' +
+      '  --enable-plugins <name,...> 在**隔离副本内**去掉这些插件（插件名或 entry id）的\n' +
+      '                     disabled: true，使其在组合配置中真正启用；生产 profile 一字不动。\n' +
+      '                     仅用于「插件被生产配置禁用」的场景，判据本身不放宽（entry 仍须启用）。\n' +
+      '                     默认不启用任何插件（fail-closed）。\n',
   )
 }
 
@@ -493,7 +507,7 @@ if (options.workspace !== null) {
 
 // ── 3. 配置组合检查（dump-config，与真实启动同一组合逻辑） ────────────────
 log('配置组合检查（dump-config id 唯一性）…')
-const dump = await run(dshBin, ['--profile', options.profile, '--dump-config'], {
+let dump = await run(dshBin, ['--profile', options.profile, '--dump-config'], {
   DSH_HOME: simHome,
 })
 if (!dump.ok) {
@@ -505,6 +519,39 @@ if (!dump.ok) {
 // 启用态判据同源解析）。**不得**改回"任意缩进的 id 行都算"：0.1.7-rc.2 起 dump 会展开
 // agent-preset 声明的 config.plugins 内嵌清单，与顶层 entry 同名是正常结构 ——
 // 宽缩进口径会把 34 个正常内嵌 id 判成重复，在实例启动前 fail-closed 堵死发版（实测假红）。
+// ── 3a. --enable-plugins：在**隔离副本内**去掉禁用位（生产配置不动，issue #67 补充）──
+// 被 disabled: true 的插件「被加载但不运行」→ 3c fail-closed。手册认可的做法是只在隔离
+// 副本里去掉该禁用位；本参数把它脚本化，**不放宽判据**（下面的启用态判据照旧执行）。
+// 默认不启用任何东西：不传本参数时行为与过去完全一致。
+if (options.enablePlugins !== undefined && options.enablePlugins.length > 0) {
+  const dumpEntries = parseDumpEntries(dump.stdout)
+  const patchPath = join(simProfile, 'cordis.patch.yml')
+  let patchText = existsSync(patchPath) ? readFileSync(patchPath, 'utf8') : ''
+  const justEnabled = []
+  for (const target of options.enablePlugins) {
+    const hit = dumpEntries.find((entry) => entry.name === target || entry.id === target)
+    if (hit === undefined || hit.id === null) {
+      fail(`--enable-plugins ${target}：组合配置里找不到对应 entry（插件名或 id 写错？）`)
+      await cleanup()
+      process.exit(1)
+    }
+    const outcome = enableEntryInPatch(patchText, hit.id)
+    patchText = outcome.text
+    if (outcome.enabled) justEnabled.push(hit.id)
+    else log(`--enable-plugins ${target}：副本里本就没有禁用位（entry id=${hit.id}），无需改动`)
+  }
+  if (justEnabled.length > 0) {
+    writeFileSync(patchPath, patchText)
+    log(`已在隔离副本内启用（生产 profile 未改动）: ${justEnabled.join('、')}`)
+    dump = await run(dshBin, ['--profile', options.profile, '--dump-config'], { DSH_HOME: simHome })
+    if (!dump.ok) {
+      fail(`剥离副本禁用位后 dump-config 失败: ${dump.stderr || dump.stdout || dump.error}`)
+      await cleanup()
+      process.exit(1)
+    }
+  }
+}
+
 const entries = parseDumpEntries(dump.stdout)
 const duplicates = findDuplicateEntryIds(dump.stdout)
 if (duplicates.length > 0) {

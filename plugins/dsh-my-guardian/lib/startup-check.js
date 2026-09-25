@@ -14,7 +14,7 @@
  * tree simply yields no roster and an empty report.
  */
 import { join } from 'node:path';
-import { findModuleDir, checkPeerDependencies, buildDependencyMessage } from './dep-precheck.js';
+import { findModuleDir, checkPeerDependencies, buildDependencyMessage, basePackage } from './dep-precheck.js';
 import { writeStartupIssuesFile } from './state.js';
 import { logEvent } from './events.js';
 /** Profile-node_modules root used for roster resolvability checks. */
@@ -83,19 +83,21 @@ export function isDisabledEntry(entry) {
 }
 /** Removal hint shared by every issue kind (guardian never rewrites YAML). */
 const REMOVE_HINT = '从启动名册（cordis.patch.yml / profile）中删除该条目行，或标记 disabled: true 暂缓加载';
-/** Build an unresolvable-package issue (import stage would fail). */
-function unresolvedIssue(id, name) {
+/** Build an unresolvable-package issue (import stage would fail). `installTarget`
+ * is the base package: a roster row may name a subpath export, and
+ * `dsh plugin add pkg/sub` would install the wrong thing. */
+function unresolvedIssue(id, name, installTarget) {
     return {
         type: 'unresolvable',
         entryId: id,
         name,
         message: `插件包 ${name} 无法解析（profile node_modules 中不存在），启动 import 将失败`,
-        fix: `dsh plugin add ${name}`,
+        fix: `dsh plugin add ${installTarget}`,
         remove: REMOVE_HINT,
     };
 }
 /** Build a dependency issue reusing the staged-mount pre-check result. */
-function dependencyIssue(id, name, precheck) {
+function dependencyIssue(id, name, precheck, installTarget) {
     return {
         type: 'dependency',
         entryId: id,
@@ -103,7 +105,7 @@ function dependencyIssue(id, name, precheck) {
         message: buildDependencyMessage(precheck),
         missingDeps: [...precheck.missing, ...precheck.mismatched.map((item) => item.name)],
         installHint: precheck.suggestions[0] ?? null,
-        fix: precheck.suggestions[0] ?? `dsh plugin add ${name}`,
+        fix: precheck.suggestions[0] ?? `dsh plugin add ${installTarget}`,
         remove: REMOVE_HINT,
     };
 }
@@ -133,14 +135,19 @@ function checkPluginItem(issues, item, nmRoot, profileDir) {
     const label = name !== '' ? name : id;
     if (label === '' || !label.startsWith('dsh-'))
         return;
-    const pluginDir = findModuleDir(nmRoot, label);
+    // A row may name a subpath export ('dsh-openwrite/bridge'), which is not a
+    // directory under node_modules; the installable package is the base and the
+    // export map resolves the subpath at import time. Treating the whole name
+    // as a directory produced a false "unresolvable" for every subpath row.
+    const base = basePackage(label);
+    const pluginDir = findModuleDir(nmRoot, base);
     if (pluginDir === null) {
-        issues.push(unresolvedIssue(id, label));
+        issues.push(unresolvedIssue(id, label, base));
         return;
     }
-    const precheck = checkPeerDependencies({ profileDir, pluginName: label });
+    const precheck = checkPeerDependencies({ profileDir, pluginName: base });
     if (!precheck.ok)
-        issues.push(dependencyIssue(id, label, precheck));
+        issues.push(dependencyIssue(id, label, precheck, base));
 }
 /** Append one duplicate-id issue per id seen in more than one roster row. */
 function collectDuplicateIssues(issues, byId) {

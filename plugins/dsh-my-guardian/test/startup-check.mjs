@@ -173,6 +173,25 @@ test('healthy dsh-* entry and non-dsh-* entries produce no issues', () => {
   assert.deepEqual(issues, [], 'no issues for resolvable dsh-* with satisfied peers, nor non-dsh-* entries')
 })
 
+test('subpath roster entry resolves through its base package (no unresolvable issue)', () => {
+  writePkg('dsh-openwrite', { version: '0.1.0' })
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'openwrite-bridge', name: 'dsh-openwrite/bridge', disabled: false }],
+    profileDir: dir,
+  })
+  assert.deepEqual(issues, [], 'a subpath export of an installed package is not unresolvable')
+})
+
+test('missing subpath roster entry points its fix command at the base package', () => {
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'absent-bridge', name: 'dsh-absent-base/bridge', disabled: false }],
+    profileDir: dir,
+  })
+  assert.equal(issues.length, 1)
+  assert.equal(issues[0].type, 'unresolvable')
+  assert.equal(issues[0].fix, 'dsh plugin add dsh-absent-base', 'install target is the base, never the subpath')
+})
+
 test('duplicate entry ids produce one duplicate-id issue per id', () => {
   const { issues } = checkStartupRoster({
     entries: [

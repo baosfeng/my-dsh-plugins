@@ -45,6 +45,11 @@ coverage/
 **/*设计*.md
 **/*规划*.md
 
+# 例外：发版验证清单是留痕证据，必须可提交
+# （`**/*task*.md` 会误伤 verification/dsh-task-reliability-*.md，
+#   而 release.mjs 的 `git add <清单>` 遇到被忽略的路径会整体失败、发版中断）
+!verification/*.md
+
 # scan-to-docs 补充：AI 工具链与编辑器产物
 .reasonix/
 reasonix.toml

@@ -22,6 +22,10 @@ export function logEvent(shared, type, message) {
  * （test/fixtures/host-events.json，由 scripts/host-events.mjs 从宿主源码取证：
  * `interface Events` 声明 ∪ `ctx.<emit|parallel|...>` 派发），否则必须有
  * HOST_EVENT_FALLBACKS 降级信号。新增/删除 ctx.on 时必须同步本表。
+ *
+ * 0.1.7-rc.2 起：`loader/entry-init`、`loader/partial-dispose` 仍由宿主
+ * cordis-plugin-loader 派发（有效）；`hmr/config-update-failed` 已被删除，只剩
+ * "已退役 0.1.5-rc.1 兼容"意义，实际诊断走 HOST_EVENT_FALLBACKS 的日志通道。
  */
 export const LISTENED_HOST_EVENTS = [
     'loader/entry-init',
@@ -48,8 +52,14 @@ const PENDING_DETAIL = '(error detail logged by host)';
  * 替代可观测量（逐字取证，非猜测）：0.1.5-rc.1 的 cordis-plugin-hmr 与 0.1.7-rc.2 的
  * dsh-hmr **在同一个 catch 里先打同一对 warn、然后旧版才发事件**：
  *   ctx.logger.warn('config reload at %C failed', filename); ctx.logger.warn(error)
- * （旧：cordis-plugin-hmr/lib/index.js；新：dsh-hmr/src/watch-config.ts）
+ * （旧：cordis-plugin-hmr/lib/index.js；新：packages/boot/hmr/src/watch-config.ts，
+ *   已装宿主 0.1.7-rc.2 对应 node_modules/@deepseek-ai/dsh-hmr/lib/index.js）
  * 所以结构化日志是两个宿主共有的可观测面，用它接手被删事件的诊断职责。
+ *
+ * 宿主升级到 0.1.7-rc.2 之后：已装宿主也变成 0.1.7-rc.2，`hmr/config-update-failed`
+ * 在两个通道里都不存在——该 `ctx.on` 只剩"已退役 0.1.5-rc.1 兼容"意义（注册未知
+ * 事件不报错，回退宿主仍可诊断），因此 legacySource 转为 legacyRetired 退役登记。
+ * 新宿主的诊断职责全部由结构化 warn 通道承担（marker 在参考源与已装宿主双向取证）。
  */
 export const HOST_EVENT_FALLBACKS = [
     {
@@ -57,7 +67,11 @@ export const HOST_EVENT_FALLBACKS = [
         kind: 'logger-warn',
         marker: CONFIG_FAILURE_MARKER,
         targetSource: 'packages/boot/hmr/src/watch-config.ts',
-        legacySource: 'node_modules/@deepseek-ai/cordis-plugin-hmr/lib/index.js',
+        legacyRetired: {
+            version: '0.1.5-rc.1',
+            source: 'node_modules/@deepseek-ai/cordis-plugin-hmr/lib/index.js',
+            reason: '0.1.7-rc.2 以 @deepseek-ai/dsh-hmr 取代 cordis-plugin-hmr，旧包已从已装宿主移除，双通道并存的在场取证不可复现',
+        },
     },
 ];
 /** 失败原因文本：Error 取 message、其他字符串化、未配对到时给占位。 */
@@ -148,9 +162,9 @@ function attachConfigFailureLogFallback(ctx, failures) {
 /**
  * Register the loader/HMR diagnostic listeners (R9/R10)。
  *
- * 两条通道在**两个宿主上都注册**：`hmr/config-update-failed` 在 0.1.5-rc.1 上有效、
- * 在 0.1.7-rc.2 上永不触发（注册未知事件不报错），日志通道则两个宿主都有——
- * 靠 createConfigFailureTracker 去重合并成一条诊断。
+ * 两条通道都注册：`hmr/config-update-failed` 只对已退役的 0.1.5-rc.1 有效，在
+ * 0.1.7-rc.2（当前唯一在场宿主）上永不触发（注册未知事件不报错，回退宿主仍可诊断），
+ * 当前宿主的诊断完全由日志通道承担——靠 createConfigFailureTracker 去重合并成一条。
  */
 export function attachEventListeners(ctx, shared) {
     const failures = createConfigFailureTracker(ctx, shared);

@@ -16,13 +16,20 @@
  *      `this.ctx` / `this.context` 写法——旧宿主就是用 `ctx.parallel()` 派发
  *      `hmr/config-update-failed` 的，只看 emit 会漏）
  *
+ * 取证对象是"参考源（升级目标版本）+ 已安装宿主"两个通道。宿主升级完成后两者版本
+ * 相同（0.1.7-rc.2），installed 段不再是旧宿主——旧宿主 0.1.5-rc.1 的取证坐标因此
+ * 退役，落在 fixture 的 fallbackEvidence[*].legacyRetired 里（见 src/events.ts）。
+ *
  * 用法（更新 fixture 需要参考源 + 已安装宿主同时在场）：
  *   node scripts/host-events.mjs            # 打印两宿主清单差异（不写文件）
  *   node scripts/host-events.mjs --update   # 重新取证并覆盖 fixture
+ *
+ * ⚠️ --update 只重取**事件清单**；fallbackEvidence（降级 marker 的 target/legacy 坐标
+ * 与退役登记）不自动改，跑完必须人工复核 src/events.ts 的 HOST_EVENT_FALLBACKS。
  */
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -136,6 +143,28 @@ function listLib(dir, depth = 0, out = []) {
   return out
 }
 
+/**
+ * 在已装宿主的 node_modules/@deepseek-ai/<pkg>/lib 里找含某字面量的文件。
+ *
+ * 为什么不用固定包路径：宿主会重构实现（0.1.7-rc.2 把 cordis-plugin-hmr 换成了
+ * dsh-hmr，旧路径直接消失），绑定包名/路径的取证源升级即失效。这里只绑定宿主公开的
+ * 包命名空间 @deepseek-ai/* 的编译产物，包名怎么改都能重新找到 marker。
+ * 返回 `@deepseek-ai/<pkg>/lib/<rel>` 坐标；空数组 = 宿主里不存在该字面量。
+ */
+export function findMarkerInInstalledHost(hostDir, marker) {
+  const base = join(hostDir, 'node_modules', '@deepseek-ai')
+  const hits = []
+  if (!existsSync(base)) return hits
+  for (const pkg of readdirSync(base)) {
+    const lib = join(base, pkg, 'lib')
+    if (!existsSync(lib)) continue
+    for (const file of listLib(lib)) {
+      if (readFileSync(file, 'utf8').includes(marker)) hits.push(`@deepseek-ai/${pkg}/lib/${relative(lib, file)}`)
+    }
+  }
+  return hits.sort()
+}
+
 /** 读冻结 fixture（两宿主事件清单 + 降级信号取证记录）。 */
 export function readFixture() {
   return JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'))
@@ -182,6 +211,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       if (role === 'fallbackEvidence') continue
       console.log(`  ${role} ${host.version}: ${host.events.length} 个事件`)
     }
+    console.log('⚠️ fallbackEvidence 未自动更新：复核 src/events.ts 的 HOST_EVENT_FALLBACKS 是否与在场宿主一致')
   } else {
     const fixture = readFixture()
     for (const [role, host] of Object.entries(fixture)) {

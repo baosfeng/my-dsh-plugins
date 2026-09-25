@@ -14,10 +14,17 @@
  *   ① 插件源码里每个 `ctx.on('<事件名>')` 必须命中宿主事件表，否则必须登记
  *      HOST_EVENT_FALLBACKS 降级信号（0.1.7-rc.2 上 hmr/config-update-failed 的
  *      替代可观测量是 dsh-hmr 在同一 catch 里打的结构化 warn）；
- *   ② 降级信号的 marker 字面量必须能在宿主源码里逐字取证（参考源 + 已装宿主）；
+ *   ② 降级信号的 marker 字面量必须能在宿主源码里逐字取证（参考源 + 已装宿主；
+ *      已装宿主侧扫 @deepseek-ai/<pkg>/lib，**不绑定包名**——宿主重构 HMR 包也不失效）；
  *   ③ fixture 与在场源码的版本/清单必须一致（宿主升级后强制重新取证）；
  *   ④ 降级通道行为：marker → 诊断事件（含紧随的 Error 文本）、双版本去重、不误报、
  *      logger 无 exporter 时静默降级。
+ *
+ * 宿主升级到 0.1.7-rc.2 之后：已装宿主与参考源同版本，`hmr/config-update-failed` 在
+ * 两个通道里都不存在——旧宿主取证源 cordis-plugin-hmr 随升级被删，改由
+ * HOST_EVENT_FALLBACKS[*].legacyRetired 显式登记退役（不许"文件不在场就跳过"，
+ * 否则取证强度静默降级）；该包一旦重新在场，退役登记即视为过期，必须恢复逐字取证。
+ * `loader/entry-init` / `loader/partial-dispose` 在新宿主仍由 cordis-plugin-loader 派发。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
@@ -28,6 +35,7 @@ import * as guardian from '../lib/events.js'
 import {
   extractFromInstalledHost,
   extractFromSourceTree,
+  findMarkerInInstalledHost,
   installedHostDir,
   readFixture,
   referenceDir,
@@ -137,28 +145,61 @@ test('降级信号登记与 fixture 取证记录一一对应，且 marker 能在
       )
     }
     const installed = installedHostDir()
-    if (installed !== null) {
-      const source = readFileSync(join(installed, evidence.legacy), 'utf8')
+    if (installed === null) continue
+    // 旧宿主取证：包仍在场 ⇒ 逐字比对（原强校验）；已随升级移除 ⇒ 必须有显式退役登记。
+    const legacyPath = fallback.legacySource ?? fallback.legacyRetired?.source
+    const legacyInPlace = legacyPath !== undefined && existsSync(join(installed, legacyPath))
+    if (legacyInPlace) {
+      assert.equal(
+        evidence.legacyRetired,
+        undefined,
+        `旧宿主包 ${legacyPath} 又在场：退役登记已过期，必须恢复 legacySource 与逐字取证`,
+      )
+      const source = readFileSync(join(installed, legacyPath), 'utf8')
       assert.ok(
         source.includes(evidence.marker),
-        `${evidence.legacy} 里找不到 marker：0.1.5-rc.1 上"日志 + 事件"双通道并存（去重前提）不再成立`,
+        `${legacyPath} 里找不到 marker：0.1.5-rc.1 上"日志 + 事件"双通道并存（去重前提）不再成立`,
       )
+    } else {
+      const retired = evidence.legacyRetired
+      assert.ok(
+        retired !== undefined,
+        `${fallback.event} 的旧宿主取证源 ${legacyPath ?? '(未登记)'} 不在场且无 legacyRetired 退役登记——` +
+          '取证静默降级：必须在 src/events.ts 与 fixture 里显式登记退役事实',
+      )
+      assert.equal(fallback.legacyRetired?.version, retired.version, '退役宿主版本必须与取证记录一致')
+      assert.equal(fallback.legacyRetired?.source, retired.source, '退役宿主取证坐标必须与取证记录一致')
+      assert.equal(fallback.legacyRetired?.reason, retired.reason, '退役原因必须与取证记录一致')
     }
+    // 当前宿主（升级后与参考源同版本）里的 marker 也必须逐字可取，且不绑定包名：
+    // 宿主把 cordis-plugin-hmr 换成 dsh-hmr 这类重构不该让这条取证失效。
+    const hits = findMarkerInInstalledHost(installed, evidence.marker)
+    assert.ok(
+      hits.length > 0,
+      `已装宿主 ${versionOf(installed)} 的 @deepseek-ai/*/lib 里找不到 marker "${evidence.marker}"：降级通道失效`,
+    )
   }
 })
 
-test('升级目标宿主确实删了事件、当前宿主确实有该事件（双版本依据）', () => {
+test('目标宿主没有 hmr/config-update-failed：必须有降级通道 + 退役登记（不许留无主死代码）', () => {
   const fixture = readFixture()
   assert.ok(
-    fixture.installed.events.includes('hmr/config-update-failed'),
-    `${fixture.installed.version} 已不再声明/派发 hmr/config-update-failed：宿主升级已完成，该监听 + 降级登记成了死代码——` +
-      '要么删掉 ctx.on 与 HOST_EVENT_FALLBACKS 条目（并重跑 node scripts/host-events.mjs --update），要么明确保留对旧宿主的兼容意图',
+    !fixture.reference.events.includes('hmr/config-update-failed'),
+    `${fixture.reference.version} 仍在声明/派发 hmr/config-update-failed：宿主并未删除该事件，降级登记需复核`,
   )
   assert.ok(
-    !fixture.reference.events.includes('hmr/config-update-failed'),
-    `${fixture.reference.version} 已删除 hmr/config-update-failed：该监听在新宿主上静默失效`,
+    !fixture.installed.events.includes('hmr/config-update-failed'),
+    `${fixture.installed.version} 仍在声明/派发 hmr/config-update-failed：fixture 与在场宿主不一致（重跑 --update），` +
+      '或确实存在双版本宿主——此时旧宿主包仍应在场，必须恢复 legacySource 逐字取证（退役登记视为过期）',
   )
-  assert.equal(FALLBACKS.find((fallback) => fallback.event === 'hmr/config-update-failed')?.kind, 'logger-warn')
+  const fallback = FALLBACKS.find((item) => item.event === 'hmr/config-update-failed')
+  assert.equal(fallback?.kind, 'logger-warn', '被删事件的诊断职责必须由结构化 warn 通道接手')
+  assert.ok(
+    fallback?.legacyRetired !== undefined,
+    '两个通道都不声明/派发该事件：保留的 ctx.on 只剩"已退役宿主兼容"，必须显式登记 legacyRetired；' +
+      '若不再需要兼容，则删掉 ctx.on 与 HOST_EVENT_FALLBACKS 条目并同步 LISTENED_HOST_EVENTS',
+  )
+  assert.ok(LISTENED.includes('hmr/config-update-failed'), 'LISTENED_HOST_EVENTS 必须登记该监听（否则监听表漏项）')
 })
 
 test('fixture 与在场源码版本/清单一致（宿主升级后强制重新取证）', () => {

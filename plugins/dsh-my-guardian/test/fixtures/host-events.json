@@ -111,7 +111,7 @@
     ]
   },
   "installed": {
-    "version": "0.1.5-rc.1",
+    "version": "0.1.7-rc.2",
     "source": "已安装宿主：node_modules/@deepseek-ai/*/lib 的 .d.ts 声明与 .js 派发",
     "events": [
       "agent-loop/config-start-failed",
@@ -126,7 +126,6 @@
       "agent/pre-step",
       "agent/request",
       "agent/request-error",
-      "agent/session-start",
       "agent/status",
       "agent/turn-stopping",
       "api-session/activity",
@@ -134,10 +133,13 @@
       "api-session/error",
       "api-session/removed",
       "api-session/status",
+      "app-boot/config-reload",
       "approval/request",
       "authorization/settled",
       "command/executed",
       "commands/change",
+      "compaction/summary-error",
+      "connection/request",
       "connection/reset",
       "cordis/dynamic-package",
       "cordis/dynamic-retract",
@@ -147,6 +149,9 @@
       "cordis/request-run-resolved",
       "credentials/record-updated",
       "credentials/reference-updated",
+      "deepseek-account/model-sign-in-required",
+      "deepseek-account/session-expired",
+      "deepseek-account/signed-out",
       "domain/changed",
       "exit",
       "feedback/committed",
@@ -156,7 +161,6 @@
       "goal/activation-changed",
       "goal/changed",
       "hmr/change",
-      "hmr/config-update-failed",
       "hmr/reload",
       "internal/config",
       "internal/dispatch",
@@ -173,14 +177,19 @@
       "loader/entry-init",
       "loader/partial-dispose",
       "loader/patch-context",
+      "loader/volatile-update",
       "locale/change",
+      "permission-presets/catalog-changed",
+      "plugin-manager/changed",
+      "plugin-manager/install-log",
+      "plugin-manager/install-state",
+      "schedule/changed",
       "session-telemetry/record",
       "session/created",
       "session/disposed",
       "session/event",
       "session/flush",
       "settings/document-updated",
-      "settings/updated",
       "skills/change",
       "slash/input-begin-command",
       "slash/input-consume-token",
@@ -207,7 +216,9 @@
       "workflow/end",
       "workflow/log",
       "workflow/phase",
-      "workflow/start"
+      "workflow/start",
+      "workspace/session-activity",
+      "workspace/session-stop"
     ]
   },
   "fallbackEvidence": {
@@ -215,7 +226,11 @@
       "signal": "logger-warn",
       "marker": "config reload at %C failed",
       "target": "packages/boot/hmr/src/watch-config.ts",
-      "legacy": "node_modules/@deepseek-ai/cordis-plugin-hmr/lib/index.js"
+      "legacyRetired": {
+        "version": "0.1.5-rc.1",
+        "source": "node_modules/@deepseek-ai/cordis-plugin-hmr/lib/index.js",
+        "reason": "0.1.7-rc.2 以 @deepseek-ai/dsh-hmr 取代 cordis-plugin-hmr，旧包已从已装宿主移除，双通道并存的在场取证不可复现"
+      }
     }
   }
 }

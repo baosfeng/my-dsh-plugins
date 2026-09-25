@@ -12,7 +12,7 @@
 
 - **两段式加载**：新插件先进候选区，坏插件不再拖垮 `dsh web` 启动（DSH 启动名册是 all-or-nothing，任一插件失败即整个进程起不来）。
 - **失败自动隔离**：挂载失败记录尝试次数 + 失败类型 + 错误摘要，连续失败 **3 次冻结**，需手动重试。
-- **挂载前依赖预检**：检查候选插件 `peerDependencies` 是否安装、版本是否满足，不满足标记「依赖缺失」并给安装建议，不进入挂载。
+- **挂载前依赖预检**：检查候选插件 `peerDependencies` 是否安装、版本是否满足；**硬缺失**与**版本不满足**分开成句、分开字段、分开徽标，不进入挂载。宿主提供的包（`@deepseek-ai/*`、`react`/`react-dom`）不给 `dsh plugin add` 建议（按提示执行会把宿主自有包装进 profile）。
 - **成功自动转正**：挂载成功的插件进入持久化清单，后续启动自动恢复。
 - **运行中热挂载**：运行期间往候选区加条目即自动挂载，无需重启。
 - **安全模式**：一键跳过全部候选/已转正插件，快速救回被插件搞坏的环境。
@@ -37,9 +37,9 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-guardian
 [{ "id": "my-plugin", "name": "dsh-my-plugin", "config": { "option": 1 } }]
 ```
 
-写入后自动挂载：成功则该条从候选文件移除（转正），失败则保留。面板状态：运行中（可移除）/ 待加载（安全模式等）/ 失败 ×N（重试或移除）/ 冻结（连续失败 3 次，重试解除冻结）。失败条目带失败类型徽标（依赖缺失 / 代码错误 / 其他），依赖缺失时附安装建议命令。
+写入后自动挂载：成功则该条从候选文件移除（转正），失败则保留。面板状态：运行中（可移除）/ 待加载（安全模式等）/ 失败 ×N（重试或移除）/ 冻结（连续失败 3 次，重试解除冻结）。失败条目带失败类型徽标（依赖缺失 / 版本不满足 / 代码错误 / 其他），并在存在**可执行**的修复命令时附安装建议（宿主提供的包、含空格/管道的版本范围不给命令）。
 
-**启动名册静态预检**：直接写进 `cordis.patch.yml` / profile / bundles 的插件仍由 DSH 启动时 all-or-nothing 加载，守护每次启动对名册做静态预检（包可解析、`peerDependencies` 满足、无重复 entry id），问题写入 `$DSH_HOME/guardian/startup-issues.json` 并在面板「最近事件」置顶展示；**预检只记录告警，不阻断启动**。
+**启动名册静态预检**：直接写进 `cordis.patch.yml` / profile / bundles 的插件仍由 DSH 启动时 all-or-nothing 加载，守护每次启动对名册做静态预检（包可解析、`peerDependencies` 满足、无重复 entry id），问题写入 `$DSH_HOME/guardian/startup-issues.json`（`type` 区分 `unresolvable` / `dependency-missing` / `dependency-mismatch` / `duplicate-id`，依赖字段分 `missingDeps` / `mismatchedDeps`）并在面板「最近事件」置顶展示；**预检只记录告警，不阻断启动**。
 
 ## 配置
 

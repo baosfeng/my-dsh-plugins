@@ -15,7 +15,14 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { satisfies } from '../lib/dep-version.js'
-import { basePackage, checkPeerDependencies, buildDependencyMessage, classifyFailure } from '../lib/dep-precheck.js'
+import {
+  basePackage,
+  checkPeerDependencies,
+  buildDependencyMessage,
+  classifyFailure,
+  dependencyFailureType,
+  isHostProvided,
+} from '../lib/dep-precheck.js'
 import { apply } from '../lib/index.js'
 
 const createdDirs = []
@@ -78,17 +85,74 @@ test('precheck: missing required dependency fails with an install suggestion', (
   assert.deepEqual(result.suggestions, ['dsh plugin add dsh-shared'])
 })
 
-test('precheck: version outside the range fails', () => {
+test('precheck: version outside the range fails and is not reported as missing (#410)', () => {
   const dir = freshDir()
-  writePlugin(dir, 'dsh-app', { peerDependencies: { react: '^18.2.0' } })
-  writeDep(dir, 'react', '17.0.0')
+  writePlugin(dir, 'dsh-app', { peerDependencies: { 'dsh-shared': '^0.1.8' } })
+  writeDep(dir, 'dsh-shared', '0.2.0')
   const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-app' })
   assert.equal(result.ok, false)
+  assert.deepEqual(result.missing, [], 'installed-but-wrong-version is a mismatch, never missing')
   assert.equal(result.mismatched.length, 1)
-  assert.equal(result.mismatched[0].name, 'react')
-  assert.equal(result.mismatched[0].expected, '^18.2.0')
-  assert.equal(result.mismatched[0].found, '17.0.0')
-  assert.deepEqual(result.suggestions, ['dsh plugin add react@^18.2.0'])
+  assert.equal(result.mismatched[0].name, 'dsh-shared')
+  assert.equal(result.mismatched[0].expected, '^0.1.8')
+  assert.equal(result.mismatched[0].found, '0.2.0')
+  assert.deepEqual(result.suggestions, ['dsh plugin add dsh-shared@^0.1.8'])
+})
+
+// ── #410: 出口层把 missing / mismatch 分开，宿主提供的包不给安装建议 ────────
+test('#410: host-provided peer mismatch gets its own sentence and no install command', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-pet', { peerDependencies: { react: '^18.2.0' } })
+  writeDep(dir, 'react', '19.3.0')
+  const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-pet' })
+  assert.equal(result.ok, false)
+  assert.deepEqual(result.missing, [], 'react 19.3.0 is installed — it must not show up as missing')
+  assert.deepEqual(result.mismatched, [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }])
+  assert.deepEqual(result.suggestions, [], 'host-provided react: a dsh plugin add hint would install a second copy')
+  const message = buildDependencyMessage(result)
+  assert.ok(!message.includes('缺少依赖'), `mismatch must not reuse the missing wording: ${message}`)
+  assert.equal(message, '依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0（宿主提供，无需安装）')
+})
+
+test('#410: host-provided peer miss gets no install command either', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-pet', { peerDependencies: { '@deepseek-ai/dsh-llm': '^0.1.5-rc.1' } })
+  const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-pet' })
+  assert.deepEqual(result.missing, ['@deepseek-ai/dsh-llm'])
+  assert.deepEqual(result.mismatched, [])
+  assert.deepEqual(result.suggestions, [], 'a @deepseek-ai/* peer must never be installed into the profile (#407)')
+  assert.ok(!buildDependencyMessage(result).includes('dsh plugin add'), 'no install wording for host packages')
+})
+
+test('#410: a range with spaces or pipes never becomes an unexecutable command', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-mermaid-render', { peerDependencies: { 'dsh-shared': '^0.1.0 || ^0.2.0' } })
+  writeDep(dir, 'dsh-shared', '0.3.0')
+  const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-mermaid-render' })
+  assert.equal(result.mismatched.length, 1)
+  assert.deepEqual(result.suggestions, [], "'dsh plugin add x@^0.1.0 || ^0.2.0' cannot be executed — emit nothing")
+})
+
+test('isHostProvided covers @deepseek-ai/*, react / react-dom and their subpaths', () => {
+  assert.equal(isHostProvided('@deepseek-ai/dsh-llm'), true)
+  assert.equal(isHostProvided('@deepseek-ai/dsh-tools/sub'), true)
+  assert.equal(isHostProvided('react'), true)
+  assert.equal(isHostProvided('react-dom'), true)
+  assert.equal(isHostProvided('dsh-shared'), false)
+  assert.equal(isHostProvided('dsh-md-render'), false)
+})
+
+test('#410: dependencyFailureType splits the mount-failure badge', () => {
+  assert.equal(dependencyFailureType({ missing: ['dsh-shared'], mismatched: [] }), 'dependency-missing')
+  assert.equal(
+    dependencyFailureType({ missing: [], mismatched: [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }] }),
+    'dependency-mismatch',
+  )
+  assert.equal(
+    dependencyFailureType({ missing: ['a'], mismatched: [{ name: 'b', expected: '^1.0.0', found: '2.0.0' }] }),
+    'dependency-missing',
+    'both present → the hard miss wins the single badge',
+  )
 })
 
 test('precheck: optional missing dependency does not block', () => {
@@ -136,11 +200,14 @@ test('precheck: a subpath plugin name resolves through its base package', () => 
   assert.equal(result.ok, true)
 })
 
-test('buildDependencyMessage lists every problem dependency', () => {
+test('#410: buildDependencyMessage renders missing and mismatch as separate sentences', () => {
   assert.equal(buildDependencyMessage({ missing: ['dsh-shared'], mismatched: [] }), '缺少依赖 dsh-shared（请先安装）')
   assert.equal(
-    buildDependencyMessage({ missing: ['a', 'b'], mismatched: [{ name: 'c' }] }),
-    '缺少依赖 a（请先安装）；缺少依赖 b（请先安装）；缺少依赖 c（请先安装）',
+    buildDependencyMessage({
+      missing: ['a', 'b'],
+      mismatched: [{ name: 'c', expected: '^1.0.0', found: '2.0.0' }],
+    }),
+    '缺少依赖 a（请先安装）；缺少依赖 b（请先安装）；依赖版本不满足 c：声明 ^1.0.0，当前 2.0.0',
   )
   assert.equal(buildDependencyMessage({ missing: [], mismatched: [] }), '依赖预检失败')
 })
@@ -237,10 +304,38 @@ test('mount is skipped and quarantine records a dependency failure', async () =>
   const state = readState(dir)
   assert.ok(state.staged['dsh-bad'], 'entry kept in staged state')
   assert.equal(state.staged['dsh-bad'].attempts, 1, 'one attempt recorded')
-  assert.equal(state.staged['dsh-bad'].failureType, 'dependency', 'failures classified as dependency')
+  assert.equal(state.staged['dsh-bad'].failureType, 'dependency-missing', 'hard miss classified as dependency-missing')
   assert.ok(state.staged['dsh-bad'].lastError.includes('缺少依赖 dsh-shared'), 'message names the missing dep')
   assert.equal(state.staged['dsh-bad'].installHint, 'dsh plugin add dsh-shared', 'install suggestion recorded')
   assert.deepEqual(state.staged['dsh-bad'].missingDeps, ['dsh-shared'], 'deps listed')
+  assert.deepEqual(state.staged['dsh-bad'].mismatchedDeps, [], 'no mismatches recorded')
+  assert.deepEqual(fake.created, [], 'entry NOT mounted')
+  await shutdown(ctx)
+})
+
+test('#410: a mismatched candidate records dependency-mismatch and no install hint for host packages', async () => {
+  const dir = freshDir()
+  process.env.DSH_HOME = dir
+  writePlugin(dir, 'dsh-mismatch', { peerDependencies: { react: '^18.2.0' } })
+  writeDep(dir, 'react', '19.3.0')
+  writeFileSync(
+    join(dir, 'cordis.staged.json'),
+    JSON.stringify([{ id: 'dsh-mismatch', name: 'dsh-mismatch' }], null, 2),
+  )
+  const fake = makeFake(dir)
+  const ctx = boot(fake)
+  await waitFor(() => readStateOrNull(dir)?.staged?.['dsh-mismatch'] !== undefined)
+
+  const record = readState(dir).staged['dsh-mismatch']
+  assert.equal(record.failureType, 'dependency-mismatch', 'version mismatch has its own failure class')
+  assert.deepEqual(record.missingDeps, [], 'an installed-but-wrong version is never listed as missing')
+  assert.deepEqual(record.mismatchedDeps, [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }])
+  assert.equal(record.installHint, null, 'host-provided react must not be handed an install command')
+  assert.equal(
+    record.lastError,
+    '依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0（宿主提供，无需安装）',
+    'the record keeps the mismatch wording, not the missing wording',
+  )
   assert.deepEqual(fake.created, [], 'entry NOT mounted')
   await shutdown(ctx)
 })

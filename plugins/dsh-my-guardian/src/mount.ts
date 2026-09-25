@@ -10,8 +10,13 @@ import { dirname } from 'node:path'
 import { FREEZE_LIMIT, errorSnip, loadState, readStagedFile, writeStagedFile } from './state.js'
 import type { SharedContext, EntryRecord } from './state.js'
 import { logEvent } from './events.js'
-import { checkPeerDependencies, buildDependencyMessage, classifyFailure } from './dep-precheck.js'
-import type { PrecheckResult } from './dep-precheck.js'
+import {
+  checkPeerDependencies,
+  buildDependencyMessage,
+  classifyFailure,
+  dependencyFailureType,
+} from './dep-precheck.js'
+import type { PrecheckResult, MismatchIssue } from './dep-precheck.js'
 import type { LoaderTree, LoaderService } from './types.js'
 
 interface RootTree {
@@ -129,9 +134,11 @@ async function mountWithState(
   const precheck = precheckEntry(shared, name)
   if (precheck !== null) {
     recordFailure(shared, recordKey, id, name, entry, record, {
-      failureType: 'dependency',
+      // #410: 硬缺失与版本不满足是两个失败分类；结构化字段也分开（不再互相污染）
+      failureType: dependencyFailureType(precheck),
       message: buildDependencyMessage(precheck),
-      missingDeps: [...precheck.missing, ...precheck.mismatched.map((item) => item.name)],
+      missingDeps: precheck.missing,
+      mismatchedDeps: precheck.mismatched,
       installHint: precheck.suggestions[0] ?? null,
     })
     return 'failed'
@@ -175,6 +182,7 @@ async function promote(
       frozen: false,
       failureType: null,
       missingDeps: [],
+      mismatchedDeps: [],
       installHint: null,
       promotedAt: Date.now(),
     }
@@ -193,11 +201,33 @@ async function promote(
       frozen: false,
       failureType: null,
       missingDeps: [],
+      mismatchedDeps: [],
       installHint: null,
     } as EntryRecord
   }
   logEvent(shared, 'promote', `mounted ${name} (${id})`)
   shared.persistSoon()
+}
+
+/** Failure information recorded by the mount pipeline. */
+interface FailureInfo {
+  failureType?: string
+  message: string
+  missingDeps?: string[]
+  mismatchedDeps?: MismatchIssue[]
+  installHint?: string | null
+}
+
+/** 失败记录的分类字段（#410：真缺失与版本不满足各自独立，互不混写）。 */
+function failureClassification(name: string, entry: { config?: unknown }, info: FailureInfo): Partial<EntryRecord> {
+  return {
+    name,
+    config: entry.config ?? undefined,
+    failureType: info.failureType ?? 'code',
+    missingDeps: info.missingDeps ?? [],
+    mismatchedDeps: info.mismatchedDeps ?? [],
+    installHint: info.installHint ?? null,
+  }
 }
 
 /** Failure path: attempts counter + error recorded; freeze at the limit. */
@@ -208,21 +238,17 @@ function recordFailure(
   name: string,
   entry: { config?: unknown },
   record: Partial<EntryRecord>,
-  info: { failureType?: string; message: string; missingDeps?: string[]; installHint?: string | null },
+  info: FailureInfo,
 ): void {
   const attempts = (record.attempts ?? 0) + 1
   const frozen = attempts >= FREEZE_LIMIT
   const message = typeof info.message === 'string' ? info.message : String(info.message ?? info)
   shared.state[recordKey][id] = {
-    name,
-    config: entry.config ?? undefined,
+    ...failureClassification(name, entry, info),
     attempts,
     lastError: errorSnip(message),
     lastFailedAt: Date.now(),
     frozen,
-    failureType: info.failureType ?? 'code',
-    missingDeps: info.missingDeps ?? [],
-    installHint: info.installHint ?? null,
     ...(recordKey === 'promoted' ? { promotedAt: record.promotedAt } : {}),
   } as EntryRecord
   logEvent(shared, frozen ? 'freeze' : 'quarantine', `${name} (${id}) failed ${attempts}x: ${message}`)
@@ -295,6 +321,7 @@ async function retryEntry(shared: SharedContext, id: string): Promise<string | n
       frozen: false,
       failureType: null,
       missingDeps: [],
+      mismatchedDeps: [],
       installHint: null,
     }
     shared.persistSoon()

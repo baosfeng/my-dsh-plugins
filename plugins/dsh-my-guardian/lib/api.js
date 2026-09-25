@@ -170,6 +170,7 @@ function entrySnapshot(shared, id, record, isStaged) {
         lastFailedAt: record.lastFailedAt,
         failureType: record.failureType ?? null,
         missingDeps: record.missingDeps ?? [],
+        mismatchedDeps: record.mismatchedDeps ?? [],
         installHint: record.installHint ?? null,
         status,
     };

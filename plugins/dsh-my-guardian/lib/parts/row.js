@@ -128,6 +128,26 @@ function RowActions({ entry, busy, onRetry, onRemove }) {
     ),
   )
 }
+/** 依赖类失败（#410 分两类；'dependency' 是 pre-#410 的旧分类，含 mount 期 module 解析失败）。 */
+function isDependencyFailure(type) {
+  return type === 'dependency' || type === 'dependency-missing' || type === 'dependency-mismatch'
+}
+/** 依赖失败行展示的安装命令；其他失败类型、空命令、宿主提供的包（无命令）都不展示（#410）。 */
+function installCommandOf(entry) {
+  if (!isDependencyFailure(entry.failureType)) return null
+  return typeof entry.installHint === 'string' && entry.installHint !== '' ? entry.installHint : null
+}
+/** 版本不满足明细行（#410）：声明范围 vs 实装版本；无明细时不渲染。 */
+function MismatchHint({ entry }) {
+  const labels = mismatchLabels(entry)
+  if (labels.length === 0) return null
+  return createElement(
+    'div',
+    { className: 'dsh-my-guardian-mismatch' },
+    createElement('span', { className: 'dsh-my-guardian-mismatch-label' }, strings.failureDependencyMismatch()),
+    labels.map((label, index) => createElement('code', { key: index }, label)),
+  )
+}
 /** 冻结行提示（连败停止自动重试，需手动操作）。 */
 function FrozenHint({ status }) {
   if (status !== 'frozen') return null
@@ -144,9 +164,7 @@ function EntryRow({ entry, source, onAction }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const hasError = typeof entry.lastError === 'string' && entry.lastError !== ''
-  const isDepFailure = entry.failureType === 'dependency'
-  const installHint =
-    isDepFailure && typeof entry.installHint === 'string' && entry.installHint !== '' ? entry.installHint : null
+  const installHint = installCommandOf(entry)
   const run = (kind) => {
     setBusy(true)
     Promise.resolve(onAction(kind, entry)).finally(() => setBusy(false))
@@ -157,6 +175,7 @@ function EntryRow({ entry, source, onAction }) {
     createElement(RowHead, { entry, source }),
     createElement(RowMeta, { entry }),
     createElement(FrozenHint, { status: entry.status }),
+    createElement(MismatchHint, { entry }),
     installHint
       ? createElement(
           'div',

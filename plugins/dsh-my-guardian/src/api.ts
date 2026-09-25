@@ -5,6 +5,7 @@
  */
 import { readStagedFile, writeStagedFile } from './state.js'
 import type { SharedContext, EntryRecord } from './state.js'
+import type { MismatchIssue } from './dep-precheck.js'
 import type { DshContext, ServerRequest, ServerResponse, WebServerService, WebRuntimeService } from './types.js'
 import { isTrustedApiRequest, readJsonBody, writeJson } from 'dsh-shared'
 
@@ -21,8 +22,11 @@ interface EntrySnapshot {
   frozen: boolean
   lastError: string | null
   lastFailedAt: number | null
+  /** 'dependency-missing' / 'dependency-mismatch' / 'code' / 'other'（#410 起细分）。 */
   failureType: string | null
   missingDeps: string[]
+  /** 版本不满足的 peer：声明范围 vs 实装版本（#410，与 missingDeps 分开）。 */
+  mismatchedDeps: MismatchIssue[]
   installHint: string | null
   status: string
   promotedAt?: number
@@ -241,6 +245,7 @@ function entrySnapshot(shared: SharedContext, id: string, record: EntryRecord, i
     lastFailedAt: record.lastFailedAt,
     failureType: record.failureType ?? null,
     missingDeps: record.missingDeps ?? [],
+    mismatchedDeps: record.mismatchedDeps ?? [],
     installHint: record.installHint ?? null,
     status,
   }

@@ -14,7 +14,13 @@
  * tree simply yields no roster and an empty report.
  */
 import { join } from 'node:path'
-import { findModuleDir, checkPeerDependencies, buildDependencyMessage, basePackage } from './dep-precheck.js'
+import {
+  findModuleDir,
+  checkPeerDependencies,
+  buildDependencyMessage,
+  dependencyFailureType,
+  basePackage,
+} from './dep-precheck.js'
 import type { PrecheckResult } from './dep-precheck.js'
 import { writeStartupIssuesFile } from './state.js'
 import type { SharedContext, StartupIssue, StartupIssuesPayload } from './state.js'
@@ -106,16 +112,23 @@ function unresolvedIssue(id: string, name: string, installTarget: string): Start
   }
 }
 
-/** Build a dependency issue reusing the staged-mount pre-check result. */
-function dependencyIssue(id: string, name: string, precheck: PrecheckResult, installTarget: string): StartupIssue {
+/**
+ * Build a dependency issue reusing the staged-mount pre-check result. #410：硬缺失
+ * 与版本不满足分成两个 issue 类型，结构化字段各自独立；没有可安全执行的修复命令
+ * 时 fix 为 null——宿主提供的包（@deepseek-ai/*、react/react-dom）给 `dsh plugin
+ * add …` 只会把宿主自有包的另一份拷贝装进 profile（#407），不如不给。
+ */
+function dependencyIssue(id: string, name: string, precheck: PrecheckResult): StartupIssue {
+  const hint = precheck.suggestions[0] ?? null
   return {
-    type: 'dependency',
+    type: dependencyFailureType(precheck),
     entryId: id,
     name,
     message: buildDependencyMessage(precheck),
-    missingDeps: [...precheck.missing, ...precheck.mismatched.map((item) => item.name)],
-    installHint: precheck.suggestions[0] ?? null,
-    fix: precheck.suggestions[0] ?? `dsh plugin add ${installTarget}`,
+    missingDeps: precheck.missing,
+    mismatchedDeps: precheck.mismatched,
+    installHint: hint,
+    fix: hint,
     remove: REMOVE_HINT,
   }
 }
@@ -161,7 +174,7 @@ function checkPluginItem(
     return
   }
   const precheck = checkPeerDependencies({ profileDir, pluginName: base })
-  if (!precheck.ok) issues.push(dependencyIssue(id, label, precheck, base))
+  if (!precheck.ok) issues.push(dependencyIssue(id, label, precheck))
 }
 
 /** Append one duplicate-id issue per id seen in more than one roster row. */

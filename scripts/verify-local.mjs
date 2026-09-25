@@ -87,8 +87,9 @@
  *   node scripts/verify-local.mjs --help
  *
  * 环境变量：
- *   VERIFY_CONCURRENCY=1..8   覆盖插件测试并发度（默认 6；怀疑并发冲突时设 1 串行）
- *   VERIFY_CHECK_CONCURRENCY=1..8 覆盖检查项并发度（默认 4）
+ *   VERIFY_CONCURRENCY=1..8   显式覆盖插件测试并发度（**默认自适应**：clamp(floor(核数/2),1,6)，
+ *                             load > 核数×1.5 时降为 1 串行；非法值忽略并打印提示，见下）
+ *   VERIFY_CHECK_CONCURRENCY=1..8 显式覆盖检查项并发度（同样自适应，上界 4；issue #418）
  *   VERIFY_TIMEOUT=<sec>      整体墙钟上限（默认 300；none = 显式关闭）
  *   VERIFY_STEP_TIMEOUT=<sec> 单个子进程上限（默认 min(整体上限, 120)；none = 显式关闭）
  *   VERIFY_NO_TIMEOUT=1       等价于 VERIFY_TIMEOUT=none（只关整体上限，单步仍默认 120s）
@@ -123,7 +124,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { availableParallelism, loadavg, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -146,6 +147,8 @@ import {
 // 超时配置解析抽成纯函数模块（fail-closed：0 / 负数 / 空 / 非法一律报错，见该文件头注释）
 import { isValidTimeoutMs, parseTimeoutSeconds, timeoutConfigError } from './lib/verify-timeout.mjs'
 import { looksLikeConcurrencyConflict } from './lib/verify-flaky-classify.mjs'
+// 自适应并发度（issue #418）：核数 + load 双约束，纯函数便于单测
+import { resolveConcurrency, describeConcurrency, resolveVitestWorkers } from './lib/verify-concurrency.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -1059,7 +1062,11 @@ async function runOnePlugin(name) {
       }
     }
   }
-  const r = await runCapture('npm', ['test'], dir, { label: `test ${name}（npm test @ plugins/${name}）` })
+  const r = await runCapture('npm', ['test'], dir, {
+    label: `test ${name}（npm test @ plugins/${name}）`,
+    // issue #418：限制每路 vitest 的 worker 数，使「插件并发 × 每路 worker ≈ 核数」
+    env: { VITEST_MAX_WORKERS: String(vitestWorkersBudget()) },
+  })
   return { name, ok: r.ok, out: r.out, error: r.error, stage: 'npm test', timedOut: r.timedOut, timeoutMs: r.timeoutMs }
 }
 
@@ -1192,7 +1199,7 @@ const indent = (text) =>
 const tail = (text, lines) => text.split('\n').slice(-lines).join('\n')
 
 /**
- * 插件测试并发度（issue #188：默认 3 → 6）。
+ * 插件测试并发度（issue #188：默认 3 → 6；issue #418 起由核数 + load 自适应，6 是**上界**而非常量默认）。
  *
  * 为什么是 6、而不是更高（依据 = 本机 10 核实测，同一变更集、同一条命令
  * \`--only test --full\`）：
@@ -1207,10 +1214,44 @@ const tail = (text, lines) => text.split('\n').slice(-lines).join('\n')
  * 若**另有进程正在跑同一插件**的 vitest，会争用该插件的 coverage 目录
  * （见 docs/踩坑/README.md）——故保留 VERIFY_CONCURRENCY=1 手动串行降级。
  */
+/**
+ * 自适应并发的**单一来源**（issue #418）：所有取值都经 scripts/lib/verify-concurrency.mjs
+ * 的纯函数 resolveConcurrency；本文件不再保留任何硬编码默认值（防绕过断言见单测）。
+ * 结果按 kind 缓存 —— 横幅与执行器读同一份，避免重复解析与重复告警。
+ */
+const CONCURRENCY_DECISIONS = new Map()
+
+function concurrencyFor(kind) {
+  if (CONCURRENCY_DECISIONS.has(kind)) return CONCURRENCY_DECISIONS.get(kind)
+  const envName = kind === 'plugin' ? 'VERIFY_CONCURRENCY' : 'VERIFY_CHECK_CONCURRENCY'
+  let cpus = 0
+  let load1 = 0
+  try {
+    cpus = availableParallelism()
+    load1 = loadavg()[0]
+  } catch {
+    // 平台不支持（如 Windows 无 loadavg）→ 保持 0：不触发熔断，仅按核数推导
+  }
+  const decision = resolveConcurrency({ requested: process.env[envName], kind, cpus, load1 })
+  // 非法显式值不静默：打印提示后回落自适应
+  if (decision.invalidRequested !== undefined) {
+    log(yellow(`⚠ ${envName}=${decision.invalidRequested} 非法（需 1..8 整数），已忽略并回落自适应`))
+  }
+  CONCURRENCY_DECISIONS.set(kind, decision)
+  return decision
+}
+
 function pluginConcurrency() {
-  const raw = Number.parseInt(process.env.VERIFY_CONCURRENCY ?? '', 10)
-  if (Number.isInteger(raw) && raw >= 1 && raw <= 8) return raw
-  return 6
+  return concurrencyFor('plugin').value
+}
+
+/**
+ * 每路插件测试可用的 vitest worker 上限（issue #418）：把「插件并发 × 每路 worker」压到 ≈ 核数。
+ * 实测：只把插件并发 6→5 时峰值 load 仍 42.09（≈5×9），故必须同时管住每路 worker。
+ */
+function vitestWorkersBudget() {
+  const decision = concurrencyFor('plugin')
+  return resolveVitestWorkers({ cpus: decision.cpus, concurrency: decision.value })
 }
 
 // ── 超时看门狗与进度登记 ────────────────────────────────────────────────────
@@ -1443,20 +1484,19 @@ const HARD_SKIPPED = CHECK_DEFS.filter((c) => !runList.includes(c))
  * 这批检查项大多是单线程 Node 进程（eslint / prettier / tsc / knip），并发度超过核数
  * 只会让每个进程都变慢。实测（本机 10 核，`--ci-quality` 13 项）：并发 2 → 15.7s、
  * 4 → 10.7s、6 → 10.7s、8 → 11.2s——收益可忽略，
- * 而 4 路在 4 核 runner 上不会超卖，故钉在 4。需要时用 VERIFY_CHECK_CONCURRENCY 覆盖。
+ * 而 4 路在 4 核 runner 上不会超卖，故把它作为**上界**。issue #418 起不再是固定值：
+ * 默认按核数 + load 自适应（见 lib/verify-concurrency.mjs），需要时用 VERIFY_CHECK_CONCURRENCY 显式覆盖。
  */
 function checkConcurrency() {
-  const raw = Number.parseInt(process.env.VERIFY_CHECK_CONCURRENCY ?? '', 10)
-  if (Number.isInteger(raw) && raw >= 1 && raw <= 8) return raw
-  return 4
+  return concurrencyFor('check').value
 }
 const CONCURRENCY = checkConcurrency()
 
 log('')
 log(
   options.ciQuality
-    ? `CI quality job：并发执行 ${tasks.length} 项检查（并发 ${CONCURRENCY}；插件测试/资源冒烟/审计/变异各由独立 job 覆盖）`
-    : `开始校验：${tasks.length} 项${SKIPPED_BY_SCOPE_NOTE.size > 0 ? `，按范围跳过 ${SKIPPED_BY_SCOPE_NOTE.size} 项` : ''}${HARD_SKIPPED.filter((c) => c.optional).length > 0 ? `，默认跳过 ${HARD_SKIPPED.filter((c) => c.optional).length} 项（CI 强制）` : ''}（检查项并发 ${CONCURRENCY}，插件测试并发 ${pluginConcurrency()}）`,
+    ? `CI quality job：并发执行 ${tasks.length} 项检查（${describeConcurrency('检查项', concurrencyFor('check'))}；插件测试/资源冒烟/审计/变异各由独立 job 覆盖）`
+    : `开始校验：${tasks.length} 项${SKIPPED_BY_SCOPE_NOTE.size > 0 ? `，按范围跳过 ${SKIPPED_BY_SCOPE_NOTE.size} 项` : ''}${HARD_SKIPPED.filter((c) => c.optional).length > 0 ? `，默认跳过 ${HARD_SKIPPED.filter((c) => c.optional).length} 项（CI 强制）` : ''}（${describeConcurrency('检查项', concurrencyFor('check'))}，${describeConcurrency('插件测试', concurrencyFor('plugin'))} × 每路 vitest worker ${vitestWorkersBudget()}）`,
 )
 if (options.plugins.length > 0) log(`--plugin 过滤：${options.plugins.join('、')}`)
 log('')
@@ -1580,8 +1620,8 @@ function printHelp() {
   log('  --help          显示本帮助')
   log('检查项: ' + CHECK_IDS.join(' / '))
   log('默认跳过（CI 强制，本地可显式开启）: ' + OPTIONAL_CHECKS.join(' / '))
-  log('环境变量: VERIFY_CONCURRENCY=<1-8> 覆盖插件测试并发度（默认 6）')
-  log('           VERIFY_CHECK_CONCURRENCY=<1-8> 覆盖检查项并发度（默认 4）')
+  log('环境变量: VERIFY_CONCURRENCY=<1-8> 显式覆盖插件测试并发度（默认按核数+load 自适应，上界 6）')
+  log('           VERIFY_CHECK_CONCURRENCY=<1-8> 显式覆盖检查项并发度（同样自适应，上界 4）')
   log(
     `           VERIFY_TIMEOUT=<秒> 整体超时上限（当前 ${totalTimeoutSec === 0 ? '已显式关闭' : `${totalTimeoutSec}s`}）`,
   )

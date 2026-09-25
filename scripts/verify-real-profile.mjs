@@ -40,6 +40,29 @@
  *   server 启动日志未必留痕 —— 这一项仍需 skills/verifying-dsh-plugins 的浏览器步骤兜底。
  *   默认不开（旧行为不变）；发版门禁 scripts/release.mjs 3c 默认传 --clean-externals。
  *
+ * issue #403（隔离实例凭据继承不全 → 真实调用 MISSING_CREDENTIAL）：
+ *   复刻配置组合时只 cpSync 了 `<DSH_HOME>/profiles/<profile>/`，**没有**处理 <DSH_HOME>
+ *   顶层的 `.credentials.yaml`（`refs:` 段）与 `settings.yaml`（provider 段）—— 隔离实例里
+ *   于是没有任何凭据来源，首轮真实模型调用直接：
+ *     MISSING_CREDENTIAL: llm-pi-ai: no credential for provider route "ollama-flash";
+ *     its profile resolves OLLAMA_FLASH_API_KEY, which is not set
+ *   每次功能级验证都要人工补生产凭据，既慢又容易被误判成"插件调用模型失败"。现在：
+ *     · 启动前**凭据完整性自检**：从 dump-config 提取每个 provider route 的 apiKeyEnv
+ *       引用名，逐个确认来源（启动环境变量 > 生产 `.credentials.yaml` 的 `refs:`）；
+ *       缺字段即 fail-closed 报错，点名字段 / provider route / entry 与补法，
+ *       **不再**延迟到调用阶段抛 MISSING_CREDENTIAL；
+ *     · 注入只走**子进程环境变量**（宿主 `dsh-credentials-local` 的层次里 inherited
+ *       environment 只读且胜出，见其模块文档）：凭据不落盘、不进 argv、不打印，
+ *       隔离 DSH_HOME 里**不写** `.credentials.yaml`；
+ *     · `settings.yaml` 的 provider 段**按需继承**：只带 `llm-*` 与 `agent-default-model`
+ *       （ui-* 等生产偏好不带进隔离实例）；片段里出现明文密钥即 fail-closed
+ *       （provider 段按设计只放 apiKeyEnv 引用名，拒绝把生产密钥抄进隔离实例）；
+ *     · `--probe-llm "<task>"`：实例就绪后，用**同一个** DSH_HOME 与同一套注入环境跑一次
+ *       真实模型调用（`dsh --profile headless --patch <隔离 profile 的 patch>`），
+ *       断言非空输出且无 MISSING_CREDENTIAL —— "开箱可用"的直接证据。默认关
+ *       （真实调用有成本），功能级验证 / 排障时显式开；
+ *     · `--no-credentials`：显式关闭自检与注入（只做配置组合检查的场景）。
+ *
  * issue #220（假验证修复）：
  *   --addons 是「待验代码」的显式声明，其 profile node_modules 条目**必须**指向该
  *   addon 目录。旧实现在同名条目已存在时复用真实 profile 的软链（生产 profile 用
@@ -92,6 +115,18 @@ import {
   writeWorkspaceStorage,
 } from './lib/verify-profile.mjs'
 import { DEFAULT_AUTO_ITEMS, checkChecklistFile, mergeChecklist, renderChecklist } from './lib/verify-checklist.mjs'
+// issue #403：隔离实例的凭据 / provider 段继承与启动前完整性自检（逻辑全在 lib，可单测）
+import {
+  CREDENTIALS_FILENAME,
+  SETTINGS_FILENAME,
+  buildIsolatedSettings,
+  collectProviderCredentialRefs,
+  decideLlmProbe,
+  parseCredentialRefs,
+  planCredentialInjection,
+  renderCredentialFailure,
+  renderCredentialReport,
+} from './lib/verify-credentials.mjs'
 // 超时配置解析：复用 verify-local 的同一套 fail-closed 规则（scripts/lib/verify-timeout.mjs），不另造一套
 import { parseTimeoutSeconds } from './lib/verify-timeout.mjs'
 import { homedir } from 'node:os'
@@ -150,6 +185,10 @@ function parseArgs(args) {
     cleanExternals: false,
     omitNodeModules: [],
     refreshHeader: false,
+    // issue #403：凭据/provider 继承（默认开 = 真实调用开箱可用）、真实调用探针、生产 DSH_HOME 源
+    inheritCredentials: true,
+    probeLlm: null,
+    harnessHome: null,
   }
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i]
@@ -182,7 +221,12 @@ function parseArgs(args) {
           .map((item) => item.trim())
           .filter((item) => item !== ''),
       )
-    } else if (flag === '--help' || flag === '-h') result.help = true
+    }
+    // issue #403：隔离实例凭据 / provider 段继承与真实调用探针
+    else if (flag === '--probe-llm') result.probeLlm = value()
+    else if (flag === '--no-credentials') result.inheritCredentials = false
+    else if (flag === '--harness-home') result.harnessHome = value()
+    else if (flag === '--help' || flag === '-h') result.help = true
     else {
       console.error(`[verify] unknown flag: ${flag}`)
       process.exit(1)
@@ -222,13 +266,22 @@ function printHelp() {
       '  --enable-plugins <name,...> 在**隔离副本内**去掉这些插件（插件名或 entry id）的\n' +
       '                     disabled: true，使其在组合配置中真正启用；生产 profile 一字不动。\n' +
       '                     仅用于「插件被生产配置禁用」的场景，判据本身不放宽（entry 仍须启用）。\n' +
-      '                     默认不启用任何插件（fail-closed）。\n',
+      '                     默认不启用任何插件（fail-closed）。\n' +
+      '  --probe-llm <task> 隔离实例就绪后用同一 DSH_HOME / 同一凭据跑一次**真实模型调用**\n' +
+      '                     （headless + 隔离 profile 的 patch overlay），断言非空输出且无\n' +
+      '                     MISSING_CREDENTIAL —— issue #403「开箱可用」的直接证据（默认关）。\n' +
+      '  --no-credentials   显式关闭凭据自检与环境变量注入（只做配置组合检查时用；\n' +
+      '                     真实模型调用届时会报 MISSING_CREDENTIAL）\n' +
+      '  --harness-home <d> 生产 DSH_HOME（凭据 refs / settings.yaml 的来源；默认 $DSH_HOME 或 ~/.dsh）\n',
   )
 }
 
 // ── 常量 ───────────────────────────────────────────────────────────────────
 const home = homedir()
-const realProfile = join(home, '.dsh', 'profiles', options.profile)
+// issue #403：生产 DSH_HOME（凭据 refs / settings.yaml 的来源）。脚本自身在用户环境里跑，
+// 因此默认就是 $DSH_HOME（未设时 ~/.dsh）；--harness-home 供 CI / 排障显式指定。
+const realHome = options.harnessHome ?? process.env.DSH_HOME ?? join(home, '.dsh')
+const realProfile = join(realHome, 'profiles', options.profile)
 const simHome = tmp.dirSync({ prefix: `dsh-verify-real-${options.port}-`, unsafeCleanup: true }).name
 const simProfile = join(simHome, 'profiles', options.profile)
 const dshBin = process.env.DSH_BIN || 'dsh'
@@ -581,6 +634,65 @@ if (options.skipWeb) {
   process.exit(failed ? 1 : 0)
 }
 
+// ── 3a-2. 凭据 / provider 段继承与启动前自检（issue #403）──────────────────
+// 见头部注释：复刻配置组合时脚本只复制了 <DSH_HOME>/profiles/<profile>/，
+// DSH_HOME 顶层的 .credentials.yaml（refs:）与 settings.yaml（provider 段）从来没被处理 ——
+// 隔离实例里没有任何凭据来源，首轮真实模型调用直接 MISSING_CREDENTIAL。
+// 安全边界（不可放宽）：注入只发生在子进程的 env 上（不进 argv、不落盘、不打印）；
+// 隔离 DSH_HOME 里不写 .credentials.yaml。
+let injectedEnv = {}
+if (options.inheritCredentials) {
+  const requiredRefs = collectProviderCredentialRefs(dump.stdout)
+  const credentialFile = join(realHome, CREDENTIALS_FILENAME)
+  let refs = {}
+  if (existsSync(credentialFile)) {
+    const parsed = parseCredentialRefs(readFileSync(credentialFile, 'utf8'))
+    refs = parsed.refs
+    if (parsed.errors.length > 0) {
+      // refs 段损坏：不静默丢弃（否则又回到"调用阶段才报缺凭据"）
+      fail('生产凭据文件的 refs 段不可用（' + credentialFile + '）：' + parsed.errors.join('；'))
+      await cleanup()
+      process.exit(1)
+    }
+  }
+  const plan = planCredentialInjection({ required: requiredRefs, refs, env: process.env })
+  for (const line of renderCredentialReport(plan)) log(line)
+  if (!plan.ok) {
+    for (const line of renderCredentialFailure(plan.missing)) console.error('[verify] ' + line)
+    fail(
+      '凭据完整性自检失败：' +
+        plan.missing.length +
+        ' 个 provider 凭据在隔离实例里无来源（补法见上文）—— 这是**验证环境**问题，不是插件缺陷',
+    )
+    await cleanup()
+    process.exit(1)
+  }
+  injectedEnv = plan.inject
+  // settings.yaml 的 provider 段按需继承（生产没有该文件时是空操作）
+  const settingsSource = join(realHome, SETTINGS_FILENAME)
+  const hostSettingsText = existsSync(settingsSource) ? readFileSync(settingsSource, 'utf8') : ''
+  const isolated = buildIsolatedSettings({ hostSettingsText })
+  if (!isolated.ok) {
+    fail(
+      '生产 settings.yaml 的模型/provider 段含疑似明文密钥（字段：' +
+        isolated.blocked.map((item) => item.field).join('、') +
+        '）—— fail-closed：拒绝把生产密钥抄进隔离实例；请改用 apiKeyEnv 引用名（凭据存 refs 段）。',
+    )
+    await cleanup()
+    process.exit(1)
+  }
+  if (isolated.sections.length > 0) {
+    writeFileSync(join(simHome, SETTINGS_FILENAME), isolated.text, 'utf8')
+    log(
+      '已继承生产 settings.yaml 的模型/provider 段：' +
+        isolated.sections.join('、') +
+        '（其余段不带进隔离实例；不含明文凭据）',
+    )
+  }
+} else {
+  log('--no-credentials：已显式关闭凭据自检与环境变量注入（真实模型调用会报 MISSING_CREDENTIAL）')
+}
+
 // ── 3b. 端口预检（issue #294 实测教训：残留实例会让验证静默变成假通过）──────
 // 就绪探测只认「任何 HTTP 响应」。上一轮跑崩/被强杀时遗留的隔离实例若仍占着同一个
 // 端口，本轮会在**自己 spawn 的实例还没起来**（甚至起不来）时就判定 "HTTP 200 就绪"，
@@ -606,7 +718,9 @@ log(`启动验证实例（端口 ${options.port}）…`)
 const webLogFile = join(simHome, 'dsh-web.log')
 const webLogFd = openSync(webLogFile, 'a')
 web = spawn(dshBin, ['--profile', options.profile, '--port', String(options.port), '--no-open'], {
-  env: { ...process.env, DSH_HOME: simHome },
+  // issue #403：凭据只经子进程环境变量注入（inherited environment 在宿主凭据层次里只读且胜出），
+  // 不落盘、不进 argv、不打印。
+  env: { ...process.env, DSH_HOME: simHome, ...injectedEnv },
   stdio: ['ignore', webLogFd, webLogFd],
 })
 /** 按需读实例输出（文件即真相，避免 pipe 捕获不全）。 */
@@ -738,6 +852,27 @@ if (options.apiPaths.length > 0) {
       }
     }
   }
+}
+
+// ── 5c. 真实模型调用探针（issue #403：「开箱可用」的直接证据）──────────────
+// 用**同一个**隔离 DSH_HOME 与同一套注入的凭据跑一次真实调用：只有它才能证明
+// "隔离实例起来后可直接完成一次真实模型调用，无需人工补凭据"。
+// 默认关（真实调用有成本），功能级验证 / 排障时显式 --probe-llm "<task>"。
+if (options.probeLlm !== null && !failed) {
+  log(
+    '真实模型调用探针：dsh --profile headless --patch <隔离 profile 的 patch> ' +
+      JSON.stringify(options.probeLlm) +
+      ' …',
+  )
+  const probe = await run(
+    dshBin,
+    ['--profile', 'headless', '--patch', join(simProfile, 'cordis.patch.yml'), options.probeLlm],
+    { DSH_HOME: simHome, ...injectedEnv },
+  )
+  const verdict = decideLlmProbe({ code: probe.code, stdout: probe.stdout, stderr: probe.stderr })
+  if (verdict.ok) pass('真实模型调用成功（隔离实例凭据开箱可用）：' + verdict.excerpt)
+  else
+    fail('真实模型调用探针失败：' + verdict.reason + (verdict.excerpt ? '（输出摘要：' + verdict.excerpt + '）' : ''))
 }
 
 // ── 5b. 验证清单留痕（issue #67）：自动项已勾选，功能级项待验证者勾选 ─────

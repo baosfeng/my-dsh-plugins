@@ -66,7 +66,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3099/
 - 实例输出自 issue #257 起**落盘**在隔离 DSH_HOME 的 `dsh-web.log`（`--keep` 时可直接读；旧的"日志见 /tmp/…"提示已失效）。
   **实例起不来 / 崩溃时，第一手证据就在这里**（`plugin tree failed to load`、cordis 栈等），脚本失败时会打印该路径与摘要 —— 不要只看脚本控制台：崩溃栈可能晚于脚本读日志才落盘。
   健康实例该文件只有一行：`dsh web: http://127.0.0.1:<port>/?token=…`。
-- 隔离 DSH_HOME 会复制生产 profile 的 `.credentials.yaml`（真实凭据），验证后必须删目录。
+- **凭据怎么来的**：隔离 `DSH_HOME` 是全新目录，**不落任何凭据文件**。脚本启动前做凭据自检，并把生产 `<DSH_HOME>/.credentials.yaml` 的 `refs:` 里**被 provider 段引用到**的那些作为**子进程环境变量**注入（宿主凭据层次里 inherited environment 只读且胜出），真实模型调用因此开箱可用；缺字段时**启动前就报错**并给补法，不会拖到 `MISSING_CREDENTIAL`。凭据不打印、不进日志、不写进隔离目录；`--no-credentials` 显式关闭（只做配置组合检查时用）。
 - `--api-path /<路由>` 可对 server 端路由做 200 冒烟，但 **⚠️ 需要浏览器会话**：DSH web 有认证层，非交互环境拿不到访问 token，这一项会**显式失败**。
   **API 断言怎么算**：在浏览器步骤里带 token 打开实例、从 devtools/Network 或页面行为确认路由可用；**不要**因为 `--api-path` 失败就判定"插件路由异常"，也不要为此删掉检查。
   （背景：那个失败**曾经**被写成"插件 server 端未生效或路由异常"，把排查引向插件代码 —— 现已改为显式归因到脚本与凭据。）
@@ -84,11 +84,22 @@ realpath /tmp/dsh-verify-real-3099/profiles/web/node_modules/<插件>   # 期望
 
 ## B. headless 实例（真实模型调用 / 真实事件流，无浏览器）
 
+**优先用现成入口**（推荐）：凭据自检 + 注入 + 真实调用断言全在脚本里，不必手工拷凭据：
+
+```bash
+node scripts/verify-real-profile.mjs --port 3099 --probe-llm "只回复 PONG，不要调用任何工具"
+```
+
+- 自检缺字段时**启动前**就报错（点名字段 / provider route / 补法），不会延迟到 `MISSING_CREDENTIAL`；
+- 凭据经**子进程环境变量**注入，不落盘（隔离目录里没有 `.credentials.yaml`），`--keep` 目录也不会留下密钥。
+
+需要自己拼 headless 实例（挂插件、对照组实验）时，才手工给 provider 段与凭据：
+
 ```bash
 export DSH_HOME=/tmp/dsh-verify-headless     # 独立 DSH_HOME
 mkdir -p "$DSH_HOME"
 cp ~/.dsh/settings.yaml "$DSH_HOME/"         # provider / 模型选择
-cp ~/.dsh/.credentials.yaml "$DSH_HOME/"     # 凭据；验证后随目录一起删
+cp ~/.dsh/.credentials.yaml "$DSH_HOME/"     # 凭据；验证后随目录一起删（手搓替代做法，注意 0600）
 # headless 是 shipped 模板，不能作自定义 profile 目标：先派生子 profile 才挂得上插件
 dsh --profile headless-verify --from-default-profile headless --dump-config
 dsh plugin --profile headless-verify add link:"$PWD/plugins/<name>"

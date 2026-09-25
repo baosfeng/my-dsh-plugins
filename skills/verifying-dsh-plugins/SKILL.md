@@ -32,6 +32,7 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
 - **重跑清单是幂等的（放心重跑）**：目标清单已存在时**绝不整文件重写**——头部「验证时间 / 验证环境」保持原值（换端口重跑**零 diff**）、人工追加的 `## 验证记录` 段**逐字节保留**、已勾选状态原样留存；脚本只刷新自己拥有的「自动验证项」。确需把本轮环境写进头部时加 `--refresh-header`。
 - **崩溃必须 fail-closed**：实例"就绪"的判据是三条同时满足——端口有 HTTP 响应 **+** 日志出现正向就绪行（`dsh web: http://127.0.0.1:<port>/?token=…`）**+** 进程仍存活；并全程扫描致命启动特征（`plugin tree failed to load` / `failed to apply|import loader entry` / `without inject` / `cannot get property` / `missed the module table` / `duplicate loader entry`）。命中即 `exit 1`，输出**崩溃栈关键行 + 隔离实例日志路径**。
   ⚠️ 为什么这么严：`dsh web` **先监听端口、后加载插件树**——插件 `apply` 崩掉时端口已经能回 HTTP，只看端口就会把「实例整个起不来」误报成「✓ 就绪 / ✓ 日志无 error」（这类误报就是这么潜伏到用户侧的）。**看到 `✓ 就绪` 不再等于实例活着**。
+- **真实模型调用开箱可用，凭据不落盘**：脚本启动前从 `dump-config` 提取每个 provider route 的 `apiKeyEnv` 引用名，逐个确认来源（启动环境变量 > 生产 `<DSH_HOME>/.credentials.yaml` 的 `refs:`）；**缺字段即 fail-closed**，点名字段 / route / entry 与补法，不再等到调用阶段抛 `MISSING_CREDENTIAL`（那是**验证环境**问题，绝不是插件缺陷）。有来源的凭据只经**子进程环境变量**注入（宿主里 inherited environment 优先级最高），不落盘、不进日志、隔离 `DSH_HOME` 里不写 `.credentials.yaml`；`settings.yaml` 只继承 `llm-*` 与 `agent-default-model` 段，出现明文密钥即拒绝（细节见 [references/isolation-instance.md](references/isolation-instance.md)）。要一次真实调用加 `--probe-llm "<task>"`（同一 `DSH_HOME` + 同一注入环境，断言输出非空）。
 - 非 bundle 插件（agent preset 等）按自身安装方式验证，手写同格式清单并注明验证方式。
 
 ## 五个步骤（细节见 references/）
@@ -53,6 +54,6 @@ node scripts/verify-real-profile.mjs --check verification/<name>-<version>.md
 | [references/isolation-instance.md](references/isolation-instance.md) | 步骤 1 全文：端口/两处禁用来源与副本内去 disabled/工作区预置/realpath 前置检查/web 与 headless |
 | [references/verification-steps.md](references/verification-steps.md) | 步骤 2–5 全文：探针、浏览器验收表、清理复查、报告结构                   |
 | [scripts/fetch-probe.mjs](scripts/fetch-probe.mjs)                   | `NODE_OPTIONS=--import` fetch 探针（JSONL 记录会话头/鉴权头）           |
-| `scripts/verify-real-profile.mjs`                                    | 隔离实例 + 配置组合检查 + 清单生成/校验（release.mjs 3c 调用）          |
+| `scripts/verify-real-profile.mjs`                                    | 隔离实例 + 配置组合检查 + 凭据自检/注入 + 真实调用探针 + 清单生成/校验（release.mjs 3c 调用） |
 | `docs/开发指南/构建与测试.md`                                        | 功能级验证门禁说明与清单版本约定                                        |
 | `skills/plugin-test/SKILL.md`                                        | 测试层级选择（本 skill 负责真实环境那一层）                             |

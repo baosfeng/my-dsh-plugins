@@ -1,2 +1,0 @@
-name: 插件开发模式
-description: 插件开发专用：具备 shell、文件编辑、后台任务、goal 与技能加载，并启用 Cordis 工具集（inspect/define/run/stop/undefine）。不含 plan mode、子代理/工作流与网页检索，prompt 开销更小。

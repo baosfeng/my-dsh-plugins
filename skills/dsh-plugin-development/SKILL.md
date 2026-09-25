@@ -1,6 +1,6 @@
 ---
 name: dsh-plugin-development
-description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发布 DSH 插件时使用。覆盖五种插件形态：工具型（defineTool 注册 agent 工具）、侧边栏页签/预览器（宿主原生扩展点 sidebarRightTabs + slots + documentPreviews）、纯 server（事件/HTTP 路由）、两者混合、agent preset 资产包（agent.cordis.yml + preset.yml）。也适用于处理注册冲突（already registered）、挂载不生效、HMR 不热更新、profile 双挂载、GitHub Release 发版与 tag 规则等错误场景。仓库内插件均为 plugins/<name> 自包含 bundle；工具型与生态参考见 references/。
+description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发布 DSH 插件时使用。覆盖五种插件形态：工具型（defineTool 注册 agent 工具）、侧边栏页签/预览器（宿主原生扩展点 sidebarRightTabs + slots + documentPreviews）、纯 server（事件/HTTP 路由）、两者混合、agent preset 声明包（cordis.patch.yml 里一行 @deepseek-ai/dsh-agent-preset）。也适用于处理注册冲突（already registered）、挂载不生效、HMR 不热更新、profile 双挂载、GitHub Release 发版与 tag 规则等错误场景。仓库内插件均为 plugins/<name> 自包含 bundle；工具型与生态参考见 references/。
 ---
 
 # 本仓库 DSH 插件开发
@@ -24,7 +24,7 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 - **发布**：版本号、CHANGELOG、tag、GitHub Release
 - **开发工具型插件**（agent 可调用的函数）：官方 `defineTool` 权威 API 直接查本地官方参考源（[tools.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/tools.zh.md) + [tool.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/tool.zh.md)；本 skill 不再维护副本）
 - **调研生态/分发渠道**：官方资源与插件市场收录直接查官方 `docs/`（导航见[官方文档索引](../../docs/官方文档/索引.md)）；本仓库自身的双通道分发约定见 [references/tool-plugin-and-ecosystem.md](references/tool-plugin-and-ecosystem.md)
-- **查宿主 API 精确语义**：判**存在性 / 定义点 / 契约**（serial 还是 parallel、有没有 `next()`）用**本地官方参考源 + 知识图谱**（参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`，命令见[官方文档索引](../../docs/官方文档/索引.md) 第十节）——官方 docs 只列事件名与概览，这类契约必须回源码；**不要按 API 名字猜**（同名不同义的坑见[本仓库重点](../../docs/官方文档/本仓库重点.md)）。
+- **查宿主 API 精确语义**：判**存在性 / 定义点 / 契约**（serial 还是 parallel、有没有 `next()`）用**本地官方参考源 + 知识图谱**（参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`，命令见[官方文档索引](../../docs/官方文档/索引.md) 第二节）——官方 docs 只列事件名与概览，这类契约必须回源码；**不要按 API 名字猜**（同名不同义的坑见[本仓库重点](../../docs/官方文档/本仓库重点.md)）。
 
 ## 相关 skill（交叉引用）
 
@@ -57,11 +57,11 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 | **侧边栏页签 / 预览器**（宿主原生扩展点） | 在侧边栏提供新页面或文件预览                        | client 端 `ctx.sidebarRightTabs.register(...)` + keyed 席位 `sidebar.right.pane.tab`；文件预览器 `ctx.documentPreviews`（签名查官方 [sidebar-right.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/sidebar-right.zh.md)）                     |
 | **纯 server 插件**                        | 事件监听 / HTTP 路由 / 持久化                       | `apply(ctx)` + `ctx.on` / `webServer`                                                                                                                                                                                                                                            |
 | **两者混合**（最常见）                    | 页面 + 后端逻辑                                     | 两端都写，client 通过 HTTP 路由或事件上报 server                                                                                                                                                                                                                                 |
-| **agent preset 资产包**                   | 提供模式选择器里的 agent 预设（如「插件开发模式」） | `agent.cordis.yml` + `preset.yml` + 自带 `skills/`；**不挂 profile**，复制到 `$DSH_HOME/.agent-presets/<id>/` 后由宿主 `@deepseek-ai/dsh-agent-presets` 发现                                                                                                                     |
+| **agent preset 声明包**                   | 提供模式选择器里的 agent 预设（如「插件开发模式」） | `cordis.patch.yml` 里一行 `@deepseek-ai/dsh-agent-preset` 声明（`id`/`plugins`/`name`/`description`）；经 `plugin_manager` 的 `install_bundle` 装载（**要求宿主 ≥ 0.1.7-rc.2**）                                                                                                  |
 
 > `ctx.sidebarRightTabs` / `ctx.slots` / `ctx.sidebarRight` / `ctx.documentPreviews` **只存在于 client 端**。server 端需要侧边栏数据时走本插件自己的 HTTP 路由（`/<插件名>/api/*`），不要假设这些服务存在。
 
-> **agent preset 资产包不是插件**（issue #231）：没有 `lib/`、`cordis.patch.yml`，不声明 `peerDependencies.cordis`，也不经 `dsh plugin add` 装载。`package.json` 必须显式声明 `"dsh": { "kind": "preset", "presetReason": "<这是什么 preset / 为什么是资产包而非 profile 插件>" }` 才会走对应的发版门禁豁免（1b cordis peer + 3c profile 组合验证；跨插件依赖/CHANGELOG/测试/效果图门禁照旧）。判据与仓库不变量在 `scripts/lib/preset-gate.mjs`：声明必须配真实 `agent.cordis.yml` + `preset.yml`，且与 `dsh.bundle` / `dsh.client` 互斥。参考实现 `plugins/dsh-plugin-dev-mode/`。
+> **agent preset 现在由 bundle patch 承载**（issue #231；0.1.7-rc.2 移除了 `$DSH_HOME/.agent-presets/` 目录机制，旧包 `@deepseek-ai/dsh-agent-presets` 已不存在）：目录内只有 YAML 与文档、无 `lib/` JS 代码、不 import cordis，也不声明 `peerDependencies.cordis`。`package.json` 必须显式声明 `"dsh": { "kind": "preset", "bundle": { "patch": "./cordis.patch.yml" }, "presetReason": "<这是什么 preset / 为什么它以此形态分发>" }`，且 `cordis.patch.yml` 里真的有一行 `@deepseek-ai/dsh-agent-preset` 声明（`config.id` + `config.plugins`），才会走对应的发版门禁豁免（1b cordis peer + 3c profile 组合验证；跨插件依赖/CHANGELOG/测试/效果图门禁照旧）。判据与仓库不变量在 `scripts/lib/preset-gate.mjs`：与 `dsh.client` 互斥。参考实现 `plugins/dsh-plugin-dev-mode/`。
 
 ### 命名阶段：先检索 npm 包名（强制）
 

@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-dev-mode",
   "version": "0.1.1",
-  "description": "DSH agent preset 资产包：插件开发模式（plugin-dev）。启用 Cordis 工具集（动态插件生命周期）的精简模式，含配套技能，一键安装到 $DSH_HOME/.agent-presets/。",
+  "description": "DSH agent preset bundle：插件开发模式（plugin-dev）。以 bundle patch（cordis.patch.yml）声明一行 @deepseek-ai/dsh-agent-preset，经 plugin_manager 的 install_bundle 装载；启用 Cordis 工具集（动态插件生命周期）的精简模式。",
   "type": "module",
   "repository": {
     "type": "git",
@@ -11,14 +11,10 @@
     "node": ">=22"
   },
   "scripts": {
-    "install:preset": "node scripts/install.mjs",
-    "test": "node --check scripts/install.mjs"
+    "test": "node --check scripts/check-preset.mjs && node scripts/check-preset.mjs"
   },
   "files": [
-    "agent.cordis.yml",
-    "preset.yml",
-    "skills",
-    "scripts",
+    "cordis.patch.yml",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -27,6 +23,9 @@
   "license": "MIT",
   "dsh": {
     "kind": "preset",
-    "presetReason": "提供 plugin-dev 预设组合（agent.cordis.yml）+ 模式选择器显示元数据（preset.yml）+ 自带 skills，由 scripts/install.mjs 复制到 $DSH_HOME/.agent-presets/plugin-dev/ 后经宿主 @deepseek-ai/dsh-agent-presets 的 discovery 读取；不挂 profile、无 cordis.patch.yml，因此不声明 peerDependencies.cordis"
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "presetReason": "以 bundle patch（cordis.patch.yml）承载一个 @deepseek-ai/dsh-agent-preset 声明行（config.id=plugin-dev，Loader 行 id 约定为 preset-plugin-dev），由 plugin_manager 的 install_bundle 装载、经宿主的 agentPresets registry 注册；包内无 JS 代码、不挂 cordis service、不注入 client 端，故不声明 peerDependencies.cordis。旧机制（$DSH_HOME/.agent-presets/plugin-dev/ 的 agent.cordis.yml + preset.yml，由宿主 @deepseek-ai/dsh-agent-presets 的 discovery 读取）在 0.1.7-rc.2 已随该包一并移除，本包不再提供、也不再复制该目录资产。"
   }
 }

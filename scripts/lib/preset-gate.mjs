@@ -1,82 +1,95 @@
 /**
- * preset-gate.mjs — agent preset 资产包形态判定与发版门禁豁免（issue #231）。
+ * preset-gate.mjs — agent preset 声明包形态判定与发版门禁豁免（issue #231；0.1.7 形态迁移）。
  *
- * `plugins/` 下并非只有 profile 插件，当前有三种被 release.mjs 处理的目录形态：
- *   1. profile 插件（bundle）：`dsh.bundle.patch` + `cordis.patch.yml`，经 `dsh plugin add` 装载；
- *   2. 共享工具包：`dsh.kind=library`（issue #45），npm 依赖，不挂 cordis service；
- *   3. **agent preset 资产包**：`agent.cordis.yml` + `preset.yml`（+ 自带 `skills/`），
- *      由 `scripts/install.mjs` 复制到 `$DSH_HOME/.agent-presets/<目录名>/`。
+ * **形态变更**：宿主 0.1.7-rc.2 移除了「preset 目录资产」机制。`$DSH_HOME/.agent-presets/
+ * <id>/` 下的 `agent.cordis.yml` + `preset.yml` 已无任何读取者——旧侧常量在
+ * `@deepseek-ai/dsh-agent-presets` 的 `lib/types/discovery.js`（`COMPOSITION_FILE`）与
+ * `lib/types/metadata.js`（`METADATA_FILE`），而 0.1.7-rc.2 全树不含该包与该目录名，
+ * 宿主自带的迁移文档亦明写 "Nothing reads that directory any more."
  *
- * 形态证据（宿主 `@deepseek-ai/dsh-agent-presets`，随 `@deepseek-ai/dsh` 安装）：
- *   - `lib/types/discovery.js`：`COMPOSITION_FILE = 'agent.cordis.yml'`（目录名即 preset id，
- *     组合文件缺失/不可解析的目录被标为 broken row）、`USER_PRESET_DIR = '.agent-presets'`
- *     （可写根）、`SHIPPED_PRESET_ROOT`（随包内置的 preset）；
- *   - `lib/types/metadata.js`：`METADATA_FILE = 'preset.yml'`，只承载显示元数据
- *     （name/description/order），由模式选择器读取；缺失或损坏不影响挂载。
- *
- * preset 资产包**不挂 profile**（无 `dsh.bundle`、无 `cordis.patch.yml`），组合文件里的
- * `cordis:group` 行与 `@deepseek-ai/dsh-*` 行都由宿主进程的 loader 解析，所以
- * release.mjs 1b 的「DSH 插件必须声明 peerDependencies.cordis」对它不适用——该检查的
- * 目的是保证 `dsh plugin add` 装出来的 bundle 能解析宿主 cordis。补 `peerDependencies.cordis`
- * 反而是错误的形态声明：它会让 `npm install` 的消费者以为这是个 cordis 插件包。
+ * preset 现在**是一行 `@deepseek-ai/dsh-agent-preset` 声明，由 bundle 的
+ * `cordis.patch.yml` 承载**（形态证据：`packages/preset/agent-preset/src/index.ts` 的
+ * `Config` schema 与 `ctx.agentPresets.register()`；官方 Web preset 位于
+ * `@deepseek-ai/dsh-web-app` bundle 的 `presets/<id>.patch.yml`）：
+ *   - 声明行 `config`：`id`（必填）/ `plugins`（必填）/ 可选 `name`、`description`、`order`；
+ *   - Loader 行 id 约定 `preset-<id>`；
+ *   - 装载走 `plugin_manager` 的 `install_bundle`——`installBundle` 会拒绝未声明
+ *     `dsh.bundle` 的包，所以 preset 声明包**必须有 patch 载体**。
  *
  * 判据「可判定、可测试、不自欺」（对齐 issue #227 的三条硬约束）：
  *   1. 豁免只认显式声明 `dsh.kind === 'preset'`——**不写插件名单**；
  *   2. 必须带非空 `dsh.presetReason`（写明形态与理由，防止随手豁免）；
- *   3. 与 `dsh.bundle` / `dsh.client` **互斥**——那是 profile 插件形态，自相矛盾即拒绝豁免；
- *   4. 仓库不变量：声明 preset 的目录必须**真的有** `agent.cordis.yml` + `preset.yml`
- *      且内容成形（组合含插件行、元数据含非空 name）；反向不变量：目录里有 preset 资产
- *      却不声明 `dsh.kind=preset` 也拦下，并提示正确修复方式（而不是误报缺 cordis peer）。
+ *   3. `dsh.kind=preset` **必须**声明 `dsh.bundle.patch`，且该 patch 里真的有一行
+ *      `@deepseek-ai/dsh-agent-preset` 声明（含非空 `id` 与 `plugins` 列表）——
+ *      0.1.7 的 preset 只能由 bundle 承载，没有载体就不会被宿主发现；
+ *   4. 与 `dsh.client` **互斥**——preset 只提供 agent 组合与技能，不向浏览器注入；
+ *   5. 反向不变量：patch 里有声明行却不声明 `dsh.kind=preset` 也拦下，并提示正确修复
+ *      方式（而不是误报缺 cordis peer）。
  *
  * 豁免结果由 release.mjs 在发版输出与批量汇总中**显式列出**（含理由），不悄悄放行。
+ *
+ * **保留豁免的两个理由**（豁免本体仍由 release.mjs 施加）：本包目录内只有 YAML 与
+ * 文档、**无 JS 代码、不 import cordis、不挂 cordis service**，故不声明
+ * `peerDependencies.cordis`；真实 profile 装载验证需要宿主 ≥ 0.1.7 提供
+ * `@deepseek-ai/dsh-agent-preset`（当前宿主 0.1.5-rc.1 不提供，声明行无法激活），
+ * 所以在宿主升级前该项无法通过。
  */
 
-/** 宿主 discovery 认定 preset 的组成文件（`@deepseek-ai/dsh-agent-presets` COMPOSITION_FILE）。 */
-export const PRESET_COMPOSITION_FILE = 'agent.cordis.yml'
-/** 宿主读取 preset 显示元数据的文件（`@deepseek-ai/dsh-agent-presets` METADATA_FILE）。 */
-export const PRESET_METADATA_FILE = 'preset.yml'
+/** 承载 preset 声明行的 bundle patch 默认文件名（`dsh.bundle.patch` 未声明时的探测目标）。 */
+export const PRESET_PATCH_FILE = 'cordis.patch.yml'
+/** 承载 preset 声明的宿主插件包名（`config` schema 见 `packages/preset/agent-preset/src/index.ts`）。 */
+export const PRESET_DECLARATION_PLUGIN = '@deepseek-ai/dsh-agent-preset'
 
-/** 组合文件是否为插件行清单（含至少一个带值的 name 键）。 */
-const hasPluginRow = (text) => /(^|\n)\s*(?:-\s*)?name:\s*\S/.test(text)
-/** 显示元数据是否含非空 name（选择器显示名）。 */
-const hasDisplayName = (text) => /(^|\n)\s*name:\s*\S/.test(text)
+/** patch 是否含一行 `@deepseek-ai/dsh-agent-preset` 声明（YAML 行首 `name:`）。 */
+const hasDeclarationRow = (text) =>
+  /(^|\n)\s*(?:-\s*)?name:\s*['"]?@deepseek-ai\/dsh-agent-preset['"]?[ \t]*(\n|$)/.test(text)
+/** 声明行是否带非空 preset id（config.id，Loader 行 id 为 `preset-<id>`）。 */
+const hasPresetId = (text) => /(^|\n)\s*id:\s*['"]?[a-z0-9][a-z0-9-]*['"]?[ \t]*(\n|$)/.test(text)
+/** 声明行是否带 plugins 列表（preset 的插件行）。 */
+const hasPluginsList = (text) => /(^|\n)\s*plugins:\s*(\n|$)/.test(text)
+
+/** `dsh.bundle.patch` 归一化为字符串数组（可以是单文件，也可以是官方 bundle 那样的列表）。 */
+const declaredPatches = (dsh) => {
+  const patch = dsh?.bundle?.patch
+  if (typeof patch === 'string') return [patch]
+  if (Array.isArray(patch)) return patch.filter((file) => typeof file === 'string')
+  return []
+}
 
 /**
- * 判定一个插件目录是否是**已正确声明**的 agent preset 资产包。
+ * 判定一个插件目录是否是**已正确声明**的 agent preset 声明包。
  *
  * 纯函数：文件读取由 `readAsset` 注入（文件不存在返回 null），便于单测覆盖每条判据与不变量。
  *
  * @param {{ pkg: object, readAsset: (file: string) => string|null }} input
  * @returns {{ status: 'declared'|'none'|'problem', reason: string, problem: string|null }}
- *   - `declared`：已声明且资产齐全 → 门禁豁免 peerDependencies.cordis 与 profile 组合验证；
- *   - `none`：与 preset 无关（未声明且无 preset 资产）→ 走常规插件门禁；
- *   - `problem`：形态声明不合法或与资产矛盾 → 门禁拒绝豁免并报出准确原因。
+ *   - `declared`：已声明且 patch 载体与声明行齐全 → 门禁豁免 cordis peer 与 profile 组合验证；
+ *   - `none`：与 preset 无关（未声明且 patch 里无声明行）→ 走常规插件门禁；
+ *   - `problem`：形态声明不合法或与载体矛盾 → 门禁拒绝豁免并报出准确原因。
  */
 export function resolvePresetAsset({ pkg, readAsset }) {
   const dsh = pkg?.dsh ?? {}
   const { kind } = dsh
-  const composition = readAsset(PRESET_COMPOSITION_FILE)
-  const metadata = readAsset(PRESET_METADATA_FILE)
+  const declared = declaredPatches(dsh)
+  // 显式声明的 patch 优先；未声明 bundle 时回落到默认文件名，这样「patch 里有声明行
+  // 却忘了 kind=preset」也能被反向不变量拦下，而不是静默走常规门禁。
+  const candidates = declared.length > 0 ? declared : [PRESET_PATCH_FILE]
+  const found = candidates
+    .map((file) => [file, readAsset(file)])
+    .find(([, text]) => text !== null && hasDeclarationRow(text))
+  const declarationFile = found?.[0] ?? null
+  const declaration = found?.[1] ?? null
 
   if (kind !== 'preset') {
-    if (composition === null && metadata === null) return { status: 'none', reason: '', problem: null }
-    const declared = kind === undefined ? '未声明 dsh.kind' : `dsh.kind=${JSON.stringify(kind)}`
+    if (declaration === null) return { status: 'none', reason: '', problem: null }
+    const label = kind === undefined ? '未声明 dsh.kind' : `dsh.kind=${JSON.stringify(kind)}`
     return {
       status: 'problem',
       reason: '',
       problem:
-        `检测到 agent preset 资产（${PRESET_COMPOSITION_FILE} / ${PRESET_METADATA_FILE}）但 ${declared}——` +
-        '这是 agent preset 资产包形态，必须显式声明 dsh.kind="preset" + 非空 dsh.presetReason；' +
+        `${declarationFile} 声明了 ${PRESET_DECLARATION_PLUGIN} 行（agent preset 形态）但 ${label}——` +
+        '这是 agent preset 声明包形态，必须显式声明 dsh.kind="preset" + 非空 dsh.presetReason；' +
         '否则门禁按 profile 插件校验，会误报缺少 peerDependencies.cordis（issue #231）',
-    }
-  }
-  if (dsh.bundle !== undefined) {
-    return {
-      status: 'problem',
-      reason: '',
-      problem:
-        'dsh.kind=preset 与 dsh.bundle 互斥：preset 资产包不是 profile bundle，没有 cordis.patch.yml，' +
-        '不参与 dsh plugin add 装载',
     }
   }
   if (dsh.client !== undefined) {
@@ -86,47 +99,49 @@ export function resolvePresetAsset({ pkg, readAsset }) {
       problem: 'dsh.kind=preset 与 dsh.client 互斥：preset 只提供 agent 组合与技能，不向浏览器注入 client 端',
     }
   }
+  if (declared.length === 0) {
+    return {
+      status: 'problem',
+      reason: '',
+      problem:
+        'dsh.kind=preset 必须声明 dsh.bundle.patch（0.1.7 的 preset 是 bundle patch 承载的 ' +
+        `${PRESET_DECLARATION_PLUGIN} 声明行，没有 patch 载体宿主不会发现它）`,
+    }
+  }
   const presetReason = typeof dsh.presetReason === 'string' ? dsh.presetReason.trim() : ''
   if (presetReason === '') {
     return {
       status: 'problem',
       reason: '',
       problem:
-        'dsh.kind=preset 必须同时声明非空 dsh.presetReason（写明这是什么 preset、为什么它是资产包而非 profile 插件，' +
+        'dsh.kind=preset 必须同时声明非空 dsh.presetReason（写明这是什么 preset、为什么它以此形态分发，' +
         '防止随手豁免）',
     }
   }
-  if (composition === null) {
+  if (declaration === null) {
     return {
       status: 'problem',
       reason: '',
-      problem: `dsh.kind=preset 但缺少 ${PRESET_COMPOSITION_FILE}（宿主 discovery 以该文件认定 preset，目录名即 preset id）`,
+      problem: `dsh.kind=preset 但 ${declared.join('、')} 里没有 ${PRESET_DECLARATION_PLUGIN} 声明行（宿主靠该行注册 preset）`,
     }
   }
-  if (metadata === null) {
+  if (!hasPresetId(declaration)) {
     return {
       status: 'problem',
       reason: '',
-      problem: `dsh.kind=preset 但缺少 ${PRESET_METADATA_FILE}（宿主以该文件提供模式选择器的显示名与描述）`,
+      problem: `${declarationFile} 的声明行缺少非空 config.id（preset 身份；Loader 行 id 约定为 preset-<id>）`,
     }
   }
-  if (!hasPluginRow(composition)) {
+  if (!hasPluginsList(declaration)) {
     return {
       status: 'problem',
       reason: '',
-      problem: `${PRESET_COMPOSITION_FILE} 不含任何插件行（name），不是可挂载的 agent 组合，不能作为 preset 豁免依据`,
-    }
-  }
-  if (!hasDisplayName(metadata)) {
-    return {
-      status: 'problem',
-      reason: '',
-      problem: `${PRESET_METADATA_FILE} 缺少非空 name（模式选择器显示名），不能作为 preset 豁免依据`,
+      problem: `${declarationFile} 的声明行缺少 plugins 列表（插件行为空的 preset 不可挂载）`,
     }
   }
   return {
     status: 'declared',
-    reason: `agent preset 资产包（dsh.kind=preset：${presetReason}）`,
+    reason: `agent preset 声明包（dsh.kind=preset：${presetReason}）`,
     problem: null,
   }
 }

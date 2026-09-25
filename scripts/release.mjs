@@ -26,7 +26,7 @@
  * Steps (dry-run by default; --push performs git commit + tag + push):
  *   1.  validate plugins/<name> exists and package.json version parses
  *   1b. validate peerDependencies.cordis declared and consistent across plugins
- *   1b-pre. 形态判定：agent preset 资产包 dsh.kind=preset 豁免（issue #231，lib/preset-gate.mjs）
+ *   1b-pre. 形态判定：agent preset 声明包 dsh.kind=preset 豁免（issue #231，lib/preset-gate.mjs）
  *   1c. cross-plugin dependency check (issue #39): client require('dsh-*') must
  *       be declared in peerDependencies; in-repo dsh-* deps published + tagged.
  *       npm 判据（1a/1c）一律钉官方 registry（lib/npm-registry.mjs，issue #386）：
@@ -442,10 +442,13 @@ async function processPlugin(name, ctx) {
   // 1. version from package.json
   say(`✓ plugin ${name} version ${version}`)
 
-  // 1b-pre. 形态判定（issue #231）：agent preset 资产包（显式 dsh.kind=preset + 真实
-  // agent.cordis.yml/preset.yml）不挂 profile、无 cordis.patch.yml——peerDependencies.cordis
-  // 与 profile 组合验证对它都不适用（判据与仓库不变量见 lib/preset-gate.mjs，
-  // 单测 scripts/test/preset-gate.test.mjs）。声明不合法时按准确原因报错，不叠加误报。
+  // 1b-pre. 形态判定（issue #231；0.1.7 形态迁移）：agent preset 声明包（显式
+  // dsh.kind=preset + dsh.bundle.patch 载体的 cordis.patch.yml 里一行
+  // @deepseek-ai/dsh-agent-preset 声明）目录内只有 YAML 与文档、无 JS 代码、不 import
+  // cordis，所以 peerDependencies.cordis 对它不适用；真实 profile 装载验证需要宿主
+  // ≥ 0.1.7 提供 @deepseek-ai/dsh-agent-preset（声明行才可能激活），故该项也豁免。
+  // 判据与仓库不变量见 lib/preset-gate.mjs，单测 scripts/test/preset-gate.test.mjs。
+  // 声明不合法时按准确原因报错，不叠加误报。
   const presetAsset = resolvePresetAsset({
     pkg,
     readAsset: (file) => {
@@ -472,7 +475,7 @@ async function processPlugin(name, ctx) {
   if (!shapeOk) {
     // 形态声明本身不合法：上面已按准确原因报错，不再叠加「缺少 peerDependencies.cordis」误报
   } else if (isPreset) {
-    say(`- ${presetAsset.reason}：豁免 peerDependencies.cordis 检查（不挂 profile、无 cordis.patch.yml）`)
+    say(`- ${presetAsset.reason}：豁免 peerDependencies.cordis 检查（目录内无 JS 代码、不 import cordis）`)
   } else if (isLibrary) {
     say('- 共享工具包（dsh.kind=library）豁免 peerDependencies.cordis 检查（非 DSH 插件）')
   } else if (cordisPeer === undefined) {
@@ -671,7 +674,7 @@ async function processPlugin(name, ctx) {
     realPlan = {
       mode: 'skip',
       note: isPreset
-        ? `${presetAsset.reason}：跳过 profile 组合验证（--addons 只适用于有 dsh.profile/cordis.patch.yml 的 bundle 插件）`
+        ? `${presetAsset.reason}：跳过 profile 组合验证（声明行需要宿主 ≥ 0.1.7 提供 @deepseek-ai/dsh-agent-preset 才能激活；升级前无法通过真实 profile 装载验证）`
         : '共享工具包（dsh.kind=library）非 bundle 插件：跳过 profile 组合验证（--addons 不适用）',
     }
   } else {
@@ -1021,11 +1024,12 @@ if (exempted.length > 0) {
   }
 }
 
-// agent preset 资产包形态豁免留痕（issue #231）：豁免理由来自 package.json 的
-// dsh.presetReason——非 bundle 形态不适用 1b cordis peer 与 profile 组合验证。
+// agent preset 声明包形态豁免留痕（issue #231；0.1.7 形态迁移）：豁免理由来自
+// package.json 的 dsh.presetReason——目录内无 JS 代码、不 import cordis，且声明行需要
+// 宿主 ≥ 0.1.7 才能激活，故豁免 1b cordis peer 与 profile 组合验证。
 const presetExempted = results.filter((result) => result.presetExemption)
 if (presetExempted.length > 0) {
-  console.log('\nagent preset 资产包形态豁免（1b peerDependencies.cordis + profile 组合验证）:')
+  console.log('\nagent preset 声明包形态豁免（1b peerDependencies.cordis + profile 组合验证）:')
   for (const result of presetExempted) {
     console.log(`  - ${result.name}: ${result.presetExemption.reason}`)
   }

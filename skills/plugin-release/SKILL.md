@@ -46,10 +46,10 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 | ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------- |
 | profile 插件（bundle）  | `dsh.bundle.patch`（有 UI 时另有 `dsh.client`） | 全部门禁：`peerDependencies.cordis`、跨插件依赖、真实挂载           |
 | 共享工具包              | `dsh.kind=library`                              | 豁免 `peerDependencies.cordis`（1b）与 profile 组合验证（3c）       |
-| **agent preset 资产包** | `dsh.kind=preset` + 非空 `dsh.presetReason`     | 同上豁免 1b + 3c；跨插件依赖（1c）、CHANGELOG、测试、效果图门禁照旧 |
+| **agent preset 声明包** | `dsh.kind=preset` + `dsh.bundle.patch` + 非空 `dsh.presetReason` | 同上豁免 1b + 3c；跨插件依赖（1c）、CHANGELOG、测试、效果图门禁照旧 |
 
-- preset 资产包 = `agent.cordis.yml`（预设组合，宿主 `@deepseek-ai/dsh-agent-presets` 的 `COMPOSITION_FILE`，**目录名即 preset id**）+ `preset.yml`（模式选择器的 name/description 显示元数据，`METADATA_FILE`），由安装脚本复制到 `$DSH_HOME/.agent-presets/<id>/`；它**不挂 profile**、没有 `cordis.patch.yml`，所以**不该**补 `peerDependencies.cordis`（那会让 npm 消费者以为它是 cordis 插件包）；
-- 判据与仓库不变量（`scripts/lib/preset-gate.mjs`，单测 `scripts/test/preset-gate.test.mjs`）：`dsh.kind=preset` 必须真的有 `agent.cordis.yml` + `preset.yml` 且内容成形（组合含插件行、元数据含非空 `name`）；与 `dsh.bundle` / `dsh.client` 互斥；目录里有 preset 资产却不声明也会被拦下，并提示正确修复方式（而不是误报缺 cordis peer）；
+- preset 声明包 = `cordis.patch.yml`（bundle patch）里一行 `@deepseek-ai/dsh-agent-preset` 声明：`config` 取 `id`（必填，Loader 行 id 为 `preset-<id>`）/ `plugins`（必填）/ 可选 `name`、`description`、`order`，经 `plugin_manager` 的 `install_bundle` 装载（**要求宿主 ≥ 0.1.7-rc.2**：声明行需要宿主提供 `@deepseek-ai/dsh-agent-preset` 与 `agent-preset-registry`）。它目录内只有 YAML 与文档、**无 JS 代码、不 import cordis**，所以**不该**补 `peerDependencies.cordis`；
+- 判据与仓库不变量（`scripts/lib/preset-gate.mjs`，单测 `scripts/test/preset-gate.test.mjs`）：`dsh.kind=preset` 必须声明 `dsh.bundle.patch`，且该 patch 里真的有声明行（含非空 `id` 与 `plugins` 列表）；与 `dsh.client` 互斥；patch 里有声明行却不声明 `kind` 也会被拦下，并提示正确修复方式（而不是误报缺 cordis peer）；
 - **豁免不削弱拦截**：preset 只豁免 1b 的 cordis peer 与 3c 的 profile 组合验证；注入未声明的真实 `dsh-*` `import` 仍会被 1c 拦下；
 - 豁免结果在发版输出与批量汇总显式列出（含 `dsh.presetReason`），不悄悄放行。
 

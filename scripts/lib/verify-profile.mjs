@@ -365,6 +365,47 @@ export function checkAddonEntriesEnabled({ dumpOutput, addons }) {
   }
 }
 
+// ── 组合配置里的重复 loader entry（发版门禁前置检查） ──────────────────────
+
+/**
+ * 组合配置里**真的重复挂载**的 loader entry id（纯函数，fail-closed 判据）。
+ *
+ * 口径 = 顶层 loader entry，与 `parseDumpEntries` / `checkAddonEntriesEnabled` **同源**
+ * （同一个函数解析，不另造一套正则）—— 这是本检查唯一要拦的东西：同一份组合配置里
+ * 两次挂载同一个 entry id，cordis loader 会在启动时报 duplicate loader entry。
+ *
+ * 为什么旧口径是错的：旧实现用 `/^\s*-?\s*id:/\` 匹配**任意缩进**的 `id:` 行，于是把
+ * DSH 0.1.7-rc.2 起 dump 里展开的 **agent-preset 声明**内嵌清单也算成 loader entry ——
+ *
+ *     - id: tool-bash                       # 顶层 entry
+ *       name: '@deepseek-ai/dsh-tool-bash'
+ *     - id: preset-ptc                      # preset 声明
+ *       name: '@deepseek-ai/dsh-agent-preset'
+ *       config:
+ *         id: ptc
+ *         plugins:
+ *           - id: persona                   # ← 缩进 6：preset 内嵌清单，不是 loader entry
+ *           - id: tool-bash                 # ← 与顶层同名是**正常结构**，不是重复挂载
+ *
+ * 实测该假红在生产 profile 上给出 34 个「重复 id」（脚本口径 333 id / 34 重复），而
+ * 顶格 loader entry 是 202 id / 0 重复（生产实例正常运行）—— 门禁在实例启动前
+ * fail-closed，把三个插件的发版全部堵死。修正后**检查能力不变**：顶层真重复仍被拦下
+ * （单测 scripts/test/verify-profile.test.mjs「② 顶层真出现重复 loader entry」）。
+ *
+ * @param {string} dumpOutput `dsh --profile <p> --dump-config` 的 stdout
+ * @returns {string[]} 去重后的重复 id（按首次重复出现顺序）
+ */
+export function findDuplicateEntryIds(dumpOutput) {
+  const seen = new Set()
+  const duplicates = new Set()
+  for (const entry of parseDumpEntries(dumpOutput)) {
+    if (entry.id === null) continue
+    if (seen.has(entry.id)) duplicates.add(entry.id)
+    else seen.add(entry.id)
+  }
+  return [...duplicates]
+}
+
 // ── 工作区落盘状态预置（隔离实例 GUI 前置） ────────────────────────────────
 
 /** workspace 存储单元的头部（dsh-workspace 的 domain spec：name='workspace', version=2）。 */

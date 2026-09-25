@@ -40,6 +40,7 @@ import {
   realpathOrNull,
   isIsoTimestamp,
   extractApiToken,
+  findDuplicateEntryIds,
   isPluginStatePath,
   presentStateDirs,
   buildWorkspaceStorage,
@@ -843,5 +844,69 @@ describe('3c 启用态判据 — dump-config 解析（disabled: true 不得判�
     expect(script).toContain('checkAddonEntriesEnabled({ dumpOutput: dump.stdout')
     // 旧判据（只看 name 行）必须已退场，否则盲区仍在
     expect(script).not.toContain('entryNames(dump.stdout).includes(name)')
+  })
+})
+
+// ── 组合配置重复 loader entry：preset 内嵌清单不得假红（issue #67 发版门禁）──
+describe('重复 loader entry 检查（顶格口径）', () => {
+  // DSH 0.1.7-rc.2 起 dump-config 会把 agent-preset 声明的 config.plugins 内嵌清单
+  // 一并展开（缩进 6/10）。内嵌 id 与顶层 loader entry 同名是**正常**结构，
+  // 不是「同一个 entry 被重复挂载」—— 按宽缩进口径收集 id 会把这种正常结构判成
+  // 34 个重复 entry，让发版门禁 3c 在实例启动前就 fail-closed（实测假红）。
+  const DUMP_WITH_PRESETS = [
+    '- id: tool-bash',
+    "  name: '@deepseek-ai/dsh-tool-bash'",
+    '- id: preset-ptc',
+    "  name: '@deepseek-ai/dsh-agent-preset'",
+    '  config:',
+    '    id: ptc',
+    '    plugins:',
+    '      - id: persona',
+    "        name: '@deepseek-ai/dsh-persona'",
+    '      - id: tool-bash',
+    "        name: '@deepseek-ai/dsh-tool-bash'",
+    '- id: dsh-my-memory',
+    "  name: 'dsh-my-memory'",
+  ].join('\n')
+
+  it('① preset 内嵌 id 与顶层同名 → 不得判为重复（本次假红的形态）', () => {
+    expect(findDuplicateEntryIds(DUMP_WITH_PRESETS)).toEqual([])
+  })
+
+  it('② 顶层真出现重复 loader entry → 仍然报重复（门禁未被削弱）', () => {
+    const dup = [
+      '- id: dup-entry',
+      "  name: 'a'",
+      '- id: other-entry',
+      "  name: 'b'",
+      '- id: dup-entry',
+      "  name: 'c'",
+      '  config:',
+      '    id: nested-same-name',
+      '  nested:',
+      '      - id: dup-entry',
+      "        name: 'nested'",
+    ].join('\n')
+    expect(findDuplicateEntryIds(dup)).toEqual(['dup-entry'])
+  })
+
+  it('③ 内嵌清单自身重复（同一 preset 内两次声明）不属顶层重复，不误报', () => {
+    const nested = [
+      '- id: preset-x',
+      "  name: '@deepseek-ai/dsh-agent-preset'",
+      '  config:',
+      '    plugins:',
+      '      - id: tool-bash',
+      "        name: 'a'",
+      '      - id: tool-bash',
+      "        name: 'b'",
+    ].join('\n')
+    expect(findDuplicateEntryIds(nested)).toEqual([])
+  })
+
+  it('脚本接线：verify-real-profile.mjs 必须用 lib 的顶格口径（旧宽缩进实现必须退场）', () => {
+    const script = readFileSync(join(repoRoot, 'scripts', 'verify-real-profile.mjs'), 'utf8')
+    expect(script).toContain('findDuplicateEntryIds(dump.stdout)')
+    expect(script).not.toContain('function entryIds(')
   })
 })

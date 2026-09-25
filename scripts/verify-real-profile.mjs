@@ -80,8 +80,10 @@ import {
   decideBootOutcome,
   extractApiToken,
   fatalBootHits,
+  findDuplicateEntryIds,
   isPluginStatePath,
   linkNodeModules,
+  parseDumpEntries,
   presentStateDirs,
   readAddon,
   readAddonExternals,
@@ -245,16 +247,6 @@ function run(command, argsList, env = {}) {
     )
     child.on('close', (code) => resolveRun({ ok: code === 0, code, stdout, stderr }))
   })
-}
-
-/** 从 dump-config 输出里收集所有 loader entry id。 */
-function entryIds(dumpOutput) {
-  const ids = []
-  for (const line of dumpOutput.split('\n')) {
-    const match = /^\s*-?\s*id:\s*([A-Za-z0-9._-]+)/.exec(line)
-    if (match !== null) ids.push(match[1])
-  }
-  return ids
 }
 
 /**
@@ -509,19 +501,18 @@ if (!dump.ok) {
   await cleanup()
   process.exit(1)
 }
-const ids = entryIds(dump.stdout)
-const seen = new Map()
-const duplicates = []
-for (const id of ids) {
-  if (seen.has(id)) duplicates.push(id)
-  else seen.set(id, true)
-}
+// 口径 = 顶层 loader entry（lib/verify-profile.mjs 的 findDuplicateEntryIds，与下面的
+// 启用态判据同源解析）。**不得**改回"任意缩进的 id 行都算"：0.1.7-rc.2 起 dump 会展开
+// agent-preset 声明的 config.plugins 内嵌清单，与顶层 entry 同名是正常结构 ——
+// 宽缩进口径会把 34 个正常内嵌 id 判成重复，在实例启动前 fail-closed 堵死发版（实测假红）。
+const entries = parseDumpEntries(dump.stdout)
+const duplicates = findDuplicateEntryIds(dump.stdout)
 if (duplicates.length > 0) {
-  fail(`配置组合存在重复插件行 id: ${[...new Set(duplicates)].join(', ')}`)
+  fail(`配置组合存在重复插件行 id: ${duplicates.join(', ')}`)
   await cleanup()
   process.exit(1)
 }
-pass(`配置组合唯一：${ids.length} 个 id 无重复`)
+pass(`配置组合唯一：${entries.filter((entry) => entry.id !== null).length} 个顶层 entry 的 id 无重复`)
 // 3c 判据（修复后口径）：被验证的插件必须在组合配置里**处于启用态**。
 // 旧判据只看「全文有没有这个 name 行」，会被 `disabled: true` 骗过：插件被加载但不运行
 // （client bundle 不进 window.__DSH_BOOT__.entries、侧边栏页签不出现），门禁却判通过。

@@ -14,7 +14,7 @@ import { test } from 'vitest'
  *  3. 设置页样式走共享 installStyles（`data-dsh-think-zh-expand-settings`），
  *     类名前缀 `dsh-think-zh-expand-settings`，只用宿主 CSS 变量（不硬编码色值）；
  *  4. **渲染增强回归**：同一次 apply 里 assistant-step 渲染器（思考默认展开）与
- *     界面中文化照旧挂载 —— 设置页不得挤掉本插件的核心能力；
+ *     核心能力（assistant-step 渲染器）照旧挂载 —— 设置页不得挤掉它；
  *  5. 视图行为：加载 → 开关显示当前值 → 点击翻转 → 保存（PUT body 正确）→
  *     立即生效 + 「已保存」提示；保存失败 / 加载失败都有明确提示（不静默）；
  *  6. **文案按当前语言返回单语**（与 dsh-my-guard / dsh-my-observability 的
@@ -86,8 +86,8 @@ global.document = {
   querySelector: () => null,
   querySelectorAll: () => [],
 }
-// 刻意**不**提供 MutationObserver：界面中文化的 DOM 扫描链路由 client-render.mjs
-// 覆盖，本文件只断言它的 effect 仍挂载（installUiLocalize 在无 observer 时是 no-op）。
+// 最小 document mock：样式注入走共享 installStyles。issue #428 起本插件已无
+// 界面中文化 DOM 扫描，也不再跨插件取渲染内核。
 
 // ── locale 控制：设置页文案按浏览器语言返回单语 ───────────────────────────
 // 判据与本仓库设置页惯例一致（dsh-my-guard / dsh-my-observability 的
@@ -220,11 +220,9 @@ test('设置页 tab 注册：id 精确唯一、slots 未 active 时也能注册�
     const enLabel = state.tab.options.label()
     assert.equal(enLabel, 'Thinking blocks', '英文 locale 下页签 label 单语：' + enLabel)
     assert.ok(!/[\u4e00-\u9fff]/.test(enLabel), '英文页签 label 不含中文：' + enLabel)
-    // 不能用 'Thinking'：本插件自己的界面中文化词表有 'Thinking' → '思考'
-    // （installUiLocalize 全局扫 document.body，宿主渲染的页签文字会被改写），
-    // 英文界面下页签会变成中文 —— 故取不与词表全等的名称。
-    assert.notEqual(enLabel, 'Thinking', '英文页签名不得等于中文化词表键（会被改写成「思考」）')
-    assert.equal(exportsObj.zhCardTitle(enLabel), null, '英文页签 label 不被卡片标题词表命中')
+    // issue #428：全局 DOM 中文化词表已移除，页签文案不会再被本插件改写；
+    // 这里只钉「英文 locale 下是英文单语、不复用中文页签名」。
+    assert.notEqual(enLabel, '思考增强', '英文 locale 下不得复用中文页签名')
   } finally {
     setLocale('zh-CN')
   }
@@ -244,7 +242,7 @@ test('设置页样式走共享 installStyles，类名前缀与宿主变量（不
   assert.ok(!/#[0-9a-fA-F]{3,6}\b/.test(settingsStyle.textContent), '不硬编码十六进制色值（主题自适应）')
 })
 
-test('渲染增强回归：设置页不影响 assistant-step 渲染器与界面中文化（核心能力照旧）', () => {
+test('渲染增强回归：设置页不影响 assistant-step 渲染器（核心能力照旧）', () => {
   const { slots, state } = makeSlots()
   const ctx = makeBootCtx({ slots })
   const before = styleTags.length
@@ -256,8 +254,8 @@ test('渲染增强回归：设置页不影响 assistant-step 渲染器与界面�
   assert.equal(state.chatNode.options.key, 'assistant-step', '仍替换 assistant-step 渲染器（思考默认展开）')
   assert.equal(state.chatNode.options.registrant, 'dsh-think-zh-expand', 'registrant 不变')
   assert.ok(
-    ctx.effects.some((label) => String(label).includes('ui localization')),
-    '界面中文化 effect 仍挂载：' + JSON.stringify(ctx.effects),
+    !ctx.effects.some((label) => String(label).includes('ui localization')),
+    '界面中文化 effect 已移除：' + JSON.stringify(ctx.effects),
   )
   assert.ok(
     ctx.effects.some((label) => String(label).includes('assistant-step renderer')),

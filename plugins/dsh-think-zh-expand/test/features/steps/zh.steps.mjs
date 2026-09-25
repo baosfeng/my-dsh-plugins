@@ -34,12 +34,12 @@ class World {
   /**
    * 加载 client bundle 并 materialize 本插件 factory。
    *
-   * @param {{ withMdRender?: boolean, platform?: 'ok' | 'throw', platformShape?: 'function' | 'memo' }} [opts]
-   *   withMdRender=false 模拟「未安装 dsh-md-render」（issue #293 场景），
-   *   platform 控制宿主 staticModules 的官方组件是否可用（三级回退），
+   * @param {{ platform?: 'ok' | 'throw', platformShape?: 'function' | 'memo' }} [opts]
+   *   platform 控制宿主 staticModules 的官方组件是否可用（官方组件 / <pre> 两级），
    *   platformShape='memo' 复刻真实宿主 MarkdownText 的 React.memo 对象形态。
+   *   issue #428：不再有 dsh-md-render 参数——产物已无跨插件取值。
    */
-  loadClient({ withMdRender = true, platform = 'throw', platformShape = 'function' } = {}) {
+  loadClient({ platform = 'throw', platformShape = 'function' } = {}) {
     const stubbed = {
       createElement(type, props, ...children) {
         return { type, props: { ...(props || {}), children: children.flat() } }
@@ -49,8 +49,7 @@ class World {
       useMemo: (fn) => fn(),
       useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
     }
-    // issue #31 渲染职责迁移：先加载 dsh-md-render（本插件跨 bundle
-    // require 其 MarkdownView），再加载本插件。
+    // issue #428：只加载本插件产物（不再跨 bundle require dsh-md-render）。
     const registrations = []
     global.window = {
       __ModuleLoader__: {
@@ -68,19 +67,10 @@ class World {
     global.localStorage = { getItem: () => null, setItem: () => {} }
     global.fetch = () => Promise.resolve({ json: () => Promise.resolve({ ok: true, value: {} }) })
 
-    eval(fs.readFileSync(new URL('../../../../dsh-md-render/lib/client.js', import.meta.url), 'utf8'))
     eval(fs.readFileSync(new URL('../../../lib/client.js', import.meta.url), 'utf8'))
-    assert.equal(registrations.length, 2, 'two bundles registered')
-    const mdRenderReg = registrations.find((r) => r.id === 'dsh-md-render')
+    assert.equal(registrations.length, 1, 'only the think-zh-expand bundle is loaded')
     const thinkReg = registrations.find((r) => r.id === 'dsh-think-zh-expand')
-    assert.ok(mdRenderReg, 'dsh-md-render bundle registered')
     assert.ok(thinkReg, 'think-zh-expand bundle registered')
-    const mdRenderExports = withMdRender
-      ? mdRenderReg.factory((spec) => {
-          if (spec === 'react') return stubbed
-          throw new Error('unexpected require: ' + spec)
-        })
-      : null
     const platformCalls = this.platformCalls
     const markdownTextRender = (props) => {
       platformCalls.push(props)
@@ -96,10 +86,7 @@ class World {
     }
     const exportsObj = thinkReg.factory((spec) => {
       if (spec === 'react') return stubbed
-      if (spec === 'dsh-md-render') {
-        if (!withMdRender) throw new Error("Cannot find module 'dsh-md-render'")
-        return mdRenderExports
-      }
+      if (spec === 'dsh-md-render') throw new Error('cross-plugin require removed (issue #428)')
       if (spec === '@deepseek-ai/dsh-client-ui-primitives') {
         if (platform !== 'ok') throw new Error("Cannot find module '@deepseek-ai/dsh-client-ui-primitives'")
         return uiPrimitives
@@ -193,20 +180,20 @@ Given('渲染器已注册', async function () {
   this.registerRenderer()
 })
 
-// issue #293 三级渲染回退：md-render 缺失 / 平台官方组件也缺失
-Given('未装 dsh-md-render 但官方组件可用时渲染器已注册', async function () {
-  this.loadClient({ withMdRender: false, platform: 'ok' })
+// issue #428：官方 baseline 组件可用 / 缺失 / memo 形态（只剩两级回退）
+Given('官方组件可用时渲染器已注册', async function () {
+  this.loadClient({ platform: 'ok' })
   this.registerRenderer()
 })
 
-Given('未装 dsh-md-render 且官方组件也缺失时渲染器已注册', async function () {
-  this.loadClient({ withMdRender: false, platform: 'throw' })
+Given('官方组件缺失时渲染器已注册', async function () {
+  this.loadClient({ platform: 'throw' })
   this.registerRenderer()
 })
 
 // 真实宿主 MarkdownText 是 React.memo 对象（不是函数）——可用性判定必须按 React 语义
-Given('未装 dsh-md-render 且官方组件为 memo 对象时渲染器已注册', async function () {
-  this.loadClient({ withMdRender: false, platform: 'ok', platformShape: 'memo' })
+Given('官方组件为 memo 对象时渲染器已注册', async function () {
+  this.loadClient({ platform: 'ok', platformShape: 'memo' })
   this.registerRenderer()
 })
 
@@ -245,26 +232,6 @@ Then('section 文本覆盖关键场景与代码术语', async function () {
   assert.ok(section.text.includes('最高优先级'), 'declares top priority over context')
 })
 
-Then('{string} 的卡片标题为 {string}', async function (title, expected) {
-  assert.equal(this.exportsObj.zhCardTitle(title), expected)
-})
-
-Then('工具名 {string} 映射为 {string}', async function (name, expected) {
-  assert.equal(this.exportsObj.zhToolName(name), expected)
-})
-
-Then('未覆盖的工具名 {string} 映射为空', async function (name) {
-  assert.equal(this.exportsObj.zhToolName(name), null)
-})
-
-Then('输出包含 table 标签', async function () {
-  assert.ok(this.lastRender.tags.includes('table'), `tags: ${this.lastRender.tags.join(',')}`)
-})
-
-Then('输出包含表头文本 {string}', async function (text) {
-  assert.ok(this.lastRender.texts.includes(text), `texts: ${this.lastRender.texts.join(',')}`)
-})
-
 Then('输出包含数据文本 {string}', async function (text) {
   assert.ok(this.lastRender.texts.includes(text), `texts: ${this.lastRender.texts.join(',')}`)
 })
@@ -277,9 +244,15 @@ Then('本插件 bundle 不包含表格渲染逻辑', async function () {
   const bundleSrc = fs.readFileSync(new URL('../../../lib/client.js', import.meta.url), 'utf8')
   assert.ok(!bundleSrc.includes('function tryTable'), 'tryTable definition removed from bundle')
   assert.ok(!bundleSrc.includes('function MarkdownView'), 'MarkdownView definition removed from bundle')
-  // issue #299：三级回退逻辑收口在共享件（构建期注入），bundle 里是共享件内的调用
+  // issue #299/#428：回退逻辑收口在共享件（构建期注入），但跨插件取渲染器那一级
+  // 已被显式旁路（external 指向平台 seed 模块 + 不存在的导出名）。
   assert.ok(bundleSrc.includes('function installMarkdownViewFallback('), 'shared fallback part injected')
-  assert.ok(bundleSrc.includes("'dsh-md-render'"), 'bundle wires dsh-md-render as the render kernel')
+  assert.ok(!bundleSrc.includes("require('dsh-md-render')"), 'no cross-plugin require (issue #428)')
+  assert.ok(bundleSrc.includes('external: PLATFORM_PRIMITIVES'), 'external kernel slot points at the platform module')
+  assert.ok(
+    bundleSrc.includes("externalExport: 'externalRendererDisabled'"),
+    'shared fallback part external-kernel level bypassed (never matches)',
+  )
 })
 
 // ── issue #293：三级渲染回退 ───────────────────────────────────────────────

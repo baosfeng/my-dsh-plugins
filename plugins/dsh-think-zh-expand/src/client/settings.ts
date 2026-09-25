@@ -54,9 +54,8 @@ function isZh(): boolean {
 
 /** 设置页文案（按当前语言返回单语；每次调用重新判定语言，不缓存）。 */
 const THINK_SETTINGS_STRINGS = {
-  // 页签名**不能**叫 'Thinking'：本插件自己的界面中文化词表（index.ts 的
-  // ZH_TABLE）有 'Thinking' → '思考' 且全局扫 document.body，宿主渲染出的
-  // 页签文字会被改写成中文——英文界面下页签反而显示中文。
+  // 页签名按浏览器语言切换。历史上英文页签刻意避开 'Thinking'（当时本插件有
+  // 全局 DOM 中文化词表会改写它）；该词表已随 issue #428 移除。
   tabLabel: () => (isZh() ? '思考增强' : 'Thinking blocks'),
   rowLabel: () => (isZh() ? '思考默认展开' : 'Expand thinking by default'),
   // 英文 hint 语义两层：① 开关默认开 ②「关闭后」点标题仍可手动展开。刻意不用
@@ -275,7 +274,7 @@ interface ThinkSettingsCtx {
  *    `ctx.get(name, strict = true)` 在服务提供者 fiber 尚未 active（首屏）时返回
  *    undefined，页签会消失到下次 HMR；只有 strict=false 才拿得到实例。
  *  - 服务缺失（精简上下文 / 老宿主）时静默跳过：设置页是增强，不能因为拿不到
- *    slots 就让整个 client（含思考块渲染与中文化）挂掉。
+ *    slots 就让整个 client（含思考块渲染）挂掉。
  */
 function attachSettingsTab(ctx: ThinkSettingsCtx): void {
   // 样式注入走共享实现，位置在任何早退分支之前（服务判空 / HMR 时样式不会丢）。

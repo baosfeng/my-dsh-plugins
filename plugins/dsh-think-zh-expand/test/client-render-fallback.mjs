@@ -7,11 +7,12 @@ import { test } from 'vitest'
  * `createElement(MarkdownView, { text })` → React 渲染期抛
  * `Element type is invalid ... but got: null`。
  *
- * 本文件覆盖「dsh-md-render 缺失」的两条真实路径（这是 `client-render.mjs`
- * 结构性无法覆盖的：它必须先 materialize dsh-md-render）：
- *  - A：md-render 缺失 + 平台 `@deepseek-ai/dsh-client-ui-primitives` 的
- *    `MarkdownText` 可用 → 用官方组件渲染（文本不丢、`labels` 契约被满足）；
- *  - B：md-render 与平台组件都缺失 → `<pre data-dsh-think-zh-expand-fallback>`；
+ * issue #428 后本插件只剩两级：官方 baseline 组件 → `<pre>` 兜底——跨插件取渲染器
+ * 的那一级已随 dsh.client.external 一并移除（官方禁止特性插件 runtime-import 彼此的
+ * 值，packages/client/AGENTS.md；官方 scripts/verify-client-packages.ts 判违规）：
+ *  - A：平台 `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText` 可用 →
+ *    用官方组件渲染（文本不丢、`labels` 契约被满足）；
+ *  - B：平台组件缺失 → `<pre data-dsh-think-zh-expand-fallback>`；
  *  - C：各级解析的「导出不是组件」都必须安全落到下一级；
  *  - F：官方组件是 **`React.memo` 返回的对象**（真实宿主实测：
  *    `object($$typeof,type,compare)`）→ 必须仍被第二级采用；「可用性判定」若写成
@@ -26,7 +27,6 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
 const MEMO_TYPE = Symbol.for('react.memo')
-const FORWARD_REF_TYPE = Symbol.for('react.forward_ref')
 
 function invalidElementType(got) {
   return new Error(
@@ -111,17 +111,16 @@ function makePlatformStub({ shape = 'function' } = {}) {
   return { ui: { MarkdownText }, calls }
 }
 
-const MD_MISSING = new Error("Cannot find module 'dsh-md-render'")
 const UI_MISSING = new Error("Cannot find module '@deepseek-ai/dsh-client-ui-primitives'")
+/** 产物若仍跨插件取值就抛这个（issue #428 的强断言：不是「缺了就降级」，而是「根本不允许要」）。 */
+const CROSS_PLUGIN_REQUIRE = new Error('cross-plugin require removed: dsh-md-render (issue #428)')
 
-/** 构造 require stub：mdRender / platform 取值为 exports 或 'throw'。 */
-function requireStub({ mdRender = 'throw', platform = 'throw', react = stubbed } = {}) {
+/** 构造 require stub：platform 取值为 exports 或 'throw'；require('dsh-md-render')
+ *  一律抛错——本插件不再跨插件取渲染内核。 */
+function requireStub({ platform = 'throw', react = stubbed } = {}) {
   return (spec) => {
     if (spec === 'react') return react
-    if (spec === 'dsh-md-render') {
-      if (mdRender === 'throw') throw MD_MISSING
-      return mdRender
-    }
+    if (spec === 'dsh-md-render') throw CROSS_PLUGIN_REQUIRE
     if (spec === '@deepseek-ai/dsh-client-ui-primitives') {
       if (platform === 'throw') throw UI_MISSING
       return platform
@@ -195,7 +194,7 @@ try {
   // ── 用例 A：md-render 缺失 + 平台 MarkdownText 可用 ──────────────────
   {
     const platform = makePlatformStub()
-    const { render } = mount({ mdRender: 'throw', platform: platform.ui })
+    const { render } = mount({ platform: platform.ui })
 
     const reasoning = collectNodes(render([{ kind: 'reasoning', text: REASONING }]))
     const textNodes = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
@@ -229,7 +228,7 @@ try {
 
   // ── 用例 B：md-render 缺失 + 平台组件也缺失 → <pre> 纯文本兜底 ────────
   {
-    const { render } = mount({ mdRender: 'throw', platform: 'throw' })
+    const { render } = mount({ platform: 'throw' })
     const reasoning = collectNodes(render([{ kind: 'reasoning', text: REASONING }]))
     const textNodes = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
 
@@ -252,7 +251,7 @@ try {
   {
     const platform = makePlatformStub({ shape: 'memo' })
     assert.equal(typeof platform.ui.MarkdownText, 'object', 'stub reproduces the real memo-object shape')
-    const { render } = mount({ mdRender: 'throw', platform: platform.ui })
+    const { render } = mount({ platform: platform.ui })
 
     const reasoning = collectNodes(render([{ kind: 'reasoning', text: REASONING }]))
     const textNodes = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
@@ -286,7 +285,7 @@ try {
     const bareReact = makeReactStub({ withIsValidElementType: false })
     assert.equal(bareReact.isValidElementType, undefined, 'react stub without isValidElementType')
     const platform = makePlatformStub({ shape: 'memo' })
-    const { render } = mount({ mdRender: 'throw', platform: platform.ui, react: bareReact })
+    const { render } = mount({ platform: platform.ui, react: bareReact })
     const out = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
     assert.equal(
       out.nodes.filter((n) => n.props['data-ui'] === 'markdown-text').length,
@@ -300,27 +299,6 @@ try {
   // 注意：**带 $$typeof 的对象是合法组件**（React.memo / forwardRef），不算畸形；
   // 只有 undefined / null / 字符串 / 空对象 / 组件位非组件才是畸形。
   {
-    const malformedMdRender = [
-      ['undefined exports', undefined],
-      ['null exports', null],
-      ['string exports', 'nope'],
-      ['empty object', {}],
-      ['non-component MarkdownView', { MarkdownView: 'nope' }],
-      ['null MarkdownView', { MarkdownView: null }],
-      ['empty-object MarkdownView', { MarkdownView: {} }],
-    ]
-    for (const [label, mdRender] of malformedMdRender) {
-      const platform = makePlatformStub()
-      const { render } = mount({ mdRender, platform: platform.ui })
-      const out = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
-      assert.equal(
-        out.nodes.filter((n) => n.props['data-ui'] === 'markdown-text').length,
-        1,
-        `md-render ${label} → level 2 official MarkdownText`,
-      )
-      assert.equal(out.text, TEXT_BLOCK, `md-render ${label} → text preserved`)
-    }
-
     const malformedPlatform = [
       ['undefined exports', undefined],
       ['null exports', null],
@@ -331,61 +309,26 @@ try {
       ['empty-object MarkdownText', { MarkdownText: {} }],
     ]
     for (const [label, platform] of malformedPlatform) {
-      const { render } = mount({ mdRender: 'throw', platform })
+      const { render } = mount({ platform })
       const out = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
       const pre = out.nodes.find((n) => n.props['data-dsh-think-zh-expand-fallback'] === 'true')
       assert.ok(pre, `platform ${label} → level 3 <pre> fallback`)
       assert.equal(out.text, TEXT_BLOCK, `platform ${label} → text preserved`)
     }
-
-    // 组件位是 memo / forwardRef 对象 → **可用**，不得落级
-    const memoView = {
-      $$typeof: MEMO_TYPE,
-      type: (props) => createElement('div', { 'data-ui': 'md-render-memo' }, props.text),
-      compare: null,
-    }
-    const memoPlatform = makePlatformStub({ shape: 'memo' })
-    const bothObject = collectNodes(
-      mount({ mdRender: { MarkdownView: memoView }, platform: memoPlatform.ui }).render([
-        { kind: 'text', text: TEXT_BLOCK },
-      ]),
-    )
-    assert.ok(
-      bothObject.nodes.some((n) => n.props['data-ui'] === 'md-render-memo'),
-      'memo-form MarkdownView counts as a valid level-1 component (object with $$typeof)',
-    )
-    assert.equal(memoPlatform.calls.length, 0, 'level 1 wins when md-render export is a memo object')
-
-    const forwardRefView = {
-      $$typeof: FORWARD_REF_TYPE,
-      render: (props) => createElement('div', { 'data-ui': 'md-render-forward-ref' }, props.text),
-    }
-    const forwardOut = collectNodes(
-      mount({ mdRender: { MarkdownView: forwardRefView }, platform: 'throw' }).render([
-        { kind: 'text', text: TEXT_BLOCK },
-      ]),
-    )
-    assert.ok(
-      forwardOut.nodes.some((n) => n.props['data-ui'] === 'md-render-forward-ref'),
-      'forwardRef-form MarkdownView counts as a valid level-1 component',
-    )
   }
 
-  // ── 用例 D：md-render 可用时仍是第一级（平台组件不被触碰）────────────
+  // ── 用例 D：跨插件渲染器即使已安装也不被取值（issue #428）────────────
+  // 产物已无 dsh-md-render 分支：require('dsh-md-render') 会抛
+  // CROSS_PLUGIN_REQUIRE（见 requireStub），所以本用例跑通即证明「没有跨插件取值」。
   {
-    const mdCalls = []
-    const mdView = (props) => {
-      mdCalls.push(props)
-      return createElement('div', { className: 'tzx-md', 'data-ui': 'md-render' }, props.text)
-    }
     const platform = makePlatformStub()
-    const { render } = mount({ mdRender: { MarkdownView: mdView }, platform: platform.ui })
+    const { render } = mount({ platform: platform.ui })
     const out = collectNodes(render([{ kind: 'text', text: TEXT_BLOCK }]))
-    assert.equal(mdCalls.length, 1, 'dsh-md-render MarkdownView used when available (level 1)')
-    assert.equal(platform.calls.length, 0, 'official MarkdownText untouched when md-render present')
-    assert.ok(
-      out.nodes.some((n) => n.props['data-ui'] === 'md-render'),
-      'md-render output used verbatim',
+    assert.equal(platform.calls.length, 1, 'official MarkdownText is the only render kernel')
+    assert.equal(
+      out.nodes.filter((n) => n.props['data-ui'] === 'markdown-text').length,
+      1,
+      'text block rendered by the official baseline component',
     )
   }
 
@@ -393,10 +336,15 @@ try {
   {
     // issue #299：三级链逻辑收口在共享件（构建期注入），模块名以参数传入共享件
     assert.ok(bundleSrc.includes('function installMarkdownViewFallback('), 'shared fallback part injected')
-    assert.ok(bundleSrc.includes("'dsh-md-render'"), 'preferred render kernel is dsh-md-render (level 1)')
+    assert.ok(!bundleSrc.includes("require('dsh-md-render')"), 'no cross-plugin require in the artifact (issue #428)')
+    assert.ok(
+      bundleSrc.includes('external: PLATFORM_PRIMITIVES') &&
+        bundleSrc.includes("externalExport: 'externalRendererDisabled'"),
+      'shared fallback part external-kernel level bypassed (never matches)',
+    )
     assert.ok(
       bundleSrc.includes("'@deepseek-ai/dsh-client-ui-primitives'"),
-      'platform official primitives wired for fallback (level 2)',
+      'platform official primitives wired as the render kernel',
     )
     assert.ok(
       bundleSrc.includes('data-dsh-think-zh-expand-fallback'),

@@ -36,6 +36,7 @@ import {
   releaseCommitPlan,
   resolveBumpType,
   releaseArtifactNames,
+  buildRealVerifyArgs,
 } from '../lib/release-checks.mjs'
 
 // ── 发版目标版本口径（防回归：清单名必须等于本次要发布的版本）────────────
@@ -68,6 +69,49 @@ describe('发版目标版本口径', () => {
     expect(script).toContain('releaseArtifactNames(name, version)')
     // 旧写法（清单名与 tag 各自拼一次版本）必须退场，否则口径仍可能漂移
     expect(script).not.toContain("join(root, 'verification', `${name}-${version}.md`)")
+  })
+})
+
+// ── 3c 透传 --enable-plugins（显式声明，默认不启用）────────────────────────
+describe('3c 透传 --enable-plugins', () => {
+  const base = {
+    checklistPath: 'verification/dsh-my-guardian-0.4.4.md',
+    pluginName: 'dsh-my-guardian',
+    version: '0.4.4',
+    port: 3087,
+    addonDir: 'plugins/dsh-my-guardian',
+  }
+
+  it('① 未声明时**不带**该参数 → 被生产禁用的插件照样被 3c 拦下（判据不变）', () => {
+    const args = buildRealVerifyArgs(base)
+    expect(args).not.toContain('--enable-plugins')
+    expect(args).toContain('--clean-externals')
+    expect(args).toContain('--addons')
+    expect(args).toContain('plugins/dsh-my-guardian')
+  })
+
+  it('② 声明后透传该插件名（值紧跟在 flag 之后）', () => {
+    const args = buildRealVerifyArgs({ ...base, enablePlugins: ['dsh-my-guardian'] })
+    expect(args).toContain('--enable-plugins')
+    expect(args[args.indexOf('--enable-plugins') + 1]).toBe('dsh-my-guardian')
+  })
+
+  it('③ 声明的是别的插件 → 本插件不带该参数（批量发版不串味）', () => {
+    const args = buildRealVerifyArgs({ ...base, enablePlugins: ['dsh-my-memory'] })
+    expect(args).not.toContain('--enable-plugins')
+  })
+
+  it('④ 参数契约不变：脚本入口、--addons / --port / --version 取值照旧', () => {
+    const args = buildRealVerifyArgs(base)
+    expect(args.slice(0, 2)).toEqual(['scripts/verify-real-profile.mjs', '--addons'])
+    expect(args[args.indexOf('--port') + 1]).toBe('3087')
+    expect(args[args.indexOf('--version') + 1]).toBe('0.4.4')
+  })
+
+  it('⑤ 脚本接线：release.mjs 必须用纯函数构造 3c 参数（旧内联数组必须退场）', () => {
+    const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'release.mjs'), 'utf8')
+    expect(script).toContain('buildRealVerifyArgs(')
+    expect(script).not.toContain("'--clean-externals'")
   })
 })
 

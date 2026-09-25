@@ -650,3 +650,39 @@ export function releaseArtifactNames(name, version) {
     tag: `${name}@v${version}`,
   }
 }
+
+/**
+ * 构造 3c（真实环境验证）的 verify-real-profile.mjs 命令行参数（纯函数）。
+ *
+ * 为什么要抽出来：3c 的参数过去**内联在 spawn 调用里** —— 无法单测，新增参数极易漏接线
+ * （`--enable-plugins` 就是这么漏掉的：子脚本支持了、门禁没透传，guardian 仍过不了 3c）。
+ * 现在参数由本函数产出，单测可断言「未声明时不带该参数」「声明后透传」「声明别的插件不串味」，
+ * release.mjs 只负责 spawn。
+ *
+ * `--enable-plugins` 是**显式**声明（不按插件名自动加）：自动在副本内启用会把「该插件在
+ * 生产配置里被故意禁用」这一事实静默抹掉，等于放宽门禁；显式声明要求发版者确认，
+ * 且默认一个都不启用（fail-closed）。判据本身不放宽 —— 副本内启用后照样要走
+ * 「entry 必须在组合配置中处于启用态」。
+ *
+ * @param {{checklistPath: string, pluginName: string, version: string, port: number|string, addonDir: string, enablePlugins?: string[]}} input
+ * @returns {string[]} argv（不含 node 可执行文件）
+ */
+export function buildRealVerifyArgs({ checklistPath, pluginName, version, port, addonDir, enablePlugins = [] }) {
+  const args = [
+    'scripts/verify-real-profile.mjs',
+    '--addons',
+    addonDir,
+    '--port',
+    String(port),
+    '--checklist',
+    checklistPath,
+    '--plugin',
+    pluginName,
+    '--version',
+    version,
+    '--clean-externals',
+  ]
+  const enabled = (enablePlugins ?? []).filter((item) => item === pluginName)
+  if (enabled.length > 0) args.push('--enable-plugins', enabled.join(','))
+  return args
+}

@@ -76,6 +76,7 @@ import {
   collectClientSources,
   collectServerSources,
   buildPluginIndex,
+  buildRealVerifyArgs,
   findFreePorts,
   inspectTagState,
   tagConflictHint,
@@ -99,7 +100,7 @@ const args = process.argv.slice(2)
 // 注意：`--bump <type>` / `--skip-reason <理由>` 的取值不以 `--` 开头，
 // 若直接 `filter(!a.startsWith('--'))` 会把取值误当成插件名——实测批量发版
 // 报 `✗ plugins/patch does not exist`（`--bump patch` 的 patch 被当成插件）。
-const VALUE_FLAGS = new Set(['--bump', '--skip-reason', '--concurrency'])
+const VALUE_FLAGS = new Set(['--bump', '--skip-reason', '--concurrency', '--enable-plugins'])
 const names = []
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i]
@@ -122,6 +123,19 @@ const bumpRaw = bumpIdx >= 0 ? args[bumpIdx + 1] || '' : ''
 // 单测 scripts/test/release-checks.test.mjs「发版目标版本口径」）。旧行为缺省恒为 ''
 // → 「用当前版本再发一次」→ tag 已存在被拒 / 同版本重复发布。dry-run 保持不 bump。
 const bump = resolveBumpType({ bump: bumpRaw, push })
+// --enable-plugins：**显式**声明「这些插件在生产 profile 里被禁用，允许在隔离副本内启用」
+// （逗号分隔或重复传参；默认空 = 一个都不启用）。刻意**不**按插件名自动加 —— 自动启用会把
+// 「生产中该插件被故意禁用」静默抹掉，等于放宽门禁；显式声明要求发版者确认。
+const enablePlugins = []
+for (let i = 0; i < args.length; i += 1) {
+  if (args[i] !== '--enable-plugins') continue
+  const raw = args[i + 1] ?? ''
+  for (const item of raw.split(',')) {
+    const trimmed = item.trim()
+    if (trimmed !== '') enablePlugins.push(trimmed)
+  }
+  i += 1
+}
 const concurrencyIdx = args.indexOf('--concurrency')
 const concurrencyRaw = concurrencyIdx >= 0 ? args[concurrencyIdx + 1] : undefined
 const BUMP_TYPES = new Set(['patch', 'minor', 'major'])
@@ -138,7 +152,8 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // 用法校验被环境校验挡住，让人以为是仓库状态问题）。
 if (names.length === 0) {
   console.error(
-    'usage: node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push] [--all-checks] [--concurrency N]（--push 时 --bump 缺省 = patch）',
+    'usage: node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push] [--all-checks] [--concurrency N]' +
+      ' [--enable-plugins <name,...>]（--push 时 --bump 缺省 = patch）',
   )
   process.exit(2)
 }
@@ -147,6 +162,13 @@ for (const name of names) {
   // 严格校验字符集（CodeQL js/shell-command-injection-from-environment）。
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name)) {
     console.error(`✗ 非法插件名: ${name}（仅允许 [a-zA-Z0-9._-] 且首字符为字母/数字）`)
+    process.exit(2)
+  }
+}
+// --enable-plugins 只允许本次发版列表里的插件（名字写错 = 用法错误，早失败不误伤）
+for (const item of enablePlugins) {
+  if (!names.includes(item)) {
+    console.error(`✗ --enable-plugins ${item} 不在本次发版列表里（${names.join(', ')}）`)
     process.exit(2)
   }
 }
@@ -279,20 +301,14 @@ async function realVerifyGate(name, version, port, prefix) {
   const checklistPath = join(root, releaseArtifactNames(name, version).checklistPath)
   const verify = await runChild(
     process.execPath,
-    [
-      'scripts/verify-real-profile.mjs',
-      '--addons',
-      `plugins/${name}`,
-      '--port',
-      String(port),
-      '--checklist',
+    buildRealVerifyArgs({
       checklistPath,
-      '--plugin',
-      name,
-      '--version',
+      pluginName: name,
       version,
-      '--clean-externals',
-    ],
+      port,
+      addonDir: `plugins/${name}`,
+      enablePlugins,
+    }),
     { cwd: root, prefix },
   )
   if (verify.code !== 0) {

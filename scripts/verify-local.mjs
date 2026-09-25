@@ -145,6 +145,7 @@ import {
 } from './lib/impact-scope.mjs'
 // 超时配置解析抽成纯函数模块（fail-closed：0 / 负数 / 空 / 非法一律报错，见该文件头注释）
 import { isValidTimeoutMs, parseTimeoutSeconds, timeoutConfigError } from './lib/verify-timeout.mjs'
+import { looksLikeConcurrencyConflict } from './lib/verify-flaky-classify.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -1069,12 +1070,11 @@ async function runOnePlugin(name) {
  * testTimeout 的联网用例超时（dsh-my-guard 曾出现 5013ms 误报）。
  * 刻意保持保守：只有命中这些特征才触发「串行复测」，不做无条件重试，以免掩盖真实回归。
  */
-const CONCURRENCY_CONFLICT_RE =
-  /coverage|EACCES|ENOENT|EPERM|ETXTBSY|EBUSY|ENOTEMPTY|EEXIST|resource busy|already in use|testTimeout|Timed out in \d+\s*ms|timed out after/i
-
-/** 该失败是否「疑似并发冲突」。单步超时也算：被争用/负载拖慢的典型表现就是超时。 */
-const looksLikeConcurrencyConflict = (r) =>
-  Boolean(r.timedOut) || CONCURRENCY_CONFLICT_RE.test(`${r.out ?? ''}\n${r.error ?? ''}`)
+// 判定逻辑抽到 lib/verify-flaky-classify.mjs（纯函数、可单测，见
+// scripts/test/verify-flaky-classify.test.mjs）。issue #402 在那里补了「npm test 阶段的
+// 纯断言失败也算疑似并发冲突」——旧正则只认 coverage/EACCES/超时特征，判不出
+// 「等待预算与墙钟解耦」导致的假红（guardian 的 setImmediate 忙等、observability 的
+// 固定 40ms sleep），于是跳过串行复测直接判红挡推送。
 
 /** 「疑似并发冲突 → 串行复测」是否启用（首轮本就串行时无需复测）。 */
 function serialRetryEnabled() {

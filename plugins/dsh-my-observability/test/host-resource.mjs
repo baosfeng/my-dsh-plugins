@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { evaluateResourceAlerts, DEFAULT_LIMITS, shouldEnterDegrade, shouldExitDegrade } from '../lib/resource-rules.js'
 import { createResourceMonitor } from '../lib/resource-monitor.js'
 import { bootPlugin, mockRequest, mockResponse, invoke, jsonOf, createTempHome, cleanupHome } from './lib/helpers.mjs'
+import { waitUntil } from './lib/wait.mjs'
 
 const disposeAlls = []
 afterAll(() => {
@@ -20,6 +21,26 @@ afterAll(() => {
 })
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 40))
+
+/**
+ * 等 /observability/api/resources 真正就绪（issue #402）。
+ *
+ * 原实现在 bootPlugin 之后用固定 `settle()`（40ms）猜「插件异步初始化已完成」：这是把
+ * **墙钟猜测**当就绪信号 —— 高负载下（门禁并发测试池 6 路 + 检查项 4 路，或 CI runner）
+ * 40ms 内采样未落定，返回体里 cpuPercent 仍非 number → 纯 AssertionError 假红
+ * （issue #402 实证：该插件全量 verify 失败、单独跑 10.6s 全通过）。
+ * 改为轮询确定条件：就绪即立即返回；超时后由原断言照常判红（等待语义只加强不削弱）。
+ */
+const waitForResourcesApi = async (handle) =>
+  waitUntil(
+    async () => {
+      const probe = mockResponse()
+      await invoke(handle.api, mockRequest({ url: '/observability/api/resources' }), probe)
+      if (probe.writeHeadStatus !== 200) return false
+      return typeof jsonOf(probe).value?.cpuPercent === 'number'
+    },
+    { timeoutMs: 8000 },
+  )
 
 test('resource rules: 各阈值边界判定', () => {
   const limits = { ...DEFAULT_LIMITS, writeRateBytesPerHour: 1000, fileBytes: 500, cpuPercent: 10, memoryBytes: 200 }
@@ -87,7 +108,7 @@ test('resource monitor: 采样统计（文件字节/写入速率/CPU/内存 + ri
 test('resource monitor: 路由 /observability/api/resources（fence + 结构）', async () => {
   const handle = bootPlugin({})
   disposeAlls.push(handle.disposeAll)
-  await settle()
+  await waitForResourcesApi(handle)
   const ok = mockResponse()
   await invoke(handle.api, mockRequest({ url: '/observability/api/resources' }), ok)
   assert.equal(ok.writeHeadStatus, 200)

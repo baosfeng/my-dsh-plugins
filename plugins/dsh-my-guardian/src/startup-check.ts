@@ -92,20 +92,22 @@ export function isDisabledEntry(entry: LoaderEntry): boolean {
 /** Removal hint shared by every issue kind (guardian never rewrites YAML). */
 const REMOVE_HINT = '从启动名册（cordis.patch.yml / profile）中删除该条目行，或标记 disabled: true 暂缓加载'
 
-/** Build an unresolvable-package issue (import stage would fail). */
-function unresolvedIssue(id: string, name: string): StartupIssue {
+/** Build an unresolvable-package issue (import stage would fail). `installTarget`
+ * is the base package: a roster row may name a subpath export, and
+ * `dsh plugin add pkg/sub` would install the wrong thing. */
+function unresolvedIssue(id: string, name: string, installTarget: string): StartupIssue {
   return {
     type: 'unresolvable',
     entryId: id,
     name,
     message: `插件包 ${name} 无法解析（profile node_modules 中不存在），启动 import 将失败`,
-    fix: `dsh plugin add ${name}`,
+    fix: `dsh plugin add ${installTarget}`,
     remove: REMOVE_HINT,
   }
 }
 
 /** Build a dependency issue reusing the staged-mount pre-check result. */
-function dependencyIssue(id: string, name: string, precheck: PrecheckResult): StartupIssue {
+function dependencyIssue(id: string, name: string, precheck: PrecheckResult, installTarget: string): StartupIssue {
   return {
     type: 'dependency',
     entryId: id,
@@ -113,7 +115,7 @@ function dependencyIssue(id: string, name: string, precheck: PrecheckResult): St
     message: buildDependencyMessage(precheck),
     missingDeps: [...precheck.missing, ...precheck.mismatched.map((item) => item.name)],
     installHint: precheck.suggestions[0] ?? null,
-    fix: precheck.suggestions[0] ?? `dsh plugin add ${name}`,
+    fix: precheck.suggestions[0] ?? `dsh plugin add ${installTarget}`,
     remove: REMOVE_HINT,
   }
 }
@@ -155,11 +157,11 @@ function checkPluginItem(
   const base = basePackage(label)
   const pluginDir = findModuleDir(nmRoot, base)
   if (pluginDir === null) {
-    issues.push(unresolvedIssue(id, label))
+    issues.push(unresolvedIssue(id, label, base))
     return
   }
   const precheck = checkPeerDependencies({ profileDir, pluginName: base })
-  if (!precheck.ok) issues.push(dependencyIssue(id, label, precheck))
+  if (!precheck.ok) issues.push(dependencyIssue(id, label, precheck, base))
 }
 
 /** Append one duplicate-id issue per id seen in more than one roster row. */

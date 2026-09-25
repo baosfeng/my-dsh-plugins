@@ -67,3 +67,6 @@ reports/
 
 # TS 插件 client 构建临时目录（tsc 编译产物，构建后清理）
 **/lib/.client-build/
+
+# 审计/探查临时产物（一次性输出，绝不入库；避免 prettier --check . 产生假红）
+tmp/

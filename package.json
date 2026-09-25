@@ -11,7 +11,7 @@
     "knip": "knip",
     "jscpd": "jscpd",
     "test": "bash scripts/test-all.sh",
-    "test:scripts": "vitest run --coverage --config scripts/test/vitest.config.mjs",
+    "test:scripts": "node scripts/run-with-timeout.mjs --timeout 300 --label test:scripts -- vitest run --coverage --config scripts/test/vitest.config.mjs",
     "verify": "node scripts/verify-local.mjs",
     "verify:fast": "node scripts/verify-local.mjs --fast",
     "verify:full": "node scripts/verify-local.mjs --full",

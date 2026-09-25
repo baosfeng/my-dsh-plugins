@@ -32,7 +32,7 @@ description: 使用当 需要处理 DSH 宿主或插件的版本升级时——�
 
 1. 阅读目标仓库的 `AGENTS.md` / `CLAUDE.md` 等规则；检查 branch、HEAD、working tree、submodule。发现陌生修改或未跟踪文件就停止并报告，不自动 stash/reset/clean/checkout。
 2. 分开记录代码来源与安装身份：registry 包、Git checkout、workspace/junction 或复制安装；记录来源仓库/URL、Git SHA、实际包名、插件自身版本、declared/resolved DSH 依赖 cohort 与当前 DSH/Node 版本。插件发版版本（如 `0.6.4 → 0.7.0-alpha.0`）不是 DSH 宿主走廊（形如 `<fromTag> → <toTag>` 的宿主版本对）。GitHub owner/repo 与 registry scope/package 是独立坐标，不能从前者推导或改写后者。
-3. 区分文件所有权：`package.json` / lockfile 是包与依赖；`cordis.patch.yml` / `agent.cordis.yml` / 历史 `cordis.yml` 是 profile composition；resolved config 是运行时组合结果，只用于核对，不整对象回写。官方 manifest 只有 `package.json` 下的 `dsh.bundle` / `dsh.profile` / `dsh.client`；社区标准 manifest `dsh-plugin.json` 是**可选社区产物、非官方**，仅在目标仓库确实采用时才列入清单。
+3. 区分文件所有权：`package.json` / lockfile 是包与依赖；`cordis.patch.yml` / 历史 `cordis.yml` 是 profile composition（`agent.cordis.yml` 机制已移除，不在 composition 类型内）；resolved config 是运行时组合结果，只用于核对，不整对象回写。官方 manifest 只有 `package.json` 下的 `dsh.bundle` / `dsh.profile` / `dsh.client`；社区标准 manifest `dsh-plugin.json` 是**可选社区产物、非官方**，仅在目标仓库确实采用时才列入清单。
 4. 核对目标版本来源、tag/包名、兼容范围、release notes、安装脚本与已知 breaking changes。不读取、打印或提交 token、`.npmrc` 内容、凭据或会话日志。
 5. 记录回滚基线：当前 HEAD/包版本、lockfile 与将改配置的 hash/路径；说明失败后如何恢复本次明确路径，不要承诺回滚第三方安装脚本的任意副作用。
 
@@ -67,7 +67,7 @@ description: 使用当 需要处理 DSH 宿主或插件的版本升级时——�
 
 **输出契约**：全部落在 `tmp/<fromNorm>-to-<toNorm>/`（规范化：去 `dsh-v`、预发布段去点）；源码模式建在检出内，npm 模式建在当前项目内。目录已存在多半是先前手工报告——**先停下问，不要覆盖**。产物：`commits.txt`/`reverts.txt`、`files.txt`/`diffstat.txt`/全量 `.diff`（npm 模式换成 `manifest-diff.txt` + `a/`、`b/` 已发布树）、`CHANGELOG.md`（**必须有 Reverts 分节**）、`UPGRADE-ADAPTATION.md`（两模式同骨架，头部记模式与版本出处）。报告语言跟随用户语言。
 
-1. **物化两棵树**：源码模式先验纯度——`git merge-base <from> <to>` 必须等于 `from` 本身，否则基线漂移，**停下报告**，不能对着移动的基线做 diff（源码模式的物化脚本已裁剪，无检出时直接用 npm 模式）。npm 模式 `node skills/plugin-upgrade/scripts/materialize-npm.mjs <from> <to> tmp/<pair>`：解析两版、以 `--ignore-scripts` 把闭包装进 `a/`/`b/`、逐包 manifest diff、并从公开 GitHub 富化 `commits.txt`/`reverts.txt`（所以无源码检出也能做回滚检测）；`from` 落在 SQLite 包拆分之前时用 `--packages` 指定该版本实际发布的旧包名。
+1. **物化两棵树**：源码模式先验纯度——`git merge-base <from> <to>` 必须等于 `from` 本身，否则基线漂移，**停下报告**，不能对着移动的基线做 diff（源码模式的物化脚本已裁剪，无检出时直接用 npm 模式）。npm 模式 `node skills/plugin-upgrade/scripts/materialize-npm.mjs <from> <to> tmp/<pair>`：解析两版、以 `--ignore-scripts` 把闭包装进 `a/`/`b/`、逐包 manifest diff、并从公开 GitHub 富化 `commits.txt`/`reverts.txt`（所以无源码检出也能做回滚检测）；`from` 落在 SQLite 包拆分之前时用 `--packages` 指定该版本实际发布的旧包名。包计数与 manifest-diff 覆盖面一律以 [`lib/npm-tree.mjs`](scripts/lib/npm-tree.mjs) 为准：它递归**所有层级**的 `node_modules/@deepseek-ai/`（子包大量嵌在 `@deepseek-ai/dsh/node_modules/@deepseek-ai/` 下）；只读顶层 scope 目录会让包计数低一个数量级、`manifest-diff.txt` 只剩顶层交集，据此得出的「包增删」结论不可引用。
 2. **定侦察规模**：≤40 个非合并 commit → 按面清单单跑内联；40–250 → 合并 3–4 个面；更多 → 全量六面。密度对比翻**上一对**的 `commits.txt`——按**时间序**取紧邻前一对，永远不要只抓 `tmp/` 里最新的目录。
 3. **先立共享事实**（跑一次喂给每个子代理，免得各自重复推导）：① **格式守卫**——源码模式读两个 tag 的 `SESSION_FORMAT_VERSION` 与两个 SQLite 守卫（`STORAGE_SQLITE_SCHEMA_VERSION`、`SESSION_QUERY_SQLITE_SCHEMA_VERSION`），npm 模式从 `dsh-session` 与补充包的已发布 `lib/*.js` grep 同名常量；**`from` 落在 SQLite 落盘简化之前时守卫来自一个已删除的独立持久化补充包**（包名与 schema 路径都与 to 侧不同，按该版本发布清单取证，不要套 to 侧路径）。守卫跳号且无迁移路径 = **硬数据破坏，放报告最前面**。② **回滚清单**——`git log --grep='[Rr]evert' <from>..<to>`，npm 模式用富化的 `reverts.txt`；没有富化 = 回滚*意图*不可检测，明说，只做 from→to 差量审计。③ **Python SDK**——源码模式 diff `python/`，npm 模式一句话说明超出工件范围。
 4. **并行面扫描**：每面派一个只读侦察代理，带第 3 步共享事实与 playbook 的输出契约（分节 REMOVED 在前 / CHANGED / ADDED / RENAMED，每条带包路径、符号字段、影响面类别，结尾一行判定）。
@@ -95,7 +95,7 @@ description: 使用当 需要处理 DSH 宿主或插件的版本升级时——�
 2. 依赖安全：任何依赖变更后跑一次官方 registry 的 audit（本地默认镜像没有 advisories 端点，裸 `npm audit` 必然失效；必须钉官方源并禁止 registry 重写）——`HTTPS_PROXY=<代理> npm_config_registry=https://registry.npmjs.org npm_config_replace_registry_host=never npm audit --audit-level=moderate`，期望 0 vulnerabilities；确认方式与本地门禁见 [构建与测试.md](../../docs/开发指南/构建与测试.md)「依赖漏洞审计」，盲区复盘见 [踩坑](../../docs/踩坑/README.md)。
 3. 启用解析：目标 profile 的 composition 指向预期包身份，且无旧来源或重复 row。
 4. 静态：build、typecheck、插件测试。
-5. 运行时：真实 DSH profile 冷启动、entry activate、依赖/提供的 Cordis service 不停在 pending——[verify-runtime.mjs](scripts/verify-runtime.mjs) 在隔离 profile 里端到端执行该层并输出失败归因（plugin-code / dependency-resolution / profile-config / dsh-runtime）；Web Client 插件还要用打印出的 token URL 换 Cookie，读取宿主 boot manifest，请求宿主公告的客户端产物并证明注册/挂载，不能把裸 HTTP 200 当完成。
+5. 运行时：真实 DSH profile 冷启动、entry activate、依赖/提供的 Cordis service 不停在 pending——[verify-runtime.mjs](scripts/verify-runtime.mjs) 在隔离 profile 里端到端执行该层并输出失败归因（plugin-code / dependency-resolution / profile-config / dsh-runtime / environment-construction）；Web Client 插件还要用打印出的 token URL 换 Cookie，读取宿主 boot manifest，请求宿主公告的客户端产物并证明注册/挂载，不能把裸 HTTP 200 当完成。**本仓库插件的兼容性结论不要取自 directory route**：该 route 把插件复制到隔离位置，而本仓库 link 形态依赖（`dsh-shared`）的源码在仓库内、不在任何 `node_modules` 里，副本必须靠链接回指才能解析；源码被冻结出仓库（`git archive`、或只把 `plugins/` 复制到 `/tmp` 再 link）时必然 failed to import——这是 link 形态的固有性质，与宿主版本无关。脚本把这类失败判为 `env-repo-local-dependency` / environment-construction（环境不适用），绝不归因 plugin-code；取兼容性结论改用**同构 profile 批量探测**或 **`npm pack` tarball** 形态。
 6. 行为：执行一条插件核心路径；宿主迁移至少完成一次消息→工具→回复，或等价专用流程。
 7. 包装器：核对退出码、stdout、stderr、取消与 teardown。
 
@@ -104,6 +104,7 @@ description: 使用当 需要处理 DSH 宿主或插件的版本升级时——�
 - **pre-existing**（模式 C 且已跑 baseline 时；其余模式注明「未采集」）：来自 baseline 的失败清单（未触碰、不归因于本次迁移）；
 - **已完成**：版本、文件、命中触点的取证与验证；
 - **跳过**：未命中或不适用及依据；
+- **未核验**：本次没读的面（协议面 JSON-RPC/SDK/网关/ACP/hooks/错误码/HTTP 路由、资产与配置 schema 面）——未列出的面会被读成「无变化」，不得默认安全；[audit-playbook.md](references/audit-playbook.md) 给出这两面的读取入口；
 - **待确认/残留风险**：缺来源、未跑平台、生命周期脚本副作用；
 - **回滚**：已记录基线与可恢复路径；
 - **建议**：可选能力与迁到公开 seam 的后续工作。
@@ -119,7 +120,7 @@ description: 使用当 需要处理 DSH 宿主或插件的版本升级时——�
 | [references/pre-flight-patterns.json](references/pre-flight-patterns.json) | 触点扫描正则的定义源                                                                                          |
 | [references/audit-playbook.md](references/audit-playbook.md)               | 模式 D：六面侦察目标清单、派发模板、核验规则与 UPGRADE-ADAPTATION.md 骨架                                     |
 | [scripts/plan-migration.mjs](scripts/plan-migration.mjs)                   | 只读 migration planner：扫描目标仓库、输出触点命中的计划草稿                                                  |
-| [scripts/verify-runtime.mjs](scripts/verify-runtime.mjs)                   | 隔离 profile 端到端运行时验证（失败归因：plugin-code / dependency-resolution / profile-config / dsh-runtime） |
+| [scripts/verify-runtime.mjs](scripts/verify-runtime.mjs)                   | 隔离 profile 端到端运行时验证（失败归因：plugin-code / dependency-resolution / profile-config / dsh-runtime / environment-construction） |
 | [scripts/ghost-host-check.mjs](scripts/ghost-host-check.mjs)               | 宿主幽灵进程检查（升级前确认无残留 dsh 进程）                                                                 |
 | [scripts/materialize-npm.mjs](scripts/materialize-npm.mjs)                 | 模式 D：物化两版已发布包树 + manifest diff + GitHub 富化回滚清单                                              |
 

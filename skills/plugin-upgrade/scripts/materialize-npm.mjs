@@ -20,6 +20,7 @@ import { join } from 'node:path'
 import { parseGithubRepo } from './lib/github-repo.mjs'
 import { commitLines, revertLines } from './lib/commit-lines.mjs'
 import { manifestDiffText } from './lib/manifest-diff.mjs'
+import { deepseekPackages } from './lib/npm-tree.mjs'
 
 const CLI = '@deepseek-ai/dsh'
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm'
@@ -135,39 +136,15 @@ function materialize(root, version, side) {
 materialize(join(out, 'a'), a.resolved, 'resolvedA')
 materialize(join(out, 'b'), b.resolved, 'resolvedB')
 
-/** Find scoped packages in root and nested node_modules directories. */
-function scopedPkgs(root) {
-  const packages = new Map()
-  const visited = new Set()
-
-  function visit(directory) {
-    if (visited.has(directory)) return
-    visited.add(directory)
-    const modules = join(directory, 'node_modules')
-    if (!existsSync(modules)) return
-
-    const scope = join(modules, '@deepseek-ai')
-    if (existsSync(scope)) {
-      for (const entry of readdirSync(scope, { withFileTypes: true })) {
-        if (!entry.isDirectory() || entry.isSymbolicLink()) continue
-        const packageDirectory = join(scope, entry.name)
-        if (existsSync(join(packageDirectory, 'package.json')) && !packages.has(entry.name)) {
-          packages.set(entry.name, packageDirectory)
-        }
-      }
-    }
-
-    for (const entry of readdirSync(modules, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name === '.bin') continue
-      visit(join(modules, entry.name))
-    }
-  }
-
-  visit(root)
-  return packages
-}
-const pkgsA = scopedPkgs(join(out, 'a'))
-const pkgsB = scopedPkgs(join(out, 'b'))
+/**
+ * 枚举两侧安装树里的全部 `@deepseek-ai/*` 包（实现与回归测试见 ./lib/npm-tree.mjs
+ * + scripts/test/npm-tree.test.mjs）：必须递归**所有层级**的
+ * `node_modules/@deepseek-ai/`，只读顶层 scope 目录会把嵌套在
+ * `@deepseek-ai/dsh/node_modules/@deepseek-ai/` 下的整批子包漏掉（包计数与
+ * manifest-diff 覆盖面因此严重偏低，审计结论不可引用）。
+ */
+const pkgsA = deepseekPackages(join(out, 'a'))
+const pkgsB = deepseekPackages(join(out, 'b'))
 
 /** 包名 → 已解析的 package.json（读取行为与净化前的循环内读取等价）。 */
 function readManifests(pkgs) {

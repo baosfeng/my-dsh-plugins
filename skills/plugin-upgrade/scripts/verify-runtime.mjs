@@ -26,6 +26,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, stat
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import tmp from 'tmp'
+import { classifyRepoLocalFailure, prepareDirectoryCopy } from './lib/repo-local-deps.mjs'
 
 // --- Signature regexes (priority order; see diagnoseBootLog) ----------------
 // The bare word "network" is deliberately NOT a transport signature — matching
@@ -85,7 +86,18 @@ a failure signature nor any non-transport error line (pass-timeout-alive — whe
 the host retries a dead model endpoint silently, liveness
 through the window is the pass signal; error noise downgrades to
 inconclusive). Service waits other than webServer and mixed error signatures
-are reported as inconclusive on purpose: they need human judgement.`
+are reported as inconclusive on purpose: they need human judgement.
+
+DIRECTORY ROUTE / repo-local link dependencies: the plugin directory is copied to
+an isolated temp location, and its repo-local link dependencies (e.g. dsh-shared)
+are re-linked back to their sources INSIDE this repo — those sources live in the
+repo, never in any node_modules, so a copy without those links cannot resolve
+them. When a repo-local dependency still cannot be resolved (sources frozen
+outside the repo, e.g. "git archive" or only plugins/ copied to /tmp), the run is
+reported as skipped / env-repo-local-dependency with attribution
+environment-construction — a limitation of the link form itself (not introduced
+by any DSH version), and NEVER a plugin-code verdict. For compatibility
+conclusions on this repo, use the isomorphic-profile or "npm pack" tarball form.`
 
 // --- Pure helpers (exported for verify-runtime.check.mjs) -------------------
 
@@ -101,14 +113,23 @@ export function hasNonTransportError(log) {
 }
 
 /** Diagnose a full boot log against the signature priority chain:
- * webServer wait > module resolve crash > activation failure > other service
- * wait (inconclusive) > non-transport Error veto (inconclusive) > transport
- * signature (= tree loaded, PASS). The activation ASSERTION outranks a plain
- * service wait because the host's own "entry did not activate" text is the
- * authoritative migration signal (waiting for a removed service IS an
- * activation failure). Returns null when nothing matches. */
-export function diagnoseBootLog(log) {
+ * webServer wait > repo-local dependency resolution defect > module resolve
+ * crash > activation failure > other service wait (inconclusive) >
+ * non-transport Error veto (inconclusive) > transport signature (= tree
+ * loaded, PASS). The activation ASSERTION outranks a plain service wait
+ * because the host's own "entry did not activate" text is the authoritative
+ * migration signal (waiting for a removed service IS an activation failure).
+ * Returns null when nothing matches.
+ *
+ * The repo-local branch must stay ABOVE the plain module-resolve branch: a
+ * missing repo-local link dependency (dsh-shared) is this tool's own
+ * environment-construction defect, not a plugin or dependency verdict — see
+ * ./lib/repo-local-deps.mjs. `context.repoLocalDependencyNames` carries the
+ * names the directory-route copy could not rebuild. */
+export function diagnoseBootLog(log, context = {}) {
   if (HOST_WAIT_RE.test(log)) return { verdict: 'env-needs-service-host', attribution: 'profile-config' }
+  const repoLocal = classifyRepoLocalFailure(log, context)
+  if (repoLocal) return repoLocal
   if (MODULE_RESOLVE_RE.test(log)) return { verdict: 'load-crash-module-resolve', attribution: 'dependency-resolution' }
   if (ACTIVATION_RE.test(log)) return { verdict: 'activation-failed', attribution: 'plugin-code' }
   if (GENERIC_WAIT_RE.test(log)) return { verdict: 'service-wait-unresolved', attribution: null }
@@ -241,7 +262,11 @@ function writeProfilePatches(profileDir) {
       '  config:',
       '    provider: deepseek-official',
       '    model: Qwen3.6-35B',
+      // 两个名字都禁用：<=0.1.5 是 cordis-plugin-hmr，0.1.7 起改名为 dsh-hmr。
+      // 只写旧名会让禁用行在新宿主上静默失效（HMR 假定 dev tree，探测会不稳）。
       '- id: "@deepseek-ai/cordis-plugin-hmr"',
+      '  disabled: true',
+      '- id: "@deepseek-ai/dsh-hmr"',
       '  disabled: true',
       '',
     ].join('\n'),
@@ -412,6 +437,7 @@ export async function verifyRuntime(rawSpec, options = {}) {
     let spec = rawSpec
     let originalSpec = rawSpec // for list keys: the temp copy is always plugin-src
     let webPlugin = false
+    let repoLocalDeps = []
     if (route === 'directory') {
       // Expand ~ BEFORE using the path for package.json reads — an unexpanded
       // "~/..." makes listKeyFor fall back to the wrong basename.
@@ -424,8 +450,15 @@ export async function verifyRuntime(rawSpec, options = {}) {
       }
       webPlugin = isWebPlugin(originalSpec)
       // Install from a copy: verification must not mutate the original tree.
+      // The copy must REBUILD repo-local link dependencies (dsh-shared lives in
+      // this repo, not in any node_modules): a bare cpSync to an isolated
+      // directory cannot resolve them and would misreport the tool's own
+      // environment defect as a plugin verdict — see ./lib/repo-local-deps.mjs.
       const srcCopy = join(home, 'plugin-src')
-      cpSync(originalSpec, srcCopy, { recursive: true })
+      const prepared = prepareDirectoryCopy(originalSpec, srcCopy)
+      repoLocalDeps = prepared.repoLocalDeps
+      result.repoLocalDeps = repoLocalDeps
+      if (prepared.note) result.environmentNote = prepared.note
       spec = srcCopy
     }
 
@@ -518,7 +551,7 @@ export async function verifyRuntime(rawSpec, options = {}) {
     const l3Ms = Date.now() - t0
     // Diagnose against the FULL log: scanning only a short tail once let long
     // activation stack traces push the error headline out of the window.
-    const diagnosis = diagnoseBootLog(boot.log)
+    const diagnosis = diagnoseBootLog(boot.log, { repoLocalDependencyNames: repoLocalDeps })
 
     let outcome
     if (boot.logOverflow) {
@@ -530,6 +563,17 @@ export async function verifyRuntime(rawSpec, options = {}) {
       outcome = { status: 'pass', verdict: 'pass-boot-probe' }
     } else if (diagnosis?.verdict === 'env-needs-service-host') {
       outcome = { status: 'skipped', verdict: 'env-needs-service-host', attribution: diagnosis.attribution }
+    } else if (diagnosis?.verdict === 'env-repo-local-dependency') {
+      // Environment-construction defect, NOT a compatibility verdict: the
+      // directory-route copy could not resolve a repo-local link dependency.
+      // Reported as skipped (environment not applicable), never as fail —
+      // and never attributed to plugin-code (see ./lib/repo-local-deps.mjs).
+      outcome = {
+        status: 'skipped',
+        verdict: 'env-repo-local-dependency',
+        attribution: diagnosis.attribution,
+        repoLocalDeps: diagnosis.repoLocalDeps,
+      }
     } else if (
       diagnosis &&
       (diagnosis.verdict === 'service-wait-unresolved' || diagnosis.verdict === 'ambiguous-error-signature')
@@ -631,6 +675,7 @@ function renderHuman(result) {
     `verdict: ${result.verdict}  status: ${result.status}${result.attribution ? `  attribution: ${result.attribution}` : ''}`,
   )
   if (result.evidence) lines.push(`evidence: ${result.evidence.slice(-300)}`)
+  if (result.environmentNote) lines.push(`environment note: ${result.environmentNote}`)
   if (result.workspace) lines.push(`workspace kept: ${result.workspace}`)
   return lines.join('\n')
 }

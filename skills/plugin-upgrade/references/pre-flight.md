@@ -11,7 +11,7 @@
 - 插件版本、`peerDependencies`、`engines` 与 `@deepseek-ai/*` 导入；
 - 实际解析到的版本与 lockfile（只信仓库真正使用的包管理器）；
 - 社区标准 manifest（若采用）；
-- profile composition：`cordis.patch.yml`、`agent.cordis.yml`、历史 `cordis.yml`；
+- profile composition：`cordis.patch.yml`、历史 `cordis.yml`（`agent.cordis.yml` 机制已移除，不在 composition 类型内）；
 - 真实安装轨：registry 包、Git checkout、workspace/junction，还是复制安装。
 
 这些文件所有权不同，不能统称 manifest；未知字段不要整对象回写。

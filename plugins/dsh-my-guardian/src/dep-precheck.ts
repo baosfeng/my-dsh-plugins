@@ -3,10 +3,16 @@
  *
  * Reads a candidate plugin's package.json peerDependencies (from the profile
  * node_modules) and verifies each dependency is installed and version-satisfying
- * BEFORE the plugin is mounted. A hard-missing dependency is reported as a
- * pre-check failure (failureType 'dependency') with an install suggestion, and
- * the mount is skipped — the plugin never enters the runtime load path with a
- * hole in its dependency graph (issue #72: dsh-shared was not published).
+ * BEFORE the plugin is mounted. A failure is reported with its own classification
+ * ('dependency-missing' / 'dependency-mismatch', #410) plus the separated
+ * missingDeps / mismatchedDeps fields, and the mount is skipped — the plugin never
+ * enters the runtime load path with a hole in its dependency graph
+ * (issue #72: dsh-shared was not published).
+ *
+ * 安装建议（suggestions）只给**可执行**的命令：宿主（DSH 安装）自带的包
+ * （@deepseek-ai/*、react / react-dom）不给命令——按提示执行会把宿主自有包的
+ * 另一份拷贝装进 profile（#407/#410）；声明范围含空格 / 管道 / 比较符时也不给
+ * 命令（拼出来无法执行）。
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'

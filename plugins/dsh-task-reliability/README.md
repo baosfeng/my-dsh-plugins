@@ -28,13 +28,34 @@ dsh plugin --profile web add link:<本目录绝对路径>
 
 ## 使用
 
-侧边栏「任务可靠性」页签可注册任务、打开「完成度校验」与「自主决策」开关。远程触发示例：
+- 入口：右侧栏「➕ 新标签页」（guide）菜单 → **任务可靠性**。本插件**不会自动打开**页签（`dsh-file-activity` 是「会话首次自动打开」，两者行为不同）。
+- 面板：注册任务、切换「完成度校验」/「自主决策」开关、查看活动任务与待确认问题。
+- 页签不出现时先查禁用位，见下「看不到「任务可靠性」页签？」。
+
+远程触发示例：
 
 ```bash
 curl -X POST http://127.0.0.1:3080/task-reliability/api/trigger \
   -H "Content-Type: application/json" \
   -d '{"action":"mode","autopilot":true}'
 ```
+
+## 看不到「任务可靠性」页签？
+
+页签不出现有两种原因，按顺序自查：
+
+1. **插件被禁用**（最常见）。被禁用的插件「被加载但不运行」——client bundle 不进 manifest、页签不出现、**且没有任何报错**。查两处禁用来源：
+
+```bash
+grep -A1 'id: task-reliability' ~/.dsh/profiles/<profile>/cordis.patch.yml
+cat ~/.dsh/profiles/<profile>/.dsh-market/state.json
+```
+
+出现 `disabled: true`（或出现在 disabled 列表里）→ 在「设置 → 插件」里把它打开。
+
+2. **插件已启用，但页签不会自动打开**：右栏顶部「➕ 新标签页」→ 任务可靠性。
+
+另外，会话里输入 `/task` 可确认插件是否加载：没有这个命令 = 插件没加载（安装未生效 / 被禁用 / 宿主过旧）。
 
 ## 配置
 

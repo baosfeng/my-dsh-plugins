@@ -34,7 +34,42 @@ import {
   tagConflictHint,
   readmeVersionRowRe,
   releaseCommitPlan,
+  resolveBumpType,
+  releaseArtifactNames,
 } from '../lib/release-checks.mjs'
+
+// ── 发版目标版本口径（防回归：清单名必须等于本次要发布的版本）────────────
+describe('发版目标版本口径', () => {
+  it('--push 未显式 --bump 时默认 patch（发版必须有新目标版本）', () => {
+    expect(resolveBumpType({ bump: '', push: true })).toBe('patch')
+  })
+
+  it('dry-run（无 --push）未显式 --bump 时不 bump（语义不变）', () => {
+    expect(resolveBumpType({ bump: '', push: false })).toBe('')
+  })
+
+  it('显式 --bump 优先，不被默认值覆盖', () => {
+    expect(resolveBumpType({ bump: 'minor', push: true })).toBe('minor')
+    expect(resolveBumpType({ bump: 'major', push: false })).toBe('major')
+  })
+
+  it('清单文件名必须等于本次要发布的版本（与 tag 共用同一个 version）', () => {
+    const { checklistPath, tag } = releaseArtifactNames('dsh-my-memory', '0.1.10')
+    expect(tag).toBe('dsh-my-memory@v0.1.10')
+    expect(checklistPath).toBe('verification/dsh-my-memory-0.1.10.md')
+    const verInChecklist = checklistPath.match(/-(\d+\.\d+\.\d+)\.md$/)?.[1]
+    const verInTag = tag.match(/@v(\d+\.\d+\.\d+)$/)?.[1]
+    expect(verInChecklist).toBe(verInTag)
+  })
+
+  it('脚本接线：release.mjs 必须用这两个纯函数（lib 改了脚本没接 = 假修复）', () => {
+    const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'release.mjs'), 'utf8')
+    expect(script).toContain('resolveBumpType(')
+    expect(script).toContain('releaseArtifactNames(name, version)')
+    // 旧写法（清单名与 tag 各自拼一次版本）必须退场，否则口径仍可能漂移
+    expect(script).not.toContain("join(root, 'verification', `${name}-${version}.md`)")
+  })
+})
 
 // ── extractDshRequires ────────────────────────────────────────────────────
 describe('extractDshRequires', () => {

@@ -610,3 +610,43 @@ export function releaseCommitPlan(succeeded, bumpType) {
   }
   return { files: [...files].sort(), messages }
 }
+
+// ── 发版目标版本口径（与 3c 清单名 / git tag 同源）─────────────────────────
+
+/**
+ * 解析本次发版的 bump 类型（纯函数）。
+ *
+ * `--push`（真实发布）时缺省 = `patch`：**发版必须有新的目标版本**。旧行为（缺省恒为 ''）
+ * 会让不带 `--bump` 的 `--push` 变成「用当前版本再发一次」—— 实测事故：
+ * 未传 `--bump` 的 `--push` 让 version 停在当前版本，tag `<name>@v<当前版本>` 已指向
+ * 旧 commit → 发版被拒（`✗ tag 已存在…拒绝覆盖`）；若该 tag 不存在则更糟：同一版本被
+ * 重复发布。同时 3c 的清单名会退化成「当前版本」，与历史口径（清单名 = 已发布版本：
+ * `dsh-md-render-0.2.0.md` ↔ tag `v0.2.0`）矛盾。
+ *
+ * dry-run（无 `--push`）保持不 bump —— 与脚本头「dry-run by default」语义一致。
+ *
+ * @param {{bump?: string, push?: boolean}} [input]
+ * @returns {'patch'|'minor'|'major'|''}
+ */
+export function resolveBumpType({ bump = '', push = false } = {}) {
+  if (bump !== '') return bump
+  return push ? 'patch' : ''
+}
+
+/**
+ * 发版产物命名（纯函数）：**清单文件名与 git tag 必须共用同一个发版目标版本**。
+ *
+ * 抽出来的价值：这两处过去各自拼一次 `${version}`，一旦口径漂移（清单用当前版本、
+ * tag 用目标版本）只会在发版中途以 `tag 已存在` 或「清单未勾选」暴露，排查成本高。
+ * 现在两者由同一函数产出，单测可直接断言「清单名里的版本 == tag 里的版本」。
+ *
+ * @param {string} name 插件目录名（如 dsh-my-memory）
+ * @param {string} version 发版目标版本（bump 后的 x.y.z）
+ * @returns {{checklistPath: string, tag: string}}
+ */
+export function releaseArtifactNames(name, version) {
+  return {
+    checklistPath: `verification/${name}-${version}.md`,
+    tag: `${name}@v${version}`,
+  }
+}

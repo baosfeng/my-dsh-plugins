@@ -3,6 +3,7 @@
  * Release automation for one or more plugins in this repo (batch + parallel supported).
  *
  *   node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push]
+ *        （--push 时 --bump 缺省 = patch；dry-run 缺省不 bump：只跑门禁、不升版本）
  *        [--concurrency N] [--all-checks] [--skip-real-verify --skip-reason "<理由>"]
  *
  * issue #246（发版速度专项）把本脚本从「严格串行」改成「流水线」，门禁一条都没少：
@@ -80,6 +81,8 @@ import {
   tagConflictHint,
   readmeVersionRowRe,
   releaseCommitPlan,
+  releaseArtifactNames,
+  resolveBumpType,
 } from './lib/release-checks.mjs'
 import { verifyPostRelease } from './lib/post-release.mjs'
 import { checkScreenshotGate } from './lib/screenshot-gate.mjs'
@@ -114,7 +117,11 @@ const skipRealVerify = args.includes('--skip-real-verify')
 const skipReasonIdx = args.indexOf('--skip-reason')
 const skipReason = skipReasonIdx >= 0 ? args[skipReasonIdx + 1] || '' : ''
 const bumpIdx = args.indexOf('--bump')
-const bump = bumpIdx >= 0 ? args[bumpIdx + 1] || '' : ''
+const bumpRaw = bumpIdx >= 0 ? args[bumpIdx + 1] || '' : ''
+// 发版必须有明确的**目标版本**：--push 且未显式 --bump 时默认 patch（lib 纯函数，
+// 单测 scripts/test/release-checks.test.mjs「发版目标版本口径」）。旧行为缺省恒为 ''
+// → 「用当前版本再发一次」→ tag 已存在被拒 / 同版本重复发布。dry-run 保持不 bump。
+const bump = resolveBumpType({ bump: bumpRaw, push })
 const concurrencyIdx = args.indexOf('--concurrency')
 const concurrencyRaw = concurrencyIdx >= 0 ? args[concurrencyIdx + 1] : undefined
 const BUMP_TYPES = new Set(['patch', 'minor', 'major'])
@@ -131,7 +138,7 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // 用法校验被环境校验挡住，让人以为是仓库状态问题）。
 if (names.length === 0) {
   console.error(
-    'usage: node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push] [--all-checks] [--concurrency N]',
+    'usage: node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push] [--all-checks] [--concurrency N]（--push 时 --bump 缺省 = patch）',
   )
   process.exit(2)
 }
@@ -143,8 +150,8 @@ for (const name of names) {
     process.exit(2)
   }
 }
-if (bump !== '' && !BUMP_TYPES.has(bump)) {
-  console.error(`✗ --bump 必须是 patch | minor | major，收到: ${bump}`)
+if (bumpRaw !== '' && !BUMP_TYPES.has(bumpRaw)) {
+  console.error(`✗ --bump 必须是 patch | minor | major，收到: ${bumpRaw}`)
   process.exit(2)
 }
 if (push && allChecks) {
@@ -268,7 +275,8 @@ async function testsGate(pluginDir, prefix) {
  * 插件未声明 external 时推导集合为空，行为与旧版逐条一致（不回归）。
  */
 async function realVerifyGate(name, version, port, prefix) {
-  const checklistPath = join(root, 'verification', `${name}-${version}.md`)
+  // 清单名与 git tag 共用同一个发版目标版本（lib 纯函数，防两处口径漂移）
+  const checklistPath = join(root, releaseArtifactNames(name, version).checklistPath)
   const verify = await runChild(
     process.execPath,
     [
@@ -897,7 +905,7 @@ if (push && succeeded.length > 0) {
   for (const result of succeeded) {
     const name = result.name
     const version = result.version
-    const tag = `${name}@v${version}`
+    const tag = releaseArtifactNames(name, version).tag
     // Tag 管理防护（事故：release commit 已推 main 但 tag 缺失/指向旧 commit）：
     // 打 tag 前先检查 refs/tags/<tag> 是否存在——
     //   不存在           → 正常打 tag；

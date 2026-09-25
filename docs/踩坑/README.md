@@ -39,6 +39,7 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 - CI 随机红一条（只读到 1 条而非 2 条）、本地连跑全绿 → 固定 sleep 等异步落盘；详见 [异步落盘与时序.md](异步落盘与时序.md)（新增固定 sleep 须写 `// sleep-ok: 理由`，门禁 `scripts/check-test-sleeps.mjs`）
 - 同插件两个测试进程撞 `coverage` 目录、失败者没有 `Tests` 行 → 并行按插件划分；固化在 `scripts/test-all.sh`
 - 本机 `~/.dsh` 配置莫名变成**测试夹具**、插件禁用状态丢失、用户配置回默认 → 测试里 `writeFileSync(patchFileOf(...))` 是**整文件覆盖**写入，而 `patchFileOf` 读 `process.env.DSH_HOME`、**为空时回退真实 `~/.dsh`**；cucumber 在同一进程串行跑场景、`process.env` 全局共享，场景间没有隔离保证，于是 `boot()` 设置/恢复 DSH_HOME 的窗口一漏就命中真实配置。修法：写入侧加 **fail-closed 路径断言**（目标落在真实 home 即抛错，绝不静默写）+ DSH_HOME 隔离提前到 `Before` / `beforeEach`，并加「DSH_HOME 缺失时写入必须抛错且真实文件 hash/mtime 零变化」的防回归用例
+- `ghops pr checks` 报 CI 红但唯一失败项是 `github-advanced-security`，日志吐 `CAPIError: 400 The requested model is not supported`（`COPILOT_AGENT_MODEL: sweagent-capi:*`）→ 该 check **不对应本仓任何 workflow**（`dynamic` 事件、平台侧 Copilot「Code scanning AI findings」/Autofix，仓库代码改不了），判**非阻断**；CodeQL 覆盖面不受影响（`.github/workflows/codeql.yml` 的 `Analyze (actions)` / `Analyze (javascript-typescript)` 照常 success），不要按自己的 diff 排查，也不要试图改 `.github/workflows/`
 
 ## 插件运行时与宿主 API
 

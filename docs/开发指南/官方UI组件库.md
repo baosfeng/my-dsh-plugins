@@ -27,7 +27,7 @@ const ui = require('@deepseek-ai/dsh-client-ui-primitives')
 
 `MarkdownText` 是官方 GFM + KaTeX 渲染组件，因此是「跨插件渲染内核缺失」时最合适的兜底：零安装、零体积、零 external 声明。
 
-**props 契约**：`text`（Markdown 源文本，必填）；`labels: { code: { copyLabel, copiedLabel }, footnotes }` —— **必填且无默认值**，实现直接读 `labels.code.copyLabel`，不传即 TypeError（早期官方包的旧字段为 `codeLabels`，兼容期两个都传）；`streaming` / `fileMentions` / `pathImages` 可选。
+**props 契约**：`text`（Markdown 源文本，必填）；`labels: { code: { copyLabel, copiedLabel }, footnotes }` —— **必填且无默认值**，实现直接读 `labels.code.copyLabel`，不传即 TypeError；`streaming` / `fileMentions` / `pathImages` 可选。
 
 **用共享部件，不要自己重写三级链**：`dsh-shared/client-parts/markdown-fallback.part.js` 的 `installMarkdownViewFallback({ require, createElement, labels, codeLabels, fallbackAttribute, fallbackClassName? })` 已实现 外部内核 → 宿主 `MarkdownText` → `<pre>` 三级回退（构建期 splice 进 factory 作用域，文案与 DOM 标记由消费方注入），新插件直接注入使用（ADR-0002：≥2 处重复即抽出）。
 

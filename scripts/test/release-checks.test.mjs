@@ -67,8 +67,8 @@ describe('发版目标版本口径', () => {
     const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'release.mjs'), 'utf8')
     expect(script).toContain('resolveBumpType(')
     expect(script).toContain('releaseArtifactNames(name, version)')
-    // 旧写法（清单名与 tag 各自拼一次版本）必须退场，否则口径仍可能漂移
-    expect(script).not.toContain("join(root, 'verification', `${name}-${version}.md`)")
+    // 刻意**不**断言"源码里没有旧字面量"：那是脆弱的实现细节断言，重构即假红（本次实测教训）。
+    // 口径契约由本文件「清单文件名必须等于本次要发布的版本」（纯函数输出）用例保证。
   })
 })
 
@@ -110,8 +110,8 @@ describe('3c 透传 --enable-plugins', () => {
 
   it('⑤ 脚本接线：release.mjs 必须用纯函数构造 3c 参数（旧内联数组必须退场）', () => {
     const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'release.mjs'), 'utf8')
-    expect(script).toContain('buildRealVerifyArgs(')
-    expect(script).not.toContain("'--clean-externals'")
+    expect(script).toContain('buildRealVerifyArgs({')
+    // 同样不断言"源码里没有 --clean-externals 字面量"——契约由纯函数用例①保证。
   })
 })
 

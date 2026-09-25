@@ -49,6 +49,7 @@ import {
   writeWorkspaceStorage,
   WORKSPACE_UNIT,
 } from '../lib/verify-profile.mjs'
+import { buildRealVerifyArgs } from '../lib/release-checks.mjs'
 
 const repoRoot = join(fileURLToPath(new URL('../../', import.meta.url)))
 
@@ -572,12 +573,23 @@ describe('verify-real-profile.mjs 接线', () => {
     }
   })
 
-  it('发版门禁 3c 默认启用 --clean-externals（release.mjs 接线，防"开关加了没人用"）', () => {
+  it('发版门禁 3c 默认启用 --clean-externals（断言纯函数输出契约 + 脚本接线）', () => {
+    // 契约：3c 的参数必须带缺包演练开关（issue #294）。
+    // 断言**纯函数的输出**而不是 release.mjs 源码里的字面量 —— 后者是脆弱的实现细节断言：
+    // 参数构造被重构成纯函数（buildRealVerifyArgs）后，契约没变、源码文本变了，就会假红
+    // （实测翻车点：本用例原先断言 release.mjs 里存在 "'--clean-externals'" 字面量）。
+    const args = buildRealVerifyArgs({
+      checklistPath: 'verification/dsh-demo-1.0.0.md',
+      pluginName: 'dsh-demo',
+      version: '1.0.0',
+      port: 3087,
+      addonDir: 'plugins/dsh-demo',
+    })
+    expect(args).toContain('--clean-externals')
+    // 接线：release.mjs 的 3c 必须真的用这个纯函数构造参数（防"lib 改了脚本没接"）
     const release = readFileSync(join(repoRoot, 'scripts', 'release.mjs'), 'utf8')
-    const gateAt = release.indexOf('async function realVerifyGate')
-    expect(gateAt).toBeGreaterThan(-1)
-    const gateBody = release.slice(gateAt, gateAt + 2000)
-    expect(gateBody).toContain("'--clean-externals'")
+    expect(release).toContain('async function realVerifyGate')
+    expect(release).toContain('buildRealVerifyArgs(')
   })
 
   it('启动实例前 fail-closed 端口预检（#294 实测：残留实例 → 0.2s 假就绪）', () => {
@@ -908,7 +920,7 @@ describe('重复 loader entry 检查（顶格口径）', () => {
   it('脚本接线：verify-real-profile.mjs 必须用 lib 的顶格口径（旧宽缩进实现必须退场）', () => {
     const script = readFileSync(join(repoRoot, 'scripts', 'verify-real-profile.mjs'), 'utf8')
     expect(script).toContain('findDuplicateEntryIds(dump.stdout)')
-    expect(script).not.toContain('function entryIds(')
+    // 不断言旧函数名的字面量是否退场——契约由 findDuplicateEntryIds 纯函数用例保证。
   })
 })
 

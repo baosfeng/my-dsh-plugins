@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { evaluateResourceAlerts, DEFAULT_LIMITS, shouldEnterDegrade, shouldExitDegrade } from '../lib/resource-rules.js'
 import { createResourceMonitor } from '../lib/resource-monitor.js'
 import { bootPlugin, mockRequest, mockResponse, invoke, jsonOf, createTempHome, cleanupHome } from './lib/helpers.mjs'
-import { waitUntil } from './lib/wait.mjs'
+import { waitFor } from '../../dsh-shared/test-kit/wait.mjs'
 
 const disposeAlls = []
 afterAll(() => {
@@ -31,15 +31,15 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 40))
  * （issue #402 实证：该插件全量 verify 失败、单独跑 10.6s 全通过）。
  * 改为轮询确定条件：就绪即立即返回；超时后由原断言照常判红（等待语义只加强不削弱）。
  */
-const waitForResourcesApi = async (handle) =>
-  waitUntil(
+const waitForResourcesApi = (handle) =>
+  waitFor(
     async () => {
       const probe = mockResponse()
       await invoke(handle.api, mockRequest({ url: '/observability/api/resources' }), probe)
       if (probe.writeHeadStatus !== 200) return false
       return typeof jsonOf(probe).value?.cpuPercent === 'number'
     },
-    { timeoutMs: 8000 },
+    { message: '/observability/api/resources 就绪（200 且 cpuPercent 为 number）' },
   )
 
 test('resource rules: 各阈值边界判定', () => {

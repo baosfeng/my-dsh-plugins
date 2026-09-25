@@ -16,6 +16,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
+import { waitFor } from '../../dsh-shared/test-kit/wait.mjs'
 
 /** 受控慢 IO：只挂起 startup-issues.json 的写入（其余 IO 直通真实实现）。 */
 const gate = vi.hoisted(() => {
@@ -41,9 +42,6 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 })
 
 const { apply } = await import('../lib/index.js')
-
-/** issue #402：等待 initialScan（fire-and-forget 的真实 IO 链）的**墙钟**上限。 */
-const API_READY_TIMEOUT_MS = 5000
 
 /** 临时 DSH_HOME 收集；配对清理见文件末尾 afterAll。 */
 const tmpDirs = []
@@ -220,11 +218,7 @@ test('#217 API dispatch never observes a half-loaded startup pre-check', async (
     // AssertionError: initialScan 已完成（API 已注册）@ host-boot-readiness.mjs:216。
     // 轮询在条件满足时立即返回，条件不满足时等到墙钟上限后由下面的 assert 照常判红
     // ——等待语义只加强不削弱（不会静默通过）。
-    const apiReadyDeadline = Date.now() + API_READY_TIMEOUT_MS
-    while (fake.apiRoute === undefined && Date.now() < apiReadyDeadline) {
-      await new Promise((resolve) => setTimeout(resolve, 5))
-    }
-    assert.ok(fake.apiRoute, `initialScan 已完成（API 已注册；等待上限 ${API_READY_TIMEOUT_MS}ms）`)
+    await waitFor(() => fake.apiRoute !== undefined, { message: 'initialScan 已完成（API 已注册）' })
 
     const pending = callApi(fake, 'GET', 'state')
     gate.release()

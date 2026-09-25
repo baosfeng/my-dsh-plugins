@@ -38,7 +38,7 @@
 | [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.2.0  | 非思考模式 markdown 表格渲染增强：识别不标准表格，宽表格横向滚动                              |
 | [dsh-my-notify](plugins/dsh-my-notify/README.md)                                   | 0.4.0  | 通知提醒：会话结束 / ask / 审批时浏览器通知 + 提示音，点击跳转；远程 hook 触发 + 出站 webhook |
 | [dsh-my-remote](plugins/dsh-my-remote/README.md)                                   | 0.1.4  | 远程控制：ask / approval / 会话结束事件下行到手机或 IM，可远程回答、批准、查询、继续          |
-| [dsh-my-guardian](plugins/dsh-my-guardian/README.md)                               | 0.4.2  | 插件治理：新装插件先进候选区逐个热挂载，失败自动隔离，一键安全模式 + 诊断面板                 |
+| [dsh-my-guardian](plugins/dsh-my-guardian/README.md)                               | 0.4.3  | 插件治理：新装插件先进候选区逐个热挂载，失败自动隔离，一键安全模式 + 诊断面板                 |
 | [dsh-task-reliability](plugins/dsh-task-reliability/README.md)                     | 0.4.8  | 任务可靠性：超时重试、未完成自动继续、完成度校验 agent、思考重复干预、重启恢复、自主决策      |
 | [dsh-my-skill-manager](plugins/dsh-my-skill-manager/README.md)                     | 0.1.9  | Skill 管理：分全局/项目查看 skill，按项目启用/禁用（禁用即不注入会话）                        |
 | [dsh-my-memory](plugins/dsh-my-memory/README.md)                                   | 0.1.9  | 记忆：全局/项目两级持久化，会话开始注入系统提示词；设置页面板 + 写操作确认                    |

@@ -28,7 +28,7 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as guardian from '../lib/events.js'
@@ -57,16 +57,43 @@ const LISTENED = guardian.LISTENED_HOST_EVENTS ?? []
  */
 const CROSS_PLUGIN_EVENTS = ['plugin:status-query']
 
-/** 静态扫描插件 server 端源码里的 `ctx.on('<事件名>')`。 */
+/**
+ * 用**同一个 fd**读文本：openSync 拿 fd → readFileSync(fd)。
+ *
+ * 为什么不能 `statSync(path)` / `existsSync(path)` 之后 `readFileSync(path)`：检查与使用
+ * 按**路径名**分成两次系统调用，两步之间文件可能被替换/删除（TOCTOU）。CodeQL
+ * js/file-system-race（CWE-367，security_severity=high）：The file may have changed since
+ * it was checked —— 规则建议 "use file descriptors instead of file names"。issue #116/#117。
+ * 与 scripts/fork-pool.mjs、scripts/test/client-artifacts.test.mjs、
+ * plugins/dsh-my-remote/test/helpers/isolated-home.mjs 同一手法（仓库既有惯例）。
+ */
+function readFileViaFd(path) {
+  const fd = openSync(path, 'r')
+  try {
+    return readFileSync(fd, 'utf8')
+  } finally {
+    closeSync(fd)
+  }
+}
+
+/**
+ * 静态扫描插件 server 端源码里的 `ctx.on('<事件名>')`。
+ *
+ * 目录项类型直接取自 readdir 自身（`withFileTypes` 的 Dirent），不再
+ * `statSync(path).isDirectory()` 预检后再按路径递归/读取——那是 check-then-use，
+ * 两步之间路径可被替换（CodeQL js/file-system-race，issue #116）。
+ * 本仓库源码树约定不含指向目录的软链（client/node_modules 已跳过），Dirent 判定与
+ * 原 statSync 判定在本树等价；`.ts` 内容读取仍走 fd，软链文件语义不变。
+ */
 function listenedInSource() {
   const names = new Set()
   const walk = (dir) => {
-    for (const name of readdirSync(dir)) {
-      if (name === 'client' || name === 'node_modules') continue
-      const path = join(dir, name)
-      if (statSync(path).isDirectory()) walk(path)
-      else if (name.endsWith('.ts')) {
-        for (const match of readFileSync(path, 'utf8').matchAll(/ctx\.on\(\s*'([^']+)'/g)) names.add(match[1])
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'client' || entry.name === 'node_modules') continue
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (entry.name.endsWith('.ts')) {
+        for (const match of readFileViaFd(path).matchAll(/ctx\.on\(\s*'([^']+)'/g)) names.add(match[1])
       }
     }
   }
@@ -76,12 +103,12 @@ function listenedInSource() {
 
 /** 在目录树里找匹配正则的 .ts 源码（跳过 node_modules/client/lib）。 */
 function hasFileMatching(dir, pattern) {
-  for (const name of readdirSync(dir)) {
-    if (name === 'node_modules' || name === 'client' || name === 'lib') continue
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === 'client' || entry.name === 'lib') continue
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) {
       if (hasFileMatching(path, pattern)) return true
-    } else if (name.endsWith('.ts') && pattern.test(readFileSync(path, 'utf8'))) return true
+    } else if (entry.name.endsWith('.ts') && pattern.test(readFileViaFd(path))) return true
   }
   return false
 }
@@ -380,4 +407,27 @@ test('去重表有上限：大量不同文件名的失败不抛异常且状态�
     for (let index = 0; index < 60; index += 1) failures.fromEvent(`patch-${index}.yml`, new Error('boom'))
   })
   assert.equal(shared.state.events.length, 20, '环形缓冲上限 20 条不变')
+})
+
+/**
+ * 防复发（CodeQL js/file-system-race 同语义自查，issue #116/#117）。
+ * 判据：本套件里不得存在「同一个路径变量先检查（stat/exists/access）再 readFileSync 读取」——
+ * 检查与使用按路径名分成两次系统调用，中间是 TOCTOU 窗口。目录项类型取自
+ * readdirSync(dir, { withFileTypes: true })，内容读取走 readFileViaFd（openSync → readFileSync(fd)）。
+ * 匹配前先剥掉注释：注释里的示例代码（本文档字符串）不是可执行路径，不该被当违规。
+ */
+test('本套件自身不含 check-then-use：不存在「按路径检查 → 按路径读」的窗口', () => {
+  const source = readFileViaFd(fileURLToPath(import.meta.url))
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+  const checkPattern = /\b(?:statSync|existsSync|lstatSync|accessSync)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g
+  const readPattern = /\breadFileSync\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g
+  const checked = new Set([...code.matchAll(checkPattern)].map((match) => match[1]))
+  const raced = [...code.matchAll(readPattern)].map((match) => match[1]).filter((name) => checked.has(name))
+
+  assert.deepEqual(
+    raced,
+    [],
+    '同一路径变量先 statSync/existsSync 再 readFileSync 就是 TOCTOU 窗口（两步之间文件可被替换/删除）：' +
+      '目录项类型改用 readdirSync(dir, { withFileTypes: true })，内容读取改用 openSync 拿 fd 后 readFileSync(fd)。',
+  )
 })

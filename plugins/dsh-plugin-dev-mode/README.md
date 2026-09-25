@@ -8,7 +8,7 @@
 
 **DSH 插件开发模式**：一个 **agent preset 声明包（bundle 形态）**，向 DSH 提供名为「插件开发模式」（`plugin-dev`）的 Agent 预设——启用 **Cordis 工具集**（`cordis_inspect_*` 运行时检查 + 动态插件生命周期 `cordis_define`/`run`/`stop`/`undefine`），用于开发、调试和维护 DSH 插件与动态 Cordis 插件。与 shipped「创造模式」（官方 `cordis` preset）同为该工具集的载体，区别在于本模式**工具组合更精简**（去掉 plan mode、委派工具与 web 搜索，prompt 开销更低）。
 
-> 载体是 `cordis.patch.yml` 里的一行 `@deepseek-ai/dsh-agent-preset` 声明（Loader 行 id `preset-plugin-dev`），经 `plugin_manager` 的 `install_bundle` 装载。**要求宿主 DSH ≥ 0.1.7-rc.2**。
+> 载体是 `cordis.patch.yml` 里的一行 `@deepseek-ai/dsh-agent-preset` 声明（Loader 行 id `preset-plugin-dev`），装载方式是在 profile 的 `dsh.profile.bundles` 里登记**包名**（`plugin_manager` 的 `set_bundle`）。**要求宿主 DSH ≥ 0.1.7-rc.2**。
 
 ## 功能
 
@@ -19,13 +19,15 @@
 
 ## 安装
 
-让 agent 调用 `plugin_manager` 工具（`action: install_bundle`，`target` = 本目录绝对路径）：
+本包依赖就位后（npm 安装：`dsh plugin --profile web add dsh-plugin-dev-mode`；本仓库源码开发：`link:` 依赖），把**包名**登记进 profile 的 `dsh.profile.bundles`：
 
 ```text
-plugin_manager { action: "install_bundle", target: "/path/to/my-dsh-plugins/plugins/dsh-plugin-dev-mode" }
+plugin_manager { action: "set_bundle", target: "dsh-plugin-dev-mode", enabled: true }
 ```
 
-`install_bundle` 自己完成包安装与 bundle 选择，**不要**用 shell 命令复现这些步骤。装完在**新会话**里于 Web 模式选择器中选择「插件开发模式」；`plugin_manager` 的 `list_plugins` 能看到 `preset-plugin-dev` 行及其激活状态。
+手工等价做法：编辑 profile 的 `package.json`，给 `dsh.profile.bundles` 追加字符串 `"dsh-plugin-dev-mode"`（bundles 元素是**包名**，路径只出现在 `dependencies` 的 `link:` 值里）——**须在宿主停止时改**，运行中会被 `plugin_manager` 覆盖。装完在**新会话**里于 Web 模式选择器中选择「插件开发模式」；`plugin_manager` 的 `list_plugins` 能看到 `preset-plugin-dev` 行及其激活状态。
+
+> ⚠️ **别用 `install_bundle`**：在 `link:` 布局下它 `pnpm add <绝对目录>` 不改变依赖值 → 判定不到 `installed`，兜底只认裸包名（会把 link 换成 registry 版本）；`dsh plugin --profile <p> add <目录>` 同理，不追加 `dsh.profile.bundles`。
 
 > ⚠️ **0.1.5-rc.1 及更早宿主不可用**：preset 目录资产机制（`$DSH_HOME/.agent-presets/<id>/` + `preset.yml` + `agent.cordis.yml`，由 `@deepseek-ai/dsh-agent-presets` 读取）在 0.1.7-rc.2 已被移除，本包也已不再提供该形态资产；而本包的声明行需要宿主提供 `@deepseek-ai/dsh-agent-preset` 与 `agent-preset-registry`（0.1.5-rc.1 没有）。升级宿主前，本插件在该宿主下**不可用**。
 

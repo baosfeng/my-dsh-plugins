@@ -48,7 +48,7 @@ description: 使用当 需要把已开发、已测试的 DSH 插件安全地发�
 | 共享工具包              | `dsh.kind=library`                              | 豁免 `peerDependencies.cordis`（1b）与 profile 组合验证（3c）       |
 | **agent preset 声明包** | `dsh.kind=preset` + `dsh.bundle.patch` + 非空 `dsh.presetReason` | 同上豁免 1b + 3c；跨插件依赖（1c）、CHANGELOG、测试、效果图门禁照旧 |
 
-- preset 声明包 = `cordis.patch.yml`（bundle patch）里一行 `@deepseek-ai/dsh-agent-preset` 声明：`config` 取 `id`（必填，Loader 行 id 为 `preset-<id>`）/ `plugins`（必填）/ 可选 `name`、`description`、`order`，经 `plugin_manager` 的 `install_bundle` 装载（**要求宿主 ≥ 0.1.7-rc.2**：声明行需要宿主提供 `@deepseek-ai/dsh-agent-preset` 与 `agent-preset-registry`）。它目录内只有 YAML 与文档、**无 JS 代码、不 import cordis**，所以**不该**补 `peerDependencies.cordis`；
+- preset 声明包 = `cordis.patch.yml`（bundle patch）里一行 `@deepseek-ai/dsh-agent-preset` 声明：`config` 取 `id`（必填，Loader 行 id 为 `preset-<id>`）/ `plugins`（必填）/ 可选 `name`、`description`、`order`，经 profile `dsh.profile.bundles` 装载（`plugin_manager` 的 `set_bundle`；本仓库 `link:` 布局下 `install_bundle` 不可用）（**要求宿主 ≥ 0.1.7-rc.2**：声明行需要宿主提供 `@deepseek-ai/dsh-agent-preset` 与 `agent-preset-registry`）。它目录内只有 YAML 与文档、**无 JS 代码、不 import cordis**，所以**不该**补 `peerDependencies.cordis`；
 - 判据与仓库不变量（`scripts/lib/preset-gate.mjs`，单测 `scripts/test/preset-gate.test.mjs`）：`dsh.kind=preset` 必须声明 `dsh.bundle.patch`，且该 patch 里真的有声明行（含非空 `id` 与 `plugins` 列表）；与 `dsh.client` 互斥；patch 里有声明行却不声明 `kind` 也会被拦下，并提示正确修复方式（而不是误报缺 cordis peer）；
 - **豁免不削弱拦截**：preset 只豁免 1b 的 cordis peer 与 3c 的 profile 组合验证；注入未声明的真实 `dsh-*` `import` 仍会被 1c 拦下；
 - 豁免结果在发版输出与批量汇总显式列出（含 `dsh.presetReason`），不悄悄放行。

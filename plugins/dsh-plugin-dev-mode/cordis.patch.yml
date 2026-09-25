@@ -3,8 +3,11 @@
 #
 # Since DSH 0.1.7 a preset is a declaration row carried by a bundle patch, not a
 # directory under `$DSH_HOME/.agent-presets/` — nothing reads that directory any
-# more. Install this bundle through `plugin_manager` (`install_bundle`, target =
-# this directory); the Loader row id is `preset-<id>` by convention, so
+# more. Install it by registering this bundle's PACKAGE NAME in the profile's
+# `dsh.profile.bundles` (`plugin_manager` `set_bundle`) — `install_bundle`
+# cannot work for a `link:` checkout: `pnpm add <dir>` leaves the dependency
+# value unchanged, so the install is never detected. The Loader row id is
+# `preset-<id>` by convention, so
 # `preset-plugin-dev` here declares id `plugin-dev`.
 #
 # Everything needed to develop, debug, and ship DSH plugins: shell, filesystem,

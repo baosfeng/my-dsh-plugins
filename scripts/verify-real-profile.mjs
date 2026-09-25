@@ -111,6 +111,7 @@ import {
   presentStateDirs,
   readAddon,
   readAddonExternals,
+  readTextIfExists,
   stripProfileDeclarations,
   writeWorkspaceStorage,
 } from './lib/verify-profile.mjs'
@@ -367,12 +368,10 @@ async function resolveApiToken({ getWebLog, simHome, timeoutMs = 20000 }) {
     // 条件轮询（不是 sleep 固定秒数）：token 行可能在"实例就绪"之后才出现，
     // 凭据文件在启动过程中也可能处于 .tmp/.lock 的写入态。
     let credentialsText = ''
-    if (existsSync(file)) {
-      try {
-        credentialsText = readFileSync(file, 'utf8')
-      } catch {
-        /* 正在写入：下一轮再试 */
-      }
+    try {
+      credentialsText = readTextIfExists(file) ?? ''
+    } catch {
+      /* 正在写入：下一轮再试 */
     }
     const found = extractApiToken({ logText: getWebLog(), credentialsText })
     if (found.token) return found
@@ -505,7 +504,7 @@ if (addons.length > 0) {
   const pkgPath = join(simProfile, 'package.json')
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
   const patchPath = join(simProfile, 'cordis.patch.yml')
-  const patchText = existsSync(patchPath) ? readFileSync(patchPath, 'utf8') : ''
+  const patchText = readTextIfExists(patchPath) ?? ''
   for (const addon of addons) {
     const { dir: abs, name } = addon
     // 插件已手动安装（patch 行存在）时不再写入 bundles：bundle 自动插行 +
@@ -579,7 +578,8 @@ if (!dump.ok) {
 if (options.enablePlugins !== undefined && options.enablePlugins.length > 0) {
   const dumpEntries = parseDumpEntries(dump.stdout)
   const patchPath = join(simProfile, 'cordis.patch.yml')
-  let patchText = existsSync(patchPath) ? readFileSync(patchPath, 'utf8') : ''
+  // fd 读取（不做 existsSync 预检）：预检 + 按路径写 = check-then-use，CodeQL 告警 #118
+  let patchText = readTextIfExists(patchPath) ?? ''
   const justEnabled = []
   for (const target of options.enablePlugins) {
     const hit = dumpEntries.find((entry) => entry.name === target || entry.id === target)
@@ -645,8 +645,9 @@ if (options.inheritCredentials) {
   const requiredRefs = collectProviderCredentialRefs(dump.stdout)
   const credentialFile = join(realHome, CREDENTIALS_FILENAME)
   let refs = {}
-  if (existsSync(credentialFile)) {
-    const parsed = parseCredentialRefs(readFileSync(credentialFile, 'utf8'))
+  const credentialsText = readTextIfExists(credentialFile)
+  if (credentialsText !== null) {
+    const parsed = parseCredentialRefs(credentialsText)
     refs = parsed.refs
     if (parsed.errors.length > 0) {
       // refs 段损坏：不静默丢弃（否则又回到"调用阶段才报缺凭据"）
@@ -670,7 +671,7 @@ if (options.inheritCredentials) {
   injectedEnv = plan.inject
   // settings.yaml 的 provider 段按需继承（生产没有该文件时是空操作）
   const settingsSource = join(realHome, SETTINGS_FILENAME)
-  const hostSettingsText = existsSync(settingsSource) ? readFileSync(settingsSource, 'utf8') : ''
+  const hostSettingsText = readTextIfExists(settingsSource) ?? ''
   const isolated = buildIsolatedSettings({ hostSettingsText })
   if (!isolated.ok) {
     fail(

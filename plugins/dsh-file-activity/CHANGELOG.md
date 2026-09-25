@@ -2,6 +2,12 @@
 
 本文件记录 dsh-file-activity 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.5.13] - 2026-09-25
+
+### 变更
+
+- fix: 适配宿主 0.1.7-rc.2 的事件名与席位契约，修正失效文档断言
+
 ## [0.5.12] - 2026-09-18
 
 ### 变更

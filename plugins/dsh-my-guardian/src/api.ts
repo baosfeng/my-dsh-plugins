@@ -39,6 +39,10 @@ interface SnapshotResult {
   events: { time: number; type: string; message: string }[]
   startupIssues: unknown[]
   startupCheckedAt: number | null
+  /** 预检跳过的宿主供给行数（#424 A′）：面板据此能区分「都查过」与「跳过 N 行」。 */
+  startupSkippedHostRows: number
+  /** 预检跳过说明（#424 A′）。 */
+  startupNotes: string[]
 }
 
 /** Bind the API entry points to one guardian instance's shared state. */
@@ -267,5 +271,8 @@ function snapshot(shared: SharedContext): SnapshotResult {
     // startup-roster pre-check report (issue #144): empty array = healthy
     startupIssues: Array.isArray(shared.startupIssues) ? shared.startupIssues : [],
     startupCheckedAt: typeof shared.startupCheckedAt === 'number' ? shared.startupCheckedAt : null,
+    // #424 A′: 宿主供给行被跳过，但跳过本身必须可见（计数 + 说明）。
+    startupSkippedHostRows: typeof shared.startupSkippedHostRows === 'number' ? shared.startupSkippedHostRows : 0,
+    startupNotes: Array.isArray(shared.startupNotes) ? shared.startupNotes : [],
   }
 }

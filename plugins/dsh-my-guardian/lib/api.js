@@ -190,5 +190,8 @@ function snapshot(shared) {
         // startup-roster pre-check report (issue #144): empty array = healthy
         startupIssues: Array.isArray(shared.startupIssues) ? shared.startupIssues : [],
         startupCheckedAt: typeof shared.startupCheckedAt === 'number' ? shared.startupCheckedAt : null,
+        // #424 A′: 宿主供给行被跳过，但跳过本身必须可见（计数 + 说明）。
+        startupSkippedHostRows: typeof shared.startupSkippedHostRows === 'number' ? shared.startupSkippedHostRows : 0,
+        startupNotes: Array.isArray(shared.startupNotes) ? shared.startupNotes : [],
     };
 }

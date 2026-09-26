@@ -1,4 +1,6 @@
-// ── detail panel (issue #90): README / version history / deps / install ──
+// ── detail panel (issue #90): README / version history / deps / metadata ──
+// 本块是本插件的真增量之一：官方插件页不提供 README / 版本历史 / 依赖 / 月下载量。
+// 安装按钮已随「安装」能力下线（官方插件页负责安装），此处只做只读浏览。
 
 /** 详情面板 props（PluginManagerView 的 detail* 状态 + 动作）。 */
 interface PluginDetailPanelProps {
@@ -9,8 +11,6 @@ interface PluginDetailPanelProps {
   version: string | null
   onClose: () => void
   onVersionChange: (version: string) => void
-  install: (source: string) => void
-  installing: string | null
 }
 
 /** 详情头部 props。 */
@@ -26,17 +26,13 @@ interface DetailBodyProps {
   error: string | boolean | null
   version: string | null
   onVersionChange: (version: string) => void
-  install: (source: string) => void
-  installing: string | null
 }
 
-/** 元数据工具栏 props。 */
+/** 元数据工具栏 props（版本选择器 = 查看指定版本的依赖/元数据）。 */
 interface DetailMetaProps {
   detail: any
   version: string | null
   onVersionChange: (version: string) => void
-  install: (source: string) => void
-  installing: string | null
 }
 
 /** 通用区块 props。 */
@@ -69,14 +65,12 @@ function PluginDetailPanel({
   version,
   onClose,
   onVersionChange,
-  install,
-  installing,
 }: PluginDetailPanelProps) {
   return createElement(
     'div',
     { className: 'dsh-my-plugin-manager-detail' },
     createElement(DetailHead, { name, onClose }),
-    renderDetail({ detail, loading, error, version, onVersionChange, install, installing }),
+    renderDetail({ detail, loading, error, version, onVersionChange }),
   )
 }
 
@@ -94,7 +88,7 @@ function DetailHead({ name, onClose }: DetailHeadProps) {
 }
 
 /** Loading → error → detail-body switch. */
-function renderDetail({ detail, loading, error, version, onVersionChange, install, installing }: DetailBodyProps) {
+function renderDetail({ detail, loading, error, version, onVersionChange }: DetailBodyProps) {
   if (loading) return createElement('div', { className: 'dsh-my-plugin-manager-status' }, strings.loadingDetail())
   if (error !== null && error !== false) {
     const message = typeof error === 'string' ? error : strings.loadError()
@@ -108,7 +102,7 @@ function renderDetail({ detail, loading, error, version, onVersionChange, instal
   return createElement(
     'div',
     { className: 'dsh-my-plugin-manager-detail-body' },
-    createElement(DetailMeta, { detail, version, onVersionChange, install, installing }),
+    createElement(DetailMeta, { detail, version, onVersionChange }),
     createElement(DetailSection, { title: strings.readme(), body: readmeBody }),
     createElement(DetailSection, {
       title: strings.versionHistory(),
@@ -121,38 +115,27 @@ function renderDetail({ detail, loading, error, version, onVersionChange, instal
   )
 }
 
-/** Metadata toolbar: version picker + install button + info tags. */
-function DetailMeta({ detail, version, onVersionChange, install, installing }: DetailMetaProps) {
-  const source = installSource(detail.name, version, detail.latest)
-  const installingThis = installing === source
+/** Metadata toolbar: version picker (view-only) + info tags. */
+function DetailMeta({ detail, version, onVersionChange }: DetailMetaProps) {
   const versions = Array.isArray(detail.versions) ? detail.versions : []
-  const isLatest = version === '' || version === detail.latest
   return createElement(
     'div',
     { className: 'dsh-my-plugin-manager-detail-meta' },
-    createElement(
-      'div',
-      { className: 'dsh-my-plugin-manager-detail-toolbar' },
-      createElement(
-        'select',
-        {
-          className: 'dsh-my-plugin-manager-detail-version',
-          value: version ?? '',
-          onChange: (event) => onVersionChange(event.target.value),
-        },
-        versions.map((v) => createElement('option', { key: v.version, value: v.version }, v.version)),
-      ),
-      createElement(
-        'button',
-        {
-          className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-primary',
-          onClick: () => install(source),
-          disabled: installingThis,
-        },
-        icon.plus(14),
-        installingThis ? strings.installing() : isLatest ? strings.installLatest() : strings.installAt(version),
-      ),
-    ),
+    versions.length > 0
+      ? createElement(
+          'div',
+          { className: 'dsh-my-plugin-manager-detail-toolbar' },
+          createElement(
+            'select',
+            {
+              className: 'dsh-my-plugin-manager-detail-version',
+              value: version ?? '',
+              onChange: (event) => onVersionChange(event.target.value),
+            },
+            versions.map((v) => createElement('option', { key: v.version, value: v.version }, v.version)),
+          ),
+        )
+      : null,
     detail.description !== ''
       ? createElement('div', { className: 'dsh-my-plugin-manager-detail-desc' }, detail.description)
       : null,
@@ -184,10 +167,6 @@ function metaTag(value: unknown, label: string) {
   return createElement('span', { className: 'dsh-my-plugin-manager-detail-tag' }, `${label}：${value}`)
 }
 
-function installSource(name: string, version: string, latest: string): string {
-  return version !== '' && version !== latest ? `${name}@${version}` : name
-}
-
 function DetailSection({ title, body }: DetailSectionProps) {
   return createElement(
     'div',
@@ -198,12 +177,14 @@ function DetailSection({ title, body }: DetailSectionProps) {
 }
 
 /**
- * README preview：统一 MarkdownView（issue #299）。
+ * README preview：统一 MarkdownView（issue #299 / #428）。
  *
- * 三级回退（dsh-md-render → 平台官方 MarkdownText → 本插件
- * `<pre class="dsh-my-plugin-manager-readme-plain">`）收口在共享部件
- * `dsh-shared/client-parts/markdown-fallback.part.js`，模板里解析出的
- * `MarkdownView` **永远是可用组件**，这里不再需要 null 分支。
+ * 渲染内核 = 宿主官方 baseline `@deepseek-ai/dsh-client-ui-primitives` 的 MarkdownText；
+ * 缺它时落到本插件 `<pre class="dsh-my-plugin-manager-readme-plain">`。外部内核级
+ * （dsh-md-render）已在模板里显式旁路——官方禁止特性插件 runtime-import 另一个特性
+ * 插件的值、也禁止用 dsh.client.external 获取（packages/client/AGENTS.md）。
+ * 三级链的组件可用性判定收口在 dsh-shared/client-parts/markdown-fallback.part.js，
+ * 模板里解析出的 `MarkdownView` **永远是可用组件**，这里不再需要 null 分支。
  */
 function ReadmeView({ text }: ReadmeViewProps) {
   return createElement(MarkdownView, { text })

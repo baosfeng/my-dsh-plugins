@@ -1,17 +1,7 @@
 // ── api: fetch helpers for the Plugin Manager views ────────────────────
+// 只保留三条只读接口：市场搜索（/search）、插件详情（/detail）、更新检查（/updates）。
+// 安装、卸载、启停、清单接口随对应 UI 一并下线。
 const API_BASE = '/my-plugin-manager/api'
-
-/** 已安装插件行（GET /installed 的 entries[]）。 */
-interface InstalledEntry {
-  moduleName: string
-  enabled: boolean
-  fiberPhase: string | null
-  version: string
-  updateAvailable: {
-    current: string
-    latest: string
-  } | null
-}
 
 /** 市场搜索结果行（GET /search 的 results[]）。 */
 interface MarketItem {
@@ -26,11 +16,6 @@ interface OutdatedItem {
   name: string
   current: string
   latest: string
-}
-
-/** GET /installed → { entries: [{ moduleName, enabled, fiberPhase, version, updateAvailable }] }. */
-function fetchInstalled(): Promise<{ entries: InstalledEntry[] }> {
-  return fetchJson(`${API_BASE}/installed`)
 }
 
 /** GET /search?q= → { results: [{ name, version, description, author }] }. */
@@ -48,51 +33,6 @@ function fetchDetail(name: string, version: string): Promise<any> {
 /** GET /updates → { outdated: [{ name, current, latest }], error? }. */
 function fetchUpdates(): Promise<{ outdated: OutdatedItem[]; error?: string }> {
   return fetchJson(`${API_BASE}/updates`)
-}
-
-/** POST /install { source } → { ok, error? }. */
-function postInstall(source: string): Promise<Record<string, unknown>> {
-  return fetchJson(`${API_BASE}/install`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ source }),
-  })
-}
-
-/** POST /uninstall { name } → { ok, error? }. */
-function postUninstall(name: string): Promise<Record<string, unknown>> {
-  return fetchJson(`${API_BASE}/uninstall`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name }),
-  })
-}
-
-/** POST /update { name } → { ok, error? }. */
-function postUpdate(name: string): Promise<Record<string, unknown>> {
-  return fetchJson(`${API_BASE}/update`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name }),
-  })
-}
-
-/** POST /enable { name } → { ok, error? }. */
-function postEnable(name: string): Promise<Record<string, unknown>> {
-  return fetchJson(`${API_BASE}/enable`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name }),
-  })
-}
-
-/** POST /disable { name } → { ok, error? }. */
-function postDisable(name: string): Promise<Record<string, unknown>> {
-  return fetchJson(`${API_BASE}/disable`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name }),
-  })
 }
 
 function fetchJson(url: string, options?: RequestInit): Promise<any> {

@@ -1,12 +1,14 @@
 /**
  * dsh-my-plugin-manager — client half (browser). SOURCE TEMPLATE.
  *
- * A Web Settings "插件管理 / Plugin Manager" tab (official `slots` extension
- * point — no third-party dependency) with two sections:
- *  - 已安装: loader inventory (name / version / state) + uninstall per row
- *    + an update check (`pnpm outdated`) with a one-click hint;
- *  - 市场: npm registry search with one-click install (installs land in the
- *    profile via `dsh plugin add`; a restart loads them).
+ * A Web Settings "插件市场 / Plugin Market" tab (official `slots` extension
+ * point — no third-party dependency) with two read-only sections:
+ *  - 更新检查: `dsh plugin outdated` → 列出「当前 → 最新」（官方无 outdated 面）；
+ *  - 市场: npm registry 关键词搜索 + 插件详情（README / 版本历史 / 依赖 / 月下载量）。
+ *
+ * 安装 / 卸载 / 启停 / 清单管理**不在本插件范围**：官方默认内置
+ * （bundle/web-app 默认装载 ui-plugin-manager、tool-plugin-manager、`dsh plugin`
+ * CLI），且官方刻意让设置页插件列表保持只读——本插件不再在其上叠一层可写管理。
  *
  * Data source: GET/POST /my-plugin-manager/api/* (server half). Styling follows
  * the DSH design language (issue #54): semantic tokens, flat surfaces, hairline
@@ -29,13 +31,18 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
 
-    // ── README Markdown 渲染：三级回退（issue #299，共享部件）──────────
-    // 1) dsh-md-render 的 MarkdownView（首选内核，issue #31；package.json 的
-    //    dsh.client.external 声明）；
-    // 2) 宿主平台官方 MarkdownText（零安装零体积，缺 md-render 时仍渲染 markdown）；
-    // 3) 本插件自己的 <pre class="dsh-my-plugin-manager-readme-plain">（issue #90）。
-    // 逻辑收口在 dsh-shared/client-parts/markdown-fallback.part.js（issue #299：
-    // 同一段样板 ≥2 处即抽出），构建期 splice 进本 factory 作用域。
+    // ── README Markdown 渲染：官方 baseline 组件（issue #299 / #428）────────
+    // 1) 宿主 staticModules 的官方 MarkdownText —— 唯一渲染内核（平台 seed 模块
+    //    @deepseek-ai/dsh-client-ui-primitives，零安装零体积，官方推荐路线）；
+    // 2) 本插件自己的 <pre class="dsh-my-plugin-manager-readme-plain">（issue #90）。
+    // **不再有「另一个特性插件提供渲染器」这一级**：官方明令禁止特性插件
+    // runtime-import 彼此的值，也禁止用 dsh.client.external 获取它们
+    // （packages/client/AGENTS.md；官方 scripts/verify-client-packages.ts 判违规）。
+    // 三级链与组件可用性判定（React 语义，兼容 memo/forwardRef 对象）与假降级教训
+    // 仍在 dsh-shared/client-parts/markdown-fallback.part.js（#299 单一来源），构建期
+    // splice 进本 factory 作用域；共享件的外部内核级由下方两个参数显式旁路
+    // （external 指向平台模块 + 一个不存在的导出名 → 该级恒不命中），共享件本身与
+    // 其它消费方（dsh-think-zh-expand）行为不变。
     // ── shared markdown render fallback (dsh-shared/client-parts) ──
 // 单一来源（issue #299）：把「三级渲染回退」这段原本在 dsh-think-zh-expand（#293）
 // 与 dsh-my-plugin-manager（#299）逐字重复的样板（约 40 行：三级解析 + labels
@@ -152,6 +159,8 @@ function installMarkdownViewFallback(options) {
   return renderPlain
 }
 
+    /** 官方 baseline 模块（平台 seed 表，可直接 require）。 */
+    const PLATFORM_PRIMITIVES = '@deepseek-ai/dsh-client-ui-primitives'
     const MD_README_LABELS = {
       code: { copyLabel: '复制', copiedLabel: '已复制' },
       footnotes: '脚注',
@@ -162,12 +171,16 @@ function installMarkdownViewFallback(options) {
       labels: MD_README_LABELS,
       fallbackAttribute: 'data-dsh-my-plugin-manager-fallback',
       fallbackClassName: 'dsh-my-plugin-manager-readme-plain',
+      external: PLATFORM_PRIMITIVES,
+      externalExport: 'externalRendererDisabled',
     })
 
     // ── parts (injected by scripts/build.mjs; keep this exact order — the
     //    const initializers below run in splice order) ─────────────────────
     "use strict";
 // ── i18n ──────────────────────────────────────────────────────────────
+// 只保留本插件实际渲染的文案（市场搜索 / 更新检查 / 详情增强）。安装、卸载、
+// 启停、清单管理相关文案随对应 UI 一并删除。
 function isZh() {
     try {
         const lang = (navigator.language || 'en').toLowerCase();
@@ -178,37 +191,28 @@ function isZh() {
     }
 }
 const strings = {
-    title: () => (isZh() ? '插件管理' : 'Plugin Manager'),
-    installed: () => (isZh() ? '已安装' : 'Installed'),
+    title: () => (isZh() ? '插件市场' : 'Plugin Market'),
+    scopeHint: () => isZh()
+        ? '本页只做市场搜索、更新检查与插件详情。安装 / 卸载 / 启停 / 插件清单请用官方侧边栏插件页（设置 → 插件为只读列表）。'
+        : 'This tab only offers market search, update check and package details. Install / uninstall / enable / disable and the plugin list live in the official sidebar Plugins page (Settings → Plugins stays read-only).',
     market: () => (isZh() ? '市场' : 'Market'),
     searchPlaceholder: () => isZh() ? '搜索 npm 插件（如 dsh-file-activity）…' : 'Search npm plugins (e.g. dsh-file-activity)…',
     search: () => (isZh() ? '搜索' : 'Search'),
-    install: () => (isZh() ? '安装' : 'Install'),
-    uninstall: () => (isZh() ? '卸载' : 'Uninstall'),
+    updates: () => (isZh() ? '更新检查' : 'Update check'),
     checkUpdates: () => (isZh() ? '检查更新' : 'Check updates'),
+    checkUpdatesHint: () => isZh()
+        ? '点右上角刷新图标，检查已安装插件是否有新版本。'
+        : 'Click the refresh icon to check installed plugins for updates.',
     noUpdates: () => (isZh() ? '全部为最新版本' : 'All up to date'),
     updatesAvailable: (n) => (isZh() ? `${n} 个插件可更新` : `${n} update(s) available`),
     loading: () => (isZh() ? '加载中…' : 'Loading…'),
     loadError: () => (isZh() ? '加载失败' : 'Load failed'),
-    emptyInstalled: () => (isZh() ? '暂无已安装插件' : 'No plugins installed'),
-    emptyInstalledHint: () => isZh() ? '从市场搜索安装插件后，会显示在这里。' : 'Plugins installed from the market will appear here.',
     emptySearch: () => (isZh() ? '搜索 npm 插件市场' : 'Search the npm plugin market'),
     emptySearchHint: () => (isZh() ? '输入关键词，如 dsh-file-activity' : 'Type a keyword, e.g. dsh-file-activity'),
     noResults: () => (isZh() ? '没有匹配的插件' : 'No matching plugins'),
     noResultsHint: () => (isZh() ? '换个关键词试试' : 'Try a different keyword'),
     searchFailed: () => (isZh() ? '搜索失败，请重试' : 'Search failed, try again'),
-    running: () => (isZh() ? '运行中' : 'running'),
-    disabled: () => (isZh() ? '已禁用' : 'disabled'),
-    installing: () => (isZh() ? '安装中…' : 'Installing…'),
-    uninstalling: () => (isZh() ? '卸载中…' : 'Uninstalling…'),
-    version: () => (isZh() ? '版本' : 'version'),
-    installHint: () => isZh()
-        ? '安装/卸载通过 `dsh plugin` 写入 profile（npm 包或 link 路径）；新插件在下次重启 DSH 后加载。'
-        : 'Install/uninstall writes through `dsh plugin` (npm package or link: path); new plugins load on the next DSH restart.',
-    installDone: () => (isZh() ? '安装完成（重启后加载）' : 'Installed (loads on restart)'),
-    uninstallDone: () => (isZh() ? '已卸载（重启后移除）' : 'Uninstalled (removed on restart)'),
     actionFailed: () => (isZh() ? '操作失败' : 'Action failed'),
-    noVersion: () => (isZh() ? '—' : '—'),
     details: () => (isZh() ? '详情' : 'Details'),
     close: () => (isZh() ? '关闭' : 'Close'),
     detailFailed: () => (isZh() ? '详情加载失败' : 'Failed to load details'),
@@ -228,19 +232,9 @@ const strings = {
     license: () => (isZh() ? '许可证' : 'License'),
     repository: () => (isZh() ? '仓库' : 'Repository'),
     downloads: () => (isZh() ? '月下载量' : 'Downloads / month'),
-    installLatest: () => (isZh() ? '安装' : 'Install'),
-    installAt: (version) => (isZh() ? `安装 v${version}` : `Install v${version}`),
     loadingDetail: () => (isZh() ? '加载插件详情…' : 'Loading plugin details…'),
-    update: () => (isZh() ? '更新' : 'Update'),
-    updating: () => (isZh() ? '更新中…' : 'Updating…'),
-    enable: () => (isZh() ? '启用' : 'Enable'),
-    disable: () => (isZh() ? '禁用' : 'Disable'),
-    enabling: () => (isZh() ? '启用中…' : 'Enabling…'),
-    disabling: () => (isZh() ? '禁用中…' : 'Disabling…'),
-    updateDone: () => (isZh() ? '更新完成（重启后生效）' : 'Updated (takes effect on restart)'),
-    enableDone: () => (isZh() ? '插件已启用' : 'Plugin enabled'),
-    disableDone: () => (isZh() ? '插件已禁用' : 'Plugin disabled'),
-    updateAvailable: () => (isZh() ? '可更新' : 'Update available'),
+    version: () => (isZh() ? '版本' : 'version'),
+    noVersion: () => (isZh() ? '—' : '—'),
 };
 
     // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──
@@ -606,7 +600,6 @@ const STYLES = `
   font:var(--dsw-font-s-14); color:var(--dsw-alias-label-primary); }
 .dsh-my-plugin-manager-hint { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); line-height:1.7; padding:2px 6px; }
 .dsh-my-plugin-manager-status { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); padding:2px 6px; }
-.dsh-my-plugin-manager-saved { color:var(--dsw-alias-state-success-primary); }
 .dsh-my-plugin-manager-new { color:var(--dsw-alias-state-warn-primary); }
 .dsh-my-plugin-manager-error { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-state-error-primary);
   padding:4px 6px; white-space:pre-wrap; word-break:break-all; }
@@ -635,12 +628,6 @@ const STYLES = `
 .dsh-my-plugin-manager-ver { flex:none; display:inline-flex; align-items:center; justify-content:center; height:17px; padding:0 5px; border-radius:4px;
   font:var(--dsw-font-xxxs-strong-11); color:var(--dsw-alias-accent);
   background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent); }
-.dsh-my-plugin-manager-state { flex:none; display:inline-flex; align-items:center; justify-content:center; height:17px; padding:0 5px; border-radius:4px;
-  font:var(--dsw-font-xxxs-strong-11); }
-.dsh-my-plugin-manager-state-on { color:var(--dsw-alias-state-success-primary);
-  background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent); }
-.dsh-my-plugin-manager-state-off { color:var(--dsw-alias-label-tertiary);
-  background:color-mix(in srgb, var(--dsw-alias-label-tertiary) 12%, transparent); }
 .dsh-my-plugin-manager-update { flex:none; display:inline-flex; align-items:center; justify-content:center; height:17px; padding:0 5px; border-radius:4px;
   font:var(--dsw-font-xxxs-strong-11); color:var(--dsw-alias-state-warn-primary);
   background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
@@ -657,8 +644,6 @@ const STYLES = `
 .dsh-my-plugin-manager-btn:disabled { opacity:.4; cursor:default; }
 .dsh-my-plugin-manager-btn-primary { color:var(--dsw-alias-accent); border-color:color-mix(in srgb, var(--dsw-alias-accent) 45%, transparent); }
 .dsh-my-plugin-manager-btn-primary:hover:not(:disabled) { color:var(--dsw-alias-accent); }
-.dsh-my-plugin-manager-btn-danger { color:var(--dsw-alias-state-error-primary); border-color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent); }
-.dsh-my-plugin-manager-btn-danger:hover:not(:disabled) { color:var(--dsw-alias-state-error-primary); }
 .dsh-my-plugin-manager-searchbar { display:flex; gap:6px; align-items:center; padding:0 6px; }
 .dsh-my-plugin-manager-search-input { flex:1; min-width:0; height:28px; padding:0 8px; border-radius:6px;
   border:1px solid var(--dsw-alias-border-l2); background:transparent; color:var(--dsw-alias-label-primary);
@@ -722,11 +707,9 @@ const STYLE_TAG = 'data-dsh-my-plugin-manager';
 
     "use strict";
 // ── api: fetch helpers for the Plugin Manager views ────────────────────
+// 只保留三条只读接口：市场搜索（/search）、插件详情（/detail）、更新检查（/updates）。
+// 安装、卸载、启停、清单接口随对应 UI 一并下线。
 const API_BASE = '/my-plugin-manager/api';
-/** GET /installed → { entries: [{ moduleName, enabled, fiberPhase, version, updateAvailable }] }. */
-function fetchInstalled() {
-    return fetchJson(`${API_BASE}/installed`);
-}
 /** GET /search?q= → { results: [{ name, version, description, author }] }. */
 function fetchSearch(query) {
     return fetchJson(`${API_BASE}/search?q=${encodeURIComponent(query.trim())}`);
@@ -742,46 +725,6 @@ function fetchDetail(name, version) {
 function fetchUpdates() {
     return fetchJson(`${API_BASE}/updates`);
 }
-/** POST /install { source } → { ok, error? }. */
-function postInstall(source) {
-    return fetchJson(`${API_BASE}/install`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ source }),
-    });
-}
-/** POST /uninstall { name } → { ok, error? }. */
-function postUninstall(name) {
-    return fetchJson(`${API_BASE}/uninstall`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name }),
-    });
-}
-/** POST /update { name } → { ok, error? }. */
-function postUpdate(name) {
-    return fetchJson(`${API_BASE}/update`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name }),
-    });
-}
-/** POST /enable { name } → { ok, error? }. */
-function postEnable(name) {
-    return fetchJson(`${API_BASE}/enable`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name }),
-    });
-}
-/** POST /disable { name } → { ok, error? }. */
-function postDisable(name) {
-    return fetchJson(`${API_BASE}/disable`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name }),
-    });
-}
 function fetchJson(url, options) {
     return fetch(url, options)
         .then((res) => res.json())
@@ -793,72 +736,22 @@ function fetchJson(url, options) {
 }
 
     "use strict";
-// ── view: Plugin Manager settings tab ──────────────────────────────────
+// ── view: Plugin Manager settings tab ─────────────────────────────────
+// 只保留官方插件管理**没有**的三块：npm 市场关键词搜索、更新检查、插件详情增强。
+// 安装 / 卸载 / 启停 / 清单管理由官方侧边栏插件页（+ tool-plugin-manager）承担，
+// 本页不再重复实现——官方刻意让设置页插件列表保持只读。
 // npm brand badge for market rows (badgeIcon from the shared icons part):
 // brand fill + contrast ink, same family as the FILE_BADGES chips.
 const NPM_BADGE = ['#CB3837', '#ffffff', 'npm'];
-function createActions(props) {
-    return { ...createListActions(props), ...createDetailActions(props) };
-}
-function createListActions({ setInstalled, setUpdates, setNotice, setError, setInstalling, setUninstalling, setUpdating, setEnabling, setDisabling, }) {
-    const reloadInstalled = () => {
-        fetchInstalled()
-            .then((value) => setInstalled(value.entries ?? []))
-            .catch(() => setError(true));
-    };
+function createActions({ setUpdates, setError, setChecking, setDetailName, setDetail, setDetailLoading, setDetailError, setDetailVersion, detailName, }) {
     const runUpdates = () => {
         setError(false);
-        // 我们的实现中，更新信息是在 /installed 接口中返回的
-        // 所以点击"检查更新"按钮应该重新加载已安装列表
-        reloadInstalled();
-    };
-    const afterWrite = (message) => {
-        setNotice(message);
-        reloadInstalled();
-    };
-    const install = (source) => {
-        setError(false);
-        setInstalling(source);
-        postInstall(source)
-            .then(() => afterWrite(strings.installDone()))
+        setChecking(true);
+        fetchUpdates()
+            .then((value) => setUpdates(value.outdated ?? []))
             .catch((error) => setError(error.message ?? true))
-            .finally(() => setInstalling(null));
+            .finally(() => setChecking(false));
     };
-    const uninstall = (name) => {
-        setError(false);
-        setUninstalling(name);
-        postUninstall(name)
-            .then(() => afterWrite(strings.uninstallDone()))
-            .catch((error) => setError(error.message ?? true))
-            .finally(() => setUninstalling(null));
-    };
-    const update = (name) => {
-        setError(false);
-        setUpdating(name);
-        postUpdate(name)
-            .then(() => afterWrite(strings.updateDone()))
-            .catch((error) => setError(error.message ?? true))
-            .finally(() => setUpdating(null));
-    };
-    const enable = (name) => {
-        setError(false);
-        setEnabling(name);
-        postEnable(name)
-            .then(() => afterWrite(strings.enableDone()))
-            .catch((error) => setError(error.message ?? true))
-            .finally(() => setEnabling(null));
-    };
-    const disable = (name) => {
-        setError(false);
-        setDisabling(name);
-        postDisable(name)
-            .then(() => afterWrite(strings.disableDone()))
-            .catch((error) => setError(error.message ?? true))
-            .finally(() => setDisabling(null));
-    };
-    return { reloadInstalled, runUpdates, install, uninstall, update, enable, disable };
-}
-function createDetailActions({ setDetailName, setDetail, setDetailLoading, setDetailError, setDetailVersion, detailName, }) {
     const loadDetail = (name, version) => {
         setDetailName(name);
         setDetailVersion(version);
@@ -884,33 +777,21 @@ function createDetailActions({ setDetailName, setDetail, setDetailLoading, setDe
         setDetailLoading(false);
     };
     const changeDetailVersion = (version) => loadDetail(detailName, version);
-    return { openDetail, closeDetail, changeDetailVersion };
+    return { runUpdates, openDetail, closeDetail, changeDetailVersion };
 }
 function usePluginManagerState() {
-    const [installed, setInstalled] = useState(null);
     const [updates, setUpdates] = useState(null);
-    const [notice, setNotice] = useState('');
     const [error, setError] = useState(false);
-    const [installing, setInstalling] = useState(null);
-    const [uninstalling, setUninstalling] = useState(null);
-    const [updating, setUpdating] = useState(null);
-    const [enabling, setEnabling] = useState(null);
-    const [disabling, setDisabling] = useState(null);
+    const [checking, setChecking] = useState(false);
     const [detailName, setDetailName] = useState(null);
     const [detail, setDetail] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState(null);
     const [detailVersion, setDetailVersion] = useState(null);
     const actions = createActions({
-        setInstalled,
         setUpdates,
-        setNotice,
         setError,
-        setInstalling,
-        setUninstalling,
-        setUpdating,
-        setEnabling,
-        setDisabling,
+        setChecking,
         setDetailName,
         setDetail,
         setDetailLoading,
@@ -918,44 +799,13 @@ function usePluginManagerState() {
         setDetailVersion,
         detailName,
     });
-    return {
-        installed,
-        updates,
-        notice,
-        error,
-        installing,
-        uninstalling,
-        updating,
-        enabling,
-        disabling,
-        detailName,
-        detail,
-        detailLoading,
-        detailError,
-        detailVersion,
-        actions,
-    };
-}
-function useNoticeAutoDismiss(notice, setNotice) {
-    useEffect(() => {
-        if (notice === '')
-            return;
-        const timer = window.setTimeout(() => setNotice(''), 3000);
-        return () => window.clearTimeout(timer);
-    }, [notice]);
+    return { updates, error, checking, detailName, detail, detailLoading, detailError, detailVersion, actions };
 }
 function PluginManagerView() {
-    const state = usePluginManagerState();
-    const { installed, updates, notice, error, installing, uninstalling, updating, enabling, disabling, detailName, detail, detailLoading, detailError, detailVersion, actions, } = state;
-    useEffect(() => {
-        actions.reloadInstalled();
-    }, []);
-    useNoticeAutoDismiss(notice, () => { }); // setNotice is inside actions
-    return createElement('div', { className: 'dsh-my-plugin-manager-root' }, createElement('div', { className: 'dsh-my-plugin-manager-hint' }, strings.installHint()), error
+    const { updates, error, checking, detailName, detail, detailLoading, detailError, detailVersion, actions } = usePluginManagerState();
+    return createElement('div', { className: 'dsh-my-plugin-manager-root' }, createElement('div', { className: 'dsh-my-plugin-manager-hint' }, strings.scopeHint()), error
         ? createElement('div', { className: 'dsh-my-plugin-manager-error' }, typeof error === 'string' ? `${strings.actionFailed()}：${error}` : strings.loadError())
-        : null, notice !== ''
-        ? createElement('div', { className: 'dsh-my-plugin-manager-status dsh-my-plugin-manager-saved' }, notice)
-        : null, createElement(InstalledSection, { installed, updates, actions, uninstalling, updating, enabling, disabling }), createElement(MarketSection, { actions, installing, installed }), detailName !== null
+        : null, createElement(UpdatesSection, { updates, checking, onCheck: actions.runUpdates }), createElement(MarketSection, { actions }), detailName !== null
         ? createElement(PluginDetailPanel, {
             name: detailName,
             detail,
@@ -964,92 +814,30 @@ function PluginManagerView() {
             version: detailVersion,
             onClose: actions.closeDetail,
             onVersionChange: actions.changeDetailVersion,
-            install: actions.install,
-            installing,
         })
         : null);
 }
-/** 已安装清单 + 更新检查。 */
-function InstalledSection({ installed, updates, actions, uninstalling, updating, enabling, disabling, }) {
-    const rows = installed === null
+/** 更新检查：点刷新图标跑 `dsh plugin outdated`，逐行列出「当前 → 最新」。 */
+function UpdatesSection({ updates, checking, onCheck }) {
+    const rows = updates === null
         ? null
-        : installed.length === 0
-            ? createElement('div', { className: 'dsh-my-plugin-manager-empty' }, icon.file(18), strings.emptyInstalled(), createElement('span', { className: 'dsh-my-plugin-manager-empty-hint' }, strings.emptyInstalledHint()))
-            : installed.map((entry) => createElement(InstalledRow, {
-                key: entry.moduleName,
-                entry,
-                outdated: outdatedOf(updates, entry.moduleName),
-                onOpen: () => actions.openDetail(entry.moduleName),
-                onUninstall: () => actions.uninstall(entry.moduleName),
-                onUpdate: () => actions.update(entry.moduleName),
-                onEnable: () => actions.enable(entry.moduleName),
-                onDisable: () => actions.disable(entry.moduleName),
-                uninstalling: uninstalling === entry.moduleName,
-                updating: updating === entry.moduleName,
-                enabling: enabling === entry.moduleName,
-                disabling: disabling === entry.moduleName,
-            }));
-    return createElement('div', { className: 'dsh-my-plugin-manager-section' }, createElement('div', { className: 'dsh-my-plugin-manager-section-head' }, createElement('span', { className: 'dsh-my-plugin-manager-section-title' }, strings.installed()), createElement('span', { className: 'dsh-my-plugin-manager-section-head-actions' }, createElement('button', {
+        : updates.length === 0
+            ? createElement('div', { className: 'dsh-my-plugin-manager-status' }, strings.noUpdates())
+            : updates.map((entry) => createElement('div', { key: entry.name, className: 'dsh-my-plugin-manager-row' }, createElement('div', { className: 'dsh-my-plugin-manager-row-head' }, createElement('span', { className: 'dsh-my-plugin-manager-row-icon' }, icon.file(16)), createElement('span', { className: 'dsh-my-plugin-manager-name' }, entry.name), createElement('span', { className: 'dsh-my-plugin-manager-update' }, `${entry.current} → ${entry.latest}`))));
+    return createElement('div', { className: 'dsh-my-plugin-manager-section' }, createElement('div', { className: 'dsh-my-plugin-manager-section-head' }, createElement('span', { className: 'dsh-my-plugin-manager-section-title' }, strings.updates()), createElement('span', { className: 'dsh-my-plugin-manager-section-head-actions' }, createElement('button', {
         className: 'dsh-my-plugin-manager-iconbtn dsh-my-plugin-manager-iconbtn-xs',
-        onClick: actions.runUpdates,
+        onClick: onCheck,
+        disabled: checking,
         title: strings.checkUpdates(),
         'aria-label': strings.checkUpdates(),
-    }, icon.refresh(14)))), installed === null ? createElement('div', { className: 'dsh-my-plugin-manager-status' }, strings.loading()) : rows, updates !== null && updates.length > 0
+    }, icon.refresh(14)))), updates === null
+        ? createElement('div', { className: 'dsh-my-plugin-manager-status' }, strings.checkUpdatesHint())
+        : rows, updates !== null && updates.length > 0
         ? createElement('div', { className: 'dsh-my-plugin-manager-status dsh-my-plugin-manager-new' }, strings.updatesAvailable(updates.length))
-        : updates !== null
-            ? createElement('div', { className: 'dsh-my-plugin-manager-status' }, strings.noUpdates())
-            : null);
+        : null);
 }
-/** One installed plugin row: icon / name / state chip / version chip + uninstall. */
-function InstalledRow({ entry, outdated, onOpen, onUninstall, onUpdate, onEnable, onDisable, uninstalling, updating, enabling, disabling, }) {
-    return createElement('div', { className: 'dsh-my-plugin-manager-row' }, createElement(InstalledRowHeader, { entry, onOpen }), entry.updateAvailable !== null && entry.updateAvailable !== undefined
-        ? createElement(UpdateAvailableInfo, { updateAvailable: entry.updateAvailable })
-        : null, createElement(InstalledRowActions, {
-        entry,
-        onOpen,
-        onUninstall,
-        onUpdate,
-        onEnable,
-        onDisable,
-        uninstalling,
-        updating,
-        enabling,
-        disabling,
-    }));
-}
-function InstalledRowHeader({ entry, onOpen }) {
-    return createElement('div', { className: 'dsh-my-plugin-manager-row-head' }, createElement('span', { className: 'dsh-my-plugin-manager-row-icon' }, icon.file(16)), createElement('button', { className: 'dsh-my-plugin-manager-name dsh-my-plugin-manager-name-btn', onClick: onOpen }, entry.moduleName), createElement('span', {
-        className: `dsh-my-plugin-manager-state ${entry.enabled ? 'dsh-my-plugin-manager-state-on' : 'dsh-my-plugin-manager-state-off'}`,
-    }, entry.enabled ? strings.running() : strings.disabled()), createElement('span', { className: 'dsh-my-plugin-manager-ver' }, entry.version === '' ? strings.noVersion() : `v${entry.version}`));
-}
-function UpdateAvailableInfo({ updateAvailable }) {
-    return createElement('div', { className: 'dsh-my-plugin-manager-actions' }, createElement('span', { className: 'dsh-my-plugin-manager-update' }, `${updateAvailable.current} → ${updateAvailable.latest}`));
-}
-function InstalledRowActions({ entry, onOpen, onUninstall, onUpdate, onEnable, onDisable, uninstalling, updating, enabling, disabling, }) {
-    return createElement('div', { className: 'dsh-my-plugin-manager-actions' }, createElement('button', { className: 'dsh-my-plugin-manager-btn', onClick: onOpen }, strings.details()), entry.updateAvailable !== null && entry.updateAvailable !== undefined
-        ? createElement('button', {
-            className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-primary',
-            onClick: onUpdate,
-            disabled: updating,
-        }, icon.arrowUp(14), updating ? strings.updating() : strings.update())
-        : null, entry.enabled
-        ? createElement('button', {
-            className: 'dsh-my-plugin-manager-btn',
-            onClick: onDisable,
-            disabled: disabling,
-        }, icon.powerOff(14), disabling ? strings.disabling() : strings.disable())
-        : createElement('button', {
-            className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-primary',
-            onClick: onEnable,
-            disabled: enabling,
-        }, icon.powerOn(14), enabling ? strings.enabling() : strings.enable()), createElement('button', {
-        className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-danger',
-        onClick: onUninstall,
-        disabled: uninstalling,
-    }, icon.trash(14), uninstalling ? strings.uninstalling() : strings.uninstall()));
-}
-/** 市场: npm 搜索 + 一键安装。 */
-function MarketSection({ actions, installing, installed }) {
+/** 市场：npm 关键词搜索 + 详情入口（安装由官方插件页承担）。 */
+function MarketSection({ actions }) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState(null);
     const [searching, setSearching] = useState(false);
@@ -1084,56 +872,33 @@ function MarketSection({ actions, installing, installed }) {
         disabled: searching,
     }, icon.search(14), strings.search())), searchError ? createElement('div', { className: 'dsh-my-plugin-manager-error' }, strings.searchFailed()) : null, searching
         ? createElement('div', { className: 'dsh-my-plugin-manager-status' }, strings.loading())
-        : marketRows(results, actions.install, actions.openDetail, installing, installed));
+        : marketRows(results, actions.openDetail));
 }
 /** Market rows: placeholder / empty / result list. */
-function marketRows(results, install, openDetail, installing, installed) {
+function marketRows(results, openDetail) {
     if (results === null)
         return createElement('div', { className: 'dsh-my-plugin-manager-empty' }, icon.search(18), strings.emptySearch(), createElement('span', { className: 'dsh-my-plugin-manager-empty-hint' }, strings.emptySearchHint()));
     if (results.length === 0)
         return createElement('div', { className: 'dsh-my-plugin-manager-empty' }, icon.search(18), strings.noResults(), createElement('span', { className: 'dsh-my-plugin-manager-empty-hint' }, strings.noResultsHint()));
-    return results.map((item) => createElement(MarketRow, {
-        key: item.name,
-        item,
-        onOpen: () => openDetail(item.name),
-        onInstall: () => install(item.name),
-        installing: installing === item.name,
-        isInstalled: installed !== null && installed.some((entry) => entry.moduleName === item.name),
-    }));
+    return results.map((item) => createElement(MarketRow, { key: item.name, item, onOpen: () => openDetail(item.name) }));
 }
-/** One market search result row: npm badge / name / version chip + install. */
-function MarketRow({ item, onOpen, onInstall, installing, isInstalled }) {
-    return createElement('div', { className: 'dsh-my-plugin-manager-row' }, createElement('div', { className: 'dsh-my-plugin-manager-row-head' }, createElement('span', { className: 'dsh-my-plugin-manager-row-icon' }, badgeIcon(NPM_BADGE, 16)), createElement('button', { className: 'dsh-my-plugin-manager-name dsh-my-plugin-manager-name-btn', onClick: onOpen }, item.name), createElement('span', { className: 'dsh-my-plugin-manager-ver' }, `v${item.version}`), item.author !== '' ? createElement('span', { className: 'dsh-my-plugin-manager-author' }, item.author) : null, isInstalled
-        ? createElement('span', { className: 'dsh-my-plugin-manager-state dsh-my-plugin-manager-state-on' }, strings.installed())
-        : null), createElement('div', { className: 'dsh-my-plugin-manager-desc' }, item.description), createElement('div', { className: 'dsh-my-plugin-manager-actions' }, createElement('button', { className: 'dsh-my-plugin-manager-btn', onClick: onOpen }, strings.details()), isInstalled
-        ? createElement('button', {
-            className: 'dsh-my-plugin-manager-btn',
-            disabled: true,
-        }, icon.check(14), strings.installed())
-        : createElement('button', {
-            className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-primary',
-            onClick: onInstall,
-            disabled: installing,
-        }, icon.plus(14), installing ? strings.installing() : strings.install())));
-}
-/** The matching update entry for a module, if any. */
-function outdatedOf(updates, moduleName) {
-    if (!Array.isArray(updates))
-        return null;
-    const hit = updates.find((entry) => entry.name === moduleName);
-    return hit === undefined ? null : hit;
+/** One market search result row: npm badge / name / version chip + detail. */
+function MarketRow({ item, onOpen }) {
+    return createElement('div', { className: 'dsh-my-plugin-manager-row' }, createElement('div', { className: 'dsh-my-plugin-manager-row-head' }, createElement('span', { className: 'dsh-my-plugin-manager-row-icon' }, badgeIcon(NPM_BADGE, 16)), createElement('button', { className: 'dsh-my-plugin-manager-name dsh-my-plugin-manager-name-btn', onClick: onOpen }, item.name), createElement('span', { className: 'dsh-my-plugin-manager-ver' }, `v${item.version}`), item.author !== '' ? createElement('span', { className: 'dsh-my-plugin-manager-author' }, item.author) : null), createElement('div', { className: 'dsh-my-plugin-manager-desc' }, item.description), createElement('div', { className: 'dsh-my-plugin-manager-actions' }, createElement('button', { className: 'dsh-my-plugin-manager-btn', onClick: onOpen }, strings.details())));
 }
 
     "use strict";
-// ── detail panel (issue #90): README / version history / deps / install ──
-function PluginDetailPanel({ name, detail, loading, error, version, onClose, onVersionChange, install, installing, }) {
-    return createElement('div', { className: 'dsh-my-plugin-manager-detail' }, createElement(DetailHead, { name, onClose }), renderDetail({ detail, loading, error, version, onVersionChange, install, installing }));
+// ── detail panel (issue #90): README / version history / deps / metadata ──
+// 本块是本插件的真增量之一：官方插件页不提供 README / 版本历史 / 依赖 / 月下载量。
+// 安装按钮已随「安装」能力下线（官方插件页负责安装），此处只做只读浏览。
+function PluginDetailPanel({ name, detail, loading, error, version, onClose, onVersionChange, }) {
+    return createElement('div', { className: 'dsh-my-plugin-manager-detail' }, createElement(DetailHead, { name, onClose }), renderDetail({ detail, loading, error, version, onVersionChange }));
 }
 function DetailHead({ name, onClose }) {
     return createElement('div', { className: 'dsh-my-plugin-manager-detail-head' }, createElement('span', { className: 'dsh-my-plugin-manager-detail-title' }, name ?? ''), createElement('button', { className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-ghost', onClick: onClose }, strings.close()));
 }
 /** Loading → error → detail-body switch. */
-function renderDetail({ detail, loading, error, version, onVersionChange, install, installing }) {
+function renderDetail({ detail, loading, error, version, onVersionChange }) {
     if (loading)
         return createElement('div', { className: 'dsh-my-plugin-manager-status' }, strings.loadingDetail());
     if (error !== null && error !== false) {
@@ -1145,7 +910,7 @@ function renderDetail({ detail, loading, error, version, onVersionChange, instal
     const readmeBody = detail.readme === ''
         ? createElement('div', { className: 'dsh-my-plugin-manager-empty' }, strings.noReadme())
         : createElement(ReadmeView, { text: detail.readme });
-    return createElement('div', { className: 'dsh-my-plugin-manager-detail-body' }, createElement(DetailMeta, { detail, version, onVersionChange, install, installing }), createElement(DetailSection, { title: strings.readme(), body: readmeBody }), createElement(DetailSection, {
+    return createElement('div', { className: 'dsh-my-plugin-manager-detail-body' }, createElement(DetailMeta, { detail, version, onVersionChange }), createElement(DetailSection, { title: strings.readme(), body: readmeBody }), createElement(DetailSection, {
         title: strings.versionHistory(),
         body: createElement(DetailTimeline, { versions: detail.versions }),
     }), createElement(DetailSection, {
@@ -1153,21 +918,16 @@ function renderDetail({ detail, loading, error, version, onVersionChange, instal
         body: createElement(DetailDeps, { dependencies: detail.dependencies, peerDependencies: detail.peerDependencies }),
     }));
 }
-/** Metadata toolbar: version picker + install button + info tags. */
-function DetailMeta({ detail, version, onVersionChange, install, installing }) {
-    const source = installSource(detail.name, version, detail.latest);
-    const installingThis = installing === source;
+/** Metadata toolbar: version picker (view-only) + info tags. */
+function DetailMeta({ detail, version, onVersionChange }) {
     const versions = Array.isArray(detail.versions) ? detail.versions : [];
-    const isLatest = version === '' || version === detail.latest;
-    return createElement('div', { className: 'dsh-my-plugin-manager-detail-meta' }, createElement('div', { className: 'dsh-my-plugin-manager-detail-toolbar' }, createElement('select', {
-        className: 'dsh-my-plugin-manager-detail-version',
-        value: version ?? '',
-        onChange: (event) => onVersionChange(event.target.value),
-    }, versions.map((v) => createElement('option', { key: v.version, value: v.version }, v.version))), createElement('button', {
-        className: 'dsh-my-plugin-manager-btn dsh-my-plugin-manager-btn-primary',
-        onClick: () => install(source),
-        disabled: installingThis,
-    }, icon.plus(14), installingThis ? strings.installing() : isLatest ? strings.installLatest() : strings.installAt(version))), detail.description !== ''
+    return createElement('div', { className: 'dsh-my-plugin-manager-detail-meta' }, versions.length > 0
+        ? createElement('div', { className: 'dsh-my-plugin-manager-detail-toolbar' }, createElement('select', {
+            className: 'dsh-my-plugin-manager-detail-version',
+            value: version ?? '',
+            onChange: (event) => onVersionChange(event.target.value),
+        }, versions.map((v) => createElement('option', { key: v.version, value: v.version }, v.version))))
+        : null, detail.description !== ''
         ? createElement('div', { className: 'dsh-my-plugin-manager-detail-desc' }, detail.description)
         : null, createElement('div', { className: 'dsh-my-plugin-manager-detail-tags' }, metaTag(detail.author, strings.author()), metaTag(detail.license, strings.license()), metaTag(detail.downloads > 0 ? String(detail.downloads) : '', strings.downloads()), detail.repository !== ''
         ? createElement('a', {
@@ -1184,19 +944,18 @@ function metaTag(value, label) {
         return null;
     return createElement('span', { className: 'dsh-my-plugin-manager-detail-tag' }, `${label}：${value}`);
 }
-function installSource(name, version, latest) {
-    return version !== '' && version !== latest ? `${name}@${version}` : name;
-}
 function DetailSection({ title, body }) {
     return createElement('div', { className: 'dsh-my-plugin-manager-detail-section' }, createElement('div', { className: 'dsh-my-plugin-manager-detail-section-title' }, title), body);
 }
 /**
- * README preview：统一 MarkdownView（issue #299）。
+ * README preview：统一 MarkdownView（issue #299 / #428）。
  *
- * 三级回退（dsh-md-render → 平台官方 MarkdownText → 本插件
- * `<pre class="dsh-my-plugin-manager-readme-plain">`）收口在共享部件
- * `dsh-shared/client-parts/markdown-fallback.part.js`，模板里解析出的
- * `MarkdownView` **永远是可用组件**，这里不再需要 null 分支。
+ * 渲染内核 = 宿主官方 baseline `@deepseek-ai/dsh-client-ui-primitives` 的 MarkdownText；
+ * 缺它时落到本插件 `<pre class="dsh-my-plugin-manager-readme-plain">`。外部内核级
+ * （dsh-md-render）已在模板里显式旁路——官方禁止特性插件 runtime-import 另一个特性
+ * 插件的值、也禁止用 dsh.client.external 获取（packages/client/AGENTS.md）。
+ * 三级链的组件可用性判定收口在 dsh-shared/client-parts/markdown-fallback.part.js，
+ * 模板里解析出的 `MarkdownView` **永远是可用组件**，这里不再需要 null 分支。
  */
 function ReadmeView({ text }) {
     return createElement(MarkdownView, { text });
@@ -1231,9 +990,9 @@ function peerRows(peers) {
 
     "use strict";
 // ── plugin body ───────────────────────────────────────────────────────
-// 零第三方依赖：面板挂在官方 slots 扩展点（设置 → 插件 → 插件管理），
-// 不依赖 dsh-better-sidebar。slots 服务通过 ctx.get 动态获取——服务
-// 缺省时静默跳过（不注册 tab，server 端 API 不受影响）。
+// 零第三方依赖：面板挂在官方 slots 扩展点（设置 → 插件 → 插件市场），
+// 不依赖 dsh-better-sidebar，也不依赖任何其它特性插件。slots 服务通过
+// ctx.get 动态获取——服务缺省时静默跳过（不注册 tab，server 端 API 不受影响）。
 exports.apply = function apply(ctx) {
     ctx.effect(() => {
         if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined')
@@ -1250,7 +1009,7 @@ exports.apply = function apply(ctx) {
     // ctx.get(name, strict = true) 默认是严格模式：服务提供者 fiber 未 active 时
     // 返回 undefined（cordis `_getImpl`: `if (strict && impl.fiber.state !== 2)
     // return`）。首屏加载时 slots 可能尚未 active，严格模式会静默跳过注册 →
-    // 设置页看不到「插件管理」页签。传 strict = false 只按「服务是否已提供」
+    // 设置页看不到「插件市场」页签。传 strict = false 只按「服务是否已提供」
     // 判断，首屏也能拿到 slots；服务确实不存在时才降级跳过。
     const slots = ctx.get('slots', false);
     if (slots === undefined)

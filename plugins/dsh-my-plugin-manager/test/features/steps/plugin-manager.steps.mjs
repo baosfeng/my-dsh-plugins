@@ -1,24 +1,23 @@
 /**
  * Step definitions for dsh-my-plugin-manager Gherkin acceptance tests.
- * Boots the API handler against a mocked pluginInventory + real fence,
- * mirroring host-api.mjs: installed filtering (issue #28), official
- * namespace classification, market search and the trust fence.
+ *
+ * Boots the real API handler against the real trust fence, mirroring
+ * host-api.mjs: market search, package detail and the「重复能力已下线」404 面。
+ * 安装 / 卸载 / 启停 / 清单路由不再存在（官方插件页承担），场景显式断言 404。
  */
-import { After, Given, When, Then, setWorldConstructor } from '@cucumber/cucumber'
+import { After, When, Then, setWorldConstructor } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
 import { rmSync } from 'node:fs'
 
 import { dirSync } from 'tmp'
-import { createApiHandler, isOfficialModule } from '../../../lib/api-route.js'
+import { createApiHandler } from '../../../lib/api-route.js'
 import { isTrustedApiRequest } from 'dsh-shared'
 
 class World {
   constructor() {
-    this.profileDir = dirSync({ unsafeCleanup: true, prefix: 'dpm-feature-' }).name
-    this.entries = []
+    this.tmpDir = dirSync({ unsafeCleanup: true, prefix: 'dpm-feature-' }).name
     this.lastStatus = 0
     this.lastJson = null
-    this.lastModuleName = ''
   }
 
   makeResponse() {
@@ -56,15 +55,12 @@ class World {
 
   async call(method, url, headers) {
     const ctx = {
-      logger: { warn: () => {} },
+      logger: { info: () => {}, warn: () => {} },
       webRuntime: { trustedHosts: [] },
-      // 宿主 list() 是 async（0.1.2-rc.1）；桩返回 Promise 才与真实语义一致。
-      pluginInventory: { list: async () => ({ entries: this.entries }) },
     }
     const handler = createApiHandler({
       ctx,
       profile: 'web',
-      profileDir: this.profileDir,
       fence: (request) => isTrustedApiRequest(request, ctx.webRuntime.trustedHosts),
     })
     const res = this.makeResponse()
@@ -75,29 +71,6 @@ class World {
 }
 
 setWorldConstructor(World)
-
-Given('loader 已加载官方插件 {string}', function (name) {
-  this.entries.push({ moduleName: name, enabled: true, fiberPhase: 'active' })
-})
-
-Given('loader 已加载用户插件 {string}', function (name) {
-  this.entries.push({ moduleName: name, enabled: true, fiberPhase: 'active' })
-})
-
-Given('插件名为 {string}', function (name) {
-  this.lastModuleName = name
-})
-
-When('请求已安装清单', async function () {
-  await this.call('GET', '/my-plugin-manager/api/installed')
-})
-
-When('用非回环 host 请求已安装清单', async function () {
-  await this.call('GET', '/my-plugin-manager/api/installed', {
-    host: 'evil.example',
-    'sec-fetch-site': 'cross-site',
-  })
-})
 
 When('搜索关键词 {string} 返回官方与用户结果', async function (query) {
   const originalFetch = global.fetch
@@ -176,6 +149,21 @@ When('加载不存在的插件详情 {string}', async function (name) {
   }
 })
 
+When('请求已安装清单', async function () {
+  await this.call('GET', '/my-plugin-manager/api/installed')
+})
+
+When('请求安装接口', async function () {
+  await this.call('POST', '/my-plugin-manager/api/install')
+})
+
+When('用非回环 host 搜索插件', async function () {
+  await this.call('GET', '/my-plugin-manager/api/search?q=dsh', {
+    host: 'evil.example',
+    'sec-fetch-site': 'cross-site',
+  })
+})
+
 Then('详情包含 README {string}', function (text) {
   assert.equal(this.lastStatus, 200)
   assert.ok(this.lastJson.value.readme.includes(text), `readme includes ${text}`)
@@ -208,34 +196,6 @@ Then('详情加载失败且给出错误消息', function () {
   assert.ok(this.lastJson.error.message, 'error message present')
 })
 
-Then('响应包含 {int} 个条目', function (count) {
-  assert.equal(this.lastStatus, 200)
-  assert.equal(this.lastJson.value.entries.length, count)
-})
-
-Then('条目 {string} 存在且 official 为 false', function (name) {
-  const hit = this.lastJson.value.entries.find((e) => e.moduleName === name)
-  assert.ok(hit, `entry ${name} present`)
-  assert.equal(hit.official, false)
-})
-
-Then('条目 {string} 存在', function (name) {
-  const hit = this.lastJson.value.entries.find((e) => e.moduleName === name)
-  assert.ok(hit, `entry ${name} present`)
-})
-
-Then('响应不包含官方插件 {string}', function (name) {
-  assert.ok(!this.lastJson.value.entries.some((e) => e.moduleName === name), `official ${name} filtered out`)
-})
-
-Then('该插件被判定为官方', function () {
-  assert.equal(isOfficialModule(this.lastModuleName), true)
-})
-
-Then('该插件不被判定为官方', function () {
-  assert.equal(isOfficialModule(this.lastModuleName), false)
-})
-
 Then('搜索结果包含 {string}', function (name) {
   assert.ok(
     this.lastJson.value.results.some((r) => r.name === name),
@@ -247,8 +207,13 @@ Then('响应状态码为 {int}', function (status) {
   assert.equal(this.lastStatus, status)
 })
 
-// 配对清理：每个场景的 profileDir 必须回收，否则 tmp 的 process-exit 钩子在
+Then('响应错误说明路由未知', function () {
+  assert.equal(this.lastJson.ok, false)
+  assert.ok(this.lastJson.error.message.includes('unknown'), 'unknown route message present')
+})
+
+// 配对清理：每个场景的临时目录必须回收，否则 tmp 的 process-exit 钩子在
 // worker 被强杀（超时 / CI 取消 / SIGKILL）时不执行，目录永久残留。
 After(function () {
-  if (this.profileDir) rmSync(this.profileDir, { recursive: true, force: true })
+  if (this.tmpDir) rmSync(this.tmpDir, { recursive: true, force: true })
 })

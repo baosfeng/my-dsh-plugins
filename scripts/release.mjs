@@ -70,8 +70,6 @@ import {
   findUnpublishedDeps,
   checkClientExternals,
   listClientExternals,
-  listDegradedExternals,
-  findRedundantDegradedExternals,
   CLIENT_EXTERNAL_FIX_HINT,
   collectClientSources,
   collectServerSources,
@@ -589,39 +587,23 @@ async function processPlugin(name, ctx) {
     say(`✓ 仓库内 dsh-* 依赖均已发布且已打 tag（发布顺序正确）: ${inRepoDeps.join(', ')}`)
   }
 
-  // 1c（external）. dsh.client.external 校验（issue #294，防 #290/#293 复发）：
+  // 1c（external）. dsh.client.external 合规校验（issue #294；#439 判据与官方对齐）：
   // external 是「同 boot 图内的跨插件 client 行请求」——只有该包成为 loader entry
   // （⇒ 进 dsh.profile.bundles）才有 client graph row，浏览器端 require 才命中；
   // 缺包时无 stub、无隔离，整条 client factory 抛错 → 插件全部 UI 席位挂掉。
-  // 判据（leader 验收修正，PR #297）：仓库内包在 dependencies → 走「已发布 + 已打 tag」；
-  // 仅在 peerDependencies → 必须显式声明 dsh.client.externalDegraded（有降级路径）。
-  // 不要求"移进 dependencies"：那只是落盘，插件自己的 deps 不会被 reconcile 激活，
-  // 真实行为与 peer-only 相同（详见 CLIENT_EXTERNAL_FIX_HINT 的激活语义论证）。
-  // npm 判据复用 1c 的 isPublished/isTagged（同一套网络注入）。
-  // 注意：declared 检查已失败（depOk=false）时跳过——此时 npmVersions 为空 Map，
-  // 继续校验会把「无法判定」误报成「未发布」，掩盖真正的首个失败点。
+  // #439 判据：① 不许重复声明官方 baseline（隐式可用）；② 不许请求仓库内的另一个
+  // 特性插件（官方 packages/client/AGENTS.md:37 禁止跨插件取值，改用平台 baseline /
+  // 注入的 cordis 服务 / slots）；③ 其余包必须在 dependencies 或 peerDependencies 声明。
+  // 自造字段 dsh.client.externalDegraded 已从判据与提示中移除（宿主不认，且方向与官方相反）。
   const externals = listClientExternals(pkg)
-  if (depOk && externals.length > 0) {
-    const externalProblems = checkClientExternals(pkg, pluginIndex, isPublished, isTagged)
+  if (externals.length > 0) {
+    const externalProblems = checkClientExternals(pkg, pluginIndex)
     if (externalProblems.length > 0) {
       for (const p of externalProblems) gateFail('1c', p.reason)
       console.error(CLIENT_EXTERNAL_FIX_HINT)
       depOk = false
     } else {
-      const degraded = listDegradedExternals(pkg)
-      say(`✓ dsh.client.external 依赖已声明且已发布/已打 tag: ${externals.join(', ')}`)
-      if (degraded.length > 0) {
-        // 显式降级声明 = 缺包时的能力降级契约；真实行为由 3c 缺包演练（--clean-externals）验证
-        say(
-          `- dsh.client.externalDegraded 已声明（缺失时降级路径）: ${degraded.join(', ')}；` +
-            '对应缺包场景由 3c（--clean-externals）复现验证',
-        )
-      }
-      const redundant = findRedundantDegradedExternals(pkg)
-      if (redundant.length > 0) {
-        // 冗余只是无效元数据：不阻断，但也不静默（否则会留下"以为声明了"的错觉）
-        say(`- 提示: dsh.client.externalDegraded 里的 ${redundant.join(', ')} 不在 external 中（冗余声明，不阻断）`)
-      }
+      say(`✓ dsh.client.external 合规（非 baseline、非仓库内特性插件、已在依赖里声明）: ${externals.join(', ')}`)
     }
   }
 

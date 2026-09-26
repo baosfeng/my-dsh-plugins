@@ -1,8 +1,11 @@
 /**
  * dsh-my-plugin-manager — API route + apply() integration tests.
  *
- * manage.js / registry.js are mocked: install/uninstall/updates exercise the
- * route wiring without spawning real CLI or hitting the npm registry.
+ * manage.js / registry.js are mocked: the update check and the npm lookups
+ * exercise the route wiring without spawning a real CLI or hitting the registry.
+ *
+ * 安装 / 卸载 / 启停 / 清单管理已下线（官方插件页与 `dsh plugin` CLI 承担），
+ * 因此这些路由必须 404 —— 下面有专门的防复发用例。
  */
 import { test, afterAll } from 'vitest'
 import { vi } from 'vitest'
@@ -19,13 +22,7 @@ tmpDirs.push(dir)
 
 // ── mocks ──────────────────────────────────────────────────────────────────
 const manageMock = vi.hoisted(() => ({
-  installedVersionOf: vi.fn(() => '0.1.0'),
-  installPlugin: vi.fn(async () => ({ ok: true, code: 0, stdout: 'added', stderr: '' })),
-  uninstallPlugin: vi.fn(async () => ({ ok: true, code: 0, stdout: '', stderr: '' })),
-  updatePlugin: vi.fn(async () => ({ ok: true, code: 0, stdout: 'updated', stderr: '' })),
   outdatedPlugins: vi.fn(async () => ({ ok: true, outdated: [] })),
-  enablePlugin: vi.fn(async () => ({ ok: true, code: 0, stdout: 'enabled', stderr: '' })),
-  disablePlugin: vi.fn(async () => ({ ok: true, code: 0, stdout: 'disabled', stderr: '' })),
 }))
 vi.mock('../lib/manage.js', () => manageMock)
 
@@ -119,20 +116,6 @@ async function boot(overrides) {
   const ctx = {
     logger: { info: (m) => logs.push(m), warn: () => {} },
     webRuntime: { trustedHosts: [] },
-    pluginInventory: {
-      // 宿主 @deepseek-ai/dsh-host-plugin-inventory 的 list() 是 async
-      // （0.1.2-rc.1 lib/index.js: `async list()`），桩必须返回 Promise。
-      // 同步桩会掩盖「未 await 就解引用 .entries」的缺陷（已安装列表 400）。
-      list: async () => ({
-        entries: [
-          { moduleName: 'dsh-a', enabled: true, fiberPhase: 'ready' },
-          { moduleName: '@scope/dsh-b', enabled: false, fiberPhase: null },
-          { moduleName: '@deepseek-ai/dsh-base', enabled: true, fiberPhase: 'active' },
-          { moduleName: 'cordis:include', enabled: true, fiberPhase: 'active' },
-          { moduleName: '@koishijs/plugin-xxx', enabled: true, fiberPhase: 'active' },
-        ],
-      }),
-    },
     webServer: {
       register: (route) => {
         apiHolder.set(route)
@@ -170,11 +153,16 @@ test('apply registers the API route', async () => {
   assert.ok(getRoute(), '/my-plugin-manager/api route registered')
 })
 
+test('apply injects only official read-only services (no pluginInventory)', async () => {
+  const { inject } = await import('../lib/index.js')
+  assert.deepEqual(inject, ['webServer', 'webRuntime'], '清单管理下线后不再依赖 pluginInventory')
+})
+
 test('API refuses requests outside the fence (403)', async () => {
   const { getRoute } = await boot()
   const res = makeResponse()
   await getRoute().handler(
-    makeRequest('GET', '/my-plugin-manager/api/installed', undefined, {
+    makeRequest('GET', '/my-plugin-manager/api/search?q=dsh', undefined, {
       headers: { host: 'evil.example', 'sec-fetch-site': 'cross-site' },
     }),
     res,
@@ -182,62 +170,15 @@ test('API refuses requests outside the fence (403)', async () => {
   assert.equal(res._status, 403, 'fenced')
 })
 
-test('GET /installed merges inventory + versions', async () => {
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/installed')
-  assert.equal(r.status, 200)
-  const entries = r.json.value.entries
-  assert.equal(entries.length, 2)
-  assert.equal(entries[0].moduleName, 'dsh-a')
-  assert.equal(entries[0].enabled, true)
-  assert.equal(entries[0].version, '0.1.0', 'version resolved via manage.installedVersionOf')
-})
-
-test('GET /installed awaits the async pluginInventory.list()', async () => {
-  // 回归测试：宿主 list() 是 async（0.1.2-rc.1），实现必须 await 后再读
-  // entries——同步解引用会让响应变成 400（真实环境实测症状）。
-  let listSettled = false
-  const { getRoute } = await boot({
-    pluginInventory: {
-      list: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 5))
-        listSettled = true
-        return { entries: [{ moduleName: 'dsh-a', enabled: true, fiberPhase: 'active' }] }
-      },
-    },
-  })
-  const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/installed')
-  assert.equal(r.status, 200, 'async list() must be awaited, not read synchronously')
-  assert.equal(listSettled, true, 'list() promise settled before the response was written')
-  assert.equal(r.json.value.entries.length, 1)
-  assert.equal(r.json.value.entries[0].moduleName, 'dsh-a')
-})
-
-test('GET /installed filters official modules and marks user entries', async () => {
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/installed')
-  assert.equal(r.status, 200)
-  const entries = r.json.value.entries
-  assert.deepEqual(
-    entries.map((e) => e.moduleName),
-    ['dsh-a', '@scope/dsh-b'],
-    'official modules filtered out',
-  )
-  assert.ok(
-    entries.every((e) => e.official === false),
-    'user entries carry official: false',
-  )
-  assert.ok(
-    entries.every((e) => e.version === '0.1.0'),
-    'versions still resolved for user entries',
-  )
-})
-
 test('GET /search calls the npm registry and clamps size', async () => {
   const { getRoute } = await boot()
   const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/search?q=dsh-file&size=999')
   assert.equal(r.status, 200)
   assert.equal(r.json.value.results[0].name, 'dsh-x')
+  assert.ok(
+    registryMock.searchNpmPlugins.mock.calls.some((call) => call[0] === 'dsh-file' && call[1] === 50),
+    'size clamped to 50',
+  )
   const empty = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/search?q=')
   assert.deepEqual(empty.json.value.results, [], 'blank query returns no results')
 })
@@ -271,11 +212,16 @@ test('GET /detail requires a name (400)', async () => {
 
 test('GET /detail returns a load-failure fallback when the fetch throws', async () => {
   registryMock.fetchPackageDetail.mockRejectedValueOnce(new Error('package not found'))
-  const { getRoute } = await boot()
+  const warns = []
+  const { getRoute } = await boot({ logger: { info: () => {}, warn: (m) => warns.push(m) } })
   const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/detail?name=ghost')
   assert.equal(r.status, 200)
   assert.equal(r.json.ok, false)
   assert.ok(r.json.error.message.includes('package not found'))
+  assert.ok(
+    warns.some((line) => line.startsWith('[dsh-my-plugin-manager]') && line.includes('ghost')),
+    'detail failure logged with the unified prefix',
+  )
 })
 
 test('GET /updates surfaces outdated entries', async () => {
@@ -283,50 +229,56 @@ test('GET /updates surfaces outdated entries', async () => {
     ok: true,
     outdated: [{ name: 'dsh-a', current: '1.0.0', latest: '1.1.0' }],
   })
-  const { getRoute } = await boot()
+  const { getRoute, logs } = await boot()
   const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/updates')
   assert.equal(r.status, 200)
   assert.equal(r.json.value.outdated[0].latest, '1.1.0')
+  assert.ok(
+    manageMock.outdatedPlugins.mock.calls.some((call) => call[0] === 'web'),
+    'update check runs against the current profile',
+  )
+  const line = logs.find((l) => l.includes('更新检查完成'))
+  assert.ok(line !== undefined && line.startsWith('[dsh-my-plugin-manager]'), 'update log emitted with prefix')
 })
 
-test('POST /install and /uninstall route through the CLI wrapper', async () => {
-  const { getRoute } = await boot()
-  const bad = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/install', { source: '  ' })
-  assert.equal(bad.status, 400, 'blank source rejected')
-
-  const ok = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/install', {
-    source: 'dsh-x',
-  })
-  assert.equal(ok.status, 200)
-  assert.equal(ok.json.ok, true)
-  assert.ok(manageMock.installPlugin.mock.calls.some((call) => call[0] === 'web' && call[1] === 'dsh-x'))
-
-  const un = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/uninstall', {
-    name: 'dsh-x',
-  })
-  assert.equal(un.status, 200)
-  assert.ok(manageMock.uninstallPlugin.mock.calls.some((call) => call[0] === 'web' && call[1] === 'dsh-x'))
-})
-
-test('install/uninstall failures carry an error message', async () => {
-  manageMock.installPlugin.mockResolvedValueOnce({
-    ok: false,
-    code: 1,
-    stdout: '',
-    stderr: 'ERESOLVE',
-  })
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/install', {
-    source: 'dsh-bad',
-  })
+test('GET /updates reports CLI failures without failing the request', async () => {
+  manageMock.outdatedPlugins.mockResolvedValueOnce({ ok: false, error: 'registry unreachable' })
+  const warns = []
+  const { getRoute } = await boot({ logger: { info: () => {}, warn: (m) => warns.push(m) } })
+  const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/updates')
   assert.equal(r.status, 200)
-  assert.equal(r.json.ok, false)
-  assert.ok(r.json.error.message.includes('ERESOLVE'))
+  assert.deepEqual(r.json.value.outdated, [])
+  assert.equal(r.json.value.error, 'registry unreachable')
+  assert.ok(
+    warns.some((l) => l.startsWith('[dsh-my-plugin-manager]') && l.includes('registry unreachable')),
+    'failure logged with reason',
+  )
+})
+
+// ── 重复能力防复发：写路由与清单路由必须全部 404 ─────────────────────────
+test('install / uninstall / update / enable / disable routes are gone (404)', async () => {
+  const { getRoute } = await boot()
+  for (const method of ['install', 'uninstall', 'update', 'enable', 'disable']) {
+    const r = await callRoute(getRoute, 'POST', `/my-plugin-manager/api/${method}`, { name: 'dsh-x', source: 'dsh-x' })
+    assert.equal(r.status, 404, `${method} 已下线（官方插件页承担）`)
+  }
+})
+
+test('the inventory route is gone (404)', async () => {
+  const { getRoute } = await boot()
+  const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/installed')
+  assert.equal(r.status, 404, '清单路由已下线（官方插件页 / tool-plugin-manager 承担）')
 })
 
 test('unknown API methods return 404', async () => {
   const { getRoute } = await boot()
   const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/nope')
+  assert.equal(r.status, 404)
+})
+
+test('wrong method on a known route returns 404', async () => {
+  const { getRoute } = await boot()
+  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/search', { q: 'dsh' })
   assert.equal(r.status, 404)
 })
 
@@ -339,7 +291,7 @@ test('fence: non-loopback hosts, origin mismatch and trusted hosts', async () =>
   const { getRoute } = await boot()
   const res1 = makeResponse()
   await getRoute().handler(
-    makeRequest('GET', '/my-plugin-manager/api/installed', undefined, {
+    makeRequest('GET', '/my-plugin-manager/api/search?q=dsh', undefined, {
       headers: { host: '192.168.1.10:3080', 'sec-fetch-site': 'same-origin' },
     }),
     res1,
@@ -348,7 +300,7 @@ test('fence: non-loopback hosts, origin mismatch and trusted hosts', async () =>
 
   const res2 = makeResponse()
   await getRoute().handler(
-    makeRequest('GET', '/my-plugin-manager/api/installed', undefined, {
+    makeRequest('GET', '/my-plugin-manager/api/search?q=dsh', undefined, {
       headers: {
         host: '127.0.0.1:3080',
         'sec-fetch-site': 'same-origin',
@@ -363,7 +315,6 @@ test('fence: non-loopback hosts, origin mismatch and trusted hosts', async () =>
   const ctx = {
     logger: { info: () => {}, warn: () => {} },
     webRuntime: { trustedHosts: ['dsh.internal:3080'] },
-    pluginInventory: { list: async () => ({ entries: [] }) },
     webServer: {
       register: (route) => {
         holder.set(route)
@@ -381,7 +332,7 @@ test('fence: non-loopback hosts, origin mismatch and trusted hosts', async () =>
   apply(ctx)
   const res3 = makeResponse()
   await holder.get().handler(
-    makeRequest('GET', '/my-plugin-manager/api/installed', undefined, {
+    makeRequest('GET', '/my-plugin-manager/api/search?q=dsh', undefined, {
       headers: {
         host: 'dsh.internal:3080',
         'sec-fetch-site': 'same-origin',
@@ -394,14 +345,12 @@ test('fence: non-loopback hosts, origin mismatch and trusted hosts', async () =>
 })
 
 test('handler errors are answered with a 400 JSON body', async () => {
+  registryMock.searchNpmPlugins.mockRejectedValueOnce(new Error('npm explode'))
   const { getRoute } = await boot()
-  const huge = 'x'.repeat(1_100_000)
-  const res = makeResponse()
-  await getRoute().handler(makeRequest('POST', '/my-plugin-manager/api/install', { source: huge }), res)
-  assert.equal(res._status, 400)
-  const body = JSON.parse(res._body)
-  assert.equal(body.ok, false)
-  assert.ok(typeof body.error.message === 'string')
+  const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/search?q=dsh')
+  assert.equal(r.status, 400)
+  assert.equal(r.json.ok, false)
+  assert.ok(typeof r.json.error.message === 'string')
 })
 
 test('currentProfile honors --profile and profileDirOf falls back to home', () => {
@@ -415,151 +364,11 @@ test('currentProfile honors --profile and profileDirOf falls back to home', () =
   if (home !== undefined) process.env.DSH_HOME = home
 })
 
-test('updates failure and uninstall failure carry error details', async () => {
-  manageMock.outdatedPlugins.mockResolvedValueOnce({ ok: false, error: 'registry unreachable' })
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'GET', '/my-plugin-manager/api/updates')
-  assert.equal(r.status, 200)
-  assert.equal(r.json.value.error, 'registry unreachable')
-
-  manageMock.uninstallPlugin.mockResolvedValueOnce({
-    ok: false,
-    code: 1,
-    stdout: '',
-    stderr: 'EBADPKG',
-  })
-  const un = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/uninstall', {
-    name: 'dsh-x',
-  })
-  assert.equal(un.json.ok, false)
-  assert.ok(un.json.error.message.includes('EBADPKG'))
-})
-
 test('apply logs an info line with the [dsh-my-plugin-manager] prefix (issue #155)', async () => {
   const { logs } = await boot()
   assert.ok(logs.length >= 1, 'at least one log line emitted')
   assert.ok(logs[0].startsWith('[dsh-my-plugin-manager]'), 'log line carries the unified plugin prefix')
   assert.ok(logs[0].includes('已启用'), 'log line describes the enabled behavior')
-})
-
-test('install success logs an info line with source (issue #155)', async () => {
-  const { getRoute, logs } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/install', { source: 'dsh-x' })
-  assert.equal(r.json.ok, true, 'install ok')
-  const installLog = logs.find((line) => line.includes('插件安装成功'))
-  assert.ok(installLog !== undefined, 'install info log emitted')
-  assert.ok(installLog.startsWith('[dsh-my-plugin-manager]'), 'install log carries the unified plugin prefix')
-  assert.ok(installLog.includes('dsh-x'), 'install log carries the source')
-})
-
-test('install failure logs a warn line with reason (issue #155)', async () => {
-  const warns = []
-  manageMock.installPlugin.mockResolvedValueOnce({ ok: false, code: 1, stdout: '', stderr: 'EACCES' })
-  const { getRoute } = await boot({ logger: { info: () => {}, warn: (m) => warns.push(m) } })
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/install', { source: 'dsh-bad' })
-  assert.equal(r.json.ok, false, 'install failed')
-  assert.ok(warns.length >= 1, 'warn emitted for failed install')
-  assert.ok(warns[0].startsWith('[dsh-my-plugin-manager]'), 'warn carries the unified plugin prefix')
-  assert.ok(warns[0].includes('dsh-bad'), 'warn carries the source')
-  assert.ok(warns[0].includes('EACCES'), 'warn carries the reason')
-})
-
-test('POST /update updates a plugin', async () => {
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/update', { name: 'dsh-x' })
-  assert.equal(r.json.ok, true, 'update ok')
-  assert.equal(manageMock.updatePlugin.mock.calls.length, 1, 'updatePlugin called')
-  assert.deepEqual(manageMock.updatePlugin.mock.calls[0][1], 'dsh-x', 'updatePlugin called with name')
-})
-
-test('POST /update returns 400 when name is missing', async () => {
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/update', {})
-  assert.equal(r.status, 400, '400 status')
-  assert.equal(r.json.ok, false, 'ok=false')
-  assert.ok(r.json.error.message.includes('name is required'), 'error message')
-})
-
-test('POST /update handles failure', async () => {
-  manageMock.updatePlugin.mockResolvedValueOnce({ ok: false, code: 1, stdout: '', stderr: 'update failed' })
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/update', { name: 'dsh-x' })
-  assert.equal(r.json.ok, false, 'update failed')
-  assert.ok(r.json.error.message.includes('update failed'), 'error message')
-})
-
-test('POST /enable enables a plugin', async () => {
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/enable', { name: 'dsh-x' })
-  assert.equal(r.json.ok, true, 'enable ok')
-  assert.equal(manageMock.enablePlugin.mock.calls.length, 1, 'enablePlugin called')
-  assert.deepEqual(manageMock.enablePlugin.mock.calls[0][1], 'dsh-x', 'enablePlugin called with name')
-})
-
-test('POST /enable returns 400 when name is missing', async () => {
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/enable', {})
-  assert.equal(r.status, 400, '400 status')
-  assert.equal(r.json.ok, false, 'ok=false')
-  assert.ok(r.json.error.message.includes('name is required'), 'error message')
-})
-
-test('POST /disable disables a plugin', async () => {
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/disable', { name: 'dsh-x' })
-  assert.equal(r.json.ok, true, 'disable ok')
-  assert.equal(manageMock.disablePlugin.mock.calls.length, 1, 'disablePlugin called')
-  assert.deepEqual(manageMock.disablePlugin.mock.calls[0][1], 'dsh-x', 'disablePlugin called with name')
-})
-
-test('POST /disable returns 400 when name is missing', async () => {
-  const { getRoute } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/disable', {})
-  assert.equal(r.status, 400, '400 status')
-  assert.equal(r.json.ok, false, 'ok=false')
-  assert.ok(r.json.error.message.includes('name is required'), 'error message')
-})
-
-test('update success logs an info line', async () => {
-  const { getRoute, logs } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/update', { name: 'dsh-x' })
-  assert.equal(r.json.ok, true, 'update ok')
-  const updateLog = logs.find((line) => line.includes('插件更新成功'))
-  assert.ok(updateLog !== undefined, 'update info log emitted')
-  assert.ok(updateLog.startsWith('[dsh-my-plugin-manager]'), 'update log carries the unified plugin prefix')
-  assert.ok(updateLog.includes('dsh-x'), 'update log carries the name')
-})
-
-test('update failure logs a warn line', async () => {
-  const warns = []
-  manageMock.updatePlugin.mockResolvedValueOnce({ ok: false, code: 1, stdout: '', stderr: 'update failed' })
-  const { getRoute } = await boot({ logger: { info: () => {}, warn: (m) => warns.push(m) } })
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/update', { name: 'dsh-x' })
-  assert.equal(r.json.ok, false, 'update failed')
-  assert.ok(warns.length >= 1, 'warn emitted for failed update')
-  assert.ok(warns[0].startsWith('[dsh-my-plugin-manager]'), 'warn carries the unified plugin prefix')
-  assert.ok(warns[0].includes('dsh-x'), 'warn carries the name')
-  assert.ok(warns[0].includes('update failed'), 'warn carries the reason')
-})
-
-test('enable success logs an info line', async () => {
-  const { getRoute, logs } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/enable', { name: 'dsh-x' })
-  assert.equal(r.json.ok, true, 'enable ok')
-  const enableLog = logs.find((line) => line.includes('插件已启用'))
-  assert.ok(enableLog !== undefined, 'enable info log emitted')
-  assert.ok(enableLog.startsWith('[dsh-my-plugin-manager]'), 'enable log carries the unified plugin prefix')
-  assert.ok(enableLog.includes('dsh-x'), 'enable log carries the name')
-})
-
-test('disable success logs an info line', async () => {
-  const { getRoute, logs } = await boot()
-  const r = await callRoute(getRoute, 'POST', '/my-plugin-manager/api/disable', { name: 'dsh-x' })
-  assert.equal(r.json.ok, true, 'disable ok')
-  const disableLog = logs.find((line) => line.includes('插件已禁用'))
-  assert.ok(disableLog !== undefined, 'disable info log emitted')
-  assert.ok(disableLog.startsWith('[dsh-my-plugin-manager]'), 'disable log carries the unified plugin prefix')
-  assert.ok(disableLog.includes('dsh-x'), 'disable log carries the name')
 })
 
 afterAll(() => {

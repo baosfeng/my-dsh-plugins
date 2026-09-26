@@ -325,25 +325,67 @@ function walkSourceFiles(dir, acc = []) {
  * 从 `ctx.get('name')` / `ctx.get<X>('name')` 调用里取第一个**字符串字面量**实参。
  * 用 lookahead 要求紧跟引号：`get?.(views, …)` / `get(path, …)`（不是服务读取）因此天然不命中。
  */
-function getCallServiceArgs(text) {
+/**
+ * 从 `startIndex` 起跳过可选泛型实参 `<...>`（**按尖括号深度平衡扫描**）与空白，
+ * 返回紧随 `(` 之后的字符串字面量（无则 null）。
+ *
+ * 为什么不能用一条近似正则（`<[^<>]*>`）：泛型实参可以嵌套尖括号，例如
+ * `ctx.get<{ list(): Promise<{ entries?: X[] }> }>('pluginInventory')` —— 近似正则匹配
+ * 不到这种真实调用，于是文档-代码漂移门禁把「代码在用的服务」误报成「代码零使用」
+ * （issue #439：下线管理面板后 pluginInventory 只剩这种调用形态，门禁立刻误报）。
+ */
+function firstStringArgAfter(text, startIndex) {
+  let i = startIndex
+  const skipWs = () => {
+    while (i < text.length && /\s/.test(text[i])) i += 1
+  }
+  skipWs()
+  if (text[i] === '<') {
+    let depth = 0
+    while (i < text.length) {
+      const ch = text[i]
+      if (ch === '<') depth += 1
+      else if (ch === '>') {
+        if (text[i - 1] === '=') {
+          i += 1 // `=>` 的 > 不是泛型闭合
+          continue
+        }
+        depth -= 1
+        i += 1
+        if (depth === 0) break
+        continue
+      }
+      i += 1
+    }
+    skipWs()
+  }
+  if (text[i] !== '(') return null
+  i += 1
+  skipWs()
+  const quote = text[i]
+  if (quote !== "'" && quote !== '"') return null
+  const end = text.indexOf(quote, i + 1)
+  if (end === -1) return null
+  return text.slice(i + 1, end)
+}
+
+/** 所有 `.method('literal')`（含带泛型实参的调用）里的第一个字符串实参。 */
+function callStringArgs(text, methodPattern) {
   const out = []
-  for (const m of text.matchAll(/\.get\s*(?:<[^<>]*>)?\s*\(\s*(?=['"])/g)) {
-    const rest = text.slice(m.index + m[0].length, m.index + m[0].length + 200)
-    const first = /^(['"])([^'"]+)\1/.exec(rest)
-    if (first) out.push({ name: first[2], index: m.index })
+  for (const m of text.matchAll(methodPattern)) {
+    const name = firstStringArgAfter(text, m.index + m[0].length)
+    if (name !== null) out.push({ name, index: m.index })
   }
   return out
 }
 
+function getCallServiceArgs(text) {
+  return callStringArgs(text, /\.get(?=\s*[<(])/g)
+}
+
 /** 从 `ctx.on('a/b')` / `ctx.emit('a/b')` 调用里取第一个字符串字面量实参（事件名）。 */
 function onCallEventNames(text) {
-  const out = []
-  for (const m of text.matchAll(/\.(?:on|emit)\s*(?:<[^<>]*>)?\s*\(\s*(?=['"])/g)) {
-    const rest = text.slice(m.index + m[0].length, m.index + m[0].length + 200)
-    const first = /^(['"])([^'"]+)\1/.exec(rest)
-    if (first) out.push({ name: first[2], index: m.index })
-  }
-  return out
+  return callStringArgs(text, /\.(?:on|emit)(?=\s*[<(])/g)
 }
 
 /**
@@ -426,7 +468,7 @@ export function buildCodeSurface(root = REPO_ROOT) {
     if (existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-        // 自造字段：dsh.* 的**顶层键名**（文档用 `dsh.kind` / `dsh.client.externalDegraded`
+        // 自造字段：dsh.* 的**顶层键名**（文档用 `dsh.kind` / `dsh.client.external`
         // 这类点分路径书写；嵌套子键不逐条登记，判定时按首段匹配即可——见 evaluate 的字段口径）
         for (const k of Object.keys(pkg.dsh ?? {})) {
           record(fields, k, `plugins/${name}/package.json`, 1)

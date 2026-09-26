@@ -1,15 +1,10 @@
 /**
- * 共享 client-parts 调用点门禁（issue #299）——dsh-my-plugin-manager
+ * 共享 client-parts 调用点门禁（issue #299 / #428）——dsh-my-plugin-manager
  *
- * 归一范围：README 预览的「三级渲染回退」样板（原 client.src.js 里的
- * `let MarkdownView = null; try { require('dsh-md-render')… } catch` + detail.ts 的
- * `<pre>` 兜底分支）→ 共享 `installMarkdownViewFallback`。
- *
+ * 归一范围：README 预览的渲染回退样板 → 共享 installMarkdownViewFallback。
  * 三道防线（docs/UI规范.md「接入既有共享部件」）：占位符非注释位置 + 恰好一处 +
- * 产物锚点声明恰好一份；这里再补产物级断言（片段逐字节出现在产物里 / 调用点唯一）。
- *
- * 变异验证：把 client.src.js 的占位符改回内联 require → 第一组变红；删掉构建注入
- * → 「产物含共享片段」变红。
+ * 产物锚点声明恰好一份；这里再补产物级断言（片段逐字节出现在产物里 / 调用点唯一）
+ * 与合规断言（外部内核级被旁路，不再跨插件取值）。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -64,5 +59,14 @@ describe('README 渲染回退走共享实现（#299）', () => {
     expect(countOf(FALLBACK_PART, '复制')).toBe(0)
     expect(countOf(FALLBACK_PART, '脚注')).toBe(0)
     expect(read('lib/client.js').includes("copyLabel: '复制'")).toBe(true)
+  })
+
+  // #428：共享件的外部内核级（默认 dsh-md-render）必须被显式旁路——官方禁止
+  // 特性插件 runtime-import 彼此的值，也禁止用 dsh.client.external 获取。
+  it('共享件的外部内核级被旁路（external 指向平台模块 + 不存在的导出名）', () => {
+    const template = read('lib/client.src.js')
+    expect(template.includes('external: PLATFORM_PRIMITIVES')).toBe(true)
+    expect(template.includes("externalExport: 'externalRendererDisabled'")).toBe(true)
+    expect(template.includes("const PLATFORM_PRIMITIVES = '@deepseek-ai/dsh-client-ui-primitives'")).toBe(true)
   })
 })

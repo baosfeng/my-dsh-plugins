@@ -1,7 +1,7 @@
 {
   "note": "客户端产物体积预算基线（issue #322）：登记各插件**发布面**的体积实测值。上限 = 基线 + max(64 KB, 基线×15%)，理由见 scripts/check-client-size.mjs 顶部常量注释。unpacked total = 该插件 npm 发布面全部文件字节和；files = 逐个冻结的产物（lib/** 与 assets/**）。未登记的文件与插件只受默认上限（1 MB/文件）约束。刷新：node scripts/check-client-size.mjs --update-baseline（须在 PR 说明体积变化原因）。",
-  "measuredAt": "2026-09-15",
-  "source": "npm pack --dry-run --json（18 个插件，2026-09-15 与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）",
+  "measuredAt": "2026-09-26",
+  "source": "npm pack --dry-run --json（18 个插件与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）",
   "margin": {
     "absFloorBytes": 65536,
     "relMargin": 0.15,
@@ -10,7 +10,7 @@
   },
   "plugins": {
     "dsh-file-activity": {
-      "total": 848177,
+      "total": 852445,
       "files": {
         "assets/preview-float-0.5.6.png": 121400,
         "assets/preview-float.png": 251552,
@@ -18,33 +18,33 @@
         "lib/api-route.js": 3815,
         "lib/bash-ops.js": 4256,
         "lib/bash-parse.js": 9835,
-        "lib/client.js": 86081,
-        "lib/client.src.js": 3272,
+        "lib/client.js": 96491,
+        "lib/client.src.js": 3429,
         "lib/cwd.js": 551,
-        "lib/index.js": 5132,
-        "lib/media-route.js": 6968,
+        "lib/index.js": 5512,
+        "lib/media-route.js": 8291,
         "lib/observer.js": 2006,
         "lib/parts/api.part.js": 1892,
-        "lib/parts/apply.part.js": 4984,
+        "lib/parts/apply.part.js": 5694,
         "lib/parts/auto-open.part.js": 3834,
         "lib/parts/document-previews.part.js": 3000,
         "lib/parts/format.part.js": 1204,
-        "lib/parts/i18n.part.js": 3874,
+        "lib/parts/i18n.part.js": 4336,
         "lib/parts/interceptor.part.js": 1797,
         "lib/parts/preview-data.part.js": 4983,
         "lib/parts/preview-float.part.js": 10981,
         "lib/parts/rightbar-width.part.js": 7286,
         "lib/parts/rows.part.js": 6124,
-        "lib/parts/settings.part.js": 2491,
+        "lib/parts/settings.part.js": 3776,
         "lib/parts/store.part.js": 1498,
-        "lib/parts/styles.part.js": 11138,
+        "lib/parts/styles.part.js": 11671,
         "lib/parts/tree.part.js": 2859,
         "lib/parts/view.part.js": 9458,
         "lib/persist.js": 6584,
         "lib/quota-trim.js": 5141,
         "lib/quota.js": 6478,
         "lib/state.js": 14696,
-        "lib/store.js": 10200
+        "lib/store.js": 10955
       }
     },
     "dsh-md-render": {
@@ -52,22 +52,22 @@
       "files": {
         "assets/text-fence-markdown.png": 70863,
         "lib/client.js": 56118,
-        "lib/client.src.js": 4951,
-        "lib/index.js": 2663,
+        "lib/client.src.js": 4296,
+        "lib/index.js": 2335,
         "lib/routes.js": 4229
       }
     },
     "dsh-mermaid-render": {
-      "total": 3609599,
+      "total": 3704740,
       "files": {
         "assets/mermaid-10.9.3.min.js": 3336760,
         "assets/mermaid-auto-diagram.png": 92687,
         "assets/mermaid-card.png": 97426,
         "assets/mermaid-settings-panel.png": 77953,
-        "lib/client.js": 54837,
-        "lib/client.src.js": 2407,
+        "lib/client.js": 71016,
+        "lib/client.src.js": 2819,
         "lib/config.js": 2294,
-        "lib/index.js": 4068,
+        "lib/index.js": 5848,
         "lib/prompt.js": 3087,
         "lib/routes.js": 3941
       }
@@ -80,7 +80,7 @@
         "lib/client.js": 39108,
         "lib/client.src.js": 5088,
         "lib/constants.js": 1855,
-        "lib/events.js": 7571,
+        "lib/events.js": 7876,
         "lib/index.js": 3199,
         "lib/meter.js": 3105,
         "lib/overflow.js": 3300,
@@ -88,21 +88,21 @@
         "lib/parts/overflow.js": 8214,
         "lib/parts/panel.js": 13818,
         "lib/parts/styles.js": 6911,
-        "lib/persist.js": 6497,
-        "lib/routes.js": 6979,
+        "lib/persist.js": 7987,
+        "lib/routes.js": 7392,
         "lib/state.js": 2205,
-        "lib/store.js": 9142
+        "lib/store.js": 13059
       }
     },
     "dsh-my-guard": {
-      "total": 625787,
+      "total": 626368,
       "files": {
         "assets/guard-panel.png": 165536,
         "assets/guard-rules-panel.png": 117036,
         "assets/guard-settings-panel.png": 86701,
         "lib/client.js": 81346,
         "lib/client.src.js": 4381,
-        "lib/config-api.js": 5680,
+        "lib/config-api.js": 5673,
         "lib/constants.js": 8741,
         "lib/custom-rules.js": 6370,
         "lib/guard.js": 4648,
@@ -124,24 +124,24 @@
       }
     },
     "dsh-my-guardian": {
-      "total": 451682,
+      "total": 469207,
       "files": {
         "assets/panel-error-detail.png": 130546,
         "assets/panel-main.png": 129112,
-        "lib/api.js": 8062,
-        "lib/client.js": 60170,
+        "lib/api.js": 8420,
+        "lib/client.js": 64304,
         "lib/client.src.js": 2478,
-        "lib/dep-precheck.js": 6052,
+        "lib/dep-precheck.js": 11617,
         "lib/dep-version.js": 7838,
-        "lib/events.js": 2136,
-        "lib/index.js": 12703,
-        "lib/mount.js": 12019,
-        "lib/parts/apply.js": 3122,
-        "lib/parts/row.js": 6385,
-        "lib/parts/styles.js": 18461,
-        "lib/parts/util.js": 7638,
+        "lib/events.js": 10948,
+        "lib/index.js": 12730,
+        "lib/mount.js": 12557,
+        "lib/parts/apply.js": 3348,
+        "lib/parts/row.js": 7372,
+        "lib/parts/styles.js": 19615,
+        "lib/parts/util.js": 9405,
         "lib/parts/view.js": 9221,
-        "lib/startup-check.js": 8729,
+        "lib/startup-check.js": 10659,
         "lib/state.js": 6789
       }
     },
@@ -155,8 +155,8 @@
         "assets/screenshot.png": 106646,
         "lib/api-route.js": 15383,
         "lib/api-route.types.js": 11,
-        "lib/client.js": 89265,
-        "lib/client.src.js": 2367,
+        "lib/client.js": 94341,
+        "lib/client.src.js": 2392,
         "lib/delete-tool.js": 7052,
         "lib/extract.js": 7591,
         "lib/index.js": 14330,
@@ -193,19 +193,19 @@
       }
     },
     "dsh-my-observability": {
-      "total": 326759,
+      "total": 326861,
       "files": {
         "assets/git-panel.png": 88508,
         "assets/settings-panel.png": 81903,
         "lib/ai.js": 7205,
-        "lib/audit.js": 11176,
+        "lib/audit.js": 11168,
         "lib/client.js": 55930,
         "lib/client.src.js": 5273,
         "lib/config-routes.js": 4424,
         "lib/constants.js": 196,
         "lib/diff.js": 3265,
         "lib/git.js": 6332,
-        "lib/index.js": 4799,
+        "lib/index.js": 4909,
         "lib/parts/native-tabs.js": 1727,
         "lib/resource-monitor.js": 4269,
         "lib/resource-rules.js": 807,
@@ -219,7 +219,7 @@
       "total": 27276,
       "files": {
         "lib/config.js": 3076,
-        "lib/context.js": 2405,
+        "lib/context.js": 2385,
         "lib/fetch-patch.js": 6120,
         "lib/headers.js": 2368,
         "lib/index.js": 3050,
@@ -227,21 +227,20 @@
       }
     },
     "dsh-my-plugin-manager": {
-      "total": 798847,
+      "total": 630197,
       "files": {
         "assets/detail.png": 402308,
         "assets/market.png": 140796,
-        "assets/screenshot.png": 147171,
-        "lib/api-route.js": 13439,
-        "lib/client.js": 69258,
-        "lib/client.src.js": 3164,
-        "lib/index.js": 1482,
-        "lib/manage.js": 6450,
+        "lib/api-route.js": 4874,
+        "lib/client.js": 58534,
+        "lib/client.src.js": 4068,
+        "lib/index.js": 1571,
+        "lib/manage.js": 2316,
         "lib/registry.js": 8462
       }
     },
     "dsh-my-remote": {
-      "total": 367800,
+      "total": 368602,
       "files": {
         "assets/ask-push.png": 127358,
         "assets/settings-panel.png": 92500,
@@ -268,12 +267,12 @@
       }
     },
     "dsh-my-skill-manager": {
-      "total": 281881,
+      "total": 284214,
       "files": {
         "assets/screenshot.png": 193571,
         "lib/api-route.js": 8682,
-        "lib/client.js": 47317,
-        "lib/client.src.js": 2193,
+        "lib/client.js": 51097,
+        "lib/client.src.js": 2218,
         "lib/config.js": 3319,
         "lib/diagnose.js": 7267,
         "lib/index.js": 4050,
@@ -290,8 +289,8 @@
     "dsh-shared": {
       "total": 88687,
       "files": {
-        "lib/async.d.ts": 706,
-        "lib/async.js": 905,
+        "lib/async.d.ts": 552,
+        "lib/async.js": 1048,
         "lib/bounded.d.ts": 5094,
         "lib/bounded.js": 5832,
         "lib/config-store.d.ts": 914,
@@ -302,8 +301,8 @@
         "lib/http.js": 965,
         "lib/index.d.ts": 3511,
         "lib/index.js": 2641,
-        "lib/jsonl.d.ts": 1343,
-        "lib/jsonl.js": 5635,
+        "lib/jsonl.d.ts": 1752,
+        "lib/jsonl.js": 7095,
         "lib/persist.d.ts": 3839,
         "lib/persist.js": 4670,
         "lib/project.d.ts": 374,
@@ -314,7 +313,7 @@
         "lib/resource-guard.js": 9676,
         "lib/resource-rules.d.ts": 2118,
         "lib/resource-rules.js": 3872,
-        "lib/scheduler.d.ts": 5144,
+        "lib/scheduler.d.ts": 5110,
         "lib/scheduler.js": 5403,
         "lib/types.d.ts": 1484,
         "lib/types.js": 440
@@ -326,7 +325,7 @@
         "assets/screenshot-panel.png": 122908,
         "lib/api.js": 11427,
         "lib/ask.js": 7021,
-        "lib/client.js": 43025,
+        "lib/client.js": 43251,
         "lib/client.src.js": 2969,
         "lib/command.js": 8922,
         "lib/constants.js": 6282,
@@ -336,9 +335,9 @@
         "lib/loop.js": 5167,
         "lib/repeat.js": 6804,
         "lib/rescue.js": 8131,
-        "lib/store.js": 10673,
+        "lib/store.js": 10639,
         "lib/text.js": 3561,
-        "lib/util.js": 2037,
+        "lib/util.js": 2179,
         "lib/verify.js": 11167
       }
     },
@@ -348,7 +347,7 @@
         "assets/settings-panel.png": 73441,
         "assets/think-markdown.png": 227686,
         "lib/client.js": 55614,
-        "lib/client.src.js": 3204,
+        "lib/client.src.js": 4034,
         "lib/index.js": 13610
       }
     },
@@ -356,10 +355,10 @@
       "total": 47531,
       "files": {
         "assets/screenshot.png": 28844,
-        "lib/client.js": 7013,
+        "lib/client.js": 7235,
         "lib/client.src.js": 1406,
         "lib/greeting.js": 591,
-        "lib/index.js": 4207
+        "lib/index.js": 4521
       }
     }
   }

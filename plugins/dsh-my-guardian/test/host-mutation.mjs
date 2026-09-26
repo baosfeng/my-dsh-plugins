@@ -10,6 +10,13 @@ import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { apply } from '../lib/index.js'
+import { HOST_EVENT_FALLBACKS } from '../lib/events.js'
+
+/** 配置热更新失败的结构化 warn 首参（逐字取自宿主源码，见 HOST_EVENT_FALLBACKS 取证）。 */
+const MARKER = HOST_EVENT_FALLBACKS.find((fallback) => fallback.kind === 'logger-warn')?.marker ?? ''
+
+/** 一条宿主 warn 消息（字段形状取自 cordis LoggerService Message）。 */
+const warnMessage = (args, name = 'hmr') => ({ sn: 1, ts: Date.now(), name, type: 'warn', level: 2, args })
 
 const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-guardian-mutation-' }).name
 process.env.DSH_HOME = dir
@@ -100,8 +107,17 @@ function makeCtx(fake, opts = {}) {
   }
   const effects = []
   const intervals = []
+  const sinks = []
   const ctx = {
-    logger: { warn: () => {} },
+    // #429：配置热更新失败只剩结构化 warn 通道（事件通道已删），mock 必须提供 exporter，
+    // 否则这些用例里的 update-failed 永远不会出现（真实宿主有 logger.exporter）。
+    logger: {
+      warn: () => {},
+      exporter: (sink) => {
+        sinks.push(sink)
+        return () => {}
+      },
+    },
     loader: fake.loader,
     timer: {
       interval: (callback) => {
@@ -123,6 +139,7 @@ function makeCtx(fake, opts = {}) {
   }
   ctx.fakeEffects = effects
   ctx.fakeIntervals = intervals
+  fake.sinks = sinks
   return ctx
 }
 
@@ -251,9 +268,12 @@ test('diagnostic event log messages carry the entry id', async () => {
   for (const { name, listener } of fake.events) {
     if (name === 'loader/entry-init') listener({ options: { id: 'evt-1' } })
     if (name === 'loader/partial-dispose') listener({ options: { id: 'evt-2' } })
-    // entry-init / dispose 只写内存；update-failed 的 persistSoon 触发落盘
-    if (name === 'hmr/config-update-failed') listener('cordis.yml', new Error('boom'))
   }
+  // entry-init 在 Entry 构造函数里 emit，记录要等一个 microtask 才落笔（见 lib/events.js）；
+  // 而 entry-init / entry-dispose 只写内存，落盘必须另有一笔写 —— #429 起配置失败只剩
+  // 结构化 warn 通道，所以先让出 microtask 保证两条诊断已在内存，再由 marker warn 触发落盘。
+  await sleep(0)
+  fake.sinks[0].export(warnMessage([MARKER, 'cordis.yml']))
   await waitFor(() => readStateOrNull()?.events?.some((e) => e.type === 'entry-init'))
   const state = await readState()
   assert.ok(

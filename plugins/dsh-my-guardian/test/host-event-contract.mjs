@@ -24,7 +24,14 @@
  * 两个通道里都不存在——旧宿主取证源 cordis-plugin-hmr 随升级被删，改由
  * HOST_EVENT_FALLBACKS[*].legacyRetired 显式登记退役（不许"文件不在场就跳过"，
  * 否则取证强度静默降级）；该包一旦重新在场，退役登记即视为过期，必须恢复逐字取证。
- * `loader/entry-init` / `loader/partial-dispose` 在新宿主仍由 cordis-plugin-loader 派发。
+ *
+ * 该事件的 `ctx.on` 已删除（issue #429）：注册一个宿主从不派发的事件**永不触发**又不报错，
+ * 是最难发现的失效面；诊断职责完全由结构化 warn 通道承担（旧宿主 cordis-plugin-hmr 也在
+ * 同一 catch 里先打同一对 warn 才发事件，所以事件通道对两个版本都是冗余的），上述取证登记
+ * 保留下来继续守卫 marker 文案。本套件新增两条判据：① 源码不得再订阅它；②
+ * `loader/entry-init` / `loader/partial-dispose`（官方公开事件，vendor/loader/src/index.ts
+ * 声明 + docs/cordis-api/inherited.md 文档化）由 test/host-event-live.mjs 用**真实 loader**
+ * 证明会触发——mock ctx 自己调 handler 的测试永远证明不了这件事。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
@@ -226,7 +233,14 @@ test('目标宿主没有 hmr/config-update-failed：必须有降级通道 + 退�
     '两个通道都不声明/派发该事件：保留的 ctx.on 只剩"已退役宿主兼容"，必须显式登记 legacyRetired；' +
       '若不再需要兼容，则删掉 ctx.on 与 HOST_EVENT_FALLBACKS 条目并同步 LISTENED_HOST_EVENTS',
   )
-  assert.ok(LISTENED.includes('hmr/config-update-failed'), 'LISTENED_HOST_EVENTS 必须登记该监听（否则监听表漏项）')
+  assert.ok(
+    !LISTENED.includes('hmr/config-update-failed'),
+    '目标宿主从不声明/派发该事件：ctx.on 是永不触发的死监听，必须移除（LISTENED_HOST_EVENTS 不得再登记）',
+  )
+  assert.ok(
+    !listenedInSource().includes('hmr/config-update-failed'),
+    '源码不得再订阅该事件（listenedInSource 从 src/*.ts 静态取证，防止死监听回归）',
+  )
 })
 
 test('fixture 与在场源码版本/清单一致（宿主升级后强制重新取证）', () => {
@@ -342,22 +356,23 @@ test('降级通道不误报：非 warn、无 marker、异名 logger、Error 之�
   assert.equal(shared.state.events[0].message, 'cordis.yml: (error detail logged by host)', '异名/异形 warn 不补齐')
 })
 
-test('双版本去重：0.1.5-rc.1 上同一失败经"日志 + 事件"两条通道到达只记一条', () => {
+test('结构化日志通道去重：同一文件名窗口内的重复失败只记一条，异名照常记', () => {
   const ctx = makeCtx()
   const shared = makeShared()
   guardian.attachEventListeners(ctx, shared)
+  const sink = ctx.sinks[0]
 
-  ctx.sinks[0].export(warnMessage([MARKER, 'cordis.yml']))
-  ctx.sinks[0].export(warnMessage([new Error('boom')]))
-  ctx.handlers.get('hmr/config-update-failed')('cordis.yml', new Error('boom'))
+  sink.export(warnMessage([MARKER, 'cordis.yml']))
+  sink.export(warnMessage([new Error('boom')]))
+  sink.export(warnMessage([MARKER, 'cordis.yml']))
   assert.deepEqual(
     shared.state.events.map((event) => event.message),
     ['cordis.yml: boom'],
-    '同一失败只记一条',
+    '同一失败（宿主重试会重复打 warn）只记一条',
   )
   assert.equal(shared.persistCount, 1)
 
-  ctx.handlers.get('hmr/config-update-failed')('other.yml', 'plain failure')
+  sink.export(warnMessage([MARKER, 'other.yml']))
   assert.equal(shared.state.events.length, 2, '不同文件名的失败照常记录')
 })
 
@@ -377,17 +392,18 @@ test('窗口过期分支：去重窗口过期后照常记录，配对窗口过�
   let clock = 1000
   const failures = guardian.createConfigFailureTracker(ctx, shared, () => clock)
 
-  failures.fromEvent('cordis.yml', new Error('boom'))
-  failures.fromEvent('cordis.yml', new Error('boom again'))
+  failures.fromLogMarker('cordis.yml', 'hmr')
+  failures.fromLogMarker('cordis.yml', 'hmr')
   assert.deepEqual(
     shared.state.events.map((event) => event.message),
-    ['cordis.yml: boom'],
+    ['cordis.yml: (error detail logged by host)'],
     '窗口内同一文件名的重复失败去重',
   )
 
   clock += 1001
-  failures.fromEvent('cordis.yml', new Error('boom later'))
-  assert.equal(shared.state.events[1].message, 'cordis.yml: boom later', '窗口过期后照常记录')
+  failures.fromLogMarker('cordis.yml', 'hmr')
+  failures.fromLogDetail(new Error('boom later'), 'hmr')
+  assert.equal(shared.state.events[1].message, 'cordis.yml: boom later', '窗口过期后照常记录并按配对补齐')
 
   failures.fromLogMarker('late.yml', 'hmr')
   assert.equal(shared.state.events[2].message, 'late.yml: (error detail logged by host)')
@@ -404,7 +420,7 @@ test('去重表有上限：大量不同文件名的失败不抛异常且状态�
   const shared = makeShared()
   const failures = guardian.createConfigFailureTracker(ctx, shared)
   assert.doesNotThrow(() => {
-    for (let index = 0; index < 60; index += 1) failures.fromEvent(`patch-${index}.yml`, new Error('boom'))
+    for (let index = 0; index < 60; index += 1) failures.fromLogMarker(`patch-${index}.yml`, 'hmr')
   })
   assert.equal(shared.state.events.length, 20, '环形缓冲上限 20 条不变')
 })

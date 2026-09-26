@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 变更
 
+- fix(guardian): #429 移除宿主从不派发的死监听 `hmr/config-update-failed`。0.1.7-rc.2 的参考源与已装宿主
+  双向 0 命中（`@deepseek-ai/dsh-hmr` 只剩 `hmr/change` / `hmr/reload`），注册它既不触发也不报错；原功能的
+  诊断**并未失效**——宿主在同一 catch 里先打 `config reload at %C failed` warn 序列，由结构化日志通道单独
+  承担（旧宿主 cordis-plugin-hmr 也是同一顺序，事件通道对两个版本都是冗余的）
+- fix(guardian): #429 `loader/entry-init` 诊断记录不再退化成 `entry ? initialized`——loader 在 Entry 构造函数里
+  emit，此刻 `entry.options` 还是 `{}`（vendor/loader/src/config/entry.ts:50/58），改为推迟一个 microtask 再落笔；
+  隔离实例实测热挂载记录带真实 entry id
+- test(guardian): #429 新增 test/host-event-live.mjs——用**真实** cordis loader（已装宿主）证明 `loader/entry-init` /
+  `loader/partial-dispose` 真会触发；契约测试新增「源码不得再订阅不存在的事件」判据
 - fix(guardian): 依赖预检解析 profiles 根 node_modules 的宿主包与子路径导出，消除「缺少依赖」误报
 - fix(guardian): #410 依赖预检出口把「版本不满足」与「缺失」分成独立文案/字段/徽标（`dependency-missing` / `dependency-mismatch`），宿主提供的包不再给 `dsh plugin add` 建议，消除含空格/管道的畸形安装命令
 

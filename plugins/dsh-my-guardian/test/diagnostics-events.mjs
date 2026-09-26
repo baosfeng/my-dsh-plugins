@@ -11,19 +11,35 @@
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { attachEventListeners, logEvent } from '../lib/events.js'
+import { attachEventListeners, logEvent, HOST_EVENT_FALLBACKS } from '../lib/events.js'
 
-/** 最小 cordis ctx：记录监听的 loader 事件 + 警告。 */
+/** 配置热更新失败的结构化 warn 首参（逐字取自宿主源码，见 HOST_EVENT_FALLBACKS 取证）。 */
+const MARKER = HOST_EVENT_FALLBACKS.find((fallback) => fallback.kind === 'logger-warn')?.marker ?? ''
+
+/** 一条宿主 warn 消息（字段形状取自 cordis LoggerService Message）。 */
+function warnMessage(args, name = 'hmr') {
+  return { sn: 1, ts: Date.now(), name, type: 'warn', level: 2, args }
+}
+
+/** 最小 cordis ctx：记录监听的 loader 事件 + 警告 + 日志导出器（降级通道）。 */
 function makeCtx() {
   const handlers = new Map()
   const warnings = []
+  const sinks = []
   return {
     handlers,
     warnings,
+    sinks,
     on: (event, listener) => {
       handlers.set(event, listener)
     },
-    logger: { warn: (message) => warnings.push(message) },
+    logger: {
+      warn: (message) => warnings.push(message),
+      exporter: (sink) => {
+        sinks.push(sink)
+        return () => {}
+      },
+    },
   }
 }
 
@@ -58,17 +74,25 @@ test('logEvent：环形缓冲只保留最近 EVENT_LIMIT=20 条', () => {
   assert.equal(shared.state.events.at(-1).message, 'event-24')
 })
 
-test('attachEventListeners：entry-init / partial-dispose 写入诊断事件', () => {
+test('attachEventListeners：只订阅目标宿主真实派发的 loader 事件（不再订阅已删除的 hmr 事件）', async () => {
   const ctx = makeCtx()
   const shared = makeShared()
   attachEventListeners(ctx, shared)
-  assert.deepEqual([...ctx.handlers.keys()].sort(), [
-    'hmr/config-update-failed',
-    'loader/entry-init',
-    'loader/partial-dispose',
-  ])
+  assert.deepEqual([...ctx.handlers.keys()].sort(), ['loader/entry-init', 'loader/partial-dispose'])
 
-  ctx.handlers.get('loader/entry-init')({ options: { id: 'dsh-bad' } })
+  // loader 在 Entry **构造函数**里 emit entry-init（vendor/loader/src/config/entry.ts:58），
+  // 此刻 options 还是空对象（同文件 :50），同步读取只能记成 "entry ? initialized" ——
+  // 构造完成后同一次 create() 内 options 才被赋值，所以记录必须等一个 microtask。
+  const entry = { options: {} }
+  ctx.handlers.get('loader/entry-init')(entry)
+  assert.deepEqual(shared.state.events, [], '构造期不落笔：那时拿不到任何 entry 标识')
+  entry.options = { id: 'dsh-bad', name: 'dsh-bad' }
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(
+    shared.state.events.map((event) => [event.type, event.message]),
+    [['entry-init', 'entry dsh-bad initialized']],
+  )
+
   ctx.handlers.get('loader/partial-dispose')({ options: { id: 'dsh-bad' } })
   assert.deepEqual(
     shared.state.events.map((event) => [event.type, event.message]),
@@ -79,32 +103,27 @@ test('attachEventListeners：entry-init / partial-dispose 写入诊断事件', (
   )
 })
 
-test('attachEventListeners：hmr/config-update-failed 记录消息、告警并落盘', () => {
+test('配置热更新失败诊断由结构化日志通道承担：告警 + 立刻落盘 + 补齐真实原因', () => {
   const ctx = makeCtx()
   const shared = makeShared()
   attachEventListeners(ctx, shared)
-  const onFailure = ctx.handlers.get('hmr/config-update-failed')
+  const sink = ctx.sinks[0]
 
-  onFailure('cordis.yml', new Error('boom'))
+  sink.export(warnMessage([MARKER, 'cordis.yml']))
   assert.equal(shared.state.events[0].type, 'update-failed')
-  assert.equal(shared.state.events[0].message, 'cordis.yml: boom', 'Error 取 message')
+  assert.equal(shared.state.events[0].message, 'cordis.yml: (error detail logged by host)')
   assert.deepEqual(ctx.warnings, ['[dsh-my-guardian] config update failed (rolled back): cordis.yml'])
   assert.equal(shared.persistCount, 1, '失败后立刻落盘（重启后仍能诊断）')
 
-  onFailure('other.yml', 'plain failure')
-  assert.equal(shared.state.events[1].message, 'other.yml: plain failure', '非 Error 原样字符串化')
+  sink.export(warnMessage([new Error('boom')]))
+  assert.equal(shared.state.events[0].message, 'cordis.yml: boom', '紧随的 Error warn 补齐真实原因')
 
   const bare = makeCtx()
   delete bare.logger
-  const bareShared = makeShared()
-  attachEventListeners(bare, bareShared)
-  assert.doesNotThrow(
-    () => bare.handlers.get('hmr/config-update-failed')('x.yml', new Error('y')),
-    'logger 缺失时不得抛异常（可选链降级）',
-  )
+  assert.doesNotThrow(() => attachEventListeners(bare, makeShared()), 'logger 缺失时不得抛异常（可选链降级）')
 })
 
-test('entryLabelOf：优先 options.id，回落 options.name，缺失为 "?"', () => {
+test('entryLabelOf：优先 options.id，回落 options.name，缺失为 "?"', async () => {
   const ctx = makeCtx()
   const shared = makeShared()
   attachEventListeners(ctx, shared)
@@ -126,11 +145,12 @@ test('entryLabelOf：优先 options.id，回落 options.name，缺失为 "?"', (
   for (const [entry, expected, note] of cases) {
     shared.state.events.length = 0
     onInit(entry)
+    await new Promise((resolve) => setTimeout(resolve, 0))
     assert.equal(shared.state.events[0].message, expected, note ?? JSON.stringify(entry))
   }
 })
 
-test('entryLabelOf：绝不触碰 entry.id getter（会抛 "reading tree" 把启动拖垮）', () => {
+test('entryLabelOf：绝不触碰 entry.id getter（会抛 "reading tree" 把启动拖垮）', async () => {
   const ctx = makeCtx()
   const shared = makeShared()
   attachEventListeners(ctx, shared)
@@ -147,6 +167,7 @@ test('entryLabelOf：绝不触碰 entry.id getter（会抛 "reading tree" 把启
     () => ctx.handlers.get('loader/entry-init')(entry),
     'loader 在 Entry 构造函数中 emit entry-init 时 id getter 不可用，读取它会让 DSH 起不来',
   )
+  await new Promise((resolve) => setTimeout(resolve, 0))
   assert.equal(getterReads, 0, 'entry.id getter 一次都不能被访问')
   assert.equal(shared.state.events[0].message, 'entry safe-name initialized', '退回 options.name')
 })

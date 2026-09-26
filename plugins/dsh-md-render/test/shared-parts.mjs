@@ -3,6 +3,8 @@
  *
  * 归一范围：parts/apply.ts 的样式注入样板 → 共享 installStyles；
  * parts/scanner.ts 的 MutationObserver 骨架 → 共享 installDomScanner。
+ * 反向范围：图标集（icons.part.js）不再消费——下线自实现渲染后本插件已无任何
+ * 图标使用，产物里再出现该片段即体积回涨（最后一组断言钉住）。
  * 不得削掉的行为（精简后仍成立）：上下文注入块接管、text 围栏块接管、
  * 流式内容门控、幂等签名、宿主契约不匹配时的静默降级、data-streaming 兜底重扫。
  */
@@ -15,6 +17,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SHARED_DIR = join(ROOT, '..', 'dsh-shared', 'client-parts')
 const STYLE_PART = readFileSync(join(SHARED_DIR, 'style-tag.part.js'), 'utf8').trim()
 const SCANNER_PART = readFileSync(join(SHARED_DIR, 'dom-scanner.part.js'), 'utf8').trim()
+/** 图标片段：本插件下线自实现渲染后已无任何图标使用 → 不应再出现在产物里。 */
+const ICONS_PART = readFileSync(join(SHARED_DIR, 'icons.part.js'), 'utf8').trim()
 
 /** 统计 haystack 中 needle 出现次数（split 计数：不受正则元字符影响）。 */
 const countOf = (haystack, needle) => haystack.split(needle).length - 1
@@ -94,5 +98,11 @@ describe('不再自实现 markdown 渲染（精简的判据）', () => {
 
   it('产物只通过平台组件渲染（require 官方 MarkdownText）', () => {
     expect(read('lib/client.js').includes("require('@deepseek-ai/dsh-client-ui-primitives')")).toBe(true)
+  })
+
+  it('产物不再内联共享图标片段（已无图标使用，不再是 icons.part.js 消费方）', () => {
+    const artifact = read('lib/client.js')
+    expect(artifact.includes(ICONS_PART), '精简后产物不应再含 icons.part.js 片段').toBe(false)
+    expect(countOf(artifact, 'ICON_STROKE')).toBe(0)
   })
 })

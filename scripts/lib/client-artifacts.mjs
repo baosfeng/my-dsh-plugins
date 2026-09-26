@@ -22,7 +22,7 @@ const MAX_SNIPPET_BYTES = 4096
 /**
  * 消费方 build.mjs 里注入共享部件的 PARTS 表条目：`[placeholder, 'xxx.part.js', opts?]`。
  * 三种实际存在的写法都要覆盖（#318 实测）：
- *   'icons.part.js'（md-render 等）· 'icons.part'（my-guard / my-guardian / my-notify）·
+ *   'icons.part.js'（think-zh-expand 等）· 'icons.part'（my-guard / my-guardian / my-notify）·
  *   'icons'（file-activity，同一 PARTS 表里 shared: true）。
  * 只匹配「以 .part / .part.js 结尾」或「恰好等于某个真实共享件 basename」的字符串，
  * 其余字符串（占位符、普通片段名）交给调用方与磁盘真实文件名求交集过滤。

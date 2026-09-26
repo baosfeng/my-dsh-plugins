@@ -68,7 +68,12 @@ async function waitForWritesAbove(base, maxRounds = 2000) {
   throw new Error('waitForWritesAbove 超时：等的是一次 guardian 原子落盘完成')
 }
 
-/** Fake loader tree：root group + 可变的 entry store（与 host-mutation.mjs 同构）。 */
+/** Fake loader tree：root group + 可变的 entry store（与 host-mutation.mjs 同构）。
+ *
+ * `groupDispose()` 复刻宿主**整树卸载**（SIGTERM teardown）的真实行为：同批 disposer 里
+ * group 把 entry 逐个从 store 里摘掉（真实 loader 的 `EntryGroup.remove`），而
+ * guardian 的 `loader/partial-dispose` 监听器已经在同一批 disposer 里被摘除 ——
+ * 事件根本不派发（#438 第二种形态）。 */
 function makeLoaderAndTree() {
   const store = {}
   const root = {
@@ -86,6 +91,14 @@ function makeLoaderAndTree() {
     loader: { entries: () => [{ subtree: tree }] },
     apiRoute: undefined,
     events: [],
+    /** 整树卸载：释放全部 entry，**不派发** partial-dispose（监听器同批被摘除）。 */
+    groupDispose() {
+      for (const id of Object.keys(store)) delete store[id]
+    },
+    /** 运行时安装一个 entry（走真实 create → entry-init 事件）。 */
+    async installEntry(id) {
+      await root.create({ id, name: id })
+    },
   }
 }
 
@@ -232,4 +245,80 @@ test('#217 不回归：teardown 返回之后到达的 dispose 不得覆盖已落
 
   assert.equal(readFileSync(stateFile(), 'utf8'), snapshot, 'teardown 返回后的写入必须失效')
   assert.ok(!readStateFile().events.some((e) => e.message.includes('after-teardown')), '迟到事件不得落盘')
+})
+/**
+ * #438 第二种形态（先红后绿）：整树卸载期**事件通道根本收不到** —— 收尾期的 entry
+ * 释放必须由「loader 树快照差集」补齐，且条数与释放的 entry 数一致。
+ *
+ * 真实形态（隔离实例 + SIGTERM 探针实测）：cordis `Fiber._unload` 把 guardian 的
+ * `ctx.on` 监听器与 teardown disposer 放进**同一批** disposer 并发执行；整树卸载时
+ * 监听器已被摘除，group 逐个释放 entry 时不再有人收到 `loader/partial-dispose`
+ * （实测：修前 state.json.events 恒 1 条、entry-dispose 0 条）。
+ *
+ * 本用例把那一批拆成两半：`groupDispose()` 只在 store 上摘条目、**不派发事件**；
+ * teardown disposer 照旧执行。修前该用例红（0 条记录），修后全量记录。
+ */
+test('#438 第二种形态：整树卸载不派发事件时，收尾释放的 entry 仍按树快照全部记录', async () => {
+  freshState()
+  const fake = makeLoaderAndTree()
+  const ctx = await boot(fake)
+  const ids = ['ui-settings-plugins', 'ui-plan', 'agent-presets', 'guardian']
+  for (const id of ids) await fake.installEntry(id)
+  // 启动期 entry-init 必须已经落盘过（证明事件通道在运行期有效）
+  await waitFor(() => fake.events.length > 0, { message: '事件监听已注册' })
+
+  const teardown = teardownOf(ctx)()
+  // 同批并发：group 释放（监听器同批被摘除 → 不派发任何事件）
+  fake.groupDispose()
+  await teardown
+
+  const recorded = readStateFile().events.filter((e) => e.type === 'entry-dispose')
+  assert.equal(
+    recorded.length,
+    ids.length,
+    '收尾释放的 entry 数必须与记录数一致（事件通道收不到时由 loader 树快照差集补齐）',
+  )
+  for (const id of ids) {
+    assert.ok(
+      recorded.some((e) => e.message === 'entry ' + id + ' disposed'),
+      '收尾释放的 entry ' + id + ' 必须落盘（事件通道收不到也要记）',
+    )
+  }
+})
+
+test('#438 第二种形态：仍存活的 entry 不得被记成释放（差集不是「全量清单」）', async () => {
+  freshState()
+  const fake = makeLoaderAndTree()
+  const ctx = await boot(fake)
+  await fake.installEntry('released-entry')
+  await fake.installEntry('surviving-entry')
+  await waitFor(() => fake.events.length > 0, { message: '事件监听已注册' })
+
+  const teardown = teardownOf(ctx)()
+  // 只释放一个：另一个在同一批里活下来（例如宿主只摘了部分 entry）
+  delete fake.store['released-entry']
+  await teardown
+
+  const recorded = readStateFile().events.filter((e) => e.type === 'entry-dispose')
+  assert.deepEqual(
+    recorded.map((e) => e.message),
+    ['entry released-entry disposed'],
+    '只记实际从树上消失的 entry，存活条目不得被误记',
+  )
+})
+
+test('#438 第二种形态 + #217：teardown 返回后到达的同批释放不得覆盖快照', async () => {
+  freshState()
+  const fake = makeLoaderAndTree()
+  const ctx = await boot(fake)
+  await fake.installEntry('during-teardown')
+  await waitFor(() => fake.events.length > 0, { message: '事件监听已注册' })
+
+  await shutdown(ctx)
+  const snapshot = readFileSync(stateFile(), 'utf8')
+
+  // teardown 已返回：同批里更晚到达的释放只能改内存，绝不能再落盘（#217）
+  delete fake.store['during-teardown']
+  for (let round = 0; round < 5; round += 1) await nextMacrotask()
+  assert.equal(readFileSync(stateFile(), 'utf8'), snapshot, 'teardown 返回后的写入必须失效')
 })

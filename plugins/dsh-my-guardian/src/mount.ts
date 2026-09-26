@@ -88,7 +88,7 @@ export function createMountOps(
 function conflictOf(shared: SharedContext, id: string): string | null {
   if (typeof id !== 'string' || id === '') return 'id is required'
   const store = shared.tree.store
-  if (store !== undefined && store[id] !== undefined) return `loader entry id "${id}" already exists`
+  if (store !== undefined && store !== null && store[id] !== undefined) return `loader entry id "${id}" already exists`
   return null
 }
 

@@ -178,10 +178,16 @@ export function attachEventListeners(ctx, shared) {
      * loader 生命周期诊断：**记录后立刻排队落盘**，与同一子系统的其它写点同一约定
      * （promote/quarantine 在 mount.ts、update-failed 在本文件下方）。
      *
-     * 为什么不能只写内存（#438）：诊断写入与进程退出是竞态。宿主卸载整树时同批 disposer
-     * 由 `Promise.all` 并发执行、顺序无保证，`loader/partial-dispose` 可能晚于 teardown 的
-     * 收尾快照到达；此时若没有排队落盘，事件就只剩内存副本，进程一退就永久丢失 ——
-     * 事后无法回答「收尾时哪些 entry 被释放」。
+     * 为什么不能只写内存（#438 第一种形态）：诊断写入与进程退出是竞态。宿主卸载整树时同批
+     * disposer 由 `Promise.all` 并发执行、顺序无保证，`loader/partial-dispose` 可能晚于
+     * teardown 的收尾快照到达；此时若没有排队落盘，事件就只剩内存副本，进程一退就永久丢失。
+     *
+     * ⚠️ **本监听器覆盖不到整树卸载**（#438 第二种形态，探针实测）：卸载时 cordis
+     * `Fiber._unload` 把 `ctx.on` 监听器与 teardown disposer 放进**同一批** disposer
+     * `Promise.all` 并发执行 —— 监听器在 group 的 entry 逐个释放之前就被摘掉，收尾期
+     * 事件根本到不了这里（隔离实例实测：SIGTERM 后 entry-dispose 恒 0 条）。收尾期的
+     * 「哪些 entry 被释放」由 captureTeardownEntries / diffReleasedEntries 直接读 loader
+     * 树快照补齐（见下），不依赖事件通道。
      */
     const record = (type, message) => {
         logEvent(shared, type, message);
@@ -200,7 +206,57 @@ export function attachEventListeners(ctx, shared) {
     ctx.on('loader/partial-dispose', (entry) => {
         record('entry-dispose', `entry ${entryLabelOf(entry)} disposed`);
     });
+    // ⚠️ 收尾整树卸载**不走这里**（监听器随 fiber 同批摘除，见上方注释与
+    // recordTeardownReleases）：teardown 主动读 loader 树快照补齐那一段。
     attachConfigFailureLogFallback(ctx, failures);
+}
+/**
+ * 收尾（整树卸载）期释放了哪些 entry —— **直接读 loader 树快照**，不依赖事件通道。
+ *
+ * 为什么必须有这条通道（#438 第二种形态，隔离实例探针实测）：
+ *  - guardian 的 `loader/partial-dispose` 监听器随 fiber 释放，与 teardown disposer 在
+ *    **同一批** disposer 里被 `Promise.all` 并发卸载（vendor cordis `Fiber._unload`）；
+ *    整树卸载期间监听器已经摘掉 → 事件收不到，`state.json.events` 里收尾期 0 条；
+ *  - 而 loader 的树**在收尾 disposer 开始执行时仍是完整的**（实测：teardown 进入时
+ *    `tree.store` 有全部 172 个 entry，同批 group 释放之后才变空）。
+ * 所以：进入收尾时同步抓一份 entry id 快照 → unmount 之后再读一次 → 差集就是本轮
+ * 收尾释放的 entry，逐条记为 entry-dispose。
+ *
+ * `snapshot` 必须容忍 `tree.store` 为 undefined/null（loader 卸载中会置空）。
+ */
+export function captureTeardownEntries(store) {
+    if (store === null || store === undefined || typeof store !== 'object')
+        return new Set();
+    return new Set(Object.keys(store));
+}
+/**
+ * 收尾释放的 entry = 快照里有、unmount 之后没了；**已从快照里消失过的条目不会重复**。
+ * 与事件通道**不会重复记账**：事件通道的 entry-dispose 只覆盖运行时（`EntryGroup.remove` /
+ * `Entry.update`），快照差集覆盖收尾整树卸载 —— 收尾期的 group 释放只改 store、不再派发
+ * 到已摘除的监听器；`before.has(id)` 保证即便两者同时命中也只记一条。
+ */
+export function diffReleasedEntries(before, store) {
+    const after = captureTeardownEntries(store);
+    const released = [];
+    for (const id of before) {
+        if (!after.has(id))
+            released.push(id);
+    }
+    return released;
+}
+/**
+ * 收尾期把「整树卸载释放了哪些 entry」写进诊断（不依赖 `ctx.on` 监听器）。
+ *
+ * 只记**确实释放**的条目（快照前后差集），所以数量必须与释放的 entry 数一致，
+ * 不多记（重复事件、仍存活的 entry 都不记）也不少记。
+ */
+export function recordTeardownReleases(shared, before) {
+    const released = diffReleasedEntries(before, shared.tree.store);
+    for (const id of released) {
+        logEvent(shared, 'entry-dispose', `entry ${id} disposed`);
+        shared.persistSoon();
+    }
+    return released;
 }
 /**
  * entry 可读标识——⚠️ 只读 options 字段，绝不访问 `entry.id` getter：

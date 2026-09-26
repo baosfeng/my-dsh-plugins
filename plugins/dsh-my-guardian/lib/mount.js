@@ -57,7 +57,7 @@ function conflictOf(shared, id) {
     if (typeof id !== 'string' || id === '')
         return 'id is required';
     const store = shared.tree.store;
-    if (store !== undefined && store[id] !== undefined)
+    if (store !== undefined && store !== null && store[id] !== undefined)
         return `loader entry id "${id}" already exists`;
     return null;
 }

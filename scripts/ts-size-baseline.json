@@ -87,14 +87,6 @@
         }
       }
     },
-    "plugins/dsh-my-observability/src/client/parts/replay-ext.ts": {
-      "lines": 446,
-      "functions": {}
-    },
-    "plugins/dsh-my-observability/src/client/parts/replay.ts": {
-      "lines": 410,
-      "functions": {}
-    },
     "plugins/dsh-my-plugin-manager/src/client/parts/view.ts": {
       "lines": 686,
       "functions": {

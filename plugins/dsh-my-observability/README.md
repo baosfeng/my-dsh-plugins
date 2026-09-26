@@ -3,22 +3,33 @@
 [![插件生态](https://img.shields.io/badge/插件生态-topic%20dsh-4d6bfe)](https://github.com/topics/dsh)
 
 <div align="center">
-  <img alt="轨迹回放面板：侧边栏时间轴展示 agent 行为（状态/模型流/工具调用）" src="https://unpkg.com/dsh-my-observability/assets/replay-panel.png" width="640" />
   <img alt="Git 工具面板：仓库状态 / 差异 / 提交前审查 / 类型化提交" src="https://unpkg.com/dsh-my-observability/assets/git-panel.png" width="640" />
   <br/>
   <img alt="设置页配置面板（设置 → 插件 → 可观测性）：AI 审查增强开关 + AI 审查超时" src="https://unpkg.com/dsh-my-observability/assets/settings-panel.png" width="640" />
 </div>
 
-**dsh-my-observability**：DSH 可观测性 + Git 工程工具插件——**事件审计**记录 agent 的每一次行为（状态变化 / 模型流 / 工具调用与结果），**轨迹回放面板**按时间轴回放会话轨迹；**结构化 Git 工具**提供 Conventional Commits 类型化提交；**增量 diff 审查**在提交前用规则引擎（可选 AI 增强）检查调试残留、密钥泄露等问题。
+**dsh-my-observability**：DSH 可观测性 + Git 工程工具插件——**事件审计**记录 agent 的每一次行为（状态变化 / 模型流 / 工具调用与结果）并跨会话持久化、经 API 查询；**资源监控面板**展示审计文件写入速率与本进程资源（资源看门狗的可视面）；**结构化 Git 工具**提供 Conventional Commits 类型化提交；**增量 diff 审查**在提交前用规则引擎（可选 AI 增强）检查调试残留、密钥泄露等问题。
 
 ## 功能
 
 - **事件审计**：只读观察并记录 `agent/status`（状态变化 + 顶层/子代理标记）、`llm/stream`（流开始/结束/错误 + chunk 与耗时统计，透传全部 chunk）、`tools/pre-execute`（工具名 + 参数摘要）、`tools/execute`（成功/失败 + 耗时）；waterfall 事件一律透传 `next()`，绝不改变工具/模型流程。
 - **持久化与上限**：按会话分桶增量追加到 `$DSH_HOME/observability/audit.jsonl`（防抖批量 flush + 周期原子 compact），重启后完整恢复；每会话上限 2000 条、全局 20000 条，超出淘汰最旧事件。
-- **轨迹回放面板**：侧边栏「轨迹回放」页签，选会话 + 类型过滤（全部 / 状态 / 模型流 / 工具），时间轴展示类型徽标 + 时间 + 摘要；可见时 5s 轮询、隐藏时暂停。
+- **审计查询 API**：`GET /observability/api/sessions`（会话列表 + 可读标题 + 事件数）、`GET /observability/api/events?sessionId=&type=&limit=`（时间轴正序；`sessionId=*` 为跨会话）、`GET /observability/api/status`、`GET /observability/api/errors`、`GET /observability/api/plugin-status`。
+- **资源监控面板**：侧边栏「资源监控」页签展示审计文件大小、写入速率、本进程 CPU/内存与告警列表（可见时 15s 采样，隐藏暂停）。写放大或连续超限时看门狗自动暂停落盘（事件仍入内存，有界不丢），回落自动恢复，附日志告警与 API `degraded` 标记。
 - **结构化 Git 工具**：侧边栏「Git 工具」页签，输入仓库路径查看分支与暂存/未暂存计数、工作区/暂存区差异，按 `<type>(<scope>): <description>` 生成类型化提交（`feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore`）；服务端 `execFile` 执行 git，不经 shell。
 - **增量 diff 审查**：「提交前审查」对增量 diff 跑确定性规则引擎——error：密钥/凭据硬编码、合并冲突标记；warning：调试残留（console/debugger/print）、单文件变更 > 300 行、二进制文件变更；info：TODO/FIXME/HACK 标记、行尾空格、有源码变更但无测试变更。
-- **资源看门狗**：面板「资源」区块展示本进程 CPU/内存 + 审计文件大小与写入速率（15s 采样），写放大或连续超限时自动暂停落盘（事件仍入内存，有界不丢），回落自动恢复，附日志告警与 API `degraded` 标记。
+
+## 从 0.3.x 升级：轨迹回放面板已移除
+
+「轨迹回放」侧边栏面板（时间轴 + 会话选择 + 类型过滤 + 搜索/导出/统计）与官方 UI 插件 **`@deepseek-ai/dsh-client-ui-trajectory`** 重叠——官方自 DSH 0.1.7-rc.2 起默认装载它，提供按轮次的事件记录表、交互式时间概览与记录检查器（token 用量 / 耗时 / 输入输出）。因此本插件删除了该面板，**跨会话持久化的审计数据与查询 API 全部保留**：
+
+| 原来 | 现在 |
+| ---- | ---- |
+| 侧边栏「轨迹回放」时间轴（agent 状态 / 模型流 / 工具调用） | 对话视图环里的官方 **Trajectory** 页签（默认装载，无需安装） |
+| 「轨迹回放」页签顶部的资源区块 | 侧边栏「**资源监控**」页签（同一位置，order 40） |
+| 面板内的搜索 / 时间范围 / 导出 JSON·CSV / 工具失败率统计 | 无界面替代：改用 `/observability/api/events` 查询后自行处理（跨会话用 `sessionId=*`） |
+
+同时删除：`lib/audit-view.js`（面板的过滤/导出/统计纯函数）及其单测、`assets/replay-panel.png`、面板专属 i18n 文案与样式。
 
 ## 安装
 

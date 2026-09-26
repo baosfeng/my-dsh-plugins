@@ -13,9 +13,7 @@
  *
  * 片段来源两类：
  *  - 本地片段：lib/.client-build/parts/*.js（本脚本先 tsc 编译 src/client/parts/*.ts）；
- *  - 共享/复用片段：icons 来自 dsh-shared/client-parts（不编译）；audit-view 来自
- *    server 端 tsc 产物 lib/audit-view.js（server/client 共用模块，逐行剥离
- *    `export ` 前缀后作为片段拼入）。
+ *  - 共享片段：icons 来自 dsh-shared/client-parts（不编译）。
  *
  * 占位符替换必须用函数式 replacer（src.replaceAll(ph, () => part)）：
  * 字符串 replacer 会把片段中的 $& / $1 等当作替换模式特殊解释而损坏源码。
@@ -39,22 +37,17 @@ const sharedPartsDir = join(root, '..', 'dsh-shared', 'client-parts')
 execSync('npx tsc -p tsconfig.client.json', { cwd: root, stdio: 'inherit' })
 
 /** (placeholder, part file, opts?) — 拼接顺序固定（const 初始化器依赖）。
- *  file 相对 partsDir（本地编译产物）、sharedPartsDir（shared: true）或
- *  opts.root 覆盖的目录（如 'lib'，用于 server 端产物）。opts.stripExport
- *  逐行剥离行首 `export ` 前缀（把可单测的 ESM 模块作为片段拼进 client
- *  作用域）。 */
+ *  file 相对 partsDir（本地编译产物）或 sharedPartsDir（shared: true）。 */
 const PARTS = [
   // 原生侧边栏注册助手（issue #187 批 1）：手写片段，不经 TS 编译，与
   // client.src.js 共享 factory 作用域（调用方注入 tabs/slots/createElement）。
   ['/*__PART_NATIVE_TABS__*/', 'native-tabs.js', { root: 'lib/parts' }],
   ['/*__PART_I18N__*/', 'i18n.js'],
   ['/*__PART_ICONS__*/', 'icons.part.js', { shared: true }],
-  ['/*__PART_AUDIT_VIEW__*/', 'audit-view.js', { root: 'lib', stripExport: true }],
-  ['/*__PART_REPLAY__*/', 'replay.js'],
+  ['/*__PART_API__*/', 'api.js'],
   ['/*__PART_RESOURCE__*/', 'resource.js'],
-  ['/*__PART_REPLAY_EXT__*/', 'replay-ext.js'],
   ['/*__PART_GIT__*/', 'git.js'],
-  // 设置页签（issue #383）：引用 i18n 片段（strings）与 replay 片段（apiJson），
+  // 设置页签（issue #383）：引用 i18n 片段（strings）与 api 片段（apiJson），
   // 因此必须排在这两者之后。
   ['/*__PART_SETTINGS__*/', 'settings.js'],
   ['/*__PART_STYLES__*/', 'styles.js'],

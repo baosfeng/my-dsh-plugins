@@ -5,7 +5,8 @@
  *  1. 事件审计：监听 agent/status、llm/stream、tools/* 事件，记录审计
  *     日志（agent 行为可追溯），按会话隔离、重启后恢复（持久化
  *     $DSH_HOME/observability/audit.json，防抖 + 原子写）；
- *  2. 轨迹回放：/observability/api 查询接口供侧边栏时间轴面板消费；
+ *  2. 审计查询：/observability/api 的 sessions / events 端点（跨会话、重启后
+ *     仍在；轨迹回放面板已移除——官方 dsh-client-ui-trajectory 覆盖可视回放）；
  *  3. 结构化 Git：类型化提交（Conventional Commits）+ 状态/差异查询；
  *  4. 增量 diff 审查：提交前规则引擎审查 + 可选 AI agent 增强。
  *

@@ -2,14 +2,19 @@
  * dsh-my-observability — client half (browser). SOURCE TEMPLATE.
  *
  * 提供两个侧边栏页签：
- *  - 轨迹回放（dsh-my-observability:replay）：按时间轴查看 agent 行为
- *    （agent 状态 / 模型流 / 工具调用与结果），支持会话切换与类型过滤，
- *    数据来自 server 端事件审计（/observability/api/events）；
+ *  - 资源监控（dsh-my-observability:resources）：审计文件大小 / 写入速率 +
+ *    本进程 CPU / 内存（资源看门狗的可视面，数据来自
+ *    /observability/api/resources）；
  *  - Git 工具 + 增量 diff 审查（dsh-my-observability:git）：仓库状态与
  *    差异查看、类型化提交（Conventional Commits）、提交前规则引擎 +
  *    可选 AI 审查（/observability/api/git/* 与 /observability/api/review）。
  *
- * 面板可见（visible）时轮询（REPLAY_POLL_MS），隐藏时暂停（省请求）。
+ * 轨迹回放面板**已移除**（官方 @deepseek-ai/dsh-client-ui-trajectory 自
+ * 0.1.7-rc.2 起默认装载，提供按轮次的事件记录表 + 交互式时间概览与检查器）。
+ * 本插件保留的真增量是 host 侧的审计落盘与查询 API（/observability/api 的
+ * sessions / events 端点）、结构化 Git 工具、提交前增量 diff 审查与资源看门狗。
+ *
+ * 面板可见（visible）时轮询（RESOURCE_POLL_MS），隐藏时暂停（省请求）。
  * 样式走 DSH 语义 token（--dsw-alias-* / --dsw-font-*），随 activation
  * 注入、fiber teardown 卸载（HMR/禁用无残留）。
  *
@@ -23,8 +28,7 @@
  * BUILD NOTE: 本文件是模板源码，不是 DSH 实际服务的文件。scripts/build.mjs
  * 先编译 client TS 片段（src/client/parts/*.ts → lib/.client-build/parts/*.js），
  * 再将这些片段（无 import/export 的纯函数声明文本；图标片段来自 dsh-shared
- * 共享 client-parts，见 docs/UI规范.md；audit-view 片段来自 server 端产物
- * lib/audit-view.js，剥离 export 前缀）经下方 __PART_*__ 占位符（函数式
+ * 共享 client-parts，见 docs/UI规范.md）经下方 __PART_*__ 占位符（函数式
  * replaceAll，避免 $&/$1 特殊解释）拼接进 factory 作用域，写出
  * lib/client.js —— 即 DSH 实际服务的产物。产物必须提交；CI 只对产物执行
  * node --check（见 scripts/test-all.sh / .github/workflows/ci.yml）。
@@ -37,10 +41,10 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
     const { createElement, useEffect, useState } = require('react')
 
-    // 原生页签身份（issue #187 批 1）：id/kind 沿用迁移前 better-sidebar 的 tab id（每面板一个类型，id 全局唯一且是席位 key），order 为指南页顺序。
-    const REPLAY_TAB_ID = 'dsh-my-observability:replay'
+    // 原生页签身份（issue #187 批 1）：id/kind 与迁移前 better-sidebar 的 tab id 同约定（每面板一个类型，id 全局唯一且是席位 key），order 为指南页顺序。
+    const RESOURCE_TAB_ID = 'dsh-my-observability:resources'
     const GIT_TAB_ID = 'dsh-my-observability:git'
-    const REPLAY_TAB_ORDER = 40
+    const RESOURCE_TAB_ORDER = 40
     const GIT_TAB_ORDER = 41
 
     // ── parts（scripts/build.mjs 拼接；顺序固定）───────────────────────
@@ -101,8 +105,9 @@ function isZh() {
         return false;
     }
 }
+// 只保留两个面板（资源监控 / Git 工具）与设置页实际引用的文案；
+// 轨迹回放面板移除后其专属文案（类型徽标/过滤/导出/统计）一并删除。
 const strings = {
-    replayTitle: () => (isZh() ? '轨迹回放' : 'Trajectory'),
     resourceTitle: () => (isZh() ? '资源监控' : 'Resources'),
     resourceLoading: () => (isZh() ? '资源采样中…' : 'Sampling…'),
     resourceFile: () => (isZh() ? '审计文件' : 'Audit file'),
@@ -110,57 +115,10 @@ const strings = {
     resourceCpu: () => (isZh() ? 'CPU' : 'CPU'),
     resourceMem: () => (isZh() ? '内存' : 'Memory'),
     gitTitle: () => (isZh() ? 'Git 工具' : 'Git Tools'),
-    allSessions: () => (isZh() ? '全部会话' : 'All sessions'),
-    // ── 会话下拉可读性（issue #1xx：只能看到 UUID）────────────────────────
-    eventCount: (n) => (isZh() ? `${n} 事件` : `${n} events`),
-    sessionFallback: (shortId) => (isZh() ? `会话 ${shortId}` : `session ${shortId}`),
-    filterAll: () => (isZh() ? '全部' : 'All'),
-    filterStatus: () => (isZh() ? '状态' : 'Status'),
-    filterLlm: () => (isZh() ? '模型流' : 'LLM'),
-    filterTools: () => (isZh() ? '工具' : 'Tools'),
-    filterPlugin: () => (isZh() ? '插件' : 'Plugins'),
-    typePluginEvent: () => (isZh() ? '插件事件' : 'plugin event'),
-    detailReason: () => (isZh() ? '原因' : 'reason'),
-    emptyEvents: () => (isZh() ? '暂无审计事件' : 'No audit events yet'),
-    emptyEventsHint: () => isZh()
-        ? '开始一段对话后，agent 的状态、模型流与工具调用会按时间记录在这里'
-        : 'Start a conversation — agent status, LLM streams and tool calls are recorded here in time order',
-    refresh: () => (isZh() ? '刷新' : 'Refresh'),
     retry: () => (isZh() ? '重试' : 'Retry'),
     loadError: () => (isZh() ? '加载失败' : 'Load failed'),
-    typeAgentStatus: () => (isZh() ? 'agent 状态' : 'agent status'),
-    typeLlmStream: () => (isZh() ? '模型流' : 'LLM stream'),
-    typeToolCall: () => (isZh() ? '工具调用' : 'tool call'),
-    typeToolResult: () => (isZh() ? '工具结果' : 'tool result'),
-    phaseStart: () => (isZh() ? '开始' : 'start'),
-    phaseEnd: () => (isZh() ? '结束' : 'end'),
-    phaseError: () => (isZh() ? '错误' : 'error'),
-    agentTop: () => (isZh() ? '顶层' : 'top'),
-    agentSub: () => (isZh() ? '子代理' : 'subagent'),
-    agentUnknown: () => (isZh() ? '未知' : 'unknown'),
-    toolOk: () => (isZh() ? '成功' : 'ok'),
-    toolFail: () => (isZh() ? '失败' : 'failed'),
-    // 审计日志搜索 / 过滤 / 导出 / 统计
-    searchPlaceholder: () => (isZh() ? '搜索工具名/参数/错误…' : 'Search tool/args/error…'),
-    filterAllResult: () => (isZh() ? '全部结果' : 'All results'),
-    filterSuccess: () => (isZh() ? '成功' : 'Ok'),
-    filterFail: () => (isZh() ? '失败' : 'Failed'),
-    timeStartLabel: () => (isZh() ? '开始' : 'Start'),
-    timeEndLabel: () => (isZh() ? '结束' : 'End'),
-    clearFilters: () => (isZh() ? '清除' : 'Clear'),
-    exportJson: () => (isZh() ? '导出 JSON' : 'Export JSON'),
-    exportCsv: () => (isZh() ? '导出 CSV' : 'Export CSV'),
-    scopeSession: () => (isZh() ? '当前会话' : 'This session'),
-    scopeAll: () => (isZh() ? '全部会话' : 'All sessions'),
-    statsTitle: () => (isZh() ? '工具统计' : 'Tool stats'),
-    statsTool: () => (isZh() ? '工具' : 'Tool'),
-    statsCalls: () => (isZh() ? '调用' : 'Calls'),
-    statsFailRate: () => (isZh() ? '失败率' : 'Fail rate'),
-    statsEmpty: () => (isZh() ? '暂无工具调用数据' : 'No tool call data'),
-    noMatches: () => (isZh() ? '无匹配事件' : 'No matching events'),
-    exportFileName: () => (isZh() ? 'dsh-observability-审计导出' : 'dsh-observability-audit-export'),
+    loading: () => (isZh() ? '加载中…' : 'Loading…'),
     // Git 面板
-    repoLabel: () => (isZh() ? '仓库路径' : 'Repo path'),
     repoPlaceholder: () => (isZh() ? '如 /path/to/project' : 'e.g. /path/to/project'),
     loadRepo: () => (isZh() ? '加载' : 'Load'),
     branch: () => (isZh() ? '分支' : 'Branch'),
@@ -170,14 +128,11 @@ const strings = {
     diffTitle: () => (isZh() ? '差异' : 'Diff'),
     showDiff: () => (isZh() ? '查看差异' : 'Show diff'),
     showStagedDiff: () => (isZh() ? '查看暂存差异' : 'Staged diff'),
-    noChanges: () => (isZh() ? '没有变更' : 'No changes'),
+    emptyDiff: () => (isZh() ? '（空）' : '(empty)'),
     review: () => (isZh() ? '提交前审查' : 'Review'),
-    reviewAi: () => (isZh() ? 'AI 审查' : 'AI review'),
     reviewResult: () => (isZh() ? '审查结果' : 'Review result'),
     reviewPass: () => (isZh() ? '未发现问题' : 'No issues found'),
-    issues: (count) => (isZh() ? `${count} 个问题` : `${count} issue(s)`),
     commitTitle: () => (isZh() ? '类型化提交' : 'Typed commit'),
-    commitType: () => (isZh() ? '类型' : 'Type'),
     commitScope: () => (isZh() ? '范围（可选）' : 'Scope (optional)'),
     commitDesc: () => (isZh() ? '描述' : 'Description'),
     commitBody: () => (isZh() ? '正文（可选）' : 'Body (optional)'),
@@ -190,9 +145,6 @@ const strings = {
     aiVerdictApprove: () => (isZh() ? 'AI 结论：可以提交' : 'AI verdict: approve'),
     aiVerdictChanges: () => (isZh() ? 'AI 结论：建议修改' : 'AI verdict: changes'),
     aiFailed: () => (isZh() ? 'AI 审查不可用' : 'AI review unavailable'),
-    loading: () => (isZh() ? '加载中…' : 'Loading…'),
-    emptyDiff: () => (isZh() ? '（空）' : '(empty)'),
-    noRepo: () => (isZh() ? '请输入仓库路径' : 'Enter a repo path'),
     // 设置页（设置 → 插件 → 可观测性，issue #383）
     settingsTitle: () => (isZh() ? '可观测性' : 'Observability'),
     settingsSectionTitle: () => (isZh() ? 'AI 审查' : 'AI review'),
@@ -564,285 +516,10 @@ const fileIconByExt = (ext, size = 14) => {
   return spec === undefined ? icon.file(size) : badgeIcon(spec, size)
 }
 
-    /**
- * dsh-my-observability — audit log view helpers (pure functions).
- *
- * 轨迹回放面板的搜索 / 组合过滤 / 导出（JSON/CSV）/ 统计的纯逻辑，无副作用、
- * 不依赖 React 与 cordis（可被 vitest 直接导入单测），仅供 client 端在已加载
- * 的审计事件数据上做视图变换。DSH ModuleLoader 不支持相对路径 require，client
- * 侧经 scripts/build.mjs 把本文件（剥离 `export` 前缀）作为片段拼接进
- * lib/client.js 的 factory 作用域，因此本文件约定：
- *  - 只用 `export function`（单行形式），不用 export 块 / export default；
- *  - 顶层没有 import / 副作用；
- *  - 不读取 strings —— 涉及界面文案的默认值集中在此，client 如需 i18n 覆盖
- *    通过参数传入。
- */
-/** 事件类型 → 中文标签（CSV 默认；client 可传 labels 覆盖）。非导出常量。 */
-const DEFAULT_CSV_LABELS = Object.freeze({
-    time: '时间',
-    type: '类型',
-    tool: '工具',
-    result: '结果',
-    typeMap: Object.freeze({
-        agent_status: 'agent 状态',
-        llm_stream: '模型流',
-        tool_call: '工具调用',
-        tool_result: '工具结果',
-    }),
-    ok: '成功',
-    fail: '失败',
-    error: '错误',
-});
-const MAX_STATS_TOP = 50;
-/** 两位补零。 */
-function pad2(n) {
-    return String(n).padStart(2, '0');
-}
-/** 毫秒时间戳 → `YYYY-MM-DD HH:MM:SS`（本地时区）；非法输入返回空串。 */
-function formatTime(time) {
-    if (typeof time !== 'number' || !Number.isFinite(time))
-        return '';
-    const d = new Date(time);
-    if (Number.isNaN(d.getTime()))
-        return '';
-    const date = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-    const clock = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-    return `${date} ${clock}`;
-}
-/** agent 状态事件的搜索片段。 */
-function agentStatusParts(data) {
-    return [data.status, data.agentType].filter((part) => typeof part === 'string');
-}
-/** 模型流事件的搜索片段（含错误消息）。 */
-function llmParts(data) {
-    const parts = [data.phase];
-    if (typeof data.message === 'string' && data.message !== '')
-        parts.push(data.message);
-    return parts;
-}
-/** 工具调用事件的搜索片段（工具名 + 参数键 + 参数摘要）。 */
-function toolCallParts(data) {
-    const parts = [];
-    if (typeof data.name === 'string')
-        parts.push(data.name);
-    if (Array.isArray(data.args?.keys))
-        parts.push(...data.args.keys);
-    if (typeof data.args?.summary === 'string' && data.args.summary !== '')
-        parts.push(data.args.summary);
-    return parts;
-}
-/** 工具结果事件的搜索片段（工具名 + 成败）。 */
-function toolResultParts(data) {
-    const parts = [];
-    if (typeof data.name === 'string')
-        parts.push(data.name);
-    parts.push(data.ok === false ? '失败' : '成功');
-    return parts;
-}
-/** 插件事件（issue #154）的搜索片段（插件名/事件名/动作/原因/参数值）。 */
-function pluginEventParts(data) {
-    const parts = [];
-    if (typeof data.plugin === 'string')
-        parts.push(data.plugin);
-    if (typeof data.event === 'string')
-        parts.push(data.event);
-    if (typeof data.action === 'string')
-        parts.push(data.action);
-    if (typeof data.reason === 'string')
-        parts.push(data.reason);
-    if (data.params !== null && typeof data.params === 'object') {
-        for (const value of Object.values(data.params)) {
-            if (typeof value === 'string' && value !== '')
-                parts.push(value);
-        }
-    }
-    return parts;
-}
-/** 事件类型 → 搜索片段收集函数（查表消分支）。 */
-const PARTS_COLLECTORS = {
-    agent_status: agentStatusParts,
-    llm_stream: llmParts,
-    tool_call: toolCallParts,
-    tool_result: toolResultParts,
-    plugin_event: pluginEventParts,
-};
-/** 提取事件可用于关键词匹配的文本（工具名/参数摘要/错误信息/状态/阶段等）。 */
-function searchableText(event) {
-    const data = event && event.data ? event.data : {};
-    const parts = [event?.type, event?.sessionId];
-    const collector = PARTS_COLLECTORS[event?.type];
-    if (collector !== undefined)
-        parts.push(...collector(data));
-    return parts
-        .filter((part) => typeof part === 'string')
-        .join(' ')
-        .toLowerCase();
-}
-/** 事件是否命中关键词（不区分大小写；空关键词视为命中全部）。 */
-function matchesKeyword(event, keyword) {
-    const kw = String(keyword ?? '')
-        .trim()
-        .toLowerCase();
-    if (kw === '')
-        return true;
-    return searchableText(event).includes(kw);
-}
-/** 返回 `true` 表示事件具备失败语义（工具失败 / 模型流出错）。 */
-function isFailEvent(event) {
-    if (event?.type === 'tool_result')
-        return event.data?.ok === false;
-    if (event?.type === 'llm_stream')
-        return event.data?.phase === 'error';
-    return false;
-}
-/** 归一化过滤条件（时间转为闭区间数值；空值透传）。 */
-function normalizeCriteria(criteria) {
-    const start = typeof criteria.timeStart === 'number' && Number.isFinite(criteria.timeStart) ? criteria.timeStart : undefined;
-    const end = typeof criteria.timeEnd === 'number' && Number.isFinite(criteria.timeEnd) ? criteria.timeEnd : undefined;
-    return { type: criteria.type ?? '', keyword: criteria.keyword ?? '', result: criteria.result ?? '', start, end };
-}
-/** 类型过滤（'tool' 表示 tool_call + tool_result；'plugin' 表示 plugin_event）。 */
-function passType(type, filterType) {
-    if (filterType === '')
-        return true;
-    if (filterType === 'tool')
-        return type === 'tool_call' || type === 'tool_result';
-    if (filterType === 'plugin')
-        return type === 'plugin_event';
-    return type === filterType;
-}
-/** 时间范围闭区间。 */
-function passTime(time, start, end) {
-    if (start !== undefined && time < start)
-        return false;
-    if (end !== undefined && time > end)
-        return false;
-    return true;
-}
-/** 成功/失败过滤：只作用于有成败语义的事件，其余事件透传。 */
-function passResult(event, result) {
-    if (result === '')
-        return true;
-    if (result === 'success')
-        return !isFailEvent(event);
-    if (result === 'fail')
-        return isFailEvent(event);
-    return true;
-}
-/** 组合过滤：类型（tool 表示 tool_call+tool_result）+ 时间范围 + 成功/失败 + 关键词。
- *  criteria: { type, timeStart, timeEnd, result, keyword } */
-function applyAuditFilter(events, criteria = {}) {
-    const ctx = normalizeCriteria(criteria);
-    return (events ?? []).filter((event) => passType(event.type, ctx.type) &&
-        passTime(event.time, ctx.start, ctx.end) &&
-        passResult(event, ctx.result) &&
-        matchesKeyword(event, ctx.keyword));
-}
-/** CSV 单元格转义：含逗号/引号/换行时用双引号包裹并转义内嵌引号。 */
-function csvCell(value) {
-    const s = value === null || value === undefined ? '' : String(value);
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-/** 事件的工具名（仅 tool_call/tool_result；否则空）。 */
-function toolNameOf(event) {
-    if (event?.type === 'tool_call' || event?.type === 'tool_result')
-        return String(event.data?.name ?? '');
-    return '';
-}
-/** 事件的结果摘要（成功/失败/错误；其余空）。 */
-function resultTextOf(event, labels = DEFAULT_CSV_LABELS) {
-    if (event?.type === 'tool_result')
-        return event.data?.ok === false ? labels.fail : labels.ok;
-    if (event?.type === 'llm_stream' && event.data?.phase === 'error')
-        return labels.error;
-    return '';
-}
-/** 生成 CSV 摘要（表头：时间/类型/工具/结果）。labels 可覆盖默认中文。
- *  返回不含换行结尾符的 CSV 文本。 */
-function auditToCsv(events, labels = DEFAULT_CSV_LABELS) {
-    const typeMap = labels.typeMap ?? {};
-    const header = [labels.time, labels.type, labels.tool, labels.result];
-    const lines = [header.map(csvCell).join(',')];
-    for (const event of (events ?? [])) {
-        const typeLabel = typeMap[event.type] ?? String(event.type);
-        const row = [formatTime(event.time), typeLabel, toolNameOf(event), resultTextOf(event, labels)];
-        lines.push(row.map(csvCell).join(','));
-    }
-    return lines.join('\n');
-}
-/** 生成 JSON 完整数据（缩进默认 2）。 */
-function auditToJson(events, space = 2) {
-    return JSON.stringify(events ?? [], null, space);
-}
-/** 事件是否为工具类（tool_call / tool_result）。 */
-function isToolEvent(event) {
-    return event?.type === 'tool_call' || event?.type === 'tool_result';
-}
-/** 把单条工具事件计入聚合（调用次数 / 失败次数）。 */
-function bumpTool(byTool, event, name) {
-    const entry = byTool.get(name) ?? { tool: name, calls: 0, fails: 0 };
-    if (event.type === 'tool_call')
-        entry.calls += 1;
-    if (event.type === 'tool_result' && event.data?.ok === false)
-        entry.fails += 1;
-    byTool.set(name, entry);
-}
-/** 按工具名聚合调用次数与失败次数。 */
-function aggregateToolStats(events) {
-    const byTool = new Map();
-    for (const event of (events ?? [])) {
-        if (!isToolEvent(event))
-            continue;
-        const name = String(event.data?.name ?? '');
-        if (name === '')
-            continue;
-        bumpTool(byTool, event, name);
-    }
-    return byTool;
-}
-/** 聚合结果 → 排序 + 失败率列表。 */
-function rankTools(byTool) {
-    return [...byTool.values()]
-        .map((entry) => ({ ...entry, failRate: entry.calls > 0 ? entry.fails / entry.calls : 0 }))
-        .sort((a, b) => b.calls - a.calls || b.fails - a.fails || a.tool.localeCompare(b.tool));
-}
-/** 工具调用统计：每个工具调用次数 + 失败率（topN 截断，默认 5）。
- *  返回 [{ tool, calls, fails, failRate }] 按调用次数降序。 */
-function computeToolStats(events, topN = 5) {
-    const n = typeof topN === 'number' && topN > 0 ? Math.min(topN, MAX_STATS_TOP) : 5;
-    return rankTools(aggregateToolStats(events)).slice(0, n);
-}
-/** 把 text 按 keyword 切成 [ { text, hit } ] 分段（用于命中关键词高亮）。
- *  空关键词返回整段未命中。 */
-function highlightSegments(text, keyword) {
-    const raw = String(text ?? '');
-    const kw = String(keyword ?? '')
-        .trim()
-        .toLowerCase();
-    if (kw === '')
-        return [{ text: raw, hit: false }];
-    const lower = raw.toLowerCase();
-    const out = [];
-    let cursor = 0;
-    for (;;) {
-        const idx = lower.indexOf(kw, cursor);
-        if (idx === -1) {
-            if (cursor < raw.length)
-                out.push({ text: raw.slice(cursor), hit: false });
-            break;
-        }
-        if (idx > cursor)
-            out.push({ text: raw.slice(cursor, idx), hit: false });
-        out.push({ text: raw.slice(idx, idx + kw.length), hit: true });
-        cursor = idx + kw.length;
-    }
-    return out.length === 0 ? [{ text: raw, hit: false }] : out;
-}
-
     "use strict";
-// ── 轨迹回放面板（时间轴）──────────────────────────────────────────
-// 拆分的审计视图组件（搜索/组合过滤/导出/统计/高亮/hook）位于
-// replay-ext.js 片段（见 client.src.js 占位符顺序）。
+// ── 插件 API 请求（client 片段，跨面板共用）─────────────────────────────
+// 片段无 import/export，共享 client.src.js 的 factory 作用域
+// （fetch 由浏览器提供），供资源 / Git / 设置页三个面板复用。
 /** 请求插件 API（非 2xx 抛错；返回响应 JSON 的 value 字段）。 */
 function apiJson(path, options) {
     return fetch(path, options).then(async (res) => {
@@ -852,285 +529,17 @@ function apiJson(path, options) {
         return data.value;
     });
 }
-/** 事件类型 → 中文标签。 */
-function typeLabel(event) {
-    switch (event.type) {
-        case 'agent_status':
-            return strings.typeAgentStatus();
-        case 'llm_stream':
-            return strings.typeLlmStream();
-        case 'tool_call':
-            return strings.typeToolCall();
-        case 'tool_result':
-            return strings.typeToolResult();
-        case 'plugin_event':
-            return strings.typePluginEvent();
-        default:
-            return event.type;
-    }
-}
-/** 事件类型 → 视觉类别（徽标/图标/节点共用，颜色语义一致）：
- *  status=info / llm=warn / call=accent / result=success / fail=danger /
- *  plugin=info（插件事件复用 info 色，图标区分）。 */
-function typeKind(event) {
-    if (event.type === 'agent_status')
-        return 'status';
-    if (event.type === 'llm_stream')
-        return 'llm';
-    if (event.type === 'tool_call')
-        return 'call';
-    if (event.type === 'plugin_event')
-        return 'plugin';
-    return event.data?.ok === false ? 'fail' : 'result';
-}
-/** 事件类型 → 类型图标（共享线性图标集，stroke=currentColor）。 */
-function typeIcon(event) {
-    const kind = typeKind(event);
-    if (kind === 'status')
-        return icon.clock(15);
-    if (kind === 'llm')
-        return icon.file(15);
-    if (kind === 'call')
-        return icon.external(15);
-    if (kind === 'plugin')
-        return icon.alert(15);
-    if (kind === 'fail')
-        return icon.close(15);
-    return icon.check(15);
-}
-/** 时间戳 → HH:MM:SS。 */
-function timeText(time) {
-    try {
-        const date = new Date(time);
-        const pad = (n) => String(n).padStart(2, '0');
-        return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-    }
-    catch {
-        return '';
-    }
-}
-/** agent 类型标记 → 中文。 */
-function agentTypeText(agentType) {
-    if (agentType === 'top')
-        return strings.agentTop();
-    if (agentType === 'subagent')
-        return strings.agentSub();
-    return strings.agentUnknown();
-}
-/** 模型流阶段 → 中文。 */
-function phaseText(phase) {
-    if (phase === 'start')
-        return strings.phaseStart();
-    if (phase === 'end')
-        return strings.phaseEnd();
-    if (phase === 'error')
-        return strings.phaseError();
-    return phase;
-}
-/** agent 状态事件摘要。 */
-function agentMeta(data) {
-    return `状态 ${data.status} · ${agentTypeText(data.agentType)}`;
-}
-/** 模型流事件摘要（开始/结束/错误 + 统计）。 */
-function llmMeta(data) {
-    const stats = data.phase === 'start' ? '' : ` · ${data.chunks} chunks / ${data.chars} chars / ${data.ms}ms`;
-    const error = data.message !== undefined ? `：${data.message}` : '';
-    return `${phaseText(data.phase)}${stats}${error}`;
-}
-/** 工具调用事件摘要（名称 + 参数摘要）。 */
-function toolCallMeta(data) {
-    const args = data.args && data.args.summary !== undefined ? ` — ${data.args.summary}` : '';
-    return `${data.name}${args}`;
-}
-/** 工具结果事件摘要（名称 + 成败 + 耗时）。 */
-function toolResultMeta(data) {
-    const result = data.ok === false ? strings.toolFail() : strings.toolOk();
-    return `${data.name} · ${result} · ${data.ms}ms`;
-}
-/** 插件事件摘要（插件名 · 事件名 · 动作；issue #154）。 */
-function pluginEventMeta(data) {
-    const action = typeof data.action === 'string' && data.action !== '' ? data.action : data.event;
-    return `${data.plugin} · ${data.event} · ${action}`;
-}
-/** 事件 → 摘要文本（单行，尽力而为）。 */
-function eventMeta(event) {
-    const data = event.data || {};
-    if (event.type === 'agent_status')
-        return agentMeta(data);
-    if (event.type === 'llm_stream')
-        return llmMeta(data);
-    if (event.type === 'tool_call')
-        return toolCallMeta(data);
-    if (event.type === 'tool_result')
-        return toolResultMeta(data);
-    if (event.type === 'plugin_event')
-        return pluginEventMeta(data);
-    return '';
-}
-/** 插件事件详情行（原因 + 参数键值对；非插件事件返回 null 不可展开）。 */
-function eventDetail(event) {
-    if (event?.type !== 'plugin_event')
-        return null;
-    const data = event.data || {};
-    const rows = [];
-    if (typeof data.reason === 'string' && data.reason !== '') {
-        rows.push(createElement('div', { key: 'reason', className: 'dsh-my-observability-detail-row' }, createElement('span', { className: 'dsh-my-observability-detail-key' }, strings.detailReason()), createElement('span', { className: 'dsh-my-observability-detail-value' }, data.reason)));
-    }
-    if (data.params !== null && typeof data.params === 'object') {
-        for (const [key, value] of Object.entries(data.params)) {
-            rows.push(createElement('div', { key, className: 'dsh-my-observability-detail-row' }, createElement('span', { className: 'dsh-my-observability-detail-key' }, key), createElement('span', { className: 'dsh-my-observability-detail-value' }, String(value))));
-        }
-    }
-    return rows.length > 0 ? rows : null;
-}
-/** 单条事件行：节点圆点 + 类型图标 + 徽标/时间 + 摘要（hover/active 反馈）。
- *  摘要命中关键词时以 mark 高亮；插件事件可点击展开详情（原因/参数）。 */
-function EventRow({ event, keyword }) {
-    const meta = eventMeta(event);
-    const kind = typeKind(event);
-    const detail = eventDetail(event);
-    const [open, setOpen] = useState(false);
-    return createElement('button', {
-        className: 'dsh-my-observability-event',
-        type: 'button',
-        'aria-expanded': detail !== null ? open : undefined,
-        onClick: detail !== null ? () => setOpen(!open) : undefined,
-    }, createElement('span', { className: `dsh-my-observability-node dsh-my-observability-node-${kind}` }), createElement('span', { className: `dsh-my-observability-event-icon dsh-my-observability-icon-${kind}` }, typeIcon(event)), createElement('span', { className: 'dsh-my-observability-event-body' }, createElement('span', { className: 'dsh-my-observability-event-head' }, createElement('span', { className: `dsh-my-observability-badge dsh-my-observability-badge-${kind}` }, typeLabel(event)), createElement('span', { className: 'dsh-my-observability-time' }, timeText(event.time))), meta !== ''
-        ? createElement('span', { className: 'dsh-my-observability-event-meta' }, createElement(HighlightText, { text: meta, keyword }))
-        : null, detail !== null && open ? createElement('div', { className: 'dsh-my-observability-event-detail' }, detail) : null));
-}
-/** 类型过滤按钮组（aria-pressed 选中态；plugin 过滤插件事件，issue #154）。 */
-function TypeFilter({ filter, onFilter }) {
-    const options = [
-        ['', strings.filterAll()],
-        ['agent_status', strings.filterStatus()],
-        ['llm_stream', strings.filterLlm()],
-        ['tool', strings.filterTools()],
-        ['plugin', strings.filterPlugin()],
-    ];
-    return createElement('div', { className: 'dsh-my-observability-filters' }, options.map(([value, label]) => createElement('button', {
-        key: value,
-        type: 'button',
-        className: `dsh-my-observability-chip${filter === value ? ' dsh-my-observability-chip-active' : ''}`,
-        'aria-pressed': filter === value,
-        onClick: () => onFilter(value),
-    }, label)));
-}
-/** 拉取会话列表与事件（选中为空时自动选当前/首个会话）。 */
-async function loadReplayData(selected, currentSession, setters) {
-    try {
-        const list = await apiJson('/observability/api/sessions');
-        setters.setSessions(list);
-        if (selected === '' && list.length > 0) {
-            const preferred = list.some((s) => s.sessionId === currentSession) ? currentSession : list[0].sessionId;
-            setters.setSelected(preferred);
-            return;
-        }
-        const query = selected !== ''
-            ? `/observability/api/events?sessionId=${encodeURIComponent(selected)}&limit=300`
-            : '/observability/api/events?limit=0';
-        setters.setEvents(await apiJson(query));
-        setters.setError('');
-    }
-    catch (err) {
-        setters.setError(err instanceof Error ? err.message : String(err));
-    }
-    finally {
-        setters.setLoading(false);
-    }
-}
-/** 下拉选项文案：可读标题（首条用户消息）优先，无标题回退 UUID 短显；
- *  附加事件数与时间，用户一眼看出"哪个对话"。 */
-function sessionOptionLabel(s) {
-    const title = typeof s.title === 'string' && s.title !== '' ? s.title : strings.sessionFallback(shortId(s.sessionId));
-    return `${title} · ${strings.eventCount(s.count)}`;
-}
-/** 会话 id 短显示（UUID 取前 8 位）。 */
-function shortId(sessionId) {
-    return typeof sessionId === 'string' && sessionId.length > 8 ? `${sessionId.slice(0, 8)}…` : sessionId || '';
-}
-/** 工具栏：会话选择 + 手动刷新 + 类型过滤。 */
-function ReplayToolbar({ sessions, selected, onSelect, filter, onFilter, onRefresh, }) {
-    return createElement('div', { className: 'dsh-my-observability-toolbar' }, createElement('div', { className: 'dsh-my-observability-toolbar-row' }, createElement('select', {
-        className: 'dsh-my-observability-select',
-        value: selected,
-        disabled: sessions.length === 0,
-        onChange: (e) => onSelect(e.target.value),
-    }, sessions.length === 0
-        ? createElement('option', { value: '' }, strings.allSessions())
-        : sessions.map((s) => createElement('option', { key: s.sessionId, value: s.sessionId }, sessionOptionLabel(s)))), createElement('button', {
-        type: 'button',
-        className: 'dsh-my-observability-iconbtn',
-        'aria-label': strings.refresh(),
-        title: strings.refresh(),
-        onClick: onRefresh,
-    }, icon.refresh(15))), createElement(TypeFilter, { filter, onFilter }));
-}
-/** 加载中状态（旋转刷新图标 + 次级色文案，不阻塞布局）。 */
-function LoadingState() {
-    return createElement('div', { className: 'dsh-my-observability-state' }, icon.refresh(14), createElement('span', null, strings.loading()));
-}
-/** 空状态（图标 + 主文案 + hint 两行结构）。 */
-function EmptyState() {
-    return createElement('div', { className: 'dsh-my-observability-empty' }, createElement('span', { className: 'dsh-my-observability-empty-icon' }, icon.clock(20)), createElement('span', null, strings.emptyEvents()), createElement('span', { className: 'dsh-my-observability-empty-hint' }, strings.emptyEventsHint()));
-}
-/** 错误状态（错误色文案 + 重试按钮）。 */
-function ErrorState({ message, onRetry }) {
-    return createElement('div', { className: 'dsh-my-observability-error' }, createElement('span', { className: 'dsh-my-observability-error-text' }, `${strings.loadError()}：${message}`), createElement('button', {
-        type: 'button',
-        className: 'dsh-my-observability-iconbtn',
-        'aria-label': strings.retry(),
-        title: strings.retry(),
-        onClick: onRetry,
-    }, icon.refresh(15)));
-}
-/** 轨迹回放主面板：会话选择 + 类型过滤 + 搜索/组合过滤 + 导出 + 统计 + 时间轴。
- *  状态与派生值集中在 replay-ext.js 的 useReplayState；本组件只拼装视图。
- *  面板可见时轮询、隐藏时暂停。 */
-function ReplayPanel(props) {
-    const s = useReplayState(props);
-    return createElement('div', { className: 'dsh-my-observability-panel' }, createElement(ResourcePanel, { resource: s.resource }), createElement(ReplayToolbar, {
-        sessions: s.sessions,
-        selected: s.selected,
-        onSelect: s.setSelected,
-        filter: s.filter,
-        onFilter: s.setFilter,
-        onRefresh: s.retry,
-    }), createElement(SearchFilterBar, {
-        keyword: s.keyword,
-        onKeyword: s.setKeyword,
-        timeStart: s.timeStart,
-        onTimeStart: s.setTimeStart,
-        timeEnd: s.timeEnd,
-        onTimeEnd: s.setTimeEnd,
-        result: s.result,
-        onResult: s.setResult,
-        onClear: s.clearFilters,
-    }), createElement(ExportBar, {
-        scope: s.scope,
-        onScope: s.setScope,
-        onExportJson: () => void s.onExport('json'),
-        onExportCsv: () => void s.onExport('csv'),
-        showStats: s.showStats,
-        onToggleStats: () => s.setShowStats((value) => !value),
-        disabled: !s.canExport,
-    }), s.error !== '' ? createElement(ErrorState, { message: s.error, onRetry: s.retry }) : null, s.loading && s.error === '' ? createElement(LoadingState, null) : null, !s.loading && s.error === '' && s.filtered.length === 0
-        ? s.hasFilter
-            ? createElement(NoMatchesState, null)
-            : createElement(EmptyState, null)
-        : null, s.showStats ? createElement(StatsPanel, { events: s.filtered }) : null, createElement('div', { className: 'dsh-my-observability-timeline' }, s.rows));
-}
 
     "use strict";
 // ── 资源监控区块（写放大/资源超限预警，见 lib/resource-monitor.js）──────
-// 依赖 replay.js 先拼接（apiJson）与 i18n.js（strings）。纯函数声明文本。
+// 依赖 api.js 片段（apiJson）与 i18n.js（strings）。纯函数声明文本。
 const RESOURCE_POLL_MS = 15000;
 function fmtResourceBytes(bytes) {
     if (!Number.isFinite(bytes))
         return '-';
     return `${(bytes / 1048576).toFixed(1)} MB`;
 }
-/** 资源采样状态：可见时每 15s 轮询 /observability/api/resources。 */
+/** 资源采样状态：可见时每 15s 轮询 /observability/api/resources，隐藏时暂停。 */
 function useResourceState(visible) {
     const [resource, setResource] = useState(null);
     useEffect(() => {
@@ -1158,7 +567,7 @@ function ResourceMetric({ label, value }) {
 /** 资源面板：四指标 + 告警列表（write-rate/file-size level=error 红色，cpu/memory warn 黄色）。 */
 function ResourcePanel({ resource }) {
     if (resource === null || resource === undefined) {
-        return createElement('div', { className: 'dsh-my-observability-resource' }, strings.resourceLoading());
+        return createElement('div', { className: 'dsh-my-observability-state' }, icon.refresh(14), createElement('span', null, strings.resourceLoading()));
     }
     const alerts = Array.isArray(resource.alerts) ? resource.alerts : [];
     return createElement('div', { className: 'dsh-my-observability-resource' }, createElement('div', { className: 'dsh-my-observability-resource-head' }, strings.resourceTitle()), createElement('div', { className: 'dsh-my-observability-resource-grid' }, createElement(ResourceMetric, { label: strings.resourceFile(), value: fmtResourceBytes(resource.fileBytes) }), createElement(ResourceMetric, {
@@ -1170,269 +579,6 @@ function ResourcePanel({ resource }) {
     }), createElement(ResourceMetric, { label: strings.resourceMem(), value: fmtResourceBytes(resource.memoryBytes) })), alerts.length > 0
         ? createElement('div', { className: 'dsh-my-observability-resource-alerts' }, alerts.map((alert) => createElement('div', { className: `dsh-my-observability-resource-alert dsh-my-observability-resource-alert-${alert.level}` }, alert.message)))
         : null);
-}
-
-    "use strict";
-// ── 审计视图扩展：搜索 / 组合过滤 / 导出 / 统计 / 高亮（replay.js 拆出）────
-// 依赖 replay.js（REPLAY_POLL_MS 等常量与 loadReplayData/EventRow）与
-// audit-view.js 纯函数（applyAuditFilter 等）。始终以 function 声明提升。
-const REPLAY_POLL_MS = 5000;
-const ALL_SESSIONS = '*';
-const EXPORT_LIMIT_ALL = 20000;
-/** `datetime-local` 值 → 毫秒时间戳（空/非法返回 undefined）。 */
-function datetimeToMs(value) {
-    if (typeof value !== 'string' || value.trim() === '')
-        return undefined;
-    const ms = new Date(value).getTime();
-    return Number.isFinite(ms) ? ms : undefined;
-}
-/** 是否有活动过滤条件（决定无匹配/空状态展示）。 */
-function hasActiveFilter(criteria) {
-    return (criteria.keyword !== '' ||
-        criteria.result !== '' ||
-        criteria.timeStart !== undefined ||
-        criteria.timeEnd !== undefined ||
-        criteria.type !== '');
-}
-/** 命中关键词高亮（`mark` 包裹命中段；无关键词时原样文本）。 */
-function HighlightText({ text, keyword }) {
-    const segments = highlightSegments(text, keyword);
-    return createElement('span', null, segments.map((seg, index) => seg.hit ? createElement('mark', { key: index, className: 'dsh-my-observability-mark' }, seg.text) : seg.text));
-}
-/** 搜索 / 组合过滤栏：关键词 + 时间范围 + 成功/失败。 */
-/** 搜索框行（含清除按钮）。 */
-function SearchInput({ keyword, onKeyword, onClear, }) {
-    return createElement('div', { className: 'dsh-my-observability-search-row' }, createElement('input', {
-        className: 'dsh-my-observability-input',
-        type: 'search',
-        value: keyword,
-        placeholder: strings.searchPlaceholder(),
-        onChange: (e) => onKeyword(e.target.value),
-    }), keyword !== ''
-        ? createElement('button', {
-            type: 'button',
-            className: 'dsh-my-observability-iconbtn',
-            'aria-label': strings.clearFilters(),
-            title: strings.clearFilters(),
-            onClick: onClear,
-        }, icon.close(15))
-        : null);
-}
-/** 时间范围行（开始/结束，datetime-local）。 */
-function TimeRangeInput({ timeStart, onTimeStart, timeEnd, onTimeEnd, }) {
-    return createElement('div', { className: 'dsh-my-observability-time-row' }, createElement('label', { className: 'dsh-my-observability-time-label' }, strings.timeStartLabel()), createElement('input', {
-        className: 'dsh-my-observability-input dsh-my-observability-time-input',
-        type: 'datetime-local',
-        value: timeStart,
-        onChange: (e) => onTimeStart(e.target.value),
-    }), createElement('label', { className: 'dsh-my-observability-time-label' }, strings.timeEndLabel()), createElement('input', {
-        className: 'dsh-my-observability-input dsh-my-observability-time-input',
-        type: 'datetime-local',
-        value: timeEnd,
-        onChange: (e) => onTimeEnd(e.target.value),
-    }));
-}
-/** 成功/失败结果过滤组。 */
-function ResultFilter({ result, onResult }) {
-    const options = [
-        ['', strings.filterAllResult()],
-        ['success', strings.filterSuccess()],
-        ['fail', strings.filterFail()],
-    ];
-    return createElement('div', { className: 'dsh-my-observability-filters' }, options.map(([value, label]) => createElement('button', {
-        key: value,
-        type: 'button',
-        className: `dsh-my-observability-chip${result === value ? ' dsh-my-observability-chip-active' : ''}`,
-        'aria-pressed': result === value,
-        onClick: () => onResult(value),
-    }, label)));
-}
-/** 搜索 / 组合过滤栏：关键词 + 时间范围 + 成功/失败。 */
-function SearchFilterBar({ keyword, onKeyword, timeStart, onTimeStart, timeEnd, onTimeEnd, result, onResult, onClear, }) {
-    return createElement('div', { className: 'dsh-my-observability-toolbar' }, createElement(SearchInput, { keyword, onKeyword, onClear }), createElement(TimeRangeInput, { timeStart, onTimeStart, timeEnd, onTimeEnd }), createElement(ResultFilter, { result, onResult }));
-}
-/** 导出栏：导出范围选择（当前会话/全部会话）+ JSON/CSV 按钮 + 统计开关。 */
-function ExportBar({ scope, onScope, onExportJson, onExportCsv, showStats, onToggleStats, disabled, }) {
-    return createElement('div', { className: 'dsh-my-observability-export' }, createElement('div', { className: 'dsh-my-observability-toolbar-row' }, createElement('select', {
-        className: 'dsh-my-observability-select',
-        value: scope,
-        disabled,
-        onChange: (e) => onScope(e.target.value),
-    }, createElement('option', { value: 'session' }, strings.scopeSession()), createElement('option', { value: 'all' }, strings.scopeAll())), createElement('button', { type: 'button', className: 'dsh-my-observability-btn', disabled, onClick: onExportJson }, strings.exportJson()), createElement('button', { type: 'button', className: 'dsh-my-observability-btn', disabled, onClick: onExportCsv }, strings.exportCsv()), createElement('button', {
-        type: 'button',
-        className: 'dsh-my-observability-btn',
-        'aria-pressed': showStats,
-        onClick: onToggleStats,
-    }, strings.statsTitle())));
-}
-/** 工具调用统计视图（Top N 调用次数 + 失败率）。 */
-function StatsPanel({ events }) {
-    const stats = computeToolStats(events, 5);
-    if (stats.length === 0)
-        return createElement('div', { className: 'dsh-my-observability-stats-empty' }, strings.statsEmpty());
-    return createElement('div', { className: 'dsh-my-observability-stats' }, createElement('div', { className: 'dsh-my-observability-stats-title' }, strings.statsTitle()), createElement('table', { className: 'dsh-my-observability-stats-table' }, createElement('thead', null, createElement('tr', null, createElement('th', null, strings.statsTool()), createElement('th', null, strings.statsCalls()), createElement('th', null, strings.statsFailRate()))), createElement('tbody', null, stats.map((s) => createElement('tr', { key: s.tool }, createElement('td', null, s.tool), createElement('td', null, String(s.calls)), createElement('td', null, `${(s.failRate * 100).toFixed(1)}%`))))));
-}
-/** 无匹配状态（搜索/过滤条件命中 0 条）。 */
-function NoMatchesState() {
-    return createElement('div', { className: 'dsh-my-observability-empty' }, createElement('span', { className: 'dsh-my-observability-empty-icon' }, icon.search(20)), createElement('span', null, strings.noMatches()));
-}
-/** 触发浏览器下载（Blob + a[download]）。 */
-function downloadAudit(content, format) {
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-    const filename = `${strings.exportFileName()}-${stamp}.${format}`;
-    const mime = format === 'json' ? 'application/json' : 'text/csv;charset=utf-8';
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-}
-/** 拉取全部会话事件（导出范围「全部会话」用），并应用当前过滤条件。 */
-async function allSessionEvents(criteria) {
-    const all = await apiJson(`/observability/api/events?sessionId=${encodeURIComponent(ALL_SESSIONS)}&limit=${EXPORT_LIMIT_ALL}`);
-    return applyAuditFilter(all, criteria);
-}
-/** 导出：依据范围（当前会话=过滤后结果 / 全部会话=拉取后过滤）生成并下载。 */
-async function runExport(format, scope, filtered, criteria, onError) {
-    try {
-        const dataEvents = scope === 'session' ? filtered : await allSessionEvents(criteria);
-        downloadAudit(format === 'json' ? auditToJson(dataEvents) : auditToCsv(dataEvents), format);
-    }
-    catch (err) {
-        onError(err instanceof Error ? err.message : String(err));
-    }
-}
-/** 轨迹回放面板的数据状态：会话列表 + 选中 + 事件 + 轮询 + 加载/错误。
- *  隐藏时暂停轮询，可见时按 REPLAY_POLL_MS 拉取并自动选当前会话。 */
-function useReplayDataState(props) {
-    const currentSession = props?.scope?.sessionId || '';
-    const visible = props?.visible !== false;
-    const [sessions, setSessions] = useState([]);
-    const [selected, setSelected] = useState('');
-    const [events, setEvents] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [reloadTick, setReloadTick] = useState(0);
-    const [resource, setResource] = useState(null);
-    // 资源采样轮询（写放大/资源超限预警；可见时 15s 一次，隐藏暂停）
-    useEffect(() => {
-        if (!visible)
-            return undefined;
-        let alive = true;
-        const tick = () => {
-            if (alive)
-                apiJson('/observability/api/resources')
-                    .then(setResource)
-                    .catch(() => { });
-        };
-        tick();
-        const timer = setInterval(tick, RESOURCE_POLL_MS);
-        return () => {
-            alive = false;
-            clearInterval(timer);
-        };
-    }, [visible]);
-    useEffect(() => {
-        if (!visible)
-            return undefined;
-        let alive = true;
-        const setters = { setSessions, setSelected, setEvents, setError, setLoading };
-        const tick = () => {
-            if (alive)
-                void loadReplayData(selected, currentSession, setters);
-        };
-        tick();
-        const timer = setInterval(tick, REPLAY_POLL_MS);
-        return () => {
-            alive = false;
-            clearInterval(timer);
-        };
-    }, [visible, selected, currentSession, reloadTick]);
-    const retry = () => {
-        setError('');
-        setLoading(true);
-        setReloadTick((tick) => tick + 1);
-    };
-    return {
-        currentSession,
-        resource,
-        sessions,
-        selected,
-        events,
-        loading,
-        error,
-        setSessions,
-        setSelected,
-        setEvents,
-        setLoading,
-        setError,
-        retry,
-    };
-}
-/** 轨迹回放面板的视图状态：过滤条件（类型/关键词/时间/成功失败）+ 导出范围 +
- *  统计开关，及派生值（过滤结果 / 高亮行 / 可导出）。 */
-function useReplayState(props) {
-    const data = useReplayDataState(props);
-    const [filter, setFilter] = useState('');
-    const [keyword, setKeyword] = useState('');
-    const [timeStart, setTimeStart] = useState('');
-    const [timeEnd, setTimeEnd] = useState('');
-    const [result, setResult] = useState('');
-    const [scope, setScope] = useState('session');
-    const [showStats, setShowStats] = useState(false);
-    const clearFilters = () => {
-        setKeyword('');
-        setTimeStart('');
-        setTimeEnd('');
-        setResult('');
-        setFilter('');
-    };
-    const criteria = {
-        type: filter,
-        keyword,
-        timeStart: datetimeToMs(timeStart),
-        timeEnd: datetimeToMs(timeEnd),
-        result,
-    };
-    const filtered = applyAuditFilter(data.events, criteria);
-    const hasFilter = hasActiveFilter(criteria);
-    const rows = filtered.map((event, index) => createElement(EventRow, { key: event.id ?? index, event, keyword }));
-    const canExport = !data.loading && data.events.length > 0;
-    const onExport = (format) => void runExport(format, scope, filtered, criteria, data.setError);
-    return {
-        resource: data.resource,
-        sessions: data.sessions,
-        selected: data.selected,
-        events: data.events,
-        loading: data.loading,
-        error: data.error,
-        filter,
-        keyword,
-        timeStart,
-        timeEnd,
-        result,
-        scope,
-        showStats,
-        setSelected: data.setSelected,
-        setFilter,
-        setKeyword,
-        setTimeStart,
-        setTimeEnd,
-        setResult,
-        setScope,
-        setShowStats,
-        retry: data.retry,
-        clearFilters,
-        filtered,
-        hasFilter,
-        rows,
-        canExport,
-        onExport,
-    };
 }
 
     "use strict";
@@ -1812,10 +958,11 @@ function attachObservabilitySettingsTab(ctx) {
     "use strict";
 // ── 样式（DSH 语义 token，随 activation 注入 / teardown 卸载）──────
 // 前缀 dsh-my-observability-（issue #54：与 dsh-my-guard 前缀分离，消除跨插件类名冲突）。
+// 轨迹回放面板移除后，其专属样式（时间轴 / 事件行 / 徽标 / 过滤 chip /
+// 搜索与时间范围 / 导出 / 统计表）一并删除；保留资源面板、Git 面板、
+// 状态区与设置页（设置页样式在 settings.js 片段内自带）。
 const STYLES = `
 .dsh-my-observability-panel{display:flex;flex-direction:column;gap:10px;padding:2px 6px 8px;color:var(--dsw-alias-label-primary);font:var(--dsw-font-s-14)}
-.dsh-my-observability-toolbar{display:flex;flex-direction:column;gap:8px}
-.dsh-my-observability-toolbar-row{display:flex;align-items:center;gap:6px}
 .dsh-my-observability-select{flex:1;min-width:0;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-primary);
   background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:4px 8px}
 .dsh-my-observability-select:disabled{opacity:.4;cursor:default}
@@ -1824,92 +971,12 @@ const STYLES = `
 .dsh-my-observability-input::placeholder{color:var(--dsw-alias-label-tertiary)}
 .dsh-my-observability-repo-row{display:flex;gap:8px;align-items:center}
 .dsh-my-observability-repo-input{flex:1}
-.dsh-my-observability-iconbtn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;
-  border:none;border-radius:50%;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none;
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-my-observability-iconbtn svg{display:block}
-.dsh-my-observability-iconbtn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.dsh-my-observability-iconbtn:disabled{opacity:.4;cursor:default}
-.dsh-my-observability-filters{display:flex;gap:6px;flex-wrap:wrap}
-.dsh-my-observability-chip{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);background:transparent;
-  border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:2px 10px;cursor:pointer;
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out), border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-my-observability-chip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.dsh-my-observability-chip-active{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-interactive-primary);
-  background:color-mix(in srgb, var(--dsw-alias-interactive-primary) 12%, transparent)}
-/* ── 时间轴：左侧竖线 + 类型色节点圆点 + 类型图标行 ── */
-.dsh-my-observability-timeline{display:flex;flex-direction:column;gap:2px;max-height:calc(100vh - 240px);overflow-y:auto;
-  padding-left:14px;position:relative}
-.dsh-my-observability-timeline::before{content:'';position:absolute;left:5px;top:8px;bottom:8px;width:2px;border-radius:1px;
-  background:var(--dsw-alias-border-l2)}
-.dsh-my-observability-event{position:relative;display:flex;align-items:flex-start;gap:8px;box-sizing:border-box;width:100%;
-  margin:0;padding:5px 8px 5px 0;border:none;background:transparent;border-radius:8px;cursor:pointer;text-align:left;
-  font:var(--dsw-font-s-14);color:var(--dsw-alias-label-primary);
-  animation:dsh-my-observability-row-in 150ms var(--ds-ease-in-out);
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-my-observability-event:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.dsh-my-observability-event:active{background:color-mix(in srgb, var(--dsw-alias-interactive-bg-hover) 55%, transparent)}
-.dsh-my-observability-node{position:absolute;left:-14px;top:50%;transform:translateY(-50%);width:12px;height:12px;flex:none;
-  box-sizing:border-box;border-radius:50%;background:var(--dsw-alias-bg-layer-2);border:2px solid var(--dsw-alias-label-tertiary)}
-.dsh-my-observability-node-status{border-color:var(--dsw-alias-state-info-primary)}
-.dsh-my-observability-node-llm{border-color:var(--dsw-alias-state-warn-primary)}
-.dsh-my-observability-node-call{border-color:var(--dsw-alias-accent)}
-.dsh-my-observability-node-plugin{border-color:var(--dsw-alias-state-info-primary)}
-.dsh-my-observability-node-result{border-color:var(--dsw-alias-state-success-primary)}
-.dsh-my-observability-node-fail{border-color:var(--dsw-alias-state-error-primary)}
-.dsh-my-observability-event-icon{flex:none;display:flex;align-items:center;margin-top:1px}
-.dsh-my-observability-icon-status{color:var(--dsw-alias-state-info-primary)}
-.dsh-my-observability-icon-llm{color:var(--dsw-alias-state-warn-primary)}
-.dsh-my-observability-icon-call{color:var(--dsw-alias-accent)}
-.dsh-my-observability-icon-plugin{color:var(--dsw-alias-state-info-primary)}
-.dsh-my-observability-icon-result{color:var(--dsw-alias-state-success-primary)}
-.dsh-my-observability-icon-fail{color:var(--dsw-alias-state-error-primary)}
-.dsh-my-observability-event-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.dsh-my-observability-event-head{display:flex;align-items:center;gap:8px;justify-content:space-between}
-.dsh-my-observability-badge{flex:none;font:var(--dsw-font-xxxs-strong-11);border-radius:4px;padding:1px 6px}
-.dsh-my-observability-badge-status{color:var(--dsw-alias-state-info-primary);background:color-mix(in srgb, var(--dsw-alias-state-info-primary) 14%, transparent)}
-.dsh-my-observability-badge-llm{color:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 14%, transparent)}
-.dsh-my-observability-badge-call{color:var(--dsw-alias-accent);background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent)}
-.dsh-my-observability-badge-plugin{color:var(--dsw-alias-state-info-primary);background:color-mix(in srgb, var(--dsw-alias-state-info-primary) 14%, transparent)}
-.dsh-my-observability-badge-result{color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent)}
-.dsh-my-observability-badge-fail{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent)}
-.dsh-my-observability-time{flex:none;font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary);white-space:nowrap}
-.dsh-my-observability-event-meta{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.6;word-break:break-word}
-/* ── 插件事件详情展开（issue #154：原因/参数可查）── */
-.dsh-my-observability-event-detail{display:flex;flex-direction:column;gap:2px;margin-top:4px;padding:6px 8px;
-  border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1)}
-.dsh-my-observability-detail-row{display:flex;gap:8px;font:var(--dsw-font-xxs-12);line-height:1.5;word-break:break-word}
-.dsh-my-observability-detail-key{flex:none;font:var(--dsw-font-xxxs-strong-11);color:var(--dsw-alias-label-tertiary);min-width:56px}
-.dsh-my-observability-detail-value{color:var(--dsw-alias-label-primary)}
 /* ── 状态区：loading / 空 / 错误 ── */
 .dsh-my-observability-state{display:flex;align-items:center;gap:6px;padding:8px 6px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
 .dsh-my-observability-state svg{flex:none;animation:dsh-my-observability-spin 1s linear infinite}
 .dsh-my-observability-empty{display:flex;flex-direction:column;align-items:center;gap:4px;padding:16px 8px;text-align:center;
   font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);line-height:1.7}
-.dsh-my-observability-empty-icon{display:flex;color:var(--dsw-alias-label-tertiary)}
-.dsh-my-observability-empty-hint{display:block;color:var(--dsw-alias-label-dimmed);font:var(--dsw-font-xxxs-11)}
-.dsh-my-observability-error{display:flex;align-items:center;gap:6px;padding:8px 6px;font:var(--dsw-font-xxs-12);
-  color:var(--dsw-alias-state-error-primary);white-space:pre-wrap;word-break:break-all;line-height:1.7}
-.dsh-my-observability-error-text{flex:1;min-width:0}
-@keyframes dsh-my-observability-row-in{from{opacity:0;transform:translateY(1px)}to{opacity:1;transform:none}}
 @keyframes dsh-my-observability-spin{to{transform:rotate(360deg)}}
-/* ── 审计视图：搜索 / 组合过滤 / 导出 / 统计 / 高亮 ── */
-.dsh-my-observability-search-row{display:flex;align-items:center;gap:6px}
-.dsh-my-observability-search-row .dsh-my-observability-input{flex:1}
-.dsh-my-observability-time-row{display:flex;align-items:center;gap:6px}
-.dsh-my-observability-time-label{flex:none;font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary)}
-.dsh-my-observability-time-input{flex:1;min-width:0}
-.dsh-my-observability-mark{background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 30%, transparent);
-  color:var(--dsw-alias-label-primary);border-radius:2px;padding:0 1px}
-.dsh-my-observability-export{display:flex;flex-direction:column;gap:6px}
-.dsh-my-observability-stats{display:flex;flex-direction:column;gap:6px;border:1px solid var(--dsw-alias-border-l2);
-  border-radius:6px;padding:8px}
-.dsh-my-observability-stats-title{font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}
-.dsh-my-observability-stats-table{width:100%;border-collapse:collapse;font:var(--dsw-font-xxs-12)}
-.dsh-my-observability-stats-table th,.dsh-my-observability-stats-table td{text-align:left;padding:3px 6px;
-  border-bottom:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}
-.dsh-my-observability-stats-table th{font:var(--dsw-font-xxxs-strong-11);color:var(--dsw-alias-label-tertiary)}
-.dsh-my-observability-stats-empty{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);padding:6px 2px}
 /* ── Git 面板 ── */
 .dsh-my-observability-status{font:var(--dsw-font-xxs-strong-12);color:var(--dsw-alias-label-secondary)}
 .dsh-my-observability-actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -1944,6 +1011,7 @@ const STYLES = `
 .dsh-my-observability-review-ok{font:var(--dsw-font-xxs-strong-12);color:var(--dsw-alias-state-success-primary)}
 .dsh-my-observability-ai{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.5;
   border:1px dashed var(--dsw-alias-border-l2);border-radius:6px;padding:6px 8px}
+/* ── 资源面板 ── */
 .dsh-my-observability-resource{border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:8px;margin:0 0 8px}
 .dsh-my-observability-resource-head{font:var(--dsw-font-xxs-strong-12);color:var(--dsw-alias-label-primary);margin-bottom:6px}
 .dsh-my-observability-resource-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
@@ -1972,10 +1040,10 @@ function injectStyles() {
     // ── 插件体：样式注入 + 两个原生页签注册 ─────────────────────────────
     exports.inject = ['slots', 'sidebarRightTabs']
 
-    /** 原生 tab body 席位：适配成面板契约（ReplayPanel 要 visible）。 */
-    function ReplayTabBody(props) {
+    /** 原生 tab body 席位：资源面板要 visible（隐藏时暂停采样轮询）。 */
+    function ResourceTabBody(props) {
       const info = typeof props.useTabInfo === 'function' ? props.useTabInfo() : undefined
-      return createElement(ReplayPanel, { visible: info?.tab?.visible !== false })
+      return createElement(ResourcePanel, { resource: useResourceState(info?.tab?.visible !== false) })
     }
 
     /** Git 面板不接 props（迁移前组件工厂同样只是透传）。 */
@@ -1995,12 +1063,12 @@ function injectStyles() {
       if (tabs == null || slots == null) return
 
       registerNativeTab(ctx, tabs, slots, {
-        id: REPLAY_TAB_ID,
-        order: REPLAY_TAB_ORDER,
-        label: 'replay',
-        title: () => strings.replayTitle(),
-        Body: ReplayTabBody,
-        Title: nativeTabTitle(() => strings.replayTitle()),
+        id: RESOURCE_TAB_ID,
+        order: RESOURCE_TAB_ORDER,
+        label: 'resources',
+        title: () => strings.resourceTitle(),
+        Body: ResourceTabBody,
+        Title: nativeTabTitle(() => strings.resourceTitle()),
       })
       registerNativeTab(ctx, tabs, slots, {
         id: GIT_TAB_ID,

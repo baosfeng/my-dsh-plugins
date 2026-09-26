@@ -9,9 +9,8 @@
   // TypeScript 无法感知拼接后的运行时作用域，严格模式会产生大量
   // 跨文件类型推断错误。类型安全由 globals.d.ts 的声明保证。
   //
-  // 注意：lib/audit-view.js（server 端 tsc 产物）仍由 scripts/build.mjs
-  // 读取并剥离 export 前缀后作为片段拼接——它是 server/client 共用模块
-  // （server 端被 vitest 直接导入，client 端作为片段），因此不在本配置内。
+  // 注意：片段之间共享 factory 作用域（如 api.js 的 apiJson 被 resource.js /
+  // git.js / settings.js 引用），因此没有 import/export，靠拼接连成一体。
   "compilerOptions": {
     "strict": false,
     "target": "es2022",

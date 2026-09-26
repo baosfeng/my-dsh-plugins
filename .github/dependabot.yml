@@ -2,8 +2,8 @@
 # 有安全漏洞（含 qs 这类 advisory）时自动开 PR，保持依赖安全。
 #
 # ── 覆盖盲区修复（issue #184 阶段 4）────────────────────────────────────────────
-# 原配置只有 `directory: '/'`，而本仓库是「根 + 19 个 plugins/<name>」的多包布局：
-# 19 个插件的 package.json（含 devDeps typescript / @types/node）全在覆盖范围之外，
+# 原配置只有 `directory: '/'`，而本仓库是「根 + 18 个 plugins/<name>」的多包布局：
+# 18 个插件的 package.json（含 devDeps typescript / @types/node）全在覆盖范围之外，
 # 于是没有自动化盯着它们 —— dsh-my-memory 的 devDeps 漂移到 TS 5 / @types/node 20
 # （落后 2 / 6 个大版本）长期无人发现。现在用 `directories` + 通配符 `/plugins/*`
 # 一次性纳入全部插件目录，且**新增插件自动生效**，不需要再改本文件。
@@ -19,7 +19,7 @@
 # 因此自动更新只覆盖 devDependencies（开发工具链）；安全更新不受 allow 限制，仍会开 PR。
 #
 # ── 分组（避免 PR 风暴）──────────────────────────────────────────────────────
-# glob 覆盖 19 个目录后，若不做分组，一个 `npm update` 周期可能开出十几个 PR。
+# glob 覆盖 18 个目录后，若不做分组，一个 `npm update` 周期可能开出十几个 PR。
 # 每个目录内按 minor/patch 与 major 两档合并：低风险一个 PR、跨大版本单独一个 PR
 # （跨大版本本来就该逐个读 CHANGELOG）。`open-pull-requests-limit` 再封顶总量。
 version: 2
@@ -55,7 +55,7 @@ updates:
     # 自动合并：对于 minor/patch 更新，如果 CI 通过，自动合并
     # 注意：需要在 GitHub 仓库设置中启用 "Allow auto-merge"
 
-  # 19 个插件目录的 devDeps（typescript / @types/node）—— issue #184 的漂移防线
+  # 18 个插件目录的 devDeps（typescript / @types/node）—— issue #184 的漂移防线
   - package-ecosystem: 'npm'
     directories:
       - '/plugins/*'

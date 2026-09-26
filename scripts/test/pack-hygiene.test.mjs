@@ -417,11 +417,14 @@ describe('CLI 端到端（真实 npm pack）', () => {
   })
 })
 
-describe('真实仓库回归（19 个插件：0 问题）', () => {
+describe('真实仓库回归（全仓库 0 问题）', () => {
   it('全仓库通过，且报出实测耗时', () => {
     const cli = runCli(['--root', repoRoot])
     expect(cli.status).toBe(0)
-    expect(cli.stdout).toContain('✅ 通过：19/19')
+    // 不硬编码插件数（插件增删会让数字漂移假红）：只校验「扫描数 = 通过数」即 0 问题
+    const summary = /✅ 通过：(\d+)\/(\d+)/.exec(cli.stdout)
+    expect(summary?.[1]).toBeDefined()
+    expect(summary?.[1]).toBe(summary?.[2])
     expect(cli.stdout).toMatch(/实测耗时：pack 合计 \d+ms/)
   }, 60_000)
 })

@@ -272,7 +272,7 @@ export function attachEventListeners(ctx: DshContext, shared: SharedContext): vo
  *    **同一批** disposer 里被 `Promise.all` 并发卸载（vendor cordis `Fiber._unload`）；
  *    整树卸载期间监听器已经摘掉 → 事件收不到，`state.json.events` 里收尾期 0 条；
  *  - 而 loader 的树**在收尾 disposer 开始执行时仍是完整的**（实测：teardown 进入时
- *    `tree.store` 有全部 172 个 entry，同批 group 释放之后才变空）。
+ *    `tree.store` 有全部 183 个 entry，同批 group 释放之后才变空）。
  * 所以：进入收尾时同步抓一份 entry id 快照 → unmount 之后再读一次 → 差集就是本轮
  * 收尾释放的 entry，逐条记为 entry-dispose。
  *

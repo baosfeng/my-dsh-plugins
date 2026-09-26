@@ -227,6 +227,19 @@ function attachConfigFailureLogFallback(ctx: DshContext, failures: ConfigFailure
  */
 export function attachEventListeners(ctx: DshContext, shared: SharedContext): void {
   const failures = createConfigFailureTracker(ctx, shared)
+  /**
+   * loader 生命周期诊断：**记录后立刻排队落盘**，与同一子系统的其它写点同一约定
+   * （promote/quarantine 在 mount.ts、update-failed 在本文件下方）。
+   *
+   * 为什么不能只写内存（#438）：诊断写入与进程退出是竞态。宿主卸载整树时同批 disposer
+   * 由 `Promise.all` 并发执行、顺序无保证，`loader/partial-dispose` 可能晚于 teardown 的
+   * 收尾快照到达；此时若没有排队落盘，事件就只剩内存副本，进程一退就永久丢失 ——
+   * 事后无法回答「收尾时哪些 entry 被释放」。
+   */
+  const record = (type: string, message: string): void => {
+    logEvent(shared, type, message)
+    shared.persistSoon()
+  }
   ctx.on('loader/entry-init', (entry: unknown) => {
     // loader 在 Entry **构造函数**里 emit（vendor/loader/src/config/entry.ts:58），此刻
     // `entry.options` 还是空对象（同文件 :50），同步读取只能记成 "entry ? initialized" ——
@@ -234,11 +247,11 @@ export function attachEventListeners(ctx: DshContext, shared: SharedContext): vo
     // 才被赋值（entry.ts:120），所以推迟一个 microtask 再落笔：那时 options.id 已可用，
     // 且依然只读 options —— 绝不碰 entry.id getter（见 entryLabelOf 的警告）。
     queueMicrotask(() => {
-      logEvent(shared, 'entry-init', `entry ${entryLabelOf(entry)} initialized`)
+      record('entry-init', `entry ${entryLabelOf(entry)} initialized`)
     })
   })
   ctx.on('loader/partial-dispose', (entry: unknown) => {
-    logEvent(shared, 'entry-dispose', `entry ${entryLabelOf(entry)} disposed`)
+    record('entry-dispose', `entry ${entryLabelOf(entry)} disposed`)
   })
   attachConfigFailureLogFallback(ctx, failures)
 }

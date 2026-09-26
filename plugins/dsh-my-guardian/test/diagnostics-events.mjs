@@ -101,6 +101,7 @@ test('attachEventListeners：只订阅目标宿主真实派发的 loader 事件�
       ['entry-dispose', 'entry dsh-bad disposed'],
     ],
   )
+  assert.equal(shared.persistCount, 2, 'entry-init / dispose 记录后立刻排队落盘（#438：不再只写内存）')
 })
 
 test('配置热更新失败诊断由结构化日志通道承担：告警 + 立刻落盘 + 补齐真实原因', () => {

@@ -34,7 +34,7 @@ const ui = require('@deepseek-ai/dsh-client-ui-primitives')
 - **可用性判定必须按 React 语义**：`MarkdownText` 是 `React.memo(...)` 返回的**对象**（`typeof` 为 `'object'`），`typeof v === 'function'` 会把官方组件误判为不可用。判定用 `typeof v === 'function' || (typeof v === 'object' && v !== null && typeof v.$$typeof === 'symbol')`（`react` 的 `isValidElementType` 在当前宿主与 Node 侧 React 19 上都不再导出），并排除 `'div'` 这类宿主标签字符串。
 - **仍保留三级链**：官方组件也可能不存在（极旧/裁剪宿主）→ 最后一级 `<pre data-<插件>-fallback="true">`。只有「真的换了渲染组件」才算降级；把组件变量置 `null` 而渲染路径没有 null 分支会在渲染期抛 `Element type is invalid … but got: null`（见[踩坑目录](../踩坑/README.md)「只 catch require 不等于优雅降级」）。
 - **中文文案由插件提供**：`labels` 无默认值正好让中文化插件注入自己的文案；只渲染纯标题/段落时不会访问 `labels.code.copyLabel`，但契约上仍必须传（含代码块必崩）。
-- **为什么不是替代 `dsh-md-render`**：官方缺 `dsh-md-render` 的增强集（非标准表格容错、`div.md-code-block` 容器——`dsh-mermaid-render` 靠它渲染图表、代码复制/高亮/行号/主题、公式结构排版、`.tzx-md` 与 `dsh-md-render-*` 契约类样式）。**`dsh-md-render` 仍是首选内核**：external 声明保留、装了就用它，官方组件仅在它缺失时兜底。
+- **`dsh-md-render` 的定位（0.3.0 起）**：自实现渲染（表格 / 公式 / 代码块高亮）已随官方 0.1.7-rc.2 内置而下线，`MarkdownView` 现在就是「官方 `MarkdownText` + 表格容错 + 整段复制」的薄封装；跨插件三级回退链（外部内核 → 官方组件 → `<pre>`）与 external 声明保留不变，缺包时行为与只用官方组件一致（不再有行为差异）。
 
 ## 踩坑
 

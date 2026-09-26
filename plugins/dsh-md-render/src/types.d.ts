@@ -32,8 +32,8 @@ export interface WebServerService {
   }): () => void
 }
 
-/** 配置值类型（开关为布尔，选择项为字符串）。 */
-export type ConfigValue = Record<string, boolean | string>
+/** 配置值类型（保留的增强开关均为布尔）。 */
+export type ConfigValue = Record<string, boolean>
 
 /** 日志器。 */
 export interface Logger {

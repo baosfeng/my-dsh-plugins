@@ -1,7 +1,7 @@
 /**
  * Smoke test for the dsh-md-render host half: mounts the plugin against a
  * mocked context and asserts the host-half contract (name + inject +
- * apply registers the /md/api config surface, issue #84 配置化).
+ * apply registers the /md/api config surface).
  * The client half is browser-only (lib/client.js, __ModuleLoader__ format);
  * CI checks its syntax with `node --check`.
  *

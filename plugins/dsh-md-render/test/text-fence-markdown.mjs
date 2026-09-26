@@ -1,341 +1,172 @@
-import { test } from 'vitest'
 /**
- * Issue #393 regression test: fenced code blocks tagged `text` / `plaintext` /
- * `txt` must be rendered as markdown, each with its own "查看原文" toggle,
- * while **every other language tag and untagged blocks stay exactly as
- * before** (anti-regression) — mirroring the dsh-mermaid-render shape
- * (intercept a specific fence language → swap the rendering form + view
- * toggle).
- * Assertions:
- *  - the three tags render markdown DOM (headings / bold / inline code /
- *    lists / non-standard tables — i.e. the existing render pipeline),
- *  - the raw <pre> stays in the DOM (原文保留, 切换可切回),
- *  - each block carries its own view state: toggling one block's button
- *    does not touch another block,
- *  - other tags (js) and untagged blocks get no container, no toggle and no
- *    view attribute (behaviour unchanged),
- *  - streaming blocks (ancestor `[data-streaming]`) are skipped until the
- *    stream settles, and re-scans never duplicate the rendered nodes.
- * Loads the BUILT bundle lib/client.js against a fake DOM.
+ * text / plaintext / txt 围栏块按 markdown 渲染（本插件保留的真增量）。
+ *
+ * 口径：这三种语言标记**一律**渲染（不做内容启发式判定）；其他标记（js / ts /
+ * json / bash …）与无标记的块完全不触碰（反回归）；每块独立的「查看原文」切换；
+ * 流式块等内容稳定再渲染；幂等（签名未变不重建）；超长 / 开关关闭 / 官方组件
+ * 不可用 → 不动宿主 DOM（真降级）。
+ *
+ * 语言与源码来源是官方 CodeBlock 的 React props（fiber memoizedProps.lang/code，
+ * ui-primitives/src/markdown/CodeBlock.tsx），DOM 里没有 language-xxx class；
+ * fiber 取不到时回退 code.language-xxx / banner infostring（兼容旧契约 DOM）。
  */
+import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
+import {
+  createOfficialStack,
+  createPage,
+  createReactStub,
+  installGlobals,
+  loadBundle,
+  makeCodeBlock,
+  makeElement,
+} from './support/fake-dom.mjs'
 
-const stubbed = {
-  createElement: (type, props, ...children) => ({ type, props: { ...(props || {}), children: children.flat() } }),
-  useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
-  useEffect: () => {},
-  useMemo: (fn) => fn(),
-  useSyncExternalStore: (_s, get) => get(),
-}
-
-function makeElement(tag, attrs = {}) {
-  const el = {
-    tagName: String(tag).toUpperCase(),
-    nodeType: tag === 'fragment' ? 11 : 1,
-    children: [],
-    _text: '',
-    className: attrs.className || '',
-    style: {},
-    dataset: {},
-    hidden: false,
-    type: '',
-    parentNode: null,
-    _attrs: {},
-    _listeners: {},
-    addEventListener(type, fn) {
-      ;(this._listeners[type] ||= []).push(fn)
-    },
-    removeEventListener() {},
-    appendChild(child) {
-      const i = this.children.indexOf(child)
-      if (i >= 0) this.children.splice(i, 1)
-      this.children.push(child)
-      child.parentNode = this
-      return child
-    },
-    insertBefore(child, ref) {
-      const i = ref ? this.children.indexOf(ref) : -1
-      if (i < 0) this.children.push(child)
-      else this.children.splice(i, 0, child)
-      child.parentNode = this
-      return child
-    },
-    removeChild(child) {
-      const i = this.children.indexOf(child)
-      if (i >= 0) this.children.splice(i, 1)
-      child.parentNode = null
-      return child
-    },
-    setAttribute(k, v) {
-      this._attrs[k] = String(v)
-      if (k === 'hidden') this.hidden = true
-    },
-    getAttribute(k) {
-      return Object.prototype.hasOwnProperty.call(this._attrs, k) ? this._attrs[k] : null
-    },
-    removeAttribute(k) {
-      delete this._attrs[k]
-    },
-    querySelector(sel) {
-      const walk = (els) => {
-        for (const e of els) {
-          if (e.matchesSel && e.matchesSel(sel)) return e
-          const found = walk(e.children || [])
-          if (found) return found
-        }
-        return null
-      }
-      return walk(this.children)
-    },
-    querySelectorAll(sel) {
-      const out = []
-      const walk = (els) => {
-        for (const e of els) {
-          if (e.matchesSel && e.matchesSel(sel)) out.push(e)
-          walk(e.children || [])
-        }
-      }
-      walk(this.children)
-      return out
-    },
-    matchesSel(sel) {
-      if (sel === 'pre[data-context-text="true"]') {
-        return this.tagName === 'PRE' && this.getAttribute('data-context-text') === 'true'
-      }
-      if (sel === 'div.md-code-block') {
-        return this.tagName === 'DIV' && String(this.className).split(/\s+/).includes('md-code-block')
-      }
-      if (sel === 'div.tzx-md') return this.tagName === 'DIV' && String(this.className).includes('tzx-md')
-      if (sel === 'div.md-table-wide') return this.tagName === 'DIV' && String(this.className).includes('md-table-wide')
-      if (sel === 'div.tzx-md, div.md-table-wide') {
-        return (
-          (this.tagName === 'DIV' && String(this.className).includes('tzx-md')) ||
-          (this.tagName === 'DIV' && String(this.className).includes('md-table-wide'))
-        )
-      }
-      if (sel === '[data-conversation-scroll]') return this.dataset.conversationScroll === '1'
-      if (sel === '[data-streaming]') return this.dataset.streaming === '1'
-      if (sel === 'table.dsh-md-render-table')
-        return this.tagName === 'TABLE' && this.className === 'dsh-md-render-table'
-      const tagClass = sel.match(/^([a-z][a-z0-9]*)\.([\w-]+)$/)
-      if (tagClass) {
-        return this.tagName === tagClass[1].toUpperCase() && String(this.className).split(/\s+/).includes(tagClass[2])
-      }
-      if (/^[a-z][a-z0-9]*$/.test(sel)) return this.tagName === sel.toUpperCase()
-      return false
-    },
-    matches(sel) {
-      return this.matchesSel(sel)
-    },
-    closest(sel) {
-      let node = this
-      while (node) {
-        if (node.matchesSel && node.matchesSel(sel)) return node
-        node = node.parentNode
-      }
-      return null
-    },
-  }
-  Object.defineProperty(el, 'textContent', {
-    get() {
-      if (this.children.length === 0) return this._text
-      return this.children.map((c) => c.textContent).join('')
-    },
-    set(v) {
-      this._text = v
-      this.children = []
-    },
-  })
-  return el
-}
-
-/** 构造一个围栏代码块：div.md-code-block > head(语言标签) + pre > code。 */
-function makeCodeBlock(lang, code) {
-  const block = makeElement('div', { className: 'md-code-block' })
-  const head = makeElement('div', { className: 'dsh-md-render-code-head' })
-  const label = makeElement('span', { className: 'dsh-md-render-code-lang' })
-  label.textContent = lang || 'text'
-  head.appendChild(label)
-  const pre = makeElement('pre', { className: 'tzx-pre' })
-  const codeEl = makeElement('code', { className: lang ? 'language-' + lang : '' })
-  codeEl.textContent = code
-  pre.appendChild(codeEl)
-  block.appendChild(head)
-  block.appendChild(pre)
-  return block
-}
-
-const MARKDOWN_SOURCE = [
-  '## 结论',
-  '',
-  '模型实际输出的是 **markdown**，详见 `detect.ts`。',
-  '',
-  '- 第一项',
-  '- 第二项',
-  '',
-  '插件 | 版本',
-  '--- | ---',
-  'dsh-md-render | 0.1.9',
-].join('\n')
-
-// ── fake page: [data-conversation-scroll] > 各类围栏代码块 ──────────────
-const scrollEl = makeElement('div')
-scrollEl.dataset.conversationScroll = '1'
-const textBlock = makeCodeBlock('text', MARKDOWN_SOURCE)
-const plaintextBlock = makeCodeBlock('plaintext', '# plaintext 标题')
-const txtBlock = makeCodeBlock('txt', '1. 有序一\n2. 有序二')
-const jsBlock = makeCodeBlock('js', 'const a = 1')
-const plainBlock = makeCodeBlock('', 'plain text block')
-for (const b of [textBlock, plaintextBlock, txtBlock, jsBlock, plainBlock]) scrollEl.appendChild(b)
-const bodyEl = makeElement('body')
-bodyEl.appendChild(scrollEl)
-
-const styleTags = []
-global.window = { location: { href: 'http://127.0.0.1:3080/app', search: '' } }
-global.document = {
-  body: bodyEl,
-  head: {
-    appendChild(el) {
-      styleTags.push(el)
-      return el
-    },
-    removeChild() {},
-  },
-  createElement: (tag) => makeElement(tag),
-  createElementNS: (_ns, tag) => makeElement(tag),
-  createTextNode: (text) => ({ nodeType: 3, textContent: text }),
-  createDocumentFragment: () => makeElement('fragment'),
-}
-global.Element = function Element() {}
-global.MutationObserver = class {
-  constructor() {}
-  observe() {}
-  disconnect() {}
-}
-
-let registered = null
-global.window.__ModuleLoader__ = {
-  load: (reg) => {
-    registered = reg
-  },
-}
-eval(fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8'))
-assert.ok(registered, 'bundle registered')
-const exportsObj = registered.factory((spec) => {
-  if (spec === 'react') return stubbed
-  throw new Error('unexpected require: ' + spec)
-})
-const ctx = { effect: (fn) => fn() }
-exportsObj.apply(ctx)
-
+const SOURCE = ['## 结论', '', '模型输出的是 **markdown**。', '', '插件 | 版本', '---', 'dsh-md-render | 0.2.0'].join(
+  '\n',
+)
 const TEXT_BODY = 'div.dsh-md-render-text-md'
 const TOGGLE = 'button.dsh-md-render-text-toggle'
 const VIEW_ATTR = 'data-dsh-md-render-text-view'
 
-/** 点一次块的切换按钮（假 DOM：直接调绑定的 click 监听）。 */
-function clickToggle(block) {
-  const btn = block.querySelector(TOGGLE)
-  assert.ok(btn, 'toggle button exists')
-  btn._listeners.click[0]({})
+/** 一套完整夹具：三个目标块 + 两个不该被碰的块。 */
+function setup({ withOfficial = true } = {}) {
+  const scroll = makeElement('div', { 'data-conversation-scroll': 'true' })
+  const blocks = {
+    text: makeCodeBlock({ lang: 'text', code: SOURCE }),
+    plaintext: makeCodeBlock({ lang: 'plaintext', code: '# plaintext 标题' }),
+    txt: makeCodeBlock({ lang: 'txt', code: '1. 有序一\n2. 有序二' }),
+    js: makeCodeBlock({ lang: 'js', code: 'const a = 1' }),
+    untagged: makeCodeBlock({ lang: '', code: 'plain text block' }),
+  }
+  for (const block of Object.values(blocks)) scroll.appendChild(block)
+  const page = installGlobals(createPage(scroll))
+  const react = createReactStub()
+  const stack = withOfficial ? createOfficialStack(page, react) : { markdown: undefined, reactDom: undefined }
+  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  const ctx = { effect: (fn) => fn() }
+  loaded.exports.apply(ctx)
+  return { page, loaded, stack, blocks, scroll, ctx }
 }
 
-test('text / plaintext / txt fences are rendered as markdown', () => {
-  assert.equal(typeof exportsObj.scanTextBlocks, 'function', 'scanTextBlocks exported')
-  for (const [name, block] of [
-    ['text', textBlock],
-    ['plaintext', plaintextBlock],
-    ['txt', txtBlock],
-  ]) {
+const stubText = (block) => {
+  const stub = block.querySelector('.official-md-stub')
+  return stub === null ? null : stub.getAttribute('data-text')
+}
+
+test('三种语言标记的围栏块都交给官方渲染器渲染，并挂上「查看原文」', () => {
+  const { loaded, stack, blocks } = setup()
+  for (const [name, block] of Object.entries({ text: blocks.text, plaintext: blocks.plaintext, txt: blocks.txt })) {
     const body = block.querySelector(TEXT_BODY)
-    assert.ok(body, name + ' block got a markdown container')
-    assert.ok(String(body.className).includes('tzx-md'), name + ' container carries the tzx-md contract class')
-    assert.equal(block.getAttribute(VIEW_ATTR), 'markdown', name + ' block starts in markdown view')
-    assert.ok(block.querySelector(TOGGLE), name + ' block got a 查看原文 toggle')
+    assert.ok(body, name + ' 块获得渲染容器')
+    assert.ok(String(body.className).includes('tzx-md'), name + ' 容器带 tzx-md 契约类')
+    assert.equal(block.getAttribute(VIEW_ATTR), 'markdown', name + ' 块初始为 markdown 视图')
+    assert.ok(block.querySelector(TOGGLE), name + ' 块获得切换按钮')
   }
-  // 复用既有渲染管线：标题 / 粗体 / 行内代码 / 列表
-  const body = textBlock.querySelector(TEXT_BODY)
-  assert.equal(body.querySelector('h2').textContent, '结论', 'heading rendered')
-  assert.equal(body.querySelector('strong').textContent, 'markdown', 'bold rendered')
-  assert.equal(body.querySelector('code').textContent, 'detect.ts', 'inline code rendered')
-  assert.equal(body.querySelectorAll('li').length, 2, 'list items rendered')
-  // 复用既有表格能力：非标准表格（无首尾管道符）在 text 块内渲染为表格
-  const table = body.querySelector('table.dsh-md-render-table')
-  assert.ok(table, 'non-standard table inside a text fence rendered as a real table')
-  assert.equal(table.querySelectorAll('th')[0].textContent, '插件', 'table header cell')
-  assert.equal(table.querySelectorAll('td')[0].textContent, 'dsh-md-render', 'table data cell')
-  // plaintext / txt 也走同一管线
-  assert.equal(plaintextBlock.querySelector(TEXT_BODY).querySelector('h1').textContent, 'plaintext 标题', 'h1 rendered')
-  assert.equal(txtBlock.querySelector(TEXT_BODY).querySelectorAll('li').length, 2, 'ordered list rendered')
-  // 原文保留在 DOM（切回后显示原始内容）且未被改写
-  const pre = textBlock.querySelector('pre')
-  assert.ok(pre, 'original <pre> kept in the DOM')
-  assert.equal(pre.querySelector('code').textContent, MARKDOWN_SOURCE, 'original code text untouched')
-  assert.equal(pre.querySelector('code').className, 'language-text', 'original language class untouched')
+  assert.equal(stubText(blocks.text), SOURCE.replace('---', '--- | ---'), 'text 块内容进入官方渲染器（表格已规范化）')
+  assert.equal(stubText(blocks.plaintext), '# plaintext 标题', 'plaintext 块内容')
+  assert.equal(stubText(blocks.txt), '1. 有序一\n2. 有序二', 'txt 块内容')
+  assert.equal(stack.markdown.calls.length, 3, '官方渲染器恰好被调用三次')
+  assert.equal(stack.markdown.calls[0].labels.code.copyLabel, '复制', 'labels 透传')
+  assert.equal(blocks.text.querySelector('code').textContent, SOURCE, '宿主 code 文本未被改写')
+  assert.equal(loaded.exports.officialMarkdownAvailable(), true, '官方渲染器可用')
 })
 
-test('the per-block 查看原文 toggle switches back to the raw code block', () => {
-  assert.equal(textBlock.querySelector(TOGGLE).textContent, '查看原文', 'toggle label in markdown view')
-  clickToggle(textBlock)
-  assert.equal(textBlock.getAttribute(VIEW_ATTR), 'source', 'block switched to the source view')
-  assert.equal(textBlock.querySelector(TOGGLE).textContent, '查看渲染', 'toggle label flips in source view')
-  assert.equal(textBlock.querySelector(TOGGLE).getAttribute('aria-pressed'), 'true', 'aria-pressed reflects the state')
-  // 每块独立：另一个 text 块不受影响
-  assert.equal(plaintextBlock.getAttribute(VIEW_ATTR), 'markdown', 'other blocks keep their own state')
-  clickToggle(textBlock)
-  assert.equal(textBlock.getAttribute(VIEW_ATTR), 'markdown', 'switch back to the markdown view')
-  // 切换两次不产生重复节点
-  assert.equal(textBlock.querySelectorAll(TEXT_BODY).length, 1, 'single markdown container per block')
-  assert.equal(textBlock.querySelectorAll(TOGGLE).length, 1, 'single toggle per block')
+test('「查看原文」逐块独立，来回切不重复挂载', () => {
+  const { blocks } = setup()
+  const toggle = blocks.text.querySelector(TOGGLE)
+  assert.equal(toggle.textContent, '查看原文', 'markdown 视图下的按钮文案')
+  toggle.fire('click')
+  assert.equal(blocks.text.getAttribute(VIEW_ATTR), 'source', '切到原文视图')
+  assert.equal(blocks.text.querySelector(TOGGLE).textContent, '查看渲染', '文案翻转')
+  assert.equal(blocks.text.querySelector(TOGGLE).getAttribute('aria-pressed'), 'true', 'aria-pressed 反映状态')
+  assert.equal(blocks.plaintext.getAttribute(VIEW_ATTR), 'markdown', '其它块状态独立')
+  blocks.text.querySelector(TOGGLE).fire('click')
+  assert.equal(blocks.text.getAttribute(VIEW_ATTR), 'markdown', '切回 markdown 视图')
+  assert.equal(blocks.text.querySelectorAll(TEXT_BODY).length, 1, '容器未重复')
+  assert.equal(blocks.text.querySelectorAll(TOGGLE).length, 1, '按钮未重复')
 })
 
-test('other language tags and untagged blocks are untouched (anti-regression)', () => {
-  for (const [name, block] of [
-    ['js', jsBlock],
-    ['untagged', plainBlock],
-  ]) {
-    assert.equal(block.getAttribute(VIEW_ATTR), null, name + ' block carries no view attribute')
-    assert.equal(block.querySelector(TEXT_BODY), null, name + ' block got no markdown container')
-    assert.equal(block.querySelector(TOGGLE), null, name + ' block got no toggle')
-    assert.equal(block.querySelectorAll('pre').length, 1, name + ' block keeps its single <pre>')
+test('其他语言标记与无标记块完全不被触碰（反回归）', () => {
+  const { blocks, scroll } = setup()
+  for (const [name, block] of Object.entries({ js: blocks.js, untagged: blocks.untagged })) {
+    assert.equal(block.getAttribute(VIEW_ATTR), null, name + ' 块无视图属性')
+    assert.equal(block.querySelector(TEXT_BODY), null, name + ' 块无渲染容器')
+    assert.equal(block.querySelector(TOGGLE), null, name + ' 块无切换按钮')
+    assert.equal(block.querySelectorAll('pre').length, 1, name + ' 块保持单个 pre')
   }
-  assert.equal(jsBlock.querySelector('code').textContent, 'const a = 1', 'js code text untouched')
-  assert.equal(plainBlock.querySelector('code').textContent, 'plain text block', 'untagged code text untouched')
-  assert.equal(scrollEl.querySelectorAll(TEXT_BODY).length, 3, 'exactly the three target fences rendered')
+  assert.equal(blocks.js.querySelector('code').textContent, 'const a = 1', 'js 文本未动')
+  assert.equal(scroll.querySelectorAll(TEXT_BODY).length, 3, '恰好三个目标块被接管')
 })
 
-test('streaming blocks wait for the stream to settle, re-scans stay idempotent', () => {
-  const streamWrap = makeElement('div')
-  streamWrap.dataset.streaming = '1'
-  const streamBlock = makeCodeBlock('txt', '## 流式标题')
-  streamWrap.appendChild(streamBlock)
-  scrollEl.appendChild(streamWrap)
-  exportsObj.apply(ctx)
-  assert.equal(streamBlock.getAttribute(VIEW_ATTR), null, 'streaming block left alone')
-  assert.equal(streamBlock.querySelector(TEXT_BODY), null, 'no container while streaming')
-  // 流式结束（宿主移除 data-streaming）→ 兜底重扫后渲染一次
-  delete streamWrap.dataset.streaming
-  exportsObj.apply(ctx)
-  assert.equal(streamBlock.getAttribute(VIEW_ATTR), 'markdown', 'rendered once the stream settled')
-  assert.equal(
-    streamBlock.querySelector(TEXT_BODY).querySelector('h2').textContent,
-    '流式标题',
-    'streamed content rendered',
-  )
-  // 再次重扫：签名一致 → 不重复渲染、不重建节点
+test('流式块等内容稳定；重扫幂等；内容变化才重建', () => {
+  const { loaded, blocks, ctx } = setup()
+  const wrap = makeElement('div', { 'data-streaming': 'true' })
+  const streamBlock = makeCodeBlock({ lang: 'txt', code: '## 流式标题' })
+  wrap.appendChild(streamBlock)
+  blocks.text.parentNode.appendChild(wrap)
+  loaded.exports.apply(ctx)
+  assert.equal(streamBlock.getAttribute(VIEW_ATTR), null, '流式中的块不动')
+  delete wrap.dataset.streaming
+  wrap.removeAttribute('data-streaming')
+  loaded.exports.apply(ctx)
+  assert.equal(streamBlock.getAttribute(VIEW_ATTR), 'markdown', '流式结束后渲染')
   const body = streamBlock.querySelector(TEXT_BODY)
-  exportsObj.apply(ctx)
-  assert.equal(streamBlock.querySelector(TEXT_BODY), body, 'same container reused on re-scan')
-  assert.equal(streamBlock.querySelectorAll(TEXT_BODY).length, 1, 'no duplicate containers after re-scan')
-  assert.equal(streamBlock.querySelectorAll(TOGGLE).length, 1, 'no duplicate toggles after re-scan')
-  // 内容变化（宿主重渲染补写）→ 重建渲染
-  streamBlock.querySelector('code').textContent = '## 改后标题'
-  exportsObj.apply(ctx)
-  assert.notEqual(streamBlock.querySelector(TEXT_BODY), body, 'container rebuilt for changed content')
-  assert.equal(
-    streamBlock.querySelector(TEXT_BODY).querySelector('h2').textContent,
-    '改后标题',
-    'updated content rendered',
-  )
-  assert.equal(streamBlock.querySelectorAll(TEXT_BODY).length, 1, 'old container removed')
+  assert.equal(stubText(streamBlock), '## 流式标题', '流式内容进入官方渲染器')
+  loaded.exports.apply(ctx)
+  assert.equal(streamBlock.querySelector(TEXT_BODY), body, '同一容器复用')
+  assert.equal(streamBlock.querySelectorAll(TEXT_BODY).length, 1, '无重复容器')
+  streamBlock['__reactFiber$test1'].return.memoizedProps.code = '## 改后标题'
+  loaded.exports.apply(ctx)
+  assert.notEqual(streamBlock.querySelector(TEXT_BODY), body, '内容变化后重建容器')
+  assert.equal(stubText(streamBlock), '## 改后标题', '新内容进入官方渲染器')
+  assert.equal(streamBlock.querySelectorAll(TEXT_BODY).length, 1, '旧容器已移除')
+})
+
+test('fiber 取不到时回退 code.language-xxx / banner 语言名（兼容旧契约 DOM）', () => {
+  const scroll = makeElement('div', { 'data-conversation-scroll': 'true' })
+  const legacy = makeCodeBlock({ lang: 'text', code: '# 旧契约', fiber: false, banner: false })
+  legacy.querySelector('code').className = 'language-text'
+  const bannerOnly = makeCodeBlock({ lang: 'txt', code: '# banner', fiber: false })
+  scroll.appendChild(legacy)
+  scroll.appendChild(bannerOnly)
+  const page = installGlobals(createPage(scroll))
+  const react = createReactStub()
+  const stack = createOfficialStack(page, react)
+  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  loaded.exports.apply({ effect: (fn) => fn() })
+  assert.equal(stubText(legacy), '# 旧契约', 'code.language-xxx 回退生效')
+  assert.equal(stubText(bannerOnly), '# banner', 'banner infostring 回退生效')
+})
+
+test('超长块 / 开关关闭 / 官方组件不可用 → 一律不动宿主 DOM（真降级）', () => {
+  const scroll = makeElement('div', { 'data-conversation-scroll': 'true' })
+  const huge = makeCodeBlock({ lang: 'text', code: 'x'.repeat(100001) })
+  scroll.appendChild(huge)
+  let page = installGlobals(createPage(scroll))
+  let react = createReactStub()
+  let stack = createOfficialStack(page, react)
+  let loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  loaded.exports.apply({ effect: (fn) => fn() })
+  assert.equal(huge.querySelector(TEXT_BODY), null, '超长块不渲染')
+  assert.equal(huge.getAttribute(VIEW_ATTR), null, '超长块无视图属性')
+
+  const offBlock = makeCodeBlock({ lang: 'text', code: '# 关掉' })
+  scroll.appendChild(offBlock)
+  loaded.exports.setRenderOptions({ textFenceMarkdown: false })
+  loaded.exports.apply({ effect: (fn) => fn() })
+  assert.equal(offBlock.querySelector(TEXT_BODY), null, '开关关闭后不渲染')
+  loaded.exports.setRenderOptions({ textFenceMarkdown: true })
+  loaded.exports.apply({ effect: (fn) => fn() })
+  assert.ok(offBlock.querySelector(TEXT_BODY), '开关恢复后渲染')
+
+  const noOfficial = makeElement('div', { 'data-conversation-scroll': 'true' })
+  const block = makeCodeBlock({ lang: 'text', code: '# 无官方' })
+  noOfficial.appendChild(block)
+  page = installGlobals(createPage(noOfficial))
+  react = createReactStub()
+  loaded = loadBundle({ page, react })
+  loaded.exports.apply({ effect: (fn) => fn() })
+  assert.equal(block.querySelector(TEXT_BODY), null, '官方组件不可用时不注入')
+  assert.equal(block.getAttribute(VIEW_ATTR), null, '无视图属性（宿主保持原样）')
 })

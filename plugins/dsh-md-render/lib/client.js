@@ -1,31 +1,30 @@
 /**
  * dsh-md-render — client half (browser).
  *
- * 统一 Markdown 渲染插件（issue #31 渲染职责迁移）：
- *  - 提供统一 MarkdownView 组件（表格 / 公式 / 代码块容器），供
- *    dsh-think-zh-expand 的 assistant-step 渲染器调用（跨插件
- *    require，见其 package.json 的 dsh.client.external 声明）；
- *  - 代码块容器 `div.md-code-block` 由本插件产出（结构保持，
- *    dsh-mermaid-render 无需改动即可扫描）；
- *  - DOM 层表格增强：扫描 `[data-conversation-scroll]` 内的
- *    `div.tzx-md`（MarkdownView 输出）与 `div.md-table-wide`（内置
- *    MarkdownText 的宽表格容器）容器，对容器内以纯文本段落形式存在
- *    的表格（`p.tzx-p`），用增强检测规则（支持无首尾管道符、分隔行
- *    变体、对齐标记）识别并解析，将段落替换为 `<table>`（表头 thead /
- *    数据 tbody / 对齐 style），外层 `div.dsh-md-render-table-scroll`
- *    提供宽表格横向滚动 + 滚动提示条；已渲染的表格（`table.tzx-table`
- *    等）跳过，不重复处理；
- *  - text / plaintext / txt 围栏块（issue #393）按 markdown 渲染 + 每块「查看原文」切换；
- *  - MutationObserver 跟随流式渲染，流式中的容器等内容稳定后再处理。
+ * 精简后的职责（**不再自实现任何 markdown 渲染**）：
+ *  - 官方渲染器接入（official-view.part）：表格（GFM + 宽表格横向滚动）、
+ *    公式（micromark-extension-math + KaTeX）、代码块（shiki 高亮 / 语言
+ *    标签 / 行号 / 复制）全部来自平台 seed 模块
+ *    @deepseek-ai/dsh-client-ui-primitives 的 MarkdownText（0.1.7-rc.2 内置）；
+ *  - 真增量①：text / plaintext / txt 围栏块按 markdown 渲染 + 每块「查看原文」切换；
+ *  - 真增量②：pre[data-context-text] 上下文注入块按 markdown 渲染
+ *    （宿主 ContextBody 把它渲染为纯文本）；
+ *  - 真增量③：整段 markdown 复制按钮（官方只有代码块复制）；
+ *  - 真增量④：统一 MarkdownView 导出（供本仓其它插件使用）；
+ *  - 真增量⑤：设置 → 插件 → 渲染 开关面板；
+ *  - 真增量⑥（容错子集）：官方 GFM 不认的两种分隔行写法（无管道符 /
+ *    列数与表头不等）先规范化再交给官方渲染（table-normalize.part）。
+ * 注入渲染走 react-dom/client 的 createRoot（与 dsh-mermaid-render 同一
+ * 手法），只把官方组件挂到本插件插入的容器里。
  *
  * 样式走 DSH 语义 token（--dsw-alias-* / --dsw-font-*），随 activation
  * 注入、fiber teardown 卸载（HMR/禁用无残留）。
  *
- * BUILD NOTE: 本文件是源码模板（骨架）。scripts/build.mjs 把
- * lib/parts/*.part.js 片段注入到下方 /*__PART_*__* / 占位符处并写出
- * lib/client.js（DSH 实际提供的产物，单一 __ModuleLoader__ bundle，无相对
- * 路径 require）。产物必须提交（CI 只跑 node --check + 测试，不跑构建）；
- * 片段为纯函数声明文本（无 import/export），注入后处于本 factory 作用域。
+ * BUILD NOTE: 本文件是源码模板（骨架）。scripts/build.mjs 把 lib/parts/*.part.js
+ * 片段注入到下方 /*__PART_*__* / 占位符处并写出 lib/client.js（DSH 实际提供的
+ * 产物，单一 __ModuleLoader__ bundle，无相对路径 require）。产物必须提交
+ * （CI 只跑 node --check + 测试，不跑构建）；片段为纯函数声明文本（无
+ * import/export），注入后处于本 factory 作用域。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-md-render',
@@ -33,401 +32,33 @@ window.__ModuleLoader__.load({
     var module = { exports: {} }
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
-    // MarkdownView（markdown.part.js 片段）使用 createElement；
-    // CopyButton（issue #74 复制按钮）使用 useState；设置页
-    // （settings.part.js，issue #84）使用 useEffect。
+    // MarkdownView（markdown-view.part.js）与 CopyButton（copy.part.js）用
+    // createElement / useState；设置页（settings.part.js）用 useEffect；
+    // 注入渲染经 official-view.part.js 的 require 取平台模块。
     const { createElement, useState, useEffect } = require('react')
 
-    // ── 共享图标（dsh-shared/client-parts，issue #54 阶段 0）────────
-    // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──
-// Single source of truth for the plugin UI icon set (issue #54 阶段 0).
-// Extracted from dsh-file-activity's lib/parts/icons.part.js; every plugin's
-// scripts/build.mjs splices this file via the `shared: true` piece marker.
-// Keep the stroke=currentColor outline style — it inherits the surrounding
-// text color and reads on both light and dark themes.
-const ICON_STROKE = 1.8
-const iconSvg = (children, size) =>
-  createElement(
-    'svg',
-    {
-      width: size,
-      height: size,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      strokeWidth: ICON_STROKE,
-      strokeLinecap: 'round',
-      strokeLinejoin: 'round',
-      'aria-hidden': 'true',
-    },
-    children.map((child, i) =>
-      child === null || child === undefined || typeof child === 'boolean'
-        ? child
-        : createElement(child.type, { key: i, ...child.props }),
-    ),
-  )
-
-const icon = {
-  clock: (size = 16) =>
-    iconSvg([createElement('circle', { cx: 12, cy: 12, r: 9 }), createElement('path', { d: 'M12 7v5l3 2' })], size),
-  refresh: (size = 16) =>
-    iconSvg(
-      [
-        createElement('path', { d: 'M21 12a9 9 0 1 1-2.64-6.36' }),
-        createElement('polyline', { points: '21 3 21 9 15 9' }),
-      ],
-      size,
-    ),
-  trash: (size = 16) =>
-    iconSvg(
-      [
-        createElement('path', { d: 'M3 6h18' }),
-        createElement('path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' }),
-        createElement('path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }),
-      ],
-      size,
-    ),
-  chevronRight: (size = 14) => iconSvg([createElement('polyline', { points: '9 6 15 12 9 18' })], size),
-  chevronDown: (size = 14) => iconSvg([createElement('polyline', { points: '6 9 12 15 18 9' })], size),
-  file: (size = 16) =>
-    iconSvg(
-      [
-        createElement('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }),
-        createElement('path', { d: 'M14 2v6h6' }),
-      ],
-      size,
-    ),
-  folder: (size = 16) =>
-    iconSvg(
-      [
-        createElement('path', {
-          d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
-        }),
-      ],
-      size,
-    ),
-  external: (size = 15) =>
-    iconSvg(
-      [
-        createElement('path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }),
-        createElement('polyline', { points: '15 3 21 3 21 9' }),
-        createElement('line', { x1: 10, y1: 14, x2: 21, y2: 3 }),
-      ],
-      size,
-    ),
-  close: (size = 15) =>
-    iconSvg(
-      [
-        createElement('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
-        createElement('line', { x1: 6, y1: 6, x2: 18, y2: 18 }),
-      ],
-      size,
-    ),
-  help: (size = 16) =>
-    iconSvg(
-      [
-        createElement('circle', { cx: 12, cy: 12, r: 9 }),
-        createElement('path', { d: 'M9.1 9.2a3 3 0 0 1 5.8 1.2c0 1.8-2.7 2.4-2.7 3.6' }),
-        createElement('line', { x1: 12, y1: 17.2, x2: 12.01, y2: 17.2 }),
-      ],
-      size,
-    ),
-  // ── generic action icons (issue #54 阶段 0) ─────────────────────────────
-  // Added for the upcoming plugin UI refresh: save/confirm (check), add/
-  // install (plus), market search (search), settings entry (settings).
-  check: (size = 16) => iconSvg([createElement('polyline', { points: '20 6 9 17 4 12' })], size),
-  plus: (size = 16) =>
-    iconSvg(
-      [
-        createElement('line', { x1: 12, y1: 5, x2: 12, y2: 19 }),
-        createElement('line', { x1: 5, y1: 12, x2: 19, y2: 12 }),
-      ],
-      size,
-    ),
-  pencil: (size = 15) =>
-    iconSvg([createElement('path', { d: 'M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z' })], size),
-  search: (size = 16) =>
-    iconSvg(
-      [
-        createElement('circle', { cx: 11, cy: 11, r: 8 }),
-        createElement('line', { x1: 21, y1: 21, x2: 16.65, y2: 16.65 }),
-      ],
-      size,
-    ),
-  settings: (size = 16) =>
-    iconSvg(
-      [
-        createElement('circle', { cx: 12, cy: 12, r: 3 }),
-        createElement('path', {
-          d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z',
-        }),
-      ],
-      size,
-    ),
-  // 警告（issue #54 阶段 1 新增）：安全护栏告警类型图标（投毒/提示注入），
-  // 三角警示 + 感叹号，stroke=currentColor 风格与其余图标一致。
-  alert: (size = 16) =>
-    iconSvg(
-      [
-        createElement('path', {
-          d: 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z',
-        }),
-        createElement('line', { x1: 12, y1: 9, x2: 12, y2: 13 }),
-        createElement('line', { x1: 12, y1: 17, x2: 12.01, y2: 17 }),
-      ],
-      size,
-    ),
-  // 代码（issue #54 阶段 1 新增）：尖括号 `</>`，预览/代码切换的代码视图
-  // 图标（dsh-mermaid-render 卡片），stroke=currentColor 风格与其余图标一致。
-  code: (size = 16) =>
-    iconSvg(
-      [
-        createElement('polyline', { points: '16 18 22 12 16 6' }),
-        createElement('polyline', { points: '8 6 2 12 8 18' }),
-      ],
-      size,
-    ),
-  // 下载（issue #85 新增）：箭头入托盘，图表导出按钮（dsh-mermaid-render
-  // 卡片下载 PNG/SVG），stroke=currentColor 风格与其余图标一致。
-  download: (size = 16) =>
-    iconSvg(
-      [
-        createElement('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
-        createElement('polyline', { points: '7 10 12 15 17 10' }),
-        createElement('line', { x1: 12, y1: 15, x2: 12, y2: 3 }),
-      ],
-      size,
-    ),
-  // 复制（issue #85 新增）：双层矩形，复制源码按钮（dsh-mermaid-render
-  // 卡片复制代码），stroke=currentColor 风格与其余图标一致。
-  copy: (size = 16) =>
-    iconSvg(
-      [
-        createElement('rect', { x: 9, y: 9, width: 13, height: 13, rx: 2 }),
-        createElement('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
-      ],
-      size,
-    ),
-  // 箭头向上（更新图标）：向上的箭头，表示更新操作
-  arrowUp: (size = 16) =>
-    iconSvg(
-      [
-        createElement('line', { x1: 12, y1: 19, x2: 12, y2: 5 }),
-        createElement('polyline', { points: '5 12 12 5 19 12' }),
-      ],
-      size,
-    ),
-  // 电源关（禁用图标）：圆形电源按钮，表示禁用操作
-  powerOff: (size = 16) =>
-    iconSvg(
-      [
-        createElement('path', { d: 'M18.36 6.64a9 9 0 1 1-12.73 0' }),
-        createElement('line', { x1: 12, y1: 2, x2: 12, y2: 12 }),
-      ],
-      size,
-    ),
-  // 电源开（启用图标）：圆形电源按钮，表示启用操作
-  powerOn: (size = 16) =>
-    iconSvg(
-      [
-        createElement('path', { d: 'M18.36 6.64a9 9 0 1 1-12.73 0' }),
-        createElement('line', { x1: 12, y1: 2, x2: 12, y2: 12 }),
-      ],
-      size,
-    ),
-}
-
-// Common-language / file-type badges (issue #24): brand fill + contrast
-// ink, reading on both light and dark themes. Unmapped extensions keep the
-// neutral currentColor file icon above. [bg, fg ink, short mark]
-const FILE_BADGES = {
-  // JavaScript / TypeScript
-  js: ['#F7DF1E', '#323330', 'JS'],
-  mjs: ['#F7DF1E', '#323330', 'JS'],
-  cjs: ['#F7DF1E', '#323330', 'JS'],
-  ts: ['#3178C6', '#ffffff', 'TS'],
-  mts: ['#3178C6', '#ffffff', 'TS'],
-  cts: ['#3178C6', '#ffffff', 'TS'],
-  tsx: ['#3178C6', '#ffffff', 'TSX'],
-  jsx: ['#3178C6', '#ffffff', 'JSX'],
-  // 后端语言
-  java: ['#007396', '#ffffff', 'JAVA'],
-  c: ['#A8B9CC', '#111111', 'C'],
-  cpp: ['#00599C', '#ffffff', 'C++'],
-  cxx: ['#00599C', '#ffffff', 'C++'],
-  cc: ['#00599C', '#ffffff', 'C++'],
-  hpp: ['#00599C', '#ffffff', 'C++'],
-  h: ['#A8B9CC', '#111111', 'H'],
-  hh: ['#A8B9CC', '#111111', 'H'],
-  cs: ['#68217A', '#ffffff', 'C#'],
-  csharp: ['#68217A', '#ffffff', 'C#'],
-  go: ['#00ADD8', '#ffffff', 'GO'],
-  rs: ['#CE422B', '#ffffff', 'RS'],
-  rb: ['#B51624', '#ffffff', 'RB'],
-  php: ['#777BB4', '#ffffff', 'PHP'],
-  py: ['#3776AB', '#ffffff', 'PY'],
-  swift: ['#F05138', '#ffffff', 'SWIFT'],
-  kt: ['#7F52FF', '#ffffff', 'KT'],
-  kotlin: ['#7F52FF', '#ffffff', 'KT'],
-  dart: ['#0175C2', '#ffffff', 'DART'],
-  scala: ['#DC322F', '#ffffff', 'SCALA'],
-  lua: ['#2C2C7C', '#ffffff', 'LUA'],
-  pl: ['#0298C3', '#ffffff', 'PERL'],
-  r: ['#336DC3', '#ffffff', 'R'],
-  m: ['#C1272D', '#ffffff', 'MAT'],
-  mm: ['#C1272D', '#ffffff', 'MAT'],
-  // Web / 前端
-  html: ['#E34F26', '#ffffff', '</>'],
-  htm: ['#E34F26', '#ffffff', '</>'],
-  css: ['#663399', '#ffffff', 'CSS'],
-  scss: ['#CD6799', '#ffffff', 'SCSS'],
-  sass: ['#CD6799', '#ffffff', 'SCSS'],
-  vue: ['#42B883', '#ffffff', 'VUE'],
-  svelte: ['#FF3E00', '#ffffff', 'SVELTE'],
-  // 数据 / 结构化
-  json: ['#F7DF1E', '#323330', '{}'],
-  sql: ['#00758F', '#ffffff', 'SQL'],
-  csv: ['#2E7D32', '#ffffff', 'CSV'],
-  db: ['#0F62FE', '#ffffff', 'DB'],
-  sqlite: ['#0F62FE', '#ffffff', 'DB'],
-  sqlite3: ['#0F62FE', '#ffffff', 'DB'],
-  xml: ['#FF6F00', '#ffffff', 'XML'],
-  svg: ['#FF6F00', '#ffffff', 'SVG'],
-  // 文档
-  md: ['#42A5F5', '#ffffff', 'M↓'],
-  markdown: ['#42A5F5', '#ffffff', 'M↓'],
-  txt: ['#90A4AE', '#ffffff', 'TXT'],
-  text: ['#90A4AE', '#ffffff', 'TXT'],
-  log: ['#90A4AE', '#ffffff', 'TXT'],
-  pdf: ['#E5202B', '#ffffff', 'PDF'],
-  doc: ['#2B579A', '#ffffff', 'DOC'],
-  docx: ['#2B579A', '#ffffff', 'DOC'],
-  xls: ['#217346', '#ffffff', 'XLS'],
-  xlsx: ['#217346', '#ffffff', 'XLS'],
-  ppt: ['#D24726', '#ffffff', 'PPT'],
-  pptx: ['#D24726', '#ffffff', 'PPT'],
-  // 配置 / 构建
-  yml: ['#CB171E', '#ffffff', 'YML'],
-  yaml: ['#CB171E', '#ffffff', 'YML'],
-  toml: ['#8D6E63', '#ffffff', 'TOML'],
-  ini: ['#546E7A', '#ffffff', 'CFG'],
-  cfg: ['#546E7A', '#ffffff', 'CFG'],
-  config: ['#546E7A', '#ffffff', 'CFG'],
-  env: ['#F9A825', '#323330', 'ENV'],
-  properties: ['#7B1FA2', '#ffffff', 'PROP'],
-  lock: ['#37474F', '#ffffff', 'LOCK'],
-  dockerfile: ['#2496ED', '#ffffff', 'DOCK'],
-  docker: ['#2496ED', '#ffffff', 'DOCK'],
-  makefile: ['#607D8B', '#ffffff', 'MAKE'],
-  gradle: ['#02303A', '#ffffff', 'GRADLE'],
-  cmake: ['#265774', '#ffffff', 'CMAKE'],
-  ipynb: ['#F37726', '#ffffff', 'JNB'],
-  // 脚本 / Shell
-  sh: ['#89E051', '#111111', '>_'],
-  bash: ['#89E051', '#111111', '>_'],
-  zsh: ['#89E051', '#111111', '>_'],
-  ps1: ['#012456', '#ffffff', 'PS1'],
-  bat: ['#546E7A', '#ffffff', 'CMD'],
-  cmd: ['#546E7A', '#ffffff', 'CMD'],
-  // 打包 / 二进制
-  zip: ['#FFA726', '#323330', 'ZIP'],
-  tar: ['#FFA726', '#323330', 'ZIP'],
-  gz: ['#FFA726', '#323330', 'ZIP'],
-  '7z': ['#FFA726', '#323330', 'ZIP'],
-  rar: ['#FFA726', '#323330', 'ZIP'],
-  exe: ['#0078D4', '#ffffff', 'EXE'],
-  msi: ['#0078D4', '#ffffff', 'EXE'],
-  wasm: ['#654FF0', '#ffffff', 'WASM'],
-  // 图片 / 媒体
-  png: ['#8E44AD', '#ffffff', 'IMG'],
-  jpg: ['#8E44AD', '#ffffff', 'IMG'],
-  jpeg: ['#8E44AD', '#ffffff', 'IMG'],
-  gif: ['#8E44AD', '#ffffff', 'IMG'],
-  webp: ['#8E44AD', '#ffffff', 'IMG'],
-  ico: ['#8E44AD', '#ffffff', 'IMG'],
-  bmp: ['#8E44AD', '#ffffff', 'IMG'],
-  // 版本控制
-  gitignore: ['#F05032', '#ffffff', 'GIT'],
-  gitattributes: ['#F05032', '#ffffff', 'GIT'],
-}
-
-/** One self-colored badge svg: rounded brand rect + short contrast mark.
- *  Mark font scales by length so 5-6 char marks (JAVA/SCALA/SWIFT) stay
- *  inside the 24×24 viewBox. */
-const badgeIcon = ([bg, fg, mark], size) =>
-  createElement(
-    'svg',
-    {
-      width: size,
-      height: size,
-      viewBox: '0 0 24 24',
-      'aria-hidden': 'true',
-    },
-    createElement('rect', { x: 1, y: 1, width: 22, height: 22, rx: 5, fill: bg }),
-    createElement(
-      'text',
-      {
-        x: 12,
-        y: 16,
-        textAnchor: 'middle',
-        fontSize: mark.length <= 2 ? 9 : mark.length <= 4 ? 7 : 5.5,
-        fontWeight: 700,
-        fill: fg,
-      },
-      mark,
-    ),
-  )
-
-/** File-type icon dispatcher: branded badge for known extensions, the
- *  neutral file icon for everything else (case-insensitive, tolerates a
- *  leading dot like ".md"). */
-const fileIconByExt = (ext, size = 14) => {
-  const spec =
-    FILE_BADGES[
-      String(ext ?? '')
-        .toLowerCase()
-        .replace(/^\./, '')
-    ]
-  return spec === undefined ? icon.file(size) : badgeIcon(spec, size)
-}
-
-
-    // ── 渲染配置（issue #84）：增强开关状态 + setRenderOptions ──────
+    // ── 渲染配置：保留增强功能的开关状态 ────────────────────────────
     "use strict";
-// ── 渲染配置（issue #84 配置化）：增强功能开关状态 ─────────────────
-// 各增强功能独立开关（默认全部开启）：copyButton / syntaxHighlight /
-// languageLabel / lineNumbers / taskList / strikethrough / image /
-// nestedList / mathStructures / tableSort / tableFold。client apply 默认
-// 全开，随后异步经 GET /md/api/config 拉取真实配置应用（client 端不能
-// 访问 ctx.config——Cordis inject 限制）；设置页保存后 setRenderOptions
-// 立即应用新开关，渲染管线（代码块 / 行内 / DOM 表格）读取模块级状态。
-// issue #146：选择型配置（非布尔）加入同一 options 状态——
-// copyButtonPosition（代码块复制按钮位置，默认 bottom-right 与 #74
-// 原始诉求一致）与 codeTheme（代码块主题，默认 bright 明亮高对比）。
-/** 代码块复制按钮位置（issue #146）：header=头部右上角 | bottom-right=右下角。 */
-const COPY_BUTTON_POSITIONS = ['header', 'bottom-right'];
-/** 代码块主题 id 列表（issue #146）：色板定义见 styles.ts。 */
-const CODE_THEMES = ['bright', 'github-light', 'github-dark', 'one-dark', 'nord'];
+// ── 渲染配置：保留增强功能的开关状态 ────────────────────────────────
+// 精简后只剩三个开关（默认全开）：
+//  - copyButton：整段 markdown 复制按钮（官方只有代码块复制）；
+//  - textFenceMarkdown：text / plaintext / txt 围栏块按 markdown 渲染；
+//  - contextMarkdown：pre[data-context-text] 上下文注入块按 markdown 渲染。
+// 表格 / 公式 / 代码块高亮等原开关已随自实现渲染一并下线（官方已内置），
+// 迁移说明见 README「配置」与 CHANGELOG。
+// client apply 默认全开，随后异步经 GET /md/api/config 拉取真实配置应用
+// （client 端不能访问 ctx.config——Cordis inject 限制）；设置页保存后
+// setRenderOptions 立即应用新开关，渲染管线读取模块级状态。
 const DEFAULT_RENDER_OPTIONS = {
     copyButton: true,
-    syntaxHighlight: true,
-    languageLabel: true,
-    lineNumbers: true,
-    taskList: true,
-    strikethrough: true,
-    image: true,
-    nestedList: true,
-    mathStructures: true,
-    tableSort: true,
-    tableFold: true,
-    copyButtonPosition: COPY_BUTTON_POSITIONS[1],
-    codeTheme: CODE_THEMES[0],
+    textFenceMarkdown: true,
+    contextMarkdown: true,
 };
 let renderOptions = { ...DEFAULT_RENDER_OPTIONS };
 function setRenderOptions(next) {
     renderOptions = { ...renderOptions, ...(next || {}) };
 }
-/** 从应用层配置提取显式配置值（布尔开关仅接受布尔，选择项仅接受合法枚举；缺失/非法值保持默认，不覆盖）。 */
+/** 从应用层配置提取显式配置值（仅接受布尔；缺失/非法值保持默认，不覆盖）。 */
 function pickRenderOptions(config) {
     const out = {};
     const cfg = config ?? {};
@@ -435,10 +66,6 @@ function pickRenderOptions(config) {
         if (typeof cfg[key] === 'boolean')
             out[key] = cfg[key];
     }
-    if (COPY_BUTTON_POSITIONS.includes(cfg.copyButtonPosition))
-        out.copyButtonPosition = cfg.copyButtonPosition;
-    if (CODE_THEMES.includes(cfg.codeTheme))
-        out.codeTheme = cfg.codeTheme;
     return out;
 }
 /**
@@ -467,18 +94,214 @@ function initConfigFromServer() {
 exports.setRenderOptions = setRenderOptions;
 exports.pickRenderOptions = pickRenderOptions;
 exports.initConfigFromServer = initConfigFromServer;
-exports.COPY_BUTTON_POSITIONS = COPY_BUTTON_POSITIONS;
-exports.CODE_THEMES = CODE_THEMES;
+exports.DEFAULT_RENDER_OPTIONS = DEFAULT_RENDER_OPTIONS;
 
 
-    // ── 复制按钮（issue #74）：CopyButton + 复制工具函数 ──────────
+    // ── 非标准表格容错（官方 GFM 未覆盖的两种写法）──────────────────
     "use strict";
-// ── 复制按钮（issue #74）：代码块 / 整段内容一键复制 ─────────────
+// ── 非标准表格容错（官方 GFM 未覆盖的那一部分）────────────────────────
+// 官方渲染链是 micromark-extension-gfm + mdast-util-gfm（ui-primitives/
+// src/markdown/parse.ts:16,29-30），**实测**（test/table-normalize.mjs 用
+// micromark 逐条验证）它已经接受这些写法：
+//   · 无首尾管道符      a | b / --- | ---
+//   · 紧凑分隔行        a | b / ---|---
+//   · 单横线分隔        a | b / -|-
+//   · 表格前有普通段落文本（前缀文本不会吃掉表格）
+//   · 数据行多列/少列、只有表头无数据行、逐列对齐标记
+// 只有两种写法 GFM 不认：
+//   ① 分隔行完全没有管道符（a | b 后跟 ---）：GFM 视为 setext 标题
+//   ② 分隔行单元格数与表头不等（a | b | c 后跟 --- | ---）：整段不识别
+// 本函数只把这①②两种写法**规范化**成合法 GFM 分隔行（列数与表头对齐、
+// 逐列保留 :--- / :---: / ---: 对齐标记），其余文本一字不动 —— 规范化后
+// 交给官方 MarkdownText 渲染，本插件不做任何自己的渲染实现。
+// 只作用于本插件交给官方渲染器的文本（MarkdownView / text 围栏块 /
+// 上下文注入块），不触碰宿主其它内容。
+/** 分隔行候选：只含 - : | 与空白，且至少一个 -（与旧实现同一判据）。 */
+const TABLE_SEP_RE = /^\s*\|?[\s:\-|]+\|?\s*$/;
+function isTableSeparator(line) {
+    return typeof line === 'string' && TABLE_SEP_RE.test(line) && line.includes('-');
+}
+/** 按 | 切列（去首尾管道符、逐格 trim）。 */
+function splitTableCells(line) {
+    return line
+        .trim()
+        .replace(/^\|/, '')
+        .replace(/\|$/, '')
+        .split('|')
+        .map((cell) => cell.trim());
+}
+/** 表头候选：含 |、至少 2 列、且本身不是分隔行。 */
+function isTableHeader(line) {
+    if (typeof line !== 'string' || isTableSeparator(line))
+        return false;
+    const trimmed = line.trim();
+    if (!trimmed.includes('|'))
+        return false;
+    return splitTableCells(trimmed).length >= 2;
+}
+/** 对齐标记 → 合法 GFM 分隔单元格（保留左/中/右语义，缺省左对齐）。 */
+function alignCell(cell) {
+    const left = cell.startsWith(':');
+    const right = cell.endsWith(':');
+    if (left && right)
+        return ':---:';
+    if (right)
+        return '---:';
+    if (left)
+        return ':---';
+    return '---';
+}
+/**
+ * 把①②两种 GFM 不认的分隔行规范化为合法写法；无需改动时原样返回。
+ * 已是合法 GFM 表格（有管道符且列数与表头一致）一字不动。
+ */
+function normalizeTables(text) {
+    const source = String(text);
+    const lines = source.split('\n');
+    let out = null;
+    for (let i = 0; i + 1 < lines.length; i += 1) {
+        if (!isTableHeader(lines[i]) || !isTableSeparator(lines[i + 1]))
+            continue;
+        const header = splitTableCells(lines[i]);
+        const separator = splitTableCells(lines[i + 1]);
+        if (lines[i + 1].includes('|') && separator.length === header.length)
+            continue;
+        if (out === null)
+            out = lines.slice();
+        out[i + 1] = header.map((_cell, j) => alignCell(separator[j] ?? '')).join(' | ');
+    }
+    return out === null ? source : out.join('\n');
+}
+exports.normalizeTables = normalizeTables;
+exports.isTableSeparator = isTableSeparator;
+exports.isTableHeader = isTableHeader;
+exports.splitTableCells = splitTableCells;
+
+
+    // ── 官方渲染器接入（平台 MarkdownText + react-dom/client）────────
+    "use strict";
+// ── 官方渲染器接入（平台 MarkdownText + react-dom/client）─────────────
+// 本插件**不再自实现 markdown 渲染**：GFM 表格（对齐 / 宽表格横向滚动）、
+// 公式（micromark-extension-math + KaTeX）、代码块（shiki 高亮 / 语言标签 /
+// 行号 / 复制按钮 / 主题）全部由宿主官方
+// @deepseek-ai/dsh-client-ui-primitives 的 MarkdownText 提供（0.1.7-rc.2
+// 起内置）。本模块只负责两件事：
+//  1. 解析平台模块：两个 spec 都在宿主 staticModules seed 表里
+//     （react-dom/client、@deepseek-ai/dsh-client-ui-primitives），
+//     零安装零打包（白名单见 scripts/check-client-modules.mjs 的
+//     SEED_MODULES）；
+//  2. 把官方组件渲染到**本插件插入的容器**里（react-dom/client.createRoot，
+//     与 dsh-mermaid-render 同一手法；注入点才是本插件的真增量）。
+//
+// 降级（真降级，不是假降级）：官方组件或 createRoot 取不到时 ——
+//   · MarkdownView（公共 API）落 <pre> 兜底：原文不丢、渲染期不抛错；
+//   · DOM 注入点（text 围栏 / 上下文块）**不动宿主 DOM**，保持宿主原样。
+// labels 必填（官方 MarkdownText 没有默认值，渲染含围栏代码块的文档会读
+// labels.code.copyLabel），本插件按自己的中文界面硬编码。
+const PLATFORM_MARKDOWN_MODULE = '@deepseek-ai/dsh-client-ui-primitives';
+const PLATFORM_MARKDOWN_EXPORT = 'MarkdownText';
+/** 官方 MarkdownText 的 labels 契约（MarkdownLabels：code + footnotes）。 */
+const MARKDOWN_LABELS = {
+    code: { copyLabel: '复制', copiedLabel: '已复制' },
+    footnotes: '脚注',
+};
+/** React 语义的组件判定：函数，或带 $$typeof 的对象（memo/forwardRef/lazy）。 */
+function isRenderableComponent(value) {
+    if (typeof value === 'function')
+        return true;
+    return typeof value === 'object' && value !== null && typeof value.$$typeof === 'symbol';
+}
+let platformCache;
+/** 解析官方 MarkdownText 与 createRoot；任一缺失返回 null（真降级起点）。 */
+function platformMarkdown() {
+    if (platformCache !== undefined)
+        return platformCache;
+    let MarkdownText = null;
+    let createRoot = null;
+    // 字面量 spec：scripts/check-client-modules.mjs 以 AST 提取字面量 require 并逐条
+    // 判定是否在允许集合内（平台 seed 表 / dsh.client.external / 自身包名）——写成变量
+    // 会让这条门禁看不见依赖，等于绕开门禁。
+    try {
+        const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
+        MarkdownText = primitives ? primitives[PLATFORM_MARKDOWN_EXPORT] : null;
+    }
+    catch (_e) {
+        MarkdownText = null;
+    }
+    try {
+        const reactDomClient = require('react-dom/client');
+        createRoot = reactDomClient ? reactDomClient.createRoot : null;
+    }
+    catch (_e) {
+        createRoot = null;
+    }
+    platformCache = isRenderableComponent(MarkdownText)
+        ? {
+            MarkdownText,
+            createRoot: typeof createRoot === 'function' ? createRoot : null,
+        }
+        : null;
+    return platformCache;
+}
+/** 官方 MarkdownText 是否可用于 DOM 注入（组件 + createRoot 都在）。 */
+function officialMarkdownAvailable() {
+    const platform = platformMarkdown();
+    return platform !== null && platform.createRoot !== null;
+}
+/** 容器 → React root（WeakMap：容器被宿主回收后不留引用）。 */
+const markdownRoots = new WeakMap();
+/**
+ * 把 markdown 原文渲染进容器（官方组件负责渲染，文本先过表格容错规范化）。
+ * @returns 是否已渲染（官方组件不可用 → false，调用方保持宿主原样）。
+ */
+function renderMarkdownInto(container, text) {
+    const platform = platformMarkdown();
+    if (platform === null || platform.createRoot === null)
+        return false;
+    let root = markdownRoots.get(container);
+    if (root === undefined) {
+        root = platform.createRoot(container);
+        markdownRoots.set(container, root);
+    }
+    root.render(createElement(platform.MarkdownText, { text: normalizeTables(text), labels: MARKDOWN_LABELS }));
+    return true;
+}
+/** 卸载容器上的 React root（容器内容被重建/清理前调用，避免悬挂 root）。 */
+function unmountMarkdownIn(container) {
+    const root = markdownRoots.get(container);
+    if (root === undefined)
+        return;
+    markdownRoots.delete(container);
+    try {
+        root.unmount();
+    }
+    catch (_e) {
+        /* 卸载异常不阻断调用方清理 DOM */
+    }
+}
+/** MarkdownView 的内容节点：官方组件，或 <pre> 兜底（原文不丢）。 */
+function officialMarkdownNode(text) {
+    const platform = platformMarkdown();
+    if (platform === null)
+        return createElement('pre', { className: 'dsh-md-render-fallback' }, text);
+    return createElement(platform.MarkdownText, { text: normalizeTables(text), labels: MARKDOWN_LABELS });
+}
+exports.PLATFORM_MARKDOWN_MODULE = PLATFORM_MARKDOWN_MODULE;
+exports.MARKDOWN_LABELS = MARKDOWN_LABELS;
+exports.platformMarkdown = platformMarkdown;
+exports.officialMarkdownAvailable = officialMarkdownAvailable;
+exports.renderMarkdownInto = renderMarkdownInto;
+exports.unmountMarkdownIn = unmountMarkdownIn;
+exports.officialMarkdownNode = officialMarkdownNode;
+
+
+    // ── 整段 markdown 复制（官方只有代码块复制）─────────────────────
+    "use strict";
+// ── 整段 markdown 复制（官方只有代码块复制）────────────────────────
 // 复制实现：navigator.clipboard.writeText 优先，失败回退
 // document.execCommand('copy')（textarea 中转）；复制成功后按钮文案
 // 切换「已复制」1.5s 后恢复；流式渲染中（[data-streaming] 祖先）由
-// styles.ts 的 `[data-streaming] .dsh-md-render-copy{display:none}`
-// 规则隐藏（按钮始终渲染，流式结束自动可见）。
+// styles.ts 的 [data-streaming] .dsh-md-render-copy{display:none} 规则隐藏。
 function fallbackCopyText(text) {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -510,9 +333,15 @@ function copyText(text) {
         return Promise.reject(new Error('copy failed'));
     return Promise.resolve();
 }
-// 收集容器纯文本（跳过复制按钮，避免按钮文案混入复制内容）。
+/** 是否应跳过该元素（复制按钮自身 / 官方代码块 banner：语言名+复制按钮文案）。 */
+function isCopyNoise(el) {
+    if (el.matches('.dsh-md-render-copy') || el.matches('button'))
+        return true;
+    return el.matches('[data-code-block-banner]') || el.matches('.dsh-md-render-code-head');
+}
+// 收集容器纯文本（跳过复制按钮与代码块 banner，避免按钮/语言名文案混入）。
 // 不用 textContent 直取：textContent 包含 display:none 元素的文本，
-// 按钮文案会混入；递归遍历 childNodes 并跳过 .dsh-md-render-copy。
+// 按钮文案会混入；递归遍历 childNodes 并跳过噪声元素。
 function collectCopyText(node, out) {
     if (node.nodeType === 3) {
         out.push(node.textContent);
@@ -520,33 +349,24 @@ function collectCopyText(node, out) {
     }
     if (node.nodeType !== 1)
         return;
-    const el = node;
-    // 跳过复制按钮与代码块头部（语言标签，issue #80），避免文案混入复制内容。
-    if (el.matches('.dsh-md-render-copy') || el.matches('.dsh-md-render-code-head'))
+    if (isCopyNoise(node))
         return;
     const kids = node.childNodes;
     for (let i = 0; i < kids.length; i += 1)
         collectCopyText(kids[i], out);
 }
-// kind: 'code'（md-code-block 内，复制 code 文本）| 'content'（tzx-md 内，
-// 复制整段纯文本）。点击时从 DOM 取文本（流式结束后内容已稳定）。
+// kind: 'content'（tzx-md 内，复制整段纯文本；官方代码块复制按钮由官方提供）。
+// 点击时从 DOM 取文本（流式结束后内容已稳定）。
 function CopyButton({ kind }) {
     const [copied, setCopied] = useState(false);
     const [timer, setTimer] = useState(null);
     const onClick = (event) => {
-        const host = event && event.currentTarget ? event.currentTarget.closest(kind === 'code' ? '.md-code-block' : '.tzx-md') : null;
+        const host = event && event.currentTarget ? event.currentTarget.closest(kind === 'content' ? '.tzx-md' : '') : null;
         if (!host)
             return;
-        let text;
-        if (kind === 'code') {
-            const codeEl = host.querySelector('code');
-            text = codeEl ? (codeEl.textContent ?? '') : '';
-        }
-        else {
-            const out = [];
-            collectCopyText(host, out);
-            text = out.join('');
-        }
+        const out = [];
+        collectCopyText(host, out);
+        const text = out.join('');
         if (!text)
             return;
         copyText(text).then(() => {
@@ -566,1801 +386,38 @@ function CopyButton({ kind }) {
 }
 
 
-    // ── 代码块增强（issue #80）：tokenizer（语法高亮）────────────────
+    // ── 统一 MarkdownView：对外公共 API（官方渲染 + 整段复制）────────
     "use strict";
-// ── 代码块增强（issue #80）：语法高亮 / 语言标签 / 行号 ──────────────
-// 零运行时依赖（R10）：自实现轻量单遍 tokenizer（纯函数），按语言拆分
-// token 输出 <span class="dsh-md-render-tok-*">；未知语言 / 超长代码块
-// （>MAX_CODE_LINES 行）回退纯文本，防卡顿。行号用 CSS counter 伪元素渲
-// 染，不进入 code/pre 文本内容，mermaid 扫描与复制按钮读取的原文本
-// 不受污染。样式见 styles.ts（随 activation 注入/卸载），语言标
-// 签 + 复制按钮共存于代码块头部（header 行）。渲染（语言标签 / 行号 /
-// 高亮 token 输出）见 codeblock.ts。
-// ── 语言别名 → 规范名（标签用）；未知语言回退纯文本 ──────────────────
-const LANG_ALIAS = {
-    js: 'javascript',
-    jsx: 'javascript',
-    mjs: 'javascript',
-    cjs: 'javascript',
-    ts: 'typescript',
-    tsx: 'typescript',
-    py: 'python',
-    sh: 'bash',
-    shell: 'bash',
-    zsh: 'bash',
-    yml: 'yaml',
-    md: 'markdown',
-    text: 'plain',
-    txt: 'plain',
-};
-function canoLang(lang) {
-    const l = String(lang || '').toLowerCase();
-    return LANG_ALIAS[l] || l;
-}
-function langLabel(lang) {
-    const cfg = langConfig(lang);
-    if (cfg)
-        return cfg.label;
-    const l = String(lang || '')
-        .toLowerCase()
-        .trim();
-    return l === '' || l === 'text' ? 'text' : l;
-}
-// ── 关键字表（常见语言子集）────────────────────────────────────────
-const JS_KEYWORDS = [
-    'async',
-    'await',
-    'break',
-    'case',
-    'catch',
-    'class',
-    'const',
-    'continue',
-    'debugger',
-    'default',
-    'delete',
-    'do',
-    'else',
-    'export',
-    'extends',
-    'false',
-    'finally',
-    'for',
-    'from',
-    'function',
-    'get',
-    'if',
-    'import',
-    'in',
-    'instanceof',
-    'let',
-    'new',
-    'null',
-    'of',
-    'return',
-    'set',
-    'static',
-    'super',
-    'switch',
-    'this',
-    'throw',
-    'true',
-    'try',
-    'typeof',
-    'undefined',
-    'var',
-    'void',
-    'while',
-    'with',
-    'yield',
-];
-const TS_KEYWORDS = [
-    ...JS_KEYWORDS,
-    'abstract',
-    'any',
-    'as',
-    'asserts',
-    'bigint',
-    'boolean',
-    'declare',
-    'enum',
-    'implements',
-    'infer',
-    'interface',
-    'is',
-    'keyof',
-    'never',
-    'number',
-    'object',
-    'override',
-    'private',
-    'protected',
-    'public',
-    'readonly',
-    'satisfies',
-    'string',
-    'symbol',
-    'type',
-    'unknown',
-    'namespace',
-    'module',
-];
-const PY_KEYWORDS = [
-    'and',
-    'as',
-    'assert',
-    'async',
-    'await',
-    'break',
-    'class',
-    'continue',
-    'def',
-    'del',
-    'elif',
-    'else',
-    'except',
-    'False',
-    'finally',
-    'for',
-    'from',
-    'global',
-    'if',
-    'import',
-    'in',
-    'is',
-    'lambda',
-    'match',
-    'None',
-    'nonlocal',
-    'not',
-    'or',
-    'pass',
-    'raise',
-    'return',
-    'self',
-    'True',
-    'try',
-    'type',
-    'while',
-    'with',
-    'yield',
-    'case',
-];
-const SH_KEYWORDS = [
-    'alias',
-    'break',
-    'case',
-    'cd',
-    'chmod',
-    'chown',
-    'continue',
-    'cp',
-    'curl',
-    'do',
-    'done',
-    'echo',
-    'elif',
-    'else',
-    'esac',
-    'exit',
-    'export',
-    'fi',
-    'for',
-    'function',
-    'grep',
-    'if',
-    'local',
-    'ls',
-    'mkdir',
-    'mv',
-    'printf',
-    'pwd',
-    'readonly',
-    'return',
-    'rm',
-    'sed',
-    'select',
-    'set',
-    'shift',
-    'source',
-    'then',
-    'touch',
-    'trap',
-    'unset',
-    'until',
-    'wait',
-    'while',
-];
-const LANG_CONFIGS = {
-    javascript: {
-        label: 'javascript',
-        keywords: JS_KEYWORDS,
-        lineComment: '//',
-        block: ['/*', '*/'],
-        quotes: ['"', "'", '`'],
-    },
-    typescript: {
-        label: 'typescript',
-        keywords: TS_KEYWORDS,
-        lineComment: '//',
-        block: ['/*', '*/'],
-        quotes: ['"', "'", '`'],
-    },
-    python: {
-        label: 'python',
-        keywords: PY_KEYWORDS,
-        lineComment: '#',
-        block: null,
-        quotes: ['"', "'"],
-        triple: ['"""', "'''"],
-    },
-    json: { label: 'json', keywords: [], lineComment: null, block: null, quotes: ['"'] },
-    bash: { label: 'bash', keywords: SH_KEYWORDS, lineComment: '#', block: null, quotes: ['"', "'"] },
-    yaml: { label: 'yaml', keywords: [], lineComment: '#', block: null, quotes: ['"', "'"] },
-    markdown: { label: 'markdown', keywords: [], lineComment: null, block: null, quotes: ['`'], markdown: true },
-};
-const langConfigCache = new Map();
-function langConfig(lang) {
-    const name = canoLang(lang);
-    if (langConfigCache.has(name))
-        return langConfigCache.get(name);
-    const base = LANG_CONFIGS[name];
-    if (!base)
-        return null;
-    const cfg = { ...base, kwSet: new Set(base.keywords), label: base.label };
-    langConfigCache.set(name, cfg);
-    return cfg;
-}
-// ── tokenizer（纯函数，单次遍历；输出每行 token 数组）───────────────
-const MAX_CODE_LINES = 500;
-const IDENT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*/;
-function tokenizeCode(code, lang) {
-    const cfg = langConfig(lang);
-    if (!cfg)
-        return String(code)
-            .split('\n')
-            .map((line) => [{ type: 'plain', text: line }]);
-    if (cfg.markdown)
-        return tokenizeMarkdown(code);
-    const state = { block: null };
-    return String(code)
-        .split('\n')
-        .map((line) => tokenizeLine(line, cfg, state));
-}
-/** markdown 轻量高亮：行首 # 标题（keyword）+ 行内代码/加粗（string）。 */
-function tokenizeMarkdown(code) {
-    return String(code)
-        .split('\n')
-        .map((line) => {
-        const m = /^(#{1,6})(\s+)(.*)$/.exec(line);
-        if (m) {
-            return [
-                { type: 'keyword', text: m[1] },
-                { type: 'plain', text: m[2] },
-                ...tokenizeLine(m[3], null, { block: null }),
-            ];
-        }
-        return tokenizeLine(line, null, { block: null });
-    });
-}
-function tokenizeLine(line, cfg, state) {
-    const out = [];
-    let rest = line;
-    while (rest.length > 0) {
-        if (state.block) {
-            rest = scanBlock(rest, state, out);
-            continue;
-        }
-        const t = firstToken(rest, cfg);
-        out.push({ type: t.type, text: t.text });
-        if (t.blockEnd)
-            state.block = t.blockEnd;
-        rest = rest.slice(t.text.length);
-    }
-    return out;
-}
-/** 消费处于块注释/三引号字符串中的剩余行文本，输出对应 token。 */
-function scanBlock(rest, state, out) {
-    const end = state.block;
-    const close = rest.indexOf(end);
-    if (close === -1) {
-        out.push({ type: 'comment', text: rest });
-        return '';
-    }
-    out.push({ type: 'comment', text: rest.slice(0, close + end.length) });
-    state.block = null;
-    return rest.slice(close + end.length);
-}
-function firstToken(rest, cfg) {
-    return (matchBlock(rest, cfg) ||
-        matchLineComment(rest, cfg) ||
-        matchString(rest, cfg) ||
-        matchNumber(rest) ||
-        matchIdent(rest, cfg) || { type: 'plain', text: rest[0] });
-}
-function matchBlock(rest, cfg) {
-    if (!cfg || !cfg.block || cfg.block.length !== 2)
-        return null;
-    const start = cfg.block[0];
-    const end = cfg.block[1];
-    if (!rest.startsWith(start))
-        return null;
-    const close = rest.indexOf(end, start.length);
-    if (close === -1)
-        return { type: 'comment', text: rest, blockEnd: end };
-    return { type: 'comment', text: rest.slice(0, close + end.length) };
-}
-function matchLineComment(rest, cfg) {
-    const lc = cfg && cfg.lineComment;
-    if (!lc || !rest.startsWith(lc))
-        return null;
-    return { type: 'comment', text: rest };
-}
-function matchString(rest, cfg) {
-    const quotes = cfg ? cfg.quotes : ['"', "'", '`'];
-    const ch = rest[0];
-    if (!quotes.includes(ch))
-        return null;
-    if (cfg && cfg.triple && rest.startsWith(ch + ch + ch))
-        return matchTriple(rest, ch + ch + ch);
-    let j = 1;
-    while (j < rest.length) {
-        if (rest[j] === '\\') {
-            j += 2;
-            continue;
-        }
-        if (rest[j] === ch)
-            return { type: 'string', text: rest.slice(0, j + 1) };
-        j += 1;
-    }
-    return { type: 'string', text: rest };
-}
-function matchTriple(rest, triple) {
-    const close = rest.indexOf(triple, triple.length);
-    if (close === -1)
-        return { type: 'string', text: rest, blockEnd: triple };
-    return { type: 'string', text: rest.slice(0, close + triple.length) };
-}
-function matchNumber(rest) {
-    const m = /^(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\.\d+)/.exec(rest);
-    return m ? { type: 'number', text: m[0] } : null;
-}
-function matchIdent(rest, cfg) {
-    const m = IDENT_RE.exec(rest);
-    if (!m)
-        return null;
-    const word = m[0];
-    const kw = cfg && cfg.kwSet;
-    if (kw && kw.has(word))
-        return { type: 'keyword', text: word };
-    if (/^\s*\(/.test(rest.slice(word.length)))
-        return { type: 'function', text: word };
-    return { type: 'identifier', text: word };
-}
-exports.tokenizeCode = tokenizeCode;
-exports.langLabel = langLabel;
-
-
-    // ── 代码块增强（issue #80）：语言标签 + 复制按钮头部 + 行号 ─────
-    "use strict";
-// ── 代码块渲染（issue #80）：语言标签 + 复制按钮头部 + 行号 + 高亮 ──
-// 结构：div.md-code-block > div.dsh-md-render-code-head（语言名 + 复制
-// 按钮，同排）+ pre.tzx-pre > code.language-xxx（token 高亮 / 行号）。
-// 行号用 CSS counter 伪元素渲染，不进入 code/pre 文本内容，mermaid 扫
-// 描与复制按钮读取的原文本不受污染。语法高亮 tokenizer 见
-// highlight.ts。
-// 增强开关（issue #84）：renderOptions 见 config.ts（copyButton /
-// syntaxHighlight / languageLabel / lineNumbers），apply(ctx) 从配置
-// 读取，测试可用 setRenderOptions 切换。模块级变量，MarkdownView 渲染
-// 代码块时读取。
-// issue #146：复制按钮位置可配置（copyButtonPosition：header=头部右上
-// 角 | bottom-right=右下角默认，与 #74 原始诉求一致——按钮作为
-// md-code-block 直接子元素绝对定位右下角）；代码主题经 data-theme 属性
-// 选择色板（styles.ts），仅实际高亮的代码块携带主题（syntaxHighlight
-// 关闭/未知语言/超长跳过高亮时无 data-theme → 保持 DSH 默认样式，
-// 主题不影响纯文本代码块，开关语义不回归）。
-// token 类型 → 高亮类名（其余类型渲染为纯文本）。
-const TOKEN_CLASS = {
-    keyword: 'dsh-md-render-tok-keyword',
-    string: 'dsh-md-render-tok-string',
-    comment: 'dsh-md-render-tok-comment',
-    number: 'dsh-md-render-tok-number',
-    function: 'dsh-md-render-tok-function',
-};
-function renderTokens(tokens) {
-    const out = [];
-    for (let i = 0; i < tokens.length; i += 1) {
-        const t = tokens[i];
-        const cls = TOKEN_CLASS[t.type];
-        out.push(cls ? createElement('span', { key: i, className: cls }, t.text) : t.text);
-    }
-    return out;
-}
-function shouldHighlight(lang, lines) {
-    return !!langConfig(lang) && lines.length <= MAX_CODE_LINES;
-}
-/** 渲染代码块主体（code 内细胞）：按行输出 token / 行号 div。 */
-function renderCodeCells(code, lang, lines, highlight, lineNumbers) {
-    const tokens = highlight ? tokenizeCode(code, lang) : null;
-    const nodes = [];
-    for (let i = 0; i < lines.length; i += 1) {
-        const toks = tokens ? tokens[i] : [{ type: 'plain', text: lines[i] }];
-        const cells = renderTokens(toks);
-        if (!lineNumbers) {
-            nodes.push(...cells);
-        }
-        else {
-            nodes.push(createElement('div', { key: 'l' + i, className: 'dsh-md-render-code-line' }, ...cells));
-        }
-        if (i < lines.length - 1)
-            nodes.push('\n');
-    }
-    return nodes;
-}
-/** 代码块头部：语言标签 + （header 位置时）复制按钮；两元素都关闭时无头部。 */
-function renderCodeHead(lang, bottomCopy) {
-    const withHead = renderOptions.languageLabel || (renderOptions.copyButton && !bottomCopy);
-    if (!withHead)
-        return null;
-    return createElement('div', { className: 'dsh-md-render-code-head' }, renderOptions.languageLabel
-        ? createElement('span', { className: 'dsh-md-render-code-lang' }, langLabel(lang))
-        : null, !bottomCopy && renderOptions.copyButton ? createElement(CopyButton, { kind: 'code' }) : null);
-}
-/** 渲染完整代码块：头部（语言名 + 复制按钮）+ pre > code（高亮/行号）。 */
-function renderCodeBlock({ key, lang, code }) {
-    const lines = String(code).split('\n');
-    // issue #84：syntaxHighlight 关闭 → 不做 token 高亮（回退纯文本）。
-    const highlight = renderOptions.syntaxHighlight && shouldHighlight(lang, lines);
-    // issue #146：复制按钮位置默认右下角（bottom-right，与 #74 原始诉求
-    // 一致）——按钮作为 md-code-block 直接子元素绝对定位；header 位置时
-    // 按钮仍在头部（与语言标签同排，issue #80 布局）。
-    const bottomCopy = renderOptions.copyButton && renderOptions.copyButtonPosition !== 'header';
-    const body = renderCodeCells(code, lang, lines, highlight, renderOptions.lineNumbers);
-    // issue #146：主题仅作用于实际高亮的代码块——关闭 syntaxHighlight
-    // / 未知语言 / 超长跳过高亮时无 data-theme，保持 DSH 语义 token 默认
-    // 样式（主题不影响纯文本代码块，开关语义不回归）。
-    const blockProps = { key, className: 'md-code-block' };
-    if (highlight)
-        blockProps['data-theme'] = renderOptions.codeTheme;
-    return createElement('div', blockProps, renderCodeHead(lang, bottomCopy), createElement('pre', { className: 'tzx-pre' }, createElement('code', { className: lang ? 'language-' + lang : '' }, ...body)), bottomCopy ? createElement(CopyButton, { kind: 'code' }) : null);
-}
-
-
-    // ── 公式结构（issue #82）：命令符号表 / 轻量解析器 / 结构渲染 ────
-    "use strict";
-// ── 公式命令 → Unicode 映射表（issue #82）：希腊字母 / 求和积分 /
-//    常见符号 / 函数名文本 / \text 类文本命令。由 math.ts 的
-//    parseCommand / parseDelim 查表；零运行时依赖（R10）。
-const GREEK_COMMANDS = {
-    alpha: 'α',
-    beta: 'β',
-    gamma: 'γ',
-    delta: 'δ',
-    epsilon: 'ε',
-    varepsilon: 'ϵ',
-    zeta: 'ζ',
-    eta: 'η',
-    theta: 'θ',
-    vartheta: 'ϑ',
-    iota: 'ι',
-    kappa: 'κ',
-    lambda: 'λ',
-    mu: 'μ',
-    nu: 'ν',
-    xi: 'ξ',
-    omicron: 'ο',
-    pi: 'π',
-    varpi: 'ϖ',
-    rho: 'ρ',
-    varrho: 'ϱ',
-    sigma: 'σ',
-    varsigma: 'ς',
-    tau: 'τ',
-    upsilon: 'υ',
-    phi: 'φ',
-    varphi: 'ϕ',
-    chi: 'χ',
-    psi: 'ψ',
-    omega: 'ω',
-    Gamma: 'Γ',
-    Delta: 'Δ',
-    Theta: 'Θ',
-    Lambda: 'Λ',
-    Xi: 'Ξ',
-    Pi: 'Π',
-    Sigma: 'Σ',
-    Upsilon: 'Υ',
-    Phi: 'Φ',
-    Psi: 'Ψ',
-    Omega: 'Ω',
-};
-const MATH_BIG_SYMS = {
-    sum: '∑',
-    int: '∫',
-    prod: '∏',
-    coprod: '∐',
-    bigcup: '⋃',
-    bigcap: '⋂',
-    bigoplus: '⨁',
-    bigotimes: '⨂',
-    oint: '∮',
-    iint: '∬',
-    iiint: '∭',
-};
-const MATH_SYMBOLS = {
-    times: '×',
-    cdot: '⋅',
-    pm: '±',
-    mp: '∓',
-    div: '÷',
-    leq: '≤',
-    geq: '≥',
-    neq: '≠',
-    approx: '≈',
-    equiv: '≡',
-    sim: '∼',
-    simeq: '≃',
-    propto: '∝',
-    in: '∈',
-    notin: '∉',
-    subset: '⊂',
-    supset: '⊃',
-    subseteq: '⊆',
-    supseteq: '⊇',
-    cup: '∪',
-    cap: '∩',
-    setminus: '∖',
-    emptyset: '∅',
-    varnothing: '∅',
-    forall: '∀',
-    exists: '∃',
-    nexists: '∄',
-    neg: '¬',
-    land: '∧',
-    lor: '∨',
-    to: '→',
-    rightarrow: '→',
-    leftarrow: '←',
-    leftrightarrow: '↔',
-    Rightarrow: '⇒',
-    Leftarrow: '⇐',
-    Leftrightarrow: '⇔',
-    mapsto: '↦',
-    ldots: '…',
-    cdots: '⋯',
-    vdots: '⋮',
-    ddots: '⋱',
-    infty: '∞',
-    nabla: '∇',
-    partial: '∂',
-    hbar: 'ℏ',
-    ell: 'ℓ',
-    prime: '′',
-    deg: '°',
-    circ: '∘',
-    bullet: '∙',
-    dagger: '†',
-    ddagger: '‡',
-    parallel: '∥',
-    perp: '⊥',
-    angle: '∠',
-    triangle: '△',
-    square: '□',
-    aleph: 'ℵ',
-    Re: 'ℜ',
-    Im: 'ℑ',
-    oplus: '⊕',
-    ominus: '⊖',
-    otimes: '⊗',
-    oslash: '⊘',
-    odot: '⊙',
-    ast: '∗',
-    star: '⋆',
-};
-/** 函数名命令 → 罗马文本（\sin → sin）。 */
-const MATH_FUNC_TEXT = {
-    sin: 'sin',
-    cos: 'cos',
-    tan: 'tan',
-    cot: 'cot',
-    sec: 'sec',
-    csc: 'csc',
-    arcsin: 'arcsin',
-    arccos: 'arccos',
-    arctan: 'arctan',
-    sinh: 'sinh',
-    cosh: 'cosh',
-    tanh: 'tanh',
-    log: 'log',
-    ln: 'ln',
-    exp: 'exp',
-    lim: 'lim',
-    max: 'max',
-    min: 'min',
-    det: 'det',
-    gcd: 'gcd',
-    inf: 'inf',
-    sup: 'sup',
-};
-/** 文本命令：参数组内容按普通文本内联（\text{if} → if）。 */
-const MATH_TEXT_CMDS = [
-    'text',
-    'textrm',
-    'mathrm',
-    'mathbf',
-    'mathit',
-    'mathsf',
-    'mathtt',
-    'operatorname',
-];
-
-    "use strict";
-// ── 公式结构渲染（issue #82）：轻量 LaTeX 子集解析器 ─────────────────
-// 零运行时依赖（R10）：自实现 tokenize + 递归下降，输出语义化嵌套节点
-// （text / seq / frac / sqrt / supsub / big），由 math-render.ts
-// 渲染为 <span class="dsh-md-render-*"> 结构。符号映射表见
-// math-symbols.ts。回退策略（不误伤）：结构命令（\frac / \sqrt /
-// 组 / 上下标）参数不完整时为「全局解析失败」→ 整个公式保持原文；未知
-// 命令（\foo）保持原样文本（不报错）。由 syntax.ts（行内）与
-// markdown.ts（块级）调用。
-// ── tokenizer（纯函数）：\命令 / 花括号组 / ^ _ 上下标 / 字符 / 空白 ──
-function tokenizeMath(src) {
-    const out = [];
-    let i = 0;
-    while (i < src.length) {
-        if (src[i] === '\\')
-            i = tokenizeCommand(src, i, out);
-        else if (src[i] === '{') {
-            out.push({ t: 'lbrace' });
-            i += 1;
-        }
-        else if (src[i] === '}') {
-            out.push({ t: 'rbrace' });
-            i += 1;
-        }
-        else if (src[i] === '^' || src[i] === '_') {
-            out.push({ t: src[i] === '^' ? 'sup' : 'sub' });
-            i += 1;
-        }
-        else if (/\s/.test(src[i])) {
-            out.push({ t: 'space', v: src[i] });
-            i += 1;
-        }
-        else {
-            out.push({ t: 'char', v: src[i] });
-            i += 1;
-        }
-    }
-    return out;
-}
-/** 消费一个 \\命令（或孤立反斜杠）token，返回新的下标。 */
-function tokenizeCommand(src, i, out) {
-    if (!/[A-Za-z]/.test(src[i + 1] || '')) {
-        out.push({ t: 'char', v: '\\' });
-        return i + 1;
-    }
-    let j = i + 1;
-    while (j < src.length && /[A-Za-z]/.test(src[j]))
-        j += 1;
-    out.push({ t: 'cmd', v: src.slice(i, j) });
-    return j;
-}
-// ── 解析：递归下降，输出节点数组（text / seq / frac / sqrt / supsub / big）──
-function parseMath(src) {
-    const tokens = tokenizeMath(String(src ?? ''));
-    const state = { p: 0, failed: false };
-    const nodes = parseSequence(tokens, state);
-    return { nodes, failed: state.failed };
-}
-/** 追加文本片段到序列末尾（相邻文本合并）。 */
-function mergeText(kids, v) {
-    const last = kids[kids.length - 1];
-    if (last !== undefined && last !== null && last.t === 'text')
-        last.v += v;
-    else
-        kids.push({ t: 'text', v });
-}
-/** 读取一个原子（组 / 命令 / 单个字符），供上下标等使用。 */
-function readAtom(tokens, state) {
-    if (state.p >= tokens.length)
-        return null;
-    const tk = tokens[state.p];
-    if (tk.t === 'lbrace') {
-        state.p += 1;
-        return parseGroup(tokens, state);
-    }
-    if (tk.t === 'cmd')
-        return parseCommand(tokens, state);
-    if (tk.t === 'space') {
-        state.p += 1;
-        return readAtom(tokens, state);
-    }
-    if (tk.t === 'rbrace' || tk.t === 'sup' || tk.t === 'sub')
-        return null;
-    state.p += 1;
-    return { t: 'text', v: tk.v };
-}
-/** 解析序列，直到 token 耗尽或遇 rbrace（组边界）。 */
-function parseSequence(tokens, state) {
-    const kids = [];
-    while (state.p < tokens.length) {
-        const tk = tokens[state.p];
-        if (tk.t === 'rbrace')
-            break;
-        if (tk.t === 'lbrace') {
-            state.p += 1;
-            kids.push(parseGroup(tokens, state));
-        }
-        else if (tk.t === 'cmd') {
-            kids.push(parseCommand(tokens, state));
-        }
-        else if (tk.t === 'sup' || tk.t === 'sub') {
-            applyScript(tokens, state, kids);
-        }
-        else if (tk.t === 'space') {
-            mergeText(kids, tk.v);
-            state.p += 1;
-        }
-        else {
-            mergeText(kids, tk.v);
-            state.p += 1;
-        }
-    }
-    return kids;
-}
-/** 解析花括号组：state.p 位于 lbrace 之后；未闭合 → 全局失败（回退原文）。 */
-function parseGroup(tokens, state) {
-    const kids = parseSequence(tokens, state);
-    if (state.p < tokens.length && tokens[state.p].t === 'rbrace') {
-        state.p += 1;
-    }
-    else {
-        state.failed = true;
-    }
-    return kids.length === 1 && kids[0].t !== 'seq' ? kids[0] : { t: 'seq', kids };
-}
-/** 尝试读花括号参数（跳过空白）；不闭合/不存在 → null（调用方决定失败）。 */
-function tryGroup(tokens, state) {
-    let i = state.p;
-    while (i < tokens.length && tokens[i].t === 'space')
-        i += 1;
-    if (tokens[i] === undefined || tokens[i].t !== 'lbrace')
-        return null;
-    state.p = i + 1;
-    const kids = parseSequence(tokens, state);
-    let closed = false;
-    if (state.p < tokens.length && tokens[state.p].t === 'rbrace') {
-        state.p += 1;
-        closed = true;
-    }
-    if (!closed)
-        return null;
-    return kids.length === 1 && kids[0].t !== 'seq' ? kids[0] : { t: 'seq', kids };
-}
-/** 上下标：把 ^/_ 后的原子绑定到序列末尾元素（supsub）；无 base → 失败回退。 */
-function applyScript(tokens, state, kids) {
-    const dir = tokens[state.p].t;
-    state.p += 1;
-    const atom = readAtom(tokens, state);
-    if (atom === null) {
-        state.failed = true;
-        return;
-    }
-    const last = kids[kids.length - 1];
-    if (last !== undefined && last.t === 'supsub') {
-        if (dir === 'sup')
-            last.sup = atom;
-        else
-            last.sub = atom;
-        return;
-    }
-    const node = { t: 'supsub', base: last !== undefined ? kids.pop() : null, sup: null, sub: null };
-    if (dir === 'sup')
-        node.sup = atom;
-    else
-        node.sub = atom;
-    if (node.base === null) {
-        state.failed = true;
-        return;
-    }
-    kids.push(node);
-}
-/** 命令分派（表驱动分支，控制圈复杂度）。state.p 指向 \\命令 token。 */
-function parseCommand(tokens, state) {
-    const name = tokens[state.p].v.slice(1);
-    state.p += 1;
-    if (name === 'frac')
-        return parseFrac(tokens, state);
-    if (name === 'sqrt')
-        return parseSqrt(tokens, state);
-    if (MATH_BIG_SYMS[name] !== undefined)
-        return parseBig(tokens, state, MATH_BIG_SYMS[name]);
-    if (name === 'left' || name === 'right')
-        return parseDelim(tokens, state);
-    if (MATH_TEXT_CMDS.includes(name))
-        return parseTextCmd(tokens, state);
-    const sym = GREEK_COMMANDS[name];
-    if (sym !== undefined)
-        return { t: 'text', v: sym };
-    const symbol = MATH_SYMBOLS[name];
-    if (symbol !== undefined)
-        return { t: 'text', v: symbol };
-    const fn = MATH_FUNC_TEXT[name];
-    if (fn !== undefined)
-        return { t: 'text', v: fn };
-    return { t: 'text', v: '\\' + name };
-}
-/** 分数：\frac{num}{den}；参数不完整 → 全局失败（整体回退原文）。 */
-function parseFrac(tokens, state) {
-    const num = tryGroup(tokens, state);
-    if (num !== null) {
-        const den = tryGroup(tokens, state);
-        if (den !== null)
-            return { t: 'frac', num, den };
-    }
-    state.failed = true;
-    return { t: 'text', v: '\\frac' };
-}
-/** 根号：\sqrt{body}；无体 → 全局失败。 */
-function parseSqrt(tokens, state) {
-    const body = tryGroup(tokens, state);
-    if (body !== null)
-        return { t: 'sqrt', body };
-    state.failed = true;
-    return { t: 'text', v: '\\sqrt' };
-}
-/** 大符号（求和/积分等）：\sum_{sub}^{sup}，上下限可选。 */
-function parseBig(tokens, state, sym) {
-    const sub = tryScript(tokens, state, 'sub');
-    const sup = tryScript(tokens, state, 'sup');
-    return { t: 'big', sym, sub, sup };
-}
-/** 尝试读上下限脚本（_{...} 或 ^{...}）；不存在 → null。 */
-function tryScript(tokens, state, dir) {
-    let i = state.p;
-    while (i < tokens.length && tokens[i].t === 'space')
-        i += 1;
-    if (tokens[i] === undefined || tokens[i].t !== dir)
-        return null;
-    state.p = i + 1;
-    return readAtom(tokens, state);
-}
-/** \left / \right 定界符：后随字符或组按普通文本渲染（不构造结构）。 */
-function parseDelim(tokens, state) {
-    if (state.p >= tokens.length)
-        return { t: 'text', v: '' };
-    const tk = tokens[state.p];
-    if (tk.t === 'space') {
-        state.p += 1;
-        return parseDelim(tokens, state);
-    }
-    if (tk.t === 'char') {
-        state.p += 1;
-        return { t: 'text', v: tk.v };
-    }
-    if (tk.t === 'cmd') {
-        const name = tk.v.slice(1);
-        if (name === 'vert') {
-            state.p += 1;
-            return { t: 'text', v: '|' };
-        }
-        if (name === 'Vert') {
-            state.p += 1;
-            return { t: 'text', v: '‖' };
-        }
-        const sym = GREEK_COMMANDS[name] ?? MATH_SYMBOLS[name];
-        if (sym !== undefined) {
-            state.p += 1;
-            return { t: 'text', v: sym };
-        }
-    }
-    if (tk.t === 'lbrace') {
-        state.p += 1;
-        return parseGroup(tokens, state);
-    }
-    return { t: 'text', v: '' };
-}
-/** 文本命令：\text{...} 参数组按普通文本内联。 */
-function parseTextCmd(tokens, state) {
-    const body = tryGroup(tokens, state);
-    if (body !== null)
-        return body;
-    return { t: 'text', v: '' };
-}
-exports.parseMath = parseMath;
-
-    "use strict";
-// ── 公式结构渲染（issue #82）：AST 节点 → React 元素 ────────────────
-// 由 math.ts（解析）产出节点数组，本文件渲染为语义化嵌套结构：
-//   frac → span.dsh-md-render-frac（num / den 上下 + 分数线）
-//   sqrt → span.dsh-md-render-sqrt（√ 符号 + body 顶部根号线）
-//   supsub → span.dsh-md-render-supsub（base + 上下标 scripts）
-//   big → span.dsh-md-render-big（求和/积分符号 + 上下限）
-//   seq → span.dsh-md-render-seq（组内联，无样式）
-// 样式见 styles.ts（语义 token，深浅主题自适应；随 activation 注入）。
-let __mathKey = 0;
-function mathNodesToReact(nodes) {
-    return nodes.map(renderMathNode);
-}
-function renderMathNode(node) {
-    const k = 'm' + __mathKey++;
-    if (node === null || node === undefined)
-        return '';
-    if (node.t === 'text')
-        return node.v;
-    if (node.t === 'seq')
-        return createElement('span', { key: k, className: 'dsh-md-render-seq' }, ...mathNodesToReact(node.kids));
-    if (node.t === 'frac')
-        return renderFrac(node, k);
-    if (node.t === 'sqrt')
-        return renderSqrt(node, k);
-    if (node.t === 'supsub')
-        return renderSupsub(node, k);
-    if (node.t === 'big')
-        return renderBig(node, k);
-    return '';
-}
-function renderFrac(node, k) {
-    return createElement('span', { key: k, className: 'dsh-md-render-frac' }, createElement('span', { key: k + 'n', className: 'dsh-md-render-frac-num' }, ...mathNodesToReact([node.num])), createElement('span', { key: k + 'd', className: 'dsh-md-render-frac-den' }, ...mathNodesToReact([node.den])));
-}
-function renderSqrt(node, k) {
-    return createElement('span', { key: k, className: 'dsh-md-render-sqrt' }, createElement('span', { key: k + 's', className: 'dsh-md-render-sqrt-symbol' }, '√'), createElement('span', { key: k + 'b', className: 'dsh-md-render-sqrt-body' }, ...mathNodesToReact([node.body])));
-}
-function renderSupsub(node, k) {
-    const scripts = node.sup !== null || node.sub !== null
-        ? createElement('span', { key: k + 's', className: 'dsh-md-render-supsub-scripts' }, node.sup !== null
-            ? createElement('span', { key: k + 'u', className: 'dsh-md-render-supsub-sup' }, ...mathNodesToReact([node.sup]))
-            : null, node.sub !== null
-            ? createElement('span', { key: k + 'd', className: 'dsh-md-render-supsub-sub' }, ...mathNodesToReact([node.sub]))
-            : null)
-        : null;
-    return createElement('span', { key: k, className: 'dsh-md-render-supsub' }, createElement('span', { key: k + 'b', className: 'dsh-md-render-supsub-base' }, ...mathNodesToReact([node.base])), scripts);
-}
-function renderBig(node, k) {
-    return createElement('span', { key: k, className: 'dsh-md-render-big' }, node.sup !== null || node.sub !== null
-        ? createElement('span', { key: k + 'l', className: 'dsh-md-render-big-limits' }, node.sup !== null
-            ? createElement('span', { key: k + 'u', className: 'dsh-md-render-big-sup' }, ...mathNodesToReact([node.sup]))
-            : null, node.sub !== null
-            ? createElement('span', { key: k + 'd', className: 'dsh-md-render-big-sub' }, ...mathNodesToReact([node.sub]))
-            : null)
-        : null, createElement('span', { key: k + 'y', className: 'dsh-md-render-big-symbol' }, node.sym));
-}
-exports.mathNodesToReact = mathNodesToReact;
-
-
-    // ── 语法补全（issue #81）：图片 / 任务列表 / 行内元素构造 / 列表解析 ──
-    "use strict";
-// ── 语法补全（issue #81）：图片 / 任务列表 / 行内元素构造 / 列表解析 ──
-// 零运行时依赖（R10）。与 markdown.ts 处于同一 factory 作用域（经
-// build.mjs 拼接），函数声明共享：markdown.ts 的 mdInline 与块级
-// MD_RENDERERS 调用本文件声明的 inlineMatch / tryList；本文件的 mdInline
-// 依赖构造函数（linkEl / mathSpanOrText）与列表解析（listInfo / parseList）。
-// ── 图片嵌入：![alt](url) → <img>，alt 兜底 + 加载失败占位 ──────
-function MarkdownImage({ src, alt }) {
-    const [failed, setFailed] = useState(false);
-    if (failed) {
-        return createElement('span', { className: 'dsh-md-render-img-fallback', role: 'img' }, alt || '图片加载失败');
-    }
-    return createElement('img', {
-        src,
-        alt: alt || 'image',
-        loading: 'lazy',
-        className: 'dsh-md-render-img',
-        onError: () => setFailed(true),
-    });
-}
-// ── 任务列表复选框：- [ ] / - [x] → <input type=checkbox> ────────
-function TaskCheckbox({ checked }) {
-    const [value, setValue] = useState(Boolean(checked));
-    return createElement('input', {
-        type: 'checkbox',
-        className: 'dsh-md-render-task-checkbox',
-        checked: value,
-        onChange: (e) => setValue(e.currentTarget.checked),
-    });
-}
-// ── 行内元素构造（单分支小函数，控制 mdInline 圈复杂度 ≤ 10）──────
-function linkEl(full, kk) {
-    const lm = full.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-    if (lm) {
-        return createElement('a', { key: kk, href: lm[2], target: '_blank', rel: 'noreferrer' }, lm[1]);
-    }
-    return full;
-}
-function mathSpanOrText(m, text, kk) {
-    // issue #84：mathStructures 关闭 → 公式语法保持原文（不渲染公式结构）。
-    if (!renderOptions.mathStructures)
-        return m[7];
-    if (isMathSpan(text, m)) {
-        const content = m[7].slice(1, -1);
-        const parsed = parseMath(content);
-        // issue #82：轻量结构解析成功 → 渲染嵌套结构；解析失败 → 保持原文
-        // （不误伤，与 R14 错误标记逻辑兼容——此处仅处理合法公式内容）。
-        const kids = parsed.failed ? [content] : mathNodesToReact(parsed.nodes);
-        return createElement('span', { key: kk, className: 'dsh-md-render-math' }, ...kids);
-    }
-    if (isMathError(m)) {
-        return createElement('span', { key: kk, className: 'dsh-md-render-math-error', title: MATH_ERROR_TITLES.malformed }, icon.alert(12), m[7]);
-    }
-    return m[7];
-}
-function inlineMatch(m, text, kk) {
-    if (m[1] !== undefined)
-        return createElement('code', { key: kk }, trimCode(m[2]));
-    if (m[3] !== undefined)
-        return createElement('strong', { key: kk }, m[3].slice(2, -2));
-    if (m[4] !== undefined)
-        return matchImage(m, kk);
-    if (m[6] !== undefined)
-        return linkEl(m[6], kk);
-    if (m[7] !== undefined)
-        return mathSpanOrText(m, text, kk);
-    if (m[8] !== undefined)
-        return matchDel(m, kk);
-    return createElement('em', { key: kk }, m[9].slice(1, -1));
-}
-function matchImage(m, kk) {
-    // issue #84：image 关闭 → 图片语法保持原文（不解析为 <img>）。
-    if (renderOptions.image)
-        return createElement(MarkdownImage, { key: kk, src: m[5], alt: m[4] });
-    return m[0];
-}
-function matchDel(m, kk) {
-    // issue #84：strikethrough 关闭 → 删除线保持原文（不解析为 <del>）。
-    if (renderOptions.strikethrough)
-        return createElement('del', { key: kk, className: 'dsh-md-render-del' }, m[8]);
-    return m[0];
-}
-function listInfo(line) {
-    const m = line.match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
-    if (!m)
-        return null;
-    const indent = m[1].length;
-    const ordered = /^\d/.test(m[2]);
-    let rest = m[3];
-    let task = false;
-    let checked = false;
-    // issue #84：taskList 关闭 → 任务标记保持原文（不解析 checkbox）。
-    const tm = rest.match(/^\[( |x|X)\]\s+(.*)$/);
-    if (tm && renderOptions.taskList) {
-        task = true;
-        checked = tm[1] !== ' ';
-        rest = tm[2];
-    }
-    return { indent, ordered, marker: m[2], rest, task, checked };
-}
-function sameLevel(info, indent, ordered) {
-    // issue #84：nestedList 关闭 → 忽略缩进层级，全部同级渲染（不嵌套）。
-    return !!info && info.ordered === ordered && (!renderOptions.nestedList || info.indent === indent);
-}
-function itemKids(info, i) {
-    const kids = [];
-    if (info.task)
-        kids.push(createElement(TaskCheckbox, { key: 'task' + i, checked: info.checked }));
-    kids.push(...mdInline(info.rest, 'li' + i));
-    return kids;
-}
-function parseList(lines, start) {
-    const first = listInfo(lines[start]);
-    const ordered = first.ordered;
-    const indent = first.indent;
-    const items = [];
-    let i = start;
-    while (i < lines.length) {
-        const info = listInfo(lines[i]);
-        if (!sameLevel(info, indent, ordered))
-            break;
-        const kids = itemKids(info, i);
-        i += 1;
-        while (i < lines.length) {
-            // issue #84：nestedList 关闭 → 不递归解析深层列表（深层项由外层
-            // 同级消费，扁平渲染）。
-            if (!renderOptions.nestedList)
-                break;
-            const nxt = listInfo(lines[i]);
-            if (!nxt || nxt.indent <= indent)
-                break;
-            const nested = parseList(lines, i);
-            kids.push(nested.node);
-            i = nested.index;
-        }
-        items.push(createElement('li', { key: items.length }, ...kids));
-    }
-    return {
-        node: createElement(ordered ? 'ol' : 'ul', { className: ordered ? 'tzx-ol' : 'tzx-ul' }, ...items),
-        index: i,
-    };
-}
-function tryList(lines, i, out) {
-    if (!listInfo(lines[i]))
-        return 0;
-    const parsed = parseList(lines, i);
-    out.push(parsed.node);
-    return parsed.index;
-}
-
-
-    // ── 统一 MarkdownView：行内 + 块级渲染（导出供 think-zh-expand）──
-    "use strict";
-// ── 统一 MarkdownView：行内 + 块级渲染（issue #31 自 dsh-think-zh-expand
-//    迁移，行为等价 + 公式渲染）。由 scripts/build.mjs 拼入 client.js 的
-//    factory 作用域（纯函数声明文本，依赖 factory 内 createElement）；输出
-//    结构保持迁移前约定（div.tzx-md / p.tzx-p / table.tzx-table /
-//    div.md-code-block）。零运行时依赖（issue #81 语法补全见 syntax.ts）。
-// ── 行内 code（CommonMark 多反引号语义）────────────────────────────
-function trimCode(raw) {
-    if (raw.length > 1 && raw[0] === ' ' && raw[raw.length - 1] === ' ' && raw.trim() !== '') {
-        return raw.slice(1, -1);
-    }
-    return raw;
-}
-// ── 行内公式候选验证（货币/变量/块级保护，通过才渲染为公式）──────
-function isMathSpan(text, m) {
-    const content = m[7].slice(1, -1);
-    if (content === '' || content.trim() !== content)
-        return false;
-    const before = text[m.index - 1];
-    const after = text[m.index + m[0].length];
-    if (before !== undefined && /[\w$]/.test(before))
-        return false;
-    if (after !== undefined && /[\w$]/.test(after))
-        return false;
-    return true;
-}
-// 公式错误提示（issue #32）：异常公式 → 错误标记（原文保留 + 错误样式，
-// 参考内置 katex-error 语义）；货币/变量/块级 `$$` 保护不误报。
-const MATH_ERROR_TITLES = {
-    malformed: '公式内容异常',
-    unclosed: '未闭合的公式',
-    multiline: '公式内容含换行',
-    empty: '公式内容为空',
-};
-function isMathError(m) {
-    const content = m[7].slice(1, -1);
-    return content[0] === ' ' || content[0] === '\t';
-}
-function mathSkip(text, i) {
-    const before = text[i - 1];
-    const after = text[i + 1];
-    if (before !== undefined && /[\w$]/.test(before))
-        return i + 1;
-    if (after === '$')
-        return i + 2;
-    if (after !== undefined && /\d/.test(after))
-        return i + 1;
-    return i;
-}
-/** 在正则未匹配区间 [start, end) 中扫描疑似公式的 `$`（未闭合/跨行 → 错误标记）。 */
-function scanMathErrors(text, start, end, key, k, out) {
-    let i = start;
-    let segStart = start;
-    while (i < end) {
-        if (text[i] !== '$') {
-            i += 1;
-            continue;
-        }
-        const skip = mathSkip(text, i);
-        if (skip !== i) {
-            i = skip;
-            continue;
-        }
-        if (i > segStart)
-            out.push(text.slice(segStart, i));
-        let j = i + 1;
-        while (j < end && text[j] !== '$')
-            j += 1;
-        if (j >= end) {
-            out.push(createElement('span', { key: key + '-e' + k, className: 'dsh-md-render-math-error', title: MATH_ERROR_TITLES.unclosed }, icon.alert(12), text.slice(i, end)));
-            return k + 1;
-        }
-        out.push(createElement('span', { key: key + '-e' + k, className: 'dsh-md-render-math-error', title: MATH_ERROR_TITLES.multiline }, icon.alert(12), text.slice(i, j + 1)));
-        k += 1;
-        i = j + 1;
-        segStart = i;
-    }
-    if (end > segStart)
-        out.push(text.slice(segStart, end));
-    return k;
-}
-// ── 轻量行内 Markdown：行内代码 / 粗体 / 图片 / 链接 / 公式 / 删除线 / 斜体 ──
-// 图片须先于链接（`![alt](url)` 内含 `[alt](url)` 链式子结构）；行内公式
-// $...$ 保护货币/变量/块级 `$$`。元素构造见 syntax.ts 的 inlineMatch。
-function mdInline(text, key) {
-    const out = [];
-    const re = /(`+)([^`\n][^\n]*?)\1(?!`)|(\*\*[^*]+\*\*)|!\[([^\]]*)\]\(([^)]+)\)|(\[[^\]]+\]\([^)]+\))|(\$[^$\n]+?\$)|~~([^~]+)~~|(\*[^*]+\*)/g;
-    let last = 0;
-    let m, k = 0;
-    while ((m = re.exec(text)) !== null) {
-        // issue #84：mathStructures 关闭 → 不扫描疑似公式的未闭合 `$`（保持原文）。
-        if (renderOptions.mathStructures)
-            k = scanMathErrors(text, last, m.index, key, k, out);
-        out.push(inlineMatch(m, text, key + '-i' + k));
-        k += 1;
-        last = m.index + m[0].length;
-    }
-    if (renderOptions.mathStructures)
-        scanMathErrors(text, last, text.length, key, k, out);
-    return out;
-}
-// ── 轻量块级 Markdown：代码块 / 标题 / 列表 / 引用 / 表格 / 公式 ──
-// 每个 tryXxx 尝试从 lines[i] 消费一类块：成功则 push 元素并返回下一行下标，
-// 失败返回 0（不消费）。复制按钮（CopyButton，issue #74）代码块/整段右下角。
-function tryFence(lines, i, out) {
-    const fence = lines[i].match(/^```(\w*)\s*$/);
-    if (!fence)
-        return 0;
-    const buf = [];
-    i += 1;
-    while (i < lines.length && !/^```\s*$/.test(lines[i])) {
-        buf.push(lines[i]);
-        i += 1;
-    }
-    i += 1;
-    // 语法高亮 / 语言标签 / 行号（issue #80）：结构见 highlight/codeblock.ts。
-    out.push(renderCodeBlock({ key: 'b' + out.length, lang: fence[1], code: buf.join('\n') }));
-    return i;
-}
-function tryHeading(lines, i, out) {
-    const heading = lines[i].match(/^(#{1,4})\s+(.*)$/);
-    if (!heading)
-        return 0;
-    const level = heading[1].length;
-    out.push(createElement('h' + level, { key: 'b' + out.length, className: 'tzx-h' }, ...mdInline(heading[2], 'h' + out.length)));
-    return i + 1;
-}
-function tryQuote(lines, i, out) {
-    const quote = lines[i].match(/^\s*>\s?(.*)$/);
-    if (!quote)
-        return 0;
-    const buf = [quote[1]];
-    i += 1;
-    while (i < lines.length) {
-        const q2 = lines[i].match(/^\s*>\s?(.*)$/);
-        if (!q2)
-            break;
-        buf.push(q2[1]);
-        i += 1;
-    }
-    out.push(createElement('blockquote', { key: 'b' + out.length, className: 'tzx-bq' }, ...buf.map((l, j) => createElement('p', { key: j }, ...mdInline(l, 'bq' + out.length + '-' + j)))));
-    return i;
-}
-function tryTable(lines, i, out) {
-    const line = lines[i];
-    const tableHead = line.match(/^\s*\|.*\|\s*$/);
-    if (!tableHead)
-        return 0;
-    const sep = lines[i + 1];
-    const isSep = typeof sep === 'string' && /^\s*\|?[\s:\-|]+\|?\s*$/.test(sep) && sep.includes('-');
-    if (!isSep)
-        return 0;
-    // 无分隔行（不是标准表格）时返回 0：由段落逻辑接管，表格头行按普通行处理。
-    const cellsOf = (row) => row
-        .trim()
-        .replace(/^\||\|$/g, '')
-        .split('|')
-        .map((c) => c.trim());
-    const aligns = cellsOf(sep).map((a) => {
-        if (a.startsWith(':') && a.endsWith(':'))
-            return 'center';
-        if (a.endsWith(':'))
-            return 'right';
-        return 'left';
-    });
-    const header = cellsOf(line);
-    const dataRows = [];
-    i += 2;
-    while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
-        dataRows.push(cellsOf(lines[i]));
-        i += 1;
-    }
-    const cellStyle = (j) => ({ textAlign: aligns[j] ?? 'left' });
-    out.push(createElement('table', { key: 'b' + out.length, className: 'tzx-table' }, createElement('thead', null, createElement('tr', null, header.map((c, j) => createElement('th', { key: j, style: cellStyle(j) }, ...mdInline(c, 'th' + out.length + '-' + j))))), dataRows.length > 0
-        ? createElement('tbody', null, dataRows.map((row, ri) => createElement('tr', { key: ri }, row.map((c, j) => createElement('td', { key: j, style: cellStyle(j) }, ...mdInline(c, 'td' + out.length + '-' + ri + '-' + j))))))
-        : null));
-    return i;
-}
-// ── 块级公式：$$...$$ 单行或 $$ 开闭块；异常（未闭合/空）→ 错误标记 ──
-function mathErrorEl(out, title, content) {
-    return createElement('div', { key: 'b' + out.length, className: 'dsh-md-render-math-error', title }, icon.alert(12), content);
-}
-function tryMath(lines, i, out) {
-    // issue #84：mathStructures 关闭 → 块级公式不渲染为公式结构（回退段落）。
-    if (!renderOptions.mathStructures)
-        return 0;
-    return tryMathEnabled(lines, i, out);
-}
-function tryMathEnabled(lines, i, out) {
-    const single = lines[i].match(/^\$\$([^$]*)\$\$\s*$/);
-    if (single) {
-        const content = single[1].trim();
-        out.push(content === '' ? mathErrorEl(out, MATH_ERROR_TITLES.empty, lines[i].trim()) : mathBlockEl(out, content));
-        return i + 1;
-    }
-    if (!/^\$\$\s*$/.test(lines[i]))
-        return 0;
-    const buf = [];
-    i += 1;
-    while (i < lines.length && !/^\$\$\s*$/.test(lines[i])) {
-        buf.push(lines[i]);
-        i += 1;
-    }
-    const closed = i < lines.length;
-    i += 1;
-    const content = buf.join('\n').trim();
-    const err = !closed ? MATH_ERROR_TITLES.unclosed : content === '' ? MATH_ERROR_TITLES.empty : null;
-    out.push(err ? mathErrorEl(out, err, !closed ? '$$\n' + buf.join('\n') : '$$\n$$') : mathBlockEl(out, content));
-    return i;
-}
-/** 块级公式内容：轻量结构解析成功 → 嵌套结构；失败 → 保持原文（issue #82）。 */
-function mathBlockEl(out, content) {
-    const parsed = parseMath(content);
-    const kids = parsed.failed ? [content] : mathNodesToReact(parsed.nodes);
-    return createElement('div', { key: 'b' + out.length, className: 'dsh-md-render-math-block' }, ...kids);
-}
-function tryParagraph(lines, i, out) {
-    const para = [lines[i]];
-    i += 1;
-    while (i < lines.length) {
-        const nxt = lines[i];
-        if (nxt.trim() === '' || /^(#{1,4})\s|^\s*[-*+]\s|^\s*\d+[.)]\s|^\s*>\s?|^```|^\$\$/.test(nxt))
-            break;
-        para.push(nxt);
-        i += 1;
-    }
-    out.push(createElement('p', { key: 'b' + out.length, className: 'tzx-p' }, ...mdInline(para.join('\n'), 'p' + out.length)));
-    return i;
-}
-// 块级渲染顺序（与迁移前逐分支判断的顺序一致，公式块追加在末尾）。
-// 列表（内联 task/嵌套）与行内元素构造见 syntax.ts。
-const MD_RENDERERS = [tryFence, tryHeading, tryList, tryQuote, tryTable, tryMath];
+// ── 统一 MarkdownView（对外公共 API 面）──────────────────────────────
+// 对外承诺（README「公共 API 契约」）：require('dsh-md-render').MarkdownView
+// 存在且为 React 组件，props 为 { text: string }（额外 props 忽略，非字符串
+// 降级为文本）；bundle id 为 dsh-md-render。
+//
+// 实现 = 官方 MarkdownText（平台 seed 模块，表格 / 公式 / 代码块全部由
+// 官方渲染）+ 非标准表格容错预处理（table-normalize.ts） + 「整段复制」
+// 按钮（官方只有代码块复制，整段复制是本插件保留的增量）。官方组件不可用
+// → <pre> 兜底。本文件不含任何自实现的 markdown 渲染。
+/** 统一 MarkdownView：{ text } → div.tzx-md（官方渲染 + 整段复制按钮）。 */
 function MarkdownView({ text }) {
-    const lines = String(text).split('\n');
-    const out = [];
-    let i = 0;
-    while (i < lines.length) {
-        let handled = false;
-        for (const render of MD_RENDERERS) {
-            const next = render(lines, i, out);
-            if (next) {
-                i = next;
-                handled = true;
-                break;
-            }
-        }
-        if (handled)
-            continue;
-        if (lines[i].trim() === '') {
-            i += 1;
-            continue;
-        }
-        i = tryParagraph(lines, i, out);
-    }
-    return createElement('div', { className: 'tzx-md' }, out, 
-    // issue #84：copyButton 关闭 → 整段内容复制按钮不渲染。
+    const source = typeof text === 'string' ? text : String(text === undefined || text === null ? '' : text);
+    return createElement('div', { className: 'tzx-md' }, officialMarkdownNode(source), 
+    // 整段复制按钮（copyButton 关闭 → 不渲染）；官方只有代码块复制。
     renderOptions.copyButton ? createElement(CopyButton, { kind: 'content' }) : null);
 }
 exports.MarkdownView = MarkdownView;
 
 
-    // ── 表格检测与解析（纯函数，导出供单测）──────────────────────
+    // ── 上下文注入块 markdown 渲染（pre[data-context-text]）─────────
     "use strict";
-// ── 表格检测与解析（纯函数，导出供单测）──────────────────────
-// 增强检测规则（相对 dsh-think-zh-expand 的 tryTable）：
-//  - 表头/数据行：含 `|` 且至少 2 列即可，允许无首尾管道符；
-//  - 分隔行：只含 `-` `:` `|` 与空白的变体（--- | ---、-|-|-、---）；
-//  - 对齐标记：`:---` 左、`:---:` 中、`---:` 右，无冒号默认左；
-//  - 表格可出现在段落中间（prefix/suffix 文本保留）。
-/** 分隔行：只含 - : | 与空白，且至少含一个 -。 */
-function isSeparatorLine(line) {
-    if (typeof line !== 'string')
-        return false;
-    if (!/^\s*\|?[\s:\-|]+\|?\s*$/.test(line))
-        return false;
-    return line.includes('-');
-}
-/** 按 | 分割一行（去首尾管道符，逐格 trim）。 */
-function splitRow(line) {
-    return line
-        .trim()
-        .replace(/^\|/, '')
-        .replace(/\|$/, '')
-        .split('|')
-        .map((c) => c.trim());
-}
-/** 表格行：含 |、至少 2 列、且不是分隔行。 */
-function isTableLine(line) {
-    if (typeof line !== 'string')
-        return false;
-    if (isSeparatorLine(line))
-        return false;
-    const t = line.trim();
-    if (!t.includes('|'))
-        return false;
-    return splitRow(t).length >= 2;
-}
-/** 对齐标记解析：:--- 左、:---: 中、---: 右、其余左。 */
-function parseAlign(cell) {
-    if (cell.startsWith(':') && cell.endsWith(':'))
-        return 'center';
-    if (cell.endsWith(':'))
-        return 'right';
-    return 'left';
-}
-/**
- * 解析表格文本 → { header, aligns, rows, prefix, suffix } 或 null。
- * 在段落内查找「表格行 + 分隔行」组合；prefix/suffix 为表格前后的
- * 非表格文本（渲染时保留）。
- */
-function parseTable(text) {
-    const lines = String(text).split('\n');
-    for (let start = 0; start < lines.length - 1; start += 1) {
-        if (!isTableLine(lines[start]))
-            continue;
-        if (!isSeparatorLine(lines[start + 1]))
-            continue;
-        const header = splitRow(lines[start]);
-        const aligns = splitRow(lines[start + 1]).map(parseAlign);
-        const rows = [];
-        let end = start + 2;
-        while (end < lines.length) {
-            const line = lines[end];
-            if (line.trim() === '')
-                break;
-            if (!isTableLine(line))
-                break;
-            rows.push(splitRow(line));
-            end += 1;
-        }
-        return {
-            header,
-            aligns,
-            rows,
-            prefix: lines.slice(0, start).join('\n'),
-            suffix: lines.slice(end).join('\n'),
-        };
-    }
-    return null;
-}
-exports.isSeparatorLine = isSeparatorLine;
-exports.isTableLine = isTableLine;
-exports.splitRow = splitRow;
-exports.parseAlign = parseAlign;
-exports.parseTable = parseTable;
-
-
-    // ── 行内渲染：单元格内的 code / strong / em / link ─────────────
-    "use strict";
-// ── 行内渲染：单元格内的 code / strong / em / link / del / img ──
-// 与 dsh-think-zh-expand 的 mdInline 同规则（CommonMark 语义）：
-// N 个反引号开闭配对、**bold**、[link](url)、*em*；issue #81 增补
-// **删除线** ~~text~~ 与 **图片** ![alt](url)（图片须先于链接）。返回
-// DocumentFragment（无匹配时含单个文本节点）。零运行时依赖。
-// 各分支拆为小函数（domXxx），控制 renderInline 圈复杂度 ≤ 10。
-function domCode(m) {
-    const el = document.createElement('code');
-    el.textContent = m[2];
-    return el;
-}
-function domStrong(m) {
-    const el = document.createElement('strong');
-    el.textContent = m[3].slice(2, -2);
-    return el;
-}
-function domImg(m) {
-    const img = document.createElement('img');
-    img.src = m[5];
-    img.alt = m[4] || 'image';
-    img.className = 'dsh-md-render-img';
-    img.setAttribute('loading', 'lazy');
-    return img;
-}
-function domLink(m) {
-    const lm = m[6].match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-    if (!lm)
-        return m[6];
-    const a = document.createElement('a');
-    a.href = lm[2];
-    a.target = '_blank';
-    a.rel = 'noreferrer';
-    a.textContent = lm[1];
-    return a;
-}
-function domDel(m) {
-    const el = document.createElement('del');
-    el.className = 'dsh-md-render-del';
-    el.textContent = m[7];
-    return el;
-}
-function domEm(m) {
-    const el = document.createElement('em');
-    el.textContent = m[8].slice(1, -1);
-    return el;
-}
-function inlineDomMatch(m) {
-    if (m[1] !== undefined)
-        return domCode(m);
-    if (m[3] !== undefined)
-        return domStrong(m);
-    // issue #84：image 关闭 → 单元格内图片语法保持原文。
-    if (m[4] !== undefined && renderOptions.image)
-        return domImg(m);
-    if (m[4] !== undefined)
-        return m[0];
-    if (m[6] !== undefined)
-        return domLink(m);
-    // issue #84：strikethrough 关闭 → 单元格内删除线保持原文。
-    if (m[7] !== undefined && renderOptions.strikethrough)
-        return domDel(m);
-    if (m[7] !== undefined)
-        return m[0];
-    return domEm(m);
-}
-function renderInline(text) {
-    const frag = document.createDocumentFragment();
-    // 行内代码 / 粗体 / 图片 / 链接 / 删除线 / 斜体（图片须先于链接）。
-    const re = /(`+)([^`\n][^\n]*?)\1(?!`)|(\*\*[^*]+\*\*)|!\[([^\]]*)\]\(([^)]+)\)|(\[[^\]]+\]\([^)]+\))|~~([^~]+)~~|(\*[^*]+\*)/g;
-    let last = 0;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-        if (m.index > last)
-            frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-        const node = inlineDomMatch(m);
-        if (typeof node === 'string')
-            frag.appendChild(document.createTextNode(node));
-        else if (node)
-            frag.appendChild(node);
-        last = m.index + m[0].length;
-    }
-    if (last < text.length)
-        frag.appendChild(document.createTextNode(text.slice(last)));
-    return frag;
-}
-
-
-    // ── DOM 表格渲染：div.dsh-md-render-table-scroll > table.dsh-md-render-table ──
-    "use strict";
-// ── DOM 表格渲染：div.dsh-md-render-table-scroll > table.dsh-md-render-table ──
-// 表头 thead / 数据 tbody / 每列对齐 style；prefix/suffix 文本保留
-// 为段落；外层滚动容器提供宽表格横向滚动，容器下方带滚动提示条
-// （chevronRight 图标 + 文案，issue #54 阶段 1 视觉统一）。返回
-// DocumentFragment。
-//
-// 交互增强（issue #83）：
-//  - 表头排序：th 带 data-sort-col，点击按该列排序（升/降切换，数值列
-//    按数值比较、文本列按 localeCompare），箭头 span 显示 ↑/↓；排序
-//    只影响当前表格 DOM（状态存 scroll 容器 dataset，不跨表格共享）；
-//  - 长表格折叠：行数 > FOLD_LIMIT 时第 FOLD_LIMIT 行起加
-//    dsh-md-render-folded-row（CSS display:none 隐藏，行数据保留在 DOM，
-//    展开/收起只切换 class），表格下方渲染「展开全部 N 行」按钮；
-//  - 事件委托：click 绑定在 scroll 容器上（th 排序 / 折叠按钮切换），
-//    排序/折叠状态存 scroll.dataset（sortCol/sortDir/totalRows）。
-/** 长表格折叠阈值：行数超过该值默认折叠为前 N 行。 */
-const FOLD_LIMIT = 20;
-/** 单元格比较：两个非空数值字符串按数值比较，否则按 localeCompare。 */
-function compareCells(a, b) {
-    const sa = String(a ?? '').trim();
-    const sb = String(b ?? '').trim();
-    const na = Number(sa);
-    const nb = Number(sb);
-    if (sa !== '' && sb !== '' && Number.isFinite(na) && Number.isFinite(nb)) {
-        return na - nb;
-    }
-    return sa.localeCompare(sb);
-}
-/** 按列排序（返回新数组，不修改原数组；dir: 'asc' | 'desc'）。 */
-function sortRows(rows, colIndex, dir) {
-    const factor = dir === 'desc' ? -1 : 1;
-    return rows.slice().sort((r1, r2) => factor * compareCells(r1[colIndex], r2[colIndex]));
-}
-/** 折叠：行数超过 limit 时返回 { visible: 前 limit 行, hidden: 隐藏数 }。 */
-function foldRows(rows, limit) {
-    if (rows.length <= limit)
-        return { visible: rows, hidden: 0 };
-    return { visible: rows.slice(0, limit), hidden: rows.length - limit };
-}
-/** 构建 thead（表头行 + 每列对齐 + 排序列标记与箭头 span；issue #84：
- *  tableSort 关闭 → th 不渲染排序列标记与箭头）。 */
-function renderHead(table) {
-    const thead = document.createElement('thead');
-    const headTr = document.createElement('tr');
-    table.header.forEach((cell, j) => {
-        const th = document.createElement('th');
-        th.style.textAlign = table.aligns[j] || 'left';
-        th.appendChild(renderInline(cell));
-        if (renderOptions.tableSort) {
-            th.setAttribute('data-sort-col', String(j));
-            const arrow = document.createElement('span');
-            arrow.className = 'dsh-md-render-sort-arrow';
-            arrow.setAttribute('aria-hidden', 'true');
-            th.appendChild(arrow);
-        }
-        headTr.appendChild(th);
-    });
-    thead.appendChild(headTr);
-    return thead;
-}
-/** 构建 tbody（数据行 + 每列对齐；issue #84：tableFold 关闭 → 不折叠）。 */
-function renderBody(table) {
-    const tbody = document.createElement('tbody');
-    table.rows.forEach((row, i) => {
-        const tr = document.createElement('tr');
-        if (renderOptions.tableFold && i >= FOLD_LIMIT)
-            tr.className = 'dsh-md-render-folded-row';
-        row.forEach((cell, j) => {
-            const td = document.createElement('td');
-            td.style.textAlign = table.aligns[j] || 'left';
-            td.appendChild(renderInline(cell));
-            tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-    });
-    return tbody;
-}
-/** 折叠控制按钮（初始「展开全部 N 行」）。 */
-function renderFoldButton(total) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'dsh-md-render-table-fold';
-    btn.textContent = `展开全部 ${total} 行`;
-    return btn;
-}
-/** 更新表头排序箭头：当前列显示 ↑/↓ 并带 data-sorted，其余列清空。 */
-function updateSortArrows(tbl, col, dir) {
-    tbl.querySelectorAll('th').forEach((th, j) => {
-        const arrow = th.querySelector('.dsh-md-render-sort-arrow');
-        if (!arrow)
-            return;
-        if (j === col) {
-            arrow.textContent = dir === 'asc' ? '↑' : '↓';
-            th.setAttribute('data-sorted', dir);
-        }
-        else {
-            arrow.textContent = '';
-            th.removeAttribute('data-sorted');
-        }
-    });
-}
-/** 按点击的表头列排序：升/降切换，对 tbody 全部行（含折叠行）排序。 */
-function sortTable(scroll, th) {
-    const tbl = scroll.querySelector('table.dsh-md-render-table');
-    const tbody = tbl.querySelector('tbody');
-    if (!tbody)
-        return;
-    const col = Number(th.getAttribute('data-sort-col'));
-    const prevCol = scroll.dataset.sortCol;
-    const prevDir = scroll.dataset.sortDir;
-    const dir = prevCol === String(col) ? (prevDir === 'asc' ? 'desc' : 'asc') : 'asc';
-    scroll.dataset.sortCol = String(col);
-    scroll.dataset.sortDir = dir;
-    const cellText = (tr) => {
-        const tds = tr.querySelectorAll('td');
-        return tds[col] ? (tds[col].textContent ?? '') : '';
-    };
-    const trs = Array.from(tbody.querySelectorAll('tr'));
-    trs.sort((a, b) => {
-        const c = compareCells(cellText(a), cellText(b));
-        return dir === 'desc' ? -c : c;
-    });
-    for (const tr of trs)
-        tbody.appendChild(tr);
-    updateSortArrows(tbl, col, dir);
-}
-/** 折叠/展开切换：只切换行的折叠 class 与按钮文本。 */
-function toggleFold(scroll, btn) {
-    const tbl = scroll.querySelector('table.dsh-md-render-table');
-    const tbody = tbl.querySelector('tbody');
-    if (!tbody)
-        return;
-    const total = Number(scroll.dataset.totalRows) || 0;
-    const trs = Array.from(tbody.querySelectorAll('tr'));
-    const folded = trs.some((tr) => tr.classList.contains('dsh-md-render-folded-row'));
-    if (folded) {
-        for (const tr of trs)
-            tr.classList.remove('dsh-md-render-folded-row');
-        btn.textContent = '收起';
-    }
-    else {
-        for (let i = FOLD_LIMIT; i < trs.length; i += 1)
-            trs[i].classList.add('dsh-md-render-folded-row');
-        btn.textContent = `展开全部 ${total} 行`;
-    }
-}
-/** scroll 容器上的 click 事件委托：表头排序 / 折叠按钮切换（issue #84：
- *  tableSort / tableFold 关闭 → 对应交互不生效）。 */
-function onTableClick(e) {
-    const target = e.target;
-    if (!target || typeof target.closest !== 'function')
-        return;
-    const scroll = target.closest('.dsh-md-render-table-scroll');
-    if (!scroll)
-        return;
-    const th = target.closest('th[data-sort-col]');
-    if (th && renderOptions.tableSort) {
-        sortTable(scroll, th);
-        return;
-    }
-    if (renderOptions.tableFold) {
-        const btn = target.closest('.dsh-md-render-table-fold');
-        if (btn)
-            toggleFold(scroll, btn);
-    }
-}
-/** 共享图标风格的 chevronRight（DOM 侧手写 SVG，stroke=currentColor，
- *  与 dsh-shared/client-parts/icons.part.js 的线性图标风格一致）。 */
-function chevronIcon() {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', '14');
-    svg.setAttribute('height', '14');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '1.8');
-    svg.setAttribute('stroke-linecap', 'round');
-    svg.setAttribute('stroke-linejoin', 'round');
-    svg.setAttribute('aria-hidden', 'true');
-    const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-    polyline.setAttribute('points', '9 6 15 12 9 18');
-    svg.appendChild(polyline);
-    return svg;
-}
-/** 滚动提示条：指示宽表格可横向滚动（弱化样式，见 styles.ts）。 */
-function renderScrollHint() {
-    const hint = document.createElement('div');
-    hint.className = 'dsh-md-render-scroll-hint';
-    hint.appendChild(chevronIcon());
-    hint.appendChild(document.createTextNode('横向滚动'));
-    return hint;
-}
-/** 渲染完整表格（含 prefix/suffix 段落、滚动容器与滚动提示条）。 */
-function renderTable(table) {
-    const frag = document.createDocumentFragment();
-    if (table.prefix) {
-        const p = document.createElement('p');
-        p.className = 'dsh-md-render-prefix';
-        p.textContent = table.prefix;
-        frag.appendChild(p);
-    }
-    const scroll = document.createElement('div');
-    scroll.className = 'dsh-md-render-table-scroll';
-    const tbl = document.createElement('table');
-    tbl.className = 'dsh-md-render-table';
-    tbl.appendChild(renderHead(table));
-    if (table.rows.length > 0) {
-        tbl.appendChild(renderBody(table));
-        // issue #84：tableFold 关闭 → 不渲染折叠按钮（全部行可见）。
-        if (renderOptions.tableFold && table.rows.length > FOLD_LIMIT) {
-            scroll.dataset.totalRows = String(table.rows.length);
-            scroll.appendChild(renderFoldButton(table.rows.length));
-        }
-    }
-    scroll.appendChild(tbl);
-    scroll.addEventListener('click', onTableClick);
-    frag.appendChild(scroll);
-    frag.appendChild(renderScrollHint());
-    if (table.suffix) {
-        const p = document.createElement('p');
-        p.className = 'dsh-md-render-suffix';
-        p.textContent = table.suffix;
-        frag.appendChild(p);
-    }
-    return frag;
-}
-exports.compareCells = compareCells;
-exports.sortRows = sortRows;
-exports.foldRows = foldRows;
-exports.renderTable = renderTable;
-
-
-    // ── 上下文注入块 markdown 渲染（issue #196）────────────────────
-    "use strict";
-// ── 上下文注入块 markdown 渲染（issue #196）──────────────────────────
+// ── 上下文注入块 markdown 渲染 ───────────────────────────────────────
 // 宿主 @deepseek-ai/dsh-client-ui-chat 的 ContextBody 把上下文注入正文
 // （子 agent 回传消息 / AGENTS.md 等 workspace 指令 / 回忆注入）渲染为
-// <pre data-context-text="true"> 纯文本（CSS white-space:pre-wrap），其中
-// 的 markdown（粗体 / 列表 / 标题 / 表格 / 代码块）不会渲染；本模块在
-// DOM 层把这类块渲染为 markdown 结构，复用 MarkdownView 的输出类名
-// （div.tzx-md / p.tzx-p / table.tzx-table / div.md-code-block），样式与
-// 既有增强（表格 / 公式 / 代码块）完全一致。
+// <pre data-context-text="true"> 纯文本（ui-chat/src/client/chat/ContextBody.tsx:147，
+// CSS white-space:pre-wrap），其中的 markdown（粗体 / 列表 / 标题 / 表格 /
+// 代码块）不会渲染——官方不接管这类纯文本块，所以这是本插件的真增量。
+// 本模块在 DOM 层把这类块交给**官方 MarkdownText**（react-dom/client 挂到
+// 插入的容器里）渲染，与宿主消息同一套渲染器（表格 / 公式 / 代码块能力
+// 完全一致）。
 //
 // 与 React 共存的约束（宿主白名单是 React 管理的 DOM）：
 //  - 不修改 pre 的子结构（React 对 <pre>{text}</pre> 的文本 diff 会整体
@@ -2370,7 +427,8 @@ exports.renderTable = renderTable;
 //    且容器仍在位 → 跳过（幂等，不重复渲染、不抖动）；
 //  - 宿主重建节点（会话切换 / 重渲染）冲掉容器后，MutationObserver 兜底
 //    重扫会重做；pre 上的标记不影响宿主（React 不管理该属性）。
-// 超长文本（> MAX_CONTEXT_CHARS）跳过，避免单块渲染卡顿。
+// 超长文本（> MAX_CONTEXT_CHARS）跳过；官方组件不可用时不接管（保持宿主
+// 纯文本，真降级）。
 /** 上下文注入正文选择器（宿主 ContextBody 的稳定 data 契约）。 */
 const CONTEXT_TEXT_SELECTOR = 'pre[data-context-text="true"]';
 /** 已处理标记（写在 pre 上）。 */
@@ -2386,143 +444,50 @@ function contextHash(text) {
         h = ((h << 5) + h + text.charCodeAt(i)) | 0;
     return (h >>> 0).toString(36);
 }
-/** 块级渲染：围栏代码 / 标题 / 引用 / 列表 / 表格 / 段落。 */
-function cmFence(lines, i, out) {
-    const m = lines[i].match(/^```([A-Za-z0-9_+-]*)\s*$/);
-    if (!m)
-        return 0;
-    const body = [];
-    let j = i + 1;
-    while (j < lines.length && !/^```\s*$/.test(lines[j])) {
-        body.push(lines[j]);
-        j += 1;
-    }
-    const block = document.createElement('div');
-    block.className = 'md-code-block';
-    const pre = document.createElement('pre');
-    pre.className = 'tzx-pre';
-    const code = document.createElement('code');
-    if (m[1])
-        code.className = 'language-' + m[1];
-    code.textContent = body.join('\n');
-    pre.appendChild(code);
-    block.appendChild(pre);
-    out.appendChild(block);
-    return j < lines.length ? j + 1 : j;
-}
-/** 标题 # ~ ####。 */
-function cmHeading(lines, i, out) {
-    const m = lines[i].match(/^(#{1,4})\s+(.*)$/);
-    if (!m)
-        return 0;
-    const h = document.createElement('h' + String(m[1].length));
-    h.appendChild(renderInline(m[2]));
-    out.appendChild(h);
-    return i + 1;
-}
-/** 引用块（连续 > 行，合并为一个 blockquote，段内换行保留为多段）。 */
-function cmQuote(lines, i, out) {
-    if (!/^\s*>/.test(lines[i]))
-        return 0;
-    const buf = [];
-    let j = i;
-    while (j < lines.length && /^\s*>/.test(lines[j])) {
-        buf.push(lines[j].replace(/^\s*>\s?/, ''));
-        j += 1;
-    }
-    const bq = document.createElement('blockquote');
-    bq.className = 'tzx-bq';
-    for (const line of buf) {
-        const p = document.createElement('p');
-        p.appendChild(renderInline(line));
-        bq.appendChild(p);
-    }
-    out.appendChild(bq);
-    return j;
-}
-/** 列表（无序 - * + / 有序 1. 1)，连续同类项合并为一个列表）。 */
-function cmList(lines, i, out) {
-    const unordered = /^\s*[-*+]\s+/;
-    const ordered = /^\s*\d+[.)]\s+/;
-    const isUnordered = unordered.test(lines[i]);
-    if (!isUnordered && !ordered.test(lines[i]))
-        return 0;
-    const list = document.createElement(isUnordered ? 'ul' : 'ol');
-    list.className = isUnordered ? 'tzx-ul' : 'tzx-ol';
-    let j = i;
-    while (j < lines.length && (isUnordered ? unordered.test(lines[j]) : ordered.test(lines[j]))) {
-        const li = document.createElement('li');
-        li.appendChild(renderInline(lines[j].replace(isUnordered ? unordered : ordered, '')));
-        list.appendChild(li);
-        j += 1;
-    }
-    out.appendChild(list);
-    return j;
-}
-/** 段落文本里的表格（不标准格式也识别）→ 表格渲染；否则普通段落。 */
-function cmParagraph(text, out) {
-    const table = parseTable(text);
-    if (table) {
-        out.appendChild(renderTable(table));
-        return;
-    }
-    const p = document.createElement('p');
-    p.className = 'tzx-p';
-    p.appendChild(renderInline(text));
-    out.appendChild(p);
-}
-/** 纯文本 markdown → DOM 片段（块级顺序：围栏 / 标题 / 引用 / 列表 / 段落）。 */
-function renderContextMarkdown(text) {
-    const out = document.createDocumentFragment();
-    const lines = String(text).split('\n');
-    let i = 0;
-    while (i < lines.length) {
-        const next = cmFence(lines, i, out) || cmHeading(lines, i, out) || cmQuote(lines, i, out) || cmList(lines, i, out);
-        if (next) {
-            i = next;
-            continue;
-        }
-        if (lines[i].trim() === '') {
-            i += 1;
-            continue;
-        }
-        const para = [lines[i]];
-        i += 1;
-        while (i < lines.length &&
-            lines[i].trim() !== '' &&
-            !/^(#{1,4})\s|^```|^\s*[-*+]\s|^\s*\d+[.)]\s|^\s*>/.test(lines[i])) {
-            para.push(lines[i]);
-            i += 1;
-        }
-        cmParagraph(para.join('\n'), out);
-    }
-    return out;
-}
 /** 取已在位的渲染容器（pre 的前一个兄弟且带标记）。 */
 function contextBodyOf(pre) {
     const prev = pre.previousElementSibling;
     return prev && prev.getAttribute(CONTEXT_BODY_ATTR) === 'true' ? prev : null;
 }
-/** 幂等应用：文本未变且容器在位 → 跳过；否则（重）渲染并隐藏原文。 */
-function applyContextMarkdown(pre) {
+/** 接管前置条件（开关 / 官方组件 / 父节点 / 长度）→ 待渲染文本；不满足返回 null。 */
+function contextSourceOf(pre) {
+    if (!renderOptions.contextMarkdown)
+        return null;
+    if (!officialMarkdownAvailable())
+        return null;
     const parent = pre.parentNode;
     if (!parent || typeof parent.insertBefore !== 'function')
-        return;
+        return null;
     const text = pre.textContent ?? '';
     if (text.length > MAX_CONTEXT_CHARS)
-        return;
-    const signature = String(text.length) + ':' + contextHash(text);
-    const existing = contextBodyOf(pre);
-    if (existing && existing.getAttribute('data-signature') === signature)
-        return;
-    if (existing)
-        parent.removeChild(existing);
+        return null;
+    return { parent, text };
+}
+/** 建容器并交给官方渲染器；官方组件不可用 → null（调用方保持宿主原样）。 */
+function buildContextBody(text, signature) {
     const body = document.createElement('div');
     body.className = 'tzx-md dsh-md-render-context-md';
     body.setAttribute(CONTEXT_BODY_ATTR, 'true');
     body.setAttribute('data-signature', signature);
-    body.appendChild(renderContextMarkdown(text));
-    parent.insertBefore(body, pre);
+    return renderMarkdownInto(body, text) ? body : null;
+}
+/** 幂等应用：文本未变且容器在位 → 跳过；否则（重）渲染并隐藏原文。 */
+function applyContextMarkdown(pre) {
+    const source = contextSourceOf(pre);
+    if (source === null)
+        return;
+    const signature = String(source.text.length) + ':' + contextHash(source.text);
+    const existing = contextBodyOf(pre);
+    if (existing && existing.getAttribute('data-signature') === signature)
+        return;
+    if (existing) {
+        unmountMarkdownIn(existing);
+        source.parent.removeChild(existing);
+    }
+    const body = buildContextBody(source.text, signature);
+    if (body === null)
+        return;
+    source.parent.insertBefore(body, pre);
     pre.setAttribute('data-dsh-md-render-context', CONTEXT_APPLIED);
     pre.hidden = true;
 }
@@ -2534,573 +499,38 @@ function scanContextBlocks(root) {
 }
 exports.CONTEXT_TEXT_SELECTOR = CONTEXT_TEXT_SELECTOR;
 exports.MAX_CONTEXT_CHARS = MAX_CONTEXT_CHARS;
-exports.renderContextMarkdown = renderContextMarkdown;
+exports.contextHash = contextHash;
 exports.applyContextMarkdown = applyContextMarkdown;
 exports.scanContextBlocks = scanContextBlocks;
 
 
-    // ── 轨迹视图 markdown 接管（issue #205）：DOM 渲染器 + 接管层 ───
+    // ── text / plaintext / txt 围栏块按 markdown 渲染 + 查看原文 ────
     "use strict";
-// ── DOM markdown 渲染器（issue #205）──────────────────────────────
-// 轨迹视图（宿主 @deepseek-ai/dsh-client-ui-trajectory）的 markdown 只有
-// 「宿主渲染后的 HTML」存在于 DOM 中，md-render 的 React 渲染管线
-// （MarkdownView）完全不介入。本模块把 markdown 原文渲染为**原生 DOM**
-// （不经 React，因此可以安全地插入 React 管理的树旁），供轨迹视图接管层
-// 与 text / plaintext / txt 围栏块接管层（issue #393）使用，能力与
-// MarkdownView 对齐：
-//  - 表格：parseTable（宽容格式：无首尾管道符 / 分隔行变体 / 对齐标记）
-//    + renderTable（滚动容器 + 滚动提示 + 表头排序 + 长表格折叠）；
-//  - 公式：$$`…`$$ 块级与 $…$ 行内 → parseMath + 结构 DOM（分数 / 根号 /
-//    上下标 / 求和积分，样式见 styles.ts）；
-//  - 代码块：语言标签 + 复制按钮 + 行号 + 语法高亮（tokenizeCode）；
-//  - 标题 / 引用 / 列表 / 段落行内元素复用 context-markdown 的块级函数与
-//    renderInline（同一 factory 作用域）。
-// 所有输出类名与 MarkdownView 一致（div.tzx-md / p.tzx-p /
-// table.dsh-md-render-table / div.md-code-block / …），样式无差异。
-/** 行内公式候选（与 markdown.ts 的 mdInline 同一语义，仅取第 7 组）。 */
-const DOM_MATH_RE = /\$([^$\n]+?)\$/g;
-/** token 类型 → 高亮类名（与 codeblock.ts 的 TOKEN_CLASS 一致）。 */
-const DOM_TOKEN_CLASS = {
-    keyword: 'dsh-md-render-tok-keyword',
-    string: 'dsh-md-render-tok-string',
-    comment: 'dsh-md-render-tok-comment',
-    number: 'dsh-md-render-tok-number',
-    function: 'dsh-md-render-tok-function',
-};
-/** 建 span（指定类名）并挂到 parent，返回之。 */
-function domSpan(cls, parent) {
-    const el = document.createElement('span');
-    el.className = cls;
-    parent.appendChild(el);
-    return el;
-}
-/** 公式 AST → DOM（结构类名与 math-render.ts 的 React 版一致）。 */
-function domMathNodes(nodes, parent) {
-    for (const node of nodes ?? [])
-        domMathNode(node, parent);
-}
-function domMathFrac(node, parent) {
-    const el = domSpan('dsh-md-render-frac', parent);
-    domMathNodes([node.num], domSpan('dsh-md-render-frac-num', el));
-    domMathNodes([node.den], domSpan('dsh-md-render-frac-den', el));
-}
-function domMathSqrt(node, parent) {
-    const el = domSpan('dsh-md-render-sqrt', parent);
-    domSpan('dsh-md-render-sqrt-symbol', el).textContent = '√';
-    domMathNodes([node.body], domSpan('dsh-md-render-sqrt-body', el));
-}
-/** 上下标：base + scripts（sup / sub 各自可选）。 */
-function domMathSupsub(node, parent) {
-    const el = domSpan('dsh-md-render-supsub', parent);
-    domMathNodes([node.base], domSpan('dsh-md-render-supsub-base', el));
-    if (node.sup === null && node.sub === null)
-        return;
-    const scripts = domSpan('dsh-md-render-supsub-scripts', el);
-    if (node.sup !== null && node.sup !== undefined)
-        domMathNodes([node.sup], domSpan('dsh-md-render-supsub-sup', scripts));
-    if (node.sub !== null && node.sub !== undefined)
-        domMathNodes([node.sub], domSpan('dsh-md-render-supsub-sub', scripts));
-}
-/** 大运算符（求和 / 积分）+ 上下限。 */
-function domMathBig(node, parent) {
-    const el = domSpan('dsh-md-render-big', parent);
-    if (node.sup !== null || node.sub !== null) {
-        const limits = domSpan('dsh-md-render-big-limits', el);
-        if (node.sup !== null && node.sup !== undefined)
-            domMathNodes([node.sup], domSpan('dsh-md-render-big-sup', limits));
-        if (node.sub !== null && node.sub !== undefined)
-            domMathNodes([node.sub], domSpan('dsh-md-render-big-sub', limits));
-    }
-    domSpan('dsh-md-render-big-symbol', el).textContent = node.sym ?? '';
-}
-/** 单个公式节点（未知类型静默忽略，不破坏页面）。 */
-function domMathNode(node, parent) {
-    if (node === null || node === undefined)
-        return;
-    if (node.t === 'text') {
-        parent.appendChild(document.createTextNode(node.v ?? ''));
-        return;
-    }
-    if (node.t === 'seq') {
-        domMathNodes(node.kids, parent);
-        return;
-    }
-    if (node.t === 'frac')
-        domMathFrac(node, parent);
-    else if (node.t === 'sqrt')
-        domMathSqrt(node, parent);
-    else if (node.t === 'supsub')
-        domMathSupsub(node, parent);
-    else if (node.t === 'big')
-        domMathBig(node, parent);
-}
-/** 公式内容 → span.dsh-md-render-math（解析失败保持原文）。 */
-function domMathSpan(content) {
-    const el = document.createElement('span');
-    el.className = 'dsh-md-render-math';
-    const parsed = parseMath(content);
-    if (parsed.failed)
-        el.textContent = content;
-    else
-        domMathNodes(parsed.nodes, el);
-    return el;
-}
-/** 块级公式内容 → div.dsh-md-render-math-block（解析失败保持原文）。 */
-function domMathBlockEl(content) {
-    const el = document.createElement('div');
-    el.className = 'dsh-md-render-math-block';
-    if (content === '')
-        return el;
-    const parsed = parseMath(content);
-    if (parsed.failed)
-        el.textContent = content;
-    else
-        domMathNodes(parsed.nodes, el);
-    return el;
-}
-/** 行内渲染：先切出 $…$ 公式段，其余交给 renderInline（同一作用域）。 */
-function domInline(text) {
-    const frag = document.createDocumentFragment();
-    if (!renderOptions.mathStructures) {
-        frag.appendChild(renderInline(text));
-        return frag;
-    }
-    let last = 0;
-    let m;
-    DOM_MATH_RE.lastIndex = 0;
-    while ((m = DOM_MATH_RE.exec(text)) !== null) {
-        const before = text[m.index - 1];
-        const after = text[m.index + m[0].length];
-        // 货币 / 变量保护（与 isMathSpan 同规则）：紧邻 `\w` 或 `$` 时不是公式。
-        if (before !== undefined && /[\w$]/.test(before))
-            continue;
-        if (after !== undefined && /[\w$]/.test(after))
-            continue;
-        if (m.index > last)
-            frag.appendChild(renderInline(text.slice(last, m.index)));
-        frag.appendChild(domMathSpan(m[1]));
-        last = m.index + m[0].length;
-    }
-    if (last < text.length)
-        frag.appendChild(renderInline(text.slice(last)));
-    return frag;
-}
-/** DOM 复制按钮：从 DOM 取文本（代码块取 code，整段取纯文本）。 */
-function domCopyButton(host, kind) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'dsh-md-render-copy';
-    btn.title = '复制';
-    btn.setAttribute('aria-label', '复制');
-    btn.textContent = '复制';
-    btn.addEventListener('click', () => {
-        let text;
-        if (kind === 'code') {
-            const codeEl = host.querySelector('code');
-            text = codeEl ? (codeEl.textContent ?? '') : '';
-        }
-        else {
-            const out = [];
-            collectCopyText(host, out);
-            text = out.join('');
-        }
-        if (!text)
-            return;
-        copyText(text).then(() => {
-            btn.textContent = '已复制';
-            btn.className = 'dsh-md-render-copy dsh-md-render-copy-done';
-            setTimeout(() => {
-                btn.textContent = '复制';
-                btn.className = 'dsh-md-render-copy';
-            }, 1500);
-        }, () => { });
-    });
-    return btn;
-}
-/** 代码行内细胞：token span / 纯文本（与 codeblock.ts 的 renderTokens 等价）。 */
-function domCodeCells(toks, lineEl) {
-    for (const tok of toks) {
-        const cls = DOM_TOKEN_CLASS[tok.type];
-        if (!cls) {
-            lineEl.appendChild(document.createTextNode(tok.text));
-            continue;
-        }
-        const span = document.createElement('span');
-        span.className = cls;
-        span.textContent = tok.text;
-        lineEl.appendChild(span);
-    }
-}
-/** 代码块主体：按行输出 token（可选行号 div），行间补 `\n`。 */
-function domCodeLines(codeEl, lines, tokens) {
-    for (let i = 0; i < lines.length; i += 1) {
-        const toks = tokens ? tokens[i] : [{ type: 'plain', text: lines[i] }];
-        let target = codeEl;
-        if (renderOptions.lineNumbers) {
-            const div = document.createElement('div');
-            div.className = 'dsh-md-render-code-line';
-            codeEl.appendChild(div);
-            target = div;
-        }
-        domCodeCells(toks, target);
-        if (i < lines.length - 1)
-            codeEl.appendChild(document.createTextNode('\n'));
-    }
-}
-/** 代码块头部：语言标签 + （header 位置时）复制按钮。 */
-function domCodeHead(block, lang, bottomCopy) {
-    if (!renderOptions.languageLabel && !(renderOptions.copyButton && !bottomCopy))
-        return;
-    const head = document.createElement('div');
-    head.className = 'dsh-md-render-code-head';
-    if (renderOptions.languageLabel) {
-        const label = document.createElement('span');
-        label.className = 'dsh-md-render-code-lang';
-        label.textContent = langLabel(lang);
-        head.appendChild(label);
-    }
-    if (!bottomCopy && renderOptions.copyButton)
-        head.appendChild(domCopyButton(block, 'code'));
-    block.appendChild(head);
-}
-/** 围栏代码块：div.md-code-block > head + pre.tzx-pre > code（高亮/行号）+ 复制。 */
-function domCodeBlock(lang, code) {
-    const lines = String(code).split('\n');
-    const highlight = !!renderOptions.syntaxHighlight && !!langConfig(lang) && lines.length <= MAX_CODE_LINES;
-    const bottomCopy = !!renderOptions.copyButton && renderOptions.copyButtonPosition !== 'header';
-    const block = document.createElement('div');
-    block.className = 'md-code-block';
-    if (highlight)
-        block.setAttribute('data-theme', String(renderOptions.codeTheme));
-    domCodeHead(block, lang, bottomCopy);
-    const pre = document.createElement('pre');
-    pre.className = 'tzx-pre';
-    const codeEl = document.createElement('code');
-    if (lang)
-        codeEl.className = 'language-' + lang;
-    domCodeLines(codeEl, lines, highlight ? tokenizeCode(code, lang) : null);
-    pre.appendChild(codeEl);
-    block.appendChild(pre);
-    if (bottomCopy)
-        block.appendChild(domCopyButton(block, 'code'));
-    return block;
-}
-/** 围栏代码块块级消费。 */
-function domFence(lines, i, out) {
-    const m = lines[i].match(/^```([A-Za-z0-9_+-]*)\s*$/);
-    if (!m)
-        return 0;
-    const body = [];
-    let j = i + 1;
-    while (j < lines.length && !/^```\s*$/.test(lines[j])) {
-        body.push(lines[j]);
-        j += 1;
-    }
-    out.appendChild(domCodeBlock(m[1], body.join('\n')));
-    return j < lines.length ? j + 1 : j;
-}
-/** 块级公式：$$…$$ 单行或 $$ 开闭块（mathStructures 关闭时返回 0）。 */
-function domMathBlock(lines, i, out) {
-    if (!renderOptions.mathStructures)
-        return 0;
-    const single = lines[i].match(/^\$\$([^$]*)\$\$\s*$/);
-    if (single) {
-        out.appendChild(domMathBlockEl(single[1].trim()));
-        return i + 1;
-    }
-    if (!/^\$\$\s*$/.test(lines[i]))
-        return 0;
-    const buf = [];
-    let j = i + 1;
-    while (j < lines.length && !/^\$\$\s*$/.test(lines[j])) {
-        buf.push(lines[j]);
-        j += 1;
-    }
-    out.appendChild(domMathBlockEl(buf.join('\n').trim()));
-    return j < lines.length ? j + 1 : j;
-}
-/** 段落：表格文本（宽容识别）→ 表格；否则普通段落（行内元素 + 公式）。 */
-function domParagraph(text, out) {
-    const table = parseTable(text);
-    if (table) {
-        out.appendChild(renderTable(table));
-        return;
-    }
-    const p = document.createElement('p');
-    p.className = 'tzx-p';
-    p.appendChild(domInline(text));
-    out.appendChild(p);
-}
-/** 块级起始行判定（用于段落续行边界）。 */
-const DOM_BLOCK_START_RE = /^(#{1,4})\s|^```|^\s*[-*+]\s|^\s*\d+[.)]\s|^\s*>|^\$\$/;
-/** 尝试从 lines[i] 消费一个块（围栏 / 公式 / 标题 / 引用 / 列表）；0 = 未消费。 */
-function domTryBlock(lines, i, out) {
-    return (domFence(lines, i, out) ||
-        domMathBlock(lines, i, out) ||
-        cmHeading(lines, i, out) ||
-        cmQuote(lines, i, out) ||
-        cmList(lines, i, out));
-}
-/** 从 start 起消费一个段落（到空行 / 下一个块起始行为止）。 */
-function domConsumeParagraph(lines, start) {
-    const para = [lines[start]];
-    let i = start + 1;
-    while (i < lines.length && lines[i].trim() !== '' && !DOM_BLOCK_START_RE.test(lines[i])) {
-        para.push(lines[i]);
-        i += 1;
-    }
-    return { text: para.join('\n'), next: i };
-}
-/** markdown 原文 → DOM 片段（块级顺序：围栏 / 公式 / 标题 / 引用 / 列表 / 段落）。 */
-function renderDomMarkdown(text) {
-    const out = document.createDocumentFragment();
-    const lines = String(text).split('\n');
-    let i = 0;
-    while (i < lines.length) {
-        const next = domTryBlock(lines, i, out);
-        if (next) {
-            i = next;
-            continue;
-        }
-        if (lines[i].trim() === '') {
-            i += 1;
-            continue;
-        }
-        const para = domConsumeParagraph(lines, i);
-        domParagraph(para.text, out);
-        i = para.next;
-    }
-    return out;
-}
-exports.renderDomMarkdown = renderDomMarkdown;
-exports.domCopyButton = domCopyButton;
-exports.domInline = domInline;
-
-    "use strict";
-// ── 轨迹视图 markdown 接管（issue #205）──────────────────────────
-// 宿主 @deepseek-ai/dsh-client-ui-trajectory 的 MarkdownFragment 在
-// rendered 模式下把 markdown 交给 @deepseek-ai/dsh-client-ui-primitives
-// 的 MarkdownText 渲染（bundle 证据见 PR 正文）：
-//
-//   <div class="<hash>_markdownPayload|<hash>_markdownPreview">
-//     <div class="_markdown_<hash>">…宿主渲染的 HTML…</div>
-//   </div>
-//
-// 外层包裹在 <div data-trajectory-scroll>（TrajectoryTable 滚动面板）内。
-// 宿主渲染的 markdown 完全不享本插件增强（无表格滚动容器/排序/折叠、
-// 无代码高亮/行号/复制按钮、无公式结构渲染）；本模块在 DOM 层接管：
-//
-//  - **原文来源**：DOM 里只有渲染结果，markdown 原文只存在于 React fiber
-//    上（MarkdownFragment 的 memoizedProps.text）。沿 `__reactFiber$*` 向上
-//    有限跳数读取；拿不到 → 静默降级（保持宿主渲染，不报错、不改 DOM）。
-//  - **接管方式**：在宿主容器**之前**插入 div.tzx-md（+ 整段复制按钮），
-//    把宿主容器置 hidden——不改宿主子结构（React 拥有该子树，改子结构会
-//    被 text diff 冲掉），与 issue #196 的上下文块接管同一模式。
-//  - **幂等**：容器记 data-signature（长度 + djb2 哈希），文本未变且容器
-//   在位 → 跳过；宿主重建（虚拟列表回收 / 重渲染）后由 MutationObserver
-//    兜底重扫重建。
-//  - **内容门控**：只有确实含增强目标的块才接管（表格 / 公式 / 围栏代码
-//    块）。实测工作区 70 个会话 2262 个 markdown 文本块：表格 2.6%、
-//    代码块 1.0%、公式 0.0%，字符数 p50 = 51 —— 全量接管对 96% 的短文本
-//    无收益却要付 DOM 替换与虚拟列表行高重算成本，故按内容门控。
-//  - **性能保护**：单块超过 MAX_TRAJECTORY_CHARS 跳过。
-//  - **作用域隔离**：只在 div[data-trajectory-scroll] 子树内工作，主会话
-//    （[data-conversation-scroll]）与思考块（div.tzx-md）路径不受影响。
-/** 轨迹视图滚动面板（宿主 TrajectoryTable 的稳定 data 契约）。 */
-const TRAJECTORY_SCROLL_SELECTOR = 'div[data-trajectory-scroll]';
-/** 轨迹视图 markdown 容器（CSS module 哈希前缀会变，取稳定语义段）。 */
-const TRAJECTORY_MARKDOWN_SELECTOR = 'div[class*="markdownPayload"], div[class*="markdownPreview"]';
-/** 宿主 MarkdownText 输出（ui-primitives），用于二次确认容器契约。 */
-const TRAJECTORY_RENDERED_SELECTOR = 'div[class*="_markdown_"]';
-/** 已处理标记（写在宿主容器上，React 不管理该属性）。 */
-const TRAJECTORY_APPLIED = 'applied';
-/** 渲染容器标记（写在插入的 div 上）。 */
-const TRAJECTORY_BODY_ATTR = 'data-dsh-md-render-trajectory-body';
-/** 宿主容器上的接管标记属性名。 */
-const TRAJECTORY_MARKER_ATTR = 'data-dsh-md-render-trajectory';
-/** 单块渲染上限（字符）；超过则保持宿主渲染。 */
-const MAX_TRAJECTORY_CHARS = 200000;
-/** 沿 fiber 向上查找 memoizedProps.text 的最大跳数（实测 1~2 跳）。 */
-const TRAJECTORY_FIBER_HOPS = 12;
-/** 向上寻找轨迹视图根的最大跳数（详情面板实测 6 跳）。 */
-const TRAJECTORY_ROOT_HOPS = 14;
-/** djb2 字符串哈希（签名用，非加密）。 */
-function trajectoryHash(text) {
-    let h = 5381;
-    for (let i = 0; i < text.length; i += 1)
-        h = ((h << 5) + h + text.charCodeAt(i)) | 0;
-    return (h >>> 0).toString(36);
-}
-/** 从一条 fiber 链向上找第一个带 string `text` prop 的 memoizedProps。 */
-function searchFiberText(start) {
-    let fiber = start;
-    for (let hops = 0; fiber !== null && fiber !== undefined && hops < TRAJECTORY_FIBER_HOPS; hops += 1) {
-        const props = fiber.memoizedProps;
-        if (props !== undefined && props !== null && typeof props.text === 'string')
-            return props.text;
-        fiber = (fiber.return ?? null);
-    }
-    return null;
-}
-/** 从宿主容器读 markdown 原文（React fiber 的 memoizedProps.text）。 */
-function readTrajectorySource(el) {
-    const keys = typeof Object.keys === 'function' ? Object.keys(el) : [];
-    for (const key of keys) {
-        if (key.indexOf('__reactFiber$') !== 0)
-            continue;
-        const found = searchFiberText(el[key]);
-        if (found !== null)
-            return found;
-    }
-    return null;
-}
-/**
- * 内容门控：是否含本插件能增强的内容（表格 / 公式 / 围栏代码块）。
- * 用 parseTable 判定表格（与渲染同一套宽容规则，避免"门控说没有、渲染
- * 却有"的不一致）。
- */
-function needsTrajectoryEnhancement(text) {
-    if (/^```[A-Za-z0-9_+-]*\s*$/m.test(text))
-        return true;
-    if (/\$\$/.test(text))
-        return true;
-    if (renderOptions.mathStructures && /(?<![\w$])\$[^$\n]+?\$(?![\w$])/.test(text))
-        return true;
-    return parseTable(text) !== null;
-}
-/** 容器契约确认：宿主容器内确有 MarkdownText 输出（避免误伤同名前缀类名）。 */
-function isTrajectoryMarkdownHost(el) {
-    if (typeof el.querySelector !== 'function')
-        return false;
-    return el.querySelector(TRAJECTORY_RENDERED_SELECTOR) !== null;
-}
-/** 节点是否直接含轨迹视图滚动面板（TrajectoryTable 根：表窗格 + 详情面板）。 */
-function hasTrajectoryPaneChild(node) {
-    const kids = node.children;
-    if (!kids)
-        return false;
-    for (let i = 0; i < kids.length; i += 1) {
-        const kid = kids[i];
-        if (kid.nodeType === 1 && typeof kid.matches === 'function' && kid.matches(TRAJECTORY_SCROLL_SELECTOR))
-            return true;
-    }
-    return false;
-}
-/**
- * 作用域确认：元素属于轨迹视图。两条路径都覆盖——
- *  (a) 在滚动面板内（行内展开的 preview 块）；
- *  (b) 在"直接含滚动面板的祖先"内（详情面板 aside，与滚动面板同级）。
- * 上游契约改名/改结构时返回 false → 静默退让，不误伤其它视图。
- */
-function inTrajectoryView(el) {
-    if (typeof el.closest === 'function' && el.closest(TRAJECTORY_SCROLL_SELECTOR) !== null)
-        return true;
-    let node = el.parentElement ?? null;
-    let hops = 0;
-    while (node !== null && hops < TRAJECTORY_ROOT_HOPS) {
-        if (hasTrajectoryPaneChild(node))
-            return true;
-        node = node.parentElement ?? null;
-        hops += 1;
-    }
-    return false;
-}
-/** 取已在位的渲染容器（宿主容器的前一个兄弟且带标记）。 */
-function trajectoryBodyOf(el) {
-    const prev = el.previousElementSibling;
-    return prev !== null && prev.getAttribute(TRAJECTORY_BODY_ATTR) === 'true' ? prev : null;
-}
-/**
- * 取该容器应渲染的 markdown 原文；任一前置条件不满足返回 null（静默退让）：
- * 容器契约 / 轨迹视图作用域 / fiber 原文 / 长度上限 / 内容门控。
- */
-function trajectorySourceFor(el) {
-    if (!isTrajectoryMarkdownHost(el))
-        return null;
-    if (!inTrajectoryView(el))
-        return null;
-    const text = readTrajectorySource(el);
-    if (text === null || text === '')
-        return null;
-    if (text.length > MAX_TRAJECTORY_CHARS)
-        return null;
-    return needsTrajectoryEnhancement(text) ? text : null;
-}
-/** 构建接管渲染容器（div.tzx-md + 幂等签名 + 整段复制按钮）。 */
-function buildTrajectoryBody(text, signature) {
-    const body = document.createElement('div');
-    body.className = 'tzx-md dsh-md-render-trajectory-md';
-    body.setAttribute(TRAJECTORY_BODY_ATTR, 'true');
-    body.setAttribute('data-signature', signature);
-    body.appendChild(renderDomMarkdown(text));
-    if (renderOptions.copyButton)
-        body.appendChild(domCopyButton(body, 'content'));
-    return body;
-}
-/** 幂等应用：文本未变且容器在位 → 跳过；否则（重）渲染并隐藏宿主容器。 */
-function applyTrajectoryMarkdown(el) {
-    const parent = el.parentNode;
-    if (!parent || typeof parent.insertBefore !== 'function')
-        return;
-    const text = trajectorySourceFor(el);
-    if (text === null)
-        return;
-    const signature = String(text.length) + ':' + trajectoryHash(text);
-    const existing = trajectoryBodyOf(el);
-    if (existing && existing.getAttribute('data-signature') === signature)
-        return;
-    if (existing)
-        parent.removeChild(existing);
-    parent.insertBefore(buildTrajectoryBody(text, signature), el);
-    el.setAttribute(TRAJECTORY_MARKER_ATTR, TRAJECTORY_APPLIED);
-    el.hidden = true;
-}
-/** 扫描 root 内的轨迹视图 markdown 块（供 scanner 调用）。
- *  作用域与契约校验都在 applyTrajectoryMarkdown 内，这里只做候选枚举
- *  （轨迹视图的 markdown 容器既可能在滚动面板内，也可能在详情面板里，
- *  后者与滚动面板同级——所以不能只从滚动面板往下找）。 */
-function scanTrajectoryBlocks(root) {
-    if (!root || typeof root.querySelectorAll !== 'function')
-        return;
-    if (typeof root.matches === 'function' && root.matches(TRAJECTORY_MARKDOWN_SELECTOR)) {
-        applyTrajectoryMarkdown(root);
-    }
-    for (const el of Array.from(root.querySelectorAll(TRAJECTORY_MARKDOWN_SELECTOR))) {
-        applyTrajectoryMarkdown(el);
-    }
-}
-exports.TRAJECTORY_SCROLL_SELECTOR = TRAJECTORY_SCROLL_SELECTOR;
-exports.TRAJECTORY_MARKDOWN_SELECTOR = TRAJECTORY_MARKDOWN_SELECTOR;
-exports.TRAJECTORY_RENDERED_SELECTOR = TRAJECTORY_RENDERED_SELECTOR;
-exports.MAX_TRAJECTORY_CHARS = MAX_TRAJECTORY_CHARS;
-exports.applyTrajectoryMarkdown = applyTrajectoryMarkdown;
-exports.scanTrajectoryBlocks = scanTrajectoryBlocks;
-exports.readTrajectorySource = readTrajectorySource;
-exports.needsTrajectoryEnhancement = needsTrajectoryEnhancement;
-
-    "use strict";
-// ── text / plaintext / txt 围栏块按 markdown 渲染（issue #393）────────
-// 宿主与 MarkdownView 都把围栏代码块渲染为
-// div.md-code-block > div.dsh-md-render-code-head + pre.tzx-pre >
-// code.language-xxx（跨插件 DOM 契约，见 README「公共 API 契约」）。模型
-// 有时把**实际是 markdown 的内容**（标题 / 列表 / 表格 / 链接）用 ```text
-// 围起来，按等宽代码块原样显示就丢掉了排版——本模块在 DOM 层拦截这类块，
-// 把块内文本按 markdown 渲染（复用 #205 的 renderDomMarkdown，即轨迹视图
-// 那一套 DOM 渲染管线，表格 / 公式 / 代码块 / 行内能力完全一致），并为
-// **每个块**挂独立的「查看原文」切换。
+// ── text / plaintext / txt 围栏块按 markdown 渲染 ────────────────────
+// 模型有时把**实际是 markdown 的内容**（标题 / 列表 / 表格 / 链接）用
+// \`\`\`text 围起来，宿主官方 CodeBlock（ui-primitives）按等宽代码块原样
+// 显示就丢掉了排版——官方不接管这类块，所以这是本插件的真增量。
+// 本模块在 DOM 层拦截这类块：块内文本交给**官方 MarkdownText**（经
+// react-dom/client 挂到我们插入的容器里）渲染，表格 / 公式 / 代码块能力与
+// 宿主消息完全一致（同一渲染器），并为**每个块**挂独立的「查看原文」切换。
 // 口径（需求方已确认，不做内容启发式判定）：语言标记 ∈ {text, plaintext,
 // txt} 一律渲染；其他标记（js / ts / json / bash …）与无标记的块**完全
-// 不触碰**，仍走过去的高亮代码块形态。
+// 不触碰**。
 // 形态照 dsh-mermaid-render 的「拦截特定语言代码块 → 换渲染形态 + 视图
-// 切换」先例：原文 pre 保留在 DOM（只按视图隐藏，宿主 / 插件的复制按钮与
-// 文本读取不受影响），渲染容器与切换按钮追加在块内，视图状态写在块属性
-// data-dsh-md-render-text-view 上（每块独立、可来回切）。
+// 切换」先例：宿主内容容器保持原位（只按视图隐藏），渲染容器与切换按钮
+// 追加在块内，视图状态写在块属性 data-dsh-md-render-text-view 上（每块
+// 独立、可来回切）。
+// 语言与源码来源（官方 DOM 契约，ui-primitives/src/markdown/CodeBlock.tsx:
+// 187-209）：块是 div.md-code-block；语言不在 DOM class 上（CodeBlock 用
+// banner 的 infostring 显示），从 React fiber 的 memoizedProps 读 lang/code
+// （与 dsh-md-render 旧版轨迹接管同一手法）；fiber 取不到时回退
+// code.language-xxx（官方空围栏分支与旧契约 DOM）→ banner 首个子元素文本。
 // 流式口径沿用本插件既有策略（scanner.ts 的 [data-streaming] 门控 +
 // 属性移除触发兜底重扫）：流式中的块跳过，稳定后再渲染——不闪断、不重复
 // 挂载；幂等靠块上的签名（语言 + 长度 + djb2 哈希，哈希复用
 // context-markdown.ts 的 contextHash——同一 factory 作用域），签名变化
 // （流式补写 / 宿主重渲染）才重建，宿主冲掉容器后重扫自愈。
-/** 触发 markdown 渲染的围栏语言标记（issue #393：一律渲染，不做内容判定）。 */
+/** 触发 markdown 渲染的围栏语言标记（一律渲染，不做内容判定）。 */
 const TEXT_FENCE_LANGS = ['text', 'plaintext', 'txt'];
 /** 视图状态标记（写在 md-code-block 上，每块独立）：markdown | source。 */
 const TEXT_VIEW_ATTR = 'data-dsh-md-render-text-view';
@@ -3114,21 +544,69 @@ const TEXT_TOGGLE_CLASS = 'dsh-md-render-text-toggle';
 const TEXT_VIEW_LABELS = { markdown: '查看原文', source: '查看渲染' };
 /** 单块渲染上限（字符）；超长块保持原代码块，避免单块渲染卡顿。 */
 const MAX_TEXT_FENCE_CHARS = 100000;
-/** 块的围栏语言：取 code 上的 language-xxx，非 text/plaintext/txt → ''。 */
-function textFenceLang(block) {
+/** 沿 React fiber 向上找 CodeBlock props 的最大跳数（实测 1~3 跳）。 */
+const TEXT_FIBER_HOPS = 8;
+/** 元素上的 React fiber 属性名（React 私有前缀，只读）。 */
+function fiberKeys(el) {
+    const keys = typeof Object.keys === 'function' ? Object.keys(el) : [];
+    return keys.filter((key) => key.indexOf('__reactFiber$') === 0);
+}
+/** 沿一条 fiber 链向上找带 string `code` 的 props（CodeBlock 的 memoizedProps）。 */
+function fiberCodeBlockProps(start) {
+    let fiber = start;
+    for (let hops = 0; fiber !== null && fiber !== undefined && hops < TEXT_FIBER_HOPS; hops += 1) {
+        const props = fiber.memoizedProps;
+        if (props !== undefined && props !== null && typeof props.code === 'string') {
+            return { lang: typeof props.lang === 'string' ? props.lang.toLowerCase() : '', code: props.code };
+        }
+        fiber = (fiber.return ?? null);
+    }
+    return null;
+}
+/** 从 React fiber 读官方 CodeBlock 的 { lang, code }（取不到返回 null）。 */
+function textFenceFiberProps(block) {
+    for (const key of fiberKeys(block)) {
+        const found = fiberCodeBlockProps(block[key]);
+        if (found !== null)
+            return found;
+    }
+    return null;
+}
+/** 官方空围栏 / 旧契约 DOM 的 code.language-xxx（无则 ''）。 */
+function textFenceClassLang(block) {
     const code = block.querySelector('code');
     const className = code !== null && typeof code.className === 'string' ? code.className : '';
     const m = className.match(/language-([A-Za-z0-9_+-]+)/);
-    if (!m)
-        return '';
-    const lang = m[1].toLowerCase();
-    return TEXT_FENCE_LANGS.includes(lang) ? lang : '';
+    return m ? m[1].toLowerCase() : '';
 }
-/** 取块的源码与签名素材（非目标语言 / 无 code / 空内容 / 超长 → null）。 */
-function textFenceSource(block) {
-    const lang = textFenceLang(block);
-    const code = lang ? block.querySelector('code') : null;
-    const text = code !== null ? (code.textContent ?? '') : '';
+/** banner infostring（官方 CodeBlock 的 data-code-block-banner 首个子元素）。 */
+function textFenceBannerLang(block) {
+    const banner = block.querySelector('[data-code-block-banner]');
+    const info = banner !== null && banner.firstElementChild ? banner.firstElementChild.textContent : '';
+    return String(info ?? '')
+        .trim()
+        .toLowerCase();
+}
+/** 块的围栏语言（fiber → code class → banner；非 text/plaintext/txt → ''）。 */
+function textFenceLang(block) {
+    const fiber = textFenceFiberProps(block);
+    const candidates = [fiber === null ? '' : fiber.lang, textFenceClassLang(block), textFenceBannerLang(block)];
+    const lang = candidates.find((value) => TEXT_FENCE_LANGS.includes(value)) ?? '';
+    return { lang, code: fiber === null ? null : fiber.code };
+}
+/** 块源码：fiber code（官方 display 语义：去掉一个尾部换行）优先，否则 DOM 文本。 */
+function textFenceSource(block, code) {
+    if (typeof code === 'string')
+        return code.endsWith('\n') ? code.slice(0, -1) : code;
+    const codeEl = block.querySelector('code');
+    return codeEl !== null ? (codeEl.textContent ?? '') : '';
+}
+/** 取块的源码与签名素材（非目标语言 / 空内容 / 超长 → null）。 */
+function textFenceBody(block) {
+    const { lang, code } = textFenceLang(block);
+    if (lang === '')
+        return null;
+    const text = textFenceSource(block, code);
     if (!text.trim() || text.length > MAX_TEXT_FENCE_CHARS)
         return null;
     return { lang, text };
@@ -3143,13 +621,17 @@ function textMarkdownBody(block) {
 }
 /** 移除上一轮的渲染容器与切换按钮（源码变化 / 重建前清理）。 */
 function clearTextView(block) {
-    for (const sel of ['div.' + TEXT_MD_CLASS, 'button.' + TEXT_TOGGLE_CLASS]) {
-        const el = block.querySelector(sel);
-        if (el && el.parentNode)
-            el.parentNode.removeChild(el);
+    const body = textMarkdownBody(block);
+    if (body !== null) {
+        unmountMarkdownIn(body);
+        if (body.parentNode)
+            body.parentNode.removeChild(body);
     }
+    const btn = block.querySelector('button.' + TEXT_TOGGLE_CLASS);
+    if (btn !== null && btn.parentNode)
+        btn.parentNode.removeChild(btn);
 }
-/** 切换视图：写块上的状态属性 + 同步按钮文案与 aria 状态（不动原文 pre）。 */
+/** 切换视图：写块上的状态属性 + 同步按钮文案与 aria 状态（不动宿主内容）。 */
 function setTextView(block, view) {
     block.setAttribute(TEXT_VIEW_ATTR, view);
     const btn = block.querySelector('button.' + TEXT_TOGGLE_CLASS);
@@ -3171,26 +653,35 @@ function textToggleButton(block, view) {
     return btn;
 }
 /**
- * 应用（幂等）：把 text / plaintext / txt 块的内容渲染为 markdown + 挂切换按钮。
- * 已在流式中 / 非目标语言 / 内容为空或超长 / 签名未变 → 不动 DOM。
+ * 应用（幂等）：把 text / plaintext / txt 块的内容交给官方渲染器渲染 +
+ * 挂切换按钮。开关关闭 / 官方组件不可用 / 流式中 / 非目标语言 / 内容为空
+ * 或超长 / 签名未变 → 不动 DOM。
  */
 function applyTextMarkdown(block) {
+    if (!renderOptions.textFenceMarkdown)
+        return;
+    if (!officialMarkdownAvailable())
+        return;
     if (isStreamingBlock(block))
         return;
-    // 本插件渲染容器内的块不再二次接管（嵌套 ```text 保持代码块形态，避免递归重建）。
+    // 本插件渲染容器内的块不再二次接管（嵌套 \`\`\`text 保持代码块形态，避免递归重建）。
     if (block.closest && block.closest('div.' + TEXT_MD_CLASS))
         return;
-    const src = textFenceSource(block);
-    if (!src)
+    const src = textFenceBody(block);
+    if (src === null)
         return;
     const signature = src.lang + ':' + src.text.length + ':' + contextHash(src.text);
-    if (textMarkdownBody(block) && block.getAttribute(TEXT_SIG_ATTR) === signature)
+    if (textMarkdownBody(block) !== null && block.getAttribute(TEXT_SIG_ATTR) === signature)
         return;
     clearTextView(block);
     const body = document.createElement('div');
     body.className = 'tzx-md ' + TEXT_MD_CLASS;
-    body.appendChild(renderDomMarkdown(src.text));
     block.appendChild(body);
+    if (!renderMarkdownInto(body, src.text)) {
+        // 官方组件中途不可用：撤掉半成品，保持宿主原样（真降级）。
+        block.removeChild(body);
+        return;
+    }
     block.appendChild(textToggleButton(block, 'markdown'));
     block.setAttribute(TEXT_VIEW_ATTR, 'markdown');
     block.setAttribute(TEXT_SIG_ATTR, signature);
@@ -3206,11 +697,12 @@ function scanTextBlocks(root) {
 }
 exports.TEXT_FENCE_LANGS = TEXT_FENCE_LANGS;
 exports.MAX_TEXT_FENCE_CHARS = MAX_TEXT_FENCE_CHARS;
+exports.textFenceLang = textFenceLang;
 exports.applyTextMarkdown = applyTextMarkdown;
 exports.scanTextBlocks = scanTextBlocks;
 
 
-    // ── 扫描器骨架（共享，issue #186 P2）+ MutationObserver 跟随流式渲染 ──
+    // ── 扫描器骨架（共享）+ MutationObserver 跟随流式渲染 ───────────
     // ── shared DOM scanner skeleton (dsh-shared/client-parts) ──
 // 单一来源（issue #186 P2）：dsh-md-render（parts/scanner.ts：表格增强 + #196
 // 上下文块接管 + #205 轨迹视图接管）与 dsh-mermaid-render（client/index.ts：
@@ -3267,64 +759,33 @@ function installDomScanner(options) {
 }
 
     "use strict";
-// ── 扫描器：MutationObserver 跟随流式渲染 ──────────────────────
-// 处理 tzx-md（think-zh-expand 的 MarkdownView 输出）与
-// md-table-wide（内置 MarkdownText 的宽表格容器）内的表格段落：
-//  - 流式中的容器（祖先带 [data-streaming]）跳过，等流式结束重扫；
-//  - 已渲染的表格（容器内已有 table）不重复处理；
-//  - 段落被替换为表格后记入 seen，避免重复处理。
-// issue #196：上下文注入块（pre[data-context-text]，宿主 ContextBody 的
-// 纯文本渲染——子 agent 消息 / AGENTS.md 注入等）走 context-markdown
-// 的 DOM markdown 渲染；幂等标记在 pre/容器上，宿主重渲染后可重做。
-// issue #393：text / plaintext / txt 围栏块走 text-markdown 的 markdown
-// 渲染 + 每块「查看原文」切换（流式门控 / 兜底重扫同一口径）。
-function scanContainer(seen, container) {
-    if (container.closest && container.closest('[data-streaming]'))
-        return;
-    const paragraphs = container.querySelectorAll('p.tzx-p');
-    for (const p of paragraphs) {
-        if (seen.has(p))
-            continue;
-        const table = parseTable(p.textContent ?? '');
-        if (!table)
-            continue;
-        const frag = renderTable(table);
-        p.replaceWith(frag);
-        seen.add(p);
-    }
-}
-/** 扫描一个节点：上下文注入块 + 自身/内部的目标容器（表格增强）。 */
+// ── 扫描器：MutationObserver 跟随流式渲染 ──────────────────────────
+// 精简后只保留两个真增量注入点（官方已内置表格 / 公式 / 代码块能力，
+// DOM 层不再做任何渲染接管）：
+//  - 上下文注入块（pre[data-context-text]，宿主 ContextBody 的纯文本渲染
+//    —— 子 agent 消息 / AGENTS.md 注入等）走 context-markdown 的渲染；
+//  - text / plaintext / txt 围栏块走 text-markdown 的渲染 + 每块「查看原文」
+//    切换。
+// 流式门控 / 幂等标记都在各自模块内（scanner 只负责枚举与调用）。
 function scanNode(seen, node) {
     if (!node || typeof node.querySelectorAll !== 'function')
         return;
     const el = node;
-    // issue #196：上下文注入块（pre[data-context-text]）的 markdown 渲染。
     if (typeof el.matches === 'function' && el.matches(CONTEXT_TEXT_SELECTOR))
         applyContextMarkdown(el);
     scanContextBlocks(el);
-    // issue #205：轨迹视图（div[data-trajectory-scroll]）内 markdown 的接管。
-    scanTrajectoryBlocks(el);
-    // issue #393：text / plaintext / txt 围栏块按 markdown 渲染（含「查看原文」切换）。
     scanTextBlocks(el);
-    if (typeof el.matches === 'function' && (el.matches('div.tzx-md') || el.matches('div.md-table-wide'))) {
-        scanContainer(seen, el);
-        return;
-    }
-    for (const c of el.querySelectorAll('div.tzx-md, div.md-table-wide')) {
-        scanContainer(seen, c);
-    }
 }
 /** 观察 body；返回观察器 disposer。
- *  骨架（观察配置 / 批次轮次 / disposer）来自共享 part（与 dsh-mermaid-render 同一份），
- *  本插件的特有策略全部留在 scanNode 内：流式内容门控、幂等 seen 集合、
- *  上下文注入块接管（#196）、轨迹视图接管（#205）、宿主契约不匹配时的静默降级。 */
+ *  骨架（观察配置 / 批次轮次 / disposer）来自共享 part（与 dsh-mermaid-render
+ *  同一份），本插件的特有策略全部留在 scanNode 内；seen 集合保留给调用方
+ *  语义（宿主重渲染后新节点仍会被处理）。 */
 function installScanner() {
     const seen = new Set();
     return installDomScanner({
         scan: (node) => scanNode(seen, node),
-        // 兜底重扫目标：会话滚动容器（流式结束后段落 / 表格文本补全）与轨迹视图
-        // 虚拟列表容器（#205：滚动 / 行回收）——这两类变化不一定以 addedNodes 出现。
-        rescanSelectors: ['[data-conversation-scroll]', TRAJECTORY_SCROLL_SELECTOR],
+        // 兜底重扫目标：会话滚动容器（流式结束后内容补全，不一定以 addedNodes 出现）。
+        rescanSelectors: ['[data-conversation-scroll]'],
     });
 }
 
@@ -3332,149 +793,39 @@ function installScanner() {
     // ── 样式（DSH 语义 token，随 activation 注入）──────────────────
     "use strict";
 // ── 样式（DSH 语义 token，随 activation 注入）──────────────────
-// 视觉基准：dsh-file-activity（issue #54 阶段 0 UI 规范）——线性图标、
-// 语义 token 着色、hover/transition 反馈；适配对话内渲染场景。
-// 前缀 dsh-md-render-（issue #54：与 dsh-mermaid-render 前缀分离，
-// 消除跨插件类名冲突）；.tzx-md 系列为统一 MarkdownView 的输出样式
-// （issue #31 从 dsh-think-zh-expand 迁移，对外契约类名 tzx-* /
-// md-code-block 保持不动）。
+// 精简后只保留本插件**自有 DOM** 的样式：统一 MarkdownView 的包裹容器
+// （tzx-md）、两个注入容器（text 围栏块 / 上下文注入块）、「查看原文」
+// 切换按钮、整段复制按钮。表格 / 公式 / 代码块高亮 / 代码主题等样式全部
+// 下线——那些 DOM 现在由官方 MarkdownText 渲染，样式随官方组件自带
+// （ui-primitives 的 CSS Modules）。
 const STYLES = `
-.tzx-md{display:flex;flex-direction:column;gap:8px;min-width:0;font:var(--dsw-font-s-14);line-height:22px;color:var(--dsw-alias-label-primary)}
-.tzx-md .tzx-p{margin:0}
-.tzx-md h1,.tzx-md h2,.tzx-md h3,.tzx-md h4{margin:0;font-weight:600;line-height:1.35}
-.tzx-md ul,.tzx-md ol{margin:0;padding-left:26px}
-.tzx-md li{margin:2px 0}
-.tzx-md .tzx-pre{margin:0;background:var(--dsh-md-render-code-bg,var(--dsw-alias-markdown-code-block));border:1px solid var(--dsh-md-render-code-border,var(--dsw-alias-border-l1));border-radius:8px;padding:12px 16px 12px 12px;overflow:auto;font:var(--dsw-font-markdown-code-block-small);color:var(--dsh-md-render-code-fg,var(--dsw-alias-label-primary));transition:border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.tzx-md .tzx-pre:hover{border-color:var(--dsw-alias-border-l2)}
-.tzx-md code{background:var(--dsw-alias-markdown-code-block);border-radius:4px;padding:0 4px;font:var(--dsw-font-markdown-code-block-small)}
-.tzx-md .tzx-pre code{background:none;padding:0}
-.tzx-md .tzx-bq{margin:0;padding:2px 0 2px 12px;border-left:3px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}
-.tzx-md .tzx-bq p{margin:0}
-.tzx-md .tzx-table{border-collapse:collapse;margin:0;font-size:14px;line-height:22px}
-.tzx-md .tzx-table th,.tzx-md .tzx-table td{border:1px solid var(--dsw-alias-border-l1);padding:6px 12px}
-.tzx-md .tzx-table th{background:var(--dsw-alias-markdown-code-block);font-weight:600}
-.tzx-md .tzx-table tbody tr{transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.tzx-md .tzx-table tbody tr:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.tzx-md a{color:var(--dsw-alias-accent-primary)}
-.dsh-md-render-math{font:var(--dsw-font-markdown-code-block-small);font-style:italic;color:var(--dsw-alias-label-primary)}
-.dsh-md-render-math-block{margin:0;text-align:center;font:var(--dsw-font-markdown-code-block-small);font-style:italic;color:var(--dsw-alias-label-primary);padding:4px 0}
-.dsh-md-render-math-error{display:inline-flex;align-items:center;gap:4px;font:var(--dsw-font-markdown-code-block-small);font-style:italic;color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);border-radius:4px;padding:0 4px}
-.dsh-md-render-math-error svg{display:block;flex:none}
-div.dsh-md-render-math-error{margin:0;text-align:center;justify-content:center;padding:4px 8px}
-/* ── 公式结构（issue #82）：分数 / 根号 / 上下标 / 求和积分、希腊字母 ──
-   自实现轻量 LaTeX 子集（零依赖）：frac(a,b) 上下结构 + 分数线、
-   sqrt(x) 根号符号 + 顶部根号线、x^2 / x_i 上下标、sum / int 符号 +
-   上下限；flex 布局走语义 token（currentColor 继承，深浅主题自适应）。
-   无法解析的公式命令回退原文（不误伤，见 math.ts / syntax.ts）。 */
-.dsh-md-render-math,.dsh-md-render-math-block{white-space:normal}
-.dsh-md-render-math .dsh-md-render-frac,.dsh-md-render-math .dsh-md-render-sqrt,.dsh-md-render-math .dsh-md-render-supsub,.dsh-md-render-math .dsh-md-render-big,.dsh-md-render-math .dsh-md-render-seq,.dsh-md-render-math-block .dsh-md-render-frac,.dsh-md-render-math-block .dsh-md-render-sqrt,.dsh-md-render-math-block .dsh-md-render-supsub,.dsh-md-render-math-block .dsh-md-render-big,.dsh-md-render-math-block .dsh-md-render-seq{display:inline;font-style:italic;white-space:nowrap}
-.dsh-md-render-frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 2px;line-height:1.25}
-.dsh-md-render-frac-num{padding:1px 4px 0}
-.dsh-md-render-frac-den{border-top:1px solid currentColor;padding:0 4px 1px}
-.dsh-md-render-sqrt{display:inline-flex;align-items:center;vertical-align:middle;margin:0 2px}
-.dsh-md-render-sqrt-symbol{font-size:1.2em;line-height:1;padding-right:1px}
-.dsh-md-render-sqrt-body{display:inline-flex;flex-direction:column;justify-content:center;border-top:1px solid currentColor;padding:1px 2px 0}
-.dsh-md-render-supsub{display:inline-flex;align-items:flex-start;vertical-align:middle;margin:0 1px}
-.dsh-md-render-supsub-base{line-height:1.3}
-.dsh-md-render-supsub-scripts{display:inline-flex;flex-direction:column;align-items:flex-start;font-size:.7em;line-height:1.05;margin-left:1px}
-.dsh-md-render-big{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 2px;line-height:1.1}
-.dsh-md-render-big-limits{display:flex;flex-direction:column;align-items:center;font-size:.7em;line-height:1.05}
-.dsh-md-render-big-symbol{font-size:1.5em;line-height:1}
-.dsh-md-render-seq{display:inline}
-.dsh-md-render-table-scroll{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;margin:0;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-1);transition:border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-md-render-table-scroll:hover{border-color:var(--dsw-alias-border-l2)}
-.dsh-md-render-table{border-collapse:collapse;width:max-content;max-width:max-content;font-size:14px;line-height:22px;color:var(--dsw-alias-label-primary)}
-.dsh-md-render-table th,.dsh-md-render-table td{padding:8px 14px;border-bottom:1px solid var(--dsw-alias-border-l2);max-width:min(30vw,320px);min-width:100px}
-.dsh-md-render-table th{text-align:start;font-weight:600;border-bottom:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-markdown-code-block);font:var(--dsw-font-markdown-table-head)}
-.dsh-md-render-table td{font:var(--dsw-font-markdown-table)}
-.dsh-md-render-table tbody tr{transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-md-render-table tbody tr:nth-child(even){background:color-mix(in srgb, var(--dsw-alias-bg-layer-2) 40%, transparent)}
-.dsh-md-render-table tbody tr:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.dsh-md-render-table code{font-size:13px}
-.dsh-md-render-table th{cursor:pointer;user-select:none}
-.dsh-md-render-sort-arrow{display:inline-block;margin-left:4px;font-size:12px;line-height:1;color:var(--dsw-alias-label-tertiary);transition:color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-md-render-table th[data-sorted] .dsh-md-render-sort-arrow{color:var(--dsw-alias-accent-primary)}
-.dsh-md-render-table tr.dsh-md-render-folded-row{display:none}
-.dsh-md-render-table-fold{display:block;margin:8px auto 0;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);padding:4px 12px;cursor:pointer;transition:border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out),color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-md-render-table-fold:hover{border-color:var(--dsw-alias-accent-primary);color:var(--dsw-alias-accent-primary)}
-.dsh-md-render-scroll-hint{display:flex;align-items:center;gap:4px;padding:2px 8px;font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary)}
-.dsh-md-render-scroll-hint svg{display:block;flex:none}
-.dsh-md-render-prefix,.dsh-md-render-suffix{margin:0}
-/* ── 复制按钮（issue #74）：代码块 / 整段内容一键复制 ──
-   整段内容按钮绝对定位右下角；代码块按钮位置可配置（issue #146）：
-   bottom-right（默认，与 #74 原始诉求一致）= md-code-block 直接子元素
-   绝对定位右下角，header = 头部与语言标签同排（issue #80 布局）。
-   hover 才显示（不干扰阅读）；DSH 语义 token 深浅主题自适应；流式渲染
-   中（[data-streaming] 祖先）隐藏，避免复制到半截内容。 */
-.md-code-block{position:relative}
-.tzx-md{position:relative}
-.dsh-md-render-copy{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;cursor:pointer;opacity:0;transition:opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out),color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-md-render-code-head>.dsh-md-render-copy{margin-left:auto}
-.md-code-block>.dsh-md-render-copy{position:absolute;right:8px;bottom:8px}
-.tzx-md>.dsh-md-render-copy{position:absolute;right:8px;bottom:8px}
-.md-code-block:hover .dsh-md-render-copy,.tzx-md:hover>.dsh-md-render-copy{opacity:1}
-.dsh-md-render-copy:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2)}
-.dsh-md-render-copy-done{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}
-[data-streaming] .dsh-md-render-copy{display:none}
-/* ── 代码块增强（issue #80）：头部语言标签 + 行号 + 语法高亮 ──
-   header 行与复制按钮（#74）同排；行号用 CSS counter 伪元素（不污染
-   pre/code 文本内容，mermaid/复制读取原文本不受影响）；token 类走
-   固定色板 + prefers-color-scheme 深浅两套，随 activation 注入/卸载。 */
-.dsh-md-render-code-head{display:flex;align-items:center;gap:8px;padding:4px 8px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:var(--dsh-md-render-code-bg,color-mix(in srgb,var(--dsw-alias-bg-layer-2) 55%,transparent));border:1px solid var(--dsh-md-render-code-border,var(--dsw-alias-border-l1));border-bottom:none;border-radius:8px 8px 0 0}
-.dsh-md-render-code-lang{text-transform:lowercase;letter-spacing:.02em;user-select:none}
-.md-code-block .tzx-pre{border-top:none;border-radius:0 0 8px 8px}
-.tzx-md .tzx-pre code{display:block;white-space:normal;counter-reset:dsh-md-render-line}
-.dsh-md-render-code-line{display:block;white-space:pre;position:relative;padding-left:2.25em;counter-increment:dsh-md-render-line}
-.dsh-md-render-code-line::before{content:counter(dsh-md-render-line);position:absolute;left:0;width:1.75em;text-align:right;color:var(--dsw-alias-label-tertiary);user-select:none}
-/* ── 代码主题（issue #146）：内置 5 套可配置色板，经 data-theme 选择 ──
-   每套定义 5 个 token 色（kw/str/com/num/fn）+ 代码块背景/边框色；
-   bright（默认）= 明亮高对比：柔和白底 + 深色 token，解决白底刺眼观感
-   （不用高饱和青色系）；github-light / github-dark / one-dark / nord 为
-   知名编辑器色板。深浅色自适应保留：每套主题均有 prefers-color-scheme
-   暗色变体（github-light 暗色变体 = github-dark 官方色板；github-dark /
-   one-dark / nord 本身为暗色主题，两套相同）。仅实际高亮的代码块携带
-   data-theme（syntaxHighlight 关闭 / 未知语言 / 超长跳过高亮时无
-   data-theme → 保持 DSH 语义 token 默认样式，主题不影响纯文本代码块）。 */
-/* 每个主题含自洽前景色 --dsh-md-render-code-fg（init：#146 只改了背景/
-   token 色，文字色继承宿主 .tzx-md → 系统暗色 + 宿主浅色时深背景黑字
-   不可见）。现在背景与前景色同源于主题，代码块内文字恒可见（修复）。 */
-.md-code-block[data-theme]{--dsh-md-render-c-kw:#6d28d9;--dsh-md-render-c-str:#15803d;--dsh-md-render-c-com:#78716c;--dsh-md-render-c-num:#b45309;--dsh-md-render-c-fn:#1d4ed8;--dsh-md-render-code-bg:#fafaf9;--dsh-md-render-code-border:#d6d3d1;--dsh-md-render-code-fg:#1f2328}
-.md-code-block[data-theme="github-light"]{--dsh-md-render-c-kw:#cf222e;--dsh-md-render-c-str:#0a3069;--dsh-md-render-c-com:#6e7781;--dsh-md-render-c-num:#0550ae;--dsh-md-render-c-fn:#8250df;--dsh-md-render-code-bg:#ffffff;--dsh-md-render-code-border:#d0d7de;--dsh-md-render-code-fg:#1f2328}
-.md-code-block[data-theme="github-dark"]{--dsh-md-render-c-kw:#ff7b72;--dsh-md-render-c-str:#a5d6ff;--dsh-md-render-c-com:#8b949e;--dsh-md-render-c-num:#79c0ff;--dsh-md-render-c-fn:#d2a8ff;--dsh-md-render-code-bg:#0d1117;--dsh-md-render-code-border:#30363d;--dsh-md-render-code-fg:#e6edf3}
-.md-code-block[data-theme="one-dark"]{--dsh-md-render-c-kw:#c678dd;--dsh-md-render-c-str:#98c379;--dsh-md-render-c-com:#5c6370;--dsh-md-render-c-num:#d19a66;--dsh-md-render-c-fn:#61afef;--dsh-md-render-code-bg:#282c34;--dsh-md-render-code-border:#3e4451;--dsh-md-render-code-fg:#abb2bf}
-.md-code-block[data-theme="nord"]{--dsh-md-render-c-kw:#b48ead;--dsh-md-render-c-str:#a3be8c;--dsh-md-render-c-com:#616e88;--dsh-md-render-c-num:#d08770;--dsh-md-render-c-fn:#81a1c1;--dsh-md-render-code-bg:#2e3440;--dsh-md-render-code-border:#434c5e;--dsh-md-render-code-fg:#d8dee9}
-/* 暗色系统：bright / github-light 背景被反转成深色 → 前景色同步变浅
-   （保持主题内自洽可见）；github-dark / one-dark / nord 本身深色背景，基础
-   规则的前景色已是浅色，无需重复覆盖。 */
-@media (prefers-color-scheme:dark){.md-code-block[data-theme]{--dsh-md-render-c-kw:#c4b5fd;--dsh-md-render-c-str:#86efac;--dsh-md-render-c-com:#64748b;--dsh-md-render-c-num:#f87171;--dsh-md-render-c-fn:#93c5fd;--dsh-md-render-code-bg:#1e1f26;--dsh-md-render-code-border:#3a3b45;--dsh-md-render-code-fg:#cbd5e1}.md-code-block[data-theme="github-light"]{--dsh-md-render-c-kw:#ff7b72;--dsh-md-render-c-str:#a5d6ff;--dsh-md-render-c-com:#8b949e;--dsh-md-render-c-num:#79c0ff;--dsh-md-render-c-fn:#d2a8ff;--dsh-md-render-code-bg:#0d1117;--dsh-md-render-code-border:#30363d;--dsh-md-render-code-fg:#c9d1d9}}
-.dsh-md-render-tok-keyword{color:var(--dsh-md-render-c-kw)}
-.dsh-md-render-tok-string{color:var(--dsh-md-render-c-str)}
-.dsh-md-render-tok-comment{color:var(--dsh-md-render-c-com);font-style:italic}
-.dsh-md-render-tok-number{color:var(--dsh-md-render-c-num)}
-.dsh-md-render-tok-function{color:var(--dsh-md-render-c-fn)}
-/* ── 语法补全（issue #81）：任务列表 / 删除线 / 图片 ──
-   任务列表：checkbox 与文本同排、状态色走 accent；删除线 <del>
-   line-through 弱化次级字色；图片块级自适应、失败占位。 */
-.tzx-md del,.dsh-md-render-del{text-decoration:line-through;color:var(--dsw-alias-label-secondary)}
-.dsh-md-render-task-checkbox{width:14px;height:14px;margin:0 6px 0 0;vertical-align:-2px;accent-color:var(--dsw-alias-accent-primary);cursor:pointer;flex:none}
-.dsh-md-render-img{display:block;max-width:100%;max-height:40vh;margin:4px 0;border-radius:8px;object-fit:contain}
-.dsh-md-render-img-fallback{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px dashed var(--dsw-alias-border-l2);border-radius:6px;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12)}
-/* ── text / plaintext / txt 围栏块按 markdown 渲染（issue #393）────────
-   宿主与 MarkdownView 的围栏块结构是 md-code-block > head + pre.tzx-pre
-   （契约见 README）；渲染容器与「查看原文」按钮由 text-markdown.ts 追加，
-   视图状态写在块属性上（每块独立）。视图切换只切显示，原文 pre 始终留在
-   DOM——复制按钮 / 文本读取与切回原文都不受影响；流式中按钮不显示。 */
-.md-code-block[data-dsh-md-render-text-view="markdown"]>pre.tzx-pre{display:none}
-.md-code-block[data-dsh-md-render-text-view="source"]>.dsh-md-render-text-md{display:none}
+.tzx-md{position:relative;display:flex;flex-direction:column;gap:8px;min-width:0}
+.dsh-md-render-fallback{margin:0;white-space:pre-wrap;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-primary)}
+/* ── 注入容器：text / plaintext / txt 围栏块按 markdown 渲染 ──
+   容器由 text-markdown.ts 追加在 md-code-block 内；宿主内容容器按视图
+   隐藏（官方 CodeBlock 的内容容器带稳定属性 data-code-block-content）。 */
 .dsh-md-render-text-md{padding:12px 16px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-markdown-code-block)}
+.md-code-block[data-dsh-md-render-text-view="markdown"]>[data-code-block-content]{display:none}
+.md-code-block[data-dsh-md-render-text-view="source"]>.dsh-md-render-text-md{display:none}
 .dsh-md-render-text-toggle{display:inline-flex;align-items:center;align-self:flex-end;margin-top:4px;padding:2px 10px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:transparent;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;cursor:pointer;transition:color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .dsh-md-render-text-toggle:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2)}
 .dsh-md-render-text-toggle[aria-pressed="true"]{color:var(--dsw-alias-accent-primary);border-color:var(--dsw-alias-accent-primary)}
+/* ── 上下文注入块（pre[data-context-text]）渲染容器 ──
+   插在宿主 pre 之前，宿主 pre 置 hidden（React 拥有该子树，不改其子结构）。 */
+.dsh-md-render-context-md{padding:0}
+/* ── 整段 markdown 复制按钮（官方只有代码块复制）──
+   绝对定位右下角、hover 才显示；流式渲染中隐藏，避免复制到半截内容。 */
+.dsh-md-render-copy{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;cursor:pointer;opacity:0;transition:opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out),color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
+.tzx-md>.dsh-md-render-copy{position:absolute;right:8px;bottom:8px}
+.tzx-md:hover>.dsh-md-render-copy{opacity:1}
+.dsh-md-render-copy:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2)}
+.dsh-md-render-copy-done{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}
+[data-streaming] .dsh-md-render-copy{display:none}
 [data-streaming] .dsh-md-render-text-toggle{display:none}
 `;
 
 
-    // ── 共享样式注入（dsh-shared/client-parts，issue #186 P2）────────
+    // ── 共享样式注入（dsh-shared/client-parts）──────────────────────
     // ── shared plugin stylesheet injection (dsh-shared/client-parts) ──
 // 单一来源（issue #186 P2）：把「注入 <style data-<plugin>="styles"> 并随 fiber
 // teardown 卸载」这段逐字相同的样板从渲染插件收口到这里。当前调用方：
@@ -3507,16 +858,16 @@ function installStyles(ctx, attr, css, label) {
 }
 
 
-    // ── 设置页（issue #84）：渲染增强开关可视化 + 保存 ───────────────
+    // ── 设置页：渲染增强开关可视化 + 保存 ───────────────────────────
     "use strict";
-// ── 设置页视图（issue #84）：各增强功能开关可视化 ──────────────────
+// ── 设置页视图：保留增强功能的开关可视化 ────────────────────────────
 // 官方 slots 扩展点：设置 → 插件 → 渲染 页签。开关列表与 server 端
 // （lib/index.js buildOptions + lib/routes.js SWITCH_KEYS）一一对应；
-// issue #146 起支持选择型配置（复制按钮位置 / 代码主题，server 端
-// SELECT_KEYS）——新增「代码块外观」区块，枚举下拉保存同走
-// PUT /md/api/config。保存写入 profile patch 文件（持久化），DSH 的
-// watchUserPatches 热重载后 client 重新 apply（保存即生效）；保存成功
-// 后立即 setRenderOptions 应用新配置（当前页面无需等待重载）。
+// 保存写入 profile patch 文件（持久化），DSH 的 watchUserPatches 热重载后
+// client 重新 apply（保存即生效）；保存成功后立即 setRenderOptions 应用新
+// 配置（当前页面无需等待重载）。
+// 精简后只剩三个开关（表格 / 公式 / 代码块高亮等开关随自实现渲染下线，
+// 迁移说明见 README「配置」与 CHANGELOG）。
 const SETTINGS_STYLES = `
 .dsh-md-render-settings{display:flex;flex-direction:column;gap:10px;padding:12px}
 .dsh-md-render-settings-section{display:flex;flex-direction:column;gap:8px}
@@ -3529,9 +880,6 @@ const SETTINGS_STYLES = `
 .dsh-md-render-settings-toggle[data-on="true"]{background:var(--dsw-alias-state-success-primary);border-color:transparent}
 .dsh-md-render-settings-toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-primary);transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .dsh-md-render-settings-toggle[data-on="true"]::after{transform:translateX(12px);background:var(--dsw-alias-label-primary-foreground)}
-.dsh-md-render-settings-select{flex:none;height:28px;min-width:150px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);cursor:pointer}
-.dsh-md-render-settings-select:hover{border-color:var(--dsw-alias-border-l3)}
-.dsh-md-render-settings-select:focus{outline:none;border-color:var(--dsw-alias-accent-primary)}
 .dsh-md-render-settings-actions{display:flex;align-items:center;gap:8px}
 .dsh-md-render-settings-btn{height:28px;padding:0 14px;border-radius:6px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}
 .dsh-md-render-settings-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -3540,30 +888,17 @@ const SETTINGS_STYLES = `
 .dsh-md-render-settings-error{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}
 `;
 const SETTINGS_SWITCHES = [
-    { key: 'copyButton', label: '复制按钮', hint: '代码块与整段内容一键复制（位置/外观见下方配置，issue #74）' },
-    { key: 'syntaxHighlight', label: '语法高亮', hint: '代码块关键字/字符串/注释等着色（issue #80）' },
-    { key: 'languageLabel', label: '语言标签', hint: '代码块头部显示语言名（issue #80）' },
-    { key: 'lineNumbers', label: '行号', hint: '代码块左侧行号（issue #80）' },
-    { key: 'taskList', label: '任务列表', hint: '- [ ] / - [x] 渲染为 checkbox（issue #81）' },
-    { key: 'strikethrough', label: '删除线', hint: '~~text~~ 渲染为删除线（issue #81）' },
-    { key: 'image', label: '图片', hint: '![alt](url) 渲染为图片（issue #81）' },
-    { key: 'nestedList', label: '嵌套列表', hint: '按缩进层级嵌套列表（issue #81）' },
-    { key: 'mathStructures', label: '公式结构', hint: '行内 $...$ 与块级 $$...$$ 公式渲染（issue #82）' },
-    { key: 'tableSort', label: '表头排序', hint: '点击表头按列排序（issue #83）' },
-    { key: 'tableFold', label: '长表格折叠', hint: '超过 20 行的表格默认折叠（issue #83）' },
-];
-/** 代码块复制按钮位置选项（issue #146）：key 与 server 端 SELECT_KEYS 一致。 */
-const COPY_POSITION_OPTIONS = [
-    { id: 'bottom-right', label: '右下角', hint: '按钮浮在代码块右下角（hover 显示，issue #74 原始诉求）' },
-    { id: 'header', label: '头部', hint: '按钮固定在代码块头部、与语言标签同排（issue #80 布局）' },
-];
-/** 代码主题选项（issue #146）：id 与 server 端 SELECT_KEYS / styles.ts 色板一致。 */
-const CODE_THEME_OPTIONS = [
-    { id: 'bright', label: '明亮高对比', hint: '默认主题：柔和白底 + 深色 token，白底清晰不刺眼' },
-    { id: 'github-light', label: 'GitHub Light', hint: 'GitHub 官方亮色配色' },
-    { id: 'github-dark', label: 'GitHub Dark', hint: 'GitHub 官方暗色配色' },
-    { id: 'one-dark', label: 'One Dark', hint: 'Atom One Dark 编辑器配色' },
-    { id: 'nord', label: 'Nord', hint: '北极清新配色调（暗色）' },
+    { key: 'copyButton', label: '整段复制', hint: 'MarkdownView 整段内容一键复制（官方只有代码块复制）' },
+    {
+        key: 'textFenceMarkdown',
+        label: 'text 围栏块渲染',
+        hint: '语言标记为 text / plaintext / txt 的围栏块按 markdown 渲染，每块可切回原文',
+    },
+    {
+        key: 'contextMarkdown',
+        label: '上下文注入块渲染',
+        hint: '宿主以纯文本呈现的上下文注入正文（子 agent 消息 / AGENTS.md）按 markdown 渲染',
+    },
 ];
 /** 开关行（布尔配置项）。 */
 function SettingsSwitchRow({ label, hint, on, onChange, }) {
@@ -3575,7 +910,7 @@ function SettingsSwitchRow({ label, hint, on, onChange, }) {
         onClick: () => onChange(!on),
     }));
 }
-/** 开关区块（全部增强项）。 */
+/** 开关区块（保留的全部增强项）。 */
 function renderSwitchesSection(draft, patch) {
     return createElement('div', { className: 'dsh-md-render-settings-section' }, createElement('div', { className: 'dsh-md-render-settings-section-title' }, '渲染增强'), ...SETTINGS_SWITCHES.map((item) => createElement(SettingsSwitchRow, {
         key: item.key,
@@ -3584,34 +919,6 @@ function renderSwitchesSection(draft, patch) {
         on: draft[item.key] === true,
         onChange: (v) => patch(item.key, v),
     })));
-}
-/** 选择行（枚举配置项，issue #146：复制按钮位置 / 代码主题）。 */
-function SettingsSelectRow({ label, hint, value, options, onChange, }) {
-    return createElement('div', { className: 'dsh-md-render-settings-row' }, createElement('div', { className: 'dsh-md-render-settings-info' }, createElement('div', { className: 'dsh-md-render-settings-label' }, label), createElement('div', { className: 'dsh-md-render-settings-hint' }, hint)), createElement('select', {
-        className: 'dsh-md-render-settings-select',
-        value: value,
-        onChange: (e) => onChange(e.target.value),
-    }, ...options.map((o) => createElement('option', { key: o.id, value: o.id }, o.label))));
-}
-/** 代码块外观区块（issue #146：复制按钮位置 + 代码主题选择）。 */
-function renderAppearanceSection(draft, patch) {
-    return createElement('div', { className: 'dsh-md-render-settings-section' }, createElement('div', { className: 'dsh-md-render-settings-section-title' }, '代码块外观'), createElement(SettingsSelectRow, {
-        label: '复制按钮位置',
-        hint: COPY_POSITION_OPTIONS.find((o) => o.id === draft.copyButtonPosition)?.hint ?? COPY_POSITION_OPTIONS[0].hint,
-        value: draft.copyButtonPosition && COPY_POSITION_OPTIONS.some((o) => o.id === draft.copyButtonPosition)
-            ? draft.copyButtonPosition
-            : COPY_POSITION_OPTIONS[0].id,
-        options: COPY_POSITION_OPTIONS,
-        onChange: (v) => patch('copyButtonPosition', v),
-    }), createElement(SettingsSelectRow, {
-        label: '代码主题',
-        hint: CODE_THEME_OPTIONS.find((o) => o.id === draft.codeTheme)?.hint ?? CODE_THEME_OPTIONS[0].hint,
-        value: draft.codeTheme && CODE_THEME_OPTIONS.some((o) => o.id === draft.codeTheme)
-            ? draft.codeTheme
-            : CODE_THEME_OPTIONS[0].id,
-        options: CODE_THEME_OPTIONS,
-        onChange: (v) => patch('codeTheme', v),
-    }));
 }
 /** 保存配置（PUT /md/api/config），成功/失败更新状态。 */
 function saveConfig(draft, setSaved, setErrorKind) {
@@ -3683,7 +990,7 @@ function MdRenderSettingsView() {
     }
     const patch = (key, value) => setDraft({ ...draft, [key]: value });
     const save = () => saveConfig(draft, setSaved, setErrorKind);
-    return createElement('div', { className: 'dsh-md-render-settings' }, renderSwitchesSection(draft, patch), renderAppearanceSection(draft, patch), createElement('div', { className: 'dsh-md-render-settings-actions' }, createElement('button', { className: 'dsh-md-render-settings-btn', onClick: save }, '保存'), saved ? createElement('span', { className: 'dsh-md-render-settings-saved' }, '已保存') : null, errorKind ? createElement('span', { className: 'dsh-md-render-settings-error' }, '保存失败') : null));
+    return createElement('div', { className: 'dsh-md-render-settings' }, renderSwitchesSection(draft, patch), createElement('div', { className: 'dsh-md-render-settings-actions' }, createElement('button', { className: 'dsh-md-render-settings-btn', onClick: save }, '保存'), saved ? createElement('span', { className: 'dsh-md-render-settings-saved' }, '已保存') : null, errorKind ? createElement('span', { className: 'dsh-md-render-settings-error' }, '保存失败') : null));
 }
 /** 设置页 tab 注册（官方 slots 扩展点；服务缺省时静默跳过）。 */
 function attachSettingsTab(ctx) {
@@ -3720,18 +1027,19 @@ function attachSettingsTab(ctx) {
     "use strict";
 exports.inject = [];
 exports.apply = function apply(ctx) {
-    // 增强功能开关（issue #84）：默认全开；真实配置异步经 GET /md/api/config
-    // 拉取应用（client 端不能访问 ctx.config——Cordis inject 限制，访问抛
+    // 增强功能开关：默认全开；真实配置异步经 GET /md/api/config 拉取应用
+    // （client 端不能访问 ctx.config——Cordis inject 限制，访问抛
     // "cannot get property without inject"，导致 client failed to apply）。
     setRenderOptions(pickRenderOptions());
     initConfigFromServer();
-    // 样式注入走共享实现（issue #186 P2）：与 dsh-mermaid-render / dsh-think-zh-expand
+    // 样式注入走共享实现：与 dsh-mermaid-render / dsh-think-zh-expand
     // 同一份「无条件最先注入 + 随 fiber teardown 卸载」逻辑（style-tag.part.js）。
     // 位置仍在最前、不进任何早退分支（dsh-file-activity 踩坑：挂在服务判空之后，
     // HMR / 服务缺省时样式会丢）。
     installStyles(ctx, 'data-dsh-md-render', STYLES, 'dsh-md-render: styles');
+    // 两个真增量注入点（上下文块 / text 围栏块）跟随流式渲染重扫。
     ctx.effect(() => installScanner(), 'dsh-md-render: scanner');
-    // 设置页 tab（官方 slots 扩展点，issue #84 配置可视化）。
+    // 设置页 tab（官方 slots 扩展点）。
     attachSettingsTab(ctx);
 };
 

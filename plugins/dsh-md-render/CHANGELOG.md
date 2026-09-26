@@ -2,7 +2,24 @@
 
 本文件记录 dsh-md-render 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-> 公共 API 承诺面：`MarkdownView`（导出 / props / 输出类名清单见 [README「公共 API 契约」](README.md)）；改类名清单 = 破坏性变更，须同步 README 与本文件。
+> 公共 API 承诺面：`MarkdownView`（导出 / props / 自有 DOM 类名清单见 [README「公共 API 契约」](README.md)）；改类名清单 = 破坏性变更，须同步 README 与本文件。
+
+## [0.3.0]
+
+### 移除（与官方重复的实现，官方 0.1.7-rc.2 已内置）
+
+- **自实现 GFM 表格渲染**（`detect.ts` / `render.ts` / `MarkdownView` 的表格分支）：官方 `micromark-extension-gfm` + 宽表格横向滚动（`ui-primitives/src/markdown/render.tsx`）已覆盖；
+- **自实现公式排版**（`math.ts` / `math-render.ts` / `math-symbols.ts`）：官方 `micromark-extension-math` + KaTeX（`katex.tsx`）已覆盖；
+- **自实现代码块增强**（`highlight.ts` / `codeblock.ts`）：官方 `CodeBlock.tsx`（shiki 高亮 / 语言标签 / 行号 / 复制 / 主题）已覆盖；
+- **轨迹视图 markdown 接管**（`trajectory-markdown.ts` / `dom-markdown.ts`）与 **DOM 表格扫描**：官方轨迹视图本身即用 `MarkdownText` 渲染，接管已无收益；
+- **旧配置开关**：`syntaxHighlight` / `languageLabel` / `lineNumbers` / `taskList` / `strikethrough` / `image` / `nestedList` / `mathStructures` / `tableSort` / `tableFold` / `copyButtonPosition` / `codeTheme`（patch 文件里的旧键保留无害、被忽略）。
+
+### 变更
+
+- **全部渲染交给官方 `MarkdownText`**：两个注入点（`text` 围栏块、`pre[data-context-text]` 上下文块）经 `react-dom/client` 把官方组件挂到本插件插入的容器里；`MarkdownView` 变为官方渲染 + 表格容错 + 整段复制；官方组件不可用时真降级（`<pre>` 兜底 / 注入点不动宿主 DOM）；
+- **表格容错保留为纯文本规范化**（`table-normalize.ts`）：只规范化官方 GFM 不认的两种分隔行写法（无管道符 / 列数与表头不等），GFM 已接受的写法一字不动（实测证据见 `test/table-normalize.mjs`）；
+- **配置面收敛为三项开关**：`copyButton` / `textFenceMarkdown` / `contextMarkdown`（默认全开）；
+- 客户端产物 165 KB → 43 KB（`lib/client.js`），新增依赖面为零（只用平台 seed 模块）。
 
 ## [0.2.0] - 2026-09-21
 

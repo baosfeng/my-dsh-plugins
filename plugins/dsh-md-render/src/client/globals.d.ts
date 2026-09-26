@@ -1,9 +1,9 @@
 /**
  * dsh-md-render — client 端全局类型声明。
  *
- * 声明 __ModuleLoader__ factory 作用域注入的变量（React hooks、
- * dsh-shared 图标等）。跨 part 文件的函数/变量引用由 TypeScript
- * script 模式自动处理（module: commonjs + 无 import/export = 全局作用域）。
+ * 声明 __ModuleLoader__ factory 作用域注入的变量（React hooks、同步 require）。
+ * 跨 part 文件的函数/变量引用由 TypeScript script 模式自动处理
+ * （module: commonjs + 无 import/export = 全局作用域）。
  */
 
 // ── React（由 factory 作用域的 require('react') 注入）────────────────────
@@ -17,14 +17,10 @@ declare namespace React {
     currentTarget: T
     target: EventTarget
   }
-  interface ChangeEvent<T = Element> {
-    currentTarget: T & { value: string; checked: boolean }
-    target: EventTarget & { value: string; checked: boolean }
-  }
 }
 
-// ── icon（dsh-shared/client-parts/icons.part.js）────────────────────────
-declare const icon: Record<string, (...args: unknown[]) => unknown>
+// ── 同步模块加载器（factory 参数；平台 seed 模块见 official-view.ts）──────
+declare function require(spec: string): Record<string, unknown>
 
 // ── CommonJS（apply.ts 使用 exports.inject / exports.apply）─────────────
 declare const exports: Record<string, unknown>

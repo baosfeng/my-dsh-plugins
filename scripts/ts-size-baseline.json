@@ -6,10 +6,6 @@
     "complexity": 10
   },
   "files": {
-    "plugins/dsh-md-render/src/client/parts/highlight.ts": {
-      "lines": 406,
-      "functions": {}
-    },
     "plugins/dsh-mermaid-render/src/client/index.ts": {
       "lines": 881,
       "functions": {}

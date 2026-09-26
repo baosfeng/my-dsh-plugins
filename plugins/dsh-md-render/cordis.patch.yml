@@ -1,7 +1,8 @@
 # dsh-md-render bundle patch: inserts the plugin row into the profile
 # roster. The row mounts the (empty) host half; the client half enhances
-# markdown table rendering in the conversation (tzx-md / md-table-wide
-# containers). Install with:
+# official markdown renderer where the host still renders plain text
+# (text/plaintext/txt fences, pre[data-context-text] context bodies), plus the
+# unified MarkdownView + whole-content copy button. Install with:
 #
 #   git clone https://github.com/baosfeng/my-dsh-plugins.git
 #   dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render

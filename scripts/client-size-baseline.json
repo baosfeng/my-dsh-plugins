@@ -1,12 +1,12 @@
 {
   "note": "客户端产物体积预算基线（issue #322）：登记各插件**发布面**的体积实测值。上限 = 基线 + max(64 KB, 基线×15%)，理由见 scripts/check-client-size.mjs 顶部常量注释。unpacked total = 该插件 npm 发布面全部文件字节和；files = 逐个冻结的产物（lib/** 与 assets/**）。未登记的文件与插件只受默认上限（1 MB/文件）约束。刷新：node scripts/check-client-size.mjs --update-baseline（须在 PR 说明体积变化原因）。",
   "measuredAt": "2026-09-15",
-  "source": "npm pack --dry-run --json（19 个插件，2026-09-15 与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）",
+  "source": "npm pack --dry-run --json（18 个插件，2026-09-15 与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）",
   "margin": {
     "absFloorBytes": 65536,
     "relMargin": 0.15,
     "defaultFileLimitBytes": 1048576,
-    "why": "绝对底 64 KB = git 全历史 136 次 client.js 增长事件的 max 27.0 KB × 2.4；相对余量 15% 用于大体量 vendored 资源；判据：对当前最大 client.js 基线（152.5 KB）上限 216.5 KB，仅为 #185 冗余量级（4.48 MB）的 4.7%"
+    "why": "绝对底 64 KB = git 全历史 136 次 client.js 增长事件的 max 27.0 KB × 2.4；相对余量 15% 用于大体量 vendored 资源；判据：对当前最大 client.js 基线（87.2 KB）上限 151.2 KB，仅为 #185 冗余量级（4.48 MB）的 3.3%"
   },
   "plugins": {
     "dsh-file-activity": {
@@ -33,6 +33,7 @@
         "lib/parts/interceptor.part.js": 1797,
         "lib/parts/preview-data.part.js": 4983,
         "lib/parts/preview-float.part.js": 10981,
+        "lib/parts/rightbar-width.part.js": 7286,
         "lib/parts/rows.part.js": 6124,
         "lib/parts/settings.part.js": 2491,
         "lib/parts/store.part.js": 1498,
@@ -47,15 +48,13 @@
       }
     },
     "dsh-md-render": {
-      "total": 498965,
+      "total": 152617,
       "files": {
-        "assets/math-frac.png": 92232,
-        "assets/md-table-render.png": 69517,
-        "assets/settings-tab.png": 132071,
-        "lib/client.js": 156144,
+        "assets/text-fence-markdown.png": 70863,
+        "lib/client.js": 56118,
         "lib/client.src.js": 4951,
         "lib/index.js": 2663,
-        "lib/routes.js": 5402
+        "lib/routes.js": 4229
       }
     },
     "dsh-mermaid-render": {
@@ -64,14 +63,17 @@
         "assets/mermaid-10.9.3.min.js": 3336760,
         "assets/mermaid-auto-diagram.png": 92687,
         "assets/mermaid-card.png": 97426,
+        "assets/mermaid-settings-panel.png": 77953,
         "lib/client.js": 54837,
         "lib/client.src.js": 2407,
+        "lib/config.js": 2294,
         "lib/index.js": 4068,
-        "lib/prompt.js": 3087
+        "lib/prompt.js": 3087,
+        "lib/routes.js": 3941
       }
     },
     "dsh-my-context": {
-      "total": 258534,
+      "total": 255996,
       "files": {
         "assets/context-panel.png": 117918,
         "lib/budget.js": 2149,
@@ -144,7 +146,7 @@
       }
     },
     "dsh-my-memory": {
-      "total": 770279,
+      "total": 762636,
       "files": {
         "assets/issue-193-delete-armed.png": 96684,
         "assets/issue-193-other-tool-approval.png": 125884,
@@ -169,7 +171,7 @@
       }
     },
     "dsh-my-notify": {
-      "total": 306864,
+      "total": 293238,
       "files": {
         "assets/notify-toast.png": 96384,
         "lib/client.js": 68709,
@@ -214,7 +216,7 @@
       }
     },
     "dsh-my-opencode-session-header": {
-      "total": 33208,
+      "total": 27276,
       "files": {
         "lib/config.js": 3076,
         "lib/context.js": 2405,
@@ -225,7 +227,7 @@
       }
     },
     "dsh-my-plugin-manager": {
-      "total": 803732,
+      "total": 798847,
       "files": {
         "assets/detail.png": 402308,
         "assets/market.png": 140796,
@@ -280,13 +282,13 @@
       }
     },
     "dsh-plugin-dev-mode": {
-      "total": 182917,
+      "total": 148414,
       "files": {
         "assets/preset-selector.png": 127241
       }
     },
     "dsh-shared": {
-      "total": 97662,
+      "total": 88687,
       "files": {
         "lib/async.d.ts": 706,
         "lib/async.js": 905,
@@ -319,7 +321,7 @@
       }
     },
     "dsh-task-reliability": {
-      "total": 310213,
+      "total": 296491,
       "files": {
         "assets/screenshot-panel.png": 122908,
         "lib/api.js": 11427,
@@ -341,17 +343,17 @@
       }
     },
     "dsh-think-zh-expand": {
-      "total": 397189,
+      "total": 384008,
       "files": {
         "assets/settings-panel.png": 73441,
         "assets/think-markdown.png": 227686,
-        "lib/client.js": 70435,
+        "lib/client.js": 55614,
         "lib/client.src.js": 3204,
         "lib/index.js": 13610
       }
     },
     "dsh-ts-example": {
-      "total": 48596,
+      "total": 47531,
       "files": {
         "assets/screenshot.png": 28844,
         "lib/client.js": 7013,

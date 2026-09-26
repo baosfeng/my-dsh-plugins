@@ -8,14 +8,14 @@ status: accepted
 
 ## 背景
 
-用户提出：思考渲染、图表渲染、markdown 渲染这几个插件能不能合并。宿主层面**无粒度限制**（一个包可同时承担多种角色），所以「能否合并」不是宿主限制，而是**下载体积与发布耦合的取舍**。事实核对：不存在独立的公式渲染插件（math 在 `dsh-md-render` 内）；think 插件已不做渲染（只做中文化词表与思考块交互）；`dsh-md-render` 事实上已是渲染内核，有 `dsh-think-zh-expand`（硬依赖）与 `dsh-my-plugin-manager`（降级路径）两个下游。
+用户提出：思考渲染、图表渲染、markdown 渲染这几个插件能不能合并。宿主层面**无粒度限制**（一个包可同时承担多种角色），所以「能否合并」不是宿主限制，而是**下载体积与发布耦合的取舍**。事实核对：不存在独立的公式渲染插件（math 在 `dsh-md-render` 内）；think 插件已不做渲染（只做中文化词表与思考块交互）；`dsh-md-render` 事实上已是渲染内核，其下游只剩 `dsh-my-plugin-manager`（降级路径）；`dsh-think-zh-expand` 已改用官方 baseline 模块 `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText`，不再依赖 md-render。
 
 ## 决策
 
 **保持 3 个独立插件**（`dsh-md-render` / `dsh-mermaid-render` / `dsh-think-zh-expand`）不合并；用户「减少维护面」的诉求改用**内部共享**满足——把逐字重复的 UI 样板收口到 `plugins/dsh-shared/client-parts/`，由各插件构建期拼接（构建时源文件，不经过 package exports / require 解析）。三条理由：
 
 1. **combo 机制下「拆」才有可选装价值**：宿主按 URL 总长分批把插件 bundle 拼进同一个 script 响应，不装的插件不下载；一旦合并，不用图表的用户也被强制下载数 MB（mermaid 引擎约 4.49 MB）。
-2. **合并会让公共内核膨胀约 30 倍并波及所有消费方**：`dsh-md-render` 会从 151 KB 涨到 ~4.6 MB，而它是硬依赖与降级路径的共同依赖。
+2. **合并会让公共内核膨胀约 80 倍并波及所有消费方**：`dsh-md-render` 会从 ~55 KB 涨到 ~4.6 MB，而它是插件管理器的渲染依赖。
 3. **三者主题不同源，合并后内部仍需分治**：think = 中文化 + system-prompt 注入；mermaid = 引擎 + 卡片 UI；md-render = markdown 解析管线——合并只增加耦合，不减少复杂度。
 
 配套机制：**同一段 UI 样板在 ≥2 个插件逐字重复时，必须在 `plugins/dsh-shared/client-parts/` 建单一来源**，并配构建期「恰好一处注入 + 取值断言」门禁与产物级断言测试。
@@ -32,7 +32,7 @@ status: accepted
 ## 备选方案
 
 - **A：三者合并为一个「渲染插件」**——不用图表的用户被强制下载 4.49 MB；think 的 system-prompt 注入与 mermaid 引擎无关却被绑成同一版本。
-- **B：mermaid 并入 md-render（3 → 2）**——需同步改 2 个下游的 `external` 契约与 peerDep 范围，且所有 md-render 用户强制下载 4.49 MB。
+- **B：mermaid 并入 md-render（3 → 2）**——需同步改 `dsh-my-plugin-manager` 的 `external` 契约与 peerDep 范围，且所有 md-render 用户强制下载 4.49 MB。
 - **C：维持现状，不做共享**——UI 样板与扫描器继续在各插件间漂移，「单一来源」目标失效。
 - **D（采纳）：保持 3 包 + 内部共享**。
 

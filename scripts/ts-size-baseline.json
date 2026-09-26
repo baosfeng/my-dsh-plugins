@@ -10,16 +10,6 @@
       "lines": 881,
       "functions": {}
     },
-    "plugins/dsh-my-guard/src/index.ts": {
-      "lines": 176,
-      "functions": {
-        "apply": {
-          "line": 56,
-          "lines": 74,
-          "complexity": 10
-        }
-      }
-    },
     "plugins/dsh-my-memory/src/api-route.ts": {
       "lines": 405,
       "functions": {}
@@ -146,10 +136,6 @@
           "complexity": 11
         }
       }
-    },
-    "plugins/dsh-think-zh-expand/src/client/index.ts": {
-      "lines": 750,
-      "functions": {}
     }
   }
 }

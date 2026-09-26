@@ -34,7 +34,6 @@
  *   require: (spec: string) => any
  *   createElement: Function
  *   labels: object
- *   codeLabels?: object
  *   fallbackAttribute: string
  *   fallbackClassName?: string
  *   external?: string
@@ -46,8 +45,6 @@
  *   - labels：**必填**。透传给平台 MarkdownText —— 它没有默认值，渲染含代码块的
  *     markdown 时会读 `labels.code.copyLabel`（不传即 TypeError）。文案由消费方
  *     提供，本共享件**不硬编码任何中文**
- *   - codeLabels：旧字段（早期官方包 0.0.1-rc.1 的 props 是 `codeLabels?` 而非
- *     `labels`），同时传以兼容
  *   - fallbackAttribute：兜底 `<pre>` 的标记属性名（值固定 `'true'`）。消费方各用
  *     自己的前缀，避免两个插件的 DOM 标记串味
  *   - fallbackClassName：兜底 `<pre>` 的 class（消费方既有契约可保留，可选）
@@ -65,7 +62,6 @@ function installMarkdownViewFallback(options) {
   const platformModule = options.platformModule ?? '@deepseek-ai/dsh-client-ui-primitives'
   const platformExport = options.platformExport ?? 'MarkdownText'
   const labels = options.labels
-  const codeLabels = options.codeLabels
   const fallbackAttribute = options.fallbackAttribute
   const fallbackClassName = options.fallbackClassName
 
@@ -108,7 +104,6 @@ function installMarkdownViewFallback(options) {
     if (isRenderable(PlatformView)) {
       return (props) => {
         const platformProps = { ...props, labels }
-        if (codeLabels) platformProps.codeLabels = codeLabels
         return createElement(PlatformView, platformProps)
       }
     }

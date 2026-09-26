@@ -21,7 +21,7 @@ import {
 } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dirSync } from 'tmp'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -225,6 +225,44 @@ describe('真实仓库的共享件清单（判据输入不是手写列表）', (
     ])
   })
 })
+
+/**
+ * issue #430 回归：`codeLabels` 是官方 `MarkdownText` 早期（npm 0.0.1-rc.1）的旧字段，
+ * 现行宿主 props 只有 text / streaming / labels / fileMentions / pathImages / variant
+ * （官方源码对 `codeLabels` 0 命中）。继续往官方组件透传旧字段是历史兼容残留，故把
+ * 「共享件源码 + 各插件 src / lib 产物都不再出现 codeLabels」钉成门禁：旧字段回潮、
+ * 或改了共享件忘了重建产物，都会在这里红。
+ */
+describe('codeLabels 历史兼容残留（issue #430）', () => {
+  it('共享件源码、各插件 src 与 lib 产物都不再出现 codeLabels', () => {
+    const pluginsDir = join(REPO_ROOT, 'plugins')
+    const roots = [join(pluginsDir, 'dsh-shared', 'client-parts')]
+    for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      roots.push(join(pluginsDir, entry.name, 'src'), join(pluginsDir, entry.name, 'lib'))
+    }
+    const offenders = []
+    for (const root of roots) {
+      if (!existsSync(root)) continue
+      for (const file of listSourceFiles(root)) {
+        if (readFileSync(file, 'utf8').includes('codeLabels')) offenders.push(relative(REPO_ROOT, file))
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+})
+
+/** 递归列出 JS/TS 源文件（跳过 node_modules、点目录与临时编译目录）。 */
+function listSourceFiles(dir) {
+  const files = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) files.push(...listSourceFiles(full))
+    else if (/\.(js|mjs|cjs|ts|tsx)$/.test(entry.name)) files.push(full)
+  }
+  return files
+}
 
 /**
  * issue #336 回归：门禁对工作区**只读**。

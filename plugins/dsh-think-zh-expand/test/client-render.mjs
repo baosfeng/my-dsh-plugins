@@ -187,7 +187,6 @@ try {
     '复制',
     'labels.code.copyLabel passed (official component has no default)',
   )
-  assert.equal(textCall.codeLabels?.copyLabel, '复制', 'legacy codeLabels passed (npm 0.0.1-rc.1)')
   assert.ok(
     textTree.texts.some((t) => t.includes('文本块正文')),
     'text content preserved through the official component',

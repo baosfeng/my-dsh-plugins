@@ -241,7 +241,6 @@ try {
     assert.equal(props.labels?.code?.copyLabel, '复制', 'labels.code.copyLabel（无默认值，必传）')
     assert.equal(props.labels?.code?.copiedLabel, '已复制', 'labels.code.copiedLabel')
     assert.equal(props.labels?.footnotes, '脚注', 'labels.footnotes')
-    assert.equal(props.codeLabels?.copyLabel, '复制', '旧字段 codeLabels（npm 0.0.1-rc.1）')
     assert.equal(props.text, README_TEXT, 'README 文本原样透传')
   }
 

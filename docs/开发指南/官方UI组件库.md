@@ -29,7 +29,7 @@ const ui = require('@deepseek-ai/dsh-client-ui-primitives')
 
 **props 契约**：`text`（Markdown 源文本，必填）；`labels: { code: { copyLabel, copiedLabel }, footnotes }` —— **必填且无默认值**，实现直接读 `labels.code.copyLabel`，不传即 TypeError；`streaming` / `fileMentions` / `pathImages` 可选。
 
-**用共享部件，不要自己重写三级链**：`dsh-shared/client-parts/markdown-fallback.part.js` 的 `installMarkdownViewFallback({ require, createElement, labels, codeLabels, fallbackAttribute, fallbackClassName? })` 已实现 外部内核 → 宿主 `MarkdownText` → `<pre>` 三级回退（构建期 splice 进 factory 作用域，文案与 DOM 标记由消费方注入），新插件直接注入使用（ADR-0002：≥2 处重复即抽出）。
+**用共享部件，不要自己重写三级链**：`dsh-shared/client-parts/markdown-fallback.part.js` 的 `installMarkdownViewFallback({ require, createElement, labels, fallbackAttribute, fallbackClassName? })` 已实现 外部内核 → 宿主 `MarkdownText` → `<pre>` 三级回退（构建期 splice 进 factory 作用域，文案与 DOM 标记由消费方注入），新插件直接注入使用（ADR-0002：≥2 处重复即抽出）。
 
 - **可用性判定必须按 React 语义**：`MarkdownText` 是 `React.memo(...)` 返回的**对象**（`typeof` 为 `'object'`），`typeof v === 'function'` 会把官方组件误判为不可用。判定用 `typeof v === 'function' || (typeof v === 'object' && v !== null && typeof v.$$typeof === 'symbol')`（`react` 的 `isValidElementType` 在当前宿主与 Node 侧 React 19 上都不再导出），并排除 `'div'` 这类宿主标签字符串。
 - **仍保留三级链**：官方组件也可能不存在（极旧/裁剪宿主）→ 最后一级 `<pre data-<插件>-fallback="true">`。只有「真的换了渲染组件」才算降级；把组件变量置 `null` 而渲染路径没有 null 分支会在渲染期抛 `Element type is invalid … but got: null`（见[踩坑目录](../踩坑/README.md)「只 catch require 不等于优雅降级」）。

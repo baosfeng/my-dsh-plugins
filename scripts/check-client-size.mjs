@@ -59,8 +59,8 @@ import { fileURLToPath } from 'node:url'
  * 取 64 KB ≈ p100 × 2.4 的理由：
  *   · 下界（不制造日常摩擦）：正常功能提交（改一行、加一个小面板、共享件同步增长）
  *     离 64 KB 还有 2 倍以上空间，不会出现"改一行就要调基线"；
- *   · 上界（不形同虚设）：对当前最大的 client.js 基线（152.5 KB）上限是 216.5 KB，
- *     仅为 #185 冗余量级（4.48 MB = 4587 KB）的 4.7%——事故级的注入必被拦下。
+ *   · 上界（不形同虚设）：对当前最大的 client.js 基线（87.2 KB）上限是 151.2 KB，
+ *     仅为 #185 冗余量级（4.48 MB = 4587 KB）的 3.3%——事故级的注入必被拦下。
  */
 export const ABS_FLOOR_BYTES = 64 * 1024
 
@@ -370,14 +370,14 @@ export function buildBaseline({ root = DEFAULT_ROOT, previous = null }) {
         'files = 逐个冻结的产物（lib/** 与 assets/**）。未登记的文件与插件只受默认上限（1 MB/文件）约束。' +
         '刷新：node scripts/check-client-size.mjs --update-baseline（须在 PR 说明体积变化原因）。',
     measuredAt,
-    source: 'npm pack --dry-run --json（19 个插件与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）',
+    source: 'npm pack --dry-run --json（18 个插件与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）',
     margin: {
       absFloorBytes: ABS_FLOOR_BYTES,
       relMargin: REL_MARGIN,
       defaultFileLimitBytes: DEFAULT_FILE_LIMIT_BYTES,
       why:
         '绝对底 64 KB = git 全历史 136 次 client.js 增长事件的 max 27.0 KB × 2.4；相对余量 15% 用于大体量 vendored 资源；' +
-        '判据：对当前最大 client.js 基线（152.5 KB）上限 216.5 KB，仅为 #185 冗余量级（4.48 MB）的 4.7%',
+        '判据：对当前最大 client.js 基线（87.2 KB）上限 151.2 KB，仅为 #185 冗余量级（4.48 MB）的 3.3%',
     },
     plugins,
   }

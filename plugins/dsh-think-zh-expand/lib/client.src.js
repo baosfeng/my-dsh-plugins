@@ -36,17 +36,14 @@ window.__ModuleLoader__.load({
     // 其它消费方（dsh-my-plugin-manager）行为不变。
     /*__PART_MARKDOWN_FALLBACK__*/
     // labels 无默认值（渲染含代码块的 markdown 时才读 labels.code.copyLabel）——
-    // 这是官方组件的**必填调用契约**，不是界面文案替换；codeLabels 兼容早期
-    // 官方包（npm 0.0.1-rc.1）。
+    // 这是官方组件的**必填调用契约**，不是界面文案替换。
     /** 官方 baseline 模块（平台 seed 表，可直接 require）。 */
     const PLATFORM_PRIMITIVES = '@deepseek-ai/dsh-client-ui-primitives'
     const ZH_MD_LABELS = { code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' }
-    const ZH_MD_CODE_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
     const MarkdownView = installMarkdownViewFallback({
       require,
       createElement,
       labels: ZH_MD_LABELS,
-      codeLabels: ZH_MD_CODE_LABELS,
       fallbackAttribute: 'data-dsh-think-zh-expand-fallback',
       // 显式旁路共享件的外部内核级（见上方注释）：本插件不跨插件取渲染内核
       external: PLATFORM_PRIMITIVES,

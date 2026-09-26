@@ -70,7 +70,6 @@ window.__ModuleLoader__.load({
  *   require: (spec: string) => any
  *   createElement: Function
  *   labels: object
- *   codeLabels?: object
  *   fallbackAttribute: string
  *   fallbackClassName?: string
  *   external?: string
@@ -82,8 +81,6 @@ window.__ModuleLoader__.load({
  *   - labels：**必填**。透传给平台 MarkdownText —— 它没有默认值，渲染含代码块的
  *     markdown 时会读 `labels.code.copyLabel`（不传即 TypeError）。文案由消费方
  *     提供，本共享件**不硬编码任何中文**
- *   - codeLabels：旧字段（早期官方包 0.0.1-rc.1 的 props 是 `codeLabels?` 而非
- *     `labels`），同时传以兼容
  *   - fallbackAttribute：兜底 `<pre>` 的标记属性名（值固定 `'true'`）。消费方各用
  *     自己的前缀，避免两个插件的 DOM 标记串味
  *   - fallbackClassName：兜底 `<pre>` 的 class（消费方既有契约可保留，可选）
@@ -101,7 +98,6 @@ function installMarkdownViewFallback(options) {
   const platformModule = options.platformModule ?? '@deepseek-ai/dsh-client-ui-primitives'
   const platformExport = options.platformExport ?? 'MarkdownText'
   const labels = options.labels
-  const codeLabels = options.codeLabels
   const fallbackAttribute = options.fallbackAttribute
   const fallbackClassName = options.fallbackClassName
 
@@ -144,7 +140,6 @@ function installMarkdownViewFallback(options) {
     if (isRenderable(PlatformView)) {
       return (props) => {
         const platformProps = { ...props, labels }
-        if (codeLabels) platformProps.codeLabels = codeLabels
         return createElement(PlatformView, platformProps)
       }
     }
@@ -156,17 +151,14 @@ function installMarkdownViewFallback(options) {
 }
 
     // labels 无默认值（渲染含代码块的 markdown 时才读 labels.code.copyLabel）——
-    // 这是官方组件的**必填调用契约**，不是界面文案替换；codeLabels 兼容早期
-    // 官方包（npm 0.0.1-rc.1）。
+    // 这是官方组件的**必填调用契约**，不是界面文案替换。
     /** 官方 baseline 模块（平台 seed 表，可直接 require）。 */
     const PLATFORM_PRIMITIVES = '@deepseek-ai/dsh-client-ui-primitives'
     const ZH_MD_LABELS = { code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' }
-    const ZH_MD_CODE_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
     const MarkdownView = installMarkdownViewFallback({
       require,
       createElement,
       labels: ZH_MD_LABELS,
-      codeLabels: ZH_MD_CODE_LABELS,
       fallbackAttribute: 'data-dsh-think-zh-expand-fallback',
       // 显式旁路共享件的外部内核级（见上方注释）：本插件不跨插件取渲染内核
       external: PLATFORM_PRIMITIVES,

@@ -220,9 +220,6 @@ try {
     assert.equal(props.labels?.code?.copyLabel, '复制', 'labels.code.copyLabel passed (required, no default)')
     assert.equal(props.labels?.code?.copiedLabel, '已复制', 'labels.code.copiedLabel passed')
     assert.equal(props.labels?.footnotes, '脚注', 'labels.footnotes passed')
-    // 旧版官方包（npm latest 0.0.1-rc.1）props 为 codeLabels
-    assert.equal(props.codeLabels?.copyLabel, '复制', 'legacy codeLabels.copyLabel passed (npm 0.0.1-rc.1)')
-    assert.equal(props.codeLabels?.copiedLabel, '已复制', 'legacy codeLabels.copiedLabel passed')
     assert.equal(props.text, REASONING, 'adaptor forwards text unchanged')
   }
 
@@ -276,7 +273,6 @@ try {
     assert.equal(props.labels?.code?.copyLabel, '复制', 'labels.code.copyLabel passed to memo component')
     assert.equal(props.labels?.code?.copiedLabel, '已复制', 'labels.code.copiedLabel passed to memo component')
     assert.equal(props.labels?.footnotes, '脚注', 'labels.footnotes passed to memo component')
-    assert.equal(props.codeLabels?.copyLabel, '复制', 'legacy codeLabels passed to memo component')
     assert.equal(props.text, REASONING, 'adaptor forwards text unchanged (memo form)')
   }
 

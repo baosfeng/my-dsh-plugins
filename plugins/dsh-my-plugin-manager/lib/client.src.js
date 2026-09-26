@@ -41,12 +41,10 @@ window.__ModuleLoader__.load({
       code: { copyLabel: '复制', copiedLabel: '已复制' },
       footnotes: '脚注',
     }
-    const MD_README_CODE_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
     const MarkdownView = installMarkdownViewFallback({
       require,
       createElement,
       labels: MD_README_LABELS,
-      codeLabels: MD_README_CODE_LABELS,
       fallbackAttribute: 'data-dsh-my-plugin-manager-fallback',
       fallbackClassName: 'dsh-my-plugin-manager-readme-plain',
     })

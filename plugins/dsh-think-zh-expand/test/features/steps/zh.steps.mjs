@@ -270,7 +270,6 @@ Then('传给官方组件的 labels.code.copyLabel 为 {string}', async function 
   assert.equal(props.labels?.code?.copyLabel, expected, 'labels.code.copyLabel (required, no default)')
   assert.equal(props.labels?.code?.copiedLabel, '已复制', 'labels.code.copiedLabel')
   assert.equal(props.labels?.footnotes, '脚注', 'labels.footnotes')
-  assert.equal(props.codeLabels?.copyLabel, expected, 'legacy codeLabels.copyLabel (npm 0.0.1-rc.1)')
 })
 
 Then('输出回退为带 fallback 标记的 pre', async function () {

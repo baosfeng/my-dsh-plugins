@@ -9,10 +9,11 @@ import { test } from 'vitest'
  *  - a non-table pipe line (no separator row) falls back to a paragraph,
  *  - basic inline markdown inside cells still works (bold / inline code).
  *
- * issue #31 渲染职责迁移：MarkdownView 由 dsh-md-render 提供，本测试先
- * 加载 dsh-md-render 的构建产物（模拟 ModuleLoader 的跨 bundle require），
- * 并断言本插件 bundle 不再包含 MarkdownView 渲染逻辑（tryTable /
- * MarkdownView 函数定义已迁出）。
+ * issue #428：渲染内核改为宿主官方 baseline 组件（平台 seed 模块
+ * @deepseek-ai/dsh-client-ui-primitives 的 MarkdownText），本插件不再跨插件
+ * require dsh-md-render、不再声明 dsh.client.external。测试只加载本插件产物，
+ * 用平台 stub 注入官方组件；产物若仍 require dsh-md-render 会直接抛
+ * 'unexpected require' 让测试失败（强断言）。
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -37,7 +38,7 @@ const stubbed = {
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
 }
 
-// ── load bundles: dsh-md-render first (think-zh-expand requires it) ───────
+// ── load bundle: 只有本插件；平台 seed 模块用 stub 注入 ───────────────────
 let registrations = []
 global.window = {
   __ModuleLoader__: {
@@ -67,22 +68,22 @@ global.document = {
   createElement: () => ({ setAttribute: () => {}, textContent: '' }),
 }
 
-eval(fs.readFileSync(new URL('../../dsh-md-render/lib/client.js', import.meta.url), 'utf8'))
 eval(fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8'))
-assert.equal(registrations.length, 2, 'two bundles registered')
-const mdRenderReg = registrations.find((r) => r.id === 'dsh-md-render')
+assert.equal(registrations.length, 1, 'only the think-zh-expand bundle is loaded')
 const thinkReg = registrations.find((r) => r.id === 'dsh-think-zh-expand')
-assert.ok(mdRenderReg, 'dsh-md-render bundle registered')
 assert.ok(thinkReg, 'think-zh-expand bundle registered')
-// materialize dsh-md-render first (its factory only requires react)
-const mdRenderExports = mdRenderReg.factory((spec) => {
-  if (spec === 'react') return stubbed
-  throw new Error('unexpected require: ' + spec)
-})
-assert.equal(typeof mdRenderExports.MarkdownView, 'function', 'dsh-md-render exports MarkdownView')
+// issue #428：平台 seed 模块 stub（宿主官方 baseline MarkdownText）。require 里
+// **没有** dsh-md-render 分支——产物若仍跨插件取渲染器，这里会抛
+// 'unexpected require: dsh-md-render' 直接让测试失败（强断言）。
+const platformCalls = []
+function PlatformMarkdownText(props) {
+  platformCalls.push(props)
+  return createElement('pre', { 'data-ui': 'markdown-text' }, props.text)
+}
+const platformModule = { MarkdownText: PlatformMarkdownText }
 const exportsObj = thinkReg.factory((spec) => {
   if (spec === 'react') return stubbed
-  if (spec === 'dsh-md-render') return mdRenderExports
+  if (spec === '@deepseek-ai/dsh-client-ui-primitives') return platformModule
   throw new Error('unexpected require: ' + spec)
 })
 assert.deepEqual(exportsObj.inject, ['slots'])
@@ -144,39 +145,6 @@ function renderText(text) {
 
 // ── assertions ────────────────────────────────────────────────────────────
 try {
-  // 1. standard table: header + separator + data rows
-  const t1 = renderText(
-    '| 插件 | 版本 |\n|:-----|:----:|\n| dsh-file-activity | **0.4.2** |\n| dsh-think-zh-expand | `0.2.0` |',
-  )
-  assert.ok(t1.tags.includes('table'), 'table rendered')
-  assert.ok(t1.tags.includes('thead'), 'thead rendered')
-  assert.ok(t1.tags.includes('tbody'), 'tbody rendered')
-  const thCount = t1.tags.filter((t) => t === 'th').length
-  const tdCount = t1.tags.filter((t) => t === 'td').length
-  assert.equal(thCount, 2, `2 header cells, got ${thCount}`)
-  assert.equal(tdCount, 4, `4 data cells (2 rows × 2 cols), got ${tdCount}`)
-  assert.ok(t1.texts.includes('插件'), 'header cell text')
-  assert.ok(t1.texts.includes('版本'), 'header cell text 2')
-  assert.ok(t1.texts.includes('dsh-file-activity'), 'data cell text')
-  assert.ok(t1.texts.includes('0.4.2'), 'bold content inside cell (rendered)')
-  assert.ok(t1.texts.includes('0.2.0'), 'inline code content inside cell (rendered)')
-  // alignment: ':----' left, ':----:' center (from the separator row)
-  assert.deepEqual(t1.thStyles, ['left', 'center'], 'alignment from separator row')
-
-  // 2. alignment variants: :---: center, ---: right
-  const r2 = renderText('| a | b |\n|:---:|---:|\n| 1 | 2 |')
-  assert.deepEqual(r2.thStyles, ['center', 'right'], 'center + right alignment')
-
-  // 3. non-table pipe line (no separator row) falls back to a paragraph
-  const r3 = renderText('| just a pipe line')
-  assert.ok(!r3.tags.includes('table'), 'no table without separator row')
-  assert.ok(r3.tags.includes('p'), 'falls back to paragraph')
-
-  // 4. pipe line followed by non-table line also falls back
-  const r4 = renderText('| a | b |\nnot a separator')
-  assert.ok(!r4.tags.includes('table'), 'no table when second line is not a separator')
-  assert.ok(r4.tags.includes('p'), 'paragraph fallback for non-table pipes')
-
   // 5. reasoning block still renders as think block (regression: default expanded)
   const think = capturedRenderer({
     node: { data: { blocks: [{ kind: 'reasoning', text: '第一行\n第二行' }] } },
@@ -206,180 +174,30 @@ try {
     'thinking content expanded',
   )
 
-  // 6. fenced code blocks keep their language marker (```mermaid → language-mermaid)
-  //    and are wrapped in the host `md-code-block` container, so third-party
-  //    renderers (dsh-mermaid-render scans `div.md-code-block`) can find them.
-  const codeLangs = []
-  let mdCodeBlockWrappers = 0
-  function walkLangs(node) {
-    if (node === null || node === undefined || typeof node === 'boolean') return
-    if (Array.isArray(node)) {
-      for (const c of node) walkLangs(c)
-      return
-    }
-    const props = node.props ?? {}
-    if (typeof node.type === 'function') {
-      walkLangs(node.type(props))
-      return
-    }
-    if (node.type === 'div' && props.className === 'md-code-block') mdCodeBlockWrappers += 1
-    if (node.type === 'code' && typeof props.className === 'string') codeLangs.push(props.className)
-    walkLangs(props.children)
-  }
-  walkLangs(
-    capturedRenderer({
-      node: {
-        data: {
-          blocks: [
-            {
-              kind: 'text',
-              text: '```mermaid\nflowchart TD\n    A --> B\n```\n\n```js\nconst x = 1\n```',
-            },
-          ],
-        },
-      },
-    }),
-  )
-  assert.ok(codeLangs.includes('language-mermaid'), 'mermaid fence keeps language class')
-  assert.ok(codeLangs.includes('language-js'), 'js fence keeps language class')
-  assert.ok(mdCodeBlockWrappers >= 2, 'fenced blocks wrapped in md-code-block for third-party renderers')
-
-  // 7. CommonMark 多反引号行内代码：`` `agent/status` ``（内容含单反引号）
-  //    应整体渲染为 code 且内容为 `agent/status`（回归：mdInline 只支持单
-  //    反引号配对时，双反引号输入会错位——反引号裸露、agent/status 变裸
-  //    文本、出现内容为空白的 code）。
-  function constText(node) {
-    const out = []
-    function walk(n) {
-      if (n === null || n === undefined || typeof n === 'boolean') return
-      if (typeof n === 'string' || typeof n === 'number') {
-        out.push(String(n))
-        return
-      }
-      if (Array.isArray(n)) {
-        for (const c of n) walk(c)
-        return
-      }
-      const props = n.props ?? {}
-      if (typeof n.type === 'function') {
-        walk(n.type(props))
-        return
-      }
-      walk(props.children)
-    }
-    walk(node)
-    return out.join('')
-  }
-  function collectCode(tree) {
-    const codeTexts = []
-    const allTexts = []
-    function walk(node) {
-      if (node === null || node === undefined || typeof node === 'boolean') return
-      if (typeof node === 'string' || typeof node === 'number') {
-        allTexts.push(String(node))
-        return
-      }
-      if (Array.isArray(node)) {
-        for (const c of node) walk(c)
-        return
-      }
-      const props = node.props ?? {}
-      if (typeof node.type === 'function') {
-        walk(node.type(props))
-        return
-      }
-      if (node.type === 'code') codeTexts.push(constText(props.children))
-      walk(props.children)
-    }
-    walk(tree)
-    return { codeTexts, allTexts }
-  }
-  const r7 = collectCode(
-    capturedRenderer({
-      node: {
-        data: {
-          blocks: [{ kind: 'text', text: '思考内容中的 `` `agent/status` `` 应该会被 `mdInline` 解析' }],
-        },
-      },
-    }),
-  )
-  assert.deepEqual(
-    r7.codeTexts,
-    ['`agent/status`', 'mdInline'],
-    'double-backtick span renders whole token as code, single backtick still works',
-  )
-  assert.ok(!r7.codeTexts.includes(' '), 'no whitespace-only code artifact')
-  assert.ok(!r7.codeTexts.includes(''), 'no empty code artifact')
-
-  // 8. 混合：双反引号（紧凑/带空格）与单反引号共存
-  const r8 = collectCode(
-    capturedRenderer({
-      node: { data: { blocks: [{ kind: 'text', text: '`` `job_list` `` 与 `agent/status`' }] } },
-    }),
-  )
-  assert.deepEqual(r8.codeTexts, ['`job_list`', 'agent/status'], 'mixed multi/single backticks')
-
-  // 9. 无内容的连续反引号串（4 连）保持字面量，不解析为 code
-  const r9 = collectCode(
-    capturedRenderer({
-      node: { data: { blocks: [{ kind: 'text', text: '无内容反引号串 ```` 原样' }] } },
-    }),
-  )
-  assert.ok(!r9.codeTexts.some((t) => t.includes('`')), 'four consecutive backticks stay literal')
-  assert.ok(
-    r9.allTexts.some((t) => t.includes('````')),
-    'four backticks text retained',
-  )
-
-  // 10. 思考块（reasoning）内的双反引号同样渲染为 code（用户场景回归）
-  const r10 = collectCode(
-    capturedRenderer({
-      node: {
-        data: { blocks: [{ kind: 'reasoning', text: '调用 `` `agent/status` `` 查看状态' }] },
-      },
-    }),
-  )
-  assert.ok(r10.codeTexts.includes('`agent/status`'), 'reasoning block renders multi-backtick code')
-
-  // 11. 工具中文化映射（需求 3a）：卡片标题 / 工具名 / 工具描述 / others 摘要
-  assert.equal(exportsObj.zhCardTitle('Search'), '搜索', 'variant title Search')
-  assert.equal(exportsObj.zhCardTitle('Bash'), '命令行', 'variant title Bash')
-  assert.equal(exportsObj.zhCardTitle('Read'), '读取', 'variant title Read')
-  assert.equal(exportsObj.zhCardTitle('Write'), '写入', 'variant title Write')
-  assert.equal(exportsObj.zhCardTitle('Edit'), '编辑', 'variant title Edit')
-  assert.equal(exportsObj.zhCardTitle('Code'), '代码', 'variant title Code')
-  assert.equal(exportsObj.zhCardTitle('Inspect'), '检查', 'cordis inspect title')
-  assert.equal(exportsObj.zhCardTitle('Run Cordis Plugin'), '运行 Cordis 插件', 'cordis run title')
-  assert.equal(exportsObj.zhCardTitle('Tool call'), null, '"Tool call" stays with the global table')
-  assert.equal(exportsObj.zhToolName('web_search'), '网络搜索', 'tool name web_search')
-  assert.equal(exportsObj.zhToolName('bash'), '命令行', 'tool name bash')
-  assert.equal(exportsObj.zhToolName('read'), '读取文件', 'tool name read')
-  assert.equal(exportsObj.zhToolName('ask_user_question'), '询问用户', 'tool name ask_user_question')
-  assert.equal(exportsObj.zhToolName('mcp__codebase-memory__search_graph'), '图搜索', 'tool name codebase-memory')
-  assert.equal(exportsObj.zhToolName('unknown_tool'), null, 'unmapped tool stays english')
-  assert.equal(exportsObj.zhToolDesc('web_search'), '搜索网络获取最新信息。', 'tool desc web_search')
-  assert.equal(exportsObj.zhToolDesc('bash'), '执行命令并返回输出（可设置工作目录、超时）。', 'tool desc bash')
-  assert.equal(exportsObj.zhToolDesc('unknown_tool'), null, 'unmapped desc stays english')
-  assert.equal(
-    exportsObj.zhCardSummary('ask_user_question · {"text":"确认"}'),
-    '询问用户 · {"text":"确认"}',
-    'others summary tool-name prefix localized',
-  )
-  assert.equal(exportsObj.zhCardSummary('web_search · 关键词'), '网络搜索 · 关键词', 'others summary web_search')
-  assert.equal(exportsObj.zhCardSummary('no_prefix_here'), null, 'summary without tool prefix untouched')
-  assert.equal(exportsObj.zhCardSummary('unknown_tool · x'), null, 'unmapped summary tool untouched')
-
-  // 12. 渲染职责迁移（issue #31）：本插件不再包含 MarkdownView 渲染逻辑，
-  //     渲染由 dsh-md-render 提供（跨插件 require）
-  assert.equal(exportsObj.MarkdownView, undefined, 'MarkdownView not exported by think-zh-expand')
+  // 6. 渲染内核契约（issue #428）：本插件不再跨插件取渲染器。
+  //    产物里没有 require('dsh-md-render')，也不声明 dsh.client.external；
+  //    文本块与思考块一律交给宿主官方 baseline 组件
+  //    （@deepseek-ai/dsh-client-ui-primitives 的 MarkdownText，平台 seed 模块）。
   const bundleSrc = fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
-  assert.ok(!bundleSrc.includes('function tryTable'), 'tryTable definition removed from bundle')
-  assert.ok(!bundleSrc.includes('function tryFence'), 'tryFence definition removed from bundle')
-  assert.ok(!bundleSrc.includes('function MarkdownView'), 'MarkdownView definition removed from bundle')
-  // issue #299：三级回退逻辑收口在共享件 dsh-shared/client-parts/markdown-fallback.part.js
-  // （构建期注入），bundle 里是共享件内的 req('dsh-md-render') 调用。
-  assert.ok(bundleSrc.includes('function installMarkdownViewFallback('), 'shared fallback part injected')
-  assert.ok(bundleSrc.includes("'dsh-md-render'"), 'bundle wires dsh-md-render as the preferred render kernel')
+  const textTree = renderText('文本块正文')
+  const textCall = platformCalls.find((call) => call.text === '文本块正文')
+  assert.ok(textCall, 'text block handed to the official baseline MarkdownText')
+  assert.equal(
+    textCall.labels?.code?.copyLabel,
+    '复制',
+    'labels.code.copyLabel passed (official component has no default)',
+  )
+  assert.equal(textCall.codeLabels?.copyLabel, '复制', 'legacy codeLabels passed (npm 0.0.1-rc.1)')
+  assert.ok(
+    textTree.texts.some((t) => t.includes('文本块正文')),
+    'text content preserved through the official component',
+  )
+  assert.ok(!bundleSrc.includes("require('dsh-md-render')"), 'artifact has no cross-plugin require (issue #428)')
+  assert.ok(bundleSrc.includes('external: PLATFORM_PRIMITIVES'), 'external kernel slot points at the platform module')
+  assert.ok(
+    bundleSrc.includes("externalExport: 'externalRendererDisabled'"),
+    'external-kernel level of the shared fallback part is bypassed (never matches)',
+  )
 
   // ── issue #54 类名前缀统一 + 视觉回退（用户要求）：思考块结构/折叠交互 ──
   // 13. 结构：统一 dsh-think-zh-expand- 前缀类名；视觉回归官方基线
@@ -478,8 +296,8 @@ try {
     !thinkClasses.includes('dsh-think-zh-expand-think-separator'),
     'no separator while expanded (official collapsedContent hidden)',
   )
-  // 本插件旧类名全部清除；tzx-md / tzx-p 等是 dsh-md-render 的 MarkdownView
-  // 输出契约类名（跨插件表格增强依赖），必须保留。
+  // 本插件旧类名全部清除。issue #428 起渲染走宿主官方 baseline 组件，
+  // 不再有 tzx-md / tzx-p 这类来自跨插件渲染内核的输出契约类名。
   const LEGACY_OWN = [
     'tzx-think',
     'tzx-think-row',
@@ -492,8 +310,6 @@ try {
     'tzx-stopped',
   ]
   assert.ok(!thinkClasses.some((c) => LEGACY_OWN.includes(c)), 'no legacy own tzx-* classes in the think tree')
-  assert.ok(thinkClasses.includes('tzx-md'), 'contract class tzx-md preserved (MarkdownView output)')
-  assert.ok(thinkClasses.includes('tzx-p'), 'contract class tzx-p preserved (MarkdownView output)')
   // issue #73: 折叠箭头为官方 IconChevronDownOutline14（14px SVG 图标），
   // 不再是字符 ▸/▾；展开态渲染 1 个 chevron svg
   assert.equal(countSvg(thinkTree), 1, 'chevron svg icon rendered while expanded (official)')
@@ -549,7 +365,7 @@ try {
   }
   const exportsObj2 = thinkReg.factory((spec) => {
     if (spec === 'react') return interactiveReact
-    if (spec === 'dsh-md-render') return mdRenderExports
+    if (spec === '@deepseek-ai/dsh-client-ui-primitives') return platformModule
     throw new Error('unexpected require: ' + spec)
   })
   let registerFn2 = null

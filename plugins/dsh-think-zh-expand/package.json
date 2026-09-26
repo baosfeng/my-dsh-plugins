@@ -1,7 +1,7 @@
 {
   "name": "dsh-think-zh-expand",
   "version": "0.4.14",
-  "description": "DSH 思考增强插件：思考与回复强制中文（system-prompt 注入），思考内容默认展开显示（配置项 defaultExpanded，默认 true；设 false 则流式展开、完成后收起），界面硬编码英文中文化。DSH web plugin: force Chinese in agent thinking/replies, expand reasoning blocks by default (config defaultExpanded=true; set false to expand while streaming then collapse), localize hard-coded UI labels.",
+  "description": "DSH 思考增强插件：思考与回复强制中文（system-prompt 注入），思考内容默认展开显示（配置项 defaultExpanded，默认 true；设 false 则流式展开、完成后收起）。DSH web plugin: force Chinese in agent thinking/replies and expand reasoning blocks by default (config defaultExpanded=true; set false to expand while streaming then collapse).",
   "type": "module",
   "main": "lib/index.js",
   "repository": {
@@ -41,19 +41,12 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "platform": "web",
-      "external": [
-        "dsh-md-render"
-      ],
-      "externalDegraded": [
-        "dsh-md-render"
-      ]
+      "platform": "web"
     }
   },
   "peerDependencies": {
     "cordis": "^4.0.0-rc.10",
     "@deepseek-ai/dsh-system-prompt": "^0.1.5-rc.2",
-    "dsh-md-render": "^0.1.8",
     "react": "^18.2.0 || ^19.3.0"
   },
   "peerDependenciesMeta": {

@@ -8,21 +8,20 @@
   <img alt="设置页配置面板（设置 → 插件 → 思考增强）：思考默认展开开关" src="https://unpkg.com/dsh-think-zh-expand/assets/settings-panel.png" width="640" />
 </div>
 
-**DSH 思考增强插件**：让 agent 的思考（reasoning）与回复强制使用中文，对话里的思考内容**默认展开显示**（替代内置的单行折叠），并把界面残留的硬编码英文（Thinking / Tool Call 等）**中文化**。
+**DSH 思考增强插件**：让 agent 的思考（reasoning）与回复强制使用中文，对话里的思考内容**默认展开显示**（替代内置的单行折叠）。
 
 ## 功能
 
 - **思考强制中文**（server 端）：经 `systemPrompt.section` 注入一条最高优先级的语言规则——思考过程必须简体中文、最终回复跟随用户语言；英文错误信息与英文上下文不改变语言，代码、命令、路径、术语保持原文。
 - **思考默认展开**（client 端）：覆盖 `conversation.chat.node` 的 `assistant-step` 渲染器，思考内容完整显示、点击标题行可收起（流式生成中强制展开），并同样走 Markdown 渲染（代码块 / 表格 / 公式 / **Mermaid 图表**）。
-- **界面标签中文化**（client 端）：只替换「完全等于」词表的叶子文本节点（`Thinking`→`思考`、`Tool Call`→`工具调用` 等），排除代码块与输入区，不误伤消息正文与代码；工具卡片与工具目录的工具名同步中文化，未覆盖的保留英文。
 
-Markdown 渲染组件按三级回退解析：装了 [dsh-md-render](../dsh-md-render/README.md) 就用它；未装时用宿主官方 `MarkdownText`（**开箱即可渲染**，少的是表格容错、代码块增强等）；极旧宿主回退纯文本 `<pre>`，渲染期始终不抛错。
+Markdown 渲染直接用宿主官方 baseline 组件 `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText`（平台 seed 模块，**零安装即可渲染**）；极旧 / 裁剪宿主回退纯文本 `<pre>`，渲染期始终不抛错。**本插件不跨插件取渲染内核**（不 require 其它特性插件、不声明 `dsh.client.external`）。
 
 ## 安装
 
 ```bash
-# npm 安装（推荐；dsh-md-render 可选，装了获得增强 Markdown 渲染）
-dsh plugin --profile web add dsh-think-zh-expand dsh-md-render --trust-lockfile
+# npm 安装（推荐；无需任何外部渲染内核）
+dsh plugin --profile web add dsh-think-zh-expand --trust-lockfile
 
 # 本地 link（本仓库开发者）
 git clone https://github.com/baosfeng/my-dsh-plugins.git
@@ -53,6 +52,11 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-think-zh-expand
 - 取值只认布尔：非法值 / 缺失一律回退 `true`，脏值不会写进文件。
 - 缺失该配置、值非布尔、或**配置读写通道不可用**（非 web 宿主、路由未注册）时，一律回退 `true` —— 配置面永远不会让插件从「默认展开」静默变成「默认折叠」。
 - 读写通道：host 半边经 `webServer` 注册 `GET` / `PUT /think-zh-expand/api/config`（仅 loopback 可访问）；写盘失败返回 500，设置页据此提示「保存失败」。
+
+## 迁移说明（移除中文化与跨插件渲染内核后）
+
+- **界面硬编码英文的中文化已移除**：官方 zh locale 已覆盖 `思考`（`ui-chat/src/client/locale.ts` 的 `message.think`）与 `工具调用`（`ui-conversation/src/client/locales.ts`），本插件再扫 DOM 改写文本属重复实现，且会误伤宿主文案；界面语言请跟随 DSH 官方设置。**无配置键受影响**（中文化原本无开关）。
+- **不再需要 `dsh-md-render`**：思考块与文本块的 Markdown 渲染改用官方 baseline 组件；若你之前为它而安装 `dsh-md-render`，可以安全卸载（本插件不再读取它）。
 
 ## 相关文档
 

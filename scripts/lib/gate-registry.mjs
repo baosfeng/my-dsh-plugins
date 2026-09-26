@@ -203,6 +203,15 @@ export const GATE_REGISTRY = [
     why: '唯一权威：文档引用完整性（markdown 链接/锚点、反引号路径 token、shell 调用、npm script、skill 与插件名）。本卡新增的脚本因此必须登记进 package.json 并在文档里被正确引用，否则它红。',
   },
   {
+    id: 'action-pins',
+    authority: '`scripts/check-action-pins.mjs` + `scripts/lib/action-pins.mjs`（issue #435）',
+    local: 'always',
+    localCommand: 'node scripts/check-action-pins.mjs',
+    ci: { ...CI_QUALITY_STEP },
+    cost: '~0.05s（纯本地文件扫描，无外部输入）',
+    why: '唯一权威（issue #435）：workflow 里同一 GitHub Action 的**多子路径必须同 ref**——Dependabot 的依赖粒度是子路径，会把 `github/codeql-action/analyze` 当独立依赖单侧 bump（#430），而 CodeQL 要求 init/analyze 同版本，分叉即恒红 `Loaded a configuration file for version 4.38.0, but running version 4.38.1`，且**所有 PR 被假红挡住**（#433 被挡；main 那次绿只是 run 早于 #430 的假象）。人工 review 拦不住「两个 SHA 看着都写了 # v4」这种形态，故必须机器判定。',
+  },
+  {
     id: 'gate-parity',
     authority: '`scripts/check-gate-parity.mjs` + `scripts/lib/gate-registry.mjs`',
     local: 'always',

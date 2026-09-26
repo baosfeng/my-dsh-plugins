@@ -191,17 +191,15 @@
       }
     },
     "dsh-my-observability": {
-      "total": 526231,
+      "total": 326759,
       "files": {
         "assets/git-panel.png": 88508,
-        "assets/replay-panel.png": 144928,
         "assets/settings-panel.png": 81903,
         "lib/ai.js": 7205,
-        "lib/audit-view.js": 11253,
         "lib/audit.js": 11176,
-        "lib/client.js": 103121,
-        "lib/client.src.js": 5017,
-        "lib/config-routes.js": 4342,
+        "lib/client.js": 55930,
+        "lib/client.src.js": 5273,
+        "lib/config-routes.js": 4424,
         "lib/constants.js": 196,
         "lib/diff.js": 3265,
         "lib/git.js": 6332,

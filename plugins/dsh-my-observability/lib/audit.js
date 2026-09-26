@@ -87,9 +87,9 @@ function buildPluginEventData(name, payload) {
 }
 /**
  * session/event → user_message 事件（会话标题来源）。
- * 轨迹回放面板需要"对话可读标题"而非 UUID：从每个会话真实用户的首条
- * 消息截断生成（跳过插件注入消息），面板 sessionsOf 取最早一条作为
- * title。不作为独立存储字段，走现有事件通路，重启后自然恢复。
+ * 审计查询需要"对话可读标题"而非 UUID：从每个会话真实用户的首条消息
+ * 截断生成（跳过插件注入消息），sessions 端点取最早一条作为 title。
+ * 不作为独立存储字段，走现有事件通路，重启后自然恢复。
  */
 function handleSessionEvent(session, event, record) {
     if (event === null || typeof event !== 'object' || event.type !== 'user/message')

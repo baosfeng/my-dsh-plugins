@@ -7,7 +7,7 @@
  *
  * 说明：片段文件共享同一个 factory 作用域（lib/client.src.js 模板 +
  * scripts/build.mjs 拼接），因此这里声明的是「拼接后可见」的符号；
- * strings / apiJson / ReplayPanel 等由 parts 自身声明，TS 跨文件解析。
+ * strings / apiJson / ResourcePanel 等由 parts 自身声明，TS 跨文件解析。
  */
 
 // ── React（由 factory 作用域的 require('react') 注入）────────────────────
@@ -29,14 +29,6 @@ declare namespace React {
 
 // ── icon（dsh-shared/client-parts/icons.part.js）─────────────────────────
 declare const icon: Record<string, (size?: number) => unknown>
-
-// ── audit-view 片段（lib/audit-view.js：server 端 tsc 产物，scripts/build.mjs
-//    剥离 `export` 前缀后拼进 factory 作用域，server/client 共用模块）──────
-declare function applyAuditFilter(events: any, criteria?: any): any[]
-declare function computeToolStats(events: any, topN?: number): any[]
-declare function highlightSegments(text: any, keyword: any): any[]
-declare function auditToJson(events: any, space?: number): string
-declare function auditToCsv(events: any, labels?: any): string
 
 // ── CommonJS（client.src.js 模板注入 exports/module；apply 挂载入口）─────
 declare const exports: Record<string, unknown>

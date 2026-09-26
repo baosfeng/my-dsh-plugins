@@ -8,7 +8,10 @@
  *
  *  1. 源码不再内联图标实现（ICON_STROKE / iconSvg / icon 定义都清零）；
  *  2. 产物 lib/client.js 里恰好一份图标实现，且逐字节来自共享 part；
- *  3. 其它消费方（dsh-md-render）产物含同一份片段 → 卡片图标视觉一致；
+ *  3. 其它消费方（dsh-think-zh-expand）产物含同一份片段 → 图标视觉一致；
+ *     （dsh-md-render 已在 #432 下线全部自实现渲染、不再使用任何图标，故不再是
+ *      本片段的消费方——其产物不含 ICON_STROKE 是预期形态，见 dsh-md-render 的
+ *      test/shared-parts.mjs 反向断言。）
  *  4. mermaid 卡片实际用到的 6 个图标结构冻结（取自 #186 归一前的实现，
  *     逐 key 比对无差异）——共享 part 被改动导致视觉漂移时本用例变红。
  *
@@ -24,8 +27,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SOURCE_PATH = join(ROOT, 'src/client/index.ts')
 const ARTIFACT_PATH = join(ROOT, 'lib/client.js')
 const SHARED_ICONS_PATH = join(ROOT, '..', 'dsh-shared', 'client-parts', 'icons.part.js')
-/** 另一个共享图标消费方的产物（用于「与其它插件一致」的交叉断言）。 */
-const PEER_ARTIFACT_PATH = join(ROOT, '..', 'dsh-md-render', 'lib/client.js')
+/** 另一个共享图标消费方的产物（用于「与其它插件一致」的交叉断言）。
+ *  #432 起 dsh-md-render 下线全部图标使用（不再是消费方），交叉断言改锚仍在
+ *  构建期拼接 icons.part.js 的 dsh-think-zh-expand——意图不变、锚点保持真实。 */
+const PEER_ARTIFACT_PATH = join(ROOT, '..', 'dsh-think-zh-expand', 'lib/client.js')
 
 /** 统计 haystack 中 needle 出现次数（split 计数：不受正则元字符影响）。 */
 const countOf = (haystack, needle) => haystack.split(needle).length - 1
@@ -204,8 +209,8 @@ describe('图标视觉与其它消费方一致（#186 P1）', () => {
     expect(icon.alert().props.width).toBe(16)
   })
 
-  it('同仓其它消费方（dsh-md-render）产物含同一份图标实现', () => {
+  it('同仓其它消费方（dsh-think-zh-expand）产物含同一份图标实现', () => {
     const peer = readFileSync(PEER_ARTIFACT_PATH, 'utf8')
-    expect(peer.includes(sharedIcons().trim()), 'dsh-md-render 产物与 mermaid 共用同一份图标片段').toBe(true)
+    expect(peer.includes(sharedIcons().trim()), 'dsh-think-zh-expand 产物与 mermaid 共用同一份图标片段').toBe(true)
   })
 })

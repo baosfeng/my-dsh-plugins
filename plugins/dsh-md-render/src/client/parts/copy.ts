@@ -1,9 +1,8 @@
-// ── 复制按钮（issue #74）：代码块 / 整段内容一键复制 ─────────────
+// ── 整段 markdown 复制（官方只有代码块复制）────────────────────────
 // 复制实现：navigator.clipboard.writeText 优先，失败回退
 // document.execCommand('copy')（textarea 中转）；复制成功后按钮文案
 // 切换「已复制」1.5s 后恢复；流式渲染中（[data-streaming] 祖先）由
-// styles.ts 的 `[data-streaming] .dsh-md-render-copy{display:none}`
-// 规则隐藏（按钮始终渲染，流式结束自动可见）。
+// styles.ts 的 [data-streaming] .dsh-md-render-copy{display:none} 规则隐藏。
 function fallbackCopyText(text: string): boolean {
   const ta = document.createElement('textarea')
   ta.value = text
@@ -34,40 +33,37 @@ function copyText(text: string): Promise<void> {
   return Promise.resolve()
 }
 
-// 收集容器纯文本（跳过复制按钮，避免按钮文案混入复制内容）。
+/** 是否应跳过该元素（复制按钮自身 / 官方代码块 banner：语言名+复制按钮文案）。 */
+function isCopyNoise(el: Element): boolean {
+  if (el.matches('.dsh-md-render-copy') || el.matches('button')) return true
+  return el.matches('[data-code-block-banner]') || el.matches('.dsh-md-render-code-head')
+}
+
+// 收集容器纯文本（跳过复制按钮与代码块 banner，避免按钮/语言名文案混入）。
 // 不用 textContent 直取：textContent 包含 display:none 元素的文本，
-// 按钮文案会混入；递归遍历 childNodes 并跳过 .dsh-md-render-copy。
+// 按钮文案会混入；递归遍历 childNodes 并跳过噪声元素。
 function collectCopyText(node: Node, out: (string | null)[]): void {
   if (node.nodeType === 3) {
     out.push(node.textContent)
     return
   }
   if (node.nodeType !== 1) return
-  const el = node as Element
-  // 跳过复制按钮与代码块头部（语言标签，issue #80），避免文案混入复制内容。
-  if (el.matches('.dsh-md-render-copy') || el.matches('.dsh-md-render-code-head')) return
+  if (isCopyNoise(node as Element)) return
   const kids = node.childNodes
   for (let i = 0; i < kids.length; i += 1) collectCopyText(kids[i], out)
 }
 
-// kind: 'code'（md-code-block 内，复制 code 文本）| 'content'（tzx-md 内，
-// 复制整段纯文本）。点击时从 DOM 取文本（流式结束后内容已稳定）。
-function CopyButton({ kind }: { kind: 'code' | 'content' }): unknown {
+// kind: 'content'（tzx-md 内，复制整段纯文本；官方代码块复制按钮由官方提供）。
+// 点击时从 DOM 取文本（流式结束后内容已稳定）。
+function CopyButton({ kind }: { kind: 'content' }): unknown {
   const [copied, setCopied] = useState(false)
   const [timer, setTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
   const onClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const host =
-      event && event.currentTarget ? event.currentTarget.closest(kind === 'code' ? '.md-code-block' : '.tzx-md') : null
+    const host = event && event.currentTarget ? event.currentTarget.closest(kind === 'content' ? '.tzx-md' : '') : null
     if (!host) return
-    let text: string
-    if (kind === 'code') {
-      const codeEl = host.querySelector('code')
-      text = codeEl ? (codeEl.textContent ?? '') : ''
-    } else {
-      const out: (string | null)[] = []
-      collectCopyText(host, out)
-      text = out.join('')
-    }
+    const out: (string | null)[] = []
+    collectCopyText(host, out)
+    const text = out.join('')
     if (!text) return
     copyText(text).then(
       () => {

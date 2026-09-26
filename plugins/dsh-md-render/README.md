@@ -3,49 +3,36 @@
 [![插件生态](https://img.shields.io/badge/插件生态-topic%20dsh-4d6bfe)](https://github.com/topics/dsh)
 
 <div align="center">
-  <img alt="非思考模式 markdown 表格渲染增强（不标准表格渲染为表格）" src="./assets/md-table-render.png" width="480" />
-  <br />
-  <img alt="公式结构渲染：分数 / 根号 / 上下标 / 求和 / 块级公式" src="./assets/math-frac.png" width="480" />
-  <br />
-  <img alt="设置 → 插件 → 渲染：增强功能开关" src="./assets/settings-tab.png" width="480" />
-  <br />
   <img alt="text 围栏块按 markdown 渲染（标题 / 列表 / 表格 / 加粗 / 链接），每块带「查看原文」切换" src="./assets/text-fence-markdown.png" width="480" />
 </div>
 
-**DSH 对话统一 Markdown 渲染插件**：提供跨插件复用的统一 **MarkdownView** 组件，并在 DOM 层做**表格渲染增强**——非思考模式下模型输出的不标准 markdown 表格（无首尾管道符、分隔行变体）自动识别并渲染为真正的表格；另含公式结构、代码块高亮与一键复制等增强，全部自实现、零依赖。
+**对话 Markdown 渲染补位插件（精简版）**：GFM 表格（含对齐与宽表格横向滚动）、公式（KaTeX）、代码块（高亮 / 语言标签 / 行号 / 复制）已由宿主官方 `MarkdownText`（`@deepseek-ai/dsh-client-ui-primitives`，0.1.7-rc.2 起内置）提供，**本插件不再自实现任何 markdown 渲染**，只保留官方没覆盖的那几件事：把宿主**渲染为纯文本**的 markdown 交给官方渲染器、整段复制、统一 `MarkdownView` 导出、设置面板，以及官方 GFM 不认的两种表格写法容错。
 
-## 功能
+## 功能（只保留真增量）
 
-- **统一 MarkdownView**：标题 / 列表 / 引用 / 表格（含对齐）/ 代码块 / 行内与块级公式 / 行内格式；代码块保持 `div.md-code-block` 容器结构，dsh-mermaid-render 无需改动即可扫描。
-- **表格增强**：表头与数据行只需含 `|` 且 ≥2 列即可识别（分隔行支持 `--- | ---`、`-|-|-`、`---` 变体），`:---` / `:---:` / `---:` 对齐逐列生效；宽表格自动横向滚动。
-- **公式**：行内 `$…$` 与块级 `$$…$$`；常见结构（分数 / 根号 / 上下标 / 求和积分 / 希腊字母）自实现轻量排版，不引 KaTeX / MathJax；**无法解析的公式保持原文**，货币 `$5`、变量 `a$b` 不被误伤，异常公式以错误标记显示原文。
-- **代码块**：语法高亮（未知语言与超长代码块回退纯文本）、语言标签（js→javascript 等别名归一）、行号、5 套代码主题。
-- **text 围栏块按 markdown 渲染**：语言标记为 `text` / `plaintext` / `txt` 的围栏代码块，块内内容按 markdown 渲染（标题 / 列表 / 表格 / 公式等既有能力一并生效），每块带**独立**的「查看原文」切换（切回原始代码块，状态逐块独立）；**默认启用、一律渲染**（不做内容启发式判定），其他语言标记（`js` / `ts` / `json` / `bash` …）与无语言标记的块行为完全不变。
-- **一键复制**：代码块与整段 markdown 各带复制按钮（hover 显示，位置可配，流式渲染中不显示）。
-- **上下文注入块渲染**：宿主以纯文本 `pre[data-context-text="true"]` 呈现的上下文注入正文（**子 agent 回传消息**、AGENTS.md 等）在 DOM 层渲染为 markdown；原文节点保留并置 `hidden`。
-- **增强可配置**：全部增强独立开关、默认开启，可在设置 → 插件 → 渲染 页签可视化编辑，保存即生效、重启不丢。
+- **text 围栏块按 markdown 渲染**：语言标记为 `text` / `plaintext` / `txt` 的围栏块，块内内容交给官方渲染器按 markdown 渲染（标题 / 列表 / 表格 / 公式等能力与宿主消息完全一致），每块带**独立**的「查看原文」切换；其他标记（`js` / `ts` / `json` / `bash` …）与无标记块**完全不变**。
+- **上下文注入块渲染**：宿主把上下文注入正文（**子 agent 回传消息**、AGENTS.md 等）渲染为纯文本 `pre[data-context-text]`；本插件在 DOM 层把这类块交给官方渲染器渲染，原文节点保留并置 `hidden`。
+- **整段 markdown 复制**：官方只有代码块复制；`MarkdownView` 容器带整段复制按钮（复制内容排除代码块 banner 与按钮文案），流式渲染中不显示。
+- **统一 `MarkdownView`**：`require('dsh-md-render').MarkdownView`（props `{ text: string }`）＝ 官方渲染 + 表格容错 + 整段复制，供本仓其他插件使用（`dsh-my-plugin-manager` 的 README 预览）。
+- **非标准表格容错**：官方 GFM **不认**的两种写法先规范化再交给官方渲染器 —— ① 分隔行完全没有管道符（`a | b` 后跟 `---`，GFM 当 setext 标题）；② 分隔行单元格数与表头不等（GFM 整段不识别）。**GFM 本来就接受的写法一律不动**（无首尾管道符、紧凑 `---|---`、单横线 `-|-`、表格前有普通段落文本、数据行列数不等、逐列对齐标记 —— 逐条实测证据见 `test/table-normalize.mjs`）。
+- **增强开关面板**：全部保留能力可在 设置 → 插件 → 渲染 页签可视化编辑，保存即生效、重启不丢。
+- **流式安全**：流式中的块等内容稳定再渲染（`[data-streaming]` 门控），重扫幂等（签名未变不重建），宿主重渲染后自愈。
 
 ## 配置
 
 写入 `cordis.patch.yml` 对应插件行的 `config`（设置页保存后同样落盘到 profile patch 文件）：
 
-| 配置键               | 默认           | 作用                                                                                   |
-| -------------------- | -------------- | -------------------------------------------------------------------------------------- |
-| `copyButton`         | `true`         | 复制按钮（代码块 / 整段）                                                              |
-| `syntaxHighlight`    | `true`         | 代码块语法高亮                                                                         |
-| `languageLabel`      | `true`         | 代码块语言标签                                                                         |
-| `lineNumbers`        | `true`         | 代码块行号（CSS counter，不污染代码文本）                                              |
-| `taskList`           | `true`         | 任务列表 checkbox                                                                      |
-| `strikethrough`      | `true`         | 删除线                                                                                 |
-| `image`              | `true`         | 图片渲染                                                                               |
-| `nestedList`         | `true`         | 嵌套列表                                                                               |
-| `mathStructures`     | `true`         | 公式结构排版（关闭退回轻量样式 / 原文）                                                |
-| `tableSort`          | `true`         | 表头排序                                                                               |
-| `tableFold`          | `true`         | 长表格折叠                                                                             |
-| `copyButtonPosition` | `bottom-right` | 复制按钮位置：`bottom-right` 右下角 / `header` 头部同排                                |
-| `codeTheme`          | `bright`       | 代码主题：`bright`（明亮高对比）/ `github-light` / `github-dark` / `one-dark` / `nord` |
+| 配置键               | 默认   | 作用                                                                 |
+| -------------------- | ------ | -------------------------------------------------------------------- |
+| `copyButton`         | `true` | 整段 markdown 复制按钮（`MarkdownView` 容器）                        |
+| `textFenceMarkdown`  | `true` | `text` / `plaintext` / `txt` 围栏块按 markdown 渲染 + 查看原文切换 |
+| `contextMarkdown`    | `true` | `pre[data-context-text]` 上下文注入块按 markdown 渲染                |
 
-> 开关须为布尔值、选择项须为枚举合法值，非法 / 缺省保持默认；配置变更热生效，无需重启。
+> 开关须为布尔值，非法 / 缺省保持默认；配置变更热生效，无需重启。
+
+### 0.3.0 迁移说明（开关下线）
+
+自实现渲染下线后，下列旧开关**已不存在**（对应能力由官方内置，无需开关）：`syntaxHighlight`、`languageLabel`、`lineNumbers`、`taskList`、`strikethrough`、`image`、`nestedList`、`mathStructures`、`tableSort`、`tableFold`、`copyButtonPosition`、`codeTheme`。patch 文件里的旧键**保留无害**（被忽略，不会报错）。
 
 ## 安装
 
@@ -60,34 +47,34 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 
 装完后**重启 `dsh web`**（bundle 层在启动时组合），再硬刷新浏览器。
 
-> 与 [dsh-think-zh-expand](../dsh-think-zh-expand/README.md) 配合：该插件替换消息渲染器后，text / reasoning 块优先走本插件的 MarkdownView（`tzx-md` 容器）。**依赖方向**：think-zh-expand 把本插件声明为**可选**外部内核（`dsh.client.external` + `externalDegraded`），未安装时回退宿主官方 `MarkdownText`，不要求两者同时启用。
+> 依赖面：产物只 `require` 平台 seed 模块（`react` / `react-dom/client` / `@deepseek-ai/dsh-client-ui-primitives`），**零安装零 external 声明**；官方组件不可用时走真降级（`MarkdownView` 落 `<pre>`，注入点不动宿主 DOM）。
 
 ## 公共 API 契约（semver 承诺）
 
-对外唯一承诺的 API 是 **`MarkdownView`**：`require('dsh-md-render').MarkdownView` 存在且为 React 函数组件，props 为 `{ text: string }`（额外 props 被忽略，非字符串降级为文本）；bundle id 为 `dsh-md-render`。移除 / 改名 / 必需 props 变更 = major。
+对外唯一承诺的 API 是 **`MarkdownView`**：`require('dsh-md-render').MarkdownView` 存在且为 React 组件，props 为 `{ text: string }`（额外 props 被忽略，非字符串降级为文本）；bundle id 为 `dsh-md-render`。移除 / 改名 / 必需 props 变更 = major。
 
-**输出类名清单**（跨插件可见的 DOM 契约，类名或层级变更 = major）：
+**本插件自有 DOM 契约**（跨插件可见；类名或层级变更 = major）：
 
-| 类名                                                                           | 含义                                                     |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| `tzx-md`                                                                       | 渲染根容器                                               |
-| `tzx-p`                                                                        | 段落                                                     |
-| `tzx-table`                                                                    | 表格（`thead` / `tbody` 子结构）                         |
-| `md-code-block`                                                                | 代码块容器（`dsh-mermaid-render` 靠它扫描 mermaid 围栏） |
-| `tzx-pre`                                                                      | 代码块 pre                                               |
-| `dsh-md-render-code-head` / `dsh-md-render-code-lang`                          | 代码块头部与语言标签                                     |
-| `dsh-md-render-math` / `dsh-md-render-math-block` / `dsh-md-render-math-error` | 行内公式 / 块级公式 / 公式错误标记                       |
-| `dsh-md-render-copy`                                                           | 复制按钮                                                 |
-| `dsh-md-render-text-md` / `dsh-md-render-text-toggle`                          | text 围栏块的 markdown 渲染容器 / 「查看原文」切换按钮（视图状态在块属性 `data-dsh-md-render-text-view`） |
+| 类名 / 属性                                                                          | 含义                                        |
+| ------------------------------------------------------------------------------------ | ------------------------------------------- |
+| `tzx-md`                                                                             | `MarkdownView` 包裹容器（官方渲染内容在内） |
+| `dsh-md-render-copy` / `dsh-md-render-copy-done`                                     | 整段复制按钮 / 复制成功态                    |
+| `dsh-md-render-text-md` / `dsh-md-render-text-toggle`                                | text 围栏块的渲染容器 / 「查看原文」按钮     |
+| `dsh-md-render-context-md`（`data-dsh-md-render-context-body`）                       | 上下文注入块的渲染容器                      |
+| `data-dsh-md-render-text-view`（`markdown` \| `source`）                             | text 围栏块的视图状态（每块独立）            |
+| `data-dsh-md-render-text-sig` / `data-signature`                                     | 幂等签名（内容未变不重建）                   |
+| `dsh-md-render-fallback`                                                              | 官方组件不可用时 `MarkdownView` 的 `<pre>` 兜底 |
 
-其余 exports（`parseTable` / `renderTable` / `setRenderOptions` / `applyContextMarkdown` 等）属内部实现面，随重构变动，下游不得依赖。契约由 `test/markdown-view-contract.mjs` 钉住；text 围栏块（`text` / `plaintext` / `txt`）的 DOM 增强契约由 `test/text-fence-markdown.mjs` 钉住；改契约需同步本 README 与 `CHANGELOG.md`。
+**渲染内容的 DOM 由官方 `MarkdownText` 决定**（不属于本插件的契约面）：表格 / 公式 / 代码块的类名与结构以 `@deepseek-ai/dsh-client-ui-primitives` 为准。
+
+其余 exports（`normalizeTables` / `renderMarkdownInto` / `applyContextMarkdown` / `applyTextMarkdown` 等）属内部实现面，随重构变动，下游不得依赖。契约由 `test/markdown-view-contract.mjs` 钉住；text 围栏块由 `test/text-fence-markdown.mjs`、上下文块由 `test/context-markdown.mjs` 钉住；改契约需同步本 README 与 `CHANGELOG.md`。
 
 ## 已知限制
 
-- 表格必须能从段落文本中识别：需含 `|` 且 ≥2 列 + 分隔行；纯空格分隔的「表格」无法识别。
-- 公式结构覆盖高频结构，非完整 LaTeX 排版（零依赖约束）；无法解析的公式与异常公式（未闭合 `$`、空公式等）保持原文或标错误，不静默吞掉。
-- **text 围栏块的接管口径**：非思考模式下模型输出经本插件 MarkdownView 渲染（代码块为 `div.md-code-block`），`text` / `plaintext` / `txt` 块必然被接管；思考模式的推理文本由宿主内置渲染组件输出，只要其代码块仍是同一 DOM 契约（`div.md-code-block` + `code.language-xxx` —— `dsh-mermaid-render` 依赖的同一契约）同样生效，契约不同的宿主版本保持原样（不报错、不改 DOM）。单块超长（>10 万字符）保持原代码块。
-- 轨迹视图（宿主 `div[data-trajectory-scroll]` 子树）也在增强范围内，但走**内容门控**：只接管确实含表格 / 公式 / 围栏代码块的块；单块超长或取不到 markdown 原文时保持宿主渲染（不报错、不改 DOM）。
+- **围栏语言识别**依赖官方 `CodeBlock` 的 React props（fiber `memoizedProps.lang`，官方 DOM 里没有 `language-xxx` class）；取不到时回退 `code.language-xxx` / banner infostring，仍取不到则保持宿主原样（不报错、不改 DOM）。
+- **官方组件不可用**（极旧或裁剪宿主）：`MarkdownView` 落 `<pre>` 兜底；两个注入点保持宿主纯文本渲染。
+- **单块超长**保持宿主原样：text 围栏块 > 10 万字符、上下文注入块 > 20 万字符。
+- **表格容错只覆盖上述两种写法**：纯空格分隔、缺分隔行等「不是表格」的写法不会渲染为表格（官方 GFM 与旧实现同样不接受）。
 
 ## 相关文档
 

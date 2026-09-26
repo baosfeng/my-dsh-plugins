@@ -1,34 +1,18 @@
-// ── 渲染配置（issue #84 配置化）：增强功能开关状态 ─────────────────
-// 各增强功能独立开关（默认全部开启）：copyButton / syntaxHighlight /
-// languageLabel / lineNumbers / taskList / strikethrough / image /
-// nestedList / mathStructures / tableSort / tableFold。client apply 默认
-// 全开，随后异步经 GET /md/api/config 拉取真实配置应用（client 端不能
-// 访问 ctx.config——Cordis inject 限制）；设置页保存后 setRenderOptions
-// 立即应用新开关，渲染管线（代码块 / 行内 / DOM 表格）读取模块级状态。
-// issue #146：选择型配置（非布尔）加入同一 options 状态——
-// copyButtonPosition（代码块复制按钮位置，默认 bottom-right 与 #74
-// 原始诉求一致）与 codeTheme（代码块主题，默认 bright 明亮高对比）。
-
-/** 代码块复制按钮位置（issue #146）：header=头部右上角 | bottom-right=右下角。 */
-const COPY_BUTTON_POSITIONS: readonly string[] = ['header', 'bottom-right']
-
-/** 代码块主题 id 列表（issue #146）：色板定义见 styles.ts。 */
-const CODE_THEMES: readonly string[] = ['bright', 'github-light', 'github-dark', 'one-dark', 'nord']
+// ── 渲染配置：保留增强功能的开关状态 ────────────────────────────────
+// 精简后只剩三个开关（默认全开）：
+//  - copyButton：整段 markdown 复制按钮（官方只有代码块复制）；
+//  - textFenceMarkdown：text / plaintext / txt 围栏块按 markdown 渲染；
+//  - contextMarkdown：pre[data-context-text] 上下文注入块按 markdown 渲染。
+// 表格 / 公式 / 代码块高亮等原开关已随自实现渲染一并下线（官方已内置），
+// 迁移说明见 README「配置」与 CHANGELOG。
+// client apply 默认全开，随后异步经 GET /md/api/config 拉取真实配置应用
+// （client 端不能访问 ctx.config——Cordis inject 限制）；设置页保存后
+// setRenderOptions 立即应用新开关，渲染管线读取模块级状态。
 
 const DEFAULT_RENDER_OPTIONS: Record<string, boolean | string> = {
   copyButton: true,
-  syntaxHighlight: true,
-  languageLabel: true,
-  lineNumbers: true,
-  taskList: true,
-  strikethrough: true,
-  image: true,
-  nestedList: true,
-  mathStructures: true,
-  tableSort: true,
-  tableFold: true,
-  copyButtonPosition: COPY_BUTTON_POSITIONS[1],
-  codeTheme: CODE_THEMES[0],
+  textFenceMarkdown: true,
+  contextMarkdown: true,
 }
 
 let renderOptions: Record<string, boolean | string> = { ...DEFAULT_RENDER_OPTIONS }
@@ -36,16 +20,13 @@ function setRenderOptions(next?: Record<string, boolean | string>): void {
   renderOptions = { ...renderOptions, ...(next || {}) }
 }
 
-/** 从应用层配置提取显式配置值（布尔开关仅接受布尔，选择项仅接受合法枚举；缺失/非法值保持默认，不覆盖）。 */
+/** 从应用层配置提取显式配置值（仅接受布尔；缺失/非法值保持默认，不覆盖）。 */
 function pickRenderOptions(config?: Record<string, unknown>): Record<string, boolean | string> {
   const out: Record<string, boolean | string> = {}
   const cfg = config ?? {}
   for (const key of Object.keys(DEFAULT_RENDER_OPTIONS)) {
     if (typeof cfg[key] === 'boolean') out[key] = cfg[key] as boolean
   }
-  if (COPY_BUTTON_POSITIONS.includes(cfg.copyButtonPosition as string))
-    out.copyButtonPosition = cfg.copyButtonPosition as string
-  if (CODE_THEMES.includes(cfg.codeTheme as string)) out.codeTheme = cfg.codeTheme as string
   return out
 }
 
@@ -74,5 +55,4 @@ function initConfigFromServer(): void {
 exports.setRenderOptions = setRenderOptions
 exports.pickRenderOptions = pickRenderOptions
 exports.initConfigFromServer = initConfigFromServer
-exports.COPY_BUTTON_POSITIONS = COPY_BUTTON_POSITIONS
-exports.CODE_THEMES = CODE_THEMES
+exports.DEFAULT_RENDER_OPTIONS = DEFAULT_RENDER_OPTIONS

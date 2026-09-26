@@ -1,13 +1,12 @@
 /**
- * 共享 client-parts 调用点门禁（issue #186 P2）——dsh-md-render
+ * 共享 client-parts 调用点门禁 ——dsh-md-render
  *
- * 归一范围：`parts/apply.ts` 的样式注入样板 → 共享 `installStyles`；
- * `parts/scanner.ts` 的 MutationObserver 骨架 → 共享 `installDomScanner`。
- * 不得削掉的行为（#196/#205）：上下文注入块接管、轨迹视图接管、流式内容门控、
- * 幂等 seen 集合、宿主契约不匹配时的静默降级、data-streaming 兜底重扫。
- * （设置页 `parts/settings.ts` 的独立样式表不在本次归一范围。）
- *
- * 变异验证：把 scanner.ts 改回自带 MutationObserver → 第二组变红。
+ * 归一范围：parts/apply.ts 的样式注入样板 → 共享 installStyles；
+ * parts/scanner.ts 的 MutationObserver 骨架 → 共享 installDomScanner。
+ * 反向范围：图标集（icons.part.js）不再消费——下线自实现渲染后本插件已无任何
+ * 图标使用，产物里再出现该片段即体积回涨（最后一组断言钉住）。
+ * 不得削掉的行为（精简后仍成立）：上下文注入块接管、text 围栏块接管、
+ * 流式内容门控、幂等签名、宿主契约不匹配时的静默降级、data-streaming 兜底重扫。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -18,13 +17,15 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SHARED_DIR = join(ROOT, '..', 'dsh-shared', 'client-parts')
 const STYLE_PART = readFileSync(join(SHARED_DIR, 'style-tag.part.js'), 'utf8').trim()
 const SCANNER_PART = readFileSync(join(SHARED_DIR, 'dom-scanner.part.js'), 'utf8').trim()
+/** 图标片段：本插件下线自实现渲染后已无任何图标使用 → 不应再出现在产物里。 */
+const ICONS_PART = readFileSync(join(SHARED_DIR, 'icons.part.js'), 'utf8').trim()
 
 /** 统计 haystack 中 needle 出现次数（split 计数：不受正则元字符影响）。 */
 const countOf = (haystack, needle) => haystack.split(needle).length - 1
 const styleTagCount = (text) => countOf(text, "createElement('style')") + countOf(text, 'createElement("style")')
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
 
-describe('样式注入走共享实现（#186 P2）', () => {
+describe('样式注入走共享实现', () => {
   it('parts/apply.ts 不再内联样式注入样板', () => {
     expect(styleTagCount(read('src/client/parts/apply.ts'))).toBe(0)
     expect(countOf(read('src/client/parts/apply.ts'), 'style.setAttribute')).toBe(0)
@@ -41,7 +42,7 @@ describe('样式注入走共享实现（#186 P2）', () => {
   })
 })
 
-describe('DOM 扫描器走共享骨架（#186 P2）', () => {
+describe('DOM 扫描器走共享骨架', () => {
   it('parts/scanner.ts 不再自己 new MutationObserver', () => {
     expect(countOf(read('src/client/parts/scanner.ts'), 'new MutationObserver')).toBe(0)
   })
@@ -54,19 +55,54 @@ describe('DOM 扫描器走共享骨架（#186 P2）', () => {
     expect(countOf(read('lib/client.js'), 'new MutationObserver')).toBe(1)
   })
 
-  it('特有行为仍在：轨迹接管 / 上下文块接管 / 内容门控 / 幂等重扫', () => {
+  it('两个注入点仍在：上下文块接管 / text 围栏块接管 / 兜底重扫', () => {
     const scanner = read('src/client/parts/scanner.ts')
     for (const marker of [
-      'scanTrajectoryBlocks',
       'scanContextBlocks',
       'applyContextMarkdown',
-      '[data-streaming]',
-      'seen',
-      'TRAJECTORY_SCROLL_SELECTOR',
-      '[data-conversation-scroll]',
+      'scanTextBlocks',
       'installDomScanner',
+      '[data-conversation-scroll]',
     ]) {
       expect(scanner.includes(marker), `${marker} 必须保留`).toBe(true)
     }
+  })
+
+  it('流式门控与幂等签名仍在下游模块里（不得回退）', () => {
+    const text = read('src/client/parts/text-markdown.ts')
+    for (const marker of ['[data-streaming]', 'TEXT_SIG_ATTR', 'MAX_TEXT_FENCE_CHARS', 'renderMarkdownInto']) {
+      expect(text.includes(marker), `${marker} 必须保留`).toBe(true)
+    }
+    const context = read('src/client/parts/context-markdown.ts')
+    for (const marker of ['data-signature', 'MAX_CONTEXT_CHARS', 'renderMarkdownInto', 'data-context-text="true"']) {
+      expect(context.includes(marker), `${marker} 必须保留`).toBe(true)
+    }
+  })
+})
+
+describe('不再自实现 markdown 渲染（精简的判据）', () => {
+  it('产物里没有自实现的渲染器/数学/高亮/表格渲染模块', () => {
+    const artifact = read('lib/client.js')
+    for (const gone of [
+      'parseMath',
+      'tokenizeCode',
+      'parseTable',
+      'renderTable',
+      'renderDomMarkdown',
+      'applyTrajectoryMarkdown',
+      'dsh-md-render-table',
+    ]) {
+      expect(artifact.includes(gone), `${gone} 应随自实现渲染一并下线`).toBe(false)
+    }
+  })
+
+  it('产物只通过平台组件渲染（require 官方 MarkdownText）', () => {
+    expect(read('lib/client.js').includes("require('@deepseek-ai/dsh-client-ui-primitives')")).toBe(true)
+  })
+
+  it('产物不再内联共享图标片段（已无图标使用，不再是 icons.part.js 消费方）', () => {
+    const artifact = read('lib/client.js')
+    expect(artifact.includes(ICONS_PART), '精简后产物不应再含 icons.part.js 片段').toBe(false)
+    expect(countOf(artifact, 'ICON_STROKE')).toBe(0)
   })
 })

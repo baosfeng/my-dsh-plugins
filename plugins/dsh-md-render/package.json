@@ -1,7 +1,7 @@
 {
   "name": "dsh-md-render",
-  "version": "0.2.0",
-  "description": "DSH 对话 Markdown 表格渲染增强插件：非思考模式下模型输出的表格（含无首尾管道符等不标准格式）自动识别并渲染为表格，宽表格横向滚动。DSH web plugin: enhanced markdown table rendering for non-thinking mode, tolerant of non-standard table formats, wide-table horizontal scroll.",
+  "version": "0.3.0",
+  "description": "DSH 对话 Markdown 渲染补位插件：把宿主渲染为纯文本的 markdown（text/plaintext/txt 围栏块、pre[data-context-text] 上下文注入块）交给官方 MarkdownText 渲染，并补整段复制与统一 MarkdownView 导出、非标准表格容错。DSH web plugin: routes host plain-text markdown through the official MarkdownText renderer (text fences + context bodies), adds whole-content copy, a unified MarkdownView export and non-standard table tolerance.",
   "type": "module",
   "main": "lib/index.js",
   "engines": {

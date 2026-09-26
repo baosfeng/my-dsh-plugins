@@ -270,8 +270,8 @@ test('diagnostic event log messages carry the entry id', async () => {
     if (name === 'loader/partial-dispose') listener({ options: { id: 'evt-2' } })
   }
   // entry-init 在 Entry 构造函数里 emit，记录要等一个 microtask 才落笔（见 lib/events.js）；
-  // 而 entry-init / entry-dispose 只写内存，落盘必须另有一笔写 —— #429 起配置失败只剩
-  // 结构化 warn 通道，所以先让出 microtask 保证两条诊断已在内存，再由 marker warn 触发落盘。
+  // #438 起 entry-init / entry-dispose 记录后自己就 persistSoon（不再只写内存），这里仍触发
+  // 一次 marker warn：既让出 microtask 保证两条诊断已在内存，也覆盖日志通道的落盘路径。
   await sleep(0)
   fake.sinks[0].export(warnMessage([MARKER, 'cordis.yml']))
   await waitFor(() => readStateOrNull()?.events?.some((e) => e.type === 'entry-init'))

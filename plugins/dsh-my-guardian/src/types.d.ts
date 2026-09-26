@@ -53,7 +53,8 @@ export interface LoaderTree {
     create(options: { id: string; name: string; config?: unknown }): Promise<void>
     remove(id: string): Promise<void>
   }
-  store?: Record<string, unknown>
+  /** entry 表（id → Entry）。loader 卸载期会置为 undefined／null，读取必须容忍。 */
+  store?: Record<string, unknown> | null
   entries(): Iterable<LoaderEntry>
 }
 

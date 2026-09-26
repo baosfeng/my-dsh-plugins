@@ -37,7 +37,7 @@ import { createPersister, createState } from './state.js'
 import type { SharedContext } from './state.js'
 import { findRootTree, createMountOps, initialScan } from './mount.js'
 import { createApi } from './api.js'
-import { attachEventListeners, logEvent } from './events.js'
+import { attachEventListeners, captureTeardownEntries, logEvent, recordTeardownReleases } from './events.js'
 import { runStartupCheck } from './startup-check.js'
 import type { DshContext, LoaderTree } from './types.js'
 
@@ -150,8 +150,10 @@ function createShared({ tree, profileDir }: { tree: LoaderTree; profileDir: stri
     startupSkippedHostRows: 0,
     startupNotes: [],
     persistSoon: () => {},
-    persistFinal: () => {},
+    persistFinal: async () => {},
     flushPersist: () => Promise.resolve(),
+    beginClosingWrites: () => {},
+    settleClosingWrites: async () => {},
     bootPromise,
     markBooted,
     disposed: false,
@@ -179,6 +181,8 @@ function wireServices(ctx: DshContext, shared: SharedContext): void {
   shared.persistSoon = persister.persistSoon
   shared.persistFinal = persister.persistFinal
   shared.flushPersist = persister.flush
+  shared.beginClosingWrites = persister.beginClosingWrites
+  shared.settleClosingWrites = persister.settleClosingWrites
   shared.logEvent = (type: string, message: string) => logEvent(shared, type, message)
   Object.assign(shared, createMountOps(shared))
   Object.assign(shared, createApi(ctx, shared))
@@ -252,13 +256,14 @@ function registerStatusQuery(ctx: DshContext, shared: SharedContext): void {
   })
 }
 
-/** teardown: unmount everything the guardian mounted, then persist.
+/** teardown: unmount everything the guardian mounted, then drain the closing window.
  *
  *  disposer 返回 promise：await 它即保证「本实例启动路径 settle + 卸载 +
- *  全部排队快照落盘」完成，返回后本实例不再产生任何写。
+ *  收尾窗口排空落盘」完成，返回后本实例不再产生任何写。
  *  #189 只补了「写链 drain」+ async disposer：它覆盖不到 fire-and-forget 的
  *  启动预检（独立异步链，晚于 drain 才 persistSoon）；#217 把 bootPromise
- *  （现已含 initialScan + runStartupCheck）也等进来。
+ *  （现已含 initialScan + runStartupCheck）也等进来；#438 再把「同批并发 disposer
+ *  晚到的 loader/partial-dispose」也等进来（收尾写入窗口 + 排空，见下）。
  *  见 docs/踩坑/README.md。 */
 function registerTeardown(ctx: DshContext, shared: SharedContext): void {
   ctx.effect(
@@ -277,15 +282,27 @@ function registerTeardown(ctx: DshContext, shared: SharedContext): void {
       // （initialScan 也会因为 disposed 而不再把 ready 置回 true。）
       shared.disposed = true
       shared.ready = false
+      // #438 第二种形态：**先同步抓一份 loader 树 entry 快照**（此刻树还完整 —— 实测
+      // teardown 进入时 tree.store 有全部 entry，同批 group 释放之后才变空；同步读取
+      // 也保证快照先于同批 disposer 的任何 await 让出）。收尾期事件通道收不到
+      // （ctx.on 监听器与 teardown disposer 同批被摘除），差集是唯一可靠的「释放了谁」。
+      const releasedBefore = captureTeardownEntries(shared.tree.store)
+      // #438 第一种形态：打开收尾写入窗口。宿主卸载整树时同批 disposer 由 Promise.all
+      // 并发执行、顺序无保证，同一批里其它 entry 的 loader/partial-dispose 可能晚于本实例
+      // 的收尾快照才到达；窗口内先记账（persistSoon 不再直接丢弃），由下面的排空负责落盘。
+      shared.beginClosingWrites()
       // #217: 再等本实例的启动路径（initialScan + 启动预检）settle。只 drain
       // 「已排队的写」不够——启动预检是 fire-and-forget 的独立异步链，它可能在
       // teardown 返回之后才 persistSoon（CI 上表现为随机红）。
       await shared.bootPromise
       // unmount 内部已吞异常（best effort），逐个 await 期间它们各自入链
       await Promise.all([...shared.mounted].map((id) => shared.unmount(id)))
-      // 收尾快照：此刻内存状态已完整（启动扫描 + 预检都 settle），写一次最终态
-      shared.persistFinal()
-      await shared.flushPersist()
+      // #438 第二种形态：unmount 之后读一次树，记下本轮释放掉的 entry（与释放数一致）。
+      recordTeardownReleases(shared, releasedBefore)
+      // #438: 排空收尾窗口（强写 + 让出宏任务循环；判据是「收尾写活动静止」，不是
+      // 墙钟猜测，轮数有上界）。返回时内存状态必已落盘、窗口随即关闭 —— 此后本实例
+      // 不再产生任何写，旧快照不会覆盖下一个实例写好的 state.json（#217）。
+      await shared.settleClosingWrites()
     },
     'dsh-my-guardian: teardown',
   )

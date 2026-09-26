@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   隔离实例实测热挂载记录带真实 entry id
 - test(guardian): #429 新增 test/host-event-live.mjs——用**真实** cordis loader（已装宿主）证明 `loader/entry-init` /
   `loader/partial-dispose` 真会触发；契约测试新增「源码不得再订阅不存在的事件」判据
+- fix(guardian): #438 teardown 收尾期同批并发 entry 的 dispose 诊断不再丢失（收尾写入窗口 + 排空落盘）
+- fix(guardian): #438 第二种形态——整树卸载期 `loader/partial-dispose` 监听器与 teardown disposer 同批被
+  `Promise.all` 摘除，事件根本到不了 guardian（隔离实例 + SIGTERM 实测：修前 `state.json.events` 恒 1 条、
+  entry-dispose 0 条）。改为收尾起手同步抓 loader 树 entry 快照、unmount 后取差集记录「收尾释放了哪些 entry」，
+  不再依赖事件通道；实测 183 个活条目全部记到（state.json 按 20 条环形上限保留末 20 条）
+- test(guardian): #438 新增第二种形态防复发——fake tree 三例（事件通道静默时全量记录 / 存活条目不误记 /
+  teardown 返回后不得覆盖快照）+ test/teardown-releases-live.mjs（真实 cordis 整树卸载取证快照前提与差集）
 - fix(guardian): 依赖预检解析 profiles 根 node_modules 的宿主包与子路径导出，消除「缺少依赖」误报
 - fix(guardian): #410 依赖预检出口把「版本不满足」与「缺失」分成独立文案/字段/徽标（`dependency-missing` / `dependency-mismatch`），宿主提供的包不再给 `dsh plugin add` 建议，消除含空格/管道的畸形安装命令
 

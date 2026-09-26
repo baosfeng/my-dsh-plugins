@@ -77,9 +77,26 @@ function stateFilePath() {
  *    原实现每次 persistSoon 立即排一次全量写（mount 链上 5 处调用 → 多次写放大）；
  *  - `atomicWriteJson`：tmp+rename 原子写 + **显式 4MB 字节上限** + 拦截计数
  *    （`atomicWriteStats()`）与 warn（不静默）；
- *  - teardown 语义不变：`persistFinal()`（force 强写）+ `flush()`（drain）保证最终快照落盘，
- *    且 persistSoon 在 disposed 后依旧失效（#217：不让旧实例覆盖新实例状态）。
+ *  - teardown 收尾（#438）：`beginClosingWrites()` 打开**收尾写入窗口** →
+ *    `settleClosingWrites()` 用「强写 + 让出宏任务」循环排空窗口（判据是收尾写活动静止，
+ *    不是墙钟猜测），返回时最终快照必已落盘、窗口随即关闭 —— 此后 persistSoon 一律失效
+ *    （#217：不让旧实例覆盖下一个实例的状态）。
+ *    为什么需要窗口：宿主卸载整树时同批 disposer 由 `Promise.all` 并发执行、顺序无保证
+ *    （vendor/cordis 的 fiber `_unload`），任一 entry 的 `loader/partial-dispose` 都可能
+ *    晚于本实例的收尾快照到达；「只落一次快照 + 之后无 flush 钩子」的旧实现会让它永久丢失。
  */
+/** 收尾排空的最大轮数（有界：异常情况下退出体验也不能被无限拖长）。 */
+const CLOSING_MAX_ROUNDS = 6;
+/** 收尾排空收敛所需的「连续无新写入」轮数（每轮 = 一次强写 + 一次宏任务让出）。 */
+const CLOSING_QUIET_ROUNDS = 2;
+/**
+ * 让出一轮宏任务（不做任何时长假设）：给「同批并发 disposer」的微任务/宏任务链推进机会。
+ * 收尾排空靠「原子写（真实 IO）+ 让出」推进，而不是用固定 sleep 猜时长
+ * （见 plugins/dsh-shared/test-kit/wait.mjs 与 scripts/check-test-sleeps.mjs）。
+ */
+function yieldMacrotask() {
+    return new Promise((resolve) => setImmediate(resolve));
+}
 export function createPersister(shared, logger) {
     const scheduler = createWriteScheduler({
         debounceMs: 500,
@@ -96,19 +113,56 @@ export function createPersister(shared, logger) {
             maxBytes: STATE_MAX_BYTES,
         }),
     });
+    /**
+     * 收尾写入窗口（#438）：teardown 开始（disposed=true）后，同批并发 disposer 仍可能
+     * emit loader/partial-dispose。窗口内 persistSoon 只记账（不排调度器的防抖写），
+     * 由 settleClosingWrites() 的「强写 + 让出」循环排空并落盘。
+     */
+    let closing = false;
+    let closingDirty = false;
     const persistSoon = () => {
-        // teardown 已开始：本实例的任何延迟写都不该落到共享 state.json 上
+        if (closing) {
+            // 收尾窗口内：先记账，settleClosingWrites() 会把它排空落盘
+            closingDirty = true;
+            return;
+        }
+        // teardown 已开始且不在收尾窗口：本实例的任何延迟写都不该落到共享 state.json 上
         if (shared.disposed)
             return;
         scheduler.schedule();
     };
-    /** 收尾快照（teardown 专用）：绕过 disposed 守卫强写一次最终状态。 */
-    const persistFinal = () => {
-        void scheduler.flush();
-    };
+    /** 收尾强写（teardown 专用）：绕过 disposed 守卫 force 写一次并等落盘完成。 */
+    const persistFinal = () => scheduler.flush();
     /** 确定性 drain 信号：resolve 时所有挂起/在飞快照（含防抖窗口内的）都已落盘。 */
     const flush = () => scheduler.drain();
-    return { persistSoon, persistFinal, flush };
+    /** 打开收尾写入窗口（#438）：teardown 第一步调用（与 disposed=true 同步）。 */
+    const beginClosingWrites = () => {
+        closing = true;
+    };
+    /**
+     * 排空收尾窗口并关闭它（#438）。
+     *
+     * 每轮 = 一次强写（真实原子写，必然让出多个事件循环轮次）+ 一次宏任务让出，
+     * 之后检查窗口内是否又有新写入；**连续 CLOSING_QUIET_ROUNDS 轮无新写入**即收敛。
+     * 判据是「收尾写活动静止」这一可观测事实，不是墙钟猜测；轮数有上界，退出体验不被拖长。
+     */
+    const settleClosingWrites = async () => {
+        closing = true;
+        let quiet = 0;
+        try {
+            for (let round = 0; round < CLOSING_MAX_ROUNDS && quiet < CLOSING_QUIET_ROUNDS; round += 1) {
+                closingDirty = false;
+                await persistFinal();
+                await yieldMacrotask();
+                quiet = closingDirty ? 0 : quiet + 1;
+            }
+        }
+        finally {
+            // 窗口关闭：此后 persistSoon 一律失效（#217：旧实例不得覆盖下一个实例的快照）
+            closing = false;
+        }
+    };
+    return { persistSoon, persistFinal, flush, beginClosingWrites, settleClosingWrites };
 }
 /** Read the candidate file; missing/corrupt → []. */
 export async function readStagedFile(file) {

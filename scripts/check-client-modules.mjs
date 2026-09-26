@@ -62,8 +62,9 @@ const WHY =
   'ModuleLoader 同步 require 只认 seed 表 / 已 materialize / 已注册 factory；' +
   '插件安装路径不会自动安装并激活该包 → 用户机器上抛 missed the module table，整条 client factory 挂掉'
 const FIX =
-  '补 dsh.client.external 声明（并在有降级路径时同时声明 externalDegraded）；' +
-  '改用平台 seed 模块；或去掉该 require 走真降级（不要用 try/catch 吞掉模块加载错误）'
+  '改用平台 seed 模块（官方 baseline，见 docs/开发指南/官方UI组件库.md）；' +
+  '跨包行为走注入的 cordis 服务、跨包 UI 走 slots —— 不要用 dsh.client.external 获取另一个特性插件的值' +
+  '（官方 packages/client/AGENTS.md 明令禁止）；或去掉该 require 走真降级（不要用 try/catch 吞掉模块加载错误）'
 
 /** 仓库根（CLI --root 可覆盖，测试用）。 */
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')

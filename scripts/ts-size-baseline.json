@@ -7,7 +7,7 @@
   },
   "files": {
     "plugins/dsh-mermaid-render/src/client/index.ts": {
-      "lines": 881,
+      "lines": 880,
       "functions": {}
     },
     "plugins/dsh-my-memory/src/api-route.ts": {
@@ -70,16 +70,6 @@
           "line": 67,
           "lines": 38,
           "complexity": 22
-        }
-      }
-    },
-    "plugins/dsh-my-plugin-manager/src/client/parts/view.ts": {
-      "lines": 686,
-      "functions": {
-        "InstalledRowActions": {
-          "line": 461,
-          "lines": 72,
-          "complexity": 8
         }
       }
     },

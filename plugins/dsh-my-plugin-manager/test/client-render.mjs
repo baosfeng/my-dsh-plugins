@@ -1,14 +1,20 @@
 /**
  * Client render-path test: loads the client bundle with a stubbed react,
- * registers the settings tab through a mocked slots service, then renders
- * the view to verify the installed section, the market search flow and the
- * uninstall wiring.
+ * registers the settings tab through a mocked slots service, then renders the
+ * view to verify the two remaining sections (npm market search + update check).
+ *
+ * 安装 / 卸载 / 启停 / 清单 UI 已下线（官方插件页承担），因此这里同时断言：市场
+ * 结果行没有安装按钮、视图不发 /installed 请求——防「重复能力」悄悄回流。
+ *
+ * harness 说明：组件函数会被 walker 反复展开（等价于 React 重复渲染），所以 hook
+ * 槽位按「组件身份 + 组件内序号」分配——按全局调用顺序分配会在 walker 展开后错位，
+ * 让断言读到空态而假通过/假失败。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
-// ── stubbed react (stateful useState so re-render sees updated state) ─────
+// ── stubbed react (per-component stateful useState) ───────────────────────
 function createElement(type, props, ...children) {
   const p = props ? { ...props } : {}
   if (children.length === 1) p.children = children[0]
@@ -16,40 +22,56 @@ function createElement(type, props, ...children) {
   return { type, props: p }
 }
 
-const hookValues = new Map()
+let currentComponent = 'root'
 let hookIndex = 0
+const hookValues = new Map()
+
+/** 展开一个组件函数：hook 槽位按组件身份隔离（可重复展开）。 */
+function expand(type, props) {
+  const prevName = currentComponent
+  const prevIndex = hookIndex
+  currentComponent = type.name || 'anonymous'
+  hookIndex = 0
+  try {
+    return type(props)
+  } finally {
+    currentComponent = prevName
+    hookIndex = prevIndex
+  }
+}
+
 const stubbed = {
   createElement,
   useState: (initial) => {
-    const idx = hookIndex
+    const key = `${currentComponent}#${hookIndex}`
     hookIndex += 1
-    if (!hookValues.has(idx)) {
+    if (!hookValues.has(key)) {
       const value = typeof initial === 'function' ? initial() : initial
-      hookValues.set(idx, [
+      hookValues.set(key, [
         value,
         (next) => {
-          const current = hookValues.get(idx)[0]
-          hookValues.set(idx, [typeof next === 'function' ? next(current) : next, hookValues.get(idx)[1]])
+          const current = hookValues.get(key)[0]
+          hookValues.set(key, [typeof next === 'function' ? next(current) : next, hookValues.get(key)[1]])
         },
       ])
     }
-    return hookValues.get(idx)
+    return hookValues.get(key)
   },
   useEffect: (() => {
-    let ran = false
+    const ran = new Set()
     return (fn) => {
-      if (!ran) {
-        ran = true
-        fn()
-      }
+      const key = currentComponent + '#' + hookIndex
+      hookIndex += 1
+      if (ran.has(key)) return
+      ran.add(key)
+      fn()
     }
   })(),
 }
 
 /** Render the tab component once (hooks restart at index 0 each render). */
 function renderView() {
-  hookIndex = 0
-  return capturedTab.component({})
+  return expand(capturedTab.component, {})
 }
 
 // ── browser globals ────────────────────────────────────────────────────────
@@ -68,7 +90,7 @@ const fetchCalls = []
 let cannedResponses = []
 global.fetch = (url, options) => {
   fetchCalls.push({ url: String(url), options })
-  const canned = cannedResponses.shift() ?? { ok: true, value: { entries: [] } }
+  const canned = cannedResponses.shift() ?? { ok: true, value: {} }
   return Promise.resolve({ json: () => Promise.resolve(canned) })
 }
 
@@ -102,19 +124,7 @@ exportsObj.apply(ctx)
 assert.ok(capturedTab, 'settings tab registered')
 assert.equal(capturedTab.options.id, 'my-plugin-manager')
 
-// ── initial render: installed section loads from the API ───────────────────
-cannedResponses.push({
-  ok: true,
-  value: {
-    entries: [
-      { moduleName: 'dsh-a', enabled: true, fiberPhase: 'ready', version: '1.0.0' },
-      { moduleName: 'dsh-b', enabled: false, fiberPhase: null, version: '' },
-    ],
-  },
-})
-
-const tree0 = renderView()
-const texts0 = []
+// ── tree helpers ───────────────────────────────────────────────────────────
 function walkText(node, out) {
   if (node === null || node === undefined || typeof node === 'boolean') return
   if (typeof node === 'string' || typeof node === 'number') {
@@ -126,91 +136,116 @@ function walkText(node, out) {
     return
   }
   if (typeof node.type === 'function') {
-    walkText(node.type(node.props), out)
+    walkText(expand(node.type, node.props), out)
     return
   }
-  walkText(node.props.children, out)
+  walkText(node.props?.children, out)
 }
-walkText(tree0, texts0)
-assert.ok(texts0.join('|').includes('已安装'), 'installed section present')
-assert.ok(texts0.join('|').includes('市场'), 'market section present')
 
-await new Promise((resolve) => setTimeout(resolve, 0))
+const textsOf = (node) => {
+  const out = []
+  walkText(node, out)
+  return out.join('|')
+}
 
-// ── re-render after the installed fetch settled ────────────────────────────
-const tree = renderView()
-const texts = []
-walkText(tree, texts)
-const joined = texts.join('|')
-assert.ok(joined.includes('dsh-a'), 'installed plugin name rendered')
-assert.ok(joined.includes('v1.0.0'), 'installed version chip rendered')
-assert.ok(joined.includes('运行中'), 'enabled state label rendered')
-assert.ok(joined.includes('dsh-b'), 'second plugin rendered')
-assert.ok(joined.includes('卸载'), 'uninstall button rendered')
-
-// ── update check flow ──────────────────────────────────────────────────────
-// 我们的实现中，更新信息是在 /installed 接口中返回的，而不是通过单独的 /updates 接口
-// 所以我们需要在点击"检查更新"按钮后，重新加载已安装列表来获取更新信息
-cannedResponses.push({
-  ok: true,
-  value: {
-    entries: [
-      {
-        moduleName: 'dsh-a',
-        enabled: true,
-        fiberPhase: 'ready',
-        version: '1.0.0',
-        updateAvailable: { current: '1.0.0', latest: '1.1.0' },
-      },
-      { moduleName: 'dsh-b', enabled: false, fiberPhase: null, version: '', updateAvailable: null },
-    ],
-  },
-})
-const buttons = []
 function textOf(node) {
   if (node === null || node === undefined || typeof node === 'boolean') return ''
   if (typeof node === 'string' || typeof node === 'number') return String(node)
   if (Array.isArray(node)) return node.map(textOf).join('')
-  if (typeof node.type === 'function') return textOf(node.type(node.props))
-  return textOf(node.props.children)
+  if (typeof node.type === 'function') return textOf(expand(node.type, node.props))
+  return textOf(node.props?.children)
 }
-function collectButtons(node) {
-  if (node === null || typeof node !== 'object') return
-  const props = node.props ?? {}
-  if (typeof props.onClick === 'function') {
-    buttons.push({
-      label: textOf(props.children),
-      title: props.title ?? '',
-      ariaLabel: props['aria-label'] ?? '',
-      onClick: props.onClick,
-    })
-  }
-  if (Array.isArray(node)) {
-    for (const c of node) collectButtons(c)
-    return
-  }
-  if (typeof node.type === 'function') {
-    collectButtons(node.type(node.props))
-    return
-  }
-  collectButtons(props.children)
-}
-collectButtons(tree)
-// the update check is an icon button (refresh) — find it by its aria-label
-const checkBtn = buttons.find((b) => b.title === '检查更新' || b.ariaLabel === '检查更新' || b.label === '检查更新')
-assert.ok(checkBtn, 'update check icon button found')
-checkBtn.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-const tree2 = renderView()
-const texts2 = []
-walkText(tree2, texts2)
-assert.ok(texts2.join('|').includes('1.0.0 → 1.1.0'), 'outdated version shown on the row')
 
-// the update check hit /installed (since we now return update info with installed list)
-assert.ok(
-  fetchCalls.some((c) => c.url.startsWith('/my-plugin-manager/api/installed')),
-  'installed endpoint called for update info',
-)
+function collect(node, found) {
+  if (node === null || node === undefined || typeof node !== 'object') return found
+  if (Array.isArray(node)) {
+    for (const child of node) collect(child, found)
+    return found
+  }
+  const props = node.props ?? {}
+  if (typeof props.onClick === 'function') found.buttons.push({ label: textOf(props.children), onClick: props.onClick })
+  if (node.type === 'input') found.inputs.push(props)
+  if (typeof node.type === 'function') {
+    collect(expand(node.type, props), found)
+    return found
+  }
+  collect(props.children, found)
+  return found
+}
+
+const scan = (tree) => collect(tree, { buttons: [], inputs: [] })
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+// ── initial render: market + update check sections, no write actions ──────
+{
+  const tree = renderView()
+  const joined = textsOf(tree)
+  assert.ok(joined.includes('市场'), 'market section present')
+  assert.ok(joined.includes('更新检查'), 'update check section present')
+  assert.ok(joined.includes('官方侧边栏插件页'), 'scope hint points at the official plugins page')
+  assert.ok(!joined.includes('暂无已安装插件'), 'installed inventory section is gone')
+  const labels = scan(tree)
+    .buttons.map((b) => b.label)
+    .join('|')
+  for (const gone of ['安装', '卸载', '启用', '禁用']) {
+    assert.ok(!labels.includes(gone), `${gone} 按钮已下线（官方插件页承担）`)
+  }
+  assert.equal(
+    fetchCalls.filter((c) => c.url.includes('/installed')).length,
+    0,
+    'no /installed call: the inventory is the official plugin page’s job',
+  )
+}
+
+// ── update check flow: icon button → GET /updates → 当前 → 最新 ────────────
+{
+  cannedResponses.push({ ok: true, value: { outdated: [{ name: 'dsh-a', current: '1.0.0', latest: '1.1.0' }] } })
+  const checkBtn = scan(renderView()).buttons.find((b) => b.label === '')
+  assert.ok(checkBtn, 'update check icon button found')
+  checkBtn.onClick()
+  await settle()
+  const tree = renderView()
+  const joined = textsOf(tree)
+  assert.ok(joined.includes('dsh-a'), 'outdated plugin rendered in the update list')
+  assert.ok(joined.includes('1.0.0 → 1.1.0'), 'current → latest shown')
+  assert.ok(joined.includes('1 个插件可更新'), 'update count summary rendered')
+  assert.ok(
+    fetchCalls.some((c) => c.url.startsWith('/my-plugin-manager/api/updates')),
+    'update check hits GET /updates',
+  )
+}
+
+// ── market search flow: keyword → GET /search → rows with detail only ────
+{
+  cannedResponses.push({
+    ok: true,
+    value: {
+      results: [{ name: 'dsh-file-activity', version: '1.2.3', description: 'file activity', author: 'alice' }],
+    },
+  })
+  const input = scan(renderView()).inputs.find((p) => String(p.placeholder ?? '').includes('搜索 npm 插件'))
+  assert.ok(input, 'search input found')
+  input.onChange({ target: { value: 'dsh-file' } })
+  const searchBtn = scan(renderView()).buttons.find((b) => b.label === '搜索')
+  assert.ok(searchBtn, 'search button found')
+  searchBtn.onClick()
+  await settle()
+  const tree = renderView()
+  const joined = textsOf(tree)
+  assert.ok(joined.includes('dsh-file-activity'), 'market result name rendered')
+  assert.ok(joined.includes('v1.2.3'), 'market result version chip rendered')
+  assert.ok(joined.includes('alice'), 'market result author rendered')
+  assert.ok(joined.includes('file activity'), 'market result description rendered')
+  assert.ok(
+    fetchCalls.some((c) => c.url.startsWith('/my-plugin-manager/api/search?q=dsh-file')),
+    'search hits GET /search with the keyword',
+  )
+  const labels = scan(tree).buttons.map((b) => b.label)
+  assert.ok(labels.includes('详情'), '市场行保留「详情」入口')
+  for (const gone of ['安装', '卸载']) {
+    assert.ok(!labels.includes(gone), `市场行没有${gone}按钮（官方插件页承担）`)
+  }
+}
 
 console.log('ALL PLUGIN-MANAGER CLIENT RENDER-PATH TESTS PASSED')
 

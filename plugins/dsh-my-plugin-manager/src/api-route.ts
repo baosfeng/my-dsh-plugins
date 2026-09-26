@@ -1,37 +1,28 @@
 /**
  * dsh-my-plugin-manager — /my-plugin-manager/api route handler.
  *
- *  - GET  /my-plugin-manager/api/installed  → loader 已安装清单 + 版本；
- *  - GET  /my-plugin-manager/api/search?q=… → npm registry 市场搜索；
- *  - GET  /my-plugin-manager/api/detail?name=… → 插件详情（README/版本/依赖）；
- *  - POST /my-plugin-manager/api/install    → `dsh plugin --profile <p> add`;
- *  - POST /my-plugin-manager/api/uninstall  → `dsh plugin --profile <p> remove`;
- *  - GET  /my-plugin-manager/api/updates    → `pnpm outdated --json`（更新检查）。
+ * 能力边界（只提供官方插件管理**没有**的增量）：
+ *  - GET /my-plugin-manager/api/search?q=…        → npm registry 市场关键词搜索；
+ *  - GET /my-plugin-manager/api/detail?name=…     → 插件详情（README/版本/依赖/月下载量）；
+ *  - GET /my-plugin-manager/api/updates           → `dsh plugin outdated --json`（更新检查）。
+ *
+ * 安装 / 卸载 / 启停 / 清单管理**不属于本插件**：官方默认内置（侧边栏插件页、
+ * tool-plugin-manager 的 list_plugins/set_plugin、`dsh plugin` CLI），设置页只读是
+ * 官方刻意的设计，本插件不再在其上叠一层可写管理。
  * Every request passes the trust fence first; responses are JSON with
  * cache-control: no-cache.
  */
-import { readJsonBody, writeError, writeJson } from 'dsh-shared'
-import {
-  installedVersionOf,
-  installPlugin,
-  uninstallPlugin,
-  updatePlugin,
-  outdatedPlugins,
-  enablePlugin,
-  disablePlugin,
-} from './manage.js'
-import type { DshResult, OutdatedEntry } from './manage.js'
+import { writeError, writeJson } from 'dsh-shared'
+import { outdatedPlugins } from './manage.js'
 import { fetchPackageDetail, searchNpmPlugins } from './registry.js'
 import type { DshContext, Logger, ServerRequest, ServerResponse } from './types.js'
 
 /** createApiHandler 的依赖（由 index.ts 的 apply 组装）。 */
 export interface ApiHandlerDeps {
-  /** DSH server Context（pluginInventory / logger）。 */
+  /** DSH server Context（logger）。 */
   ctx: DshContext
-  /** 当前 profile 名（`dsh plugin --profile <p>` 用）。 */
+  /** 当前 profile 名（`dsh plugin --profile <p> outdated` 用）。 */
   profile: string
-  /** profile 目录（已安装版本读取用）。 */
-  profileDir: string
   /** 信任围栏（dsh-shared isTrustedApiRequest）。 */
   fence: (request: ServerRequest) => boolean
 }
@@ -45,40 +36,15 @@ interface RouteSpec {
 export function createApiHandler({
   ctx,
   profile,
-  profileDir,
   fence,
 }: ApiHandlerDeps): (request: ServerRequest, response: ServerResponse) => Promise<void> {
   const logger = ctx.logger
   const handlers: Record<string, RouteSpec> = {
-    installed: {
-      method: 'GET',
-      run: async (url, request, response) => handleInstalled(ctx, profileDir, response),
-    },
     search: { method: 'GET', run: (url, request, response) => handleSearch(url, response) },
     detail: { method: 'GET', run: (url, request, response) => handleDetail(url, response, logger) },
     updates: {
       method: 'GET',
       run: (url, request, response) => handleUpdates(profile, response, logger),
-    },
-    install: {
-      method: 'POST',
-      run: (url, request, response) => handleInstall(profile, request, response, logger),
-    },
-    uninstall: {
-      method: 'POST',
-      run: (url, request, response) => handleUninstall(profile, request, response, logger),
-    },
-    update: {
-      method: 'POST',
-      run: (url, request, response) => handleUpdate(profile, request, response, logger),
-    },
-    enable: {
-      method: 'POST',
-      run: (url, request, response) => handleEnable(profileDir, request, response, logger),
-    },
-    disable: {
-      method: 'POST',
-      run: (url, request, response) => handleDisable(profileDir, request, response, logger),
     },
   }
   return async (request: ServerRequest, response: ServerResponse): Promise<void> => {
@@ -108,68 +74,6 @@ export function createApiHandler({
 function apiMethodOf(url: URL): string | undefined {
   const pathname = url.pathname
   return pathname.startsWith('/my-plugin-manager/api/') ? pathname.slice('/my-plugin-manager/api/'.length) : undefined
-}
-
-/**
- * 官方/内置包命名空间（issue #28）：DSH 官方 bundle（@deepseek-ai/*）、
- * Cordis 核心 loader 条目（cordis / cordis:*）、Cordis 官方生态组织
- * （@koishijs/*）。其余命名空间一律视为用户安装的插件。
- */
-const OFFICIAL_PREFIXES = ['@deepseek-ai/', '@koishijs/']
-
-/** 判断 moduleName 是否为官方/内置插件（用于「已安装」列表过滤）。 */
-export function isOfficialModule(moduleName: string): boolean {
-  if (moduleName === 'cordis' || moduleName.startsWith('cordis:')) return true
-  return OFFICIAL_PREFIXES.some((prefix) => moduleName.startsWith(prefix))
-}
-
-/**
- * GET /installed — user-installed loader entries with resolved versions.
- *
- * `pluginInventory.list()` 是 async（宿主 dsh-host-plugin-inventory 0.1.2-rc.1
- * `async list()` 返回 Promise<{ entries }>），必须 await 后再读 entries——
- * 同步解引用会得到 undefined.entries 而抛错，路由返回 400（已安装列表
- * 显示「加载失败」）。createApiHandler 已 `await spec.run(...)` 并 catch，
- * 因此这里的 async 异常仍会被统一转成 JSON 错误响应。
- */
-async function handleInstalled(ctx: DshContext, profileDir: string, response: ServerResponse): Promise<void> {
-  const inventory = await ctx.pluginInventory.list()
-  const entries = inventory.entries
-    .map((entry) => ({
-      moduleName: entry.moduleName,
-      enabled: entry.enabled,
-      fiberPhase: entry.fiberPhase,
-      version: installedVersionOf(profileDir, entry.moduleName),
-      official: isOfficialModule(entry.moduleName),
-    }))
-    .filter((entry) => !entry.official)
-
-  // 获取更新信息（异步，不阻塞主流程）
-  let updates: OutdatedEntry[] = []
-  try {
-    const updateResult = await outdatedPlugins(profileDir)
-    if (updateResult.ok) {
-      updates = updateResult.outdated
-    }
-  } catch {
-    // 更新检查失败不影响已安装列表显示
-  }
-
-  // 合并更新信息到 entries
-  const entriesWithUpdates = entries.map((entry) => {
-    const update = updates.find((u) => u.name === entry.moduleName)
-    return {
-      ...entry,
-      updateAvailable: update
-        ? {
-            current: update.current,
-            latest: update.latest,
-          }
-        : null,
-    }
-  })
-
-  writeJson(response, 200, { ok: true, value: { entries: entriesWithUpdates } })
 }
 
 /** GET /search?q=… — npm registry market search. */
@@ -221,161 +125,6 @@ async function handleUpdates(profile: string, response: ServerResponse, logger: 
   }
   logger?.info(`[dsh-my-plugin-manager] 更新检查完成（可更新=${result.outdated.length} 个）`)
   writeJson(response, 200, { ok: true, value: { outdated: result.outdated } })
-}
-
-/** POST /install { source } — install a npm package or link: path. */
-async function handleInstall(
-  profile: string,
-  request: ServerRequest,
-  response: ServerResponse,
-  logger: Logger | undefined,
-): Promise<void> {
-  const payload = await readJsonBody(request)
-  const source = typeof payload.source === 'string' ? payload.source.trim() : ''
-  if (source === '') {
-    writeJson(response, 400, { ok: false, error: { message: 'source is required' } })
-    return
-  }
-  const result = await installPlugin(profile, source)
-  logInstallResult(logger, result, source, profile)
-  writeJson(response, 200, {
-    ok: result.ok,
-    error: result.ok ? undefined : { message: cliErrorText(result) },
-  })
-}
-
-/** POST /uninstall { name } — remove an installed package. */
-async function handleUninstall(
-  profile: string,
-  request: ServerRequest,
-  response: ServerResponse,
-  logger: Logger | undefined,
-): Promise<void> {
-  const payload = await readJsonBody(request)
-  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
-  if (name === '') {
-    writeJson(response, 400, { ok: false, error: { message: 'name is required' } })
-    return
-  }
-  const result = await uninstallPlugin(profile, name)
-  logUninstallResult(logger, result, name, profile)
-  writeJson(response, 200, {
-    ok: result.ok,
-    error: result.ok ? undefined : { message: cliErrorText(result) },
-  })
-}
-
-/** POST /update { name } — update a plugin to latest version. */
-async function handleUpdate(
-  profile: string,
-  request: ServerRequest,
-  response: ServerResponse,
-  logger: Logger | undefined,
-): Promise<void> {
-  const payload = await readJsonBody(request)
-  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
-  if (name === '') {
-    writeJson(response, 400, { ok: false, error: { message: 'name is required' } })
-    return
-  }
-  const result = await updatePlugin(profile, name)
-  logUpdateResult(logger, result, name, profile)
-  writeJson(response, 200, {
-    ok: result.ok,
-    error: result.ok ? undefined : { message: cliErrorText(result) },
-  })
-}
-
-/** POST /enable { name } — enable a plugin. */
-async function handleEnable(
-  profileDir: string,
-  request: ServerRequest,
-  response: ServerResponse,
-  logger: Logger | undefined,
-): Promise<void> {
-  const payload = await readJsonBody(request)
-  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
-  if (name === '') {
-    writeJson(response, 400, { ok: false, error: { message: 'name is required' } })
-    return
-  }
-  const result = await enablePlugin(profileDir, name)
-  logEnableResult(logger, result, name)
-  writeJson(response, 200, {
-    ok: result.ok,
-    error: result.ok ? undefined : { message: cliErrorText(result) },
-  })
-}
-
-/** POST /disable { name } — disable a plugin. */
-async function handleDisable(
-  profileDir: string,
-  request: ServerRequest,
-  response: ServerResponse,
-  logger: Logger | undefined,
-): Promise<void> {
-  const payload = await readJsonBody(request)
-  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
-  if (name === '') {
-    writeJson(response, 400, { ok: false, error: { message: 'name is required' } })
-    return
-  }
-  const result = await disablePlugin(profileDir, name)
-  logDisableResult(logger, result, name)
-  writeJson(response, 200, {
-    ok: result.ok,
-    error: result.ok ? undefined : { message: cliErrorText(result) },
-  })
-}
-
-/** CLI 失败文本（stderr 优先，回退 stdout / exit code）。 */
-function cliErrorText(result: DshResult): string {
-  return result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`
-}
-
-/** 安装结果日志（统一 [dsh-my-plugin-manager] 前缀，issue #155）。 */
-function logInstallResult(logger: Logger | undefined, result: DshResult, source: string, profile: string): void {
-  if (result.ok) {
-    logger?.info(`[dsh-my-plugin-manager] 插件安装成功（source=${source}，profile=${profile}）`)
-  } else {
-    logger?.warn(`[dsh-my-plugin-manager] 插件安装失败（source=${source}，原因=${cliErrorText(result)}）`)
-  }
-}
-
-/** 卸载结果日志（统一 [dsh-my-plugin-manager] 前缀，issue #155）。 */
-function logUninstallResult(logger: Logger | undefined, result: DshResult, name: string, profile: string): void {
-  if (result.ok) {
-    logger?.info(`[dsh-my-plugin-manager] 插件卸载成功（name=${name}，profile=${profile}）`)
-  } else {
-    logger?.warn(`[dsh-my-plugin-manager] 插件卸载失败（name=${name}，原因=${cliErrorText(result)}）`)
-  }
-}
-
-/** 更新结果日志。 */
-function logUpdateResult(logger: Logger | undefined, result: DshResult, name: string, profile: string): void {
-  if (result.ok) {
-    logger?.info(`[dsh-my-plugin-manager] 插件更新成功（name=${name}，profile=${profile}）`)
-  } else {
-    logger?.warn(`[dsh-my-plugin-manager] 插件更新失败（name=${name}，原因=${cliErrorText(result)}）`)
-  }
-}
-
-/** 启用结果日志。 */
-function logEnableResult(logger: Logger | undefined, result: DshResult, name: string): void {
-  if (result.ok) {
-    logger?.info(`[dsh-my-plugin-manager] 插件已启用（name=${name}）`)
-  } else {
-    logger?.warn(`[dsh-my-plugin-manager] 插件启用失败（name=${name}，原因=${cliErrorText(result)}）`)
-  }
-}
-
-/** 禁用结果日志。 */
-function logDisableResult(logger: Logger | undefined, result: DshResult, name: string): void {
-  if (result.ok) {
-    logger?.info(`[dsh-my-plugin-manager] 插件已禁用（name=${name}）`)
-  } else {
-    logger?.warn(`[dsh-my-plugin-manager] 插件禁用失败（name=${name}，原因=${cliErrorText(result)}）`)
-  }
 }
 
 /** Clamp the search size to 1..50. */

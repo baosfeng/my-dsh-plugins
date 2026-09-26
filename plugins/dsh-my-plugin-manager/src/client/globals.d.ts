@@ -29,8 +29,12 @@ declare const icon: Record<string, (size?: number) => unknown>
 declare function badgeIcon(badge: string[], size?: number): unknown
 
 // ── MarkdownView（client.src.js 模板：installMarkdownViewFallback，共享部件
-//    dsh-shared/client-parts/markdown-fallback.part.js —— 三级回退永远是组件，
-//    不再为 null）──────────────────────────────────────────────────────────
+//    dsh-shared/client-parts/markdown-fallback.part.js）────────────────────
+//    渲染内核 = 宿主官方 baseline `@deepseek-ai/dsh-client-ui-primitives` 的
+//    `MarkdownText`（平台 seed 模块，零安装零体积）；缺它时落到本插件 <pre>。
+//    外部内核级（dsh-md-render）已被显式旁路：官方禁止特性插件通过
+//    dsh.client.external / runtime-import 取另一个特性插件的值
+//    （packages/client/AGENTS.md）。
 declare const MarkdownView: (props: { text: string }) => unknown
 
 // ── CommonJS（apply.ts 使用 exports.apply）──────────────────────────────

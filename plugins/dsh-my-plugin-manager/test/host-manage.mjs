@@ -1,12 +1,12 @@
 /**
- * dsh-my-plugin-manager — manage.js unit tests (spawn mocked; version reads real).
+ * dsh-my-plugin-manager — manage.js unit tests (spawn mocked).
+ *
+ * 唯一保留的 CLI 能力是更新检查（`dsh plugin outdated --json`）——安装 / 卸载 /
+ * 启停已随 UI 下线（官方插件页与 `dsh plugin add|remove` 承担），对应用例一并删除。
  */
-import { test, afterAll } from 'vitest'
+import { test } from 'vitest'
 import { vi } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { dirSync } from 'tmp'
 
 // ── mock child_process.spawn ───────────────────────────────────────────────
 const spawned = []
@@ -34,17 +34,7 @@ vi.mock('node:child_process', () => ({
   },
 }))
 
-const {
-  runDsh,
-  pluginArgs,
-  installPlugin,
-  uninstallPlugin,
-  updatePlugin,
-  outdatedPlugins,
-  installedVersionOf,
-  enablePlugin,
-  disablePlugin,
-} = await import('../lib/manage.js')
+const { runDsh, pluginArgs, outdatedPlugins } = await import('../lib/manage.js')
 
 /** Drive the last spawned child: emit output, then close or error. */
 function settleLast({ stdout = '', stderr = '', code = 0, error = null }) {
@@ -55,18 +45,12 @@ function settleLast({ stdout = '', stderr = '', code = 0, error = null }) {
   else last.listeners.close?.(code)
 }
 
-const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-manage-test-' }).name
-
-afterAll(() => {
-  rmSync(dir, { recursive: true, force: true })
-})
-
 test('pluginArgs builds the dsh plugin CLI args', () => {
-  assert.deepEqual(pluginArgs('web', 'add', 'dsh-x'), ['plugin', '--profile', 'web', 'add', 'dsh-x'])
+  assert.deepEqual(pluginArgs('web', 'outdated', '--json'), ['plugin', '--profile', 'web', 'outdated', '--json'])
 })
 
 test('runDsh resolves ok on close 0 and collects output', async () => {
-  const promise = runDsh(['plugin', '--profile', 'web', 'add', 'x'])
+  const promise = runDsh(['plugin', '--profile', 'web', 'outdated', '--json'])
   settleLast({ stdout: 'added\n', code: 0 })
   const result = await promise
   assert.equal(result.ok, true)
@@ -75,13 +59,13 @@ test('runDsh resolves ok on close 0 and collects output', async () => {
 })
 
 test('runDsh resolves not-ok on nonzero close and on spawn error', async () => {
-  const p1 = runDsh(['plugin', '--profile', 'web', 'remove', 'x'])
+  const p1 = runDsh(['plugin', '--profile', 'web', 'outdated', '--json'])
   settleLast({ stderr: 'ERR 123', code: 1 })
   const r1 = await p1
   assert.equal(r1.ok, false)
   assert.equal(r1.code, 1)
 
-  const p2 = runDsh(['plugin', '--profile', 'web', 'add', 'x'])
+  const p2 = runDsh(['plugin', '--profile', 'web', 'outdated', '--json'])
   settleLast({ error: 'spawn dsh ENOENT' })
   const r2 = await p2
   assert.equal(r2.ok, false)
@@ -120,32 +104,6 @@ test('outdatedPlugins reports CLI failures and non-JSON output', async () => {
   assert.ok(r2.error.includes('JSON'), 'outdatedPlugins wraps non-JSON output')
 })
 
-test('installPlugin / uninstallPlugin route to add / remove', async () => {
-  const p1 = installPlugin('web', 'dsh-x')
-  settleLast({ stdout: 'ok', code: 0 })
-  const r1 = await p1
-  assert.equal(r1.ok, true)
-  assert.deepEqual(spawned[spawned.length - 1].args, ['plugin', '--profile', 'web', 'add', 'dsh-x'])
-
-  const p2 = uninstallPlugin('web', 'dsh-x')
-  settleLast({ stdout: '', code: 0 })
-  await p2
-  assert.deepEqual(spawned[spawned.length - 1].args, ['plugin', '--profile', 'web', 'remove', 'dsh-x'])
-})
-
-test('installedVersionOf reads plain and scoped packages', () => {
-  mkdirSync(join(dir, 'node_modules', 'dsh-a'), { recursive: true })
-  mkdirSync(join(dir, 'node_modules', '@scope', 'dsh-b'), { recursive: true })
-  writeFileSync(join(dir, 'node_modules', 'dsh-a', 'package.json'), JSON.stringify({ name: 'dsh-a', version: '0.3.1' }))
-  writeFileSync(
-    join(dir, 'node_modules', '@scope', 'dsh-b', 'package.json'),
-    JSON.stringify({ name: '@scope/dsh-b', version: '1.2.3' }),
-  )
-  assert.equal(installedVersionOf(dir, 'dsh-a'), '0.3.1')
-  assert.equal(installedVersionOf(dir, '@scope/dsh-b'), '1.2.3')
-  assert.equal(installedVersionOf(dir, 'ghost-pkg'), '', 'missing package → empty version')
-})
-
 test('outdatedPlugins fallback chains and shape normalization', async () => {
   // stderr 空、stdout 有值 → error 取 stdout
   const p1 = outdatedPlugins('web')
@@ -175,7 +133,7 @@ test('outdatedPlugins fallback chains and shape normalization', async () => {
 })
 
 test('runDsh handles a null spawn error object', async () => {
-  const p = runDsh(['plugin', '--profile', 'web', 'add', 'x'])
+  const p = runDsh(['plugin', '--profile', 'web', 'outdated', '--json'])
   const last = spawned[spawned.length - 1]
   last.listeners.error?.(null)
   const r = await p
@@ -183,89 +141,18 @@ test('runDsh handles a null spawn error object', async () => {
   assert.ok(typeof r.error === 'string')
 })
 
-test('updatePlugin calls dsh plugin update', async () => {
-  const p = updatePlugin('web', 'dsh-file-activity')
-  settleLast({ code: 0 })
-  const r = await p
-  assert.equal(r.ok, true)
+test('outdatedPlugins spawns the documented CLI args', async () => {
+  const p = outdatedPlugins('web')
+  settleLast({ stdout: '{}', code: 0 })
+  await p
   const last = spawned[spawned.length - 1]
-  assert.deepEqual(last.args, ['plugin', '--profile', 'web', 'update', 'dsh-file-activity'])
+  assert.equal(last.command, 'dsh')
+  assert.deepEqual(last.args, ['plugin', '--profile', 'web', 'outdated', '--json'])
 })
 
-test('updatePlugin handles failure', async () => {
-  const p = updatePlugin('web', 'dsh-file-activity')
-  settleLast({ code: 1, stderr: 'update failed' })
-  const r = await p
-  assert.equal(r.ok, false)
-  assert.ok(r.stderr.includes('update failed'))
-})
-
-test('enablePlugin enables a plugin in cordis.patch.yml', async () => {
-  const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-enable-test-' }).name
-  const patchPath = join(dir, 'cordis.patch.yml')
-  writeFileSync(
-    patchPath,
-    `- insert:\n    - id: test-plugin\n      name: 'dsh-test-plugin'\n      enabled: false\n`,
-    'utf8',
-  )
-
-  const r = await enablePlugin(dir, 'dsh-test-plugin')
-  assert.equal(r.ok, true)
-
-  const content = readFileSync(patchPath, 'utf8')
-  assert.ok(content.includes('enabled: true'))
-})
-
-test('disablePlugin disables a plugin in cordis.patch.yml', async () => {
-  const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-disable-test-' }).name
-  const patchPath = join(dir, 'cordis.patch.yml')
-  writeFileSync(
-    patchPath,
-    `- insert:\n    - id: test-plugin\n      name: 'dsh-test-plugin'\n      enabled: true\n`,
-    'utf8',
-  )
-
-  const r = await disablePlugin(dir, 'dsh-test-plugin')
-  assert.equal(r.ok, true)
-
-  const content = readFileSync(patchPath, 'utf8')
-  assert.ok(content.includes('enabled: false'))
-})
-
-test('enablePlugin creates entry if not found', async () => {
-  const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-enable-new-test-' }).name
-  const patchPath = join(dir, 'cordis.patch.yml')
-  writeFileSync(patchPath, `- insert:\n    - id: other-plugin\n      name: 'dsh-other-plugin'\n`, 'utf8')
-
-  const r = await enablePlugin(dir, 'dsh-test-plugin')
-  assert.equal(r.ok, true)
-
-  const content = readFileSync(patchPath, 'utf8')
-  assert.ok(content.includes('dsh-test-plugin'))
-  assert.ok(content.includes('enabled: true'))
-})
-
-test('disablePlugin creates entry if not found', async () => {
-  const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-disable-new-test-' }).name
-  const patchPath = join(dir, 'cordis.patch.yml')
-  writeFileSync(patchPath, `- insert:\n    - id: other-plugin\n      name: 'dsh-other-plugin'\n`, 'utf8')
-
-  const r = await disablePlugin(dir, 'dsh-test-plugin')
-  assert.equal(r.ok, true)
-
-  const content = readFileSync(patchPath, 'utf8')
-  assert.ok(content.includes('dsh-test-plugin'))
-  assert.ok(content.includes('enabled: false'))
-})
-
-test('enablePlugin handles missing file', async () => {
-  const dir = dirSync({ unsafeCleanup: true, prefix: 'dpm-enable-missing-test-' }).name
-
-  const r = await enablePlugin(dir, 'dsh-test-plugin')
-  assert.equal(r.ok, true)
-
-  const patchPath = join(dir, 'cordis.patch.yml')
-  const content = readFileSync(patchPath, 'utf8')
-  assert.ok(content.includes('dsh-test-plugin'))
-  assert.ok(content.includes('enabled: true'))
+test('manage.js exposes no install/uninstall/enable/disable writers', async () => {
+  const mod = await import('../lib/manage.js')
+  for (const gone of ['installPlugin', 'uninstallPlugin', 'updatePlugin', 'enablePlugin', 'disablePlugin']) {
+    assert.equal(mod[gone], undefined, `${gone} 已随重复能力下线`)
+  }
 })

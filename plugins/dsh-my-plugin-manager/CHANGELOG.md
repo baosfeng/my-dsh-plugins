@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 变更
 
+- refactor(plugin-manager): #439 下线与官方重复的安装/卸载/启停/清单 UI（保留市场搜索、更新检查、详情增强），并消除 `dsh.client.external` / 幽灵 inject / `externalDegraded` 三处合规违规
+
 - docs: skill 合并 12→10 并拆分超限文件，修 observability 聚合端点缺陷
 - docs(清理): #341 文档瘦身 23765 → 8309 行并固化精简规范 (#348)
 - feat(gates): #323 新增包发布卫生门禁（pack 内容 + 字段断言 + README 引用面） (#333)

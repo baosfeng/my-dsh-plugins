@@ -21,6 +21,7 @@
 // npm-registry.mjs = 发版门禁 1a/1c 的 npm 查询钉官方源与判定（假绿/假红），issue #386，
 // verify-timeout.mjs = verify-local 超时配置解析（fail-closed：0 / 负数 / 空 / 非法一律报错，none 才是显式关闭），
 // verify-credentials.mjs = 隔离实例凭据 refs 解析 / provider 段按需继承 / 启动前自检 / 真实调用探针判定（issue #403），
+// action-pins.mjs = workflow 里同一 Action 多子路径的 ref 一致性判定（Dependabot 单侧 bump 防线），issue #435，
 // 阈值与根配置一致（行 85 / 分支 75 / 函数 80）。
 //
 // 为什么放宽 testTimeout/hookTimeout 到 60s（issue #353）：本目录大量用例 spawn 真实 CLI
@@ -58,6 +59,7 @@ export default defineConfig({
         'scripts/lib/npm-registry.mjs',
         'scripts/lib/verify-timeout.mjs',
         'scripts/lib/verify-credentials.mjs',
+        'scripts/lib/action-pins.mjs',
       ],
       thresholds: {
         lines: 85,

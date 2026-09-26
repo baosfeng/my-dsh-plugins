@@ -97,3 +97,12 @@ updates:
       - 'dependencies'
     commit-message:
       prefix: 'chore(deps)'
+    # ── 同一 Action 的多个子路径必须进同一个 PR（issue #435）───────────────────────
+    # Dependabot 的依赖粒度是**子路径**（`github/codeql-action/analyze` 是一个独立的
+    # dependency-name）。未分组时它会把 analyze 单独升级 → 与同仓库的 init 版本分叉 → CodeQL
+    # 每次分析恒红（#430 引入、#435 登记），且所有 PR 被假红挡住。这里从源头把 codeql-action
+    # 的各子路径合成一个 PR；判定侧由 scripts/check-action-pins.mjs 兜底（分叉必红）。
+    groups:
+      codeql-action:
+        patterns:
+          - 'github/codeql-action/*'

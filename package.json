@@ -28,6 +28,7 @@
     "check:pack-hygiene": "node scripts/check-pack-hygiene.mjs",
     "check:test-sleeps": "node scripts/check-test-sleeps.mjs",
     "check:gate-parity": "node scripts/check-gate-parity.mjs",
+    "check:action-pins": "node scripts/check-action-pins.mjs",
     "lint:commits": "node scripts/check-commit-messages.mjs",
     "secret:scan": "node scripts/check-secrets.mjs",
     "deps:matrix": "node scripts/deps-matrix.mjs",

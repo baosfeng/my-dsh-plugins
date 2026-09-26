@@ -640,6 +640,8 @@ const CHECK_META = {
   // 派生内容，靠它双向守护（文档提到了代码没有的 API / 代码新增了 API 文档没登记）。
   'doc-api': { command: 'node scripts/check-doc-api-drift.mjs', ciQuality: true },
   links: { command: 'node scripts/check-links.mjs', ciQuality: true },
+  // issue #435：workflow 里同一 Action 的多子路径版本一致性（Dependabot 单侧 bump 防线）
+  'action-pins': { command: 'node scripts/check-action-pins.mjs', ciQuality: true },
   'test-sleeps': { command: 'node scripts/check-test-sleeps.mjs', ciQuality: true },
   artifacts: { command: 'node scripts/check-client-artifacts.mjs', ciQuality: true },
   'merge-ref': { command: 'git merge-base --is-ancestor origin/main HEAD', ciQuality: false },
@@ -903,6 +905,15 @@ const CHECK_DEFS = [
     label: 'links integrity (node scripts/check-links.mjs)',
     note: '文档引用完整性：markdown 链接与锚点 / 残缺链接语法 / 路径 token / shell 调用 / npm script / skill 与插件名（<1s，纯本地文件检查，任何变更都跑）',
     run: () => runCapture('node', ['scripts/check-links.mjs'], root),
+  },
+  {
+    // issue #435：Dependabot 把「action 子路径」当独立依赖单侧 bump（#430 只升了 analyze，
+    // 没升 init）→ codeql.yml 版本分叉 → CodeQL 恒红、所有 PR 被假红挡住（#433 被挡）。
+    // 判据：同一 GitHub Action（owner/repo）的**全部** uses 必须同 ref；纯本地文件扫描。
+    id: 'action-pins',
+    label: 'action-pins (node scripts/check-action-pins.mjs)',
+    note: 'workflow 里同一 GitHub Action 的多子路径（如 codeql-action/init 与 /analyze）必须同 ref/SHA（issue #435，Dependabot 单侧 bump 防线；纯本地文件扫描）',
+    run: () => runCapture('node', ['scripts/check-action-pins.mjs'], root),
   },
   {
     // issue #330 关键交付物：本地检查项集合 ↔ CI 步骤集合的**双向**一致性校验。

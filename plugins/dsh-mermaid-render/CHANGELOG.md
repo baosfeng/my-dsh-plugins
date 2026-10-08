@@ -2,6 +2,18 @@
 
 本文件记录 dsh-mermaid-render 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.13] - 2026-10-08
+
+### 修复
+
+- fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
+
+## [0.1.12] - 2026-10-08
+
+### 修复
+
+- fix(mermaid-render): 删除过时的 `@deepseek-ai/dsh-system-prompt` peer 声明（声明 `^0.1.5-rc.2` 不满足 0.2.0-rc.2 宿主的 peer 版本门禁，导致装载阶段被 skip）。该 peer 只用于版本门禁，代码从不 import 该包；`systemPrompt` 服务耦合由 `inject: ['systemPrompt']` 声明
+
 ## [0.1.11] - 2026-09-18
 
 ### 变更

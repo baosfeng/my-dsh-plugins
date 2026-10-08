@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-guardian",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "DSH 插件治理守护：新装/更新插件先进候选区，启动后热挂载——成功转正、失败自动禁用、连续失败冻结，一键安全模式，侧边栏诊断面板。DSH web plugin: staged plugin loading with auto-disable on failure, freeze, safe mode and a sidebar panel.",
   "type": "module",
   "main": "lib/index.js",
@@ -43,7 +43,7 @@
   },
   "peerDependencies": {
     "cordis": "^4.0.0-rc.10",
-    "react": "^18.2.0 || ^19.3.0"
+    "react": "^18.2.0 || ^19.2.0"
   },
   "dependencies": {
     "dsh-shared": "^0.1.4"

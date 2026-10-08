@@ -62,6 +62,11 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 - 点「选择工作区」后 DOM 无菜单、进程挂着 `osascript` 原生目录对话框 → 无工作区时改用参数预置工作区
 - `--checklist` 重跑后人工验证记录被删、头部时间被改成假 diff → 生成器整文件重写；固化在 `scripts/lib/verify-checklist.mjs`、`scripts/test/verify-checklist.test.mjs`
 
+## profile 与宿主来源
+
+- `dsh plugin add` 后插件「装了却没生效」、`bundles` 里静静少一行且**没有任何日志** → 0.2.0-rc.2 的 reconcile 会过滤掉它不认可的条目（`@deepseek-ai/dsh-plugin-manager/lib/types/operations.js:44-72`，丢弃分支零日志，官方缺陷）；且**对已装插件重跑 `add` 会整表重算**，手工补的 bundles 行一并被覆盖。规避：已装插件不重跑 `add`、不手改 bundles 后再跑 `add`。装后自检一行式（`dsh-` 开头却不在 bundles 里的就是被丢掉的；`dsh-shared` 等 `dsh.kind=library` 的库本就不该进 bundles）：`node -e 'const fs=require("fs");const H=process.env.HOME+"/.dsh/profiles/desktop";const b=new Set(require(H+"/package.json").dsh.profile.bundles);console.log(fs.readdirSync(H+"/node_modules").filter(n=>n.startsWith("dsh-")&&!b.has(n)).join(", ")||"（无）")'`
+- 纯桌面 App 环境（已删 npm 全局 `dsh`）下取证脚本报 `需要参考源…与已安装宿主(缺失)同时在场`、全机 `find` 不到 `<hostDir>/node_modules/@deepseek-ai` → 桌面 App 的宿主依赖树在 `DeepSeek Harness.app/Contents/Resources/app.asar` **归档内**（`app.asar/dsh/package.json` 是 `@deepseek-ai/dsh-desktop-runtime`，普通 `existsSync` 看不见），npm prefix 类探测必然失效。正确姿势：① 解析 asar 头按字节读（`plugins/dsh-my-guardian/scripts/lib/asar-host.mjs`；287 个包 914 个 lib 文件实测约 24ms，成本可忽略）；② **asar 内路径只能读、不能 `import()`**（Node ESM loader 打不开归档，报 `ENOTDIR`），所以「可 import 的宿主」与「可扫描取证的宿主」必须拆成两个解析器（`installedHostDir()` / `installedHostScanDir()`），别把 asar 路径喂给起真实 loader 的测试；③ 桌面版宿主**不带 `.d.ts`**（同一版本从 npm 装则带），声明通道失效、只剩 `ctx.*` 派发通道可取证，结论强度要一并声明；④ 取不到已装宿主时**降级保留上一次取证结果**并打印说明，绝不凭空生成"已装宿主清单"。固化在 `plugins/dsh-my-guardian/scripts/host-events.mjs`，防回归 `plugins/dsh-my-guardian/test/host-event-source.mjs`
+
 ## 工具链与脚本
 
 > 详见 [fork池工作流.md](fork池工作流.md)

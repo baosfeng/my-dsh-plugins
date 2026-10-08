@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-skill-manager",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "DSH skill 管理：分「全局 / 项目」查看 skill 列表，按项目启用/禁用（禁用即不注入该会话）。DSH web plugin: per-project skill management with global/project views and enable/disable toggles.",
   "type": "module",
   "main": "lib/index.js",
@@ -43,7 +43,7 @@
   },
   "peerDependencies": {
     "cordis": "^4.0.0-rc.10",
-    "react": "^18.2.0 || ^19.3.0",
+    "react": "^18.2.0 || ^19.2.0",
     "dsh-shared": "^0.1.4"
   },
   "peerDependenciesMeta": {

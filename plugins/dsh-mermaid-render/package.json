@@ -1,6 +1,6 @@
 {
   "name": "dsh-mermaid-render",
-  "version": "0.1.11",
+  "version": "0.1.13",
   "description": "DSH 对话 Mermaid 图表渲染插件：mermaid/mmd 代码块自动渲染为图表卡片（预览/代码切换），引擎按需加载。DSH web plugin: render mermaid/mmd code blocks into diagram cards, on-demand engine loading.",
   "type": "module",
   "main": "lib/index.js",
@@ -38,15 +38,11 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-system-prompt": "^0.1.5-rc.2",
     "cordis": "^4.0.0-rc.10",
-    "react": "^18.2.0 || ^19.3.0",
-    "react-dom": "^18.2.0 || ^19.3.0"
+    "react": "^18.2.0 || ^19.2.0",
+    "react-dom": "^18.2.0 || ^19.2.0"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/dsh-system-prompt": {
-      "optional": true
-    },
     "cordis": {
       "optional": true
     }

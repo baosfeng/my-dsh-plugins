@@ -4,6 +4,12 @@
 
 > 公共 API 承诺面：`MarkdownView`（导出 / props / 自有 DOM 类名清单见 [README「公共 API 契约」](README.md)）；改类名清单 = 破坏性变更，须同步 README 与本文件。
 
+## [0.3.1] - 2026-10-08
+
+### 修复
+
+- fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
+
 ## [0.3.0]
 
 ### 移除（与官方重复的实现，官方 0.1.7-rc.2 已内置）

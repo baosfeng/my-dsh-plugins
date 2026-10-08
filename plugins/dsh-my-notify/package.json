@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-notify",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "DSH 通知提醒插件：会话结束/agent 询问/等待审批时弹浏览器通知+提示音，点击跳转会话，支持远程 webhook 触发。DSH web plugin: browser notification + beep on session end / ask / approval, click-to-focus, remote trigger hook.",
   "type": "module",
   "main": "lib/index.js",
@@ -42,18 +42,14 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-session-title": "^0.1.5-rc.2",
     "cordis": "^4.0.0-rc.10",
-    "react": "^18.2.0 || ^19.3.0"
+    "react": "^18.2.0 || ^19.2.0"
   },
   "dependencies": {
     "dsh-shared": "^0.1.4",
     "tmp": "^0.2.7"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/dsh-session-title": {
-      "optional": true
-    },
     "cordis": {
       "optional": true
     }

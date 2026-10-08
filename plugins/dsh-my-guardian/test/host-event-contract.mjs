@@ -44,6 +44,7 @@ import {
   extractFromSourceTree,
   findMarkerInInstalledHost,
   installedHostDir,
+  installedHostScanDir,
   readFixture,
   referenceDir,
   versionOf,
@@ -246,7 +247,8 @@ test('目标宿主没有 hmr/config-update-failed：必须有降级通道 + 退�
 test('fixture 与在场源码版本/清单一致（宿主升级后强制重新取证）', () => {
   const fixture = readFixture()
   const reference = referenceDir()
-  const installed = installedHostDir()
+  // 取证扫描走 scan 版本：纯桌面 App 环境的宿主在 app.asar 内（只能按字节读，不能 import）
+  const installed = installedHostScanDir()
   if (reference === null && installed === null) {
     console.log('skip: 参考源与已装宿主都不在场（CI 用冻结 fixture 判定）')
     return

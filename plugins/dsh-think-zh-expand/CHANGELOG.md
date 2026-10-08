@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.16] - 2026-10-08
+
+### 修复
+
+- fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
+
+## [0.4.15] - 2026-10-08
+
+### 修复
+
+- fix(think-zh-expand): 删除过时的 `@deepseek-ai/dsh-system-prompt` peer 声明（`^0.1.5-rc.2` 不满足 0.2.0-rc.2 宿主的 peer 版本门禁 → 装载 skip）。代码不 import 该包，`systemPrompt` 服务耦合由 `inject: ['systemPrompt']` 声明
+
 ## [0.4.14] - 2026-09-18
 
 ### 变更

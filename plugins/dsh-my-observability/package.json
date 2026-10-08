@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-observability",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "DSH 可观测性 + Git 工程工具插件：事件审计（agent 行为记录，跨会话持久化 + 查询 API）、资源看门狗面板、结构化 Git 提交（Conventional Commits）、增量 diff 审查（提交前审查）。DSH web plugin: persistent event audit log with query API, resource watchdog panel, structured git commits, pre-commit incremental diff review.",
   "type": "module",
   "main": "lib/index.js",
@@ -44,7 +44,7 @@
   "peerDependencies": {
     "cordis": "^4.0.0-rc.10",
     "dsh-shared": "^0.1.4",
-    "react": "^18.2.0 || ^19.3.0"
+    "react": "^18.2.0 || ^19.2.0"
   },
   "peerDependenciesMeta": {
     "cordis": {

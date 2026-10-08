@@ -278,6 +278,14 @@ const strings = {
   loadError: () => (isZh() ? '加载失败' : 'Load failed'),
   loading: () => (isZh() ? '加载中…' : 'Loading…'),
   events: () => (isZh() ? '最近事件' : 'Recent events'),
+  /**
+   * 事件区块的"只有噪音"说明（#439）：事件数组可能整块都是 entry-init/entry-dispose。
+   * 此时**不能**静默隐藏区块——用户会以为"一切正常"，而实际上是被高频噪音占满。
+   */
+  eventsNoiseOnly: (n) =>
+    isZh()
+      ? `无关键事件（已过滤 ${n} 条启动/释放噪音）`
+      : `No key events (${n} startup/dispose noise entries filtered)`,
   attempts: (n) => (isZh() ? `失败 ${n} 次` : `failed ×${n}`),
   frozenHint: () =>
     isZh()
@@ -1106,14 +1114,31 @@ function EntryList({ rows, onAction }) {
 /** 高频噪音事件：每次启动/热重载都会大量产生，挤掉真正重要的诊断信息。 */
 const EVENT_NOISE = new Set(['entry-init', 'entry-dispose'])
 /** Recent guardian event log: badge + key info + time per entry.
- *  过滤 entry-init/entry-dispose 噪音，优先展示隔离/冻结/更新失败等关键事件。 */
+ *  过滤 entry-init/entry-dispose 噪音，优先展示隔离/冻结/更新失败等关键事件。
+ *
+ *  #439：噪音**只**在展示层被过滤，服务端两档配额已保证关键事件不会被噪音挤出缓冲；
+ *  这里不再因"全是噪音"而整块隐藏——那正是 issue 里点名的误导（区块消失 ⇒ 用户以为
+ *  一切正常）。全噪音时渲染区块 + 显式说明过滤了多少条。 */
 function EventList({ events }) {
-  const important = events.filter((event) => !EVENT_NOISE.has(event.type))
-  if (important.length === 0) return null
+  const all = Array.isArray(events) ? events : []
+  const important = all.filter((event) => !EVENT_NOISE.has(event.type))
+  const noiseCount = all.length - important.length
+  // 一条事件都没有（首启/新装）：区块照旧不渲染，避免空壳。
+  if (all.length === 0) return null
   return createElement(
     'div',
     { className: 'dsh-my-guardian-events' },
     createElement('div', { className: 'dsh-my-guardian-events-title' }, icon.clock(14), strings.events()),
+    important.length === 0
+      ? createElement(
+          'div',
+          {
+            className: 'dsh-my-guardian-event-noise-note',
+            'data-guardian-noise-count': String(noiseCount),
+          },
+          createElement('span', { className: 'dsh-my-guardian-event-message' }, strings.eventsNoiseOnly(noiseCount)),
+        )
+      : null,
     important.map((event, index) =>
       createElement(
         'div',

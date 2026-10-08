@@ -137,14 +137,31 @@ function EntryList({ rows, onAction }: { rows: EntryRowSpec[]; onAction: Guardia
 const EVENT_NOISE = new Set(['entry-init', 'entry-dispose'])
 
 /** Recent guardian event log: badge + key info + time per entry.
- *  过滤 entry-init/entry-dispose 噪音，优先展示隔离/冻结/更新失败等关键事件。 */
+ *  过滤 entry-init/entry-dispose 噪音，优先展示隔离/冻结/更新失败等关键事件。
+ *
+ *  #439：噪音**只**在展示层被过滤，服务端两档配额已保证关键事件不会被噪音挤出缓冲；
+ *  这里不再因"全是噪音"而整块隐藏——那正是 issue 里点名的误导（区块消失 ⇒ 用户以为
+ *  一切正常）。全噪音时渲染区块 + 显式说明过滤了多少条。 */
 function EventList({ events }: { events: GuardianEvent[] }) {
-  const important = events.filter((event) => !EVENT_NOISE.has(event.type))
-  if (important.length === 0) return null
+  const all = Array.isArray(events) ? events : []
+  const important = all.filter((event) => !EVENT_NOISE.has(event.type))
+  const noiseCount = all.length - important.length
+  // 一条事件都没有（首启/新装）：区块照旧不渲染，避免空壳。
+  if (all.length === 0) return null
   return createElement(
     'div',
     { className: 'dsh-my-guardian-events' },
     createElement('div', { className: 'dsh-my-guardian-events-title' }, icon.clock(14), strings.events()),
+    important.length === 0
+      ? createElement(
+          'div',
+          {
+            className: 'dsh-my-guardian-event-noise-note',
+            'data-guardian-noise-count': String(noiseCount),
+          },
+          createElement('span', { className: 'dsh-my-guardian-event-message' }, strings.eventsNoiseOnly(noiseCount)),
+        )
+      : null,
     important.map((event, index) =>
       createElement(
         'div',

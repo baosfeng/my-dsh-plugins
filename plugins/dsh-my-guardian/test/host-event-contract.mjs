@@ -39,6 +39,7 @@ import { closeSync, existsSync, openSync, readFileSync, readdirSync } from 'node
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as guardian from '../lib/events.js'
+import { CRITICAL_EVENT_LIMIT, NOISE_EVENT_LIMIT } from '../lib/state.js'
 import {
   extractFromInstalledHost,
   extractFromSourceTree,
@@ -422,7 +423,9 @@ test('去重表有上限：大量不同文件名的失败不抛异常且状态�
   assert.doesNotThrow(() => {
     for (let index = 0; index < 60; index += 1) failures.fromLogMarker(`patch-${index}.yml`, 'hmr')
   })
-  assert.equal(shared.state.events.length, 20, '环形缓冲上限 20 条不变')
+  // #439：缓冲分级后不再有单一 20 条上限——update-failed 属关键档，上限 = CRITICAL_EVENT_LIMIT。
+  assert.equal(shared.state.events.length, CRITICAL_EVENT_LIMIT, '关键档事件受 CRITICAL_EVENT_LIMIT 约束')
+  assert.ok(shared.state.events.length <= CRITICAL_EVENT_LIMIT + NOISE_EVENT_LIMIT, '事件总数不超两档配额之和（有界）')
 })
 
 /**

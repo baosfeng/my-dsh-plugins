@@ -11,17 +11,24 @@ import { join } from 'node:path';
 import { atomicWriteJson, createWriteScheduler } from 'dsh-shared';
 /** Consecutive failures before an entry freezes (manual retry required). */
 export const FREEZE_LIMIT = 3;
-/** Keep at most this many diagnostic events in the state. */
-export const EVENT_LIMIT = 20;
+/** 关键事件（quarantine/freeze/promote/update-failed/safe/skip/…）在缓冲区里的保留条数。 */
+export const CRITICAL_EVENT_LIMIT = 40;
+/** 高频噪音事件（entry-init/entry-dispose，一次整树卸载 = 每 entry 一条）的独立配额（#439）。 */
+export const NOISE_EVENT_LIMIT = 20;
+// #439 起事件缓冲**分级**，不再有单一上限：关键事件看 CRITICAL_EVENT_LIMIT、
+// 噪音看 NOISE_EVENT_LIMIT。旧的单一上限名 EVENT_LIMIT 已整体移除（仓内零引用；
+// 保留同值别名会让 knip 判为重复导出，属死代码）。
 /** How many characters of an error message to keep in state. */
 export const ERROR_SNIP = 300;
 /** 日志前缀（落盘护栏 warn 用）。 */
 const PREFIX = '[dsh-my-guardian]';
 /**
- * 状态快照字节上限（护栏兜底，issue #198 收尾）：events ≤ EVENT_LIMIT(20) 条
- * （每条消息截断到 ERROR_SNIP=300 字符），staged/promoted 条目数 = 受管插件数
- * （数十量级），单条 config 大小由用户配置决定 → 4MB 是保守上限。
- * 超限**拒绝写入并 warn**（保留上一份完好快照），不再随条目增长无界放大磁盘占用。
+ * 状态快照字节上限（护栏兜底，issue #198 收尾）：events ≤ 关键 40 + 噪音 20 = 60 条
+ * （#439 分级后按两档配额之和封顶，每条消息截断到 ERROR_SNIP=300 字符），
+ * staged/promoted 条目数 = 受管插件数（数十量级），单条 config 大小由用户配置决定
+ * → 4MB 是保守上限。
+ * 超限**拒绝写入并 warn**（保留上一份完好快照），不再随条目增长无界放大磁盘占用；
+ * 事件条数由 logEvent 的两档配额保证有界，与此上限共同构成"永不无界增长"。
  */
 const STATE_MAX_BYTES = 4 * 1024 * 1024;
 /** 候选文件字节上限（同上；条目来自扫描结果，数量级与受管插件数一致）。 */
@@ -34,6 +41,22 @@ function guardianDir() {
     if (typeof home === 'string' && home !== '')
         return join(home, 'guardian');
     return join(homedir(), '.dsh', 'guardian');
+}
+/**
+ * 噪音事件类型（#439）：每次启动/热重载/整树卸载都会按 entry 数量成批产生，
+ * 与真正需要诊断的信息（隔离/冻结/转正失败）抢同一份缓冲。
+ *
+ * 判据是**显式登记噪音**而不是"登记关键"：未知/新增事件类型一律按关键处理，
+ * 宁多留不暗丢 —— 反向登记的失效模式是新事件被静默降级成可丢噪音（最坏的那种错）。
+ */
+const NOISE_EVENT_TYPES = new Set(['entry-init', 'entry-dispose']);
+/** 该类型事件是否属于高频噪音（走独立小配额）。 */
+export function isNoiseEvent(type) {
+    return NOISE_EVENT_TYPES.has(type);
+}
+/** 该类型事件对应档位的配额上限。 */
+export function eventLimitFor(type) {
+    return isNoiseEvent(type) ? NOISE_EVENT_LIMIT : CRITICAL_EVENT_LIMIT;
 }
 /**
  * Persist the startup-roster pre-check report (issue #144) atomically at

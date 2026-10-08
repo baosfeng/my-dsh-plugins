@@ -729,7 +729,7 @@ test('渲染契约：移除确认可取消，取消后不发请求', async () =>
   )
 })
 
-test('渲染契约：事件日志过滤启动噪音并回退未知类型；全噪音时不渲染区块', async () => {
+test('渲染契约：事件日志过滤启动噪音并回退未知类型；全噪音时显式说明而非静默隐藏', async () => {
   const { nodes } = await renderLoaded({
     events: [
       { type: 'entry-init', message: 'init noise', time: 1756000000000 },
@@ -751,10 +751,28 @@ test('渲染契约：事件日志过滤启动噪音并回退未知类型；全�
   assert.ok(String(badges[0].props.className).includes('dsh-my-guardian-event-danger'), 'quarantine 用 danger 变体')
   assert.ok(String(badges[1].props.className).includes('dsh-my-guardian-event-danger'), 'startup-issue 用 danger 变体')
 
+  // #439：只剩噪音时**不能**整块消失——区块消失会让用户以为"一切正常"，而真实原因
+  // 是被 entry-init/entry-dispose 占满。改为渲染区块 + 显式说明过滤了多少条噪音。
   const { nodes: noisy } = await renderLoaded({
-    events: [{ type: 'entry-init', message: 'only noise', time: 1756000000000 }],
+    events: [
+      { type: 'entry-init', message: 'init noise', time: 1756000000000 },
+      { type: 'entry-dispose', message: 'dispose noise', time: 1756000000001 },
+      { type: 'entry-dispose', message: 'dispose noise 2', time: 1756000000002 },
+    ],
   })
-  assert.equal(byClass(noisy, 'dsh-my-guardian-events'), undefined, '只剩噪音时不渲染事件区块')
+  assert.ok(byClass(noisy, 'dsh-my-guardian-events'), '只剩噪音时事件区块仍然渲染（#439：不得静默消失）')
+  const note = byClass(noisy, 'dsh-my-guardian-event-noise-note')
+  assert.ok(note, '全噪音时渲染「无关键事件」说明行')
+  assert.equal(note.props['data-guardian-noise-count'], '3', '说明行带过滤掉的噪音条数（可断言、可排查）')
+  assert.ok(texts(collect(note)).join('').includes('3'), '说明文案里回显噪音条数（层级不限：说明行 > span > 文本）')
+  assert.ok(
+    !texts(noisy).join('|').includes('init noise') && !texts(noisy).join('|').includes('dispose noise'),
+    '仍然不渲染噪音条目本身',
+  )
+  assert.equal(byClassPrefix(noisy, 'dsh-my-guardian-event').length, 0, '全噪音时不渲染任何事件条目，只有说明行')
+
+  const { nodes: noEvents } = await renderLoaded({ events: [] })
+  assert.equal(byClass(noEvents, 'dsh-my-guardian-events'), undefined, '一条事件都没有时仍不渲染空壳区块')
 
   const { nodes: unknown } = await renderLoaded({
     events: [{ type: 'brand-new-event', message: 'x', time: 1756000000000 }],

@@ -41,6 +41,14 @@ const strings = {
   loadError: () => (isZh() ? '加载失败' : 'Load failed'),
   loading: () => (isZh() ? '加载中…' : 'Loading…'),
   events: () => (isZh() ? '最近事件' : 'Recent events'),
+  /**
+   * 事件区块的"只有噪音"说明（#439）：事件数组可能整块都是 entry-init/entry-dispose。
+   * 此时**不能**静默隐藏区块——用户会以为"一切正常"，而实际上是被高频噪音占满。
+   */
+  eventsNoiseOnly: (n: number) =>
+    isZh()
+      ? `无关键事件（已过滤 ${n} 条启动/释放噪音）`
+      : `No key events (${n} startup/dispose noise entries filtered)`,
   attempts: (n: number) => (isZh() ? `失败 ${n} 次` : `failed ×${n}`),
   frozenHint: () =>
     isZh()

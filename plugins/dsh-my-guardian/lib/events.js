@@ -2,17 +2,49 @@
  * dsh-my-guardian — diagnostic event log (ring buffer in state) and the loader
  * event listeners that feed it.
  */
-import { ERROR_SNIP, EVENT_LIMIT } from './state.js';
-/** Append a diagnostic event to the shared state's ring buffer. */
+import { ERROR_SNIP, eventLimitFor, isNoiseEvent } from './state.js';
+/**
+ * 从尾部往前数，超出「该档配额」的已存事件下标（升序）——只裁这一档，另一档不动。
+ *
+ * 为什么必须按档计数而不是按总数：噪音与关键事件混在同一个数组里，按总数裁只能
+ * 保"最近 N 条"，而噪音的到达速率由 entry 数决定（一次整树卸载 = 每 entry 一条），
+ * 关键事件因此会被物理挤出且**不可恢复**（#439 的根因）。按档计数等价于给两档各自
+ * 一份互不侵占的配额，噪音风暴再大也动不了关键档。
+ */
+function overQuotaIndexes(events, isNoise, limit) {
+    const stale = [];
+    let kept = 0;
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (isNoiseEvent(events[index].type) !== isNoise)
+            continue;
+        kept += 1;
+        if (kept > limit)
+            stale.push(index);
+    }
+    return stale;
+}
+/**
+ * Append a diagnostic event to the shared state's ring buffer.
+ *
+ * #439 分级缓冲：噪音（entry-init/entry-dispose）与关键事件**各占一份独立配额**，
+ * 裁剪只作用于本档 —— dispose 风暴永远挤不掉 quarantine/freeze/promote/update-failed。
+ * 两档配额之和（40+20=60）是内存与落盘体积的确定上界，与 STATE_MAX_BYTES 形成双保险：
+ * 单条消息截断 ERROR_SNIP ⇒ 落盘 events 段 ≪ 4MB，且条数不随 entry 数增长。
+ *
+ * 拼写失败（落盘）与顺序：本函数只写内存，落盘节奏仍由各调用点的 persistSoon 决定。
+ */
 export function logEvent(shared, type, message) {
     const record = {
         time: Date.now(),
         type,
         message: String(message).slice(0, ERROR_SNIP),
     };
-    shared.state.events.push(record);
-    if (shared.state.events.length > EVENT_LIMIT)
-        shared.state.events.splice(0, shared.state.events.length - EVENT_LIMIT);
+    const events = shared.state.events;
+    events.push(record);
+    // 只裁本档：噪音配额满了丢最早的噪音，关键配额满了丢最早的关键事件。
+    const stale = overQuotaIndexes(events, isNoiseEvent(type), eventLimitFor(type));
+    for (let index = stale.length - 1; index >= 0; index -= 1)
+        events.splice(stale[index], 1);
     return record;
 }
 /**

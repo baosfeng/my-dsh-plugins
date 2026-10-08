@@ -282,23 +282,41 @@ function renderBlocks(
 }
 
 // ── assistant-step 节点渲染器 ──────────────────────────────────────
+// issue #444：宿主把同一条 assistant-step 按 groupPart 拆成两组分别渲染
+// （reasoning → 「已完成分析」折叠，response → 对话流），宿主渲染器
+// AssistantMarkdown 按组过滤块；本插件替换了该渲染器，不照做就会两组各渲染
+// 一遍完整 blocks（思考 + 正文）→ 回答重复、正文混进思考折叠块。
 interface AssistantStepViewProps {
   node: AssistantStepNode
   renderMessageImages?: RenderMessageImages
+  /** 宿主分组语义；未拆分（旧宿主 / 无分组）时为 undefined。 */
+  groupPart?: string
 }
 
-function AssistantStepView({ node, renderMessageImages }: AssistantStepViewProps): ReactNode {
+function AssistantStepView({ node, renderMessageImages, groupPart }: AssistantStepViewProps): ReactNode {
   const data = node && node.data ? node.data : null
   if (!data || !Array.isArray(data.blocks)) return null
   const streaming = data.status === 'running'
   const interrupted = data.status === 'interrupted'
-  const rendered = renderBlocks(data.blocks, streaming, renderMessageImages)
+  // 同宿主语义（issue #444）：reasoning 组只留 reasoning、response 组只留非
+  // reasoning、其余分组（旧宿主）全量。
+  const blocks =
+    groupPart === 'reasoning'
+      ? data.blocks.filter((block) => block && block.kind === 'reasoning')
+      : groupPart === 'response'
+        ? data.blocks.filter((block) => block && block.kind !== 'reasoning')
+        : data.blocks
+  const rendered = renderBlocks(blocks, streaming, renderMessageImages)
   if (interrupted) {
     rendered.push(createElement('span', { key: 'stopped', className: 'dsh-think-zh-expand-stopped' }, '已停止'))
   }
   return createElement(
     'div',
-    { className: 'dsh-think-zh-expand-assistant', 'data-streaming': streaming || undefined },
+    {
+      className: 'dsh-think-zh-expand-assistant',
+      'data-streaming': streaming || undefined,
+      'data-group-part': groupPart || 'full',
+    },
     createElement('div', { className: 'dsh-think-zh-expand-assistant-body' }, rendered),
   )
 }

@@ -259,7 +259,10 @@ function ThinkSettingsView(): unknown {
 /** client 端 part 片段看到的 slots 服务（只用到 inject / register）。 */
 interface ThinkSettingsSlots {
   inject(name: string, callback: () => unknown): unknown
-  register(options: { name: string; id: string; order: number; label: () => string }, component: () => unknown): unknown
+  register(
+    options: { name: string; label?: () => string } & Record<string, unknown>,
+    component: (props: never) => unknown,
+  ): unknown
 }
 
 /** client 端 ctx 的最小契约（只需要 effect 与 cordis 的 get）。 */
@@ -294,6 +297,40 @@ function attachSettingsTab(ctx: ThinkSettingsCtx): void {
         ThinkSettingsView,
       ),
     )
+    // issue #443：DSH >= 0.1.7 的新版插件管理器不再有 settings.plugins.tab 的渲染
+    // 入口，设置页要挂到「插件 → bundle 详情页」的 plugins.bundle.config slot
+    // （host 契约：keyed，key = 组合包 npm 包名；列表页/摘要视图返回 null）。
+    // 旧注册一并保留，兼容 DSH < 0.1.7 的设置页入口。
+    slots.inject(THINK_BUNDLE_CONFIG_SLOT, () =>
+      slots.register(
+        {
+          name: THINK_BUNDLE_CONFIG_SLOT,
+          key: THINK_BUNDLE_PACKAGE,
+        },
+        ThinkBundleConfigView,
+      ),
+    )
     return undefined
   }, 'dsh-think-zh-expand: settings tab registration')
+}
+
+/** DSH >= 0.1.7 插件管理器的 bundle 详情页配置 slot（keyed by 组合包包名）。 */
+const THINK_BUNDLE_CONFIG_SLOT = 'plugins.bundle.config'
+
+/** bundle 详情页 slot 的 key：必须是本组合包的 npm 包名（与 package.json name 一致）。 */
+const THINK_BUNDLE_PACKAGE = 'dsh-think-zh-expand'
+
+/** bundle 详情页 slot 宿主实际传入的视图参数（契约：view: 'summary' | 'page'）。 */
+interface ThinkBundleConfigViewProps {
+  view?: string
+}
+
+/**
+ * bundle 详情页配置视图（issue #443）：
+ *  - `view === 'summary'` → 返回 null（摘要/列表页不渲染多余组件）；
+ *  - 其余（'page' / 缺省 / 老宿主不传 props）→ 复用设置页视图 ThinkSettingsView。
+ */
+function ThinkBundleConfigView(props?: ThinkBundleConfigViewProps): unknown {
+  if (props?.view === 'summary') return null
+  return ThinkSettingsView()
 }

@@ -113,12 +113,13 @@ assert.equal(typeof exportsObj.apply, 'function', 'apply 导出')
 
 /** 捕获设置页 tab 的 mock slots 服务（同时记录 conversation.chat.node 注册）。 */
 function makeSlots() {
-  const state = { tab: null, injected: [], chatNode: null }
+  const state = { tab: null, injected: [], chatNode: null, bundle: null }
   const slots = {
     inject: (name, register) => {
       state.injected.push(name)
       if (name === 'settings.plugins.tab') state.tab = register()
       if (name === 'conversation.chat.node') state.chatNode = register()
+      if (name === 'plugins.bundle.config') state.bundle = register()
       return () => {}
     },
     register: (options, component) => ({ options, component }),
@@ -272,6 +273,65 @@ test('渲染增强回归：设置页不影响 assistant-step 渲染器（核心�
     added.some((s) => s.attrs['data-dsh-think-zh-expand-settings'] === 'styles'),
     '设置页样式同批注入',
   )
+})
+
+test('issue #443：DSH >= 0.1.7 插件管理器 — 设置页挂到 plugins.bundle.config（keyed by 包名）', () => {
+  const { slots, state } = makeSlots()
+  exportsObj.apply(makeBootCtx({ slots }))
+  assert.ok(state.bundle, 'bundle 详情页配置 slot 已注册：' + JSON.stringify(state.injected))
+  assert.equal(state.bundle.options.name, 'plugins.bundle.config', '注册到新版插件管理器的 bundle 详情页 slot')
+  assert.equal(
+    state.bundle.options.key,
+    'dsh-think-zh-expand',
+    'keyed slot 的 key 必须是组合包的 npm 包名（宿主按包名派发）',
+  )
+  assert.equal(
+    state.bundle.options.key,
+    JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).name,
+    'key 与 package.json name 一致（改名后两端同步，防静默失联）',
+  )
+  assert.ok(
+    state.injected.includes('settings.plugins.tab'),
+    '旧版入口一并保留（兼容 DSH < 0.1.7）：' + JSON.stringify(state.injected),
+  )
+  assert.equal(typeof state.bundle.component, 'function', 'bundle 配置组件是函数')
+})
+
+test('issue #443：bundle 详情页视图 — page 复用设置页；summary 返回 null；缺省兼容', async () => {
+  const { slots, state } = makeSlots()
+  exportsObj.apply(makeBootCtx({ slots }))
+  stubFetch(() => jsonRes({ ok: true, value: { defaultExpanded: true } }))
+
+  // 视图组件内部走 useState/useEffect：这里模拟「重新挂载」清空 hook 记忆。
+  const renderBundle = (props) => {
+    hookState.length = 0
+    effectDeps.length = 0
+    resetHooks()
+    state.bundle.component(props)
+    return { nodes: collect(state.bundle.component(props)) }
+  }
+
+  assert.deepEqual(renderBundle({ view: 'summary' }).nodes, [], 'summary（列表/摘要）视图返回 null，不占位')
+  assert.ok(
+    findByClass(renderBundle({ view: 'page' }).nodes, 'dsh-think-zh-expand-settings'),
+    'page 视图渲染设置页视图',
+  )
+  assert.ok(
+    findByClass(renderBundle(undefined).nodes, 'dsh-think-zh-expand-settings'),
+    '缺省 view 也渲染设置页（老宿主兜底）',
+  )
+
+  // page 视图与 settings tab 是同一个视图组件：重新挂载后加载完成、开关可用。
+  hookState.length = 0
+  effectDeps.length = 0
+  resetHooks()
+  state.bundle.component({ view: 'page' }) // 首渲染「加载中…」并触发配置 GET
+  await flush()
+  resetHooks()
+  const loaded = collect(state.bundle.component({ view: 'page' }))
+  const toggle = findByClass(loaded, 'dsh-think-zh-expand-settings-toggle')
+  assert.ok(toggle, 'page 视图里开关行可用（复用同一份设置页实现）')
+  assert.equal(toggle.props['data-on'], 'true', '开关反映服务端配置值')
 })
 
 test('拿不到 slots 服务 / ctx.get（极简 ctx、老宿主）时设置页静默跳过，渲染链路照旧', () => {

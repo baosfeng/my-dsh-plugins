@@ -762,8 +762,30 @@ function attachSettingsTab(ctx) {
             // 惰性：宿主靠重注册跟随语言切换，这里每次取都按当前 navigator.language 判定。
             label: () => THINK_SETTINGS_STRINGS.tabLabel(),
         }, ThinkSettingsView));
+        // issue #443：DSH >= 0.1.7 的新版插件管理器不再有 settings.plugins.tab 的渲染
+        // 入口，设置页要挂到「插件 → bundle 详情页」的 plugins.bundle.config slot
+        // （host 契约：keyed，key = 组合包 npm 包名；列表页/摘要视图返回 null）。
+        // 旧注册一并保留，兼容 DSH < 0.1.7 的设置页入口。
+        slots.inject(THINK_BUNDLE_CONFIG_SLOT, () => slots.register({
+            name: THINK_BUNDLE_CONFIG_SLOT,
+            key: THINK_BUNDLE_PACKAGE,
+        }, ThinkBundleConfigView));
         return undefined;
     }, 'dsh-think-zh-expand: settings tab registration');
+}
+/** DSH >= 0.1.7 插件管理器的 bundle 详情页配置 slot（keyed by 组合包包名）。 */
+const THINK_BUNDLE_CONFIG_SLOT = 'plugins.bundle.config';
+/** bundle 详情页 slot 的 key：必须是本组合包的 npm 包名（与 package.json name 一致）。 */
+const THINK_BUNDLE_PACKAGE = 'dsh-think-zh-expand';
+/**
+ * bundle 详情页配置视图（issue #443）：
+ *  - `view === 'summary'` → 返回 null（摘要/列表页不渲染多余组件）；
+ *  - 其余（'page' / 缺省 / 老宿主不传 props）→ 复用设置页视图 ThinkSettingsView。
+ */
+function ThinkBundleConfigView(props) {
+    if (props?.view === 'summary')
+        return null;
+    return ThinkSettingsView();
 }
 
 
@@ -957,17 +979,28 @@ function renderBlocks(blocks, streaming, renderMessageImages) {
     }
     return rendered;
 }
-function AssistantStepView({ node, renderMessageImages }) {
+function AssistantStepView({ node, renderMessageImages, groupPart }) {
     const data = node && node.data ? node.data : null;
     if (!data || !Array.isArray(data.blocks))
         return null;
     const streaming = data.status === 'running';
     const interrupted = data.status === 'interrupted';
-    const rendered = renderBlocks(data.blocks, streaming, renderMessageImages);
+    // 同宿主语义（issue #444）：reasoning 组只留 reasoning、response 组只留非
+    // reasoning、其余分组（旧宿主）全量。
+    const blocks = groupPart === 'reasoning'
+        ? data.blocks.filter((block) => block && block.kind === 'reasoning')
+        : groupPart === 'response'
+            ? data.blocks.filter((block) => block && block.kind !== 'reasoning')
+            : data.blocks;
+    const rendered = renderBlocks(blocks, streaming, renderMessageImages);
     if (interrupted) {
         rendered.push((0, react_1.createElement)('span', { key: 'stopped', className: 'dsh-think-zh-expand-stopped' }, '已停止'));
     }
-    return (0, react_1.createElement)('div', { className: 'dsh-think-zh-expand-assistant', 'data-streaming': streaming || undefined }, (0, react_1.createElement)('div', { className: 'dsh-think-zh-expand-assistant-body' }, rendered));
+    return (0, react_1.createElement)('div', {
+        className: 'dsh-think-zh-expand-assistant',
+        'data-streaming': streaming || undefined,
+        'data-group-part': groupPart || 'full',
+    }, (0, react_1.createElement)('div', { className: 'dsh-think-zh-expand-assistant-body' }, rendered));
 }
 // ── 样式 ───────────────────────────────────────────────────────────
 const STYLES = `

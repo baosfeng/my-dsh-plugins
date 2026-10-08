@@ -174,6 +174,96 @@ try {
     'thinking content expanded',
   )
 
+  // ── issue #444：同一 assistant-step 被宿主按 groupPart 拆成两个分组渲染 ──
+  // 宿主 ui-chat 用 groupPart='reasoning' 的分组渲染 turn-process「已完成分析」
+  // 折叠内的思考、用 'response' 的分组渲染对话流里的正文。插件替换了
+  // assistant-step 渲染器，必须照宿主 AssistantMarkdown 的语义做块级过滤，
+  // 否则两个分组各自渲染完整 blocks → 同一条回答渲染两遍、正文进思考折叠块。
+  const mixedBlocks = [
+    { kind: 'reasoning', text: '分组思考内容' },
+    { kind: 'text', text: '分组正文内容' },
+  ]
+  const groupOf = (groupPart) => capturedRenderer({ node: { data: { blocks: mixedBlocks } }, groupPart })
+
+  // ① reasoning 分组：只有思考块（正文不得跟进「已完成分析」折叠）
+  const reasoningGroup = groupOf('reasoning')
+  const reasoningTexts = collectTexts(reasoningGroup)
+  assert.ok(
+    reasoningTexts.some((t) => t.includes('分组思考内容')),
+    'reasoning 分组渲染思考内容：' + JSON.stringify(reasoningTexts),
+  )
+  assert.ok(
+    !reasoningTexts.some((t) => t.includes('分组正文内容')),
+    'reasoning 分组必须跳过正文块（issue #444：正文被包进思考折叠块）：' + JSON.stringify(reasoningTexts),
+  )
+  const reasoningRoot = findClass(reasoningGroup, 'dsh-think-zh-expand-assistant')
+  assert.equal(reasoningRoot.props['data-group-part'], 'reasoning', '分组标记透出到根节点')
+
+  // ② response 分组：只有正文（思考不得重复出现在对话流）
+  const responseGroup = groupOf('response')
+  const responseTexts = collectTexts(responseGroup)
+  assert.ok(
+    responseTexts.some((t) => t.includes('分组正文内容')),
+    'response 分组渲染正文：' + JSON.stringify(responseTexts),
+  )
+  assert.ok(
+    !responseTexts.some((t) => t.includes('分组思考内容')),
+    'response 分组必须跳过 reasoning 块（issue #444：思考重复渲染）：' + JSON.stringify(responseTexts),
+  )
+  assert.equal(
+    findClass(responseGroup, 'dsh-think-zh-expand-assistant').props['data-group-part'],
+    'response',
+    '分组标记透出到根节点',
+  )
+
+  // ③ 两组同一条 data-step-key，块内容互不重叠、合起来不重复（无块丢失）
+  const bothParts = [...collectTexts(groupOf('reasoning')), ...collectTexts(groupOf('response'))]
+  assert.equal(
+    bothParts.filter((t) => t.includes('分组思考内容')).length,
+    1,
+    '思考内容在两组中合计恰好一次：' + JSON.stringify(bothParts),
+  )
+  assert.equal(
+    bothParts.filter((t) => t.includes('分组正文内容')).length,
+    1,
+    '正文内容在两组中合计恰好一次：' + JSON.stringify(bothParts),
+  )
+
+  // ④ 未拆分（旧宿主 / 无 groupPart）→ 全量渲染，行为与旧版一致
+  const fullGroup = groupOf(undefined)
+  const fullTexts = collectTexts(fullGroup)
+  assert.ok(
+    fullTexts.some((t) => t.includes('分组思考内容')) && fullTexts.some((t) => t.includes('分组正文内容')),
+    '无 groupPart（旧宿主）时渲染全部块：' + JSON.stringify(fullTexts),
+  )
+  assert.equal(
+    findClass(fullGroup, 'dsh-think-zh-expand-assistant').props['data-group-part'],
+    'full',
+    '未拆分分组的根标记为 full',
+  )
+
+  // ⑤ 边界：该分组过滤后为空 → 不崩、渲染空容器（不抛错、不误渲染另一组）
+  const emptyResponse = capturedRenderer({
+    node: { data: { blocks: [{ kind: 'reasoning', text: '只有思考' }] } },
+    groupPart: 'response',
+  })
+  const emptyTexts = collectTexts(emptyResponse)
+  assert.ok(
+    !emptyTexts.some((t) => t.includes('只有思考')),
+    'response 分组在只有思考时不渲染 thinking（边界）：' + JSON.stringify(emptyTexts),
+  )
+  assert.ok(findClass(emptyResponse, 'dsh-think-zh-expand-assistant-body'), '过滤后为空仍渲染容器（宿主分组占位不变）')
+  const emptyReasoning = capturedRenderer({
+    node: { data: { blocks: [{ kind: 'text', text: '只有正文' }] } },
+    groupPart: 'reasoning',
+  })
+  assert.ok(
+    !collectTexts(emptyReasoning).some((t) => t.includes('只有正文')),
+    'reasoning 分组在只有正文时不渲染正文（边界）',
+  )
+  assert.ok(Array.isArray(mixedBlocks), '原 blocks 数组未被就地修改（filter 不 mutate）')
+  assert.equal(mixedBlocks.length, 2, '原 blocks 长度不变：' + mixedBlocks.length)
+
   // 6. 渲染内核契约（issue #428）：本插件不再跨插件取渲染器。
   //    产物里没有 require('dsh-md-render')，也不声明 dsh.client.external；
   //    文本块与思考块一律交给宿主官方 baseline 组件

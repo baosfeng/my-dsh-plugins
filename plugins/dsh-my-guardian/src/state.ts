@@ -21,12 +21,9 @@ export const CRITICAL_EVENT_LIMIT = 40
 /** 高频噪音事件（entry-init/entry-dispose，一次整树卸载 = 每 entry 一条）的独立配额（#439）。 */
 export const NOISE_EVENT_LIMIT = 20
 
-/**
- * @deprecated #439 起事件缓冲**分级**，不再有单一上限：关键事件看
- * {@link CRITICAL_EVENT_LIMIT}、噪音看 {@link NOISE_EVENT_LIMIT}。保留此名字只为
- * 兼容旧引用，语义 = 关键事件配额。
- */
-export const EVENT_LIMIT = CRITICAL_EVENT_LIMIT
+// #439 起事件缓冲**分级**，不再有单一上限：关键事件看 CRITICAL_EVENT_LIMIT、
+// 噪音看 NOISE_EVENT_LIMIT。旧的单一上限名 EVENT_LIMIT 已整体移除（仓内零引用；
+// 保留同值别名会让 knip 判为重复导出，属死代码）。
 
 /** How many characters of an error message to keep in state. */
 export const ERROR_SNIP = 300
@@ -99,7 +96,7 @@ export interface DiagnosticEvent {
  * 判据是**显式登记噪音**而不是"登记关键"：未知/新增事件类型一律按关键处理，
  * 宁多留不暗丢 —— 反向登记的失效模式是新事件被静默降级成可丢噪音（最坏的那种错）。
  */
-export const NOISE_EVENT_TYPES: ReadonlySet<string> = new Set(['entry-init', 'entry-dispose'])
+const NOISE_EVENT_TYPES: ReadonlySet<string> = new Set(['entry-init', 'entry-dispose'])
 
 /** 该类型事件是否属于高频噪音（走独立小配额）。 */
 export function isNoiseEvent(type: string): boolean {

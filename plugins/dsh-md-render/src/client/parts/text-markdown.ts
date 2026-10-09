@@ -12,11 +12,10 @@
 // 切换」先例：宿主内容容器保持原位（只按视图隐藏），渲染容器与切换按钮
 // 追加在块内，视图状态写在块属性 data-dsh-md-render-text-view 上（每块
 // 独立、可来回切）。
-// 语言与源码来源（官方 DOM 契约，ui-primitives/src/markdown/CodeBlock.tsx:
-// 187-209）：块是 div.md-code-block；语言不在 DOM class 上（CodeBlock 用
-// banner 的 infostring 显示），从 React fiber 的 memoizedProps 读 lang/code
-// （与 dsh-md-render 旧版轨迹接管同一手法）；fiber 取不到时回退
-// code.language-xxx（官方空围栏分支与旧契约 DOM）→ banner 首个子元素文本。
+// 语言与源码来源（只用官方 DOM 契约，**不读 React fiber 私有属性**）：块是
+// div.md-code-block；语言取 code.language-xxx（官方空围栏分支与旧契约 DOM）→
+// banner（data-code-block-banner）首个子元素文本（CodeBlock 用它显示 infostring）。
+// 两者都取不到就不接管 —— 保持官方代码块形态（绝不猜语言）。
 // 流式口径沿用本插件既有策略（scanner.ts 的 [data-streaming] 门控 +
 // 属性移除触发兜底重扫）：流式中的块跳过，稳定后再渲染——不闪断、不重复
 // 挂载；幂等靠块上的签名（语言 + 长度 + djb2 哈希，哈希复用
@@ -37,43 +36,6 @@ const TEXT_TOGGLE_CLASS = 'dsh-md-render-text-toggle'
 const TEXT_VIEW_LABELS: Record<string, string> = { markdown: '查看原文', source: '查看渲染' }
 /** 单块渲染上限（字符）；超长块保持原代码块，避免单块渲染卡顿。 */
 const MAX_TEXT_FENCE_CHARS = 100000
-/** 沿 React fiber 向上找 CodeBlock props 的最大跳数（实测 1~3 跳）。 */
-const TEXT_FIBER_HOPS = 8
-
-/** React fiber 的最小结构契约（只读 memoizedProps）。 */
-interface FiberLike {
-  memoizedProps?: Record<string, unknown> | null
-  return?: unknown
-}
-
-/** 元素上的 React fiber 属性名（React 私有前缀，只读）。 */
-function fiberKeys(el: Element): string[] {
-  const keys = typeof Object.keys === 'function' ? Object.keys(el) : []
-  return keys.filter((key) => key.indexOf('__reactFiber$') === 0)
-}
-
-/** 沿一条 fiber 链向上找带 string `code` 的 props（CodeBlock 的 memoizedProps）。 */
-function fiberCodeBlockProps(start: unknown): { lang: string; code: string } | null {
-  let fiber = start as FiberLike | null
-  for (let hops = 0; fiber !== null && fiber !== undefined && hops < TEXT_FIBER_HOPS; hops += 1) {
-    const props = fiber.memoizedProps
-    if (props !== undefined && props !== null && typeof props.code === 'string') {
-      return { lang: typeof props.lang === 'string' ? props.lang.toLowerCase() : '', code: props.code }
-    }
-    fiber = (fiber.return ?? null) as FiberLike | null
-  }
-  return null
-}
-
-/** 从 React fiber 读官方 CodeBlock 的 { lang, code }（取不到返回 null）。 */
-function textFenceFiberProps(block: Element): { lang: string; code: string } | null {
-  for (const key of fiberKeys(block)) {
-    const found = fiberCodeBlockProps((block as unknown as Record<string, unknown>)[key])
-    if (found !== null) return found
-  }
-  return null
-}
-
 /** 官方空围栏 / 旧契约 DOM 的 code.language-xxx（无则 ''）。 */
 function textFenceClassLang(block: Element): string {
   const code = block.querySelector('code')
@@ -91,32 +53,37 @@ function textFenceBannerLang(block: Element): string {
     .toLowerCase()
 }
 
-/** 块的围栏语言（fiber → code class → banner；非 text/plaintext/txt → ''）。 */
-function textFenceLang(block: Element): { lang: string; code: string | null } {
-  const fiber = textFenceFiberProps(block)
-  const candidates = [fiber === null ? '' : fiber.lang, textFenceClassLang(block), textFenceBannerLang(block)]
+/** 块的围栏语言（code.language-* → banner infostring；非 text/plaintext/txt 的 → 空串）。
+ *
+ *  **不读 React fiber 私有属性**（__reactFiber$ / memoizedProps）：那是 React 内部实现，
+ *  宿主升级即静默失效。只用官方 DOM 契约的降级链 —— 官方空围栏分支的
+ *  code.language-xxx 与 CodeBlock banner 的 infostring。两者都取不到就不接管
+ *  （保持官方代码块形态），绝不猜语言。 */
+function textFenceLang(block: Element): { lang: string } {
+  const candidates = [textFenceClassLang(block), textFenceBannerLang(block)]
   const lang = candidates.find((value) => TEXT_FENCE_LANGS.includes(value)) ?? ''
-  return { lang, code: fiber === null ? null : fiber.code }
+  return { lang }
 }
 
-/** 块源码：fiber code（官方 display 语义：去掉一个尾部换行）优先，否则 DOM 文本。 */
-function textFenceSource(block: Element, code: string | null): string {
-  if (typeof code === 'string') return code.endsWith('\n') ? code.slice(0, -1) : code
-  const codeEl = block.querySelector('code')
-  return codeEl !== null ? (codeEl.textContent ?? '') : ''
+/** 块源码：官方 <pre> 的文本（官方 display 语义：去掉一个尾部换行）。 */
+function textFenceSource(block: Element): string {
+  const pre = block.querySelector('pre')
+  const text = pre !== null ? (pre.textContent ?? '') : ''
+  return text.endsWith('\n') ? text.slice(0, -1) : text
 }
 
 /** 取块的源码与签名素材（非目标语言 / 空内容 / 超长 → null）。 */
 function textFenceBody(block: Element): { lang: string; text: string } | null {
-  const { lang, code } = textFenceLang(block)
+  const { lang } = textFenceLang(block)
   if (lang === '') return null
-  const text = textFenceSource(block, code)
+  const text = textFenceSource(block)
   if (!text.trim() || text.length > MAX_TEXT_FENCE_CHARS) return null
   return { lang, text }
 }
 
-/** 块是否仍在流式消息里（祖先带 [data-streaming]，与 scanner.ts 同一口径）。 */
-function isStreamingBlock(block: Element): boolean {
+/** 块是否仍在流式消息里（祖先带 [data-streaming]，与 scanner 同一口径）。
+ *  名字带 TextFence 前缀：本文件与 mermaid-scan 片段共享 factory 作用域，重名会互相覆盖。 */
+function isTextFenceStreaming(block: Element): boolean {
   return !!(block.closest && block.closest('[data-streaming]'))
 }
 
@@ -164,9 +131,9 @@ function textToggleButton(block: Element, view: string): Element {
  * 或超长 / 签名未变 → 不动 DOM。
  */
 function applyTextMarkdown(block: Element): void {
-  if (!renderOptions.textFenceMarkdown) return
+  if (!renderOptions.markdown.textFenceMarkdown) return
   if (!officialMarkdownAvailable()) return
-  if (isStreamingBlock(block)) return
+  if (isTextFenceStreaming(block)) return
   // 本插件渲染容器内的块不再二次接管（嵌套 \`\`\`text 保持代码块形态，避免递归重建）。
   if (block.closest && block.closest('div.' + TEXT_MD_CLASS)) return
   const src = textFenceBody(block)

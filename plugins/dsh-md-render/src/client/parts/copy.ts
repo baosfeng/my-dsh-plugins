@@ -23,6 +23,7 @@ function fallbackCopyText(text: string): boolean {
   return ok
 }
 
+/** 复制文本：clipboard API 优先，失败回退 execCommand；失败 reject。 */
 function copyText(text: string): Promise<void> {
   if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
     return navigator.clipboard.writeText(text).catch(() => {
@@ -86,3 +87,6 @@ function CopyButton({ kind }: { kind: 'content' }): unknown {
     copied ? '已复制' : '复制',
   )
 }
+
+exports.copyText = copyText
+exports.fallbackCopyText = fallbackCopyText

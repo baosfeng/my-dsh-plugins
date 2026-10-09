@@ -586,9 +586,9 @@ export function releaseCommitPlan(succeeded, bumpType) {
   for (const { name, version, bumped } of succeeded) {
     files.add(`plugins/${name}/package.json`)
     files.add(`plugins/${name}/CHANGELOG.md`)
-    // 发版前功能级验证清单（issue #67 留痕）由 3c 阶段生成，必须随发版一起提交：
+    // 发版前人工自测清单（issue #67 留痕）由**用户本人**验证时填写，必须随发版一起提交：
     // 漏了它，清单就留在工作区**未跟踪**、最终丢失留痕（上一批 2 个插件的清单就是这么丢的）。
-    // 存在性由调用方过滤 —— 本函数是纯函数、不做 IO，且 --skip-real-verify 时不生成清单。
+    // 存在性由调用方过滤 —— 本函数是纯函数、不做 IO，且用户没写清单时该路径不存在。
     files.add(`verification/${name}-${version}.md`)
     messages.push(
       bumped
@@ -599,7 +599,7 @@ export function releaseCommitPlan(succeeded, bumpType) {
   return { files: [...files].sort(), messages }
 }
 
-// ── 发版目标版本口径（与 3c 清单名 / git tag 同源）─────────────────────────
+// ── 发版目标版本口径（与人工自测清单名 / git tag 同源）────────────────────
 
 /**
  * 解析本次发版的 bump 类型（纯函数）。
@@ -608,7 +608,7 @@ export function releaseCommitPlan(succeeded, bumpType) {
  * 会让不带 `--bump` 的 `--push` 变成「用当前版本再发一次」—— 实测事故：
  * 未传 `--bump` 的 `--push` 让 version 停在当前版本，tag `<name>@v<当前版本>` 已指向
  * 旧 commit → 发版被拒（`✗ tag 已存在…拒绝覆盖`）；若该 tag 不存在则更糟：同一版本被
- * 重复发布。同时 3c 的清单名会退化成「当前版本」，与历史口径（清单名 = 已发布版本：
+ * 重复发布。同时人工自测清单名会退化成「当前版本」，与历史口径（清单名 = 已发布版本：
  * `dsh-md-render-0.2.0.md` ↔ tag `v0.2.0`）矛盾。
  *
  * dry-run（无 `--push`）保持不 bump —— 与脚本头「dry-run by default」语义一致。
@@ -622,11 +622,14 @@ export function resolveBumpType({ bump = '', push = false } = {}) {
 }
 
 /**
- * 发版产物命名（纯函数）：**清单文件名与 git tag 必须共用同一个发版目标版本**。
+ * 发版产物命名（纯函数）：**人工自测清单名与 git tag 必须共用同一个发版目标版本**。
  *
  * 抽出来的价值：这两处过去各自拼一次 `${version}`，一旦口径漂移（清单用当前版本、
- * tag 用目标版本）只会在发版中途以 `tag 已存在` 或「清单未勾选」暴露，排查成本高。
+ * tag 用目标版本）只会在发版中途以 `tag 已存在` 暴露，排查成本高。
  * 现在两者由同一函数产出，单测可直接断言「清单名里的版本 == tag 里的版本」。
+ *
+ * checklistPath 是**人工自测清单**的约定命名（模板 verification/README.md）：清单由
+ * 用户本人手工验证时填写，3c 门禁把它打印在阻断提示里，--push 时若存在则随发版提交。
  *
  * @param {string} name 插件目录名（如 dsh-my-memory）
  * @param {string} version 发版目标版本（bump 后的 x.y.z）
@@ -639,38 +642,51 @@ export function releaseArtifactNames(name, version) {
   }
 }
 
+// ── 3c 人工自测确认的适用性判定（issue #67）─────────────────────────────────
+
 /**
- * 构造 3c（真实环境验证）的 verify-real-profile.mjs 命令行参数（纯函数）。
+ * 判定 3c「人工自测确认」门禁该走哪个分支（纯函数，**fail-closed**）。
  *
- * 为什么要抽出来：3c 的参数过去**内联在 spawn 调用里** —— 无法单测，新增参数极易漏接线
- * （`--enable-plugins` 就是这么漏掉的：子脚本支持了、门禁没透传，guardian 仍过不了 3c）。
- * 现在参数由本函数产出，单测可断言「未声明时不带该参数」「声明后透传」「声明别的插件不串味」，
- * release.mjs 只负责 spawn。
+ * 背景：真实环境 / 浏览器功能级验证由**用户本人**手工完成，仓库不再提供自动化 e2e /
+ * 真实浏览器测试。门禁不再起实例，只判定「用户是否显式声明已完成人工自测」。
  *
- * `--enable-plugins` 是**显式**声明（不按插件名自动加）：自动在副本内启用会把「该插件在
- * 生产配置里被故意禁用」这一事实静默抹掉，等于放宽门禁；显式声明要求发版者确认，
- * 且默认一个都不启用（fail-closed）。判据本身不放宽 —— 副本内启用后照样要走
- * 「entry 必须在组合配置中处于启用态」。
+ * 为什么抽成纯函数：这是**唯一**的发版人工验证闸口，判据必须可单测覆盖——否则
+ * 「默认放行」「某个豁免分支写宽了」这类退化只能等真发版时才发现（正是 fail-closed
+ * 能力最该防的假绿）。调用方（release.mjs）只负责把环境事实传进来 + 渲染提示。
  *
- * @param {{checklistPath: string, pluginName: string, version: string, port: number|string, addonDir: string, enablePlugins?: string[]}} input
- * @returns {string[]} argv（不含 node 可执行文件）
+ * fail-closed 语义：除下面显式列出的「不适用」情形外，**一律 block**。默认值
+ * （全 false）必须落到 block —— 任何新增调用点忘记传参都不会静默放行。
+ *
+ * @param {{
+ *   allChecks?: boolean, staticBlocked?: boolean, isCI?: boolean,
+ *   isPreset?: boolean, isLibrary?: boolean, confirmed?: boolean, presetReason?: string
+ * }} [input]
+ * @returns {{mode: 'block'|'confirmed'|'skip', note: string}} note 非空 = 跳过理由（打印留痕）
  */
-export function buildRealVerifyArgs({ checklistPath, pluginName, version, port, addonDir, enablePlugins = [] }) {
-  const args = [
-    'scripts/verify-real-profile.mjs',
-    '--addons',
-    addonDir,
-    '--port',
-    String(port),
-    '--checklist',
-    checklistPath,
-    '--plugin',
-    pluginName,
-    '--version',
-    version,
-    '--clean-externals',
-  ]
-  const enabled = (enablePlugins ?? []).filter((item) => item === pluginName)
-  if (enabled.length > 0) args.push('--enable-plugins', enabled.join(','))
-  return args
+export function resolveManualTestPlan({
+  allChecks = false,
+  staticBlocked = false,
+  isCI = false,
+  isPreset = false,
+  isLibrary = false,
+  confirmed = false,
+  presetReason = '',
+} = {}) {
+  // --all-checks 只做静态门禁全景（issue #227），不参与任何人工确认判定。
+  if (allChecks) return { mode: 'skip', note: '--all-checks：静态门禁全景模式' }
+  if (staticBlocked) return { mode: 'skip', note: '静态门禁未通过：本就发不出去' }
+  // release-auto workflow 由用户在工作流页面手动触发：人工自测发生在**本地发版前**，
+  // CI 里没有浏览器 / 真实 GUI，重复要求确认没有意义。
+  if (isCI) return { mode: 'skip', note: 'CI（release-auto）：人工自测由发版触发者在本地完成' }
+  if (isPreset) {
+    return {
+      mode: 'skip',
+      note: `${presetReason}：无 client 可验证面（声明行需要宿主 ≥ 0.1.7 提供 @deepseek-ai/dsh-agent-preset 才能激活）`,
+    }
+  }
+  // library 包（dsh.kind=library，如 dsh-shared）不是 profile bundle：无插件行、无 client，
+  // 浏览器侧无可验证面。验证职责由测试门禁（单测/覆盖率/eslint 全绿）覆盖。
+  if (isLibrary) return { mode: 'skip', note: '共享工具包（dsh.kind=library）非 bundle 插件：无 client 可验证面' }
+  if (confirmed) return { mode: 'confirmed', note: '' }
+  return { mode: 'block', note: '' }
 }

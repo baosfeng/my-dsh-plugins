@@ -35,6 +35,7 @@
  */
 import { readJsonBody, writeError, writeJson } from 'dsh-shared'
 import { findProjectRoot } from 'dsh-shared'
+import { routePrompts } from './prompts-route.js'
 import { DEFAULT_MAX_DESC_LENGTH, DEFAULT_MAX_ENTRY_LENGTH } from './memory-text.js'
 import { makeSource } from './memory-scoring.js'
 import type { StoreInstance, CandidateStoreInstance } from './memory-types.js'
@@ -66,6 +67,7 @@ export function createApiHandler({
   globalStore,
   getProjectStore,
   candidatesStore,
+  promptsStore,
   fence,
   sessions,
   config,
@@ -82,6 +84,7 @@ export function createApiHandler({
         globalStore,
         getProjectStore,
         candidatesStore,
+        promptsStore,
         sessions,
         config,
         logger,
@@ -97,8 +100,10 @@ async function routeRequest(
   url: URL,
   request: ServerRequest,
   response: ServerResponse,
-  { globalStore, getProjectStore, candidatesStore, sessions, config, logger }: RouteRequestParams,
+  { globalStore, getProjectStore, candidatesStore, promptsStore, sessions, config, logger }: RouteRequestParams,
 ): Promise<void> {
+  // 提示词是**独立端点**（不复用 /memory）；分派在自己的模块里，与记忆分支无耦合。
+  if (await routePrompts(url, request, response, { promptsStore, logger })) return
   if (await routeCandidates(url, request, response, { candidatesStore, globalStore, getProjectStore, logger })) return
   if (url.pathname.endsWith('/config') && request.method === 'GET') {
     handleConfig(config, response)

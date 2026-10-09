@@ -4,6 +4,7 @@
  * 定义 API 路由处理器相关的类型。
  */
 import type { MemoryStore, StoreInstance, CandidateStoreInstance } from './memory-types.js'
+import type { PromptStoreInstance } from './prompt-types.js'
 
 export type { MemoryStore, StoreInstance, CandidateStoreInstance }
 
@@ -56,6 +57,8 @@ export interface ApiHandlerParams {
   globalStore: StoreInstance
   getProjectStore: (cwd: string) => Promise<StoreInstance>
   candidatesStore: CandidateStoreInstance | null | undefined
+  /** 全局提示词 store（issue #465）：与记忆 store 并列但完全独立。 */
+  promptsStore: PromptStoreInstance
   fence: FenceFunction
   sessions?: SessionsService
   config?: ApiConfig
@@ -67,6 +70,7 @@ export interface RouteRequestParams {
   globalStore: StoreInstance
   getProjectStore: (cwd: string) => Promise<StoreInstance>
   candidatesStore: CandidateStoreInstance | null | undefined
+  promptsStore: PromptStoreInstance
   sessions?: SessionsService
   config?: ApiConfig
   logger?: LoggerService

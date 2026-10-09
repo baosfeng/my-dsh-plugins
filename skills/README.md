@@ -36,7 +36,7 @@ description: 一句话说明做什么、何时触发，以及重要的只读/写
 | [plugin-write](plugin-write/)                     | 新建 DSH 插件、包名命名校验与中央注册表冲突查询             |
 | [plugin-test](plugin-test/)                       | 按变更选择测试层级，覆盖真实组合与发布产物                  |
 | [plugin-release](plugin-release/)                 | 打包、发布与分发：发布轨选择、门禁与回滚                    |
-| [verifying-dsh-plugins](verifying-dsh-plugins/)   | 发版前功能级验证：隔离实例 + 真实浏览器/真实模型            |
+| [verifying-dsh-plugins](verifying-dsh-plugins/)   | 人工自测指引：隔离实例起停 + 浏览器走查 + 收尾清理（用户本人做） |
 | [dsh-github-triage](dsh-github-triage/)           | issue / PR / CI / 安全告警处理 + 需求登记 + fork 池隔离     |
 | [plugin-runtime-debug](plugin-runtime-debug/)     | 对照宿主源码契约排查 Web 插件运行时故障                     |
 | [resource-budget-review](resource-budget-review/) | 持续运行逻辑的磁盘/CPU/内存/网络/存量五维预算评审           |

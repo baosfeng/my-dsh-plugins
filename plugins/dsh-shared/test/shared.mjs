@@ -76,9 +76,45 @@ test('config-store: extractConfig tolerates spacing variants after colon', () =>
   const text = ['- id: a', '  config:', '    k1: v1', '    k2:v2', '    k3:   v3', '    k4:', '    k5:   '].join('\n')
   assert.deepEqual(
     extractConfig(text, 'a'),
-    { k1: 'v1', k2: 'v2', k3: 'v3' },
-    'spacing variants parse identically; empty values are skipped',
+    { k1: 'v1', k2: 'v2', k3: 'v3', k4: {}, k5: {} },
+    'spacing variants parse identically; empty values with no deeper indent → empty nested block',
   )
+})
+
+test('config-store: extractConfig parses nested config blocks (namespace sections)', () => {
+  // 嵌套支持（纯增量，issue #463 需要）：值为空 + 后续行缩进更深 → 子对象；
+  // 扁平键与嵌套段**混写**都要能读回来（合并后的 md-render 依赖这一点）。
+  const text = [
+    '- id: a',
+    '  config:',
+    '    copyButton: true',
+    '    markdown:',
+    '      textFenceMarkdown: false',
+    '      contextMarkdown: true',
+    '    thinking:',
+    '      defaultExpanded: false',
+    '    mermaid:',
+    '      injectPrompt: true',
+  ].join('\n')
+  assert.deepEqual(
+    extractConfig(text, 'a'),
+    {
+      copyButton: true,
+      markdown: { textFenceMarkdown: false, contextMarkdown: true },
+      thinking: { defaultExpanded: false },
+      mermaid: { injectPrompt: true },
+    },
+    'flat keys and nested sections parse side by side',
+  )
+})
+
+test('config-store: nested config round-trips through writePatchConfig', async () => {
+  const dir = tempDir()
+  const file = join(dir, 'cordis.patch.yml')
+  writeFileSync(file, '', 'utf8')
+  const config = { markdown: { copyButton: false }, thinking: { defaultExpanded: true } }
+  await writePatchConfig(file, 'nested', config)
+  assert.deepEqual(extractConfig(readFileSync(file, 'utf8'), 'nested'), config, 'nested write → read round-trip')
 })
 
 test('config-store: extractConfig returns undefined when config block is absent', () => {
@@ -97,7 +133,7 @@ test('config-store: yaml scalar round-trips null/object/numbers/quoted strings',
   const dir = tempDir()
   const file = join(dir, 'cordis.patch.yml')
   writeFileSync(file, '', 'utf8')
-  // YAML 子集实际行为：null/对象 → 'null' 文本 → 读回真实 null；
+  // YAML 子集实际行为：null → 'null' 文本 → 读回真实 null；嵌套对象 → 缩进子块 → 读回对象；
   // 单引号转义 round-trip；双引号内容视作裸字符（无语义）。
   await writePatchConfig(file, 't', {
     nul: null,
@@ -113,7 +149,7 @@ test('config-store: yaml scalar round-trips null/object/numbers/quoted strings',
     extractConfig(readFileSync(file, 'utf8'), 't'),
     {
       nul: null,
-      obj: null,
+      obj: { nested: true },
       int: 42,
       neg: -3.5,
       yes: true,
@@ -121,7 +157,7 @@ test('config-store: yaml scalar round-trips null/object/numbers/quoted strings',
       double: '"dq"',
       arr: [1, 'a', false],
     },
-    'scalar kinds parse as expected; null/object collapse to real null (documented subset)',
+    'scalar kinds parse as expected; null stays null, nested objects round-trip',
   )
 })
 

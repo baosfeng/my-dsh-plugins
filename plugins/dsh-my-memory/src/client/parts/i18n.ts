@@ -137,6 +137,36 @@ const strings = {
     isZh() ? '允许后写入记忆 · 记忆绝不静默变更' : 'Writes the memory on allow · memories never change silently',
   askNoteDelete: (): string =>
     isZh() ? '删除不可撤销 · 记忆绝不静默变更' : 'Deletion is irreversible · memories never change silently',
+  // ── issue #465 全局提示词（与记忆并列但完全隔离）──
+  promptsSection: (): string => (isZh() ? '全局提示词' : 'Global prompts'),
+  promptsNote: (): string =>
+    isZh()
+      ? '每轮组装时**全量按序**注入系统提示（启用即注入、停用即不注入；不参与记忆的评分与条数上限）——存于 $DSH_HOME/memory/prompts.json'
+      : 'Every enabled prompt is injected into the system prompt in full order each turn (disabled = not injected; never scored or capped by the memory limits) — stored in $DSH_HOME/memory/prompts.json',
+  promptsEmpty: (): string => (isZh() ? '暂无提示词' : 'No prompts yet'),
+  promptsEmptyHint: (): string => (isZh() ? '在下方新增第一条全局提示词' : 'Add your first global prompt below'),
+  promptsAddPlaceholder: (): string => (isZh() ? '提示词标题（如：中文思考）' : 'Prompt title (e.g. Think in Chinese)'),
+  promptsTextPlaceholder: (): string =>
+    isZh() ? '提示词正文（将完整注入系统提示）' : 'Prompt body (injected in full into the system prompt)',
+  promptsAddInputAria: (): string => (isZh() ? '新增提示词标题' : 'New prompt title'),
+  promptsTextInputAria: (): string => (isZh() ? '新增提示词正文' : 'New prompt body'),
+  promptEnabled: (): string => (isZh() ? '已启用' : 'Enabled'),
+  promptDisabled: (): string => (isZh() ? '已停用' : 'Disabled'),
+  promptToggleOn: (): string => (isZh() ? '启用' : 'Enable'),
+  promptToggleOff: (): string => (isZh() ? '停用' : 'Disable'),
+  promptMoveUp: (): string => (isZh() ? '上移' : 'Move up'),
+  promptMoveDown: (): string => (isZh() ? '下移' : 'Move down'),
+  promptBuiltin: (): string => (isZh() ? '内置' : 'Builtin'),
+  promptHint: (): string =>
+    isZh()
+      ? '启用的提示词全量按序注入，不评分不截断'
+      : 'Enabled prompts are injected in full order — never scored, never truncated',
+  confirmAddPrompt: (): string => (isZh() ? '确认新增这条提示词？' : 'Add this prompt?'),
+  confirmUpdatePrompt: (): string => (isZh() ? '确认保存这条提示词的修改？' : 'Save this prompt change?'),
+  confirmDeletePrompt: (): string =>
+    isZh() ? '确定删除这条提示词？此操作不可撤销。' : 'Delete this prompt? This cannot be undone.',
+  promptCount: (n: number): string => (isZh() ? `${n} 条` : `${n}`),
+  promptOrderBadge: (n: number): string => (isZh() ? `顺序 ${n}` : `Order ${n}`),
 }
 
 // 导出给其他 part 文件使用

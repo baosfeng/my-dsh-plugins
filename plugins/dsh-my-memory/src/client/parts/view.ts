@@ -34,52 +34,24 @@ function fetchAll(cwd: string): Promise<MemoryData> {
   return Promise.all([globalP, projectP]).then(([global, project]) => ({ global, project }))
 }
 
-function mergeScope(data: MemoryData, scope: string, value: Required<MemoryValue>): MemoryData {
-  return scope === 'global' ? { ...data, global: value } : { ...data, project: value }
+/** 同一 cwd 的在飞请求（模块级：跨渲染共享，面板重复挂载/重渲染不会重复请求记忆端点）。 */
+const inflightMemory = new Map<string, Promise<MemoryData>>()
+
+/** 取一次记忆；同 cwd 已有在飞请求则复用（幂等读）。 */
+function fetchMemoryOnce(cwd: string): Promise<MemoryData> {
+  const existing = inflightMemory.get(cwd)
+  if (existing !== undefined) return existing
+  const promise = fetchAll(cwd)
+  inflightMemory.set(cwd, promise)
+  const clear = (): void => {
+    if (inflightMemory.get(cwd) === promise) inflightMemory.delete(cwd)
+  }
+  promise.then(clear).catch(clear)
+  return promise
 }
 
-/** Data actions bound to the state setters; error: null | 'load' | 'save'. */
-function createActions({
-  setData,
-  setLoading,
-  setError,
-  setSaved,
-  setCandidates,
-  setCandidateBusy,
-}: {
-  setData: React.Dispatch<React.SetStateAction<MemoryData | null>>
-  setLoading: React.Dispatch<React.SetStateAction<boolean>>
-  setError: React.Dispatch<React.SetStateAction<'load' | 'save' | null>>
-  setSaved: React.Dispatch<React.SetStateAction<boolean>>
-  setCandidates: React.Dispatch<React.SetStateAction<MemoryItem[]>>
-  setCandidateBusy: React.Dispatch<React.SetStateAction<boolean>>
-}) {
-  const applyValue = (value: MemoryData) => {
-    setData(value)
-    setLoading(false)
-  }
-  const refreshWith = (fetcher: (cwd: string) => Promise<MemoryData>, cwd: string) => {
-    setLoading(true)
-    setError(null)
-    setSaved(false)
-    fetcher(cwd)
-      .then(applyValue)
-      .catch(() => {
-        setLoading(false)
-        setError('load')
-      })
-  }
-  const loadCandidates = () => {
-    fetchCandidates()
-      .then((items) => setCandidates(items))
-      .catch(() => setCandidates([]))
-  }
-  const run = (cwd: string) => refreshWith(fetchAll, cwd)
-  const refreshCandidates = () => {
-    setCandidateBusy(false)
-    loadCandidates()
-  }
-  return { load: run, refresh: run, loadCandidates, refreshCandidates }
+function mergeScope(data: MemoryData, scope: string, value: Required<MemoryValue>): MemoryData {
+  return scope === 'global' ? { ...data, global: value } : { ...data, project: value }
 }
 
 /** 候选确认 / 拒弃处理器（issue #78）：写入/丢弃都要用户显式动作（服务端强制 confirmed），成功后刷新候选与分区。 */
@@ -156,6 +128,9 @@ function MemoryView(): ReactNode {
   const [candidateBusy, setCandidateBusy] = useState(false)
   const actions = createActions({ setData, setLoading, setError, setSaved, setCandidates, setCandidateBusy })
 
+  // 空依赖数组 = 只在挂载时拉一次配置 / 会话 cwd / 记忆 / 候选（React 挂载语义；
+  // 这里刻意不把 actions 放进依赖：它是每次渲染新建的闭包对象，放进依赖会导致
+  // 每次渲染都重新拉取记忆端点）。
   useEffect(() => {
     // 面板打开拉取引导配置（issue #105；失败回落默认值），再解析 cwd 加载记忆（issue #104）。
     fetchConfig()
@@ -409,6 +384,8 @@ function Sections({
   onConfirmCandidate: (id: string) => void
   onDismissCandidate: (id: string) => void
 }): ReactNode {
+  // 提示词分区状态（独立于记忆状态机；hook 必须在组件顶层调用，故提到根视图）。
+  const promptsProps = usePromptsBlockProps()
   const blockProps = {
     drafts,
     editing,
@@ -443,6 +420,9 @@ function Sections({
       data: data.project,
       ...blockProps,
     }),
+    // 全局提示词（issue #465）：独立分区 + 独立状态源（/my-memory/api/prompts），
+    // 与记忆的 data/drafts/editing/confirming 状态机零耦合（各自的 hook 与数据流）。
+    createElement(PromptsBlock, { key: 'prompts', ...promptsProps }),
     createElement(CandidatesBlock, {
       candidates,
       busy: candidateBusy,

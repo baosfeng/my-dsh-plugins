@@ -10,9 +10,9 @@
  *   共享件"顺带膨胀"会被放大 11 倍。而 CI 不跑构建、也不量体积，所以必须独立设卡。
  *
  * 门禁范围（issue #322 的**范围修正**）：
- *   只查 `plugins/*\/lib/client.js` 会漏掉真正的 99% —— 14 个 client 产物合计仅
- *   924 KB（最大 md-render 152.5 KB），而 `dsh-mermaid-render/assets/mermaid-10.9.3.min.js`
- *   单个就 3.18 MB（该插件 `npm pack` unpacked 3.44 MB，引擎占 92%）。因此本脚本扫描
+ *   只查 `plugins/*\/lib/client.js` 会漏掉真正的 99% —— 各 client 产物合计不到 1 MB，而
+ *   `dsh-md-render/assets/mermaid-10.9.3.min.js` 单个就 3.34 MB（`npm pack` unpacked
+ *   约 3.6 MB，引擎占 92%）。因此本脚本扫描
  *   **每个插件的完整发布面**，且以 `package.json` 的 `files` 字段为唯一权威（`assets/` 等目录
  *   是否随包发布完全由它决定）：
  *     · `files` 里的目录被递归展开，逐文件量体积；

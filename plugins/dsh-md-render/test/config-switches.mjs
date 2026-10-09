@@ -2,7 +2,7 @@
  * 保留增强功能的开关（copyButton / textFenceMarkdown / contextMarkdown）。
  *
  * 判据：默认全开；只接受布尔值（非法值 / 未知键忽略，不覆盖默认）；保存后热生效
- * （setRenderOptions 立即影响渲染）；启动时经 GET /md/api/config 拉取真实配置，
+ * （setRenderOptions 立即影响渲染）；启动时经 GET /md-render/api/config 拉取真实配置，
  * 拉取失败保持默认全开（不阻塞能力）。已下线的旧开关（syntaxHighlight /
  * mathStructures / tableSort / codeTheme …）不再存在——迁移说明见 README。
  */
@@ -19,7 +19,11 @@ import {
   makeElement,
 } from './support/fake-dom.mjs'
 
-const KEYS = ['copyButton', 'textFenceMarkdown', 'contextMarkdown']
+const DEFAULTS = {
+  markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+  thinking: { defaultExpanded: true },
+  mermaid: { injectPrompt: true, render: true },
+}
 
 function load() {
   const page = installGlobals(createPage())
@@ -29,23 +33,32 @@ function load() {
   return { page, loaded, stack }
 }
 
-test('默认开关恰好三项且全开', () => {
+test('默认配置三段命名空间且全开', () => {
   const { loaded } = load()
-  assert.deepEqual(Object.keys(loaded.exports.DEFAULT_RENDER_OPTIONS).sort(), [...KEYS].sort(), '只保留三个开关')
-  for (const key of KEYS) assert.equal(loaded.exports.DEFAULT_RENDER_OPTIONS[key], true, key + ' 默认开启')
+  assert.deepEqual(loaded.exports.DEFAULT_RENDER_OPTIONS, DEFAULTS, '三段默认值')
 })
 
-test('pickRenderOptions 只接受布尔值，非法值 / 未知键忽略', () => {
+test('readConfig 只接受布尔值，非法值 / 未知键忽略', () => {
   const { loaded } = load()
-  const picked = loaded.exports.pickRenderOptions({
-    copyButton: false,
-    textFenceMarkdown: 'yes',
-    contextMarkdown: true,
-    syntaxHighlight: false,
-    codeTheme: 'nord',
+  const read = loaded.exports.readConfig({
+    markdown: { copyButton: false, textFenceMarkdown: 'yes', syntaxHighlight: false },
+    thinking: { defaultExpanded: false, bogus: 1 },
+    mermaid: { render: false },
   })
-  assert.deepEqual(picked, { copyButton: false, contextMarkdown: true }, '只取合法布尔值')
-  assert.deepEqual(loaded.exports.pickRenderOptions(undefined), {}, '缺省不覆盖默认')
+  assert.equal(read.markdown.copyButton, false, 'copyButton 关')
+  assert.equal(read.markdown.textFenceMarkdown, true, '非布尔保持默认')
+  assert.equal(read.thinking.defaultExpanded, false, 'thinking 关')
+  assert.equal(read.mermaid.render, false, 'mermaid.render 关')
+  assert.equal(read.mermaid.injectPrompt, true, 'missing key keeps default')
+  assert.equal('syntaxHighlight' in read.markdown, false, 'unknown keys ignored')
+})
+
+test('readConfig：旧扁平键读兼容（用户 profile 已落盘）', () => {
+  const { loaded } = load()
+  const read = loaded.exports.readConfig({ copyButton: false, defaultExpanded: false, injectPrompt: false })
+  assert.equal(read.markdown.copyButton, false, 'legacy flat copyButton honoured')
+  assert.equal(read.thinking.defaultExpanded, false, 'legacy flat defaultExpanded honoured')
+  assert.equal(read.mermaid.injectPrompt, false, 'legacy flat injectPrompt honoured')
 })
 
 test('开关热生效：关闭后不再注入，恢复后重新注入', () => {

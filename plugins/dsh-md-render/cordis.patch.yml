@@ -1,13 +1,20 @@
-# dsh-md-render bundle patch: inserts the plugin row into the profile
-# roster. The row mounts the (empty) host half; the client half enhances
-# official markdown renderer where the host still renders plain text
-# (text/plaintext/txt fences, pre[data-context-text] context bodies), plus the
-# unified MarkdownView + whole-content copy button. Install with:
+# dsh-md-render bundle patch: inserts the plugin row into the profile roster.
+# The row mounts the host half (config routes /md-render/api/config + mermaid engine
+# assets route /md-render/assets + mermaid capability system-prompt section); the
+# client half renders markdown content only — official markdown where the host still
+# renders plain text (text/plaintext/txt fences, pre[data-context-text] context
+# bodies), mermaid/mmd code blocks as diagram cards, thinking rows expanded by
+# default via a dispatched official click — plus whole-content copy, the unified
+# MarkdownView export and the single "渲染" settings tab. Everything else keeps the
+# official look. Install with:
 #
 #   git clone https://github.com/baosfeng/my-dsh-plugins.git
 #   dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 #
 # NOTE: after install, restart `dsh web` so the bundle layer composes.
+# 升级自 dsh-think-zh-expand / dsh-mermaid-render 的用户：请从 profile roster 里删掉
+# `- id: think-zh-expand` 与 `- id: mermaid-render` 两行（旧包已下线，残留会让
+# loader 指向不存在的包）。
 - insert:
     - id: md-render
       name: 'dsh-md-render'

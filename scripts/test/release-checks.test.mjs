@@ -6,7 +6,8 @@
  * isNpmNotFound / findUnpublishedDeps / checkClientExternals / listClientExternals /
  * isBaselineModule /
  * collectClientSources / collectServerSources /
- * buildPluginIndex / findFreePort / inspectTagState / tagConflictHint，
+ * buildPluginIndex / findFreePort / inspectTagState / tagConflictHint /
+ * resolveManualTestPlan（3c 人工自测确认，fail-closed），
  * 外加 workflow 插件清单一致性（防漂移：release-auto.yml options + ci.yml matrix）。
  */
 import { describe, it, expect, afterAll } from 'vitest'
@@ -36,7 +37,7 @@ import {
   releaseCommitPlan,
   resolveBumpType,
   releaseArtifactNames,
-  buildRealVerifyArgs,
+  resolveManualTestPlan,
 } from '../lib/release-checks.mjs'
 
 // ── 发版目标版本口径（防回归：清单名必须等于本次要发布的版本）────────────
@@ -72,46 +73,99 @@ describe('发版目标版本口径', () => {
   })
 })
 
-// ── 3c 透传 --enable-plugins（显式声明，默认不启用）────────────────────────
-describe('3c 透传 --enable-plugins', () => {
-  const base = {
-    checklistPath: 'verification/dsh-my-observability-0.3.5.md',
-    pluginName: 'dsh-my-observability',
-    version: '0.3.5',
-    port: 3087,
-    addonDir: 'plugins/dsh-my-observability',
-  }
-
-  it('① 未声明时**不带**该参数 → 被生产禁用的插件照样被 3c 拦下（判据不变）', () => {
-    const args = buildRealVerifyArgs(base)
-    expect(args).not.toContain('--enable-plugins')
-    expect(args).toContain('--clean-externals')
-    expect(args).toContain('--addons')
-    expect(args).toContain('plugins/dsh-my-observability')
+// ── 3c 人工自测确认（fail-closed：未确认即阻断，不静默跳过）──────────────
+/**
+ * 背景：真实环境 / 浏览器功能级验证由**用户本人**手工完成，仓库不再保留任何自动化
+ * e2e / 真实浏览器测试。3c 因此不再起隔离实例，只判定「用户是否显式声明已完成人工
+ * 自测」（`--confirm-manual-tested`）。
+ *
+ * 这是**唯一**的发版人工验证闸口，必须防两种退化：
+ *   ① 默认放行（忘记传 confirmed 就通过）—— 等于把「没人验证过」当「验证通过」；
+ *   ② 新增豁免分支写宽了（把该验证的插件也 skip 掉）。
+ */
+describe('3c 人工自测确认判定（resolveManualTestPlan）', () => {
+  it('① 默认（无任何入参）→ **block**（fail-closed：忘传参不会静默放行）', () => {
+    expect(resolveManualTestPlan().mode).toBe('block')
+    expect(resolveManualTestPlan({}).mode).toBe('block')
+    expect(resolveManualTestPlan().note).toBe('')
   })
 
-  it('② 声明后透传该插件名（值紧跟在 flag 之后）', () => {
-    const args = buildRealVerifyArgs({ ...base, enablePlugins: ['dsh-my-observability'] })
-    expect(args).toContain('--enable-plugins')
-    expect(args[args.indexOf('--enable-plugins') + 1]).toBe('dsh-my-observability')
+  it('② 未确认（confirmed 缺省 false）→ block；显式确认 → confirmed', () => {
+    expect(resolveManualTestPlan({ confirmed: false }).mode).toBe('block')
+    expect(resolveManualTestPlan({ confirmed: true }).mode).toBe('confirmed')
   })
 
-  it('③ 声明的是别的插件 → 本插件不带该参数（批量发版不串味）', () => {
-    const args = buildRealVerifyArgs({ ...base, enablePlugins: ['dsh-my-memory'] })
-    expect(args).not.toContain('--enable-plugins')
+  it('③ --all-checks（静态全景）→ skip 且带理由', () => {
+    const plan = resolveManualTestPlan({ allChecks: true, confirmed: true })
+    expect(plan.mode).toBe('skip')
+    expect(plan.note).toContain('--all-checks')
   })
 
-  it('④ 参数契约不变：脚本入口、--addons / --port / --version 取值照旧', () => {
-    const args = buildRealVerifyArgs(base)
-    expect(args.slice(0, 2)).toEqual(['scripts/verify-real-profile.mjs', '--addons'])
-    expect(args[args.indexOf('--port') + 1]).toBe('3087')
-    expect(args[args.indexOf('--version') + 1]).toBe('0.3.5')
+  it('④ 静态门禁未通过 → skip（本就发不出去，不必再要求人工确认）', () => {
+    const plan = resolveManualTestPlan({ staticBlocked: true })
+    expect(plan.mode).toBe('skip')
+    expect(plan.note).toContain('静态门禁')
   })
 
-  it('⑤ 脚本接线：release.mjs 必须用纯函数构造 3c 参数（旧内联数组必须退场）', () => {
+  it('⑤ CI（release-auto）→ skip 且带理由；本地不受影响', () => {
+    const plan = resolveManualTestPlan({ isCI: true })
+    expect(plan.mode).toBe('skip')
+    expect(plan.note).toContain('CI')
+    // CI 豁免不得外溢到本地：同一入参下 isCI=false 仍是 block
+    expect(resolveManualTestPlan({ isCI: false }).mode).toBe('block')
+  })
+
+  it('⑥ library / preset 形态 → skip 且各自带理由（无 client 可验证面）', () => {
+    const lib = resolveManualTestPlan({ isLibrary: true })
+    expect(lib.mode).toBe('skip')
+    expect(lib.note).toContain('library')
+
+    const preset = resolveManualTestPlan({ isPreset: true, presetReason: 'agent preset 声明包' })
+    expect(preset.mode).toBe('skip')
+    expect(preset.note).toContain('agent preset 声明包')
+
+    // 豁免只对**对应形态**生效：library 豁免不得让普通 bundle 插件也跳过
+    expect(resolveManualTestPlan({ isLibrary: false, isPreset: false }).mode).toBe('block')
+  })
+
+  it('⑦ 脚本接线：release.mjs 用纯函数判定 + 只认 --confirm-manual-tested', () => {
     const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'release.mjs'), 'utf8')
-    expect(script).toContain('buildRealVerifyArgs({')
-    // 同样不断言"源码里没有 --clean-externals 字面量"——契约由纯函数用例①保证。
+    expect(script).toContain('resolveManualTestPlan({')
+    expect(script).toContain("args.includes('--confirm-manual-tested')")
+    // 旧的「静默跳过」通道必须退场：带理由的 --skip-real-verify 与无理由的 env 旁路
+    expect(script).not.toContain('--skip-real-verify')
+    expect(script).not.toContain('DSH_SKIP_REAL_VERIFY')
+    // 已删除的真实实例脚本不得再被接线
+    expect(script).not.toContain('verify-real-profile')
+  })
+
+  it('⑧ 阻断提示可操作：给出人工自测清单路径与放行标志', () => {
+    const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'release.mjs'), 'utf8')
+    expect(script).toContain('releaseArtifactNames(name, version).checklistPath')
+    expect(script).toContain('verification/README.md')
+    expect(script).toContain('--confirm-manual-tested 重新发版')
+  })
+})
+
+// ── 用法错误（退出码 2）：新标志不得被当成插件名 ───────────────────────────
+describe('release.mjs 用法（--confirm-manual-tested）', () => {
+  const run = (args) =>
+    spawnSync(process.execPath, [fileURLToPath(new URL('../release.mjs', import.meta.url)), ...args], {
+      encoding: 'utf8',
+      timeout: 30_000,
+    })
+
+  it('无参数 → exit 2 且用法串包含新标志（旧标志不再出现在用法里）', () => {
+    const r = run([])
+    expect(r.status).toBe(2)
+    expect(r.stderr).toContain('--confirm-manual-tested')
+    expect(r.stderr).not.toContain('--skip-real-verify')
+  })
+
+  it('只给 --confirm-manual-tested → 仍视为「没有插件名」→ exit 2', () => {
+    const r = run(['--confirm-manual-tested'])
+    expect(r.status).toBe(2)
+    expect(r.stderr).toContain('usage: node scripts/release.mjs')
   })
 })
 

@@ -1,18 +1,14 @@
-// ── 扫描器：MutationObserver 跟随流式渲染 ──────────────────────────
-// 精简后只保留两个真增量注入点（官方已内置表格 / 公式 / 代码块能力，
-// DOM 层不再做任何渲染接管）：
-//  - 上下文注入块（pre[data-context-text]，宿主 ContextBody 的纯文本渲染
-//    —— 子 agent 消息 / AGENTS.md 注入等）走 context-markdown 的渲染；
-//  - text / plaintext / txt 围栏块走 text-markdown 的渲染 + 每块「查看原文」
-//    切换。
-// 流式门控 / 幂等标记都在各自模块内（scanner 只负责枚举与调用）。
-function scanNode(seen: Set<Node>, node: Node): void {
-  if (!node || typeof (node as Element).querySelectorAll !== 'function') return
-  const el = node as Element
-  if (typeof el.matches === 'function' && el.matches(CONTEXT_TEXT_SELECTOR)) applyContextMarkdown(el)
-  scanContextBlocks(el)
-  scanTextBlocks(el)
-}
+// ── 扫描器：**单一** MutationObserver，按语言分流 ────────────────────────
+// 合并前 dsh-md-render 与 dsh-mermaid-render 各装一个 MutationObserver（同一条 body
+// 被两路观察）；合并后收敛为**一个**（issue #463 决策 2），扫描顺序固定：
+//
+//   1. 思考行（think）—— 只看新增节点内的官方折叠行，最轻；
+//   2. 上下文注入块（pre[data-context-text]）；
+//   3. text / plaintext / txt 围栏块；
+//   4. mermaid / mmd 围栏块 —— 必须最后（它会给块写视图标记，与 3 的判定互斥，
+//      语言集合不重叠；放最后保证「先按语言分流、再决定接管者」的顺序稳定）。
+//
+// 各注入点自身幂等（签名 / WeakSet / mounts Map），scanner 只负责枚举与调用。
 
 /** 共享 DOM 扫描骨架（dsh-shared/client-parts/dom-scanner.part.js，构建期拼接）。 */
 declare function installDomScanner(options: {
@@ -22,15 +18,28 @@ declare function installDomScanner(options: {
   onTeardown?: () => void
 }): () => void
 
-/** 观察 body；返回观察器 disposer。
- *  骨架（观察配置 / 批次轮次 / disposer）来自共享 part（与 dsh-mermaid-render
- *  同一份），本插件的特有策略全部留在 scanNode 内；seen 集合保留给调用方
- *  语义（宿主重渲染后新节点仍会被处理）。 */
+/** 扫描单个节点（含自身）内的全部注入点。 */
+function scanNode(node: Node, round: number): void {
+  if (!node || typeof (node as Element).querySelectorAll !== 'function') return
+  // 悬挂 root 清扫：宿主重渲染把我们的容器抹掉时，对应的 React root 必须卸载
+  // （否则 root + fiber 树一直活着）。放在最前，先释放再重建。
+  sweepDetachedRoots()
+  const el = node as Element
+  applyThinkExpand(el)
+  if (typeof el.matches === 'function' && el.matches(CONTEXT_TEXT_SELECTOR)) applyContextMarkdown(el)
+  scanContextBlocks(el)
+  scanTextBlocks(el)
+  scanMermaidBlocks(el, round)
+}
+
+/** 观察 body；返回观察器 disposer（骨架负责观察配置 / 批次轮次 / disposer）。 */
 function installScanner(): () => void {
-  const seen = new Set<Node>()
   return installDomScanner({
-    scan: (node) => scanNode(seen, node),
+    scan: (node, round) => scanNode(node, round),
     // 兜底重扫目标：会话滚动容器（流式结束后内容补全，不一定以 addedNodes 出现）。
     rescanSelectors: ['[data-conversation-scroll]'],
+    onTeardown: () => teardownMermaid(),
   })
 }
+
+exports.installScanner = installScanner

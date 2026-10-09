@@ -26,7 +26,7 @@ on:
         # 不会出现「清单漏项、页面上选不到插件」的漂移（dsh-my-opencode-session-header
         # 历史上就漏过一次，防漂移测试见 scripts/test/release-checks.test.mjs）。
         # dsh-shared 是共享库（package.json dsh.kind=library）：release.mjs 对其有
-        # 专门豁免（cordis peer / 效果图 / 真实环境验证），支持发版，故在允许值内。
+        # 专门豁免（cordis peer / 效果图 / 人工自测确认），支持发版，故在允许值内。
         # 注意：dsh-notify / dsh-guardian 已改名 dsh-my-notify / dsh-my-observability
         # （撞名统一 dsh-my-* 前缀，见 release.yml 注释），旧名不再存在。
         #

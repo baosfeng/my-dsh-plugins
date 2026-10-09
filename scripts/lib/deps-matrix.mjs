@@ -144,7 +144,7 @@ export const DEP_POLICY = [
     tier: 'B',
     blocked: false,
     source: 'internal',
-    reason: '仓库内包：dsh-think-zh-expand 以 peer 依赖它，升级需协同发版',
+    reason: '仓库内包：dsh-md-render 声明对它的依赖，升级需协同发版',
     verify: '同上',
   },
   {

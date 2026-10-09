@@ -38,7 +38,7 @@ describe('样式注入走共享实现', () => {
   it('产物调用共享 installStyles（设置页自有样式表仍保留）', () => {
     const artifact = read('lib/client.js')
     expect(artifact.includes('installStyles(ctx,')).toBe(true)
-    expect(styleTagCount(artifact)).toBe(2)
+    expect(styleTagCount(artifact)).toBe(1)
   })
 })
 
@@ -100,9 +100,9 @@ describe('不再自实现 markdown 渲染（精简的判据）', () => {
     expect(read('lib/client.js').includes("require('@deepseek-ai/dsh-client-ui-primitives')")).toBe(true)
   })
 
-  it('产物不再内联共享图标片段（已无图标使用，不再是 icons.part.js 消费方）', () => {
+  it('产物内联共享图标片段（mermaid 卡片消费 icon 集）', () => {
     const artifact = read('lib/client.js')
-    expect(artifact.includes(ICONS_PART), '精简后产物不应再含 icons.part.js 片段').toBe(false)
-    expect(countOf(artifact, 'ICON_STROKE')).toBe(0)
+    expect(artifact.includes(ICONS_PART), 'mermaid 卡片需要共享图标集').toBe(true)
+    expect(countOf(artifact, 'ICON_STROKE')).toBe(2)
   })
 })

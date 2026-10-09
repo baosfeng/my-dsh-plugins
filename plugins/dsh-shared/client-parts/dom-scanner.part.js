@@ -1,15 +1,15 @@
 // ── shared DOM scanner skeleton (dsh-shared/client-parts) ──
-// 单一来源（issue #186 P2）：dsh-md-render（parts/scanner.ts：表格增强 + #196
-// 上下文块接管 + #205 轨迹视图接管）与 dsh-mermaid-render（client/index.ts：
-// mermaid 卡片挂载 / 流式闭合判定）各自的 MutationObserver 骨架结构等价，收口到这里。
+// 单一来源（issue #186 P2）：渲染类插件各自的 MutationObserver 骨架结构等价，收口到这里。
+// 当前唯一消费者是 dsh-md-render（parts/scanner.ts：思考行 / 上下文块 / text 围栏 /
+// mermaid 卡片分流；原 dsh-think-zh-expand、dsh-mermaid-render 已合并进它）。
 //
 // 共享的只是**骨架**：观察 body、把新增元素与兜底重扫目标交给插件的 scan 回调、
 // 维护批次轮次、返回 disposer。各插件的特有策略全部留在 scan 回调里（本 issue
 // 的一条硬约束：共享化不得削掉 #185/#195/#196/#205 的任何行为）：
-//  - dsh-md-render：流式内容门控（[data-streaming] 祖先跳过）、幂等 seen 集合、
-//    上下文注入块 / 轨迹视图接管、宿主契约不匹配时的静默降级；
-//  - dsh-mermaid-render：围栏闭合判定（settleStream）、离屏渲染、自愈卸载，
-//    以及 teardown 时清理挂载表 / 流式观察表（经 onTeardown 注入）。
+//  - dsh-md-render：流式内容门控（[data-streaming] 祖先跳过）、幂等签名 / WeakSet、
+//    上下文注入块与 text 围栏块接管、宿主契约不匹配时的静默降级、mermaid 卡片挂载
+//    （围栏闭合判定 settleStream / 离屏渲染 / 自愈卸载），以及 teardown 时清理挂载表
+//    与流式观察表（经 onTeardown 注入）。
 /**
  * 观察 body 的 DOM 变更（子节点 + data-streaming 属性），把新增元素与兜底重扫
  * 目标交给 scan 回调；返回 disposer。

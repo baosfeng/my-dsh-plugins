@@ -6,13 +6,25 @@
     "complexity": 10
   },
   "files": {
-    "plugins/dsh-mermaid-render/src/client/index.ts": {
-      "lines": 880,
-      "functions": {}
-    },
     "plugins/dsh-my-memory/src/api-route.ts": {
-      "lines": 405,
-      "functions": {}
+      "lines": 410,
+      "functions": {
+        "routeRequest": {
+          "line": 99,
+          "lines": 27,
+          "complexity": 11
+        }
+      }
+    },
+    "plugins/dsh-my-memory/src/client/parts/prompts.ts": {
+      "lines": 346,
+      "functions": {
+        "PromptsBlock": {
+          "line": 221,
+          "lines": 98,
+          "complexity": 9
+        }
+      }
     },
     "plugins/dsh-my-memory/src/client/parts/view-rows.ts": {
       "lines": 389,
@@ -25,7 +37,7 @@
       }
     },
     "plugins/dsh-my-memory/src/client/parts/view.ts": {
-      "lines": 543,
+      "lines": 548,
       "functions": {
         "renderRoot": {
           "line": 205,
@@ -34,33 +46,48 @@
         },
         "Sections": {
           "line": 367,
-          "lines": 90,
+          "lines": 95,
           "complexity": 2
         },
         "SectionBlock": {
-          "line": 459,
+          "line": 464,
           "lines": 83,
           "complexity": 9
         }
       }
     },
     "plugins/dsh-my-memory/src/index.ts": {
-      "lines": 364,
+      "lines": 401,
       "functions": {
         "extractUserText": {
-          "line": 135,
+          "line": 141,
           "lines": 11,
           "complexity": 11
         },
         "<anonymous>#6": {
-          "line": 246,
+          "line": 252,
           "lines": 12,
           "complexity": 11
+        },
+        "apply": {
+          "line": 266,
+          "lines": 99,
+          "complexity": 6
+        }
+      }
+    },
+    "plugins/dsh-my-memory/src/prompts-route.ts": {
+      "lines": 182,
+      "functions": {
+        "applyPromptUpdate": {
+          "line": 126,
+          "lines": 17,
+          "complexity": 12
         }
       }
     },
     "plugins/dsh-my-memory/src/store.ts": {
-      "lines": 424,
+      "lines": 428,
       "functions": {}
     },
     "plugins/dsh-my-notify/src/webhook/pusher.ts": {
@@ -91,6 +118,16 @@
     "plugins/dsh-my-skill-manager/src/client/parts/view.ts": {
       "lines": 481,
       "functions": {}
+    },
+    "plugins/dsh-shared/src/config-store.ts": {
+      "lines": 213,
+      "functions": {
+        "parseConfigBlock": {
+          "line": 78,
+          "lines": 27,
+          "complexity": 11
+        }
+      }
     },
     "plugins/dsh-task-reliability/src/client/parts/settings.ts": {
       "lines": 352,

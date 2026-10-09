@@ -1,5 +1,5 @@
 /**
- * 构建期占位符注入辅助（共享单一来源，issue #186 P2 从 dsh-mermaid-render 收口）：
+ * 构建期占位符注入辅助（共享单一来源，issue #186 P2 从渲染类插件收口）：
  * 消费方是各插件的 `scripts/build.mjs`（Node ESM，可直接 import —— 与
  * `client-parts/` 的 client 片段不同，本文件不进浏览器 bundle）。
  *

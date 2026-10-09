@@ -27,7 +27,7 @@ useDefault = true
 
 # 1. 本机 DSH 实例的 loopback 启动 token（43 字符，`dsh web` 启动时随机生成，
 #    只对 127.0.0.1 的本机实例有效）。两处样本：
-#      · scripts/test/verify-profile.test.mjs:679 —— 「实测的健康就绪行」夹具（issue #305）
+#      · scripts/test/verify-profile.test.mjs:679（该测试文件已删除，值仍在历史提交中）—— 「实测的健康就绪行」夹具（issue #305）
 #      · 插件启动测试报告.md:144（历史提交中所含）—— 浏览器测试步骤里的本机 URL
 #    注意：**不含**任何服务凭据；这两个值泄漏
 #    只能用于访问提交者自己机器上的 127.0.0.1 实例，进过公开仓库后也不构成凭据风险。
@@ -39,11 +39,12 @@ regexes = [
   '''token=Fz0X5jwLN_ZXGxRoW-wXS9Sr3hbF-uxo3zavNP3RgPQ''',
 ]
 
-# 2. scripts/test/verify-profile.test.mjs 里刻意编造的**假** token（issue #305 用例：
+# 2. 已删除的 scripts/test/verify-profile.test.mjs 里刻意编造的**假** token（issue #305 用例：
 #    「就绪行 token 短于 40 字符 → 判未就绪」）。值本身就是 abc123DEF456ghi 这种
-#    一眼假的占位串，不是任何真实 token 的脱敏形式。
+#    一眼假的占位串，不是任何真实 token 的脱敏形式。文件虽已删除，值仍在历史提交中，
+#    而 secret 扫描默认覆盖全历史 → 豁免保留。
 [[allowlists]]
-description = "verify-profile 测试夹具里的自造占位 token（abc123DEF456ghi）"
+description = "已删除的 verify-profile 测试夹具里的自造占位 token（abc123DEF456ghi）"
 regexTarget = "match"
 regexes = [
   '''token=abc123DEF456ghi''',

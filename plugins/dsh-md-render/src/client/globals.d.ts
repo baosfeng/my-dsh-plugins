@@ -19,6 +19,12 @@ declare namespace React {
   }
 }
 
+// ── 路由路径（构建期由 host 半 src/routes/paths.ts 注入到 factory 作用域）──
+// scripts/build.mjs 把 lib/routes/paths.js 的 clientRouteDeclarations() 拼到
+// lib/client.src.js 的 __ROUTE_PATHS__ 占位符处 → 两侧路径同一真源。
+declare const CONFIG_API_URL: string
+declare const MERMAID_ENGINE_URL: string
+
 // ── 同步模块加载器（factory 参数；平台 seed 模块见 official-view.ts）──────
 declare function require(spec: string): Record<string, unknown>
 

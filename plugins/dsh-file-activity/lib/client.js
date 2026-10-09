@@ -662,7 +662,7 @@ const icon = {
       size,
     ),
   // 代码（issue #54 阶段 1 新增）：尖括号 `</>`，预览/代码切换的代码视图
-  // 图标（dsh-mermaid-render 卡片），stroke=currentColor 风格与其余图标一致。
+  // 代码图标（预览 / 代码切换的代码视图），stroke=currentColor 风格与其余图标一致。
   code: (size = 16) =>
     iconSvg(
       [
@@ -671,8 +671,8 @@ const icon = {
       ],
       size,
     ),
-  // 下载（issue #85 新增）：箭头入托盘，图表导出按钮（dsh-mermaid-render
-  // 卡片下载 PNG/SVG），stroke=currentColor 风格与其余图标一致。
+  // 下载（issue #85 新增）：箭头入托盘，mermaid 卡片导出 PNG/SVG 用，
+  // stroke=currentColor 风格与其余图标一致。
   download: (size = 16) =>
     iconSvg(
       [
@@ -682,8 +682,8 @@ const icon = {
       ],
       size,
     ),
-  // 复制（issue #85 新增）：双层矩形，复制源码按钮（dsh-mermaid-render
-  // 卡片复制代码），stroke=currentColor 风格与其余图标一致。
+  // 复制（issue #85 新增）：双层矩形，mermaid 卡片复制源码用，
+  // stroke=currentColor 风格与其余图标一致。
   copy: (size = 16) =>
     iconSvg(
       [

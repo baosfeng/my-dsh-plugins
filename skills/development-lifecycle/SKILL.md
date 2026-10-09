@@ -16,9 +16,9 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 | 0   | 需求登记   | 口头想法 → 规范 issue（背景/方案/验收）              | `dsh-github-triage`（需求登记节）                                                                      | 有 issue 编号 + 可勾选验收标准                      |
 | 1   | 确认与拆解 | 定位模块与相关 issue、定验收标准、定影响面、拆子任务 | 本 skill + `dsh-plugin-development`                                                                    | issue 验收标准明确；影响面（改哪些插件/文档）清楚   |
 | 2   | 开发       | 先写失败测试（RED）→ 最简实现（GREEN）→ 重构         | `.reasonix/skills/testing-standards` · `coding-standards` · `quality-gates` · `dsh-plugin-development` | RED 记录可见 + `cd plugins/<name> && npm test` 全绿 |
-| 3   | 验证       | 选测试层级 → 全量校验 → 隔离实例 + 真实浏览器/模型   | `plugin-test` + `verifying-dsh-plugins`                                                                | issue 验收标准逐条回归 + 功能级验证清单可勾选       |
+| 3   | 验证       | 选测试层级 → 全量校验 →（真实环境自测由用户本人做）  | `plugin-test` + `verifying-dsh-plugins`                                                                | issue 验收标准逐条回归                              |
 | 4   | 提交       | 提交信息规范 + 提交前本地校验                        | `.reasonix/skills/commit-standards`                                                                    | `node scripts/verify-local.mjs --fast` 通过         |
-| 5   | 发版       | bump + CHANGELOG + 门禁 + tag/Release/npm            | `skills/plugin-release/` + `node scripts/release.mjs`                                                  | #67 功能级清单 `verification/<插件>-<版本>.md` 全勾 |
+| 5   | 发版       | bump + CHANGELOG + 门禁 + tag/Release/npm            | `skills/plugin-release/` + `node scripts/release.mjs`                                                  | 3c 人工自测确认（`--confirm-manual-tested`）       |
 | 6   | 文档       | README / docs 索引 / CHANGELOG 同步                  | `docs/开发指南/文档规范.md`                                                                            | `node scripts/check-docs.mjs` 退出 0                |
 | 7   | 收尾       | 清理验证残留 + 本地实例生效 + 汇报证据               | `verifying-dsh-plugins`（步骤 4）                                                                      | 无残留进程/目录/端口；`job_list` 无 running         |
 
@@ -41,7 +41,7 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
 | 插件形态、目录结构、client bundle 格式、命名规范             | `dsh-plugin-development`（仓库内插件）· `plugin-write`（外部插件/命名注册表）            |
 | TDD：先写失败测试，亲眼看到 RED 再写实现                     | `.reasonix/skills/testing-standards/SKILL.md`                                            |
-| 交付质量门禁（覆盖率/复杂度/大小/依赖/变异/防复发/真实环境） | `quality-gates` skill + `.reasonix/skills/quality-gates/SKILL.md`（阈值以该 skill 为准） |
+| 交付质量门禁（覆盖率/复杂度/大小/依赖/变异/防复发） | `quality-gates` skill + `.reasonix/skills/quality-gates/SKILL.md`（阈值以该 skill 为准） |
 | 编码、注释、异常处理                                         | `.reasonix/skills/coding-standards/SKILL.md`                                             |
 | 工程原则、错误日志规范、发布检查清单                         | `.reasonix/skills/engineering-standards/SKILL.md`                                        |
 | 持久化 / 事件监听 / 轮询 / 后台任务                          | `skills/resource-budget-review/`（五维资源预算未评估不得声称完成）                       |
@@ -57,15 +57,13 @@ cd plugins/<name> && npm test                  # 单插件冒烟（CI 同款）
 node scripts/verify-local.mjs --fast           # 提交/push 前快速通道（pre-push 同款，按变更裁剪）
 npm run verify                                 # CI 等价全量（= --full，默认 20 项检查）
 npm run check:gate-parity                      # 本地 ↔ CI 门禁覆盖一致性（缺口逐条列出，issue #330）
-node scripts/verify-real-profile.mjs --addons plugins/<name> [--api-path /<插件>/api/xxx]
-node scripts/verify-real-profile.mjs --skip    # 只做配置组合检查（不启动实例，快）
 ```
 
 - **门禁清单的机器可读事实源**：`scripts/lib/gate-registry.mjs`（改门禁前先读它）；一致性用 `npm run check:gate-parity` 校验。
 
 - **选最小充分层级**：`plugin-test` skill（单测 / 覆盖率 / 真实 API e2e / 快照 / Web / 真实组合 / 打包产物冒烟）。
-- **真实环境（issue #39）**：`verify-real-profile.mjs` 复刻生产配置组合 + 独立端口启动 + API 冒烟 + 自动清理；`duplicate loader entry id` 这类炸弹只在这一层暴露，全新实例测不出。
-- **功能级（issue #67）**：发版前必须在隔离实例 + 真实浏览器（或真实模型调用）里把核心功能完整走通一次 → `verifying-dsh-plugins`（起实例、fetch 探针对照组/实验组、client UI 验收、清理）。
+- **真实环境 / 浏览器（人工，由用户本人做）**：仓库**不保留**自动化 e2e / 真实浏览器测试。发版前由**用户本人**起隔离实例（复刻生产配置组合）+ 真实浏览器走通核心功能；`duplicate loader entry id` 这类配置组合炸弹只在这一层暴露，全新实例测不出。
+- **功能级自测指引**：起停隔离实例、禁用位与工作区前置、浏览器走查表、收尾清理 → `verifying-dsh-plugins`；清单模板与 3c 门禁口径 → `verification/README.md`。agent 只提供步骤，不代跑、不新增自动化。
 - **需求回归（强制）**：对照对应 issue 的验收标准 + 插件测试逐条验证（跑测试 + 手动验证受影响条目），确认无回归才能提交。
 
 ## 4. 提交
@@ -81,7 +79,7 @@ node scripts/verify-real-profile.mjs --skip    # 只做配置组合检查（不�
 node scripts/release.mjs <插件名> --bump patch --push    # bump + CHANGELOG + 同步文档 + tag + push
 node scripts/release.mjs <插件名> --bump patch           # dry-run（不带 --push 只校验不提交）
 node scripts/release.mjs a b --bump patch --push         # 批量（统一 bump，独立校验、一次提交、顺序打 tag）
-node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md   # 单独校验功能级清单
+node scripts/release.mjs <插件名> --bump patch --push --confirm-manual-tested  # 已人工自测后发版
 ```
 
 `release.mjs` 门禁（任一失败即阻断）：
@@ -92,11 +90,9 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 | 依赖            | `peerDependencies.cordis` 已声明；跨插件依赖已声明 + 已发布 + 已打 tag（**依赖先发版、依赖方后发版**）         |
 | 截图            | README 引用的效果图真实存在（UI 变更必须重新截图）                                                             |
 | CHANGELOG       | 有当前版本段                                                                                                   |
-| 真实环境（#39） | 自动跑 `verify-real-profile.mjs --addons`，失败阻断                                                            |
-| 功能级（#67）   | 校验 `verification/<插件>-<版本>.md` 的核心功能 / 易碎场景 / client UI / 插件联动 / 环境清理全部勾选，缺一阻断 |
+| 人工自测确认    | 3c：未带 `--confirm-manual-tested` 即阻断（fail-closed，不静默跳过）；清单模板见 `verification/README.md`        |
 
-- ⚠️ **清单文件名版本 = bump 后的 next 版本**（当前 `package.json` 版本 +1）；手动预验证时 `--version` 必须对齐，否则已勾选项读不到。
-- 跳过真实环境验证必须写理由：`--skip-real-verify --skip-reason "<理由>"`（无理由 exit 1）。
+- 人工自测清单建议命名为 `verification/<插件>-<版本>.md`（版本 = 本次发版目标版本）；`--push` 时若该文件存在会随发版提交留痕。
 - semver 语义、发布通道、踩坑 → `docs/开发指南/发版流程.md`；发布轨选择、打包、语义门禁、回滚 → `skills/plugin-release/SKILL.md`。
 - 新功能 / 新插件推荐加**盲测子 agent**（不了解实现的独立上下文）以真实用户视角验收。
 
@@ -115,7 +111,7 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 ## 7. 收尾
 
 - **清理验证残留（强制）**：停隔离实例 → 删 `/tmp/dsh-verify-*` → 复查目录/进程/端口 → 关验证浏览器；四步命令见 `verifying-dsh-plugins`「步骤 4：收尾清理」。多 agent 并行时残留会互相干扰。
-- **发版 ≠ 交付完成**：重启本机 `dsh web` 让新版本生效，并冒烟（配置组合无重复 / HTTP 200 / 启动日志无 error / 变更插件 API 200 / GUI 入口可见）——见 `docs/开发指南/构建与测试.md`「发布后本地更新与验证」；**冒烟属真实环境验证，按 `docs/开发指南/leader行为规范.md` 第二 / 四节派发取证**。
+- **发版 ≠ 交付完成**：重启本机 `dsh web` 让新版本生效，并冒烟（配置组合无重复 / HTTP 200 / 启动日志无 error / 变更插件 API 200 / GUI 入口可见）——见 `docs/开发指南/构建与测试.md`「发布后本地更新与验证」。**冒烟属真实环境验证：用户本人手工做（或由用户确认后再汇报）**。
 - **汇报留证据**：命令与退出码、验证清单路径、未验证项与环境限制（没跑过的不要写成通过）。
 
 ## 情形速查
@@ -126,7 +122,7 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 | 修 BUG / 安全告警 / CI 失败 / PR 健康 | `dsh-github-triage`（`[需求]` 类 issue 不走它）        |
 | 新建插件（形态 / 命名 / 骨架）        | `dsh-plugin-development` + `plugin-write`              |
 | 不知道该跑哪个测试层级                | `plugin-test`                                          |
-| 要真实浏览器 / 真实模型证明           | `verifying-dsh-plugins`                                |
+| 要真实浏览器 / 真实模型证明（用户自测） | `verifying-dsh-plugins`（人工步骤）                   |
 | 发版 / 打包 / 发布轨                  | `skills/plugin-release/` + `docs/开发指南/发版流程.md` |
 | 升级 DSH 宿主版本 / 两版本间审计      | `skills/plugin-upgrade/`                               |
 
@@ -135,9 +131,9 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 | 反模式                                   | 后果 / 正确做法                                        |
 | ---------------------------------------- | ------------------------------------------------------ |
 | 没 issue 就开写                          | 无法验收、无回归基准 → 先走阶段 0/1                    |
-| 只跑单测就说"功能可用"                   | 真实环境门禁不过 → 隔离实例 + 浏览器/真实模型验证      |
+| 只跑单测就说"功能可用"                   | 真实环境验证归用户本人 → agent 不得声称已验证          |
 | 覆盖率达标就以为测住了                   | 变异分数不过 = 测试无效 → 两项都要过                   |
-| 功能级清单留空、或用错版本号文件名就发版 | `release.mjs` 3c 阻断 → 按 bump 后版本对齐文件名并勾选 |
+| 没人工自测就想发版                       | `release.mjs` 3c 阻断（不静默跳过）→ 自测后加 `--confirm-manual-tested` |
 | 发版后不重启 `dsh web` 就汇报"已交付"    | `link:` 安装不重启不生效                               |
 | 验证残留不清理                           | 干扰并行开发与其他 agent 的验证                        |
 | 在本 skill 里重抄 owner skill 的细节     | 双份规则必然漂移 → 只写"门禁 + 找谁"                   |
@@ -150,14 +146,14 @@ node scripts/verify-real-profile.mjs --check verification/<插件>-<版本>.md  
 | `skills/dsh-github-triage/SKILL.md`                                                              | 需求登记（issue 模板、防重复、验收标准）                           |
 | `skills/dsh-plugin-development/SKILL.md`                                                         | 插件形态/目录结构/开发流程                                         |
 | `skills/plugin-test/SKILL.md`                                                                    | 测试层级选择                                                       |
-| `skills/verifying-dsh-plugins/SKILL.md`                                                          | #67 功能级验证与收尾清理                                           |
+| `skills/verifying-dsh-plugins/SKILL.md`                                                          | 人工自测步骤与收尾清理                                             |
 | `skills/plugin-release/SKILL.md`                                                                 | 发布轨、打包、语义门禁、回滚                                       |
 | `docs/官方文档/索引.md`                                                                          | 官方 docs 分类导航（**与官方冲突时以官方 docs + 本机运行包为准**） |
 | `.reasonix/skills/quality-gates/SKILL.md`                                                        | 交付质量门禁（强制）                                               |
 | `.reasonix/skills/testing-standards/SKILL.md`                                                    | TDD Red→Green→Refactor                                             |
 | `.reasonix/skills/commit-standards/SKILL.md`                                                     | 提交信息格式与确认流程                                             |
 | `.reasonix/skills/coding-standards/SKILL.md` · `.reasonix/skills/engineering-standards/SKILL.md` | 代码规范 · 工程规范                                                |
-| `docs/开发指南/构建与测试.md`                                                                    | verify-local、真实环境验证、需求回归                               |
+| `docs/开发指南/构建与测试.md`                                                                    | verify-local、需求回归                                             |
 | `docs/开发指南/发版流程.md`                                                                      | semver、发布通道、踩坑                                             |
 | `docs/开发指南/文档规范.md`                                                                      | 文档与 AGENTS.md 规范                                              |
 | `docs/踩坑/README.md`                                                                            | 已知踩坑（防复发输入）                                             |

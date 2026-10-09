@@ -119,6 +119,66 @@ function dismissCandidate(id: string): Promise<MemoryValue> {
     })
 }
 
+// ── 全局提示词（issue #465）：独立端点 /my-memory/api/prompts，不复用 /memory ──
+
+/** 提示词条目类型 */
+interface PromptItem {
+  id: string
+  title: string
+  text: string
+  enabled: boolean
+  order: number
+  builtin?: string
+  createdAt?: number
+  updatedAt?: number
+}
+
+/** 提示词响应值类型 */
+interface PromptsValue {
+  items?: PromptItem[]
+  item?: PromptItem | null
+}
+
+/** One GET/POST prompts payload into { items, item }. */
+function normalizePrompts(value: PromptsValue): { items: PromptItem[]; item: PromptItem | null } {
+  return {
+    items: Array.isArray(value?.items) ? value.items : [],
+    item: value?.item ?? null,
+  }
+}
+
+/** GET /my-memory/api/prompts → all prompts (order asc; global only). */
+function fetchPrompts(): Promise<PromptItem[]> {
+  return fetch(`${API_BASE}/prompts`)
+    .then((res) => res.json())
+    .then((body: ApiResponse<PromptsValue>) => {
+      if (body === null || body.ok !== true) throw new Error('bad prompts response')
+      return normalizePrompts(body.value).items
+    })
+}
+
+/** POST /my-memory/api/prompts — add/update/delete/toggle/reorder, gated on
+ *  the user-consent marker (the server refuses any write without it). */
+function writePrompt(payload: {
+  action: 'add' | 'update' | 'delete' | 'toggle' | 'reorder'
+  id?: string
+  title?: string
+  text?: string
+  enabled?: boolean
+  direction?: 'up' | 'down'
+}): Promise<{ items: PromptItem[]; item: PromptItem | null }> {
+  return fetch(`${API_BASE}/prompts`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...payload, confirmed: true }),
+  })
+    .then((res) => res.json())
+    .then((body: ApiResponse<PromptsValue>) => {
+      if (body === null || body.ok !== true) throw new Error('prompt write failed')
+      return normalizePrompts(body.value)
+    })
+}
+
 /** Current session id from localStorage ('dsh.sessions.current' → { sessionId }). */
 function currentSessionId(): string {
   try {

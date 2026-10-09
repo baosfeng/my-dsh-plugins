@@ -16,7 +16,7 @@ function MarkdownView({ text }: { text: string }): unknown {
     { className: 'tzx-md' },
     officialMarkdownNode(source),
     // 整段复制按钮（copyButton 关闭 → 不渲染）；官方只有代码块复制。
-    renderOptions.copyButton ? createElement(CopyButton, { kind: 'content' }) : null,
+    renderOptions.markdown.copyButton ? createElement(CopyButton, { kind: 'content' }) : null,
   )
 }
 

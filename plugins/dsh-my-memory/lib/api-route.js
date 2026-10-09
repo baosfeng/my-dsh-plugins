@@ -35,6 +35,7 @@
  */
 import { readJsonBody, writeError, writeJson } from 'dsh-shared';
 import { findProjectRoot } from 'dsh-shared';
+import { routePrompts } from './prompts-route.js';
 import { DEFAULT_MAX_DESC_LENGTH, DEFAULT_MAX_ENTRY_LENGTH } from './memory-text.js';
 import { makeSource } from './memory-scoring.js';
 /** The cwd query parameter, normalized to undefined when absent. */
@@ -42,7 +43,7 @@ function cwdOf(url) {
     const cwd = url.searchParams.get('cwd') ?? '';
     return cwd !== '' ? cwd : undefined;
 }
-export function createApiHandler({ globalStore, getProjectStore, candidatesStore, fence, sessions, config, logger, }) {
+export function createApiHandler({ globalStore, getProjectStore, candidatesStore, promptsStore, fence, sessions, config, logger, }) {
     return async (request, response) => {
         if (!fence(request)) {
             writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } });
@@ -54,6 +55,7 @@ export function createApiHandler({ globalStore, getProjectStore, candidatesStore
                 globalStore,
                 getProjectStore,
                 candidatesStore,
+                promptsStore,
                 sessions,
                 config,
                 logger,
@@ -65,7 +67,10 @@ export function createApiHandler({ globalStore, getProjectStore, candidatesStore
     };
 }
 /** Dispatch one request to the matching handler by path + method. */
-async function routeRequest(url, request, response, { globalStore, getProjectStore, candidatesStore, sessions, config, logger }) {
+async function routeRequest(url, request, response, { globalStore, getProjectStore, candidatesStore, promptsStore, sessions, config, logger }) {
+    // 提示词是**独立端点**（不复用 /memory）；分派在自己的模块里，与记忆分支无耦合。
+    if (await routePrompts(url, request, response, { promptsStore, logger }))
+        return;
     if (await routeCandidates(url, request, response, { candidatesStore, globalStore, getProjectStore, logger }))
         return;
     if (url.pathname.endsWith('/config') && request.method === 'GET') {

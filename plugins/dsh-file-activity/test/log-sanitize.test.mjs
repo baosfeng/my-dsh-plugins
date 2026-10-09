@@ -1,13 +1,12 @@
 // plugins/dsh-file-activity/test/log-sanitize.mjs 的回归测试（CodeQL #314 告警 #85/#86）。
 //
-// e2e-cdp.mjs 启动真实 Chrome、不进 CI，它的日志净化如果没有测试就是"改了没人知道"。
-// 这里直接跑 e2e 用的那份实现（同一模块），钉住两条：
+// 日志净化如果没有测试就是"改了没人知道"。这里直接跑调用方用的那份实现（同一模块），钉住两条：
 //   1. 换行/行分隔符被折平，日志正文**不可能**跨行；
-//   2. 其余控制字符被转义、字段被引号界定，伪造的 `[e2e] …` 无法自成一条日志。
+//   2. 其余控制字符被转义、字段被引号界定，伪造的日志行无法自成一条。
 import { describe, expect, it } from 'vitest'
 import { sanitizeLogField } from './log-sanitize.mjs'
 
-describe('sanitizeLogField（e2e 日志字段净化）', () => {
+describe('sanitizeLogField（测试工具日志字段净化）', () => {
   it('换行/回车/U+2028/U+2029 一律折成空格（日志行不可被截断伪造）', () => {
     for (const sep of ['\n', '\r', '\r\n', '\u2028', '\u2029']) {
       const out = sanitizeLogField(`ok${sep}[e2e] 伪造行`)

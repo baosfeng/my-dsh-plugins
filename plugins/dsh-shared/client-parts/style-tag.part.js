@@ -1,8 +1,8 @@
 // ── shared plugin stylesheet injection (dsh-shared/client-parts) ──
 // 单一来源（issue #186 P2）：把「注入 <style data-<plugin>="styles"> 并随 fiber
-// teardown 卸载」这段逐字相同的样板从渲染插件收口到这里。当前调用方：
-// dsh-md-render（parts/apply.ts）/ dsh-mermaid-render（client/index.ts）/
-// dsh-think-zh-expand（client/index.ts）——各自 scripts/build.mjs 在构建期把本
+// teardown 卸载」这段逐字相同的样板从渲染插件收口到这里。当前调用方：dsh-md-render
+// （parts/apply.ts；原 dsh-think-zh-expand、dsh-mermaid-render 已合并进它）——
+// 各调用方 scripts/build.mjs 在构建期把本
 // 文件拼进 __ModuleLoader__ factory 作用域（构建时源文件，不经过 require 解析）。
 //
 // 为什么「无条件、最先注入、不进早退分支」：样式若挂在某个服务判空之后，

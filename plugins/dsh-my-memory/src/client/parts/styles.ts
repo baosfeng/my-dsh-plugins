@@ -164,6 +164,22 @@ const STYLES: string = `
 .dsh-my-memory-history-entry { display:inline-flex; font:var(--dsw-font-xxxs-11);
   color:var(--dsw-alias-label-tertiary); }
 .dsh-my-memory-iconbtn-confirm:hover:not(:disabled) { color:var(--dsw-alias-state-success-primary); }
+/* ── issue #465 全局提示词：与记忆分区并列的独立分区 ── */
+.dsh-my-memory-section-prompts { border-color:color-mix(in srgb, var(--dsw-alias-accent) 28%, transparent); }
+.dsh-my-memory-prompt-row { gap:6px; }
+/* 停用条目降不透明度但不隐藏：用户要能看见「它还在、只是不注入」 */
+.dsh-my-memory-prompt-row-off { opacity:.55; }
+.dsh-my-memory-prompt-title { flex:none; font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
+.dsh-my-memory-prompt-text { white-space:pre-wrap; word-break:break-word; max-height:96px; overflow-y:auto;
+  font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-secondary); }
+.dsh-my-memory-prompt-toggle { flex:none; cursor:pointer; }
+.dsh-my-memory-prompt-toggle[disabled] { opacity:.5; cursor:default; }
+.dsh-my-memory-prompt-textarea { box-sizing:border-box; width:100%; min-height:60px; resize:vertical; padding:6px 8px;
+  border:1px solid var(--dsw-alias-border-l1); border-radius:6px; background:var(--dsw-alias-bg-layer-1);
+  color:var(--dsw-alias-label-primary); font:var(--dsw-font-xxs-12); line-height:1.6; }
+.dsh-my-memory-prompt-textarea:focus { outline:none; border-color:var(--dsw-alias-accent); }
+.dsh-my-memory-prompt-addbar { align-items:stretch; }
+.dsh-my-memory-iconbtn-up svg { transform:rotate(180deg); }
 `.trim()
 
 const STYLE_TAG: string = 'data-dsh-my-memory'

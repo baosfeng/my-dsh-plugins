@@ -15,7 +15,8 @@
 - **工具**：`memory_query` 只读查询（全局/项目 + 关键词过滤，输出带每条记忆的分类与 id）；`memory_save` 保存（`scope`/`desc` 必填，`category` 为偏好/事实/项目/技术栈/工作流，默认 `fact`）；`memory_delete` 按 id 删除（删除不存在的 id 明确报错）。
 - **自动学习（可选）**：开启 `autoLearn` 后会话结束自动提取记忆候选进待确认区，确认才写入（同主题自动提升置信度），拒弃即丢弃。
 - **渐进式索引**：条目带分类/来源（会话 id + 时间）/置信度（上限 5）/更新时间/演进历史；同主题多次出现提升置信度或更新内容，内容分歧标记「待处理矛盾」，长期未用（默认 90 天）降权。
-- **持久化可靠**：原子写（tmp+rename）+ 防抖（300ms），重启后自动恢复；候选独立存 `$DSH_HOME/memory/candidates.json`，与正式记忆隔离。
+- **全局提示词（与记忆隔离）**：设置页「全局提示词」分区可新增 / 编辑 / 删除 / 启停 / 上移下移任意自由文本指令；**启用的提示词每轮组装全量按序注入**（独立 section `dsh-my-memory:prompts`，order -85），不评分、不截断、不占记忆的 top-N 名额，保存后下一轮即生效（无需重启）。它们**不是记忆**：独立文件 `$DSH_HOME/memory/prompts.json`、独立端点 `/my-memory/api/prompts`、agent 无写工具；首次运行迁入内置种子「中文思考」（可停用/删除，删除不复活）。
+- **持久化可靠**：原子写（tmp+rename）+ 防抖（300ms），重启后自动恢复；候选独立存 `$DSH_HOME/memory/candidates.json`、提示词独立存 `$DSH_HOME/memory/prompts.json`，与正式记忆隔离。
 
 ## 安装
 
@@ -41,6 +42,8 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-memory
 | `extractor`        | `'rule'` | 候选提取方式：`rule` 确定性规则提取器 / `llm`（预留）          |
 | `proactivePropose` | `false`  | 开启后引导 agent 主动向你提议保存记忆                          |
 | `saveApproval`     | `'auto'` | 记忆写操作（保存 + 删除）确认策略：`auto` / `always` / `never` |
+| `maxPromptItems`   | `20`     | 注入系统提示词的全局提示词条数上限（超出不注入 + warn）       |
+| `maxPromptLength`  | `1000`   | 单条提示词正文上限（字符，超出截断 + warn）                   |
 
 ## 权限模式与保存确认
 

@@ -98,7 +98,7 @@ describe('createTimeline（阶段耗时记录）', () => {
 
   it('skip 与 0 ms 可区分（跳过不是「耗时 0」）', () => {
     const tl = createTimeline({ now: clock(1) })
-    tl.skip('真实环境验证', 'dsh.kind=library 豁免')
+    tl.skip('人工自测确认', 'dsh.kind=library 豁免')
     const [entry] = tl.entries()
     expect(entry.skipped).toBe(true)
     expect(entry.note).toBe('dsh.kind=library 豁免')

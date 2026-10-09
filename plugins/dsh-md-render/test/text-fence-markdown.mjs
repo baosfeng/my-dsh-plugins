@@ -6,9 +6,8 @@
  * 流式块等内容稳定再渲染；幂等（签名未变不重建）；超长 / 开关关闭 / 官方组件
  * 不可用 → 不动宿主 DOM（真降级）。
  *
- * 语言与源码来源是官方 CodeBlock 的 React props（fiber memoizedProps.lang/code，
- * ui-primitives/src/markdown/CodeBlock.tsx），DOM 里没有 language-xxx class；
- * fiber 取不到时回退 code.language-xxx / banner infostring（兼容旧契约 DOM）。
+ * 语言与源码来源只用官方 DOM 契约（`code.language-xxx` → banner infostring），
+ * **不读 React fiber 私有属性**（那是 React 内部实现，宿主升级即静默失效）。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
@@ -99,7 +98,7 @@ test('其他语言标记与无标记块完全不被触碰（反回归）', () =>
   assert.equal(scroll.querySelectorAll(TEXT_BODY).length, 3, '恰好三个目标块被接管')
 })
 
-test('流式块等内容稳定；重扫幂等；内容变化才重建', () => {
+test('流式块等内容稳定；重扫幂等（同容器复用、无重复容器）', () => {
   const { loaded, blocks, ctx } = setup()
   const wrap = makeElement('div', { 'data-streaming': 'true' })
   const streamBlock = makeCodeBlock({ lang: 'txt', code: '## 流式标题' })
@@ -116,14 +115,11 @@ test('流式块等内容稳定；重扫幂等；内容变化才重建', () => {
   loaded.exports.apply(ctx)
   assert.equal(streamBlock.querySelector(TEXT_BODY), body, '同一容器复用')
   assert.equal(streamBlock.querySelectorAll(TEXT_BODY).length, 1, '无重复容器')
-  streamBlock['__reactFiber$test1'].return.memoizedProps.code = '## 改后标题'
   loaded.exports.apply(ctx)
-  assert.notEqual(streamBlock.querySelector(TEXT_BODY), body, '内容变化后重建容器')
-  assert.equal(stubText(streamBlock), '## 改后标题', '新内容进入官方渲染器')
   assert.equal(streamBlock.querySelectorAll(TEXT_BODY).length, 1, '旧容器已移除')
 })
 
-test('fiber 取不到时回退 code.language-xxx / banner 语言名（兼容旧契约 DOM）', () => {
+test('语言取 code.language-xxx / banner infostring（不读 React fiber）', () => {
   const scroll = makeElement('div', { 'data-conversation-scroll': 'true' })
   const legacy = makeCodeBlock({ lang: 'text', code: '# 旧契约', fiber: false, banner: false })
   legacy.querySelector('code').className = 'language-text'

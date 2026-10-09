@@ -152,7 +152,7 @@ const SKIP_WALK = new Set(['node_modules', '.git', 'coverage', '.stryker-tmp', '
 
 /**
  * 不扫的文件：构建产物/压缩产物（不是文档，且超长行会让 markdown 正则退化为 O(n²)——
- * 实测 plugins/dsh-mermaid-render/vendor/mermaid.min.js 单行 8.9MB 直接把脚本挂死）。
+ * 实测 单行 8.9MB 的压缩产物直接把脚本挂死）。
  * 与 prettier/eslint 的既有排除保持一致。
  */
 const SKIP_PATH_RES = [

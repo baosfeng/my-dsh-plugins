@@ -47,7 +47,9 @@ test('apply registers the /md/api config routes', async () => {
     },
   }
   apply(ctx, {})
-  assert.equal(routes.length, 1, 'one route registration')
-  assert.equal(routes[0].path, '/md/api', 'config API prefix')
+  // 合并后 host 半注册**两条**前缀路由：配置 + mermaid 引擎静态资源
+  assert.equal(routes.length, 2, 'two route registrations')
+  const paths = routes.map((r) => r.path).sort()
+  assert.deepEqual(paths, ['/md-render/api', '/md-render/assets'], 'config + assets prefixes')
   for (const dispose of disposers.splice(0)) dispose()
 })

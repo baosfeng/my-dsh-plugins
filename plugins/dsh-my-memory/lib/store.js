@@ -39,7 +39,7 @@ import { findProjectRoot } from 'dsh-shared';
 import { mergeCandidate, withDefaults } from './memory-scoring.js';
 /** The DSH home directory: $DSH_HOME, or ~/.dsh when unset (shared by the
  *  global memory file and the centralized project memory directory). */
-function dshHome() {
+export function dshHome() {
     const home = process.env.DSH_HOME;
     if (typeof home === 'string' && home !== '')
         return home;
@@ -130,7 +130,7 @@ async function readNormalizedFile(file, normalize) {
         const raw = await readFile(file, 'utf8');
         const parsed = JSON.parse(raw);
         if (parsed !== null && typeof parsed === 'object')
-            return normalize(parsed);
+            return await normalize(parsed);
     }
     catch {
         // first run or unreadable file: empty document
@@ -197,8 +197,9 @@ const PREFIX = '[dsh-my-memory]'; // 护栏 warn 用
 /** 快照字节上限（issue #198）：单条 ≤ 数百字节、条目数无上限 → 4MB 保守上界；
  *  超限由 shared 护栏拒绝写入 + 计数（`atomicWriteStats().rejected`），不再无界放大。 */
 const MEMORY_MAX_BYTES = 4 * 1024 * 1024;
-/** 原子写快照（shared 原语：紧凑 JSON + 建目录 + 字节上限 + 计数）；false = 被拦或 IO 失败。 */
-async function atomicWrite(file, data) {
+/** 原子写快照（shared 原语：紧凑 JSON + 建目录 + 字节上限 + 计数）；false = 被拦或 IO 失败。
+ *  导出供提示词 store（issue #465）复用同一原子写内核——同节奏、同护栏、同计数。 */
+export async function atomicWrite(file, data) {
     // 节奏由 createWriteScheduler 单一控制 → 原语关节流（双护栏会拦掉正常节奏）
     return atomicWriteJson(file, data, undefined, PREFIX, { minIntervalMs: 0, maxBytes: MEMORY_MAX_BYTES });
 }
@@ -210,8 +211,10 @@ function tsOf(item) {
 }
 /** Shared debounced-store core (pre-migration createGenericStore): in-memory
  *  cache + idempotent startup restore + debounced atomic writes, reused by the
- *  memory store and the candidate store so both share one code path. */
-function createDebouncedStore(file, debounceMs, normalize) {
+ *  memory store, the candidate store and the global-prompt store (issue #465)
+ *  so every store shares one write path (debounce + atomic write + byte cap).
+ *  `sortBy` only shapes list(); default = newest-updatedAt-first. */
+export function createDebouncedStore(file, debounceMs, normalize, sortBy = (a, b) => tsOf(b) - tsOf(a)) {
     const state = {
         items: [],
         ready: Promise.resolve(),
@@ -240,7 +243,7 @@ function createDebouncedStore(file, debounceMs, normalize) {
         await scheduler.flush();
     }
     function list() {
-        return state.items.slice().sort((a, b) => tsOf(b) - tsOf(a));
+        return state.items.slice().sort(sortBy);
     }
     function dispose() {
         void scheduler.drain(); // 把挂起/在飞的写推到结束（不阻塞调用方）

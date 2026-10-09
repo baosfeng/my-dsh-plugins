@@ -105,7 +105,7 @@ plugins/<name>/                  # 插件目录（小写连字符命名，如 ds
 - 插件行 id（cordis.patch.yml）用短横线小写（如 `file-activity`）。
 - **client 注册的页签 `id` 用包名**（原生注册表要求全局唯一，且是正文 keyed 席位的 key），**`kind` 用 `包名:xxx`**（如 `dsh-my-skill-manager:list`）；`kind` 不得占用内置值 `guide` / `text` / `files`。
 - 每个插件**不需要**独立 .gitignore（根 .gitignore 统一覆盖 node_modules / .DS_Store / .dsh-vision-toolkit 等）。
-- 新插件 README 必须中文，顶部放插件生态 badge（见现有插件）与**真实运行效果图**；骨架阶段截图可用占位注释，发版前补真实截图。**效果图规范（强制）**：① 每插件 README 顶部放 1–3 张真实运行截图（用 `verifying-dsh-plugins` 隔离实例 + 浏览器端到端截图，非示意图）；② 截图存 `<插件>/assets/`，README 用 `./assets/xxx.png` 相对路径引用；③ 新插件发版前必须补图；④ **功能更新 / UI 变化 / 交互新增时必须同步更新/补充截图**，与代码改动一起提交、一起发版（`scripts/release.mjs` 会校验 README 引用了且 `assets/` 含截图，缺失则发版失败）；⑤ **确无用户可见 UI 的插件走显式声明豁免，不写插件名单**：`package.json` 的 `dsh.ui=false` + 非空 `dsh.uiReason`（写明为什么没有可截图的产物；`dsh.ui=false` 与 `dsh.client` 互斥——声明无 UI 却提供 client 端会被判为非法声明，必须补真实截图）；判据实现 `scripts/lib/screenshot-gate.mjs`、单测 `scripts/test/screenshot-gate.test.mjs`，发版输出与批量汇总显式列出「已豁免」插件与理由（豁免可见、可审计）。
+- 新插件 README 必须中文，顶部放插件生态 badge（见现有插件）与**真实运行效果图**；骨架阶段截图可用占位注释，发版前补真实截图。**效果图规范（强制）**：① 每插件 README 顶部放 1–3 张真实运行截图（在 `verifying-dsh-plugins` 的隔离实例里用浏览器人工截图，非示意图）；② 截图存 `<插件>/assets/`，README 用 `./assets/xxx.png` 相对路径引用；③ 新插件发版前必须补图；④ **功能更新 / UI 变化 / 交互新增时必须同步更新/补充截图**，与代码改动一起提交、一起发版（`scripts/release.mjs` 会校验 README 引用了且 `assets/` 含截图，缺失则发版失败）；⑤ **确无用户可见 UI 的插件走显式声明豁免，不写插件名单**：`package.json` 的 `dsh.ui=false` + 非空 `dsh.uiReason`（写明为什么没有可截图的产物；`dsh.ui=false` 与 `dsh.client` 互斥——声明无 UI 却提供 client 端会被判为非法声明，必须补真实截图）；判据实现 `scripts/lib/screenshot-gate.mjs`、单测 `scripts/test/screenshot-gate.test.mjs`，发版输出与批量汇总显式列出「已豁免」插件与理由（豁免可见、可审计）。
 - **需求与回归基准（强制）**：需求以 **GitHub issue** 为准（验收标准写在 issue 正文）；**回归基准 = 该插件测试套件 + issue 验收标准逐条核对**。易碎需求（重启恢复、会话隔离、持久化不丢失、数据不串）必须有专门测试断言（见 [构建与测试 · 需求回归](../../docs/开发指南/构建与测试.md#需求回归强制要求)）。
 
 ## 开发流程
@@ -118,7 +118,7 @@ plugins/<name>/                  # 插件目录（小写连字符命名，如 ds
 5. **写测试**：`test/` 下放纯 Node 冒烟测试（mock ctx / mock webServer / mock `slots` + `sidebarRightTabs`），CI 只跑 `npm test`（即 `node test/host-smoke.mjs`）；依赖浏览器/真实 GUI 的测试留在本机手动跑。**新增功能必须补测试**，易碎需求（重启恢复/会话隔离）必须有专门断言（可参考 `dsh-file-activity/test/host-smoke.mjs` 的"重启恢复"测试段落）。
 6. **回归验证（强制）**：跑全部测试 + 对照 issue 验收标准逐条验证（尤其与本次改动相邻的功能），确认无回归后再提交。
 7. **本地验证**：`dsh plugin --profile web add link:<路径>` → 浏览器硬刷新（Cmd/Ctrl+Shift+R）。client 改动热加载无需重启；**server 端改动需重启 `dsh web`**。
-8. **清理验证环境（强制）**：验证完成后必须清干净——停掉后台验证实例（job_kill）、删除临时验证目录（`/tmp/dsh-<port>`）、关闭验证用专用浏览器（`browser_close` + 杀 `chrome-cdp-profile` 实例）、确认端口已释放（`curl` 应无响应）、`job_list` 确认无 running 任务。**用户可能同时在开发多个插件，残留环境会互相干扰**。完整清单见 [verifying-dsh-plugins](../verifying-dsh-plugins/SKILL.md) 的「步骤 4：收尾清理」章节（仓库内 skill）。
+8. **清理验证环境（强制）**：验证完成后必须清干净——停掉后台验证实例（job_kill）、删除临时验证目录（`/tmp/dsh-<port>`）、关闭验证用浏览器、确认端口已释放（`curl` 应无响应）、`job_list` 确认无 running 任务。**用户可能同时在开发多个插件，残留环境会互相干扰**。完整清单见 [verifying-dsh-plugins](../verifying-dsh-plugins/SKILL.md) 的「步骤 4：收尾清理」章节（仓库内 skill）。
 9. **发布**：`node scripts/release.mjs <插件名> --bump patch --push`（自动 bump 版本 + 生成 CHANGELOG + 同步文档 + 推 tag `<包名>@v<版本>`）→ `.github/workflows/release.yml` 自动测试 + 创建 GitHub Release + npm 发布（NPM_TOKEN 已配置）。详见 [references/tool-plugin-and-ecosystem.md](references/tool-plugin-and-ecosystem.md) 的「发布流程」。
 
 ## 细节参考（按需加载）

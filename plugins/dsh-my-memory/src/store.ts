@@ -50,7 +50,7 @@ export type { MemoryItem, CandidateItem, MemoryStore, CandidateStore, StoreInsta
 
 /** The DSH home directory: $DSH_HOME, or ~/.dsh when unset (shared by the
  *  global memory file and the centralized project memory directory). */
-function dshHome(): string {
+export function dshHome(): string {
   const home = process.env.DSH_HOME
   if (typeof home === 'string' && home !== '') return home
   return join(homedir(), '.dsh')
@@ -152,12 +152,12 @@ export async function migrateProjectMemory({
 /** Read one file through a normalizer (missing/corrupt → empty items). */
 async function readNormalizedFile<T>(
   file: string,
-  normalize: (raw: unknown) => { items: T[] },
+  normalize: (raw: unknown) => { items: T[] } | Promise<{ items: T[] }>,
 ): Promise<{ items: T[] }> {
   try {
     const raw = await readFile(file, 'utf8')
     const parsed = JSON.parse(raw)
-    if (parsed !== null && typeof parsed === 'object') return normalize(parsed)
+    if (parsed !== null && typeof parsed === 'object') return await normalize(parsed)
   } catch {
     // first run or unreadable file: empty document
   }
@@ -167,7 +167,7 @@ async function readNormalizedFile<T>(
 /** Read one memory file (missing/corrupt → empty document). */
 export async function readMemoryFile(
   file: string,
-  normalizeFn: (memory: unknown) => MemoryStore = normalizeMemory,
+  normalizeFn: (memory: unknown) => MemoryStore | Promise<MemoryStore> = normalizeMemory,
 ): Promise<MemoryStore> {
   return readNormalizedFile(file, normalizeFn)
 }
@@ -240,8 +240,9 @@ const PREFIX = '[dsh-my-memory]' // 护栏 warn 用
  *  超限由 shared 护栏拒绝写入 + 计数（`atomicWriteStats().rejected`），不再无界放大。 */
 const MEMORY_MAX_BYTES = 4 * 1024 * 1024
 
-/** 原子写快照（shared 原语：紧凑 JSON + 建目录 + 字节上限 + 计数）；false = 被拦或 IO 失败。 */
-async function atomicWrite(file: string, data: unknown): Promise<boolean> {
+/** 原子写快照（shared 原语：紧凑 JSON + 建目录 + 字节上限 + 计数）；false = 被拦或 IO 失败。
+ *  导出供提示词 store（issue #465）复用同一原子写内核——同节奏、同护栏、同计数。 */
+export async function atomicWrite(file: string, data: unknown): Promise<boolean> {
   // 节奏由 createWriteScheduler 单一控制 → 原语关节流（双护栏会拦掉正常节奏）
   return atomicWriteJson(file, data, undefined, PREFIX, { minIntervalMs: 0, maxBytes: MEMORY_MAX_BYTES })
 }
@@ -254,11 +255,14 @@ function tsOf(item: { updatedAt?: unknown; createdAt?: unknown }): number {
 
 /** Shared debounced-store core (pre-migration createGenericStore): in-memory
  *  cache + idempotent startup restore + debounced atomic writes, reused by the
- *  memory store and the candidate store so both share one code path. */
-function createDebouncedStore<T extends { id: string; createdAt?: number; updatedAt?: number }>(
+ *  memory store, the candidate store and the global-prompt store (issue #465)
+ *  so every store shares one write path (debounce + atomic write + byte cap).
+ *  `sortBy` only shapes list(); default = newest-updatedAt-first. */
+export function createDebouncedStore<T extends { id: string; createdAt?: number; updatedAt?: number }>(
   file: string,
   debounceMs: number,
-  normalize: (raw: unknown) => { items: T[] },
+  normalize: (raw: unknown) => { items: T[] } | Promise<{ items: T[] }>,
+  sortBy: (a: T, b: T) => number = (a, b) => tsOf(b) - tsOf(a),
 ): {
   state: { items: T[] }
   load(): Promise<void>
@@ -301,7 +305,7 @@ function createDebouncedStore<T extends { id: string; createdAt?: number; update
   }
 
   function list(): T[] {
-    return state.items.slice().sort((a, b) => tsOf(b) - tsOf(a))
+    return state.items.slice().sort(sortBy)
   }
 
   function dispose(): void {

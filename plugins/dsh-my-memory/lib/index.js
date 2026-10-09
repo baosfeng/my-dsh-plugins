@@ -28,6 +28,8 @@ import { createApiHandler } from './api-route.js';
 import { isTrustedApiRequest } from 'dsh-shared';
 import { DEFAULT_MAX_ENTRY_LENGTH } from './memory-text.js';
 import { createMemorySection } from './prompt.js';
+import { createPromptsSection } from './prompts.js';
+import { createPromptsStore, promptsFile } from './prompts-store.js';
 import { extractCandidates } from './extract.js';
 import { candidateMemoryFile, createCandidatesStore, createStore, globalMemoryFile, migrateProjectMemory, resolveProjectMemory, } from './store.js';
 import { createMemoryQueryTool } from './tool.js';
@@ -184,6 +186,14 @@ function createMessageCollectorListener({ collector, autoLearn, }) {
 export function apply(ctx, config) {
     const { globalStore, projectStores, getProjectStore } = createMemoryStores();
     const candidatesStore = createCandidatesStore({ file: candidateMemoryFile() });
+    // 全局提示词（issue #465）：**独立文件 + 独立 store**，与记忆不共享任何结构。
+    // 种子迁移发生在 store 首次读之前（见 prompts-store.ts 的顺序约束）。
+    const promptsStore = createPromptsStore({
+        file: promptsFile(),
+        logger: ctx.logger,
+        maxItems: config?.maxPromptItems,
+        maxLength: config?.maxPromptLength,
+    });
     const collector = createMessageCollector(config);
     const autoLearn = config?.autoLearn === true;
     const extractor = config?.extractor === 'llm' ? 'llm' : 'rule';
@@ -191,12 +201,30 @@ export function apply(ctx, config) {
     ctx.effect(() => {
         void loadPromise;
         return () => {
-            Promise.all([globalStore.flush(), candidatesStore.flush()]).catch(() => { });
+            Promise.all([globalStore.flush(), candidatesStore.flush(), promptsStore.flush()]).catch(() => { });
             [...projectStores.values()].forEach((store) => store.flush().catch(() => { }));
+            promptsStore.dispose();
         };
     }, 'dsh-my-memory: store lifecycle');
     // ── 系统提示词注入（每次组装求值，记忆变更即时生效）────────────────
     ctx.effect(() => ctx.systemPrompt?.section(createMemorySection(globalStore, config)), 'dsh-my-memory: system prompt section');
+    // ── 全局提示词注入（issue #465）：单 section、固定字面量名、order -85 ──
+    // provider 读内存态 → 保存后**下一轮组装即生效**，无需重注册/重启。
+    // section 名是幂等键：重复注册宿主会抛错，而抛错会打断整个 apply →
+    // 这里必须 try/catch 降级（丢提示词注入，绝不拖垮记忆能力）。
+    ctx.effect(() => {
+        try {
+            return ctx.systemPrompt?.section(createPromptsSection(promptsStore, {
+                maxItems: Number.isInteger(config?.maxPromptItems) ? config.maxPromptItems : undefined,
+                maxLength: Number.isInteger(config?.maxPromptLength) ? config.maxPromptLength : undefined,
+                logger: ctx.logger,
+            }));
+        }
+        catch (error) {
+            ctx.logger?.warn(`[dsh-my-memory] 全局提示词 section 注册失败（已降级：提示词不注入，记忆能力不受影响）：${String(error)}`);
+            return () => { };
+        }
+    }, 'dsh-my-memory: prompts system prompt section');
     // ── memory_query 只读工具 ─────────────────────────────────────────────
     ctx.effect(() => ctx.tools?.register(createMemoryQueryTool({ globalStore, getProjectStore })), 'dsh-my-memory: memory_query tool');
     // ── 记忆写工具（save/delete）+ 用户确认门（#107/#192，#208 起策略感知）──
@@ -220,6 +248,7 @@ export function apply(ctx, config) {
         globalStore,
         getProjectStore,
         candidatesStore,
+        promptsStore,
         fence,
         sessions: ctx.sessions,
         logger: ctx.logger,

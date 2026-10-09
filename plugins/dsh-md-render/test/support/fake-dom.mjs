@@ -13,7 +13,10 @@
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const TAG_CLASS_ATTR = /^([a-zA-Z][\w-]*)?((?:\.[\w-]+)*)((?:\[[^\]]+\])*)$/
+// 属性段允许带引号的值与内部空格：`[data-variant="think"]`、`[aria-expanded]`。
+// （曾用 `\[[^\]]+\]` 整体匹配，只能解析无值属性 → 带值的官方契约选择器在假 DOM 里
+//  永远匹配不上，测试因此看不见真实行为。）
+const TAG_CLASS_ATTR = /^([a-zA-Z][\w-]*)?((?:\.[\w-]+)*)((?:\[[^\]]*\])*)$/
 
 /** 单条简单选择器（tag / .class / [attr] / [attr="v"] 的任意组合）。 */
 function matchSimple(el, sel) {
@@ -25,7 +28,7 @@ function matchSimple(el, sel) {
     if (!String(el.className).split(/\s+/).includes(cls)) return false
   }
   for (const attr of attrs.match(/\[[^\]]+\]/g) || []) {
-    const parsed = /^\[([\w-]+)(?:="([^"]*)")?\]$/.exec(attr)
+    const parsed = /^\[\s*([\w-]+)\s*(?:=\s*"([^"]*)"\s*)?\]$/.exec(attr)
     if (!parsed) return false
     const value = el.getAttribute(parsed[1])
     if (value === null) return false
@@ -34,11 +37,27 @@ function matchSimple(el, sel) {
   return true
 }
 
-/** 选择器匹配（支持逗号并列，够本插件用）。 */
+/**
+ * 选择器匹配：支持逗号并列（`a, b`）与**后代组合**（`A B`，A 是 B 的祖先）。
+ * 本插件用到的官方契约选择器就有后代组合（think.ts 的
+ * `[data-variant="think"] [data-disclosure-row][aria-expanded]`），不支持的话
+ * 「思考行默认展开」这条行为在假 DOM 里永远匹配不上、测试会静默失效。
+ */
 function matchesSelector(el, sel) {
   return String(sel)
     .split(',')
-    .some((part) => matchSimple(el, part.trim()))
+    .some((part) => {
+      const chain = part.trim().split(/\s+/).filter(Boolean)
+      if (chain.length === 0) return false
+      if (!matchSimple(el, chain[chain.length - 1])) return false
+      let node = el.parentNode
+      for (let i = chain.length - 2; i >= 0; i -= 1) {
+        while (node && node.nodeType === 1 && !matchSimple(node, chain[i])) node = node.parentNode
+        if (!node || node.nodeType !== 1) return false
+        node = node.parentNode
+      }
+      return true
+    })
 }
 
 /** 造一个假元素（假 DOM 的核心：一份 _nodes 数组 + 属性表 + 监听表）。 */
@@ -130,6 +149,10 @@ export function makeElement(tag, attrs = {}) {
     /** 测试用：触发某个事件监听（真实浏览器里由交互触发）。 */
     fire(type, event = {}) {
       for (const fn of this._listeners[type] || []) fn({ currentTarget: this, target: this, ...event })
+    },
+    /** 真实 DOM 语义：`el.click()` 派发一次 click（think.ts 对官方折叠行就是这么触发的）。 */
+    click() {
+      this.fire('click')
     },
   }
   Object.defineProperty(el, 'children', { get: () => el._nodes.filter((n) => n.nodeType === 1) })

@@ -43,7 +43,7 @@ function contextBodyOf(pre: Element): Element | null {
 
 /** 接管前置条件（开关 / 官方组件 / 父节点 / 长度）→ 待渲染文本；不满足返回 null。 */
 function contextSourceOf(pre: Element): { parent: Element; text: string } | null {
-  if (!renderOptions.contextMarkdown) return null
+  if (!renderOptions.markdown.contextMarkdown) return null
   if (!officialMarkdownAvailable()) return null
   const parent = pre.parentNode as Element | null
   if (!parent || typeof parent.insertBefore !== 'function') return null

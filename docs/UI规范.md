@@ -67,7 +67,7 @@ description: 插件 UI 统一规范 — 视觉基准、共享图标系统、样�
 - **按当前语言返回单语**，禁止「中文 / English」并排写在同一段（实测：并排把设置行 hint 撑到 4 行、把开关架空，且与走了 i18n 的插件表现不一致）。
 - 文案取值必须是 **惰性函数**（`() => string`）：`slots.register` 的 `label` 传 thunk 时宿主**每次投影重读**（无需重注册即跟随语言切换）；硬编码字符串切语言后不会更新。
 - 语言判据沿用既有实现：`plugins/*/src/client/parts/i18n.ts` 的 `navigator.language` 前缀判 `zh`，try/catch 兜底英文；能读到 `<html lang>`（宿主 locale 写入）时优先它，避免"浏览器英文 + 宿主中文"错配。
-- 与**插件自身的 DOM 词表替换**冲突时（如 `dsh-think-zh-expand` 的 `Thinking → 思考`）不要直接使用会被改写的全等英文串，改选不被词表命中的措辞，并用测试钉死（`enLabel !== 'Thinking'`）。
+- 插件自身若还有 DOM 词表替换，别与它用全等英文串；改选不被词表命中的措辞，并用测试钉死（`enLabel !== 'Thinking'`）。
 
 ## 交互规范
 

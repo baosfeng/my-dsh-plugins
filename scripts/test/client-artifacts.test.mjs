@@ -214,9 +214,9 @@ describe('真实仓库的共享件清单（判据输入不是手写列表）', (
     const plugins = consumers.map((c) => c.plugin)
     expect(plugins).toContain('dsh-file-activity')
     expect(plugins).toContain('dsh-my-observability')
-    expect(consumers.filter((c) => c.parts.includes('markdown-fallback.part.js')).map((c) => c.plugin)).toEqual([
-      'dsh-think-zh-expand',
-    ])
+    // 唯一消费方 dsh-think-zh-expand 已下线（issue #463），合并后的 dsh-md-render
+    // 自带 dsh-md-render-fallback 样式，不再消费该共享 part —— 断言清单为空。
+    expect(consumers.filter((c) => c.parts.includes('markdown-fallback.part.js')).map((c) => c.plugin)).toEqual([])
   })
 })
 

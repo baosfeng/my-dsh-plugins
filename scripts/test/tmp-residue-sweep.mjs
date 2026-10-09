@@ -43,7 +43,6 @@ export const OWNED_PREFIXES = [
   'dsh-verify-real-',
   'dsh-my-remote-guard-',
   'dsh-my-remote-suite-',
-  'dsh-mermaid-render-api-',
   'dsh-my-notify-webhook-',
   'dpm-api-test-',
   'dpm-feature-',

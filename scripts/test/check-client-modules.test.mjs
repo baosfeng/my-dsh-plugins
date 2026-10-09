@@ -153,10 +153,10 @@ describe('auditRepo + CLI：三类正/反例端到端', () => {
 })
 
 describe('真实仓库产物（回归：当前 main 应 0 违规）', () => {
-  it('14 个含 lib/client.js 的插件全部通过', () => {
+  it('11 个含 lib/client.js 的插件全部通过', () => {
     const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
     const results = auditRepo(repoRoot)
-    expect(results.length).toBeGreaterThanOrEqual(10)
+    expect(results.length).toBeGreaterThanOrEqual(8)
     const offenders = results.filter((r) => r.violations.length > 0)
     expect(offenders.map((o) => `${o.plugin}: ${o.violations.join(',')}`)).toEqual([])
   })

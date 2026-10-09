@@ -13,15 +13,11 @@
   <table>
     <tr>
       <td align="center" style="vertical-align:top"><img src="plugins/dsh-file-activity/assets/screenshot.png" width="230" alt="dsh-file-activity 文件活动侧边栏" /></td>
-      <td align="center" style="vertical-align:top"><img src="plugins/dsh-think-zh-expand/assets/think-markdown.png" width="230" alt="dsh-think-zh-expand 思考块渲染" /></td>
-      <td align="center" style="vertical-align:top"><img src="plugins/dsh-mermaid-render/assets/mermaid-card.png" width="230" alt="dsh-mermaid-render 图表卡片" /></td>
       <td align="center" style="vertical-align:top"><img src="plugins/dsh-my-notify/assets/notify-toast.png" width="230" alt="dsh-my-notify 通知提醒 toast" /></td>
       <td align="center" style="vertical-align:top"><img src="plugins/dsh-task-reliability/assets/screenshot-panel.png" width="230" alt="dsh-task-reliability 任务可靠性面板" /></td>
     </tr>
     <tr>
       <td align="center"><sub>dsh-file-activity</sub></td>
-      <td align="center"><sub>dsh-think-zh-expand</sub></td>
-      <td align="center"><sub>dsh-mermaid-render</sub></td>
       <td align="center"><sub>dsh-my-notify</sub></td>
       <td align="center"><sub>dsh-task-reliability</sub></td>
     </tr>
@@ -33,9 +29,7 @@
 | 插件                                                                               | 版本   | 简介                                                                                          |
 | ---------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------- |
 | [dsh-file-activity](plugins/dsh-file-activity/README.md)                           | 0.5.14 | 侧边栏文件活动页签：记录文件读取/新增/修改与统计，文件夹树形展示，点击浮窗预览                |
-| [dsh-think-zh-expand](plugins/dsh-think-zh-expand/README.md)                       | 0.4.16 | 思考增强：强制中文思考与回复，思考块默认展开且支持 Markdown/表格/Mermaid 渲染                 |
-| [dsh-mermaid-render](plugins/dsh-mermaid-render/README.md)                         | 0.1.13  | 对话 mermaid 代码块渲染为图表卡片，引擎随包分发、不依赖 CDN                                   |
-| [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.3.1  | markdown 渲染补位：text 围栏块与上下文注入块交给官方渲染器，补整段复制 + 统一 MarkdownView     |
+| [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.4.0  | markdown 内容渲染增强：text 围栏块 / 上下文注入块 / mermaid 图表卡片 / 思考块默认展开 + 整段复制 |
 | [dsh-my-notify](plugins/dsh-my-notify/README.md)                                   | 0.4.2  | 通知提醒：会话结束 / ask / 审批时浏览器通知 + 提示音，点击跳转；远程 hook 触发 + 出站 webhook |
 | [dsh-my-remote](plugins/dsh-my-remote/README.md)                                   | 0.1.4  | 远程控制：ask / approval / 会话结束事件下行到手机或 IM，可远程回答、批准、查询、继续          |
 | [dsh-task-reliability](plugins/dsh-task-reliability/README.md)                     | 0.4.10  | 任务可靠性：超时重试、未完成自动继续、完成度校验 agent、思考重复干预、重启恢复、自主决策      |

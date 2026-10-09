@@ -4,7 +4,7 @@
  *
  *   node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push]
  *        （--push 时 --bump 缺省 = patch；dry-run 缺省不 bump：只跑门禁、不升版本）
- *        [--concurrency N] [--all-checks] [--skip-real-verify --skip-reason "<理由>"]
+ *        [--concurrency N] [--all-checks] [--confirm-manual-tested]
  *
  * issue #246（发版速度专项）把本脚本从「严格串行」改成「流水线」，门禁一条都没少：
  *   1. 同一插件内互不依赖的门禁并发执行——每条失败都带门禁编号，汇总按门禁编号
@@ -16,9 +16,9 @@
  *      （本机 npm 版本查询走镜像且缓存陈旧，见 lib/post-release.mjs 文件头）；
  *   4. 结束打印各阶段实测耗时表；失败时给出失败点与断点续跑提示。
  * 并发**不改变失败语义**：任一插件任一子门禁失败 → 该插件失败 → exit 1（fail-closed）。
- * 代价（诚实记录）：并发后早期门禁失败时，已启动的重门禁仍需跑完才退出——不能 kill，
- * scripts/verify-real-profile.mjs 没有信号清理，强杀会残留隔离实例与临时目录。
- * 静态门禁（1b/1c/2）失败不受影响：它们跑完才启动 3c，仍是最快的失败路径（实测 ~6ms 即拦下）。
+ * 代价（诚实记录）：并发后早期门禁失败时，已启动的重门禁仍需跑完才退出——不能 kill。
+ * 剩余重门禁都是无副作用或自清理的（npm 查询 / npm pack / 插件测试），不留孤儿进程。
+ * 静态门禁（1b/1c/2）失败不受影响：它们跑完才启动 1a/1d/3，仍是最快的失败路径（实测 ~6ms 即拦下）。
  *
  * --all-checks（仅 dry-run，issue #227）：静态门禁（peer / 跨插件依赖 / CHANGELOG /
  * 测试 / README 效果图）全部跑完再统一报告失败项，避免 fail-fast 让后续门禁
@@ -38,16 +38,17 @@
  *       content assertions (required files present, test/src/coverage/reports/node_modules
  *       absent); README-referenced assets actually published.
  *       Pure judgement in lib/pack-hygiene.mjs, IO (one npm pack, ~300ms) in
- *       scripts/check-pack-hygiene.mjs; runs concurrently with 1a/3/3c so the static
+ *       scripts/check-pack-hygiene.mjs; runs concurrently with 1a/3 so the static
  *       fast-fail path (~6ms) is unaffected.
  *   2.  validate CHANGELOG.md has a "## [<version>]" section at the top
  *   3.  run the plugin's tests (npm test)
  *   3b. validate README screenshot references under assets/
- *   3c. real-environment verification (issue #39 + #67): verify-real-profile.mjs
- *       --addons plugins/<name> --checklist verification/<name>-<version>.md
- *       --clean-externals (issue #294: 隔离实例复现「没装 dsh.client.external 依赖」)
- *       (local only; CI auto-skips; --skip-real-verify requires --skip-reason),
- *       then gate on the functional checklist being fully checked (issue #67)
+ *   3c. manual-test confirmation (issue #67): 真实环境 / 浏览器功能级验证由**用户本人**
+ *       手工完成（用户指令：仓库不保留任何自动化 e2e / 真实浏览器测试，全部交给自己测）。
+ *       门禁只认显式确认标志 --confirm-manual-tested，**未确认即阻断**（fail-closed，
+ *       绝不静默跳过）。不适用（并打印理由）的情形只有：静态门禁未通过 / --all-checks /
+ *       CI（release-auto 由用户在工作流页面触发，人工自测发生在本地）/ library 与 preset
+ *       形态豁免。人工自测清单模板见 verification/README.md。
  *   4.  sync the version in root README.md plugin table and AGENTS.md
  *   5.  --push: commit doc sync, tag <name>@v<version> for all plugins, push tags
  *       individually (each push triggers the release workflow), then verify the
@@ -74,9 +75,8 @@ import {
   collectClientSources,
   collectServerSources,
   buildPluginIndex,
-  buildRealVerifyArgs,
-  findFreePorts,
   inspectTagState,
+  resolveManualTestPlan,
   tagConflictHint,
   readmeVersionRowRe,
   releaseCommitPlan,
@@ -98,7 +98,7 @@ const args = process.argv.slice(2)
 // 注意：`--bump <type>` / `--skip-reason <理由>` 的取值不以 `--` 开头，
 // 若直接 `filter(!a.startsWith('--'))` 会把取值误当成插件名——实测批量发版
 // 报 `✗ plugins/patch does not exist`（`--bump patch` 的 patch 被当成插件）。
-const VALUE_FLAGS = new Set(['--bump', '--skip-reason', '--concurrency', '--enable-plugins'])
+const VALUE_FLAGS = new Set(['--bump', '--concurrency'])
 const names = []
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i]
@@ -112,28 +112,15 @@ const push = args.includes('--push')
 // --all-checks：静态门禁失败项收集模式（仅 dry-run）。fail-fast 会让"首个失败"
 // 掩盖后续门禁从未执行的事实（issue #227 就是依赖门禁掩盖效果图门禁）。
 const allChecks = args.includes('--all-checks')
-const skipRealVerify = args.includes('--skip-real-verify')
-const skipReasonIdx = args.indexOf('--skip-reason')
-const skipReason = skipReasonIdx >= 0 ? args[skipReasonIdx + 1] || '' : ''
+// --confirm-manual-tested：**显式**声明「用户已在真实环境 + 浏览器完成功能级验证」。
+// 3c 门禁只认这个标志（fail-closed：未声明即阻断，不静默跳过）——见文件头 3c 说明。
+const confirmManualTested = args.includes('--confirm-manual-tested')
 const bumpIdx = args.indexOf('--bump')
 const bumpRaw = bumpIdx >= 0 ? args[bumpIdx + 1] || '' : ''
 // 发版必须有明确的**目标版本**：--push 且未显式 --bump 时默认 patch（lib 纯函数，
 // 单测 scripts/test/release-checks.test.mjs「发版目标版本口径」）。旧行为缺省恒为 ''
 // → 「用当前版本再发一次」→ tag 已存在被拒 / 同版本重复发布。dry-run 保持不 bump。
 const bump = resolveBumpType({ bump: bumpRaw, push })
-// --enable-plugins：**显式**声明「这些插件在生产 profile 里被禁用，允许在隔离副本内启用」
-// （逗号分隔或重复传参；默认空 = 一个都不启用）。刻意**不**按插件名自动加 —— 自动启用会把
-// 「生产中该插件被故意禁用」静默抹掉，等于放宽门禁；显式声明要求发版者确认。
-const enablePlugins = []
-for (let i = 0; i < args.length; i += 1) {
-  if (args[i] !== '--enable-plugins') continue
-  const raw = args[i + 1] ?? ''
-  for (const item of raw.split(',')) {
-    const trimmed = item.trim()
-    if (trimmed !== '') enablePlugins.push(trimmed)
-  }
-  i += 1
-}
 const concurrencyIdx = args.indexOf('--concurrency')
 const concurrencyRaw = concurrencyIdx >= 0 ? args[concurrencyIdx + 1] : undefined
 const BUMP_TYPES = new Set(['patch', 'minor', 'major'])
@@ -151,7 +138,7 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 if (names.length === 0) {
   console.error(
     'usage: node scripts/release.mjs <plugin-name> [<plugin-name>...] [--bump patch|minor|major] [--push] [--all-checks] [--concurrency N]' +
-      ' [--enable-plugins <name,...>]（--push 时 --bump 缺省 = patch）',
+      ' [--confirm-manual-tested]（--push 时 --bump 缺省 = patch；人工自测确认见 verification/README.md）',
   )
   process.exit(2)
 }
@@ -163,25 +150,12 @@ for (const name of names) {
     process.exit(2)
   }
 }
-// --enable-plugins 只允许本次发版列表里的插件（名字写错 = 用法错误，早失败不误伤）
-for (const item of enablePlugins) {
-  if (!names.includes(item)) {
-    console.error(`✗ --enable-plugins ${item} 不在本次发版列表里（${names.join(', ')}）`)
-    process.exit(2)
-  }
-}
 if (bumpRaw !== '' && !BUMP_TYPES.has(bumpRaw)) {
   console.error(`✗ --bump 必须是 patch | minor | major，收到: ${bumpRaw}`)
   process.exit(2)
 }
 if (push && allChecks) {
-  console.error('✗ --all-checks 只用于 dry-run 静态门禁全景；发布必须走 fail-fast 完整门禁（含真实环境验证）')
-  process.exit(2)
-}
-// --skip-real-verify / --skip-reason 是参数配对约束（用法），不是仓库状态：
-// 前移到任何插件处理之前拦截，避免「先跑了半部门禁才报参数错」。
-if (skipRealVerify && skipReason === '') {
-  console.error('✗ --skip-real-verify 必须带 --skip-reason "<理由>" 显式记录跳过原因（issue #67）')
+  console.error('✗ --all-checks 只用于 dry-run 静态门禁全景；发布必须走 fail-fast 完整门禁（含 3c 人工自测确认）')
   process.exit(2)
 }
 
@@ -284,49 +258,25 @@ async function testsGate(pluginDir, prefix) {
 }
 
 /**
- * 3c. 真实环境验证（issue #39 + #67）：发版前必须跑 verify-real-profile.mjs
- * --addons（真实 DSH 实例 + 配置组合检查），失败即阻断；验证通过后校验
- * 「发版前功能级验证清单」功能级项全部勾选，未全勾选即阻断发版。
- * port 由批量调度预分配（issue #246：并行实例必须各占一个端口）。
+ * 3c. 人工自测确认（issue #67）：真实环境 / 浏览器功能级验证由**用户本人**手工完成
+ * （用户指令：仓库不保留自动化 e2e / 真实浏览器测试，全部交给自己测）。本门禁不起
+ * 任何实例、不跑任何浏览器，只判定一件事：**是否显式声明了人工自测已完成**。
  *
- * issue #294：默认传 --clean-externals —— 隔离实例必须**复现**「新装用户没装
- * dsh.client.external 依赖」的状态（旧行为无条件复用生产 profile 全部 node_modules，
- * 本机已装该包时这个状态永远验证不到 → 3c 结构性假通过，#290/#293 因此漏到用户侧）。
- * 插件未声明 external 时推导集合为空，行为与旧版逐条一致（不回归）。
+ * fail-closed：未带 --confirm-manual-tested 即阻断。**绝不静默跳过** —— 静默跳过
+ * 等于把「没人验证过」当成「验证通过」，正是本门禁要防的假绿。阻断时打印：要做什么
+ * 人工验证、清单写到哪里、加哪个标志放行（可操作，不让人猜）。
+ *
+ * @returns {{ok: boolean, message?: string}} 判定结果（纯决策，无 IO、无副作用）
  */
-async function realVerifyGate(name, version, port, prefix) {
-  // 清单名与 git tag 共用同一个发版目标版本（lib 纯函数，防两处口径漂移）
-  const checklistPath = join(root, releaseArtifactNames(name, version).checklistPath)
-  const verify = await runChild(
-    process.execPath,
-    buildRealVerifyArgs({
-      checklistPath,
-      pluginName: name,
-      version,
-      port,
-      addonDir: `plugins/${name}`,
-      enablePlugins,
-    }),
-    { cwd: root, prefix },
-  )
-  if (verify.code !== 0) {
-    return {
-      ok: false,
-      message: '真实环境验证失败 — 发版阻断。请先修复插件加载/配置问题，再重新发版',
-    }
+function manualTestGate(name, version) {
+  return {
+    ok: false,
+    message:
+      '人工自测未确认 — 发版阻断（fail-closed，不静默跳过）。\n' +
+      '      请在真实环境（真实 DSH 实例 + 浏览器）由**用户本人**走通核心功能，\n' +
+      `      把结果记入清单 ${releaseArtifactNames(name, version).checklistPath}（模板见 verification/README.md），\n` +
+      '      确认后加 --confirm-manual-tested 重新发版。',
   }
-  const check = await runChild(process.execPath, ['scripts/verify-real-profile.mjs', '--check', checklistPath], {
-    cwd: root,
-    prefix,
-  })
-  if (check.code !== 0) {
-    return {
-      ok: false,
-      message:
-        '功能级验证清单未全部勾选 — 发版阻断（issue #67）。请在隔离实例 + 真实浏览器中完成功能级验证后勾选清单，再重新发版',
-    }
-  }
-  return { ok: true }
 }
 
 /**
@@ -355,7 +305,7 @@ async function packHygieneGate(name) {
  * 处理单个插件：门禁并发执行、按门禁编号顺序结算（issue #246）。
  *
  * @param {string} name 插件目录名
- * @param {{port: number, prefix: string}} ctx 调度上下文
+ * @param {{prefix: string}} ctx 调度上下文
  * @returns {Promise<object>} 与串行版同形的结果对象，额外带 timeline / failedGate
  */
 async function processPlugin(name, ctx) {
@@ -652,78 +602,48 @@ async function processPlugin(name, ctx) {
 
   // ── 3c 计划（纯决策，无 IO）──────────────────────────────────────────────
   // 「静态门禁 → 才启动重门禁」这个次序是快速失败路径的关键：静态门禁只要 ~6ms
-  // （有仓库内依赖时 ~0.5s）就能拦下最常见的失败，失败时**一个隔离实例都不会起**，
-  // 失败代价与串行版持平；一旦通过，1a/3/3c 全部并发启动，成功路径 ≈ max(三者)。
+  // （有仓库内依赖时 ~0.5s）就能拦下最常见的失败，失败时**一个重门禁都不会起**，
+  // 失败代价与串行版持平；一旦通过，1a/1d/3 全部并发启动，成功路径 ≈ max(三者)。
   const staticBlocked = !shapeOk || !peerOk || !depOk || !changelogOk || !screenshotOk
-  const skipReal = skipRealVerify || process.env.GITHUB_ACTIONS === 'true' || process.env.DSH_SKIP_REAL_VERIFY === '1'
-  let realPlan
-  if (allChecks) {
-    // --all-checks 只做静态门禁全景：真实环境验证需要隔离实例 + 功能级清单勾选，
-    // 属动态门禁，不在此模式执行（发布路径仍走完整 fail-fast 门禁）。
-    realPlan = {
-      mode: 'skip',
-      note: '--all-checks：静态门禁全景模式，不做动态验证',
-    }
-  } else if (staticBlocked) {
-    realPlan = { mode: 'skip', note: '静态门禁未通过：不启动隔离实例' }
-  } else if (skipReal) {
-    // --skip-real-verify 必须配 --skip-reason：已在参数校验阶段前移拦截（退出码 2）
-    realPlan = {
-      mode: 'skip',
-      note: skipRealVerify ? `--skip-reason: ${skipReason}` : 'CI / DSH_SKIP_REAL_VERIFY',
-    }
-  } else if (isLibrary || isPreset) {
-    // library 包（dsh.kind=library，如 dsh-shared）不是 profile bundle：无插件行、
-    // 无 client，verify-real-profile --addons 的 bundle 组合校验不适用。
-    // 验证职责已由测试门禁（单测/覆盖率/eslint 全绿）覆盖；npm pack 内容
-    // 由 release.yml 的 CI 校验（files 清单 + exports 可解析）。
-    realPlan = {
-      mode: 'skip',
-      note: isPreset
-        ? `${presetAsset.reason}：跳过 profile 组合验证（声明行需要宿主 ≥ 0.1.7 提供 @deepseek-ai/dsh-agent-preset 才能激活；升级前无法通过真实 profile 装载验证）`
-        : '共享工具包（dsh.kind=library）非 bundle 插件：跳过 profile 组合验证（--addons 不适用）',
-    }
-  } else {
-    realPlan = { mode: 'run', note: '' }
-  }
+  // 3c 人工自测确认：判据抽在 lib（resolveManualTestPlan，可单测），这里只提供环境事实。
+  // **默认阻断**：只有它显式列出的「不适用」情形才跳过，且每种都带理由打印（跳过可见、可审计）。
+  const manualPlan = resolveManualTestPlan({
+    allChecks,
+    staticBlocked,
+    isCI: process.env.GITHUB_ACTIONS === 'true',
+    isPreset,
+    isLibrary,
+    confirmed: confirmManualTested,
+    presetReason: isPreset ? presetAsset.reason : '',
+  })
 
   // 快速失败路径（与串行版等价）：静态门禁已失败且不是 --all-checks → 一个重门禁都不启动。
   if (gate.failures.length > 0 && !allChecks) return fail(orderedStatic)
 
   // ── 并发启动「重」门禁（issue #246）────────────────────────────────────────
-  // 1a（npm 查询 0.3–2.5s）/ 1d（npm pack ~0.3s）/ 3（插件测试 0.8–8.8s）/
-  // 3c（真实验证 ~10s）互不依赖。
-  // 三者都必须在返回前 await 完：提前 return 会让 3c 的隔离实例与临时目录变成孤儿
-  // （verify-real-profile 没有信号清理，强杀会残留实例，比多等几秒更糟）。
+  // 1a（npm 查询 0.3–2.5s）/ 1d（npm pack ~0.3s）/ 3（插件测试 0.8–8.8s）互不依赖。
+  // 三者都必须在返回前 await 完（提前 return 会让已启动的子进程变孤儿）。
   // 1d 放在这里而不是静态组：它需要一次 npm pack（IO），若插进静态组会把
-  // 「静态门禁失败快速路径」（~6ms 拦下）拖到 ~300ms；并发执行则墙钟 ≈ max(四者)。
-  say(
-    `- 并发门禁：1a npm latest 防降级 + 1d 包发布卫生 + 3 插件测试${realPlan.mode === 'run' ? ' + 3c 真实环境验证' : ''}…`,
-  )
+  // 「静态门禁失败快速路径」（~6ms 拦下）拖到 ~300ms；并发执行则墙钟 ≈ max(三者)。
+  say('- 并发门禁：1a npm latest 防降级 + 1d 包发布卫生 + 3 插件测试…')
   const npmLatestPromise = timeline.phase('1a npm latest 防降级', () =>
     npmLatestGate({ exec: runChild, name, pkgName: pkg.name, version, say }),
   )
   const packHygienePromise = timeline.phase('1d 包发布卫生（npm pack）', () => packHygieneGate(name))
   const testsPromise = timeline.phase('3 插件测试 (npm test)', () => testsGate(pluginDir, `${prefix}    `))
-  let realVerifyPromise = null
-  if (realPlan.mode === 'run') {
-    say(`- 真实环境验证（verify-real-profile.mjs --addons plugins/${name} --port ${ctx.port}）…`)
-    realVerifyPromise = timeline.phase('3c 真实环境验证（隔离实例）', () =>
-      realVerifyGate(name, version, ctx.port, `${prefix}  `),
-    )
-  }
 
   const npmLatest = await npmLatestPromise
   const packHygiene = await packHygienePromise
   const tests = await testsPromise
-  const realVerify = realVerifyPromise === null ? null : await realVerifyPromise
 
   const okNpmLatest = settle('1a', npmLatest)
   const okPackHygiene = settle('1d', packHygiene)
   if (packHygiene.ok && packHygiene.detail !== undefined) say(`✓ 包发布卫生：${packHygiene.detail}`)
   const okTests = settle('3', tests)
-  const okRealVerify = realVerify === null ? true : settle('3c', realVerify)
-  if (realPlan.note !== '') say(`- 跳过真实环境验证（${realPlan.note}）`)
+  // 3c：人工自测确认（纯决策，无 IO，不进并发组）。block 模式下这里就是阻断点。
+  const okManualTest = settle('3c', manualPlan.mode === 'block' ? manualTestGate(name, version) : { ok: true })
+  if (manualPlan.mode === 'confirmed') say('✓ 3c 人工自测确认：用户已在真实环境 + 浏览器完成功能级验证')
+  else if (manualPlan.note !== '') say(`- 跳过人工自测确认（${manualPlan.note}）`)
 
   const ordered = [
     ['1a', okNpmLatest],
@@ -733,7 +653,7 @@ async function processPlugin(name, ctx) {
     ['1d', okPackHygiene],
     ['2', changelogOk],
     ['3', okTests],
-    ['3c', okRealVerify],
+    ['3c', okManualTest],
     ['3b', screenshotOk],
   ]
   if (gate.failures.length > 0) {
@@ -817,17 +737,10 @@ const succeeded = []
 const failed = []
 const batchStart = Date.now()
 
-// 端口预分配（issue #246）：并行实例必须各占一个端口。原来每个插件内部各自
-// `findFreePort(3087)` —— 串行时不会撞，一并行就会同时拿到同一个端口。
-const ports = await findFreePorts(3087, names.length)
-
 // 批量流水线：最多 batchConcurrency 个插件同时在跑（每个插件内部再并发门禁）。
 // 失败语义不变：所有插件都会跑完，失败的照样列进汇总，任一失败 → exit 1。
-const outcomes = await mapWithConcurrency(names, batchConcurrency, (name, index) =>
-  processPlugin(name, {
-    port: ports[index] ?? ports[0],
-    prefix: names.length > 1 ? `[${name}] ` : '',
-  }),
+const outcomes = await mapWithConcurrency(names, batchConcurrency, (name) =>
+  processPlugin(name, { prefix: names.length > 1 ? `[${name}] ` : '' }),
 )
 
 for (const [index, outcome] of outcomes.entries()) {
@@ -862,7 +775,7 @@ if (push && succeeded.length > 0) {
   const { files: filesToCommit, messages: commitMessages } = releaseCommitPlan(succeeded, bump)
 
   // Stage all files（过滤不存在的路径：`git add` 只要有一个 pathspec 不存在就**整体失败**，
-  // 而验证清单在 --skip-real-verify 等场景下不会生成）
+  // 而人工自测清单是**用户按需**写的，未写时该路径不存在）
   const files = [...filesToCommit].filter((f) => existsSync(join(root, f))).join(' ')
   execSync(`git add ${files}`, { cwd: root, stdio: 'inherit' })
 

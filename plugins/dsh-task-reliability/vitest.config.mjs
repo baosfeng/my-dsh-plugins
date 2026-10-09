@@ -7,7 +7,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['test/*.mjs'],
-    exclude: ['**/e2e-cdp.mjs', '**/node_modules/**'],
+    exclude: ['**/node_modules/**'],
     // 本插件不继承根配置，需自行声明（issue #353）：真实落盘用例写 20000 条任务，
     // 多 agent 并行负载下极易顶穿 vitest 默认 5s。放宽的是框架停机保护，不是判据。
     testTimeout: 60_000,

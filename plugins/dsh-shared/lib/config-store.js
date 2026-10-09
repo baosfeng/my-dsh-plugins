@@ -48,29 +48,55 @@ export function extractConfig(text, rowId) {
         if (isTopLevelEntry(line))
             break;
         if (line === '  config:')
-            return parseConfigBlock(lines, i + 1);
+            return parseConfigBlock(lines, i + 1, 4);
     }
     return undefined;
 }
-/** 解析 config 块（缩进 4 空格的 `key: value` 行，直到缩进不足/顶层条目）。 */
-function parseConfigBlock(lines, from) {
-    const config = {};
+/**
+ * 解析 config 块（`indent` 空格缩进的 `key: value` 行，直到缩进不足 / 顶层条目）。
+ *
+ * **嵌套支持**（纯增量）：值为空且后续行缩进更深 → 解析为子对象，例如
+ *
+ *     config:
+ *       markdown:
+ *         copyButton: true
+ *
+ * 扁平结构（值直接跟在冒号后）的行为与之前完全一致。两种结构可以混写
+ * （合并后的 md-render 就依赖这一点：用户 profile 里的旧扁平键与新命名空间
+ * 段共存，读回来都要能拿到）。
+ */
+function parseConfigBlock(lines, from, indent) {
+    const root = {};
+    const stack = [{ indent: indent - 2, target: root }];
     for (let i = from; i < lines.length; i += 1) {
         const line = lines[i];
         if (line === '' || line.startsWith('#'))
             continue;
-        if (isTopLevelEntry(line) || !line.startsWith('    '))
+        if (isTopLevelEntry(line))
             break;
-        // 注意：冒号后不用 `\s*`（与 `(.*)` 字符集重叠 → CodeQL js/polynomial-redos）；
-        // 改为 `(.*)` 直接捕获冒号后全部内容，前导空白由 parseYamlScalar 的 trim 处理，行为等价。
-        const match = line.match(/^ {4}([A-Za-z0-9_]+):(.*)$/);
+        const match = line.match(/^( *)([A-Za-z0-9_]+):(.*)$/);
         if (match === null)
             continue;
-        const value = parseYamlScalar(match[2]);
+        const depth = match[1].length;
+        if (depth < indent)
+            break;
+        while (stack.length > 1 && stack[stack.length - 1].indent >= depth)
+            stack.pop();
+        const frame = stack[stack.length - 1];
+        const key = match[2];
+        const raw = match[3];
+        if (raw.trim() === '') {
+            const child = {};
+            frame.target[key] = child;
+            // 后续行若缩进更深则进入子块；否则子块保持空对象（与 YAML 语义一致）。
+            stack.push({ indent: depth, target: child });
+            continue;
+        }
+        const value = parseYamlScalar(raw);
         if (value !== undefined)
-            config[match[1]] = value;
+            frame.target[key] = value;
     }
-    return config;
+    return root;
 }
 /** 解析 YAML 标量子集：布尔 / 整数 / 数组（flow）/ 引号字符串 / 裸字符串。 */
 function parseYamlScalar(raw) {
@@ -149,13 +175,27 @@ function isEntryStart(line, rowId) {
 function isTopLevelEntry(line) {
     return line.startsWith('- ');
 }
-/** 渲染 `- id: <rowId>` + `config:` 块（YAML 子集序列化）。 */
+/** 渲染 `- id: <rowId>` + `config:` 块（YAML 子集序列化，支持嵌套对象）。 */
 function renderEntry(rowId, config) {
     const lines = [`- id: ${rowId}`, '  config:'];
-    for (const [key, value] of Object.entries(config)) {
-        lines.push(`    ${key}: ${yamlValue(value)}`);
-    }
+    renderConfigLines(config, 4, lines);
     return lines.join('\n');
+}
+/** 递归渲染 config 行（嵌套对象 → 缩进子块；标量 → `key: value`）。 */
+function renderConfigLines(config, indent, lines) {
+    const pad = ' '.repeat(indent);
+    for (const [key, value] of Object.entries(config)) {
+        if (isPlainObject(value)) {
+            lines.push(`${pad}${key}:`);
+            renderConfigLines(value, indent + 2, lines);
+            continue;
+        }
+        lines.push(`${pad}${key}: ${yamlValue(value)}`);
+    }
+}
+/** 是否为可递归渲染的普通对象（排除数组 / null）。 */
+function isPlainObject(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 /** YAML 标量序列化：字符串单引号（`'` → `''`），数组 flow 风格。 */
 function yamlValue(value) {

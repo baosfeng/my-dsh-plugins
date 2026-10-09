@@ -30,7 +30,7 @@
  *
  * ── 「源在仓库但故意不发布」怎么表达（issue 明确要求，不许一刀切）────────────
  * 判据是**「被已发布面引用才必须在包内」**，不是"不在 files 就报警"：
- *   · `dsh-mermaid-render` 的 `vendor/`（构建期输入）、各插件的 `src/` `test/` `scripts/`、
+ *   · 各插件的 `src/` `test/` `scripts/` `vendor/`（构建期输入）、
  *     `dsh-shared` 的 `client-parts/`（monorepo 内 splice 源，代码注释已声明"发布出去的
  *     包里没有它"）—— 都**不在任何 files 里、也不被已发布面引用** → 判定通过，只作为
  *     info 列出（`describeUnpackedEntries`），不报警。

@@ -7,7 +7,7 @@
 | 形态 | 照抄对象 |
 | --- | --- |
 | 纯 server（无 client 半） | `plugins/dsh-my-remote/`（`tsconfig.json` + `src/index.ts`） |
-| server + client 页签/预览器（最常见） | `plugins/dsh-my-observability/`（`tsconfig.json` + `tsconfig.client.json` + `lib/client.src.js` + `scripts/build.mjs`）；要注入 `dsh-shared/client-parts` 共享片段时看 `plugins/dsh-mermaid-render/scripts/build.mjs` |
+| server + client 页签/预览器（最常见） | `plugins/dsh-my-observability/`（`tsconfig.json` + `tsconfig.client.json` + `lib/client.src.js` + `scripts/build.mjs`）；要注入 `dsh-shared/client-parts` 共享片段（含路由常量等构建期注入）时看 `plugins/dsh-md-render/scripts/build.mjs` |
 | 共享工具库（`dsh.kind=library`） | `plugins/dsh-shared/` |
 
 新建时改三处即可：目录名、`package.json` 的 `name`、`cordis.patch.yml` 的 `id`/`name`（见 [package-and-patch.md](package-and-patch.md)）。

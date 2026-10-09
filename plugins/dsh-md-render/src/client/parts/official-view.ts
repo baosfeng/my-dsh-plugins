@@ -75,8 +75,78 @@ function officialMarkdownAvailable(): boolean {
   return platform !== null && platform.createRoot !== null
 }
 
-/** 容器 → React root（WeakMap：容器被宿主回收后不留引用）。 */
-const markdownRoots = new WeakMap<Element, { render: (node: unknown) => void; unmount: () => void }>()
+/**
+ * 容器 → React root。
+ *
+ * 用 `Map` + `WeakRef` 而不是 `WeakMap`：**需要能枚举**以清扫「宿主把容器连同
+ * 我们的节点一起重渲染掉」留下的悬挂 root（容器已脱离文档 → 必须 unmount，否则
+ * React root 与其 fiber 树一直活着）。WeakRef 保证条目不会让容器本身无法回收。
+ */
+interface MarkdownRoot {
+  render: (node: unknown) => void
+  unmount: () => void
+}
+
+const markdownRoots = new Map<WeakRef<Element>, MarkdownRoot>()
+
+/** 取出仍存活且与当前容器一致的 root。 */
+function rootOf(container: Element): MarkdownRoot | undefined {
+  for (const [ref, root] of markdownRoots) {
+    if (ref.deref() === container) return root
+  }
+  return undefined
+}
+
+/** 记下容器与 root 的对应（先清掉同一容器的旧条目，避免重复登记）。 */
+function trackRoot(container: Element, root: MarkdownRoot): void {
+  forgetRoot(container)
+  markdownRoots.set(new WeakRef(container), root)
+}
+
+/** 忘掉某容器的条目（不 unmount，调用方决定）。 */
+function forgetRoot(container: Element): void {
+  for (const [ref, _root] of markdownRoots) {
+    if (ref.deref() === container) markdownRoots.delete(ref)
+  }
+}
+
+/** 容器是否已脱离文档（`isConnected` 优先，缺失时退回 `parentNode` 判定）。 */
+function isDetached(container: Element): boolean {
+  if (typeof (container as { isConnected?: unknown }).isConnected === 'boolean') {
+    return (container as { isConnected: boolean }).isConnected === false
+  }
+  const body = typeof document !== 'undefined' && document !== null ? document.body : null
+  if (body === null || body === undefined) return false
+  let node: Element | null = container
+  while (node !== null && node !== undefined) {
+    if (node === (body as unknown as Element)) return false
+    node = (node.parentNode as Element | null) ?? null
+  }
+  return true
+}
+
+/**
+ * 清扫悬挂 root：容器已脱离文档（宿主重渲染把我们的节点抹掉 / 整个节点被替换）
+ * 或已被 GC → unmount 并移除条目。每轮扫描开头调用一次（容器数量是「被接管的
+ * 块数」，量级很小）。
+ */
+function sweepDetachedRoots(): void {
+  for (const [ref, root] of markdownRoots) {
+    const container = ref.deref()
+    if (container === undefined) {
+      markdownRoots.delete(ref)
+      continue
+    }
+    if (isDetached(container)) {
+      markdownRoots.delete(ref)
+      try {
+        root.unmount()
+      } catch (_e) {
+        /* 卸载异常不阻断清扫 */
+      }
+    }
+  }
+}
 
 /**
  * 把 markdown 原文渲染进容器（官方组件负责渲染，文本先过表格容错规范化）。
@@ -85,10 +155,10 @@ const markdownRoots = new WeakMap<Element, { render: (node: unknown) => void; un
 function renderMarkdownInto(container: Element, text: string): boolean {
   const platform = platformMarkdown()
   if (platform === null || platform.createRoot === null) return false
-  let root = markdownRoots.get(container)
+  let root = rootOf(container)
   if (root === undefined) {
     root = platform.createRoot(container)
-    markdownRoots.set(container, root)
+    trackRoot(container, root)
   }
   root.render(createElement(platform.MarkdownText, { text: normalizeTables(text), labels: MARKDOWN_LABELS }))
   return true
@@ -96,9 +166,9 @@ function renderMarkdownInto(container: Element, text: string): boolean {
 
 /** 卸载容器上的 React root（容器内容被重建/清理前调用，避免悬挂 root）。 */
 function unmountMarkdownIn(container: Element): void {
-  const root = markdownRoots.get(container)
+  const root = rootOf(container)
   if (root === undefined) return
-  markdownRoots.delete(container)
+  forgetRoot(container)
   try {
     root.unmount()
   } catch (_e) {
@@ -119,4 +189,5 @@ exports.platformMarkdown = platformMarkdown
 exports.officialMarkdownAvailable = officialMarkdownAvailable
 exports.renderMarkdownInto = renderMarkdownInto
 exports.unmountMarkdownIn = unmountMarkdownIn
+exports.sweepDetachedRoots = sweepDetachedRoots
 exports.officialMarkdownNode = officialMarkdownNode

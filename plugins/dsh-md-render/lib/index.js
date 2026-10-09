@@ -1,46 +1,74 @@
 /**
- * dsh-md-render — host half.
+ * dsh-md-render — host half（合并 think-zh-expand + mermaid-render，issue #463）。
  *
- * The plugin's rendering happens client-side (see lib/client.js); this host
- * half provides the application-level config surface:
+ * 合并后 host 半提供三件事：
+ *  1. **配置读写路由** `/md-render/api/config`（GET/PUT，唯一一条配置路径）：
+ *     命名空间化 config（markdown/thinking/mermaid）+ 旧扁平键读兼容；
+ *  2. **静态资源路由** `/md-render/assets`：mermaid 引擎（不内联进 bundle）；
+ *  3. **system-prompt 注入**：仅 mermaid 能力声明（`injectPrompt` 开关）。
+ *     中文思考指令不在此注册 —— 由 dsh-my-memory 的「全局提示词」提供。
  *
- *  - 保留增强功能的独立开关（默认开启）：copyButton（整段复制）/
- *    textFenceMarkdown（text 围栏块渲染）/ contextMarkdown（上下文注入块渲染）；
- *  - 设置页保存经 PUT /md/api/config（lib/routes.js）写入 profile patch
- *    文件（复用 dsh-shared 的配置持久化），重启不丢；
- *  - DSH 的 watchUserPatches 热重载 patch 文件，client 端重新 apply 后
- *    按新开关渲染（保存即生效，无需重启）。
+ * 渲染本体全部在 client 半（lib/client.js）。配置保存写 profile patch 文件
+ * （复用 dsh-shared），DSH 的 watchUserPatches 热重载后 client 重新 apply
+ * （保存即生效，无需重启）。
+ *
+ * 本文件编译为 lib/index.js（产物必须提交，CI 只跑产物、不跑构建）。
  */
-import { currentProfile, patchFileOf, writePatchConfig } from 'dsh-shared';
-import { registerConfigRoutes, SWITCH_KEYS } from './routes.js';
+import { createConfigState, mergeConfig, persistConfig } from './config.js';
+import { createPromptSection } from './prompt.js';
+import { registerAssetRoutes } from './routes/assets.js';
+import { registerConfigRoutes } from './routes/config.js';
 export const name = 'dsh-md-render';
-export const inject = ['webServer'];
+/**
+ * 服务依赖：webServer（路由）+ systemPrompt（能力声明）。
+ *
+ * `webServer` **必须**声明：cordis 4 的 service 守卫在 `ctx.webServer` 的 **get 阶段**
+ * 就抛 `cannot get property "webServer" without inject`，可选链挡不住。
+ * cordis 4 的 inject 没有 required/optional 语义；声明后在没有 webServer 的 profile
+ * （如 tui）里该 fiber 保持 inactive —— 这正是期望。
+ */
+export const inject = ['webServer', 'systemPrompt'];
 export function apply(ctx, config) {
-    // 应用层 config（cordis.patch.yml → ctx.config）优先；缺省/非法值保持默认。
-    const options = buildOptions(config);
-    // 配置保存：持久化到 profile patch 文件 + 更新内存。patch 文件写入完整
-    // 配置（当前值 + 新值合并），重启后完整恢复；DSH 的 watchUserPatches 会
-    // 热重载 patch 文件（保存即生效）。
-    const onConfigChange = async (next) => {
-        const merged = { ...options, ...next };
-        try {
-            await writePatchConfig(patchFileOf(currentProfile()), 'md-render', merged);
-        }
-        catch (error) {
-            ctx.logger?.warn(`[dsh-md-render] 配置保存失败（操作=config/save，原因=${error instanceof Error ? error.message : String(error)}）`);
-            throw error;
-        }
-        Object.assign(options, next);
-        ctx.logger?.info(`[dsh-md-render] 配置已保存（变更键=${Object.keys(next).join(',')}）`);
-    };
-    registerConfigRoutes(ctx, options, onConfigChange);
-    ctx.logger?.info(`[dsh-md-render] 已启用（开关=${SWITCH_KEYS.length} 项）`);
+    // 应用层 config 优先；旧扁平键读兼容在 createConfigState 内（用户 profile 已落盘）。
+    const state = createConfigState(config);
+    // system-prompt：只注册 mermaid 能力声明（先撤后注册，同值不惊动宿主）。
+    const syncSection = createSectionSync(ctx);
+    syncSection(state.mermaid.injectPrompt);
+    // 配置保存：持久化（合并行内已有键）+ 更新内存 + section 热同步。
+    registerConfigRoutes(ctx, state, async (patch) => {
+        const next = mergeConfig(state, patch);
+        await persistConfig(next);
+        Object.assign(state.markdown, next.markdown);
+        Object.assign(state.thinking, next.thinking);
+        Object.assign(state.mermaid, next.mermaid);
+        syncSection(next.mermaid.injectPrompt);
+        ctx.logger?.info(`[dsh-md-render] 配置已保存（变更段=${Object.keys(patch).join(',')}）`);
+    });
+    // 静态资源：mermaid 引擎（按需 fetch，不内联）。
+    registerAssetRoutes(ctx);
+    ctx.logger?.info(state.mermaid.injectPrompt
+        ? '[dsh-md-render] 已启用（markdown 增强 + 思考展开 + mermaid 渲染 + 能力声明注入）'
+        : '[dsh-md-render] 已启用（markdown 增强 + 思考展开 + mermaid 渲染；能力声明注入已关闭）');
 }
-/** 应用层配置 → options（开关默认开启，仅布尔值生效；非法值回退默认）。 */
-export function buildOptions(config) {
-    const c = config ?? {};
-    const options = {};
-    for (const key of SWITCH_KEYS)
-        options[key] = c[key] !== false;
-    return options;
+/**
+ * 注册/撤销 systemPrompt section：可重入 + **幂等**（保存后调用即热生效）。
+ * 幂等很重要：重复注册同名 section 宿主会抛错，而无谓的撤销+重注册会让
+ * 「保存一个与原值相同的配置」也惊动宿主（也可能丢掉其它插件的顺序假设）。
+ */
+function createSectionSync(ctx) {
+    let dispose = null;
+    let current = null;
+    return (inject) => {
+        if (current === inject)
+            return;
+        if (dispose !== null) {
+            dispose();
+            dispose = null;
+        }
+        current = inject;
+        const section = createPromptSection(inject);
+        if (section === null)
+            return;
+        dispose = ctx.systemPrompt?.section(section) ?? null;
+    };
 }

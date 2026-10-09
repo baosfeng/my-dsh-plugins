@@ -40,7 +40,7 @@ import { assertIsolatedPatchPath, isolatedHome } from './helpers/isolated-home.m
 const SETTINGS_PATH = `${SETTINGS_ROUTE_PREFIX}/settings`
 
 // ── 按 cordis 4 真实契约构造的 host ctx 桩 ──────────────────────────────
-// 与 plugins/dsh-think-zh-expand/test/helpers/host-ctx.mjs 同族（本插件只多一个
+// 与本仓渲染类插件的 host ctx 桩同族（本插件只多一个
 // webRuntime 服务查询），关键复刻点见上方文件头第 1 条。
 function createHostCtx({ webServer = 'ready' } = {}) {
   const routes = []

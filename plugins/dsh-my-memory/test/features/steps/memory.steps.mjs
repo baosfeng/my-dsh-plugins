@@ -729,3 +729,173 @@ Then('全局记忆不包含 {string}', async function (desc) {
   const value = await this.callTool({ scope: 'global' })
   assert.ok(!value.items.some((entry) => entry.desc === desc), `global memory no longer contains ${desc}`)
 })
+
+// ── 全局提示词（issue #465）：与全局记忆完全隔离 ──────────────────────────
+
+function promptSection(world) {
+  const section = world.sections.find((s) => s.name === 'dsh-my-memory:prompts')
+  assert.ok(section, 'dsh-my-memory:prompts section registered')
+  return section
+}
+
+When('查询全局提示词', async function () {
+  await this.callRoute('GET', '/my-memory/api/prompts')
+})
+
+When('用户确认新增提示词 {string}', async function (text) {
+  const r = await this.callRoute('POST', '/my-memory/api/prompts', {
+    action: 'add',
+    title: text,
+    text,
+    confirmed: true,
+  })
+  assert.equal(r.status, 200, `prompt add succeeded: ${JSON.stringify(r.json)}`)
+})
+
+When('用户尝试新增超出上限的提示词 {string}', async function (text) {
+  // 上限是安全阀：超出即 400 拒绝（绝不静默扩容），且不改变已有条目
+  this.lastPromptReject = await this.callRoute('POST', '/my-memory/api/prompts', {
+    action: 'add',
+    title: text,
+    text,
+    confirmed: true,
+  })
+  assert.equal(this.lastPromptReject.status, 400, 'add beyond maxPromptItems is refused')
+})
+
+When('用户停用提示词 {string}', async function (needle) {
+  const list = await this.callRoute('GET', '/my-memory/api/prompts')
+  const item = list.json.value.items.find((i) => i.text.includes(needle) || i.builtin === needle)
+  assert.ok(item, `prompt ${needle} exists`)
+  const r = await this.callRoute('POST', '/my-memory/api/prompts', {
+    action: 'toggle',
+    id: item.id,
+    enabled: false,
+    confirmed: true,
+  })
+  assert.equal(r.status, 200, 'toggle succeeded')
+})
+
+When('提交未携带同意标记的提示词写操作', async function () {
+  await this.callRoute('POST', '/my-memory/api/prompts', { action: 'add', title: '静默', text: '静默写入' })
+})
+
+When('组装提示词 section', function () {
+  this.lastPromptSectionText = promptSection(this).text({})
+})
+
+When('组装系统提示词与提示词 section', function () {
+  const memory = this.section()
+  assert.ok(memory, 'dsh-my-memory section registered')
+  this.lastSectionText = memory.text({})
+  this.lastPromptSectionText = promptSection(this).text({})
+})
+
+Then('提示词列表包含内置种子 {string}', function (builtin) {
+  const items = this.lastResponse.json.value.items
+  assert.ok(
+    items.some((i) => i.builtin === builtin),
+    `prompts contain ${builtin}`,
+  )
+  assert.ok(
+    items.some((i) => i.builtin === builtin && i.text.includes('简体中文')),
+    'the seed carries the Chinese-thinking instruction',
+  )
+})
+
+Then('内置种子默认启用', function () {
+  const seed = this.lastResponse.json.value.items.find((i) => i.builtin === 'builtin:think-zh')
+  assert.equal(seed.enabled, true, 'the seed ships enabled (behaviour-equivalent migration)')
+  assert.equal(seed.title.length > 0, true, 'the seed has a display title')
+})
+
+Then('提示词的 section 顺序为 {int}', function (order) {
+  assert.equal(promptSection(this).order, order)
+})
+
+Then('提示词 section 文本包含 {string}', function (text) {
+  assert.ok(this.lastPromptSectionText.includes(text), `prompt section contains ${text}`)
+})
+
+Then('提示词 section 文本不包含 {string}', function (text) {
+  assert.ok(!this.lastPromptSectionText.includes(text), `prompt section excludes ${text}`)
+})
+
+Then('提示词 section 文本为空', function () {
+  assert.equal(this.lastPromptSectionText, '', 'all prompts disabled → empty section')
+})
+
+Then('提示词数量仍为 {int}', async function (count) {
+  const r = await this.callRoute('GET', '/my-memory/api/prompts')
+  assert.equal(r.json.value.items.length, count, 'no silent prompt write')
+})
+
+Then('提示词列表包含提示词 {string} 且不包含 {string}', async function (present, absent) {
+  const r = await this.callRoute('GET', '/my-memory/api/prompts')
+  const items = r.json.value.items
+  assert.ok(
+    items.some((i) => i.text === present),
+    `prompts contain ${present}`,
+  )
+  assert.ok(!items.some((i) => i.text === absent), `prompts exclude ${absent}`)
+})
+
+// ── 提示词编辑 / 排序 / 删除 / 上限（issue #465）──────────────────────────
+
+When('用户把提示词 {string} 上移', async function (title) {
+  const list = await this.callRoute('GET', '/my-memory/api/prompts')
+  const item = list.json.value.items.find((i) => i.title === title)
+  assert.ok(item, `prompt ${title} exists`)
+  const r = await this.callRoute('POST', '/my-memory/api/prompts', {
+    action: 'reorder',
+    id: item.id,
+    direction: 'up',
+    confirmed: true,
+  })
+  assert.equal(r.status, 200, 'reorder succeeded')
+})
+
+Then('启用提示词的注入顺序为 {string}', async function (expected) {
+  const r = await this.callRoute('GET', '/my-memory/api/prompts')
+  // 顺序断言只看**启用**的条目（注入的就是这些，且顺序即注入顺序）
+  const titles = r.json.value.items.filter((i) => i.enabled === true).map((i) => i.title)
+  assert.deepEqual(titles, expected.split(','), 'enabled prompt order matches the injection order')
+})
+
+When('用户把提示词 {string} 编辑为正文 {string}', async function (title, text) {
+  const list = await this.callRoute('GET', '/my-memory/api/prompts')
+  const item = list.json.value.items.find((i) => i.title === title)
+  assert.ok(item, `prompt ${title} exists`)
+  const r = await this.callRoute('POST', '/my-memory/api/prompts', {
+    action: 'update',
+    id: item.id,
+    title: text,
+    text,
+    confirmed: true,
+  })
+  assert.equal(r.status, 200, 'update succeeded')
+})
+
+When('用户删除提示词 {string}', async function (title) {
+  const list = await this.callRoute('GET', '/my-memory/api/prompts')
+  const item = list.json.value.items.find((i) => i.title === title)
+  assert.ok(item, `prompt ${title} exists`)
+  const r = await this.callRoute('POST', '/my-memory/api/prompts', {
+    action: 'delete',
+    id: item.id,
+    confirmed: true,
+  })
+  assert.equal(r.status, 200, 'delete succeeded')
+})
+
+When('以 maxPromptItems 为 {int} 重载提示词能力', function (maxPromptItems) {
+  // 换全新 DSH_HOME 重挂载（提示词文件不存在 → 只迁入种子），并把条目上限压到
+  // maxPromptItems（安全阀断言：超出即拒绝，绝不静默扩容）。
+  const home = dirSync({ unsafeCleanup: true, prefix: 'dmm-feature-prompts-' }).name
+  process.env.DSH_HOME = home
+  // 新 home 尚无 prompts.json → 只迁入内置种子（不补种），上限从干净状态起算
+  this.sections.length = 0
+  this.tools.length = 0
+  this.events.length = 0
+  this.boot({ autoLearn: false, maxPromptItems })
+})

@@ -32,7 +32,8 @@ async function lintRules(code, filePath) {
 }
 
 const serverFile = join(repoRoot, 'plugins/dsh-file-activity/lib/index.js')
-const clientFile = join(repoRoot, 'plugins/dsh-think-zh-expand/lib/client.src.js')
+// 合并后（issue #463）client 端模板的现存样本：dsh-md-render 的 client.src.js
+const clientFile = join(repoRoot, 'plugins/dsh-md-render/lib/client.src.js')
 
 describe('import/no-unresolved（issue #48）', () => {
   it('server 端：require 不存在的模块 → 报错', async () => {
@@ -61,9 +62,9 @@ describe('import/no-unresolved（issue #48）', () => {
     expect(rules).toContain('import/no-unresolved')
   })
 
-  it('client 端：require 仓库内插件（dsh-md-render）→ 不报错', async () => {
+  it('client 端：require 仓库内插件（dsh-shared）→ 不报错', async () => {
     const rules = await lintRules(
-      'window.__ModuleLoader__.load({ id: "x", factory: (require) => { const b = require("dsh-md-render"); return {} } })',
+      'window.__ModuleLoader__.load({ id: "x", factory: (require) => { const b = require("dsh-shared"); return {} } })',
       clientFile,
     )
     expect(rules).not.toContain('import/no-unresolved')

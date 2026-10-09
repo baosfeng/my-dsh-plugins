@@ -27,13 +27,7 @@ const MODULES = {
     display: '文件活动追踪',
     npm: 'dsh-file-activity',
   },
-  'dsh-think-zh-expand': { module: '思考增强', display: '思考增强', npm: 'dsh-think-zh-expand' },
-  'dsh-mermaid-render': {
-    module: 'mermaid渲染',
-    display: 'Mermaid 渲染',
-    npm: 'dsh-mermaid-render',
-  },
-  'dsh-md-render': { module: 'md渲染', display: 'md 渲染', npm: 'dsh-md-render' },
+  'dsh-md-render': { module: 'md渲染', display: 'Markdown 渲染', npm: 'dsh-md-render' },
   'dsh-my-notify': { module: '通知提醒', display: '通知提醒', npm: 'dsh-my-notify' },
   'dsh-task-reliability': {
     module: '任务可靠性',

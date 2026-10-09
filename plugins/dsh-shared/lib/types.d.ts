@@ -29,9 +29,9 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | {
 export interface Logger {
     warn(message: string): void;
 }
-/** 配置对象（YAML 子集可解析的值类型）。 */
-export type ConfigValue = string | number | boolean | null | ConfigValue[];
-/** 配置字典。 */
+/** 配置对象（YAML 子集可解析的值类型；嵌套子块见 ConfigDict）。 */
+export type ConfigValue = string | number | boolean | null | ConfigValue[] | ConfigDict;
+/** 配置字典（`key: value` 行；值为空且后续行缩进更深时为嵌套子块）。 */
 export interface ConfigDict {
     [key: string]: ConfigValue;
 }

@@ -158,6 +158,32 @@ const strings = {
     askReject: () => (isZh() ? '拒绝' : 'Reject'),
     askNoteSave: () => isZh() ? '允许后写入记忆 · 记忆绝不静默变更' : 'Writes the memory on allow · memories never change silently',
     askNoteDelete: () => isZh() ? '删除不可撤销 · 记忆绝不静默变更' : 'Deletion is irreversible · memories never change silently',
+    // ── issue #465 全局提示词（与记忆并列但完全隔离）──
+    promptsSection: () => (isZh() ? '全局提示词' : 'Global prompts'),
+    promptsNote: () => isZh()
+        ? '每轮组装时**全量按序**注入系统提示（启用即注入、停用即不注入；不参与记忆的评分与条数上限）——存于 $DSH_HOME/memory/prompts.json'
+        : 'Every enabled prompt is injected into the system prompt in full order each turn (disabled = not injected; never scored or capped by the memory limits) — stored in $DSH_HOME/memory/prompts.json',
+    promptsEmpty: () => (isZh() ? '暂无提示词' : 'No prompts yet'),
+    promptsEmptyHint: () => (isZh() ? '在下方新增第一条全局提示词' : 'Add your first global prompt below'),
+    promptsAddPlaceholder: () => (isZh() ? '提示词标题（如：中文思考）' : 'Prompt title (e.g. Think in Chinese)'),
+    promptsTextPlaceholder: () => isZh() ? '提示词正文（将完整注入系统提示）' : 'Prompt body (injected in full into the system prompt)',
+    promptsAddInputAria: () => (isZh() ? '新增提示词标题' : 'New prompt title'),
+    promptsTextInputAria: () => (isZh() ? '新增提示词正文' : 'New prompt body'),
+    promptEnabled: () => (isZh() ? '已启用' : 'Enabled'),
+    promptDisabled: () => (isZh() ? '已停用' : 'Disabled'),
+    promptToggleOn: () => (isZh() ? '启用' : 'Enable'),
+    promptToggleOff: () => (isZh() ? '停用' : 'Disable'),
+    promptMoveUp: () => (isZh() ? '上移' : 'Move up'),
+    promptMoveDown: () => (isZh() ? '下移' : 'Move down'),
+    promptBuiltin: () => (isZh() ? '内置' : 'Builtin'),
+    promptHint: () => isZh()
+        ? '启用的提示词全量按序注入，不评分不截断'
+        : 'Enabled prompts are injected in full order — never scored, never truncated',
+    confirmAddPrompt: () => (isZh() ? '确认新增这条提示词？' : 'Add this prompt?'),
+    confirmUpdatePrompt: () => (isZh() ? '确认保存这条提示词的修改？' : 'Save this prompt change?'),
+    confirmDeletePrompt: () => isZh() ? '确定删除这条提示词？此操作不可撤销。' : 'Delete this prompt? This cannot be undone.',
+    promptCount: (n) => (isZh() ? `${n} 条` : `${n}`),
+    promptOrderBadge: (n) => (isZh() ? `顺序 ${n}` : `Order ${n}`),
 };
 // 导出给其他 part 文件使用
 
@@ -328,6 +354,22 @@ const STYLES = `
 .dsh-my-memory-history-entry { display:inline-flex; font:var(--dsw-font-xxxs-11);
   color:var(--dsw-alias-label-tertiary); }
 .dsh-my-memory-iconbtn-confirm:hover:not(:disabled) { color:var(--dsw-alias-state-success-primary); }
+/* ── issue #465 全局提示词：与记忆分区并列的独立分区 ── */
+.dsh-my-memory-section-prompts { border-color:color-mix(in srgb, var(--dsw-alias-accent) 28%, transparent); }
+.dsh-my-memory-prompt-row { gap:6px; }
+/* 停用条目降不透明度但不隐藏：用户要能看见「它还在、只是不注入」 */
+.dsh-my-memory-prompt-row-off { opacity:.55; }
+.dsh-my-memory-prompt-title { flex:none; font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
+.dsh-my-memory-prompt-text { white-space:pre-wrap; word-break:break-word; max-height:96px; overflow-y:auto;
+  font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-secondary); }
+.dsh-my-memory-prompt-toggle { flex:none; cursor:pointer; }
+.dsh-my-memory-prompt-toggle[disabled] { opacity:.5; cursor:default; }
+.dsh-my-memory-prompt-textarea { box-sizing:border-box; width:100%; min-height:60px; resize:vertical; padding:6px 8px;
+  border:1px solid var(--dsw-alias-border-l1); border-radius:6px; background:var(--dsw-alias-bg-layer-1);
+  color:var(--dsw-alias-label-primary); font:var(--dsw-font-xxs-12); line-height:1.6; }
+.dsh-my-memory-prompt-textarea:focus { outline:none; border-color:var(--dsw-alias-accent); }
+.dsh-my-memory-prompt-addbar { align-items:stretch; }
+.dsh-my-memory-iconbtn-up svg { transform:rotate(180deg); }
 `.trim();
 const STYLE_TAG = 'data-dsh-my-memory';
 // 导出给其他 part 文件使用
@@ -408,6 +450,38 @@ function dismissCandidate(id) {
         if (body === null || body.ok !== true)
             throw new Error('candidate dismiss failed');
         return body.value;
+    });
+}
+/** One GET/POST prompts payload into { items, item }. */
+function normalizePrompts(value) {
+    return {
+        items: Array.isArray(value?.items) ? value.items : [],
+        item: value?.item ?? null,
+    };
+}
+/** GET /my-memory/api/prompts → all prompts (order asc; global only). */
+function fetchPrompts() {
+    return fetch(`${API_BASE}/prompts`)
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('bad prompts response');
+        return normalizePrompts(body.value).items;
+    });
+}
+/** POST /my-memory/api/prompts — add/update/delete/toggle/reorder, gated on
+ *  the user-consent marker (the server refuses any write without it). */
+function writePrompt(payload) {
+    return fetch(`${API_BASE}/prompts`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...payload, confirmed: true }),
+    })
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('prompt write failed');
+        return normalizePrompts(body.value);
     });
 }
 /** Current session id from localStorage ('dsh.sessions.current' → { sessionId }). */
@@ -590,7 +664,7 @@ const icon = {
       size,
     ),
   // 代码（issue #54 阶段 1 新增）：尖括号 `</>`，预览/代码切换的代码视图
-  // 图标（dsh-mermaid-render 卡片），stroke=currentColor 风格与其余图标一致。
+  // 代码图标（预览 / 代码切换的代码视图），stroke=currentColor 风格与其余图标一致。
   code: (size = 16) =>
     iconSvg(
       [
@@ -599,8 +673,8 @@ const icon = {
       ],
       size,
     ),
-  // 下载（issue #85 新增）：箭头入托盘，图表导出按钮（dsh-mermaid-render
-  // 卡片下载 PNG/SVG），stroke=currentColor 风格与其余图标一致。
+  // 下载（issue #85 新增）：箭头入托盘，mermaid 卡片导出 PNG/SVG 用，
+  // stroke=currentColor 风格与其余图标一致。
   download: (size = 16) =>
     iconSvg(
       [
@@ -610,8 +684,8 @@ const icon = {
       ],
       size,
     ),
-  // 复制（issue #85 新增）：双层矩形，复制源码按钮（dsh-mermaid-render
-  // 卡片复制代码），stroke=currentColor 风格与其余图标一致。
+  // 复制（issue #85 新增）：双层矩形，mermaid 卡片复制源码用，
+  // stroke=currentColor 风格与其余图标一致。
   copy: (size = 16) =>
     iconSvg(
       [
@@ -1295,20 +1369,85 @@ function CandidatesBlock({ candidates, busy, onConfirmCandidate, onDismissCandid
 // 导出给其他 part 文件使用
 
     "use strict";
-// ── view: Memory settings tab ─────────────────────────────────────────
-// 跨 part 引用（strings/utils/api/view-rows/candidates）由拼接作用域解析，
-// 无需 require——浏览器 ModuleLoader 不支持 factory 内相对路径 require。
-/** Load both scopes: global always; project only when a cwd is given. */
-function fetchAll(cwd) {
-    const projectCwd = cwd.trim();
-    const globalP = fetchMemory('global', '');
-    const projectP = projectCwd === ''
-        ? Promise.resolve({ scope: 'project', cwd: '', projectRoot: '', items: [] })
-        : fetchMemory('project', projectCwd);
-    return Promise.all([globalP, projectP]).then(([global, project]) => ({ global, project }));
+// ── prompts-state / view-state: 分区状态工厂（issue #465）────────────────
+// 从 view.ts 抽出（文件行数门禁 ≤400 的基线约束）：
+//  - 全局提示词的模块级状态 + 发布/订阅 + `usePromptsBlockProps`（在根视图里调用）；
+//  - 记忆分区的数据动作工厂 `createActions`（与状态机同源，随视图一起抽出）。
+// 全部依赖拼接作用域里的 strings/api/fetch*（无 import/export）。
+// ── 模块级提示词状态（发布/订阅）──────────────────────────────────────────
+// 状态放在模块作用域而非组件 state：本仓库 client 端的测试驱动器每帧重建元素，
+// 组件内自持 state 在跨帧断言下不稳定；模块级状态 + 订阅通知在真机与测试下语义
+// 完全一致，且天然保证「提示词只有一份真相」（与记忆视图的 data 同样唯一）。
+let promptState = { items: [], busy: false, editing: null, confirming: null, draft: { title: '', text: '' } };
+/** 订阅者（每个分区实例一个 setState）。 */
+const promptListeners = new Set();
+let promptLoaded = false;
+/** 更新状态并通知订阅者。 */
+function setPromptState(patch) {
+    promptState = { ...promptState, ...patch };
+    for (const listener of promptListeners)
+        listener(promptState);
 }
-function mergeScope(data, scope, value) {
-    return scope === 'global' ? { ...data, global: value } : { ...data, project: value };
+/** 写操作（click / 确认路径共用）：串行 busy，成功后用服务端回传的列表覆盖。 */
+function runPromptWrite(payload) {
+    if (promptState.busy)
+        return Promise.resolve();
+    setPromptState({ busy: true });
+    return writePrompt(payload)
+        .then((value) => {
+        const patch = { items: value.items };
+        if (payload.action === 'add')
+            patch.draft = { title: '', text: '' };
+        setPromptState({ ...patch, editing: null, confirming: null });
+    })
+        .catch(() => { })
+        .then(() => setPromptState({ busy: false }));
+}
+/** 提示词分区 props 的构造入口（在根视图里作为一等 hook 调用）。
+ *  状态住在根视图，不放在被渲染的子树里：本仓库 client 端是「每帧重建元素」模型，
+ *  子树里自持状态的组件在测试驱动器下会拿到新的 hook 槽位（真机 React 靠位置复用
+ *  实例，不受影响）——放在根视图既与记忆视图的状态机同构，也保证行为可断言。 */
+function usePromptsBlockProps() {
+    const [state, setState] = useState(promptState);
+    useEffect(() => {
+        const listener = (next) => setState(next);
+        promptListeners.add(listener);
+        if (!promptLoaded) {
+            promptLoaded = true;
+            fetchPrompts()
+                .then((items) => setPromptState({ items }))
+                .catch(() => setPromptState({ items: [] }));
+        }
+        return () => {
+            promptListeners.delete(listener);
+        };
+    }, []);
+    return {
+        items: state.items,
+        busy: state.busy,
+        editing: state.editing,
+        confirming: state.confirming,
+        draft: state.draft,
+        onToggle: (id) => runPromptWrite({ action: 'toggle', id, enabled: !enabledOf(state.items, id) }),
+        onMove: (id, direction) => runPromptWrite({ action: 'reorder', id, direction }),
+        onEdit: (item) => setPromptState({ editing: { id: item.id, title: item.title, text: item.text } }),
+        onEditTitle: (value) => setPromptState({ editing: state.editing === null ? null : { ...state.editing, title: value } }),
+        onEditText: (value) => setPromptState({ editing: state.editing === null ? null : { ...state.editing, text: value } }),
+        onCancelEdit: () => setPromptState({ editing: null }),
+        onSaveEdit: () => setPromptState({
+            confirming: state.editing === null
+                ? null
+                : { kind: 'update', id: state.editing.id, title: state.editing.title, text: state.editing.text },
+        }),
+        onDelete: (item) => setPromptState({ confirming: { kind: 'delete', id: item.id, title: item.title } }),
+        onDraft: (patch) => setPromptState({ draft: { ...state.draft, ...patch } }),
+        onAdd: () => setPromptState({ confirming: { kind: 'add', title: state.draft.title, text: state.draft.text } }),
+        onConfirm: (confirm) => setPromptState({ confirming: confirm }),
+        onCancelConfirm: () => setPromptState({ confirming: null }),
+        onCommit: (confirm) => {
+            void runPromptWrite(confirmPayload(confirm));
+        },
+    };
 }
 /** Data actions bound to the state setters; error: null | 'load' | 'save'. */
 function createActions({ setData, setLoading, setError, setSaved, setCandidates, setCandidateBusy, }) {
@@ -1332,12 +1471,187 @@ function createActions({ setData, setLoading, setError, setSaved, setCandidates,
             .then((items) => setCandidates(items))
             .catch(() => setCandidates([]));
     };
-    const run = (cwd) => refreshWith(fetchAll, cwd);
+    const run = (cwd) => refreshWith(fetchMemoryOnce, cwd);
     const refreshCandidates = () => {
         setCandidateBusy(false);
         loadCandidates();
     };
     return { load: run, refresh: run, loadCandidates, refreshCandidates };
+}
+
+    "use strict";
+// ── prompts: 全局提示词的设置分区（issue #465）────────────────────────────
+// 与记忆分区并列但完全隔离：独立数据源（/my-memory/api/prompts）、独立状态、
+// 独立确认面板。交互：新增 / 编辑 / 删除 / 启用停用 / 上移下移（写回 order）；
+// **不做拖拽**（零依赖、可测）。删除走红色二次确认，保存走绿色。
+/** 稳定的 React key。 */
+function promptKey(id) {
+    return 'prompt/' + id;
+}
+/** 一条提示词的编辑态：标题输入 + 正文 textarea + 保存/取消。 */
+function PromptRowEdit({ editing, onTitle, onText, onSave, onCancel, }) {
+    return createElement('div', { className: 'dsh-my-memory-row dsh-my-memory-row-editing dsh-my-memory-prompt-row' }, createElement(ui.Input, {
+        className: 'dsh-my-memory-add-input',
+        placeholder: strings.promptsAddPlaceholder(),
+        'aria-label': strings.promptsAddInputAria(),
+        value: editing.title,
+        onChange: (event) => onTitle(event.target.value),
+    }), createElement('textarea', {
+        className: 'dsh-my-memory-prompt-textarea',
+        placeholder: strings.promptsTextPlaceholder(),
+        'aria-label': strings.promptsTextInputAria(),
+        value: editing.text,
+        onChange: (event) => onText(event.target.value),
+    }), createElement('div', { className: 'dsh-my-memory-actions' }, createElement('button', { className: 'dsh-my-memory-btn-save', onClick: onSave }, icon.check(14), strings.save()), createElement(ui.Button, {
+        variant: 'ghost',
+        size: 'sm',
+        onClick: onCancel,
+        icon: createElement(ui.IconCloseOutline16),
+    }, strings.cancel())));
+}
+/** 启停 Pill（点击翻转 enabled）。 */
+function PromptToggle({ item, busy, onToggle }) {
+    return createElement(ui.Pill, {
+        className: 'dsh-my-memory-prompt-toggle',
+        active: item.enabled === true,
+        disabled: busy,
+        'aria-label': (item.enabled === true ? strings.promptToggleOff() : strings.promptToggleOn()) + ' ' + item.id,
+        onClick: onToggle,
+    }, item.enabled === true ? strings.promptEnabled() : strings.promptDisabled());
+}
+/** 一条提示词卡片：启停 + 标题（+ 内置徽标）+ 正文 + 排序/编辑/删除。 */
+function PromptRow({ item, isEditing, busy, onToggle, onMoveUp, onMoveDown, onEdit, onDelete, }) {
+    const head = createElement('div', { className: 'dsh-my-memory-row-head' }, createElement(PromptToggle, { item, busy, onToggle }), createElement('span', { className: 'dsh-my-memory-prompt-title' }, item.title), item.builtin === undefined
+        ? null
+        : createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.promptBuiltin()), createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, {
+        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-up',
+        label: strings.promptMoveUp() + ' ' + item.id,
+        onClick: onMoveUp,
+    }, icon.chevronDown(14)), createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: strings.promptMoveDown() + ' ' + item.id, onClick: onMoveDown }, icon.chevronDown(14)), createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: strings.edit() + ' ' + item.id, onClick: onEdit }, icon.pencil(14)), createElement(IconButton, {
+        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
+        label: strings.delete() + ' ' + item.id,
+        onClick: onDelete,
+    }, icon.trash(14))));
+    return createElement('div', {
+        className: 'dsh-my-memory-row dsh-my-memory-prompt-row' + (item.enabled === true ? '' : ' dsh-my-memory-prompt-row-off'),
+    }, head, createElement('div', { className: 'dsh-my-memory-prompt-text' }, item.text));
+}
+/** 新增栏：标题 + 正文（textarea）+ 新增按钮。 */
+function PromptAddBar({ draft, busy, onDraft, onAdd, }) {
+    return createElement('div', { className: 'dsh-my-memory-addbar-wrap dsh-my-memory-prompt-addbar' }, createElement(ui.Input, {
+        className: 'dsh-my-memory-add-input',
+        placeholder: strings.promptsAddPlaceholder(),
+        'aria-label': strings.promptsAddInputAria(),
+        value: draft.title,
+        onChange: (event) => onDraft({ title: event.target.value }),
+    }), createElement('textarea', {
+        className: 'dsh-my-memory-prompt-textarea',
+        placeholder: strings.promptsTextPlaceholder(),
+        'aria-label': strings.promptsTextInputAria(),
+        value: draft.text,
+        onChange: (event) => onDraft({ text: event.target.value }),
+    }), createElement('button', { className: 'dsh-my-memory-btn-save', disabled: busy, 'aria-label': strings.add(), onClick: onAdd }, icon.plus(14), strings.add()));
+}
+/** 全局提示词分区（列表 + 新增栏 + 确认面板）。 */
+function PromptsBlock({ items, busy, editing, confirming, draft, onToggle, onMove, onEdit, onEditTitle, onEditText, onCancelEdit, onSaveEdit, onDelete, onDraft, onAdd, onConfirm, onCancelConfirm, onCommit, }) {
+    const rows = items.map((item) => {
+        const isEditing = editing !== null && editing.id === item.id;
+        if (isEditing) {
+            return createElement(PromptRowEdit, {
+                key: promptKey(item.id),
+                editing: editing,
+                onTitle: onEditTitle,
+                onText: onEditText,
+                onSave: onSaveEdit,
+                onCancel: onCancelEdit,
+            });
+        }
+        return createElement(PromptRow, {
+            key: promptKey(item.id),
+            item,
+            isEditing: false,
+            busy,
+            onToggle: () => onToggle(item.id),
+            onMoveUp: () => onMove(item.id, 'up'),
+            onMoveDown: () => onMove(item.id, 'down'),
+            onEdit: () => onEdit(item),
+            onDelete: () => onDelete(item),
+        });
+    });
+    return createElement('div', { className: 'dsh-my-memory-section dsh-my-memory-section-prompts' }, createElement('div', { className: 'dsh-my-memory-section-head' }, createElement('span', { className: 'dsh-my-memory-section-title' }, strings.promptsSection()), createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, strings.promptCount(items.length))), createElement('div', { className: 'dsh-my-memory-note' }, strings.promptsNote()), rows.length === 0
+        ? createElement('div', { className: 'dsh-my-memory-empty' }, strings.promptsEmpty(), '·', strings.promptsEmptyHint())
+        : rows, createElement(PromptAddBar, { draft, busy, onDraft, onAdd }), createElement(PromptConfirmPanel, { confirming, busy, onCommit, onCancelConfirm }));
+}
+/** 提示词确认面板（与记忆分区共用 ask 范式卡：删除红 / 保存绿）。
+ *  拆成独立组件：单函数行数与圈复杂度都守门禁，且确认语义与列表渲染解耦。 */
+function PromptConfirmPanel({ confirming, busy, onCommit, onCancelConfirm, }) {
+    if (confirming === null)
+        return null;
+    const isDelete = confirming.kind === 'delete';
+    return createElement(AskConfirmCard, {
+        variant: isDelete ? 'delete' : 'save',
+        title: isDelete
+            ? strings.confirmDeletePrompt()
+            : confirming.kind === 'update'
+                ? strings.confirmUpdatePrompt()
+                : strings.confirmAddPrompt(),
+        scope: '',
+        category: '',
+        content: (confirming.title ?? '') + (confirming.text === undefined ? '' : '\n' + confirming.text),
+        note: strings.promptHint(),
+        allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
+        disabled: busy,
+        onAllow: () => onCommit(confirming),
+        onReject: onCancelConfirm,
+    });
+}
+/** 目标条目的当前启用态（toggle 需要翻转值；找不到时按「未启用」处理）。 */
+function enabledOf(items, id) {
+    const item = items.find((entry) => entry.id === id);
+    return item !== undefined && item.enabled === true;
+}
+/** 确认面板 → 写操作载荷（add / update / delete）。 */
+function confirmPayload(confirm) {
+    if (confirm.kind === 'delete')
+        return { action: 'delete', id: confirm.id };
+    if (confirm.kind === 'update') {
+        return { action: 'update', id: confirm.id, title: confirm.title, text: confirm.text };
+    }
+    return { action: 'add', title: confirm.title ?? '', text: confirm.text ?? '' };
+}
+// 导出给其他 part 文件使用
+
+    "use strict";
+// ── view: Memory settings tab ─────────────────────────────────────────
+// 跨 part 引用（strings/utils/api/view-rows/candidates）由拼接作用域解析，
+// 无需 require——浏览器 ModuleLoader 不支持 factory 内相对路径 require。
+/** Load both scopes: global always; project only when a cwd is given. */
+function fetchAll(cwd) {
+    const projectCwd = cwd.trim();
+    const globalP = fetchMemory('global', '');
+    const projectP = projectCwd === ''
+        ? Promise.resolve({ scope: 'project', cwd: '', projectRoot: '', items: [] })
+        : fetchMemory('project', projectCwd);
+    return Promise.all([globalP, projectP]).then(([global, project]) => ({ global, project }));
+}
+/** 同一 cwd 的在飞请求（模块级：跨渲染共享，面板重复挂载/重渲染不会重复请求记忆端点）。 */
+const inflightMemory = new Map();
+/** 取一次记忆；同 cwd 已有在飞请求则复用（幂等读）。 */
+function fetchMemoryOnce(cwd) {
+    const existing = inflightMemory.get(cwd);
+    if (existing !== undefined)
+        return existing;
+    const promise = fetchAll(cwd);
+    inflightMemory.set(cwd, promise);
+    const clear = () => {
+        if (inflightMemory.get(cwd) === promise)
+            inflightMemory.delete(cwd);
+    };
+    promise.then(clear).catch(clear);
+    return promise;
+}
+function mergeScope(data, scope, value) {
+    return scope === 'global' ? { ...data, global: value } : { ...data, project: value };
 }
 /** 候选确认 / 拒弃处理器（issue #78）：写入/丢弃都要用户显式动作（服务端强制 confirmed），成功后刷新候选与分区。 */
 function createCandidateHandlers({ candidateBusy, setCandidateBusy, setSaved, setError, actions, pathInput, }) {
@@ -1402,6 +1716,9 @@ function MemoryView() {
     const [candidates, setCandidates] = useState([]);
     const [candidateBusy, setCandidateBusy] = useState(false);
     const actions = createActions({ setData, setLoading, setError, setSaved, setCandidates, setCandidateBusy });
+    // 空依赖数组 = 只在挂载时拉一次配置 / 会话 cwd / 记忆 / 候选（React 挂载语义；
+    // 这里刻意不把 actions 放进依赖：它是每次渲染新建的闭包对象，放进依赖会导致
+    // 每次渲染都重新拉取记忆端点）。
     useEffect(() => {
         // 面板打开拉取引导配置（issue #105；失败回落默认值），再解析 cwd 加载记忆（issue #104）。
         fetchConfig()
@@ -1522,6 +1839,8 @@ function createCommitHandler({ data, setData, setSaved, setError, setDrafts, set
 }
 /** Two scopes side by side (global + project), plus pending candidates (issue #78). */
 function Sections({ data, saved, drafts, editing, confirming, expanded, sortOrder, entryLimit, candidates, candidateBusy, onDraft, onEdit, onEditDesc, onCancelEdit, onConfirm, onCancelConfirm, onToggle, onSort, onCommit, onConfirmCandidate, onDismissCandidate, }) {
+    // 提示词分区状态（独立于记忆状态机；hook 必须在组件顶层调用，故提到根视图）。
+    const promptsProps = usePromptsBlockProps();
     const blockProps = {
         drafts,
         editing,
@@ -1551,7 +1870,10 @@ function Sections({ data, saved, drafts, editing, confirming, expanded, sortOrde
         note: strings.projectNote(),
         data: data.project,
         ...blockProps,
-    }), createElement(CandidatesBlock, {
+    }), 
+    // 全局提示词（issue #465）：独立分区 + 独立状态源（/my-memory/api/prompts），
+    // 与记忆的 data/drafts/editing/confirming 状态机零耦合（各自的 hook 与数据流）。
+    createElement(PromptsBlock, { key: 'prompts', ...promptsProps }), createElement(CandidatesBlock, {
         candidates,
         busy: candidateBusy,
         onConfirmCandidate,

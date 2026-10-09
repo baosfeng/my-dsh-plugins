@@ -1,6 +1,6 @@
 # Docker Release Smoke Test
 
-Use this runner to test a packaged plugin artifact against one exact DSH version in an isolated Docker container. It is a focused pre-release check, not a replacement for the plugin repository's unit, integration, browser, provider, or security tests.
+Use this runner to test a packaged plugin artifact against one exact DSH version in an isolated Docker container. It is a focused pre-release check, not a replacement for the plugin repository's unit, integration, provider, or security tests.
 
 ## Prerequisites
 

@@ -12,7 +12,56 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
-// ── stubbed react (stateful useState so re-render sees updated state) ─────
+// ── stubbed react (stateful hooks, per component instance) ────────────────
+// hook 状态按「组件实例 + 序号」隔离，与 React 一致（不同组件的 hook 不共享
+// 槽位）。视图里新增了自持状态的子分区（全局提示词），因此隔离是必需的：
+// 共享槽位时子分区的 hook 会顶掉父视图的槽位，表现为「记忆列表渲染不出来」的
+// 假红；而把 effect 简化成「全局只跑第一个」又会把新分区的 effect 吞掉，表现为
+// 「分区在、内容是空」的假绿。
+/** 当前正在渲染的组件实例 id（hook 槽位前缀）。 */
+let hookComponentId = null
+/** 单次组件渲染内的 hook 序号。 */
+let hookIndex = 0
+const hookValues = new Map()
+/** effect 键 → { deps, cleanup }（React 依赖数组语义）。 */
+const effectRan = new Map()
+
+/** 依赖数组浅比较（长度 + Object.is 逐项）。 */
+function sameDeps(a, b) {
+  if (a === undefined || b === undefined) return false
+  if (a.length !== b.length) return false
+  return a.every((value, index) => Object.is(value, b[index]))
+}
+
+/** 以组件实例为界跑一次渲染：独立 hook 命名空间 + 序号归零，跑完还原调用方上下文。 */
+function withHookComponent(id, render) {
+  const outerId = hookComponentId
+  const outerIndex = hookIndex
+  hookComponentId = id
+  try {
+    return render()
+  } finally {
+    hookComponentId = outerId
+    hookIndex = outerIndex
+  }
+}
+
+/** 组件实例身份：类型名 + 判别键（scope / key / id），同名同键只算一个实例。
+ *  这是 React「同类同位置复用实例」的近似——用类型名而非树坐标，因为本 stub 的
+ *  树在每次渲染都会被重建（元素对象是新的），位置坐标不可稳定复现。 */
+const componentSeen = new Map()
+
+/** 实例身份 + hook 槽位隔离。 */
+function renderComponent(type, props) {
+  const name = typeof type.name === 'string' && type.name !== '' ? type.name : 'anon'
+  const discriminator = props !== null && typeof props === 'object' ? (props.scope ?? props.key ?? props.id ?? '') : ''
+  const seed = `${name}:${discriminator}`
+  const occurrence = componentSeen.get(seed) ?? 0
+  componentSeen.set(seed, occurrence + 1)
+  const id = `${seed}#${occurrence}`
+  return withHookComponent(id, () => type(props))
+}
+
 function createElement(type, props, ...children) {
   const p = props ? { ...props } : {}
   if (children.length === 1) p.children = children[0]
@@ -20,34 +69,40 @@ function createElement(type, props, ...children) {
   return { type, props: p }
 }
 
-const hookValues = new Map()
-let hookIndex = 0
+function hookSlot() {
+  const key = `${hookComponentId ?? 'root'}:${hookIndex}`
+  hookIndex += 1
+  return key
+}
+
 const stubbed = {
   createElement,
   useState: (initial) => {
-    const idx = hookIndex
-    hookIndex += 1
-    if (!hookValues.has(idx)) {
+    const key = hookSlot()
+    if (!hookValues.has(key)) {
       const value = typeof initial === 'function' ? initial() : initial
-      hookValues.set(idx, [
+      hookValues.set(key, [
         value,
         (next) => {
-          const current = hookValues.get(idx)[0]
-          hookValues.set(idx, [typeof next === 'function' ? next(current) : next, hookValues.get(idx)[1]])
+          const current = hookValues.get(key)[0]
+          hookValues.set(key, [typeof next === 'function' ? next(current) : next, hookValues.get(key)[1]])
         },
       ])
     }
-    return hookValues.get(idx)
+    return hookValues.get(key)
   },
-  useEffect: (() => {
-    let ran = false
-    return (fn) => {
-      if (!ran) {
-        ran = true
-        fn()
-      }
+  // 对齐 React 语义：按依赖数组决定是否重跑（deps 浅比较；空数组 = 只跑一次）。
+  // 只按「跑过一次」判定的实现会让 `[actions]` 这类依赖永远不再触发——真实宿主会
+  // 反复请求记忆端点，测试却绿着（假绿）。
+  useEffect: (fn, deps) => {
+    const key = hookSlot()
+    const previous = effectRan.get(key)
+    const shouldRun = previous === undefined || deps === undefined || !sameDeps(previous.deps, deps)
+    if (shouldRun) {
+      previous?.cleanup?.()
+      effectRan.set(key, { deps, cleanup: fn() })
     }
-  })(),
+  },
 }
 
 // ── 官方组件库 stub：只暴露宿主 0.1.7-rc.2 真实存在的导出 ────────────────
@@ -93,7 +148,7 @@ function assertRenderableTypes(node, path = 'tab[settings.plugins.tab]') {
     return
   }
   if (typeof type === 'function') {
-    assertRenderableTypes(type(node.props ?? {}), `${path}<${type.name || 'anonymous'}>`)
+    assertRenderableTypes(renderComponent(type, node.props ?? {}), `${path}<${type.name || 'anonymous'}>`)
     return
   }
   throw new Error(`React error #130: Element type is invalid at ${path} (got: ${typeof type})`)
@@ -102,13 +157,14 @@ function assertRenderableTypes(node, path = 'tab[settings.plugins.tab]') {
 /** Render the tab component once (hooks restart at index 0 each render).
  *  每次渲染都验证元素类型合法（校验用独立渲染，hookIndex 复位，既有断言不受影响）。 */
 function renderView() {
-  hookIndex = 0
-  const tree = capturedTab.component({})
-  const afterRender = hookIndex
-  hookIndex = 0
-  assertRenderableTypes(capturedTab.component({}))
-  hookIndex = afterRender
-  return tree
+  // 每次渲染都验证元素类型合法（防 React #130）。hook 槽位按组件实例隔离，
+  // 因此这里不需要（也不能）手工复位 hookIndex——重复渲染会复用各自的槽位。
+  return withHookComponent('root', () => {
+    componentSeen.clear()
+    const tree = capturedTab.component({})
+    assertRenderableTypes(capturedTab.component({}))
+    return tree
+  })
 }
 
 // ── browser globals ────────────────────────────────────────────────────────
@@ -127,12 +183,40 @@ Object.defineProperty(global, 'navigator', { value: { language: 'zh-CN' }, confi
 
 const fetchCalls = []
 let cannedResponses = []
+// 全局提示词子分区自持 state → 首屏多一次渲染，effect 次数与记忆分区不同步，
+// 固定队列会错位（把提示词响应喂给 candidates）。故提示词/候选端点按 URL 应答，
+// 其余仍走固定队列（保持既有用例的写法不变）。
+// ── 全局提示词固定数据（issue #465）：一条启用种子 + 一条停用条目 ──────────
+const PROMPT_SEED = {
+  id: 'gp-seed-think-zh',
+  title: '中文思考',
+  text: '思考过程必须使用简体中文书写。',
+  enabled: true,
+  order: 10,
+  builtin: 'builtin:think-zh',
+}
+const PROMPT_OFF = { id: 'gp-1', title: '停用规则', text: '这条不注入。', enabled: false, order: 20 }
+
+const PROMPTS_RESPONSE = { ok: true, value: { items: [PROMPT_SEED, PROMPT_OFF] } }
+const CANDIDATES_RESPONSE = { ok: true, value: { items: [] } }
+// config 也是每次渲染都可能被请求（子分区引入的额外首屏渲染），必须按 URL 应答，
+// 否则第二次 config 会吃掉队列里给记忆的响应（表现为「记忆渲染为空」的假红）。
+const CONFIG_RESPONSE = { ok: true, value: { maxEntryLength: 50 } }
+/** 按 URL 固定应答的端点（不消耗队列）。 */
+const FIXED_RESPONSES = {
+  '/my-memory/api/config': CONFIG_RESPONSE,
+  '/my-memory/api/candidates': CANDIDATES_RESPONSE,
+  '/my-memory/api/prompts': PROMPTS_RESPONSE,
+}
 global.fetch = (url, options) => {
-  fetchCalls.push({ url: String(url), options })
-  const canned = cannedResponses.shift() ?? {
-    ok: true,
-    value: { scope: 'global', cwd: '', projectRoot: '', items: [] },
-  }
+  const target = String(url)
+  fetchCalls.push({ url: target, options })
+  const fixed = FIXED_RESPONSES[target] ?? null
+  const canned = fixed ??
+    cannedResponses.shift() ?? {
+      ok: true,
+      value: { scope: 'global', cwd: '', projectRoot: '', items: [] },
+    }
   return Promise.resolve({ json: () => Promise.resolve(canned) })
 }
 
@@ -180,7 +264,7 @@ function walkText(node, out) {
     return
   }
   if (typeof node.type === 'function') {
-    walkText(node.type(node.props), out)
+    walkText(renderComponent(node.type, node.props), out)
     return
   }
   walkText(node.props.children, out)
@@ -197,7 +281,7 @@ function collectButtons(node, out) {
     return
   }
   if (typeof node.type === 'function') {
-    collectButtons(node.type(node.props), out)
+    collectButtons(renderComponent(node.type, node.props), out)
     return
   }
   collectButtons(props.children, out)
@@ -224,7 +308,7 @@ function collectInputs(node, out) {
     return
   }
   if (typeof node.type === 'function') {
-    collectInputs(node.type(node.props), out)
+    collectInputs(renderComponent(node.type, node.props), out)
     return
   }
   collectInputs(props.children, out)
@@ -235,7 +319,7 @@ function hasIcon(node) {
   if (node === null || typeof node !== 'object') return false
   if (node.type === 'svg') return true
   if (Array.isArray(node)) return node.some(hasIcon)
-  if (typeof node.type === 'function') return hasIcon(node.type(node.props))
+  if (typeof node.type === 'function') return hasIcon(renderComponent(node.type, node.props))
   return hasIcon(node.props.children)
 }
 
@@ -248,7 +332,7 @@ function countUi(node, marker) {
     for (const c of node) count += countUi(c, marker)
     return count
   }
-  if (typeof node.type === 'function') return count + countUi(node.type(node.props), marker)
+  if (typeof node.type === 'function') return count + countUi(renderComponent(node.type, node.props), marker)
   return count + countUi(props.children, marker)
 }
 
@@ -263,7 +347,7 @@ function countIcon(node, name) {
     for (const c of node) count += countIcon(c, name)
     return count
   }
-  if (typeof node.type === 'function') return count + countIcon(node.type(node.props), name)
+  if (typeof node.type === 'function') return count + countIcon(renderComponent(node.type, node.props), name)
   return count + countIcon(props.children, name)
 }
 
@@ -277,7 +361,7 @@ function countSections(node) {
     for (const c of node) count += countSections(c)
     return count
   }
-  if (typeof node.type === 'function') return count + countSections(node.type(node.props))
+  if (typeof node.type === 'function') return count + countSections(renderComponent(node.type, node.props))
   return count + countSections(props.children)
 }
 
@@ -291,7 +375,7 @@ function countConfirmPanels(node) {
     for (const c of node) count += countConfirmPanels(c)
     return count
   }
-  if (typeof node.type === 'function') return count + countConfirmPanels(node.type(node.props))
+  if (typeof node.type === 'function') return count + countConfirmPanels(renderComponent(node.type, node.props))
   return count + countConfirmPanels(props.children)
 }
 
@@ -320,8 +404,10 @@ const projectValue = {
 // 1. GET /my-memory/api/config → { maxEntryLength }（issue #105 精简引导）
 // 2. GET /my-memory/api/candidates → []（issue #78 待确认候选；sessionId 空
 //    不 fetch /session，global 的 fetchAll 在其后的微任务里发起）
-// 3. GET /my-memory/api/memory?scope=global → globalValue
-cannedResponses.push({ ok: true, value: { maxEntryLength: 50 } }, { ok: true, value: { items: [] } }, globalValue)
+// 3. GET /my-memory/api/prompts → 提示词列表（issue #465 独立端点）
+// 4. GET /my-memory/api/candidates → []（issue #78 待确认候选）
+// 5. GET /my-memory/api/memory?scope=global → globalValue
+cannedResponses.push(globalValue)
 
 const tree = renderView()
 const texts0 = []
@@ -331,16 +417,27 @@ assert.ok(texts0.join('|').includes('加载中'), 'initial render shows the load
 await new Promise((resolve) => setTimeout(resolve, 0))
 
 // ── re-render: both sections side by side (project empty until loaded) ─────
+renderView()
+// 提示词分区的数据来自它自己的异步 effect（独立端点），等一拍微任务后再渲染断言。
+await new Promise((resolve) => setTimeout(resolve, 0))
 const tree2 = renderView()
+
 const texts = []
 walkText(tree2, texts)
 const joined = texts.join('|')
 
 assert.ok(joined.includes('全局记忆'), 'global section present')
 assert.ok(joined.includes('项目记忆'), 'project section present')
-assert.equal(countSections(tree2), 2, 'both scopes render as sections (side by side)')
+assert.equal(countSections(tree2), 3, 'two memory scopes + the prompts section (issue #465)')
 assert.ok(joined.includes('回复使用中文'), 'global memory desc rendered')
 assert.ok(joined.includes('暂无记忆'), 'project section empty before a project is loaded')
+// ── issue #465 全局提示词分区：与记忆分区并列、独立数据源 ──────────────────
+assert.ok(joined.includes('全局提示词'), 'prompts section present')
+assert.ok(joined.includes('中文思考'), 'enabled prompt title rendered')
+assert.ok(joined.includes('已启用'), 'enabled prompt shows the enabled state')
+assert.ok(joined.includes('已停用'), 'disabled entry stays visible with its disabled state')
+const promptCalls = fetchCalls.filter((c) => c.url === '/my-memory/api/prompts' && c.options === undefined)
+assert.equal(promptCalls.length, 1, 'the prompts endpoint is fetched exactly once on mount')
 assert.ok(joined.includes('当前无项目会话'), 'project empty state prompts to load a project path')
 // ── 回归：confidence 缺失时不渲染"置信度 undefined"；徽标不重复 scope 标签 ──
 assert.ok(!joined.includes('置信度 undefined'), 'confidence omitted when missing (no undefined text)')
@@ -762,6 +859,93 @@ const previewCancel = collectCancel(previewTree)
 assert.ok(previewCancel, 'cancel button present in the preview panel')
 previewCancel.onClick()
 
+// ── issue #465 全局提示词：启停 / 上移下移 / 新增 / 删除（独立端点写路径）────
+// 让 add/update 确认面板收尾，避免污染下面的提示词交互断言
+const settleTree = renderView()
+const settleBtns = []
+collectButtons(settleTree, settleBtns)
+const settleInputs = []
+collectInputs(settleTree, settleInputs)
+const settleAdd = settleInputs.find((i) => i.wrapperClass.includes('dsh-my-memory-add-input'))
+if (settleAdd) settleAdd.onChange({ target: { value: '' } })
+
+// 提示词分区状态（独立数据源）
+const promptTree = renderView()
+const promptTexts = []
+walkText(promptTree, promptTexts)
+const promptJoined = promptTexts.join('|')
+assert.ok(promptJoined.includes('全局提示词'), 'prompts section rendered')
+assert.ok(promptJoined.includes('中文思考'), 'seeded prompt title rendered')
+assert.ok(promptJoined.includes('思考过程必须使用简体中文书写。'), 'prompt body rendered')
+assert.ok(promptJoined.includes('已启用') && promptJoined.includes('已停用'), 'enabled/disabled states rendered')
+assert.ok(promptJoined.includes('内置'), 'builtin badge rendered for the seed')
+
+// 启停：点击 Pill → POST toggle + confirmed
+const promptBtns = []
+collectButtons(promptTree, promptBtns)
+const toggleBtn = promptBtns.find((b) => b.label.includes('停用') && b.label.includes('gp-seed-think-zh'))
+assert.ok(toggleBtn, 'enable/disable control rendered for the seed prompt')
+cannedResponses.push({ ok: true, value: { items: [{ ...PROMPT_SEED, enabled: false }, PROMPT_OFF], item: null } })
+toggleBtn.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const toggleCall = fetchCalls.find(
+  (c) =>
+    c.options !== undefined && c.url === '/my-memory/api/prompts' && JSON.parse(c.options.body).action === 'toggle',
+)
+assert.ok(toggleCall, 'toggling issues a POST to /my-memory/api/prompts')
+const togglePayload = JSON.parse(toggleCall.options.body)
+assert.equal(togglePayload.id, 'gp-seed-think-zh')
+assert.equal(togglePayload.enabled, false)
+assert.equal(togglePayload.confirmed, true, 'the toggle carries the user-consent marker')
+
+// 上移 / 下移 → reorder POST
+const reorderTree = renderView()
+const reorderBtns = []
+collectButtons(reorderTree, reorderBtns)
+const moveDown = reorderBtns.find((b) => b.label.includes('下移') && b.label.includes('gp-seed-think-zh'))
+assert.ok(moveDown, 'move-down control rendered')
+cannedResponses.push({ ok: true, value: { items: [PROMPT_OFF, { ...PROMPT_SEED, enabled: false }], item: null } })
+moveDown.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const reorderCall = fetchCalls.find((c) => c.options !== undefined && JSON.parse(c.options.body).action === 'reorder')
+assert.ok(reorderCall, 'moving issues a reorder POST')
+const reorderPayload = JSON.parse(reorderCall.options.body)
+assert.equal(reorderPayload.direction, 'down')
+assert.equal(reorderPayload.confirmed, true, 'the reorder carries the user-consent marker')
+
+// 删除：红色二次确认面板 + POST（删除提示词，不碰记忆）
+const delTree = renderView()
+const delBtns = []
+collectButtons(delTree, delBtns)
+const promptDelete = delBtns.find((b) => b.label.includes('删除') && b.label.includes('gp-1'))
+assert.ok(promptDelete, 'delete control rendered for the prompt')
+promptDelete.onClick()
+const delConfirmTree = renderView()
+const delTexts = []
+walkText(delConfirmTree, delTexts)
+assert.ok(delTexts.join('|').includes('确定删除这条提示词'), 'prompt delete confirmation text shown')
+const delOk = collectConfirmOk(delConfirmTree)
+assert.ok(delOk, 'confirm-delete button rendered')
+cannedResponses.push({ ok: true, value: { items: [PROMPT_SEED], item: null } })
+delOk.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const promptDeleteCall = fetchCalls.find(
+  (c) =>
+    c.options !== undefined &&
+    JSON.parse(c.options.body).action === 'delete' &&
+    JSON.parse(c.options.body).id === 'gp-1',
+)
+assert.ok(promptDeleteCall, 'confirming issues a prompt delete POST')
+assert.equal(JSON.parse(promptDeleteCall.options.body).confirmed, true, 'the prompt delete carries the consent marker')
+// 提示词写操作全部打到 /prompts，没有一条走 /memory
+const promptWrites = fetchCalls.filter(
+  (c) => c.options !== undefined && String(c.options.body).includes('"action":"toggle"'),
+)
+assert.ok(
+  promptWrites.every((c) => c.url === '/my-memory/api/prompts'),
+  'prompt writes never hit the memory endpoint',
+)
+
 console.log('ALL MY-MEMORY CLIENT RENDER-PATH TESTS PASSED')
 
 // ── helpers for button collection (no aria-label on some buttons) ─────────
@@ -786,7 +970,7 @@ function collectByClass(node, className) {
     }
     return undefined
   }
-  if (typeof node.type === 'function') return collectByClass(node.type(node.props), className)
+  if (typeof node.type === 'function') return collectByClass(renderComponent(node.type, node.props), className)
   return collectByClass(props.children, className)
 }
 

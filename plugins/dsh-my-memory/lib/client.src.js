@@ -48,6 +48,8 @@ window.__ModuleLoader__.load({
     __PART_CONFIRM_UI__
     __PART_VIEW_ROWS__
     __PART_CANDIDATES__
+    __PART_PROMPTS_STATE__
+    __PART_PROMPTS__
     __PART_VIEW__
     __PART_APPLY__
 

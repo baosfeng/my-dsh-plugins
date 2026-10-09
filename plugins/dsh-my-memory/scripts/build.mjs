@@ -41,6 +41,8 @@ const pieces = [
   ['__PART_CONFIRM_UI__', 'confirm-ui.js'],
   ['__PART_VIEW_ROWS__', 'view-rows.js'],
   ['__PART_CANDIDATES__', 'candidates.js'],
+  ['__PART_PROMPTS_STATE__', 'prompts-state.js'],
+  ['__PART_PROMPTS__', 'prompts.js'],
   ['__PART_VIEW__', 'view.js'],
   ['__PART_APPLY__', 'apply.js'],
 ]

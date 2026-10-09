@@ -1,7 +1,7 @@
 {
   "name": "dsh-md-render",
-  "version": "0.3.1",
-  "description": "DSH 对话 Markdown 渲染补位插件：把宿主渲染为纯文本的 markdown（text/plaintext/txt 围栏块、pre[data-context-text] 上下文注入块）交给官方 MarkdownText 渲染，并补整段复制与统一 MarkdownView 导出、非标准表格容错。DSH web plugin: routes host plain-text markdown through the official MarkdownText renderer (text fences + context bodies), adds whole-content copy, a unified MarkdownView export and non-standard table tolerance.",
+  "version": "0.4.0",
+  "description": "DSH 对话 Markdown 渲染增强插件（合并原 dsh-think-zh-expand + dsh-mermaid-render）：把宿主渲染为纯文本的 markdown（text/plaintext/txt 围栏块、pre[data-context-text] 上下文注入块）交给官方 MarkdownText 渲染，补整段复制与统一 MarkdownView 导出、非标准表格容错、mermaid 图表卡片渲染、思考块默认展开（DOM 派发官方点击，外观零改动）。DSH web plugin: route host plain-text markdown through the official MarkdownText renderer, render mermaid code blocks as diagram cards, expand thinking rows by default, plus whole-content copy, a MarkdownView export and non-standard table tolerance.",
   "type": "module",
   "main": "lib/index.js",
   "engines": {
@@ -39,7 +39,8 @@
   },
   "peerDependencies": {
     "cordis": "^4.0.0-rc.10",
-    "react": "^18.2.0 || ^19.2.0"
+    "react": "^18.2.0 || ^19.2.0",
+    "react-dom": "^18.2.0 || ^19.2.0"
   },
   "dependencies": {
     "dsh-shared": "^0.1.4"

@@ -1,7 +1,7 @@
 // 根级 Vitest 配置（质量门禁）：所有插件测试 + 覆盖率阈值
 // 各插件 npm test 通过插件目录内 vitest.config.mjs（继承本配置）运行
 // 覆盖率只统计 server 端 lib/index.js：client 端（__ModuleLoader__ 格式）经 eval
-// 加载，v8 coverage 无法统计（由 client-render 断言 + Gherkin + 真实环境验证覆盖）
+// 加载，v8 coverage 无法统计（由 client-render 断言 + Gherkin 覆盖；真实浏览器验证由用户手工做）
 //
 // 为什么放宽 testTimeout/hookTimeout 到 60s（issue #353）：
 //   vitest 默认 5s 是给**纯单测**的上限，而本仓有大量**进程级/端到端**用例（spawn node +
@@ -21,7 +21,7 @@ const tmpResidueSweep = fileURLToPath(new URL('./scripts/test/tmp-residue-sweep.
 export default defineConfig({
   test: {
     include: ['test/*.mjs'],
-    exclude: ['**/e2e-cdp.mjs', '**/node_modules/**'],
+    exclude: ['**/node_modules/**'],
     testTimeout: 60_000,
     hookTimeout: 60_000,
     globalSetup: [tmpResidueSweep],

@@ -48,28 +48,18 @@
       }
     },
     "dsh-md-render": {
-      "total": 152860,
-      "files": {
-        "assets/text-fence-markdown.png": 70863,
-        "lib/client.js": 56118,
-        "lib/client.src.js": 4296,
-        "lib/index.js": 2335,
-        "lib/routes.js": 4229
-      }
-    },
-    "dsh-mermaid-render": {
-      "total": 3705220,
+      "total": 3566501,
       "files": {
         "assets/mermaid-10.9.3.min.js": 3336760,
-        "assets/mermaid-auto-diagram.png": 92687,
-        "assets/mermaid-card.png": 97426,
-        "assets/mermaid-settings-panel.png": 77953,
-        "lib/client.js": 71016,
-        "lib/client.src.js": 2819,
-        "lib/config.js": 2294,
-        "lib/index.js": 5848,
-        "lib/prompt.js": 3087,
-        "lib/routes.js": 3941
+        "assets/text-fence-markdown.png": 70863,
+        "lib/client.js": 110011,
+        "lib/client.src.js": 5304,
+        "lib/config.js": 9030,
+        "lib/index.js": 3815,
+        "lib/prompt.js": 2899,
+        "lib/routes.js": 4229,
+        "lib/routes/assets.js": 3137,
+        "lib/routes/config.js": 4644
       }
     },
     "dsh-my-context": {
@@ -95,26 +85,30 @@
       }
     },
     "dsh-my-memory": {
-      "total": 762883,
+      "total": 806103,
       "files": {
         "assets/issue-193-delete-armed.png": 96684,
         "assets/issue-193-other-tool-approval.png": 125884,
         "assets/issue-193-panel-confirm.png": 134070,
         "assets/issue-193-save-confirm.png": 85785,
         "assets/screenshot.png": 106646,
-        "lib/api-route.js": 15383,
+        "lib/api-route.js": 15705,
         "lib/api-route.types.js": 11,
-        "lib/client.js": 94341,
-        "lib/client.src.js": 2392,
+        "lib/client.js": 111422,
+        "lib/client.src.js": 2413,
         "lib/delete-tool.js": 7052,
         "lib/extract.js": 7591,
-        "lib/index.js": 14330,
+        "lib/index.js": 16010,
         "lib/memory-scoring.js": 12941,
         "lib/memory-text.js": 2808,
         "lib/memory-types.js": 165,
+        "lib/prompt-types.js": 1157,
         "lib/prompt.js": 3464,
+        "lib/prompts-route.js": 7039,
+        "lib/prompts-store.js": 11667,
+        "lib/prompts.js": 3919,
         "lib/save-policy.js": 13218,
-        "lib/store.js": 13946,
+        "lib/store.js": 14280,
         "lib/tool.js": 14608,
         "lib/write-tools.js": 2213
       }
@@ -217,14 +211,14 @@
       }
     },
     "dsh-shared": {
-      "total": 88687,
+      "total": 90230,
       "files": {
         "lib/async.d.ts": 552,
         "lib/async.js": 1048,
         "lib/bounded.d.ts": 5094,
         "lib/bounded.js": 5832,
         "lib/config-store.d.ts": 914,
-        "lib/config-store.js": 7003,
+        "lib/config-store.js": 8428,
         "lib/fence.d.ts": 846,
         "lib/fence.js": 2429,
         "lib/http.d.ts": 589,
@@ -245,7 +239,7 @@
         "lib/resource-rules.js": 3872,
         "lib/scheduler.d.ts": 5110,
         "lib/scheduler.js": 5403,
-        "lib/types.d.ts": 1484,
+        "lib/types.d.ts": 1602,
         "lib/types.js": 440
       }
     },
@@ -269,16 +263,6 @@
         "lib/text.js": 3561,
         "lib/util.js": 2179,
         "lib/verify.js": 11167
-      }
-    },
-    "dsh-think-zh-expand": {
-      "total": 384433,
-      "files": {
-        "assets/settings-panel.png": 73441,
-        "assets/think-markdown.png": 227686,
-        "lib/client.js": 55614,
-        "lib/client.src.js": 4034,
-        "lib/index.js": 13610
       }
     }
   }

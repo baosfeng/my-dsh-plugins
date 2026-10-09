@@ -2,10 +2,6 @@
   "note": "存量固定等待冻结基线（issue #335）：只允许变少；新增点必须写 // sleep-ok: <理由>",
   "entries": [
     "plugins/dsh-file-activity/test/budget.mjs::afef4202",
-    "plugins/dsh-file-activity/test/e2e-cdp.mjs::3c6ed85",
-    "plugins/dsh-file-activity/test/e2e-cdp.mjs::a512e1d1",
-    "plugins/dsh-file-activity/test/e2e-cdp.mjs::fd2e130d",
-    "plugins/dsh-file-activity/test/e2e-cdp.mjs::fd3d87ab",
     "plugins/dsh-file-activity/test/features/steps/file-activity.steps.mjs::7e178a92",
     "plugins/dsh-file-activity/test/host-smoke.mjs::7e178a92",
     "plugins/dsh-my-memory/test/candidates.mjs::e3073222",

@@ -1,6 +1,6 @@
 // ── shared markdown render fallback (dsh-shared/client-parts) ──
-// 单一来源（issue #299）：把「三级渲染回退」这段原本在 dsh-think-zh-expand（#293）
-// 与 dsh-my-plugin-manager（#299）逐字重复的样板（约 40 行：三级解析 + labels
+// 单一来源（issue #299）：把「三级渲染回退」这段原本在多个插件里逐字重复的样板
+// （约 40 行：三级解析 + labels
 // 适配 + 组件可用性判定）收口到这里（ADR-0002 / docs/UI规范.md：同一段 UI 样板
 // 出现 ≥2 处即抽出）。消费方各自 scripts/build.mjs 在构建期把本文件拼进
 // __ModuleLoader__ factory 作用域（构建时源文件，不经过 require/exports 解析）。

@@ -151,6 +151,10 @@ export const INTENTIONALLY_ABSENT = [
   // 不是本仓库自造约定，因此不逐条登记进"自造字段"一行（登记的是 kind/ui/uiReason/presetReason）
   'bundle',
   'client',
+  // 第四节：conversation.chat.node 是**节点级遮蔽**槽位（注册即替换官方节点视图）。
+  // dsh-md-render 的硬约束明确禁用（静态断言见 plugins/dsh-md-render/test/static-assertions.mjs），
+  // 文档保留它只为标注「可用但禁用」这一事实 —— 本仓库不注册任何节点级 seat。
+  'conversation.chat.node',
 ]
 
 /**

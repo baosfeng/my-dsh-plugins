@@ -33,7 +33,7 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 - 本地门禁全绿、CI 首跑就红（报某引用路径不存在）→ 大小写不敏感的文件系统掩盖了真实文件名差异，判定必须枚举真实目录项
 - 隔离实例里插件「少了 / client 不进 manifest / 设置页签不出现 / API 404」而代码与产物都正常 → 生产 profile 的 `cordis.patch.yml` 写着 `- id: <插件>` + `disabled: true`（与 `.dsh-market/state.json` 是**两处独立禁用来源**，`verify-real-profile.mjs` 只剥离后者，于是被复刻进隔离实例）；验证前 `grep -B1 'disabled: true' <隔离 profile>/cordis.patch.yml`，把待验插件改成 `false` 后 `watchUserPatches` 热重载即生效（实测改后页签立即出现）
 - `GLIBC_2.33 not found`（jscpd 门禁恒红且没有任何 clone 清单）→ 先判「工具没跑起来」而不是重复超标；glibc < 2.34 回退纯 JS 的 4.x
-- `chmod 0555` 后仍写入成功、降级用例捕获到的 warn 为 0 → root 无视权限位，改注入 `EISDIR`／`ENOTDIR`；例见 `plugins/dsh-my-plugin-manager/test/host-api.mjs`
+- `chmod 0555` 后仍写入成功、降级用例捕获到的 warn 为 0 → root 无视权限位，改注入 `EISDIR`／`ENOTDIR`；例见 `plugins/dsh-shared/test/jsonl.mjs`
 - `npm audit` 报 0 漏洞而实际有 moderate → 镜像源没有 advisories 端点；固化在 `scripts/lib/npm-audit.mjs`、`scripts/test/npm-audit.test.mjs`
 - 为消 `js/file-system-race` 删掉 stat 导致类型闸门与字节账退化 → 改 `open` + fd `stat` + fd 读；固化在 `scripts/check-links.mjs`、`scripts/test/check-links-limits.test.mjs`
 - CI 随机红一条（只读到 1 条而非 2 条）、本地连跑全绿 → 固定 sleep 等异步落盘；详见 [异步落盘与时序.md](异步落盘与时序.md)（新增固定 sleep 须写 `// sleep-ok: 理由`，门禁 `scripts/check-test-sleeps.mjs`）
@@ -65,7 +65,7 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 ## profile 与宿主来源
 
 - `dsh plugin add` 后插件「装了却没生效」、`bundles` 里静静少一行且**没有任何日志** → 0.2.0-rc.2 的 reconcile 会过滤掉它不认可的条目（`@deepseek-ai/dsh-plugin-manager/lib/types/operations.js:44-72`，丢弃分支零日志，官方缺陷）；且**对已装插件重跑 `add` 会整表重算**，手工补的 bundles 行一并被覆盖。规避：已装插件不重跑 `add`、不手改 bundles 后再跑 `add`。装后自检一行式（`dsh-` 开头却不在 bundles 里的就是被丢掉的；`dsh-shared` 等 `dsh.kind=library` 的库本就不该进 bundles）：`node -e 'const fs=require("fs");const H=process.env.HOME+"/.dsh/profiles/desktop";const b=new Set(require(H+"/package.json").dsh.profile.bundles);console.log(fs.readdirSync(H+"/node_modules").filter(n=>n.startsWith("dsh-")&&!b.has(n)).join(", ")||"（无）")'`
-- 纯桌面 App 环境（已删 npm 全局 `dsh`）下取证脚本报 `需要参考源…与已安装宿主(缺失)同时在场`、全机 `find` 不到 `<hostDir>/node_modules/@deepseek-ai` → 桌面 App 的宿主依赖树在 `DeepSeek Harness.app/Contents/Resources/app.asar` **归档内**（`app.asar/dsh/package.json` 是 `@deepseek-ai/dsh-desktop-runtime`，普通 `existsSync` 看不见），npm prefix 类探测必然失效。正确姿势：① 解析 asar 头按字节读（`plugins/dsh-my-guardian/scripts/lib/asar-host.mjs`；287 个包 914 个 lib 文件实测约 24ms，成本可忽略）；② **asar 内路径只能读、不能 `import()`**（Node ESM loader 打不开归档，报 `ENOTDIR`），所以「可 import 的宿主」与「可扫描取证的宿主」必须拆成两个解析器（`installedHostDir()` / `installedHostScanDir()`），别把 asar 路径喂给起真实 loader 的测试；③ 桌面版宿主**不带 `.d.ts`**（同一版本从 npm 装则带），声明通道失效、只剩 `ctx.*` 派发通道可取证，结论强度要一并声明；④ 取不到已装宿主时**降级保留上一次取证结果**并打印说明，绝不凭空生成"已装宿主清单"。固化在 `plugins/dsh-my-guardian/scripts/host-events.mjs`，防回归 `plugins/dsh-my-guardian/test/host-event-source.mjs`
+- 纯桌面 App 环境（已删 npm 全局 `dsh`）下取证脚本报 `需要参考源…与已安装宿主(缺失)同时在场`、全机 `find` 不到 `<hostDir>/node_modules/@deepseek-ai` → 桌面 App 的宿主依赖树在 `DeepSeek Harness.app/Contents/Resources/app.asar` **归档内**（`app.asar/dsh/package.json` 是 `@deepseek-ai/dsh-desktop-runtime`，普通 `existsSync` 看不见），npm prefix 类探测必然失效。正确姿势：① 解析 asar 头按字节读，按需读单个文件、不整树解包（287 个包 914 个 lib 文件实测约 24ms，成本可忽略）；② **asar 内路径只能读、不能 `import()`**（Node ESM loader 打不开归档，报 `ENOTDIR`），所以「可 import 的宿主」与「可扫描取证的宿主」必须拆成两个解析器（`installedHostDir()` / `installedHostScanDir()`），别把 asar 路径喂给起真实 loader 的测试；③ 桌面版宿主**不带 `.d.ts`**（同一版本从 npm 装则带），声明通道失效、只剩 `ctx.*` 派发通道可取证，结论强度要一并声明；④ 取不到已装宿主时**降级保留上一次取证结果**并打印说明，绝不凭空生成"已装宿主清单"。守护脚本的宿主事件取证同理（`loader/entry-init` 的真实 payload 只能从宿主树现场取）。
 
 ## 工具链与脚本
 

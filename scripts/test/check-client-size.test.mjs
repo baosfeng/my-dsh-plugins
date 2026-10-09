@@ -12,7 +12,7 @@
  *      会让门禁空转，那是比超标更危险的形态）；
  *   5. 基线缺失/损坏 → 工具错误 exit 2；无 `files` 字段的插件 → 显式失败；
  *   6. **发布面以 `files` 字段为准**：`assets/` 不在 `files` 里就不检查（本仓库
- *      dsh-my-plugin-manager / dsh-my-guardian 的 assets 确实不发布）；
+ *      确实有插件把 assets 排除在 `files` 之外）；
  *   7. 体积变小 / 基线含陈旧条目 → 通过（只允许变好，不阻塞重构）。
  */
 import { spawnSync } from 'node:child_process'

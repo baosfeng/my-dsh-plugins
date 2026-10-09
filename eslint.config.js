@@ -26,7 +26,7 @@ import { join, relative } from 'node:path'
  *
  * 为什么动态枚举：迁移是一个逐插件推进的过程，产物文件名随插件而异
  * （lib/index.js、lib/webhook/adapters.js、lib/*.d.ts …）。写死列表必然
- * 漏项（曾漏掉 dsh-my-guardian/lib/index.js 与 dsh-my-memory/lib/store.js，
+ * 漏项（曾漏掉某些插件的 lib/index.js 与 lib/store.js，
  * 导致 CI 的 eslint 对生成物报 max-lines / no-unused-vars）。判定规则：
  * 有 src/ 的插件（已 TS 迁移）的 lib/ 下，除手写的 parts/ 片段、
  * lib/client.src.js 模板与 .client-build/ 临时目录外，.js/.d.ts 均为产物。

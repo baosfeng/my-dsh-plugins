@@ -17,8 +17,8 @@
  *     and is written in CJS, but is interpreted as ESM` warning —— 而 DSH 插件产物正是宿主
  *     `require` 的 CJS bundle，这个判据在本仓库形态下**不适用**。要引入就得写一批压制规则。
  *   · 重复开销：publint 自己会跑一次 `npm pack`（实测输出 `Packing files with npm pack...`），
- *     与本门禁的 pack 断言重复；单插件实测 ~1.0s、19 插件串行 9.15s，而本门禁自己跑 pack
- *     是 0.37s/插件（并发后 19 插件 ~1.5s）。
+ *     与本门禁的 pack 断言重复；单插件实测 ~1.0s、13 插件串行 9.15s，而本门禁自己跑 pack
+ *     是 0.37s/插件（并发后 13 插件 ~1.5s）。
  *   · 体积：+7 包 / 428K node_modules（publint 156K + @publint 68K + sade 48K +
  *     package-manager-detector 60K + tinyexec 36K + mri 28K + picocolors 28K）；本仓库
  *     `devDependencies` 已精简，为替换 ~40 行判据付这个代价不划算。

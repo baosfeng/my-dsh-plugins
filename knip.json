@@ -14,10 +14,6 @@
         "vitest.stryker.config.mjs"
       ],
       "project": ["src/**", "scripts/**", "test/**", "*.mjs"]
-    },
-    "plugins/dsh-plugin-dev-mode": {
-      "entry": [],
-      "project": ["scripts/**", "skills/**"]
     }
   },
   "ignoreDependencies": [

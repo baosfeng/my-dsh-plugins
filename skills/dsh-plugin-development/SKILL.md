@@ -57,15 +57,15 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 | **侧边栏页签 / 预览器**（宿主原生扩展点） | 在侧边栏提供新页面或文件预览                        | client 端 `ctx.sidebarRightTabs.register(...)` + keyed 席位 `sidebar.right.pane.tab`；文件预览器 `ctx.documentPreviews`（签名查官方 [sidebar-right.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/sidebar-right.zh.md)）                     |
 | **纯 server 插件**                        | 事件监听 / HTTP 路由 / 持久化                       | `apply(ctx)` + `ctx.on` / `webServer`                                                                                                                                                                                                                                            |
 | **两者混合**（最常见）                    | 页面 + 后端逻辑                                     | 两端都写，client 通过 HTTP 路由或事件上报 server                                                                                                                                                                                                                                 |
-| **agent preset 声明包**                   | 提供模式选择器里的 agent 预设（如「插件开发模式」） | `cordis.patch.yml` 里一行 `@deepseek-ai/dsh-agent-preset` 声明（`id`/`plugins`/`name`/`description`）；经 profile `dsh.profile.bundles` 装载（`plugin_manager` 的 `set_bundle`；本仓库 `link:` 布局下 `install_bundle` 不可用，见 [插件开发模式概述](../../docs/插件开发模式/概述.md)）（**要求宿主 ≥ 0.1.7-rc.2**）                                                                                                  |
+| **agent preset 声明包**                   | 提供模式选择器里的 agent 预设（如「插件开发模式」） | `cordis.patch.yml` 里一行 `@deepseek-ai/dsh-agent-preset` 声明（`id`/`plugins`/`name`/`description`）；经 profile `dsh.profile.bundles` 装载（`plugin_manager` 的 `set_bundle`；本仓库 `link:` 布局下 `install_bundle` 不可用）（**要求宿主 ≥ 0.1.7-rc.2**）                                                                                                  |
 
 > `ctx.sidebarRightTabs` / `ctx.slots` / `ctx.sidebarRight` / `ctx.documentPreviews` **只存在于 client 端**。server 端需要侧边栏数据时走本插件自己的 HTTP 路由（`/<插件名>/api/*`），不要假设这些服务存在。
 
-> **agent preset 现在由 bundle patch 承载**（issue #231；0.1.7-rc.2 移除了 `$DSH_HOME/.agent-presets/` 目录机制，旧包 `@deepseek-ai/dsh-agent-presets` 已不存在）：目录内只有 YAML 与文档、无 `lib/` JS 代码、不 import cordis，也不声明 `peerDependencies.cordis`。`package.json` 必须显式声明 `"dsh": { "kind": "preset", "bundle": { "patch": "./cordis.patch.yml" }, "presetReason": "<这是什么 preset / 为什么它以此形态分发>" }`，且 `cordis.patch.yml` 里真的有一行 `@deepseek-ai/dsh-agent-preset` 声明（`config.id` + `config.plugins`），才会走对应的发版门禁豁免（1b cordis peer + 3c profile 组合验证；跨插件依赖/CHANGELOG/测试/效果图门禁照旧）。判据与仓库不变量在 `scripts/lib/preset-gate.mjs`：与 `dsh.client` 互斥。参考实现 `plugins/dsh-plugin-dev-mode/`。
+> **agent preset 现在由 bundle patch 承载**（issue #231；0.1.7-rc.2 移除了 `$DSH_HOME/.agent-presets/` 目录机制，旧包 `@deepseek-ai/dsh-agent-presets` 已不存在）：目录内只有 YAML 与文档、无 `lib/` JS 代码、不 import cordis，也不声明 `peerDependencies.cordis`。`package.json` 必须显式声明 `"dsh": { "kind": "preset", "bundle": { "patch": "./cordis.patch.yml" }, "presetReason": "<这是什么 preset / 为什么它以此形态分发>" }`，且 `cordis.patch.yml` 里真的有一行 `@deepseek-ai/dsh-agent-preset` 声明（`config.id` + `config.plugins`），才会走对应的发版门禁豁免（1b cordis peer + 3c profile 组合验证；跨插件依赖/CHANGELOG/测试/效果图门禁照旧）。判据与仓库不变量在 `scripts/lib/preset-gate.mjs`（含 `cordis.patch.yml` 承载的不变量测试）：与 `dsh.client` 互斥。
 
 ### 命名阶段：先检索 npm 包名（强制）
 
-> 背景：`dsh-notify`、`dsh-guardian`、`dsh-skill-manager`、`dsh-plugin-manager` 等包名已被其他开发者的同名插件占用（maintainers 分别为 pasumao / lss1213 / gohana / ruihuahe，均为 DSH 生态独立项目），`dsh plugin add <包名>` 会装到别人的包、功能完全不同。包名撞名必须在**命名阶段**检索规避，而不是发布时才发现再被迫改名。本仓库已按此规避：撞名的插件统一用 `dsh-my-*` 前缀（`dsh-my-notify` / `dsh-my-guardian` / `dsh-my-skill-manager` / `dsh-my-plugin-manager`），目录名 = 包名 = tag 名。
+> 背景：`dsh-notify`、`dsh-guardian`、`dsh-skill-manager`、`dsh-plugin-manager` 等包名已被其他开发者的同名插件占用（maintainers 分别为 pasumao / lss1213 / gohana / ruihuahe，均为 DSH 生态独立项目），`dsh plugin add <包名>` 会装到别人的包、功能完全不同。包名撞名必须在**命名阶段**检索规避，而不是发布时才发现再被迫改名。本仓库已按此规避：撞名的插件统一用 `dsh-my-*` 前缀（`dsh-my-notify` / `dsh-my-skill-manager` / `dsh-my-memory`），目录名 = 包名 = tag 名。
 
 1. **列候选名**：按「目录结构规范」的命名规则（`dsh-<功能>`，目录名 = 包名）列出 1–3 个候选包名。
 2. **逐个检索**（npm 官方 registry）：
@@ -78,7 +78,7 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
    - **被占用**：输出版本号、maintainers 等元数据 → 已被占用；`npm view <包名> maintainers` 可查看占用者。
    - 想发现近似名/同功能包：`npm search <关键词> --registry=https://registry.npmjs.org`。
 
-3. **被占用 → 改名**：统一加 `my-` 前缀为 `dsh-my-<功能>`，参考本仓库改名先例 `dsh-my-skill-manager`（原 `dsh-skill-manager` 被占）、`dsh-my-plugin-manager`（原 `dsh-plugin-manager` 被占）。改名后重新执行第 2 步确认新名可用再继续。
+3. **被占用 → 改名**：统一加 `my-` 前缀为 `dsh-my-<功能>`，参考本仓库改名先例：`dsh-my-skill-manager`（原 `dsh-skill-manager` 被占）、`dsh-my-memory`（原 `dsh-memory` 被占）。改名后重新执行第 2 步确认新名可用再继续。
 4. **记录检索结果（强制）**：候选名 + 占用情况记入该插件的命名 issue（评论即可），发布前复查一次。
 
 > **命名查重增量（plugin-write skill）**：对方提供结构化命名清单 + 离线/在线双重校验，可补充到本流程——① 新建插件时声明 `dsh-plugin.naming.json`（结构化命名清单：包名/显示名/标识符）；② 用 `skills/plugin-write/scripts/validate-names.mjs --manifest ./dsh-plugin.naming.json` 离线校验（兼容性错误 = 目标契约失败，前缀警告 = 社区建议）；③ 网络可用时用 `skills/plugin-write/scripts/query-registry.mjs --manifest ./dsh-plugin.naming.json --harness-version <精确版本>` 查中央注册表（无匹配只算"无已审匹配"，超时/网络失败算"未检查"，绝不把自动发现候选当预留）。本仓库 npm 检索（上面 1-4 步）与对方注册表查询互补：npm 查包名占用，注册表查生态标识符冲突。
@@ -103,7 +103,7 @@ plugins/<name>/                  # 插件目录（小写连字符命名，如 ds
 
 - 包名 `dsh-<功能>`（如 `dsh-file-activity`），无 scope；**目录名 = 包名**。
 - 插件行 id（cordis.patch.yml）用短横线小写（如 `file-activity`）。
-- **client 注册的页签 `id` 用包名**（原生注册表要求全局唯一，且是正文 keyed 席位的 key），**`kind` 用 `包名:xxx`**（如 `dsh-ts-example:greeting`）；`kind` 不得占用内置值 `guide` / `text` / `files`。
+- **client 注册的页签 `id` 用包名**（原生注册表要求全局唯一，且是正文 keyed 席位的 key），**`kind` 用 `包名:xxx`**（如 `dsh-my-skill-manager:list`）；`kind` 不得占用内置值 `guide` / `text` / `files`。
 - 每个插件**不需要**独立 .gitignore（根 .gitignore 统一覆盖 node_modules / .DS_Store / .dsh-vision-toolkit 等）。
 - 新插件 README 必须中文，顶部放插件生态 badge（见现有插件）与**真实运行效果图**；骨架阶段截图可用占位注释，发版前补真实截图。**效果图规范（强制）**：① 每插件 README 顶部放 1–3 张真实运行截图（用 `verifying-dsh-plugins` 隔离实例 + 浏览器端到端截图，非示意图）；② 截图存 `<插件>/assets/`，README 用 `./assets/xxx.png` 相对路径引用；③ 新插件发版前必须补图；④ **功能更新 / UI 变化 / 交互新增时必须同步更新/补充截图**，与代码改动一起提交、一起发版（`scripts/release.mjs` 会校验 README 引用了且 `assets/` 含截图，缺失则发版失败）；⑤ **确无用户可见 UI 的插件走显式声明豁免，不写插件名单**：`package.json` 的 `dsh.ui=false` + 非空 `dsh.uiReason`（写明为什么没有可截图的产物；`dsh.ui=false` 与 `dsh.client` 互斥——声明无 UI 却提供 client 端会被判为非法声明，必须补真实截图）；判据实现 `scripts/lib/screenshot-gate.mjs`、单测 `scripts/test/screenshot-gate.test.mjs`，发版输出与批量汇总显式列出「已豁免」插件与理由（豁免可见、可审计）。
 - **需求与回归基准（强制）**：需求以 **GitHub issue** 为准（验收标准写在 issue 正文）；**回归基准 = 该插件测试套件 + issue 验收标准逐条核对**。易碎需求（重启恢复、会话隔离、持久化不丢失、数据不串）必须有专门测试断言（见 [构建与测试 · 需求回归](../../docs/开发指南/构建与测试.md#需求回归强制要求)）。
@@ -144,7 +144,7 @@ plugins/<name>/                  # 插件目录（小写连字符命名，如 ds
 
 ## TypeScript 开发（TS 插件）
 
-> 新插件可用 TypeScript 开发（server 端 tsc 编译 + client 端构建时编译 + CI 类型检查）。**完整示例照抄 `plugins/dsh-ts-example/`**，详细说明见 [docs/TS示例/概述.md](../../docs/TS示例/概述.md)。
+> 新插件用 TypeScript 开发（server 端 tsc 编译 + client 端构建时编译 + CI 类型检查）：**照抄任一同形态的现有插件**，构建链事实与照抄对象见 [references/typescript-pipeline.md](references/typescript-pipeline.md)。
 
 - **目录结构**：`src/*.ts`（server 源码，`index.ts` 入口 + 逻辑模块 + `types.d.ts` 运行时类型声明）、`src/client/index.ts`（client 源码，单文件）、`lib/` 放编译产物（`index.js` / `client.js`，**必须提交**——CI 只跑 `node --check` + 测试，不跑构建）。
 - **server 构建**：`tsc -p tsconfig.json`（`module: nodenext` → ESM 产物 `lib/*.js`）；相对 import 写 `.js` 扩展名（nodenext 要求，tsc 自动映射到 `.ts` 源码）。

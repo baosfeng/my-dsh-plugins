@@ -25,7 +25,7 @@
  *   mutation     → (cd plugins/dsh-file-activity && npx stryker run)（默认跳过：
  *                  本地约 20s，push 场景太重，CI 独立 job 强制）
  *   typecheck    → npx tsc --noEmit（根 tsconfig：只覆盖 plugins/<插件>/lib/*.d.ts 产物与根级 TS）
- *   typecheck-plugins → node scripts/typecheck-all.mjs（18 插件的 server + client 端，并发）
+ *   typecheck-plugins → node scripts/typecheck-all.mjs（13 插件的 server + client 端，并发）
  *                  issue #330：这是 CI 一直在跑、而**本地此前完全没跑**的那一项——client 端
  *                  类型检查本地零覆盖，本地全绿、CI 红，白等一轮 CI。现已在两种模式下恒跑。
  *   lint         → npx eslint plugins/（--fast 时按变更裁剪到本次改动的 .js/.mjs，
@@ -704,7 +704,7 @@ const CHECK_DEFS = [
     // 于是「插件 client 端类型检查」本地零覆盖 —— 本地全绿、CI 红，白等一轮 CI。
     // 现在它是恒跑项（fast/full/CI 都跑），内部并发，本机 0.9~2.0s。
     id: 'typecheck-plugins',
-    label: 'typecheck-plugins (node scripts/typecheck-all.mjs，18 插件的 server + client)',
+    label: 'typecheck-plugins (node scripts/typecheck-all.mjs，13 插件的 server + client)',
     note: '唯一权威执行点是各插件自己的 tsconfig.json / tsconfig.client.json（构建语义），见 gate-registry',
     run: () => runCapture('node', ['scripts/typecheck-all.mjs'], root),
     // 只能靠 tsconfig / .ts 变更影响；但 tsconfig 变更属于「根工具链 → 安全退化全量」，
@@ -786,7 +786,7 @@ const CHECK_DEFS = [
   {
     id: 'pack-hygiene',
     label: 'pack hygiene (node scripts/check-pack-hygiene.mjs)',
-    note: 'issue #323 包发布卫生：exports/main/types/dsh.bundle.patch 指向真实文件、dsh.client 与 exports["./client"] 互证、npm pack 内容「该有的在 / 不该发的没在」、README 引用的 assets 确实随包发布（实测 19 插件 ~1.3s，含 19 次 npm pack，并发 6）',
+    note: 'issue #323 包发布卫生：exports/main/types/dsh.bundle.patch 指向真实文件、dsh.client 与 exports["./client"] 互证、npm pack 内容「该有的在 / 不该发的没在」、README 引用的 assets 确实随包发布（实测 13 插件 ~1.3s，含 13 次 npm pack，并发 6）',
     run: () => runCapture('node', ['scripts/check-pack-hygiene.mjs'], root),
     // 判据全部落在 plugins/<插件> 的包内容与 package.json 上：没有 plugins/ 变更就不可能失败
     skip: (ctx) => {
@@ -1085,14 +1085,14 @@ async function runOnePlugin(name) {
  * 疑似「多进程并发跑同一插件测试」的报错特征。
  * 依据 docs/踩坑/README.md：并发跑同一插件时两个 vitest 会争用该插件的
  * coverage/ 与临时目录，表现为 coverage 写入异常 / EACCES / ENOENT / EPERM，或带
- * testTimeout 的联网用例超时（dsh-my-guard 曾出现 5013ms 误报）。
+ * 带 testTimeout 的联网用例超时（真去 registry 解析包名的用例在并发下墙钟膨胀）。
  * 刻意保持保守：只有命中这些特征才触发「串行复测」，不做无条件重试，以免掩盖真实回归。
  */
 // 判定逻辑抽到 lib/verify-flaky-classify.mjs（纯函数、可单测，见
 // scripts/test/verify-flaky-classify.test.mjs）。issue #402 在那里补了「npm test 阶段的
 // 纯断言失败也算疑似并发冲突」——旧正则只认 coverage/EACCES/超时特征，判不出
-// 「等待预算与墙钟解耦」导致的假红（guardian 的 setImmediate 忙等、observability 的
-// 固定 40ms sleep），于是跳过串行复测直接判红挡推送。
+// 「等待预算与墙钟解耦」导致的假红（测试里 setImmediate 忙等、固定 40ms sleep），
+// 于是跳过串行复测直接判红挡推送。
 
 /** 「疑似并发冲突 → 串行复测」是否启用（首轮本就串行时无需复测）。 */
 function serialRetryEnabled() {
@@ -1101,16 +1101,16 @@ function serialRetryEnabled() {
 }
 
 /**
- * 需要**排队尾**的插件测试（不与其它插件同时开工）。
- * dsh-my-guard 的黑名单扫描测试会真去 npm registry 解析包名（含一个 `testTimeout: 5000`
- * 的联网用例），与其他插件测试并发时曾出现 5013ms 超时误报。
+ * 需要**排队尾**的插件测试（不与其它插件同时开工）：真去 npm registry 解析包名的联网用例
+ * （含 `testTimeout: 5000`）与其他插件测试并发时会误报超时。
  *
- * issue #188 把它从「并发池排空后的串行尾巴」改成「队列末尾」：原实现让 guard 的 ~6s 完全
- * 落在关键路径上（实测全量 --only test：池 25.4s + guard 6.5s = 31.9s）；排到队尾后它只在
- * 并发池出现空槽时启动，启动时前面的任务大多已结束（等同于旧语义里的「不要和其他插件同时
- * 开工」），但不再占用尾延迟。仍不把它塞进队列中间——那正是 5013ms 误报的原始形态。
+ * 排队尾而非串行尾巴的原因：串行尾巴把该插件的整段时长压在关键路径上（实测全量
+ * `--only test`：池 25.4s + 该插件 6.5s = 31.9s）；排到队尾后它只在并发池出现空槽时启动，
+ * 启动时前面的任务大多已结束，不再占用尾延迟。**不要**挪进队列中间——那正是超时误报的形态。
+ *
+ * 当前没有命中该特征的插件（空集）；新增联网用例插件时把目录名加进来。
  */
-const EXCLUSIVE_PLUGIN_TESTS = new Set(['dsh-my-guard'])
+const EXCLUSIVE_PLUGIN_TESTS = new Set([])
 
 function runPluginTests(ctx) {
   const targets = ctx.plugins.length > 0 ? ctx.plugins : [...ctx.impactPlugins].sort()
@@ -1217,9 +1217,9 @@ const tail = (text, lines) => text.split('\n').slice(-lines).join('\n')
  *   · 并发 3（旧默认）38.0s → 并发 6 31.9s（省 6.1s）；
  *   · 并发 8 实测 32.3s——**没有收益**，且最慢的 dsh-file-activity 从 25.4s 变成 25.8s：
  *     瓶颈是「最慢单插件」而不是并发度，加进程只是把最慢的那个拖得更慢；
- *   · 更高并发在 issue #188 的原始实测里曾让 dsh-my-guard 的联网用例（test/host-guard.mjs，
- *     testTimeout 5s）劣化到单测试 930s；本脚本现已把 dsh-my-guard 放进 EXCLUSIVE_PLUGIN_TESTS
- *     独占运行，但上界仍钉在 6——加并发换不来收益，只会抬高联网用例与 CPU 争用的 flaky 风险。
+ *   · 更高并发在 issue #188 的原始实测里曾让联网用例（testTimeout 5s）劣化到单测试 930s；
+ *     这类用例由 EXCLUSIVE_PLUGIN_TESTS 排队尾独占运行，但上界仍钉在 6——加并发换不来收益，
+ *     只会抬高联网用例与 CPU 争用的 flaky 风险。
  *
  * 各插件测试相互隔离（独立 node 进程 + 临时 DSH_HOME / port 0，无固定端口占用），但同一仓库里
  * 若**另有进程正在跑同一插件**的 vitest，会争用该插件的 coverage 目录

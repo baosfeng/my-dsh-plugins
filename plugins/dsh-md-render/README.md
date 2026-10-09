@@ -13,7 +13,7 @@
 - **text 围栏块按 markdown 渲染**：语言标记为 `text` / `plaintext` / `txt` 的围栏块，块内内容交给官方渲染器按 markdown 渲染（标题 / 列表 / 表格 / 公式等能力与宿主消息完全一致），每块带**独立**的「查看原文」切换；其他标记（`js` / `ts` / `json` / `bash` …）与无标记块**完全不变**。
 - **上下文注入块渲染**：宿主把上下文注入正文（**子 agent 回传消息**、AGENTS.md 等）渲染为纯文本 `pre[data-context-text]`；本插件在 DOM 层把这类块交给官方渲染器渲染，原文节点保留并置 `hidden`。
 - **整段 markdown 复制**：官方只有代码块复制；`MarkdownView` 容器带整段复制按钮（复制内容排除代码块 banner 与按钮文案），流式渲染中不显示。
-- **统一 `MarkdownView`**：`require('dsh-md-render').MarkdownView`（props `{ text: string }`）＝ 官方渲染 + 表格容错 + 整段复制，供本仓其他插件使用（`dsh-my-plugin-manager` 的 README 预览）。
+- **统一 `MarkdownView`**：`require('dsh-md-render').MarkdownView`（props `{ text: string }`）＝ 官方渲染 + 表格容错 + 整段复制，供本仓其他插件使用（供本仓其他插件的 README 预览）。
 - **非标准表格容错**：官方 GFM **不认**的两种写法先规范化再交给官方渲染器 —— ① 分隔行完全没有管道符（`a | b` 后跟 `---`，GFM 当 setext 标题）；② 分隔行单元格数与表头不等（GFM 整段不识别）。**GFM 本来就接受的写法一律不动**（无首尾管道符、紧凑 `---|---`、单横线 `-|-`、表格前有普通段落文本、数据行列数不等、逐列对齐标记 —— 逐条实测证据见 `test/table-normalize.mjs`）。
 - **增强开关面板**：全部保留能力可在 设置 → 插件 → 渲染 页签可视化编辑，保存即生效、重启不丢。
 - **流式安全**：流式中的块等内容稳定再渲染（`[data-streaming]` 门控），重扫幂等（签名未变不重建），宿主重渲染后自愈。

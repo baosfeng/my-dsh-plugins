@@ -74,7 +74,7 @@ jobs:
       # - 未配置 token 时仅警告并跳过，不影响 GitHub Release 主流程；
       # - 发布失败（包名已被他人占用，如 dsh-notify / dsh-guardian，或版本已存在）
       #   同样只警告不阻塞——GitHub Release 始终是主交付物。
-      #   （本仓库撞名插件已统一 dsh-my-* 前缀：dsh-my-notify / dsh-my-guardian）
+      #   （本仓库撞名插件已统一 dsh-my-* 前缀：dsh-my-notify / dsh-my-observability）
       - name: Publish to npm (requires NPM_TOKEN)
         run: |
           if [ -z "$NPM_TOKEN" ]; then

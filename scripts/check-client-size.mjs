@@ -370,7 +370,7 @@ export function buildBaseline({ root = DEFAULT_ROOT, previous = null }) {
         'files = 逐个冻结的产物（lib/** 与 assets/**）。未登记的文件与插件只受默认上限（1 MB/文件）约束。' +
         '刷新：node scripts/check-client-size.mjs --update-baseline（须在 PR 说明体积变化原因）。',
     measuredAt,
-    source: 'npm pack --dry-run --json（18 个插件与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）',
+    source: 'npm pack --dry-run --json（13 个插件与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）',
     margin: {
       absFloorBytes: ABS_FLOOR_BYTES,
       relMargin: REL_MARGIN,

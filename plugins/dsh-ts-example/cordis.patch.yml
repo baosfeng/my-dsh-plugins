@@ -1,9 +1,0 @@
-# dsh-ts-example bundle patch: inserts the plugin row into the profile roster.
-# The row mounts the host half (greeting + stats API) and the client half
-# (sidebar "TS 示例" tab). Install with:
-#
-#   git clone https://github.com/baosfeng/my-dsh-plugins.git
-#   dsh plugin --profile web add link:<仓库路径>/plugins/dsh-ts-example
-- insert:
-    - id: ts-example
-      name: 'dsh-ts-example'

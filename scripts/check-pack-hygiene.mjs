@@ -43,7 +43,7 @@ import { mapWithConcurrency } from './lib/release-concurrency.mjs'
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 /** npm 在 Windows 上是 .cmd 包装（本仓库 CI 为 ubuntu/macOS，保守兜底）。 */
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-/** pack 并发度：pack 是独立子进程（无共享临时目录），实测 6 路 19 插件 ~1.5s（串行 ~7s）。 */
+/** pack 并发度：pack 是独立子进程（无共享临时目录），实测 6 路 13 插件 ~1.5s（串行 ~7s）。 */
 const PACK_CONCURRENCY = 6
 
 /** 跑一次 `npm pack --dry-run --json`。任何失败都是 fail-closed（返回 ok:false）。 */

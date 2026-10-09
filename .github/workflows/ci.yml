@@ -62,17 +62,12 @@ jobs:
           - dsh-think-zh-expand
           - dsh-mermaid-render
           - dsh-md-render
-          - dsh-my-guardian
           - dsh-my-memory
           - dsh-my-notify
           - dsh-my-observability
-          - dsh-my-guard
           - dsh-my-context
-          - dsh-my-plugin-manager
           - dsh-my-skill-manager
-          - dsh-plugin-dev-mode
           - dsh-task-reliability
-          - dsh-ts-example
           - dsh-my-remote
           - dsh-my-opencode-session-header
           - dsh-shared
@@ -119,7 +114,7 @@ jobs:
       # 失败仍可在 run 日志与 job annotation 里看到，只是不再判红。反向也由门禁守住：
       # scripts/check-gate-parity.mjs 校验本步骤必须带 continue-on-error，去掉即红。
       - name: Upload coverage to Coveralls
-        if: success() && matrix.plugin != 'dsh-plugin-dev-mode'
+        if: success()
         continue-on-error: true
         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2
         with:

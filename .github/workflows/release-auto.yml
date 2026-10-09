@@ -9,7 +9,7 @@ name: Release (auto)
 # 等价手动命令：node scripts/release.mjs <插件> [<插件>...] --bump <类型> --push
 #
 # 批量发版：plugins 输入填多个目录名，用逗号或空格分隔（如
-# `dsh-md-render,dsh-my-guard`）——所有插件统一 bump 类型，逐个独立校验门禁、
+# `dsh-md-render,dsh-my-observability`）——所有插件统一 bump 类型，逐个独立校验门禁、
 # 一次提交、逐个打 tag。非法名字由下方的 Resolve + validate 步骤 fail-fast 拦截
 # （列出全部允许值），不会带着错名字提交。
 #
@@ -27,13 +27,13 @@ on:
         # 历史上就漏过一次，防漂移测试见 scripts/test/release-checks.test.mjs）。
         # dsh-shared 是共享库（package.json dsh.kind=library）：release.mjs 对其有
         # 专门豁免（cordis peer / 效果图 / 真实环境验证），支持发版，故在允许值内。
-        # 注意：dsh-notify / dsh-guardian 已改名 dsh-my-notify / dsh-my-guardian
+        # 注意：dsh-notify / dsh-guardian 已改名 dsh-my-notify / dsh-my-observability
         # （撞名统一 dsh-my-* 前缀，见 release.yml 注释），旧名不再存在。
         #
         # 用户输入必须经 env（RAW_PLUGINS）进入脚本，绝不写成 `${{ inputs.plugins }}`
         # 直接插值到 run：插值会被 shell 当代码执行（GitHub 官方的脚本注入告警），
         # 属注入面。白名单通过后参数再由数组展开传给 release.mjs。
-        description: 插件目录名，多个用逗号或空格分隔（如 dsh-md-render,dsh-my-guard）
+        description: 插件目录名，多个用逗号或空格分隔（如 dsh-md-render,dsh-my-observability）
         required: true
         type: string
       bump:
@@ -78,7 +78,7 @@ jobs:
           # 连续空白压成一个空格，并去掉首尾空格。
           RAW="$(printf '%s' "$RAW_PLUGINS" | tr '\n\t\r' '   ' | LC_ALL=C sed -E 's/[,;，；]+/ /g; s/[[:space:]]+/ /g; s/^ +//; s/ +$//')"
           if [ -z "$RAW" ]; then
-            echo "::error::plugins 输入为空：请填插件目录名，多个用逗号或空格分隔（如 dsh-md-render,dsh-my-guard）"
+            echo "::error::plugins 输入为空：请填插件目录名，多个用逗号或空格分隔（如 dsh-md-render,dsh-my-observability）"
             echo "允许的值（plugins/ 目录）："
             printf '%s\n' "$ALLOWED" | sed 's/^/  - /'
             exit 1

@@ -781,12 +781,12 @@ describe('3c 启用态判据 — dump-config 解析（disabled: true 不得判�
     '- id: my-context',
     '  name: dsh-my-context',
     '  disabled: true',
-    '# == dsh-my-guard',
-    '- id: guard',
-    '  name: dsh-my-guard',
-    '# == dsh-my-guardian, patched by /Users/x/.dsh/profiles/web/cordis.patch.yml',
-    '- id: guardian',
-    '  name: dsh-my-guardian',
+    '# == dsh-task-reliability',
+    '- id: task-reliability',
+    '  name: dsh-task-reliability',
+    '# == dsh-my-observability, patched by /Users/x/.dsh/profiles/web/cordis.patch.yml',
+    '- id: my-observability',
+    '  name: dsh-my-observability',
     '  disabled: true',
     '# == dsh-my-memory',
     '- id: my-memory',
@@ -802,9 +802,9 @@ describe('3c 启用态判据 — dump-config 解析（disabled: true 不得判�
     const entries = parseDumpEntries(DUMP)
     const byName = new Map(entries.map((e) => [e.name, e]))
     expect(byName.get('dsh-my-context')).toMatchObject({ id: 'my-context', disabled: true })
-    // 相邻块：guard 启用、guardian 禁用 —— 不得把 guardian 的 disabled 算到 guard 头上
-    expect(byName.get('dsh-my-guard')).toMatchObject({ id: 'guard', disabled: false })
-    expect(byName.get('dsh-my-guardian')).toMatchObject({ id: 'guardian', disabled: true })
+    // 相邻块：前一个启用、后一个禁用 —— 不得把后者的 disabled 算到前者头上
+    expect(byName.get('dsh-task-reliability')).toMatchObject({ id: 'task-reliability', disabled: false })
+    expect(byName.get('dsh-my-observability')).toMatchObject({ id: 'my-observability', disabled: true })
     // 显式 disabled: false 视为启用态
     expect(byName.get('dsh-notify')).toMatchObject({ id: 'notify', disabled: false })
   })
@@ -823,7 +823,7 @@ describe('3c 启用态判据 — dump-config 解析（disabled: true 不得判�
   it('启用态才通过：同一份 dump 里的启用插件不受别的禁用块影响（不误伤）', () => {
     const result = checkAddonEntriesEnabled({
       dumpOutput: DUMP,
-      addons: [{ name: 'dsh-my-memory' }, { name: 'dsh-my-guard' }, { name: 'dsh-notify' }],
+      addons: [{ name: 'dsh-my-memory' }, { name: 'dsh-task-reliability' }, { name: 'dsh-notify' }],
     })
     expect(result.ok).toBe(true)
     expect(result.entries.map((item) => item.ok)).toEqual([true, true, true])
@@ -843,11 +843,11 @@ describe('3c 启用态判据 — dump-config 解析（disabled: true 不得判�
   it('禁用位是"被验证插件自己那一块"的判据：多插件混合输入逐个给出结论', () => {
     const result = checkAddonEntriesEnabled({
       dumpOutput: DUMP,
-      addons: [{ name: 'dsh-my-guardian' }, { name: 'dsh-my-memory' }],
+      addons: [{ name: 'dsh-my-observability' }, { name: 'dsh-my-memory' }],
     })
     expect(result.ok).toBe(false)
     expect(result.entries.map((item) => [item.name, item.ok])).toEqual([
-      ['dsh-my-guardian', false],
+      ['dsh-my-observability', false],
       ['dsh-my-memory', true],
     ])
   })
@@ -932,8 +932,8 @@ describe('--enable-plugins：只在隔离副本内去掉禁用位', () => {
   )
 
   it('① 不传参（未启用）时禁用位仍在 → 启用态门禁照样判失败（判据未被放宽）', () => {
-    const dump = ['- id: guardian', "  name: 'dsh-my-guardian'", '  disabled: true'].join('\n')
-    const res = checkAddonEntriesEnabled({ dumpOutput: dump, addons: [{ name: 'dsh-my-guardian' }] })
+    const dump = ['- id: my-observability', "  name: 'dsh-my-observability'", '  disabled: true'].join('\n')
+    const res = checkAddonEntriesEnabled({ dumpOutput: dump, addons: [{ name: 'dsh-my-observability' }] })
     expect(res.ok).toBe(false)
     expect(res.entries[0].reason).toContain('禁用')
   })
@@ -949,8 +949,8 @@ describe('--enable-plugins：只在隔离副本内去掉禁用位', () => {
   it('③ 启用后的组合配置判为「启用态」→ 3c 前提成立', () => {
     const { text } = enableEntryInPatch(PATCH, 'guardian')
     expect(text).toContain('- id: guardian')
-    const dump = ['- id: guardian', "  name: 'dsh-my-guardian'"].join('\n')
-    const res = checkAddonEntriesEnabled({ dumpOutput: dump, addons: [{ name: 'dsh-my-guardian' }] })
+    const dump = ['- id: my-observability', "  name: 'dsh-my-observability'"].join('\n')
+    const res = checkAddonEntriesEnabled({ dumpOutput: dump, addons: [{ name: 'dsh-my-observability' }] })
     expect(res.ok).toBe(true)
   })
 

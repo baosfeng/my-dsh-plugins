@@ -337,7 +337,7 @@ describe('与 ESLint 内置规则语义对照', () => {
       rules: { complexity: ['error', 0], 'max-lines': ['error', 0], 'max-lines-per-function': ['error', { max: 0 }] },
     },
   })
-  const filePath = 'plugins/dsh-ts-example/lib/probe.js'
+  const filePath = 'plugins/dsh-shared/lib/probe.js'
 
   /** ESLint 报出的 (起始行, 实测值) 列表。 */
   async function eslintValues(code, ruleId, pattern) {

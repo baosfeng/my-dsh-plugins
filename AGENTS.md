@@ -1,6 +1,6 @@
 # my-dsh-plugins — 个人 DSH（DeepSeek Harness）插件集合仓库
 
-> 18 个插件（plugins/）+ 10 个 skill（skills/）+ 文档（docs/）。技术栈：Node.js + Cordis 4 + React 18/19 + 宿主原生 sidebarRightTabs。
+> 13 个插件（plugins/）+ 10 个 skill（skills/）+ 文档（docs/）。技术栈：Node.js + Cordis 4 + React 18/19 + 宿主原生 sidebarRightTabs。
 
 ## 🤝 协作与项目管理原则（所有 agent 必读）
 

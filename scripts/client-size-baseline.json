@@ -1,7 +1,7 @@
 {
   "note": "客户端产物体积预算基线（issue #322）：登记各插件**发布面**的体积实测值。上限 = 基线 + max(64 KB, 基线×15%)，理由见 scripts/check-client-size.mjs 顶部常量注释。unpacked total = 该插件 npm 发布面全部文件字节和；files = 逐个冻结的产物（lib/** 与 assets/**）。未登记的文件与插件只受默认上限（1 MB/文件）约束。刷新：node scripts/check-client-size.mjs --update-baseline（须在 PR 说明体积变化原因）。",
-  "measuredAt": "2026-09-26",
-  "source": "npm pack --dry-run --json（18 个插件与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）",
+  "measuredAt": "2026-10-09",
+  "source": "npm pack --dry-run --json（13 个插件与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）",
   "margin": {
     "absFloorBytes": 65536,
     "relMargin": 0.15,
@@ -10,7 +10,7 @@
   },
   "plugins": {
     "dsh-file-activity": {
-      "total": 852445,
+      "total": 852692,
       "files": {
         "assets/preview-float-0.5.6.png": 121400,
         "assets/preview-float.png": 251552,
@@ -48,7 +48,7 @@
       }
     },
     "dsh-md-render": {
-      "total": 152617,
+      "total": 152860,
       "files": {
         "assets/text-fence-markdown.png": 70863,
         "lib/client.js": 56118,
@@ -58,7 +58,7 @@
       }
     },
     "dsh-mermaid-render": {
-      "total": 3704740,
+      "total": 3705220,
       "files": {
         "assets/mermaid-10.9.3.min.js": 3336760,
         "assets/mermaid-auto-diagram.png": 92687,
@@ -73,7 +73,7 @@
       }
     },
     "dsh-my-context": {
-      "total": 255996,
+      "total": 256242,
       "files": {
         "assets/context-panel.png": 117918,
         "lib/budget.js": 2149,
@@ -94,59 +94,8 @@
         "lib/store.js": 13059
       }
     },
-    "dsh-my-guard": {
-      "total": 626368,
-      "files": {
-        "assets/guard-panel.png": 165536,
-        "assets/guard-rules-panel.png": 117036,
-        "assets/guard-settings-panel.png": 86701,
-        "lib/client.js": 81346,
-        "lib/client.src.js": 4381,
-        "lib/config-api.js": 5673,
-        "lib/constants.js": 8741,
-        "lib/custom-rules.js": 6370,
-        "lib/guard.js": 4648,
-        "lib/http.js": 1851,
-        "lib/index.js": 6685,
-        "lib/injection.js": 5444,
-        "lib/notify.js": 2893,
-        "lib/parts/i18n.js": 8622,
-        "lib/parts/panel.js": 14100,
-        "lib/parts/rules-panel.js": 10741,
-        "lib/parts/settings.js": 17081,
-        "lib/parts/states.js": 2628,
-        "lib/parts/styles.js": 10977,
-        "lib/poison.js": 13582,
-        "lib/routes.js": 10515,
-        "lib/store.js": 10410,
-        "lib/tar-safety.js": 12917,
-        "lib/tarball.js": 6831
-      }
-    },
-    "dsh-my-guardian": {
-      "total": 469207,
-      "files": {
-        "assets/panel-error-detail.png": 130546,
-        "assets/panel-main.png": 129112,
-        "lib/api.js": 8420,
-        "lib/client.js": 64304,
-        "lib/client.src.js": 2478,
-        "lib/dep-precheck.js": 11617,
-        "lib/dep-version.js": 7838,
-        "lib/events.js": 10948,
-        "lib/index.js": 12730,
-        "lib/mount.js": 12557,
-        "lib/parts/apply.js": 3348,
-        "lib/parts/row.js": 7372,
-        "lib/parts/styles.js": 19615,
-        "lib/parts/util.js": 9405,
-        "lib/parts/view.js": 9221,
-        "lib/startup-check.js": 10659,
-        "lib/state.js": 6789
-      }
-    },
     "dsh-my-memory": {
-      "total": 762636,
+      "total": 762883,
       "files": {
         "assets/issue-193-delete-armed.png": 96684,
         "assets/issue-193-other-tool-approval.png": 125884,
@@ -171,7 +120,7 @@
       }
     },
     "dsh-my-notify": {
-      "total": 293238,
+      "total": 293676,
       "files": {
         "assets/notify-toast.png": 96384,
         "lib/client.js": 68709,
@@ -193,7 +142,7 @@
       }
     },
     "dsh-my-observability": {
-      "total": 326861,
+      "total": 327107,
       "files": {
         "assets/git-panel.png": 88508,
         "assets/settings-panel.png": 81903,
@@ -226,19 +175,6 @@
         "lib/session-value.js": 534
       }
     },
-    "dsh-my-plugin-manager": {
-      "total": 630197,
-      "files": {
-        "assets/detail.png": 402308,
-        "assets/market.png": 140796,
-        "lib/api-route.js": 4874,
-        "lib/client.js": 58534,
-        "lib/client.src.js": 4068,
-        "lib/index.js": 1571,
-        "lib/manage.js": 2316,
-        "lib/registry.js": 8462
-      }
-    },
     "dsh-my-remote": {
       "total": 368602,
       "files": {
@@ -267,7 +203,7 @@
       }
     },
     "dsh-my-skill-manager": {
-      "total": 284214,
+      "total": 284461,
       "files": {
         "assets/screenshot.png": 193571,
         "lib/api-route.js": 8682,
@@ -278,12 +214,6 @@
         "lib/index.js": 4050,
         "lib/provider.js": 2347,
         "lib/usage.js": 5947
-      }
-    },
-    "dsh-plugin-dev-mode": {
-      "total": 148414,
-      "files": {
-        "assets/preset-selector.png": 127241
       }
     },
     "dsh-shared": {
@@ -320,7 +250,7 @@
       }
     },
     "dsh-task-reliability": {
-      "total": 296491,
+      "total": 296739,
       "files": {
         "assets/screenshot-panel.png": 122908,
         "lib/api.js": 11427,
@@ -342,23 +272,13 @@
       }
     },
     "dsh-think-zh-expand": {
-      "total": 384008,
+      "total": 384433,
       "files": {
         "assets/settings-panel.png": 73441,
         "assets/think-markdown.png": 227686,
         "lib/client.js": 55614,
         "lib/client.src.js": 4034,
         "lib/index.js": 13610
-      }
-    },
-    "dsh-ts-example": {
-      "total": 47531,
-      "files": {
-        "assets/screenshot.png": 28844,
-        "lib/client.js": 7235,
-        "lib/client.src.js": 1406,
-        "lib/greeting.js": 591,
-        "lib/index.js": 4521
       }
     }
   }

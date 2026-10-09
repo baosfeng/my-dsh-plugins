@@ -198,29 +198,23 @@ describe('端到端（临时 git 仓库，含「改 part 不重建」失败用�
 
 describe('真实仓库的共享件清单（判据输入不是手写列表）', () => {
   it('dsh-shared/client-parts 下的 .part.js 都被至少一个消费方引用或被显式忽略', () => {
-    const consumers = findClientArtifactConsumers(
-      Object.fromEntries(
-        [
-          'dsh-md-render',
-          'dsh-mermaid-render',
-          'dsh-my-guard',
-          'dsh-my-guardian',
-          'dsh-my-memory',
-          'dsh-my-notify',
-          'dsh-my-observability',
-          'dsh-my-plugin-manager',
-          'dsh-my-skill-manager',
-          'dsh-think-zh-expand',
-          'dsh-file-activity',
-        ].map((p) => [p, readFileSync(join(REPO_ROOT, 'plugins', p, 'scripts', 'build.mjs'), 'utf8')]),
-      ),
-      ['icons.part.js', 'style-tag.part.js', 'dom-scanner.part.js', 'markdown-fallback.part.js'],
-    )
-    expect(consumers.length).toBeGreaterThanOrEqual(11)
-    expect(consumers.map((c) => c.plugin)).toContain('dsh-file-activity')
-    expect(consumers.map((c) => c.plugin)).toContain('dsh-my-observability')
+    // 消费方名单现场从 plugins/*/scripts/build.mjs 取——写死名单会让「新增/删除插件」变成
+    // 需要改测试的假耦合，且名单本身正是本用例要证伪的东西。
+    const builds = {}
+    for (const p of readdirSync(join(REPO_ROOT, 'plugins'))) {
+      const file = join(REPO_ROOT, 'plugins', p, 'scripts', 'build.mjs')
+      if (existsSync(file)) builds[p] = readFileSync(file, 'utf8')
+    }
+    const consumers = findClientArtifactConsumers(builds, [
+      'icons.part.js',
+      'style-tag.part.js',
+      'dom-scanner.part.js',
+      'markdown-fallback.part.js',
+    ])
+    const plugins = consumers.map((c) => c.plugin)
+    expect(plugins).toContain('dsh-file-activity')
+    expect(plugins).toContain('dsh-my-observability')
     expect(consumers.filter((c) => c.parts.includes('markdown-fallback.part.js')).map((c) => c.plugin)).toEqual([
-      'dsh-my-plugin-manager',
       'dsh-think-zh-expand',
     ])
   })

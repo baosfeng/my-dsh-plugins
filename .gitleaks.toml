@@ -29,7 +29,7 @@ useDefault = true
 #    只对 127.0.0.1 的本机实例有效）。两处样本：
 #      · scripts/test/verify-profile.test.mjs:679 —— 「实测的健康就绪行」夹具（issue #305）
 #      · 插件启动测试报告.md:144（历史提交中所含）—— 浏览器测试步骤里的本机 URL
-#    注意：**不含** `dsh-my-guard` / `dsh-my-remote` 等任何服务凭据；这两个值泄漏
+#    注意：**不含**任何服务凭据；这两个值泄漏
 #    只能用于访问提交者自己机器上的 127.0.0.1 实例，进过公开仓库后也不构成凭据风险。
 [[allowlists]]
 description = "本机 DSH web 实例的 loopback 就绪 token（实测记录/夹具，仅对本机 127.0.0.1 有效）"
@@ -61,12 +61,13 @@ regexes = [
   '''x-remote-token:\s*verify-tok-\d+''',
 ]
 
-# 4. plugins/dsh-my-guard/test/host-poison.mjs:64 —— 恶意包扫描器的测试夹具，用**非法**
-#    私钥字面量（只有头尾与一行 MIIEowIBAAKCAQEA，不是可用的 PEM）触发
-#    `secret`/`private-key` finding。正则只锚定那一行 MIIEowIBAAKCAQEA：
-#    这是典型的「示例密钥体」首行，真实私钥的 base64 体不会恰好是这一串。
+# 4. 恶意包扫描器的测试夹具（曾被投毒扫描插件用于触发 `secret`/`private-key` finding）：
+#    用**非法**私钥字面量（只有头尾与一行 MIIEowIBAAKCAQEA，不是可用的 PEM）。
+#    该夹具已随插件退役，但 secret 扫描默认 `--all`（全历史），历史提交里仍在 → 入口保留。
+#    正则只锚定那一行 MIIEowIBAAKCAQEA：这是典型的「示例密钥体」首行，
+#    真实私钥的 base64 体不会恰好是这一串。
 [[allowlists]]
-description = "dsh-my-guard 恶意包扫描测试夹具里的假私钥（占位密钥体 MIIEowIBAAKCAQEA）"
+description = "恶意包扫描测试夹具里的假私钥（占位密钥体 MIIEowIBAAKCAQEA）"
 regexTarget = "match"
 regexes = [
   '''MIIEowIBAAKCAQEA''',

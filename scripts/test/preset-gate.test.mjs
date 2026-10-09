@@ -10,15 +10,16 @@
  *   - 普通 profile 插件（有 cordis.patch.yml、无声明行）不得被判成 preset；
  *   - 已移除的目录资产（preset.yml / agent.cordis.yml）不得回归；
  *   - dsh-shared 仍走 dsh.kind=library，不被 preset 判据吞掉；
- *   - dsh-plugin-dev-mode 按显式声明豁免，而不是写死的插件名单。
+ *   - preset 豁免只认显式声明，不认写死的插件名单。
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolvePresetAsset, PRESET_PATCH_FILE, PRESET_DECLARATION_PLUGIN } from '../lib/preset-gate.mjs'
 
-/** 声明最小成形样本（与 plugins/dsh-plugin-dev-mode/cordis.patch.yml 同形）。 */
+/** 声明最小成形样本（载体形状与真实 preset 包一致：patch 里一行 `@deepseek-ai/dsh-agent-preset` 声明）。 */
 const DECLARATION = [
   '- insert:',
   '    - id: preset-review',
@@ -33,7 +34,7 @@ const DECLARATION = [
 ].join('\n')
 /** 普通 profile bundle 的 patch（无 preset 声明行）。 */
 const PLAIN_BUNDLE_PATCH = ['- insert:', '    - id: ui-theme', "      name: 'dsh-my-theme'", ''].join('\n')
-const REASON = '插件开发模式（plugin-dev）'
+const REASON = '演示用 agent preset（声明形态样本）'
 
 /** 用内存文件表构造 readAsset（缺失返回 null，与 release.mjs 的注入一致）。 */
 const reader = (files) => (file) => files[file] ?? null
@@ -204,13 +205,28 @@ describe('仓库不变量（防豁免判据腐烂）', () => {
     })
   const pkgOf = (dir) => JSON.parse(readFileSync(join(pluginsRoot, dir, 'package.json'), 'utf8'))
 
-  it('dsh-plugin-dev-mode 按显式声明豁免（不是插件名单），且 patch 载体与声明行真实存在', () => {
-    const r = inspect('dsh-plugin-dev-mode')
-    expect(r.status).toBe('declared')
-    expect(r.problem).toBeNull()
-    const text = readFileSync(join(pluginsRoot, 'dsh-plugin-dev-mode', PRESET_PATCH_FILE), 'utf8')
-    expect(text).toContain(PRESET_DECLARATION_PLUGIN)
-    expect(pkgOf('dsh-plugin-dev-mode').dsh?.bundle?.patch).toBe(`./${PRESET_PATCH_FILE}`)
+  it('磁盘上真实存在的声明包按显式声明豁免（不是插件名单）', () => {
+    // 外部 fixture 目录：本仓库当前没有 preset 形态的插件目录，这条不变量不能用仓库内目录充当样本
+    // （否则删掉那个插件就会让用例 ENOENT 变红——判据与具体插件耦合，正是本条要防的）。
+    const dir = mkdtempSync(join(tmpdir(), 'preset-gate-'))
+    try {
+      writeFileSync(
+        join(dir, 'package.json'),
+        JSON.stringify({
+          name: 'fixture-preset',
+          dsh: { kind: 'preset', presetReason: REASON, bundle: { patch: `./${PRESET_PATCH_FILE}` } },
+        }),
+      )
+      writeFileSync(join(dir, PRESET_PATCH_FILE), DECLARATION)
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
+      const r = resolvePresetAsset({ pkg, readAsset: readAssetFrom(dir) })
+      expect(r.status).toBe('declared')
+      expect(r.problem).toBeNull()
+      expect(readFileSync(join(dir, PRESET_PATCH_FILE), 'utf8')).toContain(PRESET_DECLARATION_PLUGIN)
+      expect(pkg.dsh?.bundle?.patch).toBe(`./${PRESET_PATCH_FILE}`)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('每个插件目录的判定只能是 declared / none——非法声明或形态矛盾即红', () => {

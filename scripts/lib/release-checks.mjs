@@ -30,7 +30,7 @@ import { createServer } from 'node:net'
 
 // ── 源码依赖解析（issue #203：先剔除注释与字符串再匹配）─────────────────────
 // 旧实现在原始源码上直接跑正则，把注释里的示例 require('dsh-md-render')
-// （教学插件 dsh-ts-example 的 JSDoc）当成真实依赖 → 假阳性阻断发版。
+// （插件 JSDoc 里的跨插件调用示例）当成真实依赖 → 假阳性阻断发版。
 // 现在先做一遍轻量词法扫描：注释整段丢弃，字符串/模板/正则字面量各自成为一个
 // token（内部不再解析），再按 token 序列判定 require / import from。
 
@@ -221,7 +221,7 @@ function isDependencySpecifier(tokens, i) {
  * 从代码文本提取 require('dsh-*') / from 'dsh-*' 的包名（去重、排序；子路径归为包名）。
  *
  * issue #203：匹配前先做轻量词法扫描（tokenize），注释整段剔除，因此注释里的示例
- * require('dsh-md-render') 不再被当成真实依赖（教学插件 dsh-ts-example 曾因此恒红）。
+ * require('dsh-md-render') 不再被当成真实依赖（曾因此恒红）。
  *
  * 边界取舍（有意为之，勿在未同步测试的情况下改动）：
  *   1. 注释：行注释与块注释都剔除；未闭合块注释按「到文件末尾」容错，不抛错；

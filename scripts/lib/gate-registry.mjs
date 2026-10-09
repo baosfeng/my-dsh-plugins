@@ -46,7 +46,7 @@ export const CI_INFRA_STEPS = [
  * 实测（#349 首次 run `34993038142`）：test (dsh-my-notify) job 内插件测试全绿
  * （Test Files 17 passed / 17 scenarios passed），却仅因
  * `Failed to download coveralls binary or checksum (Linux).` 把整个 job 判红 → 一次无谓的 CI 往返
- * （排队 + 19 插件 matrix + 读日志定位 + 重跑），且**与本次改动无关**。它命中规范第十四节的
+ * （排队 + 13 插件 matrix + 读日志定位 + 重跑），且**与本次改动无关**。它命中规范第十四节的
  * 第三种漏网形态「本地无、CI 有」，而且是其中最难防的一种：本地既无法预知、也无法拦住。
  *
  * ⚠️ 边界（绝不能混）：覆盖率**阈值门禁**由各插件自身的 vitest coverage 强制
@@ -64,7 +64,7 @@ export const GATE_REGISTRY = [
     localCommand: 'npm test（逐插件）',
     ci: { job: 'test', step: 'Test ${{ matrix.plugin }}', command: 'npm test' },
     ciAlso: [{ job: 'test', step: 'Syntax check', command: 'node --check' }],
-    cost: 'CI 每插件一个 matrix job；本地全量 23s（19 插件、6 路并发），fast 单插件 9.6~11.4s',
+    cost: 'CI 每插件一个 matrix job；本地全量 23s（13 插件、6 路并发），fast 单插件 9.6~11.4s',
     why: '唯一权威：插件行为只能由插件自己的测试判定。本地遍历 19 个目录（含 dsh-shared），CI matrix 19 个插件并行；本地多测一个库，更严不更松。',
   },
   {

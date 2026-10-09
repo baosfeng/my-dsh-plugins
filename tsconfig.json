@@ -6,7 +6,7 @@
   //
   // 分工：TS 源码的类型/模块检查由 tsc 负责（TS2307 模块不存在、类型不匹配、
   // 未定义变量等编译期发现）；eslint 继续只检查 JS（typescript-eslint 尚不兼容
-  // TS 7 原生编译器，见 docs/TS示例/概述.md）。
+  // TS 7 原生编译器）。
   "compilerOptions": {
     "strict": true,
     "target": "es2022",

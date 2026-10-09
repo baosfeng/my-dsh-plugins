@@ -75,11 +75,11 @@ describe('发版目标版本口径', () => {
 // ── 3c 透传 --enable-plugins（显式声明，默认不启用）────────────────────────
 describe('3c 透传 --enable-plugins', () => {
   const base = {
-    checklistPath: 'verification/dsh-my-guardian-0.4.4.md',
-    pluginName: 'dsh-my-guardian',
-    version: '0.4.4',
+    checklistPath: 'verification/dsh-my-observability-0.3.5.md',
+    pluginName: 'dsh-my-observability',
+    version: '0.3.5',
     port: 3087,
-    addonDir: 'plugins/dsh-my-guardian',
+    addonDir: 'plugins/dsh-my-observability',
   }
 
   it('① 未声明时**不带**该参数 → 被生产禁用的插件照样被 3c 拦下（判据不变）', () => {
@@ -87,13 +87,13 @@ describe('3c 透传 --enable-plugins', () => {
     expect(args).not.toContain('--enable-plugins')
     expect(args).toContain('--clean-externals')
     expect(args).toContain('--addons')
-    expect(args).toContain('plugins/dsh-my-guardian')
+    expect(args).toContain('plugins/dsh-my-observability')
   })
 
   it('② 声明后透传该插件名（值紧跟在 flag 之后）', () => {
-    const args = buildRealVerifyArgs({ ...base, enablePlugins: ['dsh-my-guardian'] })
+    const args = buildRealVerifyArgs({ ...base, enablePlugins: ['dsh-my-observability'] })
     expect(args).toContain('--enable-plugins')
-    expect(args[args.indexOf('--enable-plugins') + 1]).toBe('dsh-my-guardian')
+    expect(args[args.indexOf('--enable-plugins') + 1]).toBe('dsh-my-observability')
   })
 
   it('③ 声明的是别的插件 → 本插件不带该参数（批量发版不串味）', () => {
@@ -105,7 +105,7 @@ describe('3c 透传 --enable-plugins', () => {
     const args = buildRealVerifyArgs(base)
     expect(args.slice(0, 2)).toEqual(['scripts/verify-real-profile.mjs', '--addons'])
     expect(args[args.indexOf('--port') + 1]).toBe('3087')
-    expect(args[args.indexOf('--version') + 1]).toBe('0.4.4')
+    expect(args[args.indexOf('--version') + 1]).toBe('0.3.5')
   })
 
   it('⑤ 脚本接线：release.mjs 必须用纯函数构造 3c 参数（旧内联数组必须退场）', () => {
@@ -783,15 +783,15 @@ describe('workflow 插件清单一致性与输入语义（#204 防漂移）', ()
 
     it('逗号 / 空格 / 换行 / 中文逗号分隔多个插件 → 通过（UI 上真能批量）', () => {
       const rawInputs = [
-        'dsh-md-render,dsh-my-guard',
-        'dsh-md-render dsh-my-guard',
-        'dsh-md-render\n, dsh-my-guard',
-        'dsh-md-render，dsh-my-guard',
+        'dsh-md-render,dsh-my-observability',
+        'dsh-md-render dsh-my-observability',
+        'dsh-md-render\n, dsh-my-observability',
+        'dsh-md-render，dsh-my-observability',
       ]
       for (const raw of rawInputs) {
         const res = execValidation(raw)
         expect(res.status, `输入 ${JSON.stringify(raw)} 应通过；日志：${res.log}`).toBe(0)
-        expect(res.output.trim()).toBe('plugins=dsh-md-render dsh-my-guard')
+        expect(res.output.trim()).toBe('plugins=dsh-md-render dsh-my-observability')
       }
     })
 

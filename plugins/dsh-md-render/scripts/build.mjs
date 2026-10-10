@@ -13,7 +13,7 @@
  * $& / $1 special patterns inside the fragment source.
  *
  * mermaid 引擎**不内联**进 bundle（issue #185：base64 内联曾让 client.js 达 4.49 MB）：
- * 引擎以 assets/mermaid-<version>.min.js 发布，由 webServer 静态托管、client 按需 fetch；
+ * 引擎 / panzoom 以 assets/<name> 发布，由 webServer 静态托管、client 按需 fetch；
  * 这里用冻结的 SHA256 承担「引擎未被无声替换 / 未被 prettier 美化后提交」的断言
  * （issue #296、#322 的教训）。
  */
@@ -34,17 +34,21 @@ const sharedPartsDir = join(root, '..', 'dsh-shared', 'client-parts')
  *  opts.shared: true 表示从 dsh-shared 的 client-parts 目录读取（不经过 TS 编译）。 */
 const PARTS = [
   ['/*__PART_CONFIG__*/', 'config.js'],
+  ['/*__PART_BLOCK_LANG__*/', 'block-lang.js'],
   ['/*__PART_TABLE_NORMALIZE__*/', 'table-normalize.js'],
   ['/*__PART_OFFICIAL_VIEW__*/', 'official-view.js'],
   ['/*__PART_COPY__*/', 'copy.js'],
   ['/*__PART_MARKDOWN_VIEW__*/', 'markdown-view.js'],
   ['/*__PART_CONTEXT_MARKDOWN__*/', 'context-markdown.js'],
+  ['/*__PART_LANG_SOURCE__*/', 'lang-source.js'],
   ['/*__PART_TEXT_MARKDOWN__*/', 'text-markdown.js'],
   ['/*__PART_THINK__*/', 'think.js'],
   ['/*__PART_MERMAID_ENGINE__*/', 'mermaid-engine.js'],
   ['/*__PART_MERMAID_CARD__*/', 'mermaid-card.js'],
   ['/*__PART_MERMAID_SCAN__*/', 'mermaid-scan.js'],
   ['/*__PART_MERMAID_EXPORT__*/', 'mermaid-export.js'],
+  ['/*__PART_MERMAID_ZOOM__*/', 'mermaid-zoom.js'],
+  ['/*__PART_LANG_SWITCH__*/', 'lang-switch.js'],
   ['/*__PART_DOM_SCANNER__*/', 'dom-scanner.part.js', { shared: true }],
   ['/*__PART_SCANNER__*/', 'scanner.js'],
   ['/*__PART_STYLES__*/', 'styles.js'],
@@ -65,6 +69,15 @@ const ANCHORS = [
   ['function applyThinkExpand(', 'think.ts'],
   ['function considerMermaidBlock(', 'mermaid-scan.ts'],
   ['function makeExportHandlers(', 'mermaid-export.ts'],
+  ['function resolveBlockLang(', 'block-lang.ts'],
+  ['function resolveFenceLang(', 'block-lang.ts'],
+  ['function fenceContentHash(', 'block-lang.ts'],
+  ['function fenceLangOf(', 'lang-source.ts'],
+  ['function scanLangSwitches(', 'lang-switch.ts'],
+  ['function applyLangForce(', 'lang-switch.ts'],
+  ['function bindZoom(', 'mermaid-zoom.ts'],
+  ['function toggleCardFullscreen(', 'mermaid-zoom.ts'],
+  ['function refreshFenceLangIndex(', 'lang-source.ts'],
 ]
 
 // 1. Compile client TS → lib/.client-build/**
@@ -72,8 +85,16 @@ execSync('npx tsc -p tsconfig.client.json', { cwd: root, stdio: 'inherit' })
 
 // 1b. 路由路径单一真源（host 半 src/routes/paths.ts → client 片段作用域）。
 //     动态 import：paths.js 由上一步的 tsc 生成，静态 import 会在全新检出（lib/ 无产物）时先于 tsc 求值而失败。
-const { clientRouteDeclarations, CONFIG_API_URL, MERMAID_ENGINE_URL, MERMAID_ENGINE_FILE } =
-  await import('../lib/routes/paths.js')
+const {
+  clientRouteDeclarations,
+  CONFIG_API_URL,
+  MERMAID_ENGINE_URL,
+  MERMAID_ENGINE_FILE,
+  PANZOOM_SCRIPT_URL,
+  PANZOOM_FILE,
+  LANGS_API_URL,
+  LANGS_HASH_PARAM,
+} = await import('../lib/routes/paths.js')
 const ROUTE_PATHS = [['/*__ROUTE_PATHS__*/', clientRouteDeclarations()]]
 // 锚点用**实际常量值**参与匹配：单一真源改了值，产物里就必须出现新值（不是只出现变量名）。
 // 尾随换行参与匹配：`exports.CONFIG_API_URL = CONFIG_API_URL;` 这类**使用点**不命中，
@@ -81,6 +102,9 @@ const ROUTE_PATHS = [['/*__ROUTE_PATHS__*/', clientRouteDeclarations()]]
 ANCHORS.push(
   ['const CONFIG_API_URL = ' + JSON.stringify(CONFIG_API_URL) + '\n', 'src/routes/paths.ts (single source)'],
   ['const MERMAID_ENGINE_URL = ' + JSON.stringify(MERMAID_ENGINE_URL) + '\n', 'src/routes/paths.ts (single source)'],
+  ['const LANGS_API_URL = ' + JSON.stringify(LANGS_API_URL) + '\n', 'src/routes/paths.ts (single source)'],
+  ['const LANGS_HASH_PARAM = ' + JSON.stringify(LANGS_HASH_PARAM) + '\n', 'src/routes/paths.ts (single source)'],
+  ['const PANZOOM_SCRIPT_URL = ' + JSON.stringify(PANZOOM_SCRIPT_URL) + '\n', 'src/routes/paths.ts (single source)'],
 )
 
 // 2. Splice compiled parts into template
@@ -114,29 +138,35 @@ for (const [anchor, source] of ANCHORS) {
   }
 }
 
-// 3. 校验发布用的 mermaid 引擎（assets/，运行时由 webServer 静态托管、client 按需 fetch）。
-const MERMAID_VERSION = MERMAID_ENGINE_FILE.replace(/^mermaid-|\.min\.js$/g, '')
-/** assets/mermaid-10.9.3.min.js 的 SHA256（shasum -a 256 实测冻结）。 */
-const MERMAID_SHA256 = '5a8ec91820bd55afef049068489369910e5d6ce70c8103952f27e29d3e76e8bc'
-const mermaidDest = join(root, 'assets', MERMAID_ENGINE_FILE)
-if (!existsSync(mermaidDest)) {
-  throw new Error(
-    `assets/mermaid-${MERMAID_VERSION}.min.js is missing — it is the single source of truth for the engine`,
-  )
+// 3. 校验发布用的 vendored 资源（assets/，运行时由 webServer 静态托管、client 按需 fetch）。
+//    SHA256 冻结承担「资源未被无声替换 / 未被 prettier 美化后提交」的断言（issue #296、#322）。
+/** 冻结的资产哈希（shasum -a 256 实测）；内容变了必须显式更新这里的值。 */
+const ASSET_SHA256 = {
+  [MERMAID_ENGINE_FILE]: '5a8ec91820bd55afef049068489369910e5d6ce70c8103952f27e29d3e76e8bc',
+  [PANZOOM_FILE]: '3ce354ef7b493efb62a4d4acaaf86fa2d6027eb629857a4e144041de1a112c1e',
 }
-const engineBytes = readFileSync(mermaidDest)
-const umd = engineBytes.toString('utf8')
-if (!umd.includes('window') && !umd.includes('globalThis')) {
-  throw new Error(`assets/mermaid-${MERMAID_VERSION}.min.js does not look like the UMD build`)
+const assetBytes = {}
+for (const [file, wantSha] of Object.entries(ASSET_SHA256)) {
+  const dest = join(root, 'assets', file)
+  if (!existsSync(dest)) {
+    throw new Error(`assets/${file} is missing — it is the single source of truth for this asset`)
+  }
+  const bytes = readFileSync(dest)
+  const text = bytes.toString('utf8')
+  // UMD 形态：注入 <script> 后必须能落到 window（引擎与 panzoom 同款契约）。
+  if (!text.includes('window') && !text.includes('globalThis')) {
+    throw new Error(`assets/${file} does not look like the UMD build`)
+  }
+  const got = createHash('sha256').update(bytes).digest('hex')
+  if (got !== wantSha) {
+    throw new Error(
+      `assets/${file} SHA256 mismatch\n  want ${wantSha}\n  got  ${got}\n` +
+        '  资源内容变了就必须显式更新 ASSET_SHA256（防无声替换 / 被 prettier 美化后提交）',
+    )
+  }
+  assetBytes[file] = bytes
 }
-const engineSha = createHash('sha256').update(engineBytes).digest('hex')
-if (engineSha !== MERMAID_SHA256) {
-  throw new Error(
-    `assets/mermaid-${MERMAID_VERSION}.min.js SHA256 mismatch\n` +
-      `  want ${MERMAID_SHA256}\n  got  ${engineSha}\n` +
-      '  引擎内容变了就必须显式更新 MERMAID_SHA256（防无声替换 / 被 prettier 美化后提交）',
-  )
-}
+const engineBytes = assetBytes[MERMAID_ENGINE_FILE]
 
 writeFileSync(join(root, 'lib/client.js'), out)
 
@@ -145,5 +175,5 @@ rmSync(BUILD_DIR, { recursive: true, force: true })
 // 字节数用 Buffer.byteLength（out.length 是 UTF-16 码元数，含中文注释时与文件字节不符）
 console.log(
   `built lib/client.js (${Buffer.byteLength(out)} bytes, ${out.split('\n').length} lines, ` +
-    `mermaid engine verified at assets/mermaid-${MERMAID_VERSION}.min.js (${engineBytes.byteLength} bytes, sha256 ok, on-demand fetch))`,
+    `assets verified (${MERMAID_ENGINE_FILE} ${engineBytes.byteLength} bytes + ${PANZOOM_FILE}, sha256 ok, on-demand fetch))`,
 )

@@ -30,6 +30,9 @@ plugins/*/lib/.client-build/
 # 此前 asset 被 `prettier --write .` 美化后提交（6.9MB/177k 行进仓库），发布测试长期红 ——
 # 压缩产物必须始终排除在 prettier 之外，否则下一次有人跑 prettier 就会复现。
 plugins/dsh-md-render/assets/mermaid-10.9.3.min.js
+# panzoom 4.6.2（图表缩放 / 平移的 vendored 库，issue #470）：同上——
+# 压缩产物被 prettier 美化会破坏 build.mjs 冻结的 SHA256 与发布断言。
+plugins/dsh-md-render/assets/panzoom-4.6.2.min.js
 
 # npm 生成的锁文件（格式由 npm 维护，避免与 npm 输出冲突）
 package-lock.json

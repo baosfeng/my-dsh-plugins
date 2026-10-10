@@ -24,6 +24,11 @@ declare namespace React {
 // lib/client.src.js 的 __ROUTE_PATHS__ 占位符处 → 两侧路径同一真源。
 declare const CONFIG_API_URL: string
 declare const MERMAID_ENGINE_URL: string
+/** panzoom vendor 脚本 URL（图表缩放 / 平移；同样构建期注入，issue #470）。 */
+declare const PANZOOM_SCRIPT_URL: string
+/** 语言索引查询端点 / 查询参数名（同一真源，issue #466）。 */
+declare const LANGS_API_URL: string
+declare const LANGS_HASH_PARAM: string
 
 // ── 同步模块加载器（factory 参数；平台 seed 模块见 official-view.ts）──────
 declare function require(spec: string): Record<string, unknown>

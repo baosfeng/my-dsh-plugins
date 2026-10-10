@@ -25,8 +25,12 @@ import {
   ASSETS_PREFIX,
   CONFIG_API_PREFIX,
   CONFIG_API_URL,
+  LANGS_API_URL,
+  LANGS_HASH_PARAM,
   MERMAID_ENGINE_FILE,
   MERMAID_ENGINE_URL,
+  PANZOOM_FILE,
+  PANZOOM_SCRIPT_URL,
 } from '../lib/routes/paths.js'
 import { CONFIG_API_PREFIX as ROUTE_CONFIG_PREFIX } from '../lib/routes/config.js'
 import { ASSETS_PREFIX as ROUTE_ASSETS_PREFIX } from '../lib/routes/assets.js'
@@ -50,6 +54,9 @@ test('host 半两条路由前缀都直接取自 paths.ts（真源派生）', () 
   assert.equal(ROUTE_ASSETS_PREFIX, ASSETS_PREFIX, 'assets 路由前缀 === 真源')
   assert.equal(CONFIG_API_URL, CONFIG_API_PREFIX + '/config', 'config URL 由前缀派生')
   assert.equal(MERMAID_ENGINE_URL, ASSETS_PREFIX + '/' + MERMAID_ENGINE_FILE, '引擎 URL 由前缀 + 文件名派生')
+  assert.equal(LANGS_API_URL, CONFIG_API_PREFIX + '/langs', '语言索引 URL 由前缀派生（与 config 同前缀）')
+  assert.equal(LANGS_HASH_PARAM, 'h', '查询参数名来自真源')
+  assert.equal(PANZOOM_SCRIPT_URL, ASSETS_PREFIX + '/' + PANZOOM_FILE, 'panzoom URL 由前缀 + 文件名派生')
 })
 
 test('apply 注册的两条前缀 === 真源常量（真实注册，不看源码文本）', () => {
@@ -80,12 +87,15 @@ test('apply 注册的两条前缀 === 真源常量（真实注册，不看源码
   )
 })
 
-test('client 作用域里的两个 URL 常量 === 真源（构建期注入，非客户端自写）', () => {
+test('client 作用域里的路由 URL 常量 === 真源（构建期注入，非客户端自写）', () => {
   const page = installGlobals(createPage())
   const react = createReactStub()
   const loaded = loadBundle({ page, react })
   assert.equal(loaded.exports.CONFIG_API_URL, CONFIG_API_URL, 'client config URL 来自真源')
   assert.equal(loaded.exports.MERMAID_ENGINE_URL, MERMAID_ENGINE_URL, 'client 引擎 URL 来自真源')
+  assert.equal(loaded.exports.LANGS_API_URL, LANGS_API_URL, 'client 语言索引 URL 来自真源')
+  assert.equal(loaded.exports.LANGS_HASH_PARAM, LANGS_HASH_PARAM, 'client 查询参数名来自真源')
+  assert.equal(loaded.exports.PANZOOM_SCRIPT_URL, PANZOOM_SCRIPT_URL, 'client panzoom URL 来自真源')
 })
 
 test('路径**声明**在 src/ 下唯一（只有 routes/paths.ts 可以写常量值）', () => {

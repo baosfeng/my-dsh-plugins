@@ -1,10 +1,7 @@
 // ── 样式（DSH 语义 token，随 activation 注入）──────────────────────────
-// 只写**本插件自有 DOM** 的样式 + **自有 data-* 标记**作用域下的显隐规则：
-//  - .tzx-md / 注入容器 / 「查看原文」按钮 / 整段复制按钮（md-render 原有）；
-//  - mermaid 卡片全套（dsh-md-render-mermaid-*）+ 块级视图标记驱动的官方 <pre>
-//    隐藏规则（**不用** el.style：硬约束「不对官方元素写 style / class / aria」）；
-//  - 离屏渲染容器（原实现用 host.style.cssText，改为类选择器）。
-// 不覆盖任何官方类名的外观；表格 / 公式 / 代码块高亮样式全部随官方组件自带。
+// 只写**自有 DOM** 的样式 + **自有 data-* 标记**作用域下的显隐规则（注入容器 /「查看原文」/
+// 整段复制 / mermaid 卡片 / 离屏容器）。**不用** el.style：硬约束「不对官方元素写 style /
+// class / aria」；不覆盖任何官方类名的外观（表格 / 公式 / 高亮随官方组件自带）。
 const STYLES: string = `
 .tzx-md{position:relative;display:flex;flex-direction:column;gap:8px;min-width:0}
 .dsh-md-render-fallback{margin:0;white-space:pre-wrap;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-primary)}
@@ -31,7 +28,7 @@ const STYLES: string = `
 [data-streaming] .dsh-md-render-text-toggle{display:none}
 /* ── mermaid 图表卡片（自有 DOM）── */
 .dsh-md-render-mermaid-host{display:block;min-width:0}
-.md-code-block[data-dsh-md-render-mermaid-view]>pre{display:none}
+.md-code-block[data-dsh-md-render-mermaid-view]>[data-code-block-content]{display:none}
 .dsh-md-render-mermaid-card{display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 12px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2);font:var(--dsw-font-s-14);line-height:22px;color:var(--dsw-alias-label-primary);animation:dsh-md-render-mermaid-card-in 150ms var(--ds-ease-in-out)}
 .dsh-md-render-mermaid-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .dsh-md-render-mermaid-card-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
@@ -50,17 +47,32 @@ const STYLES: string = `
 .dsh-md-render-mermaid-vt svg{display:block;flex:none}
 .dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-md-render-mermaid-vt-active{background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent);color:var(--dsw-alias-accent);font-weight:600}
-.dsh-md-render-mermaid-svg{overflow:auto;max-height:70vh}
+.dsh-md-render-mermaid-svg{position:relative;overflow:auto;max-height:70vh}
+.dsh-md-render-mermaid-svg[data-dsh-md-render-zoom]{overflow:hidden}
+.dsh-md-render-mermaid-canvas{transform-origin:0 0}
 .dsh-md-render-mermaid-svg svg{max-width:100%;height:auto}
 .dsh-md-render-mermaid-code{margin:0;background:var(--dsw-alias-markdown-code-block);border-radius:6px;padding:8px 12px;overflow:auto;font:var(--dsw-font-markdown-code-block-small);white-space:pre-wrap}
 .dsh-md-render-mermaid-loading{display:flex;align-items:center;gap:6px;padding:8px 6px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
 .dsh-md-render-mermaid-loading svg{flex:none;animation:dsh-md-render-mermaid-spin 1s linear infinite}
-.dsh-md-render-mermaid-error{border-radius:8px;background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);padding:8px 10px}
-.dsh-md-render-mermaid-error-head{display:flex;align-items:center;gap:6px}
-.dsh-md-render-mermaid-error-head svg{flex:none;color:var(--dsw-alias-state-error-primary)}
-.dsh-md-render-mermaid-error-title{color:var(--dsw-alias-state-error-primary);font-weight:600}
-.dsh-md-render-mermaid-error-msg{color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-all;margin-top:4px;line-height:1.5}
+/* 失败态：源码是主视觉（第一屏），红横幅降为一行灰字提示（#470 需求 2） */
+.dsh-md-render-mermaid-error{display:flex;flex-direction:column;gap:6px}
+.dsh-md-render-mermaid-error-line{display:flex;align-items:center;gap:6px;font:var(--dsw-font-xxs-12);line-height:20px;color:var(--dsw-alias-label-tertiary)}
+.dsh-md-render-mermaid-error-line svg{flex:none;color:var(--dsw-alias-state-error-primary)}
+.dsh-md-render-mermaid-error-msg{white-space:pre-wrap;word-break:break-all}
 .dsh-md-render-mermaid-retry{margin-left:auto;flex:none}
+/* ── 「渲染为…」语言手动切换控件（需求 4，自有 DOM）──
+   hover 才显示（同整段复制按钮），但必须同时支持键盘 focus-within 与触屏常显（@media
+   hover:none），只做 hover 手机点不到；作用域 = 自有块级标记，不碰官方 class。 */
+.md-code-block[data-dsh-md-render-lang-switch]>.dsh-md-render-lang-switch{display:flex;justify-content:flex-end;margin-top:4px;opacity:0;transition:opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
+.md-code-block[data-dsh-md-render-lang-switch]:hover>.dsh-md-render-lang-switch{opacity:1}
+.md-code-block[data-dsh-md-render-lang-switch]:focus-within>.dsh-md-render-lang-switch{opacity:1}
+@media (hover:none){.md-code-block[data-dsh-md-render-lang-switch]>.dsh-md-render-lang-switch{opacity:1}}
+/* ── 图表缩放 / 全屏（需求 1，自有 DOM）──
+   工具条按钮复用卡片按钮类；全屏走原生 API，不支持（iPhone Safari）降级为卡片内 overlay。 */
+.dsh-md-render-mermaid-zoom{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.dsh-md-render-mermaid-card:fullscreen{max-height:none;height:100%;border-radius:0;padding:12px 16px}
+.dsh-md-render-mermaid-card:fullscreen .dsh-md-render-mermaid-svg{max-height:none}
+.dsh-md-render-mermaid-card[data-dsh-md-render-fs="fallback"]{position:fixed;inset:0;z-index:2147483000;margin:0;max-height:none;border-radius:0;overflow:auto}
 /* ── 离屏渲染容器（引擎渲染失败时的「炸弹图」只落在这里，随容器移除）──
    必须仍在布局树内（display:none / visibility:hidden 会让 mermaid 量不到尺寸）。 */
 .dsh-md-render-offscreen{position:absolute;left:-99999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none}

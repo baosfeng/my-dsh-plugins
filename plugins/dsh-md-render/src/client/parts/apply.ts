@@ -6,6 +6,13 @@ declare function installStyles(
   label: string,
 ): void
 
+// **刻意保持零 inject**（R1 实测，见 lang-source.ts 头部 / 报告）：
+// dsh-md-render 是纯增强插件，硬 inject 在服务缺失时会让 apply **根本不执行** ——
+// 整个 client 半失效（样式 / 设置页 / 全部注入点一起没）。会话事件流（围栏语言索引的
+// 主源）改用 ctx.get('sessions', false) 惰性取：服务在则取到、服务缺则 undefined 不抛、
+// 服务晚于 apply 提供也照样取到（cordis 4 的 ReflectService.get 契约即
+// "without the inject requirement"）。inject:{optional:[...]} 在 cordis 4.0.4 不被支持
+// （实测 apply 不执行），故也不用。
 exports.inject = []
 
 exports.apply = function apply(ctx: {
@@ -24,7 +31,11 @@ exports.apply = function apply(ctx: {
   installStyles(ctx, 'data-dsh-md-render', STYLES, 'dsh-md-render: styles')
 
   // 三个渲染注入点共用**一个** MutationObserver（scanner.ts 按语言分流）。
-  ctx.effect(() => installScanner(), 'dsh-md-render: scanner')
+  // 传 ctx 进去：scanner 每批扫描前用它按需刷新围栏语言索引（lang-source.ts）。
+  // 需求 4 的「刷新后仍记得」：启动时恢复上次的「渲染为…」覆盖（不可用 -> 空表，退回自动判定）。
+  restoreFenceForces()
+
+  ctx.effect(() => installScanner(ctx), 'dsh-md-render: scanner')
 
   // 设置页 tab（官方 slots 扩展点，单 tab 三分组）。
   attachSettingsTab(ctx)

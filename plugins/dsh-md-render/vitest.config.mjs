@@ -14,7 +14,19 @@ export default defineConfig({
     include: ['test/*.mjs'],
     coverage: {
       ...root.test.coverage,
-      include: ['lib/index.js', 'lib/config.js', 'lib/prompt.js', 'lib/routes/config.js', 'lib/routes/assets.js'],
+      // 新增 host 模块一并纳入覆盖门禁（issue #466）：围栏语言索引 / 会话事件提取 /
+      // langs 查询路由。client 半仍是 __ModuleLoader__ 片段（v8 统计不到），由
+      // lang-probe.mjs 等断言 + Gherkin 场景覆盖。
+      include: [
+        'lib/index.js',
+        'lib/config.js',
+        'lib/prompt.js',
+        'lib/routes/config.js',
+        'lib/routes/assets.js',
+        'lib/lang-index.js',
+        'lib/routes/langs.js',
+        'lib/session-text.js',
+      ],
       thresholds: {
         lines: 85,
         branches: 75,

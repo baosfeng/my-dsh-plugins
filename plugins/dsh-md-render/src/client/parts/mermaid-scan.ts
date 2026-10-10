@@ -37,13 +37,22 @@ interface StreamWatch {
 const mermaidMounts = new Map<Element, MountedCard>()
 const mermaidStreamWatch = new Map<Element, StreamWatch>()
 
-/** 检查是否为 mermaid 代码块（code.language-mermaid / -mmd；不读 React fiber）。 */
-function isMermaidBlock(block: Element): boolean {
+/** 本插件接管的 mermaid 围栏语言（与 text-markdown 的语言集合不重叠 → 分流稳定）。 */
+const MERMAID_FENCE_LANGS: readonly string[] = ['mermaid', 'mmd']
+
+/**
+ * 是否为 mermaid 代码块。语言来源 = block-lang.ts 的 resolveFenceLang（双源互补）：
+ *  · allowIndex !== false：① **client 事件流索引**（lang-source.ts）—— 会话窗口里的原始
+ *    markdown 原文，**含历史**，冷启动 / 重启后打开历史会话也命中（host 半实时索引为空时
+ *    这条路径就是唯一来源），零 RPC；② 回退 resolveBlockLang（DOM 的
+ *    code.language-mermaid / banner 语言原名 → host 半的实时索引）；
+ *  · allowIndex === false：**只读 DOM**——流式块专用（内容还在补写，哈希必然落空，查表即请求放大）。
+ * 不读 React fiber 私有属性。
+ */
+function isMermaidBlock(block: Element, allowIndex = true): boolean {
   try {
-    const code = block.querySelector('code')
-    if (!code) return false
-    const cls = String(code.className || '').toLowerCase()
-    return cls.includes('language-mermaid') || cls.includes('language-mmd')
+    const lang = allowIndex ? resolveFenceLang(block) : blockLangDomLang(block)
+    return MERMAID_FENCE_LANGS.includes(lang)
   } catch (_e) {
     return false
   }
@@ -87,7 +96,9 @@ function mountCard(block: Element, source: string): void {
   block.setAttribute(MERMAID_VIEW_ATTR, 'preview')
   host.setAttribute(MERMAID_ENTRY_ATTR, entryId)
   host.setAttribute(MERMAID_STATE_ATTR, 'loading')
-  root.render(createElement(MermaidCard, { entryId, source }))
+  // 已是卡片：块内不再挂「渲染为…」控件（另外两项并进卡片头，见 lang-switch.ts）。
+  removeLangSwitch(block)
+  root.render(createElement(MermaidCard, { entryId, source, onForce: (value: string) => applyLangForce(block, value) }))
 }
 
 /** 自愈卸载：源码在挂载后又变了（流式其实还没写完）→ 拆卡片、恢复原始块。 */
@@ -139,10 +150,19 @@ function settleStream(block: Element): void {
   mountCard(block, source)
 }
 
-/** 单个候选块：挂载 / 继续等待 / 自愈卸载。非 mermaid 块立即返回（性能护栏）。 */
+/**
+ * 单个候选块：挂载 / 继续等待 / 自愈卸载。非 mermaid 块立即返回（性能护栏）。
+ *
+ * 语言判定放在开关之后（关掉 mermaid 渲染时一次请求都不发），并且**流式块只读 DOM**：
+ * 流式补写中的内容哈希必然落空，查表既无意义又放大请求量；消息流式结束后
+ * `data-streaming` 消失会触发兜底重扫，那时再走索引路径（结果：索引识别出的 mermaid 块
+ * 在消息稳定后挂卡片，DOM 已给出语言名的块保持原有的「立即 / 400ms 窗口」行为）。
+ * 历史会话（非流式）走的是①client 事件流索引：**同步命中即挂卡片**，不发任何请求。
+ */
 function considerMermaidBlock(block: Element, round: number): void {
-  if (!isMermaidBlock(block)) return
   if (!renderOptions.mermaid.render) return
+  if (isInsideRenderedMarkdown(block)) return
+  if (!isMermaidBlock(block, !isMermaidStreaming(block))) return
   const source = mermaidSourceOf(block)
   if (!source.trim() || source.length > MAX_SOURCE_CHARS) return
   const mounted = mermaidMounts.get(block)

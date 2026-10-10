@@ -1,20 +1,7 @@
 /**
- * dsh-md-render — client half (browser)，合并 think-zh-expand + mermaid-render（issue #463）。
- *
- * 职责边界（**只做 markdown 内容的渲染**）：markdown 文本、代码样式、图表渲染、
- * 思考 markdown 渲染；**其他一律保持官方默认样式**。
- *
- *  - 官方渲染器接入（official-view）：表格（GFM + 宽表格）、公式（KaTeX）、
- *    代码块（shiki 高亮 / 语言标签 / 行号 / 复制）全部来自平台 seed 模块
- *    @deepseek-ai/dsh-client-ui-primitives 的 MarkdownText；
- *  - 真增量①：text / plaintext / txt 围栏块按 markdown 渲染 + 每块「查看原文」切换；
- *  - 真增量②：pre[data-context-text] 上下文注入块按 markdown 渲染；
- *  - 真增量③：整段 markdown 复制按钮（官方只有代码块复制）；
- *  - 真增量④：统一 MarkdownView 导出（供本仓其它插件使用）；
- *  - 真增量⑤：mermaid / mmd 代码块 → 图表卡片（预览 / 代码切换、导出、失败降级回显源码）；
- *  - 真增量⑥：思考块默认展开（对官方折叠行派发一次真实 click，外观 100% 官方）；
- *  - 真增量⑦：设置 → 插件 → 渲染（单 tab 三分组）；
- *  - 真增量⑧（容错子集）：官方 GFM 不认的两种分隔行写法先规范化再交给官方渲染。
+ * dsh-md-render — client half (browser)。职责边界：**只做 markdown 内容的渲染**（markdown
+ * 文本 / 代码样式 / 图表渲染 / 思考 markdown），其他一律保持官方默认样式。
+ * 注入点与能力清单见 README.md / docs/md渲染/，此处不重复。
  *
  * 硬约束（可机器校验，见 test/static-assertions.mjs）：
  *  - **不注册任何 conversation.chat.node 节点级 seat**（尤其 assistant-step）；
@@ -22,14 +9,13 @@
  *  - **不读 React fiber 私有属性**（__reactFiber$）；
  *  - 单 MutationObserver（一个扫描器按语言分流）。
  *
- * 样式走 DSH 语义 token（--dsw-alias-* / --dsw-font-*），随 activation 注入、
- * fiber teardown 卸载（HMR / 禁用无残留）。
+ * 样式走 DSH 语义 token（--dsw-alias-* / --dsw-font-*），随 activation 注入、fiber
+ * teardown 卸载（HMR / 禁用无残留）。
  *
- * BUILD NOTE: 本文件是源码模板（骨架）。scripts/build.mjs 把编译后的片段注入到
- * 下方 /*__PART_*__* / 占位符处并写出 lib/client.js（DSH 实际提供的产物，单一
- * __ModuleLoader__ bundle，无相对路径 require）。产物必须提交（CI 只跑
- * node --check + 测试，不跑构建）；片段为纯函数声明文本（无 import/export），
- * 注入后处于本 factory 作用域。
+ * BUILD NOTE: 本文件是源码模板（骨架）。scripts/build.mjs 把编译后的片段注入到下方
+ * /*__PART_*__* / 占位符处并写出 lib/client.js（DSH 实际提供的产物，单一 __ModuleLoader__
+ * bundle，无相对路径 require）。产物必须提交（CI 只跑 node --check + 测试，不跑构建）；
+ * 片段为纯函数声明文本（无 import/export），注入后处于本 factory 作用域。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-md-render',
@@ -37,16 +23,17 @@ window.__ModuleLoader__.load({
     var module = { exports: {} }
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
-    // MarkdownView / CopyButton / MermaidCard / 设置页用 createElement + hooks；
-    // 注入渲染经 official-view.part.js 的 require 取平台模块。
+    // createElement / hooks 由 react 提供；注入渲染经 official-view.part.js 取平台模块。
     const { createElement, useState, useEffect } = require('react')
 
-    // ── 路由路径（构建期由 host 半 lib/routes/paths.js 注入的单一真源）──
+    // 路由路径（构建期由 host 半 lib/routes/paths.js 注入的单一真源）
     // ── 路由路径（构建期由 host 半 lib/routes/paths.js 注入的单一真源）──────
 const CONFIG_API_URL = "/md-render/api/config"
 const MERMAID_ENGINE_URL = "/md-render/assets/mermaid-10.9.3.min.js"
-
-    // ── 渲染配置：三段命名空间化开关 + 旧扁平键读兼容 ────────────────
+const PANZOOM_SCRIPT_URL = "/md-render/assets/panzoom-4.6.2.min.js"
+const LANGS_API_URL = "/md-render/api/langs"
+const LANGS_HASH_PARAM = "h"
+    // 渲染配置（三段开关 + 旧扁平键兼容）+ 围栏语言索引（issue #466）
     "use strict";
 // ── 渲染配置：三段命名空间化开关（markdown / thinking / mermaid）─────────
 // 与 host 半 lib/config.js 的 schema 一一对应（同一份默认值语义）：
@@ -149,8 +136,735 @@ exports.readConfig = readConfig;
 exports.initConfigFromServer = initConfigFromServer;
 exports.DEFAULT_RENDER_OPTIONS = DEFAULT_RENDER_OPTIONS;
 
+    "use strict";
+// ── 围栏语言索引（client 半）：DOM 认不出语言时按块内容哈希问 host ────────
+// 背景（issue #466 真实宿主实测）：官方 CodeBlock 的 banner 只在 shiki **认识**该语言时
+// 才写语言原名（chat 侧传了 toolbarLabels → 语言名 = `i8(lang) ? lang : labels.codeLabel`），
+// 且**非空**代码块不写 `language-*`（只有空围栏分支写）—— 实测 text / mermaid / 无语言
+// 三种块 DOM 逐字段完全相同，纯 DOM 无法区分，本插件原来的 DOM 语言识别 100% 静默失效。
+//
+// **双源互补**：语言判定唯一入口 = {@link resolveFenceLangEx} —— ① client 事件流索引
+// （lang-source.ts，含历史、零 RPC）；② 本文件的 {@link resolveBlockLangEx}（DOM 语言
+// token → host 半实时索引：订阅 session/event 建表、不读历史）。查表只比对哈希、不看内容，
+// 且 host 索引只登记本插件接管的语言 → 无关语言不会误判；缓存 / 未命中重试都有界，同一次
+// 扫描的多个块合成**一次**请求；查表永远在块**稳定后**（[data-streaming] 门控 + 稳定窗口）。
+/** djb2 字符串哈希（与 host 半 src/lang-index.ts 的 fenceHash 同算法；parity 由测试钉住）。 */
+function fenceContentHash(text) {
+    let h = 5381;
+    for (let i = 0; i < text.length; i += 1)
+        h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+}
+/** 内容规范化：去尾部空白（含换行）——与 host 半 normalizeFenceContent 同口径。 */
+function normalizeFenceContent(text) {
+    return String(text ?? '')
+        .replace(/\r\n?/g, '\n')
+        .replace(/\s+$/, '');
+}
+/** hash → lang 缓存 / 未命中重试计数表的容量上限（长会话防无界增长）。 */
+const LANG_CACHE_MAX = 500;
+/** 单次请求的哈希上限（与 host 半 routes/langs.ts 的 LANGS_MAX_HASHES 一致；超出留到下批）。 */
+const LANG_BATCH_MAX = 64;
+/** 单块参与查表的内容长度上限（超长块不查表，保持官方默认）。 */
+const LANG_MAX_PROBE_CHARS = 100000;
+/** 未命中重试：每哈希最多 2 次、间隔 1.5s（覆盖「client 先扫、host 索引后建」的时序差）。 */
+const LANG_MAX_RETRIES = 2;
+const LANG_RETRY_MS = 1500;
+/** 语言 token 形态（ASCII 标识符）：banner 显示语言**原名**时为真；本地化标签「代码块」为假。 */
+const LANG_TOKEN_RE = /^[a-z0-9][a-z0-9_+#.-]*$/;
+/** hash → 语言（`''` = 查过且未命中；有界，见 LANG_CACHE_MAX）。 */
+const langCache = new Map();
+/** 待批量查询的哈希（同一次扫描的多个块合成一次请求）。 */
+const langQueue = new Set();
+/** 未命中哈希 → 已重试次数（有界）。 */
+const langMisses = new Map();
+/** 命中后触发的重扫钩子（由 scanner.ts 注册；null = 未装配）。 */
+let langRescan = null;
+let langFlushScheduled = false;
+let langRetryTimer = null;
+/** 有界写入：超出上限丢最旧（Map 迭代序 = 插入序）。 */
+function boundedPut(map, key, value) {
+    if (map.has(key))
+        map.delete(key);
+    map.set(key, value);
+    while (map.size > LANG_CACHE_MAX) {
+        const oldest = map.keys().next();
+        if (oldest.done === true)
+            return;
+        map.delete(oldest.value);
+    }
+}
+// ── ④ 语言手动切换（需求 4）：块级覆盖层（**优先级最高**）──────────────────
+// 「用户显式意图 != 猜语言」：只在用户点过「渲染为…」之后生效；自动判定仍是「绝不猜」。
+const FENCE_FORCE_ATTR = 'data-dsh-md-render-lang-force';
+const FENCE_FORCE_VALUES = ['mermaid', 'markdown', 'source'];
+/** 「渲染为…」选项表（卡片头与块内控件共用一份）。 */
+const FENCE_FORCE_OPTIONS = [
+    { value: 'mermaid', label: '图表' },
+    { value: 'markdown', label: 'Markdown' },
+    { value: 'source', label: '源码' },
+];
+/** 覆盖表：块内容哈希 -> 覆盖值（有界；跨宿主重渲染存活）。 */
+const fenceForces = new Map();
+/** 覆盖键 = 块源码的 djb2 哈希（与 host 语言索引同一键空间）。 */
+function fenceForceKey(block) {
+    const text = blockLangCodeText(block);
+    return text === '' ? '' : fenceContentHash(text);
+}
+/** 读有效的人工覆盖值（块属性优先，其次按内容哈希查表）。 */
+function fenceForceOf(block) {
+    const direct = typeof block.getAttribute === 'function' ? block.getAttribute(FENCE_FORCE_ATTR) : null;
+    if (direct !== null && FENCE_FORCE_VALUES.includes(direct))
+        return direct;
+    const key = fenceForceKey(block);
+    return key === '' ? undefined : fenceForces.get(key);
+}
+/** 写入 / 清除人工覆盖（空值 = 清除）：块属性 + 有界表 + 持久化。 */
+function setFenceForce(block, value) {
+    const key = fenceForceKey(block);
+    if (value !== undefined && FENCE_FORCE_VALUES.includes(value)) {
+        block.setAttribute(FENCE_FORCE_ATTR, value);
+        if (key !== '')
+            boundedPut(fenceForces, key, value);
+        persistFenceForces();
+        return;
+    }
+    if (typeof block.removeAttribute === 'function')
+        block.removeAttribute(FENCE_FORCE_ATTR);
+    if (key !== '')
+        fenceForces.delete(key);
+    persistFenceForces();
+}
+/** 覆盖的会话级持久化（验收项「刷新后仍记得」）：有界 + 异常静默。 */
+const FENCE_FORCE_STORE_KEY = 'dsh-md-render:lang-force';
+const FENCE_FORCE_PERSIST_MAX = 100;
+function persistFenceForces() {
+    try {
+        const store = window.sessionStorage;
+        if (!store)
+            return;
+        store.setItem(FENCE_FORCE_STORE_KEY, JSON.stringify([...fenceForces.entries()].slice(-FENCE_FORCE_PERSIST_MAX)));
+    }
+    catch (_e) {
+        // 隐私模式 / 配额满：不落盘也不报错
+    }
+}
+/** 从会话存储恢复覆盖表（启动时一次；不可用 -> 退回自动判定）。 */
+function restoreFenceForces() {
+    try {
+        const store = window.sessionStorage;
+        const raw = store ? store.getItem(FENCE_FORCE_STORE_KEY) : null;
+        if (raw === null)
+            return;
+        const list = JSON.parse(raw);
+        if (!Array.isArray(list))
+            return;
+        for (const item of list) {
+            if (!Array.isArray(item))
+                continue;
+            const value = String(item[1]);
+            if (typeof item[0] === 'string' && item[0] !== '' && FENCE_FORCE_VALUES.includes(value)) {
+                boundedPut(fenceForces, item[0], value);
+            }
+        }
+    }
+    catch (_e) {
+        // 不恢复即可，不影响任何既有能力
+    }
+}
+function blockLangCodeText(block) {
+    const code = block.querySelector ? block.querySelector('code') : null;
+    return code === null ? '' : normalizeFenceContent(code.textContent);
+}
+/**
+ * DOM 已给出的语言名：`code.language-xxx`（官方空围栏 / 旧契约）→ banner 首个子元素文本。
+ * banner 里可能是语言原名（js / json / bash…），也可能是本地化标签「代码块」——
+ * 两者**都原样返回**，由 {@link resolveBlockLang} 用 token 形态区分。不读 React fiber。
+ */
+function blockLangDomLang(block) {
+    const code = block.querySelector ? block.querySelector('code') : null;
+    const className = code !== null && typeof code.className === 'string' ? code.className : '';
+    const m = className.match(/language-([A-Za-z0-9_+-]+)/);
+    if (m !== null)
+        return m[1].toLowerCase();
+    const banner = block.querySelector ? block.querySelector('[data-code-block-banner]') : null;
+    const info = banner !== null && banner.firstElementChild ? banner.firstElementChild.textContent : '';
+    return String(info ?? '')
+        .trim()
+        .toLowerCase();
+}
+/** host 索引探测：`known` 区分「查过且命中」与「还没答案 / 未命中」。 */
+function indexedBlockLangProbe(block) {
+    const text = blockLangCodeText(block);
+    if (text === '' || text.length > LANG_MAX_PROBE_CHARS)
+        return { lang: '', known: false };
+    const hash = fenceContentHash(text);
+    const cached = langCache.get(hash);
+    if (cached !== undefined)
+        return { lang: cached, known: cached !== '' };
+    langQueue.add(hash);
+    scheduleLangFlush();
+    return { lang: '', known: false };
+}
+/**
+ * 解析块语言（DOM 契约 + host 索引）并给出**可信度**：
+ *  `confirmed === true` = 已确证，**包括 lang 为 '' 的「确证没有语言标记」**；false = 识别失败。
+ *  host 索引「未命中」不算确证：它只登记本插件接管的语言，js / java 等同样查不到。
 
-    // ── 非标准表格容错（官方 GFM 未覆盖的两种写法）──────────────────
+ */
+function resolveBlockLangEx(block) {
+    const dom = blockLangDomLang(block);
+    if (dom !== '' && LANG_TOKEN_RE.test(dom))
+        return { lang: dom, confirmed: true };
+    const probe = indexedBlockLangProbe(block);
+    return { lang: probe.lang, confirmed: probe.known };
+}
+/** 语言（字符串形态；带可信度的版本见 {@link resolveFenceLangEx}）。 */
+function resolveBlockLang(block) {
+    return resolveBlockLangEx(block).lang;
+}
+/**
+ * 语言判定唯一入口（**手动覆盖 > client 事件流索引 > DOM/host 索引**）：
+ *  ⓪ 手动覆盖（需求 4）：用户点过「渲染为…」→ 直接采用且 confirmed = true；
+ *  ① client 事件流索引 {@link fenceLangOf}——含历史的原始 markdown，命中即零 RPC，
+ *     confirmed = true；**`''` = 确证无语言**同样算确证（需求 3 的兜底只认这种情形）；
+ *  ② 取不到 → {@link resolveBlockLangEx}（DOM token / host 索引命中才算确证）。
+ * 调用方按 `confirmed` 区分「确证无语言」与「识别失败」：后者原样保留官方代码块。
+ */
+function resolveFenceLangEx(block) {
+    const forced = fenceForceOf(block);
+    if (forced !== undefined)
+        return { lang: forced, confirmed: true };
+    const local = fenceLangOf(block);
+    if (local !== undefined)
+        return { lang: local, confirmed: true };
+    return resolveBlockLangEx(block);
+}
+/** 语言判定唯一入口的字符串形态（带可信度的版本见 {@link resolveFenceLangEx}）。 */
+function resolveFenceLang(block) {
+    return resolveFenceLangEx(block).lang;
+}
+/** 本插件 markdown 渲染容器内的块不再二次接管（防递归重建；类名来自 text-markdown.ts）。 */
+function isInsideRenderedMarkdown(block) {
+    return !!(block.closest && block.closest('div.' + TEXT_MD_CLASS));
+}
+/** 取一批待查哈希（不超过单请求上限，其余留到下批）。 */
+function takeLangBatch() {
+    const batch = [];
+    for (const hash of langQueue) {
+        if (batch.length >= LANG_BATCH_MAX)
+            break;
+        batch.push(hash);
+    }
+    for (const hash of batch)
+        langQueue.delete(hash);
+    return batch;
+}
+/** 微任务批处理：一次扫描里的多个块合成一次请求（避免每块一发）。 */
+function scheduleLangFlush() {
+    if (langFlushScheduled)
+        return;
+    langFlushScheduled = true;
+    Promise.resolve()
+        .then(flushLangQueue)
+        .catch(() => {
+        // 查表失败**静默降级**：保持官方默认渲染，不影响任何既有能力。
+    });
+}
+/** 批量请求语言索引（相对 URL 失败 / 非 200 / 结构不符 → 空答案）。 */
+async function fetchLangs(hashes) {
+    if (typeof fetch !== 'function')
+        return {};
+    const query = hashes.map((h) => LANGS_HASH_PARAM + '=' + encodeURIComponent(h)).join('&');
+    const response = await fetch(LANGS_API_URL + '?' + query);
+    if (response === null || response === undefined || response.ok === false)
+        return {};
+    const body = (await response.json());
+    if (body === null || body.ok !== true || body.value === null || typeof body.value !== 'object')
+        return {};
+    return body.value;
+}
+/** 记录一次未命中（首次进入重试表；表满丢最旧）。 */
+function noteLangMiss(hash) {
+    if (!langMisses.has(hash))
+        boundedPut(langMisses, hash, 0);
+}
+/** 把一批答案写进缓存：命中触发重扫，未命中排重试，剩余哈希排下一批。 */
+function applyLangAnswers(batch, answer) {
+    let hit = false;
+    let missed = false;
+    for (const hash of batch) {
+        const lang = answer[hash];
+        if (typeof lang === 'string' && lang !== '') {
+            boundedPut(langCache, hash, lang);
+            langMisses.delete(hash);
+            hit = true;
+            continue;
+        }
+        boundedPut(langCache, hash, '');
+        noteLangMiss(hash);
+        missed = true;
+    }
+    if (hit && langRescan !== null)
+        langRescan();
+    if (missed)
+        scheduleLangRetry();
+    if (langQueue.size > 0)
+        scheduleLangFlush();
+}
+/** 冲刷待查队列（测试可直接 await；生产由微任务触发）。 */
+async function flushLangQueue() {
+    langFlushScheduled = false;
+    const batch = takeLangBatch();
+    if (batch.length === 0)
+        return;
+    try {
+        applyLangAnswers(batch, await fetchLangs(batch));
+    }
+    catch (_e) {
+        // 单批失败不冒泡（静默降级）；未命中的哈希留待重试窗口再试。
+    }
+}
+/** 未命中里还有可重试的哈希 → 排一次重试定时器（同时最多一个）。 */
+function scheduleLangRetry() {
+    if (langRetryTimer !== null || typeof setTimeout !== 'function')
+        return;
+    let retryable = false;
+    for (const count of langMisses.values()) {
+        if (count < LANG_MAX_RETRIES)
+            retryable = true;
+    }
+    if (!retryable)
+        return;
+    langRetryTimer = setTimeout(() => {
+        langRetryTimer = null;
+        retryLangMisses();
+    }, LANG_RETRY_MS);
+}
+/** 有界重试：把未命中的哈希从缓存里删掉再重扫（重扫会重新排队 → 重新查表）。 */
+function retryLangMisses() {
+    for (const [hash, count] of [...langMisses.entries()]) {
+        if (count >= LANG_MAX_RETRIES)
+            continue;
+        boundedPut(langMisses, hash, count + 1);
+        langCache.delete(hash);
+    }
+    if (langRescan !== null)
+        langRescan();
+}
+/** 注册「语言命中 / 重试」后的重扫钩子（scanner.ts 装配；返回撤销函数）。 */
+function installLangRescan(rescan) {
+    langRescan = rescan;
+    return () => {
+        if (langRescan === rescan)
+            langRescan = null;
+    };
+}
+/** teardown：清定时器、待查队列、未命中表与缓存（fiber 卸载 / HMR 无残留）。 */
+function teardownLangProbes() {
+    if (langRetryTimer !== null)
+        clearTimeout(langRetryTimer);
+    langRetryTimer = null;
+    langFlushScheduled = false;
+    langQueue.clear();
+    langMisses.clear();
+    langCache.clear();
+    fenceForces.clear();
+    langRescan = null;
+}
+exports.LANGS_API_URL = LANGS_API_URL;
+exports.LANGS_HASH_PARAM = LANGS_HASH_PARAM;
+exports.LANG_BATCH_MAX = LANG_BATCH_MAX;
+exports.LANG_MAX_RETRIES = LANG_MAX_RETRIES;
+exports.fenceContentHash = fenceContentHash;
+exports.normalizeFenceContent = normalizeFenceContent;
+exports.blockLangDomLang = blockLangDomLang;
+exports.resolveBlockLang = resolveBlockLang;
+exports.resolveFenceLang = resolveFenceLang;
+exports.resolveFenceLangEx = resolveFenceLangEx;
+exports.resolveBlockLangEx = resolveBlockLangEx;
+exports.FENCE_FORCE_ATTR = FENCE_FORCE_ATTR;
+exports.FENCE_FORCE_OPTIONS = FENCE_FORCE_OPTIONS;
+exports.fenceForceOf = fenceForceOf;
+exports.setFenceForce = setFenceForce;
+exports.restoreFenceForces = restoreFenceForces;
+exports.isInsideRenderedMarkdown = isInsideRenderedMarkdown;
+exports.flushLangQueue = flushLangQueue;
+exports.retryLangMisses = retryLangMisses;
+exports.installLangRescan = installLangRescan;
+exports.teardownLangProbes = teardownLangProbes;
+
+    "use strict";
+// ── 围栏语言索引（client 半，双源互补的**主源**）：会话事件流 ────────────
+// 宿主 0.2.0-rc.2 实测（调研报告 tmp/md-render-lang-source/report.md §7）：
+//   · banner 文本走 `supportsHighlighting(lang) ? lang : labels.codeLabel`
+//     —— 只有 shiki 语法表认识的标记才进 DOM，其余一律显示本地化标签「代码块」；
+//   · 非空代码块的 <code> 也不带 language-*（只有 node.value === '' 的
+//     空围栏分支才带）；
+//   ⇒ text / plaintext / txt / mermaid / mmd 与「无语言」块在 DOM 里**完全同形**，
+//     任何 DOM 启发式都取不到语言（实测接管数 toggles=0 / views=0）。
+//
+// **为什么必须有这一半**（host 半实时索引的结构性缺口）：host 半只订阅
+// `session/event`、**不读历史** —— 用户打开的是历史会话、而插件实例是之后才启动
+// （冷启动 / 重启后打开历史会话）时，host 索引为空，按哈希查表永不命中。
+// 而 `ctx.sessions.binding(id).eventSource` 的窗口里就是这个会话**已加载的全部**
+// 原始事件（含历史），所以本表是「历史会话 + 冷启动」唯一能命中的来源。
+//
+// 语言的真源在**会话事件流**：官方 ctx.sessions.binding(id).eventSource 的窗口里就是
+// 未经裁剪的原始 Session 事件，assistant/message.data.message.content[].text 与
+// user/message.data.content[].text 是模型可见消息的 markdown 原文。
+// host 半的实时索引（src/lang-index.ts，`session/event` 订阅）作为**兜底**保留：
+//   本表命中 → 零 RPC；本表未命中 / 取不到 → 才可能走那一次批量查询（routes/langs.ts）。
+//
+// 映射（内容哈希 + 文档序 FIFO，报告 §3.2-A）：
+//   1. 事件侧：扫每段 markdown 的围栏块，建 hash(规范化代码) → langs[]（文档序，
+//      含 '' = 确证无语言）；只取 surfaceOp === 'append' 的 durable 事件；
+//   2. DOM 侧：对 div.md-code-block 取 <pre>.textContent 算同一哈希查表；
+//   3. 候选互不相同 → 按 DOM 文档序 FIFO，且要求 DOM 内同哈希块数与候选数一致；
+//      数量不符 / 取不到位 → 返回 undefined（调用方静默退回现状），**绝不猜**。
+//
+// 降级（真降级）：ctx.get('sessions') 取不到 / 任何异常 → 空表 → 调用方退回
+// resolveBlockLang（DOM 契约 + host 索引），行为与修复前一致。
+// 无语言 / 非目标语言的块在任何路径下都不会被接管。
+//
+// 依赖注入（R1 三方案实测结论，见报告；本轮已用 rc.2 asar 抽出的真实 cordis 4.0.4 复测）：
+//   · 采用：`ctx.get('sessions', false)` + `exports.inject` 保持 `[]` —— 服务在则取到，
+//     服务缺则返回 undefined（不抛）；服务晚于 apply 提供（真实首屏顺序）也照样取到。
+//     cordis 4 的 ReflectService.get 契约原文即 "read a service ... without the inject
+//     requirement"，零新增硬依赖；
+//   · `inject: { optional: [...] }` —— cordis 4.0.4 **不支持可选注入**（对象形式是
+//     「服务名 → intercept 配置」），实测 apply 根本不执行：不采用；
+//   · `inject: ['sessions']` —— 服务缺失时 apply 完全不执行 → **整个 client 半失效**
+//     （连样式与设置页一起没）：不采用（本轮实测确认）。
+//
+// 硬约束：不读 React fiber 私有属性；不写官方元素的 style / class / aria；
+// 不注册任何节点级 seat；调用时机由调用方钉死在 [data-streaming] 门控之后
+// （块稳定时才查表）。
+/** 已解析事件的上限（性能护栏：seen 集合规模）。 */
+const MAX_FENCE_EVENTS = 20000;
+/** 单段 markdown 的扫描上限（字符）；超出不参与建表。 */
+const MAX_FENCE_MARKDOWN_CHARS = 400000;
+/** 单块代码内容上限（字符）；超出不参与建表（下游同样会拒绝超长块）。 */
+const MAX_FENCE_CODE_CHARS = 200000;
+/** 歧义消解时一次枚举的代码块上限（性能护栏）。 */
+const MAX_ORDER_SCAN_BLOCKS = 4000;
+function emptyFenceIndex() {
+    return { sessionId: '', revision: -1, byHash: new Map(), seen: new Set() };
+}
+let fenceIndex = emptyFenceIndex();
+/** 重置为空表（会话切换 / 取不到事件源 / 任何异常）。已是空表则原样返回
+ *  （本函数每批扫描都会被调用，避免每次重新分配 Map / Set）。 */
+function resetFenceIndex() {
+    if (fenceIndex.revision === -1)
+        return;
+    fenceIndex = emptyFenceIndex();
+}
+/** 规范化：CRLF → LF、去行尾空白、去尾部空行（**两端必须用同一函数**）。 */
+function fenceNormalize(code) {
+    return String(code ?? '')
+        .replace(/\r\n/g, '\n')
+        .replace(/[ \t]+$/gm, '')
+        .replace(/\n+$/, '');
+}
+/** 内容哈希（长度前缀 + djb2，复用 context-markdown.ts 的 contextHash；空内容 → 空串）。 */
+function fenceHash(code) {
+    if (typeof code !== 'string' || code === '')
+        return '';
+    return code.length.toString(36) + ':' + contextHash(code);
+}
+/** info string → 语言标记（首个空白分隔的 token，小写；无则空串）。 */
+function fenceInfoLang(info) {
+    const token = String(info ?? '')
+        .trim()
+        .split(/\s+/)[0];
+    return token === undefined ? '' : token.toLowerCase();
+}
+/**
+ * 保守围栏解析（报告 §8-R2）：行首 0–3 空格 + 三反引号/三波浪号（≥3）+ info string 开栏，
+ * 同字符且长度不短于开栏的纯围栏行闭栏；未闭合的尾巴一律忽略（成对才算）。
+ * 与官方 remark 的边角行为可能不同 —— 因此结果只用于**白名单语言匹配**，
+ * 误判不会造成破坏，只会少接管。
+ */
+function collectFences(text, sink) {
+    const lines = String(text ?? '').split(/\r?\n/);
+    let open = null;
+    for (let i = 0; i < lines.length; i += 1) {
+        const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(lines[i]);
+        if (m === null)
+            continue;
+        if (open === null) {
+            open = { ch: m[1].charAt(0), len: m[1].length, lang: fenceInfoLang(m[2]), line: i };
+            continue;
+        }
+        if (m[1].charAt(0) !== open.ch || m[1].length < open.len || m[2].trim() !== '')
+            continue;
+        sink(open.lang, lines.slice(open.line + 1, i).join('\n'));
+        open = null;
+    }
+}
+/** 收下一段围栏块（空内容 / 超长不计入 —— 下游同样会拒绝它们）。 */
+function collectInto(byHash, lang, code) {
+    const hash = fenceHash(fenceNormalize(code));
+    if (hash === '')
+        return;
+    const list = byHash.get(hash);
+    if (list === undefined)
+        byHash.set(hash, [lang]);
+    else
+        list.push(lang);
+}
+/** 内容块数组 → 文本段（只认 string 的 text 字段；其它块类型原样跳过）。 */
+function pushTexts(out, content) {
+    if (!Array.isArray(content))
+        return;
+    for (const block of content) {
+        if (block === null || typeof block !== 'object')
+            continue;
+        const text = block.text;
+        if (typeof text !== 'string')
+            continue;
+        if (text.length > MAX_FENCE_MARKDOWN_CHARS)
+            continue;
+        out.push(text);
+    }
+}
+/** 事件里的 markdown 原文段（assistant 的 text / reasoning + user 的 text）。 */
+function eventMarkdowns(event) {
+    const out = [];
+    const data = (event.data ?? {});
+    if (event.type === 'assistant/message') {
+        const message = (data.message ?? {});
+        pushTexts(out, message.content);
+    }
+    else if (event.type === 'user/message') {
+        pushTexts(out, data.content);
+    }
+    return out;
+}
+/** 事件流条目 → 原始 Session 事件（非 durable 事件条目返回 null）。 */
+function eventOf(entry) {
+    if (entry === null || typeof entry !== 'object')
+        return null;
+    const record = entry;
+    if (record.type !== 'event')
+        return null;
+    return record.event !== null && typeof record.event === 'object' ? record.event : null;
+}
+/**
+ * 增量吸收事件窗口：只解析**没见过 seq** 的事件（流式期间窗口每批都会被重发，
+ * 全量重扫 markdown 会把 CPU 拖垮）；非 durable / 非消息事件同样记账后跳过。
+ */
+function absorbFences(index, entries) {
+    for (const entry of entries) {
+        if (index.seen.size >= MAX_FENCE_EVENTS)
+            return;
+        const event = eventOf(entry);
+        if (event === null)
+            continue;
+        const seq = Number(event.seq);
+        if (Number.isFinite(seq)) {
+            if (index.seen.has(seq))
+                continue;
+            index.seen.add(seq);
+        }
+        if (event.surfaceOp !== 'append')
+            continue;
+        for (const markdown of eventMarkdowns(event)) {
+            collectFences(markdown, (lang, code) => collectInto(index.byHash, lang, code));
+        }
+    }
+}
+/** 安全取属性（null / undefined / 标量 → undefined）——宿主契约缺失时只降级不抛。 */
+function propOf(value, key) {
+    return value !== null && typeof value === 'object' ? value[key] : undefined;
+}
+/** 会话列表行是否被主视图持有（与官方 dsh-client-ui-session 同一判据：retainedBy.mainView > 0）。 */
+function isMainViewRow(row) {
+    const retained = propOf(row, 'retainedBy');
+    if (retained === undefined)
+        return false;
+    return Number(propOf(retained, 'mainView')) > 0;
+}
+/** 当前主视图会话 id；列表结构不符 / 没有主视图会话 → ''（调用方退回空表）。 */
+function mainSessionId(sessions) {
+    const list = sessions.list;
+    if (list === undefined || typeof propOf(list, 'getSnapshot') !== 'function')
+        return '';
+    const state = list.getSnapshot();
+    const byId = propOf(state, 'byId');
+    if (byId === undefined || byId === null || typeof byId !== 'object')
+        return '';
+    for (const row of Object.values(byId)) {
+        if (isMainViewRow(row))
+            return String(propOf(row, 'id') ?? '');
+    }
+    return '';
+}
+/**
+ * ctx.get('sessions', false) —— cordis 4 的 ReflectService.get 契约即
+ * "Read a service from the store without the inject requirement"，因此**不需要**
+ * 声明 inject（硬 inject 在服务缺失时会让 apply 根本不执行，整插件失效）。
+ * strict = false：首屏时服务提供者 fiber 可能尚未 active（同 dsh-my-remote 的教训）。
+ */
+function sessionsService(ctx) {
+    if (ctx === null || ctx === undefined || typeof ctx !== 'object')
+        return null;
+    const get = ctx.get;
+    if (typeof get !== 'function')
+        return null;
+    try {
+        const service = get.call(ctx, 'sessions', false);
+        return service !== null && typeof service === 'object' ? service : null;
+    }
+    catch (_e) {
+        return null;
+    }
+}
+/** 当前主视图会话的事件源（SessionEventSource）；任一步取不到返回 null。 */
+function currentEventSource(ctx) {
+    const sessions = sessionsService(ctx);
+    if (sessions === null)
+        return null;
+    try {
+        const id = mainSessionId(sessions);
+        if (id === '')
+            return null;
+        const binding = sessions.binding?.call(sessions, id);
+        const source = binding === null || binding === undefined ? undefined : binding.eventSource;
+        if (source === null || source === undefined || typeof source !== 'object')
+            return null;
+        return { sessionId: id, source: source };
+    }
+    catch (_e) {
+        return null;
+    }
+}
+/** 事件窗口快照 { sessionId, revision, entries }；取不到返回 null。 */
+function fenceEventWindow(ctx) {
+    const current = currentEventSource(ctx);
+    if (current === null)
+        return null;
+    try {
+        const getSnapshot = current.source.getSnapshot;
+        if (typeof getSnapshot !== 'function')
+            return null;
+        const snapshot = getSnapshot.call(current.source);
+        if (snapshot === null || snapshot === undefined || !Array.isArray(snapshot.entries))
+            return null;
+        return {
+            sessionId: current.sessionId,
+            revision: Number(snapshot.revision) || 0,
+            entries: snapshot.entries,
+        };
+    }
+    catch (_e) {
+        return null;
+    }
+}
+/**
+ * 按需刷新语言表（每批扫描开头调用一次）：事件源 revision 未变则内部直接返回。
+ * 任何异常 / 服务缺失 → 空表（调用方自然降级到原有 DOM 读法）。
+ */
+function refreshFenceLangIndex(ctx) {
+    try {
+        const window = fenceEventWindow(ctx);
+        if (window === null) {
+            resetFenceIndex();
+            return;
+        }
+        if (window.sessionId === fenceIndex.sessionId && window.revision === fenceIndex.revision)
+            return;
+        if (window.sessionId !== fenceIndex.sessionId)
+            resetFenceIndex();
+        fenceIndex.sessionId = window.sessionId;
+        fenceIndex.revision = window.revision;
+        absorbFences(fenceIndex, window.entries);
+    }
+    catch (_e) {
+        resetFenceIndex();
+    }
+}
+/** 块源码（官方 <pre>.textContent 的规范化形式）；空 / 超长 / 结构不符 → null。 */
+function fenceBlockCode(block) {
+    if (block === null || block === undefined || typeof block.querySelector !== 'function')
+        return null;
+    const pre = block.querySelector('pre');
+    const text = pre === null || pre === undefined ? '' : (pre.textContent ?? '');
+    if (typeof text !== 'string' || text.length === 0 || text.length > MAX_FENCE_CODE_CHARS)
+        return null;
+    return fenceNormalize(text);
+}
+/** 块所属的会话滚动容器（歧义消解只在同一容器内比较文档序）。 */
+function fenceScopeOf(block) {
+    const closest = block.closest;
+    if (typeof closest !== 'function')
+        return null;
+    const scope = closest.call(block, '[data-conversation-scroll]');
+    if (scope === null || scope === undefined)
+        return null;
+    return typeof scope.querySelectorAll === 'function' ? scope : null;
+}
+/** 块在会话滚动容器内、与其内容同哈希的块中的文档序与总数；取不到返回 null。 */
+function sameHashPosition(block, hash) {
+    const scope = fenceScopeOf(block);
+    if (scope === null)
+        return null;
+    const blocks = Array.from(scope.querySelectorAll('div.md-code-block'));
+    if (blocks.length > MAX_ORDER_SCAN_BLOCKS)
+        return null;
+    let index = -1;
+    let count = 0;
+    for (const candidate of blocks) {
+        const code = fenceBlockCode(candidate);
+        if (code === null || fenceHash(code) !== hash)
+            continue;
+        if (candidate === block)
+            index = count;
+        count += 1;
+    }
+    return index < 0 ? null : { index, count };
+}
+/** 歧义哈希：按 DOM 文档序取第 N 个候选；DOM 内同哈希块数与候选数不符 → 整块放弃。 */
+function fenceLangAtDocumentOrder(block, hash, langs) {
+    const position = sameHashPosition(block, hash);
+    if (position === null || position.count !== langs.length || position.index >= langs.length)
+        return undefined;
+    return langs[position.index];
+}
+/**
+ * 块的围栏语言（新来源：会话事件流哈希表）。取不到 / 有歧义 → undefined
+ * （调用方回退到原有的 DOM 契约读法）。**绝不猜语言**。
+ */
+function fenceLangOf(block) {
+    try {
+        const entry = fenceIndex.byHash.size === 0 ? null : fenceBlockCode(block);
+        if (entry === null)
+            return undefined;
+        const hash = fenceHash(entry);
+        const langs = hash === '' ? undefined : fenceIndex.byHash.get(hash);
+        if (langs === undefined)
+            return undefined;
+        const first = langs[0];
+        if (langs.every((lang) => lang === first))
+            return first;
+        return fenceLangAtDocumentOrder(block, hash, langs);
+    }
+    catch (_e) {
+        return undefined;
+    }
+}
+exports.MAX_FENCE_EVENTS = MAX_FENCE_EVENTS;
+exports.MAX_FENCE_CODE_CHARS = MAX_FENCE_CODE_CHARS;
+exports.fenceNormalize = fenceNormalize;
+exports.fenceHash = fenceHash;
+exports.fenceInfoLang = fenceInfoLang;
+exports.collectFences = collectFences;
+exports.refreshFenceLangIndex = refreshFenceLangIndex;
+exports.resetFenceIndex = resetFenceIndex;
+exports.fenceIndexSize = () => fenceIndex.byHash.size;
+exports.fenceLangOf = fenceLangOf;
+
+    // 非标准表格容错（官方 GFM 未覆盖的两种写法）
     "use strict";
 // ── 非标准表格容错（官方 GFM 未覆盖的那一部分）────────────────────────
 // 官方渲染链是 micromark-extension-gfm + mdast-util-gfm（ui-primitives/
@@ -230,8 +944,7 @@ exports.isTableSeparator = isTableSeparator;
 exports.isTableHeader = isTableHeader;
 exports.splitTableCells = splitTableCells;
 
-
-    // ── 官方渲染器接入（平台 MarkdownText + react-dom/client）────────
+    // 官方渲染器接入（平台 MarkdownText + react-dom/client）
     "use strict";
 // ── 官方渲染器接入（平台 MarkdownText + react-dom/client）─────────────
 // 本插件**不再自实现 markdown 渲染**：GFM 表格（对齐 / 宽表格横向滚动）、
@@ -406,8 +1119,7 @@ exports.unmountMarkdownIn = unmountMarkdownIn;
 exports.sweepDetachedRoots = sweepDetachedRoots;
 exports.officialMarkdownNode = officialMarkdownNode;
 
-
-    // ── 整段 markdown 复制（官方只有代码块复制）─────────────────────
+    // 整段 markdown 复制（官方只有代码块复制）
     "use strict";
 // ── 整段 markdown 复制（官方只有代码块复制）────────────────────────
 // 复制实现：navigator.clipboard.writeText 优先，失败回退
@@ -500,8 +1212,7 @@ function CopyButton({ kind }) {
 exports.copyText = copyText;
 exports.fallbackCopyText = fallbackCopyText;
 
-
-    // ── 统一 MarkdownView：对外公共 API（官方渲染 + 整段复制）────────
+    // 统一 MarkdownView：对外公共 API（官方渲染 + 整段复制）
     "use strict";
 // ── 统一 MarkdownView（对外公共 API 面）──────────────────────────────
 // 对外承诺（README「公共 API 契约」）：require('dsh-md-render').MarkdownView
@@ -521,8 +1232,7 @@ function MarkdownView({ text }) {
 }
 exports.MarkdownView = MarkdownView;
 
-
-    // ── 上下文注入块 markdown 渲染（pre[data-context-text]）─────────
+    // 上下文注入块 markdown 渲染（pre[data-context-text]）
     "use strict";
 // ── 上下文注入块 markdown 渲染 ───────────────────────────────────────
 // 宿主 @deepseek-ai/dsh-client-ui-chat 的 ContextBody 把上下文注入正文
@@ -618,34 +1328,19 @@ exports.contextHash = contextHash;
 exports.applyContextMarkdown = applyContextMarkdown;
 exports.scanContextBlocks = scanContextBlocks;
 
-
-    // ── text / plaintext / txt 围栏块按 markdown 渲染 + 查看原文 ────
+    // text / plaintext / txt / md 围栏块按 markdown 渲染 + 查看原文
     "use strict";
-// ── text / plaintext / txt 围栏块按 markdown 渲染 ────────────────────
-// 模型有时把**实际是 markdown 的内容**（标题 / 列表 / 表格 / 链接）用
-// \`\`\`text 围起来，宿主官方 CodeBlock（ui-primitives）按等宽代码块原样
-// 显示就丢掉了排版——官方不接管这类块，所以这是本插件的真增量。
-// 本模块在 DOM 层拦截这类块：块内文本交给**官方 MarkdownText**（经
-// react-dom/client 挂到我们插入的容器里）渲染，表格 / 公式 / 代码块能力与
-// 宿主消息完全一致（同一渲染器），并为**每个块**挂独立的「查看原文」切换。
-// 口径（需求方已确认，不做内容启发式判定）：语言标记 ∈ {text, plaintext,
-// txt} 一律渲染；其他标记（js / ts / json / bash …）与无标记的块**完全
-// 不触碰**。
-// 形态照 dsh-mermaid-render 的「拦截特定语言代码块 → 换渲染形态 + 视图
-// 切换」先例：宿主内容容器保持原位（只按视图隐藏），渲染容器与切换按钮
-// 追加在块内，视图状态写在块属性 data-dsh-md-render-text-view 上（每块
-// 独立、可来回切）。
-// 语言与源码来源（只用官方 DOM 契约，**不读 React fiber 私有属性**）：块是
-// div.md-code-block；语言取 code.language-xxx（官方空围栏分支与旧契约 DOM）→
-// banner（data-code-block-banner）首个子元素文本（CodeBlock 用它显示 infostring）。
-// 两者都取不到就不接管 —— 保持官方代码块形态（绝不猜语言）。
-// 流式口径沿用本插件既有策略（scanner.ts 的 [data-streaming] 门控 +
-// 属性移除触发兜底重扫）：流式中的块跳过，稳定后再渲染——不闪断、不重复
-// 挂载；幂等靠块上的签名（语言 + 长度 + djb2 哈希，哈希复用
-// context-markdown.ts 的 contextHash——同一 factory 作用域），签名变化
-// （流式补写 / 宿主重渲染）才重建，宿主冲掉容器后重扫自愈。
+// ── text / plaintext / txt / md 围栏块按 markdown 渲染 ────────────────
+// 模型常把**实际是 markdown 的内容**（标题 / 列表 / 表格 / 链接）用 ```text 围起来，宿主官方
+// CodeBlock 按等宽代码块原样显示就丢掉了排版 —— 官方不接管这类块，所以这是本插件的真增量。
+// 做法：块内文本交给**官方 MarkdownText**（经 react-dom/client 挂到我们插入的容器里）渲染，
+// 表格 / 公式 / 代码块能力与宿主消息完全一致（同一渲染器），每块独立「查看原文」切换；宿主
+// 内容容器保持原位（只按视图隐藏），视图状态写在块属性 data-dsh-md-render-text-view 上。
+// 语言判定收敛到 block-lang.ts 的 **resolveFenceLangEx**（不读 React fiber 私有属性）；它带出
+// 的 `confirmed` 决定「确证无语言」能否兜底（需求 3）。流式块跳过（scanner 的 [data-streaming]
+// 门控 + 属性移除兜底重扫），稳定后再渲染；幂等靠块上的签名（模式 + 长度 + djb2），变化才重建。
 /** 触发 markdown 渲染的围栏语言标记（一律渲染，不做内容判定）。 */
-const TEXT_FENCE_LANGS = ['text', 'plaintext', 'txt'];
+const TEXT_FENCE_LANGS = ['text', 'plaintext', 'txt', 'md', 'markdown'];
 /** 视图状态标记（写在 md-code-block 上，每块独立）：markdown | source。 */
 const TEXT_VIEW_ATTR = 'data-dsh-md-render-text-view';
 /** 幂等签名标记（写在 md-code-block 上）。 */
@@ -658,31 +1353,19 @@ const TEXT_TOGGLE_CLASS = 'dsh-md-render-text-toggle';
 const TEXT_VIEW_LABELS = { markdown: '查看原文', source: '查看渲染' };
 /** 单块渲染上限（字符）；超长块保持原代码块，避免单块渲染卡顿。 */
 const MAX_TEXT_FENCE_CHARS = 100000;
-/** 官方空围栏 / 旧契约 DOM 的 code.language-xxx（无则 ''）。 */
-function textFenceClassLang(block) {
-    const code = block.querySelector('code');
-    const className = code !== null && typeof code.className === 'string' ? code.className : '';
-    const m = className.match(/language-([A-Za-z0-9_+-]+)/);
-    return m ? m[1].toLowerCase() : '';
-}
-/** banner infostring（官方 CodeBlock 的 data-code-block-banner 首个子元素）。 */
-function textFenceBannerLang(block) {
-    const banner = block.querySelector('[data-code-block-banner]');
-    const info = banner !== null && banner.firstElementChild ? banner.firstElementChild.textContent : '';
-    return String(info ?? '')
-        .trim()
-        .toLowerCase();
-}
-/** 块的围栏语言（code.language-* → banner infostring；非 text/plaintext/txt 的 → 空串）。
- *
- *  **不读 React fiber 私有属性**（__reactFiber$ / memoizedProps）：那是 React 内部实现，
- *  宿主升级即静默失效。只用官方 DOM 契约的降级链 —— 官方空围栏分支的
- *  code.language-xxx 与 CodeBlock banner 的 infostring。两者都取不到就不接管
- *  （保持官方代码块形态），绝不猜语言。 */
-function textFenceLang(block) {
-    const candidates = [textFenceClassLang(block), textFenceBannerLang(block)];
-    const lang = candidates.find((value) => TEXT_FENCE_LANGS.includes(value)) ?? '';
-    return { lang };
+/**
+/**
+ * 块的围栏语言（**唯一来源** = block-lang.ts 的 resolveFenceLangEx；不读 React fiber）。
+ * **必须在这里过滤到本文件接管的语言**：resolveFenceLangEx 会把认得的其它语言原样返回，
+ * 不在此收口就会把普通代码块也 markdown 化（回归）。
+ */
+function textFenceTarget(block) {
+    const result = resolveFenceLangEx(block);
+    if (TEXT_FENCE_LANGS.includes(result.lang))
+        return { lang: result.lang, fallback: false };
+    if (result.lang === '' && result.confirmed)
+        return { lang: '', fallback: true };
+    return { lang: '', fallback: false };
 }
 /** 块源码：官方 <pre> 的文本（官方 display 语义：去掉一个尾部换行）。 */
 function textFenceSource(block) {
@@ -690,15 +1373,15 @@ function textFenceSource(block) {
     const text = pre !== null ? (pre.textContent ?? '') : '';
     return text.endsWith('\n') ? text.slice(0, -1) : text;
 }
-/** 取块的源码与签名素材（非目标语言 / 空内容 / 超长 → null）。 */
+/** 取源码与签名素材（非目标语言 / 识别失败 / 空 / 超长 -> null）。 */
 function textFenceBody(block) {
-    const { lang } = textFenceLang(block);
-    if (lang === '')
+    const target = textFenceTarget(block);
+    if (target.lang === '' && !target.fallback)
         return null;
     const text = textFenceSource(block);
     if (!text.trim() || text.length > MAX_TEXT_FENCE_CHARS)
         return null;
-    return { lang, text };
+    return { lang: target.lang, text, fallback: target.fallback };
 }
 /** 块是否仍在流式消息里（祖先带 [data-streaming]，与 scanner 同一口径）。
  *  名字带 TextFence 前缀：本文件与 mermaid-scan 片段共享 factory 作用域，重名会互相覆盖。 */
@@ -743,25 +1426,32 @@ function textToggleButton(block, view) {
     return btn;
 }
 /**
- * 应用（幂等）：把 text / plaintext / txt 块的内容交给官方渲染器渲染 +
- * 挂切换按钮。开关关闭 / 官方组件不可用 / 流式中 / 非目标语言 / 内容为空
- * 或超长 / 签名未变 → 不动 DOM。
+/** 前置门控：开关关闭 / 官方组件不可用 / 流式块 / 本插件渲染容器内的块（防递归重建）。 */
+function textFenceSkip(block) {
+    if (!renderOptions.markdown.textFenceMarkdown)
+        return true;
+    if (!officialMarkdownAvailable())
+        return true;
+    if (isTextFenceStreaming(block))
+        return true;
+    return !!(block.closest && block.closest('div.' + TEXT_MD_CLASS));
+}
+/** 幂等判定：容器在且签名未变 → 本轮不必重建。 */
+function textMarkdownSettled(block, signature) {
+    return textMarkdownBody(block) !== null && block.getAttribute(TEXT_SIG_ATTR) === signature;
+}
+/**
+ * 应用（幂等）：把 text / plaintext / txt / md 块的内容交给官方渲染器渲染 + 挂切换按钮。
+ * 门控 / 非目标语言 / 内容为空或超长 / 签名未变 → 不动 DOM（见 textFenceSkip / textFenceBody）。
  */
 function applyTextMarkdown(block) {
-    if (!renderOptions.markdown.textFenceMarkdown)
-        return;
-    if (!officialMarkdownAvailable())
-        return;
-    if (isTextFenceStreaming(block))
-        return;
-    // 本插件渲染容器内的块不再二次接管（嵌套 \`\`\`text 保持代码块形态，避免递归重建）。
-    if (block.closest && block.closest('div.' + TEXT_MD_CLASS))
+    if (textFenceSkip(block))
         return;
     const src = textFenceBody(block);
     if (src === null)
         return;
-    const signature = src.lang + ':' + src.text.length + ':' + contextHash(src.text);
-    if (textMarkdownBody(block) !== null && block.getAttribute(TEXT_SIG_ATTR) === signature)
+    const signature = (src.fallback ? '~' : src.lang) + ':' + src.text.length + ':' + contextHash(src.text);
+    if (textMarkdownSettled(block, signature))
         return;
     clearTextView(block);
     const body = document.createElement('div');
@@ -787,12 +1477,13 @@ function scanTextBlocks(root) {
 }
 exports.TEXT_FENCE_LANGS = TEXT_FENCE_LANGS;
 exports.MAX_TEXT_FENCE_CHARS = MAX_TEXT_FENCE_CHARS;
-exports.textFenceLang = textFenceLang;
+exports.TEXT_VIEW_ATTR = TEXT_VIEW_ATTR;
+exports.TEXT_TOGGLE_CLASS = TEXT_TOGGLE_CLASS;
+exports.textFenceTarget = textFenceTarget;
 exports.applyTextMarkdown = applyTextMarkdown;
 exports.scanTextBlocks = scanTextBlocks;
 
-
-    // ── 思考块默认展开（对官方折叠行派发一次 click；不改外观）────────
+    // 思考块默认展开（对官方折叠行派发一次 click；不改外观）
     "use strict";
 // ── 思考块默认展开（DOM 层派发官方点击，路径 C）─────────────────────────
 // 官方没有任何「思考默认展开」的设置或扩展点：
@@ -879,8 +1570,7 @@ function applyThinkExpand(root) {
 exports.THINK_ROW_SELECTOR = THINK_ROW_SELECTOR;
 exports.applyThinkExpand = applyThinkExpand;
 
-
-    // ── mermaid 引擎按需加载 + 离屏渲染 ────────────────────────────
+    // mermaid 引擎按需加载 + 离屏渲染
     "use strict";
 // ── mermaid 引擎：按需加载 + 离屏渲染 ─────────────────────────────────
 // 引擎由 DSH webServer 从插件 assets 目录静态托管（**不内联**进 bundle：issue #185
@@ -1006,23 +1696,25 @@ exports.resetMermaidEngine = resetMermaidEngine;
 exports.renderSvg = renderSvg;
 exports.errMsg = errMsg;
 
-
-    // ── mermaid 图表卡片（预览 / 代码切换、导出、失败回显源码）──────
+    // mermaid 图表卡片（预览 / 代码切换、导出、失败回显源码）
     "use strict";
 // ── mermaid 图表卡片（React）──────────────────────────────────────────
-// 卡片只挂在**本插件自己插入的容器**里（不改官方节点结构）：mermaid 块内的官方
-// `<pre>` 由**自有 CSS**（styles.ts 的 `.md-code-block[data-dsh-md-render-mermaid-view]`
-// 规则）隐藏 —— 不再用 `pre.style.display`（硬约束：不对官方元素写 style）。
-// 渲染失败时卡片显示错误原因 + 重试 + **原始源码**（源码必须看得见）。
+// 卡片只挂在**本插件自己插入的容器**里（不改官方节点结构）：官方 `<pre>` 由自有 CSS 的
+// `.md-code-block[data-dsh-md-render-mermaid-view]` 规则隐藏（不用 `pre.style.display`）。
 /** 卡片 host 标记（entryId；测试与导出按它定位）。 */
 const MERMAID_ENTRY_ATTR = 'data-dsh-md-render-mermaid';
 /** 渲染态标记（loading / ok / error；写在 host 上，与 React 提交时机解耦）。 */
 const MERMAID_STATE_ATTR = 'data-dsh-md-render-mermaid-state';
 /** 块级视图标记（preview / code；写在 md-code-block 上，驱动自有 CSS 隐藏官方 pre）。 */
 const MERMAID_VIEW_ATTR = 'data-dsh-md-render-mermaid-view';
+/** 卡片根 / SVG 容器类名（mermaid-zoom 定位自有 DOM 时共用）。 */
+const MERMAID_CARD_CLASS = 'dsh-md-render-mermaid-card';
+const MERMAID_SVG_CLASS = 'dsh-md-render-mermaid-svg';
+/** 变换层类名：panzoom 只变换它，外层容器负责裁剪。 */
+const MERMAID_CANVAS_CLASS = 'dsh-md-render-mermaid-canvas';
 /** 挂载序号（entryId 用；导出文件名取其中的数字）。 */
 let mermaidSeq = 0;
-/** 记录一条渲染态转移：写到卡片 host 的真实 DOM 属性上（宿主 / CSS / 测试可观察）。 */
+/** 记录一条渲染态转移（写到卡片 host 的真实 DOM 属性上）。 */
 function noteRenderState(entryId, state) {
     if (typeof document === 'undefined' || document === null)
         return;
@@ -1032,8 +1724,7 @@ function noteRenderState(entryId, state) {
 }
 /**
  * 渲染状态机：加载引擎 → **离屏渲染** → 成功取 SVG / 失败留原因。
- * 渲染令牌：effect 每次运行（含重试）先作废旧令牌再挂新令牌，异步结果落定时令牌已废
- * 就丢弃 —— 引擎加载有缓存层且是慢操作，只靠 cancelled 标志挡不住迟到落定。
+ * 渲染令牌：effect 每次运行（含重试）先作废旧令牌再挂新令牌，迟到的结果一律丢弃。
  */
 function useMermaidRender(entryId, source, attempt) {
     const [status, setStatus] = useState('loading');
@@ -1089,15 +1780,24 @@ function ExportButtons({ status, onPng, onSvg, onCopy, }) {
     const btn = (label, iconNode, onClick, disabled) => createElement('button', { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick, disabled, title: label, 'aria-label': label }, iconNode, createElement('span', null, label));
     return createElement('div', { className: 'dsh-md-render-mermaid-export', role: 'group', 'aria-label': 'export' }, btn('下载 PNG', icon.download(14), onPng, !ready), btn('下载 SVG', icon.download(14), onSvg, !ready), btn('复制代码', icon.copy(14), onCopy, false));
 }
-/** 预览 / 代码 视图切换（卡片头部）。 */
-function ViewToggle({ mode, setMode }) {
-    const btn = (label, value, iconNode) => createElement('button', {
+/**
+ * 预览 / 代码 视图切换（卡片头部）。
+ * `previewDisabled`：渲染失败时预览态没有可显示的内容，禁用而不是让它显示成激活假象。
+ */
+function ViewToggle({ mode, setMode, previewDisabled, }) {
+    const btn = (label, value, iconNode, disabled) => createElement('button', {
         type: 'button',
         className: mode === value ? 'dsh-md-render-mermaid-vt dsh-md-render-mermaid-vt-active' : 'dsh-md-render-mermaid-vt',
         onClick: () => setMode(value),
+        disabled,
         'aria-pressed': mode === value,
     }, iconNode, createElement('span', null, label));
-    return createElement('div', { className: 'dsh-md-render-mermaid-view-toggle', role: 'group', 'aria-label': 'view mode' }, btn('预览', 'preview', icon.file(14)), btn('代码', 'code', icon.code(14)));
+    return createElement('div', { className: 'dsh-md-render-mermaid-view-toggle', role: 'group', 'aria-label': 'view mode' }, btn('预览', 'preview', icon.file(14), previewDisabled === true), btn('代码', 'code', icon.code(14), false));
+}
+/** 缩放 / 全屏工具条（需求 1）：Fit / 100% / ± / 全屏。 */
+function ZoomBar({ entryId }) {
+    const btn = (label, title, action) => createElement('button', { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick: action, title, 'aria-label': title }, createElement('span', null, label));
+    return createElement('div', { className: 'dsh-md-render-mermaid-zoom', role: 'group', 'aria-label': '图表缩放' }, btn('全屏', '全屏 / 退出全屏（Esc）', () => toggleCardFullscreen(entryId)), btn('适应', '适应宽度', () => zoomEntry(entryId, 'fit')), btn('100%', '实际大小', () => zoomEntry(entryId, 'full')), btn('−', '缩小', () => zoomEntry(entryId, 'out')), btn('+', '放大', () => zoomEntry(entryId, 'in')));
 }
 /** 卡片主体：loading / error（含源码与重试）/ 代码视图 / 渲染出的 SVG。 */
 function CardBody({ status, mode, error, source, svg, onRetry, }) {
@@ -1105,20 +1805,22 @@ function CardBody({ status, mode, error, source, svg, onRetry, }) {
         return createElement('div', { className: 'dsh-md-render-mermaid-loading' }, icon.refresh(14), createElement('span', null, '渲染中…'));
     }
     if (status === 'error') {
-        return createElement('div', { className: 'dsh-md-render-mermaid-error' }, createElement('div', { className: 'dsh-md-render-mermaid-error-head' }, icon.alert(15), createElement('span', { className: 'dsh-md-render-mermaid-error-title' }, 'Mermaid 渲染失败'), createElement('button', {
+        // 主次反转（#470 需求 2）：**源码是第一位的主视觉**（首屏即源码），失败原因降为一行灰字
+        // 提示；「重试」保留 —— 引擎加载失败是真实可恢复场景，砍掉等于砍掉唯一恢复路径。
+        return createElement('div', { className: 'dsh-md-render-mermaid-error' }, createElement('pre', { className: 'dsh-md-render-mermaid-code' }, source), createElement('div', { className: 'dsh-md-render-mermaid-error-line' }, icon.alert(13), createElement('span', { className: 'dsh-md-render-mermaid-error-msg' }, 'Mermaid 渲染失败：' + String(error ?? '')), createElement('button', {
             type: 'button',
             className: 'dsh-md-render-mermaid-eb dsh-md-render-mermaid-retry',
             onClick: onRetry,
             title: '重试渲染',
             'aria-label': '重试',
-        }, icon.refresh(13), createElement('span', null, '重试'))), createElement('div', { className: 'dsh-md-render-mermaid-error-msg' }, error), createElement('pre', { className: 'dsh-md-render-mermaid-code' }, source));
+        }, icon.refresh(13), createElement('span', null, '重试'))));
     }
     if (mode === 'code' || !svg)
         return createElement('pre', { className: 'dsh-md-render-mermaid-code' }, source);
-    return createElement('div', { className: 'dsh-md-render-mermaid-svg', dangerouslySetInnerHTML: { __html: svg } });
+    return createElement('div', { className: MERMAID_SVG_CLASS }, createElement('div', { className: MERMAID_CANVAS_CLASS, dangerouslySetInnerHTML: { __html: svg } }));
 }
 /** Mermaid 图表卡片组件。 */
-function MermaidCard({ entryId, source }) {
+function MermaidCard({ entryId, source, onForce, }) {
     const [attempt, setAttempt] = useState(0);
     const [mode, setMode] = useState('preview');
     const [notice, setNotice] = useState(null);
@@ -1137,7 +1839,20 @@ function MermaidCard({ entryId, source }) {
         noticeTimer = setTimeout(() => setNotice(null), 2500);
     }
     const exportActions = makeExportHandlers(entryId, source, flashNotice);
-    return createElement('div', { className: 'dsh-md-render-mermaid-card' }, createElement('div', { className: 'dsh-md-render-mermaid-card-head' }, createElement('div', { className: 'dsh-md-render-mermaid-card-title' }, icon.file(12), createElement('span', null, 'Mermaid 图表')), createElement('div', { className: 'dsh-md-render-mermaid-card-actions' }, createElement(ExportButtons, { status, ...exportActions }), createElement(ViewToggle, { mode, setMode }))), renderNotice(notice), createElement(CardBody, { status, mode, error, source, svg, onRetry: retry }));
+    // 失败态把视图钉到 code：按钮激活态与实际显示一致。
+    const view = status === 'error' ? 'code' : mode;
+    // 渲染出 SVG 后绑定缩放 / 平移（懒加载 panzoom；失败静默保持静态图）。
+    useEffect(() => {
+        if (status !== 'ok' || view !== 'preview')
+            return undefined;
+        const target = zoomTargetsOf(entryId);
+        if (target !== null)
+            bindZoom(target);
+        return undefined;
+    }, [entryId, status, view]);
+    return createElement('div', { className: MERMAID_CARD_CLASS }, createElement('div', { className: 'dsh-md-render-mermaid-card-head' }, createElement('div', { className: 'dsh-md-render-mermaid-card-title' }, icon.file(12), createElement('span', null, 'Mermaid 图表')), createElement('div', { className: 'dsh-md-render-mermaid-card-actions' }, createElement(ExportButtons, { status, ...exportActions }), 
+    // 语言手动切换（需求 4）：卡片头承载另外两项。
+    onForce ? createElement(CardLangSwitch, { onForce }) : null, createElement(ViewToggle, { mode: view, setMode, previewDisabled: status === 'error' }))), renderNotice(notice), createElement(CardBody, { status, mode: view, error, source, svg, onRetry: retry }), svg && view === 'preview' ? createElement(ZoomBar, { entryId }) : null);
 }
 /** 提示条定时器（模块级单例：后一条提示覆盖前一条）。 */
 let noticeTimer = null;
@@ -1145,10 +1860,15 @@ exports.MERMAID_ENTRY_ATTR = MERMAID_ENTRY_ATTR;
 exports.MERMAID_STATE_ATTR = MERMAID_STATE_ATTR;
 exports.MERMAID_VIEW_ATTR = MERMAID_VIEW_ATTR;
 exports.noteRenderState = noteRenderState;
+exports.MERMAID_CARD_CLASS = MERMAID_CARD_CLASS;
+exports.MERMAID_SVG_CLASS = MERMAID_SVG_CLASS;
+exports.MERMAID_CANVAS_CLASS = MERMAID_CANVAS_CLASS;
+exports.ZoomBar = ZoomBar;
+exports.CardBody = CardBody;
+exports.ViewToggle = ViewToggle;
 exports.MermaidCard = MermaidCard;
 
-
-    // ── mermaid 代码块识别 + 流式稳定窗口 ──────────────────────────
+    // mermaid 代码块识别 + 流式稳定窗口
     "use strict";
 // ── mermaid 代码块识别 + 流式稳定窗口 + 卡片挂载 ──────────────────────
 // 只在 `[data-conversation-scroll]` 内识别 `div.md-code-block` 且语言标记为
@@ -1171,14 +1891,21 @@ const STREAM_SETTLE_MS = 400;
 const STREAM_MIN_OBSERVATIONS = 2;
 const mermaidMounts = new Map();
 const mermaidStreamWatch = new Map();
-/** 检查是否为 mermaid 代码块（code.language-mermaid / -mmd；不读 React fiber）。 */
-function isMermaidBlock(block) {
+/** 本插件接管的 mermaid 围栏语言（与 text-markdown 的语言集合不重叠 → 分流稳定）。 */
+const MERMAID_FENCE_LANGS = ['mermaid', 'mmd'];
+/**
+ * 是否为 mermaid 代码块。语言来源 = block-lang.ts 的 resolveFenceLang（双源互补）：
+ *  · allowIndex !== false：① **client 事件流索引**（lang-source.ts）—— 会话窗口里的原始
+ *    markdown 原文，**含历史**，冷启动 / 重启后打开历史会话也命中（host 半实时索引为空时
+ *    这条路径就是唯一来源），零 RPC；② 回退 resolveBlockLang（DOM 的
+ *    code.language-mermaid / banner 语言原名 → host 半的实时索引）；
+ *  · allowIndex === false：**只读 DOM**——流式块专用（内容还在补写，哈希必然落空，查表即请求放大）。
+ * 不读 React fiber 私有属性。
+ */
+function isMermaidBlock(block, allowIndex = true) {
     try {
-        const code = block.querySelector('code');
-        if (!code)
-            return false;
-        const cls = String(code.className || '').toLowerCase();
-        return cls.includes('language-mermaid') || cls.includes('language-mmd');
+        const lang = allowIndex ? resolveFenceLang(block) : blockLangDomLang(block);
+        return MERMAID_FENCE_LANGS.includes(lang);
     }
     catch (_e) {
         return false;
@@ -1220,7 +1947,9 @@ function mountCard(block, source) {
     block.setAttribute(MERMAID_VIEW_ATTR, 'preview');
     host.setAttribute(MERMAID_ENTRY_ATTR, entryId);
     host.setAttribute(MERMAID_STATE_ATTR, 'loading');
-    root.render(createElement(MermaidCard, { entryId, source }));
+    // 已是卡片：块内不再挂「渲染为…」控件（另外两项并进卡片头，见 lang-switch.ts）。
+    removeLangSwitch(block);
+    root.render(createElement(MermaidCard, { entryId, source, onForce: (value) => applyLangForce(block, value) }));
 }
 /** 自愈卸载：源码在挂载后又变了（流式其实还没写完）→ 拆卡片、恢复原始块。 */
 function unmountCard(block, card) {
@@ -1275,11 +2004,21 @@ function settleStream(block) {
     }
     mountCard(block, source);
 }
-/** 单个候选块：挂载 / 继续等待 / 自愈卸载。非 mermaid 块立即返回（性能护栏）。 */
+/**
+ * 单个候选块：挂载 / 继续等待 / 自愈卸载。非 mermaid 块立即返回（性能护栏）。
+ *
+ * 语言判定放在开关之后（关掉 mermaid 渲染时一次请求都不发），并且**流式块只读 DOM**：
+ * 流式补写中的内容哈希必然落空，查表既无意义又放大请求量；消息流式结束后
+ * `data-streaming` 消失会触发兜底重扫，那时再走索引路径（结果：索引识别出的 mermaid 块
+ * 在消息稳定后挂卡片，DOM 已给出语言名的块保持原有的「立即 / 400ms 窗口」行为）。
+ * 历史会话（非流式）走的是①client 事件流索引：**同步命中即挂卡片**，不发任何请求。
+ */
 function considerMermaidBlock(block, round) {
-    if (!isMermaidBlock(block))
-        return;
     if (!renderOptions.mermaid.render)
+        return;
+    if (isInsideRenderedMarkdown(block))
+        return;
+    if (!isMermaidBlock(block, !isMermaidStreaming(block)))
         return;
     const source = mermaidSourceOf(block);
     if (!source.trim() || source.length > MAX_SOURCE_CHARS)
@@ -1323,8 +2062,7 @@ exports.considerMermaidBlock = considerMermaidBlock;
 exports.scanMermaidBlocks = scanMermaidBlocks;
 exports.teardownMermaid = teardownMermaid;
 
-
-    // ── mermaid 图表导出（PNG / SVG 下载 + 复制源码）────────────────
+    // mermaid 图表导出（PNG / SVG 下载 + 复制源码）
     "use strict";
 // ── mermaid 图表导出：PNG / SVG 下载 + 复制源码 ────────────────────────
 // 失败一律经卡片提示条转可见提示，绝不静默（与合并前的 dsh-mermaid-render 同款行为）。
@@ -1450,8 +2188,396 @@ exports.serializeSvg = serializeSvg;
 exports.findCardSvg = findCardSvg;
 exports.makeExportHandlers = makeExportHandlers;
 
+    // mermaid 图表全屏 + 缩放 / 平移（panzoom 懒加载 asset）
+    "use strict";
+// ── mermaid 图表全屏 + 缩放 / 平移（issue #470 需求 1）────────────────────
+// 全屏 = 原生 Fullscreen API（自有卡片 DOM，需用户手势）；不支持（iPhone Safari 仅 iPad）
+// → 降级卡片内 overlay。缩放 / 平移 = @panzoom/panzoom 4.6.2 以 vendored asset **懒加载**
+// （不进 client.js，体积门禁增量 0）；照引擎先例冻结 SHA256 + 单一真源 + asset 注入。
+// UMD 直接 concat 会执行 module.exports 清掉插件 exports；注入下无 module → 落 window.Panzoom。
+/** 缩放态标记（自有外层容器）：CSS 据此把 overflow 收紧为 hidden。 */
+const ZOOM_ATTR = 'data-dsh-md-render-zoom';
+/** 全屏态标记（写在自有卡片上）：native | fallback。 */
+const FS_ATTR = 'data-dsh-md-render-fs';
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 8;
+const ZOOM_STEP = 1.25;
+const PAN_KEY_STEP = 40;
+/** 已绑定的图表（自有容器 → 状态）；同容器只绑一次。 */
+const zoomStates = new Map();
+let panzoomReady = null;
+let fsSyncInstalled = false;
+/** 注入 panzoom UMD 并解析 window.Panzoom。 */
+function injectPanzoom(code) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.textContent = code;
+        script.onerror = () => reject(new Error('panzoom script injection failed'));
+        document.head.appendChild(script);
+        const ctor = typeof window !== 'undefined' ? window.Panzoom : undefined;
+        if (typeof ctor !== 'function') {
+            reject(new Error('panzoom missing after injection'));
+            return;
+        }
+        resolve(ctor);
+    });
+}
+/** 懒加载 panzoom（首次真正需要才 fetch；失败重置缓存）。 */
+function ensurePanzoom() {
+    const globalCtor = typeof window !== 'undefined' ? window.Panzoom : undefined;
+    if (typeof globalCtor === 'function')
+        return Promise.resolve(globalCtor);
+    if (panzoomReady !== null)
+        return panzoomReady;
+    panzoomReady = fetch(PANZOOM_SCRIPT_URL)
+        .then((resp) => {
+        if (resp.ok === false)
+            throw new Error('panzoom fetch failed: ' + String(resp.status));
+        return resp.text();
+    })
+        .then(injectPanzoom)
+        .catch((err) => {
+        panzoomReady = null;
+        throw err instanceof Error ? err : new Error(String(err));
+    });
+    return panzoomReady;
+}
+/** 卡片 + 自有 SVG 容器（按 entryId 定位）。 */
+function zoomTargetsOf(entryId) {
+    if (typeof document === 'undefined' || document === null)
+        return null;
+    const host = document.querySelector('[' + MERMAID_ENTRY_ATTR + '="' + entryId + '"]');
+    if (host === null || typeof host.querySelector !== 'function')
+        return null;
+    const frame = host.querySelector('div.' + MERMAID_SVG_CLASS);
+    if (frame === null)
+        return null;
+    const canvas = frame.querySelector('div.' + MERMAID_CANVAS_CLASS) ?? frame;
+    return { card: host.querySelector('div.' + MERMAID_CARD_CLASS) ?? host, frame, box: canvas };
+}
+/** 缩放键（+ / - / = / _ / 0）；拆出来压圈复杂度。 */
+function zoomScaleKey(state, key) {
+    const factor = key === '+' || key === '=' ? ZOOM_STEP : key === '-' || key === '_' ? 1 / ZOOM_STEP : 0;
+    if (factor > 0) {
+        state.pz.zoom(state.pz.getScale() * factor, { animate: true });
+        return true;
+    }
+    if (key !== '0')
+        return false;
+    state.pz.reset({ animate: false });
+    return true;
+}
+/** 裸 wheel 归页面（滚动陷阱）：ctrlKey+wheel 或全屏态才缩放。 */
+function zoomWheelShouldHandle(event, card) {
+    const wheel = event;
+    return wheel.ctrlKey || card.getAttribute(FS_ATTR) !== null;
+}
+/** 方向键平移（拆出来压圈复杂度）。 */
+function zoomArrowKey(state, key) {
+    const dx = key === 'ArrowLeft' ? PAN_KEY_STEP : key === 'ArrowRight' ? -PAN_KEY_STEP : 0;
+    const dy = key === 'ArrowUp' ? PAN_KEY_STEP : key === 'ArrowDown' ? -PAN_KEY_STEP : 0;
+    if (dx === 0 && dy === 0)
+        return false;
+    state.pz.pan(dx, dy, { animate: false, relative: true });
+    return true;
+}
+/** 键盘 a11y：+ / - 缩放，0 复位，方向键平移，Esc 退出降级 overlay。 */
+function zoomKey(card, box, event) {
+    const state = zoomStates.get(box);
+    if (state === undefined)
+        return;
+    const key = String(event.key ?? '');
+    if (!zoomArrowKey(state, key) && !zoomScaleKey(state, key)) {
+        if (key !== 'Escape' || card.getAttribute(FS_ATTR) !== 'fallback')
+            return;
+        exitFullscreen(card);
+    }
+    if (typeof event.preventDefault === 'function')
+        event.preventDefault();
+}
+/** 绑定缩放 / 平移（幂等；失败静默保持静态图）。 */
+function bindZoom(target) {
+    const { card, frame, box } = target;
+    if (zoomStates.has(box))
+        return;
+    ensurePanzoom()
+        .then((Panzoom) => {
+        if (zoomStates.has(box) || box.isConnected === false)
+            return;
+        // touchAction 内联态取 pan-y：纵向滚动归页面，横向拖拽平移。
+        const pz = new Panzoom(box, {
+            minScale: ZOOM_MIN,
+            maxScale: ZOOM_MAX,
+            cursor: 'grab',
+            pinchAndPan: true,
+            zoomWithWheel: false,
+            touchAction: 'pan-y',
+        });
+        zoomStates.set(box, { pz, card, box });
+        // 外层容器切到裁剪态：放大的变换层不再溢出盖住工具条。
+        frame.setAttribute(ZOOM_ATTR, 'on');
+        box.addEventListener('wheel', (event) => {
+            if (!zoomWheelShouldHandle(event, card))
+                return;
+            pz.zoom(pz.getScale() * (Number(event.deltaY) < 0 ? ZOOM_STEP : 1 / ZOOM_STEP), {
+                animate: false,
+            });
+            event.preventDefault();
+        }, { passive: false });
+        box.addEventListener('dblclick', () => pz.reset({ animate: false }));
+        card.addEventListener('keydown', (event) => zoomKey(card, box, event));
+        installFullscreenSync();
+    })
+        .catch(() => {
+        /* 库加载失败：保持静态图 */
+    });
+}
+/** 工具条动作（按 entryId 定位；顺带懒加载）。 */
+function zoomEntry(entryId, action) {
+    const target = zoomTargetsOf(entryId);
+    if (target === null)
+        return;
+    bindZoom(target);
+    const state = zoomStates.get(target.box);
+    if (state === undefined)
+        return;
+    if (action === 'fit')
+        state.pz.reset({ animate: false });
+    else if (action === 'full')
+        state.pz.zoom(1, { animate: false });
+    else
+        state.pz.zoom(state.pz.getScale() * (action === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP), { animate: true });
+}
+/** 原生全屏是否可用（iPhone Safari 仅 iPad）。 */
+function fullscreenSupported(card) {
+    const doc = typeof document === 'undefined' ? null : document;
+    if (doc !== null && doc.fullscreenEnabled === false)
+        return false;
+    return typeof card.requestFullscreen === 'function';
+}
+/** 退出全屏（原生 / overlay 都覆盖；panzoom 变换留在元素上）。 */
+function exitFullscreen(card) {
+    if (card.getAttribute(FS_ATTR) === 'native') {
+        const doc = document;
+        try {
+            if (typeof doc.exitFullscreen === 'function')
+                void doc.exitFullscreen();
+        }
+        catch (_e) {
+            /* 已退出 */
+        }
+    }
+    if (typeof card.removeAttribute === 'function')
+        card.removeAttribute(FS_ATTR);
+}
+/** 进 / 出全屏（原生优先；不支持则 overlay）；返回切换后的全屏态。 */
+function toggleCardFullscreen(entryId) {
+    const target = zoomTargetsOf(entryId);
+    if (target === null)
+        return false;
+    const { card } = target;
+    if (card.getAttribute(FS_ATTR) !== null) {
+        exitFullscreen(card);
+        return false;
+    }
+    if (!fullscreenSupported(card)) {
+        card.setAttribute(FS_ATTR, 'fallback');
+        return true;
+    }
+    card.setAttribute(FS_ATTR, 'native');
+    try {
+        const pending = card.requestFullscreen();
+        if (pending && typeof pending.catch === 'function') {
+            pending.catch(() => {
+                if (card.getAttribute(FS_ATTR) === 'native')
+                    card.removeAttribute(FS_ATTR);
+            });
+        }
+    }
+    catch (_e) {
+        card.removeAttribute(FS_ATTR);
+    }
+    return card.getAttribute(FS_ATTR) !== null;
+}
+/** 原生退出后清掉卡片上的 native 标记（只装一个监听）。 */
+function installFullscreenSync() {
+    if (fsSyncInstalled)
+        return;
+    const doc = typeof document === 'undefined'
+        ? null
+        : document;
+    if (doc === null || typeof doc.addEventListener !== 'function')
+        return;
+    fsSyncInstalled = true;
+    doc.addEventListener('fullscreenchange', () => {
+        const full = doc.fullscreenElement ?? null;
+        for (const state of zoomStates.values()) {
+            if (state.card === full || state.card.getAttribute(FS_ATTR) !== 'native')
+                continue;
+            state.card.removeAttribute(FS_ATTR);
+        }
+    });
+}
+/** teardown：销毁实例、清表与加载缓存。 */
+function teardownZoom() {
+    for (const state of zoomStates.values()) {
+        try {
+            state.pz.destroy();
+        }
+        catch (_e) {
+            /* 销毁异常不阻断清理 */
+        }
+    }
+    zoomStates.clear();
+    panzoomReady = null;
+}
+exports.PANZOOM_SCRIPT_URL = PANZOOM_SCRIPT_URL;
+exports.ZOOM_ATTR = ZOOM_ATTR;
+exports.FS_ATTR = FS_ATTR;
+exports.zoomTargetsOf = zoomTargetsOf;
+exports.ensurePanzoom = ensurePanzoom;
+exports.bindZoom = bindZoom;
+exports.zoomEntry = zoomEntry;
+exports.zoomKey = zoomKey;
+exports.zoomWheelShouldHandle = zoomWheelShouldHandle;
+exports.toggleCardFullscreen = toggleCardFullscreen;
+exports.exitFullscreen = exitFullscreen;
+exports.installFullscreenSync = installFullscreenSync;
+exports.zoomStates = zoomStates;
+exports.teardownZoom = teardownZoom;
 
-    // ── 共享 DOM 扫描骨架 + 单 MutationObserver 按语言分流 ──────────
+    // 「渲染为…」语言手动切换（覆盖层 + 块内控件 + 卡片头并项）
+    "use strict";
+// ── 「渲染为…」语言手动切换（issue #470 需求 4）───────────────────────────
+// 语言自动判定在真实宿主会误判（banner 只给本地化标签「代码块」），用户需要显式纠正手段：
+// 块内（已是图表卡片时改在卡片头）追加**自有**控件，写块级覆盖 data-dsh-md-render-lang-force，
+// 由 block-lang.ts 的 resolveFenceLangEx 在**最前面**读取。
+// 口径：「用户显式意图 != 猜语言」—— 只在用户点过之后生效，不参与任何自动判定。
+// 成本（已知情并接受）：原本零注入的块现在每块多一个自有节点；入口 hover 才显示，但**必须**
+// 同时支持键盘 focus-within 与触屏常显（@media (hover:none)），只做 hover 手机点不到。
+// 已是卡片时不再注入块内控件。视觉语言复用 ViewToggle 类，不引第二套。
+/** 控件容器类名 + 块级标记（自有 DOM；块级标记兼作 hover 作用域）。 */
+const LANG_SWITCH_CLASS = 'dsh-md-render-lang-switch';
+const LANG_SWITCH_ATTR = 'data-dsh-md-render-lang-switch';
+/** ViewToggle 的既有类名（复用视觉语言，不新增一套按钮样式）。 */
+const LANG_SWITCH_BTN = 'dsh-md-render-mermaid-vt';
+const LANG_SWITCH_GROUP = 'dsh-md-render-mermaid-view-toggle';
+/** 控件已渲染的值（没变就不重建 DOM）。 */
+const langSwitchRendered = new WeakMap();
+function peekFenceLang(block) {
+    const local = fenceLangOf(block);
+    if (local !== undefined)
+        return { lang: local, confirmed: true };
+    const dom = blockLangDomLang(block);
+    return { lang: dom !== '' && LANG_TOKEN_RE.test(dom) ? dom : '', confirmed: false };
+}
+/** 当前有效渲染方式（手动覆盖优先；`'' + confirmed` = 确证无语言）。 */
+function langSwitchValue(block) {
+    const forced = fenceForceOf(block);
+    if (forced !== undefined)
+        return forced;
+    // 已接管的块按**观察到的状态**判定（卡片 host / markdown 容器在），零额外判定。
+    if (mermaidMounts.has(block))
+        return 'mermaid';
+    if (block.querySelector('div.' + TEXT_MD_CLASS) !== null)
+        return 'markdown';
+    const peek = peekFenceLang(block);
+    if (MERMAID_FENCE_LANGS.includes(peek.lang))
+        return 'mermaid';
+    if (TEXT_FENCE_LANGS.includes(peek.lang) || (peek.lang === '' && peek.confirmed))
+        return 'markdown';
+    return 'source';
+}
+/** 该块是否该有块内控件：渲染容器内 / 已是卡片 / 流式块都不管。 */
+function langSwitchEnabled(block) {
+    if (isInsideRenderedMarkdown(block))
+        return false;
+    if (mermaidMounts.has(block))
+        return false;
+    return !(block.closest && block.closest('[data-streaming]'));
+}
+/** 移除块内控件（卡片挂载时调用；卡片头自带另外两项）。 */
+function removeLangSwitch(block) {
+    const group = block.querySelector('div.' + LANG_SWITCH_CLASS);
+    if (group !== null && group.parentNode)
+        group.parentNode.removeChild(group);
+    if (typeof block.removeAttribute === 'function')
+        block.removeAttribute(LANG_SWITCH_ATTR);
+}
+/** 切换渲染方式：写覆盖 -> 拆掉现接管方 -> 重扫重建（幂等）。 */
+function applyLangForce(block, value) {
+    setFenceForce(block, value);
+    clearTextView(block);
+    // 视图属性也必须一起清：否则块停在 markdown 视图，官方内容被自有 CSS 藏住 → 空块。
+    if (typeof block.removeAttribute === 'function')
+        block.removeAttribute(TEXT_VIEW_ATTR);
+    const mounted = mermaidMounts.get(block);
+    if (mounted !== undefined)
+        unmountCard(block, mounted);
+    syncLangSwitch(block);
+    rescanForLangs();
+}
+/** 单个选项按钮（块内版）。 */
+function langSwitchButton(block, option, value) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = value === option.value ? LANG_SWITCH_BTN + ' ' + LANG_SWITCH_BTN + '-active' : LANG_SWITCH_BTN;
+    btn.textContent = option.label;
+    btn.setAttribute('aria-pressed', value === option.value ? 'true' : 'false');
+    btn.addEventListener('click', () => applyLangForce(block, option.value));
+    return btn;
+}
+/** 同步块内「渲染为…」控件（幂等；不该有控件时去掉）。 */
+function syncLangSwitch(block) {
+    if (typeof block.querySelectorAll !== 'function')
+        return;
+    if (!langSwitchEnabled(block)) {
+        removeLangSwitch(block);
+        return;
+    }
+    const value = langSwitchValue(block);
+    const existing = block.querySelector('div.' + LANG_SWITCH_CLASS);
+    if (existing !== null) {
+        if (langSwitchRendered.get(existing) === value)
+            return;
+        if (existing.parentNode)
+            existing.parentNode.removeChild(existing);
+        langSwitchRendered.delete(existing);
+    }
+    const group = document.createElement('div');
+    group.className = LANG_SWITCH_CLASS + ' ' + LANG_SWITCH_GROUP;
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', '渲染为');
+    for (const option of FENCE_FORCE_OPTIONS)
+        group.appendChild(langSwitchButton(block, option, value));
+    block.appendChild(group);
+    langSwitchRendered.set(group, value);
+    block.setAttribute(LANG_SWITCH_ATTR, value);
+}
+/** 扫描 root（自身 / 后代）内的围栏代码块，同步各自的语言控件。 */
+function scanLangSwitches(root) {
+    if (!root || typeof root.querySelectorAll !== 'function')
+        return;
+    if (typeof root.matches === 'function' && root.matches('div.md-code-block'))
+        syncLangSwitch(root);
+    for (const block of root.querySelectorAll('div.md-code-block'))
+        syncLangSwitch(block);
+}
+/** 图表卡片头版「渲染为…」（另外两项；同一份选项表与类名）。 */
+function CardLangSwitch({ onForce }) {
+    return createElement('div', { className: LANG_SWITCH_GROUP, role: 'group', 'aria-label': '渲染为' }, FENCE_FORCE_OPTIONS.filter((option) => option.value !== 'mermaid').map((option) => createElement('button', { type: 'button', className: LANG_SWITCH_BTN, onClick: () => onForce(option.value), 'aria-pressed': false }, createElement('span', null, option.label))));
+}
+exports.LANG_SWITCH_CLASS = LANG_SWITCH_CLASS;
+exports.LANG_SWITCH_ATTR = LANG_SWITCH_ATTR;
+exports.langSwitchValue = langSwitchValue;
+exports.peekFenceLang = peekFenceLang;
+exports.syncLangSwitch = syncLangSwitch;
+exports.scanLangSwitches = scanLangSwitches;
+exports.removeLangSwitch = removeLangSwitch;
+exports.applyLangForce = applyLangForce;
+exports.CardLangSwitch = CardLangSwitch;
+
+    // 共享 DOM 扫描骨架 + 单 MutationObserver 按语言分流
     // ── shared DOM scanner skeleton (dsh-shared/client-parts) ──
 // 单一来源（issue #186 P2）：渲染类插件各自的 MutationObserver 骨架结构等价，收口到这里。
 // 当前唯一消费者是 dsh-md-render（parts/scanner.ts：思考行 / 上下文块 / text 围栏 /
@@ -1519,6 +2645,14 @@ function installDomScanner(options) {
 //      语言集合不重叠；放最后保证「先按语言分流、再决定接管者」的顺序稳定）。
 //
 // 各注入点自身幂等（签名 / WeakSet / mounts Map），scanner 只负责枚举与调用。
+//
+// **每批扫描前先刷新围栏语言索引**（lang-source.ts）：本插件的语言判定主源是 client 侧
+// 会话事件流索引（历史会话 + 冷启动唯一能命中的来源），它按事件源 `revision` 增量维护 ——
+// revision 未变时刷新函数内部直接返回（成本 = 几个属性读）。放在最前：本轮所有块的
+// 语言判定都该看到**同一份**表。取不到会话服务 / 任何异常 → 空表 → 全链路退回原有
+// DOM 契约读法（行为与修复前一致）。
+/** 扫描器持有的宿主 ctx（apply 时传入；只用于按需读会话事件流，见 lang-source.ts）。 */
+let fenceScanContext = null;
 /** 扫描单个节点（含自身）内的全部注入点。 */
 function scanNode(node, round) {
     if (!node || typeof node.querySelectorAll !== 'function')
@@ -1526,6 +2660,9 @@ function scanNode(node, round) {
     // 悬挂 root 清扫：宿主重渲染把我们的容器抹掉时，对应的 React root 必须卸载
     // （否则 root + fiber 树一直活着）。放在最前，先释放再重建。
     sweepDetachedRoots();
+    // 围栏语言表按批刷新（lang-source.ts）：事件源 revision 未变则内部直接返回。
+    // 放在注入点之前：本轮所有块的语言判定共用同一份表（历史会话冷启动靠它命中）。
+    refreshFenceLangIndex(fenceScanContext);
     const el = node;
     applyThinkExpand(el);
     if (typeof el.matches === 'function' && el.matches(CONTEXT_TEXT_SELECTOR))
@@ -1533,28 +2670,61 @@ function scanNode(node, round) {
     scanContextBlocks(el);
     scanTextBlocks(el);
     scanMermaidBlocks(el, round);
+    // 4. 语言手动切换控件（需求 4）—— 最后：mermaid 卡片挂载会决定该块用卡片头还是块内控件。
+    scanLangSwitches(el);
 }
-/** 观察 body；返回观察器 disposer（骨架负责观察配置 / 批次轮次 / disposer）。 */
-function installScanner() {
-    return installDomScanner({
+/** 重扫轮次（语言索引回调专用；与骨架的批次轮次分开计数，避免伪装成同一批）。 */
+let langRescanRound = 0;
+/** 会话滚动容器选择器（与骨架的 rescanSelectors 取同一契约）。 */
+const CONVERSATION_SCROLL_SELECTOR = '[data-conversation-scroll]';
+/**
+ * 语言索引命中（或重试）后的重扫：只扫会话滚动容器，全部注入点幂等（不会重复挂载）。
+ * **容器本身也要算**：querySelectorAll 只找后代，容器若就是扫描根（精简页面 / 测试夹具里
+ * body 即容器）会一条都匹配不到 —— 那会让「命中后重扫」静默失效。
+ */
+function rescanForLangs() {
+    if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function')
+        return;
+    langRescanRound += 1;
+    const roots = [...document.querySelectorAll(CONVERSATION_SCROLL_SELECTOR)];
+    const body = document.body;
+    if (body && typeof body.matches === 'function' && body.matches(CONVERSATION_SCROLL_SELECTOR))
+        roots.push(body);
+    for (const root of roots)
+        scanNode(root, langRescanRound);
+}
+/**
+ * 观察 body；返回观察器 disposer（骨架负责观察配置 / 批次轮次 / disposer）。
+ * `ctx` 只被 lang-source.ts 用来惰性读会话事件流（**刻意不声明 inject**，见该文件头部
+ * 的 R1 实测结论）；不传 / 精简上下文 → 索引恒为空 → 退回原有 DOM 契约读法。
+ */
+function installScanner(ctx) {
+    fenceScanContext = ctx ?? null;
+    const uninstallRescan = installLangRescan(rescanForLangs);
+    const dispose = installDomScanner({
         scan: (node, round) => scanNode(node, round),
         // 兜底重扫目标：会话滚动容器（流式结束后内容补全，不一定以 addedNodes 出现）。
         rescanSelectors: ['[data-conversation-scroll]'],
-        onTeardown: () => teardownMermaid(),
+        onTeardown: () => {
+            teardownMermaid();
+            teardownZoom();
+            teardownLangProbes();
+            resetFenceIndex();
+        },
     });
+    return () => {
+        dispose();
+        uninstallRescan();
+    };
 }
 exports.installScanner = installScanner;
 
-
-    // ── 样式（DSH 语义 token，随 activation 注入）──────────────────
+    // 样式（DSH 语义 token，随 activation 注入）
     "use strict";
 // ── 样式（DSH 语义 token，随 activation 注入）──────────────────────────
-// 只写**本插件自有 DOM** 的样式 + **自有 data-* 标记**作用域下的显隐规则：
-//  - .tzx-md / 注入容器 / 「查看原文」按钮 / 整段复制按钮（md-render 原有）；
-//  - mermaid 卡片全套（dsh-md-render-mermaid-*）+ 块级视图标记驱动的官方 <pre>
-//    隐藏规则（**不用** el.style：硬约束「不对官方元素写 style / class / aria」）；
-//  - 离屏渲染容器（原实现用 host.style.cssText，改为类选择器）。
-// 不覆盖任何官方类名的外观；表格 / 公式 / 代码块高亮样式全部随官方组件自带。
+// 只写**自有 DOM** 的样式 + **自有 data-* 标记**作用域下的显隐规则（注入容器 /「查看原文」/
+// 整段复制 / mermaid 卡片 / 离屏容器）。**不用** el.style：硬约束「不对官方元素写 style /
+// class / aria」；不覆盖任何官方类名的外观（表格 / 公式 / 高亮随官方组件自带）。
 const STYLES = `
 .tzx-md{position:relative;display:flex;flex-direction:column;gap:8px;min-width:0}
 .dsh-md-render-fallback{margin:0;white-space:pre-wrap;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-primary)}
@@ -1581,7 +2751,7 @@ const STYLES = `
 [data-streaming] .dsh-md-render-text-toggle{display:none}
 /* ── mermaid 图表卡片（自有 DOM）── */
 .dsh-md-render-mermaid-host{display:block;min-width:0}
-.md-code-block[data-dsh-md-render-mermaid-view]>pre{display:none}
+.md-code-block[data-dsh-md-render-mermaid-view]>[data-code-block-content]{display:none}
 .dsh-md-render-mermaid-card{display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 12px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2);font:var(--dsw-font-s-14);line-height:22px;color:var(--dsw-alias-label-primary);animation:dsh-md-render-mermaid-card-in 150ms var(--ds-ease-in-out)}
 .dsh-md-render-mermaid-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .dsh-md-render-mermaid-card-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
@@ -1600,17 +2770,32 @@ const STYLES = `
 .dsh-md-render-mermaid-vt svg{display:block;flex:none}
 .dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-md-render-mermaid-vt-active{background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent);color:var(--dsw-alias-accent);font-weight:600}
-.dsh-md-render-mermaid-svg{overflow:auto;max-height:70vh}
+.dsh-md-render-mermaid-svg{position:relative;overflow:auto;max-height:70vh}
+.dsh-md-render-mermaid-svg[data-dsh-md-render-zoom]{overflow:hidden}
+.dsh-md-render-mermaid-canvas{transform-origin:0 0}
 .dsh-md-render-mermaid-svg svg{max-width:100%;height:auto}
 .dsh-md-render-mermaid-code{margin:0;background:var(--dsw-alias-markdown-code-block);border-radius:6px;padding:8px 12px;overflow:auto;font:var(--dsw-font-markdown-code-block-small);white-space:pre-wrap}
 .dsh-md-render-mermaid-loading{display:flex;align-items:center;gap:6px;padding:8px 6px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
 .dsh-md-render-mermaid-loading svg{flex:none;animation:dsh-md-render-mermaid-spin 1s linear infinite}
-.dsh-md-render-mermaid-error{border-radius:8px;background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);padding:8px 10px}
-.dsh-md-render-mermaid-error-head{display:flex;align-items:center;gap:6px}
-.dsh-md-render-mermaid-error-head svg{flex:none;color:var(--dsw-alias-state-error-primary)}
-.dsh-md-render-mermaid-error-title{color:var(--dsw-alias-state-error-primary);font-weight:600}
-.dsh-md-render-mermaid-error-msg{color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-all;margin-top:4px;line-height:1.5}
+/* 失败态：源码是主视觉（第一屏），红横幅降为一行灰字提示（#470 需求 2） */
+.dsh-md-render-mermaid-error{display:flex;flex-direction:column;gap:6px}
+.dsh-md-render-mermaid-error-line{display:flex;align-items:center;gap:6px;font:var(--dsw-font-xxs-12);line-height:20px;color:var(--dsw-alias-label-tertiary)}
+.dsh-md-render-mermaid-error-line svg{flex:none;color:var(--dsw-alias-state-error-primary)}
+.dsh-md-render-mermaid-error-msg{white-space:pre-wrap;word-break:break-all}
 .dsh-md-render-mermaid-retry{margin-left:auto;flex:none}
+/* ── 「渲染为…」语言手动切换控件（需求 4，自有 DOM）──
+   hover 才显示（同整段复制按钮），但必须同时支持键盘 focus-within 与触屏常显（@media
+   hover:none），只做 hover 手机点不到；作用域 = 自有块级标记，不碰官方 class。 */
+.md-code-block[data-dsh-md-render-lang-switch]>.dsh-md-render-lang-switch{display:flex;justify-content:flex-end;margin-top:4px;opacity:0;transition:opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
+.md-code-block[data-dsh-md-render-lang-switch]:hover>.dsh-md-render-lang-switch{opacity:1}
+.md-code-block[data-dsh-md-render-lang-switch]:focus-within>.dsh-md-render-lang-switch{opacity:1}
+@media (hover:none){.md-code-block[data-dsh-md-render-lang-switch]>.dsh-md-render-lang-switch{opacity:1}}
+/* ── 图表缩放 / 全屏（需求 1，自有 DOM）──
+   工具条按钮复用卡片按钮类；全屏走原生 API，不支持（iPhone Safari）降级为卡片内 overlay。 */
+.dsh-md-render-mermaid-zoom{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.dsh-md-render-mermaid-card:fullscreen{max-height:none;height:100%;border-radius:0;padding:12px 16px}
+.dsh-md-render-mermaid-card:fullscreen .dsh-md-render-mermaid-svg{max-height:none}
+.dsh-md-render-mermaid-card[data-dsh-md-render-fs="fallback"]{position:fixed;inset:0;z-index:2147483000;margin:0;max-height:none;border-radius:0;overflow:auto}
 /* ── 离屏渲染容器（引擎渲染失败时的「炸弹图」只落在这里，随容器移除）──
    必须仍在布局树内（display:none / visibility:hidden 会让 mermaid 量不到尺寸）。 */
 .dsh-md-render-offscreen{position:absolute;left:-99999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none}
@@ -1618,8 +2803,7 @@ const STYLES = `
 @keyframes dsh-md-render-mermaid-spin{to{transform:rotate(360deg)}}
 `;
 
-
-    // ── 共享样式注入 / 图标集（dsh-shared/client-parts）─────────────
+    // 共享样式注入 / 图标集（dsh-shared/client-parts）
     // ── shared plugin stylesheet injection (dsh-shared/client-parts) ──
 // 单一来源（issue #186 P2）：把「注入 <style data-<plugin>="styles"> 并随 fiber
 // teardown 卸载」这段逐字相同的样板从渲染插件收口到这里。当前调用方：dsh-md-render
@@ -2003,8 +3187,7 @@ const fileIconByExt = (ext, size = 14) => {
   return spec === undefined ? icon.file(size) : badgeIcon(spec, size)
 }
 
-
-    // ── 设置页：文案 / 样式（i18n）+ 三分组视图 + tab 注册（单 tab）──
+    // 设置页：文案 / 样式（i18n）+ 三分组视图 + tab 注册（单 tab）
     "use strict";
 // ── 设置页文案（i18n）+ 样式 ───────────────────────────────────────────
 // 语言来源两级（都是浏览器全局）：宿主 locale（dsh-client-locale 把当前 UI 语言同步到
@@ -2336,9 +3519,15 @@ function mdRenderBundleConfigView(props) {
     return mdRenderSettingsView();
 }
 
-
-    // ── 插件入口：样式注入 + 扫描器装配 + 设置页 ───────────────────
+    // 插件入口：样式注入 + 扫描器装配 + 设置页
     "use strict";
+// **刻意保持零 inject**（R1 实测，见 lang-source.ts 头部 / 报告）：
+// dsh-md-render 是纯增强插件，硬 inject 在服务缺失时会让 apply **根本不执行** ——
+// 整个 client 半失效（样式 / 设置页 / 全部注入点一起没）。会话事件流（围栏语言索引的
+// 主源）改用 ctx.get('sessions', false) 惰性取：服务在则取到、服务缺则 undefined 不抛、
+// 服务晚于 apply 提供也照样取到（cordis 4 的 ReflectService.get 契约即
+// "without the inject requirement"）。inject:{optional:[...]} 在 cordis 4.0.4 不被支持
+// （实测 apply 不执行），故也不用。
 exports.inject = [];
 exports.apply = function apply(ctx) {
     // 增强功能开关：默认全开；真实配置异步经 GET /md-render/api/config 拉取应用
@@ -2351,7 +3540,10 @@ exports.apply = function apply(ctx) {
     // 早退分支（dsh-file-activity 踩坑：挂在服务判空之后，HMR / 服务缺省时样式会丢）。
     installStyles(ctx, 'data-dsh-md-render', STYLES, 'dsh-md-render: styles');
     // 三个渲染注入点共用**一个** MutationObserver（scanner.ts 按语言分流）。
-    ctx.effect(() => installScanner(), 'dsh-md-render: scanner');
+    // 传 ctx 进去：scanner 每批扫描前用它按需刷新围栏语言索引（lang-source.ts）。
+    // 需求 4 的「刷新后仍记得」：启动时恢复上次的「渲染为…」覆盖（不可用 -> 空表，退回自动判定）。
+    restoreFenceForces();
+    ctx.effect(() => installScanner(ctx), 'dsh-md-render: scanner');
     // 设置页 tab（官方 slots 扩展点，单 tab 三分组）。
     attachSettingsTab(ctx);
 };

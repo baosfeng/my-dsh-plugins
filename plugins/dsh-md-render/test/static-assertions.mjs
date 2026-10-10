@@ -84,6 +84,18 @@ test('client bundle：不对官方元素写 style / class / aria', () => {
   for (const name of attrs) assert.ok(allowed.has(name), 'unexpected setAttribute target: ' + name)
   // 官方 pre 的隐藏改由自有 CSS 规则完成（类选择器），不再写 el.style.display
   assert.equal(CODE.includes('style.display'), false, 'official <pre> is hidden by plugin CSS, not inline style')
+  // 防回归：mermaid 预览态的隐藏必须命中**官方内容容器**。
+  // 官方 CodeBlock 的 DOM 是 .md-code-block > [data-code-block-content] > pre，
+  // 因此 `>pre`（直接子元素）永远匹配不到 —— 曾导致预览态下代码块与图表叠加显示。
+  assert.ok(
+    CODE.includes('.md-code-block[data-dsh-md-render-mermaid-view]>[data-code-block-content]{display:none}'),
+    'mermaid preview hides the official content container',
+  )
+  assert.equal(
+    /\[data-dsh-md-render-mermaid-view\]>pre/.test(CODE),
+    false,
+    'must not target a direct-child <pre> (pre lives inside [data-code-block-content])',
+  )
 })
 
 test('client bundle：单 MutationObserver（合并前两路观察收敛为一路）', () => {

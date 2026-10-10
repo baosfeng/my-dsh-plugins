@@ -1,5 +1,5 @@
 /**
- * dsh-md-render — `/md-render/api` 配置路由（合并后唯一一条配置路径）。
+ * dsh-md-render — `/md-render/api` 配置路由（合并后唯一一条配置路径）+ 语言索引查询分派。
  *
  * 设置页可视化 → 保存 → `PUT /md-render/api/config` → 写回 profile patch 文件
  * （持久化，先合并行内已有键）+ 更新内存（立即生效）：host 半据新值撤销/重注册
@@ -16,8 +16,10 @@
  */
 import { isTrustedApiRequest, readJsonBody, writeError, writeJson } from 'dsh-shared'
 import { normalizeConfigPayload } from '../config.js'
+import { createLangsHandler } from './langs.js'
 import { CONFIG_API_PREFIX } from './paths.js'
 import type { ConfigPatch, MdRenderConfig } from '../config.js'
+import type { LangIndex } from '../lang-index.js'
 import type { DshContext, ServerRequest, ServerResponse } from '../types.js'
 
 /**
@@ -35,7 +37,12 @@ export type OnConfigChange = (next: ConfigPatch) => Promise<void>
  * 插件自身 fiber 被 profile 回收时路由会静默 404（仓库已记录该坑），且重复 apply
  * 不能重复注册（test/registration-idempotent.mjs 钉住）。
  */
-export function registerConfigRoutes(ctx: DshContext, current: MdRenderConfig, onConfigChange: OnConfigChange): void {
+export function registerConfigRoutes(
+  ctx: DshContext,
+  current: MdRenderConfig,
+  onConfigChange: OnConfigChange,
+  langs: LangIndex,
+): void {
   const fence = createFence(ctx)
   const target = residentTarget(ctx)
   const disposers = routeDisposers.get(target) ?? new Map<string, () => void>()
@@ -48,7 +55,9 @@ export function registerConfigRoutes(ctx: DshContext, current: MdRenderConfig, o
         target.webServer?.register({
           kind: 'prefix',
           path: CONFIG_API_PREFIX,
-          handler: apiHandler(fence, current, onConfigChange),
+          // langs（语言索引查询，issue #466）与 config 共用同一前缀与同一信任围栏，
+          // handler 由本文件的 apiHandler 统一分派 —— 不新增第三条路由前缀。
+          handler: apiHandler(fence, current, onConfigChange, createLangsHandler(langs)),
         }),
       'dsh-md-render: /md-render/api routes',
     ) as unknown as () => void,
@@ -76,6 +85,7 @@ function apiHandler(
   fence: (request: ServerRequest) => boolean,
   current: MdRenderConfig,
   onConfigChange: OnConfigChange,
+  langs: (request: ServerRequest, response: ServerResponse) => void,
 ): (request: ServerRequest, response: ServerResponse) => Promise<void> {
   return async (request, response) => {
     if (!fence(request)) {
@@ -87,7 +97,7 @@ function apiHandler(
       ? url.pathname.slice(CONFIG_API_PREFIX.length + 1)
       : undefined
     try {
-      if (await dispatch(method, request, response, current, onConfigChange)) return
+      if (await dispatch(method, request, response, current, onConfigChange, langs)) return
       writeJson(response, 404, { ok: false, error: { message: 'unknown dsh-md-render API method' } })
     } catch (error) {
       writeError(response, error as Error)
@@ -102,7 +112,13 @@ async function dispatch(
   response: ServerResponse,
   current: MdRenderConfig,
   onConfigChange: OnConfigChange,
+  langs: (request: ServerRequest, response: ServerResponse) => void,
 ): Promise<boolean> {
+  // 语言索引查询（只读，GET only）——与配置读写共用前缀、围栏与 404 兜底。
+  if (method === 'langs') {
+    langs(request, response)
+    return true
+  }
   if (method !== 'config') return false
   if (request.method === 'GET') {
     writeJson(response, 200, { ok: true, value: current })

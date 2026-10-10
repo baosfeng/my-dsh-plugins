@@ -13,6 +13,7 @@
 ## 功能（只保留真增量）
 
 - **text 围栏块按 markdown 渲染**：语言标记为 `text` / `plaintext` / `txt` 的围栏块，块内内容交给官方渲染器按 markdown 渲染，每块带**独立**的「查看原文」切换；其他标记（`js` / `ts` / `json` / `bash` …）与无标记块**完全不变**。
+- **围栏语言识别（双源互补 + DOM 兜底）**：主源是 **client 侧的会话事件流索引** —— 从 `ctx.sessions.binding(id).eventSource` 的原始 Session 事件里取 markdown **原文**按内容哈希建表，**天然含历史**，因此**冷启动 / 重启后打开历史会话也命中**，且命中即**零 RPC**；未命中再回落 host 半的**实时围栏语言索引**（订阅 `session/event`，按块内容哈希批量查询）与 **DOM 契约**（`code.language-*` → banner 语言原名，`js` / `json` / `bash` 等零额外请求）。识别不出就保持官方默认（绝不误伤「无语言」块）。
 - **上下文注入块渲染**：宿主把上下文注入正文（**子 agent 回传消息**、AGENTS.md 等）渲染为纯文本 `pre[data-context-text]`；本插件在 DOM 层把这类块交给官方渲染器，原文节点保留并置 `hidden`。
 - **mermaid 图表卡片**：`mermaid` / `mmd` 围栏块渲染为图表卡片（预览 / 代码切换、导出 PNG / SVG）；渲染失败时卡片显示错误原因 + 重试 + **原始源码**（绝不静默丢内容）。引擎 `assets/mermaid-10.9.3.min.js` 由 host 半静态托管，client 首次渲染时按需 fetch，**不内联进 bundle**。
 - **思考块默认展开**：对官方折叠行派发**一次真实 click**，展开动画 / 结构 / a11y 全走官方；用户手动折叠后不再干预。
@@ -44,9 +45,12 @@
 | 路径                                        | 方法       | 用途                                |
 | ------------------------------------------- | ---------- | ----------------------------------- |
 | `/md-render/api/config`                     | GET / PUT  | 配置读写（归一 + 合并行内已有键后落盘） |
+| `/md-render/api/langs?h=<hash>&h=<hash>…`   | GET        | 围栏语言索引查询（内容哈希 → 语言；单次 ≤64 个哈希） |
 | `/md-render/assets/mermaid-10.9.3.min.js`   | GET / HEAD | mermaid 引擎静态资源（ETag / 304 / 405） |
 
-两条都是包内 host↔client 私有契约（host 与 client 同包同版本发布，无仓库外消费者），路径来自单一真源 `src/routes/paths.ts`、构建期注入 client 产物，由 `test/route-single-source.mjs` 钉住两侧一致。请求先过 loopback 信任围栏（非本机 → 403）。
+三条都是包内 host↔client 私有契约（host 与 client 同包同版本发布，无仓库外消费者），路径来自单一真源 `src/routes/paths.ts`、构建期注入 client 产物，由 `test/route-single-source.mjs` 钉住两侧一致。请求先过 loopback 信任围栏（非本机 → 403）；`langs` 与 `config` 共用 `/md-render/api` 前缀（**不新增第三条路由前缀**）。
+
+`GET /md-render/api/langs` 的响应形如 `{ ok: true, value: { "<hash>": "text" } }`：**只含命中的哈希**（查不到就是保持官方默认）；非法哈希忽略、超上限截断、非 GET → 405。
 
 ## 破坏性变更与迁移
 
@@ -100,7 +104,15 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 
 ## 已知限制
 
-- **围栏语言识别**只用官方 DOM 契约（`code.language-xxx` → banner infostring），**不读 React fiber 私有属性**；两者都取不到就保持宿主原样（不报错、不改 DOM）。
+- **围栏语言识别**（双源互补 + DOM 兜底，**不读 React fiber 私有属性**）：
+  1. **client 侧会话事件流索引（主源）**：读 `ctx.sessions.binding(id).eventSource` 的原始 Session 事件（`assistant/message.data.message.content[].text` / `user/message.data.content[].text`，含 `reasoning`，只取 `surfaceOp === 'append'`）解析围栏块，按「规范化代码内容哈希 → 语言」建表；DOM 侧按块 `<pre>.textContent` 算同一哈希查表。**该窗口含历史 → 冷启动 / 重启后打开历史会话也能命中**（host 索引为空时的唯一来源），命中即 **零 RPC**；
+  2. **host 半实时语言索引（兜底）**：host 订阅 `session/event` 解析消息 markdown 原文，按「围栏块内容哈希 → 语言」建**有界**索引（2000 条 FIFO、只登记 `text` / `plaintext` / `txt` / `mermaid` / `mmd`、**零磁盘 IO**），client 半按块 `<code>` 内容哈希经 `GET /md-render/api/langs` 批量查询（同一次扫描合成一次请求、结果有缓存、未命中最多重试 2 次后放弃）。**它只覆盖插件进程存活期间产生的消息**（不读历史）；
+  3. **DOM 契约（兜底）**：`code.language-xxx` → banner infostring。官方只在**空**围栏分支写 `language-*`，banner 也只对 shiki **认识**的标记显示语言原名，其余显示本地化标签「代码块」。
+  - 三者都拿不到就**不接管**（保持官方默认，不报错、不改 DOM）；无语言围栏与目标语言之外的块**绝不误伤**。
+  - 主源只覆盖会话事件源**已加载的窗口**：`hasMore` 为真时更早历史里的块没有语言来源 → 不接管（有意降级，宁可不接管也不猜）。同哈希多候选按 DOM 文档序 FIFO，**候选互不相同且 DOM 内同哈希块数与候选数对不上 → 整块放弃**。
+  - 「DOM 给的是不是真实语言名」按 **ASCII 语言 token** 判定：英文界面下标签 `Code` 与语言名同形 → 这类块不查索引（退化为官方默认，**不会误伤**）。
+  - 查表只在块**稳定后**（`[data-streaming]` 门控 + 400ms 稳定窗口）发生；会话服务取不到 / 请求失败 / 无 `fetch` 一律静默降级为下一级来源。
+- **语言索引的服务依赖**：用 `ctx.get('sessions', false)` **惰性**取会话服务（cordis 4 的 `ReflectService.get` 契约即「read a service without the inject requirement」，与设置页取 `slots` 同款写法），**刻意不声明 `inject: ['sessions']`** —— 硬 inject 在服务缺失时会让整个 client 半**根本不 apply**（连样式与设置页一起失效）。取不到 / 抛错 / 契约变化一律退回空表与下一级来源。**零新增硬依赖。**
 - **官方组件不可用**（极旧或裁剪宿主）：`MarkdownView` 落 `<pre>` 兜底；注入点保持宿主纯文本渲染。
 - **单块超长**保持宿主原样：text 围栏块 > 10 万字符、上下文注入块 > 20 万字符、mermaid 源码 > 5 万字符。
 - **表格容错只覆盖上述两种写法**：纯空格分隔、缺分隔行等「不是表格」的写法不会渲染为表格。

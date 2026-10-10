@@ -21,6 +21,14 @@ export interface DshContext {
   systemPrompt?: SystemPromptService
   /** 日志器。 */
   logger?: Logger
+  /** 常驻 root fiber（profile 插件自身上下文会被回收，注册监听/路由必须落到 root）。 */
+  root?: DshContext
+  /**
+   * 订阅事件（cordis）。**profile 插件必须注册到 `ctx.root ?? ctx` 并带
+   * `{ global: true }`** —— 注册在插件自身 fiber 上的监听器会被 loader 静默回收
+   * （事件 0 触发、无任何报错，见 docs/踩坑/README.md）。返回 disposer。
+   */
+  on?: (event: string, handler: (...args: unknown[]) => void, options?: { global?: boolean }) => () => void
 }
 
 /** webServer 服务（HTTP 路由注册）。 */

@@ -1,29 +1,15 @@
-// ── text / plaintext / txt 围栏块按 markdown 渲染 ────────────────────
-// 模型有时把**实际是 markdown 的内容**（标题 / 列表 / 表格 / 链接）用
-// \`\`\`text 围起来，宿主官方 CodeBlock（ui-primitives）按等宽代码块原样
-// 显示就丢掉了排版——官方不接管这类块，所以这是本插件的真增量。
-// 本模块在 DOM 层拦截这类块：块内文本交给**官方 MarkdownText**（经
-// react-dom/client 挂到我们插入的容器里）渲染，表格 / 公式 / 代码块能力与
-// 宿主消息完全一致（同一渲染器），并为**每个块**挂独立的「查看原文」切换。
-// 口径（需求方已确认，不做内容启发式判定）：语言标记 ∈ {text, plaintext,
-// txt} 一律渲染；其他标记（js / ts / json / bash …）与无标记的块**完全
-// 不触碰**。
-// 形态照 dsh-mermaid-render 的「拦截特定语言代码块 → 换渲染形态 + 视图
-// 切换」先例：宿主内容容器保持原位（只按视图隐藏），渲染容器与切换按钮
-// 追加在块内，视图状态写在块属性 data-dsh-md-render-text-view 上（每块
-// 独立、可来回切）。
-// 语言与源码来源（只用官方 DOM 契约，**不读 React fiber 私有属性**）：块是
-// div.md-code-block；语言取 code.language-xxx（官方空围栏分支与旧契约 DOM）→
-// banner（data-code-block-banner）首个子元素文本（CodeBlock 用它显示 infostring）。
-// 两者都取不到就不接管 —— 保持官方代码块形态（绝不猜语言）。
-// 流式口径沿用本插件既有策略（scanner.ts 的 [data-streaming] 门控 +
-// 属性移除触发兜底重扫）：流式中的块跳过，稳定后再渲染——不闪断、不重复
-// 挂载；幂等靠块上的签名（语言 + 长度 + djb2 哈希，哈希复用
-// context-markdown.ts 的 contextHash——同一 factory 作用域），签名变化
-// （流式补写 / 宿主重渲染）才重建，宿主冲掉容器后重扫自愈。
+// ── text / plaintext / txt / md 围栏块按 markdown 渲染 ────────────────
+// 模型常把**实际是 markdown 的内容**（标题 / 列表 / 表格 / 链接）用 ```text 围起来，宿主官方
+// CodeBlock 按等宽代码块原样显示就丢掉了排版 —— 官方不接管这类块，所以这是本插件的真增量。
+// 做法：块内文本交给**官方 MarkdownText**（经 react-dom/client 挂到我们插入的容器里）渲染，
+// 表格 / 公式 / 代码块能力与宿主消息完全一致（同一渲染器），每块独立「查看原文」切换；宿主
+// 内容容器保持原位（只按视图隐藏），视图状态写在块属性 data-dsh-md-render-text-view 上。
+// 语言判定收敛到 block-lang.ts 的 **resolveFenceLangEx**（不读 React fiber 私有属性）；它带出
+// 的 `confirmed` 决定「确证无语言」能否兜底（需求 3）。流式块跳过（scanner 的 [data-streaming]
+// 门控 + 属性移除兜底重扫），稳定后再渲染；幂等靠块上的签名（模式 + 长度 + djb2），变化才重建。
 
 /** 触发 markdown 渲染的围栏语言标记（一律渲染，不做内容判定）。 */
-const TEXT_FENCE_LANGS: readonly string[] = ['text', 'plaintext', 'txt']
+const TEXT_FENCE_LANGS: readonly string[] = ['text', 'plaintext', 'txt', 'md', 'markdown']
 /** 视图状态标记（写在 md-code-block 上，每块独立）：markdown | source。 */
 const TEXT_VIEW_ATTR = 'data-dsh-md-render-text-view'
 /** 幂等签名标记（写在 md-code-block 上）。 */
@@ -36,33 +22,18 @@ const TEXT_TOGGLE_CLASS = 'dsh-md-render-text-toggle'
 const TEXT_VIEW_LABELS: Record<string, string> = { markdown: '查看原文', source: '查看渲染' }
 /** 单块渲染上限（字符）；超长块保持原代码块，避免单块渲染卡顿。 */
 const MAX_TEXT_FENCE_CHARS = 100000
-/** 官方空围栏 / 旧契约 DOM 的 code.language-xxx（无则 ''）。 */
-function textFenceClassLang(block: Element): string {
-  const code = block.querySelector('code')
-  const className = code !== null && typeof code.className === 'string' ? code.className : ''
-  const m = className.match(/language-([A-Za-z0-9_+-]+)/)
-  return m ? m[1].toLowerCase() : ''
-}
 
-/** banner infostring（官方 CodeBlock 的 data-code-block-banner 首个子元素）。 */
-function textFenceBannerLang(block: Element): string {
-  const banner = block.querySelector('[data-code-block-banner]')
-  const info = banner !== null && banner.firstElementChild ? banner.firstElementChild.textContent : ''
-  return String(info ?? '')
-    .trim()
-    .toLowerCase()
-}
-
-/** 块的围栏语言（code.language-* → banner infostring；非 text/plaintext/txt 的 → 空串）。
- *
- *  **不读 React fiber 私有属性**（__reactFiber$ / memoizedProps）：那是 React 内部实现，
- *  宿主升级即静默失效。只用官方 DOM 契约的降级链 —— 官方空围栏分支的
- *  code.language-xxx 与 CodeBlock banner 的 infostring。两者都取不到就不接管
- *  （保持官方代码块形态），绝不猜语言。 */
-function textFenceLang(block: Element): { lang: string } {
-  const candidates = [textFenceClassLang(block), textFenceBannerLang(block)]
-  const lang = candidates.find((value) => TEXT_FENCE_LANGS.includes(value)) ?? ''
-  return { lang }
+/**
+/**
+ * 块的围栏语言（**唯一来源** = block-lang.ts 的 resolveFenceLangEx；不读 React fiber）。
+ * **必须在这里过滤到本文件接管的语言**：resolveFenceLangEx 会把认得的其它语言原样返回，
+ * 不在此收口就会把普通代码块也 markdown 化（回归）。
+ */
+function textFenceTarget(block: Element): { lang: string; fallback: boolean } {
+  const result = resolveFenceLangEx(block)
+  if (TEXT_FENCE_LANGS.includes(result.lang)) return { lang: result.lang, fallback: false }
+  if (result.lang === '' && result.confirmed) return { lang: '', fallback: true }
+  return { lang: '', fallback: false }
 }
 
 /** 块源码：官方 <pre> 的文本（官方 display 语义：去掉一个尾部换行）。 */
@@ -72,13 +43,13 @@ function textFenceSource(block: Element): string {
   return text.endsWith('\n') ? text.slice(0, -1) : text
 }
 
-/** 取块的源码与签名素材（非目标语言 / 空内容 / 超长 → null）。 */
-function textFenceBody(block: Element): { lang: string; text: string } | null {
-  const { lang } = textFenceLang(block)
-  if (lang === '') return null
+/** 取源码与签名素材（非目标语言 / 识别失败 / 空 / 超长 -> null）。 */
+function textFenceBody(block: Element): { lang: string; text: string; fallback: boolean } | null {
+  const target = textFenceTarget(block)
+  if (target.lang === '' && !target.fallback) return null
   const text = textFenceSource(block)
   if (!text.trim() || text.length > MAX_TEXT_FENCE_CHARS) return null
-  return { lang, text }
+  return { lang: target.lang, text, fallback: target.fallback }
 }
 
 /** 块是否仍在流式消息里（祖先带 [data-streaming]，与 scanner 同一口径）。
@@ -126,20 +97,29 @@ function textToggleButton(block: Element, view: string): Element {
 }
 
 /**
- * 应用（幂等）：把 text / plaintext / txt 块的内容交给官方渲染器渲染 +
- * 挂切换按钮。开关关闭 / 官方组件不可用 / 流式中 / 非目标语言 / 内容为空
- * 或超长 / 签名未变 → 不动 DOM。
+/** 前置门控：开关关闭 / 官方组件不可用 / 流式块 / 本插件渲染容器内的块（防递归重建）。 */
+function textFenceSkip(block: Element): boolean {
+  if (!renderOptions.markdown.textFenceMarkdown) return true
+  if (!officialMarkdownAvailable()) return true
+  if (isTextFenceStreaming(block)) return true
+  return !!(block.closest && block.closest('div.' + TEXT_MD_CLASS))
+}
+
+/** 幂等判定：容器在且签名未变 → 本轮不必重建。 */
+function textMarkdownSettled(block: Element, signature: string): boolean {
+  return textMarkdownBody(block) !== null && block.getAttribute(TEXT_SIG_ATTR) === signature
+}
+
+/**
+ * 应用（幂等）：把 text / plaintext / txt / md 块的内容交给官方渲染器渲染 + 挂切换按钮。
+ * 门控 / 非目标语言 / 内容为空或超长 / 签名未变 → 不动 DOM（见 textFenceSkip / textFenceBody）。
  */
 function applyTextMarkdown(block: Element): void {
-  if (!renderOptions.markdown.textFenceMarkdown) return
-  if (!officialMarkdownAvailable()) return
-  if (isTextFenceStreaming(block)) return
-  // 本插件渲染容器内的块不再二次接管（嵌套 \`\`\`text 保持代码块形态，避免递归重建）。
-  if (block.closest && block.closest('div.' + TEXT_MD_CLASS)) return
+  if (textFenceSkip(block)) return
   const src = textFenceBody(block)
   if (src === null) return
-  const signature = src.lang + ':' + src.text.length + ':' + contextHash(src.text)
-  if (textMarkdownBody(block) !== null && block.getAttribute(TEXT_SIG_ATTR) === signature) return
+  const signature = (src.fallback ? '~' : src.lang) + ':' + src.text.length + ':' + contextHash(src.text)
+  if (textMarkdownSettled(block, signature)) return
   clearTextView(block)
   const body = document.createElement('div')
   body.className = 'tzx-md ' + TEXT_MD_CLASS
@@ -163,6 +143,8 @@ function scanTextBlocks(root: Element): void {
 
 exports.TEXT_FENCE_LANGS = TEXT_FENCE_LANGS
 exports.MAX_TEXT_FENCE_CHARS = MAX_TEXT_FENCE_CHARS
-exports.textFenceLang = textFenceLang
+exports.TEXT_VIEW_ATTR = TEXT_VIEW_ATTR
+exports.TEXT_TOGGLE_CLASS = TEXT_TOGGLE_CLASS
+exports.textFenceTarget = textFenceTarget
 exports.applyTextMarkdown = applyTextMarkdown
 exports.scanTextBlocks = scanTextBlocks

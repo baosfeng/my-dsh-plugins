@@ -183,6 +183,17 @@ export function makeElement(tag, attrs = {}) {
   return el
 }
 
+/** 会话级存储桩（需求 4「刷新后仍记得」的持久化面；真实浏览器由 sessionStorage 提供）。 */
+function createSessionStorageStub() {
+  const map = new Map()
+  return {
+    _map: map,
+    getItem: (key) => (map.has(String(key)) ? map.get(String(key)) : null),
+    setItem: (key, value) => void map.set(String(key), String(value)),
+    removeItem: (key) => void map.delete(String(key)),
+  }
+}
+
 /** 造一个假页面（document / window / MutationObserver 记录器）。 */
 export function createPage(body = makeElement('body')) {
   const document = {
@@ -192,9 +203,14 @@ export function createPage(body = makeElement('body')) {
     createElementNS: (_ns, tag) => makeElement(tag),
     createTextNode: (text) => ({ nodeType: 3, textContent: String(text), parentNode: null }),
     createDocumentFragment: () => makeElement('fragment'),
+    querySelector: (sel) => body.querySelector(sel),
     querySelectorAll: (sel) => body.querySelectorAll(sel),
   }
-  return { document, window: { location: { href: 'http://127.0.0.1:3080/app', search: '' } }, observers: [] }
+  const window = {
+    location: { href: 'http://127.0.0.1:3080/app', search: '' },
+    sessionStorage: createSessionStorageStub(),
+  }
+  return { document, window, observers: [] }
 }
 
 /** 安装假全局（每个测试文件调用一次）。 */
@@ -366,4 +382,48 @@ export function makeContextPre(text) {
   const pre = makeElement('pre', { 'data-context-text': 'true' })
   pre.textContent = text
   return pre
+}
+
+/**
+ * 语言索引查询桩（issue #466）：把 host 半**真实的**语言索引接到 client 半的 fetch 上。
+ *
+ * 测试直接传 `lib/lang-index.js` 的 `createLangIndex()` 实例 —— 桩里不放任何「内容 → 语言」
+ * 的假答案，哈希算法与查表语义都走真实现，避免桩与真实现漂移（client 只认
+ * `GET /md-render/api/langs?h=…` 的 `{ ok, value }` 契约）。
+ *
+ * @param {{ lookup: (hashes: string[]) => Record<string, string> }} index host 半索引实例
+ * @param {{ fail?: boolean }} [options] fail = 让所有请求失败（验证静默降级）
+ * @returns {{ calls: string[], langCalls: () => string[], restore: () => void }}
+ */
+export function installLangFetchStub(index, options = {}) {
+  const original = globalThis.fetch
+  const calls = []
+  globalThis.fetch = (url) => {
+    const href = String(url)
+    calls.push(href)
+    if (options.fail === true) return Promise.reject(new Error('offline'))
+    if (href.includes('/config')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, value: {} }) })
+    }
+    const hashes = new URL(href, 'http://127.0.0.1:3080').searchParams.getAll('h')
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, value: index.lookup(hashes) }) })
+  }
+  return {
+    calls,
+    langCalls: () => calls.filter((href) => href.includes('/langs')),
+    restore() {
+      if (original === undefined) delete globalThis.fetch
+      else globalThis.fetch = original
+    },
+  }
+}
+
+/**
+ * 造一个**真实宿主形态**的代码块（issue #466 实测，宿主 0.2.0-rc.2）：
+ * banner 只显示本地化标签「代码块」（shiki 不认识 text / mermaid 时走
+ * `i8(lang) ? lang : labels.codeLabel`），`<code>` **没有** language-* class
+ * （官方只在空围栏分支写）。它与「无语言块」逐字段完全相同 —— 纯 DOM 无法区分。
+ */
+export function makeRealHostCodeBlock({ code, label = '代码块', blockAttrs = {} } = {}) {
+  return makeCodeBlock({ lang: label, code, fiber: false, blockAttrs })
 }

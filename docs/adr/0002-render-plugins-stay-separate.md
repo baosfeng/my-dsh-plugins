@@ -1,10 +1,12 @@
 ---
 title: ADR-0002：渲染插件保持独立，改走内部共享（不合并）
 description: 记录「思考/图表/markdown 渲染插件是否合并」的决策——下载粒度与依赖扇出决定不合并，重复 UI 样板收口到内部共享
-status: accepted
+status: superseded by #463
 ---
 
 # ADR-0002：渲染插件保持独立，改走内部共享（不合并）
+
+> **已被取代**（superseded）：本决策「三者不合并」已被 [#463](https://github.com/baosfeng/my-dsh-plugins/issues/463) 反转——落地 commit `3b3502d` 把 `dsh-mermaid-render` / `dsh-think-zh-expand` 合并进 `dsh-md-render` 0.4.0（两个旧包下线）。以下正文为决策史料，保留原样。
 
 ## 背景
 

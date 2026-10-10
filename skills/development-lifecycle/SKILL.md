@@ -1,6 +1,6 @@
 ---
 name: development-lifecycle
-description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）真正做出来时——需求登记 → 确认与拆解 → TDD 开发 → 验证 → 提交 → 发版 → 文档 → 收尾的端到端流程编排与门禁把关。触发场景："实现 issue #N""开发/实现这个功能""改一下 <插件>""这个需求怎么落地""下一步该干什么""准备发版"。本 skill 只负责阶段编排、门禁与"该找谁"（owner skill），不重复各阶段细节。
+description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）真正做出来时——需求登记 → 确认与拆解 → 开发（先实现后测试）→ 验证 → 提交 → 发版 → 文档 → 收尾的端到端流程编排与门禁把关。触发场景："实现 issue #N""开发/实现这个功能""改一下 <插件>""这个需求怎么落地""下一步该干什么""准备发版"。本 skill 只负责阶段编排、门禁与"该找谁"（owner skill），不重复各阶段细节。
 ---
 
 # 需求 → 发版全流程（development-lifecycle）
@@ -15,7 +15,7 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 | --- | ---------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
 | 0   | 需求登记   | 口头想法 → 规范 issue（背景/方案/验收）              | `dsh-github-triage`（需求登记节）                                                                      | 有 issue 编号 + 可勾选验收标准                      |
 | 1   | 确认与拆解 | 定位模块与相关 issue、定验收标准、定影响面、拆子任务 | 本 skill + `dsh-plugin-development`                                                                    | issue 验收标准明确；影响面（改哪些插件/文档）清楚   |
-| 2   | 开发       | 先写失败测试（RED）→ 最简实现（GREEN）→ 重构         | `.reasonix/skills/testing-standards` · `coding-standards` · `quality-gates` · `dsh-plugin-development` | RED 记录可见 + `cd plugins/<name> && npm test` 全绿 |
+| 2   | 开发       | 先实现跑通主流程 → 冒烟确认可用 → 再补测试（正常/边界/异常） | `coding-standards` · `quality-gates` · `dsh-plugin-development` · 全局 `leader-ops` §八 | 冒烟命令输出可见 + `cd plugins/<name> && npm test` 全绿 |
 | 3   | 验证       | 选测试层级 → 全量校验 →（真实环境自测由用户本人做）  | `plugin-test` + `verifying-dsh-plugins`                                                                | issue 验收标准逐条回归                              |
 | 4   | 提交       | 提交信息规范 + 提交前本地校验                        | `.reasonix/skills/commit-standards`                                                                    | `node scripts/verify-local.mjs --fast` 通过         |
 | 5   | 发版       | bump + CHANGELOG + 门禁 + tag/Release/npm            | `skills/plugin-release/` + `node scripts/release.mjs`                                                  | 3c 人工自测确认（`--confirm-manual-tested`）       |
@@ -32,7 +32,7 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 1. **找模块与需求**：需求以 **GitHub issue** 为准（模块定位见 `docs/<模块>/概述.md`）；**回归基准 = 该插件测试套件 + issue 验收标准**。
 2. **确认范围**：本次涉及哪些需求条目、可能连带影响哪些**易碎需求**（重启恢复 / 会话隔离 / 持久化不丢 / 数据不串）——易碎项必须有专门测试断言。
 3. **定影响面**：改动在 `plugins/<name>/**`（只跑该插件与依赖方）还是 `plugins/dsh-shared/**`、`scripts/**`（安全退化为全量）——裁剪规则见 `docs/开发指南/构建与测试.md`「`--fast` 的范围裁剪规则」。
-4. **拆解与派发**：可独立任务（开发/修复/验证/排查/文档）优先派子 agent，并行上限 3；失败用 `send_message` 续接原 agent（`AGENTS.md` 协作原则 4–6）。
+4. **拆解与派发**：拆子任务、并行数量、失败续接、自执行边界 → 全局 `leader-ops` §一 / §二 / §九 + `AGENTS.md` 协作原则 4–6；本仓库按 issue 编号升序推进。
 5. **只有架构级 / 破坏性 / 公开 API 变更**才事前问用户，且问一次就够；其余自主决策（原则 1）。
 
 ## 2. 开发
@@ -40,14 +40,14 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 | 事项                                                         | 找谁 / 命令                                                                              |
 | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
 | 插件形态、目录结构、client bundle 格式、命名规范             | `dsh-plugin-development`（仓库内插件）· `plugin-write`（外部插件/命名注册表）            |
-| TDD：先写失败测试，亲眼看到 RED 再写实现                     | `.reasonix/skills/testing-standards/SKILL.md`                                            |
+| 开发顺序：先实现、后测试（全局 `leader-ops` §八）             | `plugin-test` skill（测试层级选择）                                                     |
 | 交付质量门禁（覆盖率/复杂度/大小/依赖/变异/防复发） | `quality-gates` skill + `.reasonix/skills/quality-gates/SKILL.md`（阈值以该 skill 为准） |
 | 编码、注释、异常处理                                         | `.reasonix/skills/coding-standards/SKILL.md`                                             |
 | 工程原则、错误日志规范、发布检查清单                         | `.reasonix/skills/engineering-standards/SKILL.md`                                        |
 | 持久化 / 事件监听 / 轮询 / 后台任务                          | `skills/resource-budget-review/`（五维资源预算未评估不得声称完成）                       |
 | 单点测试                                                     | `cd plugins/<name> && npm test`                                                          |
 
-- **没有失败测试，就不写一行生产代码**；新增功能必须补测试并同步 issue 验收标准（禁止只改代码不补测试）。
+- **开发顺序服从全局 `leader-ops` §八「先实现，后测试」**：先把流程跑通、冒烟确认可用，再补测试用例（正常/边界/异常）。**唯一例外**：修 bug 必须补一个能复现该 bug 的测试；**可靠性类插件**（dsh-task-reliability 等）的防回归要求不变（先写能复现原 bug 的测试再修）。新增功能必须补测试并同步 issue 验收标准（禁止只改代码不补测试）。
 - 命令一律设超时：快速命令 ≤15s，长任务后台跑（`AGENTS.md` 强制规则）。
 
 ## 3. 验证
@@ -71,7 +71,7 @@ npm run check:gate-parity                      # 本地 ↔ CI 门禁覆盖一�
 - 信息格式 `<type>(<scope>): <描述>`、type 分类、一次提交一个功能 → `.reasonix/skills/commit-standards/SKILL.md`。
 - 提交前：`node scripts/verify-local.mjs --fast`（要 CI 等价用 `npm run verify`）；`pre-commit` 由 lint-staged 增量跑 `eslint --fix` + `prettier --write`。
 - 提交/推送由 leader 自主决策（`AGENTS.md` 强制规则）；**流程执行者不擅自 commit/push**，除非被明确要求。
-- **效率与流水线（issue #240）**：小步提交、**早推 PR**（让 CI 与本地后续工作并行，不要攒大 PR）；fork 池用 `node scripts/fork-pool.mjs create <编号>`（自动装 hooks），推送前用 `node scripts/fork-pool.mjs check` 自检（不依赖 hook，会真的跑 `verify-local --fast`）。原则、实测基线与取舍见 [工程效率规范](../../docs/开发指南/工程效率规范.md)。
+- **效率与流水线**：**早推 PR**（让 CI 与本地后续工作并行，不要攒大 PR）；fork 池用 `node scripts/fork-pool.mjs create <编号>`（自动装 hooks），推送前用 `node scripts/fork-pool.mjs check` 自检（不依赖 hook，会真的跑 `verify-local --fast`）。原则、实测基线与取舍见 [工程效率规范](../../docs/开发指南/工程效率规范.md)。
 
 ## 5. 发版
 
@@ -150,7 +150,7 @@ node scripts/release.mjs <插件名> --bump patch --push --confirm-manual-tested
 | `skills/plugin-release/SKILL.md`                                                                 | 发布轨、打包、语义门禁、回滚                                       |
 | `docs/官方文档/索引.md`                                                                          | 官方 docs 分类导航（**与官方冲突时以官方 docs + 本机运行包为准**） |
 | `.reasonix/skills/quality-gates/SKILL.md`                                                        | 交付质量门禁（强制）                                               |
-| `.reasonix/skills/testing-standards/SKILL.md`                                                    | TDD Red→Green→Refactor                                             |
+| 全局 `leader-ops` §八                                                                           | 开发顺序：先实现、后测试（唯一例外：修 bug 必须补复现测试）        |
 | `.reasonix/skills/commit-standards/SKILL.md`                                                     | 提交信息格式与确认流程                                             |
 | `.reasonix/skills/coding-standards/SKILL.md` · `.reasonix/skills/engineering-standards/SKILL.md` | 代码规范 · 工程规范                                                |
 | `docs/开发指南/构建与测试.md`                                                                    | verify-local、需求回归                                             |

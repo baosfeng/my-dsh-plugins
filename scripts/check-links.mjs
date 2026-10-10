@@ -104,6 +104,7 @@ export const EXTERNAL_SKILLS = [
   'development-lifecycle',
   'engineering-standards',
   'github-ops',
+  'leader-ops',
   'npm-ops',
   'quality-gates',
   'scan-to-docs',

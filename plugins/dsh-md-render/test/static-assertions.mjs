@@ -84,18 +84,22 @@ test('client bundle：不对官方元素写 style / class / aria', () => {
   for (const name of attrs) assert.ok(allowed.has(name), 'unexpected setAttribute target: ' + name)
   // 官方 pre 的隐藏改由自有 CSS 规则完成（类选择器），不再写 el.style.display
   assert.equal(CODE.includes('style.display'), false, 'official <pre> is hidden by plugin CSS, not inline style')
-  // 防回归：mermaid 预览态的隐藏必须命中**官方内容容器**。
-  // 官方 CodeBlock 的 DOM 是 .md-code-block > [data-code-block-content] > pre，
-  // 因此 `>pre`（直接子元素）永远匹配不到 —— 曾导致预览态下代码块与图表叠加显示。
-  assert.ok(
-    CODE.includes('.md-code-block[data-dsh-md-render-mermaid-view]>[data-code-block-content]{display:none}'),
-    'mermaid preview hides the official content container',
-  )
-  assert.equal(
-    /\[data-dsh-md-render-mermaid-view\]>pre/.test(CODE),
-    false,
-    'must not target a direct-child <pre> (pre lives inside [data-code-block-content])',
-  )
+  // 防回归：接管态必须隐藏**官方全部直接子元素**（banner 容器 + 内容容器），只留自有 DOM。
+  // 两处历史坑：
+  //  ① `>pre` 直接子选择器永远匹配不到（pre 在 [data-code-block-content] 内）→ 代码块与图表叠加；
+  //  ② 只隐藏内容容器、漏了 banner 容器 → 卡片上方残留 42px 的「代码块」标签行。
+  // 视图值限定保证：切回「查看原文 / 源码」时规则不再匹配，官方原样恢复。
+  for (const view of ['data-dsh-md-render-mermaid-view', 'data-dsh-md-render-text-view="markdown"']) {
+    assert.ok(
+      CODE.includes(`.md-code-block[${view}]>:not([class*=dsh-md-render]):not(.tzx-md){display:none}`),
+      `${view}: hides every official child (banner + content), keeping only plugin-owned nodes`,
+    )
+    assert.equal(
+      CODE.includes(`[${view}]>pre`),
+      false,
+      `${view}: must not target a direct-child <pre> (pre lives inside [data-code-block-content])`,
+    )
+  }
 })
 
 test('client bundle：单 MutationObserver（合并前两路观察收敛为一路）', () => {

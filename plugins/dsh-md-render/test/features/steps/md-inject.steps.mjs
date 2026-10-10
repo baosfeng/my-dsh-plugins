@@ -477,10 +477,15 @@ function panzoomStub(calls) {
 Given('一个图表卡片已渲染出 SVG', function () {
   this.block = makeCodeBlock({ lang: 'mermaid', code: 'flowchart TD\n A --> B', fiber: false })
   const host = makeElement('div', { className: 'dsh-md-render-mermaid-host', 'data-dsh-md-render-mermaid': ENTRY })
+  this.host = host
   this.card = makeElement('div', { className: 'dsh-md-render-mermaid-card' })
   this.card.requestFullscreen = () => Promise.resolve()
   this.frame = makeElement('div', { className: 'dsh-md-render-mermaid-svg' })
   this.box = makeElement('div', { className: 'dsh-md-render-mermaid-canvas' })
+  const svg = makeElement('svg')
+  svg.viewBox = { baseVal: { width: 600, height: 400 } }
+  svg._rect = { width: 300, height: 200 }
+  this.box.appendChild(svg)
   this.frame.appendChild(this.box)
   this.card.appendChild(this.frame)
   host.appendChild(this.card)
@@ -515,20 +520,31 @@ Then('缩放库被懒加载并作用在该卡片自有的 SVG 容器上', async 
 })
 
 When('点击「全屏」', function () {
-  clickBar(this, '全屏')
-})
-
-Then('卡片进入全屏（原生 API；不可用时降级为卡片内 overlay）', function () {
-  assert.equal(this.card.getAttribute('data-dsh-md-render-fs'), 'native', '原生全屏标记（不支持时值为 fallback）')
-})
-
-When('退出全屏', function () {
   this.zoomBefore = this.panzoomCalls.filter((c) => c[0] !== 'destroy').length
   clickBar(this, '全屏')
 })
 
-Then('缩放状态保留在容器上（不重置）', function () {
-  assert.equal(this.card.getAttribute('data-dsh-md-render-fs'), null, '已退出全屏')
-  assert.equal(this.panzoomCalls.filter((c) => c[0] === 'destroy').length, 0, '退出全屏不销毁实例（变换保留在元素上）')
-  assert.ok(this.zoomBefore > 0, '退出前确实有过工具条/绑定动作')
+Then('页面内出现自有浮窗面板（不用浏览器全屏）', function () {
+  assert.equal(this.card.getAttribute('data-dsh-md-render-fs'), 'open', '卡片带浮窗态标记')
+  const panel = this.page.document.querySelector('[data-dsh-md-render-fs-panel]')
+  assert.ok(panel, '页面内出现自有浮窗面板')
+  assert.equal(panel.tagName, 'DIALOG', '用页面内 <dialog> 模态，不碰 Fullscreen API')
+  assert.equal(panel._open, true, '已 showModal（遮罩 / Esc / 焦点 / 滚动锁定由它兜底）')
+  assert.equal(this.host.parentNode, panel, '宿主（React 根容器）搬进面板')
+  assert.equal(this.card.parentNode, this.host, '卡片留在宿主里（合成事件委托不断）')
+})
+
+When('点击浮窗内的「关闭」', function () {
+  const panel = this.page.document.querySelector('[data-dsh-md-render-fs-panel]')
+  const btn = panel.querySelectorAll('button').find((b) => b.textContent === '关闭')
+  assert.ok(btn, '浮窗里有「关闭」按钮')
+  btn.fire('click')
+})
+
+Then('卡片还回原位置且缩放状态保留', function () {
+  assert.equal(this.page.document.querySelector('[data-dsh-md-render-fs-panel]'), null, '面板已移除')
+  assert.equal(this.host.parentNode, this.block, '宿主回原父节点')
+  assert.equal(this.card.getAttribute('data-dsh-md-render-fs'), null, '浮窗态标记已清')
+  assert.equal(this.panzoomCalls.filter((c) => c[0] === 'destroy').length, 0, '不销毁实例（变换保留在元素上）')
+  assert.ok(this.zoomBefore > 0, '关闭前确实有过工具条/绑定动作')
 })

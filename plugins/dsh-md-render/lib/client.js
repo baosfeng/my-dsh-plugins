@@ -130,11 +130,7 @@ function initConfigFromServer() {
         // 服务不可用时保持默认（全部开启），不影响渲染。
     });
 }
-exports.CONFIG_API_URL = CONFIG_API_URL;
-exports.setRenderOptions = setRenderOptions;
-exports.readConfig = readConfig;
-exports.initConfigFromServer = initConfigFromServer;
-exports.DEFAULT_RENDER_OPTIONS = DEFAULT_RENDER_OPTIONS;
+Object.assign(exports,{CONFIG_API_URL,setRenderOptions,readConfig,initConfigFromServer,DEFAULT_RENDER_OPTIONS});
 
     "use strict";
 // ── 围栏语言索引（client 半）：DOM 认不出语言时按块内容哈希问 host ────────
@@ -472,27 +468,7 @@ function teardownLangProbes() {
     fenceForces.clear();
     langRescan = null;
 }
-exports.LANGS_API_URL = LANGS_API_URL;
-exports.LANGS_HASH_PARAM = LANGS_HASH_PARAM;
-exports.LANG_BATCH_MAX = LANG_BATCH_MAX;
-exports.LANG_MAX_RETRIES = LANG_MAX_RETRIES;
-exports.fenceContentHash = fenceContentHash;
-exports.normalizeFenceContent = normalizeFenceContent;
-exports.blockLangDomLang = blockLangDomLang;
-exports.resolveBlockLang = resolveBlockLang;
-exports.resolveFenceLang = resolveFenceLang;
-exports.resolveFenceLangEx = resolveFenceLangEx;
-exports.resolveBlockLangEx = resolveBlockLangEx;
-exports.FENCE_FORCE_ATTR = FENCE_FORCE_ATTR;
-exports.FENCE_FORCE_OPTIONS = FENCE_FORCE_OPTIONS;
-exports.fenceForceOf = fenceForceOf;
-exports.setFenceForce = setFenceForce;
-exports.restoreFenceForces = restoreFenceForces;
-exports.isInsideRenderedMarkdown = isInsideRenderedMarkdown;
-exports.flushLangQueue = flushLangQueue;
-exports.retryLangMisses = retryLangMisses;
-exports.installLangRescan = installLangRescan;
-exports.teardownLangProbes = teardownLangProbes;
+Object.assign(exports,{LANGS_API_URL,LANGS_HASH_PARAM,LANG_BATCH_MAX,LANG_MAX_RETRIES,fenceContentHash,normalizeFenceContent,blockLangDomLang,resolveBlockLang,resolveFenceLang,resolveFenceLangEx,resolveBlockLangEx,FENCE_FORCE_ATTR,FENCE_FORCE_OPTIONS,fenceForceOf,setFenceForce,restoreFenceForces,isInsideRenderedMarkdown,flushLangQueue,retryLangMisses,installLangRescan,teardownLangProbes});
 
     "use strict";
 // ── 围栏语言索引（client 半，双源互补的**主源**）：会话事件流 ────────────
@@ -853,16 +829,9 @@ function fenceLangOf(block) {
         return undefined;
     }
 }
-exports.MAX_FENCE_EVENTS = MAX_FENCE_EVENTS;
-exports.MAX_FENCE_CODE_CHARS = MAX_FENCE_CODE_CHARS;
-exports.fenceNormalize = fenceNormalize;
-exports.fenceHash = fenceHash;
-exports.fenceInfoLang = fenceInfoLang;
-exports.collectFences = collectFences;
-exports.refreshFenceLangIndex = refreshFenceLangIndex;
-exports.resetFenceIndex = resetFenceIndex;
+Object.assign(exports,{MAX_FENCE_EVENTS,MAX_FENCE_CODE_CHARS,fenceNormalize,fenceHash,fenceInfoLang,collectFences,refreshFenceLangIndex,resetFenceIndex});
 exports.fenceIndexSize = () => fenceIndex.byHash.size;
-exports.fenceLangOf = fenceLangOf;
+Object.assign(exports,{fenceLangOf});
 
     // 非标准表格容错（官方 GFM 未覆盖的两种写法）
     "use strict";
@@ -939,10 +908,7 @@ function normalizeTables(text) {
     }
     return out === null ? source : out.join('\n');
 }
-exports.normalizeTables = normalizeTables;
-exports.isTableSeparator = isTableSeparator;
-exports.isTableHeader = isTableHeader;
-exports.splitTableCells = splitTableCells;
+Object.assign(exports,{normalizeTables,isTableSeparator,isTableHeader,splitTableCells});
 
     // 官方渲染器接入（平台 MarkdownText + react-dom/client）
     "use strict";
@@ -1110,14 +1076,7 @@ function officialMarkdownNode(text) {
         return createElement('pre', { className: 'dsh-md-render-fallback' }, text);
     return createElement(platform.MarkdownText, { text: normalizeTables(text), labels: MARKDOWN_LABELS });
 }
-exports.PLATFORM_MARKDOWN_MODULE = PLATFORM_MARKDOWN_MODULE;
-exports.MARKDOWN_LABELS = MARKDOWN_LABELS;
-exports.platformMarkdown = platformMarkdown;
-exports.officialMarkdownAvailable = officialMarkdownAvailable;
-exports.renderMarkdownInto = renderMarkdownInto;
-exports.unmountMarkdownIn = unmountMarkdownIn;
-exports.sweepDetachedRoots = sweepDetachedRoots;
-exports.officialMarkdownNode = officialMarkdownNode;
+Object.assign(exports,{PLATFORM_MARKDOWN_MODULE,MARKDOWN_LABELS,platformMarkdown,officialMarkdownAvailable,renderMarkdownInto,unmountMarkdownIn,sweepDetachedRoots,officialMarkdownNode});
 
     // 整段 markdown 复制（官方只有代码块复制）
     "use strict";
@@ -1209,8 +1168,7 @@ function CopyButton({ kind }) {
         onClick,
     }, copied ? '已复制' : '复制');
 }
-exports.copyText = copyText;
-exports.fallbackCopyText = fallbackCopyText;
+Object.assign(exports,{copyText,fallbackCopyText});
 
     // 统一 MarkdownView：对外公共 API（官方渲染 + 整段复制）
     "use strict";
@@ -1230,7 +1188,7 @@ function MarkdownView({ text }) {
     // 整段复制按钮（copyButton 关闭 → 不渲染）；官方只有代码块复制。
     renderOptions.markdown.copyButton ? createElement(CopyButton, { kind: 'content' }) : null);
 }
-exports.MarkdownView = MarkdownView;
+Object.assign(exports,{MarkdownView});
 
     // 上下文注入块 markdown 渲染（pre[data-context-text]）
     "use strict";
@@ -1322,11 +1280,7 @@ function scanContextBlocks(root) {
         applyContextMarkdown(pre);
     }
 }
-exports.CONTEXT_TEXT_SELECTOR = CONTEXT_TEXT_SELECTOR;
-exports.MAX_CONTEXT_CHARS = MAX_CONTEXT_CHARS;
-exports.contextHash = contextHash;
-exports.applyContextMarkdown = applyContextMarkdown;
-exports.scanContextBlocks = scanContextBlocks;
+Object.assign(exports,{CONTEXT_TEXT_SELECTOR,MAX_CONTEXT_CHARS,contextHash,applyContextMarkdown,scanContextBlocks});
 
     // text / plaintext / txt / md 围栏块按 markdown 渲染 + 查看原文
     "use strict";
@@ -1475,13 +1429,7 @@ function scanTextBlocks(root) {
     for (const block of root.querySelectorAll('div.md-code-block'))
         applyTextMarkdown(block);
 }
-exports.TEXT_FENCE_LANGS = TEXT_FENCE_LANGS;
-exports.MAX_TEXT_FENCE_CHARS = MAX_TEXT_FENCE_CHARS;
-exports.TEXT_VIEW_ATTR = TEXT_VIEW_ATTR;
-exports.TEXT_TOGGLE_CLASS = TEXT_TOGGLE_CLASS;
-exports.textFenceTarget = textFenceTarget;
-exports.applyTextMarkdown = applyTextMarkdown;
-exports.scanTextBlocks = scanTextBlocks;
+Object.assign(exports,{TEXT_FENCE_LANGS,MAX_TEXT_FENCE_CHARS,TEXT_VIEW_ATTR,TEXT_TOGGLE_CLASS,textFenceTarget,applyTextMarkdown,scanTextBlocks});
 
     // 思考块默认展开（对官方折叠行派发一次 click；不改外观）
     "use strict";
@@ -1567,8 +1515,7 @@ function applyThinkExpand(root) {
         expandThinkRow(row);
     }
 }
-exports.THINK_ROW_SELECTOR = THINK_ROW_SELECTOR;
-exports.applyThinkExpand = applyThinkExpand;
+Object.assign(exports,{THINK_ROW_SELECTOR,applyThinkExpand});
 
     // mermaid 引擎按需加载 + 离屏渲染
     "use strict";
@@ -1688,31 +1635,24 @@ function renderSvg(engine, entryId, source) {
 function errMsg(err) {
     return err instanceof Error && err.message ? err.message : String(err);
 }
-exports.MERMAID_ENGINE_URL = MERMAID_ENGINE_URL;
-exports.MAX_SOURCE_CHARS = MAX_SOURCE_CHARS;
-exports.OFFSCREEN_ATTR = OFFSCREEN_ATTR;
-exports.ensureMermaid = ensureMermaid;
-exports.resetMermaidEngine = resetMermaidEngine;
-exports.renderSvg = renderSvg;
-exports.errMsg = errMsg;
+Object.assign(exports,{MERMAID_ENGINE_URL,MAX_SOURCE_CHARS,OFFSCREEN_ATTR,ensureMermaid,resetMermaidEngine,renderSvg,errMsg});
 
     // mermaid 图表卡片（预览 / 代码切换、导出、失败回显源码）
     "use strict";
-// ── mermaid 图表卡片（React）──────────────────────────────────────────
-// 卡片只挂在**本插件自己插入的容器**里（不改官方节点结构）：官方 `<pre>` 由自有 CSS 的
-// `.md-code-block[data-dsh-md-render-mermaid-view]` 规则隐藏（不用 `pre.style.display`）。
-/** 卡片 host 标记（entryId；测试与导出按它定位）。 */
+// ── mermaid 图表卡片（React）── 卡片只挂在本插件自插的容器里（不改官方节点结构）；
+// 官方 `<pre>` 由自有 CSS 的 `[data-dsh-md-render-mermaid-view]` 规则隐藏。
+/** 卡片 host 标记（entryId）。 */
 const MERMAID_ENTRY_ATTR = 'data-dsh-md-render-mermaid';
-/** 渲染态标记（loading / ok / error；写在 host 上，与 React 提交时机解耦）。 */
+/** 渲染态（loading / ok / error；写在 host 上，与 React 提交时机解耦）。 */
 const MERMAID_STATE_ATTR = 'data-dsh-md-render-mermaid-state';
-/** 块级视图标记（preview / code；写在 md-code-block 上，驱动自有 CSS 隐藏官方 pre）。 */
+/** 视图标记（preview / code；驱动自有 CSS 隐藏官方 pre）。 */
 const MERMAID_VIEW_ATTR = 'data-dsh-md-render-mermaid-view';
-/** 卡片根 / SVG 容器类名（mermaid-zoom 定位自有 DOM 时共用）。 */
+/** 卡片根 / SVG 容器类名（mermaid-zoom 共用）。 */
 const MERMAID_CARD_CLASS = 'dsh-md-render-mermaid-card';
 const MERMAID_SVG_CLASS = 'dsh-md-render-mermaid-svg';
 /** 变换层类名：panzoom 只变换它，外层容器负责裁剪。 */
 const MERMAID_CANVAS_CLASS = 'dsh-md-render-mermaid-canvas';
-/** 挂载序号（entryId 用；导出文件名取其中的数字）。 */
+/** 挂载序号（entryId 用）。 */
 let mermaidSeq = 0;
 /** 记录一条渲染态转移（写到卡片 host 的真实 DOM 属性上）。 */
 function noteRenderState(entryId, state) {
@@ -1722,10 +1662,7 @@ function noteRenderState(entryId, state) {
     if (host && typeof host.setAttribute === 'function')
         host.setAttribute(MERMAID_STATE_ATTR, state);
 }
-/**
- * 渲染状态机：加载引擎 → **离屏渲染** → 成功取 SVG / 失败留原因。
- * 渲染令牌：effect 每次运行（含重试）先作废旧令牌再挂新令牌，迟到的结果一律丢弃。
- */
+/** 渲染状态机（加载引擎 → 离屏渲染 → SVG / 失败原因）；令牌机制丢弃迟到结果。 */
 function useMermaidRender(entryId, source, attempt) {
     const [status, setStatus] = useState('loading');
     const [svg, setSvg] = useState(null);
@@ -1780,10 +1717,7 @@ function ExportButtons({ status, onPng, onSvg, onCopy, }) {
     const btn = (label, iconNode, onClick, disabled) => createElement('button', { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick, disabled, title: label, 'aria-label': label }, iconNode, createElement('span', null, label));
     return createElement('div', { className: 'dsh-md-render-mermaid-export', role: 'group', 'aria-label': 'export' }, btn('下载 PNG', icon.download(14), onPng, !ready), btn('下载 SVG', icon.download(14), onSvg, !ready), btn('复制代码', icon.copy(14), onCopy, false));
 }
-/**
- * 预览 / 代码 视图切换（卡片头部）。
- * `previewDisabled`：渲染失败时预览态没有可显示的内容，禁用而不是让它显示成激活假象。
- */
+/** 预览 / 代码 视图切换；渲染失败时禁用预览（否则只剩激活态假象）。 */
 function ViewToggle({ mode, setMode, previewDisabled, }) {
     const btn = (label, value, iconNode, disabled) => createElement('button', {
         type: 'button',
@@ -1794,10 +1728,10 @@ function ViewToggle({ mode, setMode, previewDisabled, }) {
     }, iconNode, createElement('span', null, label));
     return createElement('div', { className: 'dsh-md-render-mermaid-view-toggle', role: 'group', 'aria-label': 'view mode' }, btn('预览', 'preview', icon.file(14), previewDisabled === true), btn('代码', 'code', icon.code(14), false));
 }
-/** 缩放 / 全屏工具条（需求 1）：Fit / 100% / ± / 全屏。 */
+/** 缩放 / 浮窗工具条（需求 1）：全屏（浮窗）/ 适应 / 100% / ±。 */
 function ZoomBar({ entryId }) {
     const btn = (label, title, action) => createElement('button', { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick: action, title, 'aria-label': title }, createElement('span', null, label));
-    return createElement('div', { className: 'dsh-md-render-mermaid-zoom', role: 'group', 'aria-label': '图表缩放' }, btn('全屏', '全屏 / 退出全屏（Esc）', () => toggleCardFullscreen(entryId)), btn('适应', '适应宽度', () => zoomEntry(entryId, 'fit')), btn('100%', '实际大小', () => zoomEntry(entryId, 'full')), btn('−', '缩小', () => zoomEntry(entryId, 'out')), btn('+', '放大', () => zoomEntry(entryId, 'in')));
+    return createElement('div', { className: 'dsh-md-render-mermaid-zoom', role: 'group', 'aria-label': '图表缩放' }, btn('全屏', '全屏浮窗（Esc 关闭）', () => toggleCardOverlay(entryId)), btn('适应', '适应宽度', () => zoomEntry(entryId, 'fit')), btn('100%', '实际大小', () => zoomEntry(entryId, 'full')), btn('−', '缩小', () => zoomEntry(entryId, 'out')), btn('+', '放大', () => zoomEntry(entryId, 'in')));
 }
 /** 卡片主体：loading / error（含源码与重试）/ 代码视图 / 渲染出的 SVG。 */
 function CardBody({ status, mode, error, source, svg, onRetry, }) {
@@ -1805,8 +1739,7 @@ function CardBody({ status, mode, error, source, svg, onRetry, }) {
         return createElement('div', { className: 'dsh-md-render-mermaid-loading' }, icon.refresh(14), createElement('span', null, '渲染中…'));
     }
     if (status === 'error') {
-        // 主次反转（#470 需求 2）：**源码是第一位的主视觉**（首屏即源码），失败原因降为一行灰字
-        // 提示；「重试」保留 —— 引擎加载失败是真实可恢复场景，砍掉等于砍掉唯一恢复路径。
+        // 主次反转：源码是主视觉，失败原因降为一行灰字；「重试」是加载失败的唯一恢复路径。
         return createElement('div', { className: 'dsh-md-render-mermaid-error' }, createElement('pre', { className: 'dsh-md-render-mermaid-code' }, source), createElement('div', { className: 'dsh-md-render-mermaid-error-line' }, icon.alert(13), createElement('span', { className: 'dsh-md-render-mermaid-error-msg' }, 'Mermaid 渲染失败：' + String(error ?? '')), createElement('button', {
             type: 'button',
             className: 'dsh-md-render-mermaid-eb dsh-md-render-mermaid-retry',
@@ -1841,14 +1774,15 @@ function MermaidCard({ entryId, source, onForce, }) {
     const exportActions = makeExportHandlers(entryId, source, flashNotice);
     // 失败态把视图钉到 code：按钮激活态与实际显示一致。
     const view = status === 'error' ? 'code' : mode;
-    // 渲染出 SVG 后绑定缩放 / 平移（懒加载 panzoom；失败静默保持静态图）。
+    // 渲染出 SVG 后绑定缩放 / 平移（懒加载 panzoom；失败只标记卡片，不再静默）。
+    // 清理时收掉本卡片的浮窗：组件卸载 / 切到代码视图都不留浮窗。
     useEffect(() => {
         if (status !== 'ok' || view !== 'preview')
             return undefined;
         const target = zoomTargetsOf(entryId);
         if (target !== null)
             bindZoom(target);
-        return undefined;
+        return () => closeOverlayOf(entryId);
     }, [entryId, status, view]);
     return createElement('div', { className: MERMAID_CARD_CLASS }, createElement('div', { className: 'dsh-md-render-mermaid-card-head' }, createElement('div', { className: 'dsh-md-render-mermaid-card-title' }, icon.file(12), createElement('span', null, 'Mermaid 图表')), createElement('div', { className: 'dsh-md-render-mermaid-card-actions' }, createElement(ExportButtons, { status, ...exportActions }), 
     // 语言手动切换（需求 4）：卡片头承载另外两项。
@@ -1856,17 +1790,7 @@ function MermaidCard({ entryId, source, onForce, }) {
 }
 /** 提示条定时器（模块级单例：后一条提示覆盖前一条）。 */
 let noticeTimer = null;
-exports.MERMAID_ENTRY_ATTR = MERMAID_ENTRY_ATTR;
-exports.MERMAID_STATE_ATTR = MERMAID_STATE_ATTR;
-exports.MERMAID_VIEW_ATTR = MERMAID_VIEW_ATTR;
-exports.noteRenderState = noteRenderState;
-exports.MERMAID_CARD_CLASS = MERMAID_CARD_CLASS;
-exports.MERMAID_SVG_CLASS = MERMAID_SVG_CLASS;
-exports.MERMAID_CANVAS_CLASS = MERMAID_CANVAS_CLASS;
-exports.ZoomBar = ZoomBar;
-exports.CardBody = CardBody;
-exports.ViewToggle = ViewToggle;
-exports.MermaidCard = MermaidCard;
+Object.assign(exports,{MERMAID_ENTRY_ATTR,MERMAID_STATE_ATTR,MERMAID_VIEW_ATTR,noteRenderState,MERMAID_CARD_CLASS,MERMAID_SVG_CLASS,MERMAID_CANVAS_CLASS,ZoomBar,CardBody,ViewToggle,MermaidCard});
 
     // mermaid 代码块识别 + 流式稳定窗口
     "use strict";
@@ -2055,12 +1979,7 @@ function teardownMermaid() {
         clearStreamWatch(block);
     mermaidMounts.clear();
 }
-exports.STREAM_SETTLE_MS = STREAM_SETTLE_MS;
-exports.isMermaidBlock = isMermaidBlock;
-exports.mermaidSourceOf = mermaidSourceOf;
-exports.considerMermaidBlock = considerMermaidBlock;
-exports.scanMermaidBlocks = scanMermaidBlocks;
-exports.teardownMermaid = teardownMermaid;
+Object.assign(exports,{STREAM_SETTLE_MS,isMermaidBlock,mermaidSourceOf,considerMermaidBlock,scanMermaidBlocks,teardownMermaid});
 
     // mermaid 图表导出（PNG / SVG 下载 + 复制源码）
     "use strict";
@@ -2183,31 +2102,32 @@ function makeExportHandlers(entryId, source, flashNotice) {
         },
     };
 }
-exports.buildExportFileName = buildExportFileName;
-exports.serializeSvg = serializeSvg;
-exports.findCardSvg = findCardSvg;
-exports.makeExportHandlers = makeExportHandlers;
+Object.assign(exports,{buildExportFileName,serializeSvg,findCardSvg,makeExportHandlers});
 
     // mermaid 图表全屏 + 缩放 / 平移（panzoom 懒加载 asset）
     "use strict";
-// ── mermaid 图表全屏 + 缩放 / 平移（issue #470 需求 1）────────────────────
-// 全屏 = 原生 Fullscreen API（自有卡片 DOM，需用户手势）；不支持（iPhone Safari 仅 iPad）
-// → 降级卡片内 overlay。缩放 / 平移 = @panzoom/panzoom 4.6.2 以 vendored asset **懒加载**
-// （不进 client.js，体积门禁增量 0）；照引擎先例冻结 SHA256 + 单一真源 + asset 注入。
-// UMD 直接 concat 会执行 module.exports 清掉插件 exports；注入下无 module → 落 window.Panzoom。
-/** 缩放态标记（自有外层容器）：CSS 据此把 overflow 收紧为 hidden。 */
+// ── mermaid 图表浮窗 + 缩放 / 平移（#470 需求 1 / #471 真机反馈）────────────
+// 浮窗 = 页面内 <dialog> 模态，**不用** Fullscreen API：顶层压过宿主 UI，遮罩 / Esc /
+// 焦点归还 / 滚动锁定由浏览器兜底。缩放 = panzoom vendored asset 懒加载（0 增量）。
+// 设计取舍与真机实测数字见 tmp/md-render-enhancements/zoom-fix-report.md。
 const ZOOM_ATTR = 'data-dsh-md-render-zoom';
-/** 全屏态标记（写在自有卡片上）：native | fallback。 */
+/** 卡片态：open = 浮窗开；failed = panzoom 加载失败（此前静默 → 像「点了没反应」）。 */
 const FS_ATTR = 'data-dsh-md-render-fs';
+const FS_OPEN = 'open';
+const FS_FAIL = 'failed';
+/** 浮窗面板标记 + 面板 / 面板工具条类名（自有 DOM）。 */
+const FS_PANEL_ATTR = 'data-dsh-md-render-fs-panel';
+const FS_CLASS = 'dsh-md-render-mermaid-fs';
+const FS_BAR_CLASS = 'dsh-md-render-mermaid-fs-bar';
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 8;
 const ZOOM_STEP = 1.25;
 const PAN_KEY_STEP = 40;
-/** 已绑定的图表（自有容器 → 状态）；同容器只绑一次。 */
+/** 已绑定的图表（自有变换层 → 状态）；同容器只绑一次。 */
 const zoomStates = new Map();
 let panzoomReady = null;
-let fsSyncInstalled = false;
-/** 注入 panzoom UMD 并解析 window.Panzoom。 */
+let overlayHome = null;
+/** 注入 panzoom UMD 并解析 window.Panzoom（注入下无 module → 落 window）。 */
 function injectPanzoom(code) {
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
@@ -2222,7 +2142,7 @@ function injectPanzoom(code) {
         resolve(ctor);
     });
 }
-/** 懒加载 panzoom（首次真正需要才 fetch；失败重置缓存）。 */
+/** 懒加载 panzoom（首次真正需要才 fetch；失败重置缓存 → 下次点击可重试）。 */
 function ensurePanzoom() {
     const globalCtor = typeof window !== 'undefined' ? window.Panzoom : undefined;
     if (typeof globalCtor === 'function')
@@ -2249,11 +2169,14 @@ function zoomTargetsOf(entryId) {
     const host = document.querySelector('[' + MERMAID_ENTRY_ATTR + '="' + entryId + '"]');
     if (host === null || typeof host.querySelector !== 'function')
         return null;
-    const frame = host.querySelector('div.' + MERMAID_SVG_CLASS);
+    const card = host.querySelector('div.' + MERMAID_CARD_CLASS);
+    if (card === null)
+        return null;
+    const frame = card.querySelector('div.' + MERMAID_SVG_CLASS);
     if (frame === null)
         return null;
     const canvas = frame.querySelector('div.' + MERMAID_CANVAS_CLASS) ?? frame;
-    return { card: host.querySelector('div.' + MERMAID_CARD_CLASS) ?? host, frame, box: canvas };
+    return { card, frame, box: canvas };
 }
 /** 缩放键（+ / - / = / _ / 0）；拆出来压圈复杂度。 */
 function zoomScaleKey(state, key) {
@@ -2267,10 +2190,10 @@ function zoomScaleKey(state, key) {
     state.pz.reset({ animate: false });
     return true;
 }
-/** 裸 wheel 归页面（滚动陷阱）：ctrlKey+wheel 或全屏态才缩放。 */
+/** 裸 wheel 归页面（滚动陷阱）：只有 ctrlKey+wheel（捏合）或浮窗态才缩放。 */
 function zoomWheelShouldHandle(event, card) {
     const wheel = event;
-    return wheel.ctrlKey || card.getAttribute(FS_ATTR) !== null;
+    return wheel.ctrlKey === true || card.getAttribute(FS_ATTR) === FS_OPEN;
 }
 /** 方向键平移（拆出来压圈复杂度）。 */
 function zoomArrowKey(state, key) {
@@ -2281,29 +2204,69 @@ function zoomArrowKey(state, key) {
     state.pz.pan(dx, dy, { animate: false, relative: true });
     return true;
 }
-/** 键盘 a11y：+ / - 缩放，0 复位，方向键平移，Esc 退出降级 overlay。 */
+/** 键盘 a11y：+ / - 缩放，0 复位，方向键平移（Esc 由浮窗 dialog 的 cancel 负责）。 */
 function zoomKey(card, box, event) {
     const state = zoomStates.get(box);
     if (state === undefined)
         return;
     const key = String(event.key ?? '');
-    if (!zoomArrowKey(state, key) && !zoomScaleKey(state, key)) {
-        if (key !== 'Escape' || card.getAttribute(FS_ATTR) !== 'fallback')
-            return;
-        exitFullscreen(card);
-    }
+    if (!zoomArrowKey(state, key) && !zoomScaleKey(state, key))
+        return;
     if (typeof event.preventDefault === 'function')
         event.preventDefault();
 }
-/** 绑定缩放 / 平移（幂等；失败静默保持静态图）。 */
+/** 一档缩放比（滚轮 / 捏合共用）：deltaY < 0 = 放大。 */
+function zoomStep(event) {
+    return Number(event.deltaY) < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+}
+/** 100% = 图表真实像素大小：viewBox 宽 ÷ 未缩放的显示宽（适应容器后两者不等）。 */
+function zoomNaturalScale(state) {
+    const svg = state.box.querySelector('svg');
+    const scale = state.pz.getScale() || 1;
+    const shown = svg === null ? 0 : svg.getBoundingClientRect().width / scale;
+    const natural = svg === null ? 0 : svg.viewBox.baseVal.width;
+    if (shown <= 0 || natural <= 0)
+        return 1;
+    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, natural / shown));
+}
+/** 事件绑定：绑在**卡片**上（指针落在卡片任意位置都能捏合，原先只绑变换层，偏一点就没反应）；
+ *  裸 wheel 不拦截，纵向滚动仍归页面。 */
+function bindZoomEvents(state) {
+    const { pz, card, box } = state;
+    card.addEventListener('wheel', (event) => {
+        if (!zoomWheelShouldHandle(event, card))
+            return;
+        pz.zoom(pz.getScale() * zoomStep(event), { animate: false });
+        event.preventDefault();
+    }, { passive: false });
+    // macOS Safari 触控板捏合派发 gesture*（不发 ctrl+wheel）；接不住就「没有任何放大效果」。
+    let gestureBase = pz.getScale();
+    card.addEventListener('gesturestart', (event) => {
+        gestureBase = pz.getScale();
+        event.preventDefault();
+    });
+    card.addEventListener('gesturechange', (event) => {
+        const ratio = Number(event.scale);
+        if (ratio > 0)
+            pz.zoom(gestureBase * ratio, { animate: false });
+        event.preventDefault();
+    });
+    box.addEventListener('dblclick', () => pz.reset({ animate: false }));
+    card.addEventListener('keydown', (event) => zoomKey(card, box, event));
+}
+/** 绑定缩放 / 平移（幂等）：返回就绪状态；失败标记卡片后返回 undefined（下次点击可重试）。 */
 function bindZoom(target) {
     const { card, frame, box } = target;
-    if (zoomStates.has(box))
-        return;
-    ensurePanzoom()
+    const bound = zoomStates.get(box);
+    if (bound !== undefined)
+        return Promise.resolve(bound);
+    return ensurePanzoom()
         .then((Panzoom) => {
-        if (zoomStates.has(box) || box.isConnected === false)
-            return;
+        const again = zoomStates.get(box);
+        if (again !== undefined)
+            return again;
+        if (box.isConnected === false)
+            return undefined;
         // touchAction 内联态取 pan-y：纵向滚动归页面，横向拖拽平移。
         const pz = new Panzoom(box, {
             minScale: ZOOM_MIN,
@@ -2313,138 +2276,146 @@ function bindZoom(target) {
             zoomWithWheel: false,
             touchAction: 'pan-y',
         });
-        zoomStates.set(box, { pz, card, box });
-        // 外层容器切到裁剪态：放大的变换层不再溢出盖住工具条。
-        frame.setAttribute(ZOOM_ATTR, 'on');
-        box.addEventListener('wheel', (event) => {
-            if (!zoomWheelShouldHandle(event, card))
-                return;
-            pz.zoom(pz.getScale() * (Number(event.deltaY) < 0 ? ZOOM_STEP : 1 / ZOOM_STEP), {
-                animate: false,
-            });
-            event.preventDefault();
-        }, { passive: false });
-        box.addEventListener('dblclick', () => pz.reset({ animate: false }));
-        card.addEventListener('keydown', (event) => zoomKey(card, box, event));
-        installFullscreenSync();
+        const state = { pz, card, box };
+        zoomStates.set(box, state);
+        frame.setAttribute(ZOOM_ATTR, 'on'); // 外层切裁剪态：放大后不盖住工具条
+        bindZoomEvents(state);
+        if (card.getAttribute(FS_ATTR) === FS_FAIL)
+            card.removeAttribute(FS_ATTR);
+        return state;
     })
         .catch(() => {
-        /* 库加载失败：保持静态图 */
+        card.setAttribute(FS_ATTR, FS_FAIL);
+        return undefined;
     });
 }
-/** 工具条动作（按 entryId 定位；顺带懒加载）。 */
+/** 工具条动作：fit = 适应宽度 / full = 100% / in / out。 */
+function applyZoom(state, action) {
+    if (action === 'fit')
+        state.pz.reset({ animate: false });
+    else if (action === 'full')
+        state.pz.zoom(zoomNaturalScale(state), { animate: false });
+    else
+        state.pz.zoom(state.pz.getScale() * (action === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP), { animate: true });
+}
+/** 工具条入口：未就绪就**等加载完再执行**（此前直接 return，加载期间与加载失败后的
+ *  每次点击都被静默丢弃 —— 用户看到的就是「点了没反应」）。 */
 function zoomEntry(entryId, action) {
     const target = zoomTargetsOf(entryId);
     if (target === null)
         return;
-    bindZoom(target);
-    const state = zoomStates.get(target.box);
-    if (state === undefined)
+    void bindZoom(target).then((state) => {
+        if (state !== undefined)
+            applyZoom(state, action);
+    });
+}
+/** 浮窗里的小按钮。 */
+function overlayButton(label, onClick) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'dsh-md-render-mermaid-eb';
+    btn.textContent = label;
+    btn.addEventListener('click', onClick);
+    return btn;
+}
+/** 二级入口：浏览器原生全屏（主入口是浮窗，只作为面板里的小按钮保留）。 */
+function requestNativeFullscreen(card) {
+    const api = card;
+    try {
+        if (typeof api.requestFullscreen === 'function')
+            void api.requestFullscreen();
+    }
+    catch (_e) {
+        /* 不支持 / 被拒：留在浮窗里 */
+    }
+}
+/** 打开浮窗：搬**宿主**而不是卡片 —— React 17+ 把合成事件委托挂在根容器上，
+ *  把卡片搬出去 = 浮窗里所有按钮失灵（真机实测）。 */
+function openCardOverlay(target, entryId) {
+    if (overlayHome !== null || typeof document === 'undefined' || document === null)
         return;
-    if (action === 'fit')
-        state.pz.reset({ animate: false });
-    else if (action === 'full')
-        state.pz.zoom(1, { animate: false });
-    else
-        state.pz.zoom(state.pz.getScale() * (action === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP), { animate: true });
+    const host = target.card.parentNode;
+    if (host === null || typeof host.appendChild !== 'function')
+        return;
+    const dialog = document.createElement('dialog');
+    dialog.className = FS_CLASS;
+    dialog.setAttribute(FS_PANEL_ATTR, 'open');
+    const bar = document.createElement('div');
+    bar.className = FS_BAR_CLASS;
+    bar.appendChild(overlayButton('浏览器全屏', () => requestNativeFullscreen(target.card)));
+    bar.appendChild(overlayButton('关闭', closeCardOverlay));
+    dialog.appendChild(bar);
+    overlayHome = { host: host, entryId, parent: host.parentNode, next: host.nextSibling, dialog };
+    dialog.appendChild(host);
+    // ::backdrop 不是元素：点击落在 dialog 自身 = 点了遮罩。
+    dialog.addEventListener('click', (event) => {
+        if (event.target === dialog)
+            closeCardOverlay();
+    });
+    dialog.addEventListener('cancel', closeCardOverlay);
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    target.card.setAttribute(FS_ATTR, FS_OPEN);
 }
-/** 原生全屏是否可用（iPhone Safari 仅 iPad）。 */
-function fullscreenSupported(card) {
-    const doc = typeof document === 'undefined' ? null : document;
-    if (doc !== null && doc.fullscreenEnabled === false)
-        return false;
-    return typeof card.requestFullscreen === 'function';
-}
-/** 退出全屏（原生 / overlay 都覆盖；panzoom 变换留在元素上）。 */
-function exitFullscreen(card) {
-    if (card.getAttribute(FS_ATTR) === 'native') {
-        const doc = document;
+/** 关闭浮窗：宿主还回原位置（幂等；关闭按钮 / Esc / 遮罩三路共用）。 */
+function closeCardOverlay() {
+    const home = overlayHome;
+    if (home === null)
+        return;
+    overlayHome = null;
+    try {
+        home.dialog.close();
+    }
+    catch (_e) {
+        /* 已关闭 / 伪 DOM 无此方法 */
+    }
+    const parent = home.parent;
+    if (parent !== null && typeof parent.insertBefore === 'function') {
         try {
-            if (typeof doc.exitFullscreen === 'function')
-                void doc.exitFullscreen();
+            parent.insertBefore(home.host, home.next);
         }
         catch (_e) {
-            /* 已退出 */
+            parent.appendChild(home.host); // 原位置已失效（宿主重渲染）：父节点兜底
         }
     }
-    if (typeof card.removeAttribute === 'function')
+    const card = typeof home.host.querySelector === 'function' ? home.host.querySelector('div.' + MERMAID_CARD_CLASS) : null;
+    if (card !== null && card.getAttribute(FS_ATTR) === FS_OPEN)
         card.removeAttribute(FS_ATTR);
+    if (home.dialog.parentNode !== null)
+        home.dialog.parentNode.removeChild(home.dialog);
 }
-/** 进 / 出全屏（原生优先；不支持则 overlay）；返回切换后的全屏态。 */
-function toggleCardFullscreen(entryId) {
+/** 卡片卸载时收掉自己的浮窗（别关掉别的卡片的）。 */
+function closeOverlayOf(entryId) {
+    if (overlayHome !== null && overlayHome.entryId === entryId)
+        closeCardOverlay();
+}
+/** 工具条「全屏」：开 / 关浮窗；返回切换后的浮窗态。 */
+function toggleCardOverlay(entryId) {
+    if (overlayHome !== null) {
+        closeCardOverlay();
+        return false;
+    }
     const target = zoomTargetsOf(entryId);
     if (target === null)
         return false;
-    const { card } = target;
-    if (card.getAttribute(FS_ATTR) !== null) {
-        exitFullscreen(card);
-        return false;
-    }
-    if (!fullscreenSupported(card)) {
-        card.setAttribute(FS_ATTR, 'fallback');
-        return true;
-    }
-    card.setAttribute(FS_ATTR, 'native');
-    try {
-        const pending = card.requestFullscreen();
-        if (pending && typeof pending.catch === 'function') {
-            pending.catch(() => {
-                if (card.getAttribute(FS_ATTR) === 'native')
-                    card.removeAttribute(FS_ATTR);
-            });
-        }
-    }
-    catch (_e) {
-        card.removeAttribute(FS_ATTR);
-    }
-    return card.getAttribute(FS_ATTR) !== null;
+    openCardOverlay(target, entryId);
+    return target.card.getAttribute(FS_ATTR) === FS_OPEN;
 }
-/** 原生退出后清掉卡片上的 native 标记（只装一个监听）。 */
-function installFullscreenSync() {
-    if (fsSyncInstalled)
-        return;
-    const doc = typeof document === 'undefined'
-        ? null
-        : document;
-    if (doc === null || typeof doc.addEventListener !== 'function')
-        return;
-    fsSyncInstalled = true;
-    doc.addEventListener('fullscreenchange', () => {
-        const full = doc.fullscreenElement ?? null;
-        for (const state of zoomStates.values()) {
-            if (state.card === full || state.card.getAttribute(FS_ATTR) !== 'native')
-                continue;
-            state.card.removeAttribute(FS_ATTR);
-        }
-    });
-}
-/** teardown：销毁实例、清表与加载缓存。 */
+/** teardown：收掉浮窗、销毁实例、清表与加载缓存。 */
 function teardownZoom() {
+    closeCardOverlay();
     for (const state of zoomStates.values()) {
         try {
             state.pz.destroy();
         }
         catch (_e) {
-            /* 销毁异常不阻断清理 */
+            /* 不阻断清理 */
         }
     }
     zoomStates.clear();
     panzoomReady = null;
 }
-exports.PANZOOM_SCRIPT_URL = PANZOOM_SCRIPT_URL;
-exports.ZOOM_ATTR = ZOOM_ATTR;
-exports.FS_ATTR = FS_ATTR;
-exports.zoomTargetsOf = zoomTargetsOf;
-exports.ensurePanzoom = ensurePanzoom;
-exports.bindZoom = bindZoom;
-exports.zoomEntry = zoomEntry;
-exports.zoomKey = zoomKey;
-exports.zoomWheelShouldHandle = zoomWheelShouldHandle;
-exports.toggleCardFullscreen = toggleCardFullscreen;
-exports.exitFullscreen = exitFullscreen;
-exports.installFullscreenSync = installFullscreenSync;
-exports.zoomStates = zoomStates;
-exports.teardownZoom = teardownZoom;
+Object.assign(exports,{PANZOOM_SCRIPT_URL,ZOOM_ATTR,FS_ATTR,FS_OPEN,FS_FAIL,FS_PANEL_ATTR,FS_CLASS,zoomTargetsOf,ensurePanzoom,bindZoom,zoomEntry,zoomKey,zoomWheelShouldHandle,toggleCardOverlay,closeCardOverlay,closeOverlayOf,zoomStates,teardownZoom});
 
     // 「渲染为…」语言手动切换（覆盖层 + 块内控件 + 卡片头并项）
     "use strict";
@@ -2567,15 +2538,7 @@ function scanLangSwitches(root) {
 function CardLangSwitch({ onForce }) {
     return createElement('div', { className: LANG_SWITCH_GROUP, role: 'group', 'aria-label': '渲染为' }, FENCE_FORCE_OPTIONS.filter((option) => option.value !== 'mermaid').map((option) => createElement('button', { type: 'button', className: LANG_SWITCH_BTN, onClick: () => onForce(option.value), 'aria-pressed': false }, createElement('span', null, option.label))));
 }
-exports.LANG_SWITCH_CLASS = LANG_SWITCH_CLASS;
-exports.LANG_SWITCH_ATTR = LANG_SWITCH_ATTR;
-exports.langSwitchValue = langSwitchValue;
-exports.peekFenceLang = peekFenceLang;
-exports.syncLangSwitch = syncLangSwitch;
-exports.scanLangSwitches = scanLangSwitches;
-exports.removeLangSwitch = removeLangSwitch;
-exports.applyLangForce = applyLangForce;
-exports.CardLangSwitch = CardLangSwitch;
+Object.assign(exports,{LANG_SWITCH_CLASS,LANG_SWITCH_ATTR,langSwitchValue,peekFenceLang,syncLangSwitch,scanLangSwitches,removeLangSwitch,applyLangForce,CardLangSwitch});
 
     // 共享 DOM 扫描骨架 + 单 MutationObserver 按语言分流
     // ── shared DOM scanner skeleton (dsh-shared/client-parts) ──
@@ -2717,22 +2680,20 @@ function installScanner(ctx) {
         uninstallRescan();
     };
 }
-exports.installScanner = installScanner;
+Object.assign(exports,{installScanner});
 
     // 样式（DSH 语义 token，随 activation 注入）
     "use strict";
-// ── 样式（DSH 语义 token，随 activation 注入）──────────────────────────
-// 只写**自有 DOM** 的样式 + **自有 data-* 标记**作用域下的显隐规则（注入容器 /「查看原文」/
-// 整段复制 / mermaid 卡片 / 离屏容器）。**不用** el.style：硬约束「不对官方元素写 style /
-// class / aria」；不覆盖任何官方类名的外观（表格 / 公式 / 高亮随官方组件自带）。
+// ── 样式（DSH 语义 token，随 activation 注入）── 只写自有 DOM 与自有 data-* 标记作用域；
+// 不用 el.style、不覆盖官方类名外观（硬约束：不对官方元素写 style / class / aria）。
 const STYLES = `
 .tzx-md{position:relative;display:flex;flex-direction:column;gap:8px;min-width:0}
 .dsh-md-render-fallback{margin:0;white-space:pre-wrap;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-primary)}
-/* ── 注入容器：text / plaintext / txt 围栏块按 markdown 渲染 ──
-   容器由 text-markdown.ts 追加在 md-code-block 内；宿主内容容器按视图
-   隐藏（官方 CodeBlock 的内容容器带稳定属性 data-code-block-content）。 */
+/* ── 注入容器：围栏块按 markdown 渲染（text / 无语言兜底）──
+   text-markdown.ts 追加在 md-code-block 内；接管后隐藏官方全部直接子元素
+   （banner 标签被宿主写死为「代码块」，对 markdown 是错误信息）；切回原文时自动恢复。 */
 .dsh-md-render-text-md{padding:12px 16px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-markdown-code-block)}
-.md-code-block[data-dsh-md-render-text-view="markdown"]>[data-code-block-content]{display:none}
+.md-code-block[data-dsh-md-render-text-view="markdown"]>:not([class*=dsh-md-render]):not(.tzx-md){display:none}
 .md-code-block[data-dsh-md-render-text-view="source"]>.dsh-md-render-text-md{display:none}
 .dsh-md-render-text-toggle{display:inline-flex;align-items:center;align-self:flex-end;margin-top:4px;padding:2px 10px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:transparent;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;cursor:pointer;transition:color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .dsh-md-render-text-toggle:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2)}
@@ -2751,7 +2712,7 @@ const STYLES = `
 [data-streaming] .dsh-md-render-text-toggle{display:none}
 /* ── mermaid 图表卡片（自有 DOM）── */
 .dsh-md-render-mermaid-host{display:block;min-width:0}
-.md-code-block[data-dsh-md-render-mermaid-view]>[data-code-block-content]{display:none}
+.md-code-block[data-dsh-md-render-mermaid-view]>:not([class*=dsh-md-render]):not(.tzx-md){display:none}
 .dsh-md-render-mermaid-card{display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 12px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2);font:var(--dsw-font-s-14);line-height:22px;color:var(--dsw-alias-label-primary);animation:dsh-md-render-mermaid-card-in 150ms var(--ds-ease-in-out)}
 .dsh-md-render-mermaid-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .dsh-md-render-mermaid-card-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
@@ -2783,21 +2744,23 @@ const STYLES = `
 .dsh-md-render-mermaid-error-line svg{flex:none;color:var(--dsw-alias-state-error-primary)}
 .dsh-md-render-mermaid-error-msg{white-space:pre-wrap;word-break:break-all}
 .dsh-md-render-mermaid-retry{margin-left:auto;flex:none}
-/* ── 「渲染为…」语言手动切换控件（需求 4，自有 DOM）──
-   hover 才显示（同整段复制按钮），但必须同时支持键盘 focus-within 与触屏常显（@media
-   hover:none），只做 hover 手机点不到；作用域 = 自有块级标记，不碰官方 class。 */
+/* ── 「渲染为…」语言手动切换控件（自有 DOM）── hover / 键盘 focus-within / 触屏常显三路，
+   作用域 = 自有块级标记，不碰官方 class。 */
 .md-code-block[data-dsh-md-render-lang-switch]>.dsh-md-render-lang-switch{display:flex;justify-content:flex-end;margin-top:4px;opacity:0;transition:opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .md-code-block[data-dsh-md-render-lang-switch]:hover>.dsh-md-render-lang-switch{opacity:1}
 .md-code-block[data-dsh-md-render-lang-switch]:focus-within>.dsh-md-render-lang-switch{opacity:1}
 @media (hover:none){.md-code-block[data-dsh-md-render-lang-switch]>.dsh-md-render-lang-switch{opacity:1}}
-/* ── 图表缩放 / 全屏（需求 1，自有 DOM）──
-   工具条按钮复用卡片按钮类；全屏走原生 API，不支持（iPhone Safari）降级为卡片内 overlay。 */
+/* ── 图表缩放 / 浮窗（需求 1，自有 DOM）──
+   工具条按钮复用卡片按钮类；浮窗 = 页面内 <dialog> 模态（**非**浏览器全屏），
+   卡片临时移入面板：遮罩 / Esc / 焦点归还 / 背景滚动锁定全由浏览器兜底。 */
 .dsh-md-render-mermaid-zoom{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
-.dsh-md-render-mermaid-card:fullscreen{max-height:none;height:100%;border-radius:0;padding:12px 16px}
-.dsh-md-render-mermaid-card:fullscreen .dsh-md-render-mermaid-svg{max-height:none}
-.dsh-md-render-mermaid-card[data-dsh-md-render-fs="fallback"]{position:fixed;inset:0;z-index:2147483000;margin:0;max-height:none;border-radius:0;overflow:auto}
-/* ── 离屏渲染容器（引擎渲染失败时的「炸弹图」只落在这里，随容器移除）──
-   必须仍在布局树内（display:none / visibility:hidden 会让 mermaid 量不到尺寸）。 */
+.dsh-md-render-mermaid-fs{display:flex;flex-direction:column;gap:6px;width:90vw;height:85vh;max-width:none;max-height:none;margin:auto;padding:8px 10px;border:0;border-radius:10px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2);font:var(--dsw-font-s-14);color:var(--dsw-alias-label-primary)}
+.dsh-md-render-mermaid-fs::backdrop{background:rgba(0,0,0,.45)}
+.dsh-md-render-mermaid-fs-bar{display:flex;justify-content:flex-end;gap:6px;flex:none}
+.dsh-md-render-mermaid-fs>.dsh-md-render-mermaid-host{flex:1;min-height:0;display:flex;flex-direction:column}
+.dsh-md-render-mermaid-fs .dsh-md-render-mermaid-card{flex:1;min-height:0;overflow:hidden;padding:0;border:0;box-shadow:none}
+.dsh-md-render-mermaid-fs .dsh-md-render-mermaid-svg{max-height:none;flex:1;min-height:0}
+/* ── 离屏渲染容器（失败时的炸弹图只落这里）── 必须在布局树内（display:none 会量不到尺寸）。 */
 .dsh-md-render-offscreen{position:absolute;left:-99999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none}
 @keyframes dsh-md-render-mermaid-card-in{from{opacity:0;transform:translateY(1px)}to{opacity:1;transform:none}}
 @keyframes dsh-md-render-mermaid-spin{to{transform:rotate(360deg)}}

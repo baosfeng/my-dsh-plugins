@@ -76,7 +76,7 @@ const ANCHORS = [
   ['function scanLangSwitches(', 'lang-switch.ts'],
   ['function applyLangForce(', 'lang-switch.ts'],
   ['function bindZoom(', 'mermaid-zoom.ts'],
-  ['function toggleCardFullscreen(', 'mermaid-zoom.ts'],
+  ['function toggleCardOverlay(', 'mermaid-zoom.ts'],
   ['function refreshFenceLangIndex(', 'lang-source.ts'],
 ]
 
@@ -128,6 +128,26 @@ const unresolved = [...PARTS, ...ROUTE_PATHS].map(([placeholder]) => placeholder
 if (unresolved.length > 0) {
   throw new Error(`client.src.js has unresolved placeholders: ${unresolved.join(', ')}`)
 }
+
+// 2d. 等价瘦身：各片段共享同一个 factory 函数作用域，`"use strict"` 指令只需保留一份
+//     （tsc 每个片段各带一份；指令只对函数体首个声明生效，重复的是纯文本）。
+let strictKept = false
+out = out.replace(/^"use strict";\n/gm, () => {
+  if (strictKept) return ''
+  strictKept = true
+  return '"use strict";\n'
+})
+
+// 2c. 等价瘦身：把每个片段尾部的 `exports.X = X;` 连续段合并成一次 Object.assign
+//     （同一 factory 作用域、同名同值、声明顺序不变）——纯样板压缩，产物减 ~3 KB，
+//     行为零变化；不匹配就原样保留。
+out = out.replace(/^(?:exports\.([A-Za-z_$][\w$]*) = \1;\n)+/gm, (block) => {
+  const names = block
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => line.slice('exports.'.length, line.indexOf(' =')))
+  return 'Object.assign(exports,{' + names.join(',') + '});\n'
+})
 
 // 2b. 锚点计数：注入的是**真正的函数/常量声明**，不是注释里的文本
 //     （片段「静默丢失」是这类构建最典型的故障模式）。

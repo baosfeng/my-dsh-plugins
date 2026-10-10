@@ -79,6 +79,8 @@ export function makeElement(tag, attrs = {}) {
     },
     removeEventListener() {},
     appendChild(child) {
+      // 真实 DOM 语义：搬走的孩子会先从原父节点的子表里摘掉。
+      if (child.parentNode && child.parentNode !== this) child.parentNode.removeChild(child)
       const i = this._nodes.indexOf(child)
       if (i >= 0) this._nodes.splice(i, 1)
       this._nodes.push(child)
@@ -86,6 +88,7 @@ export function makeElement(tag, attrs = {}) {
       return child
     },
     insertBefore(child, ref) {
+      if (child.parentNode && child.parentNode !== this) child.parentNode.removeChild(child)
       const i = ref ? this._nodes.indexOf(ref) : -1
       if (i < 0) this._nodes.push(child)
       else this._nodes.splice(i, 0, child)
@@ -154,10 +157,29 @@ export function makeElement(tag, attrs = {}) {
     click() {
       this.fire('click')
     },
+    /** 真实 DOM 语义：`<dialog>` 模态开关（mermaid 浮窗用；测试断言 DOM 与自有标记）。 */
+    showModal() {
+      this._open = true
+    },
+    close() {
+      this._open = false
+      this.fire('close')
+    },
+    /** 布局量（真实浏览器由渲染引擎给；测试用 `el._rect` 显式指定）。 */
+    getBoundingClientRect() {
+      return this._rect || { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 }
+    },
   }
   Object.defineProperty(el, 'children', { get: () => el._nodes.filter((n) => n.nodeType === 1) })
   Object.defineProperty(el, 'childNodes', { get: () => el._nodes })
   Object.defineProperty(el, 'firstElementChild', { get: () => el._nodes.find((n) => n.nodeType === 1) || null })
+  Object.defineProperty(el, 'nextSibling', {
+    get: () => {
+      if (!el.parentNode) return null
+      const siblings = el.parentNode._nodes
+      return siblings[siblings.indexOf(el) + 1] || null
+    },
+  })
   Object.defineProperty(el, 'previousElementSibling', {
     get: () => {
       if (!el.parentNode) return null

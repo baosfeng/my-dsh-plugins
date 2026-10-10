@@ -1,22 +1,21 @@
-// ── mermaid 图表卡片（React）──────────────────────────────────────────
-// 卡片只挂在**本插件自己插入的容器**里（不改官方节点结构）：官方 `<pre>` 由自有 CSS 的
-// `.md-code-block[data-dsh-md-render-mermaid-view]` 规则隐藏（不用 `pre.style.display`）。
+// ── mermaid 图表卡片（React）── 卡片只挂在本插件自插的容器里（不改官方节点结构）；
+// 官方 `<pre>` 由自有 CSS 的 `[data-dsh-md-render-mermaid-view]` 规则隐藏。
 
-/** 共享图标集（dsh-shared/client-parts/icons.part.js，构建期拼接到本 factory 作用域）。 */
+/** 共享图标集（dsh-shared/client-parts/icons.part.js，构建期拼接进本作用域）。 */
 declare const icon: Record<string, (size?: number) => unknown>
 
-/** 卡片 host 标记（entryId；测试与导出按它定位）。 */
+/** 卡片 host 标记（entryId）。 */
 const MERMAID_ENTRY_ATTR = 'data-dsh-md-render-mermaid'
-/** 渲染态标记（loading / ok / error；写在 host 上，与 React 提交时机解耦）。 */
+/** 渲染态（loading / ok / error；写在 host 上，与 React 提交时机解耦）。 */
 const MERMAID_STATE_ATTR = 'data-dsh-md-render-mermaid-state'
-/** 块级视图标记（preview / code；写在 md-code-block 上，驱动自有 CSS 隐藏官方 pre）。 */
+/** 视图标记（preview / code；驱动自有 CSS 隐藏官方 pre）。 */
 const MERMAID_VIEW_ATTR = 'data-dsh-md-render-mermaid-view'
-/** 卡片根 / SVG 容器类名（mermaid-zoom 定位自有 DOM 时共用）。 */
+/** 卡片根 / SVG 容器类名（mermaid-zoom 共用）。 */
 const MERMAID_CARD_CLASS = 'dsh-md-render-mermaid-card'
 const MERMAID_SVG_CLASS = 'dsh-md-render-mermaid-svg'
 /** 变换层类名：panzoom 只变换它，外层容器负责裁剪。 */
 const MERMAID_CANVAS_CLASS = 'dsh-md-render-mermaid-canvas'
-/** 挂载序号（entryId 用；导出文件名取其中的数字）。 */
+/** 挂载序号（entryId 用）。 */
 let mermaidSeq = 0
 
 /** 通知状态。 */
@@ -32,10 +31,7 @@ function noteRenderState(entryId: string, state: string): void {
   if (host && typeof host.setAttribute === 'function') host.setAttribute(MERMAID_STATE_ATTR, state)
 }
 
-/**
- * 渲染状态机：加载引擎 → **离屏渲染** → 成功取 SVG / 失败留原因。
- * 渲染令牌：effect 每次运行（含重试）先作废旧令牌再挂新令牌，迟到的结果一律丢弃。
- */
+/** 渲染状态机（加载引擎 → 离屏渲染 → SVG / 失败原因）；令牌机制丢弃迟到结果。 */
 function useMermaidRender(entryId: string, source: string, attempt: number) {
   const [status, setStatus] = useState('loading')
   const [svg, setSvg] = useState<string | null>(null)
@@ -115,10 +111,7 @@ function ExportButtons({
   )
 }
 
-/**
- * 预览 / 代码 视图切换（卡片头部）。
- * `previewDisabled`：渲染失败时预览态没有可显示的内容，禁用而不是让它显示成激活假象。
- */
+/** 预览 / 代码 视图切换；渲染失败时禁用预览（否则只剩激活态假象）。 */
 function ViewToggle({
   mode,
   setMode,
@@ -150,7 +143,7 @@ function ViewToggle({
   )
 }
 
-/** 缩放 / 全屏工具条（需求 1）：Fit / 100% / ± / 全屏。 */
+/** 缩放 / 浮窗工具条（需求 1）：全屏（浮窗）/ 适应 / 100% / ±。 */
 function ZoomBar({ entryId }: { entryId: string }) {
   const btn = (label: string, title: string, action: () => void) =>
     createElement(
@@ -161,7 +154,7 @@ function ZoomBar({ entryId }: { entryId: string }) {
   return createElement(
     'div',
     { className: 'dsh-md-render-mermaid-zoom', role: 'group', 'aria-label': '图表缩放' },
-    btn('全屏', '全屏 / 退出全屏（Esc）', () => toggleCardFullscreen(entryId)),
+    btn('全屏', '全屏浮窗（Esc 关闭）', () => toggleCardOverlay(entryId)),
     btn('适应', '适应宽度', () => zoomEntry(entryId, 'fit')),
     btn('100%', '实际大小', () => zoomEntry(entryId, 'full')),
     btn('−', '缩小', () => zoomEntry(entryId, 'out')),
@@ -194,8 +187,7 @@ function CardBody({
     )
   }
   if (status === 'error') {
-    // 主次反转（#470 需求 2）：**源码是第一位的主视觉**（首屏即源码），失败原因降为一行灰字
-    // 提示；「重试」保留 —— 引擎加载失败是真实可恢复场景，砍掉等于砍掉唯一恢复路径。
+    // 主次反转：源码是主视觉，失败原因降为一行灰字；「重试」是加载失败的唯一恢复路径。
     return createElement(
       'div',
       { className: 'dsh-md-render-mermaid-error' },
@@ -262,12 +254,13 @@ function MermaidCard({
   const exportActions = makeExportHandlers(entryId, source, flashNotice)
   // 失败态把视图钉到 code：按钮激活态与实际显示一致。
   const view = status === 'error' ? 'code' : mode
-  // 渲染出 SVG 后绑定缩放 / 平移（懒加载 panzoom；失败静默保持静态图）。
+  // 渲染出 SVG 后绑定缩放 / 平移（懒加载 panzoom；失败只标记卡片，不再静默）。
+  // 清理时收掉本卡片的浮窗：组件卸载 / 切到代码视图都不留浮窗。
   useEffect(() => {
     if (status !== 'ok' || view !== 'preview') return undefined
     const target = zoomTargetsOf(entryId)
     if (target !== null) bindZoom(target)
-    return undefined
+    return () => closeOverlayOf(entryId)
   }, [entryId, status, view])
   return createElement(
     'div',

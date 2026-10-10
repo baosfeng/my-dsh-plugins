@@ -946,6 +946,54 @@ assert.ok(
   'prompt writes never hit the memory endpoint',
 )
 
+// ── 提示词编辑态（防回归：PromptsBlock / PromptRow 的编辑分支）───────────
+// 提示词编辑此前没有任何断言——PromptsBlock 因函数行数门禁会被拆分，
+// 拆分时若把编辑分支写丢，本用例必须变红。
+// 提示词编辑态：标题/正文一起编辑 → 保存走 update 确认 → POST 载荷正确
+const promptEditTree = renderView()
+const promptEditBtns = []
+collectButtons(promptEditTree, promptEditBtns)
+const promptEditBtn = promptEditBtns.find((b) => b.label.includes('编辑') && b.label.includes('gp-seed-think-zh'))
+assert.ok(promptEditBtn, 'prompt edit control rendered for the seed prompt')
+promptEditBtn.onClick()
+const promptEditOpenTree = renderView()
+const promptEditInputs = []
+collectInputs(promptEditOpenTree, promptEditInputs)
+const promptEditTitleInput = promptEditInputs.find((i) => i.placeholder.includes('提示词标题'))
+assert.ok(promptEditTitleInput, 'prompt title editor input rendered')
+assert.equal(promptEditTitleInput.value, '中文思考', 'title editor prefilled with the current title')
+promptEditTitleInput.onChange({ target: { value: '中文思考（改）' } })
+const promptEditTextTree = renderView()
+// 注意：新增栏也带 dsh-my-memory-btn-save，必须限定在提示词编辑行内取保存按钮。
+const promptEditingRow = findByClassContaining(promptEditTextTree, 'dsh-my-memory-row-editing')
+assert.ok(promptEditingRow, 'prompt row switched into editing mode')
+const promptEditSave = findSaveButton(promptEditingRow)
+assert.ok(promptEditSave, 'prompt editor renders the save button')
+promptEditSave.onClick()
+const promptUpdateConfirmTree = renderView()
+const promptUpdateTexts = []
+walkText(promptUpdateConfirmTree, promptUpdateTexts)
+assert.ok(promptUpdateTexts.join('|').includes('确认保存这条提示词的修改'), 'saving an edit asks for confirmation')
+const promptUpdateOk = collectConfirmOk(promptUpdateConfirmTree)
+assert.ok(promptUpdateOk, 'prompt update confirm button rendered')
+cannedResponses.push({
+  ok: true,
+  value: { items: [{ ...PROMPT_SEED, title: '中文思考（改）' }, PROMPT_OFF], item: null },
+})
+promptUpdateOk.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+// 只认提示词端点（记忆分区也有一次 update POST，不能混淆）。
+const promptUpdateCall = fetchCalls.find(
+  (c) =>
+    c.url === '/my-memory/api/prompts' && c.options !== undefined && JSON.parse(c.options.body).action === 'update',
+)
+assert.ok(promptUpdateCall, 'confirming the edit issues a prompt update POST')
+const promptUpdatePayload = JSON.parse(promptUpdateCall.options.body)
+assert.equal(promptUpdatePayload.id, 'gp-seed-think-zh')
+assert.equal(promptUpdatePayload.title, '中文思考（改）', 'update payload carries the edited title')
+assert.equal(promptUpdatePayload.confirmed, true, 'the prompt update carries the consent marker')
+assert.equal(promptUpdateCall.url, '/my-memory/api/prompts', 'prompt update never hits the memory endpoint')
+
 console.log('ALL MY-MEMORY CLIENT RENDER-PATH TESTS PASSED')
 
 // ── helpers for button collection (no aria-label on some buttons) ─────────
@@ -958,6 +1006,22 @@ function collectConfirmOk(node) {
 function findSaveButton(node) {
   return collectByClass(node, 'dsh-my-memory-btn-save')
 }
+/** 按 className 子串取第一个节点（用于多类名容器，如编辑行）。 */
+function findByClassContaining(node, className) {
+  if (node === null || typeof node !== 'object') return undefined
+  const cls = node.props?.className
+  if (typeof cls === 'string' && cls.includes(className)) return node
+  if (Array.isArray(node)) {
+    for (const c of node) {
+      const hit = findByClassContaining(c, className)
+      if (hit) return hit
+    }
+    return undefined
+  }
+  if (typeof node.type === 'function') return findByClassContaining(renderComponent(node.type, node.props), className)
+  return findByClassContaining(node.props?.children, className)
+}
+
 function collectByClass(node, className) {
   if (node === null || typeof node !== 'object') return undefined
   const props = node.props ?? {}

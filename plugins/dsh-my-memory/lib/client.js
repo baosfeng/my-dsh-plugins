@@ -1231,24 +1231,20 @@ function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit, }) {
         icon: createElement(ui.IconCloseOutline16),
     }, strings.cancel())));
 }
+// MemoryRow 的描述/操作子部件（MemoryRowDesc / MemoryRowActions）见 rows.ts
+// ——该文件是行级子部件的共同落点，同时守住单文件 ≤400 行门禁。
 /** 一条记忆卡片：描述（+截断/展开）+ 操作图标组 + 元数据（分类/置信度/
  *  冲突/演进历史，issue #78）+ 更新时间。 */
 function MemoryRow({ item, isEditing, isExpanded, editingDesc, onEdit, onEditDesc, onCancelEdit, onSaveEdit, onDelete, onToggle, }) {
     if (isEditing)
         return createElement(MemoryRowEdit, { editingDesc, onEditDesc, onSaveEdit, onCancelEdit });
     const cut = truncateText(item.desc);
-    const shown = isExpanded ? item.desc : cut.text;
-    return createElement('div', { className: 'dsh-my-memory-row' }, createElement('div', { className: 'dsh-my-memory-row-head' }, createElement('div', { className: 'dsh-my-memory-row-desc-wrap' }, createElement('span', { className: 'dsh-my-memory-desc' }, shown), cut.truncated
-        ? createElement('button', {
-            className: `dsh-my-memory-expand${isExpanded ? ' dsh-my-memory-expand-open' : ''}`,
-            'aria-label': isExpanded ? strings.collapse() : strings.expand(),
-            onClick: onToggle,
-        }, icon.chevronDown(14), isExpanded ? strings.collapse() : strings.expand())
-        : null), createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: `${strings.edit()} ${item.id}`, onClick: onEdit }, icon.pencil(14)), createElement(IconButton, {
-        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
-        label: `${strings.delete()} ${item.id}`,
-        onClick: onDelete,
-    }, icon.trash(14)))), createElement(MetadataRow, { item, isExpanded, onToggle }));
+    return createElement('div', { className: 'dsh-my-memory-row' }, createElement('div', { className: 'dsh-my-memory-row-head' }, createElement(MemoryRowDesc, {
+        shown: isExpanded ? item.desc : cut.text,
+        truncated: cut.truncated,
+        isExpanded,
+        onToggle,
+    }), createElement(MemoryRowActions, { id: item.id, onEdit, onDelete })), createElement(MetadataRow, { item, isExpanded, onToggle }));
 }
 /** 概要预览行（issue #105）：add/update 内容超长时提示「完整内容保存 + 显示概要」。 */
 function SummaryPreview({ desc }) {
@@ -1312,8 +1308,66 @@ function Toolbar({ pathInput, onInput, onLoad, onRefresh, }) {
 // 导出给其他 part 文件使用
 
     "use strict";
-// ── candidates: 待确认候选 / 元数据行 / 演进历史（issue #78）────────────────
-// 拆分自 view-rows.part.js：与条目卡片解耦，控制单文件行数（≤400 门禁）。
+// ── rows: 行级子部件（记忆条目行 / 提示词行）────────────────────────────
+// 与「候选条目」语义（candidates.ts）解耦：这里只放**单行渲染**的通用子部件，
+// 供 view-rows.ts / candidates.ts / prompts.ts 共用（client 片段为 script 模式，
+// 无 import/export，靠命名避免重名；拼接顺序见 scripts/build.mjs 的 pieces）。
+/** 描述 + 截断/展开开关（cut 由调用方算好，避免重复截断）。 */
+function MemoryRowDesc({ shown, truncated, isExpanded, onToggle, }) {
+    return createElement('div', { className: 'dsh-my-memory-row-desc-wrap' }, createElement('span', { className: 'dsh-my-memory-desc' }, shown), truncated
+        ? createElement('button', {
+            className: `dsh-my-memory-expand${isExpanded ? ' dsh-my-memory-expand-open' : ''}`,
+            'aria-label': isExpanded ? strings.collapse() : strings.expand(),
+            onClick: onToggle,
+        }, icon.chevronDown(14), isExpanded ? strings.collapse() : strings.expand())
+        : null);
+}
+/** 条目操作图标组（编辑 / 删除）。 */
+function MemoryRowActions({ id, onEdit, onDelete, }) {
+    return createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: `${strings.edit()} ${id}`, onClick: onEdit }, icon.pencil(14)), createElement(IconButton, {
+        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
+        label: `${strings.delete()} ${id}`,
+        onClick: onDelete,
+    }, icon.trash(14)));
+}
+/** 分区标题行（标题 + 条数徽标）。 */
+function PromptsSectionHead({ count }) {
+    return createElement('div', { className: 'dsh-my-memory-section-head' }, createElement('span', { className: 'dsh-my-memory-section-title' }, strings.promptsSection()), createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, strings.promptCount(count)));
+}
+/** 一条提示词的编辑态：标题输入 + 正文 textarea + 保存/取消。 */
+function PromptRowEdit({ editing, onTitle, onText, onSave, onCancel, }) {
+    return createElement('div', { className: 'dsh-my-memory-row dsh-my-memory-row-editing dsh-my-memory-prompt-row' }, createElement(ui.Input, {
+        className: 'dsh-my-memory-add-input',
+        placeholder: strings.promptsAddPlaceholder(),
+        'aria-label': strings.promptsAddInputAria(),
+        value: editing.title,
+        onChange: (event) => onTitle(event.target.value),
+    }), createElement('textarea', {
+        className: 'dsh-my-memory-prompt-textarea',
+        placeholder: strings.promptsTextPlaceholder(),
+        'aria-label': strings.promptsTextInputAria(),
+        value: editing.text,
+        onChange: (event) => onText(event.target.value),
+    }), createElement('div', { className: 'dsh-my-memory-actions' }, createElement('button', { className: 'dsh-my-memory-btn-save', onClick: onSave }, icon.check(14), strings.save()), createElement(ui.Button, {
+        variant: 'ghost',
+        size: 'sm',
+        onClick: onCancel,
+        icon: createElement(ui.IconCloseOutline16),
+    }, strings.cancel())));
+}
+/** 启停 Pill（点击翻转 enabled）。 */
+function PromptToggle({ item, busy, onToggle }) {
+    return createElement(ui.Pill, {
+        className: 'dsh-my-memory-prompt-toggle',
+        active: item.enabled === true,
+        disabled: busy,
+        'aria-label': (item.enabled === true ? strings.promptToggleOff() : strings.promptToggleOn()) + ' ' + item.id,
+        onClick: onToggle,
+    }, item.enabled === true ? strings.promptEnabled() : strings.promptDisabled());
+}
+// 导出给其他 part 文件使用
+
+    "use strict";
 /** 一条待确认候选（issue #78）：分类徽标 + 描述 + 范围 + 来源 + 确认/拒弃。 */
 function CandidateRow({ candidate, busy, onConfirm, onDismiss, }) {
     return createElement('div', { className: 'dsh-my-memory-row dsh-my-memory-row-candidate' }, createElement('div', { className: 'dsh-my-memory-row-head' }, createElement('div', { className: 'dsh-my-memory-row-desc-wrap' }, createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(candidate.category)), createElement('span', { className: 'dsh-my-memory-desc' }, candidate.desc)), createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, {
@@ -1488,37 +1542,6 @@ function createActions({ setData, setLoading, setError, setSaved, setCandidates,
 function promptKey(id) {
     return 'prompt/' + id;
 }
-/** 一条提示词的编辑态：标题输入 + 正文 textarea + 保存/取消。 */
-function PromptRowEdit({ editing, onTitle, onText, onSave, onCancel, }) {
-    return createElement('div', { className: 'dsh-my-memory-row dsh-my-memory-row-editing dsh-my-memory-prompt-row' }, createElement(ui.Input, {
-        className: 'dsh-my-memory-add-input',
-        placeholder: strings.promptsAddPlaceholder(),
-        'aria-label': strings.promptsAddInputAria(),
-        value: editing.title,
-        onChange: (event) => onTitle(event.target.value),
-    }), createElement('textarea', {
-        className: 'dsh-my-memory-prompt-textarea',
-        placeholder: strings.promptsTextPlaceholder(),
-        'aria-label': strings.promptsTextInputAria(),
-        value: editing.text,
-        onChange: (event) => onText(event.target.value),
-    }), createElement('div', { className: 'dsh-my-memory-actions' }, createElement('button', { className: 'dsh-my-memory-btn-save', onClick: onSave }, icon.check(14), strings.save()), createElement(ui.Button, {
-        variant: 'ghost',
-        size: 'sm',
-        onClick: onCancel,
-        icon: createElement(ui.IconCloseOutline16),
-    }, strings.cancel())));
-}
-/** 启停 Pill（点击翻转 enabled）。 */
-function PromptToggle({ item, busy, onToggle }) {
-    return createElement(ui.Pill, {
-        className: 'dsh-my-memory-prompt-toggle',
-        active: item.enabled === true,
-        disabled: busy,
-        'aria-label': (item.enabled === true ? strings.promptToggleOff() : strings.promptToggleOn()) + ' ' + item.id,
-        onClick: onToggle,
-    }, item.enabled === true ? strings.promptEnabled() : strings.promptDisabled());
-}
 /** 一条提示词卡片：启停 + 标题（+ 内置徽标）+ 正文 + 排序/编辑/删除。 */
 function PromptRow({ item, isEditing, busy, onToggle, onMoveUp, onMoveDown, onEdit, onDelete, }) {
     const head = createElement('div', { className: 'dsh-my-memory-row-head' }, createElement(PromptToggle, { item, busy, onToggle }), createElement('span', { className: 'dsh-my-memory-prompt-title' }, item.title), item.builtin === undefined
@@ -1552,35 +1575,65 @@ function PromptAddBar({ draft, busy, onDraft, onAdd, }) {
         onChange: (event) => onDraft({ text: event.target.value }),
     }), createElement('button', { className: 'dsh-my-memory-btn-save', disabled: busy, 'aria-label': strings.add(), onClick: onAdd }, icon.plus(14), strings.add()));
 }
+/** 一条提示词：编辑态走编辑器，否则走卡片（纯渲染，无状态）。 */
+function PromptEntry({ item, editing, busy, onToggle, onMove, onEdit, onEditTitle, onEditText, onCancelEdit, onSaveEdit, onDelete, }) {
+    if (editing !== null && editing.id === item.id) {
+        return createElement(PromptRowEdit, {
+            key: promptKey(item.id),
+            editing,
+            onTitle: onEditTitle,
+            onText: onEditText,
+            onSave: onSaveEdit,
+            onCancel: onCancelEdit,
+        });
+    }
+    return createElement(PromptRow, {
+        key: promptKey(item.id),
+        item,
+        isEditing: false,
+        busy,
+        onToggle,
+        onMoveUp: () => onMove('up'),
+        onMoveDown: () => onMove('down'),
+        onEdit,
+        onDelete,
+    });
+}
+/** 列表主体：无条目时给引导空状态，否则渲染条目（纯渲染，无状态）。 */
+function PromptEntryList({ items, editing, busy, onToggle, onMove, onEdit, onEditTitle, onEditText, onCancelEdit, onSaveEdit, onDelete, }) {
+    if (items.length === 0) {
+        return createElement('div', { className: 'dsh-my-memory-empty' }, strings.promptsEmpty(), '·', strings.promptsEmptyHint());
+    }
+    return items.map((item) => createElement(PromptEntry, {
+        key: promptKey(item.id),
+        item,
+        editing,
+        busy,
+        onToggle: () => onToggle(item.id),
+        onMove: (direction) => onMove(item.id, direction),
+        onEdit: () => onEdit(item),
+        onEditTitle,
+        onEditText,
+        onCancelEdit,
+        onSaveEdit,
+        onDelete: () => onDelete(item),
+    }));
+}
 /** 全局提示词分区（列表 + 新增栏 + 确认面板）。 */
 function PromptsBlock({ items, busy, editing, confirming, draft, onToggle, onMove, onEdit, onEditTitle, onEditText, onCancelEdit, onSaveEdit, onDelete, onDraft, onAdd, onConfirm, onCancelConfirm, onCommit, }) {
-    const rows = items.map((item) => {
-        const isEditing = editing !== null && editing.id === item.id;
-        if (isEditing) {
-            return createElement(PromptRowEdit, {
-                key: promptKey(item.id),
-                editing: editing,
-                onTitle: onEditTitle,
-                onText: onEditText,
-                onSave: onSaveEdit,
-                onCancel: onCancelEdit,
-            });
-        }
-        return createElement(PromptRow, {
-            key: promptKey(item.id),
-            item,
-            isEditing: false,
-            busy,
-            onToggle: () => onToggle(item.id),
-            onMoveUp: () => onMove(item.id, 'up'),
-            onMoveDown: () => onMove(item.id, 'down'),
-            onEdit: () => onEdit(item),
-            onDelete: () => onDelete(item),
-        });
-    });
-    return createElement('div', { className: 'dsh-my-memory-section dsh-my-memory-section-prompts' }, createElement('div', { className: 'dsh-my-memory-section-head' }, createElement('span', { className: 'dsh-my-memory-section-title' }, strings.promptsSection()), createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, strings.promptCount(items.length))), createElement('div', { className: 'dsh-my-memory-note' }, strings.promptsNote()), rows.length === 0
-        ? createElement('div', { className: 'dsh-my-memory-empty' }, strings.promptsEmpty(), '·', strings.promptsEmptyHint())
-        : rows, createElement(PromptAddBar, { draft, busy, onDraft, onAdd }), createElement(PromptConfirmPanel, { confirming, busy, onCommit, onCancelConfirm }));
+    return createElement('div', { className: 'dsh-my-memory-section dsh-my-memory-section-prompts' }, createElement(PromptsSectionHead, { count: items.length }), createElement('div', { className: 'dsh-my-memory-note' }, strings.promptsNote()), createElement(PromptEntryList, {
+        items,
+        editing,
+        busy,
+        onToggle,
+        onMove,
+        onEdit,
+        onEditTitle,
+        onEditText,
+        onCancelEdit,
+        onSaveEdit,
+        onDelete,
+    }), createElement(PromptAddBar, { draft, busy, onDraft, onAdd }), createElement(PromptConfirmPanel, { confirming, busy, onCommit, onCancelConfirm }));
 }
 /** 提示词确认面板（与记忆分区共用 ask 范式卡：删除红 / 保存绿）。
  *  拆成独立组件：单函数行数与圈复杂度都守门禁，且确认语义与列表渲染解耦。 */

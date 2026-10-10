@@ -206,6 +206,9 @@ function MemoryRowEdit({
   )
 }
 
+// MemoryRow 的描述/操作子部件（MemoryRowDesc / MemoryRowActions）见 rows.ts
+// ——该文件是行级子部件的共同落点，同时守住单文件 ≤400 行门禁。
+
 /** 一条记忆卡片：描述（+截断/展开）+ 操作图标组 + 元数据（分类/置信度/
  *  冲突/演进历史，issue #78）+ 更新时间。 */
 function MemoryRow({
@@ -233,48 +236,19 @@ function MemoryRow({
 }): ReactNode {
   if (isEditing) return createElement(MemoryRowEdit, { editingDesc, onEditDesc, onSaveEdit, onCancelEdit })
   const cut = truncateText(item.desc)
-  const shown = isExpanded ? item.desc : cut.text
   return createElement(
     'div',
     { className: 'dsh-my-memory-row' },
     createElement(
       'div',
       { className: 'dsh-my-memory-row-head' },
-      createElement(
-        'div',
-        { className: 'dsh-my-memory-row-desc-wrap' },
-        createElement('span', { className: 'dsh-my-memory-desc' }, shown),
-        cut.truncated
-          ? createElement(
-              'button',
-              {
-                className: `dsh-my-memory-expand${isExpanded ? ' dsh-my-memory-expand-open' : ''}`,
-                'aria-label': isExpanded ? strings.collapse() : strings.expand(),
-                onClick: onToggle,
-              },
-              icon.chevronDown(14),
-              isExpanded ? strings.collapse() : strings.expand(),
-            )
-          : null,
-      ),
-      createElement(
-        'div',
-        { className: 'dsh-my-memory-actions' },
-        createElement(
-          IconButton,
-          { className: 'dsh-my-memory-iconbtn', label: `${strings.edit()} ${item.id}`, onClick: onEdit },
-          icon.pencil(14),
-        ),
-        createElement(
-          IconButton,
-          {
-            className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
-            label: `${strings.delete()} ${item.id}`,
-            onClick: onDelete,
-          },
-          icon.trash(14),
-        ),
-      ),
+      createElement(MemoryRowDesc, {
+        shown: isExpanded ? item.desc : cut.text,
+        truncated: cut.truncated,
+        isExpanded,
+        onToggle,
+      }),
+      createElement(MemoryRowActions, { id: item.id, onEdit, onDelete }),
     ),
     createElement(MetadataRow, { item, isExpanded, onToggle }),
   )

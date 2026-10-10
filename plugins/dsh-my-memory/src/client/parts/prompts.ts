@@ -33,70 +33,6 @@ function promptKey(id: string): string {
   return 'prompt/' + id
 }
 
-/** 一条提示词的编辑态：标题输入 + 正文 textarea + 保存/取消。 */
-function PromptRowEdit({
-  editing,
-  onTitle,
-  onText,
-  onSave,
-  onCancel,
-}: {
-  editing: PromptEditing
-  onTitle: (value: string) => void
-  onText: (value: string) => void
-  onSave: () => void
-  onCancel: () => void
-}): ReactNode {
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-row dsh-my-memory-row-editing dsh-my-memory-prompt-row' },
-    createElement(ui.Input, {
-      className: 'dsh-my-memory-add-input',
-      placeholder: strings.promptsAddPlaceholder(),
-      'aria-label': strings.promptsAddInputAria(),
-      value: editing.title,
-      onChange: (event: { target: { value: string } }) => onTitle(event.target.value),
-    }),
-    createElement('textarea', {
-      className: 'dsh-my-memory-prompt-textarea',
-      placeholder: strings.promptsTextPlaceholder(),
-      'aria-label': strings.promptsTextInputAria(),
-      value: editing.text,
-      onChange: (event: { target: { value: string } }) => onText(event.target.value),
-    }),
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-actions' },
-      createElement('button', { className: 'dsh-my-memory-btn-save', onClick: onSave }, icon.check(14), strings.save()),
-      createElement(
-        ui.Button,
-        {
-          variant: 'ghost',
-          size: 'sm',
-          onClick: onCancel,
-          icon: createElement(ui.IconCloseOutline16),
-        },
-        strings.cancel(),
-      ),
-    ),
-  )
-}
-
-/** 启停 Pill（点击翻转 enabled）。 */
-function PromptToggle({ item, busy, onToggle }: { item: PromptItem; busy: boolean; onToggle: () => void }): ReactNode {
-  return createElement(
-    ui.Pill,
-    {
-      className: 'dsh-my-memory-prompt-toggle',
-      active: item.enabled === true,
-      disabled: busy,
-      'aria-label': (item.enabled === true ? strings.promptToggleOff() : strings.promptToggleOn()) + ' ' + item.id,
-      onClick: onToggle,
-    },
-    item.enabled === true ? strings.promptEnabled() : strings.promptDisabled(),
-  )
-}
-
 /** 一条提示词卡片：启停 + 标题（+ 内置徽标）+ 正文 + 排序/编辑/删除。 */
 function PromptRow({
   item,
@@ -207,6 +143,108 @@ function PromptAddBar({
   )
 }
 
+/** 一条提示词：编辑态走编辑器，否则走卡片（纯渲染，无状态）。 */
+function PromptEntry({
+  item,
+  editing,
+  busy,
+  onToggle,
+  onMove,
+  onEdit,
+  onEditTitle,
+  onEditText,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
+}: {
+  item: PromptItem
+  editing: PromptEditing | null
+  busy: boolean
+  onToggle: () => void
+  onMove: (direction: 'up' | 'down') => void
+  onEdit: () => void
+  onEditTitle: (value: string) => void
+  onEditText: (value: string) => void
+  onCancelEdit: () => void
+  onSaveEdit: () => void
+  onDelete: () => void
+}): ReactNode {
+  if (editing !== null && editing.id === item.id) {
+    return createElement(PromptRowEdit, {
+      key: promptKey(item.id),
+      editing,
+      onTitle: onEditTitle,
+      onText: onEditText,
+      onSave: onSaveEdit,
+      onCancel: onCancelEdit,
+    })
+  }
+  return createElement(PromptRow, {
+    key: promptKey(item.id),
+    item,
+    isEditing: false,
+    busy,
+    onToggle,
+    onMoveUp: () => onMove('up'),
+    onMoveDown: () => onMove('down'),
+    onEdit,
+    onDelete,
+  })
+}
+
+/** 列表主体：无条目时给引导空状态，否则渲染条目（纯渲染，无状态）。 */
+function PromptEntryList({
+  items,
+  editing,
+  busy,
+  onToggle,
+  onMove,
+  onEdit,
+  onEditTitle,
+  onEditText,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
+}: {
+  items: PromptItem[]
+  editing: PromptEditing | null
+  busy: boolean
+  onToggle: (id: string) => void
+  onMove: (id: string, direction: 'up' | 'down') => void
+  onEdit: (item: PromptItem) => void
+  onEditTitle: (value: string) => void
+  onEditText: (value: string) => void
+  onCancelEdit: () => void
+  onSaveEdit: () => void
+  onDelete: (item: PromptItem) => void
+}): ReactNode {
+  if (items.length === 0) {
+    return createElement(
+      'div',
+      { className: 'dsh-my-memory-empty' },
+      strings.promptsEmpty(),
+      '·',
+      strings.promptsEmptyHint(),
+    )
+  }
+  return items.map((item) =>
+    createElement(PromptEntry, {
+      key: promptKey(item.id),
+      item,
+      editing,
+      busy,
+      onToggle: () => onToggle(item.id),
+      onMove: (direction: 'up' | 'down') => onMove(item.id, direction),
+      onEdit: () => onEdit(item),
+      onEditTitle,
+      onEditText,
+      onCancelEdit,
+      onSaveEdit,
+      onDelete: () => onDelete(item),
+    }),
+  )
+}
+
 /** 全局提示词分区（列表 + 新增栏 + 确认面板）。 */
 function PromptsBlock({
   items,
@@ -247,49 +285,24 @@ function PromptsBlock({
   onCancelConfirm: () => void
   onCommit: (confirm: PromptConfirming) => void
 }): ReactNode {
-  const rows = items.map((item) => {
-    const isEditing = editing !== null && editing.id === item.id
-    if (isEditing) {
-      return createElement(PromptRowEdit, {
-        key: promptKey(item.id),
-        editing: editing,
-        onTitle: onEditTitle,
-        onText: onEditText,
-        onSave: onSaveEdit,
-        onCancel: onCancelEdit,
-      })
-    }
-    return createElement(PromptRow, {
-      key: promptKey(item.id),
-      item,
-      isEditing: false,
-      busy,
-      onToggle: () => onToggle(item.id),
-      onMoveUp: () => onMove(item.id, 'up'),
-      onMoveDown: () => onMove(item.id, 'down'),
-      onEdit: () => onEdit(item),
-      onDelete: () => onDelete(item),
-    })
-  })
   return createElement(
     'div',
     { className: 'dsh-my-memory-section dsh-my-memory-section-prompts' },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-section-head' },
-      createElement('span', { className: 'dsh-my-memory-section-title' }, strings.promptsSection()),
-      createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, strings.promptCount(items.length)),
-    ),
+    createElement(PromptsSectionHead, { count: items.length }),
     createElement('div', { className: 'dsh-my-memory-note' }, strings.promptsNote()),
-    rows.length === 0
-      ? createElement(
-          'div',
-          { className: 'dsh-my-memory-empty' },
-          strings.promptsEmpty(),
-          '·',
-          strings.promptsEmptyHint(),
-        )
-      : rows,
+    createElement(PromptEntryList, {
+      items,
+      editing,
+      busy,
+      onToggle,
+      onMove,
+      onEdit,
+      onEditTitle,
+      onEditText,
+      onCancelEdit,
+      onSaveEdit,
+      onDelete,
+    }),
     createElement(PromptAddBar, { draft, busy, onDraft, onAdd }),
     createElement(PromptConfirmPanel, { confirming, busy, onCommit, onCancelConfirm }),
   )

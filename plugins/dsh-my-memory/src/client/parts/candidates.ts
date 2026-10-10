@@ -1,6 +1,6 @@
 // ── candidates: 待确认候选 / 元数据行 / 演进历史（issue #78）────────────────
 // 拆分自 view-rows.part.js：与条目卡片解耦，控制单文件行数（≤400 门禁）。
-
+// 行级渲染子部件（MemoryRowDesc / MemoryRowActions / 提示词行）见 rows.ts。
 /** 候选条目类型 */
 interface CandidateItem {
   id: string

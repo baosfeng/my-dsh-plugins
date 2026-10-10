@@ -25,7 +25,7 @@
  * 不被引用 → 只作为 info 列出（`describeUnpackedEntries`）、绝不报警。
  *
  * 用法：
- *   node scripts/check-pack-hygiene.mjs                 # 门禁模式（全仓库 19 个插件）
+ *   node scripts/check-pack-hygiene.mjs                 # 门禁模式（全仓库 11 个插件）
  *   node scripts/check-pack-hygiene.mjs --list          # 快速模式：只列包内容 + 耗时，不判定
  *   node scripts/check-pack-hygiene.mjs --json          # 机器可读结果
  *   node scripts/check-pack-hygiene.mjs --root <dir>    # 指定仓库根（测试用）
@@ -50,7 +50,7 @@ const PACK_CONCURRENCY = 6
 function runNpmPack(dir, { ignoreScripts = true } = {}) {
   const startedAt = Date.now()
   const args = ['pack', '--dry-run', '--json']
-  // 仓库 19 个插件的 package.json 实测**零** prepack/prepare/prepublishOnly 脚本
+  // 仓库 11 个插件的 package.json 实测**零** prepack/prepare/prepublishOnly 脚本
   // （见 PR #323 基线），因此忽略脚本不改变打包结果；而"门禁跑一次 pack 就执行任意
   // 生命周期脚本"是不可接受的副作用面。若未来引入 prepack，本门禁的 required/target
   // 断言会因产物缺失而 fail-closed（宁可误报，绝不漏报）。

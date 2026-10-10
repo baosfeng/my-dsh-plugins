@@ -25,7 +25,7 @@ export const isDocFile = (p) =>
  * CI 流水线定义目录（.github/）。
  * 改它不会改变任何插件的运行时行为（插件测试结果与流水线 YAML 无关），因此**不应**触发
  * 「仓库根文件变更 → 安全退化全量」（真实事故：一次只改 docs/CI YAML/AGENTS.md 的推送被判为
- * 无法裁剪 → 退化全量，秒级 pre-push 变成跑完 19 个插件的 vitest+cucumber）。
+ * 无法裁剪 → 退化全量，秒级 pre-push 变成跑完 11 个插件的 vitest+cucumber）。
  */
 export const CI_CONFIG_DIRS = ['.github/']
 export const isRuntimeIrrelevant = (p) => isDocFile(p) || CI_CONFIG_DIRS.some((d) => p.startsWith(d))
@@ -119,7 +119,7 @@ export function parseNameStatus(out) {
  * 反向依赖解析器工厂：依赖 plugins/<pluginName> 的插件集合（两路取证，宁多勿少）。
  *   1. package.json 依赖声明——按包名（"dsh-shared": "^0.1.0"）或 file 路径匹配；
  *   2. 源码 import/require——本仓库存在「源码 import 了 dsh-shared 但 package.json 未声明」
- *      的情况（15 个插件 import、仅 6 个声明），只查 package.json 会漏检。
+ *      的情况（10 个插件 import、10 个声明），只查 package.json 会漏检。
  *
  * 抽到本模块（issue #188）：pre-push 与回放统计脚本（scripts/analyze-impact-replay.mjs）
  * 必须共用同一份依赖图口径，否则两边算出的「受影响插件」会对不上。
@@ -142,7 +142,7 @@ export function createDependentsResolver(root, plugins) {
    * 反向依赖：依赖 plugins/<pluginName> 的插件集合（两路取证，宁多勿少）。
    *   1. package.json 依赖声明——按包名（`"dsh-shared": "^0.1.0"`）或 file 路径匹配；
    *   2. 源码 import/require——本仓库存在「源码 import 了 dsh-shared 但 package.json 未声明」
-   *      的情况（15 个插件 import、仅 6 个声明），只查 package.json 会漏检。
+   *      的情况（10 个插件 import、10 个声明），只查 package.json 会漏检。
    */
   function dependentsOf(pluginName) {
     const result = new Set()

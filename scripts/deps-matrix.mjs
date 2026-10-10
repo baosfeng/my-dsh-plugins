@@ -89,7 +89,7 @@ function parseArgs(argv) {
   return opts
 }
 
-/** 根 + 19 个插件目录（有 package.json 的才算，避免把空目录算进去）。 */
+/** 根 + 11 个插件目录（有 package.json 的才算，避免把空目录算进去）。 */
 function collectManifests() {
   const manifests = [{ scope: 'root', dir: ROOT }]
   const pluginsDir = join(ROOT, 'plugins')

@@ -1,6 +1,6 @@
 /**
  * deps-matrix.mjs — 依赖矩阵的纯函数件（issue #184）。
- * 为什么需要它：仓库 1 个根 + 19 个插件的 package.json 里，声明分别受 npm 最新版 /
+ * 为什么需要它：仓库 1 个根 + 11 个插件的 package.json 里，声明分别受 npm 最新版 /
  * DSH 宿主版本（cordis、react、@deepseek-ai/*）/ 仓库内包 / CI 容器能力（jscpd 的 GLIBC）
  * 四类互不相同的约束支配。过去判断「哪个旧了」只看根目录的 `npm outdated` 加记忆，
  * 于是 dsh-my-memory 带着 typescript@^5 + @types/node@^20 漂移 2 / 6 个大版本无人察觉。
@@ -120,7 +120,7 @@ export const DEP_POLICY = [
     tier: 'D',
     blocked: false,
     reason:
-      'peer 声明 ^18.2.0 || ^19.2.0：收紧为「仅 19」会改变已发布 19 个插件的公开兼容声明，属破坏性变更（react/react-dom 必须同步）',
+      'peer 声明 ^18.2.0 || ^19.2.0：收紧为「仅 19」会改变已发布 11 个插件的公开兼容声明，属破坏性变更（react/react-dom 必须同步）',
     verify: '须用户先决策「是否放弃 React 18 用户」；另需注意 dsh-better-sidebar 自身声明 react ^18.2.0',
   },
   {

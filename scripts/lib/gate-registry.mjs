@@ -65,7 +65,7 @@ export const GATE_REGISTRY = [
     ci: { job: 'test', step: 'Test ${{ matrix.plugin }}', command: 'npm test' },
     ciAlso: [{ job: 'test', step: 'Syntax check', command: 'node --check' }],
     cost: 'CI 每插件一个 matrix job；本地全量 23s（13 插件、6 路并发），fast 单插件 9.6~11.4s',
-    why: '唯一权威：插件行为只能由插件自己的测试判定。本地遍历 19 个目录（含 dsh-shared），CI matrix 19 个插件并行；本地多测一个库，更严不更松。',
+    why: '唯一权威：插件行为只能由插件自己的测试判定。本地遍历 11 个目录（含 dsh-shared），CI matrix 11 个插件并行；本地多测一个库，更严不更松。',
   },
   {
     id: 'typecheck',

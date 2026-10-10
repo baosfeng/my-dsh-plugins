@@ -6,8 +6,8 @@
  *   产物体积直接决定用户下载量与加载时间（#186 的 combo 分批逻辑正是围绕它做的取舍），
  *   但体积回归只能靠人工发现。最贵的一次是 issue #185：mermaid 引擎以 base64 内联进
  *   client bundle，`lib/client.js` 从 8.93 MB"降"到 4.49 MB 仍含 **4.48 MB 冗余**，
- *   全程无人报警。同类风险还有 dsh-shared/client-parts 被 11 个插件构建期拼接——
- *   共享件"顺带膨胀"会被放大 11 倍。而 CI 不跑构建、也不量体积，所以必须独立设卡。
+ *   全程无人报警。同类风险还有 dsh-shared/client-parts 被 7 个插件构建期拼接——
+ *   共享件"顺带膨胀"会被放大 7 倍。而 CI 不跑构建、也不量体积，所以必须独立设卡。
  *
  * 门禁范围（issue #322 的**范围修正**）：
  *   只查 `plugins/*\/lib/client.js` 会漏掉真正的 99% —— 各 client 产物合计不到 1 MB，而
@@ -53,7 +53,7 @@ import { fileURLToPath } from 'node:url'
  * 依据：`git log` 全历史实测（649 个提交、136 次 `lib/client.js` **增长**事件，已排除 #185 异常期）的
  * **单次提交绝对增量**分布：
  *   p50 = 1.7 KB ／ p90 = 14.7 KB ／ p95 = 17.4 KB ／ p99 = 24.3 KB ／ max = 27.0 KB
- * （含"改一次 dsh-shared/client-parts、11 个插件产物同时增长"这类连带效应，
+ * （含"改一次 dsh-shared/client-parts、7 个插件产物同时增长"这类连带效应，
  *   因为 client-parts 是构建期拼接进各产物的）。
  *
  * 取 64 KB ≈ p100 × 2.4 的理由：

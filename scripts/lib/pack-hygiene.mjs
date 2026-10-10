@@ -12,7 +12,7 @@
  *     （pack 内容断言）与需求 3（`dsh.*` 字段断言）它**完全不认识 DSH 的字段**
  *     （`dsh.bundle.patch` / `dsh.client.platform` / `dsh.kind` 在它眼里就是普通未知字段，
  *     不校验、不影响它任何判据）→ 大头无论用不用它都要自实现。
- *   · 噪声：对 19 个插件实测，publint 恒定输出 `pkg.repository.url ... could be a full git URL`
+ *   · 噪声：对 11 个插件实测，publint 恒定输出 `pkg.repository.url ... could be a full git URL`
  *     的 suggestion；9 个带 client 的插件另报 `pkg.exports["./client"].default is ./lib/client.js
  *     and is written in CJS, but is interpreted as ESM` warning —— 而 DSH 插件产物正是宿主
  *     `require` 的 CJS bundle，这个判据在本仓库形态下**不适用**。要引入就得写一批压制规则。

@@ -74,7 +74,7 @@ describe('ci.yml 解析（lib/ci-workflow.mjs）', () => {
 
   it('matrix 的插件列表不会被误当成 step（解析器最易踩的坑）', () => {
     const job = findJob(parseWorkflow(workflowText), 'test')
-    // 19 个插件 + 3 个真实 step（setup 用 uses 声明，Syntax/Test/Upload）
+    // 11 个插件 + 3 个真实 step（setup 用 uses 声明，Syntax/Test/Upload）
     expect(job.steps.length).toBeLessThan(10)
     expect(job.steps.some((s) => s.name.includes('dsh-file-activity'))).toBe(false)
   })

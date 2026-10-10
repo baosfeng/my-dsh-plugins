@@ -16,26 +16,6 @@
         }
       }
     },
-    "plugins/dsh-my-memory/src/client/parts/prompts.ts": {
-      "lines": 346,
-      "functions": {
-        "PromptsBlock": {
-          "line": 221,
-          "lines": 98,
-          "complexity": 9
-        }
-      }
-    },
-    "plugins/dsh-my-memory/src/client/parts/view-rows.ts": {
-      "lines": 389,
-      "functions": {
-        "MemoryRow": {
-          "line": 211,
-          "lines": 71,
-          "complexity": 7
-        }
-      }
-    },
     "plugins/dsh-my-memory/src/client/parts/view.ts": {
       "lines": 548,
       "functions": {
@@ -118,16 +98,6 @@
     "plugins/dsh-my-skill-manager/src/client/parts/view.ts": {
       "lines": 481,
       "functions": {}
-    },
-    "plugins/dsh-shared/src/config-store.ts": {
-      "lines": 213,
-      "functions": {
-        "parseConfigBlock": {
-          "line": 78,
-          "lines": 27,
-          "complexity": 11
-        }
-      }
     },
     "plugins/dsh-task-reliability/src/client/parts/settings.ts": {
       "lines": 352,

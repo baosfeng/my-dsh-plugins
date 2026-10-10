@@ -72,18 +72,40 @@ test('config-store: extractConfig parses YAML subset and writePatchConfig round-
 
 test('config-store: extractConfig tolerates spacing variants after colon', () => {
   // 回归测试（CodeQL js/polynomial-redos 修复）：解析正则去掉 `\s*` 后，
-  // 冒号后无空格 / 多空格 / 空值 的解析行为必须与原实现一致
-  const text = ['- id: a', '  config:', '    k1: v1', '    k2:v2', '    k3:   v3', '    k4:', '    k5:   '].join('\n')
-  assert.deepEqual(
-    extractConfig(text, 'a'),
-    { k1: 'v1', k2: 'v2', k3: 'v3', k4: {}, k5: {} },
-    'spacing variants parse identically; empty values with no deeper indent → empty nested block',
-  )
+  // 冒号后无空格 / 多空格 的解析行为必须与原实现一致
+  const text = ['- id: a', '  config:', '    k1: v1', '    k2:v2', '    k3:   v3'].join('\n')
+  assert.deepEqual(extractConfig(text, 'a'), { k1: 'v1', k2: 'v2', k3: 'v3' }, 'spacing variants parse identically')
+})
+
+test('config-store: 无值键「无更深缩进」→ 跳过（防复发：不许建空对象）', () => {
+  // 防复发回归测试。3b3502d 引入嵌套块支持时把无值键**无条件**建成 `{}`，
+  // 破坏了扁平语义（该提交自称「扁平行为不变」）→ CI 上 dsh-my-notify /
+  // dsh-task-reliability 的 config-store.mjs 断言 `apiToken: {}` 判红，而本地被
+  // node_modules 里的陈旧 registry 副本 dsh-shared@0.1.4 遮蔽、看到的是旧实现 → 假绿。
+  //
+  // 语义判据（与 YAML 一致 + 与两消费方既有断言一致）：无值键**只有在后面跟着
+  // 更深缩进的子块**时才是「嵌套段」；否则按 YAML 它是 null（空值），本解析器
+  // 一贯的既有语义是**跳过空值**（见本文件「empty value skipped」用例与
+  // dsh-my-notify / dsh-task-reliability 的 config-store 用例），故跳过而非置 null。
+  const text = [
+    '- id: a',
+    '  config:',
+    '    k1: v1',
+    '    empty1:', // 下一行同缩进 → 跳过
+    '    k2: v2',
+    '    empty2:   ', // 行尾空格也算无值 → 跳过
+    '    # 注释行不算「更深缩进」',
+    '',
+    '    empty3:', // 其后仅注释/空行/块结束 → 跳过
+  ].join('\n')
+  assert.deepEqual(extractConfig(text, 'a'), { k1: 'v1', k2: 'v2' }, '无值键（无更深缩进）必须跳过，不得建空对象')
 })
 
 test('config-store: extractConfig parses nested config blocks (namespace sections)', () => {
-  // 嵌套支持（纯增量，issue #463 需要）：值为空 + 后续行缩进更深 → 子对象；
+  // 嵌套支持（纯增量，issue #463 需要）：值为空 **且后续行缩进更深** → 子对象；
   // 扁平键与嵌套段**混写**都要能读回来（合并后的 md-render 依赖这一点）。
+  // 边界（本测试与上面「无值键跳过」用例互补，共同钉死判据）：只有「后面真有更深
+  // 缩进的子键」才算嵌套段——注释/空行不算证据。
   const text = [
     '- id: a',
     '  config:',

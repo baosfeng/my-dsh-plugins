@@ -95,7 +95,10 @@ test('路径**声明**在 src/ 下唯一（只有 routes/paths.ts 可以写常�
   for (const file of srcTsFiles()) {
     const text = readFileSync(file, 'utf8')
     for (const literal of [CONFIG_API_PREFIX, ASSETS_PREFIX]) {
-      const re = new RegExp('(?:const|let|var)\\s+\\w+\\s*=\\s*[\'""`]' + literal.replace(/[/-]/g, '\\$&'))
+      // CodeQL js/incomplete-sanitization：只转义 `/` 与 `-` 会漏掉输入里的**反斜杠**，
+      // 反斜杠必须先转义（否则 `\` + 被转义字符会被拼成别的转义序列，正则语义被改）。
+      // 本用例的 literal 是仓库常量（不含反斜杠），行为不变；这里只补正确性。
+      const re = new RegExp('(?:const|let|var)\\s+\\w+\\s*=\\s*[\'""`]' + literal.replace(/[\\/-]/g, '\\$&'))
       if (re.test(text)) declarations.push(file.replace(ROOT + '/', ''))
     }
   }

@@ -212,6 +212,15 @@ export const GATE_REGISTRY = [
     why: '唯一权威（issue #435）：workflow 里同一 GitHub Action 的**多子路径必须同 ref**——Dependabot 的依赖粒度是子路径，会把 `github/codeql-action/analyze` 当独立依赖单侧 bump（#430），而 CodeQL 要求 init/analyze 同版本，分叉即恒红 `Loaded a configuration file for version 4.38.0, but running version 4.38.1`，且**所有 PR 被假红挡住**（#433 被挡；main 那次绿只是 run 早于 #430 的假象）。人工 review 拦不住「两个 SHA 看着都写了 # v4」这种形态，故必须机器判定。',
   },
   {
+    id: 'dep-resolution',
+    authority: '`scripts/check-dep-resolution.mjs`（判定内核 `scripts/lib/dep-resolution.mjs`）',
+    local: 'always',
+    localCommand: 'node scripts/check-dep-resolution.mjs',
+    ci: { ...CI_QUALITY_STEP },
+    cost: '0.1s',
+    why: '唯一权威（2026-10-10 假绿复盘新增）：插件对**本仓 workspace 包**（dsh-shared 等）的解析必须指向工作区源码。CI 只跑根 `npm ci`，`plugins/*/` 没有自己的 node_modules，解析到 workspace 源码；本地若残留 `plugins/<name>/node_modules/dsh-shared`（registry 陈旧副本、被 .gitignore 忽略、不在 lockfile）就会**遮蔽**真源码 —— 同一断言两侧判两份代码。实测事故：notify/task-reliability 的 `dsh-shared@0.1.4` 遮蔽 workspace `0.1.6`，本地 `config-store.mjs:220` 绿、CI 红，并**掩盖**了 `parseConfigBlock` 把无值键建成空对象的真实回归。判据是 realpath 落点（不是「是不是符号链接」），只报告不自动删。',
+  },
+  {
     id: 'gate-parity',
     authority: '`scripts/check-gate-parity.mjs` + `scripts/lib/gate-registry.mjs`',
     local: 'always',

@@ -52,43 +52,61 @@ export function extractConfig(text, rowId) {
     }
     return undefined;
 }
+/** 子键行匹配：缩进 + 键名 + 冒号（冒号后原文可能为空 = 无值键）。 */
+const CONFIG_LINE_RE = /^( *)([A-Za-z0-9_]+):(.*)$/;
 /**
- * 解析 config 块（`indent` 空格缩进的 `key: value` 行，直到缩进不足 / 顶层条目）。
+ * 从 `from` 起找**下一个有效行**并解析为子键；遇到块边界返回 null。
  *
- * **嵌套支持**（纯增量）：值为空且后续行缩进更深 → 解析为子对象，例如
- *
- *     config:
- *       markdown:
- *         copyButton: true
- *
- * 扁平结构（值直接跟在冒号后）的行为与之前完全一致。两种结构可以混写
- * （合并后的 md-render 就依赖这一点：用户 profile 里的旧扁平键与新命名空间
- * 段共存，读回来都要能拿到）。
+ * 有效行 = 非空行、非注释行、非顶层条目、且能匹配子键行；顶层条目（`- ` 开头）
+ * 与缩进不足由调用方按返回结果判定（本函数只负责「跳过噪声 + 解析」）。
  */
-function parseConfigBlock(lines, from, indent) {
-    const root = {};
-    const stack = [{ indent: indent - 2, target: root }];
+function nextConfigLine(lines, from) {
     for (let i = from; i < lines.length; i += 1) {
         const line = lines[i];
         if (line === '' || line.startsWith('#'))
             continue;
         if (isTopLevelEntry(line))
-            break;
-        const match = line.match(/^( *)([A-Za-z0-9_]+):(.*)$/);
+            return null;
+        const match = line.match(CONFIG_LINE_RE);
         if (match === null)
             continue;
-        const depth = match[1].length;
+        return { depth: match[1].length, key: match[2], raw: match[3] };
+    }
+    return null;
+}
+/**
+ * 无值键**只有**在「后面确实跟着更深缩进的子键」时才是嵌套段（命名空间）；
+ * 否则按 YAML 它是空值（null）—— 本解析器一贯的既有语义是**跳过空值**
+ * （见 parseYamlScalar 与 dsh-my-notify / dsh-task-reliability 的用例）。
+ *
+ * ⚠️ 防复发：3b3502d 曾在此**无条件**建空对象并入栈，破坏了「扁平行为不变」，
+ * 让无值键变成空对象；本地又因 node_modules 里的陈旧 registry 副本遮蔽而看不见，
+ * 直到 CI 才判红。判据与边界由 test/shared.mjs 的两个用例钉死。
+ */
+function hasChildBlock(lines, from, depth, indent) {
+    const next = nextConfigLine(lines, from);
+    if (next === null || next.depth < indent)
+        return false;
+    return next.depth > depth;
+}
+function parseConfigBlock(lines, from, indent) {
+    const root = {};
+    const stack = [{ indent: indent - 2, target: root }];
+    for (let i = from; i < lines.length; i += 1) {
+        const parsed = nextConfigLine(lines, i);
+        if (parsed === null)
+            break;
+        const { depth, key, raw } = parsed;
         if (depth < indent)
             break;
         while (stack.length > 1 && stack[stack.length - 1].indent >= depth)
             stack.pop();
         const frame = stack[stack.length - 1];
-        const key = match[2];
-        const raw = match[3];
         if (raw.trim() === '') {
+            if (!hasChildBlock(lines, i + 1, depth, indent))
+                continue;
             const child = {};
             frame.target[key] = child;
-            // 后续行若缩进更深则进入子块；否则子块保持空对象（与 YAML 语义一致）。
             stack.push({ indent: depth, target: child });
             continue;
         }

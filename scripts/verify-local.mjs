@@ -646,6 +646,9 @@ const CHECK_META = {
   artifacts: { command: 'node scripts/check-client-artifacts.mjs', ciQuality: true },
   'merge-ref': { command: 'git merge-base --is-ancestor origin/main HEAD', ciQuality: false },
   'gate-parity': { command: 'node scripts/check-gate-parity.mjs', ciQuality: true },
+  // 依赖解析一致性（假绿根因）：插件必须解析到 workspace 真源码，而不是 node_modules 里的
+  // 陈旧副本 —— 否则本地测旧实现、CI 测新源码（2026-10-10 两次 push 红的根因）。
+  'dep-resolution': { command: 'node scripts/check-dep-resolution.mjs', ciQuality: true },
   // issue #311：PR 审查的判定内核（三态判定 / 未能判定显式 / 抖动区分 / 历史摘要）必须有单测，
   // 且单测必须真的跑在门禁里——判定分支写错时靠它拦住（此前这些用例从没进过 CI）。
   'review-scripts': { command: 'node --test .github/scripts/*.test.cjs', ciQuality: true },
@@ -914,6 +917,20 @@ const CHECK_DEFS = [
     label: 'action-pins (node scripts/check-action-pins.mjs)',
     note: 'workflow 里同一 GitHub Action 的多子路径（如 codeql-action/init 与 /analyze）必须同 ref/SHA（issue #435，Dependabot 单侧 bump 防线；纯本地文件扫描）',
     run: () => runCapture('node', ['scripts/check-action-pins.mjs'], root),
+  },
+  {
+    // 假绿根因门禁（2026-10-10 两次 push 红的复盘交付物）：
+    // plugins/<name>/node_modules/<workspace 包> 的**陈旧实体副本**会遮蔽 workspace 真源码，
+    // 于是本地测试测旧实现、CI（只跑根 npm ci）测真源码 —— 同一断言两侧判两份代码。
+    // 实测事故：dsh-my-notify / dsh-task-reliability 的 node_modules/dsh-shared@0.1.4
+    // 遮蔽 workspace 0.1.6 → 本地绿、CI 红（config-store.mjs:220 的 apiToken 断言）。
+    // 判据：解析结果 realpath 必须落在 plugins/<pkg>/（workspace link 形态），
+    // 落在任何 node_modules/ 内即红，并打印遮蔽路径 + 副本版本 + 版本漂移。
+    // 纯本地只读文件/解析检查（<0.3s），任何变更都跑；只报告不自动删（写操作 fail-closed）。
+    id: 'dep-resolution',
+    label: 'dep-resolution (node scripts/check-dep-resolution.mjs)',
+    note: '插件对 workspace 内包（dsh-shared 等）的解析必须指向仓库源码；发现 node_modules 陈旧副本遮蔽即红并列出路径/版本（防「本地绿、CI 红」假绿）',
+    run: () => runCapture('node', ['scripts/check-dep-resolution.mjs'], root),
   },
   {
     // issue #330 关键交付物：本地检查项集合 ↔ CI 步骤集合的**双向**一致性校验。

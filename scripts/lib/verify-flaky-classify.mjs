@@ -25,9 +25,22 @@ export const CONCURRENCY_CONFLICT_RE =
 
 /**
  * 纯断言失败特征（issue #402）。与 CONCURRENCY_CONFLICT_RE 不同，它**本身**不是并发证据，
- * 只在「npm test 阶段 + 并发 > 1」时作为「不可信信号」触发一次串行复测。
+ * 只在「跑测试的池 + 并发 > 1」时作为「不可信信号」触发一次串行复测。
  */
 export const ASSERTION_FAILURE_RE = /AssertionError/i
+
+/**
+ * 断言失败「在并发下不可信」的阶段（方案 B'：把 #402 的判据从插件池推广到检查项池）。
+ *
+ *   · `npm test`      —— 插件测试池（runOnePlugin 的 stage）。
+ *   · `test-scripts`  —— 检查项池里的 `npm run test:scripts`：**自身就是 vitest + coverage**，
+ *     与插件测试池同源同形态（实测在并发体下出 `ENOENT coverage/...` / 时序断言假红，
+ *     隔离复跑全绿），故与 npm test 同等对待。
+ *
+ * 刻意用**白名单**而不是「所有检查项」：typecheck / lint / format / knip / docs 这类确定性检查
+ * 的断言失败与并发无关，命中即真回归 —— 给它们加复测就是把真实回归多花一次墙钟再报红。
+ */
+export const ASSERTION_UNTRUSTED_STAGES = new Set(['npm test', 'test-scripts'])
 
 /**
  * 该失败是否「疑似并发冲突」。单步超时也算：被争用/负载拖慢的典型表现就是超时。
@@ -37,7 +50,7 @@ export const looksLikeConcurrencyConflict = (result) => {
   if (result?.timedOut) return true
   const text = `${result?.out ?? ''}\n${result?.error ?? ''}`
   if (CONCURRENCY_CONFLICT_RE.test(text)) return true
-  // issue #402：npm test 阶段的纯断言失败在并发下不可信（等待预算与墙钟解耦）。
-  // node --check 等其它阶段的失败不在此列 —— 语法/构建错误与并发无关，必须立即判红。
-  return result?.stage === 'npm test' && ASSERTION_FAILURE_RE.test(text)
+  // issue #402：测试池里的纯断言失败在并发下不可信（等待预算与墙钟解耦）。
+  // node --check / typecheck 等确定性阶段的失败不在此列 —— 语法/构建错误与并发无关，必须立即判红。
+  return ASSERTION_UNTRUSTED_STAGES.has(result?.stage) && ASSERTION_FAILURE_RE.test(text)
 }

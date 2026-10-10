@@ -11,6 +11,7 @@ import {
   looksLikeConcurrencyConflict,
   CONCURRENCY_CONFLICT_RE,
   ASSERTION_FAILURE_RE,
+  ASSERTION_UNTRUSTED_STAGES,
 } from '../lib/verify-flaky-classify.mjs'
 
 test('#402 npm test 阶段的纯断言失败被识别为疑似并发冲突（否则跳过复测、假红挡推送）', () => {
@@ -66,4 +67,27 @@ test('#402 单步超时与既有 IO 特征仍被识别', () => {
   )
   assert.equal(CONCURRENCY_CONFLICT_RE.test('testTimeout'), true)
   assert.equal(ASSERTION_FAILURE_RE.test('AssertionError: boom'), true)
+})
+test("方案B'（#402 推广）：test-scripts 检查项的断言假红同样触发复测，确定性检查项不触发", () => {
+  // 检查项池里的 npm run test:scripts：自身就是 vitest + coverage，与插件测试池同形态
+  assert.equal(
+    looksLikeConcurrencyConflict({
+      stage: 'test-scripts',
+      timedOut: false,
+      out: 'FAIL scripts/test/hard-timeout.test.mjs > 硬超时\nAssertionError: expected 26989 to be less than 15000',
+      error: '',
+    }),
+    true,
+    'test-scripts 的断言失败在并发下不可信 → 应触发串行复测',
+  )
+  // 确定性检查项（typecheck / lint / format / docs …）的断言失败 = 真回归，不得复测
+  for (const stage of ['typecheck', 'lint', 'format', 'knip', 'docs', 'client-size']) {
+    assert.equal(
+      looksLikeConcurrencyConflict({ stage, timedOut: false, out: 'AssertionError: 基线不匹配', error: '' }),
+      false,
+      `${stage} 是确定性检查，断言失败必须立即判红（不给复测掩盖真回归的机会）`,
+    )
+  }
+  assert.equal(ASSERTION_UNTRUSTED_STAGES.has('npm test'), true)
+  assert.equal(ASSERTION_UNTRUSTED_STAGES.has('test-scripts'), true)
 })

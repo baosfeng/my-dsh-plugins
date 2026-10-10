@@ -147,6 +147,8 @@ import {
 // 超时配置解析抽成纯函数模块（fail-closed：0 / 负数 / 空 / 非法一律报错，见该文件头注释）
 import { isValidTimeoutMs, parseTimeoutSeconds, timeoutConfigError } from './lib/verify-timeout.mjs'
 import { looksLikeConcurrencyConflict } from './lib/verify-flaky-classify.mjs'
+// 「疑似并发冲突 → 串行复测一次」的通用编排（方案 B'）：插件测试池与检查项池共用
+import { formatRetryFailures, runCheckPoolWithRetry } from './lib/verify-serial-retry.mjs'
 // 自适应并发度（issue #418）：核数 + load 双约束，纯函数便于单测
 import { resolveConcurrency, describeConcurrency, resolveVitestWorkers } from './lib/verify-concurrency.mjs'
 
@@ -228,6 +230,8 @@ const yellow = (t) => paint('33', t)
 const dim = (t) => paint('2', t)
 
 const log = (msg = '') => console.log(`[verify] ${msg}`)
+// 不带 `[verify] ` 前缀的打印：用于「疑似并发冲突 → 串行复测」这类复测横幅（与逐项进度同风格）
+const logPlain = (msg = '') => console.log(msg)
 const secs = (ms) => `${(ms / 1000).toFixed(1)}s`
 
 // ── 超时配置（pre-push 绝不能静默挂死）──────────────────────────────────────
@@ -1111,12 +1115,6 @@ async function runOnePlugin(name) {
 // 「等待预算与墙钟解耦」导致的假红（测试里 setImmediate 忙等、固定 40ms sleep），
 // 于是跳过串行复测直接判红挡推送。
 
-/** 「疑似并发冲突 → 串行复测」是否启用（首轮本就串行时无需复测）。 */
-function serialRetryEnabled() {
-  if (String(process.env.VERIFY_NO_RETRY ?? '') === '1') return false
-  return pluginConcurrency() > 1
-}
-
 /**
  * 需要**排队尾**的插件测试（不与其它插件同时开工）：真去 npm registry 解析包名的联网用例
  * （含 `testTimeout: 5000`）与其他插件测试并发时会误报超时。
@@ -1158,50 +1156,32 @@ function runPluginTests(ctx) {
     if (!r.ok) log(dim(indent(tail(r.out, 40))))
   }
   return (async () => {
-    const results = await runPool(ordered.map(makeTask), pluginConcurrency(), onDone)
-
     // ── 疑似并发冲突 → 串行复测一次 ──────────────────────────────────────────
     // 目的：多 agent / 多进程同时跑测试时，coverage 目录争用会让 npm test 偶发退出 1
     // （实测：pre-push 报「10 通过 / 1 失败」挡住 push，几十秒后原样重跑同一项却全绿）。
     // 只复测「失败且特征吻合」的插件、只复测一次，且串行独占执行以排除相互争用；
     // 复测仍失败即判红——真实回归不会被掩盖，只是多花一次单插件测试的时间。
-    const retryCandidates = serialRetryEnabled() ? results.filter((r) => !r.ok && looksLikeConcurrencyConflict(r)) : []
+    // 编排本体已抽到 lib/verify-serial-retry.mjs（方案 B'）：检查项池复用同一份实现。
     const retried = []
-    if (retryCandidates.length > 0) {
-      log('')
-      log(
-        yellow(
-          `⚠ ${retryCandidates.length} 个插件首轮失败，且报错特征疑似「并发冲突」（coverage/EACCES/ENOENT/超时）：`,
-        ),
-      )
-      for (const c of retryCandidates) log(yellow(`  - ${c.name}（${c.stage}）`))
-      log(yellow('  → 自动串行复测（并发 1，逐个独占运行）以排除相互争用…'))
-      for (const candidate of retryCandidates) {
-        const started = Date.now()
-        const r = await runOnePlugin(candidate.name)
-        const ms = Date.now() - started
-        const index = results.findIndex((x) => x.name === candidate.name)
-        if (index >= 0) results[index] = { ...r, ms, retriedSerial: true }
-        retried.push({ name: candidate.name, ok: r.ok, ms })
-        if (r.ok) {
-          log(
-            `  ${green('✓')} ${candidate.name} ${dim(secs(ms))} ${green('串行复测通过')} ${dim('（首轮失败=疑似并发冲突，非真实回归）')}`,
-          )
-        } else {
-          log(
-            `  ${red('✗')} ${candidate.name} ${dim(secs(ms))} ${red('串行复测仍失败')} ${dim('（判定为真实失败，非并发冲突）')}`,
-          )
-        }
-      }
-      log('')
-    }
+    const results = await runCheckPoolWithRetry({
+      tasks: ordered.map(makeTask),
+      concurrency: pluginConcurrency(),
+      runPool,
+      runOne: (task) => runOnePlugin(task.id.slice('test:'.length)),
+      looksLikeConflict: looksLikeConcurrencyConflict,
+      noRetry: process.env.VERIFY_NO_RETRY,
+      deadlineAt: TOTAL_TIMEOUT_MS > 0 ? globalStartedAt + TOTAL_TIMEOUT_MS : undefined,
+      log: (msg) => logPlain(yellow(msg)),
+      onDone,
+      onRetried: ({ task, ok, ms }) => retried.push({ name: task.id.slice('test:'.length), ok, ms }),
+    })
 
     const failed = results.filter((r) => !r.ok)
     const out = failed
       .map(
         (f) =>
           `── ${f.name}（${f.stage} 失败）──\n${f.error ? `${f.error}\n` : ''}${tail(f.out, 60)}` +
-          (f.retriedSerial ? '\n（首轮曾失败：疑似并发冲突；已串行复测，仍未通过）' : ''),
+          (f.retriedSerial ? `\n${formatRetryFailures([f])}` : ''),
       )
       .join('\n')
     const ok = failed.length === 0
@@ -1327,7 +1307,9 @@ function reportTotalTimeout() {
   log(`  · 放宽上限后重试：VERIFY_TIMEOUT=${Math.max(totalTimeoutSec * 3, 900)} git push`)
   log('  · 完全关闭超时：VERIFY_NO_TIMEOUT=1 git push')
   log('  · 只复现卡住的那一项：node scripts/verify-local.mjs --only <id>')
-  log('  · 若疑似并发冲突（coverage/EACCES/ENOENT/超时）：VERIFY_CONCURRENCY=1 node scripts/verify-local.mjs --fast')
+  log(
+    '  · 若疑似并发冲突（coverage/EACCES/ENOENT/超时）：VERIFY_CONCURRENCY=1 VERIFY_CHECK_CONCURRENCY=1 node scripts/verify-local.mjs --fast',
+  )
   log(dim('  排查文档：docs/踩坑/README.md'))
   killAllChildren('SIGKILL')
   process.exit(124)
@@ -1482,6 +1464,10 @@ for (const check of runList) {
       return {
         id: check.id,
         label: check.label,
+        // stage：并发冲突判据用的「这一步是什么」。只有跑 vitest 的池
+        // （npm test / test-scripts）的断言失败才被当作并发伪影，见
+        // lib/verify-flaky-classify.mjs 的 ASSERTION_UNTRUSTED_STAGES。
+        stage: UNTRUSTED_ASSERTION_STAGES.has(check.id) ? check.id : undefined,
         ok: r.ok,
         code: r.code,
         out: r.out ?? '',
@@ -1494,6 +1480,22 @@ for (const check of runList) {
     },
   })
 }
+
+/**
+ * 断言失败在并发下**不可信**、值得一次串行复测的检查项（方案 B'）。
+ * 目前只有 `test-scripts`（= `npm run test:scripts`，自身就是 vitest + coverage，
+ * 与插件测试池同源形态）；新增「跑 vitest 的检查项」时把 id 加进来。
+ */
+const UNTRUSTED_ASSERTION_STAGES = new Set(['test-scripts'])
+
+/**
+ * 不参与「疑似并发冲突 → 串行复测」的检查项（其余**所有并发执行的检查项**都参与）：
+ *   · test     —— 池内部已是逐插件任务，重跑整个池 = 重复跑一遍全套插件测试（贵且无必要）；
+ *                 其自身的假红由插件池那层复测兜住（见 runPluginTests）。
+ *   · mutation —— stryker 独占整机 CPU 的变异测试，复测等于把最贵的项再跑一遍；
+ *                 且它是 `--full` / CI 才跑的独占项。
+ */
+const CHECK_POOL_NO_RETRY = new Set(['test', 'mutation'])
 
 const HARD_SKIPPED = CHECK_DEFS.filter((c) => !runList.includes(c))
 /**
@@ -1556,7 +1558,38 @@ const onTaskDone = (r) => {
 const exclusiveTasks = tasks.filter((t) => t.exclusive)
 const gated = options.ciQuality ? [] : tasks.filter((t) => !t.exclusive && t.after)
 const free = tasks.filter((t) => !t.exclusive && (options.ciQuality ? true : !t.after))
-const results = await runPool(free, CONCURRENCY, onTaskDone)
+// 并发跑并发池 → **只对命中并发冲突特征的失败项**串行复测一次（方案 B'）。
+// 复测发生在池排空之后（此时无并发写入者，等价独占），故对 test-scripts 的 coverage
+// 争用型假红也成立；`after` 门控项与独占项在其后才跑，顺序语义不变。
+// 复测集合受 CHECK_POOL_NO_RETRY 收窄（见其注释），其余项一律适用。
+const retryableTasks = free.filter((t) => !CHECK_POOL_NO_RETRY.has(t.id))
+const results = await runCheckPoolWithRetry({
+  tasks: free,
+  concurrency: CONCURRENCY,
+  runPool,
+  runOne: async (task) => {
+    const index = free.findIndex((t) => t.id === task?.id)
+    if (index < 0) {
+      return {
+        id: task?.id ?? '(未知检查项)',
+        label: task?.label ?? '(未知检查项)',
+        ok: false,
+        out: '',
+        error: '内部错误：复测时找不到对应检查项定义',
+        timedOut: false,
+        ms: 0,
+        extra: [],
+      }
+    }
+    return free[index].run()
+  },
+  looksLikeConflict: (r) => !CHECK_POOL_NO_RETRY.has(r.id) && looksLikeConcurrencyConflict(r),
+  candidates: (list) => list.filter((r) => retryableTasks.some((t) => t.id === r.id)),
+  noRetry: process.env.VERIFY_NO_RETRY,
+  deadlineAt: TOTAL_TIMEOUT_MS > 0 ? globalStartedAt + TOTAL_TIMEOUT_MS : undefined,
+  onDone: onTaskDone,
+  log: (msg) => logPlain(yellow(msg)),
+})
 for (const task of [...gated, ...exclusiveTasks]) {
   const result = await task.run()
   results.push(result)

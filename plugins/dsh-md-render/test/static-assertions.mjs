@@ -32,9 +32,15 @@ const CODE = stripComments(RAW)
 test('client bundle：不注册任何 conversation.chat.node 节点级 seat', () => {
   assert.equal(CODE.includes('conversation.chat.node'), false, 'must not register node-level seats')
   assert.equal(CODE.includes('assistant-step'), false, 'must not shadow the assistant-step renderer')
-  // slots 扩展点只允许 settings.plugins.tab（list / replaceRisk none）
+  // slots 扩展点只允许这两个加法型 seat：
+  //  · settings.plugins.tab（list / replaceRisk none，旧宿主与「设置 → 内置插件」）；
+  //  · plugins.bundle.config（keyed / replaceRisk shadows-shipped-ui，仅 key = 本包名）。
   const injected = [...CODE.matchAll(/inject\(\s*['"]([^'"]+)['"]/g)].map((m) => m[1])
-  assert.deepEqual(injected, ['settings.plugins.tab'], 'only the additive settings tab seat is injected')
+  assert.deepEqual(
+    [...injected].sort(),
+    ['plugins.bundle.config', 'settings.plugins.tab'],
+    'only the two additive settings seats are injected',
+  )
 })
 
 test('client bundle：不读 React fiber 私有属性', () => {

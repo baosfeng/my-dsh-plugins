@@ -9,10 +9,20 @@
 // 因为产物是构建期拼接的单一 factory 作用域）。重名因此必须靠命名消除，
 // 不能靠模块隔离。
 
-/** 官方 slots 扩展点（设置页 tab 注册）的最小契约。 */
+/**
+ * 官方 slots 扩展点（设置页注册）的最小契约。
+ *
+ * options 同时覆盖两种 slot 形态，故除 `name` 外全部可选：
+ *  - **list**（`settings.plugins.tab`）：需要 `id`（必填）/ `order` / `label`；
+ *  - **keyed**（`plugins.bundle.config`）：只需要 `key`（= 组合包 npm 包名），
+ *    传 `id` / `order` 反而非法 —— 类型写成「keyed 形态也必须合法」。
+ */
 interface MdRenderSettingsSlots {
   inject(name: string, register: () => unknown): unknown
-  register(options: { name: string; id: string; order: number; label: () => string }, component: () => unknown): unknown
+  register(
+    options: { name: string; key?: string; id?: string; order?: number; label?: () => string },
+    component: (props?: MdRenderBundleConfigProps) => unknown,
+  ): unknown
 }
 
 /** client 端 ctx 的最小契约（只需要 effect 与 cordis 的 get）。 */
@@ -48,6 +58,46 @@ function attachSettingsTab(ctx: MdRenderSettingsCtx): void {
         mdRenderSettingsView,
       ),
     )
+    // issue #443（对齐 #460 的落地方式）：DSH >= 0.1.7 的新版插件管理器
+    // （client-ui-plugin-manager）把插件配置页放在**组合包详情页**，由它自己声明
+    // `plugins.bundle.config`（keyed slot，key = 组合包 npm 包名，只在 view: 'page'
+    // 时渲染）。**追加**这一处注册，上面的 `settings.plugins.tab` 一并保留 ——
+    // 旧入口在 DSH < 0.1.7 与「设置 → 内置插件」分区仍然有效，替换会让那些版本丢入口。
+    // 字面量（不用常量）：静态断言 test/static-assertions.mjs 从**产物**里抽取
+    // `inject('…')` 的字面量做白名单校验，变量名抽不出来。
+    slots.inject('plugins.bundle.config', () =>
+      slots.register(
+        {
+          name: MD_RENDER_BUNDLE_CONFIG_SLOT,
+          key: MD_RENDER_PACKAGE_NAME,
+        },
+        mdRenderBundleConfigView,
+      ),
+    )
     return undefined
   }, 'dsh-md-render: settings tab registration')
+}
+
+/** DSH >= 0.1.7 插件管理器的组合包详情页配置 slot（keyed）。 */
+const MD_RENDER_BUNDLE_CONFIG_SLOT = 'plugins.bundle.config'
+
+/**
+ * keyed slot 的 key：必须是本组合包的 npm 包名（宿主按包名派发），
+ * 与 package.json 的 `name` 一致 —— test/settings-bundle-config.mjs 会核对两者。
+ */
+const MD_RENDER_PACKAGE_NAME = 'dsh-md-render'
+
+/** 组合包详情页 slot 宿主传入的视图参数（官方契约：view: 'summary' | 'page'）。 */
+interface MdRenderBundleConfigProps {
+  view?: string
+}
+
+/**
+ * 组合包详情页配置视图（issue #443）：
+ *  - `view === 'summary'` → 返回 null（摘要/列表页不渲染多余组件，不占位）；
+ *  - `'page'` / props 缺省（老宿主不传 props）→ 复用现有设置页视图。
+ */
+function mdRenderBundleConfigView(props?: MdRenderBundleConfigProps): unknown {
+  if (props !== undefined && props !== null && props.view === 'summary') return null
+  return mdRenderSettingsView()
 }

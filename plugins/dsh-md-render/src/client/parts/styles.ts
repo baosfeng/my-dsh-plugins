@@ -21,7 +21,7 @@
 // 改由本插件自己的语义映射 + color-mix 向正文色收敛，任何主题下都有对比度兜底。
 const STYLES: string = `
 /* ══ 设计 token（只在自有根元素上定义：自定义属性不会外溢到官方元素）══ */
-.tzx-md,.dsh-md-render-text-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.dsh-md-render-lang-switch,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-fs,.dsh-md-render-fallback{
+.tzx-md,.dsh-md-render-text-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.dsh-md-render-lang-switch,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-fs,.dsh-md-render-img-lightbox,.dsh-md-render-fallback{
 --mdr-accent:var(--dsw-alias-state-business-primary,var(--dsw-alias-link));
 --mdr-accent-text:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 62%,var(--dsw-alias-label-primary));
 --mdr-accent-soft:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 12%,transparent);
@@ -72,6 +72,10 @@ const STYLES: string = `
 .tzx-md .dsh-md-render-md-link-plain{color:var(--dsw-alias-label-secondary)}
 .tzx-md .dsh-md-render-md-img-alt{color:var(--dsw-alias-label-tertiary);font-size:12.5px}
 .tzx-md img.dsh-md-render-md-img{max-width:100%;height:auto;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md)}
+/* 可放大的图片（own-markdown.ts 追加 dsh-md-render-img-zoom）：指针与键盘都能触达 */
+.tzx-md img.dsh-md-render-md-img.dsh-md-render-img-zoom{cursor:zoom-in}
+.tzx-md img.dsh-md-render-md-img.dsh-md-render-img-zoom:hover{border-color:var(--mdr-accent-line)}
+.tzx-md img.dsh-md-render-md-img.dsh-md-render-img-zoom:focus-visible{outline:2px solid var(--mdr-accent);outline-offset:2px}
 .tzx-md .dsh-md-render-md-html{color:var(--dsw-alias-label-secondary)}
 .tzx-md .dsh-md-render-md-plain{margin:0;padding:12px 14px;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md);background:var(--mdr-surface);font-family:var(--mdr-mono);font-size:12.5px;line-height:1.7;color:var(--dsw-alias-label-primary);white-space:pre-wrap;word-break:break-word}
 /* 任务列表：勾选框也自绘（原生 disabled checkbox **不认** accent-color，实测宿主里恒为灰；
@@ -113,13 +117,21 @@ const STYLES: string = `
 .dsh-md-render-code-pre:focus-visible{outline:2px solid var(--mdr-accent);outline-offset:-2px}
 .dsh-md-render-code-pre code{font:inherit;color:inherit;background:none;border:0;padding:0;white-space:inherit;word-break:inherit}
 /* ── 插件控件统一形态：胶囊按钮（复制 / 查看原文 / 整段复制 / 导出 / 视图切换）── */
-.dsh-md-render-code-copy,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:11px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--ds-transition-duration-slow) var(--ds-ease-in-out),background-color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out),opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-md-render-code-copy:hover,.dsh-md-render-text-toggle:hover,.dsh-md-render-copy:hover,.dsh-md-render-mermaid-eb:hover:not(:disabled),.dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--mdr-accent-line);color:var(--dsw-alias-label-primary)}
-.dsh-md-render-code-copy:focus-visible,.dsh-md-render-text-toggle:focus-visible,.dsh-md-render-copy:focus-visible,.dsh-md-render-mermaid-eb:focus-visible,.dsh-md-render-mermaid-vt:focus-visible{outline:2px solid var(--mdr-accent);outline-offset:2px}
+.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:11px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--ds-transition-duration-slow) var(--ds-ease-in-out),background-color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out),opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
+.dsh-md-render-code-copy:hover,.dsh-md-render-code-wrap-btn:hover,.dsh-md-render-text-toggle:hover,.dsh-md-render-copy:hover,.dsh-md-render-mermaid-eb:hover:not(:disabled),.dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--mdr-accent-line);color:var(--dsw-alias-label-primary)}
+.dsh-md-render-code-copy:focus-visible,.dsh-md-render-code-wrap-btn:focus-visible,.dsh-md-render-text-toggle:focus-visible,.dsh-md-render-copy:focus-visible,.dsh-md-render-mermaid-eb:focus-visible,.dsh-md-render-mermaid-vt:focus-visible{outline:2px solid var(--mdr-accent);outline-offset:2px}
 /* 复制按钮：默认隐形，hover / 键盘 focus-within / 触屏常显三路可现 */
 .dsh-md-render-code-copy{opacity:0}
 .dsh-md-render-code:hover .dsh-md-render-code-copy,.dsh-md-render-code:focus-within .dsh-md-render-code-copy{opacity:1}
 @media (hover:none){.dsh-md-render-code-copy{opacity:1}}
+/* 换行切换：与复制按钮同一套浮现策略（hover / focus-within / 触屏常显），
+   按下态用强调色胶囊 —— 一眼可辨「当前在看换行还是横向滚动」。 */
+.dsh-md-render-code-wrap-btn{opacity:0}
+.dsh-md-render-code:hover .dsh-md-render-code-wrap-btn,.dsh-md-render-code:focus-within .dsh-md-render-code-wrap-btn{opacity:1}
+@media (hover:none){.dsh-md-render-code-wrap-btn{opacity:1}}
+.dsh-md-render-code-wrap-btn[aria-pressed="true"]{border-color:var(--mdr-accent-line);background:var(--mdr-accent-soft);color:var(--mdr-accent-text)}
+/* 换行态：长行折行显示（默认态是 white-space:pre 横向滚动，与官方 CodeBlock 的 wrap 语义对齐） */
+.dsh-md-render-code-pre.dsh-md-render-code-wrap{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;overflow-x:hidden}
 .dsh-md-render-text-toggle{align-self:flex-end;margin-top:4px}
 .dsh-md-render-text-toggle[aria-pressed="true"]{border-color:var(--mdr-accent-line);background:var(--mdr-accent-soft);color:var(--mdr-accent-text)}
 /* ── 语法着色：本插件自己的语义映射（不取官方 shiki 调色板）──
@@ -193,6 +205,11 @@ const STYLES: string = `
 .dsh-md-render-mermaid-fs>.dsh-md-render-mermaid-host{flex:1;min-height:0;display:flex;flex-direction:column}
 .dsh-md-render-mermaid-fs .dsh-md-render-mermaid-card{flex:1;min-height:0;overflow:hidden;padding:0;border:0;box-shadow:none}
 .dsh-md-render-mermaid-fs .dsh-md-render-mermaid-svg{max-height:none;flex:1;min-height:0}
+/* ── 图片放大灯箱（medium-zoom / PhotoSwipe 通行做法）：页面内 <dialog> 模态，
+   图片 contain 装入、Esc / 点遮罩 / 点图片三路关闭；焦点归还由浏览器兜底。 ── */
+.dsh-md-render-img-lightbox{display:flex;align-items:center;justify-content:center;width:92vw;height:90vh;max-width:none;max-height:none;margin:auto;padding:10px;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2);cursor:zoom-out}
+.dsh-md-render-img-lightbox::backdrop{background:color-mix(in srgb,var(--dsw-alias-label-primary) 45%,transparent)}
+.dsh-md-render-img-lightbox-img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--mdr-radius-sm)}
 /* ── 离屏渲染容器（失败时的炸弹图只落这里）── 必须在布局树内（display:none 会量不到尺寸）。 */
 .dsh-md-render-offscreen{position:absolute;left:-99999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none}
 @keyframes dsh-md-render-mermaid-card-in{from{opacity:0;transform:translateY(1px)}to{opacity:1;transform:none}}

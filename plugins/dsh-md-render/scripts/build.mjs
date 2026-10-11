@@ -40,6 +40,7 @@ const PARTS = [
   ['/*__PART_DOM_ROOT__*/', 'dom-root.js'],
   ['/*__PART_OWN_CODE__*/', 'own-code.js'],
   ['/*__PART_OWN_MARKDOWN__*/', 'own-markdown.js'],
+  ['/*__PART_IMAGE_LIGHTBOX__*/', 'image-lightbox.js'],
   ['/*__PART_COPY__*/', 'copy.js'],
   ['/*__PART_MARKDOWN_VIEW__*/', 'markdown-view.js'],
   ['/*__PART_CONTEXT_MARKDOWN__*/', 'context-markdown.js'],

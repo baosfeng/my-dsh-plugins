@@ -1,6 +1,6 @@
 {
   "note": "客户端产物体积预算基线（issue #322）：登记各插件**发布面**的体积实测值。上限 = 基线 + max(64 KB, 基线×15%)，理由见 scripts/check-client-size.mjs 顶部常量注释。unpacked total = 该插件 npm 发布面全部文件字节和；files = 逐个冻结的产物（lib/** 与 assets/**）。未登记的文件与插件只受默认上限（1 MB/文件）约束。刷新：node scripts/check-client-size.mjs --update-baseline（须在 PR 说明体积变化原因）。",
-  "measuredAt": "2026-10-11",
+  "measuredAt": "2026-10-12",
   "source": "npm pack --dry-run --json（13 个插件与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）",
   "margin": {
     "absFloorBytes": 65536,
@@ -48,22 +48,24 @@
       }
     },
     "dsh-md-render": {
-      "total": 3679223,
+      "total": 3951310,
       "files": {
+        "assets/highlightjs-11.12.0.min.js": 129254,
+        "assets/marked-18.1.0.umd.js": 47225,
         "assets/mermaid-10.9.3.min.js": 3336760,
         "assets/panzoom-4.6.2.min.js": 10125,
         "assets/text-fence-markdown.png": 70863,
-        "lib/client.js": 178137,
-        "lib/client.src.js": 3923,
+        "lib/client.js": 245208,
+        "lib/client.src.js": 4890,
         "lib/config.js": 9047,
         "lib/index.js": 5686,
-        "lib/lang-index.js": 8272,
+        "lib/lang-index.js": 8672,
         "lib/prompt.js": 2899,
         "lib/routes.js": 4229,
-        "lib/routes/assets.js": 4096,
+        "lib/routes/assets.js": 4388,
         "lib/routes/config.js": 5214,
         "lib/routes/langs.js": 2262,
-        "lib/routes/paths.js": 2616,
+        "lib/routes/paths.js": 3215,
         "lib/session-text.js": 1280
       }
     },

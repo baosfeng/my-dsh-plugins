@@ -1,6 +1,8 @@
 // ── mermaid 图表浮窗 + 缩放 / 平移（#470 需求 1 / #471 真机反馈）────────────
 // 浮窗 = 页面内 <dialog> 模态，**不用** Fullscreen API：顶层压过宿主 UI，遮罩 / Esc /
 // 焦点归还 / 滚动锁定由浏览器兜底。缩放 = panzoom vendored asset 懒加载（0 增量）。
+// 比例几何与交互策略（fit / fill / 100%、fitMode 跟随、锚点手势、快捷键动作）在
+// zoom-math.ts；panzoom 不可用时的纯 CSS 降级引擎在 zoom-fallback.ts。
 // 设计取舍与真机实测数字见 tmp/md-render-enhancements/zoom-fix-report.md。
 
 const ZOOM_ATTR = 'data-dsh-md-render-zoom'
@@ -19,13 +21,20 @@ const ZOOM_MAX = 8
 const ZOOM_STEP = 1.5
 const PAN_KEY_STEP = 40
 
-/** panzoom 实例契约（只声明用到的成员）。 */
+/** panzoom 实例契约（只声明用到的成员；锚点能力可选，见 zoom-math.ts 的 zoomAnchored）。 */
 interface PanzoomInstance {
   zoom: (scale: number, options?: { animate?: boolean }) => number
   pan: (x: number, y: number, options?: { animate?: boolean; relative?: boolean }) => { x: number; y: number }
   reset: (options?: { animate?: boolean }) => { x: number; y: number }
   getScale: () => number
   destroy: () => void
+  /** panzoom **4.6.2** 自带：以屏幕点为锚点缩放。签名是 **(scale, event) —— scale 在前**，
+   *  第二个参数是带 clientX / clientY 的（事件）对象。证据在库自身：`function v(e,t,n,o)` 读
+   *  `t.clientX`，而它的 `zoomWithWheel` 是 `v(h(…), e, t, e)`（assets/panzoom-4.6.2.min.js）。
+   *  较新版本才是 (point, scale)；顺序传反时它**不抛错、只是静默不动**。 */
+  zoomToPoint?: (scale: number, event: { clientX: number; clientY: number }) => unknown
+  /** 降级引擎自带：以屏幕点为锚点缩放（panzoom 的 zoomToPoint 对应物）。 */
+  zoomAtPoint?: (scale: number, point: ZoomPoint) => unknown
 }
 type PanzoomCtor = new (element: Element, options?: Record<string, unknown>) => PanzoomInstance
 /** 键盘事件最小契约（真实 KeyboardEvent 满足）。 */
@@ -39,6 +48,11 @@ interface ZoomState {
   /** 裁剪容器（overflow:hidden），contain 计算的「可用空间」取自它而非变换层。 */
   frame: Element
   box: Element
+  /** 适应模式（**保持态**，draw.io 的 Fit Window 同款）：容器 / 全屏 / 窗口尺寸变化时重算
+   *  fit；用户一旦手动缩放 / 平移 / 双击即退出（见 zoom-math.ts 的 zoomManual / zoomToggle）。 */
+  fitMode: boolean
+  /** fitMode 跟随（fullscreenchange / ResizeObserver / window resize）的解绑函数。 */
+  unwatch?: () => void
 }
 /** 浮窗代管记录：关闭时按它把宿主还回原父节点的原位置。 */
 interface OverlayHome {
@@ -102,56 +116,15 @@ function zoomTargetsOf(entryId: string): { card: Element; frame: Element; box: E
   return { card, frame, box: canvas }
 }
 
-/** 缩放键（+ / - / = / _ / 0）；拆出来压圈复杂度。 */
-function zoomScaleKey(state: ZoomState, key: string): boolean {
-  const factor = key === '+' || key === '=' ? ZOOM_STEP : key === '-' || key === '_' ? 1 / ZOOM_STEP : 0
-  if (factor > 0) {
-    state.pz.zoom(state.pz.getScale() * factor, { animate: true })
-    return true
-  }
-  if (key !== '0') return false
-  state.pz.reset({ animate: false })
-  return true
-}
-
-/** 裸 wheel 归页面（滚动陷阱）：只有 ctrlKey+wheel（捏合）或浮窗态才缩放。 */
-function zoomWheelShouldHandle(event: Event, card: Element): boolean {
-  const wheel = event as WheelEvent
-  return wheel.ctrlKey === true || card.getAttribute(FS_ATTR) === FS_OPEN
-}
-
-/** 方向键平移（拆出来压圈复杂度）。 */
-function zoomArrowKey(state: ZoomState, key: string): boolean {
-  const dx = key === 'ArrowLeft' ? PAN_KEY_STEP : key === 'ArrowRight' ? -PAN_KEY_STEP : 0
-  const dy = key === 'ArrowUp' ? PAN_KEY_STEP : key === 'ArrowDown' ? -PAN_KEY_STEP : 0
-  if (dx === 0 && dy === 0) return false
-  state.pz.pan(dx, dy, { animate: false, relative: true })
-  return true
-}
-
-/** 键盘 a11y：+ / - 缩放，0 复位，方向键平移（Esc 由浮窗 dialog 的 cancel 负责）。 */
-function zoomKey(card: Element, box: Element, event: ZoomKeyEvent): void {
-  const state = zoomStates.get(box)
-  if (state === undefined) return
-  const key = String(event.key ?? '')
-  if (!zoomArrowKey(state, key) && !zoomScaleKey(state, key)) return
-  if (typeof event.preventDefault === 'function') event.preventDefault()
-}
-
-/** 一档缩放比（滚轮 / 捏合共用）：deltaY < 0 = 放大。 */
-function zoomStep(event: Event): number {
-  return Number((event as WheelEvent).deltaY) < 0 ? ZOOM_STEP : 1 / ZOOM_STEP
-}
-
 /** 事件绑定：绑在**卡片**上（指针落在卡片任意位置都能捏合，原先只绑变换层，偏一点就没反应）；
- *  裸 wheel 不拦截，纵向滚动仍归页面。 */
+ *  裸 wheel 不拦截，纵向滚动仍归页面。缩放锚点跟随手势中心（mermaid.live 的 zoomAtPoint 同款）。 */
 function bindZoomEvents(state: ZoomState): void {
   const { pz, card, box } = state
   card.addEventListener(
     'wheel',
     (event: Event) => {
       if (!zoomWheelShouldHandle(event, card)) return
-      pz.zoom(pz.getScale() * zoomStep(event), { animate: false })
+      zoomManual(state, pz.getScale() * zoomStep(event), zoomPointOf(event), false)
       event.preventDefault()
     },
     { passive: false },
@@ -164,14 +137,19 @@ function bindZoomEvents(state: ZoomState): void {
   })
   card.addEventListener('gesturechange', (event: Event) => {
     const ratio = Number((event as unknown as { scale?: number }).scale)
-    if (ratio > 0) pz.zoom(gestureBase * ratio, { animate: false })
+    // gesture* 的 clientX / clientY 就是手势中心 → 以它为锚点（与指针捏合一致）。
+    if (ratio > 0) zoomManual(state, gestureBase * ratio, zoomPointOf(event), false)
     event.preventDefault()
   })
-  box.addEventListener('dblclick', () => pz.reset({ animate: false }))
+  // 双击 = 适应 ↔ 实际大小（不是复位）；用户拖动平移（panzoom 的 panzoompan）→ 退出 fitMode。
+  box.addEventListener('dblclick', () => zoomToggle(state))
+  box.addEventListener('panzoompan', () => {
+    state.fitMode = false
+  })
   card.addEventListener('keydown', (event: Event) => zoomKey(card, box, event as unknown as ZoomKeyEvent))
 }
 
-/** 用给定引擎建实例（幂等）：状态登记 + 事件绑定 + 首次适应容器。
+/** 用给定引擎建实例（幂等）：状态登记 + 事件绑定 + fitMode 跟随 + 首次适应容器。
  *  panzoom 与内置降级引擎共用这条路；**引擎构造抛错也回落到降级态**，绝不让按钮失灵。 */
 function buildZoomState(
   target: { card: Element; frame: Element; box: Element },
@@ -186,10 +164,11 @@ function buildZoomState(
   } catch (_e) {
     pz = createFallbackZoomer(box, { minScale: ZOOM_MIN, maxScale: ZOOM_MAX })
   }
-  const state: ZoomState = { pz, card, frame, box }
+  const state: ZoomState = { pz, card, frame, box, fitMode: true }
   zoomStates.set(box, state)
   frame.setAttribute(ZOOM_ATTR, 'on') // 外层切裁剪态：放大后不盖住工具条
   bindZoomEvents(state)
+  state.unwatch = bindFitFollow(state) // 全屏 / 容器尺寸变化 → fitMode 下重算 fit
   if (card.getAttribute(FS_ATTR) === FS_FAIL) card.removeAttribute(FS_ATTR)
   // 首次绑定即适应容器：小图（flowchart LR 只有几十像素宽）不再缩在一角等用户放大。
   applyZoom(state, 'fit')
@@ -222,26 +201,6 @@ function bindZoom(target: { card: Element; frame: Element; box: Element }): Prom
     .catch(() => buildZoomState(target, (limits) => createFallbackZoomer(box, limits)))
 }
 
-/** 刷新百分比标签：panzoom 的 transform 落在下一帧，同步读可能拿到旧值 → 再补一次。 */
-function refreshZoomLabel(state: ZoomState): void {
-  const label = state.card.querySelector('.' + ZOOM_PCT_CLASS)
-  if (label === null) return
-  const apply = (): void => {
-    label.textContent = Math.round((state.pz.getScale() || 1) * 100) + '%'
-  }
-  apply()
-  const raf = (globalThis as { requestAnimationFrame?: (cb: () => void) => number }).requestAnimationFrame
-  if (typeof raf === 'function') raf(apply)
-}
-
-/** 工具条动作：fit = 适应容器（contain）/ full = 100% / in / out。 */
-function applyZoom(state: ZoomState, action: string): void {
-  if (action === 'fit') state.pz.zoom(zoomFitScale(state), { animate: false })
-  else if (action === 'full') state.pz.zoom(zoomNaturalScale(state), { animate: false })
-  else state.pz.zoom(state.pz.getScale() * (action === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP), { animate: true })
-  refreshZoomLabel(state)
-}
-
 /** 工具条入口：未就绪就**等加载完再执行**（此前直接 return，加载期间与加载失败后的
  *  每次点击都被静默丢弃 —— 用户看到的就是「点了没反应」）。 */
 function zoomEntry(entryId: string, action: string): void {
@@ -260,13 +219,24 @@ function overlayButton(label: string, onClick: () => void): Element {
   return btn
 }
 
-/** 二级入口：浏览器原生全屏（主入口是浮窗，只作为面板里的小按钮保留）。 */
-function requestNativeFullscreen(card: Element): void {
-  const api = card as { requestFullscreen?: () => Promise<void> }
+/** 二级入口：浏览器原生全屏。**先收浮窗再进全屏** —— PhotoSwipe 官方配方：两层容器
+ *  绝不同时存在（真机实测此前 dialog 仍 open = 两层模态叠加）。全屏切换由 fitMode 的
+ *  fullscreenchange 跟随重新适应；请求被拒 / 不支持则就地重新适应（别停在浮窗时的大比例）。 */
+function requestNativeFullscreen(target: { card: Element; frame: Element; box: Element }): void {
+  closeCardOverlay()
+  const refit = (): void => {
+    const state = zoomStates.get(target.box)
+    if (state !== undefined) zoomRefitIfFit(state)
+  }
+  const api = target.card as { requestFullscreen?: () => Promise<void> }
   try {
-    if (typeof api.requestFullscreen === 'function') void api.requestFullscreen()
+    if (typeof api.requestFullscreen !== 'function') {
+      refit()
+      return
+    }
+    void Promise.resolve(api.requestFullscreen()).catch(refit)
   } catch (_e) {
-    /* 不支持 / 被拒：留在浮窗里 */
+    refit()
   }
 }
 
@@ -281,7 +251,7 @@ function openCardOverlay(target: { card: Element; frame: Element; box: Element }
   dialog.setAttribute(FS_PANEL_ATTR, 'open')
   const bar = document.createElement('div')
   bar.className = FS_BAR_CLASS
-  bar.appendChild(overlayButton('浏览器全屏', () => requestNativeFullscreen(target.card)))
+  bar.appendChild(overlayButton('浏览器全屏', () => requestNativeFullscreen(target)))
   bar.appendChild(overlayButton('关闭', closeCardOverlay))
   dialog.appendChild(bar)
   overlayHome = { host: host as Element, entryId, parent: host.parentNode, next: host.nextSibling, dialog }
@@ -339,10 +309,11 @@ function toggleCardOverlay(entryId: string): boolean {
   return target.card.getAttribute(FS_ATTR) === FS_OPEN
 }
 
-/** teardown：收掉浮窗、销毁实例、清表与加载缓存。 */
+/** teardown：收掉浮窗、解绑跟随监听、销毁实例、清表与加载缓存。 */
 function teardownZoom(): void {
   closeCardOverlay()
   for (const state of zoomStates.values()) {
+    if (typeof state.unwatch === 'function') state.unwatch()
     try {
       state.pz.destroy()
     } catch (_e) {

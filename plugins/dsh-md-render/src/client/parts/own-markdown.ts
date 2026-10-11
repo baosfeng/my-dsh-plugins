@@ -17,6 +17,9 @@
 
 /** markdown 文本内的行内代码类名。 */
 const MD_CODE_CLASS = 'dsh-md-render-md-code'
+/** 图片类名 / 可点击放大的**追加**类名（点击走 image-lightbox.ts 的原生 dialog 灯箱）。 */
+const MD_IMG_CLASS = 'dsh-md-render-md-img'
+const MD_IMG_ZOOM_CLASS = 'dsh-md-render-img-zoom'
 /** 解析异常时的原文兜底容器类名（内容一字不丢）。 */
 const MD_PLAIN_CLASS = 'dsh-md-render-md-plain'
 /** 表格单元格对齐 class（不用行内 style / 不用 align 属性）。 */
@@ -137,7 +140,29 @@ function mdLinkNode(t: Record<string, unknown>, key: string): unknown {
   )
 }
 
-/** 图片：地址不安全 → 渲染 alt 文本（不加载任何来路不明的资源）。 */
+/** 键盘事件最小契约（真实 KeyboardEvent 满足；与 mermaid-zoom 的 ZoomKeyEvent 同款）。 */
+interface MdKeyEvent {
+  key?: unknown
+  preventDefault?: () => void
+}
+
+/**
+ * 放大键：Enter / 空格与点击同路。
+ * 图片是可点击的放大入口，样式给了 :focus-visible 焦点环（styles.ts），
+ * 因此必须真能键盘触达 —— 只做鼠标等于焦点环是死的。
+ */
+function mdImageZoomKey(src: string, alt: string, event: MdKeyEvent): void {
+  const key = String(event.key ?? '')
+  if (key !== 'Enter' && key !== ' ') return
+  if (typeof event.preventDefault === 'function') event.preventDefault()
+  openImageLightbox(src, alt)
+}
+
+/**
+ * 图片：地址不安全 → 渲染 alt 文本（不加载任何来路不明的资源）。
+ * 地址安全 → 图片带 MD_IMG_ZOOM_CLASS，点一下（或 Enter / 空格）开原生 <dialog>
+ * 灯箱放大（image-lightbox.ts；灯箱内对 src 再走一次同一安全口径）。
+ */
 function mdImageNode(t: Record<string, unknown>, key: string): unknown {
   const alt = mdText(t.text)
   const src = mdSafeImageSrc(t.href)
@@ -145,11 +170,14 @@ function mdImageNode(t: Record<string, unknown>, key: string): unknown {
   const title = mdText(t.title)
   return createElement('img', {
     key,
-    className: 'dsh-md-render-md-img',
+    className: MD_IMG_CLASS + ' ' + MD_IMG_ZOOM_CLASS,
     src,
     alt,
     title: title === '' ? undefined : title,
     loading: 'lazy',
+    tabIndex: 0,
+    onClick: () => openImageLightbox(src, alt),
+    onKeyDown: (event: MdKeyEvent) => mdImageZoomKey(src, alt, event),
   })
 }
 
@@ -328,6 +356,8 @@ function markdownNodes(text: unknown): unknown[] | null {
 }
 
 exports.MD_CODE_CLASS = MD_CODE_CLASS
+exports.MD_IMG_CLASS = MD_IMG_CLASS
+exports.MD_IMG_ZOOM_CLASS = MD_IMG_ZOOM_CLASS
 exports.MD_PLAIN_CLASS = MD_PLAIN_CLASS
 exports.mdInfoLang = mdInfoLang
 exports.mdSafeHref = mdSafeHref

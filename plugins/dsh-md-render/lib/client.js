@@ -1200,6 +1200,9 @@ const CODE_HEAD_CLASS = 'dsh-md-render-code-head';
 const CODE_LANG_CLASS = 'dsh-md-render-code-lang';
 const CODE_ACTIONS_CLASS = 'dsh-md-render-code-actions';
 const CODE_COPY_CLASS = 'dsh-md-render-code-copy';
+/** 换行切换按钮类名 / 换行态下追加到 pre 的类名（**默认不换行** = 横向滚动）。 */
+const CODE_WRAP_BTN_CLASS = 'dsh-md-render-code-wrap-btn';
+const CODE_WRAP_CLASS = 'dsh-md-render-code-wrap';
 /** 代码主体容器（pre）/ 无高亮时的纯文本 code 类名。 */
 const CODE_PRE_CLASS = 'dsh-md-render-code-pre';
 const CODE_TEXT_CLASS = 'dsh-md-render-code-text';
@@ -1302,19 +1305,37 @@ function codeBodyNodes(lang, source) {
     return createElement('code', { className: HLJS_CLASS_PREFIX + 'code' }, ...nodes);
 }
 /**
- * 自研代码块：banner（真实语言名 + 复制）+ 自动换行的 pre。
+ * 自研代码块：banner（真实语言名 + 换行切换 + 复制）+ pre。
+ *
+ * 换行切换（官方 CodeToolbar 有、此前自研版漏掉的能力）：按钮排在**复制之前**，
+ * 点一次在「不换行（横向滚动）」与「自动换行」之间切换，可访问名 / aria-pressed 同步。
+ * **默认不换行** —— 与现状（以及官方默认形态）一致，不改变默认视觉行为。
+ *
  * `lang` 为空 = 该块语言识别不出 —— 此时**不编造语言名**，banner 语言位留空。
  */
 function CodeBlockView({ lang, code }) {
     const [copied, setCopied] = useState(false);
+    const [wrap, setWrap] = useState(false);
     const source = typeof code === 'string' ? code : String(code ?? '');
     const onCopy = () => {
         copyText(source).then(() => setCopied(true), () => { });
     };
+    const onToggleWrap = () => setWrap(!wrap);
     const copyLabel = copied ? '已复制' : '复制';
-    return createElement('div', { className: CODE_VIEW_CLASS }, createElement('div', { className: CODE_HEAD_CLASS }, createElement('span', { className: CODE_LANG_CLASS }, lang === '' ? '' : lang), createElement('div', { className: CODE_ACTIONS_CLASS }, createElement('button', { type: 'button', className: CODE_COPY_CLASS, title: copyLabel, 'aria-label': copyLabel, onClick: onCopy }, copyLabel))), createElement('pre', { className: CODE_PRE_CLASS, tabIndex: 0 }, codeBodyNodes(lang, source)));
+    const wrapLabel = wrap ? '取消换行' : '自动换行';
+    return createElement('div', { className: CODE_VIEW_CLASS }, createElement('div', { className: CODE_HEAD_CLASS }, createElement('span', { className: CODE_LANG_CLASS }, lang === '' ? '' : lang), createElement('div', { className: CODE_ACTIONS_CLASS }, createElement('button', {
+        type: 'button',
+        className: CODE_WRAP_BTN_CLASS,
+        title: wrapLabel,
+        'aria-label': wrapLabel,
+        // 字符串而非布尔：React 对 aria-* 会原样写成 aria-pressed="true|false"。
+        'aria-pressed': wrap ? 'true' : 'false',
+        onClick: onToggleWrap,
+    }, wrapLabel), createElement('button', { type: 'button', className: CODE_COPY_CLASS, title: copyLabel, 'aria-label': copyLabel, onClick: onCopy }, copyLabel))), 
+    // 换行态只**追加**类名，原有 CODE_PRE_CLASS 保留（样式由 styles.ts 统一提供）。
+    createElement('pre', { className: CODE_PRE_CLASS + (wrap ? ' ' + CODE_WRAP_CLASS : ''), tabIndex: 0 }, codeBodyNodes(lang, source)));
 }
-Object.assign(exports,{CODE_HOST_CLASS,CODE_VIEW_CLASS,CODE_LANG_CLASS,CODE_PRE_CLASS,MAX_HIGHLIGHT_CHARS,hljsScopeClass,highlightCodeNodes,CodeBlockView});
+Object.assign(exports,{CODE_HOST_CLASS,CODE_VIEW_CLASS,CODE_LANG_CLASS,CODE_WRAP_BTN_CLASS,CODE_WRAP_CLASS,CODE_PRE_CLASS,MAX_HIGHLIGHT_CHARS,hljsScopeClass,highlightCodeNodes,CodeBlockView});
 
     // 自研 markdown 渲染（marked 词法树 → vdom，表格容错在此接上）
     "use strict";
@@ -1336,6 +1357,9 @@ Object.assign(exports,{CODE_HOST_CLASS,CODE_VIEW_CLASS,CODE_LANG_CLASS,CODE_PRE_
 // 数学公式不做（用户明确：暂不做）。
 /** markdown 文本内的行内代码类名。 */
 const MD_CODE_CLASS = 'dsh-md-render-md-code';
+/** 图片类名 / 可点击放大的**追加**类名（点击走 image-lightbox.ts 的原生 dialog 灯箱）。 */
+const MD_IMG_CLASS = 'dsh-md-render-md-img';
+const MD_IMG_ZOOM_CLASS = 'dsh-md-render-img-zoom';
 /** 解析异常时的原文兜底容器类名（内容一字不丢）。 */
 const MD_PLAIN_CLASS = 'dsh-md-render-md-plain';
 /** 表格单元格对齐 class（不用行内 style / 不用 align 属性）。 */
@@ -1451,7 +1475,24 @@ function mdLinkNode(t, key) {
         title: title === '' ? undefined : title,
     }, ...children);
 }
-/** 图片：地址不安全 → 渲染 alt 文本（不加载任何来路不明的资源）。 */
+/**
+ * 放大键：Enter / 空格与点击同路。
+ * 图片是可点击的放大入口，样式给了 :focus-visible 焦点环（styles.ts），
+ * 因此必须真能键盘触达 —— 只做鼠标等于焦点环是死的。
+ */
+function mdImageZoomKey(src, alt, event) {
+    const key = String(event.key ?? '');
+    if (key !== 'Enter' && key !== ' ')
+        return;
+    if (typeof event.preventDefault === 'function')
+        event.preventDefault();
+    openImageLightbox(src, alt);
+}
+/**
+ * 图片：地址不安全 → 渲染 alt 文本（不加载任何来路不明的资源）。
+ * 地址安全 → 图片带 MD_IMG_ZOOM_CLASS，点一下（或 Enter / 空格）开原生 <dialog>
+ * 灯箱放大（image-lightbox.ts；灯箱内对 src 再走一次同一安全口径）。
+ */
 function mdImageNode(t, key) {
     const alt = mdText(t.text);
     const src = mdSafeImageSrc(t.href);
@@ -1460,11 +1501,14 @@ function mdImageNode(t, key) {
     const title = mdText(t.title);
     return createElement('img', {
         key,
-        className: 'dsh-md-render-md-img',
+        className: MD_IMG_CLASS + ' ' + MD_IMG_ZOOM_CLASS,
         src,
         alt,
         title: title === '' ? undefined : title,
         loading: 'lazy',
+        tabIndex: 0,
+        onClick: () => openImageLightbox(src, alt),
+        onKeyDown: (event) => mdImageZoomKey(src, alt, event),
     });
 }
 /** 表格单元格（th / td；对齐走自有 class）。 */
@@ -1621,7 +1665,78 @@ function markdownNodes(text) {
         return [createElement('pre', { key: 'md-plain', className: MD_PLAIN_CLASS }, source)];
     return mdBlockChildren(tokens, 'md');
 }
-Object.assign(exports,{MD_CODE_CLASS,MD_PLAIN_CLASS,mdInfoLang,mdSafeHref,mdSafeImageSrc,markdownNodes});
+Object.assign(exports,{MD_CODE_CLASS,MD_IMG_CLASS,MD_IMG_ZOOM_CLASS,MD_PLAIN_CLASS,mdInfoLang,mdSafeHref,mdSafeImageSrc,markdownNodes});
+
+    // markdown 图片点击放大灯箱（原生 <dialog>，三路关闭）
+    "use strict";
+// ── markdown 图片「点击放大」灯箱（原生 <dialog> 模态）──────────────────────
+// 用户反馈：图片只能静态看、点不开 —— 成熟方案（medium-zoom / PhotoSwipe /
+// lightGallery）都支持点击放大。这里只借这条交互，实现用**原生 <dialog> +
+// showModal()**（与本插件 mermaid 浮窗同款做法：零依赖，遮罩 / Esc / 焦点归还
+// 由浏览器兜底），不引入任何三方库。
+//
+// 三路关闭：Esc（dialog 的 cancel 事件）/ 点击遮罩（点击落在 dialog 自身 =
+// 点了 ::backdrop）/ 点击图片（想立刻收起时不必去够边缘）。关闭即把 dialog 从
+// 文档移除（不留残留节点）；同一时刻只保留一个灯箱（再点第二张图先收掉上一个）。
+//
+// 安全口径与 markdown 渲染完全一致：src 仍过 mdSafeImageSrc（只放行 http / https
+// 与同源相对路径），未放行的地址**不打开灯箱**；全程只有 DOM API（className /
+// src / alt 属性赋值），没有 innerHTML / dangerouslySetInnerHTML。
+/** 灯箱 <dialog> 类名。 */
+const LIGHTBOX_CLASS = 'dsh-md-render-img-lightbox';
+/** 灯箱内大图类名。 */
+const LIGHTBOX_IMG_CLASS = 'dsh-md-render-img-lightbox-img';
+/** 当前打开的灯箱（同一时刻只允许一个）。 */
+let imageLightbox = null;
+/** 关闭灯箱（幂等；Esc / 遮罩 / 点击图片三路共用）。 */
+function closeImageLightbox() {
+    const dialog = imageLightbox;
+    if (dialog === null)
+        return;
+    imageLightbox = null;
+    try {
+        dialog.close();
+    }
+    catch (_e) {
+        /* 已关闭 / 伪 DOM 无此方法 */
+    }
+    const parent = dialog.parentNode;
+    if (parent !== null && parent !== undefined)
+        parent.removeChild(dialog);
+}
+/** 以模态方式打开（无 showModal 的环境退回 open 属性 —— 绝不静默失败）。 */
+function showLightboxModal(dialog) {
+    try {
+        dialog.showModal();
+    }
+    catch (_e) {
+        dialog.open = true;
+    }
+}
+/** 点图放大；地址不在安全口径内 → 什么都不做（不加载来路不明的资源）。 */
+function openImageLightbox(src, alt) {
+    const safe = mdSafeImageSrc(src);
+    if (safe === '' || typeof document === 'undefined' || document === null)
+        return;
+    closeImageLightbox();
+    const dialog = document.createElement('dialog');
+    dialog.className = LIGHTBOX_CLASS;
+    const img = document.createElement('img');
+    img.className = LIGHTBOX_IMG_CLASS;
+    img.src = safe;
+    img.alt = alt;
+    dialog.appendChild(img);
+    // ::backdrop 不是元素：点击落在 dialog 自身 = 点了遮罩；点图片同样收起。
+    dialog.addEventListener('click', (event) => {
+        if (event.target === dialog || event.target === img)
+            closeImageLightbox();
+    });
+    dialog.addEventListener('cancel', closeImageLightbox);
+    document.body.appendChild(dialog);
+    imageLightbox = dialog;
+    showLightboxModal(dialog);
+}
+Object.assign(exports,{LIGHTBOX_CLASS,LIGHTBOX_IMG_CLASS,openImageLightbox,closeImageLightbox});
 
     // 整段 markdown 复制（官方只有代码块复制）
     "use strict";
@@ -2314,12 +2429,17 @@ function ViewToggle({ mode, setMode, previewDisabled, }) {
     }, iconNode, createElement('span', null, label));
     return createElement('div', { className: 'dsh-md-render-mermaid-view-toggle', role: 'group', 'aria-label': 'view mode' }, btn('预览', 'preview', icon.file(14), previewDisabled === true), btn('代码', 'code', icon.code(14), false));
 }
-/** 缩放 / 浮窗工具条（需求 1）：全屏（浮窗）/ 适应 / 100% / ±。 */
+/** 缩放 / 浮窗工具条：全屏（浮窗）/ 适应 / 铺满 / 100% / ±。
+ *  title 兼作**快捷键与手势的发现入口** —— 键盘 + - 0 与方向键、双击切换、双指捏合
+ *  此前都实现了但**没有任何提示**（市面做法见调研：viewer.js / draw.io 都在文档明列快捷键）。
+ *  aria-label 保持简短（屏幕阅读器读的是它，不能塞整句提示）。 */
 function ZoomBar({ entryId }) {
-    const btn = (label, title, action) => createElement('button', { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick: action, title, 'aria-label': title }, createElement('span', null, label));
+    const btn = (label, ariaLabel, title, action) => createElement('button', { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick: action, title, 'aria-label': ariaLabel }, createElement('span', null, label));
     return createElement('div', { className: 'dsh-md-render-mermaid-zoom', role: 'group', 'aria-label': '图表缩放' }, 
     // 实时缩放百分比：小图放大 25% 肉眼几乎无感，用数字给出明确反馈。
-    createElement('span', { className: 'dsh-md-render-mermaid-zoom-pct' }, '100%'), btn('全屏', '全屏浮窗（Esc 关闭）', () => toggleCardOverlay(entryId)), btn('适应', '适应容器', () => zoomEntry(entryId, 'fit')), btn('100%', '实际大小', () => zoomEntry(entryId, 'full')), btn('−', '缩小', () => zoomEntry(entryId, 'out')), btn('+', '放大', () => zoomEntry(entryId, 'in')));
+    createElement('span', { className: 'dsh-md-render-mermaid-zoom-pct' }, '100%'), btn('全屏', '全屏浮窗', '全屏浮窗（Esc 关闭）', () => toggleCardOverlay(entryId)), btn('适应', '适应容器', '适应容器：完整显示整张图（双击图表可在「适应 / 实际大小」间切换）', () => zoomEntry(entryId, 'fit')), 
+    // 铺满 = 按容器宽度填满（PhotoSwipe 的 fill / Panzoom 的 cover）：宽图比「适应」更实用。
+    btn('铺满', '适应宽度', '适应宽度：按容器宽度铺满，高度超出时可拖动平移', () => zoomEntry(entryId, 'fill')), btn('100%', '实际大小', '实际大小 100%（键盘 0 复位、双击在适应与实际大小间切换）', () => zoomEntry(entryId, 'full')), btn('−', '缩小', '缩小（键盘 −，或触控板双指捏合）', () => zoomEntry(entryId, 'out')), btn('+', '放大', '放大（键盘 +，或触控板双指捏合）', () => zoomEntry(entryId, 'in')));
 }
 /** 卡片主体：loading / error（含源码与重试）/ 代码视图 / 渲染出的 SVG。 */
 function CardBody({ status, mode, error, source, svg, onRetry, }) {
@@ -2696,29 +2816,19 @@ Object.assign(exports,{buildExportFileName,serializeSvg,findCardSvg,makeExportHa
 
     // mermaid 图表全屏 + 缩放 / 平移（panzoom 懒加载；失败切内置降级引擎）
     "use strict";
-// ── 缩放几何：适应容器（contain）与「实际大小 100%」的比例计算 ────────────
-// 从 mermaid-zoom.ts 拆出（单文件行数门禁 ≤400）。两者都量**裁剪容器**而非变换层：
-// 变换层高度由内容决定（扁图如 flowchart LR `X-->Y` 仅约 50px），拿它当可用空间会让
-// contain 恒为 1 —— 那正是「图永远放不大」的根因（真机实测：容器 160 vs 变换层 50）。
-/** 100% = 图表真实像素大小：viewBox 宽 ÷ 未缩放的显示宽（适应容器后两者不等）。 */
-function zoomNaturalScale(state) {
-    const svg = state.box.querySelector('svg');
-    const scale = state.pz.getScale() || 1;
-    const shown = svg === null ? 0 : svg.getBoundingClientRect().width / scale;
-    const natural = svg === null ? 0 : svg.viewBox.baseVal.width;
-    if (shown <= 0 || natural <= 0)
-        return 1;
-    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, natural / shown));
+// ── 缩放几何与策略：fit / fill / 100% 的基准比例、锚点手势、fitMode 跟随、快捷键动作 ──
+// 从 mermaid-zoom.ts 拆出（单文件行数门禁 ≤400）。几何基准一律量**裁剪容器**（state.frame）
+// 而非变换层：变换层高度由内容决定（扁图如 flowchart LR `X-->Y` 仅约 50px），拿它当可用空间
+// 会让 contain 恒为 1 —— 那正是「图永远放不大」的根因（真机实测：容器 160 vs 变换层 50）。
+/** 比例夹逼到引擎上下界（与 panzoom 构造参数同源）。 */
+function zoomClamp(scale) {
+    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale));
 }
-/** 适应 = 完整显示（contain）：按「容器尺寸 ÷ 图固有尺寸」取宽高比例的**较小**者。
- *  原先 fit 只是 reset 到 scale=1 —— 小图（如 flowchart LR `X-->Y` 仅 ~90px 宽）躺在
- *  上千像素的容器里，点「适应」毫无变化、点「+」一次也只放大 25%，用户感知就是「没反应」。 */
-function zoomFitScale(state) {
+/** 量容器与图固有尺寸；量不出（无 SVG / 容器未布局 / 尺寸为 0）→ null（调用方退回 1）。 */
+function zoomMetrics(state) {
     const svg = state.box.querySelector('svg');
     if (svg === null)
-        return 1;
-    // 量的必须是**裁剪容器**（frame），不是变换层：canvas 高度由内容决定（扁图如
-    // flowchart LR `X-->Y` 仅 50px），拿它当可用空间算 contain 只会永远得到 1。
+        return null;
     const container = state.frame;
     const bw = Number(container.offsetWidth ?? 0);
     const bh = Number(container.offsetHeight ?? 0);
@@ -2727,8 +2837,211 @@ function zoomFitScale(state) {
     const sw = rect.width / scale;
     const sh = rect.height / scale;
     if (bw <= 0 || bh <= 0 || sw <= 0 || sh <= 0)
+        return null;
+    return { bw, bh, sw, sh };
+}
+/** 100% = 图表真实像素大小：viewBox 宽 ÷ 未缩放的显示宽（适应容器后两者不等）。 */
+function zoomNaturalScale(state) {
+    const svg = state.box.querySelector('svg');
+    const scale = state.pz.getScale() || 1;
+    const shown = svg === null ? 0 : svg.getBoundingClientRect().width / scale;
+    const natural = svg === null ? 0 : svg.viewBox.baseVal.width;
+    if (shown <= 0 || natural <= 0)
         return 1;
-    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(bw / sw, bh / sh)));
+    return zoomClamp(natural / shown);
+}
+/** 适应 = 完整显示（contain）：按「容器尺寸 ÷ 图固有尺寸」取宽高比例的**较小**者。
+ *  原先 fit 只是 reset 到 scale=1 —— 小图（如 flowchart LR `X-->Y` 仅 ~90px 宽）躺在
+ *  上千像素的容器里，点「适应」毫无变化、点「+」一次也只放大 25%，用户感知就是「没反应」。 */
+function zoomFitScale(state) {
+    const m = zoomMetrics(state);
+    if (m === null)
+        return 1;
+    return zoomClamp(Math.min(m.bw / m.sw, m.bh / m.sh));
+}
+/** 铺满 = 适应宽度（PhotoSwipe 的 fill / Panzoom 的 cover）：bw / sw，保持宽高比。
+ *  与 fit 只差**不**受高度约束 —— 宽图比「适应」更实用，高度溢出时用户拖动平移。 */
+function zoomFillScale(state) {
+    const m = zoomMetrics(state);
+    return m === null ? 1 : zoomClamp(m.bw / m.sw);
+}
+/** 事件里的指针 / 手势中心（client 坐标）；拿不到有限坐标 → null（退回以元素中心为锚）。 */
+function zoomPointOf(event) {
+    const e = event;
+    const x = typeof e.clientX === 'number' ? e.clientX : NaN;
+    const y = typeof e.clientY === 'number' ? e.clientY : NaN;
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+/** 以屏幕点为锚点缩放到 scale：优先用引擎自带的锚点 API（panzoom 4.6 的 zoomToPoint /
+ *  降级引擎的 zoomAtPoint）；引擎不支持 → false（调用方退回以元素中心为锚的居中缩放）。 */
+function zoomAnchored(state, scale, point) {
+    if (point === null)
+        return false;
+    const pz = state.pz;
+    if (typeof pz.zoomToPoint === 'function') {
+        const before = pz.getScale();
+        try {
+            // panzoom **4.6.2** 的签名是 zoomToPoint(**scale, event**) —— scale 在前。证据在库自身：
+            // `function v(e,t,n,o){ … t.clientX … }`，而它的 `zoomWithWheel` 是 `v(h(…), e, t, e)`。
+            // 较新版本才是 (point, scale)。传错顺序时它**不抛错、只是静默不动** —— 真机实测：
+            // wheel 事件已到达且 preventDefault 了、console 零报错，transform 却纹丝不动。
+            pz.zoomToPoint(scale, { clientX: point.x, clientY: point.y });
+            // 调用后校验：签名不符 / 内部异常时它可能既不抛错也不生效 —— 没变就当没成功，
+            // 让调用方回退到居中缩放。绝不把「锚点失败」放大成「整次缩放都不生效」。
+            if (Math.abs((pz.getScale() || 0) - before) > 1e-6)
+                return true;
+        }
+        catch (_e) {
+            /* 落回退路径 */
+        }
+    }
+    if (typeof pz.zoomAtPoint === 'function') {
+        pz.zoomAtPoint(scale, point);
+        return true;
+    }
+    return false;
+}
+/** 一档缩放比（滚轮 / 捏合共用）：deltaY < 0 = 放大。 */
+function zoomStep(event) {
+    return Number(event.deltaY) < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+}
+/** 裸 wheel 归页面（滚动陷阱）：只有 ctrlKey+wheel（捏合）或浮窗态才缩放。 */
+function zoomWheelShouldHandle(event, card) {
+    const wheel = event;
+    return wheel.ctrlKey === true || card.getAttribute(FS_ATTR) === FS_OPEN;
+}
+/** 手动缩放（滚轮 / 捏合 / 键盘）：退出 fitMode（用户接管后不再跟随容器），
+ *  有指针坐标就以该点为锚点，否则以元素中心为锚。 */
+function zoomManual(state, next, point, animate) {
+    state.fitMode = false;
+    if (!zoomAnchored(state, next, point))
+        state.pz.zoom(next, { animate });
+    // 滚轮 / 捏合 / 键盘这条路径此前**从不刷新百分比标签**（锚点分支还会提前 return）——
+    // 结果就是「缩放真的生效了、百分比纹丝不动」，用户据此判断成「点了没反应」
+    // （真机实测：transform 已 scale(1.006→1.509) 且平移到锚点，pct 却仍显示 101%）。
+    refreshZoomLabel(state);
+}
+/** fitMode 下的重算（全屏切换 / 容器尺寸变化）：比例没变就不写 transform，
+ *  否则 ResizeObserver 与自身写入的变换会互相触发。 */
+function zoomRefitIfFit(state) {
+    if (!state.fitMode)
+        return;
+    const next = zoomFitScale(state);
+    if (Math.abs(next - state.pz.getScale()) <= next * 0.005)
+        return;
+    state.pz.zoom(next, { animate: false });
+    refreshZoomLabel(state);
+}
+/** 事件解绑闭包（document / window / 元素通用）。 */
+function zoomListen(target, type, fn) {
+    target.addEventListener(type, fn);
+    return () => {
+        // 伪 DOM / 残缺实现可能没有 removeEventListener：解绑失败不该让 teardown 抛错。
+        if (typeof target.removeEventListener === 'function')
+            target.removeEventListener(type, fn);
+    };
+}
+/** fitMode 的「跟随容器」：全屏切换、以及容器尺寸变化（ResizeObserver；不可用退回
+ *  window resize）时**重算 fit** —— draw.io 的 Fit Window 是保持态，不是一次性动作
+ *  （真机实证：容器 1174×508 → 800×544 后图仍停在旧比例，全屏后缩在一角、大片空白）。 */
+function bindFitFollow(state) {
+    const refit = () => zoomRefitIfFit(state);
+    const win = typeof window === 'undefined' ? undefined : window;
+    const doc = typeof document === 'undefined' ? undefined : document;
+    const unbinds = [];
+    if (doc !== undefined && typeof doc.addEventListener === 'function') {
+        unbinds.push(zoomListen(doc, 'fullscreenchange', refit));
+    }
+    const RO = win === undefined ? undefined : win.ResizeObserver;
+    if (typeof RO === 'function') {
+        const ro = new RO(refit);
+        ro.observe(state.frame);
+        unbinds.push(() => ro.disconnect());
+    }
+    else if (win !== undefined && typeof win.addEventListener === 'function') {
+        unbinds.push(zoomListen(win, 'resize', refit));
+    }
+    return () => {
+        for (const off of unbinds)
+            off();
+    };
+}
+/** 缩放键（+ / - / = / _ / 0）；拆出来压圈复杂度。 */
+function zoomScaleKey(state, key) {
+    const factor = key === '+' || key === '=' ? ZOOM_STEP : key === '-' || key === '_' ? 1 / ZOOM_STEP : 0;
+    if (factor > 0) {
+        zoomManual(state, state.pz.getScale() * factor, null, true);
+        return true;
+    }
+    if (key !== '0')
+        return false;
+    state.fitMode = false; // 0 = 位移与比例一并复位（真正的复位；适应交给「适应」按钮 / 双击）
+    state.pz.reset({ animate: false });
+    return true;
+}
+/** 方向键平移（拆出来压圈复杂度）。 */
+function zoomArrowKey(state, key) {
+    const dx = key === 'ArrowLeft' ? PAN_KEY_STEP : key === 'ArrowRight' ? -PAN_KEY_STEP : 0;
+    const dy = key === 'ArrowUp' ? PAN_KEY_STEP : key === 'ArrowDown' ? -PAN_KEY_STEP : 0;
+    if (dx === 0 && dy === 0)
+        return false;
+    state.fitMode = false;
+    state.pz.pan(dx, dy, { animate: false, relative: true });
+    return true;
+}
+/** 键盘 a11y：+ / - 缩放，0 复位，方向键平移（Esc 由浮窗 dialog 的 cancel 负责）。 */
+function zoomKey(card, box, event) {
+    const state = zoomStates.get(box);
+    if (state === undefined)
+        return;
+    const key = String(event.key ?? '');
+    if (!zoomArrowKey(state, key) && !zoomScaleKey(state, key))
+        return;
+    if (typeof event.preventDefault === 'function')
+        event.preventDefault();
+}
+/** 刷新百分比标签：panzoom 的 transform 落在下一帧，同步读可能拿到旧值 → 再补一次。 */
+function refreshZoomLabel(state) {
+    const label = state.card.querySelector('.' + ZOOM_PCT_CLASS);
+    if (label === null)
+        return;
+    const apply = () => {
+        label.textContent = Math.round((state.pz.getScale() || 1) * 100) + '%';
+    };
+    apply();
+    const raf = globalThis.requestAnimationFrame;
+    if (typeof raf === 'function')
+        raf(apply);
+}
+/** 工具条 / 双击动作：fit = 适应容器（进入**保持态**跟随模式）/ fill = 铺满宽度 /
+ *  full = 100% / in / out。除 fit 外都算用户手动接管 → 退出 fitMode。 */
+function applyZoom(state, action) {
+    if (action === 'fit') {
+        state.fitMode = true;
+        state.pz.zoom(zoomFitScale(state), { animate: false });
+    }
+    else if (action === 'fill') {
+        state.fitMode = false;
+        state.pz.zoom(zoomFillScale(state), { animate: false });
+    }
+    else if (action === 'full') {
+        state.fitMode = false;
+        state.pz.zoom(zoomNaturalScale(state), { animate: false });
+    }
+    else {
+        state.fitMode = false;
+        state.pz.zoom(state.pz.getScale() * (action === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP), { animate: true });
+    }
+    refreshZoomLabel(state);
+}
+/** 双击 = 「适应 ↔ 实际大小」切换（Panzoom 的 toggleZoom / viewer.js / lightGallery 同款语义）：
+ *  正在跟随 fit → 去 100%；否则回到 fit。键盘 0 才是真正的复位。
+ *
+ *  **必须按状态判断，不能按「当前比例是否接近 fit 值」**：fit ≈ 100%（图接近 1:1）时，
+ *  |1.00 − 1.011| = 0.011 落在任何容差内 → 两次双击都判「接近 fit」→ 永远切不回 fit
+ *  （真机实测：101% --双击--> 100% --双击--> 100%）。 */
+function zoomToggle(state) {
+    applyZoom(state, state.fitMode ? 'full' : 'fit');
 }
 
     "use strict";
@@ -2737,8 +3050,22 @@ function zoomFitScale(state) {
 // 注入时机、UMD 落点）会让它静默失败 —— 用户看到的就是「缩放按钮点了完全没反应」，
 // 而百分比停在硬编码的初始值 100%（真机复现：阻断该请求 → pct 100% / 绑定从未建立 /
 // 卡片零提示）。这里用纯 CSS transform 实现同一套 API：**零运行时加载 ⇒ 不存在失败面**。
-// 锚点差异：panzoom 由库自己算 translate（自有 CSS 里 transform-origin 是 0 0）；
-// 降级态改用元素自身中心（50% 50%），图围绕自己的中心缩放。
+// 锚点与 panzoom 对齐：库自己把 transform-origin 写成 50% 50%（= 元素布局盒中心），
+// 这里用同一锚点，并以 zoomAtPoint 提供「以屏幕点为锚点缩放」（对应它的 zoomToPoint）。
+/** 派发与 panzoom 同名的合成事件（panzoompan）：调用方据此判断「用户真的在手动平移」
+ *  → 退出 fitMode。伪 DOM / 旧环境没有 dispatchEvent 或 CustomEvent 时静默跳过。 */
+function fireZoomEvent(box, type) {
+    const host = box;
+    const Ctor = globalThis.CustomEvent;
+    if (typeof host.dispatchEvent !== 'function' || typeof Ctor !== 'function')
+        return;
+    try {
+        host.dispatchEvent(new Ctor(type, { detail: {} }));
+    }
+    catch (_e) {
+        /* 事件派发失败不阻断平移 */
+    }
+}
 /** 指针拖拽平移：把每次位移交给 onDrag；返回解绑函数。 */
 function attachDragPan(box, onDrag) {
     let last = null;
@@ -2753,8 +3080,13 @@ function attachDragPan(box, onDrag) {
         if (last === null)
             return;
         const now = pointOf(event);
-        onDrag(now.x - last.x, now.y - last.y);
+        const dx = now.x - last.x;
+        const dy = now.y - last.y;
         last = now;
+        if (dx === 0 && dy === 0)
+            return;
+        fireZoomEvent(box, 'panzoompan');
+        onDrag(dx, dy);
     };
     const onUp = () => {
         last = null;
@@ -2774,7 +3106,18 @@ function attachDragPan(box, onDrag) {
         box.removeEventListener('pointercancel', onUp);
     };
 }
-/** 内置降级缩放器：接口与 panzoom 一致（zoom / pan / reset / getScale / destroy）。 */
+/** 以屏幕点 P 为锚点缩放后的平移量：变换是 translate(t) scale(s)（origin = 布局盒中心 O），
+ *  P 不动需 t2 = t1 + (P − O − t1)·(1 − s2/s1)；量不出几何（未布局 / 伪 DOM）→ null（居中缩放）。 */
+function zoomPanToPoint(box, from, to, pan, point) {
+    const rect = box.getBoundingClientRect();
+    if (from <= 0 || rect.width <= 0 || rect.height <= 0)
+        return null;
+    const k = 1 - to / from;
+    const ox = Number(rect.left ?? 0) + rect.width / 2 - pan.x;
+    const oy = Number(rect.top ?? 0) + rect.height / 2 - pan.y;
+    return { x: pan.x + (point.x - ox - pan.x) * k, y: pan.y + (point.y - oy - pan.y) * k };
+}
+/** 内置降级缩放器：接口与 panzoom 一致（zoom / pan / reset / getScale / zoomAtPoint / destroy）。 */
 function createFallbackZoomer(box, limits) {
     const el = box;
     const style = el.style ?? {};
@@ -2791,6 +3134,18 @@ function createFallbackZoomer(box, limits) {
         ty += dy;
         paint();
     });
+    /** panzoom 的 zoomToPoint 对应物：锚点缩放（见 zoomPanToPoint 的几何）。 */
+    const zoomAtPoint = (next, point) => {
+        const to = clamp(next);
+        const pan = zoomPanToPoint(box, scale, to, { x: tx, y: ty }, point);
+        if (pan !== null) {
+            tx = pan.x;
+            ty = pan.y;
+        }
+        scale = to;
+        paint();
+        return scale;
+    };
     return {
         zoom: (next) => {
             scale = clamp(next);
@@ -2817,6 +3172,7 @@ function createFallbackZoomer(box, limits) {
             return { x: 0, y: 0 };
         },
         getScale: () => scale,
+        zoomAtPoint: zoomAtPoint,
         destroy: () => {
             unbind();
             style.transform = '';
@@ -2829,6 +3185,8 @@ function createFallbackZoomer(box, limits) {
 // ── mermaid 图表浮窗 + 缩放 / 平移（#470 需求 1 / #471 真机反馈）────────────
 // 浮窗 = 页面内 <dialog> 模态，**不用** Fullscreen API：顶层压过宿主 UI，遮罩 / Esc /
 // 焦点归还 / 滚动锁定由浏览器兜底。缩放 = panzoom vendored asset 懒加载（0 增量）。
+// 比例几何与交互策略（fit / fill / 100%、fitMode 跟随、锚点手势、快捷键动作）在
+// zoom-math.ts；panzoom 不可用时的纯 CSS 降级引擎在 zoom-fallback.ts。
 // 设计取舍与真机实测数字见 tmp/md-render-enhancements/zoom-fix-report.md。
 const ZOOM_ATTR = 'data-dsh-md-render-zoom';
 /** 缩放百分比标签类名（工具条内自有 DOM）：让「点了到底有没有变」一眼可见。 */
@@ -2900,55 +3258,14 @@ function zoomTargetsOf(entryId) {
     const canvas = frame.querySelector('div.' + MERMAID_CANVAS_CLASS) ?? frame;
     return { card, frame, box: canvas };
 }
-/** 缩放键（+ / - / = / _ / 0）；拆出来压圈复杂度。 */
-function zoomScaleKey(state, key) {
-    const factor = key === '+' || key === '=' ? ZOOM_STEP : key === '-' || key === '_' ? 1 / ZOOM_STEP : 0;
-    if (factor > 0) {
-        state.pz.zoom(state.pz.getScale() * factor, { animate: true });
-        return true;
-    }
-    if (key !== '0')
-        return false;
-    state.pz.reset({ animate: false });
-    return true;
-}
-/** 裸 wheel 归页面（滚动陷阱）：只有 ctrlKey+wheel（捏合）或浮窗态才缩放。 */
-function zoomWheelShouldHandle(event, card) {
-    const wheel = event;
-    return wheel.ctrlKey === true || card.getAttribute(FS_ATTR) === FS_OPEN;
-}
-/** 方向键平移（拆出来压圈复杂度）。 */
-function zoomArrowKey(state, key) {
-    const dx = key === 'ArrowLeft' ? PAN_KEY_STEP : key === 'ArrowRight' ? -PAN_KEY_STEP : 0;
-    const dy = key === 'ArrowUp' ? PAN_KEY_STEP : key === 'ArrowDown' ? -PAN_KEY_STEP : 0;
-    if (dx === 0 && dy === 0)
-        return false;
-    state.pz.pan(dx, dy, { animate: false, relative: true });
-    return true;
-}
-/** 键盘 a11y：+ / - 缩放，0 复位，方向键平移（Esc 由浮窗 dialog 的 cancel 负责）。 */
-function zoomKey(card, box, event) {
-    const state = zoomStates.get(box);
-    if (state === undefined)
-        return;
-    const key = String(event.key ?? '');
-    if (!zoomArrowKey(state, key) && !zoomScaleKey(state, key))
-        return;
-    if (typeof event.preventDefault === 'function')
-        event.preventDefault();
-}
-/** 一档缩放比（滚轮 / 捏合共用）：deltaY < 0 = 放大。 */
-function zoomStep(event) {
-    return Number(event.deltaY) < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
-}
 /** 事件绑定：绑在**卡片**上（指针落在卡片任意位置都能捏合，原先只绑变换层，偏一点就没反应）；
- *  裸 wheel 不拦截，纵向滚动仍归页面。 */
+ *  裸 wheel 不拦截，纵向滚动仍归页面。缩放锚点跟随手势中心（mermaid.live 的 zoomAtPoint 同款）。 */
 function bindZoomEvents(state) {
     const { pz, card, box } = state;
     card.addEventListener('wheel', (event) => {
         if (!zoomWheelShouldHandle(event, card))
             return;
-        pz.zoom(pz.getScale() * zoomStep(event), { animate: false });
+        zoomManual(state, pz.getScale() * zoomStep(event), zoomPointOf(event), false);
         event.preventDefault();
     }, { passive: false });
     // macOS Safari 触控板捏合派发 gesture*（不发 ctrl+wheel）；接不住就「没有任何放大效果」。
@@ -2959,14 +3276,19 @@ function bindZoomEvents(state) {
     });
     card.addEventListener('gesturechange', (event) => {
         const ratio = Number(event.scale);
+        // gesture* 的 clientX / clientY 就是手势中心 → 以它为锚点（与指针捏合一致）。
         if (ratio > 0)
-            pz.zoom(gestureBase * ratio, { animate: false });
+            zoomManual(state, gestureBase * ratio, zoomPointOf(event), false);
         event.preventDefault();
     });
-    box.addEventListener('dblclick', () => pz.reset({ animate: false }));
+    // 双击 = 适应 ↔ 实际大小（不是复位）；用户拖动平移（panzoom 的 panzoompan）→ 退出 fitMode。
+    box.addEventListener('dblclick', () => zoomToggle(state));
+    box.addEventListener('panzoompan', () => {
+        state.fitMode = false;
+    });
     card.addEventListener('keydown', (event) => zoomKey(card, box, event));
 }
-/** 用给定引擎建实例（幂等）：状态登记 + 事件绑定 + 首次适应容器。
+/** 用给定引擎建实例（幂等）：状态登记 + 事件绑定 + fitMode 跟随 + 首次适应容器。
  *  panzoom 与内置降级引擎共用这条路；**引擎构造抛错也回落到降级态**，绝不让按钮失灵。 */
 function buildZoomState(target, make) {
     const { card, frame, box } = target;
@@ -2980,10 +3302,11 @@ function buildZoomState(target, make) {
     catch (_e) {
         pz = createFallbackZoomer(box, { minScale: ZOOM_MIN, maxScale: ZOOM_MAX });
     }
-    const state = { pz, card, frame, box };
+    const state = { pz, card, frame, box, fitMode: true };
     zoomStates.set(box, state);
     frame.setAttribute(ZOOM_ATTR, 'on'); // 外层切裁剪态：放大后不盖住工具条
     bindZoomEvents(state);
+    state.unwatch = bindFitFollow(state); // 全屏 / 容器尺寸变化 → fitMode 下重算 fit
     if (card.getAttribute(FS_ATTR) === FS_FAIL)
         card.removeAttribute(FS_ATTR);
     // 首次绑定即适应容器：小图（flowchart LR 只有几十像素宽）不再缩在一角等用户放大。
@@ -3014,29 +3337,6 @@ function bindZoom(target) {
     }))
         .catch(() => buildZoomState(target, (limits) => createFallbackZoomer(box, limits)));
 }
-/** 刷新百分比标签：panzoom 的 transform 落在下一帧，同步读可能拿到旧值 → 再补一次。 */
-function refreshZoomLabel(state) {
-    const label = state.card.querySelector('.' + ZOOM_PCT_CLASS);
-    if (label === null)
-        return;
-    const apply = () => {
-        label.textContent = Math.round((state.pz.getScale() || 1) * 100) + '%';
-    };
-    apply();
-    const raf = globalThis.requestAnimationFrame;
-    if (typeof raf === 'function')
-        raf(apply);
-}
-/** 工具条动作：fit = 适应容器（contain）/ full = 100% / in / out。 */
-function applyZoom(state, action) {
-    if (action === 'fit')
-        state.pz.zoom(zoomFitScale(state), { animate: false });
-    else if (action === 'full')
-        state.pz.zoom(zoomNaturalScale(state), { animate: false });
-    else
-        state.pz.zoom(state.pz.getScale() * (action === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP), { animate: true });
-    refreshZoomLabel(state);
-}
 /** 工具条入口：未就绪就**等加载完再执行**（此前直接 return，加载期间与加载失败后的
  *  每次点击都被静默丢弃 —— 用户看到的就是「点了没反应」）。 */
 function zoomEntry(entryId, action) {
@@ -3054,15 +3354,26 @@ function overlayButton(label, onClick) {
     btn.addEventListener('click', onClick);
     return btn;
 }
-/** 二级入口：浏览器原生全屏（主入口是浮窗，只作为面板里的小按钮保留）。 */
-function requestNativeFullscreen(card) {
-    const api = card;
+/** 二级入口：浏览器原生全屏。**先收浮窗再进全屏** —— PhotoSwipe 官方配方：两层容器
+ *  绝不同时存在（真机实测此前 dialog 仍 open = 两层模态叠加）。全屏切换由 fitMode 的
+ *  fullscreenchange 跟随重新适应；请求被拒 / 不支持则就地重新适应（别停在浮窗时的大比例）。 */
+function requestNativeFullscreen(target) {
+    closeCardOverlay();
+    const refit = () => {
+        const state = zoomStates.get(target.box);
+        if (state !== undefined)
+            zoomRefitIfFit(state);
+    };
+    const api = target.card;
     try {
-        if (typeof api.requestFullscreen === 'function')
-            void api.requestFullscreen();
+        if (typeof api.requestFullscreen !== 'function') {
+            refit();
+            return;
+        }
+        void Promise.resolve(api.requestFullscreen()).catch(refit);
     }
     catch (_e) {
-        /* 不支持 / 被拒：留在浮窗里 */
+        refit();
     }
 }
 /** 打开浮窗：搬**宿主**而不是卡片 —— React 17+ 把合成事件委托挂在根容器上，
@@ -3078,7 +3389,7 @@ function openCardOverlay(target, entryId) {
     dialog.setAttribute(FS_PANEL_ATTR, 'open');
     const bar = document.createElement('div');
     bar.className = FS_BAR_CLASS;
-    bar.appendChild(overlayButton('浏览器全屏', () => requestNativeFullscreen(target.card)));
+    bar.appendChild(overlayButton('浏览器全屏', () => requestNativeFullscreen(target)));
     bar.appendChild(overlayButton('关闭', closeCardOverlay));
     dialog.appendChild(bar);
     overlayHome = { host: host, entryId, parent: host.parentNode, next: host.nextSibling, dialog };
@@ -3139,10 +3450,12 @@ function toggleCardOverlay(entryId) {
     void bindZoom(target).then((state) => applyZoom(state, 'fit'));
     return target.card.getAttribute(FS_ATTR) === FS_OPEN;
 }
-/** teardown：收掉浮窗、销毁实例、清表与加载缓存。 */
+/** teardown：收掉浮窗、解绑跟随监听、销毁实例、清表与加载缓存。 */
 function teardownZoom() {
     closeCardOverlay();
     for (const state of zoomStates.values()) {
+        if (typeof state.unwatch === 'function')
+            state.unwatch();
         try {
             state.pz.destroy();
         }
@@ -3453,7 +3766,7 @@ Object.assign(exports,{installScanner});
 // 改由本插件自己的语义映射 + color-mix 向正文色收敛，任何主题下都有对比度兜底。
 const STYLES = `
 /* ══ 设计 token（只在自有根元素上定义：自定义属性不会外溢到官方元素）══ */
-.tzx-md,.dsh-md-render-text-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.dsh-md-render-lang-switch,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-fs,.dsh-md-render-fallback{
+.tzx-md,.dsh-md-render-text-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.dsh-md-render-lang-switch,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-fs,.dsh-md-render-img-lightbox,.dsh-md-render-fallback{
 --mdr-accent:var(--dsw-alias-state-business-primary,var(--dsw-alias-link));
 --mdr-accent-text:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 62%,var(--dsw-alias-label-primary));
 --mdr-accent-soft:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 12%,transparent);
@@ -3504,6 +3817,10 @@ const STYLES = `
 .tzx-md .dsh-md-render-md-link-plain{color:var(--dsw-alias-label-secondary)}
 .tzx-md .dsh-md-render-md-img-alt{color:var(--dsw-alias-label-tertiary);font-size:12.5px}
 .tzx-md img.dsh-md-render-md-img{max-width:100%;height:auto;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md)}
+/* 可放大的图片（own-markdown.ts 追加 dsh-md-render-img-zoom）：指针与键盘都能触达 */
+.tzx-md img.dsh-md-render-md-img.dsh-md-render-img-zoom{cursor:zoom-in}
+.tzx-md img.dsh-md-render-md-img.dsh-md-render-img-zoom:hover{border-color:var(--mdr-accent-line)}
+.tzx-md img.dsh-md-render-md-img.dsh-md-render-img-zoom:focus-visible{outline:2px solid var(--mdr-accent);outline-offset:2px}
 .tzx-md .dsh-md-render-md-html{color:var(--dsw-alias-label-secondary)}
 .tzx-md .dsh-md-render-md-plain{margin:0;padding:12px 14px;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md);background:var(--mdr-surface);font-family:var(--mdr-mono);font-size:12.5px;line-height:1.7;color:var(--dsw-alias-label-primary);white-space:pre-wrap;word-break:break-word}
 /* 任务列表：勾选框也自绘（原生 disabled checkbox **不认** accent-color，实测宿主里恒为灰；
@@ -3545,13 +3862,21 @@ const STYLES = `
 .dsh-md-render-code-pre:focus-visible{outline:2px solid var(--mdr-accent);outline-offset:-2px}
 .dsh-md-render-code-pre code{font:inherit;color:inherit;background:none;border:0;padding:0;white-space:inherit;word-break:inherit}
 /* ── 插件控件统一形态：胶囊按钮（复制 / 查看原文 / 整段复制 / 导出 / 视图切换）── */
-.dsh-md-render-code-copy,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:11px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--ds-transition-duration-slow) var(--ds-ease-in-out),background-color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out),opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-md-render-code-copy:hover,.dsh-md-render-text-toggle:hover,.dsh-md-render-copy:hover,.dsh-md-render-mermaid-eb:hover:not(:disabled),.dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--mdr-accent-line);color:var(--dsw-alias-label-primary)}
-.dsh-md-render-code-copy:focus-visible,.dsh-md-render-text-toggle:focus-visible,.dsh-md-render-copy:focus-visible,.dsh-md-render-mermaid-eb:focus-visible,.dsh-md-render-mermaid-vt:focus-visible{outline:2px solid var(--mdr-accent);outline-offset:2px}
+.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:11px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--ds-transition-duration-slow) var(--ds-ease-in-out),background-color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out),opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
+.dsh-md-render-code-copy:hover,.dsh-md-render-code-wrap-btn:hover,.dsh-md-render-text-toggle:hover,.dsh-md-render-copy:hover,.dsh-md-render-mermaid-eb:hover:not(:disabled),.dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--mdr-accent-line);color:var(--dsw-alias-label-primary)}
+.dsh-md-render-code-copy:focus-visible,.dsh-md-render-code-wrap-btn:focus-visible,.dsh-md-render-text-toggle:focus-visible,.dsh-md-render-copy:focus-visible,.dsh-md-render-mermaid-eb:focus-visible,.dsh-md-render-mermaid-vt:focus-visible{outline:2px solid var(--mdr-accent);outline-offset:2px}
 /* 复制按钮：默认隐形，hover / 键盘 focus-within / 触屏常显三路可现 */
 .dsh-md-render-code-copy{opacity:0}
 .dsh-md-render-code:hover .dsh-md-render-code-copy,.dsh-md-render-code:focus-within .dsh-md-render-code-copy{opacity:1}
 @media (hover:none){.dsh-md-render-code-copy{opacity:1}}
+/* 换行切换：与复制按钮同一套浮现策略（hover / focus-within / 触屏常显），
+   按下态用强调色胶囊 —— 一眼可辨「当前在看换行还是横向滚动」。 */
+.dsh-md-render-code-wrap-btn{opacity:0}
+.dsh-md-render-code:hover .dsh-md-render-code-wrap-btn,.dsh-md-render-code:focus-within .dsh-md-render-code-wrap-btn{opacity:1}
+@media (hover:none){.dsh-md-render-code-wrap-btn{opacity:1}}
+.dsh-md-render-code-wrap-btn[aria-pressed="true"]{border-color:var(--mdr-accent-line);background:var(--mdr-accent-soft);color:var(--mdr-accent-text)}
+/* 换行态：长行折行显示（默认态是 white-space:pre 横向滚动，与官方 CodeBlock 的 wrap 语义对齐） */
+.dsh-md-render-code-pre.dsh-md-render-code-wrap{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;overflow-x:hidden}
 .dsh-md-render-text-toggle{align-self:flex-end;margin-top:4px}
 .dsh-md-render-text-toggle[aria-pressed="true"]{border-color:var(--mdr-accent-line);background:var(--mdr-accent-soft);color:var(--mdr-accent-text)}
 /* ── 语法着色：本插件自己的语义映射（不取官方 shiki 调色板）──
@@ -3625,6 +3950,11 @@ const STYLES = `
 .dsh-md-render-mermaid-fs>.dsh-md-render-mermaid-host{flex:1;min-height:0;display:flex;flex-direction:column}
 .dsh-md-render-mermaid-fs .dsh-md-render-mermaid-card{flex:1;min-height:0;overflow:hidden;padding:0;border:0;box-shadow:none}
 .dsh-md-render-mermaid-fs .dsh-md-render-mermaid-svg{max-height:none;flex:1;min-height:0}
+/* ── 图片放大灯箱（medium-zoom / PhotoSwipe 通行做法）：页面内 <dialog> 模态，
+   图片 contain 装入、Esc / 点遮罩 / 点图片三路关闭；焦点归还由浏览器兜底。 ── */
+.dsh-md-render-img-lightbox{display:flex;align-items:center;justify-content:center;width:92vw;height:90vh;max-width:none;max-height:none;margin:auto;padding:10px;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2);cursor:zoom-out}
+.dsh-md-render-img-lightbox::backdrop{background:color-mix(in srgb,var(--dsw-alias-label-primary) 45%,transparent)}
+.dsh-md-render-img-lightbox-img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--mdr-radius-sm)}
 /* ── 离屏渲染容器（失败时的炸弹图只落这里）── 必须在布局树内（display:none 会量不到尺寸）。 */
 .dsh-md-render-offscreen{position:absolute;left:-99999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none}
 @keyframes dsh-md-render-mermaid-card-in{from{opacity:0;transform:translateY(1px)}to{opacity:1;transform:none}}

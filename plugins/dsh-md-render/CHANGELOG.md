@@ -8,6 +8,16 @@
 
 ### 变更
 
+- **预览交互便捷性 8 项**（对照市面成熟产品的取证调研后落地，见 #473；每条都带真机实测数字）：
+  - **图表「适应」变成跟随容器的保持态**（draw.io 的 `Fit Window` 同款语义）：新增 `fitMode`，绑定 `document.fullscreenchange` + `ResizeObserver(frame)`（不可用退回 `window resize`），容器 / 全屏 / 窗口尺寸变化时自动重算 fit；用户一旦手动缩放 / 平移 / 双击即退出该模式。**真机实测**：窗口 1280×380 → frame 654×268 → pct **84%**；恢复 1280×720 → frame 654×320 → pct **101%**（此前全屏 / resize 后停在旧比例，图缩在一角、下方大片空白）。
+  - **进浏览器全屏前先收掉浮窗**（PhotoSwipe 官方配方：两层容器绝不同时存在）：此前实测进全屏后 `<dialog>` 仍 `open: true`、两层模态叠加；现在点「浏览器全屏」后 `dialogOpen: true → false`，并在 `fullscreenchange` 时按 fitMode 重新适应。
+  - **双击 = 「适应 ↔ 实际大小」切换**（Panzoom 的 `toggleZoom`、viewer.js 的 `toggleOnDblclick`、lightGallery 三家一致），不再是 `reset`；键盘 `0` 保留为真正的复位。**判据必须按状态（`fitMode`）而非「当前比例是否接近 fit 值」** —— fit ≈ 100%（图接近 1:1）时容差判据会两次双击都判「接近 fit」，永远回不去。
+  - **新增「铺满」（适应宽度）**：PhotoSwipe 的 `fill` / Panzoom 的 `cover` 语义，按容器宽度填满、高度超出可拖动。**真机实测**：`svg 宽 101 → 654 = frame 宽 654`，`fillRatio = 1.000`。
+  - **缩放锚点跟随手势中心**（mermaid.live 的 `zoomAtPoint` 同款）：ctrl+wheel 用鼠标指针位置、Safari `gesturechange` 用手势中心。**踩坑记录**：panzoom **4.6.2** 的签名是 `zoomToPoint(scale, event)` —— **scale 在前**（证据在库自身：`function v(e,t,n,o){ … t.clientX … }`，而它的 `zoomWithWheel` 是 `v(h(…), e, t, e)`）；较新版本才是 `(point, scale)`。顺序传反时它**不抛错、只是静默不动**（事件已到达、console 零报错、transform 纹丝不动），因此这次同时加了**调用后校验**：`getScale()` 没变即视为失败并回退到居中缩放。
+  - **代码块补回「换行切换」**（官方 `CodeToolbar` 有 wrap/unwrap，自研版此前漏掉 = **能力倒退**）：按钮排在复制之前，**默认不换行**（默认视觉零变化），切换时给 `pre` 追加 `dsh-md-render-code-wrap`；`aria-pressed` / `title` / `aria-label` 同步。**真机实测**：`自动换行 → 取消换行`、`aria-pressed false → true`、`white-space: pre → pre-wrap`。
+  - **markdown 图片「点击放大」**（medium-zoom / 各灯箱库的通行做法）：原生 `<dialog>` 模态（与本插件浮窗同款做法，零依赖），图片 `object-fit: contain`，**Esc / 点遮罩 / 点图片三路关闭**，并保留键盘可达（Enter / 空格）；`src` 仍过 `mdSafeImageSrc` 白名单，未放行的地址不打开灯箱。
+  - **工具条补全快捷键与手势提示**：`+ - 0`、方向键、双击切换、双指捏合**此前全都实现了却没有任何提示**（viewer.js / draw.io 都有显式文档）。现写进每个按钮的 hover `title`（`aria-label` 保持简短，屏幕阅读器读的是它）。
+
 - **外观换成插件自己的视觉语言（不再对齐 / 照抄官方样式）**（用户口径：「全部使用我们自己的，外观也是，就是全部我们自己来」）：
   - **背景**：渲染内核上一轮已全换自研（marked + highlight.js），但 `styles.ts` 仍刻意逐像素对齐官方 —— 排版取 `--dsw-font-markdown-*` shorthand、语法着色取官方 shiki 的 `--shiki-token-*` 逐 token 对齐、行内代码取 `--dsw-alias-markdown-inline-code`，结果**外观与官方一致、用户看不出变化**。本次改为**一套自有设计语言**。
   - **自有设计 token `--mdr-*`**：只在本插件自有根元素（`.tzx-md` / `.dsh-md-render-code` / `.dsh-md-render-mermaid-card` / 自有控件）上定义与使用；圆角 6/10/12px、胶囊 `999px`、线（`--mdr-line`/`-soft`）、强调色（取宿主 `--dsw-alias-state-business-primary`，带 `--dsw-alias-link` 兜底）、等宽栈（取宿主 `--ds-font-family-code`）。**颜色仍全部取宿主语义变量、零硬编码十六进制** → 深浅色自动跟随。

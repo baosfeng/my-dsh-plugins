@@ -143,12 +143,15 @@ function ViewToggle({
   )
 }
 
-/** 缩放 / 浮窗工具条（需求 1）：全屏（浮窗）/ 适应 / 100% / ±。 */
+/** 缩放 / 浮窗工具条：全屏（浮窗）/ 适应 / 铺满 / 100% / ±。
+ *  title 兼作**快捷键与手势的发现入口** —— 键盘 + - 0 与方向键、双击切换、双指捏合
+ *  此前都实现了但**没有任何提示**（市面做法见调研：viewer.js / draw.io 都在文档明列快捷键）。
+ *  aria-label 保持简短（屏幕阅读器读的是它，不能塞整句提示）。 */
 function ZoomBar({ entryId }: { entryId: string }) {
-  const btn = (label: string, title: string, action: () => void) =>
+  const btn = (label: string, ariaLabel: string, title: string, action: () => void) =>
     createElement(
       'button',
-      { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick: action, title, 'aria-label': title },
+      { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick: action, title, 'aria-label': ariaLabel },
       createElement('span', null, label),
     )
   return createElement(
@@ -156,11 +159,17 @@ function ZoomBar({ entryId }: { entryId: string }) {
     { className: 'dsh-md-render-mermaid-zoom', role: 'group', 'aria-label': '图表缩放' },
     // 实时缩放百分比：小图放大 25% 肉眼几乎无感，用数字给出明确反馈。
     createElement('span', { className: 'dsh-md-render-mermaid-zoom-pct' }, '100%'),
-    btn('全屏', '全屏浮窗（Esc 关闭）', () => toggleCardOverlay(entryId)),
-    btn('适应', '适应容器', () => zoomEntry(entryId, 'fit')),
-    btn('100%', '实际大小', () => zoomEntry(entryId, 'full')),
-    btn('−', '缩小', () => zoomEntry(entryId, 'out')),
-    btn('+', '放大', () => zoomEntry(entryId, 'in')),
+    btn('全屏', '全屏浮窗', '全屏浮窗（Esc 关闭）', () => toggleCardOverlay(entryId)),
+    btn('适应', '适应容器', '适应容器：完整显示整张图（双击图表可在「适应 / 实际大小」间切换）', () =>
+      zoomEntry(entryId, 'fit'),
+    ),
+    // 铺满 = 按容器宽度填满（PhotoSwipe 的 fill / Panzoom 的 cover）：宽图比「适应」更实用。
+    btn('铺满', '适应宽度', '适应宽度：按容器宽度铺满，高度超出时可拖动平移', () => zoomEntry(entryId, 'fill')),
+    btn('100%', '实际大小', '实际大小 100%（键盘 0 复位、双击在适应与实际大小间切换）', () =>
+      zoomEntry(entryId, 'full'),
+    ),
+    btn('−', '缩小', '缩小（键盘 −，或触控板双指捏合）', () => zoomEntry(entryId, 'out')),
+    btn('+', '放大', '放大（键盘 +，或触控板双指捏合）', () => zoomEntry(entryId, 'in')),
   )
 }
 

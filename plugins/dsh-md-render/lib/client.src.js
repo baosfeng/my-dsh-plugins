@@ -45,6 +45,8 @@ window.__ModuleLoader__.load({
     /*__PART_OWN_CODE__*/
     // 自研 markdown 渲染（marked 词法树 → vdom，表格容错在此接上）
     /*__PART_OWN_MARKDOWN__*/
+    // markdown 图片点击放大灯箱（原生 <dialog>，三路关闭）
+    /*__PART_IMAGE_LIGHTBOX__*/
     // 整段 markdown 复制（官方只有代码块复制）
     /*__PART_COPY__*/
     // 统一 MarkdownView：对外公共 API（自研渲染 + 整段复制）

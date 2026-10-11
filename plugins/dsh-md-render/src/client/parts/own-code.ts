@@ -22,6 +22,9 @@ const CODE_HEAD_CLASS = 'dsh-md-render-code-head'
 const CODE_LANG_CLASS = 'dsh-md-render-code-lang'
 const CODE_ACTIONS_CLASS = 'dsh-md-render-code-actions'
 const CODE_COPY_CLASS = 'dsh-md-render-code-copy'
+/** 换行切换按钮类名 / 换行态下追加到 pre 的类名（**默认不换行** = 横向滚动）。 */
+const CODE_WRAP_BTN_CLASS = 'dsh-md-render-code-wrap-btn'
+const CODE_WRAP_CLASS = 'dsh-md-render-code-wrap'
 /** 代码主体容器（pre）/ 无高亮时的纯文本 code 类名。 */
 const CODE_PRE_CLASS = 'dsh-md-render-code-pre'
 const CODE_TEXT_CLASS = 'dsh-md-render-code-text'
@@ -124,11 +127,17 @@ function codeBodyNodes(lang: string, source: string): unknown {
 }
 
 /**
- * 自研代码块：banner（真实语言名 + 复制）+ 自动换行的 pre。
+ * 自研代码块：banner（真实语言名 + 换行切换 + 复制）+ pre。
+ *
+ * 换行切换（官方 CodeToolbar 有、此前自研版漏掉的能力）：按钮排在**复制之前**，
+ * 点一次在「不换行（横向滚动）」与「自动换行」之间切换，可访问名 / aria-pressed 同步。
+ * **默认不换行** —— 与现状（以及官方默认形态）一致，不改变默认视觉行为。
+ *
  * `lang` 为空 = 该块语言识别不出 —— 此时**不编造语言名**，banner 语言位留空。
  */
 function CodeBlockView({ lang, code }: { lang: string; code: string }): unknown {
   const [copied, setCopied] = useState(false)
+  const [wrap, setWrap] = useState(false)
   const source = typeof code === 'string' ? code : String(code ?? '')
   const onCopy = (): void => {
     copyText(source).then(
@@ -136,7 +145,9 @@ function CodeBlockView({ lang, code }: { lang: string; code: string }): unknown 
       () => {},
     )
   }
+  const onToggleWrap = (): void => setWrap(!wrap)
   const copyLabel = copied ? '已复制' : '复制'
+  const wrapLabel = wrap ? '取消换行' : '自动换行'
   return createElement(
     'div',
     { className: CODE_VIEW_CLASS },
@@ -149,18 +160,38 @@ function CodeBlockView({ lang, code }: { lang: string; code: string }): unknown 
         { className: CODE_ACTIONS_CLASS },
         createElement(
           'button',
+          {
+            type: 'button',
+            className: CODE_WRAP_BTN_CLASS,
+            title: wrapLabel,
+            'aria-label': wrapLabel,
+            // 字符串而非布尔：React 对 aria-* 会原样写成 aria-pressed="true|false"。
+            'aria-pressed': wrap ? 'true' : 'false',
+            onClick: onToggleWrap,
+          },
+          wrapLabel,
+        ),
+        createElement(
+          'button',
           { type: 'button', className: CODE_COPY_CLASS, title: copyLabel, 'aria-label': copyLabel, onClick: onCopy },
           copyLabel,
         ),
       ),
     ),
-    createElement('pre', { className: CODE_PRE_CLASS, tabIndex: 0 }, codeBodyNodes(lang, source)),
+    // 换行态只**追加**类名，原有 CODE_PRE_CLASS 保留（样式由 styles.ts 统一提供）。
+    createElement(
+      'pre',
+      { className: CODE_PRE_CLASS + (wrap ? ' ' + CODE_WRAP_CLASS : ''), tabIndex: 0 },
+      codeBodyNodes(lang, source),
+    ),
   )
 }
 
 exports.CODE_HOST_CLASS = CODE_HOST_CLASS
 exports.CODE_VIEW_CLASS = CODE_VIEW_CLASS
 exports.CODE_LANG_CLASS = CODE_LANG_CLASS
+exports.CODE_WRAP_BTN_CLASS = CODE_WRAP_BTN_CLASS
+exports.CODE_WRAP_CLASS = CODE_WRAP_CLASS
 exports.CODE_PRE_CLASS = CODE_PRE_CLASS
 exports.MAX_HIGHLIGHT_CHARS = MAX_HIGHLIGHT_CHARS
 exports.hljsScopeClass = hljsScopeClass

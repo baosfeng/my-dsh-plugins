@@ -45,7 +45,7 @@ const STYLES: string = `
 .dsh-md-render-mermaid-vt svg{display:block;flex:none}
 .dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-md-render-mermaid-vt-active{background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent);color:var(--dsw-alias-accent);font-weight:600}
-.dsh-md-render-mermaid-svg{position:relative;overflow:auto;max-height:70vh}
+.dsh-md-render-mermaid-svg{position:relative;overflow:auto;max-height:70vh;min-height:160px}
 .dsh-md-render-mermaid-svg[data-dsh-md-render-zoom]{overflow:hidden}
 .dsh-md-render-mermaid-canvas{transform-origin:0 0;display:flex;align-items:center;justify-content:center}
 .dsh-md-render-mermaid-svg svg{max-width:100%;height:auto}
@@ -68,6 +68,7 @@ const STYLES: string = `
    工具条按钮复用卡片按钮类；浮窗 = 页面内 <dialog> 模态（**非**浏览器全屏），
    卡片临时移入面板：遮罩 / Esc / 焦点归还 / 背景滚动锁定全由浏览器兜底。 */
 .dsh-md-render-mermaid-zoom{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.dsh-md-render-mermaid-zoom-pct{display:inline-flex;align-items:center;justify-content:flex-end;min-width:40px;font:var(--dsw-font-xxs-12);line-height:20px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
 .dsh-md-render-mermaid-fs{display:flex;flex-direction:column;gap:6px;width:90vw;height:85vh;max-width:none;max-height:none;margin:auto;padding:8px 10px;border:0;border-radius:10px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2);font:var(--dsw-font-s-14);color:var(--dsw-alias-label-primary)}
 .dsh-md-render-mermaid-fs::backdrop{background:rgba(0,0,0,.45)}
 .dsh-md-render-mermaid-fs-bar{display:flex;justify-content:flex-end;gap:6px;flex:none}

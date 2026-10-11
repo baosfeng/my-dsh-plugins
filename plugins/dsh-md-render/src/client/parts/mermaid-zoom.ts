@@ -4,6 +4,8 @@
 // 设计取舍与真机实测数字见 tmp/md-render-enhancements/zoom-fix-report.md。
 
 const ZOOM_ATTR = 'data-dsh-md-render-zoom'
+/** 缩放百分比标签类名（工具条内自有 DOM）：让「点了到底有没有变」一眼可见。 */
+const ZOOM_PCT_CLASS = 'dsh-md-render-mermaid-zoom-pct'
 /** 卡片态：open = 浮窗开；failed = panzoom 加载失败（此前静默 → 像「点了没反应」）。 */
 const FS_ATTR = 'data-dsh-md-render-fs'
 const FS_OPEN = 'open'
@@ -14,7 +16,7 @@ const FS_CLASS = 'dsh-md-render-mermaid-fs'
 const FS_BAR_CLASS = 'dsh-md-render-mermaid-fs-bar'
 const ZOOM_MIN = 0.2
 const ZOOM_MAX = 8
-const ZOOM_STEP = 1.25
+const ZOOM_STEP = 1.5
 const PAN_KEY_STEP = 40
 
 /** panzoom 实例契约（只声明用到的成员）。 */
@@ -34,6 +36,8 @@ interface ZoomKeyEvent {
 interface ZoomState {
   pz: PanzoomInstance
   card: Element
+  /** 裁剪容器（overflow:hidden），contain 计算的「可用空间」取自它而非变换层。 */
+  frame: Element
   box: Element
 }
 /** 浮窗代管记录：关闭时按它把宿主还回原父节点的原位置。 */
@@ -149,6 +153,25 @@ function zoomNaturalScale(state: ZoomState): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, natural / shown))
 }
 
+/** 适应 = 完整显示（contain）：按「容器尺寸 ÷ 图固有尺寸」取宽高比例的**较小**者。
+ *  原先 fit 只是 reset 到 scale=1 —— 小图（如 flowchart LR `X-->Y` 仅 ~90px 宽）躺在
+ *  上千像素的容器里，点「适应」毫无变化、点「+」一次也只放大 25%，用户感知就是「没反应」。 */
+function zoomFitScale(state: ZoomState): number {
+  const svg = state.box.querySelector('svg')
+  if (svg === null) return 1
+  // 量的必须是**裁剪容器**（frame），不是变换层：canvas 高度由内容决定（扁图如
+  // flowchart LR `X-->Y` 仅 50px），拿它当可用空间算 contain 只会永远得到 1。
+  const container = state.frame as { offsetWidth?: number; offsetHeight?: number }
+  const bw = Number(container.offsetWidth ?? 0)
+  const bh = Number(container.offsetHeight ?? 0)
+  const scale = state.pz.getScale() || 1
+  const rect = svg.getBoundingClientRect()
+  const sw = rect.width / scale
+  const sh = rect.height / scale
+  if (bw <= 0 || bh <= 0 || sw <= 0 || sh <= 0) return 1
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(bw / sw, bh / sh)))
+}
+
 /** 事件绑定：绑在**卡片**上（指针落在卡片任意位置都能捏合，原先只绑变换层，偏一点就没反应）；
  *  裸 wheel 不拦截，纵向滚动仍归页面。 */
 function bindZoomEvents(state: ZoomState): void {
@@ -196,11 +219,13 @@ function bindZoom(target: { card: Element; frame: Element; box: Element }): Prom
         zoomWithWheel: false,
         touchAction: 'pan-y',
       })
-      const state: ZoomState = { pz, card, box }
+      const state: ZoomState = { pz, card, frame, box }
       zoomStates.set(box, state)
       frame.setAttribute(ZOOM_ATTR, 'on') // 外层切裁剪态：放大后不盖住工具条
       bindZoomEvents(state)
       if (card.getAttribute(FS_ATTR) === FS_FAIL) card.removeAttribute(FS_ATTR)
+      // 首次绑定即适应容器：小图（flowchart LR 只有几十像素宽）不再缩在一角等用户放大。
+      applyZoom(state, 'fit')
       return state
     })
     .catch(() => {
@@ -209,11 +234,24 @@ function bindZoom(target: { card: Element; frame: Element; box: Element }): Prom
     })
 }
 
-/** 工具条动作：fit = 适应宽度 / full = 100% / in / out。 */
+/** 刷新百分比标签：panzoom 的 transform 落在下一帧，同步读可能拿到旧值 → 再补一次。 */
+function refreshZoomLabel(state: ZoomState): void {
+  const label = state.card.querySelector('.' + ZOOM_PCT_CLASS)
+  if (label === null) return
+  const apply = (): void => {
+    label.textContent = Math.round((state.pz.getScale() || 1) * 100) + '%'
+  }
+  apply()
+  const raf = (globalThis as { requestAnimationFrame?: (cb: () => void) => number }).requestAnimationFrame
+  if (typeof raf === 'function') raf(apply)
+}
+
+/** 工具条动作：fit = 适应容器（contain）/ full = 100% / in / out。 */
 function applyZoom(state: ZoomState, action: string): void {
-  if (action === 'fit') state.pz.reset({ animate: false })
+  if (action === 'fit') state.pz.zoom(zoomFitScale(state), { animate: false })
   else if (action === 'full') state.pz.zoom(zoomNaturalScale(state), { animate: false })
   else state.pz.zoom(state.pz.getScale() * (action === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP), { animate: true })
+  refreshZoomLabel(state)
 }
 
 /** 工具条入口：未就绪就**等加载完再执行**（此前直接 return，加载期间与加载失败后的
@@ -310,6 +348,10 @@ function toggleCardOverlay(entryId: string): boolean {
   const target = zoomTargetsOf(entryId)
   if (target === null) return false
   openCardOverlay(target, entryId)
+  // 浮窗里容器大得多 → 重新适应，一开就是铺满的大图。
+  void bindZoom(target).then((state) => {
+    if (state !== undefined) applyZoom(state, 'fit')
+  })
   return target.card.getAttribute(FS_ATTR) === FS_OPEN
 }
 

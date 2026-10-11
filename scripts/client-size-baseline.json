@@ -1,6 +1,6 @@
 {
   "note": "客户端产物体积预算基线（issue #322）：登记各插件**发布面**的体积实测值。上限 = 基线 + max(64 KB, 基线×15%)，理由见 scripts/check-client-size.mjs 顶部常量注释。unpacked total = 该插件 npm 发布面全部文件字节和；files = 逐个冻结的产物（lib/** 与 assets/**）。未登记的文件与插件只受默认上限（1 MB/文件）约束。刷新：node scripts/check-client-size.mjs --update-baseline（须在 PR 说明体积变化原因）。",
-  "measuredAt": "2026-10-09",
+  "measuredAt": "2026-10-11",
   "source": "npm pack --dry-run --json（13 个插件与 git ls-tree 实测复核：unpacked 3.44 MB / mermaid 引擎占 92%）",
   "margin": {
     "absFloorBytes": 65536,
@@ -10,7 +10,7 @@
   },
   "plugins": {
     "dsh-file-activity": {
-      "total": 852692,
+      "total": 852648,
       "files": {
         "assets/preview-float-0.5.6.png": 121400,
         "assets/preview-float.png": 251552,
@@ -18,7 +18,7 @@
         "lib/api-route.js": 3815,
         "lib/bash-ops.js": 4256,
         "lib/bash-parse.js": 9835,
-        "lib/client.js": 96491,
+        "lib/client.js": 96447,
         "lib/client.src.js": 3429,
         "lib/cwd.js": 551,
         "lib/index.js": 5512,
@@ -48,18 +48,23 @@
       }
     },
     "dsh-md-render": {
-      "total": 3566501,
+      "total": 3679223,
       "files": {
         "assets/mermaid-10.9.3.min.js": 3336760,
+        "assets/panzoom-4.6.2.min.js": 10125,
         "assets/text-fence-markdown.png": 70863,
-        "lib/client.js": 110011,
-        "lib/client.src.js": 5304,
-        "lib/config.js": 9030,
-        "lib/index.js": 3815,
+        "lib/client.js": 178137,
+        "lib/client.src.js": 3923,
+        "lib/config.js": 9047,
+        "lib/index.js": 5686,
+        "lib/lang-index.js": 8272,
         "lib/prompt.js": 2899,
         "lib/routes.js": 4229,
-        "lib/routes/assets.js": 3137,
-        "lib/routes/config.js": 4644
+        "lib/routes/assets.js": 4096,
+        "lib/routes/config.js": 5214,
+        "lib/routes/langs.js": 2262,
+        "lib/routes/paths.js": 2616,
+        "lib/session-text.js": 1280
       }
     },
     "dsh-my-context": {
@@ -85,7 +90,7 @@
       }
     },
     "dsh-my-memory": {
-      "total": 806103,
+      "total": 811912,
       "files": {
         "assets/issue-193-delete-armed.png": 96684,
         "assets/issue-193-other-tool-approval.png": 125884,
@@ -94,8 +99,8 @@
         "assets/screenshot.png": 106646,
         "lib/api-route.js": 15705,
         "lib/api-route.types.js": 11,
-        "lib/client.js": 111422,
-        "lib/client.src.js": 2413,
+        "lib/client.js": 115456,
+        "lib/client.src.js": 2458,
         "lib/delete-tool.js": 7052,
         "lib/extract.js": 7591,
         "lib/index.js": 16010,
@@ -104,20 +109,20 @@
         "lib/memory-types.js": 165,
         "lib/prompt-types.js": 1157,
         "lib/prompt.js": 3464,
-        "lib/prompts-route.js": 7039,
-        "lib/prompts-store.js": 11667,
-        "lib/prompts.js": 3919,
+        "lib/prompts-route.js": 7071,
+        "lib/prompts-store.js": 11979,
+        "lib/prompts.js": 3903,
         "lib/save-policy.js": 13218,
-        "lib/store.js": 14280,
+        "lib/store.js": 14259,
         "lib/tool.js": 14608,
         "lib/write-tools.js": 2213
       }
     },
     "dsh-my-notify": {
-      "total": 293676,
+      "total": 293632,
       "files": {
         "assets/notify-toast.png": 96384,
-        "lib/client.js": 68709,
+        "lib/client.js": 68665,
         "lib/client.src.js": 3355,
         "lib/index.js": 9384,
         "lib/listeners.js": 5952,
@@ -136,13 +141,13 @@
       }
     },
     "dsh-my-observability": {
-      "total": 327107,
+      "total": 327063,
       "files": {
         "assets/git-panel.png": 88508,
         "assets/settings-panel.png": 81903,
         "lib/ai.js": 7205,
         "lib/audit.js": 11168,
-        "lib/client.js": 55930,
+        "lib/client.js": 55886,
         "lib/client.src.js": 5273,
         "lib/config-routes.js": 4424,
         "lib/constants.js": 196,
@@ -170,13 +175,13 @@
       }
     },
     "dsh-my-remote": {
-      "total": 368602,
+      "total": 368589,
       "files": {
         "assets/ask-push.png": 127358,
         "assets/settings-panel.png": 92500,
         "lib/audit.js": 1582,
         "lib/channels.js": 5770,
-        "lib/client.js": 32822,
+        "lib/client.js": 32809,
         "lib/client.src.js": 2343,
         "lib/commands.js": 8329,
         "lib/events.js": 10192,
@@ -197,11 +202,11 @@
       }
     },
     "dsh-my-skill-manager": {
-      "total": 284461,
+      "total": 284417,
       "files": {
         "assets/screenshot.png": 193571,
         "lib/api-route.js": 8682,
-        "lib/client.js": 51097,
+        "lib/client.js": 51053,
         "lib/client.src.js": 2218,
         "lib/config.js": 3319,
         "lib/diagnose.js": 7267,
@@ -211,14 +216,14 @@
       }
     },
     "dsh-shared": {
-      "total": 90230,
+      "total": 91186,
       "files": {
         "lib/async.d.ts": 552,
         "lib/async.js": 1048,
         "lib/bounded.d.ts": 5094,
         "lib/bounded.js": 5832,
         "lib/config-store.d.ts": 914,
-        "lib/config-store.js": 8428,
+        "lib/config-store.js": 9384,
         "lib/fence.d.ts": 846,
         "lib/fence.js": 2429,
         "lib/http.d.ts": 589,

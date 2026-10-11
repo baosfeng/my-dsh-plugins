@@ -154,8 +154,10 @@ function ZoomBar({ entryId }: { entryId: string }) {
   return createElement(
     'div',
     { className: 'dsh-md-render-mermaid-zoom', role: 'group', 'aria-label': '图表缩放' },
+    // 实时缩放百分比：小图放大 25% 肉眼几乎无感，用数字给出明确反馈。
+    createElement('span', { className: 'dsh-md-render-mermaid-zoom-pct' }, '100%'),
     btn('全屏', '全屏浮窗（Esc 关闭）', () => toggleCardOverlay(entryId)),
-    btn('适应', '适应宽度', () => zoomEntry(entryId, 'fit')),
+    btn('适应', '适应容器', () => zoomEntry(entryId, 'fit')),
     btn('100%', '实际大小', () => zoomEntry(entryId, 'full')),
     btn('−', '缩小', () => zoomEntry(entryId, 'out')),
     btn('+', '放大', () => zoomEntry(entryId, 'in')),

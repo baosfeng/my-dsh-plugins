@@ -1731,7 +1731,9 @@ function ViewToggle({ mode, setMode, previewDisabled, }) {
 /** 缩放 / 浮窗工具条（需求 1）：全屏（浮窗）/ 适应 / 100% / ±。 */
 function ZoomBar({ entryId }) {
     const btn = (label, title, action) => createElement('button', { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick: action, title, 'aria-label': title }, createElement('span', null, label));
-    return createElement('div', { className: 'dsh-md-render-mermaid-zoom', role: 'group', 'aria-label': '图表缩放' }, btn('全屏', '全屏浮窗（Esc 关闭）', () => toggleCardOverlay(entryId)), btn('适应', '适应宽度', () => zoomEntry(entryId, 'fit')), btn('100%', '实际大小', () => zoomEntry(entryId, 'full')), btn('−', '缩小', () => zoomEntry(entryId, 'out')), btn('+', '放大', () => zoomEntry(entryId, 'in')));
+    return createElement('div', { className: 'dsh-md-render-mermaid-zoom', role: 'group', 'aria-label': '图表缩放' }, 
+    // 实时缩放百分比：小图放大 25% 肉眼几乎无感，用数字给出明确反馈。
+    createElement('span', { className: 'dsh-md-render-mermaid-zoom-pct' }, '100%'), btn('全屏', '全屏浮窗（Esc 关闭）', () => toggleCardOverlay(entryId)), btn('适应', '适应容器', () => zoomEntry(entryId, 'fit')), btn('100%', '实际大小', () => zoomEntry(entryId, 'full')), btn('−', '缩小', () => zoomEntry(entryId, 'out')), btn('+', '放大', () => zoomEntry(entryId, 'in')));
 }
 /** 卡片主体：loading / error（含源码与重试）/ 代码视图 / 渲染出的 SVG。 */
 function CardBody({ status, mode, error, source, svg, onRetry, }) {
@@ -2113,6 +2115,8 @@ Object.assign(exports,{buildExportFileName,serializeSvg,findCardSvg,makeExportHa
 // 焦点归还 / 滚动锁定由浏览器兜底。缩放 = panzoom vendored asset 懒加载（0 增量）。
 // 设计取舍与真机实测数字见 tmp/md-render-enhancements/zoom-fix-report.md。
 const ZOOM_ATTR = 'data-dsh-md-render-zoom';
+/** 缩放百分比标签类名（工具条内自有 DOM）：让「点了到底有没有变」一眼可见。 */
+const ZOOM_PCT_CLASS = 'dsh-md-render-mermaid-zoom-pct';
 /** 卡片态：open = 浮窗开；failed = panzoom 加载失败（此前静默 → 像「点了没反应」）。 */
 const FS_ATTR = 'data-dsh-md-render-fs';
 const FS_OPEN = 'open';
@@ -2123,7 +2127,7 @@ const FS_CLASS = 'dsh-md-render-mermaid-fs';
 const FS_BAR_CLASS = 'dsh-md-render-mermaid-fs-bar';
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 8;
-const ZOOM_STEP = 1.25;
+const ZOOM_STEP = 1.5;
 const PAN_KEY_STEP = 40;
 /** 已绑定的图表（自有变换层 → 状态）；同容器只绑一次。 */
 const zoomStates = new Map();
@@ -2231,6 +2235,26 @@ function zoomNaturalScale(state) {
         return 1;
     return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, natural / shown));
 }
+/** 适应 = 完整显示（contain）：按「容器尺寸 ÷ 图固有尺寸」取宽高比例的**较小**者。
+ *  原先 fit 只是 reset 到 scale=1 —— 小图（如 flowchart LR `X-->Y` 仅 ~90px 宽）躺在
+ *  上千像素的容器里，点「适应」毫无变化、点「+」一次也只放大 25%，用户感知就是「没反应」。 */
+function zoomFitScale(state) {
+    const svg = state.box.querySelector('svg');
+    if (svg === null)
+        return 1;
+    // 量的必须是**裁剪容器**（frame），不是变换层：canvas 高度由内容决定（扁图如
+    // flowchart LR `X-->Y` 仅 50px），拿它当可用空间算 contain 只会永远得到 1。
+    const container = state.frame;
+    const bw = Number(container.offsetWidth ?? 0);
+    const bh = Number(container.offsetHeight ?? 0);
+    const scale = state.pz.getScale() || 1;
+    const rect = svg.getBoundingClientRect();
+    const sw = rect.width / scale;
+    const sh = rect.height / scale;
+    if (bw <= 0 || bh <= 0 || sw <= 0 || sh <= 0)
+        return 1;
+    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(bw / sw, bh / sh)));
+}
 /** 事件绑定：绑在**卡片**上（指针落在卡片任意位置都能捏合，原先只绑变换层，偏一点就没反应）；
  *  裸 wheel 不拦截，纵向滚动仍归页面。 */
 function bindZoomEvents(state) {
@@ -2278,12 +2302,14 @@ function bindZoom(target) {
             zoomWithWheel: false,
             touchAction: 'pan-y',
         });
-        const state = { pz, card, box };
+        const state = { pz, card, frame, box };
         zoomStates.set(box, state);
         frame.setAttribute(ZOOM_ATTR, 'on'); // 外层切裁剪态：放大后不盖住工具条
         bindZoomEvents(state);
         if (card.getAttribute(FS_ATTR) === FS_FAIL)
             card.removeAttribute(FS_ATTR);
+        // 首次绑定即适应容器：小图（flowchart LR 只有几十像素宽）不再缩在一角等用户放大。
+        applyZoom(state, 'fit');
         return state;
     })
         .catch(() => {
@@ -2291,14 +2317,28 @@ function bindZoom(target) {
         return undefined;
     });
 }
-/** 工具条动作：fit = 适应宽度 / full = 100% / in / out。 */
+/** 刷新百分比标签：panzoom 的 transform 落在下一帧，同步读可能拿到旧值 → 再补一次。 */
+function refreshZoomLabel(state) {
+    const label = state.card.querySelector('.' + ZOOM_PCT_CLASS);
+    if (label === null)
+        return;
+    const apply = () => {
+        label.textContent = Math.round((state.pz.getScale() || 1) * 100) + '%';
+    };
+    apply();
+    const raf = globalThis.requestAnimationFrame;
+    if (typeof raf === 'function')
+        raf(apply);
+}
+/** 工具条动作：fit = 适应容器（contain）/ full = 100% / in / out。 */
 function applyZoom(state, action) {
     if (action === 'fit')
-        state.pz.reset({ animate: false });
+        state.pz.zoom(zoomFitScale(state), { animate: false });
     else if (action === 'full')
         state.pz.zoom(zoomNaturalScale(state), { animate: false });
     else
         state.pz.zoom(state.pz.getScale() * (action === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP), { animate: true });
+    refreshZoomLabel(state);
 }
 /** 工具条入口：未就绪就**等加载完再执行**（此前直接 return，加载期间与加载失败后的
  *  每次点击都被静默丢弃 —— 用户看到的就是「点了没反应」）。 */
@@ -2401,6 +2441,11 @@ function toggleCardOverlay(entryId) {
     if (target === null)
         return false;
     openCardOverlay(target, entryId);
+    // 浮窗里容器大得多 → 重新适应，一开就是铺满的大图。
+    void bindZoom(target).then((state) => {
+        if (state !== undefined)
+            applyZoom(state, 'fit');
+    });
     return target.card.getAttribute(FS_ATTR) === FS_OPEN;
 }
 /** teardown：收掉浮窗、销毁实例、清表与加载缓存。 */
@@ -2733,7 +2778,7 @@ const STYLES = `
 .dsh-md-render-mermaid-vt svg{display:block;flex:none}
 .dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-md-render-mermaid-vt-active{background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent);color:var(--dsw-alias-accent);font-weight:600}
-.dsh-md-render-mermaid-svg{position:relative;overflow:auto;max-height:70vh}
+.dsh-md-render-mermaid-svg{position:relative;overflow:auto;max-height:70vh;min-height:160px}
 .dsh-md-render-mermaid-svg[data-dsh-md-render-zoom]{overflow:hidden}
 .dsh-md-render-mermaid-canvas{transform-origin:0 0;display:flex;align-items:center;justify-content:center}
 .dsh-md-render-mermaid-svg svg{max-width:100%;height:auto}
@@ -2756,6 +2801,7 @@ const STYLES = `
    工具条按钮复用卡片按钮类；浮窗 = 页面内 <dialog> 模态（**非**浏览器全屏），
    卡片临时移入面板：遮罩 / Esc / 焦点归还 / 背景滚动锁定全由浏览器兜底。 */
 .dsh-md-render-mermaid-zoom{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.dsh-md-render-mermaid-zoom-pct{display:inline-flex;align-items:center;justify-content:flex-end;min-width:40px;font:var(--dsw-font-xxs-12);line-height:20px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
 .dsh-md-render-mermaid-fs{display:flex;flex-direction:column;gap:6px;width:90vw;height:85vh;max-width:none;max-height:none;margin:auto;padding:8px 10px;border:0;border-radius:10px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2);font:var(--dsw-font-s-14);color:var(--dsw-alias-label-primary)}
 .dsh-md-render-mermaid-fs::backdrop{background:rgba(0,0,0,.45)}
 .dsh-md-render-mermaid-fs-bar{display:flex;justify-content:flex-end;gap:6px;flex:none}

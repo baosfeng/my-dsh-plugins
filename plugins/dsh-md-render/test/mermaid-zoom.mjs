@@ -152,7 +152,14 @@ test('库未就绪时的点击排队执行，不静默丢弃（懒加载期间�
     assert.equal(Panzoom.made.length, 0, '确实还没绑定')
     release()
     await waitFor(() => Panzoom.made.length === 1, { message: '懒加载完成后补齐绑定' })
-    assert.deepEqual(Panzoom.made[0].calls, [['zoom', 1.25, { animate: true }]], '首次点击补执行（不是被丢掉）')
+    assert.deepEqual(
+      Panzoom.made[0].calls,
+      [
+        ['zoom', 1, { animate: false }],
+        ['zoom', 1.5, { animate: true }],
+      ],
+      '绑定即适应容器（量不出尺寸 → 1），随后首次点击补执行（不是被丢掉）',
+    )
   } finally {
     if (original === undefined) delete globalThis.fetch
     else globalThis.fetch = original
@@ -169,17 +176,36 @@ test('Fit / 100% / ± 打到库的对应 API；100% = 真实像素（不再是 F
   assert.ok(api, '已绑定')
   f.loaded.exports.zoomEntry(ENTRY, 'fit')
   await settle()
-  assert.deepEqual(api.calls.at(-1), ['reset', { animate: false }], 'Fit = reset')
+  assert.deepEqual(api.calls.at(-1), ['zoom', 1, { animate: false }], 'Fit = 适应容器（此处量不出容器尺寸 → 1）')
   f.loaded.exports.zoomEntry(ENTRY, 'full')
   await settle()
   assert.deepEqual(api.calls.at(-1), ['zoom', 2, { animate: false }], '100% = viewBox 600 ÷ 显示 300 = 2')
   f.loaded.exports.zoomEntry(ENTRY, 'in')
   await settle()
-  assert.deepEqual(api.calls.at(-1), ['zoom', 2.5, { animate: true }], '放大 = 当前 × 1.25')
+  assert.deepEqual(api.calls.at(-1), ['zoom', 3, { animate: true }], '放大 = 当前 2 × 1.5')
   f.loaded.exports.zoomEntry(ENTRY, 'out')
   await settle()
   assert.deepEqual(api.calls.at(-1)[0], 'zoom', '缩小走 zoom')
-  assert.ok(api.calls.at(-1)[1] < 2.5, '缩小后的 scale 更小')
+  assert.ok(api.calls.at(-1)[1] < 3, '缩小后的 scale 更小')
+})
+
+test('首次绑定即适应容器（contain）：容器与图固有尺寸取宽高比例的较小者', async () => {
+  const Panzoom = panzoomStub()
+  const f = setup({ Panzoom })
+  f.page.window.Panzoom = Panzoom
+  // 容器 660×320；图固有 300×200（未缩放显示尺寸）→ min(660/300, 320/200) = min(2.2, 1.6) = 1.6。
+  // 关键：小图（如 flowchart LR `X-->Y` 仅 ~90px 宽）躺在大容器里若只 reset 到 1，
+  // 用户点「适应」没变化、点「放大」一次也只动 25%，感知就是「没反应」。
+  // 注：假 DOM 的 getBoundingClientRect 不随 transform 变化，故只断言**首次绑定**这一路。
+  f.frame.offsetWidth = 660
+  f.frame.offsetHeight = 320
+  f.loaded.exports.zoomEntry(ENTRY, 'fit')
+  await settle()
+  assert.deepEqual(
+    Panzoom.made[0].calls[0],
+    ['zoom', 1.6, { animate: false }],
+    '绑定即适应：contain 取较小比例（不是 reset 到 1）',
+  )
 })
 
 test('100% 在没有 SVG 量不出尺寸时退回 scale 1（不抛错）', async () => {
@@ -240,7 +266,7 @@ test('裸 wheel 归页面；ctrlKey+wheel（捏合）与 gesture（Safari）都�
   wheel({ ctrlKey: true })
   assert.deepEqual(
     api.calls.at(-1),
-    ['zoom', scaleBefore * 1.25, { animate: false }],
+    ['zoom', scaleBefore * 1.5, { animate: false }],
     'ctrlKey+wheel = 触控板捏合，放大一档',
   )
   assert.equal(prevented.at(-1), true, '捏合时拦下浏览器默认缩放')
@@ -292,7 +318,7 @@ test('浮窗：页面内 <dialog> 模态（不用 Fullscreen API），卡片搬�
   const zoomBefore = Panzoom.made[0].calls.length
   f.loaded.exports.zoomEntry(ENTRY, 'in')
   await settle()
-  assert.equal(Panzoom.made[0].calls.length, zoomBefore + 1, '浮窗内缩放照样生效')
+  assert.equal(Panzoom.made[0].calls.length, zoomBefore + 2, '开浮窗重新适应容器（1 次）+ 浮窗内缩放照样生效（1 次）')
 
   const callsBeforeClose = Panzoom.made[0].calls.length
   panel.fire('cancel') // Esc：浏览器把 cancel 事件交给浮窗

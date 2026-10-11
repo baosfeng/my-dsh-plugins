@@ -9,7 +9,7 @@
 **对话渲染插件**：对话里的**围栏代码块全部由本插件自己的渲染器产出** —— 不再调用宿主官方 `MarkdownText` / `CodeBlock`。
 
 - markdown 文本（`text` 家族围栏、确证无语言的围栏、`pre[data-context-text]` 上下文注入块、`MarkdownView`）→ 自研 markdown 渲染（解析层 **marked**，GFM 表格 / 列表 / 标题 / 链接 / 行内代码 / 代码块）；
-- 其他语言（`js` / `ts` / `json` / `bash` / `python` …）→ 自研代码块：banner 显示**真实语言名**（不是宿主那个本地化标签「代码块」）+ 复制 + 自动换行 + **highlight.js** 语法高亮；
+- 其他语言（`js` / `ts` / `json` / `bash` / `python` …）→ 自研代码块：**语言名胶囊**显示**真实语言名**（不是宿主那个本地化标签「代码块」）+ 复制（hover / focus 浮现）+ 长行横向滚动 + **highlight.js** 语法高亮；
 - `mermaid` / `mmd` → 图表卡片（预览 / 代码切换、导出 PNG / SVG、浮窗 + 缩放平移）；
 - 另有：整段复制、统一 `MarkdownView` 导出、思考块默认展开、非标准表格容错、设置面板。
 
@@ -20,10 +20,19 @@
 ## 功能
 
 - **所有围栏块都由自研渲染器接管**（`div.md-code-block`）：
-  - 语言 ∈ `text` / `plaintext` / `txt` / `md` / `markdown`，或**确证无语言** → **自研 markdown 渲染**（真实 `h1`–`h6` / `ul` / `ol` / `table` / `blockquote` / `a` / `code` 标签，自有 class，样式取宿主 `--dsw-font-markdown-*` / `--dsw-alias-*` 变量），每块带独立「查看原文」；
-  - 其他语言 → **自研代码块渲染**：banner 显示**真实语言名**、复制按钮、`white-space:pre-wrap` 自动换行、highlight.js 高亮（hljs 令牌树 → 自有 vdom `span`，**没有 innerHTML**）；
+  - 语言 ∈ `text` / `plaintext` / `txt` / `md` / `markdown`，或**确证无语言** → **自研 markdown 渲染**（真实 `h1`–`h6` / `ul` / `ol` / `table` / `blockquote` / `a` / `code` 标签，自有 class + **自有视觉语言**），每块带独立「查看原文」；
+  - 其他语言 → **自研代码块渲染**：语言名做成**强调色大写胶囊**、复制按钮（默认隐形，hover / 键盘 focus / 触屏才浮现）、**长行横向滚动**（保真，不软换行；官方是 `pre-wrap` + `break-all`）、highlight.js 高亮（hljs 令牌树 → 自有 vdom `span`，**没有 innerHTML**）；
   - `mermaid` / `mmd` → 图表卡片（语言集合不重叠，分流稳定）；
   - 语言识别不出来的块同样接管（代码视图），但**语言位留空**：绝不编造语言名，也绝不把真纯文本误判成 markdown。
+- **自有视觉语言（外观也是我们自己的）**：不再对齐 / 照抄官方样式 —— 一套自有设计 token `--mdr-*` 定义**布局 / 形状 / 间距 / 层级 / 边框 / 圆角 / 强调方式**，颜色仍取宿主 `--dsw-*` 语义变量（深浅色自适应，**零硬编码色值**）。辨识点：
+  - **强调色胶囊**：代码块语言名（`JS` / `JSON` / `BASH`，大写 + 字距）与图表卡片标题同一形态，官方那是 11px 灰字标签；
+  - **强调色竖条**：代码卡片左侧 3px、markdown 卡片 2px、`h1` 3px、引用块 3px —— 同一条「我们渲染的」视觉线索；
+  - **头部不再是通栏灰带**：语言胶囊 + 薄强调底 + 发丝分隔线，与代码区同属一个圆角容器（轻阴影）；
+  - **复制按钮 hover / 键盘 focus / 触屏三路浮现**（默认隐形，不占视觉）；
+  - **自有排版尺度**：正文 14px/1.75、标题 20/17/15.5/14.5/13.5/12（`h6` 大写小字）、代码 12.5px/1.7 等宽 —— 不再使用官方 `--dsw-font-markdown-*` 排版 shorthand；
+  - **markdown 自有形状**：`h1` 左侧竖条、`h2` 下边框、引用块（左竖线 + 淡强调底 + 右侧圆角）、分隔线（两侧渐隐发丝线）、表格（圆角外框 + 强调色表头薄底 + 行 hover）、行内代码胶囊（强调色染色向正文色收敛保对比度）、列表标记染色、**任务列表勾选框自绘**（原生 disabled checkbox 不认 `accent-color`、实测恒为灰 → `appearance:none` + `::before` 画框 + `:has()` 驱动的描边勾形，`:has()` 失配时 `@supports` 退化为原生控件）；
+  - **自有语法配色 `--mdr-syn-*`**：五色语义映射（蓝=关键字、绿=字符串、琥珀=数值/常量、灰=注释、弱蓝=函数），每色由宿主状态色向正文色混合得到；实测**每个 token 的对比度都不低于官方 shiki 调色板**（官方 `string` 3.30、`comment` 3.18、`parameter` 3.43 均低于 WCAG AA 4.5，本插件对应为 5.57 / 5.08 / 5.55）；
+  - **插件自绘 focus 环**：宿主在指针模态下会把官方 `:focus-visible` 描边抹成透明，自有控件因此一律用强调色 2px 描边 + 偏移（深色 / 浅色都可见）。
 - **围栏语言识别（双源互补 + DOM 兜底）**：主源是 **client 侧的会话事件流索引** —— 从 `ctx.sessions.binding(id).eventSource` 的原始 Session 事件里取 markdown **原文**按内容哈希建表，**天然含历史**，因此**冷启动 / 重启后打开历史会话也命中**，且命中即**零 RPC**；未命中再回落 host 半的**实时围栏语言索引**（订阅 `session/event`，按块内容哈希批量查询）与 **DOM 契约**（`code.language-*` / banner infostring → `js` / `json` / `bash` 等零额外请求）。判定结果带出的 `confirmed` 只用来区分「**确证无语言**」（走 markdown）与「**识别失败**」（走代码视图、语言位留空）；**不做内容启发式判定**。
 - **「渲染为…」三态切换（所有围栏块可用）**：块内「图表 / Markdown / 源码」控件（hover / 键盘 focus / 触屏三路可达；mermaid 卡片由卡片头承载后两项）；优先级 **手动覆盖 > 语言索引 > DOM 契约**，用于模型把 Java 写成 `js` 这类误判；覆盖值按内容哈希记入 `sessionStorage`，刷新后仍记得。
 - **上下文注入块渲染**：宿主把上下文注入正文（**子 agent 回传消息**、AGENTS.md 等）渲染为纯文本 `pre[data-context-text]`；本插件在 DOM 层用**自研 markdown 渲染器**渲染，原文节点保留并置 `hidden`。
@@ -40,14 +49,14 @@
 
 写入 `cordis.patch.yml` 对应插件行（id `md-render`）的 `config`；设置页保存后同样落盘到 profile patch 文件：
 
-| 配置键                        | 默认   | 作用                                                          |
-| ----------------------------- | ------ | ------------------------------------------------------------- |
-| `markdown.copyButton`         | `true` | 整段 markdown 复制按钮（`MarkdownView` 容器）                  |
-| `markdown.textFenceMarkdown`  | `true` | 围栏块渲染总开关（自研 markdown / 自研代码块；关掉即全部交回宿主） |
-| `markdown.contextMarkdown`    | `true` | `pre[data-context-text]` 上下文注入块按 markdown 渲染          |
-| `thinking.defaultExpanded`    | `true` | 思考块默认展开（严格布尔，缺失 / 非法回退 true）                |
-| `mermaid.injectPrompt`        | `true` | 注入 mermaid 能力说明 section（仅显式 `false` 关）              |
-| `mermaid.render`              | `true` | `mermaid` / `mmd` 代码块渲染为图表卡片                        |
+| 配置键                       | 默认   | 作用                                                               |
+| ---------------------------- | ------ | ------------------------------------------------------------------ |
+| `markdown.copyButton`        | `true` | 整段 markdown 复制按钮（`MarkdownView` 容器）                      |
+| `markdown.textFenceMarkdown` | `true` | 围栏块渲染总开关（自研 markdown / 自研代码块；关掉即全部交回宿主） |
+| `markdown.contextMarkdown`   | `true` | `pre[data-context-text]` 上下文注入块按 markdown 渲染              |
+| `thinking.defaultExpanded`   | `true` | 思考块默认展开（严格布尔，缺失 / 非法回退 true）                   |
+| `mermaid.injectPrompt`       | `true` | 注入 mermaid 能力说明 section（仅显式 `false` 关）                 |
+| `mermaid.render`             | `true` | `mermaid` / `mmd` 代码块渲染为图表卡片                             |
 
 > `markdown.*` / `mermaid.*` 是「默认开」语义（仅显式 `false` 关）；`thinking.defaultExpanded` 是严格布尔。非法 / 未知键忽略；配置变更热生效，无需重启。
 > `markdown.textFenceMarkdown` 是**沿用下来的键名**（合并前它只管 text 围栏块）—— 现在它是**所有围栏块**的总开关，读兼容不变，避免老 profile 落盘的键失效。
@@ -56,14 +65,14 @@
 
 ## 路由（host ↔ client 内部契约）
 
-| 路径                                              | 方法       | 用途                                |
-| ------------------------------------------------- | ---------- | ----------------------------------- |
-| `/md-render/api/config`                           | GET / PUT  | 配置读写（归一 + 合并行内已有键后落盘） |
-| `/md-render/api/langs?h=<hash>&h=<hash>…`         | GET        | 围栏语言索引查询（内容哈希 → 语言；单次 ≤64 个哈希） |
-| `/md-render/assets/mermaid-10.9.3.min.js`         | GET / HEAD | mermaid 引擎静态资源（ETag / 304 / 405） |
-| `/md-render/assets/panzoom-4.6.2.min.js`          | GET / HEAD | panzoom 缩放 / 平移库静态资源         |
-| `/md-render/assets/marked-18.1.0.umd.js`          | GET / HEAD | **自研 markdown 渲染器的解析层**（MIT） |
-| `/md-render/assets/highlightjs-11.12.0.min.js`    | GET / HEAD | **自研代码块渲染器的高亮层**（BSD-3-Clause） |
+| 路径                                           | 方法       | 用途                                                 |
+| ---------------------------------------------- | ---------- | ---------------------------------------------------- |
+| `/md-render/api/config`                        | GET / PUT  | 配置读写（归一 + 合并行内已有键后落盘）              |
+| `/md-render/api/langs?h=<hash>&h=<hash>…`      | GET        | 围栏语言索引查询（内容哈希 → 语言；单次 ≤64 个哈希） |
+| `/md-render/assets/mermaid-10.9.3.min.js`      | GET / HEAD | mermaid 引擎静态资源（ETag / 304 / 405）             |
+| `/md-render/assets/panzoom-4.6.2.min.js`       | GET / HEAD | panzoom 缩放 / 平移库静态资源                        |
+| `/md-render/assets/marked-18.1.0.umd.js`       | GET / HEAD | **自研 markdown 渲染器的解析层**（MIT）              |
+| `/md-render/assets/highlightjs-11.12.0.min.js` | GET / HEAD | **自研代码块渲染器的高亮层**（BSD-3-Clause）         |
 
 上述都是包内 host↔client 私有契约（host 与 client 同包同版本发布，无仓库外消费者），路径来自单一真源 `src/routes/paths.ts`、构建期注入 client 产物，由 `test/route-single-source.mjs` 钉住两侧一致。请求先过 loopback 信任围栏（非本机 → 403）；`langs` 与 `config` 共用 `/md-render/api` 前缀（**不新增第三条路由前缀**）。
 
@@ -74,15 +83,15 @@
 
 ## 破坏性变更与迁移
 
-| 变更                                                    | 迁移动作                                                                                                             |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **内容渲染改为插件自研**（不再调用官方 `MarkdownText` / `CodeBlock`） | 无需动作。所有围栏块 + 上下文注入块 + `MarkdownView` 的**渲染结果**由本插件产出；官方节点结构一个字节都不改（只追加自有容器 + 自有 CSS 隐藏官方子树），切「源码」即回到官方视图 |
-| 新增 assets `marked-18.1.0.umd.js` / `highlightjs-11.12.0.min.js` | **重启 `dsh web`**（host 半的资源白名单在启动时固定）；老版本 host 半会把这两个 URL 判成 404 → 插件真降级为「解析层没就绪」，块停在官方形态，不报错 |
-| `dsh-think-zh-expand` / `dsh-mermaid-render` 包下线     | 从 profile 的 bundles / roster 删掉 `- id: think-zh-expand`、`- id: mermaid-render` 两行（残留会让 loader 指向不存在的包而启动报错），改用本插件 |
-| 旧路由 `/md/api`、`/think-zh-expand/api`、`/mermaid-render/api`、`/mermaid-render/assets/*` | 不兼容、直接 404：改用 `/md-render/api`、`/md-render/assets`（仅包内契约，无外部消费者）                            |
-| 设置页 3 个 tab → 1 个「渲染」tab（三分组）                | 无需动作                                                                                                             |
-| 配置键扁平 → 命名空间（`markdown.*` / `thinking.*` / `mermaid.*`） | **读取兼容**，旧键继续生效；下次保存起落盘为新结构                                                                   |
-| 自实现渲染开关（0.3.0 起已下线，0.5.0 起能力回归**自研**） | `syntaxHighlight` / `languageLabel` / `lineNumbers` / `taskList` / `strikethrough` / `image` / `nestedList` / `mathStructures` / `tableSort` / `tableFold` / `copyButtonPosition` / `codeTheme` 仍不存在（能力由自研渲染器提供，无开关）；patch 里的旧键**保留无害**（被忽略） |
+| 变更                                                                                        | 迁移动作                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **内容渲染改为插件自研**（不再调用官方 `MarkdownText` / `CodeBlock`）                       | 无需动作。所有围栏块 + 上下文注入块 + `MarkdownView` 的**渲染结果**由本插件产出；官方节点结构一个字节都不改（只追加自有容器 + 自有 CSS 隐藏官方子树），切「源码」即回到官方视图                                                                                                |
+| 新增 assets `marked-18.1.0.umd.js` / `highlightjs-11.12.0.min.js`                           | **重启 `dsh web`**（host 半的资源白名单在启动时固定）；老版本 host 半会把这两个 URL 判成 404 → 插件真降级为「解析层没就绪」，块停在官方形态，不报错                                                                                                                            |
+| `dsh-think-zh-expand` / `dsh-mermaid-render` 包下线                                         | 从 profile 的 bundles / roster 删掉 `- id: think-zh-expand`、`- id: mermaid-render` 两行（残留会让 loader 指向不存在的包而启动报错），改用本插件                                                                                                                               |
+| 旧路由 `/md/api`、`/think-zh-expand/api`、`/mermaid-render/api`、`/mermaid-render/assets/*` | 不兼容、直接 404：改用 `/md-render/api`、`/md-render/assets`（仅包内契约，无外部消费者）                                                                                                                                                                                       |
+| 设置页 3 个 tab → 1 个「渲染」tab（三分组）                                                 | 无需动作                                                                                                                                                                                                                                                                       |
+| 配置键扁平 → 命名空间（`markdown.*` / `thinking.*` / `mermaid.*`）                          | **读取兼容**，旧键继续生效；下次保存起落盘为新结构                                                                                                                                                                                                                             |
+| 自实现渲染开关（0.3.0 起已下线，0.5.0 起能力回归**自研**）                                  | `syntaxHighlight` / `languageLabel` / `lineNumbers` / `taskList` / `strikethrough` / `image` / `nestedList` / `mathStructures` / `tableSort` / `tableFold` / `copyButtonPosition` / `codeTheme` 仍不存在（能力由自研渲染器提供，无开关）；patch 里的旧键**保留无害**（被忽略） |
 
 system-prompt section 名保持 `dsh-mermaid-render`（宿主按 name 去重），**非破坏性**；中文思考指令不在此注入，由 dsh-my-memory 的「全局提示词」提供。
 
@@ -107,28 +116,30 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 
 **本插件自有 DOM 契约**（跨插件可见；类名或层级变更 = major）：
 
-| 类名 / 属性                                                                              | 含义                                          |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `tzx-md`                                                                                 | 自研 markdown 渲染的包裹容器（`MarkdownView` / 围栏块 / 上下文块共用，样式作用域） |
-| `dsh-md-render-copy` / `dsh-md-render-copy-done`                                        | 整段复制按钮 / 复制成功态                      |
-| `dsh-md-render-text-md`（视图值 `markdown`）／`dsh-md-render-text-toggle`               | 围栏块的 markdown 渲染容器 / 「查看原文」按钮  |
-| `dsh-md-render-code-host`（视图值 `code`）／`dsh-md-render-code`                        | 围栏块的代码块渲染容器 / 自研代码卡片          |
-| `dsh-md-render-code-lang` / `dsh-md-render-code-copy`                                   | 代码块 banner 的**真实语言名** / 复制按钮       |
-| `dsh-md-render-code-pre`（`code` 内为 `hljs-*` span）                                    | 自动换行的代码主体 / 高亮 token span           |
-| `dsh-md-render-md-*`（`p` / `h` / `code` / `list` / `table` / `quote` / `left|center|right`） | 自研 markdown 产出的元素上的自有 class         |
-| `dsh-md-render-lang-switch` / `dsh-md-render-mermaid-vt`（`data-dsh-md-render-lang-force`） | 「渲染为…」语言手动切换控件 / 覆盖值（`mermaid` \| `markdown` \| `source`） |
-| `dsh-md-render-mermaid-fs` / `dsh-md-render-mermaid-fs-bar`（`data-dsh-md-render-fs-panel`） | 页面内浮窗 `<dialog>` / 浮窗顶栏               |
-| `dsh-md-render-context-md`（`data-dsh-md-render-context-body`）                           | 上下文注入块的渲染容器                        |
-| `dsh-md-render-mermaid-host`（`data-dsh-md-render-mermaid` / `-state` / `-view`）       | mermaid 卡片 host / 状态机标记                |
-| `data-dsh-md-render-text-view`（`markdown` \| `code` \| `source`）                     | 围栏块的视图状态（每块独立）                   |
-| `data-dsh-md-render-text-sig` / `data-signature`                                        | 幂等签名（内容未变不重建）                     |
-| `dsh-md-render-fallback`                                                                 | 解析层没就绪时 `MarkdownView` 的 `<pre>` 兜底  |
+| 类名 / 属性                                                                                  | 含义                                                                               |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `tzx-md`                                                                                     | 自研 markdown 渲染的包裹容器（`MarkdownView` / 围栏块 / 上下文块共用，样式作用域） |
+| `dsh-md-render-copy` / `dsh-md-render-copy-done`                                             | 整段复制按钮 / 复制成功态                                                          |
+| `dsh-md-render-text-md`（视图值 `markdown`）／`dsh-md-render-text-toggle`                    | 围栏块的 markdown 渲染容器 / 「查看原文」按钮                                      |
+| `dsh-md-render-code-host`（视图值 `code`）／`dsh-md-render-code`                             | 围栏块的代码块渲染容器 / 自研代码卡片                                              |
+| `dsh-md-render-code-lang` / `dsh-md-render-code-copy`                                        | 代码块 banner 的**真实语言名** / 复制按钮                                          |
+| `dsh-md-render-code-pre`（`code` 内为 `hljs-*` span）                                        | 代码主体（长行横向滚动）/ 高亮 token span                                          |
+| `dsh-md-render-md-*`（`p` / `h` / `code` / `list` / `table` / `quote` / `left                | center                                                                             | right`） | 自研 markdown 产出的元素上的自有 class |
+| `dsh-md-render-lang-switch` / `dsh-md-render-mermaid-vt`（`data-dsh-md-render-lang-force`）  | 「渲染为…」语言手动切换控件 / 覆盖值（`mermaid` \| `markdown` \| `source`）        |
+| `dsh-md-render-mermaid-fs` / `dsh-md-render-mermaid-fs-bar`（`data-dsh-md-render-fs-panel`） | 页面内浮窗 `<dialog>` / 浮窗顶栏                                                   |
+| `dsh-md-render-context-md`（`data-dsh-md-render-context-body`）                              | 上下文注入块的渲染容器                                                             |
+| `dsh-md-render-mermaid-host`（`data-dsh-md-render-mermaid` / `-state` / `-view`）            | mermaid 卡片 host / 状态机标记                                                     |
+| `data-dsh-md-render-text-view`（`markdown` \| `code` \| `source`）                           | 围栏块的视图状态（每块独立）                                                       |
+| `data-dsh-md-render-text-sig` / `data-signature`                                             | 幂等签名（内容未变不重建）                                                         |
+| `dsh-md-render-fallback`                                                                     | 解析层没就绪时 `MarkdownView` 的 `<pre>` 兜底                                      |
 
 **渲染内容的 DOM 由本插件自己的渲染器决定**：官方节点一律不删不改，接管视图下由自有 CSS 隐藏官方子树（`display:none`），切回「源码」即恢复官方原样。其余 exports（`normalizeTables` / `markdownNodes` / `renderMarkdownInto` / `applyFenceBlock` / `highlightCodeNodes` 等）属内部实现面，随重构变动，下游不得依赖。
 
+**外观同样由本插件自己的视觉语言决定**（**不属**上面的类名契约）：`--mdr-*` 设计 token（圆角 / 胶囊 / 强调色 / 线 / 等宽栈 / 语法配色）只在自有作用域内定义与使用，**未对外承诺**，可随版本调整；颜色一律取宿主 `--dsw-*` 语义变量并随深浅色自适应，**不含硬编码色值**。跨插件若要复用这套外观，请引入同一份 CSS 而不是覆盖这些类名。
+
 ## 硬约束（机器可校验）
 
-`test/static-assertions.mjs` 对构建产物 `lib/client.js` 钉死：**不注册任何 `conversation.chat.node` 节点级 seat**（只 inject `settings.plugins.tab` + `plugins.bundle.config`）、**不读 React fiber 私有属性**、**不对官方元素写 style / class / aria**、**单 MutationObserver**、不含自绘助手节点 / 思考块、不内联 mermaid 引擎、**不再 require 官方 UI 组件库**、自研 markdown / 代码渲染器**没有任何 innerHTML 路径**。
+`test/static-assertions.mjs`（DOM 边界）+ `test/own-visual-language.mjs`（**外观自研**：不引用官方 markdown 排版 shorthand / 官方 shiki 调色板、无硬编码色值、自有 token 与辨识点齐全、焦点可见）对构建产物 `lib/client.js` 钉死：**不注册任何 `conversation.chat.node` 节点级 seat**（只 inject `settings.plugins.tab` + `plugins.bundle.config`）、**不读 React fiber 私有属性**、**不对官方元素写 style / class / aria**、**单 MutationObserver**、不含自绘助手节点 / 思考块、不内联 mermaid 引擎、**不再 require 官方 UI 组件库**、自研 markdown / 代码渲染器**没有任何 innerHTML 路径**。
 
 ## 已知限制
 
@@ -146,8 +157,8 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 - **数学公式不做**（用户口径：暂不做）；表格容错只覆盖上述两种写法（纯空格分隔、缺分隔行等「不是表格」的写法不会渲染为表格）。
 - **raw HTML 永远是字面文本**（与官方 `MarkdownText` 同口径）：模型输出不会被当 HTML 执行；链接只放行 `http` / `https` / `mailto` 与同源相对路径，图片只放行 `http(s)` 与同源相对路径（其余渲染 alt 文本）。
 - **思考块默认展开**是 DOM 层派发点击（官方没有任何扩展点）；选择器失配（宿主升级改属性）时静默退回官方默认。
+- **外观是插件自己的、不承诺跨版本稳定**：`--mdr-*` 设计 token 与具体字号 / 圆角 / 间距会随视觉迭代调整（类名契约不变，见「公共 API 契约」）。颜色取自宿主语义变量，因此**极端自定义主题**下若宿主别名色本身对比度不足，本插件也只会给出同样不足的观感（语法配色已按「向正文色混合」尽量保底，实测不低于官方 shiki 调色板）。代码块**长行横向滚动**（不软换行）是有意的保真取舍：与官方 `pre-wrap` + `break-all` 的换行口径不同，超长单行需要横向拖动查看。
 
 ## 相关文档
 
 → [md 渲染模块文档](../../docs/md渲染/概述.md) · [CHANGELOG](CHANGELOG.md)
-

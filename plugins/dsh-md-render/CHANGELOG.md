@@ -8,10 +8,22 @@
 
 ### 变更
 
+- **外观换成插件自己的视觉语言（不再对齐 / 照抄官方样式）**（用户口径：「全部使用我们自己的，外观也是，就是全部我们自己来」）：
+  - **背景**：渲染内核上一轮已全换自研（marked + highlight.js），但 `styles.ts` 仍刻意逐像素对齐官方 —— 排版取 `--dsw-font-markdown-*` shorthand、语法着色取官方 shiki 的 `--shiki-token-*` 逐 token 对齐、行内代码取 `--dsw-alias-markdown-inline-code`，结果**外观与官方一致、用户看不出变化**。本次改为**一套自有设计语言**。
+  - **自有设计 token `--mdr-*`**：只在本插件自有根元素（`.tzx-md` / `.dsh-md-render-code` / `.dsh-md-render-mermaid-card` / 自有控件）上定义与使用；圆角 6/10/12px、胶囊 `999px`、线（`--mdr-line`/`-soft`）、强调色（取宿主 `--dsw-alias-state-business-primary`，带 `--dsw-alias-link` 兜底）、等宽栈（取宿主 `--ds-font-family-code`）。**颜色仍全部取宿主语义变量、零硬编码十六进制** → 深浅色自动跟随。
+  - **代码块辨识点**：语言名改成**强调色大写胶囊**（`JS` / `JSON` / `BASH`，10px + 字距；语言识别失败时 `:empty` 直接不渲染，绝不出现空胶囊）；**头部不再是通栏灰带**（语言胶囊 + 5% 强调色薄底 + 发丝分隔线，与代码区同属一个圆角容器 + 轻阴影 + 左侧 3px 强调竖条）；**复制按钮默认隐形**，hover / 键盘 `focus-within` / 触屏（`@media (hover:none)`）三路浮现；代码区 12.5px/1.7 等宽（官方 11px/19px）、`tab-size:2`、**长行横向滚动**（官方是 `pre-wrap` + `break-all`）。
+  - **markdown 自有层级**：正文 14px/1.75（官方 24/14）；`h1` 20px/700 + 左侧 3px 强调竖条；`h2` 17px/700 + 下边框；`h3`–`h5` 自有字号；`h6` 大写小字（字距 .08em）；列表标记染色（`li::marker`）+ 项间距 5px；引用块 = 左侧 3px 强调竖线 + 6% 强调淡背景 + 右侧圆角；分隔线 = 两侧渐隐的发丝线；表格 = 圆角外框 + 强调色表头薄底 + 发丝行线 + 行 hover；行内代码 = 胶囊 + 强调色染色（向正文色收敛保对比度）；任务列表勾选框自绘（原生 **disabled** checkbox 不认 `accent-color`、实测恒为灰：改 `appearance:none` + `::before` 画框 + `:has()` 驱动的描边勾形，`:has()` 失配时 `@supports` 退化为原生控件）。
+  - **统一设计系统**：代码卡片 / markdown 卡片 / 图表卡片同一套边框 · 圆角 · 层次 · 胶囊控件；图表卡片标题与语言胶囊同一「标签」形态（强调色 + 大写 + 字距），分段控件激活态走自有强调色，图表区加极淡点阵底。
+  - **语法着色换成自有语义映射 `--mdr-syn-*`**（不再逐 token 对齐官方 shiki）：蓝=关键字、绿=字符串、琥珀=数值/常量、灰=注释（斜体）、弱蓝=函数、次级灰=属性/标点；每一色都由**宿主状态色向正文色 `color-mix`** 得到。**对比度实测**（真实浏览器取计算色，背景 `#f9fafb` 浅色 / `#1b1b1c` 深色）：浅色下 keyword 4.42→**4.87**、string 3.30→**5.57**、comment 3.18→**5.08**、constant 4.02→**4.69**、parameter 3.43→**5.55**、function 6.03→**9.12**；深色下全部 ≥ **6.12** —— 官方有 3 个 token（string / comment / parameter）低于 WCAG AA 4.5，本插件**零个**。
+  - **顺带修掉的两处静默失效**：① 旧样式引用宿主里**根本不存在**的 `--dsw-alias-accent` / `--dsw-alias-accent-primary`（分段控件激活态与「查看原文」按下态实际是「未设置」）；② 代码 diff 的增删色把**背景 token**（8%/12% 透明度的 `--dsw-alias-code-diff-added/deleted`）当**文字色**用 → 浅色下几乎不可见，现改用宿主状态色向正文色混合（5.53 / 5.57）。
+  - **无障碍**：宿主在指针模态下会把官方 `:focus-visible` 描边抹成透明（`ui-theme/focus.css`），因此自有控件一律自绘**强调色 2px focus 环**（+2px 外偏移；可滚动代码区 -2px 内缩避免被 `overflow` 裁掉），链接与代码区也可聚焦；语言名胶囊之外仍保留文本（不靠颜色单独传达信息）。
+  - **静态断言**：新增 `test/own-visual-language.mjs`（9 条）钉住「外观自研」—— 不出现十六进制色值、不引用官方 markdown 排版 shorthand / `--shiki-token-*` / 不存在的 accent token、自有 token 与三张卡片的辨识点齐全、每个语法色都由宿主语义变量取或派生、焦点环齐全、产物与源码不漂移。**反向验证**：把 `styles.ts` 改回旧值并重建 → 该文件 **9/9 全红**；恢复后全绿。
+  - client 产物 214 KB → 221 KB（样式表 6.2 KB → 13 KB；体积门禁上限 151 KB，仍有余量）。
+
 - **内容渲染完全换成插件自己的实现（不再调用官方 `MarkdownText` / `CodeBlock`）**（用户口径：「markdown 需要全部替换为我们自己的渲染」「代码渲染使用我们自己的，不要使用原生的」）：
-  - **所有围栏块都由自研渲染器接管**（此前只接管 `text` 家族的围栏块，`js` / `json` / `bash` 等一律走官方 `CodeBlock`）：`text` / `plaintext` / `txt` / `md` / `markdown` 与**确证无语言**的块 → **自研 markdown 渲染**（真实 `h1`–`h6` / `ul` / `ol` / `table` / `blockquote` / `a` / `code` 标签，自有 `dsh-md-render-md-*` class）；其余语言 → **自研代码块**：banner 显示**围栏 info string 的真实语言名**（官方那套是 `supportsHighlighting(lang) ? lang : labels.codeLabel`，不认识的标记一律显示本地化标签「代码块」——用户不满的正是这个）+ 复制 + 自动换行 + 语法高亮。
+  - **所有围栏块都由自研渲染器接管**（此前只接管 `text` 家族的围栏块，`js` / `json` / `bash` 等一律走官方 `CodeBlock`）：`text` / `plaintext` / `txt` / `md` / `markdown` 与**确证无语言**的块 → **自研 markdown 渲染**（真实 `h1`–`h6` / `ul` / `ol` / `table` / `blockquote` / `a` / `code` 标签，自有 `dsh-md-render-md-*` class）；其余语言 → **自研代码块**：banner 显示**围栏 info string 的真实语言名**（官方那套是 `supportsHighlighting(lang) ? lang : labels.codeLabel`，不认识的标记一律显示本地化标签「代码块」——用户不满的正是这个）+ 复制 + 长行横向滚动 + 语法高亮。
   - **解析层 marked 18.1.0**：marked 词法树 → 自有 React vdom（不是 innerHTML；raw HTML 与官方同口径地当字面文本，链接只放行 `http`/`https`/`mailto` 与同源相对路径）。既有表格容错（GFM 不认的两种分隔行写法）在新解析层上原样接上。
-  - **高亮层 highlight.js 11.12.0**：用 hljs 结果里的 `_emitter` 令牌树 → 自有 vdom `hljs-*` span（class 口径与 hljs `scopeToCSSClass` 逐字一致），**全程没有 innerHTML / dangerouslySetInnerHTML**；着色取宿主 shiki token 调色板（`--shiki-token-*`，与官方代码块同一份、深浅色自动跟随）并带 `--dsw-*` 兜底。
+  - **高亮层 highlight.js 11.12.0**：用 hljs 结果里的 `_emitter` 令牌树 → 自有 vdom `hljs-*` span（class 口径与 hljs `scopeToCSSClass` 逐字一致），**全程没有 innerHTML / dangerouslySetInnerHTML**；着色取**本插件自己的语义映射** `--mdr-syn-*`（宿主状态色向正文色混合，深浅色自动跟随，见上方「外观」条目），不再取官方 shiki 调色板。
   - **两个库都走 `assets/` 懒加载**（与 mermaid 引擎同一模式；用户口径「打包体积不用控，只控启动速度」）：`assets/marked-18.1.0.umd.js`（47 KB，MIT）与 `assets/highlightjs-11.12.0.min.js`（129 KB，BSD-3-Clause）由 host 半静态托管，client 首次真正需要时 fetch + 注入 `<script>`，**不进 `lib/client.js`**；就绪通知触发一次重扫，把加载窗口内落在官方形态的块补渲染。
   - **降级链**（真降级）：解析层没就绪 → 块保持宿主官方形态；hljs 没就绪 / 语言不认识 / 单块 > 6 万字符 → 纯文本代码块（内容一字不少）；`react-dom/client` 不可用 → DOM 注入点不动宿主 DOM。
   - `pre[data-context-text]` 上下文注入块与公共 API `MarkdownView` 同样换成自研渲染器（解析层没就绪时 `MarkdownView` 落 `<pre>` 兜底，且订阅就绪通知后重渲染）。

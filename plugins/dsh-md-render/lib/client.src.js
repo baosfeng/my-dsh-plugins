@@ -11,8 +11,9 @@
  *  - **不读 React fiber 私有属性**（__reactFiber$）；
  *  - 单 MutationObserver（一个扫描器按语言分流）。
  *
- * 样式走 DSH 语义 token（--dsw-* / --dsw-font-markdown-*），随 activation 注入、fiber
- * teardown 卸载（HMR / 禁用无残留）。
+ * 外观是**插件自己的视觉语言**（src/client/parts/styles.ts 的 --mdr-* 自有 token：胶囊标签 /
+ * 强调竖条 / 自有排版尺度与语法配色），颜色仍取宿主 --dsw-* 语义变量随深浅色自适应；
+ * 随 activation 注入、fiber teardown 卸载（HMR / 禁用无残留）。
  *
  * BUILD NOTE: 本文件是源码模板（骨架）。scripts/build.mjs 把编译后的片段注入到下方
  * /*__PART_*__* / 占位符处并写出 lib/client.js（DSH 实际提供的产物，单一 __ModuleLoader__

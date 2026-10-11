@@ -15,6 +15,7 @@
 ### 修复
 
 - **mermaid 失败态以源码为主**（#470 需求 2）：渲染失败时**首屏直接展示原始源码**（可复制），错误原因降为一行灰字、保留「重试」，并把视图钉在源码——此前首屏是错误提示，用户要的是内容而不是报错。
+- **图表放大时图跑出可视区**（真机反馈「点放大没反应」）：mermaid 的 `<svg>` 自带 `max-width` = 图表自然宽度，在变换层里**左对齐**，而 panzoom 以**变换层几何中心**为缩放锚点 —— 两者中心实测相差 **277px**，放大近 2 倍后图被推到容器外侧（卡片看着一片空白，像是没反应）。修法：变换层改 flex 居中，使锚点与图中心重合（实测中心偏移 277px → **0.5px**）；已加防回归断言。
 - **接管块残留官方 banner 头**：官方 banner 的标签被宿主写死为本地化「代码块」（语言名不进 DOM），对已 markdown 化的块是**错误信息**且白占 42px。现将 banner 容器与内容容器**一并隐藏**（规则限定在接管视图值上，切回「查看原文」时不再匹配、官方 banner 自动恢复）；未接管的块不受影响（实测 `js` / `json` / `bash` 与工具输出块 banner 仍为 42px）。
 - **围栏语言识别在「历史会话 + 冷启动」下失效**（真实浏览器实测 `toggles=0` / `views=0`）：官方 `CodeBlock` 只在 shiki **认识**该语言时才把语言原名写进 banner（其余一律显示本地化标签「代码块」），且**非空**代码块的 `<code>` 不带 `language-*` —— `text` / `plaintext` / `txt` / `mermaid` / `mmd` 与「无语言」块在 DOM 里逐字段完全相同，纯 DOM 读法 100% 静默失败。
   - **语言判定主源改为 client 侧会话事件流索引**（新增 `src/client/parts/lang-source.ts`）：从 `ctx.sessions.binding(id).eventSource` 的原始 Session 事件（`assistant/message.data.message.content[]` / `user/message.data.content[]`，含 `reasoning`，只取 `surfaceOp === 'append'`）解析围栏块，建「hash(规范化代码) → 语言」表；DOM 侧按 `<pre>.textContent` 算同一哈希查表。该窗口**天然含历史**，因此**冷启动 / 重启后打开历史会话也能命中**（host 实时索引为空时的唯一来源），命中即 **零 RPC**；host 半只订阅 `session/event`、不读历史，故此前该场景永不命中。

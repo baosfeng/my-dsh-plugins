@@ -47,7 +47,7 @@ const STYLES: string = `
 .dsh-md-render-mermaid-vt-active{background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent);color:var(--dsw-alias-accent);font-weight:600}
 .dsh-md-render-mermaid-svg{position:relative;overflow:auto;max-height:70vh}
 .dsh-md-render-mermaid-svg[data-dsh-md-render-zoom]{overflow:hidden}
-.dsh-md-render-mermaid-canvas{transform-origin:0 0}
+.dsh-md-render-mermaid-canvas{transform-origin:0 0;display:flex;align-items:center;justify-content:center}
 .dsh-md-render-mermaid-svg svg{max-width:100%;height:auto}
 .dsh-md-render-mermaid-code{margin:0;background:var(--dsw-alias-markdown-code-block);border-radius:6px;padding:8px 12px;overflow:auto;font:var(--dsw-font-markdown-code-block-small);white-space:pre-wrap}
 .dsh-md-render-mermaid-loading{display:flex;align-items:center;gap:6px;padding:8px 6px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}

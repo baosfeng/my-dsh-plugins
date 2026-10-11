@@ -100,6 +100,16 @@ test('client bundle：不对官方元素写 style / class / aria', () => {
       `${view}: must not target a direct-child <pre> (pre lives inside [data-code-block-content])`,
     )
   }
+  // 防回归：缩放锚点必须与**图中心**对齐。mermaid 的 <svg> 自带 max-width = 图表自然宽度，
+  // 在普通块级变换层里会**左对齐**；而 panzoom 以变换层几何中心为缩放锚点 —— 两者中心可差
+  // 270+px，放大近 2 倍后图被推到容器外侧，用户看到的是「点放大没反应」（真机实测 svg 跑到
+  // 容器左外侧）。变换层改 flex 居中后实测中心偏移 277px → 0.5px。
+  assert.ok(
+    CODE.includes(
+      '.dsh-md-render-mermaid-canvas{transform-origin:0 0;display:flex;align-items:center;justify-content:center}',
+    ),
+    'the zoom transform layer must center the svg so the panzoom anchor matches the diagram center',
+  )
 })
 
 test('client bundle：单 MutationObserver（合并前两路观察收敛为一路）', () => {

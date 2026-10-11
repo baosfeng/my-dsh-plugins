@@ -2694,7 +2694,137 @@ function makeExportHandlers(entryId, source, flashNotice) {
 }
 Object.assign(exports,{buildExportFileName,serializeSvg,findCardSvg,makeExportHandlers});
 
-    // mermaid 图表全屏 + 缩放 / 平移（panzoom 懒加载 asset）
+    // mermaid 图表全屏 + 缩放 / 平移（panzoom 懒加载；失败切内置降级引擎）
+    "use strict";
+// ── 缩放几何：适应容器（contain）与「实际大小 100%」的比例计算 ────────────
+// 从 mermaid-zoom.ts 拆出（单文件行数门禁 ≤400）。两者都量**裁剪容器**而非变换层：
+// 变换层高度由内容决定（扁图如 flowchart LR `X-->Y` 仅约 50px），拿它当可用空间会让
+// contain 恒为 1 —— 那正是「图永远放不大」的根因（真机实测：容器 160 vs 变换层 50）。
+/** 100% = 图表真实像素大小：viewBox 宽 ÷ 未缩放的显示宽（适应容器后两者不等）。 */
+function zoomNaturalScale(state) {
+    const svg = state.box.querySelector('svg');
+    const scale = state.pz.getScale() || 1;
+    const shown = svg === null ? 0 : svg.getBoundingClientRect().width / scale;
+    const natural = svg === null ? 0 : svg.viewBox.baseVal.width;
+    if (shown <= 0 || natural <= 0)
+        return 1;
+    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, natural / shown));
+}
+/** 适应 = 完整显示（contain）：按「容器尺寸 ÷ 图固有尺寸」取宽高比例的**较小**者。
+ *  原先 fit 只是 reset 到 scale=1 —— 小图（如 flowchart LR `X-->Y` 仅 ~90px 宽）躺在
+ *  上千像素的容器里，点「适应」毫无变化、点「+」一次也只放大 25%，用户感知就是「没反应」。 */
+function zoomFitScale(state) {
+    const svg = state.box.querySelector('svg');
+    if (svg === null)
+        return 1;
+    // 量的必须是**裁剪容器**（frame），不是变换层：canvas 高度由内容决定（扁图如
+    // flowchart LR `X-->Y` 仅 50px），拿它当可用空间算 contain 只会永远得到 1。
+    const container = state.frame;
+    const bw = Number(container.offsetWidth ?? 0);
+    const bh = Number(container.offsetHeight ?? 0);
+    const scale = state.pz.getScale() || 1;
+    const rect = svg.getBoundingClientRect();
+    const sw = rect.width / scale;
+    const sh = rect.height / scale;
+    if (bw <= 0 || bh <= 0 || sw <= 0 || sh <= 0)
+        return 1;
+    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(bw / sw, bh / sh)));
+}
+
+    "use strict";
+// ── 内置降级缩放引擎（panzoom 不可用时的兜底）──────────────────────────────
+// #471 真机第四轮教训：panzoom 走**运行时** fetch + <script> 注入，环境差异（资源加载、
+// 注入时机、UMD 落点）会让它静默失败 —— 用户看到的就是「缩放按钮点了完全没反应」，
+// 而百分比停在硬编码的初始值 100%（真机复现：阻断该请求 → pct 100% / 绑定从未建立 /
+// 卡片零提示）。这里用纯 CSS transform 实现同一套 API：**零运行时加载 ⇒ 不存在失败面**。
+// 锚点差异：panzoom 由库自己算 translate（自有 CSS 里 transform-origin 是 0 0）；
+// 降级态改用元素自身中心（50% 50%），图围绕自己的中心缩放。
+/** 指针拖拽平移：把每次位移交给 onDrag；返回解绑函数。 */
+function attachDragPan(box, onDrag) {
+    let last = null;
+    const pointOf = (event) => {
+        const e = event;
+        return { x: Number(e.clientX ?? 0), y: Number(e.clientY ?? 0) };
+    };
+    const onDown = (event) => {
+        last = pointOf(event);
+    };
+    const onMove = (event) => {
+        if (last === null)
+            return;
+        const now = pointOf(event);
+        onDrag(now.x - last.x, now.y - last.y);
+        last = now;
+    };
+    const onUp = () => {
+        last = null;
+    };
+    const host = box;
+    if (typeof host.addEventListener !== 'function' || typeof host.removeEventListener !== 'function') {
+        return () => { };
+    }
+    box.addEventListener('pointerdown', onDown);
+    box.addEventListener('pointermove', onMove);
+    box.addEventListener('pointerup', onUp);
+    box.addEventListener('pointercancel', onUp);
+    return () => {
+        box.removeEventListener('pointerdown', onDown);
+        box.removeEventListener('pointermove', onMove);
+        box.removeEventListener('pointerup', onUp);
+        box.removeEventListener('pointercancel', onUp);
+    };
+}
+/** 内置降级缩放器：接口与 panzoom 一致（zoom / pan / reset / getScale / destroy）。 */
+function createFallbackZoomer(box, limits) {
+    const el = box;
+    const style = el.style ?? {};
+    let scale = 1;
+    let tx = 0;
+    let ty = 0;
+    const clamp = (value) => Math.min(limits.maxScale, Math.max(limits.minScale, value));
+    const paint = () => {
+        style.transformOrigin = '50% 50%';
+        style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+    };
+    const unbind = attachDragPan(box, (dx, dy) => {
+        tx += dx;
+        ty += dy;
+        paint();
+    });
+    return {
+        zoom: (next) => {
+            scale = clamp(next);
+            paint();
+            return scale;
+        },
+        pan: (x, y, options) => {
+            if (options !== undefined && options.relative === true) {
+                tx += x;
+                ty += y;
+            }
+            else {
+                tx = x;
+                ty = y;
+            }
+            paint();
+            return { x: tx, y: ty };
+        },
+        reset: () => {
+            scale = 1;
+            tx = 0;
+            ty = 0;
+            paint();
+            return { x: 0, y: 0 };
+        },
+        getScale: () => scale,
+        destroy: () => {
+            unbind();
+            style.transform = '';
+            style.transformOrigin = '';
+        },
+    };
+}
+
     "use strict";
 // ── mermaid 图表浮窗 + 缩放 / 平移（#470 需求 1 / #471 真机反馈）────────────
 // 浮窗 = 页面内 <dialog> 模态，**不用** Fullscreen API：顶层压过宿主 UI，遮罩 / Esc /
@@ -2811,36 +2941,6 @@ function zoomKey(card, box, event) {
 function zoomStep(event) {
     return Number(event.deltaY) < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
 }
-/** 100% = 图表真实像素大小：viewBox 宽 ÷ 未缩放的显示宽（适应容器后两者不等）。 */
-function zoomNaturalScale(state) {
-    const svg = state.box.querySelector('svg');
-    const scale = state.pz.getScale() || 1;
-    const shown = svg === null ? 0 : svg.getBoundingClientRect().width / scale;
-    const natural = svg === null ? 0 : svg.viewBox.baseVal.width;
-    if (shown <= 0 || natural <= 0)
-        return 1;
-    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, natural / shown));
-}
-/** 适应 = 完整显示（contain）：按「容器尺寸 ÷ 图固有尺寸」取宽高比例的**较小**者。
- *  原先 fit 只是 reset 到 scale=1 —— 小图（如 flowchart LR `X-->Y` 仅 ~90px 宽）躺在
- *  上千像素的容器里，点「适应」毫无变化、点「+」一次也只放大 25%，用户感知就是「没反应」。 */
-function zoomFitScale(state) {
-    const svg = state.box.querySelector('svg');
-    if (svg === null)
-        return 1;
-    // 量的必须是**裁剪容器**（frame），不是变换层：canvas 高度由内容决定（扁图如
-    // flowchart LR `X-->Y` 仅 50px），拿它当可用空间算 contain 只会永远得到 1。
-    const container = state.frame;
-    const bw = Number(container.offsetWidth ?? 0);
-    const bh = Number(container.offsetHeight ?? 0);
-    const scale = state.pz.getScale() || 1;
-    const rect = svg.getBoundingClientRect();
-    const sw = rect.width / scale;
-    const sh = rect.height / scale;
-    if (bw <= 0 || bh <= 0 || sw <= 0 || sh <= 0)
-        return 1;
-    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(bw / sw, bh / sh)));
-}
 /** 事件绑定：绑在**卡片**上（指针落在卡片任意位置都能捏合，原先只绑变换层，偏一点就没反应）；
  *  裸 wheel 不拦截，纵向滚动仍归页面。 */
 function bindZoomEvents(state) {
@@ -2866,42 +2966,53 @@ function bindZoomEvents(state) {
     box.addEventListener('dblclick', () => pz.reset({ animate: false }));
     card.addEventListener('keydown', (event) => zoomKey(card, box, event));
 }
-/** 绑定缩放 / 平移（幂等）：返回就绪状态；失败标记卡片后返回 undefined（下次点击可重试）。 */
-function bindZoom(target) {
+/** 用给定引擎建实例（幂等）：状态登记 + 事件绑定 + 首次适应容器。
+ *  panzoom 与内置降级引擎共用这条路；**引擎构造抛错也回落到降级态**，绝不让按钮失灵。 */
+function buildZoomState(target, make) {
     const { card, frame, box } = target;
+    const again = zoomStates.get(box);
+    if (again !== undefined)
+        return again;
+    let pz;
+    try {
+        pz = make({ minScale: ZOOM_MIN, maxScale: ZOOM_MAX });
+    }
+    catch (_e) {
+        pz = createFallbackZoomer(box, { minScale: ZOOM_MIN, maxScale: ZOOM_MAX });
+    }
+    const state = { pz, card, frame, box };
+    zoomStates.set(box, state);
+    frame.setAttribute(ZOOM_ATTR, 'on'); // 外层切裁剪态：放大后不盖住工具条
+    bindZoomEvents(state);
+    if (card.getAttribute(FS_ATTR) === FS_FAIL)
+        card.removeAttribute(FS_ATTR);
+    // 首次绑定即适应容器：小图（flowchart LR 只有几十像素宽）不再缩在一角等用户放大。
+    applyZoom(state, 'fit');
+    return state;
+}
+/** 绑定缩放 / 平移（幂等）：优先 panzoom；**它拉不起来就用内置引擎**。
+ *  #471 真机第四轮：panzoom 走运行时 fetch + <script> 注入，环境差异会让它静默失败，
+ *  用户看到的就是「点了完全没反应」（真机复现：阻断该请求 → pct 停在 100%、按钮全失效、
+ *  卡片零提示）。因此这里**不再有「失败就 return undefined」这条静默路径** ——
+ *  任何失败都必须落到一个真能用的引擎上。 */
+function bindZoom(target) {
+    const { box } = target;
     const bound = zoomStates.get(box);
     if (bound !== undefined)
         return Promise.resolve(bound);
     return ensurePanzoom()
-        .then((Panzoom) => {
-        const again = zoomStates.get(box);
-        if (again !== undefined)
-            return again;
-        if (box.isConnected === false)
-            return undefined;
+        .then((Panzoom) => buildZoomState(target, (limits) => {
         // touchAction 内联态取 pan-y：纵向滚动归页面，横向拖拽平移。
-        const pz = new Panzoom(box, {
-            minScale: ZOOM_MIN,
-            maxScale: ZOOM_MAX,
+        return new Panzoom(box, {
+            minScale: limits.minScale,
+            maxScale: limits.maxScale,
             cursor: 'grab',
             pinchAndPan: true,
             zoomWithWheel: false,
             touchAction: 'pan-y',
         });
-        const state = { pz, card, frame, box };
-        zoomStates.set(box, state);
-        frame.setAttribute(ZOOM_ATTR, 'on'); // 外层切裁剪态：放大后不盖住工具条
-        bindZoomEvents(state);
-        if (card.getAttribute(FS_ATTR) === FS_FAIL)
-            card.removeAttribute(FS_ATTR);
-        // 首次绑定即适应容器：小图（flowchart LR 只有几十像素宽）不再缩在一角等用户放大。
-        applyZoom(state, 'fit');
-        return state;
-    })
-        .catch(() => {
-        card.setAttribute(FS_ATTR, FS_FAIL);
-        return undefined;
-    });
+    }))
+        .catch(() => buildZoomState(target, (limits) => createFallbackZoomer(box, limits)));
 }
 /** 刷新百分比标签：panzoom 的 transform 落在下一帧，同步读可能拿到旧值 → 再补一次。 */
 function refreshZoomLabel(state) {
@@ -2932,10 +3043,7 @@ function zoomEntry(entryId, action) {
     const target = zoomTargetsOf(entryId);
     if (target === null)
         return;
-    void bindZoom(target).then((state) => {
-        if (state !== undefined)
-            applyZoom(state, action);
-    });
+    void bindZoom(target).then((state) => applyZoom(state, action));
 }
 /** 浮窗里的小按钮。 */
 function overlayButton(label, onClick) {
@@ -3028,10 +3136,7 @@ function toggleCardOverlay(entryId) {
         return false;
     openCardOverlay(target, entryId);
     // 浮窗里容器大得多 → 重新适应，一开就是铺满的大图。
-    void bindZoom(target).then((state) => {
-        if (state !== undefined)
-            applyZoom(state, 'fit');
-    });
+    void bindZoom(target).then((state) => applyZoom(state, 'fit'));
     return target.card.getAttribute(FS_ATTR) === FS_OPEN;
 }
 /** teardown：收掉浮窗、销毁实例、清表与加载缓存。 */

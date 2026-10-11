@@ -63,7 +63,9 @@ window.__ModuleLoader__.load({
     /*__PART_MERMAID_SCAN__*/
     // mermaid 图表导出（PNG / SVG 下载 + 复制源码）
     /*__PART_MERMAID_EXPORT__*/
-    // mermaid 图表全屏 + 缩放 / 平移（panzoom 懒加载 asset）
+    // mermaid 图表全屏 + 缩放 / 平移（panzoom 懒加载；失败切内置降级引擎）
+    /*__PART_ZOOM_MATH__*/
+    /*__PART_ZOOM_FALLBACK__*/
     /*__PART_MERMAID_ZOOM__*/
     // 「渲染为…」语言手动切换（覆盖层 + 块内控件 + 卡片头并项）
     /*__PART_LANG_SWITCH__*/

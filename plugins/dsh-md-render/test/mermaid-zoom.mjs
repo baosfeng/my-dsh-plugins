@@ -372,19 +372,49 @@ test('卡片卸载 / 组件清理时收掉自己的浮窗', async () => {
   assert.equal(f.card.parentNode, f.host, '卡片已还回')
 })
 
-test('库加载失败 → 标记卡片 failed（不再静默），下次点击可重试', async () => {
+test('panzoom 拉取失败 → 内置降级引擎接管（按钮不再「点了没反应」）', async () => {
+  // #471 真机第四轮：panzoom 走**运行时** fetch，环境差异（资源加载 / 注入时机 / UMD 落点）
+  // 会让它静默失败。真机复现过用户现象：阻断该请求 → 百分比停在初始 100%、绑定从未建立、
+  // 每个缩放按钮点下去毫无反应、卡片零提示。降级引擎用纯 CSS transform，零运行时加载。
   const original = globalThis.fetch
   globalThis.fetch = () => Promise.reject(new Error('offline'))
   try {
     const f = setup({ Panzoom: undefined })
     f.loaded.exports.zoomEntry(ENTRY, 'in')
     await settle()
-    assert.equal((f.card._listeners.wheel || []).length, 0, '加载失败不绑事件（保持静态图）')
-    assert.equal(f.card.getAttribute(FS_ATTR), 'failed', '失败可见（此前静默 → 像「点了没反应」）')
+    assert.equal((f.card._listeners.wheel || []).length, 1, '降级后照样接管滚轮 / 触控板捏合')
+    assert.equal(f.card.getAttribute(FS_ATTR), null, '不再是「失败即静默丢弃」态')
+    assert.equal(f.frame.getAttribute('data-dsh-md-render-zoom'), 'on', '外层容器切到裁剪态')
+    // 真正的判据：变换层上真的出现了放大（修复前这条路径 = 点了完全没反应）
+    assert.ok(
+      String(f.box.style.transform).includes('scale(1.5)'),
+      '降级引擎真的放大了（首次 fit→1，点击 + → 1.5）：' + String(f.box.style.transform),
+    )
+    f.loaded.exports.zoomEntry(ENTRY, 'out')
+    await settle()
+    assert.ok(String(f.box.style.transform).includes('scale(1)'), '缩小真的回 1：' + String(f.box.style.transform))
+    f.loaded.exports.toggleCardOverlay(ENTRY)
+    assert.ok(panelOf(f.page), '降级态下浮窗也照常开')
+    f.loaded.exports.closeCardOverlay()
   } finally {
     if (original === undefined) delete globalThis.fetch
     else globalThis.fetch = original
   }
+})
+
+test('panzoom 构造抛错 → 同样降级到内置引擎（绝不静默）', async () => {
+  const f = setup({
+    Panzoom: function BrokenPanzoom() {
+      throw new Error('ctor boom')
+    },
+  })
+  f.page.window.Panzoom = f.Panzoom
+  f.loaded.exports.zoomEntry(ENTRY, 'in')
+  await settle()
+  assert.ok(
+    String(f.box.style.transform).includes('scale(1.5)'),
+    '构造抛错也必须有反应：' + String(f.box.style.transform),
+  )
 })
 
 test('teardown 收浮窗 + 销毁实例（不留下绑定与内联样式）', async () => {

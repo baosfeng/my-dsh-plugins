@@ -65,7 +65,7 @@ description: 使用当 需要检查/处理当前项目 GitHub 仓库的健康问
 
 ### fork 池（本仓库隔离方案，必须遵守）
 
-> 每个修复类子任务拥有且仅拥有一个 fork（`/tmp/gh-fork-<编号>`）；主路径 `node scripts/fork-pool.mjs create <编号>` → `check` → `clean <编号> --yes`。完整规则（基线 SHA 坑、hooks 未生效、依赖软链误暂存、`git cherry` 假阴性、并发测试冲突）与手工 5 步兜底见 [references/network-and-fork-pool.md](references/network-and-fork-pool.md)。
+> 每个修复类子任务拥有且仅拥有一个 fork（`/tmp/gh-fork-<编号>`）；主路径 `node scripts/fork-pool.mjs create <编号>` → `check` → `clean <编号> --yes`。完整规则（基线 SHA 坑、hooks 未生效、依赖软链误暂存、`git cherry` 假阴性、并发测试冲突）与手工 5 步兜底见 [references/network-and-fork-pool.md](references/network-and-fork-pool.md)。write scope 粒度、基线冻结、只读任务禁令与收尾核验见 [leader 行为规范](../../docs/开发指南/leader行为规范.md) 第八 / 九节。
 
 ### 主 agent 在本仓库的职责
 

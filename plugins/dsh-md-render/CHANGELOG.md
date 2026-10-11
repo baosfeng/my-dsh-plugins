@@ -8,6 +8,18 @@
 
 ### 变更
 
+- **内容渲染完全换成插件自己的实现（不再调用官方 `MarkdownText` / `CodeBlock`）**（用户口径：「markdown 需要全部替换为我们自己的渲染」「代码渲染使用我们自己的，不要使用原生的」）：
+  - **所有围栏块都由自研渲染器接管**（此前只接管 `text` 家族的围栏块，`js` / `json` / `bash` 等一律走官方 `CodeBlock`）：`text` / `plaintext` / `txt` / `md` / `markdown` 与**确证无语言**的块 → **自研 markdown 渲染**（真实 `h1`–`h6` / `ul` / `ol` / `table` / `blockquote` / `a` / `code` 标签，自有 `dsh-md-render-md-*` class）；其余语言 → **自研代码块**：banner 显示**围栏 info string 的真实语言名**（官方那套是 `supportsHighlighting(lang) ? lang : labels.codeLabel`，不认识的标记一律显示本地化标签「代码块」——用户不满的正是这个）+ 复制 + 自动换行 + 语法高亮。
+  - **解析层 marked 18.1.0**：marked 词法树 → 自有 React vdom（不是 innerHTML；raw HTML 与官方同口径地当字面文本，链接只放行 `http`/`https`/`mailto` 与同源相对路径）。既有表格容错（GFM 不认的两种分隔行写法）在新解析层上原样接上。
+  - **高亮层 highlight.js 11.12.0**：用 hljs 结果里的 `_emitter` 令牌树 → 自有 vdom `hljs-*` span（class 口径与 hljs `scopeToCSSClass` 逐字一致），**全程没有 innerHTML / dangerouslySetInnerHTML**；着色取宿主 shiki token 调色板（`--shiki-token-*`，与官方代码块同一份、深浅色自动跟随）并带 `--dsw-*` 兜底。
+  - **两个库都走 `assets/` 懒加载**（与 mermaid 引擎同一模式；用户口径「打包体积不用控，只控启动速度」）：`assets/marked-18.1.0.umd.js`（47 KB，MIT）与 `assets/highlightjs-11.12.0.min.js`（129 KB，BSD-3-Clause）由 host 半静态托管，client 首次真正需要时 fetch + 注入 `<script>`，**不进 `lib/client.js`**；就绪通知触发一次重扫，把加载窗口内落在官方形态的块补渲染。
+  - **降级链**（真降级）：解析层没就绪 → 块保持宿主官方形态；hljs 没就绪 / 语言不认识 / 单块 > 6 万字符 → 纯文本代码块（内容一字不少）；`react-dom/client` 不可用 → DOM 注入点不动宿主 DOM。
+  - `pre[data-context-text]` 上下文注入块与公共 API `MarkdownView` 同样换成自研渲染器（解析层没就绪时 `MarkdownView` 落 `<pre>` 兜底，且订阅就绪通知后重渲染）。
+  - 「渲染为…」三态控件（图表 / Markdown / 源码）对**所有**围栏块可用；视图状态属性 `data-dsh-md-render-text-view` 新增取值 `code`，自有 CSS 对 `markdown` / `code` 两个接管视图都隐藏官方直接子元素，切「源码」即恢复官方原样。
+  - **门控先于语言判定**：流式块（`[data-streaming]`）与开关关闭的块**一次索引请求都不发**（此前语言判定在门控之前，流式期间会放大请求量）。
+  - 产物依赖面收窄：client 半**不再 require 官方 UI 组件库**（`@deepseek-ai/dsh-client-ui-primitives`），只依赖平台 seed 模块 `react` + `react-dom/client`；新增静态断言（不 require 官方组件、自研渲染器无 innerHTML 路径、两个新 assets URL 必须出现在产物里、`code` 视图的隐藏规则）。
+  - client 产物 178 KB → 214 KB（新增自研渲染器；两个库不进 bundle）。**升级后必须重启 `dsh web`**：host 半的资源白名单在启动时固定，老 host 会把两个新 assets URL 判 404（此时真降级为官方形态，不报错）。
+
 - **图表缩放改为「有感」**（真机反馈「点放大还是没反应」）：
   - **打开即适应容器**（contain）：此前初始 `scale=1`，小图（`flowchart LR X-->Y` 仅约 114px 宽）躺在 654px 宽的卡片里缩成一角。现在首次绑定与开浮窗都按 contain 自动放大 —— 实测扁图 `114×50 → 365×160`（**320%**）。
   - **「适应」不再是 reset**：改为真正的 contain（容器与图固有尺寸取宽高比例的**较小**者）。此前 reset 到 1 对已撑满高度的图毫无变化，用户点它只会觉得「没反应」。

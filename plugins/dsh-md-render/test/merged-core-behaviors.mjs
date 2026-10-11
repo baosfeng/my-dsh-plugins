@@ -12,7 +12,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import {
-  createOfficialStack,
+  createRenderStack,
   createPage,
   createReactStub,
   installGlobals,
@@ -43,8 +43,8 @@ function setup({ mermaid = true } = {}) {
     }
   }
   const react = createReactStub()
-  const stack = createOfficialStack(page, react)
-  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  const stack = createRenderStack(page, react)
+  const loaded = loadBundle({ page, react, reactDom: stack.reactDom })
   loaded.exports.apply({ effect: (fn) => fn() })
   return { page, loaded, stack, scroll, rendered }
 }
@@ -158,8 +158,8 @@ test('核心行为②：开关关闭 / 无思考容器 / 契约失配都不动�
   assert.ok(true, '无 [data-variant="think"] 容器时短路，不抛错')
 })
 
-test('核心行为③：text 围栏块 markdown 化，并与 mermaid 分流（不双重包裹）', () => {
-  const { loaded, scroll, stack } = setup()
+test('核心行为③：围栏块交给自研渲染器，并与 mermaid 分流（不双重包裹）', () => {
+  const { loaded, scroll } = setup()
   const text = makeCodeBlock({ lang: 'text', code: '## 标题' })
   const mermaid = makeMermaidBlock()
   const js = makeCodeBlock({ lang: 'js', code: 'const a = 1' })
@@ -167,8 +167,8 @@ test('核心行为③：text 围栏块 markdown 化，并与 mermaid 分流（�
   scroll.appendChild(mermaid)
   scroll.appendChild(js)
 
-  // 与 scanner 相同的分流顺序：text 围栏 → mermaid（语言集合不重叠）
-  loaded.exports.scanTextBlocks(scroll)
+  // 与 scanner 相同的分流顺序：围栏块（markdown / 代码两路）→ mermaid（语言集合不重叠）
+  loaded.exports.scanFenceBlocks(scroll)
   loaded.exports.scanMermaidBlocks(scroll, 1)
 
   assert.ok(text.querySelector('div.dsh-md-render-text-md'), 'text 块 markdown 化')
@@ -178,7 +178,8 @@ test('核心行为③：text 围栏块 markdown 化，并与 mermaid 分流（�
   assert.ok(mermaid.querySelector('div.dsh-md-render-mermaid-host'), 'mermaid 块挂卡片')
   assert.equal(mermaid.querySelector('div.dsh-md-render-text-md'), null, 'mermaid 块不被 markdown 接管')
 
-  assert.equal(js.getAttribute('data-dsh-md-render-text-view'), null, 'js 块不被 markdown 接管')
+  assert.equal(js.getAttribute('data-dsh-md-render-text-view'), 'code', 'js 块走自研代码块视图')
+  assert.equal(js.querySelector('div.dsh-md-render-text-md'), null, 'js 块不被 markdown 接管')
   assert.equal(js.querySelector('div.dsh-md-render-mermaid-host'), null, 'js 块无卡片 host')
-  assert.equal(stack.markdown.calls.filter((c) => c.text === '## 标题').length, 1, 'text 内容进入官方渲染器一次')
+  assert.equal(text.querySelectorAll('h2').length, 1, 'text 内容由自研渲染器渲染一次')
 })

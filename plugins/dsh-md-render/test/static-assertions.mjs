@@ -89,7 +89,11 @@ test('client bundle：不对官方元素写 style / class / aria', () => {
   //  ① `>pre` 直接子选择器永远匹配不到（pre 在 [data-code-block-content] 内）→ 代码块与图表叠加；
   //  ② 只隐藏内容容器、漏了 banner 容器 → 卡片上方残留 42px 的「代码块」标签行。
   // 视图值限定保证：切回「查看原文 / 源码」时规则不再匹配，官方原样恢复。
-  for (const view of ['data-dsh-md-render-mermaid-view', 'data-dsh-md-render-text-view="markdown"']) {
+  for (const view of [
+    'data-dsh-md-render-mermaid-view',
+    'data-dsh-md-render-text-view="markdown"',
+    'data-dsh-md-render-text-view="code"',
+  ]) {
     assert.ok(
       CODE.includes(`.md-code-block[${view}]>:not([class*=dsh-md-render]):not(.tzx-md){display:none}`),
       `${view}: hides every official child (banner + content), keeping only plugin-owned nodes`,
@@ -139,4 +143,30 @@ test('client bundle：不含自绘助手节点 / 自绘思考块 / 旧包名', (
 
 test('client bundle：不内联 mermaid 引擎（走 assets 静态路由）', () => {
   assert.equal(CODE.includes('/md-render/assets/mermaid-10.9.3.min.js'), true, 'engine served from the assets route')
+})
+
+test('client bundle：内容渲染完全用插件自己的实现（不碰官方 MarkdownText / CodeBlock）', () => {
+  assert.equal(
+    CODE.includes('@deepseek-ai/dsh-client-ui-primitives'),
+    false,
+    '官方 UI 组件库不再被 require（内容渲染 100% 自研）',
+  )
+  for (const needed of ['function markdownNodes(', 'function CodeBlockView(', 'function ensureRenderAsset(']) {
+    assert.ok(CODE.includes(needed), needed + ' 必须在产物里（片段静默丢失是这类构建最典型的故障模式）')
+  }
+  // 自研渲染器的两个懒加载依赖走 assets 静态路由，**不内联**（用户口径：只控启动速度）。
+  assert.equal(CODE.includes('/md-render/assets/marked-18.1.0.umd.js'), true, 'marked 走 assets 懒加载')
+  assert.equal(CODE.includes('/md-render/assets/highlightjs-11.12.0.min.js'), true, 'highlight.js 走 assets 懒加载')
+  assert.equal(CODE.includes('marked-18.1.0.umd'), true, '构建期注入的 URL 是单一真源的字面量')
+})
+
+test('自研 markdown / 代码渲染器不用 innerHTML（模型输出永不被当 HTML 执行）', () => {
+  for (const part of ['own-markdown.ts', 'own-code.ts']) {
+    const src = stripComments(readFileSync(join(here, '..', 'src', 'client', 'parts', part), 'utf8'))
+    assert.equal(src.includes('innerHTML'), false, part + ': 不得出现任何 innerHTML 路径（注释不算）')
+  }
+  // 产物里唯一允许的 HTML 字符串消费点是 mermaid 引擎产出的 SVG（与官方 CodeBlock 消费 shiki HTML
+  // 同款、同为引擎自产）；markdown 与代码路径全部是 vdom，转义交给 React。
+  assert.equal((CODE.match(/dangerouslySetInnerHTML/g) ?? []).length, 1, 'only the mermaid svg card')
+  assert.equal(CODE.includes('__html: svg'), true, 'the single consumer is the mermaid svg card')
 })

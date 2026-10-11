@@ -27,7 +27,7 @@ import { createLangIndex } from '../lib/lang-index.js'
 // makeRealHostCodeBlock = 「真实宿主形态」的块（issue #466 实测）：banner 只有本地化标签
 // 「代码块」（shiki 不认识 text / plaintext / txt / mermaid / mmd），<code> 不带 language-*。
 import {
-  createOfficialStack,
+  createRenderStack,
   createPage,
   createReactStub,
   installGlobals,
@@ -90,8 +90,8 @@ function boot({ blocks = [], hostIndex = null } = {}) {
   // mermaid 引擎桩：卡片挂载后不会真去 fetch 引擎（否则会污染 fetch 桩的请求计数）。
   page.window.mermaid = { initialize() {}, render: () => Promise.resolve({ svg: '<svg></svg>' }) }
   const react = createReactStub()
-  const stack = createOfficialStack(page, react)
-  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  const stack = createRenderStack(page, react)
+  const loaded = loadBundle({ page, react, reactDom: stack.reactDom })
   const stub = installLangFetchStub(hostIndex ?? createLangIndex())
   active = () => {
     loaded.exports.teardownLangProbes()
@@ -373,8 +373,8 @@ test('⑰ 流式门控：仍在 [data-streaming] 里的块不接管，稳定后�
   const page = installGlobals(createPage(wrapper))
   page.window.mermaid = { initialize() {}, render: () => Promise.resolve({ svg: '<svg></svg>' }) }
   const react = createReactStub()
-  const stack = createOfficialStack(page, react)
-  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  const stack = createRenderStack(page, react)
+  const loaded = loadBundle({ page, react, reactDom: stack.reactDom })
   const stub = installLangFetchStub(createLangIndex())
   active = () => {
     loaded.exports.teardownLangProbes()

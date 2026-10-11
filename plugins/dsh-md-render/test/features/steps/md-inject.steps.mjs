@@ -9,7 +9,7 @@ import { Given, When, Then, Before, After, setWorldConstructor } from '@cucumber
 import assert from 'node:assert/strict'
 import { createLangIndex } from '../../../lib/lang-index.js'
 import {
-  createOfficialStack,
+  createRenderStack,
   createPage,
   createReactStub,
   installGlobals,
@@ -56,9 +56,9 @@ After(function () {
 function boot(world) {
   world.page = installGlobals(createPage(world.scroll))
   const react = createReactStub()
-  const stack = world.official ? createOfficialStack(world.page, react) : { markdown: undefined, reactDom: undefined }
+  const stack = world.official ? createRenderStack(world.page, react) : { reactDom: undefined, assets: null }
   world.stack = stack
-  world.loaded = loadBundle({ page: world.page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  world.loaded = loadBundle({ page: world.page, react, reactDom: stack.reactDom })
 }
 
 Given('会话里有语言标记为 {word} 的围栏块，内容是一段 markdown', function (lang) {
@@ -186,12 +186,19 @@ Then('该块内出现官方渲染的 markdown 容器', function () {
   const body = this.block.querySelector('div.dsh-md-render-text-md')
   assert.ok(body, '渲染容器已追加')
   assert.ok(String(body.className).includes('tzx-md'), '容器带 tzx-md 契约类')
-  assert.equal(
-    body.querySelector('.official-md-stub').getAttribute('data-text'),
-    '## 标题\n\n- 一\n- 二',
-    '文本交给官方渲染器',
-  )
+  assert.equal(body.querySelector('h2').textContent, '标题', '自研渲染产出真实 h2（官方组件不参与）')
+  assert.equal(body.querySelectorAll('li').length, 2, '列表渲染为真 li')
+  assert.equal(body.querySelector('.official-md-stub'), null, '没有任何官方渲染器产物')
   assert.equal(this.block.getAttribute('data-dsh-md-render-text-view'), 'markdown', '初始为 markdown 视图')
+})
+
+Then('该块被按代码块接管（语言位留空）', function () {
+  assert.equal(this.block.getAttribute('data-dsh-md-render-text-view'), 'code', '代码视图')
+  assert.equal(
+    this.block.querySelector('span.dsh-md-render-code-lang').textContent,
+    '',
+    '语言无从确证时留空，不写「代码块」也不瞎猜',
+  )
 })
 
 Then('该块带「查看原文」切换按钮', function () {
@@ -209,11 +216,8 @@ Then('该纯文本块旁出现官方渲染的 markdown 容器', function () {
   const body = this.row.querySelector('div.dsh-md-render-context-md')
   assert.ok(body, '渲染容器已插入')
   assert.equal(this.pre.previousElementSibling, body, '容器插在原文之前')
-  assert.equal(
-    body.querySelector('.official-md-stub').getAttribute('data-text'),
-    '## 子 agent 回传\n\n要点 **加粗**',
-    '文本交给官方渲染器',
-  )
+  assert.equal(body.querySelector('h2').textContent, '子 agent 回传', '自研渲染产出真实 h2')
+  assert.equal(body.querySelector('strong').textContent, '加粗', '加粗渲染为真 strong')
 })
 
 Then('原文纯文本块被隐藏', function () {
@@ -331,7 +335,7 @@ Then('该块被按 markdown 兜底渲染', function () {
   const body = this.block.querySelector('div.dsh-md-render-text-md')
   assert.ok(body, '无语言块按 markdown 兜底渲染')
   assert.equal(this.block.getAttribute('data-dsh-md-render-text-view'), 'markdown', '初始 markdown 视图')
-  assert.equal(body.querySelector('.official-md-stub').getAttribute('data-text'), FENCE_BODY, '原文进入官方渲染器')
+  assert.equal(body.querySelector('h2').textContent, '标题', '自研渲染产出真实 h2')
 })
 
 Then('该块不挂图表卡片', function () {

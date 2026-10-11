@@ -1,6 +1,8 @@
 /**
  * dsh-md-render — client half (browser)。职责边界：**只做 markdown 内容的渲染**（markdown
  * 文本 / 代码样式 / 图表渲染 / 思考 markdown），其他一律保持官方默认样式。
+ * **内容渲染完全用插件自己的实现**（marked 解析 + 自研 vdom 渲染 + highlight.js 高亮），
+ * 不再调用官方 MarkdownText / CodeBlock；解析层与高亮层走 assets 懒加载，不进本 bundle。
  * 注入点与能力清单见 README.md / docs/md渲染/，此处不重复。
  *
  * 硬约束（可机器校验，见 test/static-assertions.mjs）：
@@ -9,7 +11,7 @@
  *  - **不读 React fiber 私有属性**（__reactFiber$）；
  *  - 单 MutationObserver（一个扫描器按语言分流）。
  *
- * 样式走 DSH 语义 token（--dsw-alias-* / --dsw-font-*），随 activation 注入、fiber
+ * 样式走 DSH 语义 token（--dsw-* / --dsw-font-markdown-*），随 activation 注入、fiber
  * teardown 卸载（HMR / 禁用无残留）。
  *
  * BUILD NOTE: 本文件是源码模板（骨架）。scripts/build.mjs 把编译后的片段注入到下方
@@ -23,7 +25,7 @@ window.__ModuleLoader__.load({
     var module = { exports: {} }
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
-    // createElement / hooks 由 react 提供；注入渲染经 official-view.part.js 取平台模块。
+    // createElement / hooks 由 react 提供；自有渲染经 dom-root.part 取平台 react-dom/client。
     const { createElement, useState, useEffect } = require('react')
 
     // 路由路径（构建期由 host 半 lib/routes/paths.js 注入的单一真源）
@@ -31,6 +33,8 @@ window.__ModuleLoader__.load({
 const CONFIG_API_URL = "/md-render/api/config"
 const MERMAID_ENGINE_URL = "/md-render/assets/mermaid-10.9.3.min.js"
 const PANZOOM_SCRIPT_URL = "/md-render/assets/panzoom-4.6.2.min.js"
+const MARKED_URL = "/md-render/assets/marked-18.1.0.umd.js"
+const HIGHLIGHTJS_URL = "/md-render/assets/highlightjs-11.12.0.min.js"
 const LANGS_API_URL = "/md-render/api/langs"
 const LANGS_HASH_PARAM = "h"
     // 渲染配置（三段开关 + 旧扁平键兼容）+ 围栏语言索引（issue #466）
@@ -340,9 +344,11 @@ function resolveFenceLangEx(block) {
 function resolveFenceLang(block) {
     return resolveFenceLangEx(block).lang;
 }
-/** 本插件 markdown 渲染容器内的块不再二次接管（防递归重建；类名来自 text-markdown.ts）。 */
+/** 本插件渲染容器内的块不再二次接管（防递归重建；类名来自 block-render.ts）。 */
 function isInsideRenderedMarkdown(block) {
-    return !!(block.closest && block.closest('div.' + TEXT_MD_CLASS));
+    if (!block.closest)
+        return false;
+    return block.closest('div.' + BLOCK_MD_CLASS) !== null || block.closest('div.' + CODE_HOST_CLASS) !== null;
 }
 /** 取一批待查哈希（不超过单请求上限，其余留到下批）。 */
 function takeLangBatch() {
@@ -910,56 +916,140 @@ function normalizeTables(text) {
 }
 Object.assign(exports,{normalizeTables,isTableSeparator,isTableHeader,splitTableCells});
 
-    // 官方渲染器接入（平台 MarkdownText + react-dom/client）
+    // 渲染依赖懒加载：marked（解析层）/ highlight.js（高亮层），走 assets 静态路由
     "use strict";
-// ── 官方渲染器接入（平台 MarkdownText + react-dom/client）─────────────
-// 本插件**不再自实现 markdown 渲染**：GFM 表格（对齐 / 宽表格横向滚动）、
-// 公式（micromark-extension-math + KaTeX）、代码块（shiki 高亮 / 语言标签 /
-// 行号 / 复制按钮 / 主题）全部由宿主官方
-// @deepseek-ai/dsh-client-ui-primitives 的 MarkdownText 提供（0.1.7-rc.2
-// 起内置）。本模块只负责两件事：
-//  1. 解析平台模块：两个 spec 都在宿主 staticModules seed 表里
-//     （react-dom/client、@deepseek-ai/dsh-client-ui-primitives），
-//     零安装零打包（白名单见 scripts/check-client-modules.mjs 的
-//     SEED_MODULES）；
-//  2. 把官方组件渲染到**本插件插入的容器**里（react-dom/client.createRoot，
-//     与 dsh-mermaid-render 同一手法；注入点才是本插件的真增量）。
+// ── 渲染依赖的懒加载（marked 解析层 / highlight.js 高亮层）─────────────────
+// 与 mermaid 引擎**同一套模式**：vendored UMD 放 assets/，host 半 /md-render/assets
+// 静态托管，client 首次真正需要时才 fetch + 注入 <script>，**不进 lib/client.js**
+// （用户口径：打包体积不用控、只控启动速度 —— 两个库合计 ~176 KB 若内联会直接抬高
+// 首屏解析成本，懒加载对启动是 0 增量）。
 //
-// 降级（真降级，不是假降级）：官方组件或 createRoot 取不到时 ——
-//   · MarkdownView（公共 API）落 <pre> 兜底：原文不丢、渲染期不抛错；
-//   · DOM 注入点（text 围栏 / 上下文块）**不动宿主 DOM**，保持宿主原样。
-// labels 必填（官方 MarkdownText 没有默认值，渲染含围栏代码块的文档会读
-// labels.code.copyLabel），本插件按自己的中文界面硬编码。
-const PLATFORM_MARKDOWN_MODULE = '@deepseek-ai/dsh-client-ui-primitives';
-const PLATFORM_MARKDOWN_EXPORT = 'MarkdownText';
-/** 官方 MarkdownText 的 labels 契约（MarkdownLabels：code + footnotes）。 */
-const MARKDOWN_LABELS = {
-    code: { copyLabel: '复制', copiedLabel: '已复制' },
-    footnotes: '脚注',
+// 契约（与 mermaid-engine.ts 同款，判据由测试钉住）：
+//   · 全局优先：页面里已有 window.marked / window.hljs（别的插件先加载过 / 复跑）→ 直接复用，零请求；
+//   · 同名去重：同一个库只 fetch 一次；失败**不再重试**（渲染退回宿主官方形态，静默不报错）；
+//   · 就绪通知：加载完成 → 通知订阅者（scanner 据此重扫，把「加载期间落在官方形态」的块补渲染）；
+//   · 任何异常都吞掉（fetch 失败 / 注入失败 / 无 document）→ 调用方拿到 null 走降级。
+/** 库名（也是 window 上的全局变量名）：marked = markdown 解析层，hljs = 语法高亮层。 */
+const MARKED_ASSET = 'marked';
+const HLJS_ASSET = 'hljs';
+/** 两个懒加载库（URL 由构建期从 host 半 routes/paths.ts 注入，单一真源）。 */
+const renderAssetTable = {
+    [MARKED_ASSET]: { url: MARKED_URL, global: MARKED_ASSET, promise: null, failed: false },
+    [HLJS_ASSET]: { url: HIGHLIGHTJS_URL, global: HLJS_ASSET, promise: null, failed: false },
 };
-/** React 语义的组件判定：函数，或带 $$typeof 的对象（memo/forwardRef/lazy）。 */
-function isRenderableComponent(value) {
-    if (typeof value === 'function')
-        return true;
-    return typeof value === 'object' && value !== null && typeof value.$$typeof === 'symbol';
+/** 已就绪的库数（进幂等签名：库到位后块要重建一次，把纯文本换成高亮 / 渲染态）。 */
+let renderAssetVersion = 0;
+/** 就绪订阅者（scanner 装配；teardown 清空，防跨 fiber 泄漏）。 */
+let renderAssetListeners = [];
+/** 取全局对象（非对象 / 未加载 → null）。 */
+function renderAssetGlobal(name) {
+    const value = typeof window !== 'undefined' ? window[name] : undefined;
+    return value !== null && value !== undefined && typeof value === 'object' ? value : null;
 }
-let platformCache;
-/** 解析官方 MarkdownText 与 createRoot；任一缺失返回 null（真降级起点）。 */
-function platformMarkdown() {
-    if (platformCache !== undefined)
-        return platformCache;
-    let MarkdownText = null;
+/** 注入脚本并复查全局（注入后仍缺失 → 抛错，由调用方转成失败态）。 */
+function injectRenderAsset(code, globalName) {
+    const script = document.createElement('script');
+    script.textContent = code;
+    document.head.appendChild(script);
+    const loaded = renderAssetGlobal(globalName);
+    if (loaded === null)
+        throw new Error('render asset missing after injection: ' + globalName);
+    return loaded;
+}
+/** fetch + 注入（无 document / fetch / 非 200 一律 reject）。 */
+function fetchRenderAsset(entry) {
+    if (typeof document === 'undefined' || document === null || typeof document.head === 'undefined') {
+        return Promise.reject(new Error('no document to inject render asset'));
+    }
+    if (typeof fetch !== 'function')
+        return Promise.reject(new Error('no fetch for render asset'));
+    return fetch(entry.url)
+        .then((resp) => {
+        if (resp === null || resp === undefined || resp.ok === false) {
+            throw new Error('render asset fetch failed: ' + entry.url);
+        }
+        return resp.text();
+    })
+        .then((code) => injectRenderAsset(code, entry.global));
+}
+/** 广播「某个库已就绪」（订阅者内部自会判断自己关心的那一个）。 */
+function noteRenderAssetReady() {
+    renderAssetVersion += 1;
+    const listeners = renderAssetListeners;
+    renderAssetListeners = [];
+    for (const listener of listeners) {
+        try {
+            listener();
+        }
+        catch (_e) {
+            /* 订阅者异常不阻断其它订阅者 */
+        }
+    }
+}
+/**
+ * 确保某个库可用：已加载 → 同步返回全局；否则启动一次 fetch 并返回 null。
+ * 调用方拿到 null 时**保持宿主官方形态**，等就绪通知后的重扫再接管（真降级）。
+ */
+function ensureRenderAsset(name) {
+    const entry = renderAssetTable[name];
+    if (entry === undefined)
+        return null;
+    const existing = renderAssetGlobal(entry.global);
+    if (existing !== null)
+        return existing;
+    if (entry.failed)
+        return null;
+    if (entry.promise === null) {
+        entry.promise = fetchRenderAsset(entry)
+            .then((loaded) => {
+            noteRenderAssetReady();
+            return loaded;
+        })
+            .catch(() => {
+            // 失败即放弃（本会话不再重试）：块停在宿主官方形态，不报错、不刷屏。
+            entry.failed = true;
+            entry.promise = null;
+            return null;
+        });
+    }
+    return null;
+}
+/** 已就绪库数（进幂等签名；库到位后签名变化 → 块重建一次）。 */
+function renderAssetsReady() {
+    return renderAssetVersion;
+}
+/** 订阅「库就绪」（返回撤销函数）。 */
+function installRenderAssetReady(listener) {
+    renderAssetListeners.push(listener);
+    return () => {
+        renderAssetListeners = renderAssetListeners.filter((item) => item !== listener);
+    };
+}
+// teardown 只清订阅者：脚本已在页面里、全局仍在，重扫（re-apply）时秒命中，不重复请求。
+function teardownRenderAssets() {
+    renderAssetListeners = [];
+}
+Object.assign(exports,{MARKED_URL,HIGHLIGHTJS_URL,MARKED_ASSET,HLJS_ASSET,ensureRenderAsset,renderAssetsReady,installRenderAssetReady,teardownRenderAssets});
+
+    // 自有渲染容器的 React root 管理（不再 require 官方组件）
+    "use strict";
+// ── 自有渲染容器的 React root 管理（不再依赖官方组件）────────────────────
+// 用户口径（最高优先级）：「markdown 需要全部替换为我们自己的渲染」「代码渲染使用我们自己的」。
+// 本插件插入的容器里跑的是**自研渲染器**产出的 vdom，由平台 seed 模块
+// react-dom/client 的 createRoot 落到 DOM（与 mermaid 卡片同一手法，零安装零打包）。
+// 本模块不再 require 官方 UI 组件库（ui-primitives）—— 官方 MarkdownText / CodeBlock
+// 已完全不参与本插件的内容渲染。
+//
+// 只保留两件事：
+//  1. 解析 react-dom/client（缺失 → 真降级：DOM 注入点不动宿主 DOM、MarkdownView 落 <pre>）；
+//  2. 「容器 → root」映射（可枚举 + WeakRef）：宿主重渲染把容器连节点一起抹掉时，
+//     悬挂的 React root 必须 unmount，否则 root 与 fiber 树一直活着。
+let domRootPlatform;
+/** 解析 react-dom/client（字面量 spec：check-client-modules.mjs 以 AST 提取字面量 require）。 */
+function platformDomRoot() {
+    if (domRootPlatform !== undefined)
+        return domRootPlatform;
     let createRoot = null;
-    // 字面量 spec：scripts/check-client-modules.mjs 以 AST 提取字面量 require 并逐条
-    // 判定是否在允许集合内（平台 seed 表 / dsh.client.external / 自身包名）——写成变量
-    // 会让这条门禁看不见依赖，等于绕开门禁。
-    try {
-        const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
-        MarkdownText = primitives ? primitives[PLATFORM_MARKDOWN_EXPORT] : null;
-    }
-    catch (_e) {
-        MarkdownText = null;
-    }
     try {
         const reactDomClient = require('react-dom/client');
         createRoot = reactDomClient ? reactDomClient.createRoot : null;
@@ -967,19 +1057,22 @@ function platformMarkdown() {
     catch (_e) {
         createRoot = null;
     }
-    platformCache = isRenderableComponent(MarkdownText)
-        ? {
-            MarkdownText,
-            createRoot: typeof createRoot === 'function' ? createRoot : null,
-        }
-        : null;
-    return platformCache;
+    domRootPlatform =
+        typeof createRoot === 'function' ? { createRoot: createRoot } : null;
+    return domRootPlatform;
 }
-/** 官方 MarkdownText 是否可用于 DOM 注入（组件 + createRoot 都在）。 */
-function officialMarkdownAvailable() {
-    const platform = platformMarkdown();
+/** 自研渲染器的挂载能力是否可用（react-dom/client 在）。 */
+function domRootAvailable() {
+    const platform = platformDomRoot();
     return platform !== null && platform.createRoot !== null;
 }
+/**
+ * 容器 → React root。
+ *
+ * 用 `Map` + `WeakRef` 而不是 `WeakMap`：**需要能枚举**以清扫「宿主把容器连同
+ * 我们的节点一起重渲染掉」留下的悬挂 root（容器已脱离文档 → 必须 unmount，否则
+ * React root 与其 fiber 树一直活着）。WeakRef 保证条目不会让容器本身无法回收。
+ */
 const markdownRoots = new Map();
 /** 取出仍存活且与当前容器一致的 root。 */
 function rootOf(container) {
@@ -1041,11 +1134,11 @@ function sweepDetachedRoots() {
     }
 }
 /**
- * 把 markdown 原文渲染进容器（官方组件负责渲染，文本先过表格容错规范化）。
- * @returns 是否已渲染（官方组件不可用 → false，调用方保持宿主原样）。
+ * 把 vdom 渲染进容器（复用容器上已有的 root）。
+ * @returns react-dom/client 不可用 → false（调用方保持宿主原样，真降级）。
  */
-function renderMarkdownInto(container, text) {
-    const platform = platformMarkdown();
+function renderNodeInto(container, node) {
+    const platform = platformDomRoot();
     if (platform === null || platform.createRoot === null)
         return false;
     let root = rootOf(container);
@@ -1053,8 +1146,18 @@ function renderMarkdownInto(container, text) {
         root = platform.createRoot(container);
         trackRoot(container, root);
     }
-    root.render(createElement(platform.MarkdownText, { text: normalizeTables(text), labels: MARKDOWN_LABELS }));
+    root.render(node);
     return true;
+}
+/**
+ * 把 markdown 原文渲染进容器（**自研渲染器**；表格容错在 markdownNodes 内）。
+ * @returns marked 未就绪 / react-dom 不可用 → false（调用方保持宿主原样）。
+ */
+function renderMarkdownInto(container, text) {
+    const nodes = markdownNodes(text);
+    if (nodes === null)
+        return false;
+    return renderNodeInto(container, nodes);
 }
 /** 卸载容器上的 React root（容器内容被重建/清理前调用，避免悬挂 root）。 */
 function unmountMarkdownIn(container) {
@@ -1069,14 +1172,448 @@ function unmountMarkdownIn(container) {
         /* 卸载异常不阻断调用方清理 DOM */
     }
 }
-/** MarkdownView 的内容节点：官方组件，或 <pre> 兜底（原文不丢）。 */
-function officialMarkdownNode(text) {
-    const platform = platformMarkdown();
-    if (platform === null)
-        return createElement('pre', { className: 'dsh-md-render-fallback' }, text);
-    return createElement(platform.MarkdownText, { text: normalizeTables(text), labels: MARKDOWN_LABELS });
+Object.assign(exports,{platformDomRoot,domRootAvailable,renderNodeInto,renderMarkdownInto,unmountMarkdownIn,sweepDetachedRoots});
+
+    // 自研代码块渲染（hljs 高亮 + 真实语言名 banner + 复制 + 自动换行）
+    "use strict";
+// ── 自研代码块渲染（语法高亮 + 真实语言名 banner + 复制 + 自动换行）──────────
+// 用户口径（最高优先级）：「代码渲染使用我们自己的，不要使用原生的」。
+// 本模块**不调用官方 CodeBlock / MarkdownText**：banner 自己画（语言名用**围栏 info
+// string 的真实 token**，不是官方的本地化标签「代码块」）、复制按钮自己实现、
+// 高亮走懒加载的 highlight.js（assets/highlightjs-*.min.js，不进 bundle）。
+//
+// 高亮实现（刻意不用 innerHTML）：
+//   highlight.js 的结果对象带 `_emitter` 令牌树（root.children：字符串 / {scope,children}），
+//   本模块按 hljs 自己的 `scopeToCSSClass` 口径把 scope 映射成 `hljs-*` class，再落成
+//   **React vdom span** —— 全程没有字符串拼 HTML、没有 dangerouslySetInnerHTML，
+//   模型输出不会被当 HTML 执行（与官方「raw HTML 保持字面文本」同一条安全口径）。
+//
+// 降级（真降级）：hljs 没加载好 / 语言不在 hljs 语言表 / 超长（> MAX_HIGHLIGHT_CHARS）
+//   一律渲染**纯文本**代码块（内容一字不少，只是没有着色）；hljs 就绪后签名变化会重建一次。
+/** 代码块渲染容器类名（block-render.ts 插入块内的自有节点）。 */
+const CODE_HOST_CLASS = 'dsh-md-render-code-host';
+/** 代码卡片类名。 */
+const CODE_VIEW_CLASS = 'dsh-md-render-code';
+/** banner 行 / 语言名 / 操作区 / 复制按钮类名。 */
+const CODE_HEAD_CLASS = 'dsh-md-render-code-head';
+const CODE_LANG_CLASS = 'dsh-md-render-code-lang';
+const CODE_ACTIONS_CLASS = 'dsh-md-render-code-actions';
+const CODE_COPY_CLASS = 'dsh-md-render-code-copy';
+/** 代码主体容器（pre）/ 无高亮时的纯文本 code 类名。 */
+const CODE_PRE_CLASS = 'dsh-md-render-code-pre';
+const CODE_TEXT_CLASS = 'dsh-md-render-code-text';
+/** hljs class 前缀（hljs 的 options.classPrefix 默认值，逐字对齐）。 */
+const HLJS_CLASS_PREFIX = 'hljs-';
+/** 单块高亮上限（字符）：超出只做纯文本渲染（高亮是 O(代码长度) 的正则扫描）。 */
+const MAX_HIGHLIGHT_CHARS = 60000;
+/**
+ * hljs scope → CSS class（与 hljs HTMLRenderer 的 `scopeToCSSClass` **逐字同口径**）：
+ *  · `language:xxx` → `language-xxx`（子语言）；
+ *  · 分级 scope `comment.line` → `hljs-comment line`；
+ *  · 简单 scope `keyword` → `hljs-keyword`。
+ */
+function hljsScopeClass(scope) {
+    const name = String(scope ?? '');
+    if (name === '')
+        return '';
+    if (name.indexOf('language:') === 0)
+        return name.replace('language:', 'language-');
+    if (name.indexOf('.') >= 0) {
+        const pieces = name.split('.');
+        const head = pieces.shift() ?? '';
+        const tail = pieces.map((piece, index) => piece + '_'.repeat(index + 1));
+        return [HLJS_CLASS_PREFIX + head, ...tail].join(' ');
+    }
+    return HLJS_CLASS_PREFIX + name;
 }
-Object.assign(exports,{PLATFORM_MARKDOWN_MODULE,MARKDOWN_LABELS,platformMarkdown,officialMarkdownAvailable,renderMarkdownInto,unmountMarkdownIn,sweepDetachedRoots,officialMarkdownNode});
+/** 令牌树 → vdom 子节点（无 scope 的容器节点**不包 span**，与 hljs 的 emitsWrappingTags 一致）。 */
+function hljsChildren(node, keyBase, out) {
+    const children = Array.isArray(node.children) ? node.children : [];
+    for (let i = 0; i < children.length; i += 1) {
+        const child = children[i];
+        if (typeof child === 'string') {
+            out.push(child);
+            continue;
+        }
+        if (child === null || typeof child !== 'object')
+            continue;
+        const key = keyBase + '-' + i;
+        const inner = [];
+        hljsChildren(child, key, inner);
+        const className = hljsScopeClass(child.scope);
+        if (className === '') {
+            for (const item of inner)
+                out.push(item);
+            continue;
+        }
+        out.push(createElement('span', { key, className }, ...inner));
+    }
+}
+/** 从 hljs 结果里取令牌树根（结果 / _emitter / root 任一层缺失 → null）。 */
+function hljsRootOf(result) {
+    if (result === null || result === undefined)
+        return null;
+    const emitter = result._emitter;
+    if (emitter === null || emitter === undefined)
+        return null;
+    const root = emitter.root;
+    return root === null || root === undefined ? null : root;
+}
+/** 真正调 hljs（语言存在但语法扫描抛错 → 纯文本降级，不冒泡）。 */
+function highlightWith(hljs, lang, code) {
+    try {
+        if (!hljs.getLanguage.call(hljs, lang))
+            return null;
+        const result = hljs.highlight.call(hljs, code, {
+            language: lang,
+            ignoreIllegals: true,
+        });
+        const root = hljsRootOf(result);
+        if (root === null)
+            return null;
+        const out = [];
+        hljsChildren(root, 'hl', out);
+        return out.length === 0 ? null : out;
+    }
+    catch (_e) {
+        return null;
+    }
+}
+/**
+ * 高亮一段代码：返回 vdom 子节点数组；**任何一步不成立就返回 null**（调用方渲染纯文本）。
+ * 用 hljs 结果里的 `_emitter` 令牌树，不消费它的 HTML 字符串。
+ */
+function highlightCodeNodes(lang, code) {
+    if (lang === '' || code === '' || code.length > MAX_HIGHLIGHT_CHARS)
+        return null;
+    const hljs = ensureRenderAsset(HLJS_ASSET);
+    if (hljs === null)
+        return null;
+    if (typeof hljs.getLanguage !== 'function')
+        return null;
+    return highlightWith(hljs, lang, code);
+}
+/** 代码主体：有高亮 → hljs class 的 span 树；否则纯文本（内容一字不少）。 */
+function codeBodyNodes(lang, source) {
+    const nodes = highlightCodeNodes(lang, source);
+    if (nodes === null)
+        return createElement('code', { className: CODE_TEXT_CLASS }, source);
+    return createElement('code', { className: HLJS_CLASS_PREFIX + 'code' }, ...nodes);
+}
+/**
+ * 自研代码块：banner（真实语言名 + 复制）+ 自动换行的 pre。
+ * `lang` 为空 = 该块语言识别不出 —— 此时**不编造语言名**，banner 语言位留空。
+ */
+function CodeBlockView({ lang, code }) {
+    const [copied, setCopied] = useState(false);
+    const source = typeof code === 'string' ? code : String(code ?? '');
+    const onCopy = () => {
+        copyText(source).then(() => setCopied(true), () => { });
+    };
+    const copyLabel = copied ? '已复制' : '复制';
+    return createElement('div', { className: CODE_VIEW_CLASS }, createElement('div', { className: CODE_HEAD_CLASS }, createElement('span', { className: CODE_LANG_CLASS }, lang === '' ? '' : lang), createElement('div', { className: CODE_ACTIONS_CLASS }, createElement('button', { type: 'button', className: CODE_COPY_CLASS, title: copyLabel, 'aria-label': copyLabel, onClick: onCopy }, copyLabel))), createElement('pre', { className: CODE_PRE_CLASS, tabIndex: 0 }, codeBodyNodes(lang, source)));
+}
+Object.assign(exports,{CODE_HOST_CLASS,CODE_VIEW_CLASS,CODE_LANG_CLASS,CODE_PRE_CLASS,MAX_HIGHLIGHT_CHARS,hljsScopeClass,highlightCodeNodes,CodeBlockView});
+
+    // 自研 markdown 渲染（marked 词法树 → vdom，表格容错在此接上）
+    "use strict";
+// ── 自研 markdown 渲染（marked 解析 → React vdom）───────────────────────
+// 用户口径（最高优先级）：「markdown 需要全部替换为我们自己的渲染」。本模块**不调用
+// 官方 MarkdownText**：markdown → marked 词法树 → 本插件自己的 React 元素（自有 class，
+// 只在 .tzx-md 作用域内由自有 CSS 上色，样式全部取 --dsw-* 变量）。
+//
+// 安全口径（与官方 MarkdownText 逐条对齐）：
+//   · **raw HTML 一律当字面文本**（marked 的 html token 渲染成文本节点，React 会转义）——
+//     模型输出永远不会被当 HTML 执行；
+//   · 链接只放行 http / https / mailto 与同源相对路径（`/…`，不含 `//host`）；
+//   · 图片只放行 http / https 与同源相对路径；其余渲染 alt 文本；
+//   · 全程没有 innerHTML / dangerouslySetInnerHTML。
+//
+// 解析层懒加载（assets/marked-*.umd.js，不进 bundle）：marked 未就绪 → 返回 null，
+// 调用方保持宿主官方形态；就绪通知后的重扫再接管（真降级，绝不丢内容）。
+// 表格容错沿用既有 normalizeTables（GFM 不认的两种分隔行写法先规范化）。
+// 数学公式不做（用户明确：暂不做）。
+/** markdown 文本内的行内代码类名。 */
+const MD_CODE_CLASS = 'dsh-md-render-md-code';
+/** 解析异常时的原文兜底容器类名（内容一字不丢）。 */
+const MD_PLAIN_CLASS = 'dsh-md-render-md-plain';
+/** 表格单元格对齐 class（不用行内 style / 不用 align 属性）。 */
+const MD_ALIGN_CLASSES = {
+    left: 'dsh-md-render-md-left',
+    center: 'dsh-md-render-md-center',
+    right: 'dsh-md-render-md-right',
+};
+/** 链接放行的协议（与官方 sanitizeUrl 同口径）。 */
+const MD_LINK_PROTOCOLS = ['http:', 'https:', 'mailto:'];
+/** info string → 语言 token（`{js}` / `.js` 花括号与点前缀写法也认，取首个空白分隔 token）。 */
+const MD_LANG_TOKEN_RE = /^\{?\.?([A-Za-z0-9_+#-]*)\}?$/;
+/** 任意值 → markdown 文本（null / undefined → 空串）。 */
+function mdText(value) {
+    if (typeof value === 'string')
+        return value;
+    return value === null || value === undefined ? '' : String(value);
+}
+/** info string → 小写语言 token（无语言 → 空串）。 */
+function mdInfoLang(info) {
+    const token = mdText(info).trim().split(/\s+/)[0] ?? '';
+    const matched = MD_LANG_TOKEN_RE.exec(token);
+    return (matched === null ? token : matched[1]).toLowerCase();
+}
+/** 归一化后的对象形态 token（非对象 → 空对象）。 */
+function mdToken(value) {
+    return value !== null && typeof value === 'object' ? value : {};
+}
+/** 标题层级收敛到 h1–h6（marked 可能给出 7+ 的畸形层级）。 */
+function mdHeadingTag(depth) {
+    const value = Number(depth);
+    const level = Number.isFinite(value) ? Math.min(6, Math.max(1, Math.trunc(value))) : 1;
+    return 'h' + String(level);
+}
+/** 表格列对齐 class 后缀（未知 / 缺省 → 空）。 */
+function mdAlignClass(align) {
+    const name = mdText(align);
+    return Object.prototype.hasOwnProperty.call(MD_ALIGN_CLASSES, name) ? ' ' + MD_ALIGN_CLASSES[name] : '';
+}
+/** 安全链接目标：http / https / mailto 或同源相对路径；其余返回空串（渲染为纯文本）。 */
+function mdSafeHref(url) {
+    const value = mdText(url);
+    if (value === '')
+        return '';
+    try {
+        const protocol = new URL(value).protocol;
+        return MD_LINK_PROTOCOLS.indexOf(protocol) >= 0 ? value : '';
+    }
+    catch (_e) {
+        return value.charAt(0) === '/' && value.charAt(1) !== '/' ? value : '';
+    }
+}
+/** 安全图片地址：http / https 或同源相对路径；其余返回空串（渲染 alt 文本）。 */
+function mdSafeImageSrc(url) {
+    const value = mdText(url);
+    if (value === '')
+        return '';
+    try {
+        const protocol = new URL(value).protocol;
+        return protocol === 'http:' || protocol === 'https:' ? value : '';
+    }
+    catch (_e) {
+        return value.charAt(0) === '/' && value.charAt(1) !== '/' ? value : '';
+    }
+}
+/** 行内 token 数组 → vdom 子节点。 */
+function mdInlineChildren(tokens, keyBase) {
+    if (!Array.isArray(tokens))
+        return [];
+    const out = [];
+    for (let i = 0; i < tokens.length; i += 1) {
+        const node = mdInlineNode(tokens[i], keyBase + '-' + i);
+        if (node !== null)
+            out.push(node);
+    }
+    return out;
+}
+/** 语义强调类行内 token（strong / em / del → 同名 HTML 标签）。 */
+const MD_EMPHASIS_TAGS = { strong: 'strong', em: 'em', del: 'del' };
+/** 行内 token → vdom 节点（未知 token 原样出文本，绝不丢内容）。 */
+function mdInlineNode(token, key) {
+    const t = mdToken(token);
+    const type = mdText(t.type);
+    if (Object.prototype.hasOwnProperty.call(MD_EMPHASIS_TAGS, type)) {
+        return createElement(MD_EMPHASIS_TAGS[type], { key }, ...mdInlineChildren(t.tokens, key));
+    }
+    if (type === 'codespan') {
+        // 与官方一致：行内代码里的换行按空格显示。
+        return createElement('code', { key, className: MD_CODE_CLASS }, mdText(t.text).replace(/\r?\n|\r/g, ' '));
+    }
+    if (type === 'br')
+        return createElement('br', { key });
+    if (type === 'link')
+        return mdLinkNode(t, key);
+    if (type === 'image')
+        return mdImageNode(t, key);
+    // text / escape / html（与官方一致：raw HTML 当字面文本，React 负责转义）/ 未知 token
+    return mdText(t.text);
+}
+/** 链接：目标不安全 → 退化为纯文本（不产生可点击的 javascript: / data: 目标）。 */
+function mdLinkNode(t, key) {
+    const children = mdInlineChildren(t.tokens, key);
+    const href = mdSafeHref(t.href);
+    if (href === '')
+        return createElement('span', { key, className: 'dsh-md-render-md-link-plain' }, ...children);
+    const title = mdText(t.title);
+    return createElement('a', { key, className: 'dsh-md-render-md-link', href, target: '_blank', rel: 'noreferrer noopener', title: title === '' ? undefined : title }, ...children);
+}
+/** 图片：地址不安全 → 渲染 alt 文本（不加载任何来路不明的资源）。 */
+function mdImageNode(t, key) {
+    const alt = mdText(t.text);
+    const src = mdSafeImageSrc(t.href);
+    if (src === '')
+        return createElement('span', { key, className: 'dsh-md-render-md-img-alt' }, alt);
+    const title = mdText(t.title);
+    return createElement('img', {
+        key,
+        className: 'dsh-md-render-md-img',
+        src,
+        alt,
+        title: title === '' ? undefined : title,
+        loading: 'lazy',
+    });
+}
+/** 表格单元格（th / td；对齐走自有 class）。 */
+function mdCellNode(cell, key, tag, align) {
+    return createElement(tag, { key, className: 'dsh-md-render-md-cell' + mdAlignClass(align) }, ...mdInlineChildren(mdToken(cell).tokens, key));
+}
+/** 表格（外层包一个横向滚动容器，宽表格不撑破消息区）。 */
+function mdTableNode(t, key) {
+    const header = Array.isArray(t.header) ? t.header : [];
+    const rows = Array.isArray(t.rows) ? t.rows : [];
+    const aligns = Array.isArray(t.align) ? t.align : [];
+    const headRow = createElement('tr', { key: key + '-head' }, ...header.map((cell, index) => mdCellNode(cell, key + '-h-' + index, 'th', aligns[index])));
+    const bodyRows = rows.map((row, rowIndex) => {
+        const cells = Array.isArray(row) ? row : [];
+        return createElement('tr', { key: key + '-r-' + rowIndex }, ...cells.map((cell, index) => mdCellNode(cell, key + '-r-' + rowIndex + '-' + index, 'td', aligns[index])));
+    });
+    return createElement('div', { key, className: 'dsh-md-render-md-table-wrap' }, createElement('table', { className: 'dsh-md-render-md-table' }, createElement('thead', null, headRow), createElement('tbody', null, ...bodyRows)));
+}
+/**
+ * 列表项内容：tight 列表的 `text` token 直接出行内节点，其余（段落 / 嵌套列表 / 代码块…）
+ * 按块渲染 —— 与 marked 的 tight / loose 语义一致，且不额外包一层 `<p>`。
+ */
+function mdItemChildren(item, keyBase) {
+    const tokens = Array.isArray(item.tokens) ? item.tokens : [];
+    const out = [];
+    for (let i = 0; i < tokens.length; i += 1) {
+        const key = keyBase + '-i-' + i;
+        const t = mdToken(tokens[i]);
+        if (t.type === 'text') {
+            if (Array.isArray(t.tokens)) {
+                for (const node of mdInlineChildren(t.tokens, key))
+                    out.push(node);
+            }
+            else {
+                out.push(mdText(t.text));
+            }
+            continue;
+        }
+        const node = mdBlockNode(tokens[i], key);
+        if (node === null)
+            continue;
+        if (Array.isArray(node)) {
+            for (const item2 of node)
+                out.push(item2);
+        }
+        else {
+            out.push(node);
+        }
+    }
+    return out;
+}
+/** 列表项（任务列表渲染成只读复选框）。 */
+function mdItemNode(item, key) {
+    const t = mdToken(item);
+    const children = mdItemChildren(t, key);
+    if (t.task !== true)
+        return createElement('li', { key, className: 'dsh-md-render-md-li' }, ...children);
+    const box = createElement('input', {
+        key: key + '-task',
+        className: 'dsh-md-render-md-task',
+        type: 'checkbox',
+        checked: t.checked === true,
+        disabled: true,
+        readOnly: true,
+    });
+    return createElement('li', { key, className: 'dsh-md-render-md-li dsh-md-render-md-task-item' }, box, ...children);
+}
+/** 列表（有序列表按 marked 的 start 还原起始序号）。 */
+function mdListNode(t, key) {
+    const ordered = t.ordered === true;
+    const items = Array.isArray(t.items) ? t.items : [];
+    const start = Number(t.start);
+    const startAttr = ordered && Number.isFinite(start) && start > 1 ? start : undefined;
+    return createElement(ordered ? 'ol' : 'ul', { key, className: 'dsh-md-render-md-list', start: startAttr }, ...items.map((item, index) => mdItemNode(item, key + '-' + index)));
+}
+/** 围栏代码块（markdown 内部的代码块：同样走**自研**代码块渲染器）。 */
+function mdCodeNode(t, key) {
+    return createElement(CodeBlockView, { key, lang: mdInfoLang(t.lang), code: mdText(t.text) });
+}
+/** 内容全是行内 token 的块级类型（paragraph / heading / text / html）。 */
+const MD_TEXT_BLOCK_TYPES = ['paragraph', 'heading', 'text', 'html'];
+/** 行内内容块 → vdom 节点（html 按字面文本出一段，其余按标签渲染）。 */
+function mdTextBlockNode(type, t, key) {
+    if (type === 'paragraph') {
+        return createElement('p', { key, className: 'dsh-md-render-md-p' }, ...mdInlineChildren(t.tokens, key));
+    }
+    if (type === 'heading') {
+        return createElement(mdHeadingTag(t.depth), { key, className: 'dsh-md-render-md-h' }, ...mdInlineChildren(t.tokens, key));
+    }
+    if (type === 'html')
+        return createElement('p', { key, className: 'dsh-md-render-md-html' }, mdText(t.text));
+    return mdInlineChildren(t.tokens, key); // 'text'（tight 列表项）
+}
+/** 块级 token → vdom 节点（null = 不产出；数组 = 展开多个）。 */
+function mdBlockNode(token, key) {
+    const t = mdToken(token);
+    const type = mdText(t.type);
+    if (MD_TEXT_BLOCK_TYPES.indexOf(type) >= 0)
+        return mdTextBlockNode(type, t, key);
+    if (type === 'blockquote') {
+        return createElement('blockquote', { key, className: 'dsh-md-render-md-quote' }, ...mdBlockChildren(t.tokens, key));
+    }
+    if (type === 'code')
+        return mdCodeNode(t, key);
+    if (type === 'table')
+        return mdTableNode(t, key);
+    if (type === 'list')
+        return mdListNode(t, key);
+    if (type === 'hr')
+        return createElement('hr', { key, className: 'dsh-md-render-md-hr' });
+    return null; // space / def / 未知 token
+}
+/** 块级 token 数组 → vdom 子节点数组（展开嵌套数组，保持 key 稳定）。 */
+function mdBlockChildren(tokens, keyBase) {
+    if (!Array.isArray(tokens))
+        return [];
+    const out = [];
+    for (let i = 0; i < tokens.length; i += 1) {
+        const node = mdBlockNode(tokens[i], keyBase + '-' + i);
+        if (node === null)
+            continue;
+        if (Array.isArray(node)) {
+            for (const item of node)
+                out.push(item);
+        }
+        else {
+            out.push(node);
+        }
+    }
+    return out;
+}
+/**
+ * markdown 文本 → vdom 子节点数组（调用方放进 `.tzx-md` 容器）。
+ * @returns null = marked 还没就绪（调用方保持宿主官方形态，等就绪重扫）；
+ *          数组 = 渲染结果（解析异常时退化为原文 `<pre>`，内容一字不丢）。
+ */
+function markdownNodes(text) {
+    const source = mdText(text);
+    const marked = ensureRenderAsset(MARKED_ASSET);
+    if (marked === null)
+        return null;
+    const lexer = marked.lexer;
+    if (typeof lexer !== 'function')
+        return null;
+    let tokens = null;
+    try {
+        // 表格容错沿用既有实现：GFM 不认的两种分隔行写法先规范化再进解析器。
+        tokens = lexer.call(marked, normalizeTables(source));
+    }
+    catch (_e) {
+        tokens = null;
+    }
+    if (!Array.isArray(tokens))
+        return [createElement('pre', { key: 'md-plain', className: MD_PLAIN_CLASS }, source)];
+    return mdBlockChildren(tokens, 'md');
+}
+Object.assign(exports,{MD_CODE_CLASS,MD_PLAIN_CLASS,mdInfoLang,mdSafeHref,mdSafeImageSrc,markdownNodes});
 
     // 整段 markdown 复制（官方只有代码块复制）
     "use strict";
@@ -1170,21 +1707,31 @@ function CopyButton({ kind }) {
 }
 Object.assign(exports,{copyText,fallbackCopyText});
 
-    // 统一 MarkdownView：对外公共 API（官方渲染 + 整段复制）
+    // 统一 MarkdownView：对外公共 API（自研渲染 + 整段复制）
     "use strict";
 // ── 统一 MarkdownView（对外公共 API 面）──────────────────────────────
 // 对外承诺（README「公共 API 契约」）：require('dsh-md-render').MarkdownView
 // 存在且为 React 组件，props 为 { text: string }（额外 props 忽略，非字符串
 // 降级为文本）；bundle id 为 dsh-md-render。
 //
-// 实现 = 官方 MarkdownText（平台 seed 模块，表格 / 公式 / 代码块全部由
-// 官方渲染）+ 非标准表格容错预处理（table-normalize.ts） + 「整段复制」
-// 按钮（官方只有代码块复制，整段复制是本插件保留的增量）。官方组件不可用
-// → <pre> 兜底。本文件不含任何自实现的 markdown 渲染。
-/** 统一 MarkdownView：{ text } → div.tzx-md（官方渲染 + 整段复制按钮）。 */
+// 实现 = **本插件自己的 markdown 渲染器**（own-markdown.ts：marked 词法树 →
+// React vdom，解析层走 assets 懒加载）+ 非标准表格容错（table-normalize.ts）
+// + 「整段复制」按钮（官方只有代码块复制）。**不调用官方 MarkdownText**。
+// 解析层还没加载好 → 先落 <pre> 原文兜底（内容一字不丢），就绪通知触发重渲染。
+/** 统一 MarkdownView：{ text } → div.tzx-md（自研渲染 + 整段复制按钮）。 */
 function MarkdownView({ text }) {
     const source = typeof text === 'string' ? text : String(text === undefined || text === null ? '' : text);
-    return createElement('div', { className: 'tzx-md' }, officialMarkdownNode(source), 
+    const [ready, setReady] = useState(false);
+    const nodes = markdownNodes(source);
+    // 解析层未就绪：订阅一次就绪通知，避免整段停在兜底形态（依赖数组只看 source / 就绪态）。
+    useEffect(() => {
+        if (nodes !== null)
+            return undefined;
+        return installRenderAssetReady(() => setReady(true));
+    }, [source, ready]);
+    return createElement('div', { className: 'tzx-md' }, 
+    // 解析层未就绪 → <pre> 兜底（原文不丢、渲染期不抛错）；就绪后换成自研渲染结果。
+    nodes === null ? createElement('pre', { className: 'dsh-md-render-fallback' }, source) : nodes, 
     // 整段复制按钮（copyButton 关闭 → 不渲染）；官方只有代码块复制。
     renderOptions.markdown.copyButton ? createElement(CopyButton, { kind: 'content' }) : null);
 }
@@ -1192,26 +1739,25 @@ Object.assign(exports,{MarkdownView});
 
     // 上下文注入块 markdown 渲染（pre[data-context-text]）
     "use strict";
-// ── 上下文注入块 markdown 渲染 ───────────────────────────────────────
+// ── 上下文注入块 markdown 渲染（自研渲染器）─────────────────────────────
 // 宿主 @deepseek-ai/dsh-client-ui-chat 的 ContextBody 把上下文注入正文
 // （子 agent 回传消息 / AGENTS.md 等 workspace 指令 / 回忆注入）渲染为
 // <pre data-context-text="true"> 纯文本（ui-chat/src/client/chat/ContextBody.tsx:147，
 // CSS white-space:pre-wrap），其中的 markdown（粗体 / 列表 / 标题 / 表格 /
 // 代码块）不会渲染——官方不接管这类纯文本块，所以这是本插件的真增量。
-// 本模块在 DOM 层把这类块交给**官方 MarkdownText**（react-dom/client 挂到
-// 插入的容器里）渲染，与宿主消息同一套渲染器（表格 / 公式 / 代码块能力
-// 完全一致）。
+// 本模块在 DOM 层把这类块交给**本插件自己的 markdown 渲染器**（own-markdown.ts，
+// 解析层 marked 走 assets 懒加载），**不再调用官方 MarkdownText**。
 //
 // 与 React 共存的约束（宿主白名单是 React 管理的 DOM）：
 //  - 不修改 pre 的子结构（React 对 <pre>{text}</pre> 的文本 diff 会整体
 //    改写 textContent，改子结构必被冲掉），只在 pre 之前插入渲染容器并
 //    给 pre 置 hidden；
-//  - 渲染容器写 data-signature（文本长度 + djb2 哈希），重扫时签名一致
-//    且容器仍在位 → 跳过（幂等，不重复渲染、不抖动）；
+//  - 渲染容器写 data-signature（文本长度 + djb2 哈希 + 渲染库就绪版本），重扫时签名
+//    一致且容器仍在位 → 跳过（幂等，不重复渲染、不抖动）；
 //  - 宿主重建节点（会话切换 / 重渲染）冲掉容器后，MutationObserver 兜底
 //    重扫会重做；pre 上的标记不影响宿主（React 不管理该属性）。
-// 超长文本（> MAX_CONTEXT_CHARS）跳过；官方组件不可用时不接管（保持宿主
-// 纯文本，真降级）。
+//  - 超长文本（> MAX_CONTEXT_CHARS）跳过；渲染库没就绪 / react-dom 不可用 → 不接管
+//    （保持宿主纯文本，真降级；库就绪后的重扫会补上）。
 /** 上下文注入正文选择器（宿主 ContextBody 的稳定 data 契约）。 */
 const CONTEXT_TEXT_SELECTOR = 'pre[data-context-text="true"]';
 /** 已处理标记（写在 pre 上）。 */
@@ -1232,11 +1778,11 @@ function contextBodyOf(pre) {
     const prev = pre.previousElementSibling;
     return prev && prev.getAttribute(CONTEXT_BODY_ATTR) === 'true' ? prev : null;
 }
-/** 接管前置条件（开关 / 官方组件 / 父节点 / 长度）→ 待渲染文本；不满足返回 null。 */
+/** 接管前置条件（开关 / 挂载能力 / 父节点 / 长度）→ 待渲染文本；不满足返回 null。 */
 function contextSourceOf(pre) {
     if (!renderOptions.markdown.contextMarkdown)
         return null;
-    if (!officialMarkdownAvailable())
+    if (!domRootAvailable())
         return null;
     const parent = pre.parentNode;
     if (!parent || typeof parent.insertBefore !== 'function')
@@ -1246,7 +1792,7 @@ function contextSourceOf(pre) {
         return null;
     return { parent, text };
 }
-/** 建容器并交给官方渲染器；官方组件不可用 → null（调用方保持宿主原样）。 */
+/** 建容器并交给**自研 markdown 渲染器**；渲染库未就绪 / 不可用 → null（调用方保持宿主原样）。 */
 function buildContextBody(text, signature) {
     const body = document.createElement('div');
     body.className = 'tzx-md dsh-md-render-context-md';
@@ -1259,7 +1805,7 @@ function applyContextMarkdown(pre) {
     const source = contextSourceOf(pre);
     if (source === null)
         return;
-    const signature = String(source.text.length) + ':' + contextHash(source.text);
+    const signature = String(source.text.length) + ':' + contextHash(source.text) + ':' + String(renderAssetsReady());
     const existing = contextBodyOf(pre);
     if (existing && existing.getAttribute('data-signature') === signature)
         return;
@@ -1282,154 +1828,186 @@ function scanContextBlocks(root) {
 }
 Object.assign(exports,{CONTEXT_TEXT_SELECTOR,MAX_CONTEXT_CHARS,contextHash,applyContextMarkdown,scanContextBlocks});
 
-    // text / plaintext / txt / md 围栏块按 markdown 渲染 + 查看原文
+    // 围栏块接管：markdown / 代码两路（mermaid 交给下面）
     "use strict";
-// ── text / plaintext / txt / md 围栏块按 markdown 渲染 ────────────────
-// 模型常把**实际是 markdown 的内容**（标题 / 列表 / 表格 / 链接）用 ```text 围起来，宿主官方
-// CodeBlock 按等宽代码块原样显示就丢掉了排版 —— 官方不接管这类块，所以这是本插件的真增量。
-// 做法：块内文本交给**官方 MarkdownText**（经 react-dom/client 挂到我们插入的容器里）渲染，
-// 表格 / 公式 / 代码块能力与宿主消息完全一致（同一渲染器），每块独立「查看原文」切换；宿主
-// 内容容器保持原位（只按视图隐藏），视图状态写在块属性 data-dsh-md-render-text-view 上。
-// 语言判定收敛到 block-lang.ts 的 **resolveFenceLangEx**（不读 React fiber 私有属性）；它带出
-// 的 `confirmed` 决定「确证无语言」能否兜底（需求 3）。流式块跳过（scanner 的 [data-streaming]
-// 门控 + 属性移除兜底重扫），稳定后再渲染；幂等靠块上的签名（模式 + 长度 + djb2），变化才重建。
-/** 触发 markdown 渲染的围栏语言标记（一律渲染，不做内容判定）。 */
+// ── 围栏块接管：markdown / 代码两路，全部由**自研渲染器**产出 ──────────────
+// 用户口径（最高优先级）：「markdown 需要全部替换为我们自己的渲染」「代码渲染使用我们
+// 自己的，不要使用原生的」。**任何语言的围栏块都由本插件接管**：
+//   · mermaid / mmd     → 图表卡片（mermaid-scan.ts，语言集合不重叠）；
+//   · text 家族 / 确证无语言 → 自研 markdown 渲染（own-markdown.ts）；
+//   · 其余语言（js / ts / json / bash / python …）→ 自研代码块渲染（own-code.ts），
+//     banner 显示**围栏语言的真实 token**（不是官方那个本地化标签「代码块」）。
+//
+// 官方节点一律**不删不改**：只在块内追加自有容器，靠自有 CSS 在接管视图下隐藏官方
+// banner 与内容（切回「源码」时规则不再匹配，官方原样恢复）。视图状态写在块属性
+// data-dsh-md-render-text-view（markdown | code | source）上，幂等靠签名（kind + 语言 +
+// 长度 + 内容哈希 + **渲染库就绪版本**：marked / hljs 到位后签名变化，重建一次把
+// 纯文本换成渲染态 / 高亮态）。流式块跳过（[data-streaming] 门控），稳定后再渲染。
+/** 触发自研 markdown 渲染的语言标记（一律渲染，不做内容判定）。 */
 const TEXT_FENCE_LANGS = ['text', 'plaintext', 'txt', 'md', 'markdown'];
-/** 视图状态标记（写在 md-code-block 上，每块独立）：markdown | source。 */
-const TEXT_VIEW_ATTR = 'data-dsh-md-render-text-view';
+/** 视图状态标记（写在 md-code-block 上，每块独立）：markdown | code | source。 */
+const BLOCK_VIEW_ATTR = 'data-dsh-md-render-text-view';
 /** 幂等签名标记（写在 md-code-block 上）。 */
-const TEXT_SIG_ATTR = 'data-dsh-md-render-text-sig';
-/** markdown 渲染容器类名（样式见 styles.ts；tzx-md 为既有契约类）。 */
-const TEXT_MD_CLASS = 'dsh-md-render-text-md';
-/** 「查看原文 / 查看渲染」切换按钮类名。 */
-const TEXT_TOGGLE_CLASS = 'dsh-md-render-text-toggle';
-/** 视图 → 按钮文案（按钮文案指向「点击后去哪」）。 */
-const TEXT_VIEW_LABELS = { markdown: '查看原文', source: '查看渲染' };
-/** 单块渲染上限（字符）；超长块保持原代码块，避免单块渲染卡顿。 */
+const BLOCK_SIG_ATTR = 'data-dsh-md-render-text-sig';
+/** markdown 渲染容器类名（tzx-md 为既有契约类，样式作用域见 styles.ts）。 */
+const BLOCK_MD_CLASS = 'dsh-md-render-text-md';
+/** 「查看原文 / 查看渲染」切换按钮类名（仅 markdown 视图需要）。 */
+const BLOCK_TOGGLE_CLASS = 'dsh-md-render-text-toggle';
+/** 视图 → 按钮文案（文案指向「点击后去哪」）。 */
+const BLOCK_VIEW_LABELS = { markdown: '查看原文', source: '查看渲染' };
+/** markdown 单块渲染上限（字符）：超长块保持官方代码块，避免单块渲染卡顿。 */
 const MAX_TEXT_FENCE_CHARS = 100000;
+/** 代码单块渲染上限（字符）：超出同样保持官方形态（与语言索引的上限同口径）。 */
+const MAX_CODE_FENCE_CHARS = 200000;
 /**
-/**
- * 块的围栏语言（**唯一来源** = block-lang.ts 的 resolveFenceLangEx；不读 React fiber）。
- * **必须在这里过滤到本文件接管的语言**：resolveFenceLangEx 会把认得的其它语言原样返回，
- * 不在此收口就会把普通代码块也 markdown 化（回归）。
+ * 块的接管类型（**唯一入口**，手动覆盖优先级最高）：
+ *  ⓪ 「渲染为…」人工覆盖（lang-switch.ts 写入）：source → 不接管（官方原样）；
+ *     markdown → 强制 markdown；mermaid → 交给 mermaid-scan；
+ *  ① mermaid / mmd → 交给 mermaid-scan；
+ *  ② text 家族，或「确证无语言」→ 自研 markdown；
+ *  ③ 其余（js / json / bash / 任意语言，含「识别失败」）→ 自研代码块。
+ * 识别失败也接管是用户口径（「所有围栏块都由插件接管」）：语言位留空，**绝不编造语言名**。
  */
-function textFenceTarget(block) {
-    const result = resolveFenceLangEx(block);
-    if (TEXT_FENCE_LANGS.includes(result.lang))
-        return { lang: result.lang, fallback: false };
-    if (result.lang === '' && result.confirmed)
-        return { lang: '', fallback: true };
-    return { lang: '', fallback: false };
+function fenceKindOf(block) {
+    const forced = fenceForceOf(block);
+    if (forced === 'source')
+        return { kind: 'none', lang: '' };
+    if (forced === 'markdown')
+        return { kind: 'markdown', lang: '' };
+    if (forced === 'mermaid')
+        return { kind: 'mermaid', lang: 'mermaid' };
+    const resolved = resolveFenceLangEx(block);
+    const lang = resolved.lang;
+    if (MERMAID_FENCE_LANGS.includes(lang))
+        return { kind: 'mermaid', lang };
+    if (TEXT_FENCE_LANGS.includes(lang))
+        return { kind: 'markdown', lang };
+    if (lang === '')
+        return { kind: resolved.confirmed ? 'markdown' : 'code', lang: '' };
+    return { kind: 'code', lang };
 }
 /** 块源码：官方 <pre> 的文本（官方 display 语义：去掉一个尾部换行）。 */
-function textFenceSource(block) {
+function fenceSource(block) {
     const pre = block.querySelector('pre');
     const text = pre !== null ? (pre.textContent ?? '') : '';
     return text.endsWith('\n') ? text.slice(0, -1) : text;
 }
-/** 取源码与签名素材（非目标语言 / 识别失败 / 空 / 超长 -> null）。 */
-function textFenceBody(block) {
-    const target = textFenceTarget(block);
-    if (target.lang === '' && !target.fallback)
-        return null;
-    const text = textFenceSource(block);
-    if (!text.trim() || text.length > MAX_TEXT_FENCE_CHARS)
-        return null;
-    return { lang: target.lang, text, fallback: target.fallback };
+/** 本模块已渲染的容器（幂等判定用）。 */
+function fenceBodyOf(block) {
+    return block.querySelector('div.' + BLOCK_MD_CLASS + ', div.' + CODE_HOST_CLASS);
 }
-/** 块是否仍在流式消息里（祖先带 [data-streaming]，与 scanner 同一口径）。
- *  名字带 TextFence 前缀：本文件与 mermaid-scan 片段共享 factory 作用域，重名会互相覆盖。 */
-function isTextFenceStreaming(block) {
+/** 块是否仍在流式消息里（祖先带 [data-streaming]，与 scanner 同一口径）。 */
+function isFenceStreaming(block) {
     return !!(block.closest && block.closest('[data-streaming]'));
 }
-/** 本插件已渲染的 markdown 容器（幂等判定用）。 */
-function textMarkdownBody(block) {
-    return block.querySelector('div.' + TEXT_MD_CLASS);
+/**
+ * 前置门控（**在任何语言判定之前**）：开关关闭 / react-dom 不可用 / 流式块 /
+ * 本插件渲染容器内的块（防递归重建）。
+ *
+ * 顺序很重要：语言判定会向 host 半发索引查询（未命中还有界重试），而流式补写中的块
+ * 内容每批都在变（哈希必然落空）—— 先门控再判定，流式块与开关关闭的块**一次请求都不发**。
+ */
+function fencePreSkip(block) {
+    if (!renderOptions.markdown.textFenceMarkdown)
+        return true;
+    if (!domRootAvailable())
+        return true;
+    if (isFenceStreaming(block))
+        return true;
+    return isInsideRenderedMarkdown(block);
+}
+/** 内容长度上限（markdown 与代码两档）。 */
+function fenceMaxChars(kind) {
+    return kind === 'markdown' ? MAX_TEXT_FENCE_CHARS : MAX_CODE_FENCE_CHARS;
 }
 /** 移除上一轮的渲染容器与切换按钮（源码变化 / 重建前清理）。 */
-function clearTextView(block) {
-    const body = textMarkdownBody(block);
+function clearFenceView(block) {
+    const body = fenceBodyOf(block);
     if (body !== null) {
         unmountMarkdownIn(body);
         if (body.parentNode)
             body.parentNode.removeChild(body);
     }
-    const btn = block.querySelector('button.' + TEXT_TOGGLE_CLASS);
+    const btn = block.querySelector('button.' + BLOCK_TOGGLE_CLASS);
     if (btn !== null && btn.parentNode)
         btn.parentNode.removeChild(btn);
 }
 /** 切换视图：写块上的状态属性 + 同步按钮文案与 aria 状态（不动宿主内容）。 */
-function setTextView(block, view) {
-    block.setAttribute(TEXT_VIEW_ATTR, view);
-    const btn = block.querySelector('button.' + TEXT_TOGGLE_CLASS);
+function setFenceView(block, view) {
+    block.setAttribute(BLOCK_VIEW_ATTR, view);
+    const btn = block.querySelector('button.' + BLOCK_TOGGLE_CLASS);
     if (!btn)
         return;
-    btn.textContent = TEXT_VIEW_LABELS[view] ?? TEXT_VIEW_LABELS.markdown;
+    btn.textContent = BLOCK_VIEW_LABELS[view] ?? BLOCK_VIEW_LABELS.markdown;
     btn.setAttribute('aria-pressed', view === 'source' ? 'true' : 'false');
 }
 /** 「查看原文 / 查看渲染」按钮：点击只翻转本块的状态属性（每块独立）。 */
-function textToggleButton(block, view) {
+function fenceToggleButton(block, view) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = TEXT_TOGGLE_CLASS;
-    btn.textContent = TEXT_VIEW_LABELS[view] ?? TEXT_VIEW_LABELS.markdown;
+    btn.className = BLOCK_TOGGLE_CLASS;
+    btn.textContent = BLOCK_VIEW_LABELS[view] ?? BLOCK_VIEW_LABELS.markdown;
     btn.setAttribute('aria-pressed', view === 'source' ? 'true' : 'false');
     btn.addEventListener('click', () => {
-        setTextView(block, block.getAttribute(TEXT_VIEW_ATTR) === 'source' ? 'markdown' : 'source');
+        setFenceView(block, block.getAttribute(BLOCK_VIEW_ATTR) === 'source' ? 'markdown' : 'source');
     });
     return btn;
 }
-/**
-/** 前置门控：开关关闭 / 官方组件不可用 / 流式块 / 本插件渲染容器内的块（防递归重建）。 */
-function textFenceSkip(block) {
-    if (!renderOptions.markdown.textFenceMarkdown)
-        return true;
-    if (!officialMarkdownAvailable())
-        return true;
-    if (isTextFenceStreaming(block))
-        return true;
-    return !!(block.closest && block.closest('div.' + TEXT_MD_CLASS));
+/** 幂等签名（含渲染库就绪版本：库到位后重建一次）。 */
+function fenceSignature(kind, lang, source) {
+    return kind + ':' + lang + ':' + String(source.length) + ':' + contextHash(source) + ':' + String(renderAssetsReady());
 }
 /** 幂等判定：容器在且签名未变 → 本轮不必重建。 */
-function textMarkdownSettled(block, signature) {
-    return textMarkdownBody(block) !== null && block.getAttribute(TEXT_SIG_ATTR) === signature;
+function fenceSettled(block, signature) {
+    return fenceBodyOf(block) !== null && block.getAttribute(BLOCK_SIG_ATTR) === signature;
+}
+/** 建自有容器并把内容交给**自研渲染器**；渲染库未就绪 / 不可用 → null（保持宿主原样）。 */
+function buildFenceBody(kind, lang, source) {
+    const body = document.createElement('div');
+    if (kind === 'markdown') {
+        body.className = 'tzx-md ' + BLOCK_MD_CLASS;
+        return renderMarkdownInto(body, source) ? body : null;
+    }
+    body.className = CODE_HOST_CLASS;
+    return renderNodeInto(body, createElement(CodeBlockView, { lang, code: source })) ? body : null;
 }
 /**
- * 应用（幂等）：把 text / plaintext / txt / md 块的内容交给官方渲染器渲染 + 挂切换按钮。
- * 门控 / 非目标语言 / 内容为空或超长 / 签名未变 → 不动 DOM（见 textFenceSkip / textFenceBody）。
+ * 应用（幂等）：把围栏块内容交给自研渲染器（markdown 或代码块）+ 挂切换按钮。
+ * 门控（含流式）/ mermaid 块 / 语言为「源码」 / 空内容或超长 / 签名未变 → 一律不动 DOM。
  */
-function applyTextMarkdown(block) {
-    if (textFenceSkip(block))
+function applyFenceBlock(block) {
+    if (fencePreSkip(block))
         return;
-    const src = textFenceBody(block);
-    if (src === null)
+    const target = fenceKindOf(block);
+    // mermaid 块交给 mermaid-scan；「渲染为…源码」的块保持官方原样。
+    if (target.kind === 'none' || target.kind === 'mermaid')
         return;
-    const signature = (src.fallback ? '~' : src.lang) + ':' + src.text.length + ':' + contextHash(src.text);
-    if (textMarkdownSettled(block, signature))
+    const source = fenceSource(block);
+    if (!source.trim() || source.length > fenceMaxChars(target.kind))
         return;
-    clearTextView(block);
-    const body = document.createElement('div');
-    body.className = 'tzx-md ' + TEXT_MD_CLASS;
+    const signature = fenceSignature(target.kind, target.lang, source);
+    if (fenceSettled(block, signature))
+        return;
+    clearFenceView(block);
+    const body = buildFenceBody(target.kind, target.lang, source);
+    if (body === null)
+        return;
     block.appendChild(body);
-    if (!renderMarkdownInto(body, src.text)) {
-        // 官方组件中途不可用：撤掉半成品，保持宿主原样（真降级）。
-        block.removeChild(body);
-        return;
-    }
-    block.appendChild(textToggleButton(block, 'markdown'));
-    block.setAttribute(TEXT_VIEW_ATTR, 'markdown');
-    block.setAttribute(TEXT_SIG_ATTR, signature);
+    if (target.kind === 'markdown')
+        block.appendChild(fenceToggleButton(block, 'markdown'));
+    block.setAttribute(BLOCK_VIEW_ATTR, target.kind);
+    block.setAttribute(BLOCK_SIG_ATTR, signature);
 }
-/** 扫描 root（自身 / 后代）内的围栏代码块，处理其中的 text/plaintext/txt 块。 */
-function scanTextBlocks(root) {
+/** 扫描 root（自身 / 后代）内的围栏代码块并接管（mermaid 块由 mermaid-scan 负责）。 */
+function scanFenceBlocks(root) {
     if (!root || typeof root.querySelectorAll !== 'function')
         return;
     if (typeof root.matches === 'function' && root.matches('div.md-code-block'))
-        applyTextMarkdown(root);
+        applyFenceBlock(root);
     for (const block of root.querySelectorAll('div.md-code-block'))
-        applyTextMarkdown(block);
+        applyFenceBlock(block);
 }
-Object.assign(exports,{TEXT_FENCE_LANGS,MAX_TEXT_FENCE_CHARS,TEXT_VIEW_ATTR,TEXT_TOGGLE_CLASS,textFenceTarget,applyTextMarkdown,scanTextBlocks});
+Object.assign(exports,{TEXT_FENCE_LANGS,MAX_TEXT_FENCE_CHARS,MAX_CODE_FENCE_CHARS,BLOCK_VIEW_ATTR,BLOCK_SIG_ATTR,BLOCK_MD_CLASS,BLOCK_TOGGLE_CLASS,isFenceStreaming,fenceKindOf,fenceSource,fenceSignature,applyFenceBlock,scanFenceBlocks});
 
     // 思考块默认展开（对官方折叠行派发一次 click；不改外观）
     "use strict";
@@ -2494,11 +3072,14 @@ function langSwitchValue(block) {
     const forced = fenceForceOf(block);
     if (forced !== undefined)
         return forced;
-    // 已接管的块按**观察到的状态**判定（卡片 host / markdown 容器在），零额外判定。
+    // 已接管的块按**观察到的状态**判定（卡片 host / 自有容器在），零额外判定。
     if (mermaidMounts.has(block))
         return 'mermaid';
-    if (block.querySelector('div.' + TEXT_MD_CLASS) !== null)
+    if (block.querySelector('div.' + BLOCK_MD_CLASS) !== null)
         return 'markdown';
+    // 自研代码块视图：三态控件里没有对应选项 → 三个按钮都不激活（自动判定为「代码」）。
+    if (block.querySelector('div.' + CODE_HOST_CLASS) !== null)
+        return 'code';
     const peek = peekFenceLang(block);
     if (MERMAID_FENCE_LANGS.includes(peek.lang))
         return 'mermaid';
@@ -2525,10 +3106,10 @@ function removeLangSwitch(block) {
 /** 切换渲染方式：写覆盖 -> 拆掉现接管方 -> 重扫重建（幂等）。 */
 function applyLangForce(block, value) {
     setFenceForce(block, value);
-    clearTextView(block);
-    // 视图属性也必须一起清：否则块停在 markdown 视图，官方内容被自有 CSS 藏住 → 空块。
+    clearFenceView(block);
+    // 视图属性也必须一起清：否则块停在接管视图，官方内容被自有 CSS 藏住 → 空块。
     if (typeof block.removeAttribute === 'function')
-        block.removeAttribute(TEXT_VIEW_ATTR);
+        block.removeAttribute(BLOCK_VIEW_ATTR);
     const mounted = mermaidMounts.get(block);
     if (mounted !== undefined)
         unmountCard(block, mounted);
@@ -2650,7 +3231,7 @@ function installDomScanner(options) {
 //
 //   1. 思考行（think）—— 只看新增节点内的官方折叠行，最轻；
 //   2. 上下文注入块（pre[data-context-text]）；
-//   3. text / plaintext / txt 围栏块；
+//   3. 围栏块（自研 markdown / 自研代码块，mermaid 除外）；
 //   4. mermaid / mmd 围栏块 —— 必须最后（它会给块写视图标记，与 3 的判定互斥，
 //      语言集合不重叠；放最后保证「先按语言分流、再决定接管者」的顺序稳定）。
 //
@@ -2678,7 +3259,7 @@ function scanNode(node, round) {
     if (typeof el.matches === 'function' && el.matches(CONTEXT_TEXT_SELECTOR))
         applyContextMarkdown(el);
     scanContextBlocks(el);
-    scanTextBlocks(el);
+    scanFenceBlocks(el);
     scanMermaidBlocks(el, round);
     // 4. 语言手动切换控件（需求 4）—— 最后：mermaid 卡片挂载会决定该块用卡片头还是块内控件。
     scanLangSwitches(el);
@@ -2711,6 +3292,9 @@ function rescanForLangs() {
 function installScanner(ctx) {
     fenceScanContext = ctx ?? null;
     const uninstallRescan = installLangRescan(rescanForLangs);
+    // 懒加载的渲染库（marked / hljs）就绪后重扫一次：加载期间落在「宿主官方形态」的块补渲染
+    // （代码块则从纯文本换成高亮 —— 签名含就绪版本，重扫会重建）。
+    const uninstallAssetReady = installRenderAssetReady(rescanForLangs);
     const dispose = installDomScanner({
         scan: (node, round) => scanNode(node, round),
         // 兜底重扫目标：会话滚动容器（流式结束后内容补全，不一定以 addedNodes 出现）。
@@ -2719,12 +3303,14 @@ function installScanner(ctx) {
             teardownMermaid();
             teardownZoom();
             teardownLangProbes();
+            teardownRenderAssets();
             resetFenceIndex();
         },
     });
     return () => {
         dispose();
         uninstallRescan();
+        uninstallAssetReady();
     };
 }
 Object.assign(exports,{installScanner});
@@ -2733,23 +3319,86 @@ Object.assign(exports,{installScanner});
     "use strict";
 // ── 样式（DSH 语义 token，随 activation 注入）── 只写自有 DOM 与自有 data-* 标记作用域；
 // 不用 el.style、不覆盖官方类名外观（硬约束：不对官方元素写 style / class / aria）。
+// 颜色 / 字体全部取宿主主题变量：正文与排版 --dsw-font-markdown-* / --dsw-alias-*；
+// 语法着色取宿主 shiki token 表 --shiki-token-*（与官方代码块**同一份调色板**，深浅色
+// 自动跟随），并带 --dsw-* 兜底，任何变量缺失都不会渲染成不可读的透明字。
 const STYLES = `
-.tzx-md{position:relative;display:flex;flex-direction:column;gap:8px;min-width:0}
+/* ── 自研 markdown 渲染内容（.tzx-md 作用域）──
+   own-markdown.ts 产出的 p / h1–h6 / ul / ol / table / blockquote / a / code 全部落在
+   这个容器里，排版取宿主 markdown 字体 token，视觉与官方消息正文一致。 */
+.tzx-md{position:relative;display:flex;flex-direction:column;gap:8px;min-width:0;font:var(--dsw-font-markdown-base);color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
+.tzx-md p{margin:0;font:var(--dsw-font-markdown-base)}
+.tzx-md h1{font:var(--dsw-font-markdown-h1);margin:0}
+.tzx-md h2{font:var(--dsw-font-markdown-h2);margin:0}
+.tzx-md h3{font:var(--dsw-font-markdown-h3);margin:0}
+.tzx-md h4{font:var(--dsw-font-markdown-h4);margin:0}
+.tzx-md h5,.tzx-md h6{font:var(--dsw-font-markdown-base-strong);margin:0}
+.tzx-md ul,.tzx-md ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:4px}
+.tzx-md li{font:var(--dsw-font-markdown-base)}
+.tzx-md li>p{margin:0}
+.tzx-md blockquote{margin:0;padding:2px 0 2px 12px;border-left:3px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}
+.tzx-md blockquote p{margin:0}
+.tzx-md hr{border:0;border-top:1px solid var(--dsw-alias-border-l1);margin:4px 0;align-self:stretch}
+.tzx-md a{color:var(--dsw-alias-link);text-decoration:none}
+.tzx-md a:hover{text-decoration:underline}
+.tzx-md strong{font:var(--dsw-font-markdown-base-strong)}
+.tzx-md em{font:var(--dsw-font-markdown-base-italic)}
+.tzx-md code.dsh-md-render-md-code{font:var(--dsw-font-markdown-code);background:var(--dsw-alias-markdown-inline-code);border-radius:4px;padding:1px 5px}
+.tzx-md .dsh-md-render-md-link-plain{color:var(--dsw-alias-label-secondary)}
+.tzx-md .dsh-md-render-md-img-alt{color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-markdown-small)}
+.tzx-md img.dsh-md-render-md-img{max-width:100%;height:auto;border-radius:6px}
+.tzx-md .dsh-md-render-md-html{font:var(--dsw-font-markdown-base);color:var(--dsw-alias-label-secondary)}
+.tzx-md .dsh-md-render-md-plain{margin:0;white-space:pre-wrap;word-break:break-word;font:var(--dsw-font-markdown-code-block);color:var(--dsw-alias-label-primary)}
+.tzx-md .dsh-md-render-md-task{flex:none;margin:0 6px 0 0;accent-color:var(--dsw-alias-accent)}
+.tzx-md .dsh-md-render-md-task-item{list-style:none;margin-left:-22px;display:flex;align-items:flex-start;gap:2px}
+/* 表格：外层横向滚动（宽表格不撑破消息区），单元格用自有 class 控制对齐。 */
+.tzx-md .dsh-md-render-md-table-wrap{overflow-x:auto;border:1px solid var(--dsw-alias-border-l1);border-radius:8px}
+.tzx-md table.dsh-md-render-md-table{border-collapse:collapse;width:100%;font:var(--dsw-font-markdown-table)}
+.tzx-md .dsh-md-render-md-table th,.tzx-md .dsh-md-render-md-table td{border-bottom:1px solid var(--dsw-alias-border-l1);padding:6px 10px;text-align:left;vertical-align:top}
+.tzx-md .dsh-md-render-md-table th{font:var(--dsw-font-markdown-table-head);background:var(--dsw-alias-bg-layer-2)}
+.tzx-md .dsh-md-render-md-table tbody tr:last-child td{border-bottom:0}
+.tzx-md .dsh-md-render-md-left{text-align:left}
+.tzx-md .dsh-md-render-md-center{text-align:center}
+.tzx-md .dsh-md-render-md-right{text-align:right}
 .dsh-md-render-fallback{margin:0;white-space:pre-wrap;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-primary)}
-/* ── 注入容器：围栏块按 markdown 渲染（text / 无语言兜底）──
-   text-markdown.ts 追加在 md-code-block 内；接管后隐藏官方全部直接子元素
-   （banner 标签被宿主写死为「代码块」，对 markdown 是错误信息）；切回原文时自动恢复。 */
+/* ── 注入容器：围栏块按 markdown 渲染 ──
+   block-render.ts 追加在 md-code-block 内；接管后隐藏官方全部直接子元素
+   （banner 标签被宿主写死为「代码块」，对自研渲染的块是错误信息）；切回「源码」时自动恢复。 */
 .dsh-md-render-text-md{padding:12px 16px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-markdown-code-block)}
 .md-code-block[data-dsh-md-render-text-view="markdown"]>:not([class*=dsh-md-render]):not(.tzx-md){display:none}
+.md-code-block[data-dsh-md-render-text-view="code"]>:not([class*=dsh-md-render]):not(.tzx-md){display:none}
 .md-code-block[data-dsh-md-render-text-view="source"]>.dsh-md-render-text-md{display:none}
+.md-code-block[data-dsh-md-render-text-view="source"]>.dsh-md-render-code-host{display:none}
 .dsh-md-render-text-toggle{display:inline-flex;align-items:center;align-self:flex-end;margin-top:4px;padding:2px 10px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:transparent;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;cursor:pointer;transition:color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .dsh-md-render-text-toggle:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2)}
 .dsh-md-render-text-toggle[aria-pressed="true"]{color:var(--dsw-alias-accent-primary);border-color:var(--dsw-alias-accent-primary)}
+/* ── 自研代码块（own-code.ts）：banner 显示**真实语言名** + 复制 + 自动换行 + 语法高亮 ── */
+.dsh-md-render-code-host{display:block;min-width:0}
+.dsh-md-render-code{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-markdown-code-block);overflow:hidden}
+.dsh-md-render-code-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 10px;background:var(--dsw-alias-markdown-code-block-banner);border-bottom:1px solid var(--dsw-alias-border-l1)}
+.dsh-md-render-code-lang{font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary);letter-spacing:.02em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsh-md-render-code-actions{display:inline-flex;align-items:center;gap:6px;flex:none}
+.dsh-md-render-code-copy{display:inline-flex;align-items:center;padding:1px 8px;font:var(--dsw-font-xxxs-11);line-height:18px;color:var(--dsw-alias-label-secondary);background:transparent;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;cursor:pointer;transition:color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
+.dsh-md-render-code-copy:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2)}
+.dsh-md-render-code-pre{margin:0;padding:10px 12px;overflow:auto;max-height:70vh;white-space:pre-wrap;word-break:break-word;font:var(--dsw-font-markdown-code-block);color:var(--dsw-alias-label-primary);background:transparent}
+.dsh-md-render-code-pre code{font:inherit;color:inherit;background:none;border:0;padding:0;white-space:inherit;word-break:inherit}
+/* 语法着色：hljs 的 scope class → 宿主 shiki token 调色板（官方代码块同一份），全部带 --dsw-* 兜底。 */
+.dsh-md-render-code-pre .hljs-keyword,.dsh-md-render-code-pre .hljs-selector-tag,.dsh-md-render-code-pre .hljs-literal,.dsh-md-render-code-pre .hljs-doctag,.dsh-md-render-code-pre .hljs-meta{color:var(--shiki-token-keyword,var(--dsw-alias-label-primary))}
+.dsh-md-render-code-pre .hljs-string,.dsh-md-render-code-pre .hljs-regexp,.dsh-md-render-code-pre .hljs-symbol,.dsh-md-render-code-pre .hljs-bullet{color:var(--shiki-token-string,var(--dsw-alias-label-primary))}
+.dsh-md-render-code-pre .hljs-comment,.dsh-md-render-code-pre .hljs-quote{color:var(--shiki-token-comment,var(--dsw-alias-label-tertiary));font-style:italic}
+.dsh-md-render-code-pre .hljs-number,.dsh-md-render-code-pre .hljs-constant,.dsh-md-render-code-pre .hljs-built_in,.dsh-md-render-code-pre .hljs-type,.dsh-md-render-code-pre .hljs-class{color:var(--shiki-token-constant,var(--dsw-alias-label-primary))}
+.dsh-md-render-code-pre .hljs-title,.dsh-md-render-code-pre .hljs-title.function_,.dsh-md-render-code-pre .hljs-title.class_,.dsh-md-render-code-pre .hljs-section,.dsh-md-render-code-pre .hljs-function{color:var(--shiki-token-function,var(--dsw-alias-label-primary))}
+.dsh-md-render-code-pre .hljs-attr,.dsh-md-render-code-pre .hljs-attribute,.dsh-md-render-code-pre .hljs-variable,.dsh-md-render-code-pre .hljs-template-variable,.dsh-md-render-code-pre .hljs-params,.dsh-md-render-code-pre .hljs-property{color:var(--shiki-token-parameter,var(--dsw-alias-label-primary))}
+.dsh-md-render-code-pre .hljs-punctuation{color:var(--shiki-token-punctuation,var(--dsw-alias-label-secondary))}
+.dsh-md-render-code-pre .hljs-link,.dsh-md-render-code-pre .hljs-name,.dsh-md-render-code-pre .hljs-selector-id,.dsh-md-render-code-pre .hljs-selector-class{color:var(--shiki-token-link,var(--dsw-alias-link))}
+.dsh-md-render-code-pre .hljs-addition{color:var(--dsw-alias-code-diff-added)}
+.dsh-md-render-code-pre .hljs-deletion{color:var(--dsw-alias-code-diff-deleted)}
+.dsh-md-render-code-pre .hljs-emphasis{font-style:italic}
+.dsh-md-render-code-pre .hljs-strong{font-weight:600}
 /* ── 上下文注入块（pre[data-context-text]）渲染容器 ──
    插在宿主 pre 之前，宿主 pre 置 hidden（React 拥有该子树，不改其子结构）。 */
 .dsh-md-render-context-md{padding:0}
-/* ── 整段 markdown 复制按钮（官方只有代码块复制）──
-   绝对定位右下角、hover 才显示；流式渲染中隐藏，避免复制到半截内容。 */
+/* ── 整段 markdown 复制按钮 ── */
 .dsh-md-render-copy{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;font:var(--dsw-font-xxxs-11);line-height:20px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;cursor:pointer;opacity:0;transition:opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out),color var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
 .tzx-md>.dsh-md-render-copy{position:absolute;right:8px;bottom:8px}
 .tzx-md:hover>.dsh-md-render-copy{opacity:1}
@@ -3245,11 +3894,11 @@ const MD_RENDER_STRINGS = {
     groupThinking: mdRenderText('思考块', 'Thinking'),
     groupMermaid: mdRenderText('Mermaid 图表', 'Mermaid diagrams'),
     copyButtonLabel: mdRenderText('整段复制', 'Copy whole message'),
-    copyButtonHint: mdRenderText('MarkdownView 整段内容一键复制（官方只有代码块复制）', 'One-click copy for the whole MarkdownView (the host only copies code blocks)'),
-    textFenceLabel: mdRenderText('text 围栏块渲染', 'Render text fences'),
-    textFenceHint: mdRenderText('语言标记为 text / plaintext / txt 的围栏块按 markdown 渲染，每块可切回原文', 'Render text / plaintext / txt fences as markdown, each block can switch back to source'),
+    copyButtonHint: mdRenderText('MarkdownView 整段内容一键复制（本插件自研 markdown 渲染 + 整段复制）', 'One-click copy for the whole MarkdownView (plugin-built markdown rendering + whole-content copy)'),
+    textFenceLabel: mdRenderText('围栏块渲染（自研）', 'Render code fences (built-in)'),
+    textFenceHint: mdRenderText('所有围栏代码块都由本插件自己的渲染器产出：text / 无语言块按 markdown 渲染，其余语言渲染为带真实语言名与语法高亮的代码块；每块可切回官方源码视图', 'Every fenced block is rendered by this plugin own renderer: text / unlabelled blocks as markdown, other languages as a code block with the real language name and syntax highlighting; each block can switch back to the host source view'),
     contextLabel: mdRenderText('上下文注入块渲染', 'Render context-injection blocks'),
-    contextHint: mdRenderText('宿主以纯文本呈现的上下文注入正文（子 agent 消息 / AGENTS.md）按 markdown 渲染', 'Render plain-text context bodies (sub-agent messages / AGENTS.md) as markdown'),
+    contextHint: mdRenderText('宿主以纯文本呈现的上下文注入正文（子 agent 消息 / AGENTS.md）由本插件自己的 markdown 渲染器渲染', 'Render plain-text context bodies (sub-agent messages / AGENTS.md) with this plugin own markdown renderer'),
     thinkingLabel: mdRenderText('思考默认展开', 'Expand thinking by default'),
     thinkingHint: mdRenderText('新出现的思考块自动展开；只对官方折叠行派发一次点击，外观完全由官方决定（用户手动折叠后不再干预）', 'Newly mounted thinking rows expand automatically by dispatching one click; the look stays fully official (a manual collapse is respected)'),
     injectPromptLabel: mdRenderText('注入 mermaid 能力说明', 'Inject mermaid capability note'),

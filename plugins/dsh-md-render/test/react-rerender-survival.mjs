@@ -14,7 +14,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import {
-  createOfficialStack,
+  createRenderStack,
   createPage,
   createReactStub,
   installGlobals,
@@ -32,8 +32,8 @@ function setup() {
   const scroll = makeElement('div', { 'data-conversation-scroll': 'true' })
   const page = installGlobals(createPage(scroll))
   const react = createReactStub()
-  const stack = createOfficialStack(page, react)
-  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  const stack = createRenderStack(page, react)
+  const loaded = loadBundle({ page, react, reactDom: stack.reactDom })
   loaded.exports.apply({ effect: (fn) => fn() })
   const observer = page.observers[0]
   assert.ok(observer, '扫描器已装配')
@@ -95,12 +95,12 @@ test('React 改写内容（节点复用）→ 按签名重建，不重复、不�
   scroll.appendChild(block)
   commit(block)
   const body = block.querySelector(TEXT_BODY)
-  assert.equal(stack.markdown.calls.filter((c) => c.text === '## 旧内容').length, 1, '旧内容渲染一次')
+  assert.equal(block.querySelectorAll('h2').length, 1, '旧内容渲染一次')
 
   // 内容未变：原容器复用（幂等，不重建、不抖动）
   commit(block)
   assert.equal(block.querySelector(TEXT_BODY), body, '内容未变时复用同一容器')
-  assert.equal(stack.markdown.calls.filter((c) => c.text === '## 旧内容').length, 1, '未重复渲染')
+  assert.equal(block.querySelectorAll('h2').length, 1, '未重复渲染')
 
   // React 改写内容：重建
   block.querySelector('code').textContent = '## 新内容'
@@ -110,10 +110,7 @@ test('React 改写内容（节点复用）→ 按签名重建，不重复、不�
   assert.notEqual(next, body, '内容变化后重建容器')
   assert.equal(block.querySelectorAll(TEXT_BODY).length, 1, '旧容器已移除')
   assert.ok(stack.reactDom.unmounts.includes(body), '旧容器的 React root 已卸载')
-  assert.ok(
-    stack.markdown.calls.some((c) => c.text === '## 新内容'),
-    '新内容进入官方渲染器',
-  )
+  assert.equal(block.querySelector('h2').textContent, '新内容', '新内容由自研渲染器渲染')
 })
 
 test('宿主冲掉容器但保留块（React 重渲染抹掉插件节点）→ 兜底重扫自愈', () => {

@@ -28,10 +28,18 @@ export const LANGS_HASH_PARAM = 'h'
 /** panzoom 文件名（图表缩放 / 平移的 vendored 库；同引擎一样走 assets 懒加载，不进 client.js）。 */
 export const PANZOOM_FILE = 'panzoom-4.6.2.min.js'
 
+/** markdown 解析器文件名（自研渲染器的解析层；vendored UMD，走 assets 懒加载）。 */
+export const MARKED_FILE = 'marked-18.1.0.umd.js'
+
+/** 语法高亮库文件名（自研代码块渲染器的高亮层；vendored UMD，走 assets 懒加载）。 */
+export const HIGHLIGHTJS_FILE = 'highlightjs-11.12.0.min.js'
+
 /** client 半派生出的 URL（唯一路径拼接处，host / client 共用同一表达式）。 */
 export const CONFIG_API_URL = CONFIG_API_PREFIX + '/config'
 export const MERMAID_ENGINE_URL = ASSETS_PREFIX + '/' + MERMAID_ENGINE_FILE
 export const PANZOOM_SCRIPT_URL = ASSETS_PREFIX + '/' + PANZOOM_FILE
+export const MARKED_URL = ASSETS_PREFIX + '/' + MARKED_FILE
+export const HIGHLIGHTJS_URL = ASSETS_PREFIX + '/' + HIGHLIGHTJS_FILE
 
 /**
  * 生成注入 client 产物的声明文本（`scripts/build.mjs` 调用）。
@@ -43,6 +51,8 @@ export function clientRouteDeclarations(): string {
     'const CONFIG_API_URL = ' + JSON.stringify(CONFIG_API_URL),
     'const MERMAID_ENGINE_URL = ' + JSON.stringify(MERMAID_ENGINE_URL),
     'const PANZOOM_SCRIPT_URL = ' + JSON.stringify(PANZOOM_SCRIPT_URL),
+    'const MARKED_URL = ' + JSON.stringify(MARKED_URL),
+    'const HIGHLIGHTJS_URL = ' + JSON.stringify(HIGHLIGHTJS_URL),
     'const LANGS_API_URL = ' + JSON.stringify(LANGS_API_URL),
     'const LANGS_HASH_PARAM = ' + JSON.stringify(LANGS_HASH_PARAM),
   ].join('\n')

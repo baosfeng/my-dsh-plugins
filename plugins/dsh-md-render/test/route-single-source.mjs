@@ -25,8 +25,12 @@ import {
   ASSETS_PREFIX,
   CONFIG_API_PREFIX,
   CONFIG_API_URL,
+  HIGHLIGHTJS_FILE,
+  HIGHLIGHTJS_URL,
   LANGS_API_URL,
   LANGS_HASH_PARAM,
+  MARKED_FILE,
+  MARKED_URL,
   MERMAID_ENGINE_FILE,
   MERMAID_ENGINE_URL,
   PANZOOM_FILE,
@@ -57,6 +61,12 @@ test('host 半两条路由前缀都直接取自 paths.ts（真源派生）', () 
   assert.equal(LANGS_API_URL, CONFIG_API_PREFIX + '/langs', '语言索引 URL 由前缀派生（与 config 同前缀）')
   assert.equal(LANGS_HASH_PARAM, 'h', '查询参数名来自真源')
   assert.equal(PANZOOM_SCRIPT_URL, ASSETS_PREFIX + '/' + PANZOOM_FILE, 'panzoom URL 由前缀 + 文件名派生')
+  assert.equal(MARKED_URL, ASSETS_PREFIX + '/' + MARKED_FILE, 'marked URL 由前缀 + 文件名派生（自研 markdown 解析层）')
+  assert.equal(
+    HIGHLIGHTJS_URL,
+    ASSETS_PREFIX + '/' + HIGHLIGHTJS_FILE,
+    'highlight.js URL 由前缀 + 文件名派生（自研代码块高亮层）',
+  )
 })
 
 test('apply 注册的两条前缀 === 真源常量（真实注册，不看源码文本）', () => {
@@ -96,6 +106,8 @@ test('client 作用域里的路由 URL 常量 === 真源（构建期注入，非
   assert.equal(loaded.exports.LANGS_API_URL, LANGS_API_URL, 'client 语言索引 URL 来自真源')
   assert.equal(loaded.exports.LANGS_HASH_PARAM, LANGS_HASH_PARAM, 'client 查询参数名来自真源')
   assert.equal(loaded.exports.PANZOOM_SCRIPT_URL, PANZOOM_SCRIPT_URL, 'client panzoom URL 来自真源')
+  assert.equal(loaded.exports.MARKED_URL, MARKED_URL, 'client marked URL 来自真源')
+  assert.equal(loaded.exports.HIGHLIGHTJS_URL, HIGHLIGHTJS_URL, 'client highlight.js URL 来自真源')
 })
 
 test('路径**声明**在 src/ 下唯一（只有 routes/paths.ts 可以写常量值）', () => {

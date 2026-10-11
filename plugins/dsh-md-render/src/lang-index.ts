@@ -13,8 +13,9 @@
  * markdown **原文**，解析出每个围栏块的「语言标记 + 块内容」，对内容算 djb2 哈希建
  * `hash → lang` 索引；client 半按块内容哈希查表得到语言（路由见 `routes/langs.ts`）。
  *
- * **只登记本插件接管的语言**（{@link INDEXED_FENCE_LANGS}）：索引不会与 `js` / `python` 等
- * 无关语言撞车；client 查不到时保持官方默认（**绝不误伤「无语言」块**）。
+ * **登记所有围栏语言**（自研渲染接管全部围栏块后，`js` / `python` 等同样需要语言名来画
+ * 自己的 banner）：无语言（`''`）不登记 —— 响应里「命中但值为空串」与「没命中」无法区分，
+ * 登记它没有意义（client 侧同样按未命中处理）。
  *
  * **资源预算**（resource-budget-review 五维）：内存 = 上限 × 单条 ≈ 2000 × 120 B ≈ 240 KB；
  * CPU = 每条消息一次线性解析（单条上限 {@link MAX_INDEXED_MARKDOWN_CHARS}）；
@@ -24,8 +25,13 @@
  */
 import { boundedMap } from 'dsh-shared'
 
-/** 建索引的围栏语言（小写）：只有这些语言值得让 client 接管。 */
-export const INDEXED_FENCE_LANGS: readonly string[] = ['text', 'plaintext', 'txt', 'mermaid', 'mmd']
+/**
+ * **不登记**的语言：只有「无语言」这一种。
+ * 历史背景（issue #466）：索引最初只登记 text / plaintext / txt / mermaid / mmd 五种
+ * 「值得接管」的语言；自研渲染接管**全部**围栏块后这个白名单失去意义 —— 语言名现在用来
+ * 画自研代码块 banner 里的真实语言，js / python 同样需要。空串仍然不登记（见文件头注释）。
+ */
+export const UNINDEXED_FENCE_LANGS: readonly string[] = ['']
 
 /** 索引上限（条）：超出按插入序淘汰最旧（fifo，最近的消息留在表里）。 */
 export const LANG_INDEX_MAX_SIZE = 2000
@@ -42,7 +48,7 @@ export interface FenceBlock {
 
 /** 语言索引句柄（host 半唯一状态；client 经 /md-render/api/langs 查询）。 */
 export interface LangIndex {
-  /** 解析 markdown 原文并把**目标语言**的围栏写进索引；返回登记的块数。 */
+  /** 解析 markdown 原文并把围栏的语言写进索引（无语言的不登记）；返回登记的块数。 */
   record: (markdown: string) => number
   /** 批量查语言：只返回命中的哈希（未命中的键不出现在结果里）。 */
   lookup: (hashes: readonly string[]) => Record<string, string>
@@ -173,7 +179,7 @@ export function createLangIndex(options: { maxSize?: number } = {}): LangIndex {
     record(markdown: string): number {
       let count = 0
       for (const fence of parseFences(clipMarkdown(markdown))) {
-        if (!INDEXED_FENCE_LANGS.includes(fence.lang)) continue
+        if (UNINDEXED_FENCE_LANGS.includes(fence.lang)) continue
         for (const key of fenceHashKeys(fence)) index.set(key, fence.lang)
         count += 1
       }

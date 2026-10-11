@@ -1,9 +1,11 @@
 /**
- * dsh-md-render — `/md-render/assets` 静态资源路由（mermaid 引擎 + panzoom）。
+ * dsh-md-render — `/md-render/assets` 静态资源路由（mermaid 引擎 + panzoom + marked + highlight.js）。
  *
- * 两个库都**不内联**进 client bundle（issue #185 的 4.48 MB base64 冗余教训）：
- * `assets/mermaid-10.9.3.min.js`（3.34 MB）与 `assets/panzoom-4.6.2.min.js`（10 KB）
- * 由 webServer 静态托管，client 首次需要时 fetch 并按需注入 `<script>`。
+ * 四个库都**不内联**进 client bundle（issue #185 的 4.48 MB base64 冗余教训）：
+ * `assets/mermaid-10.9.3.min.js`（3.34 MB）、`assets/panzoom-4.6.2.min.js`（10 KB）、
+ * `assets/marked-18.1.0.umd.js`（47 KB，自研 markdown 渲染器的解析层）与
+ * `assets/highlightjs-11.12.0.min.js`（129 KB，自研代码块渲染器的高亮层）
+ * 由 webServer 静态托管，client 首次需要时 fetch 并按需注入 `<script>`（不影响启动速度）。
  * 缓存 / ETag / 304 / 405 语义与合并前的 dsh-mermaid-render 完全一致，只是前缀搬到本插件
  * 命名空间，并按**白名单文件名**分派（未登记的文件一律 404，不做目录穿越）。
  *
@@ -12,12 +14,12 @@
 import { readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ASSETS_PREFIX, MERMAID_ENGINE_FILE, PANZOOM_FILE } from './paths.js';
+import { ASSETS_PREFIX, HIGHLIGHTJS_FILE, MARKED_FILE, MERMAID_ENGINE_FILE, PANZOOM_FILE } from './paths.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 /** 静态资源目录：lib/routes/ → 包根 → assets/。 */
 const ASSETS_DIR = join(__dirname, '..', '..', 'assets');
 /** 发布面里的静态资源（文件名是白名单；单一真源在 routes/paths.ts）。 */
-const ASSET_FILES = [MERMAID_ENGINE_FILE, PANZOOM_FILE];
+const ASSET_FILES = [MERMAID_ENGINE_FILE, PANZOOM_FILE, MARKED_FILE, HIGHLIGHTJS_FILE];
 /** 静态资源前缀来自单一真源 `src/routes/paths.ts`（同 config 路由）。 */
 export { ASSETS_PREFIX };
 /** 已注册资源的 disposer（按常驻 root 去重，与配置路由同款）。 */

@@ -27,9 +27,11 @@ function peekFenceLang(block: Element): FenceLangResult {
 function langSwitchValue(block: Element): string {
   const forced = fenceForceOf(block)
   if (forced !== undefined) return forced
-  // 已接管的块按**观察到的状态**判定（卡片 host / markdown 容器在），零额外判定。
+  // 已接管的块按**观察到的状态**判定（卡片 host / 自有容器在），零额外判定。
   if (mermaidMounts.has(block)) return 'mermaid'
-  if (block.querySelector('div.' + TEXT_MD_CLASS) !== null) return 'markdown'
+  if (block.querySelector('div.' + BLOCK_MD_CLASS) !== null) return 'markdown'
+  // 自研代码块视图：三态控件里没有对应选项 → 三个按钮都不激活（自动判定为「代码」）。
+  if (block.querySelector('div.' + CODE_HOST_CLASS) !== null) return 'code'
   const peek = peekFenceLang(block)
   if (MERMAID_FENCE_LANGS.includes(peek.lang)) return 'mermaid'
   if (TEXT_FENCE_LANGS.includes(peek.lang) || (peek.lang === '' && peek.confirmed)) return 'markdown'
@@ -54,9 +56,9 @@ function removeLangSwitch(block: Element): void {
 
 function applyLangForce(block: Element, value: string): void {
   setFenceForce(block, value)
-  clearTextView(block)
-  // 视图属性也必须一起清：否则块停在 markdown 视图，官方内容被自有 CSS 藏住 → 空块。
-  if (typeof block.removeAttribute === 'function') block.removeAttribute(TEXT_VIEW_ATTR)
+  clearFenceView(block)
+  // 视图属性也必须一起清：否则块停在接管视图，官方内容被自有 CSS 藏住 → 空块。
+  if (typeof block.removeAttribute === 'function') block.removeAttribute(BLOCK_VIEW_ATTR)
   const mounted = mermaidMounts.get(block)
   if (mounted !== undefined) unmountCard(block, mounted)
   syncLangSwitch(block)

@@ -4,7 +4,7 @@
 //
 //   1. 思考行（think）—— 只看新增节点内的官方折叠行，最轻；
 //   2. 上下文注入块（pre[data-context-text]）；
-//   3. text / plaintext / txt 围栏块；
+//   3. 围栏块（自研 markdown / 自研代码块，mermaid 除外）；
 //   4. mermaid / mmd 围栏块 —— 必须最后（它会给块写视图标记，与 3 的判定互斥，
 //      语言集合不重叠；放最后保证「先按语言分流、再决定接管者」的顺序稳定）。
 //
@@ -40,7 +40,7 @@ function scanNode(node: Node, round: number): void {
   applyThinkExpand(el)
   if (typeof el.matches === 'function' && el.matches(CONTEXT_TEXT_SELECTOR)) applyContextMarkdown(el)
   scanContextBlocks(el)
-  scanTextBlocks(el)
+  scanFenceBlocks(el)
   scanMermaidBlocks(el, round)
   // 4. 语言手动切换控件（需求 4）—— 最后：mermaid 卡片挂载会决定该块用卡片头还是块内控件。
   scanLangSwitches(el)
@@ -74,6 +74,9 @@ function rescanForLangs(): void {
 function installScanner(ctx?: unknown): () => void {
   fenceScanContext = ctx ?? null
   const uninstallRescan = installLangRescan(rescanForLangs)
+  // 懒加载的渲染库（marked / hljs）就绪后重扫一次：加载期间落在「宿主官方形态」的块补渲染
+  // （代码块则从纯文本换成高亮 —— 签名含就绪版本，重扫会重建）。
+  const uninstallAssetReady = installRenderAssetReady(rescanForLangs)
   const dispose = installDomScanner({
     scan: (node, round) => scanNode(node, round),
     // 兜底重扫目标：会话滚动容器（流式结束后内容补全，不一定以 addedNodes 出现）。
@@ -82,12 +85,14 @@ function installScanner(ctx?: unknown): () => void {
       teardownMermaid()
       teardownZoom()
       teardownLangProbes()
+      teardownRenderAssets()
       resetFenceIndex()
     },
   })
   return () => {
     dispose()
     uninstallRescan()
+    uninstallAssetReady()
   }
 }
 

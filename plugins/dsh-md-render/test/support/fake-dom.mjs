@@ -11,6 +11,7 @@
  * labels、交到哪个组件、渲染到哪个容器，以及注入点的门控 / 幂等 / 降级行为。
  */
 import fs from 'node:fs'
+import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
 // 属性段允许带引号的值与内部空格：`[data-variant="think"]`、`[aria-expanded]`。
@@ -18,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 //  永远匹配不上，测试因此看不见真实行为。）
 const TAG_CLASS_ATTR = /^([a-zA-Z][\w-]*)?((?:\.[\w-]+)*)((?:\[[^\]]*\])*)$/
 
-/** 单条简单选择器（tag / .class / [attr] / [attr="v"] 的任意组合）。 */
+/** 单条简单选择器（tag / .class / [attr] / [attr="v"] / [attr*=v] 的任意组合）。 */
 function matchSimple(el, sel) {
   const m = TAG_CLASS_ATTR.exec(sel)
   if (!m) return false
@@ -28,11 +29,25 @@ function matchSimple(el, sel) {
     if (!String(el.className).split(/\s+/).includes(cls)) return false
   }
   for (const attr of attrs.match(/\[[^\]]+\]/g) || []) {
-    const parsed = /^\[\s*([\w-]+)\s*(?:=\s*"([^"]*)"\s*)?\]$/.exec(attr)
+    // 支持 = / *= / ^= / $= 四种属性算子（* 用于 [class*=dsh-md-render] 这类契约断言）。
+    const parsed = /^\[\s*([\w-]+)\s*(?:([*^$]?=)\s*(?:"([^"]*)"|([^\]]*?))\s*)?\]$/.exec(attr)
     if (!parsed) return false
     const value = el.getAttribute(parsed[1])
     if (value === null) return false
-    if (parsed[2] !== undefined && value !== parsed[2]) return false
+    const op = parsed[2]
+    if (op === undefined) continue
+    const expected = parsed[3] !== undefined ? parsed[3] : parsed[4]
+    if (op === '=') {
+      if (value !== expected) return false
+    } else if (op === '*=') {
+      if (!value.includes(expected)) return false
+    } else if (op === '^=') {
+      if (!value.startsWith(expected)) return false
+    } else if (op === '$=') {
+      if (!value.endsWith(expected)) return false
+    } else {
+      return false
+    }
   }
   return true
 }
@@ -47,17 +62,49 @@ function matchesSelector(el, sel) {
   return String(sel)
     .split(',')
     .some((part) => {
-      const chain = part.trim().split(/\s+/).filter(Boolean)
+      const chain = parseSelectorChain(part.trim())
       if (chain.length === 0) return false
-      if (!matchSimple(el, chain[chain.length - 1])) return false
+      const last = chain[chain.length - 1]
+      if (!matchSimple(el, last.simple)) return false
       let node = el.parentNode
       for (let i = chain.length - 2; i >= 0; i -= 1) {
-        while (node && node.nodeType === 1 && !matchSimple(node, chain[i])) node = node.parentNode
-        if (!node || node.nodeType !== 1) return false
+        const step = chain[i]
+        // 组合子记在**后一个**简单选择器上（chain[i+1].combinator = chain[i] 与 chain[i+1] 的关系）。
+        if (chain[i + 1].combinator === '>') {
+          // 子代组合：父节点必须**恰好**匹配（不向上找）。
+          if (!node || node.nodeType !== 1 || !matchSimple(node, step.simple)) return false
+        } else {
+          while (node && node.nodeType === 1 && !matchSimple(node, step.simple)) node = node.parentNode
+          if (!node || node.nodeType !== 1) return false
+        }
         node = node.parentNode
       }
       return true
     })
+}
+
+/**
+ * 选择器链解析：把 `A > B C` 拆成
+ * [{simple:'A',combinator:' '},{simple:'B',combinator:'>'},{simple:'C',combinator:' '}]。
+ * 支持后代（空格）与子代（>）两种组合子；不认识的组合子按后代处理。
+ */
+function parseSelectorChain(part) {
+  const out = []
+  if (part === '') return out
+  const re = /\s*(>)\s*|\s+/g
+  let last = 0
+  let combinator = ' '
+  let m = re.exec(part)
+  while (m !== null) {
+    const simple = part.slice(last, m.index)
+    if (simple !== '') out.push({ simple, combinator })
+    combinator = m[1] === '>' ? '>' : ' '
+    last = re.lastIndex
+    m = re.exec(part)
+  }
+  const tail = part.slice(last)
+  if (tail !== '') out.push({ simple: tail, combinator })
+  return out
 }
 
 /** 造一个假元素（假 DOM 的核心：一份 _nodes 数组 + 属性表 + 监听表）。 */
@@ -85,6 +132,10 @@ export function makeElement(tag, attrs = {}) {
       if (i >= 0) this._nodes.splice(i, 1)
       this._nodes.push(child)
       child.parentNode = this
+      // 真实浏览器语义：插入 <script> 会执行它（本插件的懒加载依赖这条：fetch → 注入 → 全局可用）。
+      if (child.tagName === 'SCRIPT' && typeof child.textContent === 'string' && child.textContent !== '') {
+        runScriptInPage(child.textContent)
+      }
       return child
     },
     insertBefore(child, ref) {
@@ -170,6 +221,15 @@ export function makeElement(tag, attrs = {}) {
       return this._rect || { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 }
     },
   }
+  // className 与 class 属性双向同步（真实 DOM 语义）：契约断言会用 [class*=…] 选择器。
+  Object.defineProperty(el, 'className', {
+    get: () => (Object.prototype.hasOwnProperty.call(el._attrs, 'class') ? el._attrs.class : ''),
+    set: (value) => {
+      el._attrs.class = String(value)
+    },
+    enumerable: true,
+    configurable: true,
+  })
   Object.defineProperty(el, 'children', { get: () => el._nodes.filter((n) => n.nodeType === 1) })
   Object.defineProperty(el, 'childNodes', { get: () => el._nodes })
   Object.defineProperty(el, 'firstElementChild', { get: () => el._nodes.find((n) => n.nodeType === 1) || null })
@@ -216,6 +276,29 @@ function createSessionStorageStub() {
   }
 }
 
+/** 当前假页面（<script> 注入需要知道往哪个 realm 里执行；installGlobals 时更新）。 */
+let currentPage = null
+/** 已 contextify 的 window（vm.createContext 幂等，但用 WeakSet 省去重复判断）。 */
+const contextifiedWindows = new WeakSet()
+
+/**
+ * 执行一段注入脚本（模拟浏览器对 <script> 的处理）：把假 window 作为 vm 上下文，
+ * 于是 UMD 里的 `globalThis.X = …` 直接落到 page.window.X 上（与真实浏览器同一契约）。
+ * 没有假页面时静默跳过（纯 vdom 测试用不到）。
+ */
+function runScriptInPage(code) {
+  if (currentPage === null) return
+  try {
+    if (!contextifiedWindows.has(currentPage.window)) {
+      vm.createContext(currentPage.window)
+      contextifiedWindows.add(currentPage.window)
+    }
+    vm.runInContext(code, currentPage.window)
+  } catch (_e) {
+    // 假 DOM 里脚本执行失败 = 与真实浏览器里注入失败等价，交给被测代码的降级分支。
+  }
+}
+
 /** 造一个假页面（document / window / MutationObserver 记录器）。 */
 export function createPage(body = makeElement('body')) {
   const document = {
@@ -237,6 +320,7 @@ export function createPage(body = makeElement('body')) {
 
 /** 安装假全局（每个测试文件调用一次）。 */
 export function installGlobals(page) {
+  currentPage = page
   globalThis.window = page.window
   globalThis.document = page.document
   globalThis.Element = function Element() {}
@@ -316,33 +400,43 @@ function createReactDomStub(page) {
   return { createRoot, renders, unmounts }
 }
 
-/** 官方 MarkdownText 桩：记录收到的 props，落成一个带 data-text 的 div。 */
-function createPrimeMarkdownStub(react) {
-  const calls = []
-  const MarkdownText = (props) => {
-    calls.push(props)
-    // 桩里同时造出官方的「噪声」结构（banner 语言名 + 代码块复制按钮），
-    // 供整段复制测试验证这些文案不会被收进复制内容。
-    return react.createElement(
-      'div',
-      { className: 'official-md-stub', 'data-text': props.text, 'data-labels': JSON.stringify(props.labels || null) },
-      react.createElement('div', { 'data-code-block-banner': 'true' }, 'js'),
-      react.createElement('button', { className: 'official-copy' }, '复制'),
-      props.text,
-    )
-  }
-  return { MarkdownText, calls }
+/**
+ * **真实**渲染依赖（assets/ 里 vendored 的 marked / highlight.js）装进页面 window。
+ *
+ * 为什么不用桩：自研渲染器（own-markdown.ts / own-code.ts）的判据就是「marked 词法树 →
+ * 我们的 vdom」「hljs 令牌树 → hljs-* class 的 span」——用真库才能断言真实产物
+ * （h1 / ul / table / hljs-keyword span），桩只能断言接线、断言不了渲染。
+ * 用 node:vm 起一个隔离上下文（UMD 在那里落到 globalThis），再挂到假 window 上。
+ */
+let realAssets = null
+
+/** 懒加载真实 assets（每个测试进程只解析一次）。同文件内供 createRenderStack 使用，不导出。 */
+function loadRealRenderAssets() {
+  if (realAssets !== null) return realAssets
+  const context = vm.createContext({})
+  vm.runInContext(fs.readFileSync(new URL('../../assets/marked-18.1.0.umd.js', import.meta.url), 'utf8'), context)
+  vm.runInContext(fs.readFileSync(new URL('../../assets/highlightjs-11.12.0.min.js', import.meta.url), 'utf8'), context)
+  realAssets = { marked: context.marked, hljs: context.hljs }
+  return realAssets
+}
+
+/** 把真实 marked / hljs 装到假 window 上（等价于「懒加载已完成」）。同文件内使用，不导出。 */
+function installRealRenderAssets(page) {
+  const assets = loadRealRenderAssets()
+  page.window.marked = assets.marked
+  page.window.hljs = assets.hljs
+  return assets
 }
 
 /**
  * 加载 lib/client.js（产物）并返回它的 exports。
- * @param {{ page: object, markdown?: object, reactDom?: object, extraRequire?: object }} options
- *   markdown / reactDom 缺省 = 平台模块缺失（用于验证真降级）。
+ * @param {{ page: object, reactDom?: object, react?: object, extraRequire?: object }} options
+ *   reactDom 缺省 = 平台模块缺失（用于验证真降级）；渲染依赖（marked / hljs）经
+ *   `installRealRenderAssets(page)` 装到 window 上，缺省 = 未加载（懒加载 / 降级路径）。
  */
-export function loadBundle({ page, markdown, reactDom, react, extraRequire = {} } = {}) {
+export function loadBundle({ page, reactDom, react, extraRequire = {} } = {}) {
   const reactStub = react || createReactStub()
   const stubs = { react: reactStub }
-  if (markdown !== undefined) stubs['@deepseek-ai/dsh-client-ui-primitives'] = markdown
   if (reactDom !== undefined) stubs['react-dom/client'] = reactDom
   Object.assign(stubs, extraRequire)
   const requireCalls = []
@@ -365,11 +459,14 @@ export function loadBundle({ page, markdown, reactDom, react, extraRequire = {} 
   return { exports: exportsObj, requireCalls, react: reactStub, registered }
 }
 
-/** 官方渲染器「完整可用」的一套桩（组件 + createRoot）+ 记录器。 */
-export function createOfficialStack(page, react) {
-  const markdown = createPrimeMarkdownStub(react)
+/**
+ * 渲染栈：react-dom/client 桩（createRoot 把 vdom 落成假 DOM）+ 可选的**真实**渲染依赖。
+ * @param {{ assets?: boolean }} [options] assets = false → 不装 marked / hljs（验证懒加载与降级）
+ */
+export function createRenderStack(page, react, options = {}) {
   const reactDom = createReactDomStub(page)
-  return { markdown, reactDom }
+  const assets = options.assets === false ? null : installRealRenderAssets(page)
+  return { reactDom, assets }
 }
 
 /** 造一个围栏代码块：div.md-code-block > banner(语言名) + pre > code（官方 DOM 契约）。 */
@@ -424,6 +521,14 @@ export function installLangFetchStub(index, options = {}) {
     const href = String(url)
     calls.push(href)
     if (options.fail === true) return Promise.reject(new Error('offline'))
+    if (href.includes('/assets/')) {
+      // 懒加载路径：把真实的 vendored 库当静态资源回给 client（与 host 半静态路由同契约）。
+      const name = href.slice(href.lastIndexOf('/') + 1)
+      const file = new URL('../../assets/' + name, import.meta.url)
+      if (!fs.existsSync(file)) return Promise.resolve({ ok: false, status: 404 })
+      const body = fs.readFileSync(file, 'utf8')
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(body) })
+    }
     if (href.includes('/config')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, value: {} }) })
     }

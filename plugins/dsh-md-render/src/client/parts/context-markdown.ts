@@ -1,23 +1,22 @@
-// ── 上下文注入块 markdown 渲染 ───────────────────────────────────────
+// ── 上下文注入块 markdown 渲染（自研渲染器）─────────────────────────────
 // 宿主 @deepseek-ai/dsh-client-ui-chat 的 ContextBody 把上下文注入正文
 // （子 agent 回传消息 / AGENTS.md 等 workspace 指令 / 回忆注入）渲染为
 // <pre data-context-text="true"> 纯文本（ui-chat/src/client/chat/ContextBody.tsx:147，
 // CSS white-space:pre-wrap），其中的 markdown（粗体 / 列表 / 标题 / 表格 /
 // 代码块）不会渲染——官方不接管这类纯文本块，所以这是本插件的真增量。
-// 本模块在 DOM 层把这类块交给**官方 MarkdownText**（react-dom/client 挂到
-// 插入的容器里）渲染，与宿主消息同一套渲染器（表格 / 公式 / 代码块能力
-// 完全一致）。
+// 本模块在 DOM 层把这类块交给**本插件自己的 markdown 渲染器**（own-markdown.ts，
+// 解析层 marked 走 assets 懒加载），**不再调用官方 MarkdownText**。
 //
 // 与 React 共存的约束（宿主白名单是 React 管理的 DOM）：
 //  - 不修改 pre 的子结构（React 对 <pre>{text}</pre> 的文本 diff 会整体
 //    改写 textContent，改子结构必被冲掉），只在 pre 之前插入渲染容器并
 //    给 pre 置 hidden；
-//  - 渲染容器写 data-signature（文本长度 + djb2 哈希），重扫时签名一致
-//    且容器仍在位 → 跳过（幂等，不重复渲染、不抖动）；
+//  - 渲染容器写 data-signature（文本长度 + djb2 哈希 + 渲染库就绪版本），重扫时签名
+//    一致且容器仍在位 → 跳过（幂等，不重复渲染、不抖动）；
 //  - 宿主重建节点（会话切换 / 重渲染）冲掉容器后，MutationObserver 兜底
 //    重扫会重做；pre 上的标记不影响宿主（React 不管理该属性）。
-// 超长文本（> MAX_CONTEXT_CHARS）跳过；官方组件不可用时不接管（保持宿主
-// 纯文本，真降级）。
+//  - 超长文本（> MAX_CONTEXT_CHARS）跳过；渲染库没就绪 / react-dom 不可用 → 不接管
+//    （保持宿主纯文本，真降级；库就绪后的重扫会补上）。
 
 /** 上下文注入正文选择器（宿主 ContextBody 的稳定 data 契约）。 */
 const CONTEXT_TEXT_SELECTOR = 'pre[data-context-text="true"]'
@@ -41,10 +40,10 @@ function contextBodyOf(pre: Element): Element | null {
   return prev && prev.getAttribute(CONTEXT_BODY_ATTR) === 'true' ? prev : null
 }
 
-/** 接管前置条件（开关 / 官方组件 / 父节点 / 长度）→ 待渲染文本；不满足返回 null。 */
+/** 接管前置条件（开关 / 挂载能力 / 父节点 / 长度）→ 待渲染文本；不满足返回 null。 */
 function contextSourceOf(pre: Element): { parent: Element; text: string } | null {
   if (!renderOptions.markdown.contextMarkdown) return null
-  if (!officialMarkdownAvailable()) return null
+  if (!domRootAvailable()) return null
   const parent = pre.parentNode as Element | null
   if (!parent || typeof parent.insertBefore !== 'function') return null
   const text = pre.textContent ?? ''
@@ -52,7 +51,7 @@ function contextSourceOf(pre: Element): { parent: Element; text: string } | null
   return { parent, text }
 }
 
-/** 建容器并交给官方渲染器；官方组件不可用 → null（调用方保持宿主原样）。 */
+/** 建容器并交给**自研 markdown 渲染器**；渲染库未就绪 / 不可用 → null（调用方保持宿主原样）。 */
 function buildContextBody(text: string, signature: string): Element | null {
   const body = document.createElement('div')
   body.className = 'tzx-md dsh-md-render-context-md'
@@ -65,7 +64,7 @@ function buildContextBody(text: string, signature: string): Element | null {
 function applyContextMarkdown(pre: Element): void {
   const source = contextSourceOf(pre)
   if (source === null) return
-  const signature = String(source.text.length) + ':' + contextHash(source.text)
+  const signature = String(source.text.length) + ':' + contextHash(source.text) + ':' + String(renderAssetsReady())
   const existing = contextBodyOf(pre)
   if (existing && existing.getAttribute('data-signature') === signature) return
   if (existing) {

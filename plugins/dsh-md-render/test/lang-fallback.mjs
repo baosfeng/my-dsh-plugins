@@ -1,19 +1,20 @@
 /**
- * 需求 3（issue #470）：无语言围栏块的 markdown 兜底。
+ * 无语言 / 识别失败围栏块的归属（issue #470 需求 3 的口径，自研渲染后重述）。
  *
- * 口径已拍板：**只有「确证无语言」才兜底**（client 事件流索引给出语言 ''），
- * **「识别失败」一律不接管**（拿不到语言信息 —— 老宿主 / 精简上下文 / 索引为空 /
- * DOM 只给本地化标签「代码块」且 host 索引未命中）。
- * 两者在 resolveFenceLangEx 里靠 `confirmed` 区分：'' + confirmed 才是确证。
+ *  · **确证无语言**（client 事件流索引给空串）→ 自研 markdown 渲染（模型常把实际是 markdown 的
+ *    内容用无标记围栏包起来），每块带「查看原文」一键切回；
+ *  · **识别失败**（DOM 只给本地化标签「代码块」且索引拿不到答案）→ 仍按**代码块**接管，
+ *    但语言位**留空**：绝不编造语言名，也绝不把它误判成 markdown（真纯文本被当 markdown 会走样）；
+ *  · text / plaintext / txt / md / markdown 一律 markdown（明确的安全集合）；
+ *  · 其他已知语言（js / bash…）一律自研代码块。
  *
- * 代价用户已知情：真纯文本（日志 / 目录树）也会被当 markdown 渲染，
- * 但每块都有「查看原文」一键还原。
+ * 两者在 resolveFenceLangEx 里靠 `confirmed` 区分：'' + confirmed 才是「确证无语言」。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { createLangIndex } from '../lib/lang-index.js'
 import {
-  createOfficialStack,
+  createRenderStack,
   createPage,
   createReactStub,
   installGlobals,
@@ -24,7 +25,9 @@ import {
   makeRealHostCodeBlock,
 } from './support/fake-dom.mjs'
 
-const TEXT_BODY = 'div.dsh-md-render-text-md'
+const MD_BODY = 'div.dsh-md-render-text-md'
+const CODE_HOST = 'div.dsh-md-render-code-host'
+const CODE_LANG = 'span.dsh-md-render-code-lang'
 const TOGGLE = 'button.dsh-md-render-text-toggle'
 const VIEW_ATTR = 'data-dsh-md-render-text-view'
 const HOST_LABEL = '代码块'
@@ -57,71 +60,71 @@ function setup({ entries = null, block = null, langIndex = null, fail = false } 
   scroll.appendChild(target)
   const page = installGlobals(createPage(scroll))
   const react = createReactStub()
-  const stack = createOfficialStack(page, react)
-  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  const stack = createRenderStack(page, react)
+  const loaded = loadBundle({ page, react, reactDom: stack.reactDom })
   const stub = installLangFetchStub(langIndex ?? createLangIndex(), { fail })
   const ctx = entries === null ? { effect: (fn) => fn() } : sessionCtx(entries)
   loaded.exports.apply(ctx)
   return { page, loaded, stack, scroll, block: target, stub }
 }
 
-const stubText = (block) => {
-  const stub = block.querySelector('.official-md-stub')
-  return stub === null ? null : stub.getAttribute('data-text')
-}
-
-test("确证无语言（client 事件流索引给 ''）→ 按 markdown 兜底渲染，一键可切回原文", () => {
+test("确证无语言（client 事件流索引给 ''）→ 按 markdown 渲染，一键可切回原文", () => {
   const fence = ['```', BODY, '```'].join('\n')
-  const { block, stack } = setup({ entries: [entry(1, fence)] })
-  const body = block.querySelector(TEXT_BODY)
-  assert.ok(body, '无语言块获得 markdown 渲染容器')
-  assert.equal(stubText(block), BODY, '原文进入官方渲染器')
+  const { block } = setup({ entries: [entry(1, fence)] })
+  const body = block.querySelector(MD_BODY)
+  assert.ok(body, '无语言块获得自研 markdown 渲染容器')
+  assert.equal(body.querySelector('h2').textContent, '标题', '自研渲染产出真实 h2')
+  assert.equal(body.querySelectorAll('li').length, 2, '列表渲染为真 li')
   assert.equal(block.getAttribute(VIEW_ATTR), 'markdown', '初始为 markdown 视图')
   const toggle = block.querySelector(TOGGLE)
   assert.ok(toggle, '兜底块同样带「查看原文」')
   assert.equal(toggle.textContent, '查看原文', '按钮文案')
   toggle.fire('click')
   assert.equal(block.getAttribute(VIEW_ATTR), 'source', '一键切回原文视图')
-  assert.equal(block.querySelectorAll(TEXT_BODY).length, 1, '容器未重复')
-  assert.equal(stack.markdown.calls.length, 1, '官方渲染器恰好被调用一次')
+  assert.equal(block.querySelectorAll(MD_BODY).length, 1, '容器未重复')
 })
 
-test('识别失败（拿不到语言）→ 原样保留官方代码块（反回归，绝不误伤）', () => {
+test('识别失败（拿不到语言）→ 按代码块接管，语言位留空（不接管成 markdown，也不编造语言名）', () => {
   // ① 没有会话事件流（精简上下文 / 老宿主）→ 索引恒为空 → 无确证
   const noCtx = setup({ entries: null })
-  assert.equal(noCtx.block.querySelector(TEXT_BODY), null, '拿不到语言时不接管')
-  assert.equal(noCtx.block.getAttribute(VIEW_ATTR), null, '无视图属性')
-  assert.equal(noCtx.block.querySelector(TOGGLE), null, '无切换按钮')
+  assert.ok(noCtx.block.querySelector(CODE_HOST), '按代码块接管')
+  assert.equal(noCtx.block.querySelector(MD_BODY), null, '不被误判成 markdown')
+  assert.equal(noCtx.block.querySelector(CODE_LANG).textContent, '', '语言位留空')
+  assert.equal(noCtx.block.getAttribute(VIEW_ATTR), 'code', 'code 视图')
+  assert.equal(noCtx.block.querySelector(TOGGLE), null, '代码视图不带「查看原文」')
 
-  // ② host 索引未命中（索引只登记本插件接管的语言，js / java 同样查不到 —— 不可区分）
+  // ② host 索引未命中（索引里没有这条内容）→ 同样不算确证
   const miss = setup({ entries: null, langIndex: createLangIndex() })
-  assert.equal(miss.block.querySelector(TEXT_BODY), null, 'host 索引未命中不算确证')
+  assert.equal(miss.block.querySelector(MD_BODY), null, 'host 索引未命中不算确证')
+  assert.equal(miss.block.querySelector(CODE_LANG).textContent, '', '语言位留空')
 })
 
 test('md / markdown 围栏块纳入 markdown 接管（明确安全的集合扩充）', () => {
   for (const lang of ['md', 'markdown']) {
     const block = makeCodeBlock({ lang, code: BODY })
-    const { stack } = setup({ block })
-    assert.ok(block.querySelector(TEXT_BODY), lang + ' 块被接管')
+    setup({ block })
+    assert.ok(block.querySelector(MD_BODY), lang + ' 块被接管')
     assert.equal(block.getAttribute(VIEW_ATTR), 'markdown', lang + ' 默认 markdown 视图')
-    assert.equal(stubText(block), BODY, lang + ' 内容进入官方渲染器')
-    assert.equal(stack.markdown.calls.length, 1, lang + ' 恰好渲染一次')
+    assert.equal(block.querySelector('h2').textContent, '标题', lang + ' 内容由自研渲染器渲染')
   }
 })
 
 test('兜底块与同名语言块签名互不串扰；重复扫描幂等', () => {
   const fence = ['```', BODY, '```'].join('\n')
   const { loaded, block } = setup({ entries: [entry(1, fence)] })
-  const first = block.querySelector(TEXT_BODY)
+  const first = block.querySelector(MD_BODY)
   loaded.exports.apply(sessionCtx([entry(1, fence)]))
-  assert.equal(block.querySelector(TEXT_BODY), first, '同容器复用（幂等）')
-  assert.equal(block.querySelectorAll(TEXT_BODY).length, 1, '无重复容器')
+  assert.equal(block.querySelector(MD_BODY), first, '同容器复用（幂等）')
+  assert.equal(block.querySelectorAll(MD_BODY).length, 1, '无重复容器')
   assert.equal(block.querySelectorAll(TOGGLE).length, 1, '无重复按钮')
 })
 
-test('普通语言块（js / bash）仍不被 markdown 接管（反回归）', () => {
+test('普通语言块（js / bash）走自研代码块视图（不再是「不接管」）', () => {
   for (const lang of ['js', 'bash']) {
-    const { block } = setup({ entries: [entry(1, ['```' + lang, 'const a = 1', '```'].join('\n'))], block: null })
-    assert.equal(block.querySelector(TEXT_BODY), null, lang + ' 块不接管')
+    const host = makeCodeBlock({ lang, code: 'const a = 1' })
+    const { block } = setup({ entries: [entry(1, ['```' + lang, 'const a = 1', '```'].join('\n'))], block: host })
+    assert.equal(block.querySelector(MD_BODY), null, lang + ' 块不被 markdown 接管')
+    assert.equal(block.getAttribute(VIEW_ATTR), 'code', lang + ' 块走代码视图')
+    assert.equal(block.querySelector(CODE_LANG).textContent, lang, lang + ' 块 banner 是真实语言名')
   }
 })

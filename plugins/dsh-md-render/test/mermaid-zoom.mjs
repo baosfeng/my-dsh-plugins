@@ -14,7 +14,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import {
-  createOfficialStack,
+  createRenderStack,
   createPage,
   createReactStub,
   installGlobals,
@@ -90,8 +90,8 @@ function setup({ Panzoom = panzoomStub() } = {}) {
   scroll.appendChild(block)
   const page = installGlobals(createPage(scroll))
   const react = createReactStub()
-  const stack = createOfficialStack(page, react)
-  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  const stack = createRenderStack(page, react)
+  const loaded = loadBundle({ page, react, reactDom: stack.reactDom })
   loaded.exports.apply({ effect: (fn) => fn() })
   return { page, loaded, scroll, block, host, card, frame, box, svg, Panzoom }
 }

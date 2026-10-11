@@ -214,9 +214,10 @@ function resolveFenceLang(block: Element): string {
   return resolveFenceLangEx(block).lang
 }
 
-/** 本插件 markdown 渲染容器内的块不再二次接管（防递归重建；类名来自 text-markdown.ts）。 */
+/** 本插件渲染容器内的块不再二次接管（防递归重建；类名来自 block-render.ts）。 */
 function isInsideRenderedMarkdown(block: Element): boolean {
-  return !!(block.closest && block.closest('div.' + TEXT_MD_CLASS))
+  if (!block.closest) return false
+  return block.closest('div.' + BLOCK_MD_CLASS) !== null || block.closest('div.' + CODE_HOST_CLASS) !== null
 }
 
 /** 取一批待查哈希（不超过单请求上限，其余留到下批）。 */

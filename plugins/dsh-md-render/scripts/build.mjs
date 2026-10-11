@@ -36,12 +36,15 @@ const PARTS = [
   ['/*__PART_CONFIG__*/', 'config.js'],
   ['/*__PART_BLOCK_LANG__*/', 'block-lang.js'],
   ['/*__PART_TABLE_NORMALIZE__*/', 'table-normalize.js'],
-  ['/*__PART_OFFICIAL_VIEW__*/', 'official-view.js'],
+  ['/*__PART_RENDER_ASSETS__*/', 'render-assets.js'],
+  ['/*__PART_DOM_ROOT__*/', 'dom-root.js'],
+  ['/*__PART_OWN_CODE__*/', 'own-code.js'],
+  ['/*__PART_OWN_MARKDOWN__*/', 'own-markdown.js'],
   ['/*__PART_COPY__*/', 'copy.js'],
   ['/*__PART_MARKDOWN_VIEW__*/', 'markdown-view.js'],
   ['/*__PART_CONTEXT_MARKDOWN__*/', 'context-markdown.js'],
   ['/*__PART_LANG_SOURCE__*/', 'lang-source.js'],
-  ['/*__PART_TEXT_MARKDOWN__*/', 'text-markdown.js'],
+  ['/*__PART_BLOCK_RENDER__*/', 'block-render.js'],
   ['/*__PART_THINK__*/', 'think.js'],
   ['/*__PART_MERMAID_ENGINE__*/', 'mermaid-engine.js'],
   ['/*__PART_MERMAID_CARD__*/', 'mermaid-card.js'],
@@ -78,6 +81,12 @@ const ANCHORS = [
   ['function bindZoom(', 'mermaid-zoom.ts'],
   ['function toggleCardOverlay(', 'mermaid-zoom.ts'],
   ['function refreshFenceLangIndex(', 'lang-source.ts'],
+  ['function ensureRenderAsset(', 'render-assets.ts'],
+  ['function renderMarkdownInto(', 'dom-root.ts'],
+  ['function CodeBlockView(', 'own-code.ts'],
+  ['function markdownNodes(', 'own-markdown.ts'],
+  ['function applyFenceBlock(', 'block-render.ts'],
+  ['function fenceKindOf(', 'block-render.ts'],
 ]
 
 // 1. Compile client TS → lib/.client-build/**
@@ -92,6 +101,10 @@ const {
   MERMAID_ENGINE_FILE,
   PANZOOM_SCRIPT_URL,
   PANZOOM_FILE,
+  MARKED_URL,
+  MARKED_FILE,
+  HIGHLIGHTJS_URL,
+  HIGHLIGHTJS_FILE,
   LANGS_API_URL,
   LANGS_HASH_PARAM,
 } = await import('../lib/routes/paths.js')
@@ -105,6 +118,8 @@ ANCHORS.push(
   ['const LANGS_API_URL = ' + JSON.stringify(LANGS_API_URL) + '\n', 'src/routes/paths.ts (single source)'],
   ['const LANGS_HASH_PARAM = ' + JSON.stringify(LANGS_HASH_PARAM) + '\n', 'src/routes/paths.ts (single source)'],
   ['const PANZOOM_SCRIPT_URL = ' + JSON.stringify(PANZOOM_SCRIPT_URL) + '\n', 'src/routes/paths.ts (single source)'],
+  ['const MARKED_URL = ' + JSON.stringify(MARKED_URL) + '\n', 'src/routes/paths.ts (single source)'],
+  ['const HIGHLIGHTJS_URL = ' + JSON.stringify(HIGHLIGHTJS_URL) + '\n', 'src/routes/paths.ts (single source)'],
 )
 
 // 2. Splice compiled parts into template
@@ -164,6 +179,10 @@ for (const [anchor, source] of ANCHORS) {
 const ASSET_SHA256 = {
   [MERMAID_ENGINE_FILE]: '5a8ec91820bd55afef049068489369910e5d6ce70c8103952f27e29d3e76e8bc',
   [PANZOOM_FILE]: '3ce354ef7b493efb62a4d4acaaf86fa2d6027eb629857a4e144041de1a112c1e',
+  // 自研 markdown 渲染器的解析层（marked 18.1.0 UMD，MIT）。
+  [MARKED_FILE]: 'f424dcb508fdf93e0137a970cfce8f3207ea2e3f37eca5f7556a52875683632a',
+  // 自研代码块渲染器的高亮层（highlight.js 11.12.0 common 构建，BSD-3-Clause）。
+  [HIGHLIGHTJS_FILE]: '8ab71eb09c51f501e5e25157d9cff100e46cc29bcbfc744d0b746d451fca7f53',
 }
 const assetBytes = {}
 for (const [file, wantSha] of Object.entries(ASSET_SHA256)) {

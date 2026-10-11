@@ -45,18 +45,18 @@ const MD_RENDER_STRINGS = {
   groupMermaid: mdRenderText('Mermaid 图表', 'Mermaid diagrams'),
   copyButtonLabel: mdRenderText('整段复制', 'Copy whole message'),
   copyButtonHint: mdRenderText(
-    'MarkdownView 整段内容一键复制（官方只有代码块复制）',
-    'One-click copy for the whole MarkdownView (the host only copies code blocks)',
+    'MarkdownView 整段内容一键复制（本插件自研 markdown 渲染 + 整段复制）',
+    'One-click copy for the whole MarkdownView (plugin-built markdown rendering + whole-content copy)',
   ),
-  textFenceLabel: mdRenderText('text 围栏块渲染', 'Render text fences'),
+  textFenceLabel: mdRenderText('围栏块渲染（自研）', 'Render code fences (built-in)'),
   textFenceHint: mdRenderText(
-    '语言标记为 text / plaintext / txt 的围栏块按 markdown 渲染，每块可切回原文',
-    'Render text / plaintext / txt fences as markdown, each block can switch back to source',
+    '所有围栏代码块都由本插件自己的渲染器产出：text / 无语言块按 markdown 渲染，其余语言渲染为带真实语言名与语法高亮的代码块；每块可切回官方源码视图',
+    'Every fenced block is rendered by this plugin own renderer: text / unlabelled blocks as markdown, other languages as a code block with the real language name and syntax highlighting; each block can switch back to the host source view',
   ),
   contextLabel: mdRenderText('上下文注入块渲染', 'Render context-injection blocks'),
   contextHint: mdRenderText(
-    '宿主以纯文本呈现的上下文注入正文（子 agent 消息 / AGENTS.md）按 markdown 渲染',
-    'Render plain-text context bodies (sub-agent messages / AGENTS.md) as markdown',
+    '宿主以纯文本呈现的上下文注入正文（子 agent 消息 / AGENTS.md）由本插件自己的 markdown 渲染器渲染',
+    'Render plain-text context bodies (sub-agent messages / AGENTS.md) with this plugin own markdown renderer',
   ),
   thinkingLabel: mdRenderText('思考默认展开', 'Expand thinking by default'),
   thinkingHint: mdRenderText(

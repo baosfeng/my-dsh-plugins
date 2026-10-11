@@ -33,6 +33,10 @@ plugins/dsh-md-render/assets/mermaid-10.9.3.min.js
 # panzoom 4.6.2（图表缩放 / 平移的 vendored 库，issue #470）：同上——
 # 压缩产物被 prettier 美化会破坏 build.mjs 冻结的 SHA256 与发布断言。
 plugins/dsh-md-render/assets/panzoom-4.6.2.min.js
+# marked 18.1.0（markdown 解析）与 highlight.js 11.12.0（代码高亮）的 vendored UMD——
+# 自研渲染用（issue #471）；同为压缩产物，被 prettier 美化会破坏 build.mjs 的 SHA256 冻结。
+plugins/dsh-md-render/assets/marked-18.1.0.umd.js
+plugins/dsh-md-render/assets/highlightjs-11.12.0.min.js
 
 # npm 生成的锁文件（格式由 npm 维护，避免与 npm 输出冲突）
 package-lock.json

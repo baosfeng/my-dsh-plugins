@@ -1,9 +1,10 @@
 /**
- * mermaid 引擎静态资源路由（/md-render/assets）—— 资产路由契约。
+ * 静态资源路由（/md-render/assets）—— 资产路由契约。
  *
- * 断言：引擎**不内联**进 bundle（issue #185 的 4.48 MB base64 冗余教训），改为
- * 静态托管 + ETag/304 + 405 + 缺失时 404 降级；同时校验 assets 目录里的引擎
- * 文件确实存在且是 UMD 形态（构建期 SHA256 校验的运行时对应面）。
+ * 断言：四个 vendored 库（mermaid 引擎 / panzoom / **marked 解析层** / **highlight.js 高亮层**）
+ * 都**不内联**进 bundle（issue #185 的 4.48 MB base64 冗余教训；用户口径「只控启动速度」），
+ * 改为静态托管 + ETag/304 + 405 + 缺失时 404 降级；同时校验 assets 目录里的文件确实存在、
+ * 是 UMD 形态、SHA256 与构建期冻结值一致（构建期校验的运行时对应面）。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
@@ -16,6 +17,8 @@ import { createAssetHandler, assetNameOf, ASSETS_PREFIX } from '../lib/routes/as
 const here = dirname(fileURLToPath(import.meta.url))
 const ENGINE = join(here, '..', 'assets', 'mermaid-10.9.3.min.js')
 const PANZOOM = join(here, '..', 'assets', 'panzoom-4.6.2.min.js')
+const MARKED = join(here, '..', 'assets', 'marked-18.1.0.umd.js')
+const HIGHLIGHTJS = join(here, '..', 'assets', 'highlightjs-11.12.0.min.js')
 
 function mockResponse() {
   const res = {
@@ -65,6 +68,42 @@ test('panzoom 也随包发布、UMD 形态、SHA256 与构建期冻结值一致�
     'frozen panzoom SHA256',
   )
   assert.equal(bytes.toString('utf8').includes('module.exports'), true, 'UMD 版含 module.exports → 只能走 asset 注入')
+})
+
+test('自研渲染器的两个依赖（marked / highlight.js）也随包发布、UMD 形态、SHA256 冻结', () => {
+  // 解析层与高亮层：client 首次真正需要时 fetch 并注入 <script>，**不进 lib/client.js**。
+  assert.equal(existsSync(MARKED), true, 'marked asset ships in the package')
+  assert.equal(existsSync(HIGHLIGHTJS), true, 'highlight.js asset ships in the package')
+  const markedBytes = readFileSync(MARKED)
+  assert.ok(markedBytes.toString('utf8').includes('globalThis'), 'marked UMD（注入后落 window.marked）')
+  assert.equal(
+    createHash('sha256').update(markedBytes).digest('hex'),
+    'f424dcb508fdf93e0137a970cfce8f3207ea2e3f37eca5f7556a52875683632a',
+    'frozen marked SHA256',
+  )
+  const hljsText = readFileSync(HIGHLIGHTJS, 'utf8')
+  assert.ok(hljsText.includes('var hljs='), 'highlight.js 注入 <script> 后落 window.hljs')
+  assert.equal(
+    createHash('sha256').update(readFileSync(HIGHLIGHTJS)).digest('hex'),
+    '8ab71eb09c51f501e5e25157d9cff100e46cc29bcbfc744d0b746d451fca7f53',
+    'frozen highlight.js SHA256',
+  )
+  // 许可证头必须保留（MIT / BSD-3-Clause）。
+  assert.ok(markedBytes.toString('utf8').includes('MIT License'), 'marked license header kept')
+  assert.ok(hljsText.includes('BSD-3-Clause'), 'highlight.js license header kept')
+})
+
+test('两个新资产也在白名单里可服务（client 的懒加载 URL 与之一致）', async () => {
+  const client = readFileSync(join(here, '..', 'lib', 'client.js'), 'utf8')
+  for (const name of ['marked-18.1.0.umd.js', 'highlightjs-11.12.0.min.js']) {
+    assert.equal(assetNameOf(ASSETS_PREFIX + '/' + name), name, name + ' 白名单命中')
+    assert.ok(client.includes(ASSETS_PREFIX + '/' + name), name + ' client 懒加载同一 URL')
+  }
+  const handler = createAssetHandler()
+  const res = mockResponse()
+  await handler({ method: 'GET', headers: {}, url: ASSETS_PREFIX + '/highlightjs-11.12.0.min.js' }, res)
+  assert.equal(res.status, 200, '静态托管可服务')
+  assert.equal(Number(res.headers['Content-Length']), readFileSync(HIGHLIGHTJS).length, 'Content-Length matches')
 })
 
 test('按白名单文件名分派：panzoom 可服务，未登记资源 404（不做目录穿越）', async () => {

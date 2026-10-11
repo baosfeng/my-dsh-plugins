@@ -13,7 +13,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import {
-  createOfficialStack,
+  createRenderStack,
   createPage,
   createReactStub,
   installGlobals,
@@ -33,8 +33,8 @@ function setup(blocks) {
   for (const b of blocks) scroll.appendChild(b)
   const page = installGlobals(createPage(scroll))
   const react = createReactStub()
-  const stack = createOfficialStack(page, react)
-  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  const stack = createRenderStack(page, react)
+  const loaded = loadBundle({ page, react, reactDom: stack.reactDom })
   return { page, loaded, stack, scroll }
 }
 
@@ -57,18 +57,19 @@ test('未点击过控件 → 不产生任何语言覆盖（用户显式意图 !=
     ['图表', 'Markdown', '源码'],
     '三个选项',
   )
-  assert.equal(js.querySelector(TEXT_BODY), null, '自动判定没有被放宽：js 块仍不被 markdown 接管')
+  assert.equal(js.getAttribute('data-dsh-md-render-text-view'), 'code', '自动判定没有被放宽：js 块走自研代码块视图')
+  assert.equal(js.querySelector(TEXT_BODY), null, 'js 块不被 markdown 接管')
 })
 
 test('任意代码块可切 Markdown / 源码，来回切不重复注入', () => {
   const js = makeCodeBlock({ lang: 'js', code: 'const a = 1' })
-  const { loaded, stack } = setup([js])
+  const { loaded } = setup([js])
   loaded.exports.apply({ effect: (fn) => fn() })
 
   pick(js, 'Markdown')
   assert.equal(js.getAttribute(FORCE_ATTR), 'markdown', '覆盖值写在块属性上')
   assert.ok(js.querySelector(TEXT_BODY), '块被按 markdown 渲染')
-  assert.equal(stack.markdown.calls.at(-1).text, 'const a = 1', '源码交给官方渲染器')
+  assert.equal(js.querySelector(TEXT_BODY).textContent, 'const a = 1', '源码交给自研 markdown 渲染器')
 
   pick(js, '源码')
   assert.equal(js.getAttribute(FORCE_ATTR), 'source', '切回源码')
@@ -143,8 +144,8 @@ test('覆盖写入会话存储，刷新（新 bundle + 同一会话存储）后�
   const page2 = installGlobals(createPage(scroll2))
   page2.window.sessionStorage = store
   const react2 = createReactStub()
-  const stack2 = createOfficialStack(page2, react2)
-  const loaded2 = loadBundle({ page: page2, react: react2, markdown: stack2.markdown, reactDom: stack2.reactDom })
+  const stack2 = createRenderStack(page2, react2)
+  const loaded2 = loadBundle({ page: page2, react: react2, reactDom: stack2.reactDom })
   loaded2.exports.apply({ effect: (fn) => fn() })
   assert.equal(loaded2.exports.fenceForceOf(js2), 'markdown', '刷新后按内容哈希恢复覆盖')
   assert.ok(js2.querySelector(TEXT_BODY), '刷新后仍按 markdown 渲染')

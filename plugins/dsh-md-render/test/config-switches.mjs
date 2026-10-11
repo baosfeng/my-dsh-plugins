@@ -9,7 +9,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import {
-  createOfficialStack,
+  createRenderStack,
   createPage,
   createReactStub,
   installGlobals,
@@ -28,8 +28,8 @@ const DEFAULTS = {
 function load() {
   const page = installGlobals(createPage())
   const react = createReactStub()
-  const stack = createOfficialStack(page, react)
-  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  const stack = createRenderStack(page, react)
+  const loaded = loadBundle({ page, react, reactDom: stack.reactDom })
   return { page, loaded, stack }
 }
 

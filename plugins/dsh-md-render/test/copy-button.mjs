@@ -7,7 +7,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import {
-  createOfficialStack,
+  createRenderStack,
   createPage,
   createReactStub,
   installGlobals,
@@ -20,8 +20,8 @@ const MARKDOWN = '# 标题\n\n正文 **加粗**\n\n- 一\n- 二'
 function mount({ official = true } = {}) {
   const page = installGlobals(createPage())
   const react = createReactStub()
-  const stack = official ? createOfficialStack(page, react) : { markdown: undefined, reactDom: undefined }
-  const loaded = loadBundle({ page, react, markdown: stack.markdown, reactDom: stack.reactDom })
+  const stack = official ? createRenderStack(page, react) : { reactDom: undefined, assets: null }
+  const loaded = loadBundle({ page, react, reactDom: stack.reactDom })
   const dom = vdomToDom(loaded.exports.MarkdownView({ text: MARKDOWN }), page.document)
   return { page, loaded, dom }
 }
@@ -51,13 +51,16 @@ test('整段复制按钮渲染在 tzx-md 容器内', () => {
   assert.equal(btn.textContent, '复制', 'idle label')
 })
 
-test('点击复制整段文本，且不含官方 banner 语言名 / 官方复制按钮文案', async () => {
+test('点击复制整段文本，且不含渲染 chrome 文案（代码块语言名 / 复制按钮）', async () => {
   const { dom } = mount()
   const written = installClipboard()
   dom.querySelector('button.dsh-md-render-copy').fire('click')
   await Promise.resolve()
   assert.equal(written.length, 1, 'clipboard.writeText called once')
-  assert.equal(written[0], MARKDOWN, '整段纯文本（banner 与官方按钮文案已排除）')
+  // 复制的是**渲染结果的纯文本**（与修复前同口径）：结构与标记符号不在内，但内容一字不少；
+  // 复制按钮自身与代码块 banner（语言名 + 复制）由 collectCopyText 跳过。
+  assert.equal(written[0], '标题正文 加粗一二', '整段纯文本（渲染 chrome 文案已排除）')
+  assert.equal(written[0].includes('复制'), false, '不含复制按钮文案')
 })
 
 test('copyButton 关闭 → 不渲染复制按钮', () => {

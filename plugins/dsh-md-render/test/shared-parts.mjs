@@ -55,22 +55,23 @@ describe('DOM 扫描器走共享骨架', () => {
     expect(countOf(read('lib/client.js'), 'new MutationObserver')).toBe(1)
   })
 
-  it('两个注入点仍在：上下文块接管 / text 围栏块接管 / 兜底重扫', () => {
+  it('两个注入点仍在：上下文块接管 / 围栏块接管 / 兜底重扫', () => {
     const scanner = read('src/client/parts/scanner.ts')
     for (const marker of [
       'scanContextBlocks',
       'applyContextMarkdown',
-      'scanTextBlocks',
+      'scanFenceBlocks',
       'installDomScanner',
       '[data-conversation-scroll]',
+      'installRenderAssetReady',
     ]) {
       expect(scanner.includes(marker), `${marker} 必须保留`).toBe(true)
     }
   })
 
   it('流式门控与幂等签名仍在下游模块里（不得回退）', () => {
-    const text = read('src/client/parts/text-markdown.ts')
-    for (const marker of ['[data-streaming]', 'TEXT_SIG_ATTR', 'MAX_TEXT_FENCE_CHARS', 'renderMarkdownInto']) {
+    const text = read('src/client/parts/block-render.ts')
+    for (const marker of ['[data-streaming]', 'BLOCK_SIG_ATTR', 'MAX_TEXT_FENCE_CHARS', 'renderMarkdownInto']) {
       expect(text.includes(marker), `${marker} 必须保留`).toBe(true)
     }
     const context = read('src/client/parts/context-markdown.ts')
@@ -80,14 +81,13 @@ describe('DOM 扫描器走共享骨架', () => {
   })
 })
 
-describe('不再自实现 markdown 渲染（精简的判据）', () => {
-  it('产物里没有自实现的渲染器/数学/高亮/表格渲染模块', () => {
+describe('内容渲染完全用插件自己的实现（不依赖官方渲染组件）', () => {
+  it('产物里没有旧的重复实现（数学 / 表格渲染 / 轨迹接管）', () => {
     const artifact = read('lib/client.js')
     for (const gone of [
       'parseMath',
       'tokenizeCode',
       'parseTable',
-      'renderTable',
       'renderDomMarkdown',
       'applyTrajectoryMarkdown',
       'dsh-md-render-table',
@@ -96,8 +96,13 @@ describe('不再自实现 markdown 渲染（精简的判据）', () => {
     }
   })
 
-  it('产物只通过平台组件渲染（require 官方 MarkdownText）', () => {
-    expect(read('lib/client.js').includes("require('@deepseek-ai/dsh-client-ui-primitives')")).toBe(true)
+  it('产物**不再** require 官方 @deepseek-ai/dsh-client-ui-primitives（MarkdownText / CodeBlock）', () => {
+    const artifact = read('lib/client.js')
+    expect(artifact.includes('@deepseek-ai/dsh-client-ui-primitives')).toBe(false)
+    // 自研渲染器两个部件必须在产物里（片段静默丢失是这类构建最典型的故障模式）。
+    expect(artifact.includes('function markdownNodes(')).toBe(true)
+    expect(artifact.includes('function CodeBlockView(')).toBe(true)
+    expect(artifact.includes('function ensureRenderAsset(')).toBe(true)
   })
 
   it('产物内联共享图标片段（mermaid 卡片消费 icon 集）', () => {

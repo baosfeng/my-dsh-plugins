@@ -1,6 +1,8 @@
 /**
  * dsh-md-render — client half (browser)。职责边界：**只做 markdown 内容的渲染**（markdown
  * 文本 / 代码样式 / 图表渲染 / 思考 markdown），其他一律保持官方默认样式。
+ * **内容渲染完全用插件自己的实现**（marked 解析 + 自研 vdom 渲染 + highlight.js 高亮），
+ * 不再调用官方 MarkdownText / CodeBlock；解析层与高亮层走 assets 懒加载，不进本 bundle。
  * 注入点与能力清单见 README.md / docs/md渲染/，此处不重复。
  *
  * 硬约束（可机器校验，见 test/static-assertions.mjs）：
@@ -9,7 +11,7 @@
  *  - **不读 React fiber 私有属性**（__reactFiber$）；
  *  - 单 MutationObserver（一个扫描器按语言分流）。
  *
- * 样式走 DSH 语义 token（--dsw-alias-* / --dsw-font-*），随 activation 注入、fiber
+ * 样式走 DSH 语义 token（--dsw-* / --dsw-font-markdown-*），随 activation 注入、fiber
  * teardown 卸载（HMR / 禁用无残留）。
  *
  * BUILD NOTE: 本文件是源码模板（骨架）。scripts/build.mjs 把编译后的片段注入到下方
@@ -23,7 +25,7 @@ window.__ModuleLoader__.load({
     var module = { exports: {} }
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
-    // createElement / hooks 由 react 提供；注入渲染经 official-view.part.js 取平台模块。
+    // createElement / hooks 由 react 提供；自有渲染经 dom-root.part 取平台 react-dom/client。
     const { createElement, useState, useEffect } = require('react')
 
     // 路由路径（构建期由 host 半 lib/routes/paths.js 注入的单一真源）
@@ -34,16 +36,22 @@ window.__ModuleLoader__.load({
     /*__PART_LANG_SOURCE__*/
     // 非标准表格容错（官方 GFM 未覆盖的两种写法）
     /*__PART_TABLE_NORMALIZE__*/
-    // 官方渲染器接入（平台 MarkdownText + react-dom/client）
-    /*__PART_OFFICIAL_VIEW__*/
+    // 渲染依赖懒加载：marked（解析层）/ highlight.js（高亮层），走 assets 静态路由
+    /*__PART_RENDER_ASSETS__*/
+    // 自有渲染容器的 React root 管理（不再 require 官方组件）
+    /*__PART_DOM_ROOT__*/
+    // 自研代码块渲染（hljs 高亮 + 真实语言名 banner + 复制 + 自动换行）
+    /*__PART_OWN_CODE__*/
+    // 自研 markdown 渲染（marked 词法树 → vdom，表格容错在此接上）
+    /*__PART_OWN_MARKDOWN__*/
     // 整段 markdown 复制（官方只有代码块复制）
     /*__PART_COPY__*/
-    // 统一 MarkdownView：对外公共 API（官方渲染 + 整段复制）
+    // 统一 MarkdownView：对外公共 API（自研渲染 + 整段复制）
     /*__PART_MARKDOWN_VIEW__*/
     // 上下文注入块 markdown 渲染（pre[data-context-text]）
     /*__PART_CONTEXT_MARKDOWN__*/
-    // text / plaintext / txt / md 围栏块按 markdown 渲染 + 查看原文
-    /*__PART_TEXT_MARKDOWN__*/
+    // 围栏块接管：markdown / 代码两路（mermaid 交给下面）
+    /*__PART_BLOCK_RENDER__*/
     // 思考块默认展开（对官方折叠行派发一次 click；不改外观）
     /*__PART_THINK__*/
     // mermaid 引擎按需加载 + 离屏渲染

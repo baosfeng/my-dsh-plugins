@@ -26,11 +26,14 @@ declare const CONFIG_API_URL: string
 declare const MERMAID_ENGINE_URL: string
 /** panzoom vendor 脚本 URL（图表缩放 / 平移；同样构建期注入，issue #470）。 */
 declare const PANZOOM_SCRIPT_URL: string
+/** 自研渲染器的懒加载依赖 URL（marked 解析层 / highlight.js 高亮层）。 */
+declare const MARKED_URL: string
+declare const HIGHLIGHTJS_URL: string
 /** 语言索引查询端点 / 查询参数名（同一真源，issue #466）。 */
 declare const LANGS_API_URL: string
 declare const LANGS_HASH_PARAM: string
 
-// ── 同步模块加载器（factory 参数；平台 seed 模块见 official-view.ts）──────
+// ── 同步模块加载器（factory 参数；平台 seed 模块见 dom-root.ts）─────────
 declare function require(spec: string): Record<string, unknown>
 
 // ── CommonJS（apply.ts 使用 exports.inject / exports.apply）─────────────

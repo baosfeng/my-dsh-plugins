@@ -11,7 +11,7 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { apply } from '../lib/index.js'
 import {
-  INDEXED_FENCE_LANGS,
+  UNINDEXED_FENCE_LANGS,
   LANG_INDEX_MAX_SIZE,
   MAX_INDEXED_MARKDOWN_CHARS,
   createLangIndex,
@@ -102,7 +102,7 @@ test('normalizeFenceContent：CRLF/CR 归一 + 去掉尾部空白', () => {
   assert.equal(normalizeFenceContent(undefined), '', 'undefined 安全')
 })
 
-test('createLangIndex：只登记本插件接管的语言，查不到就是查不到', () => {
+test('createLangIndex：登记所有围栏语言（无语言不登记），查不到就是查不到', () => {
   const index = createLangIndex()
   const md = [
     fence('text', ['## 标题']),
@@ -114,14 +114,19 @@ test('createLangIndex：只登记本插件接管的语言，查不到就是查�
     fence('python', ['print(1)']),
     fence('', ['没有语言']),
   ].join('\n')
-  assert.equal(index.record(md), 5, '登记 5 个目标语言块')
-  assert.deepEqual(INDEXED_FENCE_LANGS, ['text', 'plaintext', 'txt', 'mermaid', 'mmd'], '接管语言集合')
+  assert.equal(index.record(md), 7, '登记 7 个有语言的围栏块（无语言的那块不登记）')
+  assert.deepEqual(UNINDEXED_FENCE_LANGS, [''], '只有「无语言」不登记')
   assert.equal(index.lookup([fenceHash('## 标题')])[fenceHash('## 标题')], 'text', '命中 text')
   assert.equal(index.lookup([fenceHash('flowchart TD')])[fenceHash('flowchart TD')], 'mermaid', '命中 mermaid')
-  assert.deepEqual(index.lookup([fenceHash('const a = 1')]), {}, 'js 不登记（DOM 能认，无需索引）')
-  assert.deepEqual(index.lookup([fenceHash('没有语言')]), {}, '无语言块不登记')
+  assert.equal(
+    index.lookup([fenceHash('const a = 1')])[fenceHash('const a = 1')],
+    'js',
+    'js 也登记（自研代码块要画真实语言名 banner）',
+  )
+  assert.equal(index.lookup([fenceHash('print(1)')])[fenceHash('print(1)')], 'python', 'python 同样登记')
+  assert.deepEqual(index.lookup([fenceHash('没有语言')]), {}, '无语言块不登记（「命中空串」与「没命中」无法区分）')
   assert.deepEqual(index.lookup(['zzzz']), {}, '未知哈希查不到')
-  assert.equal(index.stats().fences, 5, '登记块数可观测')
+  assert.equal(index.stats().fences, 7, '登记块数可观测')
 })
 
 test('createLangIndex：缩进围栏用「去缩进后的内容」也能匹配（DOM 里是去缩进版）', () => {

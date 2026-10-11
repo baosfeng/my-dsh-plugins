@@ -110,6 +110,16 @@ test('client bundle：不对官方元素写 style / class / aria', () => {
     ),
     'the zoom transform layer must center the svg so the panzoom anchor matches the diagram center',
   )
+  // 防回归：缩放工具条必须渲染在**图表之前**（卡片头部之下）。
+  // 宿主消息区底部被输入框浮层覆盖（实测占 y=449~577，而卡片高 408 + 浮层 128 > 可视 501），
+  // 工具条排在卡片底部会变成「看得见、点不到」的幽灵按钮 —— hit-test 实测 5 个按钮中心点
+  // 全部命中 composer 而非按钮自身。锚点取两个调用表达式的相对下标，避免被折行拆散。
+  const zoomCallAt = CODE.indexOf('createElement(ZoomBar,')
+  const bodyCallAt = CODE.lastIndexOf('createElement(CardBody,')
+  assert.ok(
+    zoomCallAt !== -1 && bodyCallAt !== -1 && zoomCallAt < bodyCallAt,
+    'the zoom bar must render before the diagram body (bottom edge is covered by the composer overlay)',
+  )
 })
 
 test('client bundle：单 MutationObserver（合并前两路观察收敛为一路）', () => {

@@ -1786,7 +1786,9 @@ function MermaidCard({ entryId, source, onForce, }) {
     }, [entryId, status, view]);
     return createElement('div', { className: MERMAID_CARD_CLASS }, createElement('div', { className: 'dsh-md-render-mermaid-card-head' }, createElement('div', { className: 'dsh-md-render-mermaid-card-title' }, icon.file(12), createElement('span', null, 'Mermaid 图表')), createElement('div', { className: 'dsh-md-render-mermaid-card-actions' }, createElement(ExportButtons, { status, ...exportActions }), 
     // 语言手动切换（需求 4）：卡片头承载另外两项。
-    onForce ? createElement(CardLangSwitch, { onForce }) : null, createElement(ViewToggle, { mode: view, setMode, previewDisabled: status === 'error' }))), renderNotice(notice), createElement(CardBody, { status, mode: view, error, source, svg, onRetry: retry }), svg && view === 'preview' ? createElement(ZoomBar, { entryId }) : null);
+    onForce ? createElement(CardLangSwitch, { onForce }) : null, createElement(ViewToggle, { mode: view, setMode, previewDisabled: status === 'error' }))), renderNotice(notice), 
+    // 缩放条放图表上方：卡片底部会被宿主输入框浮层盖住 → 幽灵按钮。
+    svg && view === 'preview' ? createElement(ZoomBar, { entryId }) : null, createElement(CardBody, { status, mode: view, error, source, svg, onRetry: retry }));
 }
 /** 提示条定时器（模块级单例：后一条提示覆盖前一条）。 */
 let noticeTimer = null;

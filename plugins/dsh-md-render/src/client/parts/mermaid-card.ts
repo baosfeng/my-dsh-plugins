@@ -284,8 +284,9 @@ function MermaidCard({
       ),
     ),
     renderNotice(notice),
-    createElement(CardBody, { status, mode: view, error, source, svg, onRetry: retry }),
+    // 缩放条放图表上方：卡片底部会被宿主输入框浮层盖住 → 幽灵按钮。
     svg && view === 'preview' ? createElement(ZoomBar, { entryId }) : null,
+    createElement(CardBody, { status, mode: view, error, source, svg, onRetry: retry }),
   )
 }
 

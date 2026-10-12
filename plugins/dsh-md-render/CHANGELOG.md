@@ -4,6 +4,27 @@
 
 > 公共 API 承诺面：`MarkdownView`（导出 / props / 自有 DOM 类名清单见 [README「公共 API 契约」](README.md)）；改类名清单 = 破坏性变更，须同步 README 与本文件。
 
+## [0.5.0] - 2026-10-12
+
+### 变更
+
+- feat(dsh-md-render): 预览交互 8 项（适应跟随容器·全屏收浮窗·双击切换·铺满·锚点·换行·图片放大·快捷键提示）
+- fix(dsh-md-render): 根治「缩放点了没反应」——panzoom 拉不起来时切内置降级引擎
+- feat(dsh-md-render): 外观也换成插件自有视觉语言（不再对齐官方样式）
+- feat(dsh-md-render): 内容渲染完全自研（不再依赖官方 MarkdownText / CodeBlock）
+- feat(dsh-md-render): 图表缩放改为「有感」：打开即适应容器 + 实时百分比 + 步长 1.5
+- fix(dsh-md-render): 修缩放工具条被输入框浮层遮挡（看得见点不到的幽灵按钮）
+- fix(dsh-md-render): 修图表放大时图跑出可视区（缩放锚点与图中心未对齐）
+- fix(dsh-md-render): 图表「全屏」改浮窗式最大化 + 修缩放与触控板捏合 + 接管块隐藏官方 banner
+- feat(dsh-md-render): 围栏语言来源改双源互补 + 四条体验优化（#466 #470）
+- docs: 标记 ADR-0002 为 superseded 并补正 profile 残留措辞
+- fix(dsh-shared,ci)!: 修复无值键解析回归并新增依赖解析门禁
+- feat(md-render): 设置页追加 plugins.bundle.config 入口（对齐上游 #443）
+- feat(md-render,my-memory)!: 合并渲染插件并新增全局提示词 (#463 #465)
+- chore(plugins)!: 删除 5 个插件及其全仓引用 (#464)
+- fix(compat): 插件适配 DSH 0.2.0-rc.2 宿主（peer 声明 + 取证通道 + fixture）
+- refactor(md-render): 下线与官方重复的渲染实现，仅保留真增量 (#437)
+
 ## [Unreleased]
 
 ### 变更

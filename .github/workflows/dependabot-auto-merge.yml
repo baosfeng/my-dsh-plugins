@@ -26,7 +26,72 @@ jobs:
         if: >-
           steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
           steps.metadata.outputs.update-type == 'version-update:semver-patch'
-        run: gh pr merge --auto --squash "$PR_URL"
+        run: |
+          # issue #468 / #469：分支落后于 main，且 main 在这期间改过**同一个** workflow 文件时，
+          # 三方合并的结果既不是分支版本也不是 main 版本 —— GitHub 认为这是「GitHub App
+          # 创建/更新 workflow 文件」，而 GITHUB_TOKEN 拿不到 `workflows` 权限
+          # （该权限只对 PAT / GitHub App 开放），于是合并被拒：
+          #   GraphQL: refusing to allow a GitHub App to create or update workflow
+          #   `.github/workflows/comprehensive-review.yml` without `workflows` permission
+          #   (mergePullRequest)   —— run 38036194338 / #468、run 38036200469 / #469
+          # 判别依据（对照实验）：同 token、同工作流、同样在改 workflow 文件、只差 10 秒的
+          # #467（该 workflow 文件在 main 上仍等于分支的合并基点）run 38036184104 成功；
+          # #475（2026-10-12，分支新鲜）也成功。
+          # → 不是「GITHUB_TOKEN 完全不能合并改 workflow 的 PR」，而是「陈旧分支 + 同一文件双方都改」。
+          # 处置：先自愈（把分支同步到最新 main 再合），自愈不成才降级为 ::warning 并写明人工动作；
+          # 其它错误照常失败 —— 不是静默忽略一切错误。
+          set +e
+          output=$(gh pr merge --auto --squash "$PR_URL" 2>&1)
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "✅ 已开启 auto-merge（minor/patch 依赖升级）"
+            exit 0
+          fi
+
+          printf '%s\n' "$output"
+
+          # 判据（三条必须同时命中才降级）：① GitHub App 被拒绝创建/更新 workflow；
+          # ② 原因写明缺 workflows 权限；③ 报错点名 .github/workflows/ 下的文件。
+          if printf '%s' "$output" | grep -qF 'refusing to allow a GitHub App to create or update workflow' &&
+             printf '%s' "$output" | grep -qE 'workflows.*permission' &&
+             printf '%s' "$output" | grep -qF '.github/workflows/'; then
+            echo "::notice title=命中已知失败（陈旧分支 + 同一 workflow 文件双方都改）::尝试自愈：把分支同步到最新 main"
+
+            # 自愈①：gh pr update-branch。它同样以 GITHUB_TOKEN 发起，可能被同一限制拒绝，
+            # 因此只记录结果，不据此判定失败。
+            set +e
+            update_output=$(gh pr update-branch "$PR_URL" 2>&1)
+            update_status=$?
+            set -e
+            printf 'update-branch(exit=%s): %s\n' "$update_status" "$update_output"
+
+            if [ "$update_status" -eq 0 ]; then
+              sleep 5
+              set +e
+              retry_output=$(gh pr merge --auto --squash "$PR_URL" 2>&1)
+              retry_status=$?
+              set -e
+              if [ "$retry_status" -eq 0 ]; then
+                echo "✅ 分支已同步到最新 main，auto-merge 已开启（自愈成功）"
+                exit 0
+              fi
+              printf '%s\n' "$retry_output"
+            fi
+
+            # 自愈②：请 Dependabot 自己把分支 rebase 到最新 main（它 rebase 后的 push 不受该限制）；
+            # 新 push 会再次触发本工作流，那时分支已新鲜 → 合并放行。
+            set +e
+            gh pr comment "$PR_URL" --body '@dependabot rebase' >/dev/null 2>&1
+            set -e
+
+            echo "::warning title=陈旧分支导致合并被拒（已尝试自愈，不失败）::判据：报错为「refusing to allow a GitHub App to create or update workflow .github/workflows/<file> without workflows permission」——即分支落后于 main、且 main 改过同一个 workflow 文件，合并必须写入该文件，而 GITHUB_TOKEN 无法获得 workflows 权限。已自动尝试 gh pr update-branch 并评论 @dependabot rebase（两者都可能被同一限制拒绝）。谁该怎么做：维护者在该 PR 下评论 @dependabot rebase（或点 Update branch）把分支同步到最新 main，本工作流随新 push 重跑即可自动合并；也可直接人工合并。详见 issue #468 / #469。"
+            exit 0
+          fi
+
+          echo "::error title=auto-merge 失败（非陈旧分支原因，保持失败）::$output"
+          exit "$status"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

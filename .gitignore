@@ -1,4 +1,10 @@
 # Dependencies
+# 渲染原型的位图与阶段存档：**不入库**（交付件 HTML 可现场打开替代，避免仓库背 6 MB 二进制；
+# 决策链与交付件本体在 docs/md渲染/原型/ 里正常入库）
+docs/md渲染/原型/shots/
+docs/md渲染/原型/history/
+docs/md渲染/原型/*.png
+
 node_modules/
 
 # 依赖矩阵缓存（scripts/deps-matrix.mjs 的 registry 查询结果）

@@ -15,6 +15,11 @@ build/
 # ignores 保持一致——只格式化 client.src.js 模板与 parts 片段源码。
 plugins/*/lib/client.js
 
+# 外部流水线交付件：docs/md渲染/原型/ 由 open-design 六阶段流水线产出（单文件自包含原型 +
+# 过程存档 history/），格式由该流水线决定；改格式等于改交付件本身（原型的自测结论——
+# anti-slop lint / verify——正是对这份字节的结论）。入库时保持逐字节原样。
+docs/md渲染/原型/
+
 # TS 插件（issue #47 / TS 全量迁移）：tsc 编译产物（src/*.ts → lib/*.js +
 # lib/*.d.ts）与 client 构建临时目录（lib/.client-build/），格式由编译器决定，
 # 下次构建即覆盖——对手写源码做 prettier --check 才有意义。手写的

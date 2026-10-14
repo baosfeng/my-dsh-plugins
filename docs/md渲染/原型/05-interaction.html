@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>交互阶段 · markdown 渲染样张（dsh-md-render · Apple 风格）</title>
+<style>
+*{box-sizing:border-box}
+:root {
+  
+  --bg: #ffffff;
+  --surface: #f5f5f7;
+  --surface-warm: #fbfbfd;
+
+  
+  --fg: #1d1d1f;
+  --fg-2: #424245;
+  --muted: #6e6e73;
+  --meta: #86868b;
+
+  
+  --border: #d2d2d7;
+  --border-soft: #e8e8ed;
+
+  
+  --accent: #0071e3;
+  --accent-on: #ffffff; 
+
+  
+  --accent-hover: #0077ed;
+  --accent-active: #0066cc;
+
+  
+  --success: #16a34a;
+  --warn:    #eab308;
+  --danger:  #dc2626;
+
+  
+  --font-display:
+    "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body:
+    "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono:
+    "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+
+  
+  --text-xs:   12px;   
+  --text-sm:   14px;   
+  --text-base: 17px;   
+  --text-lg:   21px;   
+  --text-xl:   28px;   
+  --text-2xl:  40px;   
+  --text-3xl:  56px;   
+  --text-4xl:  80px;   
+
+  
+  --leading-body:  1.47;   
+  --leading-tight: 1.05;   
+
+  
+  --tracking-display: -0.015em;
+
+  
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-12: 48px;
+
+  
+  --section-y-desktop: 100px;
+  --section-y-tablet:  64px;
+  --section-y-phone:   40px;
+
+  
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   18px;
+  --radius-pill: 980px;
+
+  
+  --elev-flat:   none;
+  --elev-ring:   0 0 0 1px var(--border);
+  --elev-raised: 0 12px 32px rgba(0, 0, 0, 0.08);
+
+  
+  --focus-ring: 0 0 0 4px color-mix(in oklab, var(--accent), transparent 65%);
+
+  
+  --motion-fast:   150ms;
+  --motion-base:   220ms;
+  --ease-standard: cubic-bezier(0.28, 0, 0.22, 1);
+
+  
+  --container-max:            1024px;
+  --container-gutter-desktop: 22px;
+  --container-gutter-tablet:  18px;
+  --container-gutter-phone:   16px;
+}
+
+/* 产物本地派生：把强调色收成"线索色"；语义色做"文字级"版本（原色对比度不够） */
+:root{
+  --mdr-line-accent: color-mix(in oklab, var(--accent) 55%, transparent);
+  --mdr-tint-accent: color-mix(in oklab, var(--accent) 6%, transparent);
+  --mdr-accent-text: color-mix(in oklab, var(--accent) 62%, var(--fg));
+  --mdr-code-bg: color-mix(in oklab, var(--fg) 4%, var(--bg));
+  --hairline: color-mix(in oklab, var(--fg) 12%, transparent);
+  --mdr-ok-ink: color-mix(in oklab, var(--success) 55%, var(--fg));
+}
+
+/* ── 页面只是"样张的架子"：一列 720px，无宿主 chrome ── */
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);
+  font-size:var(--text-base);line-height:1.6;-webkit-font-smoothing:antialiased}
+.sheet{max-width:720px;margin:0 auto;padding:var(--space-8) var(--space-6) var(--space-12)}
+.sheet-head{border-bottom:1px solid var(--border-soft);padding-bottom:var(--space-4);margin-bottom:var(--space-6)}
+.sheet-head h1{margin:0 0 var(--space-2);font-family:var(--font-display);font-size:var(--text-lg);
+  font-weight:600;letter-spacing:var(--tracking-display)}
+.sheet-head p{margin:0;color:var(--muted);font-size:var(--text-sm)}
+.sec{margin:var(--space-8) 0 0}
+.sec-label{margin:0 0 var(--space-3);font-family:var(--font-mono);font-size:11px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.sec-label code{font-family:inherit;color:var(--mdr-accent-text);text-transform:none;letter-spacing:0}
+
+/* ══ markdown 渲染（本样张唯一主题）══ */
+.md{display:flex;flex-direction:column;gap:var(--space-3);min-width:0;overflow-wrap:anywhere}
+.md h1,.md h2,.md h3,.md h4,.md h5,.md h6{margin-top:0;font-weight:600}
+.md h1{padding-left:var(--space-3);border-left:3px solid var(--mdr-line-accent);
+  font-family:var(--font-display);font-size:var(--text-lg);line-height:1.25;letter-spacing:var(--tracking-display)}
+.md h2{padding-bottom:var(--space-1);border-bottom:1px solid var(--border-soft);
+  font-family:var(--font-display);font-size:var(--text-base);line-height:1.35;letter-spacing:-.01em}
+.md h3{font-size:15px;line-height:1.4;letter-spacing:-.005em}
+.md h4{font-size:var(--text-sm);line-height:1.4;color:var(--fg-2)}
+.md h5{font-size:13px;line-height:1.45;letter-spacing:.01em;color:var(--fg-2)}
+.md h6{font-size:var(--text-xs);line-height:1.5;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.md>*+h1{margin-top:var(--space-3)}
+.md>*+h2{margin-top:var(--space-3)}
+.md>*+h3{margin-top:var(--space-2)}
+.md>*+h4,.md>*+h5,.md>*+h6{margin-top:var(--space-1)}
+.md h1+*,.md h2+*,.md h3+*,.md h4+*,.md h5+*,.md h6+*{margin-top:0}
+.md p{margin:0}
+.md strong{font-weight:600}
+.md em{font-style:italic}
+.md del{color:var(--fg-2);text-decoration:line-through}
+.md a{color:var(--accent-active);text-decoration:underline;
+  text-decoration-color:color-mix(in oklab,var(--accent-active) 40%,transparent);
+  text-decoration-thickness:1px;text-underline-offset:3px;border-radius:3px}
+.md a:hover{text-decoration-color:currentColor}
+.md a:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.md .md-link-plain{color:var(--muted);text-decoration:underline dotted}
+.md code{font-family:var(--font-mono);font-size:.86em;padding:2px 6px;border-radius:var(--radius-sm);
+  background:var(--mdr-code-bg);border:1px solid var(--hairline);color:var(--mdr-accent-text)}
+.md .md-plain{margin:0;padding:var(--space-3) var(--space-4);border:1px solid var(--border-soft);
+  border-radius:var(--radius-md);background:var(--surface);font-family:var(--font-mono);
+  font-size:var(--text-xs);line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.md .md-html{color:var(--muted)}
+/* 列表 */
+.md ul,.md ol{margin:0;padding-left:var(--space-6);display:flex;flex-direction:column;gap:var(--space-1)}
+.md ul ul,.md ul ol,.md ol ul,.md ol ol{margin-top:var(--space-1);gap:var(--space-1)}
+.md li::marker{color:var(--mdr-accent-text);font-weight:600}
+.md ol>li::marker{font-variant-numeric:tabular-nums}
+/* 任务列表：勾选框自绘（原生 disabled checkbox 不认 accent-color） */
+.md .md-task-item{list-style:none;position:relative;margin-left:calc(-1 * var(--space-6));
+  padding-left:var(--space-6)}
+.md .md-task{position:absolute;left:0;top:6px;width:15px;height:15px;margin:0;appearance:none;
+  border:0;background:transparent;opacity:0}
+.md .md-task-item::before{content:"";position:absolute;left:0;top:6px;width:15px;height:15px;
+  border:1.5px solid var(--meta);border-radius:5px;background:transparent}
+.md .md-task-item:has(>.md-task:checked)::before{background:var(--accent)}
+.md .md-task-item:has(>.md-task:checked)::after{content:"";position:absolute;left:4.5px;top:9px;
+  width:4px;height:7.5px;border:solid var(--accent-on);border-width:0 1.5px 1.5px 0;transform:rotate(45deg)}
+.md .md-task-item:focus-within::before{box-shadow:var(--focus-ring)}
+@supports not selector(:has(*)){.md .md-task{position:static;width:auto;height:auto;opacity:1;appearance:auto}
+  .md .md-task-item{padding-left:0}.md .md-task-item::before,.md .md-task-item::after{display:none}}
+/* 引用块（含嵌套） */
+.md blockquote{margin:0;padding:var(--space-3) var(--space-4);border-left:3px solid var(--mdr-line-accent);
+  border-radius:0 var(--radius-md) var(--radius-md) 0;background:var(--mdr-tint-accent);color:var(--fg-2)}
+.md blockquote p{margin:0}
+.md blockquote blockquote{margin-top:var(--space-2);border-left-color:var(--border);
+  background:color-mix(in oklab,var(--fg) 3%,transparent)}
+/* 分隔线 */
+.md hr{border:0;height:1px;margin:var(--space-2) 0;align-self:stretch;
+  background:linear-gradient(90deg,transparent,var(--border) 15%,var(--border) 85%,transparent)}
+/* 表格（圆角外框 + 表头薄底 + 行 hover + 三档对齐 + 非标准写法容错后同样落这里） */
+.md .md-table-wrap{overflow-x:auto;border:1px solid var(--border-soft);border-radius:var(--radius-md)}
+.md table{border-collapse:collapse;width:100%;font-size:var(--text-sm);line-height:1.55}
+.md th,.md td{padding:var(--space-2) var(--space-3);text-align:left;vertical-align:top;
+  border-bottom:1px solid var(--border-soft)}
+.md th{font-weight:600;background:var(--surface)}
+.md tbody tr:hover td{background:var(--mdr-tint-accent)}
+.md tbody tr:last-child td{border-bottom:0}
+.md .md-left{text-align:left}.md .md-center{text-align:center}.md .md-right{text-align:right}
+/* 图片（含 alt 文本样式） */
+.md img{max-width:100%;height:auto;border:1px solid var(--border-soft);border-radius:var(--radius-md)}
+.md .md-img-alt{color:var(--muted);font-size:var(--text-xs)}  /* 原用 --meta，实测对 13px 小字只有 3.62:1，不过 4.5:1 */
+/* 注意：注释里也不要写裸色值 —— 模版 checklist 的裸色值检查按文本匹配，注释里的 hex 同样会被算进去 */
+@media (max-width:1440px){.sheet{padding:var(--space-8) var(--space-8) var(--space-12)}}
+@media (max-width:1024px){.sheet{padding:var(--space-6) var(--space-5) var(--space-12)}}
+@media (max-width:768px){.sheet{padding:var(--space-5) var(--space-4) var(--space-8)}
+  .md table{font-size:var(--text-xs)}}
+
+/* 静态摆状态用的强制类（样张里要能看见 hover/focus，而不是靠鼠标） */
+.md a.is-hover{text-decoration-color:currentColor}
+.md a.is-focus{box-shadow:var(--focus-ring)}
+.md tbody tr.is-hover td{background:var(--mdr-tint-accent)}
+.md .md-ok{color:var(--mdr-ok-ink);font-size:var(--text-xs)}
+
+/* ══ 交互阶段：控件真的有反应（不是画状态）══ */
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+.md-task{cursor:pointer}
+.md-task-item:hover::before{border-color:var(--fg-2)}
+.md a:active{color:var(--fg)}
+.md img{cursor:zoom-in}
+.md img:hover{border-color:var(--mdr-line-accent)}
+.md img:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+/* 整段复制（markdown 渲染自带的能力：MarkdownView 的整段复制） */
+.sheet-actions{display:flex;justify-content:flex-end;margin:0 0 var(--space-2)}
+.md-copy{display:inline-flex;align-items:center;gap:var(--space-2);height:28px;padding:0 var(--space-3);
+  border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--bg);color:var(--fg-2);
+  font-size:var(--text-xs);cursor:pointer;
+  transition:background var(--motion-fast) var(--ease-standard),color var(--motion-fast) var(--ease-standard)}
+.md-copy:hover{background:var(--surface);color:var(--fg)}
+.md-copy:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.md-copy[data-state="copied"]{color:var(--mdr-ok-ink);border-color:var(--mdr-ok-ink)}
+.md-copy[data-state="failed"]{color:var(--mdr-bad-ink);border-color:var(--mdr-bad-ink)}
+.md-copy .ico{width:14px;height:14px}
+/* 图片放大：原生 dialog（Esc / 点遮罩 / 点图 三路关闭） */
+dialog.img-dialog{border:0;padding:0;background:transparent;max-width:92vw;max-height:92vh}
+dialog.img-dialog::backdrop{background:color-mix(in oklab,var(--fg) 55%,transparent)}
+dialog.img-dialog img{display:block;max-width:92vw;max-height:86vh;width:auto;border:1px solid var(--border);
+  border-radius:var(--radius-md);box-shadow:var(--elev-raised)}
+.dlg-wrap{position:relative}
+.dlg-close{position:absolute;top:-14px;right:-14px;width:32px;height:32px;border:0;border-radius:var(--radius-pill);
+  background:var(--bg);color:var(--fg);cursor:pointer;box-shadow:var(--elev-raised)}
+.dlg-close:hover{background:var(--surface)}
+.dlg-close:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+
+</style></head>
+<body>
+<div class="sheet">
+  <header class="sheet-head" data-od-id="sheet-head">
+    <h1>markdown 渲染样张</h1>
+    <p>dsh-md-render 自研 markdown 渲染器的全部产出元素与状态 · 内容列 720px · 不含宿主界面与其他渲染器（代码块 / 图表 / 思考块各自另算）</p>
+  </header>
+
+  <div class="sheet-actions"><button class="md-copy" id="copy-md" type="button" data-state="idle" aria-label="复制整段 markdown"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5" width="8" height="8.5" rx="1.8"/><path d="M10.5 3.6H4.4A1.4 1.4 0 0 0 3 5v6.1"/></svg><span class="copy-label">复制 markdown</span></button></div>
+
+  <section class="sec" data-od-id="sec-headings">
+    <p class="sec-label">标题阶梯 <code>.md h1 – h6</code></p>
+    <div class="md">
+      <h1>围栏分流：先看语言，再看证据</h1>
+      <h2>分流规则</h2>
+      <h3>成本不对称</h3>
+      <h4>可观测性</h4>
+      <h5>契约稳定性</h5>
+      <h6>结论</h6>
+    </div>
+  </section>
+
+  <section class="sec" data-od-id="sec-inline">
+    <p class="sec-label">段落与行内 <code>p strong em del code a br</code></p>
+    <div class="md">
+      <p>本插件接管对话里的<strong>全部围栏块</strong>，分流的依据是三源互补：client 侧会话事件流索引（含历史、命中即零 RPC）→ host 侧实时围栏语言索引 → DOM 契约（<code>code.language-*</code> / banner infostring）。判定结果里的 <code>confirmed</code> 只用来区分「确证无语言」与「识别失败」，<em>不做内容启发式判定</em>。旧写法 <del>按内容猜语言</del> 已废弃。</p>
+      <p>相关说明见 <a href="#sec-lists">列表与嵌套</a>；识别不出语言时语言位留空（<span class="md-link-plain">裸链接会退化成纯文本样式</span>）。raw HTML 一律当字面文本处理：<span class="md-html">&lt;div class="note"&gt;</span>。<br>这是同一段里的软换行。</p>
+    </div>
+  </section>
+
+  <section class="sec" data-od-id="sec-lists">
+    <p class="sec-label">列表 <code>ul ol（含 start）嵌套 任务列表</code></p>
+    <div class="md">
+      <ul>
+        <li>无序列表第一项</li>
+        <li>第二项，下面挂一层嵌套：
+          <ul>
+            <li>嵌套项（标记与父级同色线索）</li>
+            <li>嵌套项里的行内 <code>code</code></li>
+          </ul>
+        </li>
+      </ul>
+      <ol start="3">
+        <li>有序列表按原文 start 还原起始序号（这里是 3）</li>
+        <li>第四项</li>
+      </ol>
+      <ul>
+        <li class="md-task-item"><input class="md-task" type="checkbox" checked>语言索引命中 → 零 RPC</li>
+        <li class="md-task-item"><input class="md-task" type="checkbox" checked>DOM 契约兜底 → 零额外请求</li>
+        <li class="md-task-item"><input class="md-task" type="checkbox">内容启发式判定 —— 明确不做</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="sec" data-od-id="sec-quote">
+    <p class="sec-label">引用块 <code>blockquote（含嵌套）</code></p>
+    <div class="md">
+      <blockquote>
+        <p>「绝不编造语言名，也绝不把真纯文本误判成 markdown。」—— 分流的第一原则</p>
+        <blockquote><p>嵌套引用：左竖线降为中性色、底色更淡，避免与一级引用抢层级。</p></blockquote>
+      </blockquote>
+    </div>
+  </section>
+
+  <section class="sec" data-od-id="sec-table">
+    <p class="sec-label">表格 <code>table（三档对齐 · 非标准写法容错后同样落这里）</code></p>
+    <div class="md">
+      <div class="md-table-wrap"><table>
+        <thead><tr><th class="md-left">围栏语言</th><th class="md-center">渲染路径</th><th class="md-right">产物</th></tr></thead>
+        <tbody>
+          <tr><td class="md-left"><code>text</code> / <code>md</code> / 确证无语言</td><td class="md-center">自研 markdown</td><td class="md-right"><code>div.tzx-md</code></td></tr>
+          <tr><td class="md-left">其他语言</td><td class="md-center">自研代码块</td><td class="md-right">语言胶囊 + 高亮</td></tr>
+          <tr><td class="md-left">识别失败</td><td class="md-center">代码视图</td><td class="md-right">语言位留空</td></tr>
+        </tbody>
+      </table></div>
+      <p>下面这张在原 markdown 里是<b>非标准写法</b>（分隔行没有管道符、单元格数与表头不等），经 table-normalize 规范化后落到同一套样式：</p>
+      <div class="md-table-wrap"><table>
+        <thead><tr><th>策略</th><th>依据</th><th>错了会怎样</th></tr></thead>
+        <tbody>
+          <tr><td>留空</td><td>不猜（显式未知）</td><td>用户多看一眼，可恢复</td></tr>
+          <tr><td>形态启发式</td><td>内容长相（<strong>不做</strong>）</td><td>静默错误高亮，不可恢复</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <section class="sec" data-od-id="sec-misc">
+    <p class="sec-label">分隔线 · 图片（含 alt）· 纯文本回落 <code>hr img .md-plain</code></p>
+    <div class="md">
+      <p>分隔线两侧渐隐，避免与表格边框抢视觉：</p>
+      <hr>
+      <p>图片按原始比例、圆角 + 发丝边，宽度不超过内容列：</p>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iMjAwIiB2aWV3Qm94PSIwIDAgNjQwIDIwMCI+CjxyZWN0IHdpZHRoPSI2NDAiIGhlaWdodD0iMjAwIiByeD0iMTYiIGZpbGw9IiNmNWY1ZjciLz4KPGcgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sUGluZ0ZhbmcgU0Msc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzFkMWQxZiI+CjxyZWN0IHg9IjI4IiB5PSI3NCIgd2lkdGg9IjE1MCIgaGVpZ2h0PSI1MiIgcng9IjEwIiBmaWxsPSIjZmZmZmZmIiBzdHJva2U9IiNkMmQyZDciLz4KPHRleHQgeD0iMTAzIiB5PSIxMDUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPnRleHQg5Zu05qCPPC90ZXh0Pgo8cGF0aCBkPSJNMTkwIDEwMGg0OCIgc3Ryb2tlPSIjMDA3MWUzIiBzdHJva2Utd2lkdGg9IjEuNiIgZmlsbD0ibm9uZSIvPgo8cGF0aCBkPSJNMjMyIDk1bDYgNS02IDUiIHN0cm9rZT0iIzAwNzFlMyIgc3Ryb2tlLXdpZHRoPSIxLjYiIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8cmVjdCB4PSIyNTAiIHk9IjY2IiB3aWR0aD0iMTcwIiBoZWlnaHQ9IjY4IiByeD0iMTAiIGZpbGw9IiNmZmZmZmYiIHN0cm9rZT0iIzAwNzFlMyIvPgo8dGV4dCB4PSIzMzUiIHk9Ijk1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7oh6rnoJQgbWFya2Rvd248L3RleHQ+Cjx0ZXh0IHg9IjMzNSIgeT0iMTE1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjNmU2ZTczIiBmb250LXNpemU9IjEyIj5tYXJrZWQg4oaSIHZkb208L3RleHQ+CjxwYXRoIGQ9Ik00MzIgMTAwaDQ4IiBzdHJva2U9IiMwMDcxZTMiIHN0cm9rZS13aWR0aD0iMS42IiBmaWxsPSJub25lIi8+CjxwYXRoIGQ9Ik00NzQgOTVsNiA1LTYgNSIgc3Ryb2tlPSIjMDA3MWUzIiBzdHJva2Utd2lkdGg9IjEuNiIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjxyZWN0IHg9IjQ5MiIgeT0iNjAiIHdpZHRoPSIxMjAiIGhlaWdodD0iODAiIHJ4PSIxMCIgZmlsbD0iI2ZmZmZmZiIgc3Ryb2tlPSIjZDJkMmQ3Ii8+Cjx0ZXh0IHg9IjU1MiIgeT0iOTAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTMiPmgx4oCTaDYgwrcg5YiX6KGoPC90ZXh0Pgo8dGV4dCB4PSI1NTIiIHk9IjExMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMyI+6KGo5qC8IMK3IOW8leeUqCDCtyDooYzlhoU8L3RleHQ+CjwvZz48L3N2Zz4=" alt="示意图：text 围栏经自研 markdown 渲染为标题、列表、表格、引用" width="640" height="200">
+      <p><span class="md-img-alt">图片加载失败时只保留 alt 文本样式（不显示破图边框）</span></p>
+      <p>解析层未就绪或无法判定时的纯文本回落：</p>
+      <div class="md-plain">原始文本按 pre 呈现，等 marked 就绪后重扫替换（幂等，签名未变不重建）</div>
+    </div>
+  </section>
+
+  <section class="sec" data-od-id="sec-states">
+    <p class="sec-label">markdown 元素状态 <code>link hover/focus · 表格行 hover · 任务框勾选</code></p>
+    <div class="md">
+      <p>链接三态：<a href="#s1">默认</a> · <a href="#s2" class="is-hover">hover（下划线转实色）</a> · <a href="#s3" class="is-focus">focus（强调色光晕）</a></p>
+      <div class="md-table-wrap"><table>
+        <thead><tr><th>表格行</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>默认行</td><td>无底色</td></tr>
+          <tr class="is-hover"><td>hover 行</td><td>强调色 6% 薄底</td></tr>
+        </tbody>
+      </table></div>
+      <ul>
+        <li class="md-task-item"><input class="md-task" type="checkbox">未勾选：中性描边方框</li>
+        <li class="md-task-item"><input class="md-task" type="checkbox" checked>已勾选：强调色填充 + 白勾</li>
+      </ul>
+      <p><span class="md-ok">已复制 / 成功态用「文字级」语义色（原色对 12px 小字对比度不足）</span></p>
+    </div>
+  </section>
+</div>
+
+
+<script type="text/markdown" id="md-source">
+
+# 围栏分流：先看语言，再看证据
+
+本插件接管对话里的**全部围栏块**，分流的依据是**三源互补**：client 侧会话事件流索引（含历史、命中即零 RPC）→ host 侧实时围栏语言索引 → DOM 契约（`code.language-*` / banner infostring）。判定结果里的 `confirmed` 只用来区分「确证无语言」与「识别失败」，*不做内容启发式判定*。
+
+## 分流规则
+
+| 围栏语言 | 渲染路径 | 产物 |
+| --- | :---: | ---: |
+| `text` / `md` / 确证无语言 | 自研 markdown | `div.tzx-md` |
+| 其他语言 | 自研代码块 | 语言胶囊 + 高亮 |
+| 识别失败 | 代码视图 | 语言位留空 |
+
+- [x] 语言索引命中 → 零 RPC
+- [ ] 内容启发式判定 —— 明确不做
+
+> 「绝不编造语言名，也绝不把真纯文本误判成 markdown。」
+
+---
+
+1. 留空：不猜（显式未知）
+2. 形态启发式：**不做**
+
+```text
+原始文本按 pre 呈现，等 marked 就绪后重扫替换。
+```
+
+
+</script>
+<dialog class="img-dialog" id="img-dialog" aria-label="图片放大">
+<div class="dlg-wrap"><img id="img-dialog-img" alt="">
+<button class="dlg-close" type="button" aria-label="关闭"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button></div>
+</dialog>
+<script>
+
+
+(function(){
+  var btn = document.getElementById('copy-md');
+  var srcEl = document.getElementById('md-source');
+  var src = srcEl ? srcEl.textContent : '';
+  var timer = null;
+  function setState(state){
+    btn.setAttribute('data-state', state);
+    var label = state === 'copied' ? '已复制' : (state === 'failed' ? '复制失败，请手动选择文本' : '复制整段 markdown');
+    btn.setAttribute('aria-label', label);
+    btn.querySelector('.copy-label').textContent = state === 'copied' ? '已复制' : (state === 'failed' ? '复制失败' : '复制 markdown');
+    clearTimeout(timer);
+    timer = setTimeout(function(){ setState('idle'); }, 1600);
+  }
+  function legacyCopy(){
+    try{
+      var ta = document.createElement('textarea');
+      ta.value = src; ta.setAttribute('readonly',''); ta.style.position = 'fixed'; ta.style.top = '-1000px';
+      document.body.appendChild(ta); ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    }catch(e){ return false; }
+  }
+  btn.addEventListener('click', function(){
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(src).then(function(){ setState('copied'); },
+        function(){ setState(legacyCopy() ? 'copied' : 'failed'); });
+    } else {
+      setState(legacyCopy() ? 'copied' : 'failed');
+    }
+  });
+
+  var dlg = document.getElementById('img-dialog');
+  var zoom = document.querySelector('.md img');
+  var big = document.getElementById('img-dialog-img');
+  var lastFocus = null;
+  if (dlg && zoom && big){
+    zoom.tabIndex = 0;
+    zoom.setAttribute('role','button');
+    zoom.setAttribute('aria-label','放大查看图片');
+    function open(){
+      lastFocus = document.activeElement;
+      big.src = zoom.currentSrc || zoom.src;
+      big.alt = zoom.alt;
+      if (typeof dlg.showModal === 'function'){ dlg.showModal(); } else { dlg.setAttribute('open',''); }
+      var c = dlg.querySelector('.dlg-close'); if (c) c.focus();
+    }
+    zoom.addEventListener('click', open);
+    zoom.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); }
+    });
+    dlg.addEventListener('click', function(e){
+      if (e.target === dlg || e.target === big) dlg.close();
+    });
+    dlg.addEventListener('close', function(){ if (lastFocus && lastFocus.focus) lastFocus.focus(); });
+    var closeBtn = dlg.querySelector('.dlg-close');
+    if (closeBtn) closeBtn.addEventListener('click', function(){ dlg.close(); });
+  }
+})();
+
+
+</script>
+
+
+</body>
+</html>

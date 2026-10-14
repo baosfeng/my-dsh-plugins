@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C · 渲染/源码对照 · dsh-md-render 回答渲染骨架</title>
+<style>
+*{box-sizing:border-box}
+:root{
+  --bg:#fafafa;--surface:#ffffff;--fg:#1a1a1a;--muted:#6b6b6b;--border:#e5e5e5;--accent:#9a9a9a;
+  --fs-body:14px;--fs-sm:12.5px;--fs-meta:11.5px;--fs-h1:22px;--fs-h2:17px;
+  --r-sm:6px;--r-md:10px;--r-lg:14px;--pill:999px;
+  --surface-2:#f4f4f4;--surface-3:#f2f2f2;--surface-4:#f0f0f0;--tint:#f6f6f6;--tint-2:#f8f8f8;--tint-3:#fbfbfb;--line-strong:#c9c9c9;--line-mid:#d5d5d5;--ink-2:#333333;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+body{margin:0;background:var(--bg);color:var(--fg);font:400 14px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",system-ui,sans-serif}
+a{color:var(--fg)}
+/* 骨架占位：一切"强调"先用灰，第 4 步才换成风格 token */
+.pill{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border:1px solid var(--border);border-radius:var(--pill);background:var(--surface-3);font:600 10px/16px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px solid var(--border);border-radius:var(--pill);background:var(--surface);font-size:var(--fs-sm);color:var(--muted)}
+.chip[aria-pressed="true"]{color:var(--fg);border-color:var(--line-strong);background:var(--surface-4)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 10px;border:1px solid var(--border);border-radius:var(--pill);background:var(--surface);font-size:var(--fs-sm);color:var(--fg)}
+.rail{border-right:1px solid var(--border);background:var(--surface);padding:14px 12px;min-width:0}
+.rail h2{font:600 var(--fs-sm)/1.4 inherit;color:var(--muted);margin:0 0 10px}
+.rail ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.rail li{padding:7px 10px;border-radius:var(--r-sm);font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail li[aria-current="true"]{background:var(--surface-4);color:var(--fg);font-weight:600}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 18px;border-bottom:1px solid var(--border);background:var(--surface)}
+.topbar .title{font-size:var(--fs-sm);font-weight:600}
+.stream{padding:22px 26px 48px;min-width:0}
+.answer{max-width:720px;min-width:0}
+.q{display:inline-block;padding:7px 12px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);font-size:var(--fs-sm);color:var(--fg);margin-bottom:18px}
+.md{display:flex;flex-direction:column;gap:10px;font-size:var(--fs-body);line-height:1.75}
+.md h1{margin:8px 0 0;padding-left:12px;border-left:3px solid var(--border);font-size:var(--fs-h1);line-height:1.4;letter-spacing:-.01em}
+.md h2{margin:6px 0 0;padding-bottom:6px;border-bottom:1px solid var(--border);font-size:var(--fs-h2);line-height:1.45}
+.md p{margin:0}
+.md ul,.md ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:5px}
+.md code{font-family:var(--mono);font-size:.88em;padding:1px 6px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface-2)}
+.md blockquote{margin:0;padding:8px 12px;border-left:3px solid var(--line-mid);border-radius:0 var(--r-md) var(--r-md) 0;background:var(--tint);color:var(--muted)}
+.md table{border-collapse:collapse;width:100%;font-size:13.5px}
+.md .tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-md)}
+.md th,.md td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+.md th{background:var(--surface-2);font-weight:600}
+.md tr:last-child td{border-bottom:0}
+.task{list-style:none;margin-left:-22px;padding-left:22px;position:relative}
+.task::before{content:"";position:absolute;left:0;top:6px;width:14px;height:14px;border:1.5px solid var(--line-strong);border-radius:4px}
+.task[data-done="true"]::before{background:var(--line-strong)}
+/* 卡片：代码块 / mermaid / 思考块 / 上下文注入块（骨架阶段全是灰阶框） */
+.card{border:1px solid var(--border);border-left:3px solid var(--line-mid);border-radius:var(--r-md);background:var(--surface);overflow:hidden}
+.card.md-card{border-left-width:2px}
+.card-head{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 12px;background:var(--tint);border-bottom:1px solid var(--border)}
+.card-head .spacer{margin-right:auto}
+.code-area{margin:0;padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.7;white-space:pre;color:var(--ink-2)}
+.stage{height:180px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:var(--fs-sm);background:repeating-linear-gradient(45deg,var(--bg),var(--bg) 10px,var(--surface-2) 10px,var(--surface-2) 20px)}
+.think{border:1px solid var(--border);border-radius:var(--r-md);background:var(--tint-2);padding:10px 12px;color:var(--muted);font-size:13px}
+.think summary{cursor:pointer;font-weight:600;color:var(--fg);font-size:var(--fs-sm)}
+.ctx{border:1px dashed var(--line-mid);border-radius:var(--r-md);padding:10px 12px;background:var(--tint-3);font-size:13px;color:var(--muted)}
+.outline{border-left:1px solid var(--border);background:var(--surface);padding:14px 12px;min-width:0}
+.outline h2{font:600 var(--fs-sm)/1.4 inherit;color:var(--muted);margin:0 0 10px}
+.outline ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm);color:var(--muted)}
+.anchorbar{display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid var(--border);background:var(--surface)}
+.toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.copybar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);color:var(--muted);font-size:var(--fs-sm)}
+@media (max-width:1440px){.shell{grid-template-columns:220px minmax(0,1fr) 240px}}
+@media (max-width:1024px){.shell{grid-template-columns:200px minmax(0,1fr)}.outline{display:none}}
+@media (max-width:768px){.shell{grid-template-columns:minmax(0,1fr)}.rail{display:none}.stream{padding:16px 14px 40px}}
+
+@media (max-width:1024px){[data-od-id="render-pane"]~*,main>div{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:768px){main>div{grid-template-columns:minmax(0,1fr)}}
+</style></head>
+<body>
+
+<header class="topbar" data-od-id="chat-header">
+  <span class="title">dsh-md-render 围栏分流 · 对照</span>
+  <span class="toolbar">
+    <button class="chip" type="button">渲染</button>
+    <button class="chip" type="button">源码</button>
+    <button class="chip" aria-pressed="true" type="button">并排</button>
+  </span>
+</header>
+<nav class="anchorbar" data-od-id="view-switch">
+  <span class="chip">对照的是同一块的两种视图</span>
+  <span class="chip">渲染为…：手动覆盖 &gt; 语言索引 &gt; DOM 契约</span>
+</nav>
+<main class="stream" data-od-id="chat-stream" style="padding:18px 20px 40px">
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start">
+    <section data-od-id="render-pane" style="min-width:0">
+      <h2 style="font:600 var(--fs-sm)/1.4 inherit;color:var(--muted);margin:0 0 10px">渲染结果</h2>
+      <div class="answer" style="max-width:none">
+      <div class="md" data-od-id="answer-body">
+        <h1>围栏分流：先看语言，再看证据</h1>
+        <p>本插件接管对话里的<b>全部围栏块</b>，分流的依据是<b>三源互补</b>：client 侧会话事件流索引（含历史、命中即零 RPC）→ host 侧实时围栏语言索引 → DOM 契约（<code>code.language-*</code> / banner infostring）。判定结果里的 <code>confirmed</code> 只用来区分「确证无语言」与「识别失败」，<b>不做内容启发式判定</b>。</p>
+        <h2>分流规则</h2>
+        <div class="tw"><table>
+          <thead><tr><th>围栏语言</th><th>渲染路径</th><th>产物</th></tr></thead>
+          <tbody>
+            <tr><td><code>text</code> / <code>md</code> / 确证无语言</td><td>自研 markdown 渲染</td><td><code>div.tzx-md</code>：真实 h1–h6 / table / blockquote</td></tr>
+            <tr><td><code>js</code> / <code>ts</code> / <code>json</code> / <code>bash</code></td><td>自研代码块</td><td>语言胶囊 + highlight.js + 复制 + 换行切换</td></tr>
+            <tr><td><code>mermaid</code> / <code>mmd</code></td><td>图表卡片</td><td>预览 / 代码切换 + 导出 PNG / SVG + 浮窗缩放</td></tr>
+            <tr><td>识别失败</td><td>代码视图</td><td>语言位留空（绝不编造语言名）</td></tr>
+          </tbody>
+        </table></div>
+        <ul>
+          <li class="task" data-done="true">语言索引命中 → 零 RPC</li>
+          <li class="task" data-done="true">DOM 契约兜底 → 零额外请求</li>
+          <li class="task" data-done="false">内容启发式判定 —— 明确不做</li>
+          <li class="task" data-done="false">未命中时的降级提示 —— 待定</li>
+        </ul>
+        <blockquote><p>「绝不编造语言名，也绝不把真纯文本误判成 markdown。」—— 分流的第一原则</p></blockquote>
+        <p>例如这段索引表就来自会话事件流（按内容哈希建表，冷启动打开历史会话同样命中）：</p>
+        <section class="card" data-od-id="code-block">
+          <div class="card-head">
+            <span class="pill">json</span>
+            <span class="spacer"></span>
+            <span class="toolbar">
+              <button class="chip" type="button">图表</button>
+              <button class="chip" type="button">Markdown</button>
+              <button class="chip" aria-pressed="true" type="button">源码</button>
+              <button class="chip" type="button">复制</button>
+              <button class="chip" type="button">换行</button>
+            </span>
+          </div>
+          <pre class="code-area">{
+  "blockHash": "9f2c…c41a",
+  "lang": "json",
+  "confirmed": true,
+  "source": "session-events",
+  "rpc": 0
+}</pre>
+        </section>
+        <section class="card" data-od-id="mermaid-card">
+          <div class="card-head">
+            <span class="pill">mermaid</span>
+            <span class="spacer"></span>
+            <span class="toolbar">
+              <button class="chip" aria-pressed="true" type="button">预览</button>
+              <button class="chip" type="button">代码</button>
+              <button class="chip" type="button">适应</button>
+              <button class="chip" type="button">铺满</button>
+              <button class="chip" type="button">100%</button>
+              <button class="chip" type="button">PNG</button>
+              <button class="chip" type="button">SVG</button>
+            </span>
+          </div>
+          <div class="stage">图表预览区（引擎按需懒加载；失败时首屏回落为源码）</div>
+        </section>
+        <details class="think" open data-od-id="think-block">
+          <summary>思考过程（默认展开，手动折叠后不再干预）</summary>
+          <p>先确认接管范围与三态切换的优先级：手动覆盖 &gt; 语言索引 &gt; DOM 契约。误判（模型把 Java 写成 js）靠块内「渲染为…」手动纠正，覆盖值按内容哈希进 sessionStorage。</p>
+        </details>
+        <section class="ctx" data-od-id="context-block">
+          <b>上下文注入块</b>（宿主把子 agent 回传渲染为 <code>pre[data-context-text]</code>）：本插件在 DOM 层用自研 markdown 渲染器接管，原文节点保留并置 <code>hidden</code>。
+        </section>
+      </div>
+      <div class="copybar"><span>本回答渲染了 7 类元素 · 流式期间块等内容稳定再渲染（400ms 窗口）</span><span class="toolbar"><button class="btn" type="button">复制整段 markdown</button></span></div>
+      </div>
+    </section>
+    <section data-od-id="source-pane" style="min-width:0">
+      <h2 style="font:600 var(--fs-sm)/1.4 inherit;color:var(--muted);margin:0 0 10px">markdown 原文</h2>
+      <div class="card"><div class="card-head"><span class="pill">md</span><span class="spacer"></span><span class="toolbar"><span class="chip">复制原文</span></span></div>
+<pre class="code-area" data-od-id="markdown-source">## 分流规则
+
+| 围栏语言 | 渲染路径 | 产物 |
+| --- | --- | --- |
+| text / md / 确证无语言 | 自研 markdown | div.tzx-md |
+| js / ts / json / bash | 自研代码块 | 语言胶囊 + 复制 |
+
+- [x] 语言索引命中 → 零 RPC
+- [ ] 内容启发式判定 —— 明确不做
+
+> 「绝不编造语言名。」
+
+```json
+{ "blockHash": "9f2c…c41a", "lang": "json", "rpc": 0 }
+```
+
+```mermaid
+flowchart LR
+  A[围栏] --> B{有语言?}
+  B -->|text/md| C[自研 markdown]
+  B -->|其他| D[自研代码块]
+  B -->|mermaid| E[图表卡片]
+```</pre></div>
+    </section>
+  </div>
+</main>
+</body>
+</html>

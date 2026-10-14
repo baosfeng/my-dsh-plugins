@@ -200,6 +200,111 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);
 @media (max-width:768px){.sheet{padding:var(--space-5) var(--space-4) var(--space-8)}
   .md table{font-size:var(--text-xs)}}
 
+
+/* ══ 卡片工具条（本轮扩围）：图标常显 + 文字浮层 + 按**容器宽度**分档 ══
+   为什么用容器查询而不是视口断点：插件的可用宽度 = 消息列宽，与视口无关 ——
+   大屏 + 侧栏展开时列可能只有 380px（视口断点判不到）；反过来低分辨率窗口里列自然变窄，
+   容器查询同样命中。一条规则同时管「大屏窄列」与「小屏」。 */
+.tb-demo{margin:0;padding:var(--space-3);border:1px solid var(--border-soft);
+  border-radius:var(--radius-md);background:var(--surface)}
+.tb-ctl{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-3)}
+.tb-ctl-btn{display:inline-flex;align-items:center;height:26px;padding:0 var(--space-3);
+  border:1px solid var(--border);border-radius:var(--radius-pill);background:transparent;color:var(--fg-2);
+  font:inherit;font-size:11px;line-height:1;cursor:pointer;
+  transition:color var(--motion-fast) var(--ease-standard),background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard)}
+.tb-ctl-btn:hover{background:var(--bg);color:var(--fg)}
+.tb-ctl-btn[aria-pressed="true"]{border-color:var(--mdr-line-accent);background:var(--mdr-tint-accent);color:var(--mdr-accent-text)}
+.tb-ctl-btn:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.tb-width{margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+/* 演示列：**它**是容器 —— 真实插件里的容器是卡片自身（container-type:inline-size） */
+.tb-col{container-type:inline-size;display:flex;flex-direction:column;gap:var(--space-3);margin:0 auto;
+  max-width:100%;transition:max-width var(--motion-base) var(--ease-standard)}
+.tb-col[data-w="wide"]{max-width:672px}
+.tb-col[data-w="mid"]{max-width:436px}
+.tb-col[data-w="narrow"]{max-width:320px}
+
+/* ── 工具条按钮：固定 26px 方格（图标常显、宽度恒定 → 收起文字后不塌、排布整齐）── */
+.ctl{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;
+  width:26px;height:26px;padding:0;border:1px solid var(--border);border-radius:var(--radius-pill);
+  background:transparent;color:var(--fg-2);font:inherit;font-size:11px;font-weight:500;line-height:1;cursor:pointer;
+  transition:color var(--motion-fast) var(--ease-standard),background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard)}
+.ctl:hover{background:color-mix(in oklab,var(--fg) 6%,transparent);border-color:var(--mdr-line-accent);color:var(--fg)}
+.ctl:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.ctl[aria-pressed="true"],.ctl-on{border-color:var(--mdr-line-accent);background:var(--mdr-tint-accent);color:var(--mdr-accent-text)}
+.ctl .ico{display:block;width:14px;height:14px}
+/* 文字走**浮层**（向下弹出）：零布局位移 —— 就地撑开会把相邻按钮推开，鼠标一悬停整排抖动。
+   向下而不是向上：卡片有 overflow 裁切，向上的浮层会被切掉。 */
+.ctl::after{content:attr(data-dsh-md-render-tip);position:absolute;top:calc(100% + 5px);right:0;z-index:2;
+  padding:2px var(--space-2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--bg);color:var(--fg);font-size:11px;line-height:16px;white-space:nowrap;
+  box-shadow:var(--elev-raised);pointer-events:none;opacity:0;transform:translateY(-2px);
+  transition:opacity var(--motion-fast) var(--ease-standard),transform var(--motion-fast) var(--ease-standard)}
+.ctl:hover::after,.ctl:focus-visible::after{opacity:1;transform:none}
+/* 触屏没有 hover：浮层无从触发 → 按钮就地带文字（否则只剩图标，无从判断按钮做什么） */
+@media (hover:none){
+  .ctl{width:auto;padding:0 var(--space-2);gap:var(--space-1)}
+  .ctl::before{content:attr(data-dsh-md-render-tip);white-space:nowrap}
+  .ctl::after{display:none}
+}
+/* 数值位（缩放百分比）：是**状态值**不是动作名 → 保留文字，不折叠 */
+.ctl-num{width:auto;min-width:44px;padding:0 var(--space-2);font-family:var(--font-mono);
+  font-variant-numeric:tabular-nums}
+.ctl-group{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--border-soft);
+  border-radius:var(--radius-pill);background:var(--bg)}
+.tb-bar{display:flex;align-items:center;gap:var(--space-1);justify-content:flex-end;flex-wrap:nowrap}
+
+/* ① 代码块 banner：语言胶囊 + 2 个按钮（两档都保留 —— 窄列下长行更需要「换行」） */
+.cb{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius-md);
+  background:var(--surface);overflow:hidden}
+.cb-head{display:flex;align-items:center;gap:var(--space-2);padding:6px 10px;background:var(--bg);
+  border-bottom:1px solid var(--border-soft)}
+.cb-lang{margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  padding:1px var(--space-2);border:1px solid var(--mdr-line-accent);border-radius:var(--radius-pill);
+  background:var(--mdr-tint-accent);font-family:var(--font-mono);font-size:10px;font-weight:600;
+  line-height:16px;letter-spacing:.08em;text-transform:uppercase;color:var(--mdr-accent-text)}
+.cb-pre{margin:0;padding:var(--space-3) var(--space-4);overflow:auto;font-family:var(--font-mono);
+  font-size:12.5px;line-height:1.7;color:var(--fg);white-space:pre}
+
+/* ② mermaid 卡片工具条：标题胶囊 + 导出组 + 渲染为组 + 视图组（头部）+ 缩放条（图表上方） */
+.mcard{display:flex;flex-direction:column;gap:var(--space-2);padding:10px var(--space-3);
+  border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface)}
+.mcard-head{display:flex;align-items:center;gap:var(--space-2);flex-wrap:nowrap}
+.mcard-title{display:inline-flex;align-items:center;gap:5px;min-width:0;overflow:hidden;text-overflow:ellipsis;padding:1px var(--space-2);
+  border:1px solid var(--mdr-line-accent);border-radius:var(--radius-pill);background:var(--mdr-tint-accent);
+  font-family:var(--font-mono);font-size:10px;font-weight:600;line-height:16px;letter-spacing:.08em;
+  text-transform:uppercase;white-space:nowrap;color:var(--mdr-accent-text)}
+.mcard-title .ico{display:block;width:12px;height:12px}
+.mcard-actions{display:flex;align-items:center;gap:var(--space-1);margin-left:auto;flex-wrap:nowrap;flex:none}
+.mcard-body{display:flex;align-items:center;justify-content:center;min-height:110px;
+  border:1px solid var(--border-soft);border-radius:var(--radius-md);background:var(--bg);
+  font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+
+/* ── 收纳取代「按宽度藏按钮」（本轮改版）──
+   非核心进「更多」菜单后，常驻操作位只剩 3 个 —— 按钮从 8 个降到 3 个，就不存在
+   「窄了该藏谁」的问题了：更少的按钮比「藏着但仍在」更干净。
+   容器分档只留一条有实际意义的兜底：极窄（<360px）时缩放百分比值让位给图表（它是纯信息，不是操作）。
+   降级：不支持 @container 的环境里百分比照常显示。 */
+@container (max-width:359px){.tb-pct{display:none}}
+/* 缩放分段：− / 百分比 / + 收进**一个**胶囊 —— 视觉上是一个控件，头部因此只需一行 */
+.ctl-seg{display:inline-flex;align-items:center;flex:none;padding:2px;border:1px solid var(--border-soft);
+  border-radius:var(--radius-pill);background:var(--bg)}
+.ctl-seg .ctl{border:0;background:transparent}
+.ctl-pct{display:inline-flex;align-items:center;justify-content:center;min-width:42px;font-family:var(--font-mono);
+  font-size:11px;line-height:1;color:var(--muted);font-variant-numeric:tabular-nums}
+/* 「更多」菜单（popover：点外关闭 / Esc / 顶层由浏览器兜底；位置由脚本贴到按钮下方） */
+.ctl-menu{position:fixed;inset:auto;margin:0;padding:var(--space-1);min-width:176px;border:1px solid var(--border);
+  border-radius:var(--radius-md);background:var(--bg);box-shadow:var(--elev-raised);color:var(--fg)}
+.ctl-menu::backdrop{background:transparent}
+.ctl-menu-item{display:flex;align-items:center;gap:var(--space-2);width:100%;padding:var(--space-1) var(--space-2);
+  border:0;border-radius:var(--radius-sm);background:transparent;color:var(--fg-2);font:inherit;font-size:12px;
+  line-height:20px;text-align:left;white-space:nowrap;cursor:pointer}
+.ctl-menu-item:hover,.ctl-menu-item:focus-visible{outline:none;background:var(--surface);color:var(--fg)}
+.ctl-menu-item .ico{flex:none;width:14px;height:14px}
+.ctl-menu-sep{height:1px;margin:var(--space-1) 0;border:0;background:var(--border-soft)}
+.tb-note{margin:var(--space-2) 0 0;color:var(--muted);font-size:var(--text-xs);line-height:1.6}
+
 /* 静态摆状态用的强制类（样张里要能看见 hover/focus，而不是靠鼠标） */
 .md a.is-hover{text-decoration-color:currentColor}
 .md a.is-focus{box-shadow:var(--focus-ring)}
@@ -215,17 +320,13 @@ html{scroll-behavior:smooth}
 .md img{cursor:zoom-in}
 .md img:hover{border-color:var(--mdr-line-accent)}
 .md img:focus-visible{outline:none;box-shadow:var(--focus-ring)}
-/* 整段复制（markdown 渲染自带的能力：MarkdownView 的整段复制） */
+/* 整段复制：与卡片工具条同形态的**图标按钮**（默认只有图标，悬停才出文字浮层）
+   ⚠️ 不再是有文字的 28px 胶囊 —— 口径统一为「文字收起、只留图标」。 */
 .sheet-actions{display:flex;justify-content:flex-end;margin:0 0 var(--space-2)}
-.md-copy{display:inline-flex;align-items:center;gap:var(--space-2);height:28px;padding:0 var(--space-3);
-  border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--bg);color:var(--fg-2);
-  font-size:var(--text-xs);cursor:pointer;
-  transition:background var(--motion-fast) var(--ease-standard),color var(--motion-fast) var(--ease-standard)}
-.md-copy:hover{background:var(--surface);color:var(--fg)}
-.md-copy:focus-visible{outline:none;box-shadow:var(--focus-ring)}
-.md-copy[data-state="copied"]{color:var(--mdr-ok-ink);border-color:var(--mdr-ok-ink)}
-.md-copy[data-state="failed"]{color:var(--mdr-bad-ink);border-color:var(--mdr-bad-ink)}
-.md-copy .ico{width:14px;height:14px}
+.ctl[data-state="copied"]{color:var(--mdr-ok-ink);border-color:var(--mdr-ok-ink)}
+.ctl[data-state="failed"]{color:var(--mdr-bad-ink);border-color:var(--mdr-bad-ink)}
+/* 状态变化不能只靠悬停才知道：成功 / 失败时浮层常显 */
+.ctl[data-state="copied"]::after,.ctl[data-state="failed"]::after{opacity:1;transform:none}
 /* 图片放大：原生 dialog（Esc / 点遮罩 / 点图 三路关闭） */
 dialog.img-dialog{border:0;padding:0;background:transparent;max-width:92vw;max-height:92vh}
 dialog.img-dialog::backdrop{background:color-mix(in oklab,var(--fg) 55%,transparent)}
@@ -246,11 +347,8 @@ dialog.img-dialog img{display:block;max-width:92vw;max-height:86vh;width:auto;bo
    · prefers-reduced-motion：全部关掉，不做任何妥协式"缩短" */
 
 /* 1) 复制按钮：状态确认（150ms）——颜色过渡 + 勾形轻微弹入 */
-.md-copy{transition:background var(--motion-fast) var(--ease-standard),
-  color var(--motion-fast) var(--ease-standard),border-color var(--motion-fast) var(--ease-standard)}
-.md-copy .ico{transition:transform var(--motion-fast) var(--ease-standard)}
-.md-copy[data-state="copied"] .ico{transform:scale(1.12)}
-.md-copy .copy-label{transition:opacity var(--motion-fast) var(--ease-standard)}
+.ctl .ico{transition:transform var(--motion-fast) var(--ease-standard)}
+.ctl[data-state="copied"] .ico{transform:scale(1.12)}
 
 /* 2) 链接与表格行：高频反馈 ≤200ms（实际用 150ms token） */
 .md a{transition:color var(--motion-fast) var(--ease-standard),
@@ -277,7 +375,7 @@ dialog.img-dialog[open]::backdrop{animation:dlg-backdrop-in var(--motion-base) v
 
 @media (prefers-reduced-motion: reduce){
   html{scroll-behavior:auto}
-  .md-copy,.md-copy .ico,.md-copy .copy-label,.md a,.md tbody tr td,
+  .ctl,.ctl .ico,.md a,.md tbody tr td,
   .md .md-task-item::before{transition:none}
   .md .md-task-item::after{transform:rotate(45deg);opacity:0;transition:none}
   .md .md-task-item:has(>.md-task:checked)::after{transform:rotate(45deg);opacity:1}
@@ -355,7 +453,7 @@ dialog.img-dialog::backdrop{background:var(--scrim, color-mix(in oklab, var(--fg
     <p>dsh-md-render 自研 markdown 渲染器的全部产出元素与状态 · 内容列 720px · 不含宿主界面与其他渲染器（代码块 / 图表 / 思考块各自另算）</p>
   </header>
 
-  <div class="sheet-actions"><button class="md-copy" id="copy-md" type="button" data-state="idle" aria-label="复制整段 markdown"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5" width="8" height="8.5" rx="1.8"/><path d="M10.5 3.6H4.4A1.4 1.4 0 0 0 3 5v6.1"/></svg><span class="copy-label">复制 markdown</span></button></div>
+  <div class="sheet-actions"><button class="ctl" id="copy-md" type="button" data-state="idle" data-dsh-md-render-tip="复制 markdown" aria-label="复制整段 markdown"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
 
   <section class="sec" data-od-id="sec-headings">
     <p class="sec-label">标题阶梯 <code>.md h1 – h6</code></p>
@@ -464,6 +562,68 @@ dialog.img-dialog::backdrop{background:var(--scrim, color-mix(in oklab, var(--fg
       <p><span class="md-ok">已复制 / 成功态用「文字级」语义色（原色对 12px 小字对比度不足）</span></p>
     </div>
   </section>
+
+  <section class="sec" data-od-id="sec-toolbar">
+    <p class="sec-label">卡片工具条 · 收纳式 <code>常驻 3 个 + 「更多」菜单</code></p>
+    <div class="tb-demo">
+      <div class="tb-ctl" role="group" aria-label="演示列宽">
+        <button class="tb-ctl-btn" type="button" data-w="wide" aria-pressed="true">宽列</button>
+        <button class="tb-ctl-btn" type="button" data-w="mid" aria-pressed="false">中列</button>
+        <button class="tb-ctl-btn" type="button" data-w="narrow" aria-pressed="false">窄列</button>
+        <span class="tb-width" id="tb-width">实测 672px</span>
+      </div>
+      <div class="tb-col" id="tb-col" data-w="wide">
+
+        <!-- ① 代码块 banner：语言胶囊 + 换行 + 复制（本来就少，保持 2 个） -->
+        <div class="cb">
+          <div class="cb-head">
+            <span class="cb-lang">typescript</span>
+            <div class="tb-bar">
+              <button class="ctl" type="button" data-dsh-md-render-tip="自动换行"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><path d="M3 12h15a3 3 0 1 1 0 6h-4"/><polyline points="16 16 14 18 16 20"/><line x1="3" y1="18" x2="10" y2="18"/></svg></button>
+              <button class="ctl" type="button" data-dsh-md-render-tip="复制"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            </div>
+          </div>
+          <pre class="cb-pre">const hit = langIndex.get(fence.lang) ?? await hostLookup(fence.id)</pre>
+        </div>
+
+        <!-- ② mermaid 卡片：常驻只有「视图切换 + 更多」；缩放条只有「100% − +」 -->
+        <div class="mcard">
+          <div class="mcard-head">
+            <span class="mcard-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="20" x2="6" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="14"/></svg>Mermaid 图表</span>
+            <div class="mcard-actions">
+              <span class="ctl-group" role="group" aria-label="视图">
+                <button class="ctl ctl-on" type="button" aria-pressed="true" data-dsh-md-render-tip="预览"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                <button class="ctl" type="button" data-dsh-md-render-tip="代码"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></button>
+              </span>
+              <span class="ctl-seg" role="group" aria-label="图表缩放">
+                <button class="ctl" type="button" data-dsh-md-render-tip="缩小"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                <span class="ctl-pct tb-pct" role="img" aria-label="当前缩放 100%">100%</span>
+                <button class="ctl" type="button" data-dsh-md-render-tip="放大"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              </span>
+              <button class="ctl" type="button" aria-label="全屏浮窗" data-tip="全屏浮窗（Esc 关闭）"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+              <button class="ctl" type="button" id="mm-more" popovertarget="mm-menu" aria-haspopup="true" aria-label="更多操作" data-dsh-md-render-tip="更多操作"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></button>
+            </div>
+          </div>
+          <div class="mcard-body">图表占位 · 缩放与平移行为不变</div>
+        </div>
+
+      </div>
+    </div>
+    <div class="ctl-menu" id="mm-menu" popover>
+      <button class="ctl-menu-item" type="button" role="menuitem"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg> 适应容器</button>
+      <button class="ctl-menu-item" type="button" role="menuitem"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5v14"/><path d="M21 5v14"/><path d="M7 12h10"/><path d="m9 9-3 3 3 3"/><path d="m15 9 3 3-3 3"/></svg> 适应宽度</button>
+      <hr class="ctl-menu-sep">
+      <button class="ctl-menu-item" type="button" role="menuitem"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 下载 PNG</button>
+      <button class="ctl-menu-item" type="button" role="menuitem"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 下载 SVG</button>
+      <button class="ctl-menu-item" type="button" role="menuitem"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> 复制代码</button>
+    </div>
+    <p class="tb-note">头部**永远只有一行**（不换行）：标题 + 视图切换（预览 / 代码）+ 缩放分段（− / 百分比 / +）+「更多」。
+      缩放三项收进一个胶囊，视觉上算一个控件。
+      「更多」只放**外面没有的**：缩放模式（全屏浮窗 / 适应容器 / 适应宽度）与导出（下载 PNG / 下载 SVG / 复制代码）。
+      **不重复原则**：mermaid 卡片原先在菜单里还有「渲染为 Markdown / 源码」——与常驻的「预览 / 代码」是同一意图的两套入口，已删；
+      要看源码用「代码」视图即可。（代码块那边保留「渲染为…」，因为它是语言**误判后的纠正入口**，代码块没有别的切换手段。）
+      空间不够时优先压缩标题（省略号），极窄（&lt;360px）时百分比值让位，**不换行、不溢出**。</p>
+  </section>
 </div>
 
 <script type="text/markdown" id="md-source">
@@ -511,7 +671,8 @@ dialog.img-dialog::backdrop{background:var(--scrim, color-mix(in oklab, var(--fg
     btn.setAttribute('data-state', state);
     var label = state === 'copied' ? '已复制' : (state === 'failed' ? '复制失败，请手动选择文本' : '复制整段 markdown');
     btn.setAttribute('aria-label', label);
-    btn.querySelector('.copy-label').textContent = state === 'copied' ? '已复制' : (state === 'failed' ? '复制失败' : '复制 markdown');
+    // 文字走 data-dsh-md-render-tip 浮层（按钮默认只有图标；状态变化时浮层常显由 CSS 按 data-state 控制）
+    btn.setAttribute('data-dsh-md-render-tip', state === 'copied' ? '已复制' : (state === 'failed' ? '复制失败' : '复制 markdown'));
     clearTimeout(timer);
     timer = setTimeout(function(){ setState('idle'); }, 1600);
   }
@@ -562,7 +723,42 @@ dialog.img-dialog::backdrop{background:var(--scrim, color-mix(in oklab, var(--fg
   }
 })();
 
+// 工具条样张：切换「演示列宽」并回读**实测**宽度 —— 避免「以为走到了断点、其实没走到」
+(function(){
+  var col = document.getElementById('tb-col');
+  var out = document.getElementById('tb-width');
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.tb-ctl-btn'));
+  if (!col || !out || !btns.length) return;
+  function sync(){
+    out.textContent = '实测 ' + Math.round(col.getBoundingClientRect().width) + 'px';
+  }
+  btns.forEach(function(b){
+    b.addEventListener('click', function(){
+      btns.forEach(function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      col.setAttribute('data-w', b.getAttribute('data-w'));
+      sync();
+    });
+  });
+  if (window.ResizeObserver) new ResizeObserver(sync).observe(col);
+  window.addEventListener('resize', sync);
+  sync();
+})();
 
+
+// 「更多」菜单：贴到触发按钮下方（右对齐），窄屏时左移保证不出界
+(function(){
+  var btn = document.getElementById("mm-more");
+  var menu = document.getElementById("mm-menu");
+  if (!btn || !menu || typeof menu.showPopover !== "function") return;
+  menu.addEventListener("toggle", function(e){
+    if (e.newState !== "open") return;
+    var r = btn.getBoundingClientRect();
+    var w = menu.offsetWidth || 176;
+    var left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+    menu.style.left = Math.round(left) + "px";
+    menu.style.top = Math.round(r.bottom + 6) + "px";
+  });
+})();
 </script>
 
 

@@ -8,6 +8,9 @@
 
 // ── React（由 factory 作用域的 require('react') 注入）────────────────────
 declare function createElement(type: unknown, props?: unknown, ...children: unknown[]): unknown
+/** 共享图标集（dsh-shared/client-parts/icons.part.js，构建期拼接进本作用域）。
+ *  声明放这里而不是某个 part 里：script 模式下全局只能声明一次，多个 part 都要用。 */
+declare const icon: Record<string, (size?: number) => unknown>
 declare function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T)) => void]
 declare function useEffect(effect: () => void | (() => void), deps?: unknown[]): void
 

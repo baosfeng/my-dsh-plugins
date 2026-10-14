@@ -29,19 +29,20 @@
   - **强调色竖条**：代码卡片左侧 3px、markdown 卡片 2px、`h1` 3px、引用块 3px —— 同一条「我们渲染的」视觉线索；
   - **头部不再是通栏灰带**：语言胶囊 + 薄强调底 + 发丝分隔线，与代码区同属一个圆角容器（轻阴影）；
   - **复制按钮 hover / 键盘 focus / 触屏三路浮现**（默认隐形，不占视觉）；
+  - **工具条只显示图标**（用户口径）：所有工具条按钮是 **26px 方格图标**，文字走 `data-dsh-md-render-tip` 悬停**浮层**（`::after` 绝对定位 + 向下弹，**零布局位移** —— 旧的「就地撑开」会把同排按钮推开，鼠标扫过整排抖）；复制的成功 / 失败态浮层**常显**（状态不能只靠悬停知道）、触屏按钮就地带文字；**不写原生 `title`**（与浮层重叠显示）；
   - **自有排版尺度**：正文 14px/1.6、标题 **21/17/15/14/13/12**（`h6` 大写小字，阶梯逐字对齐原型）、代码 12.5px/1.7 等宽 —— 不再使用官方 `--dsw-font-markdown-*` 排版 shorthand；
   - **markdown 自有形状（对齐原型）**：`h1` 左侧 3px **线索色**竖条（55% 强调，不再是实心）、`h2` 下边框（发丝线）、引用块（左竖线 + 6% 淡强调底 + 右侧圆角，**嵌套引用降级**为中性竖线 + 3% 更淡底）、分隔线（两侧渐隐发丝线）、表格（圆角外框 + **中性表头薄底** + 行 hover 6%）、行内代码胶囊（**宿主发丝描边 + 宿主行内码底** + 强调色文字向正文色收敛保对比度）、列表标记染色 + 有序列表等宽数字、**任务列表勾选框自绘**（**只读**：真实 input 是 disabled + readOnly，勾选态跟随原文 `- [x]` 静态呈现，样式里不写 cursor / :focus-within，防死规则；原生 disabled checkbox 不认 `accent-color`、实测恒为灰 → `appearance:none` + `::before` 画框 + `:has()` 驱动的描边勾形，**勾选走 `rotate(45deg) scale(.6→1)` 150ms 确认动效**，`:has()` 失配时 `@supports` 退化为原生控件）；
   - **自有语法配色 `--mdr-syn-*`**：五色语义映射（蓝=关键字、绿=字符串、琥珀=数值/常量、灰=注释、弱蓝=函数），每色由宿主状态色向正文色混合得到；实测**每个 token 的对比度都不低于官方 shiki 调色板**（官方 `string` 3.30、`comment` 3.18、`parameter` 3.43 均低于 WCAG AA 4.5，本插件对应为 5.57 / 5.08 / 5.55）；
-  - **插件自绘 focus 环**：宿主在指针模态下会把官方 `:focus-visible` 描边抹成透明，自有控件因此一律用**强调色 4px 光晕**（`--mdr-focus-ring`；被 `overflow` 裁掉的滚动区用 `-inset` 变体，深色 / 浅色都可见），控件胶囊统一 **28px chip**；
+  - **插件自绘 focus 环**：宿主在指针模态下会把官方 `:focus-visible` 描边抹成透明，自有控件因此一律用**强调色 4px 光晕**（`--mdr-focus-ring`；被 `overflow` 裁掉的滚动区用 `-inset` 变体，深色 / 浅色都可见），控件一律 **26px 方格**（对齐原型 §sec-toolbar 的 `.ctl`）；
   - **动效纪律（对齐原型 §D）**：hover 与微状态 150ms、进入 UI 220ms，**只动 `transform` / `opacity`**，动画不作为状态变化的唯一信号；`prefers-reduced-motion` 下全部关掉（不做「缩短到 1ms」的妥协式处理）。
 - **围栏语言识别（双源互补 + DOM 兜底）**：主源是 **client 侧的会话事件流索引** —— 从 `ctx.sessions.binding(id).eventSource` 的原始 Session 事件里取 markdown **原文**按内容哈希建表，**天然含历史**，因此**冷启动 / 重启后打开历史会话也命中**，且命中即**零 RPC**；未命中再回落 host 半的**实时围栏语言索引**（订阅 `session/event`，按块内容哈希批量查询）与 **DOM 契约**（`code.language-*` / banner infostring → `js` / `json` / `bash` 等零额外请求）。判定结果带出的 `confirmed` 只用来区分「**确证无语言**」（走 markdown）与「**识别失败**」（走代码视图、语言位留空）；**不做内容启发式判定**。
-- **「渲染为…」三态切换（所有围栏块可用）**：块内「图表 / Markdown / 源码」控件（hover / 键盘 focus / 触屏三路可达；mermaid 卡片由卡片头承载后两项）；优先级 **手动覆盖 > 语言索引 > DOM 契约**，用于模型把 Java 写成 `js` 这类误判；覆盖值按内容哈希记入 `sessionStorage`，刷新后仍记得。
+- **「渲染为…」三态切换（所有围栏块可用）**：块内「图表 / Markdown / 源码」控件（hover / 键盘 focus / 触屏三路可达；mermaid 卡片**不**承载它 —— 卡片头的「预览 / 代码」已覆盖「看源码」这条意图，同一意图只留一套入口）；优先级 **手动覆盖 > 语言索引 > DOM 契约**，用于模型把 Java 写成 `js` 这类误判；覆盖值按内容哈希记入 `sessionStorage`，刷新后仍记得。
 - **上下文注入块渲染**：宿主把上下文注入正文（**子 agent 回传消息**、AGENTS.md 等）渲染为纯文本 `pre[data-context-text]`；本插件在 DOM 层用**自研 markdown 渲染器**渲染，原文节点保留并置 `hidden`。
-- **mermaid 图表卡片**：`mermaid` / `mmd` 围栏块渲染为图表卡片（预览 / 代码切换、导出 PNG / SVG）；**渲染失败时以原始源码为主**——首屏即源码（可复制），错误原因降为一行灰字并保留「重试」，绝不静默丢内容。引擎 `assets/mermaid-10.9.3.min.js` 由 host 半静态托管，client 首次渲染时按需 fetch，**不内联进 bundle**。
-- **图表浮窗 + 缩放 / 平移**：卡片可开**页面内 `<dialog>` 浮窗**（90vw × 85vh + 遮罩，Esc / 关闭按钮 / 点遮罩三路退出，宿主节点原位归还）——**不是**浏览器 Fullscreen API；缩放 / 平移**优先**用 vendored `@panzoom/panzoom@4.6.2`（走 `assets/` 懒加载，对 `lib/client.js` 增量 0），**它拉不起来时自动切内置降级引擎**（纯 CSS `transform`，零运行时加载）—— 任何环境下按钮都必须有反应，**绝不静默丢弃点击**。工具条 = **适应 / 铺满 / 实际大小 100% / ±** + 实时百分比：**「适应」是跟随容器的保持态**（全屏 / 窗口 / 容器尺寸变化自动重算，draw.io 的 `Fit Window` 同款），**「铺满」**按容器宽度填满（PhotoSwipe 的 `fill` / Panzoom 的 `cover`），**双击在「适应 ↔ 实际大小」间切换**（键盘 `0` 才是真复位）；缩放锚点**跟随指针 / 手势中心**；进浏览器全屏**先收掉浮窗**（两层容器绝不同时存在）；键盘 `+ - 0` 与方向键、`Ctrl+滚轮`（触控板捏合）、拖拽平移 —— **快捷键与手势全部写进按钮 hover 提示**（此前实现了却没人知道）。
+- **mermaid 图表卡片**：`mermaid` / `mmd` 围栏块渲染为图表卡片（常驻「预览 / 代码」+ 缩放分段 + **全屏浮窗** +「更多」菜单；导出 PNG / SVG 与缩放模式收在菜单里）；**渲染失败时以原始源码为主**——首屏即源码（可复制），错误原因降为一行灰字并保留「重试」，绝不静默丢内容。引擎 `assets/mermaid-10.9.3.min.js` 由 host 半静态托管，client 首次渲染时按需 fetch，**不内联进 bundle**。
+- **图表浮窗 + 缩放 / 平移**：卡片可开**页面内 `<dialog>` 浮窗**（90vw × 85vh + 遮罩，Esc / 关闭按钮 / 点遮罩三路退出，宿主节点原位归还）——**不是**浏览器 Fullscreen API；缩放 / 平移**优先**用 vendored `@panzoom/panzoom@4.6.2`（走 `assets/` 懒加载，对 `lib/client.js` 增量 0），**它拉不起来时自动切内置降级引擎**（纯 CSS `transform`，零运行时加载）—— 任何环境下按钮都必须有反应，**绝不静默丢弃点击**。缩放分段 = **实时百分比 / ±**（− 与 + 夹一个显示值，视觉上算一个控件）；**全屏浮窗 / 适应 / 铺满**收进「更多」菜单：**「适应」是跟随容器的保持态**（全屏 / 窗口 / 容器尺寸变化自动重算，draw.io 的 `Fit Window` 同款），**「铺满」**按容器宽度填满（PhotoSwipe 的 `fill` / Panzoom 的 `cover`），**双击在「适应 ↔ 实际大小」间切换**（键盘 `0` 才是真复位）；缩放锚点**跟随指针 / 手势中心**；进浏览器全屏**先收掉浮窗**（两层容器绝不同时存在）；键盘 `+ - 0` 与方向键、`Ctrl+滚轮`（触控板捏合）、拖拽平移 —— **快捷键与手势全部写进按钮 hover 提示**（此前实现了却没人知道）。
 - **预览交互便捷性（对照市面成熟产品取证后补齐）**：代码块**换行切换**（官方 `CodeToolbar` 有 wrap/unwrap，自研版此前漏掉 = 能力倒退；默认不换行 ⇒ 默认视觉零变化）、markdown **图片点击放大**（原生 `<dialog>` 模态，Esc / 点遮罩 / 点图片三路关闭 + 键盘可达，`src` 仍过 `mdSafeImageSrc` 白名单）。
 - **思考块默认展开**：对官方折叠行派发**一次真实 click**，展开动画 / 结构 / a11y 全走官方；用户手动折叠后不再干预。
-- **整段 markdown 复制**：官方只有代码块复制；`MarkdownView` 容器带整段复制按钮（复制内容排除代码块 banner 与按钮文案），流式渲染中不显示。
+- **整段 markdown 复制**：官方只有代码块复制；`MarkdownView` 容器带整段复制按钮（**图标按钮**，文字走悬停浮层；复制内容排除代码块 banner 与按钮文案），流式渲染中不显示。
 - **统一 `MarkdownView`**：`require('dsh-md-render').MarkdownView`（props `{ text: string }`）＝ 自研渲染 + 表格容错 + 整段复制，供本仓其他插件使用。
 - **非标准表格容错**：GFM **不认**的两种写法先规范化再进解析器 —— ① 分隔行完全没有管道符（`a | b` 后跟 `---`）；② 分隔行单元格数与表头不等。**GFM 本来就接受的写法一律不动**（逐条实测证据见 `test/table-normalize.mjs`）。
 - **增强开关面板**：全部能力在 设置 → 插件 → 渲染 页签单 tab 三分组可视化编辑，保存即生效、重启不丢。
@@ -129,6 +130,9 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 | `dsh-md-render-md-*`（`p` / `h` / `code` / `list` / `table` / `quote` / `left                | center                                                                             | right`） | 自研 markdown 产出的元素上的自有 class |
 | `dsh-md-render-lang-switch` / `dsh-md-render-mermaid-vt`（`data-dsh-md-render-lang-force`）  | 「渲染为…」语言手动切换控件 / 覆盖值（`mermaid` \| `markdown` \| `source`）        |
 | `dsh-md-render-mermaid-fs` / `dsh-md-render-mermaid-fs-bar`（`data-dsh-md-render-fs-panel`） | 页面内浮窗 `<dialog>` / 浮窗顶栏                                                   |
+| `dsh-md-render-seg` / `dsh-md-render-mermaid-zoom-pct`                                     | 缩放分段（− / 百分比 / + 收在一个胶囊）/ 分段里的**百分比显示值**（zoom-math 更新它） |
+| `dsh-md-render-menu` / `-menu-item` / `-menu-sep`（`data-dsh-md-render-menu-btn`）         | 「更多」菜单（低频操作的收纳处）/ 菜单项 / 分隔线 / 触发按钮标记                   |
+| `data-dsh-md-render-tip`                                                                     | 按钮的**悬停浮层文案**（工具条只显示图标，文字默认收起）；**不写原生 `title`**   |
 | `dsh-md-render-context-md`（`data-dsh-md-render-context-body`）                              | 上下文注入块的渲染容器                                                             |
 | `dsh-md-render-mermaid-host`（`data-dsh-md-render-mermaid` / `-state` / `-view`）            | mermaid 卡片 host / 状态机标记                                                     |
 | `data-dsh-md-render-text-view`（`markdown` \| `code` \| `source`）                           | 围栏块的视图状态（每块独立）                                                       |

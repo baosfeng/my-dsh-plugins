@@ -59,6 +59,8 @@ window.__ModuleLoader__.load({
     /*__PART_THINK__*/
     // mermaid 引擎按需加载 + 离屏渲染
     /*__PART_MERMAID_ENGINE__*/
+    // mermaid 卡片工具条（常驻四项：视图切换 / 缩放分段 / 全屏浮窗 / 更多菜单）
+    /*__PART_MERMAID_TOOLBAR__*/
     // mermaid 图表卡片（预览 / 代码切换、导出、失败回显源码）
     /*__PART_MERMAID_CARD__*/
     // mermaid 代码块识别 + 流式稳定窗口

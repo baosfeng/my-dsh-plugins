@@ -65,13 +65,26 @@ function applyLangForce(block: Element, value: string): void {
   rescanForLangs()
 }
 
-/** 单个选项按钮（块内版）。 */
+/** 选项图标（共享图标集名）：「渲染为」三项各自的标识 —— 文字收起后它必须还在。 */
+const LANG_SWITCH_ICONS: Record<string, string> = { mermaid: 'chart', markdown: 'markdown', source: 'code' }
+
+/** 按名取共享图标（查不到退回 code，绝不返回空按钮）。 */
+function langSwitchIcon(name: string, size: number): unknown {
+  const make = icon[name]
+  return typeof make === 'function' ? make(size) : icon.code(size)
+}
+
+/** 单个选项按钮（块内版）：文字走 data-dsh-md-render-tip 悬停浮层，图标 React 渲染进按钮
+ *  （按钮自身是命令式 DOM，子节点归 React —— 所以**不能**再手改 textContent）。 */
 function langSwitchButton(block: Element, option: { value: string; label: string }, value: string): Element {
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = value === option.value ? LANG_SWITCH_BTN + ' ' + LANG_SWITCH_BTN + '-active' : LANG_SWITCH_BTN
-  btn.textContent = option.label
+  const tip = '渲染为' + option.label
+  btn.setAttribute('aria-label', tip)
+  btn.setAttribute('data-dsh-md-render-tip', tip)
   btn.setAttribute('aria-pressed', value === option.value ? 'true' : 'false')
+  renderNodeInto(btn, langSwitchIcon(LANG_SWITCH_ICONS[option.value] ?? 'code', 14))
   btn.addEventListener('click', () => applyLangForce(block, option.value))
   return btn
 }
@@ -107,20 +120,9 @@ function scanLangSwitches(root: Element): void {
   for (const block of root.querySelectorAll('div.md-code-block')) syncLangSwitch(block)
 }
 
-/** 图表卡片头版「渲染为…」（另外两项；同一份选项表与类名）。 */
-function CardLangSwitch({ onForce }: { onForce: (value: string) => void }) {
-  return createElement(
-    'div',
-    { className: LANG_SWITCH_GROUP, role: 'group', 'aria-label': '渲染为' },
-    FENCE_FORCE_OPTIONS.filter((option) => option.value !== 'mermaid').map((option) =>
-      createElement(
-        'button',
-        { type: 'button', className: LANG_SWITCH_BTN, onClick: () => onForce(option.value), 'aria-pressed': false },
-        createElement('span', null, option.label),
-      ),
-    ),
-  )
-}
+// 卡片头的 CardLangSwitch 已删除（用户口径「外面有的，里面就别有了」）：它的
+// 「渲染为 Markdown / 源码」与卡片头常驻的「预览 / 代码」是同一意图的两套入口。
+// 块内控件（langSwitchButton 那套）保留 —— 它是**语言误判后的纠正入口**，代码块没有别的切换手段。
 
 exports.LANG_SWITCH_CLASS = LANG_SWITCH_CLASS
 exports.LANG_SWITCH_ATTR = LANG_SWITCH_ATTR
@@ -130,4 +132,3 @@ exports.syncLangSwitch = syncLangSwitch
 exports.scanLangSwitches = scanLangSwitches
 exports.removeLangSwitch = removeLangSwitch
 exports.applyLangForce = applyLangForce
-exports.CardLangSwitch = CardLangSwitch

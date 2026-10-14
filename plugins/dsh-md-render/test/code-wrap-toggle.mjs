@@ -102,10 +102,11 @@ test('工具栏：换行按钮排在复制之前，默认态 = 自动换行 / ar
   assert.equal(actions.children[0].getAttribute('class'), 'dsh-md-render-code-wrap-btn', '换行按钮在复制之前')
   assert.equal(actions.children[1].getAttribute('class'), 'dsh-md-render-code-copy', '复制按钮在后')
   const btn = host.querySelector(CODE_WRAP_BTN)
-  assert.equal(btn.textContent, '自动换行', '默认文案')
+  assert.equal(btn.getAttribute('data-dsh-md-render-tip'), '自动换行', '默认浮层文案')
+  assert.equal(btn.textContent, '', '只显示图标，不常显文字')
   assert.equal(btn.getAttribute('aria-pressed'), 'false', '默认未换行（与现状一致）')
   assert.equal(btn.getAttribute('aria-label'), '自动换行', '可访问名 = 当前动作')
-  assert.equal(btn.getAttribute('title'), '自动换行', 'title 同步')
+  assert.equal(btn.getAttribute('title'), null, '不写原生 title（自绘浮层是唯一的鼠标提示）')
   assert.equal(
     host.querySelector('pre').getAttribute('class'),
     PRE_PLAIN,
@@ -126,17 +127,17 @@ test('点击换行按钮：pre 追加换行类名、状态文案与 aria-pressed
     '换行态：追加 dsh-md-render-code-wrap，原类名保留',
   )
   const on = host.querySelector(CODE_WRAP_BTN)
-  assert.equal(on.textContent, '取消换行', '文案翻到「取消换行」')
+  assert.equal(on.getAttribute('data-dsh-md-render-tip'), '取消换行', '浮层文案翻到「取消换行」')
   assert.equal(on.getAttribute('aria-pressed'), 'true', 'aria-pressed 翻转')
   assert.equal(on.getAttribute('aria-label'), '取消换行', '可访问名同步')
-  assert.equal(on.getAttribute('title'), '取消换行', 'title 同步')
+  assert.equal(on.getAttribute('title'), null, '不写原生 title')
   assert.equal(host.querySelector('pre').textContent, 'const a = 1', '换行后内容一字不少')
 
   on.fire('click')
   assert.equal(host.querySelector('pre').getAttribute('class'), PRE_PLAIN, '再点切回不换行')
   const off = host.querySelector(CODE_WRAP_BTN)
   assert.equal(off.getAttribute('aria-pressed'), 'false', 'aria-pressed 回到 false')
-  assert.equal(off.textContent, '自动换行', '文案回到「自动换行」')
+  assert.equal(off.getAttribute('data-dsh-md-render-tip'), '自动换行', '浮层文案回到「自动换行」')
 })
 
 test('新按钮的文案不会被收进「整段复制」（复制的是内容，不是 chrome）', async () => {

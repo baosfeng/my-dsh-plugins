@@ -73,6 +73,9 @@ test('client bundle：不对官方元素写 style / class / aria', () => {
     'data-dsh-md-render-mermaid-view',
     'data-dsh-md-render-offscreen',
     'data-dsh-md-render-settings',
+    // 悬停浮层文字（控件只显示图标，文案收进浮层）。**必须带插件前缀**：
+    // 宿主自己也用了裸 data-tip（ui-agent-preset），撞名会在同一页面上语义混淆。
+    'data-dsh-md-render-tip',
     'data-dsh-md-render',
     'aria-pressed',
     'aria-label',
@@ -108,17 +111,45 @@ test('client bundle：不对官方元素写 style / class / aria', () => {
   // 在普通块级变换层里会**左对齐**；而 panzoom 以变换层几何中心为缩放锚点 —— 两者中心可差
   // 270+px，放大近 2 倍后图被推到容器外侧，用户看到的是「点放大没反应」（真机实测 svg 跑到
   // 容器左外侧）。变换层改 flex 居中后实测中心偏移 277px → 0.5px。
+  // **垂直方向是同一个坑的另一半**：flex 居中只在「内容小于变换层」时有效，而变换层高度 =
+  // 内容固有高度（竖向长图 svg 可达数千 px，远大于容器 max-height:70vh）→ 缩放锚点
+  // （变换层几何中心）落在容器可视区**之外** → 「适应」后图跑到容器下方（用户真机现象）。
+  // 解法是 zoom-math.ts 的 zoomCenterInFrame：程序性缩放后**显式平移**让内容中心对齐容器中心。
   assert.ok(
-    CODE.includes(
-      '.dsh-md-render-mermaid-canvas{transform-origin:0 0;display:flex;align-items:center;justify-content:center}',
-    ),
+    CODE.includes('.dsh-md-render-mermaid-canvas{display:flex;align-items:center;justify-content:center}'),
     'the zoom transform layer must center the svg so the panzoom anchor matches the diagram center',
+  )
+  assert.ok(
+    CODE.includes('function zoomCenterInFrame(') &&
+      CODE.includes('state.pz.pan(0, ((m.bh - m.sh) / 2) * k, { relative: false })'),
+    '程序性缩放后必须显式把内容中心平移到容器中心（两个引擎的锚点都是变换层中心）',
+  )
+  // 补偿系数**随引擎而变**（真机实测踩过）：panzoom 的 transform 是 scale(s) translate(t)，
+  // 平移量落在缩放坐标系里 ⇒ 传值要 ÷ scale；降级引擎是 translate(t) scale(s) ⇒ 1:1。
+  assert.ok(
+    CODE.includes('translateInScaledSpace') && CODE.includes('const k = state.translateInScaledSpace'),
+    '居中补偿必须按引擎的 transform 顺序取系数（写死一个，另一个引擎就会偏）',
+  )
+  // ⚠️ 反面教训：别改用「让变换层绝对定位填满容器」来对齐锚点 —— 变换层脱离文档流后
+  // 容器高度塌回 min-height(160px)，高度自适应没了、fit 又按 160px 算，图表被压到 20%
+  // （用户真机反馈「所有都是固定高度」）。变换层必须留在流里。
+  assert.equal(
+    /data-dsh-md-render-zoom\]>\.dsh-md-render-mermaid-canvas\{position:absolute/.test(CODE),
+    false,
+    'transform layer must stay in flow (absolute fill collapses the container to min-height)',
+  )
+  // 变换层不写 transform-origin：两个引擎都会内联覆盖成 50% 50%（panzoom 构造时写元素 style；
+  // 降级引擎 paint() 同），CSS 里再写一条只会让后来者以为锚点在别处。
+  assert.equal(
+    CODE.includes('.dsh-md-render-mermaid-canvas{transform-origin'),
+    false,
+    'no transform-origin on the transform layer (both engines set 50% 50% inline)',
   )
   // 防回归：缩放工具条必须渲染在**图表之前**（卡片头部之下）。
   // 宿主消息区底部被输入框浮层覆盖（实测占 y=449~577，而卡片高 408 + 浮层 128 > 可视 501），
   // 工具条排在卡片底部会变成「看得见、点不到」的幽灵按钮 —— hit-test 实测 5 个按钮中心点
   // 全部命中 composer 而非按钮自身。锚点取两个调用表达式的相对下标，避免被折行拆散。
-  const zoomCallAt = CODE.indexOf('createElement(ZoomBar,')
+  const zoomCallAt = CODE.indexOf('createElement(ZoomSeg,')
   const bodyCallAt = CODE.lastIndexOf('createElement(CardBody,')
   assert.ok(
     zoomCallAt !== -1 && bodyCallAt !== -1 && zoomCallAt < bodyCallAt,

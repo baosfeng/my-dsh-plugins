@@ -48,7 +48,8 @@ test('整段复制按钮渲染在 tzx-md 容器内（图标 + 文案 + 三态初
   const { dom } = mount()
   const btn = dom.querySelector('button.dsh-md-render-copy')
   assert.ok(btn, 'copy button rendered')
-  assert.equal(btn.textContent, '复制', 'idle label')
+  assert.equal(btn.getAttribute('data-dsh-md-render-tip'), '复制', 'idle 浮层文案（文字默认收起）')
+  assert.equal(btn.textContent, '', '按钮只显示图标，不常显文字')
   // 对齐原型 .md-copy：图标 + 文案；图标走共享 ICONS，静默丢失会被这三条抓住。
   assert.ok(btn.querySelector('svg'), 'idle 态带图标（不是纯文字按钮）')
   assert.ok(btn.querySelector('.dsh-md-render-copy-ico'), '图标有独立包裹层（状态确认动效的 transform 目标）')

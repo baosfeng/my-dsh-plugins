@@ -78,7 +78,7 @@ test("确证无语言（client 事件流索引给 ''）→ 按 markdown 渲染�
   assert.equal(block.getAttribute(VIEW_ATTR), 'markdown', '初始为 markdown 视图')
   const toggle = block.querySelector(TOGGLE)
   assert.ok(toggle, '兜底块同样带「查看原文」')
-  assert.equal(toggle.textContent, '查看原文', '按钮文案')
+  assert.equal(toggle.getAttribute('data-dsh-md-render-tip'), '查看原文', '浮层文案（文字默认收起）')
   toggle.fire('click')
   assert.equal(block.getAttribute(VIEW_ATTR), 'source', '一键切回原文视图')
   assert.equal(block.querySelectorAll(MD_BODY).length, 1, '容器未重复')

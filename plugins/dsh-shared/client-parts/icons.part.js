@@ -167,6 +167,92 @@ const icon = {
       ],
       size,
     ),
+  // ── 控件图标化（issue #486）：卡片工具条「文字收起、只留图标」需要每个按钮都有图标 ──
+  // 全屏浮窗（四角向外），mermaid 缩放条用。
+  maximize: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M8 3H5a2 2 0 0 0-2 2v3' }),
+        createElement('path', { d: 'M16 3h3a2 2 0 0 1 2 2v3' }),
+        createElement('path', { d: 'M21 16v3a2 2 0 0 1-2 2h-3' }),
+        createElement('path', { d: 'M3 16v3a2 2 0 0 0 2 2h3' }),
+      ],
+      size,
+    ),
+  // 适应容器（「完整显示整张图」）：外框套内框，表达「内容装进可用宽度」。
+  fit: (size = 16) =>
+    iconSvg(
+      [
+        createElement('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2 }),
+        createElement('rect', { x: 8, y: 8, width: 8, height: 8, rx: 1 }),
+      ],
+      size,
+    ),
+  // 适应宽度 / 铺满：两侧容器边界 + 水平双向箭头。
+  fill: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M3 5v14' }),
+        createElement('path', { d: 'M21 5v14' }),
+        createElement('path', { d: 'M7 12h10' }),
+        createElement('path', { d: 'm9 9-3 3 3 3' }),
+        createElement('path', { d: 'm15 9 3 3-3 3' }),
+      ],
+      size,
+    ),
+  // 缩小：与既有 plus 同粗细的单横线。
+  minus: (size = 16) => iconSvg([createElement('line', { x1: 5, y1: 12, x2: 19, y2: 12 })], size),
+  // 自动换行：折行箭头（lucide wrap-text 同形），代码块换行切换用。
+  wrap: (size = 16) =>
+    iconSvg(
+      [
+        createElement('line', { x1: 3, y1: 6, x2: 21, y2: 6 }),
+        createElement('path', { d: 'M3 12h15a3 3 0 1 1 0 6h-4' }),
+        createElement('polyline', { points: '16 16 14 18 16 20' }),
+        createElement('line', { x1: 3, y1: 18, x2: 10, y2: 18 }),
+      ],
+      size,
+    ),
+  // markdown 文本（框内 M↓）：「渲染为 Markdown」用。
+  markdown: (size = 16) =>
+    iconSvg(
+      [
+        createElement('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2 }),
+        createElement('path', { d: 'M7 15V9l3 3 3-3v6' }),
+        createElement('path', { d: 'M17 9v6' }),
+        createElement('path', { d: 'm15 13 2 2 2-2' }),
+      ],
+      size,
+    ),
+  // 更多（三点）：卡片工具条的「更多」菜单触发器 —— 低频按钮收进菜单，不长期霸占头部。
+  more: (size = 16) =>
+    iconSvg(
+      [
+        createElement('circle', { cx: 5, cy: 12, r: 1.6, fill: 'currentColor', stroke: 'none' }),
+        createElement('circle', { cx: 12, cy: 12, r: 1.6, fill: 'currentColor', stroke: 'none' }),
+        createElement('circle', { cx: 19, cy: 12, r: 1.6, fill: 'currentColor', stroke: 'none' }),
+      ],
+      size,
+    ),
+  // 图表（柱状）：mermaid 图表卡片标题与「渲染为图表」选项用。
+  chart: (size = 16) =>
+    iconSvg(
+      [
+        createElement('line', { x1: 6, y1: 20, x2: 6, y2: 10 }),
+        createElement('line', { x1: 12, y1: 20, x2: 12, y2: 4 }),
+        createElement('line', { x1: 18, y1: 20, x2: 18, y2: 14 }),
+      ],
+      size,
+    ),
+  // 预览（眼睛）：视图切换的「预览」用 —— 比 file 更贴语义。
+  eye: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z' }),
+        createElement('circle', { cx: 12, cy: 12, r: 3 }),
+      ],
+      size,
+    ),
   // 箭头向上（更新图标）：向上的箭头，表示更新操作
   arrowUp: (size = 16) =>
     iconSvg(

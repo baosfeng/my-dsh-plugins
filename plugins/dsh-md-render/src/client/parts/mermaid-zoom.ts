@@ -51,6 +51,9 @@ interface ZoomState {
   /** 适应模式（**保持态**，draw.io 的 Fit Window 同款）：容器 / 全屏 / 窗口尺寸变化时重算
    *  fit；用户一旦手动缩放 / 平移 / 双击即退出（见 zoom-math.ts 的 zoomManual / zoomToggle）。 */
   fitMode: boolean
+  /** 引擎的 transform 组合顺序（真机实测两者**相反**，见 buildZoomState 的说明）：
+   *  panzoom 是 `scale(s) translate(t)` ⇒ 平移量的屏幕效果要乘 scale；降级引擎是 1:1。 */
+  translateInScaledSpace: boolean
   /** fitMode 跟随（fullscreenchange / ResizeObserver / window resize）的解绑函数。 */
   unwatch?: () => void
 }
@@ -154,17 +157,23 @@ function bindZoomEvents(state: ZoomState): void {
 function buildZoomState(
   target: { card: Element; frame: Element; box: Element },
   make: (limits: ZoomLimits) => PanzoomInstance,
+  /** 引擎的 transform 组合顺序（真机实测两者**相反**）：
+   *  panzoom 是 `scale(s) translate(t)` —— 平移量落在**缩放后的坐标系**里，屏幕位移 = t·s；
+   *  内置降级引擎是 `translate(t) scale(s)` —— 屏幕位移 = t。居中补偿要按它取系数。 */
+  translateInScaledSpace: boolean,
 ): ZoomState {
   const { card, frame, box } = target
   const again = zoomStates.get(box)
   if (again !== undefined) return again
   let pz: PanzoomInstance
+  let inScaledSpace = translateInScaledSpace
   try {
     pz = make({ minScale: ZOOM_MIN, maxScale: ZOOM_MAX })
   } catch (_e) {
     pz = createFallbackZoomer(box, { minScale: ZOOM_MIN, maxScale: ZOOM_MAX })
+    inScaledSpace = false // 回落 = 降级引擎（translate 与 scale 1:1）
   }
-  const state: ZoomState = { pz, card, frame, box, fitMode: true }
+  const state: ZoomState = { pz, card, frame, box, fitMode: true, translateInScaledSpace: inScaledSpace }
   zoomStates.set(box, state)
   frame.setAttribute(ZOOM_ATTR, 'on') // 外层切裁剪态：放大后不盖住工具条
   bindZoomEvents(state)
@@ -186,19 +195,23 @@ function bindZoom(target: { card: Element; frame: Element; box: Element }): Prom
   if (bound !== undefined) return Promise.resolve(bound)
   return ensurePanzoom()
     .then((Panzoom) =>
-      buildZoomState(target, (limits) => {
-        // touchAction 内联态取 pan-y：纵向滚动归页面，横向拖拽平移。
-        return new Panzoom(box, {
-          minScale: limits.minScale,
-          maxScale: limits.maxScale,
-          cursor: 'grab',
-          pinchAndPan: true,
-          zoomWithWheel: false,
-          touchAction: 'pan-y',
-        })
-      }),
+      buildZoomState(
+        target,
+        (limits) => {
+          // touchAction 内联态取 pan-y：纵向滚动归页面，横向拖拽平移。
+          return new Panzoom(box, {
+            minScale: limits.minScale,
+            maxScale: limits.maxScale,
+            cursor: 'grab',
+            pinchAndPan: true,
+            zoomWithWheel: false,
+            touchAction: 'pan-y',
+          })
+        },
+        true, // panzoom：transform 是 scale(s) translate(t)，translate 落在缩放坐标系里
+      ),
     )
-    .catch(() => buildZoomState(target, (limits) => createFallbackZoomer(box, limits)))
+    .catch(() => buildZoomState(target, (limits) => createFallbackZoomer(box, limits), false))
 }
 
 /** 工具条入口：未就绪就**等加载完再执行**（此前直接 return，加载期间与加载失败后的
@@ -209,12 +222,15 @@ function zoomEntry(entryId: string, action: string): void {
   void bindZoom(target).then((state) => applyZoom(state, action))
 }
 
-/** 浮窗里的小按钮。 */
-function overlayButton(label: string, onClick: () => void): Element {
+/** 浮窗里的小按钮：文字走 data-dsh-md-render-tip 悬停浮层，图标 React 渲染进按钮
+ *  （图标单一真源在共享图标集，不为命令式路径另写一套 SVG）。 */
+function overlayButton(label: string, iconNode: unknown, onClick: () => void): Element {
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = 'dsh-md-render-mermaid-eb'
-  btn.textContent = label
+  btn.setAttribute('aria-label', label)
+  btn.setAttribute('data-dsh-md-render-tip', label)
+  renderNodeInto(btn, iconNode)
   btn.addEventListener('click', onClick)
   return btn
 }
@@ -251,8 +267,8 @@ function openCardOverlay(target: { card: Element; frame: Element; box: Element }
   dialog.setAttribute(FS_PANEL_ATTR, 'open')
   const bar = document.createElement('div')
   bar.className = FS_BAR_CLASS
-  bar.appendChild(overlayButton('浏览器全屏', () => requestNativeFullscreen(target)))
-  bar.appendChild(overlayButton('关闭', closeCardOverlay))
+  bar.appendChild(overlayButton('浏览器全屏', icon.maximize(14), () => requestNativeFullscreen(target)))
+  bar.appendChild(overlayButton('关闭', icon.close(14), closeCardOverlay))
   dialog.appendChild(bar)
   overlayHome = { host: host as Element, entryId, parent: host.parentNode, next: host.nextSibling, dialog }
   dialog.appendChild(host)

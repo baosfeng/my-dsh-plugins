@@ -49,9 +49,17 @@ const STYLES: string = `
 --mdr-surface:var(--dsw-alias-markdown-code-block);
 /* 几何：逐字对齐原型 02-style.md（--radius-sm/md/lg/pill = 8 / 12 / 18 / 980） */
 --mdr-radius-sm:8px;--mdr-radius-md:12px;--mdr-radius-lg:18px;--mdr-pill:980px;
-/* 字号阶梯：h1–h6 逐字对齐原型（21 / 17 / 15 / 14 / 13 / 12）；正文取宿主对话尺度（有意偏离） */
---mdr-fs-h1:21px;--mdr-fs-h2:17px;--mdr-fs-h3:15px;--mdr-fs-h4:14px;--mdr-fs-h5:13px;--mdr-fs-h6:12px;
---mdr-fs-body:14px;--mdr-fs-xs:12px;
+/* 字号阶梯：h1–h6 逐字对齐原型（21 / 17 / 15 / 14 / 13 / 12）——**原型取值是「正文 14px」下的基线**，
+   这里改用宿主的**内容字号轴**平移，跟随「设置 → 外观 → 字号大小」（12–17）：正文 / 表格读
+   --dsh-content-font-size；h1–h3 用 calc(原型值 + --dsh-content-font-delta)（宿主官方 markdown 同款写法，
+   它 h1 也是 calc(21px + delta)）；h5 / h6 / 小字档**不缩放** —— 与宿主对 dense secondary text 的策略一致
+   （缩到 11–12px 以下会掉可读性）。行高用相对倍数，天然跟随。 */
+--mdr-fs-h1:calc(21px + var(--dsh-content-font-delta,0px));
+--mdr-fs-h2:calc(17px + var(--dsh-content-font-delta,0px));
+--mdr-fs-h3:calc(15px + var(--dsh-content-font-delta,0px));
+--mdr-fs-h4:var(--dsh-content-font-size,14px);
+--mdr-fs-h5:13px;--mdr-fs-h6:12px;
+--mdr-fs-body:var(--dsh-content-font-size,14px);--mdr-fs-xs:12px;
 /* 间距阶梯：对齐原型 --space-*（4 / 8 / 12 / 16 / 24） */
 --mdr-space-1:4px;--mdr-space-2:8px;--mdr-space-3:12px;--mdr-space-4:16px;--mdr-space-6:24px;
 /* 动效：对齐原型 --motion-fast / --motion-base / --ease-standard */
@@ -156,18 +164,61 @@ const STYLES: string = `
 .md-code-block[data-dsh-md-render-text-view="source"]>.dsh-md-render-code-host{display:none}
 /* ══ 自研代码块（own-code.ts）：真实语言名胶囊 + 复制（hover / focus 浮现）+ 语法高亮 ══ */
 .dsh-md-render-code-host{display:block;min-width:0}
-.dsh-md-render-code{position:relative;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--mdr-line);border-left:3px solid var(--mdr-accent);border-radius:var(--mdr-radius-md);background:var(--mdr-surface);box-shadow:var(--dsw-shadow-lv1)}
-.dsh-md-render-code-head{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:6px 10px 6px 12px;background:var(--mdr-tint);border-bottom:1px solid var(--mdr-line-soft)}
+/* container-type：把**卡片自身**声明为查询容器 —— 分档要按「可用宽度（消息列宽）」判，
+   不是视口（大屏 + 侧栏展开时列可能只有 380px，视口断点判不到）。见下方 @container 分档。 */
+.dsh-md-render-code{container-type:inline-size;position:relative;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--mdr-line);border-left:3px solid var(--mdr-accent);border-radius:var(--mdr-radius-md);background:var(--mdr-surface);box-shadow:var(--dsw-shadow-lv1)}
+.dsh-md-render-code-head{display:flex;align-items:center;justify-content:flex-end;gap:var(--mdr-space-1);row-gap:2px;flex-wrap:wrap;padding:6px 10px 6px 12px;background:var(--mdr-tint);border-bottom:1px solid var(--mdr-line-soft)}
 .dsh-md-render-code-lang{margin-right:auto;min-width:0;overflow:hidden;padding:1px 8px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 22%,transparent);border-radius:var(--mdr-pill);background:var(--mdr-accent-soft);font-family:var(--mdr-mono);font-size:10px;font-weight:600;line-height:16px;letter-spacing:.08em;text-transform:uppercase;text-overflow:ellipsis;white-space:nowrap;color:var(--mdr-accent-text)}
 .dsh-md-render-code-lang:empty{display:none}
-.dsh-md-render-code-actions{display:inline-flex;align-items:center;gap:6px;flex:none}
+.dsh-md-render-code-actions{display:inline-flex;align-items:center;gap:var(--mdr-space-1);flex:none}
 .dsh-md-render-code-pre{margin:0;padding:12px 14px;overflow:auto;max-height:70vh;background:transparent;font-family:var(--mdr-mono);font-size:12.5px;line-height:1.7;tab-size:2;color:var(--dsw-alias-label-primary);white-space:pre;overflow-wrap:normal;word-break:normal}
 .dsh-md-render-code-pre:focus-visible{outline:none;box-shadow:var(--mdr-focus-ring-inset)}
 .dsh-md-render-code-pre code{font:inherit;color:inherit;background:none;border:0;padding:0;white-space:inherit;word-break:inherit}
 /* ── 插件控件统一形态：胶囊按钮（复制 / 查看原文 / 整段复制 / 导出 / 视图切换）── */
-.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;gap:var(--mdr-space-2);height:28px;padding:0 var(--mdr-space-3);border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:var(--mdr-fs-xs);font-weight:500;line-height:1;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--mdr-motion-fast) var(--mdr-ease),background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
+/* 统一 26px 方格图标按钮：图标常显、宽度恒定 —— 收起文字后不塌、排布整齐。
+   position:relative 是浮层（下方 ::after）的定位锚点。 */
+.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:26px;height:26px;padding:0;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:11px;font-weight:500;line-height:1;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--mdr-motion-fast) var(--mdr-ease),background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
 .dsh-md-render-code-copy:hover,.dsh-md-render-code-wrap-btn:hover,.dsh-md-render-text-toggle:hover,.dsh-md-render-copy:hover,.dsh-md-render-mermaid-eb:hover:not(:disabled),.dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--mdr-accent-line);color:var(--dsw-alias-label-primary)}
 .dsh-md-render-code-copy:focus-visible,.dsh-md-render-code-wrap-btn:focus-visible,.dsh-md-render-text-toggle:focus-visible,.dsh-md-render-copy:focus-visible,.dsh-md-render-mermaid-eb:focus-visible,.dsh-md-render-mermaid-vt:focus-visible{outline:none;box-shadow:var(--mdr-focus-ring)}
+/* ── 控件「文字收起、只留图标」，悬停 / 键盘聚焦用**浮层**显示文字（用户口径）──
+   为什么用浮层而不是就地撑开：就地撑开会把同一行相邻按钮推开 —— 鼠标扫过时整排抖动。
+   浮层走 absolute（零布局位移）+ 向下弹出（top:100%）：卡片是 overflow:hidden，
+   向上的浮层会被裁掉。
+   文字来源是按钮的 data-dsh-md-render-tip（动作名，可较长）；aria-label 保持简短供屏幕阅读器 —— 两者职责不同。
+   为什么必须每个按钮都有图标：没有图标的按钮收起文字就成空按钮，所以本轮补齐了
+   maximize / fit / fill / minus / wrap / markdown / eye（共享图标集）并给所有控件接上。 */
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::after{content:attr(data-dsh-md-render-tip);position:absolute;top:calc(100% + 5px);right:0;z-index:2;padding:2px var(--mdr-space-2);border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-sm);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:11px;font-weight:400;line-height:16px;white-space:nowrap;box-shadow:var(--dsw-shadow-lv2);pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity var(--mdr-motion-fast) var(--mdr-ease),transform var(--mdr-motion-fast) var(--mdr-ease)}
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]:hover::after,
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]:focus-visible::after{opacity:1;transform:none}
+/* 状态变化不能只靠悬停才知道（原型 §D 纪律）：复制成功 / 失败时浮层**常显**，
+   与「图标换勾 + 语义色」一起构成不依赖鼠标的状态信号。 */
+.dsh-md-render-copy[data-state="copied"]::after,.dsh-md-render-copy[data-state="failed"]::after,
+.dsh-md-render-code-copy[data-state="copied"]::after{opacity:1;transform:none}
+/* 触屏既没有 hover、也没有"悬停可发现"：按钮就地带文字（否则只剩图标，无从判断按钮做什么） */
+@media (hover:none){
+:is(.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt){width:auto;min-width:26px;padding:0 var(--mdr-space-2)}
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::before{content:attr(data-dsh-md-render-tip);white-space:nowrap}
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::after{display:none}
+}
+/* ── 收纳取代「按宽度藏按钮」（用户口径 + 原型同步改版）──
+   非核心进「更多」菜单后，常驻操作位只剩 3 个（视图切换 / 缩放分段 / 更多）：按钮从 8 个降到 3 个，
+   就不存在「窄了该藏谁」的问题 —— 更少的按钮比「藏着但仍在」更干净。
+   容器分档只留一条有实际意义的兜底：极窄（<360px）时缩放百分比值让位给图表（它是纯信息，不是操作）。
+   降级：不支持 @container 的环境里百分比照常显示。 */
+@container (max-width:359px){.dsh-md-render-mermaid-zoom-pct{display:none}}
+/* 缩放分段：− / 百分比 / + 收进**一个**胶囊 —— 视觉上是一个控件，卡片头因此只需一行 */
+.dsh-md-render-seg{display:inline-flex;align-items:center;flex:none;padding:2px;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-pill);background:var(--mdr-tint)}
+.dsh-md-render-seg>.dsh-md-render-mermaid-eb{border:0;background:transparent}
+/* ── 「更多」菜单：低频按钮的**收纳处**（而不是长期占位）──
+   绝对定位贴到触发按钮下方、右对齐：纯 CSS 定位（不写 el.style），锚点是工具条容器（position:relative）。
+   菜单放在卡片内 —— 卡片没有 overflow 裁切（代码块才有，而代码块没有菜单）。 */
+.dsh-md-render-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:6;min-width:176px;padding:var(--mdr-space-1);border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-md);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2)}
+.dsh-md-render-menu[hidden]{display:none}
+.dsh-md-render-menu-item{display:flex;align-items:center;gap:var(--mdr-space-2);width:100%;padding:var(--mdr-space-1) var(--mdr-space-2);border:0;border-radius:var(--mdr-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:20px;text-align:left;white-space:nowrap;cursor:pointer}
+.dsh-md-render-menu-item:hover,.dsh-md-render-menu-item:focus-visible{outline:none;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsh-md-render-menu-item:disabled{opacity:.45;cursor:not-allowed}
+.dsh-md-render-menu-item svg{display:block;flex:none}
+.dsh-md-render-menu-sep{height:1px;margin:var(--mdr-space-1) 0;border:0;background:var(--mdr-line-soft)}
 /* 复制按钮：默认隐形，hover / 键盘 focus-within / 触屏常显三路可现 */
 .dsh-md-render-code-copy{opacity:0}
 .dsh-md-render-code:hover .dsh-md-render-code-copy,.dsh-md-render-code:focus-within .dsh-md-render-code-copy{opacity:1}
@@ -199,6 +250,9 @@ const STYLES: string = `
    插在宿主 pre 之前，宿主 pre 置 hidden（React 拥有该子树，不改其子结构）。 */
 .dsh-md-render-context-md{padding:0}
 /* ── 整段 markdown 复制按钮（hover / focus-within 浮现，流式中隐藏）── */
+/* ⚠️ 尺寸**不再**单开例外（上一轮的 28px 文字胶囊已按「文字收起、只留图标」的口径撤回）：
+   现在与卡片工具条同为 26px 方格图标按钮。别再把它撑成带文字的胶囊 —— 那会把整段复制的
+   浮现按钮与工具条拉成两套形态。 */
 .dsh-md-render-copy{opacity:0}
 .tzx-md>.dsh-md-render-copy{position:absolute;right:10px;bottom:10px;background:var(--dsw-alias-bg-layer-2)}
 .tzx-md:hover>.dsh-md-render-copy,.tzx-md:focus-within>.dsh-md-render-copy{opacity:1}
@@ -214,23 +268,31 @@ const STYLES: string = `
 /* ── mermaid 图表卡片（自有 DOM）：与代码 / markdown 卡片同一套边框 / 圆角 / 层次 ── */
 .dsh-md-render-mermaid-host{display:block;min-width:0}
 .md-code-block[data-dsh-md-render-mermaid-view]>:not([class*=dsh-md-render]):not(.tzx-md){display:none}
-.dsh-md-render-mermaid-card{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv1);font-size:14px;line-height:22px;color:var(--dsw-alias-label-primary);animation:dsh-md-render-mermaid-card-in 150ms var(--ds-ease-in-out)}
-.dsh-md-render-mermaid-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.dsh-md-render-mermaid-card-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.dsh-md-render-mermaid-export{display:inline-flex;gap:2px;flex:none}
+.dsh-md-render-mermaid-card{container-type:inline-size;display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv1);font-size:14px;line-height:22px;color:var(--dsw-alias-label-primary);animation:dsh-md-render-mermaid-card-in 150ms var(--ds-ease-in-out)}
+.dsh-md-render-mermaid-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:nowrap}
+/* 用户口径：卡片头**最多一行**（不换行、不溢出）。空间不够时先压标题（省略号），
+   再由 @container 让掉百分比值。position:relative 是「更多」菜单的定位锚点。 */
+.dsh-md-render-mermaid-card-actions{position:relative;display:flex;align-items:center;gap:var(--mdr-space-1);margin-left:auto;flex:none;flex-wrap:nowrap}
 .dsh-md-render-mermaid-eb svg,.dsh-md-render-mermaid-vt svg,.dsh-md-render-mermaid-card-title svg{display:block;flex:none}
 .dsh-md-render-mermaid-eb:disabled{opacity:.45;cursor:not-allowed}
 .dsh-md-render-mermaid-notice{border-radius:var(--mdr-radius-sm);padding:4px 10px;font-size:12px;line-height:20px}
 .dsh-md-render-mermaid-notice-ok{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,transparent);color:var(--dsw-alias-state-success-primary)}
 .dsh-md-render-mermaid-notice-error{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}
 /* 卡片标题与代码块语言胶囊同一形态：强调色 + 大写 + 字距（自有标签语言） */
-.dsh-md-render-mermaid-card-title{display:flex;align-items:center;gap:5px;padding:1px 8px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 22%,transparent);border-radius:var(--mdr-pill);background:var(--mdr-accent-soft);font-family:var(--mdr-mono);font-size:10px;font-weight:600;line-height:16px;letter-spacing:.08em;text-transform:uppercase;color:var(--mdr-accent-text)}
+.dsh-md-render-mermaid-card-title{display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 8px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 22%,transparent);border-radius:var(--mdr-pill);background:var(--mdr-accent-soft);font-family:var(--mdr-mono);font-size:10px;font-weight:600;line-height:16px;letter-spacing:.08em;text-transform:uppercase;color:var(--mdr-accent-text)}
 .dsh-md-render-mermaid-view-toggle{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:var(--mdr-tint);flex:none}
 .dsh-md-render-mermaid-vt{border:0;background:transparent}
 .dsh-md-render-mermaid-view-toggle>.dsh-md-render-mermaid-vt-active{background:var(--mdr-accent-soft);color:var(--mdr-accent-text);font-weight:600}
 .dsh-md-render-mermaid-svg{position:relative;overflow:auto;max-height:70vh;min-height:160px;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md);background-image:radial-gradient(color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent) 1px,transparent 1px);background-size:18px 18px}
 .dsh-md-render-mermaid-svg[data-dsh-md-render-zoom]{overflow:hidden}
-.dsh-md-render-mermaid-canvas{transform-origin:0 0;display:flex;align-items:center;justify-content:center}
+/* ⚠️ 变换层**必须留在文档流里**（高度 = 内容固有高度）：容器的 max-height:70vh 配上变换层
+   撑开 ⇒ **容器高度随内容自适应**（短图矮、长图封顶 70vh）。曾试过让变换层绝对定位填满容器
+   来对齐缩放锚点 —— 结果容器塌回 min-height(160px)：高度自适应没了，fit 又按 160px 算，
+   图表被压到 20% 上下（用户真机反馈「所有都是固定高度」）。
+   锚点（变换层中心）≠ 容器中心的问题由 zoom-math.ts 的 zoomCenterInFrame 在程序性缩放后
+   **显式平移**解决 —— 不要再用改尺寸的方式绕。
+   变换层也不写 transform-origin：两个引擎都会内联覆盖成 50% 50%，写在这里只会误导后来者。 */
+.dsh-md-render-mermaid-canvas{display:flex;align-items:center;justify-content:center}
 .dsh-md-render-mermaid-svg svg{max-width:100%;height:auto}
 .dsh-md-render-mermaid-code{margin:0;padding:12px 14px;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md);background:var(--mdr-surface);overflow:auto;font-family:var(--mdr-mono);font-size:12px;line-height:1.7;white-space:pre-wrap}
 .dsh-md-render-mermaid-loading{display:flex;align-items:center;gap:6px;padding:8px 6px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
@@ -250,8 +312,8 @@ const STYLES: string = `
 /* ── 图表缩放 / 浮窗（需求 1，自有 DOM）──
    工具条按钮复用卡片按钮类；浮窗 = 页面内 <dialog> 模态（**非**浏览器全屏），
    卡片临时移入面板：遮罩 / Esc / 焦点归还 / 背景滚动锁定全由浏览器兜底。 */
-.dsh-md-render-mermaid-zoom{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
-.dsh-md-render-mermaid-zoom-pct{display:inline-flex;align-items:center;justify-content:flex-end;min-width:40px;font-family:var(--mdr-mono);font-size:12px;line-height:20px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+/* 缩放百分比：分段中间的**显示值**（由 zoom-math.ts 更新 textContent）—— 不是动作名，保留文字 */
+.dsh-md-render-mermaid-zoom-pct{display:inline-flex;align-items:center;justify-content:center;min-width:42px;font-family:var(--mdr-mono);font-size:11px;line-height:1;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
 .dsh-md-render-mermaid-fs{display:flex;flex-direction:column;gap:6px;width:90vw;height:85vh;max-width:none;max-height:none;margin:auto;padding:8px 10px;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2);font-size:14px;color:var(--dsw-alias-label-primary)}
 .dsh-md-render-mermaid-fs::backdrop{background:color-mix(in srgb,var(--dsw-alias-label-primary) 45%,transparent)}
 .dsh-md-render-mermaid-fs-bar{display:flex;justify-content:flex-end;gap:6px;flex:none}
@@ -296,6 +358,7 @@ const STYLES: string = `
 .tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked)::after{transform:rotate(45deg);opacity:1}
 .dsh-md-render-copy,.dsh-md-render-copy-ico,.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{transition:none}
 .dsh-md-render-copy[data-state="copied"] .dsh-md-render-copy-ico{transform:none}
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::after{transition:none}
 .dsh-md-render-img-lightbox[open],.dsh-md-render-img-lightbox[open]::backdrop{animation:none}
 }
 `

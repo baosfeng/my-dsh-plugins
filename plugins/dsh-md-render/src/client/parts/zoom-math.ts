@@ -37,6 +37,26 @@ function zoomMetrics(state: ZoomState): ZoomMetrics | null {
   return { bw, bh, sw, sh }
 }
 
+/** 程序性缩放后的**居中补偿**：两个引擎的缩放锚点都是「变换层布局盒中心」
+ *  （panzoom 把 transform-origin 内联成 50% 50%；内置降级引擎 paint() 同）。而变换层高度 =
+ *  内容固有高度，竖向长图常远大于容器的 max-height:70vh → 锚点落在容器**可视区之外**，
+ *  缩放后内容中心停在容器外（真机现象：「图不在正中间，跑到了最下面」）。
+ *  变换是 translate(t) scale(s) 且 origin 恰为变换层中心 ⇒ 中心屏幕位置 = 中心 + t，
+ *  于是 t = 容器中心 − 变换层中心。水平方向变换层宽 = 容器宽、内容已由 flex 居中，无需补偿。
+ *
+ *  ⚠️ **不要**改成「让变换层绝对定位填满容器」来绕开：那样变换层脱离文档流，容器高度会塌回
+ *  min-height(160px) —— 既丢掉「高度随内容自适应」，fit 又按 160px 算，图表被压到 20% 上下。 */
+function zoomCenterInFrame(state: ZoomState): void {
+  const m = zoomMetrics(state)
+  if (m === null) return
+  // ⚠️ 系数随引擎而变（真机实测踩过）：panzoom 的 transform 是 `scale(s) translate(t)`，
+  // 平移量 t 落在**缩放后的坐标系**里 ⇒ 想在屏幕上移动 Δ 必须传 Δ ÷ s；
+  // 内置降级引擎是 `translate(t) scale(s)` ⇒ 1:1。写死其中一个，另一个引擎就会偏。
+  const s = state.pz.getScale() || 1
+  const k = state.translateInScaledSpace && s > 0 ? 1 / s : 1
+  state.pz.pan(0, ((m.bh - m.sh) / 2) * k, { relative: false })
+}
+
 /** 100% = 图表真实像素大小：viewBox 宽 ÷ 未缩放的显示宽（适应容器后两者不等）。 */
 function zoomNaturalScale(state: ZoomState): number {
   const svg = state.box.querySelector('svg')
@@ -127,6 +147,7 @@ function zoomRefitIfFit(state: ZoomState): void {
   const next = zoomFitScale(state)
   if (Math.abs(next - state.pz.getScale()) <= next * 0.005) return
   state.pz.zoom(next, { animate: false })
+  zoomCenterInFrame(state)
   refreshZoomLabel(state)
 }
 
@@ -219,12 +240,15 @@ function applyZoom(state: ZoomState, action: string): void {
   if (action === 'fit') {
     state.fitMode = true
     state.pz.zoom(zoomFitScale(state), { animate: false })
+    zoomCenterInFrame(state)
   } else if (action === 'fill') {
     state.fitMode = false
     state.pz.zoom(zoomFillScale(state), { animate: false })
+    zoomCenterInFrame(state)
   } else if (action === 'full') {
     state.fitMode = false
     state.pz.zoom(zoomNaturalScale(state), { animate: false })
+    zoomCenterInFrame(state)
   } else {
     state.fitMode = false
     state.pz.zoom(state.pz.getScale() * (action === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP), { animate: true })

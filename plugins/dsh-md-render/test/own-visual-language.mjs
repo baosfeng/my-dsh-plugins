@@ -74,9 +74,9 @@ test('自有设计 token：圆角 / 胶囊 / 线 / 强调色 / 等宽栈都是�
     '--mdr-radius-md:12px',
     '--mdr-radius-lg:18px',
     '--mdr-pill:980px',
-    '--mdr-fs-h1:21px',
+    '--mdr-fs-h1:calc(21px',
     '--mdr-fs-h6:12px',
-    '--mdr-fs-body:14px',
+    '--mdr-fs-body:var(--dsh-content-font-size',
     '--mdr-space-3:12px',
     '--mdr-motion-fast:150ms',
     '--mdr-motion-base:220ms',
@@ -225,6 +225,40 @@ test('语法着色是插件自己的语义映射：每色由宿主语义色取�
       '高亮取色只能来自插件自有映射（或宿主链接色）：' + name,
     )
   }
+})
+
+test('控件只显示图标：文字走悬停浮层（零布局位移）；每个按钮都必须有图标', () => {
+  // 机制：data-dsh-md-render-tip → ::after **浮层**（absolute + 向下弹），**不是**就地撑开 ——
+  // 就地撑开会把同一行相邻按钮推开，鼠标扫过整排抖动（本轮的改版理由，别再改回去）。
+  assert.ok(
+    CSS.includes('[data-dsh-md-render-tip]::after{content:attr(data-dsh-md-render-tip)'),
+    '浮层文字来自 data-dsh-md-render-tip',
+  )
+  assert.ok(CSS.includes('top:calc(100% + 5px);right:0'), '浮层绝对定位、向下弹（零布局位移）')
+  assert.equal(CSS.includes('.dsh-md-render-btn-label'), false, '旧的「就地撑开」机制已撤回，不得混用两套')
+  assert.ok(CSS.includes('[data-dsh-md-render-tip]:hover::after'), 'hover 显示')
+  assert.ok(CSS.includes('[data-dsh-md-render-tip]:focus-visible::after'), '键盘聚焦显示')
+  // 状态变化不能只靠悬停才知道：复制成功 / 失败时浮层常显（配合图标换勾 + 语义色）
+  assert.ok(CSS.includes('.dsh-md-render-copy[data-state="copied"]::after'), '整段复制成功态常显')
+  assert.ok(CSS.includes('.dsh-md-render-code-copy[data-state="copied"]::after'), '代码块复制成功态常显')
+  // 触屏没有 hover：按钮就地带文字（否则只剩图标，无从判断按钮做什么）
+  assert.ok(CSS.includes('[data-dsh-md-render-tip]::before{content:attr(data-dsh-md-render-tip)'), '触屏按钮带文字常显')
+  // 不写原生 title：自绘浮层是唯一的鼠标提示（两者并存会延迟 1s 重叠显示）
+  // 工具条已拆到 mermaid-toolbar.ts：读两文件（等价于拆分前的整体）
+  const CARD =
+    readFileSync(join(here, '..', 'src', 'client', 'parts', 'mermaid-card.ts'), 'utf8') +
+    readFileSync(join(here, '..', 'src', 'client', 'parts', 'mermaid-toolbar.ts'), 'utf8')
+  assert.equal(/title:/.test(CARD), false, '不写原生 title（鼠标提示统一走 data-dsh-md-render-tip 浮层）')
+  // 每个按钮都必须有图标（文字收起后没图标就是空按钮）—— 本轮补齐的共享图标
+  const ICONS = readFileSync(join(here, '..', '..', 'dsh-shared', 'client-parts', 'icons.part.js'), 'utf8')
+  for (const name of ['maximize', 'fit', 'fill', 'minus', 'wrap', 'markdown', 'eye', 'chart', 'more']) {
+    assert.ok(new RegExp('^  ' + name + ': ', 'm').test(ICONS), '共享图标集要有 ' + name)
+  }
+  // 收纳纪律：低频操作进菜单，不再长期霸占卡片头
+  assert.ok(CARD.includes("className: 'dsh-md-render-seg'"), '缩放分段在')
+  assert.ok(CARD.includes("className: 'dsh-md-render-menu'"), '「更多」菜单在')
+  assert.ok(CARD.includes('dsh-md-render-menu-item'), '菜单项在')
+  assert.ok(CSS.includes('.dsh-md-render-menu-item'), '菜单项样式在')
 })
 
 test('构建产物里也是这套外观（源码与产物不漂移）', () => {

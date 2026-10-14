@@ -1326,12 +1326,25 @@ function CodeBlockView({ lang, code }) {
     return createElement('div', { className: CODE_VIEW_CLASS }, createElement('div', { className: CODE_HEAD_CLASS }, createElement('span', { className: CODE_LANG_CLASS }, lang === '' ? '' : lang), createElement('div', { className: CODE_ACTIONS_CLASS }, createElement('button', {
         type: 'button',
         className: CODE_WRAP_BTN_CLASS,
-        title: wrapLabel,
         'aria-label': wrapLabel,
+        // data-dsh-md-render-tip = 悬停浮层文字（styles.ts 的 [data-dsh-md-render-tip]::after）；文字收起后它是唯一的可视提示。
+        'data-dsh-md-render-tip': wrapLabel,
         // 字符串而非布尔：React 对 aria-* 会原样写成 aria-pressed="true|false"。
         'aria-pressed': wrap ? 'true' : 'false',
         onClick: onToggleWrap,
-    }, wrapLabel), createElement('button', { type: 'button', className: CODE_COPY_CLASS, title: copyLabel, 'aria-label': copyLabel, onClick: onCopy }, copyLabel))), 
+    }, 
+    // 图标常显（本轮补齐 wrap 图标）：没有图标的按钮收起文字就成空按钮。
+    icon.wrap(14)), createElement('button', {
+        type: 'button',
+        className: CODE_COPY_CLASS,
+        'aria-label': copyLabel,
+        // 状态也写进 data-state：styles.ts 靠它让成功态的浮层**常显** + 图标换勾（状态不能只靠悬停才知道）。
+        'data-state': copied ? 'copied' : 'idle',
+        'data-dsh-md-render-tip': copyLabel,
+        onClick: onCopy,
+    }, 
+    // 图标常显、文字走悬停浮层（styles.ts 的 [data-dsh-md-render-tip]::after）。
+    icon.copy(14)))), 
     // 换行态只**追加**类名，原有 CODE_PRE_CLASS 保留（样式由 styles.ts 统一提供）。
     createElement('pre', { className: CODE_PRE_CLASS + (wrap ? ' ' + CODE_WRAP_CLASS : ''), tabIndex: 0 }, codeBodyNodes(lang, source)));
 }
@@ -1847,14 +1860,17 @@ function CopyButton({ kind }) {
         copyText(text).then(() => flash('copied'), () => flash('failed'));
     };
     const label = state === 'copied' ? '已复制' : state === 'failed' ? '复制失败，请手动选择文本' : '复制整段 markdown';
+    // 浮层文字要短（nowrap 一行）；完整说法留给 aria-label（屏幕阅读器）。
+    // **不写 title**：自绘浮层已承担鼠标提示，原生 tooltip 会延迟 1s 叠在浮层上（实测观感冲突）。
+    const tip = state === 'copied' ? '已复制' : state === 'failed' ? '复制失败' : '复制';
     return createElement('button', {
         type: 'button',
         className: 'dsh-md-render-copy',
         'data-state': state,
-        title: label,
         'aria-label': label,
+        'data-dsh-md-render-tip': tip,
         onClick,
-    }, createElement('span', { className: 'dsh-md-render-copy-ico' }, state === 'copied' ? icon.check(14) : icon.copy(14)), state === 'copied' ? '已复制' : state === 'failed' ? '复制失败' : '复制');
+    }, createElement('span', { className: 'dsh-md-render-copy-ico' }, state === 'copied' ? icon.check(14) : icon.copy(14)));
 }
 Object.assign(exports,{copyText,fallbackCopyText});
 
@@ -2083,22 +2099,30 @@ function clearFenceView(block) {
     if (btn !== null && btn.parentNode)
         btn.parentNode.removeChild(btn);
 }
-/** 切换视图：写块上的状态属性 + 同步按钮文案与 aria 状态（不动宿主内容）。 */
+/** 同步切换按钮的可视形态：文字走 data-dsh-md-render-tip 浮层，图标 React 渲染进按钮
+ *  （按钮自身是命令式 DOM + React 拥有其子节点：所以**不能**再手改 textContent）。 */
+function syncFenceToggle(btn, view) {
+    const label = BLOCK_VIEW_LABELS[view] ?? BLOCK_VIEW_LABELS.markdown;
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('data-dsh-md-render-tip', label);
+    btn.setAttribute('aria-pressed', view === 'source' ? 'true' : 'false');
+    // 图标指向「点击后去哪」：当前是源码 → markdown 图标（回渲染）；当前是渲染 → code 图标（去源码）。
+    renderNodeInto(btn, view === 'source' ? icon.markdown(14) : icon.code(14));
+}
+/** 切换视图：写块上的状态属性 + 同步按钮形态（不动宿主内容）。 */
 function setFenceView(block, view) {
     block.setAttribute(BLOCK_VIEW_ATTR, view);
     const btn = block.querySelector('button.' + BLOCK_TOGGLE_CLASS);
     if (!btn)
         return;
-    btn.textContent = BLOCK_VIEW_LABELS[view] ?? BLOCK_VIEW_LABELS.markdown;
-    btn.setAttribute('aria-pressed', view === 'source' ? 'true' : 'false');
+    syncFenceToggle(btn, view);
 }
 /** 「查看原文 / 查看渲染」按钮：点击只翻转本块的状态属性（每块独立）。 */
 function fenceToggleButton(block, view) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = BLOCK_TOGGLE_CLASS;
-    btn.textContent = BLOCK_VIEW_LABELS[view] ?? BLOCK_VIEW_LABELS.markdown;
-    btn.setAttribute('aria-pressed', view === 'source' ? 'true' : 'false');
+    syncFenceToggle(btn, view);
     btn.addEventListener('click', () => {
         setFenceView(block, block.getAttribute(BLOCK_VIEW_ATTR) === 'source' ? 'markdown' : 'source');
     });
@@ -2366,6 +2390,125 @@ function errMsg(err) {
 }
 Object.assign(exports,{MERMAID_ENGINE_URL,MAX_SOURCE_CHARS,OFFSCREEN_ATTR,ensureMermaid,resetMermaidEngine,renderSvg,errMsg});
 
+    // mermaid 卡片工具条（常驻四项：视图切换 / 缩放分段 / 全屏浮窗 / 更多菜单）
+    "use strict";
+// ── mermaid 卡片工具条（React）── 从 mermaid-card.ts 拆出（单文件行数门禁 ≤400）。
+// 常驻四项：视图切换 / 缩放分段（− 百分比 + 收在一个胶囊）/ 全屏浮窗 /「更多」菜单；
+// 低频操作（适应容器 / 适应宽度 / 导出三件）收在菜单里 —— 用户口径「外面有的，里面就别再有」，
+// 所以全屏浮窗只常驻、菜单里不再重复提供。
+/** 预览 / 代码 视图切换；渲染失败时禁用预览（否则只剩激活态假象）。 */
+function ViewToggle({ mode, setMode, previewDisabled, }) {
+    const btn = (label, value, iconNode, disabled) => createElement('button', {
+        type: 'button',
+        className: mode === value ? 'dsh-md-render-mermaid-vt dsh-md-render-mermaid-vt-active' : 'dsh-md-render-mermaid-vt',
+        onClick: () => setMode(value),
+        disabled,
+        'aria-pressed': mode === value,
+        'aria-label': label,
+        'data-dsh-md-render-tip': label,
+    }, iconNode);
+    return createElement('div', { className: 'dsh-md-render-mermaid-view-toggle', role: 'group', 'aria-label': 'view mode' }, 
+    // 「预览」用眼睛图标（比 file 更贴语义）。
+    btn('预览', 'preview', icon.eye(14), previewDisabled === true), btn('代码', 'code', icon.code(14), false));
+}
+/** 缩放分段：− / 百分比 / + 收进**一个**胶囊 —— 视觉上算一个控件，卡片头因此只需一行。
+ *  百分比是**显示值**（zoom-math.ts 更新其 textContent），不是动作名 —— 所以保留文字、不进浮层。
+ *  「实际大小 100%」不设按钮：双击图表与键盘 0 两条路径都在（提示写在菜单「适应容器」项里）。 */
+function ZoomSeg({ entryId }) {
+    const btn = (ariaLabel, tip, iconNode, action) => createElement('button', {
+        type: 'button',
+        className: 'dsh-md-render-mermaid-eb',
+        onClick: action,
+        'aria-label': ariaLabel,
+        'data-dsh-md-render-tip': tip,
+    }, iconNode);
+    return createElement('div', { className: 'dsh-md-render-seg', role: 'group', 'aria-label': '图表缩放' }, btn('缩小', '缩小（键盘 −，或触控板双指捏合）', icon.minus(14), () => zoomEntry(entryId, 'out')), 
+    // 实时缩放百分比：小图放大 25% 肉眼几乎无感，用数字给出明确反馈。
+    createElement('span', { className: 'dsh-md-render-mermaid-zoom-pct' }, '100%'), btn('放大', '放大（键盘 +，或触控板双指捏合）', icon.plus(14), () => zoomEntry(entryId, 'in')));
+}
+/** 菜单项（模块级：不依赖组件状态，也让 CardMenu 保持在尺寸门禁内）。 */
+function menuItemNode(label, iconNode, onSelect, disabled) {
+    return createElement('button', {
+        type: 'button',
+        role: 'menuitem',
+        className: 'dsh-md-render-menu-item',
+        onClick: onSelect,
+        disabled,
+        'aria-label': label,
+    }, iconNode, createElement('span', null, label));
+}
+/** 造一个「按 label 生成菜单项」的工厂：点完立刻关（菜单留着会挡住图表，让人以为点了没反应）。 */
+function makeMenuItem(close) {
+    return (label, iconNode, action, disabled) => menuItemNode(label, iconNode, () => {
+        close();
+        action();
+    }, disabled);
+}
+/** 全屏浮窗：**常驻**在卡片头（用户口径「全屏要放在外面」，不藏在「更多」里）——
+ *  它是「把图放大看」的主入口，属高频；菜单里因此不再重复提供它。 */
+function FullscreenButton({ entryId, disabled }) {
+    return createElement('button', {
+        type: 'button',
+        className: 'dsh-md-render-mermaid-eb',
+        onClick: () => toggleCardOverlay(entryId),
+        disabled,
+        'aria-label': '全屏浮窗',
+        'data-dsh-md-render-tip': '全屏浮窗（Esc 关闭）',
+    }, icon.maximize(14));
+}
+/** 菜单触发器（模块级，同上）。 */
+function menuTriggerNode(entryId, open, onToggle) {
+    return createElement('button', {
+        type: 'button',
+        className: 'dsh-md-render-mermaid-eb',
+        [MENU_BTN_ATTR]: entryId,
+        'aria-haspopup': 'menu',
+        'aria-expanded': open ? 'true' : 'false',
+        'aria-label': '更多操作',
+        'data-dsh-md-render-tip': '更多操作',
+        onClick: (e) => {
+            // 阻止冒泡：否则 document 的"点外关闭"会立刻把刚打开的菜单关掉
+            if (typeof e.stopPropagation === 'function')
+                e.stopPropagation();
+            onToggle();
+        },
+    }, icon.more(14));
+}
+/**
+ * 「更多」菜单：把**低频**操作收起来（缩放模式 / 导出），别让它们长期霸占卡片头。
+ * 全屏浮窗**不在菜单里** —— 用户口径「全屏要放在外面」，它是常驻的 FullscreenButton。
+ * 用户口径「外面有的，里面就别有了」：原「渲染为 Markdown / 源码」已删
+ * —— 它与常驻的「预览 / 代码」是同一意图的两套入口。
+ * 关闭路径：再点触发按钮 / 点菜单外 / Esc；Esc 都把焦点还给触发按钮（键盘用户不丢位置）。
+ * 定位纯 CSS（styles.ts 的 .dsh-md-render-menu 贴到工具条右下方）—— 不写 el.style。
+ */
+function CardMenu({ entryId, ready, zoomable, onPng, onSvg, onCopy, }) {
+    const [open, setOpen] = useState(false);
+    useEffect(() => {
+        if (!open)
+            return undefined;
+        const onKey = (e) => {
+            if (e.key !== 'Escape')
+                return;
+            setOpen(false);
+            const btn = document.querySelector('[' + MENU_BTN_ATTR + '="' + entryId + '"]');
+            if (btn !== null && typeof btn.focus === 'function')
+                btn.focus();
+        };
+        // 点菜单外的任何地方都关；触发按钮的点击已 stopPropagation，不会误关刚打开的自己。
+        const onDoc = () => setOpen(false);
+        document.addEventListener('keydown', onKey);
+        document.addEventListener('click', onDoc);
+        return () => {
+            document.removeEventListener('keydown', onKey);
+            document.removeEventListener('click', onDoc);
+        };
+    }, [open, entryId]);
+    const item = makeMenuItem(() => setOpen(false));
+    return createElement('div', null, menuTriggerNode(entryId, open, () => setOpen(!open)), createElement('div', { className: 'dsh-md-render-menu', role: 'menu', 'aria-label': '更多操作', hidden: !open }, item('适应容器', icon.fit(14), () => zoomEntry(entryId, 'fit'), !zoomable), item('适应宽度', icon.fill(14), () => zoomEntry(entryId, 'fill'), !zoomable), createElement('hr', { key: 'menu-sep', className: 'dsh-md-render-menu-sep' }), item('下载 PNG', icon.download(14), onPng, !ready), item('下载 SVG', icon.download(14), onSvg, !ready), item('复制代码', icon.copy(14), onCopy, false)));
+}
+Object.assign(exports,{ViewToggle,ZoomSeg,CardMenu,FullscreenButton});
+
     // mermaid 图表卡片（预览 / 代码切换、导出、失败回显源码）
     "use strict";
 // ── mermaid 图表卡片（React）── 卡片只挂在本插件自插的容器里（不改官方节点结构）；
@@ -2383,6 +2526,8 @@ const MERMAID_SVG_CLASS = 'dsh-md-render-mermaid-svg';
 const MERMAID_CANVAS_CLASS = 'dsh-md-render-mermaid-canvas';
 /** 挂载序号（entryId 用）。 */
 let mermaidSeq = 0;
+/** 「更多」菜单触发按钮的标记（Esc 归还焦点时按 entryId 找它）。 */
+const MENU_BTN_ATTR = 'data-dsh-md-render-menu-btn';
 /** 记录一条渲染态转移（写到卡片 host 的真实 DOM 属性上）。 */
 function noteRenderState(entryId, state) {
     if (typeof document === 'undefined' || document === null)
@@ -2440,35 +2585,6 @@ function renderNotice(notice) {
         return null;
     return createElement('div', { className: 'dsh-md-render-mermaid-notice dsh-md-render-mermaid-notice-' + notice.type }, notice.text);
 }
-/** 导出按钮组：下载 PNG / 下载 SVG / 复制代码。 */
-function ExportButtons({ status, onPng, onSvg, onCopy, }) {
-    const ready = status === 'ok';
-    const btn = (label, iconNode, onClick, disabled) => createElement('button', { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick, disabled, title: label, 'aria-label': label }, iconNode, createElement('span', null, label));
-    return createElement('div', { className: 'dsh-md-render-mermaid-export', role: 'group', 'aria-label': 'export' }, btn('下载 PNG', icon.download(14), onPng, !ready), btn('下载 SVG', icon.download(14), onSvg, !ready), btn('复制代码', icon.copy(14), onCopy, false));
-}
-/** 预览 / 代码 视图切换；渲染失败时禁用预览（否则只剩激活态假象）。 */
-function ViewToggle({ mode, setMode, previewDisabled, }) {
-    const btn = (label, value, iconNode, disabled) => createElement('button', {
-        type: 'button',
-        className: mode === value ? 'dsh-md-render-mermaid-vt dsh-md-render-mermaid-vt-active' : 'dsh-md-render-mermaid-vt',
-        onClick: () => setMode(value),
-        disabled,
-        'aria-pressed': mode === value,
-    }, iconNode, createElement('span', null, label));
-    return createElement('div', { className: 'dsh-md-render-mermaid-view-toggle', role: 'group', 'aria-label': 'view mode' }, btn('预览', 'preview', icon.file(14), previewDisabled === true), btn('代码', 'code', icon.code(14), false));
-}
-/** 缩放 / 浮窗工具条：全屏（浮窗）/ 适应 / 铺满 / 100% / ±。
- *  title 兼作**快捷键与手势的发现入口** —— 键盘 + - 0 与方向键、双击切换、双指捏合
- *  此前都实现了但**没有任何提示**（市面做法见调研：viewer.js / draw.io 都在文档明列快捷键）。
- *  aria-label 保持简短（屏幕阅读器读的是它，不能塞整句提示）。 */
-function ZoomBar({ entryId }) {
-    const btn = (label, ariaLabel, title, action) => createElement('button', { type: 'button', className: 'dsh-md-render-mermaid-eb', onClick: action, title, 'aria-label': ariaLabel }, createElement('span', null, label));
-    return createElement('div', { className: 'dsh-md-render-mermaid-zoom', role: 'group', 'aria-label': '图表缩放' }, 
-    // 实时缩放百分比：小图放大 25% 肉眼几乎无感，用数字给出明确反馈。
-    createElement('span', { className: 'dsh-md-render-mermaid-zoom-pct' }, '100%'), btn('全屏', '全屏浮窗', '全屏浮窗（Esc 关闭）', () => toggleCardOverlay(entryId)), btn('适应', '适应容器', '适应容器：完整显示整张图（双击图表可在「适应 / 实际大小」间切换）', () => zoomEntry(entryId, 'fit')), 
-    // 铺满 = 按容器宽度填满（PhotoSwipe 的 fill / Panzoom 的 cover）：宽图比「适应」更实用。
-    btn('铺满', '适应宽度', '适应宽度：按容器宽度铺满，高度超出时可拖动平移', () => zoomEntry(entryId, 'fill')), btn('100%', '实际大小', '实际大小 100%（键盘 0 复位、双击在适应与实际大小间切换）', () => zoomEntry(entryId, 'full')), btn('−', '缩小', '缩小（键盘 −，或触控板双指捏合）', () => zoomEntry(entryId, 'out')), btn('+', '放大', '放大（键盘 +，或触控板双指捏合）', () => zoomEntry(entryId, 'in')));
-}
 /** 卡片主体：loading / error（含源码与重试）/ 代码视图 / 渲染出的 SVG。 */
 function CardBody({ status, mode, error, source, svg, onRetry, }) {
     if (status === 'loading') {
@@ -2480,16 +2596,16 @@ function CardBody({ status, mode, error, source, svg, onRetry, }) {
             type: 'button',
             className: 'dsh-md-render-mermaid-eb dsh-md-render-mermaid-retry',
             onClick: onRetry,
-            title: '重试渲染',
             'aria-label': '重试',
-        }, icon.refresh(13), createElement('span', null, '重试'))));
+            'data-dsh-md-render-tip': '重试渲染',
+        }, icon.refresh(13))));
     }
     if (mode === 'code' || !svg)
         return createElement('pre', { className: 'dsh-md-render-mermaid-code' }, source);
     return createElement('div', { className: MERMAID_SVG_CLASS }, createElement('div', { className: MERMAID_CANVAS_CLASS, dangerouslySetInnerHTML: { __html: svg } }));
 }
 /** Mermaid 图表卡片组件。 */
-function MermaidCard({ entryId, source, onForce, }) {
+function MermaidCard({ entryId, source }) {
     const [attempt, setAttempt] = useState(0);
     const [mode, setMode] = useState('preview');
     const [notice, setNotice] = useState(null);
@@ -2510,6 +2626,8 @@ function MermaidCard({ entryId, source, onForce, }) {
     const exportActions = makeExportHandlers(entryId, source, flashNotice);
     // 失败态把视图钉到 code：按钮激活态与实际显示一致。
     const view = status === 'error' ? 'code' : mode;
+    /** 可缩放 = 已渲染出图且停在预览态（缩放分段与菜单里的缩放项都按它启用）。 */
+    const zoomable = svg !== null && view === 'preview';
     // 渲染出 SVG 后绑定缩放 / 平移（懒加载 panzoom；失败只标记卡片，不再静默）。
     // 清理时收掉本卡片的浮窗：组件卸载 / 切到代码视图都不留浮窗。
     useEffect(() => {
@@ -2520,15 +2638,17 @@ function MermaidCard({ entryId, source, onForce, }) {
             bindZoom(target);
         return () => closeOverlayOf(entryId);
     }, [entryId, status, view]);
-    return createElement('div', { className: MERMAID_CARD_CLASS }, createElement('div', { className: 'dsh-md-render-mermaid-card-head' }, createElement('div', { className: 'dsh-md-render-mermaid-card-title' }, icon.file(12), createElement('span', null, 'Mermaid 图表')), createElement('div', { className: 'dsh-md-render-mermaid-card-actions' }, createElement(ExportButtons, { status, ...exportActions }), 
-    // 语言手动切换（需求 4）：卡片头承载另外两项。
-    onForce ? createElement(CardLangSwitch, { onForce }) : null, createElement(ViewToggle, { mode: view, setMode, previewDisabled: status === 'error' }))), renderNotice(notice), 
-    // 缩放条放图表上方：卡片底部会被宿主输入框浮层盖住 → 幽灵按钮。
-    svg && view === 'preview' ? createElement(ZoomBar, { entryId }) : null, createElement(CardBody, { status, mode: view, error, source, svg, onRetry: retry }));
+    return createElement('div', { className: MERMAID_CARD_CLASS }, createElement('div', { className: 'dsh-md-render-mermaid-card-head' }, createElement('div', { className: 'dsh-md-render-mermaid-card-title' }, 
+    // 「图表」用 chart 图标（原来借用 file，语义不准）。
+    icon.chart(12), createElement('span', null, 'Mermaid 图表')), 
+    // 卡片头**最多一行**：视图切换 → 缩放分段（算一个控件）→ 全屏浮窗（常驻）→「更多」（低频收纳）。
+    createElement('div', { className: 'dsh-md-render-mermaid-card-actions' }, createElement(ViewToggle, { mode: view, setMode, previewDisabled: status === 'error' }), zoomable ? createElement(ZoomSeg, { entryId }) : null, 
+    // 全屏浮窗**常驻**（用户口径：全屏放在外面，不藏进「更多」）—— 未出图 / 代码视图下禁用
+    createElement(FullscreenButton, { entryId, disabled: !zoomable }), createElement(CardMenu, { entryId, ready: status === 'ok', zoomable, ...exportActions }))), renderNotice(notice), createElement(CardBody, { status, mode: view, error, source, svg, onRetry: retry }));
 }
 /** 提示条定时器（模块级单例：后一条提示覆盖前一条）。 */
 let noticeTimer = null;
-Object.assign(exports,{MERMAID_ENTRY_ATTR,MERMAID_STATE_ATTR,MERMAID_VIEW_ATTR,noteRenderState,MERMAID_CARD_CLASS,MERMAID_SVG_CLASS,MERMAID_CANVAS_CLASS,ZoomBar,CardBody,ViewToggle,MermaidCard});
+Object.assign(exports,{MERMAID_ENTRY_ATTR,MERMAID_STATE_ATTR,MERMAID_VIEW_ATTR,noteRenderState,MERMAID_CARD_CLASS,MERMAID_SVG_CLASS,MERMAID_CANVAS_CLASS,CardBody,MermaidCard});
 
     // mermaid 代码块识别 + 流式稳定窗口
     "use strict";
@@ -2609,9 +2729,10 @@ function mountCard(block, source) {
     block.setAttribute(MERMAID_VIEW_ATTR, 'preview');
     host.setAttribute(MERMAID_ENTRY_ATTR, entryId);
     host.setAttribute(MERMAID_STATE_ATTR, 'loading');
-    // 已是卡片：块内不再挂「渲染为…」控件（另外两项并进卡片头，见 lang-switch.ts）。
+    // 已是卡片：块内不再挂「渲染为…」控件；卡片头也不再提供它 —— 与常驻的「预览 / 代码」
+    // 是同一意图的两套入口（用户口径「外面有的，里面就别有了」）。
     removeLangSwitch(block);
-    root.render(createElement(MermaidCard, { entryId, source, onForce: (value) => applyLangForce(block, value) }));
+    root.render(createElement(MermaidCard, { entryId, source }));
 }
 /** 自愈卸载：源码在挂载后又变了（流式其实还没写完）→ 拆卡片、恢复原始块。 */
 function unmountCard(block, card) {
@@ -2868,6 +2989,26 @@ function zoomMetrics(state) {
         return null;
     return { bw, bh, sw, sh };
 }
+/** 程序性缩放后的**居中补偿**：两个引擎的缩放锚点都是「变换层布局盒中心」
+ *  （panzoom 把 transform-origin 内联成 50% 50%；内置降级引擎 paint() 同）。而变换层高度 =
+ *  内容固有高度，竖向长图常远大于容器的 max-height:70vh → 锚点落在容器**可视区之外**，
+ *  缩放后内容中心停在容器外（真机现象：「图不在正中间，跑到了最下面」）。
+ *  变换是 translate(t) scale(s) 且 origin 恰为变换层中心 ⇒ 中心屏幕位置 = 中心 + t，
+ *  于是 t = 容器中心 − 变换层中心。水平方向变换层宽 = 容器宽、内容已由 flex 居中，无需补偿。
+ *
+ *  ⚠️ **不要**改成「让变换层绝对定位填满容器」来绕开：那样变换层脱离文档流，容器高度会塌回
+ *  min-height(160px) —— 既丢掉「高度随内容自适应」，fit 又按 160px 算，图表被压到 20% 上下。 */
+function zoomCenterInFrame(state) {
+    const m = zoomMetrics(state);
+    if (m === null)
+        return;
+    // ⚠️ 系数随引擎而变（真机实测踩过）：panzoom 的 transform 是 `scale(s) translate(t)`，
+    // 平移量 t 落在**缩放后的坐标系**里 ⇒ 想在屏幕上移动 Δ 必须传 Δ ÷ s；
+    // 内置降级引擎是 `translate(t) scale(s)` ⇒ 1:1。写死其中一个，另一个引擎就会偏。
+    const s = state.pz.getScale() || 1;
+    const k = state.translateInScaledSpace && s > 0 ? 1 / s : 1;
+    state.pz.pan(0, ((m.bh - m.sh) / 2) * k, { relative: false });
+}
 /** 100% = 图表真实像素大小：viewBox 宽 ÷ 未缩放的显示宽（适应容器后两者不等）。 */
 function zoomNaturalScale(state) {
     const svg = state.box.querySelector('svg');
@@ -2958,6 +3099,7 @@ function zoomRefitIfFit(state) {
     if (Math.abs(next - state.pz.getScale()) <= next * 0.005)
         return;
     state.pz.zoom(next, { animate: false });
+    zoomCenterInFrame(state);
     refreshZoomLabel(state);
 }
 /** 事件解绑闭包（document / window / 元素通用）。 */
@@ -3047,14 +3189,17 @@ function applyZoom(state, action) {
     if (action === 'fit') {
         state.fitMode = true;
         state.pz.zoom(zoomFitScale(state), { animate: false });
+        zoomCenterInFrame(state);
     }
     else if (action === 'fill') {
         state.fitMode = false;
         state.pz.zoom(zoomFillScale(state), { animate: false });
+        zoomCenterInFrame(state);
     }
     else if (action === 'full') {
         state.fitMode = false;
         state.pz.zoom(zoomNaturalScale(state), { animate: false });
+        zoomCenterInFrame(state);
     }
     else {
         state.fitMode = false;
@@ -3318,19 +3463,25 @@ function bindZoomEvents(state) {
 }
 /** 用给定引擎建实例（幂等）：状态登记 + 事件绑定 + fitMode 跟随 + 首次适应容器。
  *  panzoom 与内置降级引擎共用这条路；**引擎构造抛错也回落到降级态**，绝不让按钮失灵。 */
-function buildZoomState(target, make) {
+function buildZoomState(target, make, 
+/** 引擎的 transform 组合顺序（真机实测两者**相反**）：
+ *  panzoom 是 `scale(s) translate(t)` —— 平移量落在**缩放后的坐标系**里，屏幕位移 = t·s；
+ *  内置降级引擎是 `translate(t) scale(s)` —— 屏幕位移 = t。居中补偿要按它取系数。 */
+translateInScaledSpace) {
     const { card, frame, box } = target;
     const again = zoomStates.get(box);
     if (again !== undefined)
         return again;
     let pz;
+    let inScaledSpace = translateInScaledSpace;
     try {
         pz = make({ minScale: ZOOM_MIN, maxScale: ZOOM_MAX });
     }
     catch (_e) {
         pz = createFallbackZoomer(box, { minScale: ZOOM_MIN, maxScale: ZOOM_MAX });
+        inScaledSpace = false; // 回落 = 降级引擎（translate 与 scale 1:1）
     }
-    const state = { pz, card, frame, box, fitMode: true };
+    const state = { pz, card, frame, box, fitMode: true, translateInScaledSpace: inScaledSpace };
     zoomStates.set(box, state);
     frame.setAttribute(ZOOM_ATTR, 'on'); // 外层切裁剪态：放大后不盖住工具条
     bindZoomEvents(state);
@@ -3362,8 +3513,8 @@ function bindZoom(target) {
             zoomWithWheel: false,
             touchAction: 'pan-y',
         });
-    }))
-        .catch(() => buildZoomState(target, (limits) => createFallbackZoomer(box, limits)));
+    }, true))
+        .catch(() => buildZoomState(target, (limits) => createFallbackZoomer(box, limits), false));
 }
 /** 工具条入口：未就绪就**等加载完再执行**（此前直接 return，加载期间与加载失败后的
  *  每次点击都被静默丢弃 —— 用户看到的就是「点了没反应」）。 */
@@ -3373,12 +3524,15 @@ function zoomEntry(entryId, action) {
         return;
     void bindZoom(target).then((state) => applyZoom(state, action));
 }
-/** 浮窗里的小按钮。 */
-function overlayButton(label, onClick) {
+/** 浮窗里的小按钮：文字走 data-dsh-md-render-tip 悬停浮层，图标 React 渲染进按钮
+ *  （图标单一真源在共享图标集，不为命令式路径另写一套 SVG）。 */
+function overlayButton(label, iconNode, onClick) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'dsh-md-render-mermaid-eb';
-    btn.textContent = label;
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('data-dsh-md-render-tip', label);
+    renderNodeInto(btn, iconNode);
     btn.addEventListener('click', onClick);
     return btn;
 }
@@ -3417,8 +3571,8 @@ function openCardOverlay(target, entryId) {
     dialog.setAttribute(FS_PANEL_ATTR, 'open');
     const bar = document.createElement('div');
     bar.className = FS_BAR_CLASS;
-    bar.appendChild(overlayButton('浏览器全屏', () => requestNativeFullscreen(target)));
-    bar.appendChild(overlayButton('关闭', closeCardOverlay));
+    bar.appendChild(overlayButton('浏览器全屏', icon.maximize(14), () => requestNativeFullscreen(target)));
+    bar.appendChild(overlayButton('关闭', icon.close(14), closeCardOverlay));
     dialog.appendChild(bar);
     overlayHome = { host: host, entryId, parent: host.parentNode, next: host.nextSibling, dialog };
     dialog.appendChild(host);
@@ -3570,13 +3724,24 @@ function applyLangForce(block, value) {
     syncLangSwitch(block);
     rescanForLangs();
 }
-/** 单个选项按钮（块内版）。 */
+/** 选项图标（共享图标集名）：「渲染为」三项各自的标识 —— 文字收起后它必须还在。 */
+const LANG_SWITCH_ICONS = { mermaid: 'chart', markdown: 'markdown', source: 'code' };
+/** 按名取共享图标（查不到退回 code，绝不返回空按钮）。 */
+function langSwitchIcon(name, size) {
+    const make = icon[name];
+    return typeof make === 'function' ? make(size) : icon.code(size);
+}
+/** 单个选项按钮（块内版）：文字走 data-dsh-md-render-tip 悬停浮层，图标 React 渲染进按钮
+ *  （按钮自身是命令式 DOM，子节点归 React —— 所以**不能**再手改 textContent）。 */
 function langSwitchButton(block, option, value) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = value === option.value ? LANG_SWITCH_BTN + ' ' + LANG_SWITCH_BTN + '-active' : LANG_SWITCH_BTN;
-    btn.textContent = option.label;
+    const tip = '渲染为' + option.label;
+    btn.setAttribute('aria-label', tip);
+    btn.setAttribute('data-dsh-md-render-tip', tip);
     btn.setAttribute('aria-pressed', value === option.value ? 'true' : 'false');
+    renderNodeInto(btn, langSwitchIcon(LANG_SWITCH_ICONS[option.value] ?? 'code', 14));
     btn.addEventListener('click', () => applyLangForce(block, option.value));
     return btn;
 }
@@ -3616,11 +3781,10 @@ function scanLangSwitches(root) {
     for (const block of root.querySelectorAll('div.md-code-block'))
         syncLangSwitch(block);
 }
-/** 图表卡片头版「渲染为…」（另外两项；同一份选项表与类名）。 */
-function CardLangSwitch({ onForce }) {
-    return createElement('div', { className: LANG_SWITCH_GROUP, role: 'group', 'aria-label': '渲染为' }, FENCE_FORCE_OPTIONS.filter((option) => option.value !== 'mermaid').map((option) => createElement('button', { type: 'button', className: LANG_SWITCH_BTN, onClick: () => onForce(option.value), 'aria-pressed': false }, createElement('span', null, option.label))));
-}
-Object.assign(exports,{LANG_SWITCH_CLASS,LANG_SWITCH_ATTR,langSwitchValue,peekFenceLang,syncLangSwitch,scanLangSwitches,removeLangSwitch,applyLangForce,CardLangSwitch});
+// 卡片头的 CardLangSwitch 已删除（用户口径「外面有的，里面就别有了」）：它的
+// 「渲染为 Markdown / 源码」与卡片头常驻的「预览 / 代码」是同一意图的两套入口。
+// 块内控件（langSwitchButton 那套）保留 —— 它是**语言误判后的纠正入口**，代码块没有别的切换手段。
+Object.assign(exports,{LANG_SWITCH_CLASS,LANG_SWITCH_ATTR,langSwitchValue,peekFenceLang,syncLangSwitch,scanLangSwitches,removeLangSwitch,applyLangForce});
 
     // 共享 DOM 扫描骨架 + 单 MutationObserver 按语言分流
     // ── shared DOM scanner skeleton (dsh-shared/client-parts) ──
@@ -3822,9 +3986,17 @@ const STYLES = `
 --mdr-surface:var(--dsw-alias-markdown-code-block);
 /* 几何：逐字对齐原型 02-style.md（--radius-sm/md/lg/pill = 8 / 12 / 18 / 980） */
 --mdr-radius-sm:8px;--mdr-radius-md:12px;--mdr-radius-lg:18px;--mdr-pill:980px;
-/* 字号阶梯：h1–h6 逐字对齐原型（21 / 17 / 15 / 14 / 13 / 12）；正文取宿主对话尺度（有意偏离） */
---mdr-fs-h1:21px;--mdr-fs-h2:17px;--mdr-fs-h3:15px;--mdr-fs-h4:14px;--mdr-fs-h5:13px;--mdr-fs-h6:12px;
---mdr-fs-body:14px;--mdr-fs-xs:12px;
+/* 字号阶梯：h1–h6 逐字对齐原型（21 / 17 / 15 / 14 / 13 / 12）——**原型取值是「正文 14px」下的基线**，
+   这里改用宿主的**内容字号轴**平移，跟随「设置 → 外观 → 字号大小」（12–17）：正文 / 表格读
+   --dsh-content-font-size；h1–h3 用 calc(原型值 + --dsh-content-font-delta)（宿主官方 markdown 同款写法，
+   它 h1 也是 calc(21px + delta)）；h5 / h6 / 小字档**不缩放** —— 与宿主对 dense secondary text 的策略一致
+   （缩到 11–12px 以下会掉可读性）。行高用相对倍数，天然跟随。 */
+--mdr-fs-h1:calc(21px + var(--dsh-content-font-delta,0px));
+--mdr-fs-h2:calc(17px + var(--dsh-content-font-delta,0px));
+--mdr-fs-h3:calc(15px + var(--dsh-content-font-delta,0px));
+--mdr-fs-h4:var(--dsh-content-font-size,14px);
+--mdr-fs-h5:13px;--mdr-fs-h6:12px;
+--mdr-fs-body:var(--dsh-content-font-size,14px);--mdr-fs-xs:12px;
 /* 间距阶梯：对齐原型 --space-*（4 / 8 / 12 / 16 / 24） */
 --mdr-space-1:4px;--mdr-space-2:8px;--mdr-space-3:12px;--mdr-space-4:16px;--mdr-space-6:24px;
 /* 动效：对齐原型 --motion-fast / --motion-base / --ease-standard */
@@ -3929,18 +4101,61 @@ const STYLES = `
 .md-code-block[data-dsh-md-render-text-view="source"]>.dsh-md-render-code-host{display:none}
 /* ══ 自研代码块（own-code.ts）：真实语言名胶囊 + 复制（hover / focus 浮现）+ 语法高亮 ══ */
 .dsh-md-render-code-host{display:block;min-width:0}
-.dsh-md-render-code{position:relative;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--mdr-line);border-left:3px solid var(--mdr-accent);border-radius:var(--mdr-radius-md);background:var(--mdr-surface);box-shadow:var(--dsw-shadow-lv1)}
-.dsh-md-render-code-head{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:6px 10px 6px 12px;background:var(--mdr-tint);border-bottom:1px solid var(--mdr-line-soft)}
+/* container-type：把**卡片自身**声明为查询容器 —— 分档要按「可用宽度（消息列宽）」判，
+   不是视口（大屏 + 侧栏展开时列可能只有 380px，视口断点判不到）。见下方 @container 分档。 */
+.dsh-md-render-code{container-type:inline-size;position:relative;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--mdr-line);border-left:3px solid var(--mdr-accent);border-radius:var(--mdr-radius-md);background:var(--mdr-surface);box-shadow:var(--dsw-shadow-lv1)}
+.dsh-md-render-code-head{display:flex;align-items:center;justify-content:flex-end;gap:var(--mdr-space-1);row-gap:2px;flex-wrap:wrap;padding:6px 10px 6px 12px;background:var(--mdr-tint);border-bottom:1px solid var(--mdr-line-soft)}
 .dsh-md-render-code-lang{margin-right:auto;min-width:0;overflow:hidden;padding:1px 8px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 22%,transparent);border-radius:var(--mdr-pill);background:var(--mdr-accent-soft);font-family:var(--mdr-mono);font-size:10px;font-weight:600;line-height:16px;letter-spacing:.08em;text-transform:uppercase;text-overflow:ellipsis;white-space:nowrap;color:var(--mdr-accent-text)}
 .dsh-md-render-code-lang:empty{display:none}
-.dsh-md-render-code-actions{display:inline-flex;align-items:center;gap:6px;flex:none}
+.dsh-md-render-code-actions{display:inline-flex;align-items:center;gap:var(--mdr-space-1);flex:none}
 .dsh-md-render-code-pre{margin:0;padding:12px 14px;overflow:auto;max-height:70vh;background:transparent;font-family:var(--mdr-mono);font-size:12.5px;line-height:1.7;tab-size:2;color:var(--dsw-alias-label-primary);white-space:pre;overflow-wrap:normal;word-break:normal}
 .dsh-md-render-code-pre:focus-visible{outline:none;box-shadow:var(--mdr-focus-ring-inset)}
 .dsh-md-render-code-pre code{font:inherit;color:inherit;background:none;border:0;padding:0;white-space:inherit;word-break:inherit}
 /* ── 插件控件统一形态：胶囊按钮（复制 / 查看原文 / 整段复制 / 导出 / 视图切换）── */
-.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;gap:var(--mdr-space-2);height:28px;padding:0 var(--mdr-space-3);border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:var(--mdr-fs-xs);font-weight:500;line-height:1;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--mdr-motion-fast) var(--mdr-ease),background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
+/* 统一 26px 方格图标按钮：图标常显、宽度恒定 —— 收起文字后不塌、排布整齐。
+   position:relative 是浮层（下方 ::after）的定位锚点。 */
+.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:26px;height:26px;padding:0;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:11px;font-weight:500;line-height:1;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--mdr-motion-fast) var(--mdr-ease),background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
 .dsh-md-render-code-copy:hover,.dsh-md-render-code-wrap-btn:hover,.dsh-md-render-text-toggle:hover,.dsh-md-render-copy:hover,.dsh-md-render-mermaid-eb:hover:not(:disabled),.dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--mdr-accent-line);color:var(--dsw-alias-label-primary)}
 .dsh-md-render-code-copy:focus-visible,.dsh-md-render-code-wrap-btn:focus-visible,.dsh-md-render-text-toggle:focus-visible,.dsh-md-render-copy:focus-visible,.dsh-md-render-mermaid-eb:focus-visible,.dsh-md-render-mermaid-vt:focus-visible{outline:none;box-shadow:var(--mdr-focus-ring)}
+/* ── 控件「文字收起、只留图标」，悬停 / 键盘聚焦用**浮层**显示文字（用户口径）──
+   为什么用浮层而不是就地撑开：就地撑开会把同一行相邻按钮推开 —— 鼠标扫过时整排抖动。
+   浮层走 absolute（零布局位移）+ 向下弹出（top:100%）：卡片是 overflow:hidden，
+   向上的浮层会被裁掉。
+   文字来源是按钮的 data-dsh-md-render-tip（动作名，可较长）；aria-label 保持简短供屏幕阅读器 —— 两者职责不同。
+   为什么必须每个按钮都有图标：没有图标的按钮收起文字就成空按钮，所以本轮补齐了
+   maximize / fit / fill / minus / wrap / markdown / eye（共享图标集）并给所有控件接上。 */
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::after{content:attr(data-dsh-md-render-tip);position:absolute;top:calc(100% + 5px);right:0;z-index:2;padding:2px var(--mdr-space-2);border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-sm);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:11px;font-weight:400;line-height:16px;white-space:nowrap;box-shadow:var(--dsw-shadow-lv2);pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity var(--mdr-motion-fast) var(--mdr-ease),transform var(--mdr-motion-fast) var(--mdr-ease)}
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]:hover::after,
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]:focus-visible::after{opacity:1;transform:none}
+/* 状态变化不能只靠悬停才知道（原型 §D 纪律）：复制成功 / 失败时浮层**常显**，
+   与「图标换勾 + 语义色」一起构成不依赖鼠标的状态信号。 */
+.dsh-md-render-copy[data-state="copied"]::after,.dsh-md-render-copy[data-state="failed"]::after,
+.dsh-md-render-code-copy[data-state="copied"]::after{opacity:1;transform:none}
+/* 触屏既没有 hover、也没有"悬停可发现"：按钮就地带文字（否则只剩图标，无从判断按钮做什么） */
+@media (hover:none){
+:is(.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt){width:auto;min-width:26px;padding:0 var(--mdr-space-2)}
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::before{content:attr(data-dsh-md-render-tip);white-space:nowrap}
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::after{display:none}
+}
+/* ── 收纳取代「按宽度藏按钮」（用户口径 + 原型同步改版）──
+   非核心进「更多」菜单后，常驻操作位只剩 3 个（视图切换 / 缩放分段 / 更多）：按钮从 8 个降到 3 个，
+   就不存在「窄了该藏谁」的问题 —— 更少的按钮比「藏着但仍在」更干净。
+   容器分档只留一条有实际意义的兜底：极窄（<360px）时缩放百分比值让位给图表（它是纯信息，不是操作）。
+   降级：不支持 @container 的环境里百分比照常显示。 */
+@container (max-width:359px){.dsh-md-render-mermaid-zoom-pct{display:none}}
+/* 缩放分段：− / 百分比 / + 收进**一个**胶囊 —— 视觉上是一个控件，卡片头因此只需一行 */
+.dsh-md-render-seg{display:inline-flex;align-items:center;flex:none;padding:2px;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-pill);background:var(--mdr-tint)}
+.dsh-md-render-seg>.dsh-md-render-mermaid-eb{border:0;background:transparent}
+/* ── 「更多」菜单：低频按钮的**收纳处**（而不是长期占位）──
+   绝对定位贴到触发按钮下方、右对齐：纯 CSS 定位（不写 el.style），锚点是工具条容器（position:relative）。
+   菜单放在卡片内 —— 卡片没有 overflow 裁切（代码块才有，而代码块没有菜单）。 */
+.dsh-md-render-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:6;min-width:176px;padding:var(--mdr-space-1);border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-md);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2)}
+.dsh-md-render-menu[hidden]{display:none}
+.dsh-md-render-menu-item{display:flex;align-items:center;gap:var(--mdr-space-2);width:100%;padding:var(--mdr-space-1) var(--mdr-space-2);border:0;border-radius:var(--mdr-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:20px;text-align:left;white-space:nowrap;cursor:pointer}
+.dsh-md-render-menu-item:hover,.dsh-md-render-menu-item:focus-visible{outline:none;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsh-md-render-menu-item:disabled{opacity:.45;cursor:not-allowed}
+.dsh-md-render-menu-item svg{display:block;flex:none}
+.dsh-md-render-menu-sep{height:1px;margin:var(--mdr-space-1) 0;border:0;background:var(--mdr-line-soft)}
 /* 复制按钮：默认隐形，hover / 键盘 focus-within / 触屏常显三路可现 */
 .dsh-md-render-code-copy{opacity:0}
 .dsh-md-render-code:hover .dsh-md-render-code-copy,.dsh-md-render-code:focus-within .dsh-md-render-code-copy{opacity:1}
@@ -3972,6 +4187,9 @@ const STYLES = `
    插在宿主 pre 之前，宿主 pre 置 hidden（React 拥有该子树，不改其子结构）。 */
 .dsh-md-render-context-md{padding:0}
 /* ── 整段 markdown 复制按钮（hover / focus-within 浮现，流式中隐藏）── */
+/* ⚠️ 尺寸**不再**单开例外（上一轮的 28px 文字胶囊已按「文字收起、只留图标」的口径撤回）：
+   现在与卡片工具条同为 26px 方格图标按钮。别再把它撑成带文字的胶囊 —— 那会把整段复制的
+   浮现按钮与工具条拉成两套形态。 */
 .dsh-md-render-copy{opacity:0}
 .tzx-md>.dsh-md-render-copy{position:absolute;right:10px;bottom:10px;background:var(--dsw-alias-bg-layer-2)}
 .tzx-md:hover>.dsh-md-render-copy,.tzx-md:focus-within>.dsh-md-render-copy{opacity:1}
@@ -3987,23 +4205,31 @@ const STYLES = `
 /* ── mermaid 图表卡片（自有 DOM）：与代码 / markdown 卡片同一套边框 / 圆角 / 层次 ── */
 .dsh-md-render-mermaid-host{display:block;min-width:0}
 .md-code-block[data-dsh-md-render-mermaid-view]>:not([class*=dsh-md-render]):not(.tzx-md){display:none}
-.dsh-md-render-mermaid-card{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv1);font-size:14px;line-height:22px;color:var(--dsw-alias-label-primary);animation:dsh-md-render-mermaid-card-in 150ms var(--ds-ease-in-out)}
-.dsh-md-render-mermaid-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.dsh-md-render-mermaid-card-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.dsh-md-render-mermaid-export{display:inline-flex;gap:2px;flex:none}
+.dsh-md-render-mermaid-card{container-type:inline-size;display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv1);font-size:14px;line-height:22px;color:var(--dsw-alias-label-primary);animation:dsh-md-render-mermaid-card-in 150ms var(--ds-ease-in-out)}
+.dsh-md-render-mermaid-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:nowrap}
+/* 用户口径：卡片头**最多一行**（不换行、不溢出）。空间不够时先压标题（省略号），
+   再由 @container 让掉百分比值。position:relative 是「更多」菜单的定位锚点。 */
+.dsh-md-render-mermaid-card-actions{position:relative;display:flex;align-items:center;gap:var(--mdr-space-1);margin-left:auto;flex:none;flex-wrap:nowrap}
 .dsh-md-render-mermaid-eb svg,.dsh-md-render-mermaid-vt svg,.dsh-md-render-mermaid-card-title svg{display:block;flex:none}
 .dsh-md-render-mermaid-eb:disabled{opacity:.45;cursor:not-allowed}
 .dsh-md-render-mermaid-notice{border-radius:var(--mdr-radius-sm);padding:4px 10px;font-size:12px;line-height:20px}
 .dsh-md-render-mermaid-notice-ok{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,transparent);color:var(--dsw-alias-state-success-primary)}
 .dsh-md-render-mermaid-notice-error{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}
 /* 卡片标题与代码块语言胶囊同一形态：强调色 + 大写 + 字距（自有标签语言） */
-.dsh-md-render-mermaid-card-title{display:flex;align-items:center;gap:5px;padding:1px 8px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 22%,transparent);border-radius:var(--mdr-pill);background:var(--mdr-accent-soft);font-family:var(--mdr-mono);font-size:10px;font-weight:600;line-height:16px;letter-spacing:.08em;text-transform:uppercase;color:var(--mdr-accent-text)}
+.dsh-md-render-mermaid-card-title{display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 8px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 22%,transparent);border-radius:var(--mdr-pill);background:var(--mdr-accent-soft);font-family:var(--mdr-mono);font-size:10px;font-weight:600;line-height:16px;letter-spacing:.08em;text-transform:uppercase;color:var(--mdr-accent-text)}
 .dsh-md-render-mermaid-view-toggle{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:var(--mdr-tint);flex:none}
 .dsh-md-render-mermaid-vt{border:0;background:transparent}
 .dsh-md-render-mermaid-view-toggle>.dsh-md-render-mermaid-vt-active{background:var(--mdr-accent-soft);color:var(--mdr-accent-text);font-weight:600}
 .dsh-md-render-mermaid-svg{position:relative;overflow:auto;max-height:70vh;min-height:160px;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md);background-image:radial-gradient(color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent) 1px,transparent 1px);background-size:18px 18px}
 .dsh-md-render-mermaid-svg[data-dsh-md-render-zoom]{overflow:hidden}
-.dsh-md-render-mermaid-canvas{transform-origin:0 0;display:flex;align-items:center;justify-content:center}
+/* ⚠️ 变换层**必须留在文档流里**（高度 = 内容固有高度）：容器的 max-height:70vh 配上变换层
+   撑开 ⇒ **容器高度随内容自适应**（短图矮、长图封顶 70vh）。曾试过让变换层绝对定位填满容器
+   来对齐缩放锚点 —— 结果容器塌回 min-height(160px)：高度自适应没了，fit 又按 160px 算，
+   图表被压到 20% 上下（用户真机反馈「所有都是固定高度」）。
+   锚点（变换层中心）≠ 容器中心的问题由 zoom-math.ts 的 zoomCenterInFrame 在程序性缩放后
+   **显式平移**解决 —— 不要再用改尺寸的方式绕。
+   变换层也不写 transform-origin：两个引擎都会内联覆盖成 50% 50%，写在这里只会误导后来者。 */
+.dsh-md-render-mermaid-canvas{display:flex;align-items:center;justify-content:center}
 .dsh-md-render-mermaid-svg svg{max-width:100%;height:auto}
 .dsh-md-render-mermaid-code{margin:0;padding:12px 14px;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md);background:var(--mdr-surface);overflow:auto;font-family:var(--mdr-mono);font-size:12px;line-height:1.7;white-space:pre-wrap}
 .dsh-md-render-mermaid-loading{display:flex;align-items:center;gap:6px;padding:8px 6px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
@@ -4023,8 +4249,8 @@ const STYLES = `
 /* ── 图表缩放 / 浮窗（需求 1，自有 DOM）──
    工具条按钮复用卡片按钮类；浮窗 = 页面内 <dialog> 模态（**非**浏览器全屏），
    卡片临时移入面板：遮罩 / Esc / 焦点归还 / 背景滚动锁定全由浏览器兜底。 */
-.dsh-md-render-mermaid-zoom{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
-.dsh-md-render-mermaid-zoom-pct{display:inline-flex;align-items:center;justify-content:flex-end;min-width:40px;font-family:var(--mdr-mono);font-size:12px;line-height:20px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+/* 缩放百分比：分段中间的**显示值**（由 zoom-math.ts 更新 textContent）—— 不是动作名，保留文字 */
+.dsh-md-render-mermaid-zoom-pct{display:inline-flex;align-items:center;justify-content:center;min-width:42px;font-family:var(--mdr-mono);font-size:11px;line-height:1;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
 .dsh-md-render-mermaid-fs{display:flex;flex-direction:column;gap:6px;width:90vw;height:85vh;max-width:none;max-height:none;margin:auto;padding:8px 10px;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv2);font-size:14px;color:var(--dsw-alias-label-primary)}
 .dsh-md-render-mermaid-fs::backdrop{background:color-mix(in srgb,var(--dsw-alias-label-primary) 45%,transparent)}
 .dsh-md-render-mermaid-fs-bar{display:flex;justify-content:flex-end;gap:6px;flex:none}
@@ -4069,6 +4295,7 @@ const STYLES = `
 .tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked)::after{transform:rotate(45deg);opacity:1}
 .dsh-md-render-copy,.dsh-md-render-copy-ico,.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{transition:none}
 .dsh-md-render-copy[data-state="copied"] .dsh-md-render-copy-ico{transform:none}
+:is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::after{transition:none}
 .dsh-md-render-img-lightbox[open],.dsh-md-render-img-lightbox[open]::backdrop{animation:none}
 }
 `;
@@ -4271,6 +4498,92 @@ const icon = {
       [
         createElement('rect', { x: 9, y: 9, width: 13, height: 13, rx: 2 }),
         createElement('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
+      ],
+      size,
+    ),
+  // ── 控件图标化（issue #486）：卡片工具条「文字收起、只留图标」需要每个按钮都有图标 ──
+  // 全屏浮窗（四角向外），mermaid 缩放条用。
+  maximize: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M8 3H5a2 2 0 0 0-2 2v3' }),
+        createElement('path', { d: 'M16 3h3a2 2 0 0 1 2 2v3' }),
+        createElement('path', { d: 'M21 16v3a2 2 0 0 1-2 2h-3' }),
+        createElement('path', { d: 'M3 16v3a2 2 0 0 0 2 2h3' }),
+      ],
+      size,
+    ),
+  // 适应容器（「完整显示整张图」）：外框套内框，表达「内容装进可用宽度」。
+  fit: (size = 16) =>
+    iconSvg(
+      [
+        createElement('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2 }),
+        createElement('rect', { x: 8, y: 8, width: 8, height: 8, rx: 1 }),
+      ],
+      size,
+    ),
+  // 适应宽度 / 铺满：两侧容器边界 + 水平双向箭头。
+  fill: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M3 5v14' }),
+        createElement('path', { d: 'M21 5v14' }),
+        createElement('path', { d: 'M7 12h10' }),
+        createElement('path', { d: 'm9 9-3 3 3 3' }),
+        createElement('path', { d: 'm15 9 3 3-3 3' }),
+      ],
+      size,
+    ),
+  // 缩小：与既有 plus 同粗细的单横线。
+  minus: (size = 16) => iconSvg([createElement('line', { x1: 5, y1: 12, x2: 19, y2: 12 })], size),
+  // 自动换行：折行箭头（lucide wrap-text 同形），代码块换行切换用。
+  wrap: (size = 16) =>
+    iconSvg(
+      [
+        createElement('line', { x1: 3, y1: 6, x2: 21, y2: 6 }),
+        createElement('path', { d: 'M3 12h15a3 3 0 1 1 0 6h-4' }),
+        createElement('polyline', { points: '16 16 14 18 16 20' }),
+        createElement('line', { x1: 3, y1: 18, x2: 10, y2: 18 }),
+      ],
+      size,
+    ),
+  // markdown 文本（框内 M↓）：「渲染为 Markdown」用。
+  markdown: (size = 16) =>
+    iconSvg(
+      [
+        createElement('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2 }),
+        createElement('path', { d: 'M7 15V9l3 3 3-3v6' }),
+        createElement('path', { d: 'M17 9v6' }),
+        createElement('path', { d: 'm15 13 2 2 2-2' }),
+      ],
+      size,
+    ),
+  // 更多（三点）：卡片工具条的「更多」菜单触发器 —— 低频按钮收进菜单，不长期霸占头部。
+  more: (size = 16) =>
+    iconSvg(
+      [
+        createElement('circle', { cx: 5, cy: 12, r: 1.6, fill: 'currentColor', stroke: 'none' }),
+        createElement('circle', { cx: 12, cy: 12, r: 1.6, fill: 'currentColor', stroke: 'none' }),
+        createElement('circle', { cx: 19, cy: 12, r: 1.6, fill: 'currentColor', stroke: 'none' }),
+      ],
+      size,
+    ),
+  // 图表（柱状）：mermaid 图表卡片标题与「渲染为图表」选项用。
+  chart: (size = 16) =>
+    iconSvg(
+      [
+        createElement('line', { x1: 6, y1: 20, x2: 6, y2: 10 }),
+        createElement('line', { x1: 12, y1: 20, x2: 12, y2: 4 }),
+        createElement('line', { x1: 18, y1: 20, x2: 18, y2: 14 }),
+      ],
+      size,
+    ),
+  // 预览（眼睛）：视图切换的「预览」用 —— 比 file 更贴语义。
+  eye: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z' }),
+        createElement('circle', { cx: 12, cy: 12, r: 3 }),
       ],
       size,
     ),

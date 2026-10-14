@@ -96,9 +96,10 @@ function mountCard(block: Element, source: string): void {
   block.setAttribute(MERMAID_VIEW_ATTR, 'preview')
   host.setAttribute(MERMAID_ENTRY_ATTR, entryId)
   host.setAttribute(MERMAID_STATE_ATTR, 'loading')
-  // 已是卡片：块内不再挂「渲染为…」控件（另外两项并进卡片头，见 lang-switch.ts）。
+  // 已是卡片：块内不再挂「渲染为…」控件；卡片头也不再提供它 —— 与常驻的「预览 / 代码」
+  // 是同一意图的两套入口（用户口径「外面有的，里面就别有了」）。
   removeLangSwitch(block)
-  root.render(createElement(MermaidCard, { entryId, source, onForce: (value: string) => applyLangForce(block, value) }))
+  root.render(createElement(MermaidCard, { entryId, source }))
 }
 
 /** 自愈卸载：源码在挂载后又变了（流式其实还没写完）→ 拆卡片、恢复原始块。 */

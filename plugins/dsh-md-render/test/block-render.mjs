@@ -108,10 +108,10 @@ test('mermaid / mmd 块交给图表卡片（与 markdown / code 分流不重叠�
 test('「查看原文」逐块独立，来回切不重复挂载', () => {
   const { blocks } = setup()
   const toggle = blocks.text.querySelector(TOGGLE)
-  assert.equal(toggle.textContent, '查看原文', 'markdown 视图下的按钮文案')
+  assert.equal(toggle.getAttribute('data-dsh-md-render-tip'), '查看原文', 'markdown 视图下的浮层文案（文字默认收起）')
   toggle.fire('click')
   assert.equal(blocks.text.getAttribute(VIEW_ATTR), 'source', '切到原文视图')
-  assert.equal(blocks.text.querySelector(TOGGLE).textContent, '查看渲染', '文案翻转')
+  assert.equal(blocks.text.querySelector(TOGGLE).getAttribute('data-dsh-md-render-tip'), '查看渲染', '浮层文案翻转')
   assert.equal(blocks.text.querySelector(TOGGLE).getAttribute('aria-pressed'), 'true', 'aria-pressed 反映状态')
   assert.equal(blocks.plaintext.getAttribute(VIEW_ATTR), 'markdown', '其它块状态独立')
   blocks.text.querySelector(TOGGLE).fire('click')

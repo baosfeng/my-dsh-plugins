@@ -29,6 +29,10 @@ const FS_ATTR = 'data-dsh-md-render-fs'
 const PANEL_ATTR = 'data-dsh-md-render-fs-panel'
 
 /** 让出事件循环，等 fetch → text → 注入 → 建实例 → 执行排队动作这条微任务链跑完。 */
+/** 最后一次 zoom 调用：程序性缩放（fit / fill / full / 跟随重算）之后还会跟一次
+ *  「居中补偿」pan —— 变换层中心 ≠ 容器中心时要显式平移，所以别用 calls.at(-1) 断言 zoom。 */
+const lastZoom = (api) => api.calls.filter((c) => c[0] === 'zoom').at(-1)
+
 const settle = async () => {
   for (let i = 0; i < 5; i += 1) await yieldLoop()
 }
@@ -176,13 +180,13 @@ test('Fit / 100% / ± 打到库的对应 API；100% = 真实像素（不再是 F
   assert.ok(api, '已绑定')
   f.loaded.exports.zoomEntry(ENTRY, 'fit')
   await settle()
-  assert.deepEqual(api.calls.at(-1), ['zoom', 1, { animate: false }], 'Fit = 适应容器（此处量不出容器尺寸 → 1）')
+  assert.deepEqual(lastZoom(api), ['zoom', 1, { animate: false }], 'Fit = 适应容器（此处量不出容器尺寸 → 1）')
   f.loaded.exports.zoomEntry(ENTRY, 'full')
   await settle()
-  assert.deepEqual(api.calls.at(-1), ['zoom', 2, { animate: false }], '100% = viewBox 600 ÷ 显示 300 = 2')
+  assert.deepEqual(lastZoom(api), ['zoom', 2, { animate: false }], '100% = viewBox 600 ÷ 显示 300 = 2')
   f.loaded.exports.zoomEntry(ENTRY, 'in')
   await settle()
-  assert.deepEqual(api.calls.at(-1), ['zoom', 3, { animate: true }], '放大 = 当前 2 × 1.5')
+  assert.deepEqual(lastZoom(api), ['zoom', 3, { animate: true }], '放大 = 当前 2 × 1.5')
   f.loaded.exports.zoomEntry(ENTRY, 'out')
   await settle()
   assert.deepEqual(api.calls.at(-1)[0], 'zoom', '缩小走 zoom')
@@ -285,7 +289,7 @@ test('裸 wheel 归页面；ctrlKey+wheel（捏合）与 gesture（Safari）都�
   assert.equal(gesturePrevented, true, 'gesturestart 拦下浏览器整页缩放')
   const gestureBase = api.getScale()
   f.card.fire('gesturechange', { scale: 2, preventDefault: () => {} })
-  assert.deepEqual(api.calls.at(-1), ['zoom', gestureBase * 2, { animate: false }], 'gesturechange 按倍率缩放')
+  assert.deepEqual(lastZoom(api), ['zoom', gestureBase * 2, { animate: false }], 'gesturechange 按倍率缩放')
   const afterGesture = api.calls.length
   f.card.fire('gesturechange', { scale: 0, preventDefault: () => {} })
   assert.equal(api.calls.length, afterGesture, '非法倍率不动')
@@ -293,7 +297,7 @@ test('裸 wheel 归页面；ctrlKey+wheel（捏合）与 gesture（Safari）都�
   // 双击 = 适应 ↔ 实际大小（不是复位）。此处量不出容器 → fit = 1，当前比例远大于 1 → 回到适应；
   // 「双击不再复位 / 键盘 0 才复位」与完整切换语义见下面「缩放体验」专项用例。
   f.box.fire('dblclick', {})
-  assert.deepEqual(api.calls.at(-1), ['zoom', 1, { animate: false }], '双击回到适应（不是 reset）')
+  assert.deepEqual(lastZoom(api), ['zoom', 1, { animate: false }], '双击回到适应（不是 reset）')
   assert.equal(api.calls.filter((c) => c[0] === 'reset').length, 0, '双击不再是复位语义')
 })
 
@@ -342,7 +346,7 @@ test('浮窗：页面内 <dialog> 模态（不用 Fullscreen API），卡片搬�
   // 面板里的「关闭」按钮
   f.loaded.exports.toggleCardOverlay(ENTRY)
   const panel3 = panelOf(f.page)
-  const closeBtn = panel3.querySelectorAll('button').find((b) => b.textContent === '关闭')
+  const closeBtn = panel3.querySelectorAll('button').find((b) => b.getAttribute('data-dsh-md-render-tip') === '关闭')
   assert.ok(closeBtn, '面板里有「关闭」按钮')
   closeBtn.fire('click')
   assert.equal(panelOf(f.page), null, '关闭按钮能关')
@@ -366,7 +370,9 @@ test('浮窗内的小按钮保留浏览器全屏二级入口：**先收浮窗再
   f.loaded.exports.toggleCardOverlay(ENTRY)
   await settle() // 绑定链完成 → fullscreenchange 监听已挂上
   const panel = panelOf(f.page)
-  const nativeBtn = panel.querySelectorAll('button').find((b) => b.textContent === '浏览器全屏')
+  const nativeBtn = panel
+    .querySelectorAll('button')
+    .find((b) => b.getAttribute('data-dsh-md-render-tip') === '浏览器全屏')
   assert.ok(nativeBtn, '面板里有浏览器全屏小按钮')
   nativeBtn.fire('click')
   assert.equal(fullscreenAsked, 1, '点了才调 requestFullscreen（不是主入口）')
@@ -508,7 +514,14 @@ test('fitMode：适应是保持态 —— 容器尺寸 / 全屏切换都重算 f
   f.loaded.exports.zoomEntry(ENTRY, 'fit') // 绑定即 fit：min(600/300, 300/200) = 1.5
   await settle()
   const api = Panzoom.made[0]
-  assert.deepEqual(api.calls.at(-1), ['zoom', 1.5, { animate: false }], '首次适应')
+  assert.deepEqual(lastZoom(api), ['zoom', 1.5, { animate: false }], '首次适应')
+  // 变换层比容器矮 100 屏幕像素 → 内容要下移 50；而 panzoom 的 translate 落在缩放坐标系
+  // （scale 1.5）⇒ 传值必须 ÷ 1.5（写死 50 就会偏 —— 真机实测正是这样偏的）
+  assert.deepEqual(
+    api.calls.at(-1),
+    ['pan', 0, (100 / 2) * (1 / 1.5), { relative: false }],
+    '缩放后显式居中，补偿量按 panzoom 的 transform 顺序 ÷ scale',
+  )
   assert.equal(observers.length, 1, '一个实例一个 ResizeObserver')
   assert.equal(observers[0].target, f.frame, '观察的是**裁剪容器** frame（fit 的基准），不是变换层')
   assert.deepEqual(
@@ -523,7 +536,7 @@ test('fitMode：适应是保持态 —— 容器尺寸 / 全屏切换都重算 f
   f.frame.offsetHeight = 600
   api.calls.length = 0
   observers[0].callback()
-  assert.deepEqual(api.calls.at(-1), ['zoom', 3, { animate: false }], '容器变化 → 重算 fit = min(1200/300, 600/200)')
+  assert.deepEqual(lastZoom(api), ['zoom', 3, { animate: false }], '容器变化 → 重算 fit = min(1200/300, 600/200)')
 
   // fit 值没变就不要再写 transform（否则 ResizeObserver 与自身写入的变换互相触发）
   api.calls.length = 0
@@ -535,7 +548,7 @@ test('fitMode：适应是保持态 —— 容器尺寸 / 全屏切换都重算 f
   f.frame.offsetHeight = 900
   api.calls.length = 0
   docEvents.find(([t]) => t === 'fullscreenchange')[1]()
-  assert.deepEqual(api.calls.at(-1), ['zoom', 4.5, { animate: false }], '进全屏 → 重算 fit = min(1800/300, 900/200)')
+  assert.deepEqual(lastZoom(api), ['zoom', 4.5, { animate: false }], '进全屏 → 重算 fit = min(1800/300, 900/200)')
 
   // 用户手动缩放 → 退出保持态：容器再变也不重算
   f.loaded.exports.zoomEntry(ENTRY, 'in')
@@ -569,7 +582,7 @@ test('fitMode：没有 ResizeObserver 时退回 window resize（老环境也能�
   f.frame.offsetHeight = 500
   api.calls.length = 0
   winEvents[0][1]()
-  assert.deepEqual(api.calls.at(-1), ['zoom', 2.5, { animate: false }], '窗口变化 → 重算 fit = min(1500/300, 500/200)')
+  assert.deepEqual(lastZoom(api), ['zoom', 2.5, { animate: false }], '窗口变化 → 重算 fit = min(1500/300, 500/200)')
 })
 
 test('双击 = 适应 ↔ 实际大小（Panzoom 的 toggleZoom 语义；键盘 0 才是复位）', async () => {
@@ -584,11 +597,11 @@ test('双击 = 适应 ↔ 实际大小（Panzoom 的 toggleZoom 语义；键盘 
 
   api.calls.length = 0
   f.box.fire('dblclick', {})
-  assert.deepEqual(api.calls.at(-1), ['zoom', 2, { animate: false }], '当前在适应 → 双击去实际大小（600/300 = 2）')
+  assert.deepEqual(lastZoom(api), ['zoom', 2, { animate: false }], '当前在适应 → 双击去实际大小（600/300 = 2）')
   assert.equal(f.loaded.exports.zoomStates.get(f.box).fitMode, false, '去 100% 即退出 fitMode')
 
   f.box.fire('dblclick', {})
-  assert.deepEqual(api.calls.at(-1), ['zoom', 1.5, { animate: false }], '不在适应（2 ≠ 1.5）→ 双击回适应')
+  assert.deepEqual(lastZoom(api), ['zoom', 1.5, { animate: false }], '不在适应（2 ≠ 1.5）→ 双击回适应')
   assert.equal(api.calls.filter((c) => c[0] === 'reset').length, 0, '双击不再走 reset')
 
   // 边界：容器与图几乎 1:1（fit ≈ 100%）→ 双击仍必须能回到「适应」。
@@ -602,7 +615,7 @@ test('双击 = 适应 ↔ 实际大小（Panzoom 的 toggleZoom 语义；键盘 
   api.calls.length = 0
   f.box.fire('dblclick', {})
   assert.equal(f.loaded.exports.zoomStates.get(f.box).fitMode, true, 'fit ≈ 100% 时双击也要能回到适应')
-  assert.deepEqual(api.calls.at(-1), ['zoom', 1, { animate: false }], '此处 fit = min(300/300, 200/200) = 1')
+  assert.deepEqual(lastZoom(api), ['zoom', 1, { animate: false }], '此处 fit = min(300/300, 200/200) = 1')
 
   f.card.fire('keydown', { key: '0' })
   assert.deepEqual(api.calls.at(-1), ['reset', { animate: false }], '键盘 0 = 真正的复位（scale 1）')
@@ -618,13 +631,13 @@ test('铺满（fill）：按容器宽度铺满、保持宽高比、超上界夹�
   await settle()
   const api = Panzoom.made[0]
   // 绑定即 fit（1.5），随后 fill 覆盖为 bw / sw = 600/300 = 2：比 fit 大 → 高度溢出，用户拖动平移
-  assert.deepEqual(api.calls.at(-1), ['zoom', 2, { animate: false }], '铺满 = bw / sw（不受高度约束）')
+  assert.deepEqual(lastZoom(api), ['zoom', 2, { animate: false }], '铺满 = bw / sw（不受高度约束）')
   assert.equal(f.loaded.exports.zoomStates.get(f.box).fitMode, false, '铺满不是「适应」模式（不跟随容器）')
   api.calls.length = 0
   f.frame.offsetWidth = 3000
   f.loaded.exports.zoomEntry(ENTRY, 'fill')
   await settle()
-  assert.deepEqual(api.calls.at(-1), ['zoom', 8, { animate: false }], '3000/300 = 10 → 夹到上界 8')
+  assert.deepEqual(lastZoom(api), ['zoom', 8, { animate: false }], '3000/300 = 10 → 夹到上界 8')
 })
 
 test('缩放锚点跟随手势中心：降级引擎按指针位置补偿平移（图不跑偏）', async () => {

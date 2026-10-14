@@ -91,27 +91,28 @@ function assertRule(selector, snippets, origin) {
 
 /** 原型 token → 插件 token 的取值映射（期望值抄自 08-prototype.html 的 :root）。 */
 const TOKEN_MAP = [
-  ['--radius-sm', '--mdr-radius-sm', '8px'],
-  ['--radius-md', '--mdr-radius-md', '12px'],
-  ['--radius-lg', '--mdr-radius-lg', '18px'],
-  ['--radius-pill', '--mdr-pill', '980px'],
-  ['--text-xs', '--mdr-fs-xs', '12px'],
-  ['--text-xs', '--mdr-fs-h6', '12px'],
-  ['--text-sm', '--mdr-fs-h4', '14px'],
-  ['--text-base', '--mdr-fs-h2', '17px'],
-  ['--text-lg', '--mdr-fs-h1', '21px'],
-  ['--space-1', '--mdr-space-1', '4px'],
-  ['--space-2', '--mdr-space-2', '8px'],
-  ['--space-3', '--mdr-space-3', '12px'],
-  ['--space-4', '--mdr-space-4', '16px'],
-  ['--space-6', '--mdr-space-6', '24px'],
-  ['--motion-fast', '--mdr-motion-fast', '150ms'],
-  ['--motion-base', '--mdr-motion-base', '220ms'],
+  ['--radius-sm', '--mdr-radius-sm', '8px', '8px'],
+  ['--radius-md', '--mdr-radius-md', '12px', '12px'],
+  ['--radius-lg', '--mdr-radius-lg', '18px', '18px'],
+  ['--radius-pill', '--mdr-pill', '980px', '980px'],
+  ['--text-xs', '--mdr-fs-xs', '12px', '12px'],
+  ['--text-xs', '--mdr-fs-h6', '12px', '12px'],
+  // 字号：原型取值是「正文 14px」下的基线，实现改用**宿主的字号轴**平移（跟随设置里的字号大小 12–17）
+  ['--text-sm', '--mdr-fs-h4', '14px', 'var(--dsh-content-font-size,14px)'],
+  ['--text-base', '--mdr-fs-h2', '17px', 'calc(17px + var(--dsh-content-font-delta,0px))'],
+  ['--text-lg', '--mdr-fs-h1', '21px', 'calc(21px + var(--dsh-content-font-delta,0px))'],
+  ['--space-1', '--mdr-space-1', '4px', '4px'],
+  ['--space-2', '--mdr-space-2', '8px', '8px'],
+  ['--space-3', '--mdr-space-3', '12px', '12px'],
+  ['--space-4', '--mdr-space-4', '16px', '16px'],
+  ['--space-6', '--mdr-space-6', '24px', '24px'],
+  ['--motion-fast', '--mdr-motion-fast', '150ms', '150ms'],
+  ['--motion-base', '--mdr-motion-base', '220ms', '220ms'],
 ]
 
 test('几何 / 字号 / 间距 / 动效取值逐字对齐原型（token 级）', () => {
-  for (const [protoToken, pluginToken, value] of TOKEN_MAP) {
-    assert.ok(CSS.includes(`${pluginToken}:${value}`), `${pluginToken} 应为 ${value}（原型 ${protoToken}）`)
+  for (const [protoToken, pluginToken, value, impl] of TOKEN_MAP) {
+    assert.ok(CSS.includes(`${pluginToken}:${impl}`), `${pluginToken} 应为 ${value}（原型 ${protoToken}）`)
   }
   // 缓动：原型 --ease-standard（写法带空格），逐字比会误伤空白，按归一化后的取值比。
   const ease = CSS.match(/--mdr-ease:([^;\n]+)/)
@@ -475,7 +476,7 @@ test('动效纪律：只动 transform / opacity，且 prefers-reduced-motion 全
 })
 
 const DELIBERATE_DEVIATIONS = [
-  '正文 14px：原型 17px 是独立网页尺度，插件嵌在宿主对话流里，正文必须与宿主对话同尺度（标题阶梯仍逐字对齐 21/17/15/14/13/12）',
+  '字号走**宿主的内容字号轴**：原型取值是「正文 14px」下的基线，实现让正文 / 表格读 --dsh-content-font-size、h1–h3 用 calc(基线 + --dsh-content-font-delta) 平移，跟随「设置 → 外观 → 字号大小」（12–17）；h5 / h6 / 小字档不缩放（与宿主对 dense secondary text 的策略一致）。原型 17px 正文是独立网页尺度，不适用于内嵌对话流',
   '整段复制按钮默认隐形（hover / focus-within / 触屏三路浮现）：样张里常显是为了看样，对话流里常显会干扰阅读',
   '颜色一律由宿主 --dsw-* 语义变量取或 color-mix 派生，不照搬原型 apple 十六进制（照搬会破宿主深浅色）',
   '插值空间用 srgb（仓库既有口径），原型用 oklab；两者在本用途下观感一致，不混用两种空间',
@@ -486,11 +487,11 @@ const DELIBERATE_DEVIATIONS = [
   '颜色类取值一律宿主语义 token（遮罩 / 行内码底 / 发丝边 / 阴影），既不照搬原型十六进制也不按原型比例混色：按比例混色的**方向**在深色态会反转（遮罩用 label-primary 55% 会得到白雾）',
   '任务框**只读**（disabled + readOnly）：原型样张可勾选是为了演示勾选态；插件里 markdown 是模型输出快照、勾选无法持久 —— 勾选态由 :has(:checked) 跟随原文 - [x] 呈现，样式里因此不写 cursor / :focus-within（防死规则）',
   '灰阶四档并三档：原型的 fg-2 与 muted 都落到宿主 label-secondary（次级的对比度安全档），meta 落到 label-tertiary（只给非文字元素如任务框描边）—— 宿主只有三档，且原型自己实测过更浅那档对 12px 小字不达 4.5:1',
-  '复制按钮可见文案写「复制」（完整语义在 title / aria-label「复制整段 markdown」），字重 500 与卡片控件统一（样张 400）：对话流里按钮空间宝贵，且控件字重不能各自为政',
+  '复制按钮**不再有可见文案**：文字走 data-dsh-md-render-tip 悬停浮层（原型 .md-copy 是「图标 + 文字」的 28px 胶囊 —— 本轮按用户口径「文字默认不显示、只展示图标」改为 26px 图标按钮），完整语义留在 aria-label「复制整段 markdown」',
 ]
 
 test('有意偏离逐条落实（偏离必须显式，不能静默不对齐）', () => {
-  assert.ok(CSS.includes('--mdr-fs-body:14px'), DELIBERATE_DEVIATIONS[0])
+  assert.ok(CSS.includes('--mdr-fs-body:var(--dsh-content-font-size,14px)'), DELIBERATE_DEVIATIONS[0])
   assert.equal(CSS.includes('--mdr-fs-body:17px'), false, '不照搬原型 17px 正文尺度')
   assert.ok(CSS.includes('.dsh-md-render-copy{opacity:0}'), DELIBERATE_DEVIATIONS[1])
   assert.deepEqual(
@@ -507,8 +508,14 @@ test('有意偏离逐条落实（偏离必须显式，不能静默不对齐）',
 
 test('核验补强：原型字面值 / 块体完整性 / 取值来源 / 只读行为一致性', () => {
   // ── G1 原型**字面值**（不在 :root token 里的 h3/h5 字号：此前漏测，探针改成 19px 仍全绿）──
-  assert.ok(CSS.includes('--mdr-fs-h3:15px'), '--mdr-fs-h3 应为 15px（原型 .md h3 直接写字面值）')
-  assert.ok(CSS.includes('--mdr-fs-h5:13px'), '--mdr-fs-h5 应为 13px（原型 .md h5 直接写字面值）')
+  assert.ok(
+    CSS.includes('--mdr-fs-h3:calc(15px + var(--dsh-content-font-delta,0px))'),
+    '--mdr-fs-h3 基线 15px + 宿主字号增量（原型 .md h3 字面值 15px）',
+  )
+  assert.ok(
+    CSS.includes('--mdr-fs-h5:13px'),
+    '--mdr-fs-h5 基线 13px 且**不缩放**（小字档按宿主 dense-secondary 策略固定）',
+  )
   // 标题间距机制：原型 4 条「加距」+ 6 条「紧贴」是一整套，逐条断言
   assertRule('.tzx-md>*+h3{', ['margin-top:var(--mdr-space-2)'], '.md>*+h3：space-2')
   assertRule('.tzx-md>*+h4,.tzx-md>*+h5,.tzx-md>*+h6{', ['margin-top:var(--mdr-space-1)'], '.md>*+h4/h5/h6：space-1')
@@ -559,13 +566,125 @@ test('核验补强：原型字面值 / 块体完整性 / 取值来源 / 只读�
   assertRule('.dsh-md-render-img-lightbox-img{', ['max-height:86vh'], '原型 img 的 86vh：关闭按钮 -14px 悬挑需要余量')
 })
 
+test('范围纪律：工具条控件层已纳入原型（本轮扩围）—— 共享控件是 26px 方格图标按钮', () => {
+  // 踩过的坑：上一轮把「控件统一 28px **文字胶囊**」写进下面的共享规则后，图表卡片头变松、
+  // 按钮换行、「MERMAID 图表」标题胶囊被挤到折行 —— 那是原型范围外的越界改动。
+  // 本轮起卡片工具条**纳入**原型范围（08-prototype.html §sec-toolbar），但形态是
+  // 「26px 方格图标按钮 + data-dsh-md-render-tip 浮层」：文字胶囊不许回来。
+  const shared = rule(
+    '.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{',
+  )
+  assert.ok(shared !== null, '共享控件规则必须在')
+  assert.ok(
+    shared.includes('width:26px') && shared.includes('height:26px') && shared.includes('padding:0'),
+    '共享控件是 26px 方格（对齐原型 .ctl）',
+  )
+  assert.ok(shared.includes('justify-content:center'), '图标在方格内居中')
+  assert.ok(
+    shared.includes('position:relative'),
+    'position:relative 是 data-dsh-md-render-tip 浮层的定位锚点（丢了浮层会飘到卡片外）',
+  )
+  assert.equal(shared.includes('height:28px'), false, '不许回到 28px 文字胶囊')
+  assertRule('.dsh-md-render-mermaid-card-title{', ['white-space:nowrap'], '卡片标题胶囊不折行')
+  assertRule('.dsh-md-render-mermaid-card-title{', ['text-overflow:ellipsis'], '头部强制一行时标题可被压缩')
+})
+
+test('工具条对齐（原型 §sec-toolbar）：常驻四项、头部一行、不重复、菜单收纳低频', () => {
+  // 原型口径：卡片头常驻只剩「视图切换 + 缩放分段 + 更多」；低频（缩放模式 / 导出）进「更多」菜单。
+  // 用户口径「外面有的，里面就别再有」→ 菜单里不再有「渲染为 Markdown / 源码」（与「预览 / 代码」重复）。
+  // 工具条已拆到 mermaid-toolbar.ts（单文件行数门禁）：断言读两文件，等价于拆分前的整体
+  const CARD =
+    readFileSync(join(PLUGIN, 'src', 'client', 'parts', 'mermaid-card.ts'), 'utf8') +
+    readFileSync(join(PLUGIN, 'src', 'client', 'parts', 'mermaid-toolbar.ts'), 'utf8')
+
+  // ① 常驻四项（用户口径：全屏浮窗要「放在外面」，不藏进「更多」）
+  assert.ok(CARD.includes('createElement(ViewToggle, '), '常驻：视图切换（预览 / 代码）')
+  assert.ok(CARD.includes('createElement(ZoomSeg, '), '常驻：缩放分段')
+  assert.ok(CARD.includes('createElement(FullscreenButton, '), '常驻：全屏浮窗')
+  assert.ok(CARD.includes('createElement(CardMenu, '), '常驻：「更多」菜单')
+  assert.equal(CARD.includes("item('全屏浮窗'"), false, '菜单里不再有全屏浮窗（外面有了，里面不重复）')
+  assert.equal(CARD.includes('ExportButtons'), false, '导出不再是常驻按钮组（已收进菜单）')
+  assert.equal(CARD.includes('CardLangSwitch'), false, '卡片头不再有「渲染为…」（与视图切换重复，防被加回来）')
+
+  // ② 缩放三项收进**一个**胶囊（原型 .ctl-seg）：− / 百分比 / +
+  assertRule('.dsh-md-render-seg{', ['display:inline-flex', 'border-radius:var(--mdr-pill)'], '缩放分段是一个胶囊')
+  assert.ok(
+    CARD.includes("className: 'dsh-md-render-mermaid-zoom-pct'"),
+    '分段中间的百分比显示值仍在（zoom-math.ts 更新它的 textContent）',
+  )
+
+  // ③ 头部**最多一行**（原型 .mcard-head{flex-wrap:nowrap}）
+  assertRule('.dsh-md-render-mermaid-card-head{', ['flex-wrap:nowrap'], '卡片头不换行')
+  assertRule(
+    '.dsh-md-render-mermaid-card-actions{',
+    ['flex-wrap:nowrap', 'position:relative'],
+    '工具条不换行 + 菜单定位锚点',
+  )
+
+  // ④ 菜单：结构与样式都在（低频操作的收纳处）
+  assertRule('.dsh-md-render-menu{', ['position:absolute', 'right:0'], '菜单贴到工具条右下方')
+  assert.ok(CARD.includes("className: 'dsh-md-render-menu-item'"), '菜单项')
+  assert.ok(CARD.includes("role: 'menuitem'"), '菜单项语义')
+  assert.ok(CARD.includes("'aria-haspopup': 'menu'"), '触发器有 aria-haspopup')
+
+  // ⑤ 关闭路径：再点触发按钮 / 点菜单外 / Esc（Esc 归还焦点给触发按钮 —— 键盘用户不丢位置）
+  assert.ok(CARD.includes("addEventListener('click', onDoc)"), '点菜单外关闭')
+  assert.ok(CARD.includes("e.key !== 'Escape'"), 'Esc 关闭')
+  assert.ok(CARD.includes('MENU_BTN_ATTR'), 'Esc 时按标记找回触发按钮归还焦点')
+
+  // ⑥ 不写原生 title：自绘浮层是唯一的鼠标提示
+  assert.equal(/title:/.test(CARD), false, '不写原生 title（避免与浮层重叠显示）')
+
+  // ⑦ 极窄兜底用**容器查询**：可用宽度 = 消息列宽，不是视口
+  assert.ok(CSS.includes('@container (max-width:359px)'), '极窄时百分比值让位（@container，不是 @media）')
+
+  // ⑧ 原型侧交叉校验（原型文件存在时）
+  if (existsSync(PROTOTYPE_PATH)) {
+    const proto = readFileSync(PROTOTYPE_PATH, 'utf8')
+    assert.ok(proto.includes('data-od-id="sec-toolbar"'), '原型里有 §sec-toolbar 章节（实现的依据）')
+    assert.ok(proto.includes('@container (max-width:359px)'), '原型的极窄兜底断点与实现一致')
+    assert.ok(proto.includes('flex-wrap:nowrap'), '原型头部同样强制一行')
+    // 只查菜单区域：章节说明文字里会提到「渲染为…」（解释为什么删），不算重复
+    const menuHtml = proto.slice(proto.indexOf('class="ctl-menu"'), proto.indexOf('tb-note'))
+    assert.equal(/渲染为 (Markdown|源码)/.test(menuHtml), false, '原型菜单里也没有重复的「渲染为」')
+  }
+})
+
+test('宿主适配：字号跟随宿主的「内容字号轴」，不许写死 px', () => {
+  assert.ok(
+    CSS.includes('--mdr-fs-body:var(--dsh-content-font-size,14px)'),
+    '正文读宿主字号（默认 14，用户可设 12–17）',
+  )
+  assert.ok(CSS.includes('--mdr-fs-h4:var(--dsh-content-font-size,14px)'), 'h4 与正文同号（原型 --text-sm 就是正文档）')
+  for (const [token, base] of [
+    ['--mdr-fs-h1', '21px'],
+    ['--mdr-fs-h2', '17px'],
+    ['--mdr-fs-h3', '15px'],
+  ]) {
+    assert.ok(
+      CSS.includes(`${token}:calc(${base} + var(--dsh-content-font-delta,0px))`),
+      `${token} 必须是「原型基线 ${base} + 宿主字号增量」（宿主官方 markdown 同款写法）`,
+    )
+  }
+  for (const token of ['--mdr-fs-h5', '--mdr-fs-h6', '--mdr-fs-xs']) {
+    assert.equal(
+      CSS.split(token + ':')[1]
+        .split(';')[0]
+        .includes('calc'),
+      false,
+      `${token} 小字档不缩放`,
+    )
+  }
+  assert.ok(rule('.tzx-md{').includes('line-height:1.6'), '正文行高是相对倍数（随字号自动跟随，不需要 calc 补丁）')
+})
+
 test('构建产物与源码不漂移（原型对齐标记在 lib/client.js 里同样成立）', () => {
   for (const marker of [
     '--mdr-radius-sm:8px',
     '--mdr-radius-md:12px',
     '--mdr-radius-lg:18px',
     '--mdr-pill:980px',
-    '--mdr-fs-h1:21px',
+    '--mdr-fs-h1:calc(21px',
     '--mdr-motion-base:220ms',
     '--mdr-scrim:',
     '.dsh-md-render-copy[data-state="copied"]',
@@ -579,9 +698,9 @@ test('构建产物与源码不漂移（原型对齐标记在 lib/client.js 里�
 
 test.skipIf(!existsSync(PROTOTYPE_PATH))('本文件抄录的原型取值与原型文件一致（防期望值漂移）', () => {
   const proto = readFileSync(PROTOTYPE_PATH, 'utf8')
-  for (const [protoToken, pluginToken, value] of TOKEN_MAP) {
+  for (const [protoToken, pluginToken, value, impl] of TOKEN_MAP) {
     const re = new RegExp(protoToken + '\\s*:\\s*' + value.replace(/[.*+?^$()|[\]\\]/g, '\\$&'))
     assert.ok(re.test(proto), `原型文件里 ${protoToken} 不是 ${value} —— 本测试的期望值该更新了`)
-    assert.ok(CSS.includes(`${pluginToken}:${value}`), `插件里 ${pluginToken} 不是 ${value}`)
+    assert.ok(CSS.includes(`${pluginToken}:${impl}`), `插件里 ${pluginToken} 不是 ${impl}`)
   }
 })

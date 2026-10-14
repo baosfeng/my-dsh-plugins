@@ -104,13 +104,23 @@ function clearFenceView(block: Element): void {
   if (btn !== null && btn.parentNode) btn.parentNode.removeChild(btn)
 }
 
-/** 切换视图：写块上的状态属性 + 同步按钮文案与 aria 状态（不动宿主内容）。 */
+/** 同步切换按钮的可视形态：文字走 data-dsh-md-render-tip 浮层，图标 React 渲染进按钮
+ *  （按钮自身是命令式 DOM + React 拥有其子节点：所以**不能**再手改 textContent）。 */
+function syncFenceToggle(btn: Element, view: string): void {
+  const label = BLOCK_VIEW_LABELS[view] ?? BLOCK_VIEW_LABELS.markdown
+  btn.setAttribute('aria-label', label)
+  btn.setAttribute('data-dsh-md-render-tip', label)
+  btn.setAttribute('aria-pressed', view === 'source' ? 'true' : 'false')
+  // 图标指向「点击后去哪」：当前是源码 → markdown 图标（回渲染）；当前是渲染 → code 图标（去源码）。
+  renderNodeInto(btn, view === 'source' ? icon.markdown(14) : icon.code(14))
+}
+
+/** 切换视图：写块上的状态属性 + 同步按钮形态（不动宿主内容）。 */
 function setFenceView(block: Element, view: string): void {
   block.setAttribute(BLOCK_VIEW_ATTR, view)
   const btn = block.querySelector('button.' + BLOCK_TOGGLE_CLASS)
   if (!btn) return
-  btn.textContent = BLOCK_VIEW_LABELS[view] ?? BLOCK_VIEW_LABELS.markdown
-  btn.setAttribute('aria-pressed', view === 'source' ? 'true' : 'false')
+  syncFenceToggle(btn, view)
 }
 
 /** 「查看原文 / 查看渲染」按钮：点击只翻转本块的状态属性（每块独立）。 */
@@ -118,8 +128,7 @@ function fenceToggleButton(block: Element, view: string): Element {
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = BLOCK_TOGGLE_CLASS
-  btn.textContent = BLOCK_VIEW_LABELS[view] ?? BLOCK_VIEW_LABELS.markdown
-  btn.setAttribute('aria-pressed', view === 'source' ? 'true' : 'false')
+  syncFenceToggle(btn, view)
   btn.addEventListener('click', () => {
     setFenceView(block, block.getAttribute(BLOCK_VIEW_ATTR) === 'source' ? 'markdown' : 'source')
   })

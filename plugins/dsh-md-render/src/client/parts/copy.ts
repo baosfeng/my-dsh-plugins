@@ -80,18 +80,20 @@ function CopyButton({ kind }: { kind: 'content' }): unknown {
     )
   }
   const label = state === 'copied' ? '已复制' : state === 'failed' ? '复制失败，请手动选择文本' : '复制整段 markdown'
+  // 浮层文字要短（nowrap 一行）；完整说法留给 aria-label（屏幕阅读器）。
+  // **不写 title**：自绘浮层已承担鼠标提示，原生 tooltip 会延迟 1s 叠在浮层上（实测观感冲突）。
+  const tip = state === 'copied' ? '已复制' : state === 'failed' ? '复制失败' : '复制'
   return createElement(
     'button',
     {
       type: 'button',
       className: 'dsh-md-render-copy',
       'data-state': state,
-      title: label,
       'aria-label': label,
+      'data-dsh-md-render-tip': tip,
       onClick,
     },
     createElement('span', { className: 'dsh-md-render-copy-ico' }, state === 'copied' ? icon.check(14) : icon.copy(14)),
-    state === 'copied' ? '已复制' : state === 'failed' ? '复制失败' : '复制',
   )
 }
 

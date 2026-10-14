@@ -163,18 +163,29 @@ function CodeBlockView({ lang, code }: { lang: string; code: string }): unknown 
           {
             type: 'button',
             className: CODE_WRAP_BTN_CLASS,
-            title: wrapLabel,
             'aria-label': wrapLabel,
+            // data-dsh-md-render-tip = 悬停浮层文字（styles.ts 的 [data-dsh-md-render-tip]::after）；文字收起后它是唯一的可视提示。
+            'data-dsh-md-render-tip': wrapLabel,
             // 字符串而非布尔：React 对 aria-* 会原样写成 aria-pressed="true|false"。
             'aria-pressed': wrap ? 'true' : 'false',
             onClick: onToggleWrap,
           },
-          wrapLabel,
+          // 图标常显（本轮补齐 wrap 图标）：没有图标的按钮收起文字就成空按钮。
+          icon.wrap(14),
         ),
         createElement(
           'button',
-          { type: 'button', className: CODE_COPY_CLASS, title: copyLabel, 'aria-label': copyLabel, onClick: onCopy },
-          copyLabel,
+          {
+            type: 'button',
+            className: CODE_COPY_CLASS,
+            'aria-label': copyLabel,
+            // 状态也写进 data-state：styles.ts 靠它让成功态的浮层**常显** + 图标换勾（状态不能只靠悬停才知道）。
+            'data-state': copied ? 'copied' : 'idle',
+            'data-dsh-md-render-tip': copyLabel,
+            onClick: onCopy,
+          },
+          // 图标常显、文字走悬停浮层（styles.ts 的 [data-dsh-md-render-tip]::after）。
+          icon.copy(14),
         ),
       ),
     ),

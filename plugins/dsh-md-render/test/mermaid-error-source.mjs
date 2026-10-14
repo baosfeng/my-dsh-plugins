@@ -75,7 +75,7 @@ test('保留「重试」按钮，且点击触发 onRetry（引擎加载失败可
   const { dom, retries } = errorBody(loaded, page)
   const retry = dom.querySelector('button.dsh-md-render-mermaid-retry')
   assert.ok(retry, '重试按钮仍在')
-  assert.ok(retry.textContent.includes('重试'), '文案')
+  assert.equal(retry.getAttribute('data-dsh-md-render-tip'), '重试渲染', '浮层文案')
   retry.fire('click')
   assert.equal(retries(), 1, 'onRetry 被调用一次')
 })
@@ -86,8 +86,8 @@ test('失败态视图钉在「代码」态：预览按钮禁用且不显示为�
     loaded.exports.ViewToggle({ mode: 'code', setMode: () => {}, previewDisabled: true }),
     page.document,
   )
-  const preview = toggle.querySelectorAll('button').find((b) => b.textContent.includes('预览'))
-  const code = toggle.querySelectorAll('button').find((b) => b.textContent.includes('代码'))
+  const preview = toggle.querySelectorAll('button').find((b) => b.getAttribute('data-dsh-md-render-tip') === '预览')
+  const code = toggle.querySelectorAll('button').find((b) => b.getAttribute('data-dsh-md-render-tip') === '代码')
   assert.equal(preview.getAttribute('disabled'), 'true', '预览按钮禁用')
   assert.notEqual(preview.getAttribute('aria-pressed'), 'true', '预览不显示为激活')
   assert.equal(code.getAttribute('aria-pressed'), 'true', '代码态才是激活态')

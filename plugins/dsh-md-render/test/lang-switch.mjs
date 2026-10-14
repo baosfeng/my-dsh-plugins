@@ -40,7 +40,7 @@ function setup(blocks) {
 
 /** 按文案点某个选项按钮。 */
 function pick(block, label) {
-  const btn = block.querySelectorAll(BTN).find((b) => b.textContent === label)
+  const btn = block.querySelectorAll(BTN).find((b) => b.getAttribute('data-dsh-md-render-tip') === '渲染为' + label)
   assert.ok(btn, '控件里应有「' + label + '」')
   btn.fire('click')
 }
@@ -53,8 +53,8 @@ test('未点击过控件 → 不产生任何语言覆盖（用户显式意图 !=
   assert.equal(js.getAttribute(FORCE_ATTR), null, '块上也没有覆盖属性')
   assert.ok(js.querySelector(SWITCH), '但控件已就位（三选一）')
   assert.deepEqual(
-    js.querySelectorAll(BTN).map((b) => b.textContent),
-    ['图表', 'Markdown', '源码'],
+    js.querySelectorAll(BTN).map((b) => b.getAttribute('data-dsh-md-render-tip')),
+    ['渲染为图表', '渲染为Markdown', '渲染为源码'],
     '三个选项',
   )
   assert.equal(js.getAttribute('data-dsh-md-render-text-view'), 'code', '自动判定没有被放宽：js 块走自研代码块视图')
@@ -99,7 +99,7 @@ test('覆盖按块内容哈希跨宿主重渲染存活（新 DOM 块同内容仍
   assert.ok(rebuilt.querySelector(TEXT_BODY), '重建后的块仍按 markdown 渲染')
 })
 
-test('mermaid 卡片：块内不重复挂控件，另外两项并进卡片头', () => {
+test('mermaid 卡片：块内不挂控件，卡片头不重复提供「渲染为…」', () => {
   const block = makeCodeBlock({ lang: 'mermaid', code: 'flowchart TD\n A --> B' })
   block.querySelector('code').className = 'language-mermaid'
   const { loaded } = setup([block])
@@ -107,26 +107,33 @@ test('mermaid 卡片：块内不重复挂控件，另外两项并进卡片头', 
   assert.ok(block.querySelector(CARD_HOST), '卡片已挂上')
   assert.equal(block.querySelector(SWITCH), null, '块内不再挂控件（避免一块两套）')
 
-  // 卡片头承载「Markdown / 源码」两项，点「源码」→ 拆卡片、还原官方代码块
+  // 卡片头常驻只有「视图切换 + 更多」。原来的「渲染为 Markdown / 源码」与常驻的「预览 / 代码」
+  // 是同一意图的两套入口 —— 已按用户口径删掉（外面有的，里面就别再有）。这条断言防它被加回来。
   const head = block.querySelector(CARD_HOST)
-  const src = head.querySelectorAll(BTN).find((b) => b.textContent === '源码')
-  assert.ok(src, '卡片头有「源码」')
-  src.fire('click')
-  assert.equal(block.getAttribute(FORCE_ATTR), 'source', '覆盖已写入')
-  assert.equal(block.querySelector(CARD_HOST), null, '卡片已卸载，还原官方代码块')
-  assert.ok(block.querySelector(SWITCH), '块内控件回来了（卡片没了）')
+  const tips = head.querySelectorAll(BTN).map((b) => b.getAttribute('data-dsh-md-render-tip'))
+  assert.ok(tips.includes('预览') && tips.includes('代码'), '卡片头常驻视图切换')
+  assert.equal(head.querySelector(SWITCH), null, '卡片头没有「渲染为…」控件（不重复）')
+  assert.ok(head.querySelector('.dsh-md-render-menu'), '卡片头有「更多」菜单（低频操作的收纳处）')
+
+  // 要看源码走「代码」视图：卡片卸载、官方代码块还原（这条路径仍在）。
+  const codeBtn = head.querySelectorAll(BTN).find((b) => b.getAttribute('data-dsh-md-render-tip') === '代码')
+  assert.ok(codeBtn, '卡片头有「代码」视图')
+  codeBtn.fire('click')
+  // 视图切换只换卡片内的显示（卡片不卸载）：「看源码」现在走这条路 ——
+  // 不再有语言覆盖那条路（本轮按「外面有的，里面就别再有」删除）。
+  assert.ok(block.querySelector(CARD_HOST), '卡片仍在（切视图不拆卡片）')
 })
 
-test('切换时先拆干净：图表卡片 → markdown 不残留卡片 host 与视图属性', () => {
+test('mermaid 卡片不再提供语言覆盖入口：块内与卡片头都没有「渲染为…」', () => {
   const block = makeCodeBlock({ lang: 'mermaid', code: 'flowchart TD\n A --> B' })
   block.querySelector('code').className = 'language-mermaid'
   const { loaded } = setup([block])
   loaded.exports.apply({ effect: (fn) => fn() })
-  assert.ok(block.querySelector(CARD_HOST), '先有卡片')
-  pick(block, 'Markdown')
-  assert.equal(block.querySelector(CARD_HOST), null, '卡片 host 已移除')
-  assert.equal(block.getAttribute('data-dsh-md-render-mermaid-view'), null, '块级视图属性已清')
-  assert.ok(block.querySelector(TEXT_BODY), '改由 markdown 接管')
+  assert.ok(block.querySelector(CARD_HOST), '卡片在')
+  assert.equal(block.querySelector(SWITCH), null, '块内无控件（避免一块两套）')
+  assert.equal(block.querySelector(CARD_HOST).querySelector(SWITCH), null, '卡片头也无「渲染为…」（本轮删除）')
+  assert.equal(block.getAttribute(FORCE_ATTR), null, '没有语言覆盖值（只有用户显式意图才写）')
+  assert.equal(block.getAttribute('data-dsh-md-render-mermaid-view'), 'preview', '卡片视图属性正常')
 })
 
 test('覆盖写入会话存储，刷新（新 bundle + 同一会话存储）后仍记得', () => {

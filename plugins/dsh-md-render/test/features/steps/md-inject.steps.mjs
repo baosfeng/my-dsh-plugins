@@ -204,7 +204,7 @@ Then('该块被按代码块接管（语言位留空）', function () {
 Then('该块带「查看原文」切换按钮', function () {
   const toggle = this.block.querySelector('button.dsh-md-render-text-toggle')
   assert.ok(toggle, '切换按钮已挂上')
-  assert.equal(toggle.textContent, '查看原文', '按钮文案')
+  assert.equal(toggle.getAttribute('data-dsh-md-render-tip'), '查看原文', '浮层文案（文字默认收起）')
 })
 
 Then('该块进入原文视图', function () {
@@ -372,7 +372,7 @@ When('渲染卡片主体', function () {
     this.loaded.exports.ViewToggle({ mode: 'code', setMode: () => {}, previewDisabled: true }),
     this.page.document,
   )
-  this.previewBtn = toggle.querySelectorAll('button').find((b) => b.textContent.includes('预览'))
+  this.previewBtn = toggle.querySelectorAll('button').find((b) => b.getAttribute('data-dsh-md-render-tip') === '预览')
   this.retryBtn = this.cardBody.querySelector('.dsh-md-render-mermaid-retry')
 })
 
@@ -396,7 +396,7 @@ Then('失败原因只占一行灰字提示', function () {
 
 Then('保留「重试」按钮', function () {
   assert.ok(this.retryBtn, '重试按钮仍在（引擎加载失败是真实可恢复场景）')
-  assert.ok(this.retryBtn.textContent.includes('重试'), '文案')
+  assert.equal(this.retryBtn.getAttribute('data-dsh-md-render-tip'), '重试渲染', '浮层文案')
 })
 
 Then('视图被钉在「代码」态（预览按钮禁用，不显示为激活假象）', function () {
@@ -412,14 +412,16 @@ const LANG_BTN = 'button.dsh-md-render-mermaid-vt'
 Then('该块带三选一的「渲染为…」控件', function () {
   assert.ok(this.block.querySelector(SWITCH), '控件已注入')
   assert.deepEqual(
-    this.block.querySelectorAll(LANG_BTN).map((b) => b.textContent),
-    ['图表', 'Markdown', '源码'],
+    this.block.querySelectorAll(LANG_BTN).map((b) => b.getAttribute('data-dsh-md-render-tip')),
+    ['渲染为图表', '渲染为Markdown', '渲染为源码'],
     '三个选项',
   )
 })
 
 When('点击该控件的「{word}」', function (label) {
-  const btn = this.block.querySelectorAll(LANG_BTN).find((b) => b.textContent === label)
+  const btn = this.block
+    .querySelectorAll(LANG_BTN)
+    .find((b) => b.getAttribute('data-dsh-md-render-tip') === '渲染为' + label)
   assert.ok(btn, '控件里有「' + label + '」')
   btn.fire('click')
 })
@@ -499,13 +501,31 @@ Given('一个图表卡片已渲染出 SVG', function () {
   this.page.window.Panzoom = panzoomStub(this.panzoomCalls)
   this.loaded.exports.apply({ effect: (fn) => fn() })
   // 工具条由卡片渲染（此处直接渲染 vdom，等价于真实卡片里的按钮组）
-  const bar = vdomToDom(this.loaded.exports.ZoomBar({ entryId: ENTRY }), this.page.document)
+  const bar = vdomToDom(this.loaded.exports.ZoomSeg({ entryId: ENTRY }), this.page.document)
   this.card.appendChild(bar)
+  // 「全屏浮窗」等缩放模式已收进「更多」菜单（低频操作收纳）：一并渲染，场景点得到真实入口
+  const menu = vdomToDom(
+    this.loaded.exports.CardMenu({
+      entryId: ENTRY,
+      ready: true,
+      zoomable: true,
+      onPng: () => {},
+      onSvg: () => {},
+      onCopy: () => {},
+    }),
+    this.page.document,
+  )
+  this.card.appendChild(menu)
+  // 全屏浮窗常驻在卡片头（不再藏菜单里）：一并渲染，场景点得到真实入口
+  this.card.appendChild(
+    vdomToDom(this.loaded.exports.FullscreenButton({ entryId: ENTRY, disabled: false }), this.page.document),
+  )
 })
 
 /** 点工具条上的按钮（走真实 onClick）。 */
 function clickBar(world, label) {
-  const btn = world.card.querySelectorAll('button').find((b) => b.textContent === label)
+  // 按钮只显示图标：按 **aria-label**（简短动作名）找；data-tip 是完整提示文案，两者分工不同
+  const btn = world.card.querySelectorAll('button').find((b) => b.getAttribute('aria-label') === label)
   assert.ok(btn, '工具条里有「' + label + '」')
   btn.fire('click')
 }
@@ -523,9 +543,10 @@ Then('缩放库被懒加载并作用在该卡片自有的 SVG 容器上', async 
   assert.equal(this.panzoomCalls.filter((c) => c[0] === 'new').length, 1, '只绑一次（幂等）')
 })
 
-When('点击「全屏」', function () {
+When('点击「全屏浮窗」', function () {
   this.zoomBefore = this.panzoomCalls.filter((c) => c[0] !== 'destroy').length
-  clickBar(this, '全屏')
+  // 全屏浮窗**常驻**在卡片头（用户口径：全屏放在外面），直接点
+  clickBar(this, '全屏浮窗')
 })
 
 Then('页面内出现自有浮窗面板（不用浏览器全屏）', function () {
@@ -540,7 +561,7 @@ Then('页面内出现自有浮窗面板（不用浏览器全屏）', function ()
 
 When('点击浮窗内的「关闭」', function () {
   const panel = this.page.document.querySelector('[data-dsh-md-render-fs-panel]')
-  const btn = panel.querySelectorAll('button').find((b) => b.textContent === '关闭')
+  const btn = panel.querySelectorAll('button').find((b) => b.getAttribute('data-dsh-md-render-tip') === '关闭')
   assert.ok(btn, '浮窗里有「关闭」按钮')
   btn.fire('click')
 })

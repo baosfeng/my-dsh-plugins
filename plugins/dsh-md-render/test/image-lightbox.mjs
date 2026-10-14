@@ -96,6 +96,18 @@ test('三路关闭：Esc / 点击遮罩 / 点击图片（关闭即移除 dialog 
   assert.equal(lightbox(), null, '③ 点击放大后的图片即收起')
 })
 
+test('第四条关闭路径：32px 圆形关闭按钮（显式出口，大图铺满时不必去够边缘）', () => {
+  const { dom, lightbox } = render(MARKDOWN)
+  dom.querySelector('img').fire('click')
+  const dialog = lightbox()
+  assert.ok(dialog.querySelector('.dsh-md-render-img-lightbox-wrap'), '大图包在包装层内（关闭按钮的定位锚点）')
+  const close = dialog.querySelector('button.dsh-md-render-img-lightbox-close')
+  assert.ok(close, '关闭按钮存在')
+  assert.equal(close.getAttribute('aria-label'), '关闭', '纯图标按钮必须带 aria-label')
+  close.fire('click')
+  assert.equal(lightbox(), null, '点击关闭按钮收起并移除节点')
+})
+
 test('同一时刻只有一个灯箱；关闭幂等且不抛错', () => {
   const { page, dom, lightbox } = render(TWO_IMAGES)
   const imgs = dom.querySelectorAll('img')

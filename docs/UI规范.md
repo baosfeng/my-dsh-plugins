@@ -53,6 +53,8 @@ description: 插件 UI 统一规范 — 视觉基准、共享图标系统、样�
 
 **数值**：字号 14px（正文）/ 12px（次级）/ 11px（弱化与徽标）；间距页面 padding `2px 6px 8px`、元素 gap 2px（图标按钮组）/ 6px（行内）/ 8px（区块头）；圆角 4px（徽标）/ 6px（内嵌 frame）/ 8px（行）/ 10px（浮窗）；列表行 min-height 26px；图标按钮 24×24（xs 20×20）配 14–16px 图标；过渡 `background/color` 走 `--ds-transition-duration-slow` + `--ds-ease-in-out`，入场动画 150ms。
 
+> **例外（仅 `dsh-md-render` 的 markdown 内容）**：其外观以**渲染原型为唯一真源**，几何 / 字号阶梯 / 动效取原型 token（圆角 8/12/18、动效 150ms/220ms + `cubic-bezier(.28,0,.22,1)`、焦点 4px 光晕），与本文数值表的通用口径不同 —— 映射表、有意偏离与对齐门禁见 [md 渲染概述](md渲染/概述.md#外观markdown-内容以原型为唯一真源)。其余约束不变：**颜色一律 `--dsw-*` 语义 token 取或 `color-mix` 派生，零硬编码色值**；类名 / 图标 / 样式前缀照旧。
+
 ## 状态规范
 
 | 状态    | 视觉要求                                                         | 文案要求                             |

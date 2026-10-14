@@ -65,6 +65,10 @@ test('列表：有序 / 无序 / 嵌套 / 任务列表', () => {
   assert.equal(tasks.length, 2, '任务列表两个只读复选框')
   assert.equal(tasks[0].getAttribute('checked'), 'true', '已完成项勾选')
   assert.equal(tasks[1].getAttribute('checked'), null, '未完成项不勾选')
+  // 只读语义：真实 input 不可交互（原型样张可勾选，差异见 docs/md渲染/概述.md「有意偏离」）；
+  // 勾选态由 styles.ts 的 :has(:checked) 静态呈现，样式里因此不写 cursor / :focus-within。
+  assert.equal(tasks[0].getAttribute('disabled'), 'true', 'disabled：不可交互')
+  assert.equal(tasks[0].getAttribute('readOnly'), 'true', 'readOnly')
 })
 
 test('GFM 表格：外层横向滚动容器 + 对齐用自有 class（不写行内 style / align）', () => {

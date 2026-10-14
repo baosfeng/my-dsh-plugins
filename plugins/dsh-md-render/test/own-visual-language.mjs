@@ -61,14 +61,28 @@ test('自有设计 token：圆角 / 胶囊 / 线 / 强调色 / 等宽栈都是�
     '--mdr-accent-soft:',
     '--mdr-accent-line:',
     '--mdr-tint:',
+    '--mdr-code-bg:',
+    '--mdr-hairline:',
+    '--mdr-ok-ink:',
+    '--mdr-bad-ink:',
+    '--mdr-scrim:',
     '--mdr-line:',
     '--mdr-line-soft:',
     '--mdr-line-strong:',
     '--mdr-surface:',
-    '--mdr-radius-sm:6px',
-    '--mdr-radius-md:10px',
-    '--mdr-radius-lg:12px',
-    '--mdr-pill:999px',
+    '--mdr-radius-sm:8px',
+    '--mdr-radius-md:12px',
+    '--mdr-radius-lg:18px',
+    '--mdr-pill:980px',
+    '--mdr-fs-h1:21px',
+    '--mdr-fs-h6:12px',
+    '--mdr-fs-body:14px',
+    '--mdr-space-3:12px',
+    '--mdr-motion-fast:150ms',
+    '--mdr-motion-base:220ms',
+    '--mdr-ease:cubic-bezier(0.28,0,0.22,1)',
+    '--mdr-focus-ring:',
+    '--mdr-focus-ring-inset:',
     '--mdr-mono:',
   ]) {
     assert.ok(CSS.includes(token), '缺少自有设计 token ' + token)
@@ -104,10 +118,19 @@ test('代码块辨识点：语言胶囊 + 非通栏灰带头部 + 复制三路�
 })
 
 test('markdown 自有层级与形状：h1 竖条 / h2 下边框 / 引用块 / 渐隐分隔线 / 表格 / 行内代码胶囊', () => {
-  assert.ok(CSS.includes('.tzx-md h1{') && CSS.includes('border-left:3px solid var(--mdr-accent)'), 'h1 左侧强调竖条')
-  assert.ok(CSS.includes('.tzx-md h2{') && CSS.includes('border-bottom:1px solid var(--mdr-line)'), 'h2 下边框')
-  assert.ok(CSS.includes('font-size:20px;line-height:1.4;font-weight:700'), 'h1 字号自定（官方 21px/30px shorthand）')
-  assert.ok(CSS.includes('line-height:1.75'), '段落行距更舒展（官方 24/14）')
+  assert.ok(
+    CSS.includes('.tzx-md h1{') && CSS.includes('border-left:3px solid var(--mdr-accent-line)'),
+    'h1 左侧线索竖条（55% 强调，非实心）',
+  )
+  assert.ok(
+    CSS.includes('.tzx-md h2{') && CSS.includes('border-bottom:1px solid var(--mdr-line-soft)'),
+    'h2 下边框走发丝线',
+  )
+  assert.ok(
+    CSS.includes('font-size:var(--mdr-fs-h1);line-height:1.25'),
+    'h1 字号 / 行高取自有阶梯 token（原型 21px/1.25）',
+  )
+  assert.ok(CSS.includes('line-height:1.6'), '正文行高 1.6（原型 §E3 的中文正文口径）')
   assert.ok(
     CSS.includes('border-radius:0 var(--mdr-radius-md) var(--mdr-radius-md) 0'),
     '引用块：左强调竖线 + 淡背景 + 圆角',
@@ -118,18 +141,18 @@ test('markdown 自有层级与形状：h1 竖条 / h2 下边框 / 引用块 / �
   )
   assert.ok(
     CSS.includes(
-      '.dsh-md-render-md-table-wrap{overflow-x:auto;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-md)}',
+      '.dsh-md-render-md-table-wrap{overflow-x:auto;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md)}',
     ),
     '表格：圆角外框',
   )
   assert.ok(
-    CSS.includes('background:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 7%'),
-    '表头强调色薄底',
+    CSS.includes('.dsh-md-render-md-table th{font-weight:600;background:var(--mdr-surface)}'),
+    '表头中性薄底（原型口径，不再是强调色底）',
   )
-  assert.ok(CSS.includes('font-size:.88em'), '行内代码胶囊（字号相对正文收敛）')
+  assert.ok(CSS.includes('font-size:.86em'), '行内代码胶囊（字号相对正文收敛，原型 .86em）')
   assert.ok(
     CSS.includes(
-      '.dsh-md-render-md-task{position:absolute;left:0;top:6px;width:14px;height:14px;margin:0;appearance:none',
+      '.dsh-md-render-md-task{position:absolute;left:0;top:6px;width:15px;height:15px;margin:0;appearance:none',
     ),
     '任务列表勾选框自绘（原生 disabled checkbox 不认 accent-color，实测恒为灰）',
   )
@@ -170,14 +193,19 @@ test('无障碍：自有控件都有插件强调色的可见 focus 环（宿主�
     '.dsh-md-render-mermaid-vt:focus-visible',
     '.dsh-md-render-code-pre:focus-visible',
     '.tzx-md a:focus-visible',
+    '.dsh-md-render-img-lightbox-close:focus-visible',
   ]) {
     assert.ok(CSS.includes(sel), '缺少 focus 可见样式：' + sel)
   }
-  assert.ok(CSS.includes('outline:2px solid var(--mdr-accent);outline-offset:2px'), '焦点环取插件强调色 + 偏移')
+  // 焦点语言统一为「强调色光晕」（原型 --focus-ring：0 0 0 4px accent 35%）；
+  // 被 overflow 裁掉的滚动区用 inset 变体。旧实现是 2px outline。
   assert.ok(
-    CSS.includes('outline:2px solid var(--mdr-accent);outline-offset:-2px'),
-    '可滚动代码区的焦点环内缩（不被 overflow 裁掉）',
+    CSS.includes('--mdr-focus-ring:0 0 0 4px color-mix(in srgb,var(--mdr-accent) 35%,transparent)'),
+    '焦点光晕取插件强调色 35%',
   )
+  assert.ok(CSS.includes('box-shadow:var(--mdr-focus-ring)}'), '焦点可见态落到光晕上')
+  assert.ok(CSS.includes('--mdr-focus-ring-inset:inset 0 0 0 4px'), '滚动区内缩变体（不被 overflow 裁掉）')
+  assert.equal(CSS.includes('outline:2px solid var(--mdr-accent)'), false, '不再保留 2px outline 的旧焦点语言')
 })
 
 test('语法着色是插件自己的语义映射：每色由宿主语义色取或派生', () => {
@@ -202,7 +230,8 @@ test('语法着色是插件自己的语义映射：每色由宿主语义色取�
 test('构建产物里也是这套外观（源码与产物不漂移）', () => {
   for (const marker of [
     '--mdr-accent:',
-    '--mdr-radius-md:10px',
+    '--mdr-radius-md:12px',
+    '--mdr-motion-fast:150ms',
     '.dsh-md-render-code-copy{opacity:0}',
     '.dsh-md-render-mermaid-view-toggle>.dsh-md-render-mermaid-vt-active',
   ]) {

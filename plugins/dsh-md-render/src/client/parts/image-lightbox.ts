@@ -16,6 +16,10 @@
 const LIGHTBOX_CLASS = 'dsh-md-render-img-lightbox'
 /** 灯箱内大图类名。 */
 const LIGHTBOX_IMG_CLASS = 'dsh-md-render-img-lightbox-img'
+/** 内容包装层类名（关闭按钮的定位锚点，与原型 .dlg-wrap 同构）。 */
+const LIGHTBOX_WRAP_CLASS = 'dsh-md-render-img-lightbox-wrap'
+/** 关闭按钮类名（32px 圆形，挂在图片右上角外侧；叉线由 styles.ts 的 ::before/::after 画）。 */
+const LIGHTBOX_CLOSE_CLASS = 'dsh-md-render-img-lightbox-close'
 
 /** 当前打开的灯箱（同一时刻只允许一个）。 */
 let imageLightbox: HTMLDialogElement | null = null
@@ -50,11 +54,15 @@ function openImageLightbox(src: string, alt: string): void {
   closeImageLightbox()
   const dialog = document.createElement('dialog')
   dialog.className = LIGHTBOX_CLASS
+  const wrap = document.createElement('div')
+  wrap.className = LIGHTBOX_WRAP_CLASS
   const img = document.createElement('img')
   img.className = LIGHTBOX_IMG_CLASS
   img.src = safe
   img.alt = alt
-  dialog.appendChild(img)
+  wrap.appendChild(img)
+  wrap.appendChild(makeLightboxCloseButton())
+  dialog.appendChild(wrap)
   // ::backdrop 不是元素：点击落在 dialog 自身 = 点了遮罩；点图片同样收起。
   dialog.addEventListener('click', (event: Event) => {
     if (event.target === dialog || event.target === img) closeImageLightbox()
@@ -65,7 +73,24 @@ function openImageLightbox(src: string, alt: string): void {
   showLightboxModal(dialog)
 }
 
+/**
+ * 关闭按钮（原型 §C 的第四路关闭：Esc / 遮罩 / 点图之外再给一个显式出口，
+ * 大图铺满时"点图片收起"不好发现）。叉线由 styles.ts 的 ::before/::after 画
+ * （1.8px 圆角线，与原型 16px viewBox 的 1.8 stroke path 等价）——
+ * 本文件走纯 DOM，不引 React 图标集，也不需要 createElementNS / innerHTML。
+ */
+function makeLightboxCloseButton(): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.className = LIGHTBOX_CLOSE_CLASS
+  button.type = 'button'
+  button.setAttribute('aria-label', '关闭')
+  button.addEventListener('click', closeImageLightbox)
+  return button
+}
+
 exports.LIGHTBOX_CLASS = LIGHTBOX_CLASS
 exports.LIGHTBOX_IMG_CLASS = LIGHTBOX_IMG_CLASS
+exports.LIGHTBOX_WRAP_CLASS = LIGHTBOX_WRAP_CLASS
+exports.LIGHTBOX_CLOSE_CLASS = LIGHTBOX_CLOSE_CLASS
 exports.openImageLightbox = openImageLightbox
 exports.closeImageLightbox = closeImageLightbox

@@ -44,11 +44,15 @@ function installClipboard() {
   return written
 }
 
-test('整段复制按钮渲染在 tzx-md 容器内', () => {
+test('整段复制按钮渲染在 tzx-md 容器内（图标 + 文案 + 三态初始 idle）', () => {
   const { dom } = mount()
   const btn = dom.querySelector('button.dsh-md-render-copy')
   assert.ok(btn, 'copy button rendered')
   assert.equal(btn.textContent, '复制', 'idle label')
+  // 对齐原型 .md-copy：图标 + 文案；图标走共享 ICONS，静默丢失会被这三条抓住。
+  assert.ok(btn.querySelector('svg'), 'idle 态带图标（不是纯文字按钮）')
+  assert.ok(btn.querySelector('.dsh-md-render-copy-ico'), '图标有独立包裹层（状态确认动效的 transform 目标）')
+  assert.equal(btn.getAttribute('data-state'), 'idle', '三态属性初始为 idle')
 })
 
 test('点击复制整段文本，且不含渲染 chrome 文案（代码块语言名 / 复制按钮）', async () => {

@@ -56,9 +56,17 @@ function collectCopyText(node: Node, out: (string | null)[]): void {
 
 // kind: 'content'（tzx-md 内，复制整段纯文本；官方代码块复制按钮由官方提供）。
 // 点击时从 DOM 取文本（流式结束后内容已稳定）。
+// 外观与状态对齐原型（08-prototype.html 的 .md-copy）：图标 + 文案、data-state 三态
+// （idle / copied / failed）、1.6s 回退；状态色与确认动效在 styles.ts。
+// 失败态只在**两条通道都不通**时出现（clipboard → execCommand 兜底，原型 §C 同款三分支）。
 function CopyButton({ kind }: { kind: 'content' }): unknown {
-  const [copied, setCopied] = useState(false)
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [timer, setTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
+  const flash = (next: 'copied' | 'failed'): void => {
+    setState(next)
+    if (timer) clearTimeout(timer)
+    setTimer(setTimeout(() => setState('idle'), 1600))
+  }
   const onClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     const host = event && event.currentTarget ? event.currentTarget.closest(kind === 'content' ? '.tzx-md' : '') : null
     if (!host) return
@@ -67,24 +75,23 @@ function CopyButton({ kind }: { kind: 'content' }): unknown {
     const text = out.join('')
     if (!text) return
     copyText(text).then(
-      () => {
-        setCopied(true)
-        if (timer) clearTimeout(timer)
-        setTimer(setTimeout(() => setCopied(false), 1500))
-      },
-      () => {},
+      () => flash('copied'),
+      () => flash('failed'),
     )
   }
+  const label = state === 'copied' ? '已复制' : state === 'failed' ? '复制失败，请手动选择文本' : '复制整段 markdown'
   return createElement(
     'button',
     {
       type: 'button',
-      className: 'dsh-md-render-copy' + (copied ? ' dsh-md-render-copy-done' : ''),
-      title: copied ? '已复制' : '复制',
-      'aria-label': copied ? '已复制' : '复制',
+      className: 'dsh-md-render-copy',
+      'data-state': state,
+      title: label,
+      'aria-label': label,
       onClick,
     },
-    copied ? '已复制' : '复制',
+    createElement('span', { className: 'dsh-md-render-copy-ico' }, state === 'copied' ? icon.check(14) : icon.copy(14)),
+    state === 'copied' ? '已复制' : state === 'failed' ? '复制失败' : '复制',
   )
 }
 

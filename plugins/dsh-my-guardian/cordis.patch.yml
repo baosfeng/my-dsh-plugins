@@ -1,0 +1,24 @@
+# dsh-my-guardian bundle patch: inserts the guardian row into the profile
+# roster. This MUST be the FIRST row of the profile's own cordis.patch.yml
+# insert list (the guardian itself is a core row: it loads at boot, before
+# any candidate plugin it will stage later).
+#
+# Install with:
+#
+#   git clone https://github.com/baosfeng/my-dsh-plugins.git
+#   dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-guardian
+#
+# or manually: add the link dependency to the profile package.json, run
+# `pnpm install` in the profile dir, and add this insert row to the FIRST
+# position of the profile's own `cordis.patch.yml`:
+#
+#   - insert:
+#       - id: guardian
+#         name: 'dsh-my-guardian'
+#
+# After the guardian is mounted, new plugins go into the staged file
+# `cordis.staged.json` next to cordis.patch.yml (see README.md) instead of
+# straight into the boot path.
+- insert:
+    - id: guardian
+      name: 'dsh-my-guardian'

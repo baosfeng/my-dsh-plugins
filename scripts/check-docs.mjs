@@ -29,6 +29,7 @@ const MODULES = {
   },
   'dsh-md-render': { module: 'md渲染', display: 'Markdown 渲染', npm: 'dsh-md-render' },
   'dsh-my-notify': { module: '通知提醒', display: '通知提醒', npm: 'dsh-my-notify' },
+  'dsh-my-guardian': { module: '插件治理', display: '插件治理', npm: 'dsh-my-guardian' },
   'dsh-task-reliability': {
     module: '任务可靠性',
     display: '任务可靠性',

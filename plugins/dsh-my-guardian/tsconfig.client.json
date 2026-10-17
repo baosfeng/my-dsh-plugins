@@ -1,0 +1,20 @@
+{
+  // dsh-my-guardian — client 端构建配置：src/client/parts/*.ts →
+  // lib/parts/*.part.js（CommonJS 片段，scripts/build.mjs 拼接进模板）。
+  // CommonJS 产物内联进 __ModuleLoader__ factory 作用域后，
+  // require / exports / module 均为 factory 作用域变量，可直接运行。
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2022",
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "outDir": "lib/.client-build",
+    "rootDir": "src/client",
+    "lib": ["es2022", "dom"],
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": []
+  },
+  "include": ["src/client/**/*.ts"]
+}

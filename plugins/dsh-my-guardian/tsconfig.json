@@ -1,0 +1,19 @@
+{
+  // dsh-my-guardian — server 端构建配置：src/*.ts → lib/*.js（tsc 编译产物）。
+  // 产物必须提交（CI 只跑 node --check + 测试，不跑构建）。
+  // 类型检查由根 tsconfig.json（tsc --noEmit）统一负责；本配置只负责 emit。
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "outDir": "lib",
+    "rootDir": "src",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "exclude": ["src/client"]
+}

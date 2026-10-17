@@ -65,7 +65,7 @@ description: 在本仓库（my-dsh-plugins）中新建、修改、调试或发�
 
 ### 命名阶段：先检索 npm 包名（强制）
 
-> 背景：`dsh-notify`、`dsh-guardian`、`dsh-skill-manager`、`dsh-plugin-manager` 等包名已被其他开发者的同名插件占用（maintainers 分别为 pasumao / lss1213 / gohana / ruihuahe，均为 DSH 生态独立项目），`dsh plugin add <包名>` 会装到别人的包、功能完全不同。包名撞名必须在**命名阶段**检索规避，而不是发布时才发现再被迫改名。本仓库已按此规避：撞名的插件统一用 `dsh-my-*` 前缀（`dsh-my-notify` / `dsh-my-skill-manager` / `dsh-my-memory`），目录名 = 包名 = tag 名。
+> 背景：`dsh-notify`、`dsh-guardian`、`dsh-skill-manager`、`dsh-plugin-manager` 等包名已被其他开发者的同名插件占用（maintainers 分别为 pasumao / lss1213 / gohana / ruihuahe，均为 DSH 生态独立项目），`dsh plugin add <包名>` 会装到别人的包、功能完全不同。包名撞名必须在**命名阶段**检索规避，而不是发布时才发现再被迫改名。本仓库已按此规避：撞名的插件统一用 `dsh-my-*` 前缀（`dsh-my-notify` / `dsh-my-guardian` / `dsh-my-skill-manager` / `dsh-my-memory`），目录名 = 包名 = tag 名。
 
 1. **列候选名**：按「目录结构规范」的命名规则（`dsh-<功能>`，目录名 = 包名）列出 1–3 个候选包名。
 2. **逐个检索**（npm 官方 registry）：

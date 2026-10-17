@@ -91,6 +91,28 @@
         "lib/store.js": 13059
       }
     },
+    "dsh-my-guardian": {
+      "total": 469040,
+      "files": {
+        "assets/panel-error-detail.png": 130546,
+        "assets/panel-main.png": 129112,
+        "lib/api.js": 8420,
+        "lib/client.js": 67665,
+        "lib/client.src.js": 2478,
+        "lib/dep-precheck.js": 11617,
+        "lib/dep-version.js": 7838,
+        "lib/events.js": 14902,
+        "lib/index.js": 14455,
+        "lib/mount.js": 12575,
+        "lib/parts/apply.js": 3348,
+        "lib/parts/row.js": 7372,
+        "lib/parts/styles.js": 19615,
+        "lib/parts/util.js": 9405,
+        "lib/parts/view.js": 9221,
+        "lib/startup-check.js": 10659,
+        "lib/state.js": 9812
+      }
+    },
     "dsh-my-memory": {
       "total": 811912,
       "files": {

@@ -20,6 +20,7 @@ export default defineConfig({
         'lib/dep-version.js',
         'lib/dep-precheck.js',
         'lib/startup-check.js',
+        'lib/host-inventory.js',
       ],
     },
   },

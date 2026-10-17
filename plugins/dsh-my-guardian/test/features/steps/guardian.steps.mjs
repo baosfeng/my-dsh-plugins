@@ -331,7 +331,7 @@ Then('条目 {string} 处于依赖版本不匹配失败', async function (id) {
 Then('状态记录区分缺失与版本不满足', async function () {
   const state = await this.readStateWhen((s) => s.staged?.['dep-stale']?.mismatchedDeps !== undefined)
   const record = state.staged['dep-stale']
-  assert.deepEqual(record?.mismatchedDeps, [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }])
+  assert.deepEqual(record?.mismatchedDeps, [{ name: 'react', expected: '^18.2.0', found: '19.3.0', source: 'host' }])
   assert.deepEqual(record?.missingDeps, [], '版本不满足不算缺失')
   assert.equal(record?.installHint, null, '宿主提供的 react 不给安装建议')
   assert.ok(record?.lastError?.includes('依赖版本不满足 react'), `版本不满足文案: ${record?.lastError}`)

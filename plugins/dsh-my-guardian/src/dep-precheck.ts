@@ -13,15 +13,25 @@
  * （@deepseek-ai/*、react / react-dom）不给命令——按提示执行会把宿主自有包的
  * 另一份拷贝装进 profile（#407/#410）；声明范围含空格 / 管道 / 比较符时也不给
  * 命令（拼出来无法执行）。
+ *
+ * #481：桌面版宿主的 287 个 @deepseek-ai/* 包实体在 `app.asar/dsh/node_modules`
+ * 归档内，profile 磁盘链一个都探不到 → 全量误报「缺少依赖」。解析顺序补上
+ * 宿主清单（host-inventory.ts）：sharedPackages 提供版本、files 覆盖第三方包；
+ * 裸名（cordis / schemastery）回退 `@deepseek-ai/<name>`；客户端插件（有
+ * `dsh.client`）把宿主前端注入的 9 个静态模块视为已满足。
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { satisfies } from './dep-version.js'
+import { STATIC_MODULES, loadHostInventory } from './host-inventory.js'
+import type { HostInventory } from './host-inventory.js'
 
 interface PackageJson {
   version?: string
   peerDependencies?: Record<string, string>
   peerDependenciesMeta?: Record<string, { optional?: boolean }>
+  /** 官方清单：有 `client` 即客户端插件，宿主前端会注入 9 个静态模块（#481）。 */
+  dsh?: { client?: unknown }
 }
 
 /** 一个「版本不满足」的 peer：声明范围 vs 实装版本（结构化字段的载荷形状）。 */
@@ -29,6 +39,8 @@ export interface MismatchIssue {
   name: string
   expected: string
   found: string
+  /** 版本来源：host = 宿主内置（只能靠升级 DSH 解决）；profile = 已装进 profile（#481）。 */
+  source: 'host' | 'profile'
 }
 
 export interface PrecheckResult {
@@ -114,9 +126,82 @@ function readPackageJson(dir: string | null): PackageJson | null {
   }
 }
 
+/** 官方清单：`dsh.client` 存在即客户端插件（宿主前端会注入 9 个静态模块，#481）。 */
+function isClientPlugin(pkg: PackageJson): boolean {
+  const dsh = pkg.dsh
+  return dsh !== null && typeof dsh === 'object' && dsh.client !== undefined
+}
+
 function installedVersion(dir: string | null): string | null {
   const pkg = readPackageJson(dir)
   return pkg !== null && typeof pkg.version === 'string' ? pkg.version : null
+}
+
+/** 一次预检的宿主侧上下文：宿主清单 + 是否客户端插件（#481）。 */
+interface PeerContext {
+  inventory: HostInventory
+  clientPlugin: boolean
+}
+
+/**
+ * 宿主安装目录是否提供该包（#481）。裸名回退：插件声明 `cordis` / `schemastery`
+ * 时宿主实际以 `@deepseek-ai/cordis` / `@deepseek-ai/schemastery` 提供。
+ */
+function hostVersionOf(spec: string, inventory: HostInventory): { provided: boolean; version: string | null } {
+  if (!inventory.available) return { provided: false, version: null }
+  const base = basePackage(spec)
+  const candidates = [spec, base]
+  if (!base.startsWith('@')) candidates.push(`@deepseek-ai/${base}`)
+  for (const name of candidates) {
+    if (inventory.has(name)) return { provided: true, version: inventory.versionOf(name) }
+  }
+  return { provided: false, version: null }
+}
+
+/** 客户端插件可用的宿主前端静态模块（种子模块 9 项，磁盘与 asar 里都没有实体）。 */
+function isClientSeedModule(spec: string): boolean {
+  return STATIC_MODULES.has(spec) || STATIC_MODULES.has(basePackage(spec))
+}
+
+/** 声明范围是否不满足实装版本（空范围 / 未知版本视为满足）。 */
+function isStaleVersion(version: string | null, range: string): boolean {
+  return version !== null && typeof range === 'string' && range.trim() !== '' && !satisfies(version, range)
+}
+
+/** 版本不满足的结构化记录：host 表示宿主内置（只能靠升级 DSH 解决）。 */
+function versionIssue(dep: string, range: string, version: string, source: 'host' | 'profile'): MismatchIssue {
+  return { name: dep, expected: range, found: version, source }
+}
+
+/** 磁盘解析不到时的宿主侧判定；未命中返回 null（交给调用方判缺失）。 */
+function examineHosted(dep: string, range: string, host: PeerContext): ExamineResult | null {
+  // 客户端插件的种子模块由宿主前端注入（#481：react / react-dom 永远「缺」）。
+  if (host.clientPlugin && isClientSeedModule(dep)) return { kind: 'ok' }
+  const hosted = hostVersionOf(dep, host.inventory)
+  if (!hosted.provided) return null
+  if (!isStaleVersion(hosted.version, range)) return { kind: 'ok' }
+  // 宿主内置包版本不满足 → warning（#481）：用户装不了第二份，也不该装；记成 dependency
+  // 会让真实名册在每次 DSH 升级后刷屏一片「版本不满足」。
+  return {
+    kind: 'warn',
+    message: `依赖 ${dep} 由 DSH 宿主内置（${hosted.version}），不在声明范围 ${range} 内：请升级 DSH 或调整插件声明`,
+  }
+}
+
+/** 磁盘解析到包之后的版本判定。 */
+function examineInstalled(
+  dep: string,
+  range: string,
+  optional: boolean,
+  depDir: string,
+  host: PeerContext,
+): ExamineResult {
+  const version = installedVersion(depDir)
+  if (!isStaleVersion(version, range)) return { kind: 'ok' }
+  const hosted = isHostProvided(dep) || hostVersionOf(dep, host.inventory).provided
+  const issue = versionIssue(dep, range, version as string, hosted ? 'host' : 'profile')
+  if (optional) return { kind: 'warn', message: `可选依赖 ${dep} 版本不满足：${range}（当前 ${version}）` }
+  return { kind: 'mismatch', issue }
 }
 
 // Inspect a single peer dependency and classify the outcome.
@@ -126,19 +211,16 @@ function examinePeer(
   optional: boolean,
   pluginDir: string | null,
   profileDir: string,
+  host: PeerContext,
 ): ExamineResult {
   const depDir = resolvePackageDir(profileDir, pluginDir, dep)
   if (depDir === null) {
+    const hosted = examineHosted(dep, range, host)
+    if (hosted !== null) return hosted
     if (optional) return { kind: 'warn', message: `可选依赖 ${dep} 缺失（未安装）` }
     return { kind: 'missing', name: dep }
   }
-  const version = installedVersion(depDir)
-  if (version !== null && typeof range === 'string' && range.trim() !== '' && !satisfies(version, range)) {
-    const issue: MismatchIssue = { name: dep, expected: range, found: version }
-    if (optional) return { kind: 'warn', message: `可选依赖 ${dep} 版本不满足：${range}（当前 ${version}）` }
-    return { kind: 'mismatch', issue }
-  }
-  return { kind: 'ok' }
+  return examineInstalled(dep, range, optional, depDir, host)
 }
 
 /** 宿主（DSH 安装）自带的包：装进 profile 只会多出一份拷贝并可能遮蔽宿主版本（#407）。 */
@@ -176,7 +258,7 @@ function buildSuggestions(missing: string[], mismatched: MismatchIssue[]): strin
     suggestions.push(`dsh plugin add ${dep}`)
   }
   for (const item of mismatched) {
-    if (isHostProvided(item.name)) continue
+    if (item.source === 'host') continue
     const range = installableRange(item.expected)
     if (range !== null) suggestions.push(`dsh plugin add ${item.name}@${range}`)
   }
@@ -193,12 +275,13 @@ function classifyPeers(
   meta: Record<string, { optional?: boolean }>,
   pluginDir: string | null,
   profileDir: string,
+  host: PeerContext,
 ): { missing: string[]; mismatched: MismatchIssue[]; warnings: string[] } {
   const missing: string[] = []
   const mismatched: MismatchIssue[] = []
   const warnings: string[] = []
   for (const [dep, range] of Object.entries(peers)) {
-    const result = examinePeer(dep, range, meta[dep]?.optional === true, pluginDir, profileDir)
+    const result = examinePeer(dep, range, meta[dep]?.optional === true, pluginDir, profileDir, host)
     if (result.kind === 'missing') missing.push(result.name)
     else if (result.kind === 'mismatch') mismatched.push(result.issue)
     else if (result.kind === 'warn') warnings.push(result.message)
@@ -232,10 +315,13 @@ export function checkPeerDependencies({
   profileDir,
   pluginName,
   pluginDir = null,
+  hostInventory = loadHostInventory(),
 }: {
   profileDir: string
   pluginName: string
   pluginDir?: string | null
+  /** 宿主内置包清单（#481）：默认按宿主安装位置探测，测试/脚本可显式注入。 */
+  hostInventory?: HostInventory
 }): PrecheckResult {
   const dir = pluginDir ?? findModuleDir(join(profileDir, 'node_modules'), basePackage(pluginName))
   if (dir === null) return skippedResult(`无法定位插件 ${pluginName}（未在 profile node_modules 找到 package.json）`)
@@ -246,6 +332,7 @@ export function checkPeerDependencies({
     objectOrEmpty(pkg.peerDependenciesMeta),
     dir,
     profileDir,
+    { inventory: hostInventory, clientPlugin: isClientPlugin(pkg) },
   )
   return {
     ok: missing.length === 0 && mismatched.length === 0,
@@ -259,14 +346,15 @@ export function checkPeerDependencies({
 /** 缺失一句：宿主提供的包不提示安装（#410：按提示执行会装错）。 */
 function missingSentence(dep: string): string {
   return isHostProvided(dep)
-    ? `宿主提供的依赖 ${dep} 未在 profile 解析（由宿主运行时供给，无需安装）`
+    ? `宿主提供的依赖 ${dep} 未在 profile 解析（由宿主运行时供给，无需安装；宿主版本过旧请升级 DSH）`
     : `缺少依赖 ${dep}（请先安装）`
 }
 
 /** 版本不满足一句：单独成句，绝不复用「缺少依赖（请先安装）」文案（#410）。 */
 function mismatchSentence(item: MismatchIssue): string {
   const sentence = `依赖版本不满足 ${item.name}：声明 ${item.expected}，当前 ${item.found}`
-  return isHostProvided(item.name) ? `${sentence}（宿主提供，无需安装）` : sentence
+  if (item.source === 'host') return `${sentence}（由 DSH 宿主内置，请升级 DSH；装进 profile 只会遮蔽宿主版本）`
+  return sentence
 }
 
 /**

@@ -13,10 +13,17 @@
  * （@deepseek-ai/*、react / react-dom）不给命令——按提示执行会把宿主自有包的
  * 另一份拷贝装进 profile（#407/#410）；声明范围含空格 / 管道 / 比较符时也不给
  * 命令（拼出来无法执行）。
+ *
+ * #481：桌面版宿主的 287 个 @deepseek-ai/* 包实体在 `app.asar/dsh/node_modules`
+ * 归档内，profile 磁盘链一个都探不到 → 全量误报「缺少依赖」。解析顺序补上
+ * 宿主清单（host-inventory.ts）：sharedPackages 提供版本、files 覆盖第三方包；
+ * 裸名（cordis / schemastery）回退 `@deepseek-ai/<name>`；客户端插件（有
+ * `dsh.client`）把宿主前端注入的 9 个静态模块视为已满足。
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { satisfies } from './dep-version.js';
+import { STATIC_MODULES, loadHostInventory } from './host-inventory.js';
 // Locate a package directory below a node_modules root, following symlinks
 // (pnpm store / npm link both expose package.json through the mirrored dir).
 // Module-private since #423: the startup-roster pre-check used to import it
@@ -71,26 +78,84 @@ function readPackageJson(dir) {
         return null;
     }
 }
+/** 官方清单：`dsh.client` 存在即客户端插件（宿主前端会注入 9 个静态模块，#481）。 */
+function isClientPlugin(pkg) {
+    const dsh = pkg.dsh;
+    return dsh !== null && typeof dsh === 'object' && dsh.client !== undefined;
+}
 function installedVersion(dir) {
     const pkg = readPackageJson(dir);
     return pkg !== null && typeof pkg.version === 'string' ? pkg.version : null;
 }
+/**
+ * 宿主安装目录是否提供该包（#481）。裸名回退：插件声明 `cordis` / `schemastery`
+ * 时宿主实际以 `@deepseek-ai/cordis` / `@deepseek-ai/schemastery` 提供。
+ */
+function hostVersionOf(spec, inventory) {
+    if (!inventory.available)
+        return { provided: false, version: null };
+    const base = basePackage(spec);
+    const candidates = [spec, base];
+    if (!base.startsWith('@'))
+        candidates.push(`@deepseek-ai/${base}`);
+    for (const name of candidates) {
+        if (inventory.has(name))
+            return { provided: true, version: inventory.versionOf(name) };
+    }
+    return { provided: false, version: null };
+}
+/** 客户端插件可用的宿主前端静态模块（种子模块 9 项，磁盘与 asar 里都没有实体）。 */
+function isClientSeedModule(spec) {
+    return STATIC_MODULES.has(spec) || STATIC_MODULES.has(basePackage(spec));
+}
+/** 声明范围是否不满足实装版本（空范围 / 未知版本视为满足）。 */
+function isStaleVersion(version, range) {
+    return version !== null && typeof range === 'string' && range.trim() !== '' && !satisfies(version, range);
+}
+/** 版本不满足的结构化记录：host 表示宿主内置（只能靠升级 DSH 解决）。 */
+function versionIssue(dep, range, version, source) {
+    return { name: dep, expected: range, found: version, source };
+}
+/** 磁盘解析不到时的宿主侧判定；未命中返回 null（交给调用方判缺失）。 */
+function examineHosted(dep, range, host) {
+    // 客户端插件的种子模块由宿主前端注入（#481：react / react-dom 永远「缺」）。
+    if (host.clientPlugin && isClientSeedModule(dep))
+        return { kind: 'ok' };
+    const hosted = hostVersionOf(dep, host.inventory);
+    if (!hosted.provided)
+        return null;
+    if (!isStaleVersion(hosted.version, range))
+        return { kind: 'ok' };
+    // 宿主内置包版本不满足 → warning（#481）：用户装不了第二份，也不该装；记成 dependency
+    // 会让真实名册在每次 DSH 升级后刷屏一片「版本不满足」。
+    return {
+        kind: 'warn',
+        message: `依赖 ${dep} 由 DSH 宿主内置（${hosted.version}），不在声明范围 ${range} 内：请升级 DSH 或调整插件声明`,
+    };
+}
+/** 磁盘解析到包之后的版本判定。 */
+function examineInstalled(dep, range, optional, depDir, host) {
+    const version = installedVersion(depDir);
+    if (!isStaleVersion(version, range))
+        return { kind: 'ok' };
+    const hosted = isHostProvided(dep) || hostVersionOf(dep, host.inventory).provided;
+    const issue = versionIssue(dep, range, version, hosted ? 'host' : 'profile');
+    if (optional)
+        return { kind: 'warn', message: `可选依赖 ${dep} 版本不满足：${range}（当前 ${version}）` };
+    return { kind: 'mismatch', issue };
+}
 // Inspect a single peer dependency and classify the outcome.
-function examinePeer(dep, range, optional, pluginDir, profileDir) {
+function examinePeer(dep, range, optional, pluginDir, profileDir, host) {
     const depDir = resolvePackageDir(profileDir, pluginDir, dep);
     if (depDir === null) {
+        const hosted = examineHosted(dep, range, host);
+        if (hosted !== null)
+            return hosted;
         if (optional)
             return { kind: 'warn', message: `可选依赖 ${dep} 缺失（未安装）` };
         return { kind: 'missing', name: dep };
     }
-    const version = installedVersion(depDir);
-    if (version !== null && typeof range === 'string' && range.trim() !== '' && !satisfies(version, range)) {
-        const issue = { name: dep, expected: range, found: version };
-        if (optional)
-            return { kind: 'warn', message: `可选依赖 ${dep} 版本不满足：${range}（当前 ${version}）` };
-        return { kind: 'mismatch', issue };
-    }
-    return { kind: 'ok' };
+    return examineInstalled(dep, range, optional, depDir, host);
 }
 /** 宿主（DSH 安装）自带的包：装进 profile 只会多出一份拷贝并可能遮蔽宿主版本（#407）。 */
 const HOST_PACKAGE_NAMES = new Set(['react', 'react-dom']);
@@ -124,7 +189,7 @@ function buildSuggestions(missing, mismatched) {
         suggestions.push(`dsh plugin add ${dep}`);
     }
     for (const item of mismatched) {
-        if (isHostProvided(item.name))
+        if (item.source === 'host')
             continue;
         const range = installableRange(item.expected);
         if (range !== null)
@@ -136,12 +201,12 @@ function objectOrEmpty(value) {
     return (value ?? {});
 }
 // Group every peer into missing / mismatched / warning buckets.
-function classifyPeers(peers, meta, pluginDir, profileDir) {
+function classifyPeers(peers, meta, pluginDir, profileDir, host) {
     const missing = [];
     const mismatched = [];
     const warnings = [];
     for (const [dep, range] of Object.entries(peers)) {
-        const result = examinePeer(dep, range, meta[dep]?.optional === true, pluginDir, profileDir);
+        const result = examinePeer(dep, range, meta[dep]?.optional === true, pluginDir, profileDir, host);
         if (result.kind === 'missing')
             missing.push(result.name);
         else if (result.kind === 'mismatch')
@@ -172,14 +237,14 @@ function skippedResult(reason) {
  * ever looks in the profile node_modules, and a miss stays a skip — never a
  * block (#423 expected behaviour 4).
  */
-export function checkPeerDependencies({ profileDir, pluginName, pluginDir = null, }) {
+export function checkPeerDependencies({ profileDir, pluginName, pluginDir = null, hostInventory = loadHostInventory(), }) {
     const dir = pluginDir ?? findModuleDir(join(profileDir, 'node_modules'), basePackage(pluginName));
     if (dir === null)
         return skippedResult(`无法定位插件 ${pluginName}（未在 profile node_modules 找到 package.json）`);
     const pkg = readPackageJson(dir);
     if (pkg === null)
         return skippedResult(`无法解析 ${pluginName} 的 package.json`);
-    const { missing, mismatched, warnings } = classifyPeers(objectOrEmpty(pkg.peerDependencies), objectOrEmpty(pkg.peerDependenciesMeta), dir, profileDir);
+    const { missing, mismatched, warnings } = classifyPeers(objectOrEmpty(pkg.peerDependencies), objectOrEmpty(pkg.peerDependenciesMeta), dir, profileDir, { inventory: hostInventory, clientPlugin: isClientPlugin(pkg) });
     return {
         ok: missing.length === 0 && mismatched.length === 0,
         missing,
@@ -191,13 +256,15 @@ export function checkPeerDependencies({ profileDir, pluginName, pluginDir = null
 /** 缺失一句：宿主提供的包不提示安装（#410：按提示执行会装错）。 */
 function missingSentence(dep) {
     return isHostProvided(dep)
-        ? `宿主提供的依赖 ${dep} 未在 profile 解析（由宿主运行时供给，无需安装）`
+        ? `宿主提供的依赖 ${dep} 未在 profile 解析（由宿主运行时供给，无需安装；宿主版本过旧请升级 DSH）`
         : `缺少依赖 ${dep}（请先安装）`;
 }
 /** 版本不满足一句：单独成句，绝不复用「缺少依赖（请先安装）」文案（#410）。 */
 function mismatchSentence(item) {
     const sentence = `依赖版本不满足 ${item.name}：声明 ${item.expected}，当前 ${item.found}`;
-    return isHostProvided(item.name) ? `${sentence}（宿主提供，无需安装）` : sentence;
+    if (item.source === 'host')
+        return `${sentence}（由 DSH 宿主内置，请升级 DSH；装进 profile 只会遮蔽宿主版本）`;
+    return sentence;
 }
 /**
  * Build the message recorded for a failed pre-check. 缺失与版本不满足是两种结论，

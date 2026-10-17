@@ -18,11 +18,13 @@ import {
   checkStartupRoster,
   normalizeRoster,
   runStartupCheck,
+  isPackageLabel,
 } from '../lib/startup-check.js'
 // 命名空间导入：修复前 hostSkipNotes 尚不存在，用命名导入会让整个文件在链接期就挂掉，
 // 掩盖「每个行为断言各自先失败」的证据（#424 A′）。
 import * as startupModule from '../lib/startup-check.js'
 import { checkPeerDependencies } from '../lib/dep-precheck.js'
+import { loadHostInventory, resetHostInventoryCache } from '../lib/host-inventory.js'
 import { apply } from '../lib/index.js'
 
 const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-guardian-startup-' }).name
@@ -195,7 +197,9 @@ test('#410: a version mismatch is a dependency-mismatch issue, not dependency-mi
   const issue = issues[0]
   assert.equal(issue.type, 'dependency-mismatch')
   assert.deepEqual(issue.missingDeps, [], 'the package is installed — never listed as missing')
-  assert.deepEqual(issue.mismatchedDeps, [{ name: 'dsh-md-render', expected: '^0.1.8', found: '0.2.0' }])
+  assert.deepEqual(issue.mismatchedDeps, [
+    { name: 'dsh-md-render', expected: '^0.1.8', found: '0.2.0', source: 'profile' },
+  ])
   assert.equal(issue.message, '依赖版本不满足 dsh-md-render：声明 ^0.1.8，当前 0.2.0')
   assert.ok(!issue.message.includes('缺少依赖'), 'the missing wording is not reused')
   assert.equal(issue.fix, 'dsh plugin add dsh-md-render@^0.1.8', 'the pinned version is installable')
@@ -211,11 +215,11 @@ test('#410: host-provided peers produce no dsh plugin add fix at all', () => {
   assert.equal(issues.length, 1)
   const issue = issues[0]
   assert.deepEqual(issue.missingDeps, ['@deepseek-ai/dsh-llm'])
-  assert.deepEqual(issue.mismatchedDeps, [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }])
+  assert.deepEqual(issue.mismatchedDeps, [{ name: 'react', expected: '^18.2.0', found: '19.3.0', source: 'host' }])
   assert.equal(issue.installHint, null, 'no install hint for host-provided packages')
   assert.equal(issue.fix, null, 'no repair command: executing it would install a second host copy (#407)')
   assert.ok(!JSON.stringify(issue).includes('dsh plugin add'), 'no install command anywhere in the issue')
-  assert.ok(issue.message.includes('宿主提供'), 'the message says the host supplies it')
+  assert.ok(issue.message.includes('由宿主运行时供给'), 'the message says the host supplies it')
 })
 
 test('healthy dsh-* entries and host-provided rows produce no issues', () => {
@@ -644,5 +648,43 @@ test('apply survives a broken loader tree plus a staged candidate (pre-check can
   assert.equal(threw, false, 'apply must not throw on a broken loader tree')
   // afterEach 会 await teardown（现在它会等启动路径 settle 再 drain 写链，#217）
 })
+
+// ── #481: 非包名行与宿主内置包（桌面版 app.asar 清单）──────────────────────
+
+test('#481: 非包名行（cordis:group / YAML 折叠标量 >-）不报 unresolvable', () => {
+  const { issues, skippedNonPackageRows } = checkStartupRoster({
+    entries: [
+      { id: 'group', name: 'cordis:group', disabled: false },
+      { id: 'scalar', name: '>-', disabled: false },
+    ],
+    profileDir: dir,
+  })
+  assert.deepEqual(issues, [], '非包名行不是依赖问题')
+  assert.equal(skippedNonPackageRows, 2, '跳过的非包名行必须计数（不得静默消失）')
+  assert.equal(isPackageLabel('cordis:group'), false)
+  assert.equal(isPackageLabel('>-'), false)
+  assert.equal(isPackageLabel('dsh-my-memory'), true)
+  assert.equal(isPackageLabel('@xmanrui/dsh-im'), true, 'scoped 名是合法包名')
+  assert.equal(isPackageLabel('dsh-openwrite/bridge'), true, '子路径导出按基名校验')
+})
+
+test('#481: 名册 peer 检查认宿主清单（桌面版 app.asar 内的宿主编）', () => {
+  writePkg('dsh-needy-host', { peers: { '@deepseek-ai/dsh-tools': '^0.5.0' } })
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'needy-host', name: 'dsh-needy-host', disabled: false }],
+    profileDir: dir,
+    hostInventory: hostInventoryOf({ '@deepseek-ai/dsh-tools': '0.5.0' }),
+  })
+  assert.deepEqual(issues, [], '宿主内置包不再误报「缺少依赖」')
+})
+
+/** #481 夹具：写一份 desktop-runtime.json 并读成宿主清单。 */
+function hostInventoryOf(shared = {}, files = []) {
+  const path = join(dir, 'host-inventory-fixture.json')
+  const sharedPackages = Object.entries(shared).map(([name, version]) => ({ name, version }))
+  writeFileSync(path, JSON.stringify({ sharedPackages, files: files.map((entry) => ({ path: entry })) }), 'utf8')
+  resetHostInventoryCache()
+  return loadHostInventory({ runtimeJsonPath: path })
+}
 
 console.log('ALL GUARDIAN STARTUP-CHECK TESTS PASSED')

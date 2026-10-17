@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 变更
 
+- fix(guardian): #481 依赖预检识别桌面版宿主内置包——读 `app.asar/dsh/desktop-runtime.json` 的
+  `sharedPackages`（287 个包带版本）与 `files`（覆盖面更广、含第三方包）建索引；裸名
+  `cordis` / `schemastery` 回退 `@deepseek-ai/<name>`；客户端插件（`dsh.client`）把宿主前端注入的
+  9 个静态模块（`react` / `react-dom` / client UI 包）视为已满足。宿主内置包版本不满足降级为警告
+  （提示升级 DSH，不再产出 `dsh plugin add`）；名册非包名行（`cordis:group` / YAML 折叠标量 `>-`）
+  不再报 `unresolvable`。真实桌面名册实测：依赖告警 1 → 0、非包名行 0 误报；纯 Node 环境降级不抛错。
 - fix(guardian): #429 移除宿主从不派发的死监听 `hmr/config-update-failed`。0.1.7-rc.2 的参考源与已装宿主
   双向 0 命中（`@deepseek-ai/dsh-hmr` 只剩 `hmr/change` / `hmr/reload`），注册它既不触发也不报错；原功能的
   诊断**并未失效**——宿主在同一 catch 里先打 `config reload at %C failed` warn 序列，由结构化日志通道单独

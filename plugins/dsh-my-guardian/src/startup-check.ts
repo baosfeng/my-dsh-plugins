@@ -23,6 +23,8 @@ import {
   isHostProvided,
 } from './dep-precheck.js'
 import type { PrecheckResult } from './dep-precheck.js'
+import { loadHostInventory } from './host-inventory.js'
+import type { HostInventory } from './host-inventory.js'
 import { writeStartupIssuesFile } from './state.js'
 import type { SharedContext, StartupIssue, StartupIssuesPayload } from './state.js'
 import { logEvent } from './events.js'
@@ -148,9 +150,21 @@ function addSeen(map: Map<string, NormalizedRosterEntry[]>, id: string, item: No
   else group.push(item)
 }
 
-/** 一次名册预检的统计（#424 A′）：被跳过的宿主供给行必须可见，不得静默消失。 */
+/** npm 包名文法（scoped 支持；子路径导出只校验基名，#481）。 */
+const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/
+
+/**
+ * 名册行是否指向一个 npm 包（#481）：挡掉 `cordis:group`（loader 分组）、
+ * YAML 折叠标量 `>-` 这类非包名——它们不参与包解析，也永远解析不到。
+ */
+export function isPackageLabel(label: string): boolean {
+  return label !== '' && PACKAGE_NAME.test(basePackage(label))
+}
+
+/** 一次名册预检的统计（#424 A′ / #481）：被跳过的行必须可见，不得静默消失。 */
 interface RosterStats {
   skippedHostRows: number
+  skippedNonPackageRows: number
 }
 
 /**
@@ -170,11 +184,16 @@ function checkPluginItem(
   item: NormalizedRosterEntry,
   profileDir: string,
   stats: RosterStats,
+  hostInventory: HostInventory,
 ): void {
   const id = typeof item.id === 'string' ? item.id : ''
   const name = typeof item.name === 'string' ? item.name : ''
   const label = name !== '' ? name : id
   if (label === '') return
+  if (!isPackageLabel(label)) {
+    stats.skippedNonPackageRows += 1
+    return
+  }
   if (isHostProvided(label)) {
     stats.skippedHostRows += 1
     return
@@ -194,7 +213,7 @@ function checkPluginItem(
   // 非 scoped 行才做 peer 检查：#424 A′ 保持 peer 判定范围不变（宿主 scoped 行的
   // peer 由宿主运行时供给，纳入判定只会制造 #407/#410 式的噪声）。
   if (label.startsWith('@')) return
-  const precheck = checkPeerDependencies({ profileDir, pluginName: base, pluginDir })
+  const precheck = checkPeerDependencies({ profileDir, pluginName: base, pluginDir, hostInventory })
   if (!precheck.ok) issues.push(dependencyIssue(id, label, precheck))
 }
 
@@ -222,28 +241,44 @@ export function hostSkipNotes(count: number): string[] {
   ]
 }
 
+/** 非包名行的说明（#481）：跳过的不是依赖问题，但也不能在报告里无声消失。 */
+function nonPackageSkipNotes(count: number): string[] {
+  if (!(typeof count === 'number' && count > 0)) return []
+  return [`已跳过 ${count} 个非包名行（如 cordis:group / YAML 折叠标量 >-），它们不是可解析的 npm 包`]
+}
+
 /**
  * Core static pre-check over one roster's normalized entries.
  * entries: [{ id, name, disabled }] (see normalizeRoster). Checks every row
  * for package resolvability, non-scoped rows for peer deps, and the whole
  * roster for duplicate ids. Never throws — returns { issues, skippedHostRows }.
  */
-export function checkStartupRoster({ entries, profileDir }: { entries: NormalizedRosterEntry[]; profileDir: string }): {
+export function checkStartupRoster({
+  entries,
+  profileDir,
+  hostInventory = loadHostInventory(),
+}: {
+  entries: NormalizedRosterEntry[]
+  profileDir: string
+  /** 宿主内置包清单（#481）：默认按宿主安装位置探测，测试可显式注入。 */
+  hostInventory?: HostInventory
+}): {
   issues: StartupIssue[]
   skippedHostRows: number
+  skippedNonPackageRows: number
 } {
   const issues: StartupIssue[] = []
   const roster = Array.isArray(entries) ? entries : []
-  const stats: RosterStats = { skippedHostRows: 0 }
+  const stats: RosterStats = { skippedHostRows: 0, skippedNonPackageRows: 0 }
   const byId = new Map<string, NormalizedRosterEntry[]>()
   for (const item of roster) {
     if (item === null || typeof item !== 'object') continue
     const id = typeof item.id === 'string' ? item.id : ''
     if (id !== '') addSeen(byId, id, item)
-    checkPluginItem(issues, item, profileDir, stats)
+    checkPluginItem(issues, item, profileDir, stats, hostInventory)
   }
   collectDuplicateIssues(issues, byId)
-  return { issues, skippedHostRows: stats.skippedHostRows }
+  return { issues, skippedHostRows: stats.skippedHostRows, skippedNonPackageRows: stats.skippedNonPackageRows }
 }
 
 /** Normalize raw tree entries into { id, name, disabled } roster rows. */
@@ -262,9 +297,12 @@ export function normalizeRoster(entries: LoaderEntry[]): NormalizedRosterEntry[]
 export async function runStartupCheck(ctx: DshContext, shared: SharedContext): Promise<void> {
   const entries = collectTreeEntries(shared.tree)
   const roster = normalizeRoster(entries).filter((item) => !item.disabled)
-  const { issues, skippedHostRows } = checkStartupRoster({ entries: roster, profileDir: shared.profileDir })
+  const { issues, skippedHostRows, skippedNonPackageRows } = checkStartupRoster({
+    entries: roster,
+    profileDir: shared.profileDir,
+  })
   const checkedAt = Date.now()
-  const notes = hostSkipNotes(skippedHostRows)
+  const notes = [...hostSkipNotes(skippedHostRows), ...nonPackageSkipNotes(skippedNonPackageRows)]
   const payload: StartupIssuesPayload = {
     version: 1,
     checkedAt,

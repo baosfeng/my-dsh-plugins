@@ -24,6 +24,7 @@ import {
   isHostProvided,
 } from '../lib/dep-precheck.js'
 import { apply } from '../lib/index.js'
+import { EMPTY_HOST_INVENTORY, loadHostInventory, resetHostInventoryCache } from '../lib/host-inventory.js'
 
 const createdDirs = []
 function freshDir() {
@@ -107,11 +108,14 @@ test('#410: host-provided peer mismatch gets its own sentence and no install com
   const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-pet' })
   assert.equal(result.ok, false)
   assert.deepEqual(result.missing, [], 'react 19.3.0 is installed — it must not show up as missing')
-  assert.deepEqual(result.mismatched, [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }])
+  assert.deepEqual(result.mismatched, [{ name: 'react', expected: '^18.2.0', found: '19.3.0', source: 'host' }])
   assert.deepEqual(result.suggestions, [], 'host-provided react: a dsh plugin add hint would install a second copy')
   const message = buildDependencyMessage(result)
   assert.ok(!message.includes('缺少依赖'), `mismatch must not reuse the missing wording: ${message}`)
-  assert.equal(message, '依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0（宿主提供，无需安装）')
+  assert.equal(
+    message,
+    '依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0（由 DSH 宿主内置，请升级 DSH；装进 profile 只会遮蔽宿主版本）',
+  )
 })
 
 test('#410: host-provided peer miss gets no install command either', () => {
@@ -329,11 +333,11 @@ test('#410: a mismatched candidate records dependency-mismatch and no install hi
   const record = readState(dir).staged['dsh-mismatch']
   assert.equal(record.failureType, 'dependency-mismatch', 'version mismatch has its own failure class')
   assert.deepEqual(record.missingDeps, [], 'an installed-but-wrong version is never listed as missing')
-  assert.deepEqual(record.mismatchedDeps, [{ name: 'react', expected: '^18.2.0', found: '19.3.0' }])
+  assert.deepEqual(record.mismatchedDeps, [{ name: 'react', expected: '^18.2.0', found: '19.3.0', source: 'host' }])
   assert.equal(record.installHint, null, 'host-provided react must not be handed an install command')
   assert.equal(
     record.lastError,
-    '依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0（宿主提供，无需安装）',
+    '依赖版本不满足 react：声明 ^18.2.0，当前 19.3.0（由 DSH 宿主内置，请升级 DSH；装进 profile 只会遮蔽宿主版本）',
     'the record keeps the mismatch wording, not the missing wording',
   )
   assert.deepEqual(fake.created, [], 'entry NOT mounted')
@@ -372,6 +376,91 @@ test('a mount-time code error is classified as code (precheck passed)', async ()
   assert.deepEqual(fake.created, [], 'code-failing entry not mounted')
   await shutdown(ctx)
 })
+// ── #481: 宿主内置包识别（桌面版把宿主依赖归档进 app.asar 后的误报）─────────
+test('#481: 宿主清单命中的 @deepseek-ai/* 不再报缺失', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-app', { peerDependencies: { '@deepseek-ai/dsh-tools': '^0.5.0' } })
+  const result = checkPeerDependencies({
+    profileDir: dir,
+    pluginName: 'dsh-app',
+    hostInventory: hostInventoryOf({ '@deepseek-ai/dsh-tools': '0.5.0' }),
+  })
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.missing, [])
+  assert.deepEqual(result.suggestions, [], '宿主内置包不产出 dsh plugin add 命令')
+})
+
+test('#481: 裸名回退 cordis → @deepseek-ai/cordis（版本取自宿主清单）', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-app', { peerDependencies: { cordis: '^4.0.0' } })
+  const result = checkPeerDependencies({
+    profileDir: dir,
+    pluginName: 'dsh-app',
+    hostInventory: hostInventoryOf({ '@deepseek-ai/cordis': '4.0.4' }),
+  })
+  assert.equal(result.ok, true, '宿主以 @deepseek-ai/cordis 提供裸名 cordis')
+})
+
+test('#481: 客户端插件（dsh.client）的前端种子模块视为已满足', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-client-app', {
+    dsh: { client: { platform: 'web' } },
+    peerDependencies: {
+      react: '^18.2.0',
+      'react-dom': '^18.2.0',
+      '@deepseek-ai/dsh-client-ui-primitives': '^1.0.0',
+    },
+  })
+  const result = checkPeerDependencies({
+    profileDir: dir,
+    pluginName: 'dsh-client-app',
+    hostInventory: EMPTY_HOST_INVENTORY,
+  })
+  assert.equal(result.ok, true, 'react / react-dom / client UI 包由宿主前端注入')
+  assert.deepEqual(result.missing, [])
+})
+
+test('#481: 非客户端插件不套用前端种子模块（react 仍按缺失判定，但不给安装命令）', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-server-app', { peerDependencies: { react: '^18.2.0' } })
+  const result = checkPeerDependencies({
+    profileDir: dir,
+    pluginName: 'dsh-server-app',
+    hostInventory: EMPTY_HOST_INVENTORY,
+  })
+  assert.equal(result.ok, false)
+  assert.deepEqual(result.missing, ['react'])
+  assert.deepEqual(result.suggestions, [], 'react 由宿主前端供给，装进 profile 只会遮蔽宿主版本')
+  assert.ok(result.warnings.length === 0, '缺失就是缺失，不混进可选依赖告警')
+})
+
+test('#481: 宿主内置包版本不满足只记警告（不阻塞、不刷 dependency 告警）', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-app', { peerDependencies: { cordis: '^5.0.0' } })
+  const result = checkPeerDependencies({
+    profileDir: dir,
+    pluginName: 'dsh-app',
+    hostInventory: hostInventoryOf({ '@deepseek-ai/cordis': '4.0.4' }),
+  })
+  assert.equal(result.ok, true, '宿主版本由 DSH 统一决定：装不了第二份，不能算依赖图有洞')
+  assert.deepEqual(result.mismatched, [])
+  assert.deepEqual(result.suggestions, [], '宿主内置包版本不满足时不给 dsh plugin add')
+  assert.ok(
+    result.warnings.some((warning) => warning.includes('宿主内置') && warning.includes('请升级 DSH')),
+    '提示落在 warning 里（可见但不阻塞）',
+  )
+})
+
+test('#481: files 清单覆盖的第三方包（无版本）视为已满足', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-app', { peerDependencies: { 'left-pad': '^1.0.0' } })
+  const result = checkPeerDependencies({
+    profileDir: dir,
+    pluginName: 'dsh-app',
+    hostInventory: hostInventoryOf({}, ['node_modules/left-pad/index.js']),
+  })
+  assert.equal(result.ok, true)
+})
 
 afterAll(() => {
   for (const dir of createdDirs) rmSync(dir, { recursive: true, force: true })
@@ -387,4 +476,14 @@ function writePlugin(dir, name, json) {
 function writeDep(dir, name, version) {
   mkdirSync(join(dir, 'node_modules', name), { recursive: true })
   writeFileSync(join(dir, 'node_modules', name, 'package.json'), JSON.stringify({ name, version }), 'utf8')
+}
+
+// #481: 宿主清单夹具（临时 desktop-runtime.json → HostInventory）。
+function hostInventoryOf(shared = {}, files = []) {
+  const dir = freshDir()
+  const path = join(dir, 'desktop-runtime.json')
+  const sharedPackages = Object.entries(shared).map(([name, version]) => ({ name, version }))
+  writeFileSync(path, JSON.stringify({ sharedPackages, files: files.map((entry) => ({ path: entry })) }), 'utf8')
+  resetHostInventoryCache()
+  return loadHostInventory({ runtimeJsonPath: path })
 }

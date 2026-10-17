@@ -88,16 +88,35 @@ export function isTrustedApiRequest(request: IncomingRequest, trustedHosts: stri
 
 /** 可信权威的宿主来源（cordis Context 的最小子集，不安装宿主类型包）。 */
 export interface TrustSourceContext {
-  /** 可选服务读取：未提供 / 未激活时返回 undefined。 */
-  get?<T = unknown>(name: string): T | undefined
+  /** 可选服务读取：`strict=false` 机会性读取，未提供 / 未激活时返回 undefined。 */
+  get?<T = unknown>(name: string, strict?: boolean): T | undefined
   /** webServer 服务（0.2.1 起 `host` 是具体监听地址字面量）。 */
   webServer?: { host?: unknown } | undefined
 }
 
+/**
+ * 安全读一个可选服务。Cordis Context 是代理：**未 inject 的服务做属性访问会抛**
+ * （`cannot get property ... without inject`），所以服务一律经 `get(name, false)`
+ * 机会性读取，并对历史测试桩/异常实现兜底。
+ */
 function serviceOf<T>(ctx: TrustSourceContext | undefined, name: string): T | undefined {
   const get = ctx?.get
   if (typeof get !== 'function') return undefined
-  return get.call(ctx, name) as T | undefined
+  try {
+    return (get(name, false) ?? undefined) as T | undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** 安全读属性：测试桩是普通对象，真实 Cordis 代理可能对未注入服务抛错。 */
+function propertyOf<T>(ctx: unknown, name: string): T | undefined {
+  if (ctx === null || ctx === undefined || typeof ctx !== 'object') return undefined
+  try {
+    return (ctx as Record<string, T | undefined>)[name]
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -109,11 +128,10 @@ function serviceOf<T>(ctx: TrustSourceContext | undefined, name: string): T | un
  */
 export function trustedHostsOf(ctx: TrustSourceContext | undefined): string[] {
   const out: string[] = []
-  const legacy = ctx as { webRuntime?: { trustedHosts?: unknown } } | undefined
   for (const source of [
     serviceOf<{ trustedHosts?: unknown }>(ctx, 'webStartup'),
     serviceOf<{ trustedHosts?: unknown }>(ctx, 'webRuntime'),
-    legacy?.webRuntime,
+    propertyOf<{ trustedHosts?: unknown }>(ctx, 'webRuntime'),
   ]) {
     const list = source?.trustedHosts
     if (!Array.isArray(list)) continue
@@ -126,7 +144,7 @@ export function trustedHostsOf(ctx: TrustSourceContext | undefined): string[] {
 
 /** 监听地址字面量（`webServer.host`）；属性或服务读取都缺失/非字符串时为 undefined。 */
 export function bindHostOf(ctx: TrustSourceContext | undefined): string | undefined {
-  const direct = ctx?.webServer?.host
+  const direct = propertyOf<{ host?: unknown }>(ctx, 'webServer')?.host
   if (typeof direct === 'string' && direct !== '') return direct
   // 部分插件的 ctx 只经 get 取服务（属性访问不可靠），补一次服务读取。
   const service = serviceOf<{ host?: unknown }>(ctx, 'webServer')

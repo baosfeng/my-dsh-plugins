@@ -81,11 +81,32 @@ export function isTrustedApiRequest(request, trustedHosts, bindHost) {
         return false;
     }
 }
+/**
+ * 安全读一个可选服务。Cordis Context 是代理：**未 inject 的服务做属性访问会抛**
+ * （`cannot get property ... without inject`），所以服务一律经 `get(name, false)`
+ * 机会性读取，并对历史测试桩/异常实现兜底。
+ */
 function serviceOf(ctx, name) {
     const get = ctx?.get;
     if (typeof get !== 'function')
         return undefined;
-    return get.call(ctx, name);
+    try {
+        return (get(name, false) ?? undefined);
+    }
+    catch {
+        return undefined;
+    }
+}
+/** 安全读属性：测试桩是普通对象，真实 Cordis 代理可能对未注入服务抛错。 */
+function propertyOf(ctx, name) {
+    if (ctx === null || ctx === undefined || typeof ctx !== 'object')
+        return undefined;
+    try {
+        return ctx[name];
+    }
+    catch {
+        return undefined;
+    }
 }
 /**
  * 解析宿主授予的可信权威列表。
@@ -96,11 +117,10 @@ function serviceOf(ctx, name) {
  */
 export function trustedHostsOf(ctx) {
     const out = [];
-    const legacy = ctx;
     for (const source of [
         serviceOf(ctx, 'webStartup'),
         serviceOf(ctx, 'webRuntime'),
-        legacy?.webRuntime,
+        propertyOf(ctx, 'webRuntime'),
     ]) {
         const list = source?.trustedHosts;
         if (!Array.isArray(list))
@@ -114,7 +134,7 @@ export function trustedHostsOf(ctx) {
 }
 /** 监听地址字面量（`webServer.host`）；属性或服务读取都缺失/非字符串时为 undefined。 */
 export function bindHostOf(ctx) {
-    const direct = ctx?.webServer?.host;
+    const direct = propertyOf(ctx, 'webServer')?.host;
     if (typeof direct === 'string' && direct !== '')
         return direct;
     // 部分插件的 ctx 只经 get 取服务（属性访问不可靠），补一次服务读取。

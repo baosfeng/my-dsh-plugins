@@ -153,6 +153,45 @@ test('createTrustFence: webStartup 权威 + 监听地址 + loopback 均放行，
   assert.equal(fence(request({ host: 'evil.example.com' })), false)
 })
 
+test('trustedHostsOf: 真实 Cordis 代理形态——属性访问未注入服务抛错时不炸', () => {
+  // 宿主 Context 是 Proxy：未 inject 的 webRuntime 属性访问会抛
+  // `cannot get property "webRuntime" without inject`。
+  const ctx = new Proxy(
+    { get: (name, _strict) => (name === 'webStartup' ? { trustedHosts: ['dsh.internal'] } : undefined) },
+    {
+      get(target, prop) {
+        if (prop === 'webRuntime') throw new Error('cannot get property "webRuntime" without inject')
+        return target[prop]
+      },
+    },
+  )
+  assert.deepEqual(trustedHostsOf(ctx), ['dsh.internal'])
+  assert.equal(bindHostOf(ctx), undefined)
+})
+
+test('trustedHostsOf: get 自身抛错时降级为空列表（围栏仍可判 loopback）', () => {
+  const ctx = {
+    get() {
+      throw new Error('boom')
+    },
+  }
+  assert.deepEqual(trustedHostsOf(ctx), [])
+  const fence = createTrustFence(ctx)
+  assert.equal(fence(request({ host: '127.0.0.1:3080' })), true)
+})
+
+test('serviceOf 以 strict=false 机会性读取（未 active 的服务也能拿到信任源）', () => {
+  const calls = []
+  const ctx = {
+    get(name, strict) {
+      calls.push([name, strict])
+      return name === 'webStartup' ? { trustedHosts: ['dsh.internal'] } : undefined
+    },
+  }
+  assert.deepEqual(trustedHostsOf(ctx), ['dsh.internal'])
+  assert.deepEqual(calls[0], ['webStartup', false])
+})
+
 test('createTrustFence: 宿主服务晚到（apply 时缺失）后仍按请求现读', () => {
   let startup
   const ctx = {

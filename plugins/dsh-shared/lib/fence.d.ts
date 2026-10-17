@@ -18,8 +18,8 @@ export declare function header(headers: IncomingHeaders, name: string): string |
 export declare function isTrustedApiRequest(request: IncomingRequest, trustedHosts: string[], bindHost?: string): boolean;
 /** 可信权威的宿主来源（cordis Context 的最小子集，不安装宿主类型包）。 */
 export interface TrustSourceContext {
-    /** 可选服务读取：未提供 / 未激活时返回 undefined。 */
-    get?<T = unknown>(name: string): T | undefined;
+    /** 可选服务读取：`strict=false` 机会性读取，未提供 / 未激活时返回 undefined。 */
+    get?<T = unknown>(name: string, strict?: boolean): T | undefined;
     /** webServer 服务（0.2.1 起 `host` 是具体监听地址字面量）。 */
     webServer?: {
         host?: unknown;

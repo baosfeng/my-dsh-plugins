@@ -14,10 +14,6 @@
  *   遮蔽了 workspace 0.1.6 → 本地 test/config-store.mjs:220 绿、CI 红（apiToken 空对象）。
  *   该遮蔽同时**掩盖**了 parseConfigBlock 把无值键建成空对象的真实回归。
  *
- * 另拦一种「装得上、跑不起来」的形态（2026-10-17 纯净 profile 实测）：workspace 包只写在
- * peerDependencies、没进 dependencies —— 包管理器不装 peer，单独安装该插件后 import 直接
- * MODULE_NOT_FOUND（dsh-my-context@0.1.5 实测 failed to import）。判红并提示移到 dependencies。
- *
  * 判据（详见 scripts/lib/dep-resolution.mjs 文件头）：
  *   每个插件声明的、名字属于本仓 workspace 包的依赖，解析结果 realpath 必须落在
  *   plugins/<pkg>/ 内（npm workspace link 形态）；落在任何 node_modules/ 里即判红，

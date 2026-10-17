@@ -7,8 +7,6 @@
 ### 修复
 
 - fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
-- fix(deps): `dsh-shared` 由 peerDependencies 改为 dependencies —— 单独安装本插件时包管理器不会安装 peer，启动报 `failed to import`（MODULE_NOT_FOUND），装完即不可用
-
 
 ## [0.1.5] - 2026-09-17
 

@@ -89,26 +89,6 @@ export function declaredDependencyNames(pluginDir) {
 }
 
 /**
- * 只在 peerDependencies 里出现、却没进 dependencies 的 workspace 包。
- *
- * 为什么单列一条判据：本仓插件会被单独安装（dsh plugin add <包名>）。包管理器对
- * peerDependencies 只校验、不安装；而 workspace 包（dsh-shared）不是宿主自带包，于是
- * 装完插件后 import dsh-shared 直接 MODULE_NOT_FOUND，挂载时报 failed to import ——
- * 用户拿到一份装得上、跑不起来的东西。实测（2026-10-17，纯净独立 profile）：只装
- * dsh-my-context@0.1.5 即报 my-context (dsh-my-context): failed to import。
- * 宿主自带包（cordis / react 等）不在此列：它们本就该留在 peer 里。
- */
-export function peerOnlyWorkspaceDeps(pluginDir, packages) {
-  const pkg = readJson(join(pluginDir, 'package.json'))
-  if (pkg === null) return []
-  const peers = pkg.peerDependencies
-  if (peers === null || typeof peers !== 'object') return []
-  const deps = pkg.dependencies
-  const installed = deps !== null && typeof deps === 'object' ? deps : {}
-  return Object.keys(peers).filter((name) => packages.has(name) && !(name in installed))
-}
-
-/**
  * 解析一个裸依赖名；解析不到返回 null。
  * 用 createRequire(pluginDir/package.json) —— 与 Node 在插件目录里 import 时的解析起点
  * **完全一致**（不用 import.meta.resolve：那会从本脚本所在位置开始找，起点就错了）。
@@ -183,9 +163,6 @@ export function checkDependencyResolution(repoRoot) {
     const pluginDir = join(pluginsDir, entry.name)
     if (!existsSync(join(pluginDir, 'package.json'))) continue
     plugins.push(entry.name)
-    for (const peerOnly of peerOnlyWorkspaceDeps(pluginDir, packages)) {
-      violations.push({ plugin: entry.name, status: 'peer-only', name: peerOnly })
-    }
     for (const name of declaredDependencyNames(pluginDir)) {
       const pkg = packages.get(name)
       if (pkg === undefined) continue // 第三方依赖：不在本门禁范围内
@@ -206,16 +183,6 @@ export function renderViolations(violations, repoRoot) {
     '',
   ]
   for (const v of violations) {
-    if (v.status === 'peer-only') {
-      lines.push(
-        '  x plugins/' +
-          v.plugin +
-          ': ' +
-          v.name +
-          ' 只声明在 peerDependencies —— 单独安装插件时不会被装，运行期 import 直接失败',
-      )
-      continue
-    }
     if (v.status === 'unresolved') {
       lines.push('  x plugins/' + v.plugin + ': 声明了 ' + v.name + ' 但解析失败（依赖未安装 / 树损坏）')
       continue
@@ -230,7 +197,6 @@ export function renderViolations(violations, repoRoot) {
   lines.push(
     '',
     '处置（本门禁只报告，不自动删）：删除上面这些 node_modules 内的副本，让解析回落到 workspace 源码。',
-    '若是 peer-only：把该 workspace 包从 peerDependencies 移到 dependencies（单独安装时才会被一起装上）。',
     '例如： rm -rf plugins/' + BT + '<插件>' + BT + '/node_modules/' + BT + '<包名>' + BT,
     '删除后请重跑该插件的 npm test —— 它从此测的是 CI 会测的那份代码。',
   )

@@ -1,17 +1,27 @@
 # Changelog
 
+## [0.1.11] - 2026-10-17
+
+### 变更
+
+- fix(deps): dsh-shared 从 peerDependencies 移到 dependencies
+- chore(docs): 撤销误提交混入的并行改动，保留 guardian 踩坑引用恢复
+- docs(踩坑): 恢复 guardian 的参考实现引用（asar 取证 / 收尾窗口 / boot 就绪）
+- feat(dsh-md-render): 卡片工具条收纳式改版 + 修竖向长图缩放偏位
+- refactor(dsh-my-memory): 抽取 rows.ts 行级子部件并拆分超长函数
+- fix(dsh-shared,ci)!: 修复无值键解析回归并新增依赖解析门禁
+- Merge origin/main into main（同步上游 17 提交）
+- feat(md-render,my-memory)!: 合并渲染插件并新增全局提示词 (#463 #465)
+- fix(compat): 插件适配 DSH 0.2.0-rc.2 宿主（peer 声明 + 取证通道 + fixture）
+- chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#453)
+- chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#448)
+
 ## [Unreleased]
 
 ### 新功能
 
 - 全局提示词：设置页新增「全局提示词」分区（新增/编辑/删除/启停/上移下移），启用的提示词每轮组装全量按序注入独立 section `dsh-my-memory:prompts`（order -85），保存后下一轮即生效；与全局记忆在存储 / 检索 / 注入 / 写入 / 失效五处完全隔离（独立文件 `$DSH_HOME/memory/prompts.json`、独立端点 `/my-memory/api/prompts`）；首次运行迁入内置种子「中文思考」（默认启用，删除不复活）
 
-## [0.1.11] - 2026-10-08
-
-### 修复
-
-- fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
-- fix: dsh-shared 从 peerDependencies 移到 dependencies —— 包管理器默认不装 peer，用户单独 `dsh plugin add dsh-my-memory` 后启动 failed to import（纯净 profile 实测复现）
 
 ## [0.1.10] - 2026-09-25
 

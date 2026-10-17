@@ -2,12 +2,16 @@
 
 本文件记录 dsh-my-context 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [0.1.6] - 2026-10-08
 
-### 修复
+## [0.1.6] - 2026-10-17
 
-- fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
-- fix: dsh-shared 从 peerDependencies 移到 dependencies —— 包管理器默认不装 peer，用户单独 `dsh plugin add dsh-my-context` 后启动 failed to import（纯净 profile 实测复现）
+### 变更
+
+- fix(deps): dsh-shared 从 peerDependencies 移到 dependencies
+- chore(docs): 撤销误提交混入的并行改动，保留 guardian 踩坑引用恢复
+- docs(踩坑): 恢复 guardian 的参考实现引用（asar 取证 / 收尾窗口 / boot 就绪）
+- fix(compat): 插件适配 DSH 0.2.0-rc.2 宿主（peer 声明 + 取证通道 + fixture）
+- fix: 适配宿主 0.1.7-rc.2 的事件名与席位契约，修正失效文档断言
 
 ## [0.1.5] - 2026-09-17
 

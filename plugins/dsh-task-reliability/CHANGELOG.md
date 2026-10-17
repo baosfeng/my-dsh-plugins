@@ -5,11 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.10] - 2026-10-08
 
-### 修复
+## [0.4.10] - 2026-10-17
 
-- fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
+### 变更
+
+- fix(dsh-shared,ci)!: 修复无值键解析回归并新增依赖解析门禁
+- Merge origin/main into main（同步上游 17 提交）
+- feat(md-render,my-memory)!: 合并渲染插件并新增全局提示词 (#463 #465)
+- fix(compat): 插件适配 DSH 0.2.0-rc.2 宿主（peer 声明 + 取证通道 + fixture）
+- chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#453)
+- chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#448)
+- docs(task-reliability): #382 补充侧边栏入口说明 (#413)
 
 ## [0.4.9] - 2026-09-25
 

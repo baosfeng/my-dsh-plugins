@@ -2,11 +2,14 @@
 
 本文件记录 dsh-file-activity 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [0.5.14] - 2026-10-08
 
-### 修复
+## [0.5.14] - 2026-10-17
 
-- fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
+### 变更
+
+- feat(dsh-md-render): 卡片工具条收纳式改版 + 修竖向长图缩放偏位
+- feat(md-render,my-memory)!: 合并渲染插件并新增全局提示词 (#463 #465)
+- fix(compat): 插件适配 DSH 0.2.0-rc.2 宿主（peer 声明 + 取证通道 + fixture）
 
 ## [0.5.13] - 2026-09-25
 

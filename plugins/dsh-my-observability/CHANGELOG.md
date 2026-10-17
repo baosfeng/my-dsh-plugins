@@ -2,12 +2,26 @@
 
 本文件记录 dsh-my-observability 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [0.3.5] - 2026-10-08
 
-### 修复
+## [0.3.5] - 2026-10-17
 
-- fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
-- fix: dsh-shared 从 peerDependencies 移到 dependencies —— 包管理器默认不装 peer，用户单独 `dsh plugin add dsh-my-observability` 后启动 failed to import（纯净 profile 实测复现）
+### 变更
+
+- fix(deps): dsh-shared 从 peerDependencies 移到 dependencies
+- chore(docs): 撤销误提交混入的并行改动，保留 guardian 踩坑引用恢复
+- docs(踩坑): 恢复 guardian 的参考实现引用（asar 取证 / 收尾窗口 / boot 就绪）
+- feat(dsh-md-render): 卡片工具条收纳式改版 + 修竖向长图缩放偏位
+- fix(dsh-shared,ci)!: 修复无值键解析回归并新增依赖解析门禁
+- Merge origin/main into main（同步上游 17 提交）
+- feat(md-render,my-memory)!: 合并渲染插件并新增全局提示词 (#463 #465)
+- fix(compat): 插件适配 DSH 0.2.0-rc.2 宿主（peer 声明 + 取证通道 + fixture）
+- chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#453)
+- chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#448)
+- refactor(observability): 移除与官方 ui-trajectory 重叠的轨迹面板，保留 Git 工具与安全审查 (#433)
+- fix(verify): #402 门禁假红根因——等待预算与真实墙钟解耦（用例鲁棒化 + flaky 复测分类缺口） (#417)
+- chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#405)
+- chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#398)
+- fix(test): 修掉 observability 持久化用例的时序 flaky（CI 红、本地绿）
 
 ## [Unreleased]
 

@@ -5,11 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.5] - 2026-10-08
 
-### 修复
+## [0.4.5] - 2026-10-17
 
-- fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
+### 变更
+
+- chore(guardian): 还原 dsh-my-guardian 并修复 #481 依赖预检误报 (#484)
+- chore(plugins)!: 删除 5 个插件及其全仓引用 (#464)
+- fix(compat): 插件适配 DSH 0.2.0-rc.2 宿主（peer 声明 + 取证通道 + fixture）
+- fix(guardian): #438 teardown 期间 entry dispose 诊断不再丢失 (#441)
+- fix(guardian): #429 移除永不派发的死监听并修 entry-init 记录标识 (#434)
+- fix(guardian): #423 roster 行自身回退 profiles 根 + #424 scoped 行纳入预检 (#425)
+- fix(guardian): #410 依赖预检出口分离「版本不满足」与「缺失」 (#420)
+- fix(verify): #402 门禁假红根因——等待预算与真实墙钟解耦（用例鲁棒化 + flaky 复测分类缺口） (#417)
 
 ## [0.4.4] - 2026-09-25
 

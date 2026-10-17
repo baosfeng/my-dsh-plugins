@@ -39,7 +39,7 @@
 | [dsh-my-observability](plugins/dsh-my-observability/README.md)                     | 0.3.5  | 可观测性：事件审计与查询 API、资源看门狗面板、结构化 Git 类型化提交、提交前增量 diff 审查               |
 | [dsh-my-context](plugins/dsh-my-context/README.md)                                 | 0.1.6  | 上下文透镜：token 用量与上下文构成可视化、KV 缓存命中率、每轮/每会话预算控制                  |
 | [dsh-my-opencode-session-header](plugins/dsh-my-opencode-session-header/README.md) | 0.1.0  | OpenCode 会话头：为 opencode 路由注入按会话稳定的 `x-opencode-session` 头                     |
-| [dsh-shared](plugins/dsh-shared/README.md)                                         | 0.1.6  | 共享工具包：多插件共用的 server 端工具（信任围栏 / HTTP JSON / 配置持久化 / 原子写）          |
+| [dsh-shared](plugins/dsh-shared/README.md)                                         | 0.1.7  | 共享工具包：多插件共用的 server 端工具（信任围栏 / HTTP JSON / 配置持久化 / 原子写）          |
 
 ## 🚀 快速开始
 

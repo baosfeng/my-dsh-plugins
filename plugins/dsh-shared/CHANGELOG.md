@@ -2,6 +2,18 @@
 
 本文件记录 dsh-shared 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.7] - 2026-10-17
+
+### 变更
+
+- fix(compat): 信任源读取避开 Cordis 未注入属性抛错
+- fix(compat): 适配 DSH 0.2.1 移除 webRuntime 服务
+- feat(dsh-md-render): 卡片工具条收纳式改版 + 修竖向长图缩放偏位
+- fix(dsh-shared,ci)!: 修复无值键解析回归并新增依赖解析门禁
+- feat(md-render,my-memory)!: 合并渲染插件并新增全局提示词 (#463 #465)
+- chore(client): #430 清理 codeLabels 历史兼容残留并重建产物 (#429)
+- fix(test): 补测试临时目录配对清理，加有界兜底清扫防陈旧残留
+
 ## [0.1.6] - 2026-09-17
 
 ### 变更

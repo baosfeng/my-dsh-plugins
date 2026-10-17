@@ -3,6 +3,13 @@
 本文件记录 dsh-my-notify 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [0.4.3] - 2026-10-17
+
+### 变更
+
+- fix(i18n): 插件文案优先跟随宿主 html lang
+- fix(compat): 适配 DSH 0.2.1 移除 webRuntime 服务
+
 ## [0.4.2] - 2026-10-17
 
 ### 变更

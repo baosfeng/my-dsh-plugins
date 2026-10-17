@@ -5,6 +5,12 @@
 > 公共 API 承诺面：`MarkdownView`（导出 / props / 自有 DOM 类名清单见 [README「公共 API 契约」](README.md)）；改类名清单 = 破坏性变更，须同步 README 与本文件。
 
 
+## [0.5.2] - 2026-10-17
+
+### 变更
+
+- fix(compat): 适配 DSH 0.2.1 移除 webRuntime 服务
+
 ## [0.5.1] - 2026-10-17
 
 ### 变更

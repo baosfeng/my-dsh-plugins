@@ -2,6 +2,16 @@
 
 本文件记录 dsh-my-remote 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.5] - 2026-10-17
+
+### 变更
+
+- fix(compat): 适配 DSH 0.2.1 移除 webRuntime 服务
+- feat(md-render,my-memory)!: 合并渲染插件并新增全局提示词 (#463 #465)
+- fix(test): 补测试临时目录配对清理，加有界兜底清扫防陈旧残留
+- fix: 适配宿主 0.1.7-rc.2 的事件名与席位契约，修正失效文档断言
+- fix(dsh-my-remote): #112 消除 CodeQL 告警（URL 断言精确化 + 快照读取去 TOCTOU） (#389)
+
 ## [0.1.4] - 2026-09-19
 
 ### 变更

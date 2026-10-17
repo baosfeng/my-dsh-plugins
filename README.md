@@ -28,16 +28,16 @@
 
 | 插件                                                                               | 版本   | 简介                                                                                          |
 | ---------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------- |
-| [dsh-file-activity](plugins/dsh-file-activity/README.md)                           | 0.5.14 | 侧边栏文件活动页签：记录文件读取/新增/修改与统计，文件夹树形展示，点击浮窗预览                |
-| [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.5.1  | markdown 内容渲染增强：text 围栏块 / 上下文注入块 / mermaid 图表卡片 / 思考块默认展开 + 整段复制 |
-| [dsh-my-notify](plugins/dsh-my-notify/README.md)                                   | 0.4.2  | 通知提醒：会话结束 / ask / 审批时浏览器通知 + 提示音，点击跳转；远程 hook 触发 + 出站 webhook |
-| [dsh-my-remote](plugins/dsh-my-remote/README.md)                                   | 0.1.4  | 远程控制：ask / approval / 会话结束事件下行到手机或 IM，可远程回答、批准、查询、继续          |
-| [dsh-my-guardian](plugins/dsh-my-guardian/README.md)                               | 0.4.5  | 插件治理：新装插件先进候选区逐个热挂载，失败自动隔离，一键安全模式 + 诊断面板                 |
-| [dsh-task-reliability](plugins/dsh-task-reliability/README.md)                     | 0.4.10  | 任务可靠性：超时重试、未完成自动继续、完成度校验 agent、思考重复干预、重启恢复、自主决策      |
-| [dsh-my-skill-manager](plugins/dsh-my-skill-manager/README.md)                     | 0.1.11  | Skill 管理：分全局/项目查看 skill，按项目启用/禁用（禁用即不注入会话）                        |
-| [dsh-my-memory](plugins/dsh-my-memory/README.md)                                   | 0.1.11  | 记忆：全局/项目两级持久化，会话开始注入系统提示词；设置页面板 + 写操作确认                    |
-| [dsh-my-observability](plugins/dsh-my-observability/README.md)                     | 0.3.5  | 可观测性：事件审计与查询 API、资源看门狗面板、结构化 Git 类型化提交、提交前增量 diff 审查               |
-| [dsh-my-context](plugins/dsh-my-context/README.md)                                 | 0.1.6  | 上下文透镜：token 用量与上下文构成可视化、KV 缓存命中率、每轮/每会话预算控制                  |
+| [dsh-file-activity](plugins/dsh-file-activity/README.md)                           | 0.5.15 | 侧边栏文件活动页签：记录文件读取/新增/修改与统计，文件夹树形展示，点击浮窗预览                |
+| [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.5.2  | markdown 内容渲染增强：text 围栏块 / 上下文注入块 / mermaid 图表卡片 / 思考块默认展开 + 整段复制 |
+| [dsh-my-notify](plugins/dsh-my-notify/README.md)                                   | 0.4.3  | 通知提醒：会话结束 / ask / 审批时浏览器通知 + 提示音，点击跳转；远程 hook 触发 + 出站 webhook |
+| [dsh-my-remote](plugins/dsh-my-remote/README.md)                                   | 0.1.5  | 远程控制：ask / approval / 会话结束事件下行到手机或 IM，可远程回答、批准、查询、继续          |
+| [dsh-my-guardian](plugins/dsh-my-guardian/README.md)                               | 0.4.6  | 插件治理：新装插件先进候选区逐个热挂载，失败自动隔离，一键安全模式 + 诊断面板                 |
+| [dsh-task-reliability](plugins/dsh-task-reliability/README.md)                     | 0.4.11  | 任务可靠性：超时重试、未完成自动继续、完成度校验 agent、思考重复干预、重启恢复、自主决策      |
+| [dsh-my-skill-manager](plugins/dsh-my-skill-manager/README.md)                     | 0.1.12  | Skill 管理：分全局/项目查看 skill，按项目启用/禁用（禁用即不注入会话）                        |
+| [dsh-my-memory](plugins/dsh-my-memory/README.md)                                   | 0.1.12  | 记忆：全局/项目两级持久化，会话开始注入系统提示词；设置页面板 + 写操作确认                    |
+| [dsh-my-observability](plugins/dsh-my-observability/README.md)                     | 0.3.6  | 可观测性：事件审计与查询 API、资源看门狗面板、结构化 Git 类型化提交、提交前增量 diff 审查               |
+| [dsh-my-context](plugins/dsh-my-context/README.md)                                 | 0.1.7  | 上下文透镜：token 用量与上下文构成可视化、KV 缓存命中率、每轮/每会话预算控制                  |
 | [dsh-my-opencode-session-header](plugins/dsh-my-opencode-session-header/README.md) | 0.1.0  | OpenCode 会话头：为 opencode 路由注入按会话稳定的 `x-opencode-session` 头                     |
 | [dsh-shared](plugins/dsh-shared/README.md)                                         | 0.1.7  | 共享工具包：多插件共用的 server 端工具（信任围栏 / HTTP JSON / 配置持久化 / 原子写）          |
 

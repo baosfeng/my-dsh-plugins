@@ -1039,3 +1039,16 @@ function collectByClass(node, className) {
 }
 
 test('script-style suite (assertions ran at module load)', () => {})
+
+test('i18n: 宿主 <html lang> 优先于 navigator.language（桌面 app 语言错配回归）', () => {
+  const prevDoc = global.document
+  global.document = { documentElement: { lang: 'en' } }
+  try {
+    assert.equal(capturedTab.options.label(), 'Memory', 'host en wins over navigator zh')
+    global.document.documentElement.lang = 'zh-CN'
+    assert.equal(capturedTab.options.label(), '记忆', 'host zh-CN switches back')
+  } finally {
+    if (prevDoc === undefined) delete global.document
+    else global.document = prevDoc
+  }
+})

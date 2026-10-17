@@ -1,7 +1,13 @@
 'use strict'
 // ── i18n ──────────────────────────────────────────────────────────────
-/** 当前界面语言是否为中文（navigator 不可用时按英文回退）。 */
+/** 当前界面语言是否为中文：宿主 <html lang> 优先，其次浏览器语言，再其次英文。 */
 function isZh() {
+  try {
+    const host = (document.documentElement.lang || '').toLowerCase()
+    if (host !== '') return host.startsWith('zh')
+  } catch {
+    /* 非浏览器环境（node 渲染）无 document */
+  }
   try {
     return (navigator.language || 'en').toLowerCase().startsWith('zh')
   } catch {

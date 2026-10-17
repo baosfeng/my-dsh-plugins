@@ -97,9 +97,17 @@ function nativeTabTitle(fallback) {
     "use strict";
 // ── i18n（浏览器语言判定）──────────────────────────────────────────
 function isZh() {
+    // 宿主 locale（dsh-client-locale 同步到 <html lang>）优先；空则回退浏览器语言。
     try {
-        const lang = (navigator.language || 'en').toLowerCase();
-        return lang.startsWith('zh');
+        const host = (document.documentElement.lang || '').toLowerCase();
+        if (host !== '')
+            return host.startsWith('zh');
+    }
+    catch {
+        /* 非浏览器环境（node 渲染）无 document */
+    }
+    try {
+        return (navigator.language || 'en').toLowerCase().startsWith('zh');
     }
     catch {
         return false;

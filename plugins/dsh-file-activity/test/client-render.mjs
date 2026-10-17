@@ -615,3 +615,17 @@ console.log('sample output tree (clickable rows):')
 for (const row of rows) console.log('  '.repeat(row.depth) + row.title)
 
 test('script-style suite (assertions ran at module load)', () => {})
+
+test('i18n: 宿主 <html lang> 优先于 navigator.language（桌面 app 语言错配回归）', () => {
+  const doc = global.document
+  const prev = doc.documentElement.lang
+  try {
+    doc.documentElement.lang = 'en'
+    assert.equal(capturedTab.title('sidebar://file-activity'), 'File Activity', 'host en wins over navigator zh')
+    doc.documentElement.lang = 'zh-CN'
+    assert.equal(capturedTab.title('sidebar://file-activity'), '文件活动', 'host zh-CN switches back')
+  } finally {
+    if (prev === undefined) delete doc.documentElement.lang
+    else doc.documentElement.lang = prev
+  }
+})

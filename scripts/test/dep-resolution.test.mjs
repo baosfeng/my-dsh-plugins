@@ -24,6 +24,7 @@ import {
   declaredDependencyNames,
   isInsideDir,
   isInsideNodeModules,
+  peerOnlyWorkspaceDeps,
   readJson,
   renderViolations,
   resolveFrom,
@@ -117,6 +118,34 @@ describe('dep-resolution 判定内核（纯函数）', () => {
     expect(declaredDependencyNames(join(root, 'plugins', 'multi')).sort()).toEqual(['a', 'b', 'c'])
     expect(declaredDependencyNames(join(root, 'plugins', 'dsh-shared'))).toEqual([])
     expect(declaredDependencyNames(join(root, 'plugins', 'not-there'))).toEqual([])
+  })
+
+  it('peerOnlyWorkspaceDeps：workspace 包只写在 peers 里 → 判红（单独安装后 import 会失败）', () => {
+    const root = makeRepo()
+    const pkgs = workspacePackages(root)
+    writePkg(join(root, 'plugins', 'peer-only'), { name: 'peer-only', peerDependencies: { 'dsh-shared': '^0.1.4' } })
+    expect(peerOnlyWorkspaceDeps(join(root, 'plugins', 'peer-only'), pkgs)).toEqual(['dsh-shared'])
+    writePkg(join(root, 'plugins', 'with-deps'), {
+      name: 'with-deps',
+      dependencies: { 'dsh-shared': '^0.1.4' },
+      peerDependencies: { 'dsh-shared': '^0.1.4' },
+    })
+    expect(peerOnlyWorkspaceDeps(join(root, 'plugins', 'with-deps'), pkgs)).toEqual([])
+    writePkg(join(root, 'plugins', 'host-peer'), { name: 'host-peer', peerDependencies: { react: '^18' } })
+    expect(peerOnlyWorkspaceDeps(join(root, 'plugins', 'host-peer'), pkgs)).toEqual([])
+    expect(peerOnlyWorkspaceDeps(join(root, 'plugins', 'not-there'), pkgs)).toEqual([])
+  })
+
+  it('CLI：peer-only 形态判红，并提示把 workspace 包移进 dependencies', () => {
+    const root = makeRepo({ linkWorkspace: true })
+    writePkg(join(root, 'plugins', 'peer-only'), {
+      name: 'peer-only',
+      version: '1.0.0',
+      peerDependencies: { 'dsh-shared': '^0.1.4' },
+    })
+    const r = runCheck(root)
+    expect(r.status).toBe(1)
+    expect(r.stdout + r.stderr).toContain('peerDependencies')
   })
 
   it('isInsideNodeModules / isInsideDir：按路径分段判，不做字符串前缀误判', () => {

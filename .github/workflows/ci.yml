@@ -60,6 +60,7 @@ jobs:
         plugin:
           - dsh-file-activity
           - dsh-md-render
+          - dsh-my-guardian
           - dsh-my-memory
           - dsh-my-notify
           - dsh-my-observability

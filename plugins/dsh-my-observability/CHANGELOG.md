@@ -7,6 +7,7 @@
 ### 修复
 
 - fix: react/react-dom peer 范围过窄 `^18.2.0 || ^19.3.0` → `^18.2.0 || ^19.2.0`（宿主实际提供 react/react-dom 19.2.8，`^19.3.0` ≡ >=19.3.0 <20 不满足，guardian 报 dependency-mismatch）
+- fix: dsh-shared 从 peerDependencies 移到 dependencies —— 包管理器默认不装 peer，用户单独 `dsh plugin add dsh-my-observability` 后启动 failed to import（纯净 profile 实测复现）
 
 ## [Unreleased]
 

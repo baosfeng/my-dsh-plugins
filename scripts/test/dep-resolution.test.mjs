@@ -22,6 +22,7 @@ import {
   checkDependencyResolution,
   classifyResolution,
   declaredDependencyNames,
+  findPeerOnlyWorkspaceDeps,
   isInsideDir,
   isInsideNodeModules,
   readJson,
@@ -50,16 +51,28 @@ function writePkg(dir, pkg) {
  *   plugins/consumer/package.json     （声明 dsh-shared ^0.1.4）
  * 是否建立「根 node_modules 的 workspace link」由调用方决定（决定正/反向形态）。
  */
-function makeRepo({ linkWorkspace = false, staleVersion = null, withPluginLocalLink = false } = {}) {
+function makeRepo({
+  linkWorkspace = false,
+  staleVersion = null,
+  withPluginLocalLink = false,
+  dshSharedDeclaration = 'dependencies',
+} = {}) {
   const root = mkdtempSync(join(tmpdir(), 'dep-resolution-'))
   roots.push(root)
   writePkg(join(root, 'plugins', 'dsh-shared'), { name: 'dsh-shared', version: '0.1.6', main: 'index.js' })
   writeFileSync(join(root, 'plugins', 'dsh-shared', 'index.js'), 'export const v = "workspace"\n')
-  writePkg(join(root, 'plugins', 'consumer'), {
-    name: 'consumer',
-    version: '1.0.0',
-    dependencies: { 'dsh-shared': '^0.1.4', lodash: '^4.0.0' },
-  })
+  // dshSharedDeclaration 控制 dsh-shared 的声明位置：
+  //   'dependencies'   —— 正常形态（包管理器会装它）
+  //   'peerDependencies' —— 2026-10-17 事故形态（本地解析永远 OK，用户装完却缺包）
+  //   'both'           —— peer + dependencies 同时声明（合法：宿主可能提供同版本）
+  const dshShared = { '^0.1.4': true }
+  const consumerDeps =
+    dshSharedDeclaration === 'peerDependencies' ? { lodash: '^4.0.0' } : { 'dsh-shared': '^0.1.4', lodash: '^4.0.0' }
+  const consumerPkg = { name: 'consumer', version: '1.0.0', dependencies: consumerDeps }
+  if (dshSharedDeclaration === 'peerDependencies' || dshSharedDeclaration === 'both') {
+    consumerPkg.peerDependencies = { 'dsh-shared': '^0.1.4' }
+  }
+  writePkg(join(root, 'plugins', 'consumer'), consumerPkg)
   writeFileSync(join(root, 'plugins', 'consumer', 'index.js'), "import 'dsh-shared'\n")
   if (linkWorkspace) {
     mkdirSync(join(root, 'node_modules'), { recursive: true })
@@ -205,6 +218,32 @@ describe('dep-resolution 全仓扫描', () => {
     expect(renderViolations(violations, root)).toContain('解析失败')
   })
 
+  it('反向：workspace 包只写在 peerDependencies（解析 OK）→ 仍判红（用户装完缺包）', () => {
+    const root = makeRepo({ linkWorkspace: true, dshSharedDeclaration: 'peerDependencies' })
+    const { violations } = checkDependencyResolution(root)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ plugin: 'consumer', name: 'dsh-shared', status: 'peer-only' })
+    const text = renderViolations(violations, root)
+    expect(text).toContain('只写在 peerDependencies')
+    expect(text).toContain('failed to import')
+    expect(text).toContain('0.1.6') // 迁移到 dependencies 时用的 workspace 版本
+  })
+
+  it('正向：peer + dependencies 同时声明不判红（宿主可能也提供同版本）', () => {
+    const root = makeRepo({ linkWorkspace: true, dshSharedDeclaration: 'both' })
+    expect(findPeerOnlyWorkspaceDeps(root)).toEqual([])
+    expect(checkDependencyResolution(root).violations).toEqual([])
+  })
+
+  it('findPeerOnlyWorkspaceDeps：只报 workspace 包，第三方 peer 不误伤', () => {
+    const root = makeRepo({ linkWorkspace: true, dshSharedDeclaration: 'dependencies' })
+    const pkgFile = join(root, 'plugins', 'consumer', 'package.json')
+    const pkg = readJson(pkgFile)
+    pkg.peerDependencies = { react: '^19.0.0' }
+    writePkg(join(root, 'plugins', 'consumer'), pkg)
+    expect(findPeerOnlyWorkspaceDeps(root)).toEqual([])
+  })
+
   it('不误伤：包自己（dsh-shared 自身）与第三方依赖都不进检查', () => {
     const root = makeRepo({ linkWorkspace: true })
     writePkg(join(root, 'plugins', 'dsh-shared', 'node_modules', 'lodash'), { name: 'lodash', version: '4.0.0' })
@@ -229,6 +268,14 @@ describe('dep-resolution CLI（scripts/check-dep-resolution.mjs）', () => {
     expect(stderr).toContain('plugins/consumer/node_modules/dsh-shared')
     expect(stderr).toContain('0.1.4')
     expect(stderr).toContain('依赖解析一致性门禁失败')
+  })
+
+  it('反向：peer-only（解析正常）→ 退出码 1，stderr 指到 peerDependencies 与修法', () => {
+    const root = makeRepo({ linkWorkspace: true, dshSharedDeclaration: 'peerDependencies' })
+    const { status, stderr } = runCheck(root)
+    expect(status).toBe(1)
+    expect(stderr).toContain('peerDependencies')
+    expect(stderr).toContain('dependencies')
   })
 
   it('--json：机器可读输出含 violations（退出码仍为 1，供 issue/PR 留痕）', () => {

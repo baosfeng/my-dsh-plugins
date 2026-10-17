@@ -15,9 +15,12 @@
  *   该遮蔽同时**掩盖**了 parseConfigBlock 把无值键建成空对象的真实回归。
  *
  * 判据（详见 scripts/lib/dep-resolution.mjs 文件头）：
- *   每个插件声明的、名字属于本仓 workspace 包的依赖，解析结果 realpath 必须落在
- *   plugins/<pkg>/ 内（npm workspace link 形态）；落在任何 node_modules/ 里即判红，
- *   并打印**遮蔽路径 + 副本版本 + 版本漂移**。
+ *   1) 解析落点：每个插件声明的、名字属于本仓 workspace 包的依赖，解析结果 realpath 必须
+ *      落在 plugins/<pkg>/ 内（npm workspace link 形态）；落在任何 node_modules/ 里即判红，
+ *      并打印**遮蔽路径 + 副本版本 + 版本漂移**。
+ *   2) 声明形态（2026-10-17 纯净 profile 事故）：workspace 包是运行时代码，必须写在
+ *      dependencies；只写 peerDependencies 即判红——包管理器不装 peer，用户装完启动
+ *      就 failed to import，而本地/CI 全都绿。
  *
  * 本门禁**只读**：不删、不装、不修（写操作 fail-closed），只把路径与版本摆出来。
  *
@@ -67,7 +70,7 @@ if (violations.length > 0) {
   console.error(
     '依赖解析一致性门禁失败：' +
       violations.length +
-      ' 处遮蔽/解析失败（共检查 ' +
+      ' 处依赖声明/解析问题（共检查 ' +
       checked +
       ' 条「插件 → workspace 包」解析）',
   )
@@ -79,5 +82,5 @@ console.log(
     plugins.length +
     ' 个插件目录，' +
     checked +
-    ' 条「插件 → workspace 包」解析全部指向工作区源码',
+    ' 条「插件 → workspace 包」解析全部指向工作区源码，且没有 workspace 包被误写成 peerDependencies',
 )

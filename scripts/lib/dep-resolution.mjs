@@ -145,8 +145,46 @@ export function classifyResolution(pluginDir, name, pkg, repoRoot) {
 }
 
 /**
+ * 找出「运行时要用、却只写在 peerDependencies」的 workspace 包。
+ *
+ * 为什么单列一条判据：本文件前半段（classifyResolution）只看**声明过的** workspace
+ * 依赖解析到哪，peer-only 的包在本地永远是 workspace link、解析永远 OK —— 对它是
+ * **结构性假绿**：本地一切正常，`dsh plugin add` 装到用户机器上却没有这个包（包管理器
+ * 默认不装 peerDependencies；pnpm 完全不装）。真实事故（2026-10-17 纯净 profile 实测）：
+ * dsh-my-context / dsh-my-memory / dsh-my-observability / dsh-my-skill-manager 把
+ * dsh-shared 写成 peer，单装后启动即 failed to import（MODULE_NOT_FOUND）。
+ *
+ * 判据（正向、无启发式）：本仓 workspace 包是**我们自己的运行时代码**，必须落在
+ * dependencies；peerDependencies 只留给宿主供给的包（cordis / react 等）。因此
+ * 「workspace 包出现在 peerDependencies 且不在 dependencies」即判红。
+ */
+export function findPeerOnlyWorkspaceDeps(repoRoot) {
+  const packages = workspacePackages(repoRoot)
+  const violations = []
+  const pluginsDir = join(realPathOf(repoRoot), 'plugins')
+  if (!existsSync(pluginsDir)) return violations
+  const entries = readdirSync(pluginsDir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const pluginDir = join(pluginsDir, entry.name)
+    const pkg = readJson(join(pluginDir, 'package.json'))
+    if (pkg === null) continue
+    const peer = pkg.peerDependencies !== null && typeof pkg.peerDependencies === 'object' ? pkg.peerDependencies : {}
+    const deps = pkg.dependencies !== null && typeof pkg.dependencies === 'object' ? pkg.dependencies : {}
+    for (const name of Object.keys(peer)) {
+      const workspacePkg = packages.get(name)
+      if (workspacePkg === undefined) continue
+      if (workspacePkg.dir === pluginDir) continue // 包自己
+      if (Object.prototype.hasOwnProperty.call(deps, name)) continue
+      violations.push({ plugin: entry.name, name, status: 'peer-only', expected: workspacePkg.version })
+    }
+  }
+  return violations
+}
+
+/**
  * 全仓扫描：每个插件 × 它声明的每个 workspace 内依赖。
- * 返回 { checked, violations, plugins }（violations 为空 = 解析一致）。
+ * 返回 { checked, violations, plugins }（violations 为空 = 解析一致 + 声明形态正确）。
  */
 export function checkDependencyResolution(repoRoot) {
   const packages = workspacePackages(repoRoot)
@@ -172,17 +210,35 @@ export function checkDependencyResolution(repoRoot) {
       if (result.status !== 'ok') violations.push({ plugin: entry.name, ...result })
     }
   }
+  // 声明形态判据（peer-only）与解析判据汇总到同一个 violations 列表：一条门禁、一个退出码。
+  const peerOnly = findPeerOnlyWorkspaceDeps(repoRoot)
+  checked += peerOnly.length
+  violations.push(...peerOnly)
   return { checked, violations, plugins }
 }
 
-/** 把 violations 渲染成人能直接照着修的文本（含遮蔽路径与版本漂移）。 */
+/** 把 violations 渲染成人能直接照着修的文本（含遮蔽路径、版本漂移与 peer-only 声明形态）。 */
 export function renderViolations(violations, repoRoot) {
   const lines = [
-    '检测到「依赖解析不一致」：插件解析到的不是仓库工作区源码，而是 node_modules 里的副本。',
-    '这会让**本地测试与 CI 测到两份不同的代码**（CI 只跑根 npm ci，plugins/*/ 没有自己的 node_modules）。',
+    '检测到「依赖声明/解析不一致」：插件解析到的不是仓库工作区源码，或本仓 workspace 包被写成了 peerDependencies。',
+    '前者会让**本地测试与 CI 测到两份不同的代码**（CI 只跑根 npm ci，plugins/*/ 没有自己的 node_modules）。',
+    '后者会让**用户装完即不可用**（包管理器不装 peer，启动 failed to import）——本地永远测不出来。',
     '',
   ]
   for (const v of violations) {
+    if (v.status === 'peer-only') {
+      lines.push(
+        '  x plugins/' +
+          v.plugin +
+          ': ' +
+          v.name +
+          ' 只写在 peerDependencies —— 包管理器默认不装 peer（pnpm 完全不装），' +
+          '用户 dsh plugin add 后会 failed to import。修法：把它移到 dependencies（^' +
+          v.expected +
+          '），peer 只留给宿主供给的包（cordis / react 等）。',
+      )
+      continue
+    }
     if (v.status === 'unresolved') {
       lines.push('  x plugins/' + v.plugin + ': 声明了 ' + v.name + ' 但解析失败（依赖未安装 / 树损坏）')
       continue
@@ -196,9 +252,19 @@ export function renderViolations(violations, repoRoot) {
   }
   lines.push(
     '',
-    '处置（本门禁只报告，不自动删）：删除上面这些 node_modules 内的副本，让解析回落到 workspace 源码。',
-    '例如： rm -rf plugins/' + BT + '<插件>' + BT + '/node_modules/' + BT + '<包名>' + BT,
-    '删除后请重跑该插件的 npm test —— 它从此测的是 CI 会测的那份代码。',
+    '处置（本门禁只报告，不自动改）：',
+    '  1) 遮蔽副本：删除上面这些 node_modules 内的副本，让解析回落到 workspace 源码；',
+    '     例如 rm -rf plugins/' +
+      BT +
+      '<插件>' +
+      BT +
+      '/node_modules/' +
+      BT +
+      '<包名>' +
+      BT +
+      '，删除后重跑该插件 npm test。',
+    '  2) peer-only：把该包从 peerDependencies 移到 dependencies（保留原版本范围），' +
+      '然后在纯净 profile 里真的装一次再启动 —— 这条缺陷只在「用户视角的安装」里暴露。',
   )
   return lines.join(NL)
 }

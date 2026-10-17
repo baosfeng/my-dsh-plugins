@@ -116,7 +116,11 @@ async function callRoute(getRoute, method, url, body, overrides) {
 test('apply registers the API route and declares the required injects', async () => {
   const { getRoute, ctx } = await boot()
   assert.ok(getRoute(), '/my-memory/api route registered')
-  assert.deepEqual(inject, ['systemPrompt', 'tools', 'webServer', 'webRuntime', 'sessions'], 'inject list intact')
+  assert.deepEqual(
+    inject,
+    ['systemPrompt', 'tools', 'webServer', 'sessions'],
+    'inject list intact（0.2.1 起不再硬注入 webRuntime）',
+  )
   const disposers = ctx.effectCallbacks.filter((e) => typeof e.disposer === 'function')
   assert.ok(disposers.length >= 5, 'store/section/query-tool/save-tool/route effects return disposers')
 })
@@ -504,6 +508,42 @@ test('fence: explicitly trusted hosts are allowed', async () => {
     res,
   )
   assert.equal(res._status, 200, 'trusted host allowed')
+})
+
+test('fence: DSH 0.2.1 从 webStartup.trustedHosts 取信任源（webRuntime 已移除）', async () => {
+  const holder = captureRoute('/my-memory/api')
+  const ctx = {
+    logger: { info: () => {}, warn: () => {} },
+    get: (name) => (name === 'webStartup' ? { trustedHosts: ['dsh.internal:3080'] } : undefined),
+    systemPrompt: { section: () => () => {} },
+    tools: { register: () => () => {} },
+    webServer: {
+      register: (route) => {
+        holder.set(route)
+        return () => {}
+      },
+    },
+    events: [],
+    effectCallbacks: [],
+    on() {},
+    effect(callback) {
+      callback()
+      return () => {}
+    },
+  }
+  apply(ctx)
+  const res = makeResponse()
+  await holder.get().handler(
+    makeRequest('GET', '/my-memory/api/memory?scope=global', undefined, {
+      headers: {
+        host: 'dsh.internal:3080',
+        'sec-fetch-site': 'same-origin',
+        origin: 'http://dsh.internal:3080',
+      },
+    }),
+    res,
+  )
+  assert.equal(res._status, 200, 'webStartup trusted host allowed')
 })
 
 test('apply logs an info line with the [dsh-my-memory] prefix (issue #155)', async () => {

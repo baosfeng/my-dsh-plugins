@@ -1,9 +1,13 @@
 /**
  * dsh-my-skill-manager — DSH 运行时类型声明（server 端）。
  *
- * 手写最小契约：插件只用 ctx 的少量 API（skills / webServer / webRuntime /
+ * 手写最小契约：插件只用 ctx 的少量 API（skills / webServer / webStartup /
  * sessions / logger / on / effect）。DSH 运行时模块（cordis / webServer /
  * skills 服务）由宿主提供，本声明是插件与运行时之间的类型契约。
+ *
+ * 信任源（DSH 0.2.1）：宿主移除了 `webRuntime`，可信权威改由
+ * `webStartup.trustedHosts` + `webServer.host` 提供（dsh-shared
+ * createTrustFence）；旧宿主仍回退 webRuntime。
  *
  * 说明：本文件是 .d.ts（纯类型，无产物输出）；server 端源码经
  * `import type { ... } from './types.js'` 引用（nodenext 的 .js → .d.ts 映射）。
@@ -34,8 +38,10 @@ export interface Logger {
   error?(message: string): void
 }
 
-/** webServer 服务（HTTP 路由注册）。 */
+/** webServer 服务（HTTP 路由注册 + 监听地址）。 */
 export interface WebServerService {
+  /** 监听地址字面量（DSH 0.2.1 起为具体 IP；信任围栏据此放行浏览器直连）。 */
+  host?: string
   register(options: {
     kind: 'prefix'
     path: string
@@ -43,7 +49,7 @@ export interface WebServerService {
   }): () => void
 }
 
-/** webRuntime 服务（信任围栏的可信 host 列表）。 */
+/** 旧宿主（≤0.2.0）的 webRuntime 服务；DSH 0.2.1 已移除。 */
 export interface WebRuntimeService {
   trustedHosts: string[]
 }
@@ -94,8 +100,10 @@ export interface DshContext {
   skills?: SkillsService
   /** webServer 服务（inject 声明后可用）。 */
   webServer: WebServerService
-  /** webRuntime 服务（信任围栏）。 */
-  webRuntime: WebRuntimeService
+  /** 读取可选服务（webStartup 等；未提供时 undefined）。 */
+  get?<T = unknown>(name: string): T | undefined
+  /** 旧宿主（≤0.2.0）的 webRuntime 服务；DSH 0.2.1 已移除，仅兼容兜底。 */
+  webRuntime?: WebRuntimeService
   /** sessions 服务（会话 cwd 查询）。 */
   sessions: SessionsService
   /** 日志器。 */

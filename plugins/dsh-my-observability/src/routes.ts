@@ -11,7 +11,7 @@
  *  - POST /review                  — 增量 diff 审查（规则引擎 + 可选 AI）
  *  - GET/PUT /config               — 设置页配置读写（aiReview / aiTimeoutMs）
  */
-import { isTrustedApiRequest, readJsonBody, writeJson, writeError } from 'dsh-shared'
+import { createTrustFence, readJsonBody, writeJson, writeError } from 'dsh-shared'
 import { dispatchConfigRoutes } from './config-routes.js'
 import { gitStatus, gitDiff, gitCommit } from './git.js'
 import { parseDiff } from './diff.js'
@@ -43,12 +43,9 @@ export function registerObservabilityRoutes(
   options: ObservabilityOptions,
   onConfigChange: (next: Pick<ObservabilityOptions, 'aiReview' | 'aiTimeoutMs'>) => Promise<void>,
 ): void {
-  const webRuntime = ctx.get ? ctx.get<{ trustedHosts?: string[] }>('webRuntime') : undefined
-  const trustedHosts =
-    webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
-      ? webRuntime.trustedHosts
-      : []
-  const fence: Fence = (request) => isTrustedApiRequest(request, trustedHosts)
+  // 信任源迁移（DSH 0.2.1 移除 webRuntime）：围栏每次请求现读
+  // webStartup.trustedHosts + webServer.host，旧宿主回退 webRuntime（dsh-shared 内部兼容）。
+  const fence: Fence = createTrustFence(ctx)
 
   ctx.effect(
     () =>

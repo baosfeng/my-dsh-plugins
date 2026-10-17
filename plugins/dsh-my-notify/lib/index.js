@@ -24,8 +24,8 @@
  * 安全：所有请求先做 loopback 信任围栏（与 /api 网关一致的契约）；配置
  * `apiToken` 后 trigger 额外要求 `x-notify-token` 头，供远程主机调用。
  *
- * 注意：可选服务（webRuntime / sessionTitle）一律经 `ctx.get` 读取——未
- * 注入时对 Cordis Context 做属性访问不可靠。
+ * 注意：可选服务（sessionTitle 等）一律经 `ctx.get` 读取——未注入时对
+ * Cordis Context 做属性访问不可靠。
  *
  * 模块结构（按职责拆分，P2 G12b）：
  *  - fence.js     — Host-header 信任围栏（loopback / trustedHosts / 同源）

@@ -26,6 +26,8 @@ export interface ServerResponse {
 
 /** webServer 服务（HTTP 路由注册）。 */
 export interface WebServerService {
+  /** 监听地址字面量（DSH 0.2.1+ 的 webServer.host；旧宿主可能无此字段）。 */
+  host?: string
   register(options: {
     kind: 'prefix'
     path: string

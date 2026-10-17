@@ -53,6 +53,7 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 - 插件已加载但事件 0 触发、路由 404、日志无报错 → 监听器注册随插件 fiber 被回收，要挂到常驻 root
 - 页签偶发变纯文字、图标与徽标消失、刷新页面即恢复 → 样式注入排在了服务判空早退之后
 - `yield* (intermediate value) is not async iterable` → `llm/stream` 的 handler 写成 async，把流包成了 Promise
+- 升 0.2.1 后启动打印 `N entries did not activate`、某插件 `pending (waiting for service: webRuntime)` 且无 fatal → 0.2.1 已移除 webRuntime 服务；改用 dsh-shared `createTrustFence(ctx)`，删掉顶层 `inject: ['webRuntime']` 与 `ctx.webRuntime` 读取；详见 [宿主运行时陷阱.md](宿主运行时陷阱.md)
 - 监听器 `return` 了值、发送方只拿到 `undefined`（聚合端点给每个插件编造"运行中"）→ `emit` 不收集返回值、`parallel` 不返回结果，收集返回值只能用 `serial`；详见 [宿主运行时陷阱.md](宿主运行时陷阱.md)
 - 长会话 CPU 数百 %、内存 GB 级、磁盘每小时 GB 级写入 → 事件流误用全量快照原语；详见 [插件资源占用.md](插件资源占用.md)
 - 状态文件停在旧内容且不报错，只有 `write blocked … dropping pending snapshot` → 调度器与快照原语双节流互斥；详见 [异步落盘与时序.md](异步落盘与时序.md)

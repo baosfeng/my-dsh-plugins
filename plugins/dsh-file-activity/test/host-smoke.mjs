@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import tmp from 'tmp'
-import { apply } from '../lib/index.js'
+import { apply, inject } from '../lib/index.js'
 import { sessionFromFile } from './state-file.mjs'
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -374,4 +374,8 @@ test('host smoke suite', async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('inject: DSH 0.2.1 起不再硬注入 webRuntime（否则插件永久 pending）', () => {
+  assert.deepEqual(inject, ['webServer', 'sessions'])
 })

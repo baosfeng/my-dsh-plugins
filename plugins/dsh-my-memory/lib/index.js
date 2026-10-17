@@ -25,7 +25,7 @@
  *    来源/演进展示 + 自定义确认 UI：删除红色、保存绿色）。
  */
 import { createApiHandler } from './api-route.js';
-import { isTrustedApiRequest } from 'dsh-shared';
+import { createTrustFence } from 'dsh-shared';
 import { DEFAULT_MAX_ENTRY_LENGTH } from './memory-text.js';
 import { createMemorySection } from './prompt.js';
 import { createPromptsSection } from './prompts.js';
@@ -36,7 +36,7 @@ import { createMemoryQueryTool } from './tool.js';
 import { registerMemoryWriteTools } from './write-tools.js';
 import { saveApprovalOf } from './save-policy.js';
 export const name = 'dsh-my-memory';
-export const inject = ['systemPrompt', 'tools', 'webServer', 'webRuntime', 'sessions'];
+export const inject = ['systemPrompt', 'tools', 'webServer', 'sessions'];
 /** maxEntryLength 配置（issue #105 精简引导）；非法值回落默认 50。 */
 function maxEntryLengthOf(config) {
     return Number.isInteger(config?.maxEntryLength) && config.maxEntryLength > 0
@@ -243,7 +243,7 @@ export function apply(ctx, config) {
     });
     ctx.effect(() => ctx.on('agent/status', sessionEndHandler), 'dsh-my-memory: auto-extract on session end');
     // ── 写操作 API（需用户同意标记）──────────────────────────────────────
-    const fence = (request) => isTrustedApiRequest(request, ctx.webRuntime?.trustedHosts ?? []);
+    const fence = createTrustFence(ctx);
     const apiHandler = createApiHandler({
         globalStore,
         getProjectStore,

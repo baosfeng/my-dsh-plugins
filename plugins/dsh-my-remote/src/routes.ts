@@ -1,8 +1,9 @@
 /**
  * dsh-my-remote — /remote/api 路由（远程指令入站 + 状态/审计查询 + 设置页端点）。
  *
- * 所有请求先做 loopback 信任围栏（dsh-shared isTrustedApiRequest，与 /api
- * 网关一致的契约；配置 apiToken 后 command 写操作额外要求 x-remote-token
+ * 所有请求先做 loopback 信任围栏（dsh-shared createTrustFence，与 /api
+ * 网关一致的契约；0.2.1 起现读 webStartup.trustedHosts + webServer.host；
+ * 配置 apiToken 后 command 写操作额外要求 x-remote-token
  * 头，供经反向代理/中转服务的远程调用）。
  *
  * 端点：
@@ -27,7 +28,7 @@
  *  3. 以 root 为键去重：root 常驻意味着上一轮注册不会自动消失，而宿主
  *     `WebServer.register` 对重复 (kind, path) 直接抛错 → 先撤上一轮再注册。
  */
-import { isTrustedApiRequest, header, readJsonBody, writeJson, writeError } from 'dsh-shared'
+import { createTrustFence, header, readJsonBody, writeJson, writeError } from 'dsh-shared'
 import { processCommand, statusSnapshot } from './commands.js'
 import { SETTINGS_ROUTE_PREFIX, createSettingsHandler } from './settings.js'
 import type { SettingsPort } from './settings.js'
@@ -80,14 +81,9 @@ export function registerRemoteRoutes(ctx: DshContext, shared: SharedContext, por
   }
 }
 
-/** 信任围栏：loopback 或 webRuntime.trustedHosts 配置的受信权威。 */
+/** 信任围栏：loopback / 受信权威（dsh-shared createTrustFence，每次请求现读信任源）。 */
 function fenceOf(shared: SharedContext): (request: ServerRequest) => boolean {
-  const webRuntime = shared.ctx.get?.('webRuntime') as { trustedHosts?: string[] } | undefined
-  const trustedHosts =
-    webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
-      ? webRuntime.trustedHosts
-      : []
-  return (request: ServerRequest) => isTrustedApiRequest(request, trustedHosts)
+  return createTrustFence(shared.ctx)
 }
 
 /** 统一 handler：fence → 方法/动词分派 → 404/异常兜底。 */

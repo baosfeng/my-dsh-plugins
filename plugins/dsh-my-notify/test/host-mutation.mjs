@@ -79,6 +79,7 @@ function boot(config, opts = {}) {
     },
     get(name) {
       if (name === 'sessionTitle') return opts.sessionTitle === false ? undefined : ctx.sessionTitle
+      if (name === 'webStartup') return opts.webStartup === undefined ? undefined : { trustedHosts: opts.webStartup }
       if (name === 'webRuntime')
         return opts.trustedHosts === undefined ? undefined : { trustedHosts: opts.trustedHosts }
       return undefined
@@ -162,6 +163,21 @@ test('trustedHosts entry with an explicit port is honored', async () => {
     res,
   )
   assert.equal(res.writeHeadStatus, 200, 'trusted host with port accepted')
+})
+
+test('webStartup.trustedHosts is the fence source on DSH 0.2.1 (no webRuntime)', async () => {
+  // DSH 0.2.1 移除了 webRuntime：get 只提供 webStartup（webRuntime → undefined）。
+  const { api } = boot({}, { webStartup: ['dsh.internal:3080'] })
+  const allowed = mockResponse()
+  await invoke(
+    api,
+    mockRequest({ url: '/notify/api/info', host: 'dsh.internal:3080', origin: 'http://dsh.internal:3080' }),
+    allowed,
+  )
+  assert.equal(allowed.writeHeadStatus, 200, 'webStartup.trustedHosts 放行（不依赖旧 webRuntime 桩）')
+  const denied = mockResponse()
+  await invoke(api, mockRequest({ url: '/notify/api/info', host: 'evil.example' }), denied)
+  assert.equal(denied.writeHeadStatus, 403, '不在 webStartup.trustedHosts 的陌生域名仍被拒')
 })
 
 // ── isTopLevelAgent 变体（杀 L114-117）───────────────────────────────────

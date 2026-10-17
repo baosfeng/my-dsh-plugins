@@ -16,7 +16,7 @@
  *  - Client：官方 slots 注册「设置 → 插件」下的 Skill 管理页签（纯官方
  *    依赖，不依赖 dsh-better-sidebar）。
  */
-import { isTrustedApiRequest } from 'dsh-shared'
+import { createTrustFence } from 'dsh-shared'
 import { createApiHandler } from './api-route.js'
 import { createDisablerProvider } from './provider.js'
 import { createUsageStore, recordUsage, usageFile } from './usage.js'
@@ -24,7 +24,7 @@ import type { DshContext, ServerRequest } from './types.js'
 
 export const name = 'dsh-my-skill-manager'
 
-export const inject = ['skills', 'webServer', 'webRuntime', 'sessions']
+export const inject = ['skills', 'webServer', 'sessions']
 
 export function apply(ctx: DshContext): void {
   // 禁用占位 provider：配置变化时 invalidate 让 skill 目录立即重算。
@@ -76,7 +76,7 @@ export function apply(ctx: DshContext): void {
     'dsh-my-skill-manager: usage listeners',
   )
 
-  const fence = (request: ServerRequest): boolean => isTrustedApiRequest(request, ctx.webRuntime.trustedHosts)
+  const fence = createTrustFence(ctx) as (request: ServerRequest) => boolean
   ctx.effect(
     () =>
       ctx.webServer.register({

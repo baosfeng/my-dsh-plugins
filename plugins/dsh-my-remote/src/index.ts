@@ -11,7 +11,8 @@
  *                            快照 + 操作审计
  *  - 渠道层（channels.ts） ：事件下行到外部通道（HTTP webhook 先行；微信/QQ/
  *                            飞书机器人按同一适配器契约扩展）
- *  - 安全层                ：loopback 围栏（dsh-shared isTrustedApiRequest）
+ *  - 安全层                ：loopback 围栏（dsh-shared createTrustFence，0.2.1
+ *                            起现读 webStartup.trustedHosts + webServer.host）
  *                            + apiToken（写指令 x-remote-token）+ 指令白名单
  *                            + 操作审计（远程控制比通知更敏感，操作留痕）
  *
@@ -25,9 +26,10 @@
  *  - approvalTimeoutMs     远程批准等待超时（0 = 无限，默认 0；超时 fail-closed
  *                            拒绝）
  *
- * 可选服务一律经 ctx.get 读取（agents / sessionTitle / webRuntime）。
+ * 可选服务一律经 ctx.get 读取（agents / sessionTitle）；信任源经
+ * dsh-shared createTrustFence 现读（旧宿主回退 webRuntime）。
  */
-import { isTrustedApiRequest } from 'dsh-shared'
+import { createTrustFence } from 'dsh-shared'
 import { attachEvents } from './events.js'
 import { createAskRegistry, createApprovalRegistry } from './registries.js'
 import { createChannels } from './channels.js'
@@ -71,14 +73,9 @@ export function apply(ctx: DshContext, config: PluginConfig): void {
   )
 }
 
-/** 信任围栏（loopback 或 webRuntime.trustedHosts 配置的受信权威）。 */
+/** 信任围栏（loopback / 受信权威；dsh-shared createTrustFence 现读信任源）。 */
 function fenceOf(shared: SharedContext): (request: ServerRequest) => boolean {
-  const webRuntime = shared.ctx.get?.('webRuntime') as { trustedHosts?: string[] } | undefined
-  const trustedHosts =
-    webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
-      ? webRuntime.trustedHosts
-      : []
-  return (request) => isTrustedApiRequest(request, trustedHosts)
+  return createTrustFence(shared.ctx)
 }
 
 /** 应用层配置 → options（默认值 + 类型规整）。 */

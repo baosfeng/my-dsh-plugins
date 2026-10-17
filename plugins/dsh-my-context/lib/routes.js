@@ -1,7 +1,9 @@
 /**
  * dsh-my-context — /context/api routes.
  *
- * 所有请求先做 loopback 信任围栏（与 /api 网关一致的契约）。方法分派：
+ * 所有请求先做 loopback 信任围栏（与 /api 网关一致的契约；来源：dsh-shared
+ * createTrustFence —— `webStartup.trustedHosts` + `webServer.host`，旧宿主回退
+ * `webRuntime`）。方法分派：
  *  - GET  /status                  — 状态 + 预算配置 + 溢出阈值配置
  *  - GET  /sessions                — 有统计的会话列表
  *  - GET  /session?sessionId=      — 会话统计详情（构成/请求/告警/溢出预警）
@@ -10,7 +12,7 @@
  *  - POST /budget                  — 更新预算配置（body { perTurn, perSession, mode }）
  *  - POST /overflow                — 更新溢出阈值（body { warnThreshold, alertThreshold }）
  */
-import { isTrustedApiRequest, readJsonBody, writeError, writeJson } from 'dsh-shared';
+import { createTrustFence, readJsonBody, writeError, writeJson } from 'dsh-shared';
 import { whenReadyOf } from './store.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { normalizeOverflowConfig } from './overflow.js';
@@ -28,13 +30,7 @@ export function registerContextRoutes(ctx, store, options) {
     const webServer = ctx.webServer ?? listenCtx.webServer;
     if (webServer === undefined)
         return;
-    const webRuntime = ctx.get ? ctx.get('webRuntime') : undefined;
-    const trustedHosts = webRuntime !== undefined &&
-        webRuntime !== null &&
-        Array.isArray(webRuntime.trustedHosts)
-        ? webRuntime.trustedHosts
-        : [];
-    const fence = (request) => isTrustedApiRequest(request, trustedHosts);
+    const fence = createTrustFence(ctx);
     for (const dispose of [rootRoutes.get(listenCtx)].filter((entry) => entry !== undefined))
         dispose();
     rootRoutes.set(listenCtx, webServer.register({

@@ -4,7 +4,7 @@
  * appears), trust fence, method dispatch and the panel snapshot.
  */
 import { readStagedFile, writeStagedFile } from './state.js';
-import { isTrustedApiRequest, readJsonBody, writeJson } from 'dsh-shared';
+import { createTrustFence, readJsonBody, writeJson } from 'dsh-shared';
 /** Bind the API entry points to one guardian instance's shared state. */
 export function createApi(ctx, shared) {
     return {
@@ -22,13 +22,15 @@ function ensureApi(ctx, shared) {
     const webServer = ctx.get('webServer');
     if (webServer === undefined)
         return;
-    const webRuntime = ctx.get('webRuntime');
+    // 信任源迁移（DSH 0.2.1 移除 webRuntime）：每次请求现读
+    // webStartup.trustedHosts + webServer.host，旧宿主回退 webRuntime（dsh-shared 内部兼容）。
+    const fence = createTrustFence(ctx);
     shared.apiRegistered = true;
     try {
         ctx.effect(() => webServer.register({
             kind: 'prefix',
             path: '/guardian/api',
-            handler: (request, response) => handleApiRequest(ctx, shared, webRuntime, request, response),
+            handler: (request, response) => handleApiRequest(ctx, shared, fence, request, response),
         }), 'dsh-my-guardian: /guardian/api routes');
     }
     catch (error) {
@@ -38,8 +40,8 @@ function ensureApi(ctx, shared) {
     }
 }
 /** Unified route handler: fence → method dispatch → 404/error fallback. */
-async function handleApiRequest(ctx, shared, webRuntime, request, response) {
-    if (!isTrustedApiRequest(request, webRuntime?.trustedHosts ?? [])) {
+async function handleApiRequest(ctx, shared, fence, request, response) {
+    if (!fence(request)) {
         writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } });
         return;
     }

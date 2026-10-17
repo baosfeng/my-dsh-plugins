@@ -218,6 +218,26 @@ test('routes: fence rejects non-loopback requests with 403', async () => {
   await handle.disposeAll()
 })
 
+test('routes: fence trusts webStartup.trustedHosts (DSH 0.2.1 path, no webRuntime)', async () => {
+  const handle = boot({}, { webStartup: { trustedHosts: ['dsh.internal:3080'] }, omitWebRuntime: true })
+  await yieldLoop()
+  const allowed = mockResponse()
+  await invoke(
+    handle.api,
+    mockRequest({
+      url: '/context/api/status',
+      host: 'dsh.internal:3080',
+      origin: 'http://dsh.internal:3080',
+    }),
+    allowed,
+  )
+  assert.equal(allowed.writeHeadStatus, 200, 'webStartup.trustedHosts 放行（不依赖旧 webRuntime 桩）')
+  const denied = mockResponse()
+  await invoke(handle.api, mockRequest({ url: '/context/api/status', host: 'evil.example' }), denied)
+  assert.equal(denied.writeHeadStatus, 403, '不在 webStartup.trustedHosts 的陌生域名仍被拒')
+  await handle.disposeAll()
+})
+
 test('routes: malformed JSON body returns 400', async () => {
   const handle = boot({})
   await yieldLoop()

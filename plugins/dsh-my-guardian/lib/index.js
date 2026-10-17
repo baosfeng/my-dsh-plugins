@@ -22,7 +22,7 @@
  * way to recover an environment a new plugin broke.
  *
  * Self-protection (watchdog): every async path is caught; only the loader
- * service is a hard dependency; webServer/webRuntime are optional (a CLI
+ * service is a hard dependency; webServer is optional (a CLI
  * profile without a web surface still gets staged loading, just no HTTP
  * panel). The guardian never rewrites cordis.patch.yml; its own state lives
  * at $DSH_HOME/guardian/state.json (atomic tmp+rename).

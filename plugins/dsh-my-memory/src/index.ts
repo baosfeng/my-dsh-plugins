@@ -25,8 +25,7 @@
  *    来源/演进展示 + 自定义确认 UI：删除红色、保存绿色）。
  */
 import { createApiHandler } from './api-route.js'
-import { isTrustedApiRequest } from 'dsh-shared'
-import type { IncomingRequest } from 'dsh-shared'
+import { createTrustFence } from 'dsh-shared'
 import { DEFAULT_MAX_ENTRY_LENGTH } from './memory-text.js'
 import { createMemorySection } from './prompt.js'
 import { createPromptsSection } from './prompts.js'
@@ -49,7 +48,7 @@ import type { StoreInstance, CandidateStoreInstance, Category } from './memory-t
 
 export const name = 'dsh-my-memory'
 
-export const inject = ['systemPrompt', 'tools', 'webServer', 'webRuntime', 'sessions']
+export const inject = ['systemPrompt', 'tools', 'webServer', 'sessions']
 
 /** 插件配置接口。 */
 export interface MemoryConfig {
@@ -343,8 +342,7 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
   ctx.effect(() => ctx.on('agent/status', sessionEndHandler), 'dsh-my-memory: auto-extract on session end')
 
   // ── 写操作 API（需用户同意标记）──────────────────────────────────────
-  const fence = (request: unknown) =>
-    isTrustedApiRequest(request as IncomingRequest, ctx.webRuntime?.trustedHosts ?? [])
+  const fence = createTrustFence(ctx) as (request: unknown) => boolean
   const apiHandler = createApiHandler({
     globalStore,
     getProjectStore,

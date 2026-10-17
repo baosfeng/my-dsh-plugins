@@ -2,8 +2,9 @@
  * dsh-my-guardian — DSH 运行时类型声明（server 端）。
  *
  * 手写最小契约：插件只用 ctx 的少量 API（on / effect / get / logger / timer / loader）。
- * DSH 运行时模块（cordis / webServer）由宿主提供，本声明是插件与运行时
- * 之间的类型契约。
+ * DSH 运行时模块（cordis / webServer / webStartup）由宿主提供，本声明是插件与
+ * 运行时之间的类型契约。信任源经 dsh-shared createTrustFence 现读（0.2.1 起
+ * webStartup.trustedHosts + webServer.host），不再直接依赖 webRuntime。
  *
  * 说明：本文件是 .d.ts（纯类型，无产物输出）；server 端源码经
  * `import type { ... } from './types.js'` 引用（nodenext 的 .js → .d.ts 映射）。
@@ -27,16 +28,13 @@ export interface ServerResponse {
 
 /** webServer 服务（HTTP 路由注册）。 */
 export interface WebServerService {
+  /** 监听地址字面量（DSH 0.2.1+ 的 webServer.host；旧宿主可能无此字段）。 */
+  host?: string
   register(options: {
     kind: 'prefix'
     path: string
     handler: (request: ServerRequest, response: ServerResponse) => void
   }): () => void
-}
-
-/** webRuntime 服务（信任主机列表）。 */
-export interface WebRuntimeService {
-  trustedHosts: string[]
 }
 
 /** loader 服务（插件加载树）。 */
@@ -111,6 +109,4 @@ export interface DshContext {
   timer: TimerService
   /** webServer 服务（可选）。 */
   webServer?: WebServerService
-  /** webRuntime 服务（可选）。 */
-  webRuntime?: WebRuntimeService
 }

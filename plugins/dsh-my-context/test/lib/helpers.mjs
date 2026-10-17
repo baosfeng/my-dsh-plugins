@@ -145,7 +145,11 @@ export function bootPlugin(config, opts = {}) {
       },
     },
     get(name) {
-      if (name === 'webRuntime') return opts.webRuntime === undefined ? { trustedHosts: [] } : opts.webRuntime
+      if (name === 'webStartup') return opts.webStartup
+      if (name === 'webRuntime') {
+        if (opts.omitWebRuntime === true) return undefined
+        return opts.webRuntime === undefined ? { trustedHosts: [] } : opts.webRuntime
+      }
       return undefined
     },
   }

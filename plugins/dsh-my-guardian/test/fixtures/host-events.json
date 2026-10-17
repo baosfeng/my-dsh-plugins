@@ -1,6 +1,6 @@
 {
   "reference": {
-    "version": "0.2.1-alpha.1",
+    "version": "0.2.1-rc.2",
     "source": "deepseek-harness 参考源：packages/ + vendor/ 的 interface Events 声明与 ctx.* 派发",
     "events": [
       "agent-loop/config-start-failed",
@@ -72,6 +72,7 @@
       "plugin-manager/changed",
       "plugin-manager/install-log",
       "plugin-manager/install-state",
+      "plugin-market/changed",
       "schedule/changed",
       "session-telemetry/record",
       "session/created",
@@ -111,7 +112,7 @@
     ]
   },
   "installed": {
-    "version": "0.2.0-rc.2",
+    "version": "0.2.1-rc.1",
     "source": "已安装宿主：node_modules/@deepseek-ai/*/lib 的 .d.ts 声明与 .js 派发",
     "events": [
       "agent-preset/selected",
@@ -145,6 +146,7 @@
       "loader/partial-dispose",
       "loader/patch-context",
       "locale/change",
+      "plugin-market/changed",
       "schedule/changed",
       "session-telemetry/record",
       "session/flush",

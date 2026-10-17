@@ -17,7 +17,7 @@
  * 旧实现每次防抖全量重写，写放大 3,665×）。入口三维上限（会话 / 每会话路径 /
  * 全局路径）超限按 LRU 淘汰并告警 —— 内存与状态文件均有界。
  */
-import { isTrustedApiRequest } from 'dsh-shared'
+import { createTrustFence } from 'dsh-shared'
 import { createApiHandler } from './api-route.js'
 import { createMediaHandler } from './media-route.js'
 import { createFsObserver } from './observer.js'
@@ -28,7 +28,7 @@ import type { ActivityStore, DshContext, ServerRequest } from './types.js'
 
 export const name = 'dsh-file-activity'
 
-export const inject = ['webServer', 'sessions', 'webRuntime']
+export const inject = ['webServer', 'sessions']
 
 /** bash 工具调用 exec 的最小契约（agent.id / arguments.command / workdir）。 */
 interface BashExec {
@@ -85,7 +85,8 @@ export function apply(ctx: DshContext): ActivityStore {
   })
 
   // ── routes ──────────────────────────────────────────────────────────────
-  const fence = (request: ServerRequest): boolean => isTrustedApiRequest(request, ctx.webRuntime.trustedHosts)
+  // 信任源：webStartup.trustedHosts + webServer.host（DSH 0.2.1 移除了 webRuntime）
+  const fence = createTrustFence(ctx) as (request: ServerRequest) => boolean
 
   ctx.effect(
     () =>

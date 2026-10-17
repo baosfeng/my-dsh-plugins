@@ -4,7 +4,8 @@
 
 ## 功能
 
-- **信任围栏** `isTrustedApiRequest` / `header`：Host-header 信任校验（loopback 或受信权威、非 cross-site、origin 与 host 同源）。
+- **信任源解析** `trustedHostsOf` / `bindHostOf` / `createTrustFence`：从 `webStartup.trustedHosts`（DSH 0.2.1+，`--trusted-host`）+ `webServer.host`（监听地址字面量）取信任源，旧宿主（≤0.2.0）自动回退 `webRuntime.trustedHosts`。**插件不要自己读 `webRuntime`**——0.2.1 已移除该服务，硬注入会让整条插件永久 pending。
+- **信任围栏** `isTrustedApiRequest` / `header`：Host-header 信任校验（loopback / 受信权威 / 监听地址、非 cross-site、origin 与 host 同源）。
 - **HTTP JSON** `readJsonBody` / `writeJson` / `writeError`：有界 JSON 请求体读取与 JSON 响应写入。
 - **配置持久化** `currentProfile` / `profileDirOf` / `patchFileOf` / `extractConfig` / `writePatchConfig`：`cordis.patch.yml` 的 YAML 子集读写（原子写 tmp+rename）。
 - **项目根解析** `findProjectRoot(cwd)`：最近 `.git` 祖先目录。

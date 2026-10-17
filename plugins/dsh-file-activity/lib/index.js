@@ -17,7 +17,7 @@
  * 旧实现每次防抖全量重写，写放大 3,665×）。入口三维上限（会话 / 每会话路径 /
  * 全局路径）超限按 LRU 淘汰并告警 —— 内存与状态文件均有界。
  */
-import { isTrustedApiRequest } from 'dsh-shared';
+import { createTrustFence } from 'dsh-shared';
 import { createApiHandler } from './api-route.js';
 import { createMediaHandler } from './media-route.js';
 import { createFsObserver } from './observer.js';
@@ -25,7 +25,7 @@ import { createStore } from './store.js';
 import { parseBashFileOps } from './bash-parse.js';
 import { sessionCwdOf } from './cwd.js';
 export const name = 'dsh-file-activity';
-export const inject = ['webServer', 'sessions', 'webRuntime'];
+export const inject = ['webServer', 'sessions'];
 /** 观察型监听：只读取 bash 命令隐含的文件操作并上报，不拦截（返回 next()）。 */
 function observeBashIntents(exec, ctx, store) {
     const sessionId = bashSessionOf(exec);
@@ -70,7 +70,8 @@ export function apply(ctx) {
         return next();
     });
     // ── routes ──────────────────────────────────────────────────────────────
-    const fence = (request) => isTrustedApiRequest(request, ctx.webRuntime.trustedHosts);
+    // 信任源：webStartup.trustedHosts + webServer.host（DSH 0.2.1 移除了 webRuntime）
+    const fence = createTrustFence(ctx);
     ctx.effect(() => ctx.webServer.register({
         kind: 'prefix',
         path: '/file-activity/api',

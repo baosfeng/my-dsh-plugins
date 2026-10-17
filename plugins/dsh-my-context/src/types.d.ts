@@ -37,6 +37,8 @@ export interface DshContext {
 
 /** webServer 服务（HTTP 路由注册）。 */
 export interface WebServerService {
+  /** 监听地址字面量（DSH 0.2.1+；信任围栏的 bindHost 来源）。 */
+  host?: string
   register(options: {
     kind: 'prefix'
     path: string

@@ -68,7 +68,7 @@ async function call(registration, request) {
 }
 
 /** 启动插件并把 profile patch 文件预置为给定文本（模拟升级前的落盘状态）。 */
-function boot(dir, patchText) {
+function boot(dir, patchText, get = () => undefined) {
   const oldHome = process.env.DSH_HOME
   process.env.DSH_HOME = dir
   const file = patchFileOf('web')
@@ -78,9 +78,7 @@ function boot(dir, patchText) {
   const disposers = []
   const ctx = {
     logger: { info() {}, warn() {} },
-    get() {
-      return undefined
-    },
+    get,
     effect(fn) {
       const d = fn()
       disposers.push(d)
@@ -231,4 +229,19 @@ test('非 loopback 来源 → 403；未知方法 → 404', async () => {
   booted.restore()
   assert.equal(denied.status, 403, 'external origin blocked')
   assert.equal(unknown.status, 404, 'unknown method')
+})
+
+test('围栏信任源：webStartup.trustedHosts（DSH 0.2.1 路径，不提供 webRuntime）', async () => {
+  const dir = tempDir()
+  const booted = boot(dir, '', (name) => (name === 'webStartup' ? { trustedHosts: ['dsh.internal:3080'] } : undefined))
+  const trusted = mockRequest({ url: '/md-render/api/config' })
+  trusted.headers.host = 'dsh.internal:3080'
+  trusted.headers.origin = 'http://dsh.internal:3080'
+  const allowed = await call(booted.registration, trusted)
+  const untrusted = mockRequest({ url: '/md-render/api/config' })
+  untrusted.headers.host = 'evil.example'
+  const denied = await call(booted.registration, untrusted)
+  booted.restore()
+  assert.equal(allowed.status, 200, 'webStartup.trustedHosts 放行（不依赖旧 webRuntime 桩）')
+  assert.equal(denied.status, 403, '不在 webStartup.trustedHosts 的陌生域名仍被拒')
 })

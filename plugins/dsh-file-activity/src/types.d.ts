@@ -1,10 +1,14 @@
 /**
  * dsh-file-activity — DSH 运行时类型声明（server 端）。
  *
- * 手写最小契约：插件只消费 ctx 的少量 API（webServer / webRuntime /
+ * 手写最小契约：插件只消费 ctx 的少量 API（webServer / webStartup /
  * sessions / logger / on / effect）与 HTTP 请求/响应对象。DSH 运行时
- * （cordis Context、webServer/webRuntime/sessions 服务）由宿主提供，
+ * （cordis Context、webServer/webStartup/sessions 服务）由宿主提供，
  * 本文件是插件与运行时之间的类型契约。
+ *
+ * 信任源（DSH 0.2.1）：宿主移除了 `webRuntime`，可信权威改由
+ * `webStartup.trustedHosts` + `webServer.host` 提供（见 dsh-shared
+ * 的 createTrustFence；旧宿主仍回退 webRuntime，故保留可选契约）。
  *
  * 说明：本文件是 .d.ts（纯类型，无产物输出）；server 端源码经
  * `import type { ... } from './types.js'` 引用（nodenext 的 .js → .d.ts 映射）。
@@ -41,8 +45,10 @@ export interface Logger {
   error?(message: string): void
 }
 
-/** webServer 服务（HTTP 路由注册）。 */
+/** webServer 服务（HTTP 路由注册 + 监听地址）。 */
 export interface WebServerService {
+  /** 监听地址字面量（DSH 0.2.1 起为具体 IP；信任围栏据此放行浏览器直连）。 */
+  host?: string
   register(options: {
     kind: 'prefix'
     path: string
@@ -50,8 +56,13 @@ export interface WebServerService {
   }): () => void
 }
 
-/** webRuntime 服务（信任围栏的可信 host 列表）。 */
+/** 旧宿主（≤0.2.0）的 webRuntime 服务；DSH 0.2.1 已移除，仅作兼容兜底。 */
 export interface WebRuntimeService {
+  trustedHosts: string[]
+}
+
+/** webStartup 服务（DSH 0.2.1 起的信任源：命令行 --trusted-host）。 */
+export interface WebStartupService {
   trustedHosts: string[]
 }
 
@@ -69,8 +80,10 @@ export interface SessionsService {
 export interface DshContext {
   /** webServer 服务（inject 声明后可用）。 */
   webServer: WebServerService
-  /** webRuntime 服务（信任围栏）。 */
-  webRuntime: WebRuntimeService
+  /** 旧宿主（≤0.2.0）的 webRuntime 服务；0.2.1+ 不存在。 */
+  webRuntime?: WebRuntimeService
+  /** 读取可选服务（webStartup 等；未提供时 undefined）。 */
+  get?<T = unknown>(name: string): T | undefined
   /** sessions 服务（会话 cwd 查询）。 */
   sessions: SessionsService
   /** 日志器（宿主未注入时由 dsh-shared 静默跳过日志）。 */

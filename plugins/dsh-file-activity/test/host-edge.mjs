@@ -184,6 +184,77 @@ test('trustedHosts entry without explicit port matches host:port requests', asyn
   assert.equal(r.json.ok, true, 'body ok flag true')
 })
 
+test('DSH 0.2.1 信任源：webStartup.trustedHosts 放行（webRuntime 已移除）', async () => {
+  const apiHolder = captureRoute('/file-activity/api')
+  const mediaHolder = captureRoute('/file-activity/file')
+  const ctx = {
+    logger: { warn: () => {} },
+    // 0.2.1：宿主不再提供 webRuntime，可信权威来自 webStartup.trustedHosts。
+    get(name) {
+      return name === 'webStartup' ? { trustedHosts: ['dsh.example.com'] } : undefined
+    },
+    sessions: { get: () => undefined },
+    webServer: {
+      register: (route) => {
+        apiHolder.set(route)
+        mediaHolder.set(route)
+        return () => {}
+      },
+    },
+    events: [],
+    effectCallbacks: [],
+    on() {},
+    effect(callback, label) {
+      this.effectCallbacks.push({ callback, label })
+      const disposer = callback()
+      if (typeof disposer === 'function') this.effectCallbacks.push({ disposer, label: `${label}:disposer` })
+      return disposer
+    },
+  }
+  const store = apply(ctx)
+  await store.whenReady()
+  const r = await callRoute(() => apiHolder.get(), 'GET', '/file-activity/api/stats?sessionId=s', undefined, {
+    headers: { host: 'dsh.example.com:3080', origin: 'http://dsh.example.com:3080' },
+  })
+  assert.equal(r.status, 200, 'webStartup trusted host is allowed')
+  assert.equal(r.json.ok, true, 'body ok flag true')
+})
+
+test('DSH 0.2.1 信任源：监听地址字面量（webServer.host）放行浏览器直连', async () => {
+  const apiHolder = captureRoute('/file-activity/api')
+  const mediaHolder = captureRoute('/file-activity/file')
+  const ctx = {
+    logger: { warn: () => {} },
+    get() {
+      return undefined
+    },
+    sessions: { get: () => undefined },
+    webServer: {
+      host: '10.0.0.7',
+      register: (route) => {
+        apiHolder.set(route)
+        mediaHolder.set(route)
+        return () => {}
+      },
+    },
+    events: [],
+    effectCallbacks: [],
+    on() {},
+    effect(callback, label) {
+      this.effectCallbacks.push({ callback, label })
+      const disposer = callback()
+      if (typeof disposer === 'function') this.effectCallbacks.push({ disposer, label: `${label}:disposer` })
+      return disposer
+    },
+  }
+  const store = apply(ctx)
+  await store.whenReady()
+  const r = await callRoute(() => apiHolder.get(), 'GET', '/file-activity/api/stats?sessionId=s', undefined, {
+    headers: { host: '10.0.0.7:3080', origin: 'http://10.0.0.7:3080' },
+  })
+  assert.equal(r.status, 200, 'bind address literal is allowed')
+})
+
 test('malformed JSON body returns 400', async () => {
   const { getRoute } = await boot()
   const res = makeResponse()

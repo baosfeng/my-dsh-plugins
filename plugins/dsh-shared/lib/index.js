@@ -2,7 +2,9 @@
  * dsh-shared — DSH 插件共享工具包入口。
  *
  * 提供：
- *  - isTrustedApiRequest — Host-header 信任围栏（loopback / trustedHosts / 同源）
+ *  - isTrustedApiRequest — Host-header 信任围栏（loopback / trustedHosts / bindHost / 同源）
+ *  - trustedHostsOf / bindHostOf / createTrustFence — 信任源解析
+ *    （`webStartup.trustedHosts` + `webServer.host`，旧宿主回退 `webRuntime`）
  *  - header — 字符串型请求头读取（围栏与路由共用）
  *  - readJsonBody / writeJson / writeError — HTTP JSON 读写工具
  *  - currentProfile / profileDirOf / patchFileOf / extractConfig /
@@ -23,7 +25,7 @@
  *
  * 原语选型与适用边界：plugins/dsh-shared/README.md、docs/共享工具包/。
  */
-export { isTrustedApiRequest, header } from './fence.js';
+export { isTrustedApiRequest, header, trustedHostsOf, bindHostOf, createTrustFence } from './fence.js';
 export { readJsonBody, writeJson, writeError } from './http.js';
 export { currentProfile, profileDirOf, patchFileOf, extractConfig, writePatchConfig } from './config-store.js';
 export { findProjectRoot } from './project.js';

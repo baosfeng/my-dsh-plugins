@@ -3,8 +3,11 @@
  *
  * 手写最小契约：插件只用到 ctx 的少量 API（on / effect / get / inject /
  * emit / logger / webServer），以及 agents / sessionQuery / goals / approval /
- * commands / webRuntime 等可选服务。DSH 运行时（cordis Context 与各服务）
+ * commands 等可选服务。DSH 运行时（cordis Context 与各服务）
  * 由宿主提供，本声明是插件与运行时之间的类型契约。
+ *
+ * 信任源经 dsh-shared createTrustFence 现读（0.2.1 起
+ * webStartup.trustedHosts + webServer.host），不再直接依赖 webRuntime。
  *
  * 说明：本文件是 .d.ts（纯类型，无产物输出）；server 端源码经
  * `import type { ... } from './types.js'` 引用（nodenext 的 .js → .d.ts 映射）。
@@ -27,16 +30,13 @@ export interface ServerRequest {
 
 /** webServer 服务（HTTP 路由注册）。 */
 export interface WebServerService {
+  /** 监听地址字面量（DSH 0.2.1+ 的 webServer.host；旧宿主可能无此字段）。 */
+  host?: string
   register(options: {
     kind: 'prefix'
     path: string
     handler: (request: ServerRequest, response: ServerResponse) => void | Promise<void>
   }): () => void
-}
-
-/** webRuntime 服务（信任围栏的 trustedHosts 来源）。 */
-export interface WebRuntimeService {
-  trustedHosts?: string[]
 }
 
 /** 日志器（DSH 注入的 ctx.logger；方法一律可选调用）。 */

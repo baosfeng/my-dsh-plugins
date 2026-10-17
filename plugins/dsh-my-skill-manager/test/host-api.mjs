@@ -173,7 +173,7 @@ test('GET /session returns the session cwd (issue #69 auto-detection)', async ()
 
 test('apply declares the required injects and returns effect disposers', async () => {
   const { ctx } = await boot()
-  assert.deepEqual(inject, ['skills', 'webServer', 'webRuntime', 'sessions'], 'inject list intact')
+  assert.deepEqual(inject, ['skills', 'webServer', 'sessions'], 'inject list intact（0.2.1 起不再硬注入 webRuntime）')
   const disposers = ctx.effectCallbacks.filter((e) => typeof e.disposer === 'function')
   assert.ok(disposers.length >= 2, 'provider and route effects return disposers')
 })
@@ -382,6 +382,41 @@ test('fence: non-loopback hosts, origin mismatch and trusted hosts', async () =>
     res3,
   )
   assert.equal(res3._status, 200, 'trusted host allowed')
+})
+
+test('DSH 0.2.1 信任源：webStartup.trustedHosts 放行（webRuntime 已移除）', async () => {
+  const holder = captureRoute('/my-skill-manager/api')
+  const ctx = {
+    logger: { warn: () => {} },
+    get: (name) => (name === 'webStartup' ? { trustedHosts: ['dsh.internal:3080'] } : undefined),
+    skills: { registerProvider: () => () => {}, list: async () => [] },
+    webServer: {
+      register: (route) => {
+        holder.set(route)
+        return () => {}
+      },
+    },
+    events: [],
+    effectCallbacks: [],
+    on() {},
+    effect(callback) {
+      callback()
+      return () => {}
+    },
+  }
+  apply(ctx)
+  const res = makeResponse()
+  await holder.get().handler(
+    makeRequest('GET', '/my-skill-manager/api/list', undefined, {
+      headers: {
+        host: 'dsh.internal:3080',
+        'sec-fetch-site': 'same-origin',
+        origin: 'http://dsh.internal:3080',
+      },
+    }),
+    res,
+  )
+  assert.equal(res._status, 200, 'webStartup trusted host allowed')
 })
 
 test('handler errors are answered with a 400 JSON body', async () => {

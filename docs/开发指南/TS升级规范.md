@@ -45,7 +45,7 @@ description: 全量 TypeScript 迁移规范 — 目录结构、tsconfig、类型
 
 ## 四、类型声明
 
-- `src/types.d.ts` 手写 DSH 运行时**最小契约**（`webServer` / `webRuntime` / `sessions` / `logger` / `on` / `effect`），**不安装 cordis 类型包**。
+- `src/types.d.ts` 手写 DSH 运行时**最小契约**（`webServer` / `webStartup` / `sessions` / `logger` / `on` / `effect`；旧宿主兜底才保留可选 `webRuntime`），**不安装 cordis 类型包**。
 - client 端类型内联在入口或 `globals.d.ts`（按宿主服务的真实契约声明形状）。
 - **禁止**写 `declare module 'dsh-shared'` 这类 ambient 声明：根配置加载所有 `.d.ts`，它会**全局覆盖**真实模块类型，让别的插件报「模块没有导出成员」。
 

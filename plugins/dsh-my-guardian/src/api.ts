@@ -6,8 +6,8 @@
 import { readStagedFile, writeStagedFile } from './state.js'
 import type { SharedContext, EntryRecord } from './state.js'
 import type { MismatchIssue } from './dep-precheck.js'
-import type { DshContext, ServerRequest, ServerResponse, WebServerService, WebRuntimeService } from './types.js'
-import { isTrustedApiRequest, readJsonBody, writeJson } from 'dsh-shared'
+import type { DshContext, ServerRequest, ServerResponse, WebServerService } from './types.js'
+import { createTrustFence, readJsonBody, writeJson } from 'dsh-shared'
 
 interface StagedEntry {
   id?: string
@@ -61,7 +61,9 @@ function ensureApi(ctx: DshContext, shared: SharedContext): void {
   if (shared.apiRegistered) return
   const webServer = ctx.get<WebServerService>('webServer')
   if (webServer === undefined) return
-  const webRuntime = ctx.get<WebRuntimeService>('webRuntime')
+  // 信任源迁移（DSH 0.2.1 移除 webRuntime）：每次请求现读
+  // webStartup.trustedHosts + webServer.host，旧宿主回退 webRuntime（dsh-shared 内部兼容）。
+  const fence = createTrustFence(ctx)
   shared.apiRegistered = true
   try {
     ctx.effect(
@@ -70,7 +72,7 @@ function ensureApi(ctx: DshContext, shared: SharedContext): void {
           kind: 'prefix',
           path: '/guardian/api',
           handler: (request: ServerRequest, response: ServerResponse) =>
-            handleApiRequest(ctx, shared, webRuntime, request, response),
+            handleApiRequest(ctx, shared, fence, request, response),
         }),
       'dsh-my-guardian: /guardian/api routes',
     )
@@ -87,11 +89,11 @@ function ensureApi(ctx: DshContext, shared: SharedContext): void {
 async function handleApiRequest(
   ctx: DshContext,
   shared: SharedContext,
-  webRuntime: WebRuntimeService | undefined,
+  fence: (request: ServerRequest) => boolean,
   request: ServerRequest,
   response: ServerResponse,
 ): Promise<void> {
-  if (!isTrustedApiRequest(request, webRuntime?.trustedHosts ?? [])) {
+  if (!fence(request)) {
     writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
     return
   }

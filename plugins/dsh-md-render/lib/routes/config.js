@@ -9,12 +9,13 @@
  * `/mermaid-render/api` 一律 404。三条路径都是包内 host↔client 私有契约，host 与
  * client 同包同版本发布，不存在错配窗口。
  *
- * 安全：所有请求先做 loopback 信任围栏（复用 dsh-shared 的 isTrustedApiRequest）——
+ * 安全：所有请求先做 loopback 信任围栏（复用 dsh-shared 的 createTrustFence：
+ * `webStartup.trustedHosts` + `webServer.host`，旧宿主回退 `webRuntime`）——
  * 配置仅本机可读写。
  *
  * 本文件编译为 lib/routes/config.js（产物必须提交）。
  */
-import { isTrustedApiRequest, readJsonBody, writeError, writeJson } from 'dsh-shared';
+import { createTrustFence, readJsonBody, writeError, writeJson } from 'dsh-shared';
 import { normalizeConfigPayload } from '../config.js';
 import { createLangsHandler } from './langs.js';
 import { CONFIG_API_PREFIX } from './paths.js';
@@ -51,11 +52,9 @@ function residentTarget(ctx) {
     const root = ctx.root;
     return (root ?? ctx);
 }
-/** loopback 信任围栏（ctx.get 可选调用：精简上下文退化成「只信 loopback」）。 */
+/** loopback 信任围栏（来源每次请求现读，服务晚于 fence 创建就绪也能生效）。 */
 function createFence(ctx) {
-    const runtime = ctx.get?.('webRuntime');
-    const trustedHosts = Array.isArray(runtime?.trustedHosts) ? runtime.trustedHosts : [];
-    return (request) => isTrustedApiRequest(request, trustedHosts);
+    return createTrustFence(ctx);
 }
 /** 统一 handler：围栏 → 方法分派 → 404 / 错误兜底。 */
 function apiHandler(fence, current, onConfigChange, langs) {

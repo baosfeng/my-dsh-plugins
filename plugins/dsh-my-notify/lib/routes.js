@@ -2,19 +2,17 @@
  * dsh-my-notify — /notify/api 路由（SSE 长连接 + 远程 hook + 信息查询 +
  * 配置读写 + 出站 webhook 状态）。
  *
- * 所有请求先做 loopback 信任围栏（与 /api 网关一致的契约）；stream 为
+ * 所有请求先做 loopback 信任围栏（与 /api 网关一致的契约；来源：dsh-shared
+ * createTrustFence —— `webStartup.trustedHosts` + `webServer.host`，旧宿主回退
+ * `webRuntime`）；stream 为
  * EventSource 长连接（心跳保活，卸载清理），trigger 为远程 webhook（可选
  * apiToken 校验），info 返回当前触发开关，config 读写配置（含 webhooks），
  * webhooks 返回出站 webhook 列表 + 失败记录（设置页可见）。
  */
-import { isTrustedApiRequest, header, readJsonBody, writeJson, writeError } from 'dsh-shared';
+import { createTrustFence, header, readJsonBody, writeJson, writeError } from 'dsh-shared';
 /** 注册 /notify/api 路由与心跳清理（两个 effect，各自返回 disposer）。 */
 export function registerNotifyRoutes(ctx, options, bus, onConfigChange, emitNotice, webhookStore) {
-    const webRuntime = ctx.get ? ctx.get('webRuntime') : undefined;
-    const trustedHosts = webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
-        ? webRuntime.trustedHosts
-        : [];
-    const fence = (request) => isTrustedApiRequest(request, trustedHosts);
+    const fence = createTrustFence(ctx);
     ctx.effect(() => ctx.webServer.register({
         kind: 'prefix',
         path: '/notify/api',

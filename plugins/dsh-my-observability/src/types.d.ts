@@ -1,10 +1,11 @@
 /**
  * dsh-my-observability — DSH 运行时类型声明（server 端）。
  *
- * 手写最小契约：插件只消费 ctx 的少量 API（webServer / webRuntime / logger /
+ * 手写最小契约：插件只消费 ctx 的少量 API（webServer / logger /
  * effect / on / get / serial）与 HTTP 请求/响应对象。DSH 运行时
- * （cordis Context、宿主 webServer / webRuntime / pluginInventory 服务）由宿主提供，
- * 本文件是插件与运行时之间的类型契约。
+ * （cordis Context、宿主 webServer / webStartup / pluginInventory 服务）由宿主提供，
+ * 本文件是插件与运行时之间的类型契约。信任源经 dsh-shared createTrustFence
+ * 现读（0.2.1 起 webStartup.trustedHosts + webServer.host），不再直接依赖 webRuntime。
  *
  * 说明：本文件是 .d.ts（纯类型，无产物输出）；server 端源码经
  * `import type { ... } from './types.js'` 引用（nodenext 的 .js → .d.ts 映射）。
@@ -37,6 +38,8 @@ export interface ServerResponse {
 
 /** webServer 服务（HTTP 路由注册）。 */
 export interface WebServerService {
+  /** 监听地址字面量（DSH 0.2.1+ 的 webServer.host；旧宿主可能无此字段）。 */
+  host?: string
   register(options: {
     kind: 'prefix'
     path: string
@@ -72,7 +75,7 @@ export interface DshContext {
   effect(callback: () => void | (() => void), label?: string): void
   /** 注册事件监听（返回 disposer）。 */
   on(event: string, listener: EventListener): () => void
-  /** 读取可选服务（webRuntime / agents / pluginInventory 等，未激活时 undefined）。 */
+  /** 读取可选服务（webStartup / agents / pluginInventory 等，未激活时 undefined）。 */
   get<T = unknown>(name: string, strict?: boolean): T | undefined
   /**
    * 事件分发。收集监听器返回值必须用 `serial`（顺序 await，返回首个

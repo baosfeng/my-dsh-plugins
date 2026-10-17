@@ -47,12 +47,11 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { loadStore, saveStore, saveStoreSync, drainStoreWrites, pruneQuestions } from './store.js';
-import { isTrustedApiRequest } from 'dsh-shared';
 import { resumeActiveTasks, runWatchdog } from './verify.js';
 import { registerListeners } from './events.js';
 import { createApi } from './api.js';
 import { registerTaskCommand } from './command.js';
-import { currentProfile, patchFileOf, writePatchConfig } from 'dsh-shared';
+import { createTrustFence, currentProfile, patchFileOf, writePatchConfig } from 'dsh-shared';
 import { configToPlain } from './util.js';
 import { emitPluginEvent } from './emit.js';
 import { RETRYABLE_CODES, RETRY_MAX, MAX_LOOP, MAX_VERIFY, RETRY_BASE_MS, STEER_COOLDOWN_MS, SAVE_DEBOUNCE_MS, RESUME_GRACE_MS, RATE_MAX_ACTIONS, ASK_TIMEOUT_MS, AUTOPILOT_GRACE_MS, WATCHDOG_INTERVAL_MS, STALL_TIMEOUT_MS, REPEAT_SIM_THRESHOLD, REPEAT_CONSECUTIVE, REPEAT_MAX_PER_SESSION, TOOL_LOOP_BUFFER, TOOL_LOOP_CONSECUTIVE, TOOL_LOOP_WINDOW, TOOL_LOOP_READONLY_TOOLS, NO_PROGRESS_ROUNDS, RESCUE_MAX_PER_SESSION, RESCUE_COOLDOWN_MS, } from './constants.js';
@@ -189,10 +188,6 @@ function createSaver(dir, store, options, logger) {
 function createShared(ctx, options) {
     const dir = resolveDir();
     const store = loadStore(dir, ctx.logger);
-    const webRuntime = ctx.get('webRuntime');
-    const trustedHosts = webRuntime !== undefined && webRuntime !== null && Array.isArray(webRuntime.trustedHosts)
-        ? webRuntime.trustedHosts
-        : [];
     const saver = createSaver(dir, store, options, ctx.logger);
     // 加载时清理待确认问题（已答/过期），有清理则防抖落盘（文件体积有界）。
     if (pruneQuestions(store) > 0)
@@ -205,7 +200,9 @@ function createShared(ctx, options) {
         save: saver.save,
         saver,
         drainSaves: saver.drain,
-        fence: (request) => isTrustedApiRequest(request, trustedHosts),
+        // 信任源迁移（DSH 0.2.1 移除 webRuntime）：每次请求现读
+        // webStartup.trustedHosts + webServer.host，旧宿主回退 webRuntime（dsh-shared 内部兼容）。
+        fence: createTrustFence(ctx),
         /** 结构化插件事件出口（best-effort，见 emit.js）。 */
         emit: (name, payload) => emitPluginEvent(ctx, name, payload),
         retryBuckets: new Map(),

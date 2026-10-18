@@ -135,25 +135,13 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
   )
   assertRule(
     '.tzx-md h1{',
-    [
-      'padding-left:var(--mdr-space-3)',
-      'border-left:3px solid var(--mdr-accent-line)',
-      'font-size:var(--mdr-fs-h1)',
-      'line-height:1.25',
-      'letter-spacing:-.015em',
-    ],
-    '.md h1：18px/1.4 无竖条',
+    ['font-size:var(--mdr-fs-h1)', 'line-height:1.4', 'letter-spacing:.1px'],
+    '.md h1：18px/1.4 无竖条（重构原型）',
   )
   assertRule(
     '.tzx-md h2{',
-    [
-      'padding-bottom:var(--mdr-space-1)',
-      'border-bottom:1px solid var(--mdr-line-soft)',
-      'font-size:var(--mdr-fs-h2)',
-      'line-height:1.35',
-      'letter-spacing:-.01em',
-    ],
-    '.md h2：底边发丝线 + 17px',
+    ['font-size:var(--mdr-fs-h2)', 'line-height:1.4', 'letter-spacing:.1px'],
+    '.md h2：16px 无下边框（重构原型）',
   )
   assertRule('.tzx-md h3{', ['font-size:var(--mdr-fs-h3)', 'line-height:1.4', 'letter-spacing:-.005em'], '.md h3：14px')
   assertRule(
@@ -191,12 +179,12 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
   assertRule(
     '.tzx-md blockquote{',
     [
-      'padding:var(--mdr-space-3) var(--mdr-space-4)',
-      'border-left:3px solid var(--mdr-accent-line)',
-      'border-radius:0 var(--mdr-radius-md) var(--mdr-radius-md) 0',
-      'background:var(--mdr-tint)',
+      'padding:6px var(--mdr-space-3)',
+      'border-left:2px solid var(--mdr-accent)',
+      'border-radius:0 7px 7px 0',
+      'background:var(--mdr-accent-soft)',
     ],
-    '.md blockquote：12/16 内边距 + 3px 线索竖条 + 圆角 + 6% 薄底',
+    '.md blockquote：6/12 内边距 + 2px 强调竖条 + 7px 圆角 + 强调薄底（重构原型）',
   )
   assertRule(
     '.tzx-md blockquote blockquote{',

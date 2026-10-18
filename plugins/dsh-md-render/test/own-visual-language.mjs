@@ -125,22 +125,19 @@ test('代码块辨识点：语言胶囊 + 非通栏灰带头部 + 复制三路�
 
 test('markdown 自有层级与形状：h1 竖条 / h2 下边框 / 引用块 / 渐隐分隔线 / 表格 / 行内代码胶囊', () => {
   assert.ok(
-    CSS.includes('.tzx-md h1{') && CSS.includes('border-left:3px solid var(--mdr-accent-line)'),
-    'h1 左侧线索竖条（55% 强调，非实心）',
+    CSS.includes('.tzx-md h1{') && !CSS.includes('border-left:3px solid var(--mdr-accent-line)'),
+    'h1 无竖条（重构原型：标题只靠字号与字重分层）',
   )
   assert.ok(
     CSS.includes('.tzx-md h2{') && CSS.includes('border-bottom:1px solid var(--mdr-line-soft)'),
     'h2 下边框走发丝线',
   )
   assert.ok(
-    CSS.includes('font-size:var(--mdr-fs-h1);line-height:1.25'),
-    'h1 字号 / 行高取自有阶梯 token（原型 21px/1.25）',
+    CSS.includes('font-size:var(--mdr-fs-h1);line-height:1.4'),
+    'h1 字号 / 行高取自有阶梯 token（重构原型 18px/1.4）',
   )
   assert.ok(CSS.includes('line-height:1.6'), '正文行高 1.6（原型 §E3 的中文正文口径）')
-  assert.ok(
-    CSS.includes('border-radius:0 var(--mdr-radius-md) var(--mdr-radius-md) 0'),
-    '引用块：左强调竖线 + 淡背景 + 圆角',
-  )
+  assert.ok(CSS.includes('border-radius:0 7px 7px 0'), '引用块：左 2px 强调竖线 + 强调薄底 + 7px 圆角（重构原型）')
   assert.ok(
     CSS.includes('linear-gradient(90deg,transparent,var(--mdr-line) 15%'),
     '分隔线是两侧渐隐的发丝线（自有形状）',

@@ -83,8 +83,8 @@ const STYLES: string = `
 .tzx-md{position:relative;display:flex;flex-direction:column;gap:var(--mdr-space-3);min-width:0;font-size:var(--mdr-fs-body);line-height:1.6;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
 .tzx-md p{margin:0}
 .tzx-md h1,.tzx-md h2,.tzx-md h3,.tzx-md h4,.tzx-md h5,.tzx-md h6{margin-top:0;font-weight:600}
-.tzx-md h1{padding-left:var(--mdr-space-3);border-left:3px solid var(--mdr-accent-line);font-size:var(--mdr-fs-h1);line-height:1.25;letter-spacing:-.015em}
-.tzx-md h2{padding-bottom:var(--mdr-space-1);border-bottom:1px solid var(--mdr-line-soft);font-size:var(--mdr-fs-h2);line-height:1.35;letter-spacing:-.01em}
+.tzx-md h1{font-size:var(--mdr-fs-h1);line-height:1.4;letter-spacing:.1px}
+.tzx-md h2{font-size:var(--mdr-fs-h2);line-height:1.4;letter-spacing:.1px}
 .tzx-md h3{font-size:var(--mdr-fs-h3);line-height:1.4;letter-spacing:-.005em}
 .tzx-md h4{font-size:var(--mdr-fs-h4);line-height:1.4;color:var(--dsw-alias-label-secondary)}
 .tzx-md h5{font-size:var(--mdr-fs-h5);line-height:1.45;letter-spacing:.01em;color:var(--dsw-alias-label-secondary)}
@@ -100,7 +100,7 @@ const STYLES: string = `
 .tzx-md li::marker{color:var(--mdr-accent-text);font-weight:600}
 .tzx-md ol>li::marker{font-variant-numeric:tabular-nums}
 .tzx-md ul ul,.tzx-md ul ol,.tzx-md ol ul,.tzx-md ol ol{margin-top:var(--mdr-space-1);gap:var(--mdr-space-1)}
-.tzx-md blockquote{margin:0;padding:var(--mdr-space-3) var(--mdr-space-4);border-left:3px solid var(--mdr-accent-line);border-radius:0 var(--mdr-radius-md) var(--mdr-radius-md) 0;background:var(--mdr-tint);color:var(--dsw-alias-label-secondary)}
+.tzx-md blockquote{margin:0;padding:6px var(--mdr-space-3);border-left:2px solid var(--mdr-accent);border-radius:0 7px 7px 0;background:var(--mdr-accent-soft);color:var(--dsw-alias-label-secondary)}
 .tzx-md blockquote p{margin:0}
 /* 嵌套引用降级：左竖线转中性、底色更淡，不与一级引用抢层级（原型同款） */
 .tzx-md blockquote blockquote{margin-top:var(--mdr-space-2);border-left-color:var(--mdr-line);background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,transparent)}

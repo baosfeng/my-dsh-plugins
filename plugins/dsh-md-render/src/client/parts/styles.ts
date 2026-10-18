@@ -48,15 +48,15 @@ const STYLES: string = `
 --mdr-line-strong:color-mix(in srgb,var(--dsw-alias-label-primary) 26%,transparent);
 --mdr-surface:var(--dsw-alias-markdown-code-block);
 /* 几何：逐字对齐原型 02-style.md（--radius-sm/md/lg/pill = 8 / 12 / 18 / 980） */
---mdr-radius-sm:8px;--mdr-radius-md:12px;--mdr-radius-lg:18px;--mdr-pill:980px;
+--mdr-radius-sm:4px;--mdr-radius-md:8px;--mdr-radius-lg:10px;--mdr-pill:980px;
 /* 字号阶梯：h1–h6 逐字对齐原型（21 / 17 / 15 / 14 / 13 / 12）——**原型取值是「正文 14px」下的基线**，
    这里改用宿主的**内容字号轴**平移，跟随「设置 → 外观 → 字号大小」（12–17）：正文 / 表格读
    --dsh-content-font-size；h1–h3 用 calc(原型值 + --dsh-content-font-delta)（宿主官方 markdown 同款写法，
    它 h1 也是 calc(21px + delta)）；h5 / h6 / 小字档**不缩放** —— 与宿主对 dense secondary text 的策略一致
    （缩到 11–12px 以下会掉可读性）。行高用相对倍数，天然跟随。 */
---mdr-fs-h1:calc(21px + var(--dsh-content-font-delta,0px));
---mdr-fs-h2:calc(17px + var(--dsh-content-font-delta,0px));
---mdr-fs-h3:calc(15px + var(--dsh-content-font-delta,0px));
+--mdr-fs-h1:calc(18px + var(--dsh-content-font-delta,0px));
+--mdr-fs-h2:calc(16px + var(--dsh-content-font-delta,0px));
+--mdr-fs-h3:calc(14px + var(--dsh-content-font-delta,0px));
 --mdr-fs-h4:var(--dsh-content-font-size,14px);
 --mdr-fs-h5:13px;--mdr-fs-h6:12px;
 --mdr-fs-body:var(--dsh-content-font-size,14px);--mdr-fs-xs:12px;
@@ -166,8 +166,8 @@ const STYLES: string = `
 .dsh-md-render-code-host{display:block;min-width:0}
 /* container-type：把**卡片自身**声明为查询容器 —— 分档要按「可用宽度（消息列宽）」判，
    不是视口（大屏 + 侧栏展开时列可能只有 380px，视口断点判不到）。见下方 @container 分档。 */
-.dsh-md-render-code{container-type:inline-size;position:relative;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--mdr-line);border-left:3px solid var(--mdr-accent);border-radius:var(--mdr-radius-md);background:var(--mdr-surface);box-shadow:var(--dsw-shadow-lv1)}
-.dsh-md-render-code-head{display:flex;align-items:center;justify-content:flex-end;gap:var(--mdr-space-1);row-gap:2px;flex-wrap:wrap;padding:6px 10px 6px 12px;background:var(--mdr-tint);border-bottom:1px solid var(--mdr-line-soft)}
+.dsh-md-render-code{container-type:inline-size;position:relative;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-lg);background:var(--mdr-surface);box-shadow:var(--dsw-shadow-lv1)}
+.dsh-md-render-code-head{display:flex;align-items:center;justify-content:flex-end;gap:var(--mdr-space-1);row-gap:2px;flex-wrap:wrap;padding:6px 10px 6px 12px;background:var(--dsw-alias-markdown-code-block-banner);border-bottom:1px solid var(--mdr-line-soft)}
 .dsh-md-render-code-lang{margin-right:auto;min-width:0;overflow:hidden;padding:1px 8px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 22%,transparent);border-radius:var(--mdr-pill);background:var(--mdr-accent-soft);font-family:var(--mdr-mono);font-size:10px;font-weight:600;line-height:16px;letter-spacing:.08em;text-transform:uppercase;text-overflow:ellipsis;white-space:nowrap;color:var(--mdr-accent-text)}
 .dsh-md-render-code-lang:empty{display:none}
 .dsh-md-render-code-actions{display:inline-flex;align-items:center;gap:var(--mdr-space-1);flex:none}

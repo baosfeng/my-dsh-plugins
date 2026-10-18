@@ -70,11 +70,11 @@ test('自有设计 token：圆角 / 胶囊 / 线 / 强调色 / 等宽栈都是�
     '--mdr-line-soft:',
     '--mdr-line-strong:',
     '--mdr-surface:',
-    '--mdr-radius-sm:8px',
-    '--mdr-radius-md:12px',
-    '--mdr-radius-lg:18px',
+    '--mdr-radius-sm:4px',
+    '--mdr-radius-md:8px',
+    '--mdr-radius-lg:10px',
     '--mdr-pill:980px',
-    '--mdr-fs-h1:calc(21px',
+    '--mdr-fs-h1:calc(18px',
     '--mdr-fs-h6:12px',
     '--mdr-fs-body:var(--dsh-content-font-size',
     '--mdr-space-3:12px',
@@ -108,8 +108,14 @@ test('代码块辨识点：语言胶囊 + 非通栏灰带头部 + 复制三路�
     CSS.includes('@media (hover:none){.dsh-md-render-code-copy{opacity:1}}'),
     '触屏常显（只做 hover 手机点不到）',
   )
-  assert.ok(CSS.includes('border-left:3px solid var(--mdr-accent)'), '代码卡片左侧 3px 强调竖条')
-  assert.ok(CSS.includes('background:var(--mdr-tint)'), '头部是薄强调底，不是通栏灰带')
+  assert.ok(
+    !CSS.includes('border-left:3px solid var(--mdr-accent)'),
+    '代码卡片用统一发丝边框（重构原型去掉左侧强调竖条）',
+  )
+  assert.ok(
+    CSS.includes('background:var(--dsw-alias-markdown-code-block-banner)'),
+    '头部取宿主 banner 薄底（重构原型）',
+  )
   assert.ok(
     CSS.includes('white-space:pre;overflow-wrap:normal;word-break:normal'),
     '长行横向滚动保真（官方是 pre-wrap + break-all）',
@@ -264,7 +270,7 @@ test('控件只显示图标：文字走悬停浮层（零布局位移）；每�
 test('构建产物里也是这套外观（源码与产物不漂移）', () => {
   for (const marker of [
     '--mdr-accent:',
-    '--mdr-radius-md:12px',
+    '--mdr-radius-md:8px',
     '--mdr-motion-fast:150ms',
     '.dsh-md-render-code-copy{opacity:0}',
     '.dsh-md-render-mermaid-view-toggle>.dsh-md-render-mermaid-vt-active',

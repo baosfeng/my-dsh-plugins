@@ -31,7 +31,7 @@ const PLUGIN = join(here, '..')
 const SRC = readFileSync(join(PLUGIN, 'src', 'client', 'parts', 'styles.ts'), 'utf8')
 const BUNDLE = readFileSync(join(PLUGIN, 'lib', 'client.js'), 'utf8')
 /** 原型文件（未进 CI 时不存在：期望值已抄进本文件，存在时再做一轮交叉校验）。 */
-const PROTOTYPE_PATH = join(PLUGIN, '..', '..', 'docs', 'md渲染', '原型', '08-prototype.html')
+const PROTOTYPE_PATH = join(PLUGIN, '..', '..', 'docs', '原型重构', 'dsh-md-render.html')
 
 /** 剔除块注释与行注释（与其它静态断言同一口径：注释里提到取值不算命中）。 */
 function stripComments(source) {
@@ -89,18 +89,18 @@ function assertRule(selector, snippets, origin) {
   }
 }
 
-/** 原型 token → 插件 token 的取值映射（期望值抄自 08-prototype.html 的 :root）。 */
+/** 原型 token → 插件 token 的取值映射（期望值抄自 docs/原型重构/dsh-md-render.html 与设计基线的圆角/间距体系）。 */
 const TOKEN_MAP = [
-  ['--radius-sm', '--mdr-radius-sm', '8px', '8px'],
-  ['--radius-md', '--mdr-radius-md', '12px', '12px'],
-  ['--radius-lg', '--mdr-radius-lg', '18px', '18px'],
+  ['--radius-sm', '--mdr-radius-sm', '4px', '4px'],
+  ['--radius-md', '--mdr-radius-md', '8px', '8px'],
+  ['--radius-lg', '--mdr-radius-lg', '10px', '10px'],
   ['--radius-pill', '--mdr-pill', '980px', '980px'],
   ['--text-xs', '--mdr-fs-xs', '12px', '12px'],
   ['--text-xs', '--mdr-fs-h6', '12px', '12px'],
   // 字号：原型取值是「正文 14px」下的基线，实现改用**宿主的字号轴**平移（跟随设置里的字号大小 12–17）
   ['--text-sm', '--mdr-fs-h4', '14px', 'var(--dsh-content-font-size,14px)'],
-  ['--text-base', '--mdr-fs-h2', '17px', 'calc(17px + var(--dsh-content-font-delta,0px))'],
-  ['--text-lg', '--mdr-fs-h1', '21px', 'calc(21px + var(--dsh-content-font-delta,0px))'],
+  ['--text-base', '--mdr-fs-h2', '16px', 'calc(16px + var(--dsh-content-font-delta,0px))'],
+  ['--text-lg', '--mdr-fs-h1', '18px', 'calc(18px + var(--dsh-content-font-delta,0px))'],
   ['--space-1', '--mdr-space-1', '4px', '4px'],
   ['--space-2', '--mdr-space-2', '8px', '8px'],
   ['--space-3', '--mdr-space-3', '12px', '12px'],
@@ -142,7 +142,7 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
       'line-height:1.25',
       'letter-spacing:-.015em',
     ],
-    '.md h1：12px 内缩 + 3px 55% 线索竖条 + 21px/1.25 + 紧字距',
+    '.md h1：18px/1.4 无竖条',
   )
   assertRule(
     '.tzx-md h2{',
@@ -155,7 +155,7 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
     ],
     '.md h2：底边发丝线 + 17px',
   )
-  assertRule('.tzx-md h3{', ['font-size:var(--mdr-fs-h3)', 'line-height:1.4', 'letter-spacing:-.005em'], '.md h3：15px')
+  assertRule('.tzx-md h3{', ['font-size:var(--mdr-fs-h3)', 'line-height:1.4', 'letter-spacing:-.005em'], '.md h3：14px')
   assertRule(
     '.tzx-md h4{',
     ['font-size:var(--mdr-fs-h4)', 'line-height:1.4', 'color:var(--dsw-alias-label-secondary)'],
@@ -509,8 +509,8 @@ test('有意偏离逐条落实（偏离必须显式，不能静默不对齐）',
 test('核验补强：原型字面值 / 块体完整性 / 取值来源 / 只读行为一致性', () => {
   // ── G1 原型**字面值**（不在 :root token 里的 h3/h5 字号：此前漏测，探针改成 19px 仍全绿）──
   assert.ok(
-    CSS.includes('--mdr-fs-h3:calc(15px + var(--dsh-content-font-delta,0px))'),
-    '--mdr-fs-h3 基线 15px + 宿主字号增量（原型 .md h3 字面值 15px）',
+    CSS.includes('--mdr-fs-h3:calc(14px + var(--dsh-content-font-delta,0px))'),
+    '--mdr-fs-h3 基线 14px + 宿主字号增量（重构原型 .md-body h3 字面值 14px）',
   )
   assert.ok(
     CSS.includes('--mdr-fs-h5:13px'),
@@ -641,12 +641,8 @@ test('工具条对齐（原型 §sec-toolbar）：常驻四项、头部一行、
   // ⑧ 原型侧交叉校验（原型文件存在时）
   if (existsSync(PROTOTYPE_PATH)) {
     const proto = readFileSync(PROTOTYPE_PATH, 'utf8')
-    assert.ok(proto.includes('data-od-id="sec-toolbar"'), '原型里有 §sec-toolbar 章节（实现的依据）')
-    assert.ok(proto.includes('@container (max-width:359px)'), '原型的极窄兜底断点与实现一致')
-    assert.ok(proto.includes('flex-wrap:nowrap'), '原型头部同样强制一行')
-    // 只查菜单区域：章节说明文字里会提到「渲染为…」（解释为什么删），不算重复
-    const menuHtml = proto.slice(proto.indexOf('class="ctl-menu"'), proto.indexOf('tb-note'))
-    assert.equal(/渲染为 (Markdown|源码)/.test(menuHtml), false, '原型菜单里也没有重复的「渲染为」')
+    assert.ok(proto.includes('fence-actions'), '原型里有围栏块工具条（.fence-actions，实现的依据）')
+    assert.ok(proto.includes('--radius-lg'), '原型里有通用设计 token 块（几何取值的唯一真源）')
   }
 })
 
@@ -657,9 +653,9 @@ test('宿主适配：字号跟随宿主的「内容字号轴」，不许写死 p
   )
   assert.ok(CSS.includes('--mdr-fs-h4:var(--dsh-content-font-size,14px)'), 'h4 与正文同号（原型 --text-sm 就是正文档）')
   for (const [token, base] of [
-    ['--mdr-fs-h1', '21px'],
-    ['--mdr-fs-h2', '17px'],
-    ['--mdr-fs-h3', '15px'],
+    ['--mdr-fs-h1', '18px'],
+    ['--mdr-fs-h2', '16px'],
+    ['--mdr-fs-h3', '14px'],
   ]) {
     assert.ok(
       CSS.includes(`${token}:calc(${base} + var(--dsh-content-font-delta,0px))`),
@@ -680,11 +676,11 @@ test('宿主适配：字号跟随宿主的「内容字号轴」，不许写死 p
 
 test('构建产物与源码不漂移（原型对齐标记在 lib/client.js 里同样成立）', () => {
   for (const marker of [
-    '--mdr-radius-sm:8px',
-    '--mdr-radius-md:12px',
-    '--mdr-radius-lg:18px',
+    '--mdr-radius-sm:4px',
+    '--mdr-radius-md:8px',
+    '--mdr-radius-lg:10px',
     '--mdr-pill:980px',
-    '--mdr-fs-h1:calc(21px',
+    '--mdr-fs-h1:calc(18px',
     '--mdr-motion-base:220ms',
     '--mdr-scrim:',
     '.dsh-md-render-copy[data-state="copied"]',

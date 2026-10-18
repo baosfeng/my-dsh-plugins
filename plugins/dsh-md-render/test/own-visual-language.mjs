@@ -138,18 +138,17 @@ test('markdown 自有层级与形状：h1 竖条 / h2 下边框 / 引用块 / �
   )
   assert.ok(CSS.includes('line-height:1.6'), '正文行高 1.6（原型 §E3 的中文正文口径）')
   assert.ok(CSS.includes('border-radius:0 7px 7px 0'), '引用块：左 2px 强调竖线 + 强调薄底 + 7px 圆角（重构原型）')
-  assert.ok(
-    CSS.includes('linear-gradient(90deg,transparent,var(--mdr-line) 15%'),
-    '分隔线是两侧渐隐的发丝线（自有形状）',
-  )
+  assert.ok(CSS.includes('border-top:1px solid var(--mdr-line-soft)'), '分隔线是中性发丝线（重构原型）')
   assert.ok(
     CSS.includes(
-      '.dsh-md-render-md-table-wrap{overflow-x:auto;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md)}',
+      '.dsh-md-render-md-table-wrap{overflow-x:auto;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-md);background:var(--mdr-surface)}',
     ),
     '表格：圆角外框',
   )
   assert.ok(
-    CSS.includes('.dsh-md-render-md-table th{font-weight:600;background:var(--mdr-surface)}'),
+    CSS.includes(
+      '.dsh-md-render-md-table th{font-weight:600;background:var(--dsw-alias-bg-layer-2,var(--mdr-surface))',
+    ),
     '表头中性薄底（原型口径，不再是强调色底）',
   )
   assert.ok(CSS.includes('font-size:.86em'), '行内代码胶囊（字号相对正文收敛，原型 .86em）')

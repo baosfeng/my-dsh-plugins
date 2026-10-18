@@ -4041,7 +4041,7 @@ const STYLES = `
 .tzx-md blockquote p{margin:0}
 /* 嵌套引用降级：左竖线转中性、底色更淡，不与一级引用抢层级（原型同款） */
 .tzx-md blockquote blockquote{margin-top:var(--mdr-space-2);border-left-color:var(--mdr-line);background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,transparent)}
-.tzx-md hr{border:0;align-self:stretch;height:1px;margin:var(--mdr-space-2) 0;background:linear-gradient(90deg,transparent,var(--mdr-line) 15%,var(--mdr-line) 85%,transparent)}
+.tzx-md hr{border:0;align-self:stretch;height:0;margin:2px 0;border-top:1px solid var(--mdr-line-soft)}
 .tzx-md a{border-radius:3px;color:var(--dsw-alias-link);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--dsw-alias-link) 40%,transparent);text-decoration-thickness:1px;text-underline-offset:3px;transition:color var(--mdr-motion-fast) var(--mdr-ease),text-decoration-color var(--mdr-motion-fast) var(--mdr-ease)}
 .tzx-md a:hover{text-decoration-color:currentColor}
 .tzx-md a:active{color:var(--dsw-alias-label-primary)}
@@ -4078,12 +4078,12 @@ const STYLES = `
 .tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked)::after{transform:rotate(45deg) scale(1);opacity:1}
 @supports not selector(:has(*)){.tzx-md .dsh-md-render-md-task{position:static;width:auto;height:auto;opacity:1;appearance:auto}.tzx-md .dsh-md-render-md-task-item{padding-left:0}.tzx-md .dsh-md-render-md-task-item::before,.tzx-md .dsh-md-render-md-task-item::after{display:none}}
 /* 表格：圆角外框 + 中性表头薄底 + 发丝行线 + 行 hover（原型同款；表头不再是强调色薄底） */
-.tzx-md .dsh-md-render-md-table-wrap{overflow-x:auto;border:1px solid var(--mdr-line-soft);border-radius:var(--mdr-radius-md)}
-.tzx-md table.dsh-md-render-md-table{border-collapse:collapse;width:100%;font-size:var(--mdr-fs-body);line-height:1.55}
-.tzx-md .dsh-md-render-md-table th,.tzx-md .dsh-md-render-md-table td{padding:var(--mdr-space-2) var(--mdr-space-3);text-align:left;vertical-align:top;border-bottom:1px solid var(--mdr-line-soft)}
-.tzx-md .dsh-md-render-md-table th{font-weight:600;background:var(--mdr-surface)}
+.tzx-md .dsh-md-render-md-table-wrap{overflow-x:auto;border:1px solid var(--mdr-line);border-radius:var(--mdr-radius-md);background:var(--mdr-surface)}
+.tzx-md table.dsh-md-render-md-table{border-collapse:collapse;width:100%;min-width:420px;font-size:var(--mdr-fs-xs);line-height:1.55}
+.tzx-md .dsh-md-render-md-table th,.tzx-md .dsh-md-render-md-table td{padding:7px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--mdr-line-soft)}
+.tzx-md .dsh-md-render-md-table th{font-weight:600;background:var(--dsw-alias-bg-layer-2,var(--mdr-surface));border-bottom-color:var(--mdr-line)}
 .tzx-md .dsh-md-render-md-table tbody tr td{transition:background-color var(--mdr-motion-fast) var(--mdr-ease)}
-.tzx-md .dsh-md-render-md-table tbody tr:hover td{background:var(--mdr-tint)}
+.tzx-md .dsh-md-render-md-table tbody tr:hover td{background:var(--dsw-alias-bg-layer-2,var(--mdr-tint))}
 .tzx-md .dsh-md-render-md-table tbody tr:last-child td{border-bottom:0}
 .tzx-md .dsh-md-render-md-left{text-align:left}
 .tzx-md .dsh-md-render-md-center{text-align:center}

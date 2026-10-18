@@ -193,12 +193,8 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
   )
   assertRule(
     '.tzx-md hr{',
-    [
-      'height:1px',
-      'margin:var(--mdr-space-2) 0',
-      'linear-gradient(90deg,transparent,var(--mdr-line) 15%,var(--mdr-line) 85%,transparent)',
-    ],
-    '.md hr：两侧渐隐发丝线',
+    ['height:0', 'margin:2px 0', 'border-top:1px solid var(--mdr-line-soft)'],
+    '.md hr：中性发丝线（重构原型）',
   )
   assertRule(
     '.tzx-md a{',
@@ -329,27 +325,22 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
   assert.ok(CSS.includes('@supports not selector(:has(*))'), ':has() 失配时退化为原生控件（原型 @supports 块）')
   assertRule(
     '.tzx-md .dsh-md-render-md-table-wrap{',
-    ['overflow-x:auto', 'border:1px solid var(--mdr-line-soft)', 'border-radius:var(--mdr-radius-md)'],
-    '.md-table-wrap：横向滚动 + 发丝外框 + 12px 圆角',
+    ['overflow-x:auto', 'border:1px solid var(--mdr-line)', 'border-radius:var(--mdr-radius-md)'],
+    '.md-table-wrap：横向滚动 + 中性外框 + 8px 圆角（重构原型）',
   )
   assertRule(
     '.tzx-md table.dsh-md-render-md-table{',
-    ['border-collapse:collapse', 'width:100%', 'font-size:var(--mdr-fs-body)', 'line-height:1.55'],
+    ['border-collapse:collapse', 'width:100%', 'min-width:420px', 'font-size:var(--mdr-fs-xs)', 'line-height:1.55'],
     '.md table：14px / 1.55',
   )
   assertRule(
     '.tzx-md .dsh-md-render-md-table th,.tzx-md .dsh-md-render-md-table td{',
-    [
-      'padding:var(--mdr-space-2) var(--mdr-space-3)',
-      'text-align:left',
-      'vertical-align:top',
-      'border-bottom:1px solid var(--mdr-line-soft)',
-    ],
+    ['padding:7px 10px', 'text-align:left', 'vertical-align:top', 'border-bottom:1px solid var(--mdr-line-soft)'],
     '表格单元格：8/12 内边距 + 发丝行线',
   )
   assertRule(
     '.tzx-md .dsh-md-render-md-table th{',
-    ['font-weight:600', 'background:var(--mdr-surface)'],
+    ['font-weight:600', 'background:var(--dsw-alias-bg-layer-2,var(--mdr-surface))'],
     '表头：中立薄底（不再是强调色底）',
   )
   assertRule(
@@ -359,8 +350,8 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
   )
   assertRule(
     '.tzx-md .dsh-md-render-md-table tbody tr:hover td{',
-    ['background:var(--mdr-tint)'],
-    '行 hover：强调色 6% 薄底',
+    ['background:var(--dsw-alias-bg-layer-2,var(--mdr-tint))'],
+    '行 hover：中性 hover 底（重构原型）',
   )
   assertRule('.tzx-md .dsh-md-render-md-table tbody tr:last-child td{', ['border-bottom:0'], '末行无底线')
   for (const align of ['left', 'center', 'right']) {

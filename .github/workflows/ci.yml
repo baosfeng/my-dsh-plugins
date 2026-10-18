@@ -254,6 +254,7 @@ jobs:
       #   / 客户端产物体积预算（check-client-size，issue #322）/ 包发布卫生（check-pack-hygiene，issue #323）
       #   / prettier --check / 发版校验单测（test:scripts）/ dependency-cruiser / knip / jscpd
       #   / check-docs / check-links / check-gate-parity（本地↔CI 覆盖一致性）
+      #   / 单装可用性（standalone-install，issue #485）：npm pack + 离线最小依赖树 + import 入口
       #   / 固定 sleep 门禁（check-test-sleeps，issue #335）
       #   / 产物一致性（issue #318，ADR-0002）：共享部件 `plugins/dsh-shared/client-parts/*` 是
       #     纯函数文本片段，构建期 splice 进消费方的 lib/client.js；server 端 lib/*.js 是 tsc

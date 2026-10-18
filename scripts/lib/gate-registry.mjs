@@ -221,6 +221,15 @@ export const GATE_REGISTRY = [
     why: '唯一权威（2026-10-10 假绿复盘新增）：插件对**本仓 workspace 包**（dsh-shared 等）的解析必须指向工作区源码。CI 只跑根 `npm ci`，`plugins/*/` 没有自己的 node_modules，解析到 workspace 源码；本地若残留 `plugins/<name>/node_modules/dsh-shared`（registry 陈旧副本、被 .gitignore 忽略、不在 lockfile）就会**遮蔽**真源码 —— 同一断言两侧判两份代码。实测事故：notify/task-reliability 的 `dsh-shared@0.1.4` 遮蔽 workspace `0.1.6`，本地 `config-store.mjs:220` 绿、CI 红，并**掩盖**了 `parseConfigBlock` 把无值键建成空对象的真实回归。判据是 realpath 落点（不是「是不是符号链接」），只报告不自动删。',
   },
   {
+    id: 'standalone-install',
+    authority: '`scripts/check-standalone-install.mjs`（判定内核 `scripts/lib/standalone-install.mjs`，issue #485）',
+    local: 'always',
+    localCommand: 'node scripts/check-standalone-install.mjs',
+    ci: { ...CI_QUALITY_STEP },
+    cost: '约 6.0s（12 插件串行 pack+install 冒烟；与 pack-hygiene 并发时实测 6.0~6.1s）',
+    why: '唯一权威（issue #485）：用户单装后启动即 `MODULE_NOT_FOUND` —— 4 个插件把内部包 dsh-shared 写在 `peerDependencies`，包管理器不装 peer，而作者本地/CI 的根 `node_modules` 恰好有该包，于是双侧全绿；修复把 dsh-shared 挪进 `dependencies`。它比 dep-resolution 多拦两条既有门禁覆盖不到的路：① server 面 import 了裸包却**完全没声明**（本地根 node_modules 恰好有 → 用户单装即失败）；② **打包产物**单装后入口加载失败（files 漏文件 / 依赖树缺包 / exports 指向不存在文件）。判据 A/B/C：A 裸包 import ∈ dependencies 或宿主白名单（Node 内置 / cordis / react / react-dom / @deepseek-ai/*）；B 非宿主包 peer-only 即红；C npm pack 产物离线重建最小依赖树后 import 入口成功。只读、不联网、不装到 `plugins/`。',
+  },
+  {
     id: 'gate-parity',
     authority: '`scripts/check-gate-parity.mjs` + `scripts/lib/gate-registry.mjs`',
     local: 'always',

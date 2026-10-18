@@ -653,6 +653,9 @@ const CHECK_META = {
   // 依赖解析一致性（假绿根因）：插件必须解析到 workspace 真源码，而不是 node_modules 里的
   // 陈旧副本 —— 否则本地测旧实现、CI 测新源码（2026-10-10 两次 push 红的根因）。
   'dep-resolution': { command: 'node scripts/check-dep-resolution.mjs', ciQuality: true },
+  // issue #485：发布包必须能「单独安装 + 入口加载」——判据 A/B/C（依赖声明完整 / 非宿主包
+  // peer-only 即红 / npm pack 产物离线最小依赖树 import 入口成功）。本地与 CI 同为单点。
+  'standalone-install': { command: 'node scripts/check-standalone-install.mjs', ciQuality: true },
   // issue #311：PR 审查的判定内核（三态判定 / 未能判定显式 / 抖动区分 / 历史摘要）必须有单测，
   // 且单测必须真的跑在门禁里——判定分支写错时靠它拦住（此前这些用例从没进过 CI）。
   'review-scripts': { command: 'node --test .github/scripts/*.test.cjs', ciQuality: true },
@@ -935,6 +938,17 @@ const CHECK_DEFS = [
     label: 'dep-resolution (node scripts/check-dep-resolution.mjs)',
     note: '插件对 workspace 内包（dsh-shared 等）的解析必须指向仓库源码；发现 node_modules 陈旧副本遮蔽即红并列出路径/版本（防「本地绿、CI 红」假绿）',
     run: () => runCapture('node', ['scripts/check-dep-resolution.mjs'], root),
+  },
+  {
+    // issue #485：把内部包写成 peerDependencies → 用户单装运行期 MODULE_NOT_FOUND，
+    // 而本地/CI 因根 node_modules 已有该包而全绿。dep-resolution 只管 workspace 包解析落点，
+    // 这里补三条它覆盖不到的路：A server 面裸包 import 必须 ∈ dependencies 或宿主白名单；
+    // B 非宿主包 peer-only 即红；C npm pack 产物离线重建最小依赖树后 import 入口成功。
+    // 只读、不联网、不装到 plugins/（每个包独立 mkdtemp，12 包串行，实测约 6s）。
+    id: 'standalone-install',
+    label: 'standalone-install (node scripts/check-standalone-install.mjs)',
+    note: 'issue #485 单装可用性：12 个发布包逐一 npm pack + 离线最小依赖树 + import 入口（约 6s）；server 面裸包 import 必须在 dependencies 或宿主白名单（cordis/react/react-dom/@deepseek-ai/*、Node 内置），非宿主包 peer-only 即红',
+    run: () => runCapture('node', ['scripts/check-standalone-install.mjs'], root),
   },
   {
     // issue #330 关键交付物：本地检查项集合 ↔ CI 步骤集合的**双向**一致性校验。

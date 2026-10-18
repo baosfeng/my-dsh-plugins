@@ -2868,11 +2868,11 @@
       .fa-row {
         display: flex;
         align-items: center;
-        gap: 7px;
-        height: 30px;
-        padding: 0 6px;
+        gap: 8px;
+        height: 32px;
+        padding: 0 8px;
         border-radius: 6px;
-        font-size: 11.5px;
+        font-size: 12px;
         color: var(--text-2);
         border: 0;
         background: transparent;
@@ -2886,8 +2886,8 @@
         color: var(--text);
       }
       .fa-row .file-ico {
-        width: 14px;
-        height: 14px;
+        width: 15px;
+        height: 15px;
         color: var(--text-3);
         flex: none;
       }
@@ -2904,30 +2904,21 @@
         flex: none;
         white-space: nowrap;
       }
-      .act-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 3px;
-        height: 18px;
-        padding: 0 6px;
-        border-radius: 4px;
-        font-size: 10px;
+      .fa-act {
+        font-size: 10.5px;
         line-height: 1;
-        white-space: nowrap;
         flex: none;
-        font-weight: 500;
+        white-space: nowrap;
+        color: var(--text-3);
       }
-      .act-read {
+      .fa-act.act-read {
         color: var(--accent);
-        background: var(--accent-soft);
       }
-      .act-add {
+      .fa-act.act-add {
         color: var(--success);
-        background: var(--success-soft);
       }
-      .act-mod {
+      .fa-act.act-mod {
         color: var(--warn);
-        background: var(--warn-soft);
       }
       .fa-confirm {
         display: flex;
@@ -3001,25 +2992,19 @@
       .tr-c {
         display: inline-flex;
         align-items: center;
-        gap: 2px;
-        padding: 0 4px;
-        height: 16px;
-        border-radius: 4px;
-        background: var(--bg-hover);
+        font-size: 9.5px;
+        letter-spacing: 0.02em;
         color: var(--text-3);
         white-space: nowrap;
       }
       .tr-c.read {
         color: var(--accent);
-        background: var(--accent-soft);
       }
       .tr-c.add {
         color: var(--success);
-        background: var(--success-soft);
       }
       .tr-c.mod {
         color: var(--warn);
-        background: var(--warn-soft);
       }
       .fa-empty {
         padding: 16px 12px;
@@ -3575,6 +3560,112 @@
         <path d="M5 15V5a2 2 0 0 1 2-2h8" />
       </symbol>
       <symbol id="i-code" viewBox="0 0 24 24"><path d="m9 8-4 4 4 4M15 8l4 4-4 4" /></symbol>
+
+      <!-- 文件类型图标：对齐 DSH 官方文件树（彩色类型 + 中性灰） -->
+      <symbol id="i-ft-folder" viewBox="0 0 24 24">
+        <path
+          fill="#8b96a3"
+          stroke="none"
+          d="M3 7a2 2 0 0 1 2-2h4.1c.5 0 1 .2 1.4.6L12 7h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"
+        />
+      </symbol>
+      <symbol id="i-ft-ts" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="3" fill="#3178c6" stroke="none" />
+        <text
+          x="12"
+          y="15.8"
+          text-anchor="middle"
+          font-size="11"
+          font-weight="700"
+          font-family="ui-monospace,Menlo,monospace"
+          fill="#fff"
+          stroke="none"
+        >
+          TS
+        </text>
+      </symbol>
+      <symbol id="i-ft-js" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="3" fill="#f0db4f" stroke="none" />
+        <text
+          x="12"
+          y="15.8"
+          text-anchor="middle"
+          font-size="11"
+          font-weight="700"
+          font-family="ui-monospace,Menlo,monospace"
+          fill="#323330"
+          stroke="none"
+        >
+          JS
+        </text>
+      </symbol>
+      <symbol id="i-ft-md" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="3" fill="#519aba" stroke="none" />
+        <text
+          x="12"
+          y="15.8"
+          text-anchor="middle"
+          font-size="11"
+          font-weight="700"
+          font-family="ui-monospace,Menlo,monospace"
+          fill="#fff"
+          stroke="none"
+        >
+          MD
+        </text>
+      </symbol>
+      <symbol id="i-ft-html" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="3" fill="#e37933" stroke="none" />
+        <text
+          x="12"
+          y="15.5"
+          text-anchor="middle"
+          font-size="10"
+          font-weight="700"
+          font-family="ui-monospace,Menlo,monospace"
+          fill="#fff"
+          stroke="none"
+        >
+          &lt;/&gt;
+        </text>
+      </symbol>
+      <symbol id="i-ft-json" viewBox="0 0 24 24">
+        <text
+          x="12"
+          y="16.6"
+          text-anchor="middle"
+          font-size="12"
+          font-weight="700"
+          font-family="ui-monospace,Menlo,monospace"
+          fill="#c8b400"
+          stroke="none"
+        >
+          { }
+        </text>
+      </symbol>
+      <symbol id="i-ft-toml" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="3" fill="#cf222e" stroke="none" />
+        <text
+          x="12"
+          y="15.8"
+          text-anchor="middle"
+          font-size="11"
+          font-weight="700"
+          font-family="ui-monospace,Menlo,monospace"
+          fill="#fff"
+          stroke="none"
+        >
+          TM
+        </text>
+      </symbol>
+      <symbol id="i-ft-pkg" viewBox="0 0 24 24">
+        <path fill="#3fb950" stroke="none" d="M12 2.2 20.5 7v10L12 21.8 3.5 17V7Z" />
+        <path fill="#16241a" stroke="none" d="M12 6.6 16.4 9v6L12 17.4 7.6 15V9Z" />
+      </symbol>
+      <symbol id="i-ft-file" viewBox="0 0 24 24">
+        <path fill="none" stroke="#8b96a3" stroke-width="1.6" stroke-linejoin="round" d="M6 3h7l5 5v13H6Z" />
+        <path fill="none" stroke="#8b96a3" stroke-width="1.6" d="M13 3v5h5" />
+      </symbol>
       <symbol id="i-braces" viewBox="0 0 24 24">
         <path d="M8 3H6a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h2" />
         <path d="M16 3h2a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-2" />
@@ -3839,8 +3930,8 @@
                 data-path="plugins/dsh-file-activity/README.md"
                 data-tip="2026-10-18 22:41:07"
               >
-                <span class="act-badge act-read">读取</span><svg class="icon file-ico"><use href="#i-doc" /></svg
-                ><span class="fa-name">README.md</span><span class="fa-time">刚刚</span>
+                <svg class="icon file-ico"><use href="#i-ft-md" /></svg><span class="fa-name">README.md</span
+                ><span class="fa-act act-read">读取</span><span class="fa-time">刚刚</span>
               </button>
               <button
                 class="fa-row"
@@ -3849,8 +3940,8 @@
                 data-path="plugins/dsh-file-activity/src/client/parts/view.ts"
                 data-tip="2026-10-18 22:38:12"
               >
-                <span class="act-badge act-mod">修改</span><svg class="icon file-ico"><use href="#i-code" /></svg
-                ><span class="fa-name">view.ts</span><span class="fa-time">3 分钟前</span>
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">view.ts</span
+                ><span class="fa-act act-mod">修改</span><span class="fa-time">3 分钟前</span>
               </button>
               <button
                 class="fa-row"
@@ -3859,8 +3950,9 @@
                 data-path="docs/原型重构/dsh-file-activity.html"
                 data-tip="2026-10-18 22:30:44"
               >
-                <span class="act-badge act-add">新增</span><svg class="icon file-ico"><use href="#i-code" /></svg
-                ><span class="fa-name">dsh-file-activity.html</span><span class="fa-time">12 分钟前</span>
+                <svg class="icon file-ico"><use href="#i-ft-html" /></svg
+                ><span class="fa-name">dsh-file-activity.html</span><span class="fa-act act-add">新增</span
+                ><span class="fa-time">12 分钟前</span>
               </button>
               <button
                 class="fa-row"
@@ -3869,8 +3961,8 @@
                 data-path="docs/原型重构/设计基线.md"
                 data-tip="2026-10-18 21:40:02"
               >
-                <span class="act-badge act-read">读取</span><svg class="icon file-ico"><use href="#i-doc" /></svg
-                ><span class="fa-name">设计基线.md</span><span class="fa-time">1 小时前</span>
+                <svg class="icon file-ico"><use href="#i-ft-md" /></svg><span class="fa-name">设计基线.md</span
+                ><span class="fa-act act-read">读取</span><span class="fa-time">1 小时前</span>
               </button>
               <button
                 class="fa-row"
@@ -3879,8 +3971,8 @@
                 data-path="plugins/dsh-file-activity/src/client/parts/preview-float.ts"
                 data-tip="2026-10-17 18:12:35"
               >
-                <span class="act-badge act-mod">修改</span><svg class="icon file-ico"><use href="#i-code" /></svg
-                ><span class="fa-name">preview-float.ts</span><span class="fa-time">昨天</span>
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">preview-float.ts</span
+                ><span class="fa-act act-mod">修改</span><span class="fa-time">昨天</span>
               </button>
             </div>
             <div class="fa-empty" id="recentEmpty" hidden>
@@ -3902,7 +3994,7 @@
             <div class="fa-tree" id="statTree">
               <button class="fa-row tree-row dir depth-0" data-dir="plugins">
                 <svg class="icon chev"><use href="#i-chevron-down" /></svg
-                ><svg class="icon file-ico"><use href="#i-folder" /></svg><span class="fa-name">plugins</span
+                ><svg class="icon file-ico"><use href="#i-ft-folder" /></svg><span class="fa-name">plugins</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 8</span><span class="tr-c add">增 2</span
                   ><span class="tr-c mod">改 4</span></span
@@ -3910,7 +4002,8 @@
               </button>
               <button class="fa-row tree-row dir depth-1" data-dir="dsh-file-activity">
                 <svg class="icon chev"><use href="#i-chevron-down" /></svg
-                ><svg class="icon file-ico"><use href="#i-folder" /></svg><span class="fa-name">dsh-file-activity</span
+                ><svg class="icon file-ico"><use href="#i-ft-folder" /></svg
+                ><span class="fa-name">dsh-file-activity</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 5</span><span class="tr-c add">增 1</span
                   ><span class="tr-c mod">改 3</span></span
@@ -3918,7 +4011,8 @@
               </button>
               <button class="fa-row tree-row dir depth-2" data-dir="parts">
                 <svg class="icon chev"><use href="#i-chevron-down" /></svg
-                ><svg class="icon file-ico"><use href="#i-folder" /></svg><span class="fa-name">src.client.parts</span
+                ><svg class="icon file-ico"><use href="#i-ft-folder" /></svg
+                ><span class="fa-name">src.client.parts</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 3</span><span class="tr-c add">增 0</span
                   ><span class="tr-c mod">改 2</span></span
@@ -3931,7 +4025,7 @@
                 data-path="plugins/dsh-file-activity/src/client/parts/view.ts"
                 data-tip="2026-10-18 22:38:12"
               >
-                <svg class="icon file-ico"><use href="#i-code" /></svg><span class="fa-name">view.ts</span
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">view.ts</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 3</span><span class="tr-c add">增 0</span
                   ><span class="tr-c mod">改 1</span></span
@@ -3944,7 +4038,7 @@
                 data-path="plugins/dsh-file-activity/src/client/parts/tree.ts"
                 data-tip="2026-10-18 19:02:51"
               >
-                <svg class="icon file-ico"><use href="#i-code" /></svg><span class="fa-name">tree.ts</span
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">tree.ts</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 1</span><span class="tr-c add">增 0</span
                   ><span class="tr-c mod">改 1</span></span
@@ -3957,7 +4051,7 @@
                 data-path="plugins/dsh-file-activity/src/client/parts/preview-float.ts"
                 data-tip="2026-10-17 18:12:35"
               >
-                <svg class="icon file-ico"><use href="#i-code" /></svg><span class="fa-name">preview-float.ts</span
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">preview-float.ts</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 2</span><span class="tr-c add">增 0</span
                   ><span class="tr-c mod">改 1</span></span
@@ -3970,7 +4064,7 @@
                 data-path="plugins/dsh-file-activity/README.md"
                 data-tip="2026-10-18 22:41:07"
               >
-                <svg class="icon file-ico"><use href="#i-doc" /></svg><span class="fa-name">README.md</span
+                <svg class="icon file-ico"><use href="#i-ft-md" /></svg><span class="fa-name">README.md</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 2</span><span class="tr-c add">增 0</span
                   ><span class="tr-c mod">改 0</span></span
@@ -3978,7 +4072,7 @@
               </button>
               <button class="fa-row tree-row dir depth-1" data-dir="docs">
                 <svg class="icon chev"><use href="#i-chevron-down" /></svg
-                ><svg class="icon file-ico"><use href="#i-folder" /></svg><span class="fa-name">docs.原型重构</span
+                ><svg class="icon file-ico"><use href="#i-ft-folder" /></svg><span class="fa-name">docs.原型重构</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 4</span><span class="tr-c add">增 1</span
                   ><span class="tr-c mod">改 1</span></span
@@ -3991,7 +4085,8 @@
                 data-path="docs/原型重构/brief-file-activity.md"
                 data-tip="2026-10-18 21:40:02"
               >
-                <svg class="icon file-ico"><use href="#i-doc" /></svg><span class="fa-name">brief-file-activity.md</span
+                <svg class="icon file-ico"><use href="#i-ft-md" /></svg
+                ><span class="fa-name">brief-file-activity.md</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 2</span><span class="tr-c add">增 0</span
                   ><span class="tr-c mod">改 0</span></span
@@ -4004,7 +4099,7 @@
                 data-path="docs/原型重构/dsh-file-activity.html"
                 data-tip="2026-10-18 22:30:44"
               >
-                <svg class="icon file-ico"><use href="#i-code" /></svg
+                <svg class="icon file-ico"><use href="#i-ft-html" /></svg
                 ><span class="fa-name">dsh-file-activity.html</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 0</span><span class="tr-c add">增 1</span
@@ -4018,7 +4113,7 @@
                 data-path="docs/原型重构/设计基线.md"
                 data-tip="2026-10-17 20:08:10"
               >
-                <svg class="icon file-ico"><use href="#i-doc" /></svg><span class="fa-name">设计基线.md</span
+                <svg class="icon file-ico"><use href="#i-ft-md" /></svg><span class="fa-name">设计基线.md</span
                 ><span class="tr-counts"
                   ><span class="tr-c read">读 2</span><span class="tr-c add">增 0</span
                   ><span class="tr-c mod">改 1</span></span

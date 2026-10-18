@@ -1,0 +1,4391 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>dsh-md-render · 原型</title>
+    <style>
+      :root[data-theme='dark'] {
+        --bg: #1c1c1e;
+        --bg-elevated: #232325;
+        --bg-hover: #2c2c2e;
+        --surface: #2c2c2e;
+        --surface-raised: #3a3a3c;
+        --border: #3a3a3c;
+        --border-soft: #2f2f31;
+        --text: #f5f5f7;
+        --text-2: #b0b0b4;
+        --text-3: #8e8e93;
+        --accent: #0a84ff;
+        --accent-hover: #409cff;
+        --accent-soft: rgba(10, 132, 255, 0.14);
+        --success: #30d158;
+        --success-soft: rgba(48, 209, 88, 0.14);
+        --warn: #ffd60a;
+        --warn-soft: rgba(255, 214, 10, 0.14);
+        --danger: #ff453a;
+        --danger-soft: rgba(255, 69, 58, 0.14);
+        --code-bg: #1a1a1c;
+        --toast-bg: #2c2c2e;
+        --overlay: rgba(0, 0, 0, 0.55);
+        --on-accent: #ffffff;
+        --shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+        --hl-key: #ff7ab2;
+        --hl-str: #a5e075;
+        --hl-num: #ffb340;
+        --hl-com: #7f8c98;
+        --hl-fn: #7cc4ff;
+        --hl-tag: #5eead4;
+        color-scheme: dark;
+      }
+      :root[data-theme='light'] {
+        --bg: #ffffff;
+        --bg-elevated: #f5f5f7;
+        --bg-hover: #ececf0;
+        --surface: #ffffff;
+        --surface-raised: #fbfbfd;
+        --border: #d9d9de;
+        --border-soft: #ebebef;
+        --text: #1d1d1f;
+        --text-2: #515154;
+        --text-3: #86868b;
+        --accent: #0071e3;
+        --accent-hover: #0a7bea;
+        --accent-soft: rgba(0, 113, 227, 0.1);
+        --success: #248a3d;
+        --success-soft: rgba(36, 138, 61, 0.1);
+        --warn: #b25000;
+        --warn-soft: rgba(178, 80, 0, 0.1);
+        --danger: #d70015;
+        --danger-soft: rgba(215, 0, 21, 0.1);
+        --code-bg: #f6f6f8;
+        --toast-bg: #ffffff;
+        --overlay: rgba(0, 0, 0, 0.35);
+        --on-accent: #ffffff;
+        --shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+        --hl-key: #b5246b;
+        --hl-str: #2f7a1f;
+        --hl-num: #a35a00;
+        --hl-com: #8a8a90;
+        --hl-fn: #0060b8;
+        --hl-tag: #0f766e;
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      button,
+      input,
+      textarea {
+        font-family: inherit;
+        font-size: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      svg {
+        display: block;
+      }
+      ::selection {
+        background: var(--accent-soft);
+      }
+      :focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--accent-soft);
+        border-color: var(--accent);
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--surface-raised) transparent;
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--surface-raised);
+        border-radius: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      code {
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 0.92em;
+        background: var(--code-bg);
+        border: 1px solid var(--border-soft);
+        border-radius: 4px;
+        padding: 0 4px;
+      }
+      .svg-sprite {
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+      }
+      .icon {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .icon-xs {
+        width: 12px;
+        height: 12px;
+      }
+      .icon-sm {
+        width: 14px;
+        height: 14px;
+      }
+      .icon-lg {
+        width: 18px;
+        height: 18px;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      /* ── 外壳 ─────────────────────────────────────────────────── */
+      .app-shell {
+        height: 100vh;
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr) 380px;
+        gap: 8px;
+        padding: 8px;
+        background: var(--bg);
+      }
+      .panel {
+        min-width: 0;
+        min-height: 0;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-soft);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        padding: 12px 12px 10px;
+        gap: 12px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        padding: 0 2px;
+        flex: none;
+        min-width: 0;
+      }
+      .brand-mark {
+        width: 27px;
+        height: 27px;
+        flex: none;
+        color: var(--text);
+      }
+      .brand-text {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .brand-name {
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        white-space: nowrap;
+      }
+      .brand-tag {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        color: var(--text-3);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 4px;
+        white-space: nowrap;
+      }
+      .brand-collapse {
+        margin-left: auto;
+      }
+      .new-chat {
+        height: 34px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        font-size: 12.5px;
+        color: var(--text);
+        flex: none;
+        min-width: 0;
+      }
+      .new-chat:hover {
+        background: var(--bg-hover);
+      }
+      .new-chat .kbd {
+        margin-left: auto;
+        font-size: 10px;
+        color: var(--text-3);
+        border: 1px solid var(--border-soft);
+        border-radius: 4px;
+        padding: 0 4px;
+        white-space: nowrap;
+      }
+      .side-section {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+      }
+      .sessions-section {
+        flex: 1;
+        min-height: 0;
+      }
+      .side-label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10.5px;
+        color: var(--text-3);
+        padding: 0 4px;
+        height: 24px;
+        white-space: nowrap;
+      }
+      .side-label .side-label-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 1px;
+      }
+      .workspace,
+      .session {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 30px;
+        border: 0;
+        background: transparent;
+        border-radius: 7px;
+        padding: 0 6px;
+        font-size: 12.5px;
+        color: var(--text-2);
+        text-align: left;
+        min-width: 0;
+        width: 100%;
+      }
+      .workspace:hover,
+      .session:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .workspace.active {
+        background: var(--accent-soft);
+        color: var(--text);
+        box-shadow: inset 2px 0 0 var(--accent);
+      }
+      .session.active {
+        background: var(--accent-soft);
+        color: var(--text);
+      }
+      .session-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+      .session-time {
+        font-size: 10.5px;
+        color: var(--text-3);
+        flex: none;
+        white-space: nowrap;
+      }
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--text-3);
+        flex: none;
+      }
+      .status-dot.ok {
+        background: var(--success);
+      }
+      .status-dot.warn {
+        background: var(--warn);
+      }
+      .sidebar-foot {
+        margin-top: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        flex: none;
+      }
+      .side-action {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        border: 0;
+        background: transparent;
+        border-radius: 7px;
+        padding: 0 6px;
+        font-size: 12.5px;
+        color: var(--text-2);
+        text-align: left;
+        width: 100%;
+      }
+      .side-action:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .user {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 6px 0;
+        border-top: 1px solid var(--border-soft);
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--text-2);
+        min-width: 0;
+      }
+      .avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--accent-soft);
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 600;
+        flex: none;
+      }
+      .user-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .main {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .topbar {
+        height: 48px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--border-soft);
+        background: var(--bg-elevated);
+        min-width: 0;
+      }
+      .topbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 1;
+      }
+      .topbar-nav {
+        display: flex;
+        gap: 0;
+        flex: none;
+      }
+      .chat-title {
+        font-size: 13px;
+        font-weight: 500;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .model-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 26px;
+        padding: 0 8px;
+        border-radius: 7px;
+        border: 1px solid var(--border-soft);
+        background: var(--surface);
+        font-size: 11.5px;
+        color: var(--text-2);
+        white-space: nowrap;
+        flex: none;
+      }
+      .model-chip .icon {
+        width: 13px;
+        height: 13px;
+        color: var(--accent);
+      }
+      .topbar-actions {
+        display: flex;
+        gap: 2px;
+        flex: none;
+        margin-right: 34px;
+      }
+      .conversation {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .conv-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px 28px 12px;
+        min-height: 0;
+      }
+      .conv-inner {
+        width: 100%;
+        max-width: 760px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .conv-date {
+        text-align: center;
+        font-size: 10.5px;
+        color: var(--text-3);
+      }
+      .msg {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .msg.user {
+        align-items: flex-end;
+      }
+      .msg-bubble {
+        max-width: 86%;
+        padding: 9px 12px;
+        border-radius: 12px;
+        background: var(--accent);
+        color: var(--on-accent);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .assistant-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11.5px;
+        color: var(--text-3);
+      }
+      .ai-avatar {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--accent-soft);
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 700;
+        flex: none;
+      }
+      .assistant-body {
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        font-size: 13px;
+        color: var(--text-2);
+        line-height: 1.7;
+        min-width: 0;
+      }
+      .composer-wrap {
+        flex: none;
+        padding: 8px 28px 12px;
+        border-top: 1px solid var(--border-soft);
+      }
+      .composer {
+        max-width: 760px;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 8px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+      }
+      .composer-input {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        color: var(--text);
+        font-size: 12.5px;
+        outline: none;
+        padding: 0 4px;
+      }
+      .composer-input::placeholder {
+        color: var(--text-3);
+      }
+      .composer-hint {
+        max-width: 760px;
+        margin: 4px auto 0;
+        font-size: 10px;
+        color: var(--text-3);
+        text-align: right;
+      }
+
+      .rightbar {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .right-tabs {
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 0 8px;
+        border-bottom: 1px solid var(--border-soft);
+        flex: none;
+        min-width: 0;
+      }
+      .right-tab {
+        height: 28px;
+        padding: 0 10px;
+        border-radius: 7px;
+        border: 0;
+        background: transparent;
+        color: var(--text-2);
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+      }
+      .right-tab:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .right-tab.active {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .right-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .right-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--text-2);
+        padding: 4px 2px 6px;
+        min-width: 0;
+      }
+      .right-head .icon {
+        width: 13px;
+        height: 13px;
+        color: var(--text-3);
+      }
+      .right-head-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 1px;
+      }
+      .file-row {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 32px;
+        padding: 0 6px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        color: var(--text-2);
+        min-width: 0;
+      }
+      .file-row:hover {
+        background: var(--bg-hover);
+      }
+      .file-row .icon {
+        width: 14px;
+        height: 14px;
+        color: var(--text-3);
+      }
+      .file-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+      .file-meta {
+        font-size: 10px;
+        color: var(--text-3);
+        flex: none;
+      }
+      .right-empty {
+        padding: 10px;
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        font-size: 11px;
+        color: var(--text-3);
+        line-height: 1.6;
+        margin: 4px 0 12px;
+      }
+      .outline-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 26px;
+        padding: 0 6px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        color: var(--text-2);
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        width: 100%;
+        text-align: left;
+      }
+      .outline-row:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .outline-row.lvl-2 {
+        padding-left: 14px;
+      }
+      .outline-row.lvl-3 {
+        padding-left: 26px;
+      }
+      .outline-row .icon {
+        width: 11px;
+        height: 11px;
+        color: var(--text-3);
+        flex: none;
+      }
+      .outline-row span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* ── 通用控件 ─────────────────────────────────────────────── */
+      .input {
+        height: 32px;
+        width: 100%;
+        min-width: 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-elevated);
+        color: var(--text);
+        padding: 0 10px;
+        font-size: 12.5px;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s,
+          background 0.15s;
+      }
+      .input::placeholder {
+        color: var(--text-3);
+      }
+      .input:hover {
+        border-color: var(--surface-raised);
+      }
+      .input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        height: 30px;
+        padding: 0 12px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        font-size: 12.5px;
+        font-weight: 500;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          color 0.15s,
+          border-color 0.15s,
+          transform 0.15s,
+          filter 0.15s;
+        flex: none;
+      }
+      .btn .icon {
+        width: 13px;
+        height: 13px;
+      }
+      .btn:active {
+        transform: translateY(1px);
+      }
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: var(--on-accent);
+        border-color: var(--accent);
+      }
+      .btn-primary:hover:not(:disabled) {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+      }
+      .btn-outline {
+        background: transparent;
+        border-color: var(--border);
+        color: var(--text-2);
+      }
+      .btn-outline:hover:not(:disabled) {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .btn-ghost {
+        background: transparent;
+        border-color: transparent;
+        color: var(--text-2);
+      }
+      .btn-ghost:hover:not(:disabled) {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .btn-sm {
+        height: 26px;
+        padding: 0 9px;
+        font-size: 11.5px;
+        border-radius: 7px;
+      }
+      .icon-btn {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text-3);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        flex: none;
+        transition:
+          background 0.15s,
+          color 0.15s,
+          opacity 0.15s;
+      }
+      .icon-btn:hover:not(:disabled) {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .icon-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      .icon-btn .icon {
+        width: 15px;
+        height: 15px;
+      }
+      .icon-btn.is-on {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .text-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 24px;
+        padding: 0 6px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text-2);
+        font-size: 11.5px;
+        white-space: nowrap;
+        flex: none;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .text-btn .icon {
+        width: 12px;
+        height: 12px;
+      }
+      .text-btn:hover:not(:disabled) {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .text-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      .link-btn {
+        border: 0;
+        background: transparent;
+        color: var(--accent);
+        font-size: 11px;
+        padding: 0;
+        border-radius: 3px;
+        white-space: nowrap;
+      }
+      .link-btn:hover {
+        text-decoration: underline;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 20px;
+        padding: 0 7px;
+        border-radius: 10px;
+        font-size: 10.5px;
+        line-height: 1;
+        color: var(--text-2);
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-soft);
+        white-space: nowrap;
+        flex: none;
+        max-width: 100%;
+      }
+      .pill.accent {
+        color: var(--accent);
+        background: var(--accent-soft);
+        border-color: transparent;
+      }
+      .pill.success {
+        color: var(--success);
+        background: var(--success-soft);
+        border-color: transparent;
+      }
+      .pill.warn {
+        color: var(--warn);
+        background: var(--warn-soft);
+        border-color: transparent;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        height: 18px;
+        padding: 0 6px;
+        border-radius: 5px;
+        font-size: 10.5px;
+        line-height: 1;
+        white-space: nowrap;
+        flex: none;
+        font-weight: 500;
+      }
+      .badge-accent {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .badge-success {
+        color: var(--success);
+        background: var(--success-soft);
+      }
+      .badge-danger {
+        color: var(--danger);
+        background: var(--danger-soft);
+      }
+      .badge-neutral {
+        color: var(--text-2);
+        background: var(--bg-hover);
+        border: 1px solid var(--border-soft);
+      }
+      .switch {
+        width: 44px;
+        height: 26px;
+        border-radius: 13px;
+        border: 1px solid var(--border);
+        background: var(--surface-raised);
+        position: relative;
+        flex: none;
+        padding: 0;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      .switch::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--text-2);
+        transition:
+          transform 0.15s,
+          background 0.15s;
+      }
+      .switch[aria-checked='true'] {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .switch[aria-checked='true']::after {
+        transform: translateX(18px);
+        background: var(--on-accent);
+      }
+      .switch:hover {
+        border-color: var(--accent);
+      }
+      .switch:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--accent-soft);
+      }
+      .segmented {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding: 3px;
+        border: 1px solid var(--border-soft);
+        background: var(--bg-elevated);
+        border-radius: 9px;
+        flex: none;
+      }
+      .seg-btn {
+        height: 26px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text-2);
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+      .seg-btn:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .seg-btn.active {
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 500;
+      }
+      .tab-count {
+        font-size: 10px;
+        padding: 0 5px;
+        height: 16px;
+        border-radius: 8px;
+        background: var(--surface-raised);
+        color: var(--text-3);
+        display: inline-flex;
+        align-items: center;
+      }
+      .seg-btn.active .tab-count {
+        background: var(--accent);
+        color: var(--on-accent);
+      }
+      .spinner {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        border: 2px solid var(--accent-soft);
+        border-top-color: var(--accent);
+        animation: spin 0.8s linear infinite;
+        flex: none;
+      }
+      .loading-card {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 12px;
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        background: var(--surface);
+        font-size: 12px;
+        color: var(--text-3);
+      }
+      .saved-line {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+        font-size: 11.5px;
+        color: var(--success);
+      }
+      .saved-line .icon {
+        width: 14px;
+        height: 14px;
+      }
+
+      /* tooltip */
+      [data-tip] {
+        position: relative;
+      }
+      [data-tip]::after {
+        content: attr(data-tip);
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 6px);
+        transform: translate(-50%, 4px);
+        background: var(--surface-raised);
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-size: 11px;
+        line-height: 1.4;
+        padding: 4px 7px;
+        border-radius: 6px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 0.15s,
+          transform 0.15s;
+        z-index: 70;
+        box-shadow: var(--shadow);
+      }
+      [data-tip]:hover::after,
+      [data-tip]:focus-visible::after {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      /* ── markdown 正文 ────────────────────────────────────────── */
+      .md-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 0;
+        position: relative;
+        font-size: 13px;
+        line-height: 1.72;
+        color: var(--text-2);
+      }
+      .md-body p {
+        margin: 0;
+      }
+      .md-body h1,
+      .md-body h2,
+      .md-body h3 {
+        margin: 2px 0 0;
+        color: var(--text);
+        font-weight: 600;
+        line-height: 1.4;
+        letter-spacing: 0.1px;
+      }
+      .md-body h1 {
+        font-size: 18px;
+      }
+      .md-body h2 {
+        font-size: 16px;
+      }
+      .md-body h3 {
+        font-size: 14px;
+        color: var(--text);
+      }
+      .md-body ul,
+      .md-body ol {
+        margin: 0;
+        padding-left: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .md-body li {
+        min-width: 0;
+      }
+      .md-body li::marker {
+        color: var(--text-3);
+      }
+      .md-body a {
+        color: var(--accent);
+        text-decoration: none;
+        border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+      }
+      .md-body a:hover {
+        border-bottom-color: var(--accent);
+      }
+      .md-body strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .md-body blockquote {
+        margin: 0;
+        padding: 6px 12px;
+        border-left: 2px solid var(--accent);
+        background: var(--accent-soft);
+        border-radius: 0 7px 7px 0;
+        color: var(--text-2);
+      }
+      .md-body blockquote p {
+        margin: 0;
+      }
+      .md-body hr {
+        margin: 2px 0;
+        border: 0;
+        border-top: 1px solid var(--border-soft);
+      }
+      .md-body img {
+        max-width: 100%;
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        display: block;
+      }
+      .md-table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: var(--surface);
+      }
+      .md-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        min-width: 420px;
+      }
+      .md-table th {
+        background: var(--bg-elevated);
+        color: var(--text-2);
+        font-weight: 600;
+        text-align: left;
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+      }
+      .md-table td {
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--border-soft);
+        color: var(--text-2);
+        vertical-align: top;
+      }
+      .md-table tr:last-child td {
+        border-bottom: 0;
+      }
+      .md-table tbody tr:hover td {
+        background: var(--bg-hover);
+      }
+      .task-list {
+        list-style: none;
+        padding-left: 2px;
+        gap: 4px;
+      }
+      .task-list li {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+      }
+      .task-box {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        flex: none;
+        margin-top: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: transparent;
+      }
+      .task-box.on {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--on-accent);
+      }
+      .task-box .icon {
+        width: 10px;
+        height: 10px;
+        stroke-width: 3;
+      }
+      .task-list li.is-done span {
+        color: var(--text-3);
+        text-decoration: line-through;
+        text-decoration-color: var(--border);
+      }
+      .md-copy {
+        position: absolute;
+        top: -2px;
+        right: 0;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      .md-body:hover .md-copy,
+      .md-copy:focus-visible {
+        opacity: 1;
+      }
+      .md-body .md-copy.is-copied {
+        opacity: 1;
+        color: var(--success);
+      }
+      .md-raw-toggle {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 22px;
+        padding: 0 7px;
+        border: 1px solid var(--border-soft);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text-3);
+        font-size: 10.5px;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          color 0.15s,
+          border-color 0.15s;
+      }
+      .md-raw-toggle:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+        border-color: var(--border);
+      }
+      .md-raw-toggle .icon {
+        width: 11px;
+        height: 11px;
+      }
+      .md-raw-box {
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--border-soft);
+        border-radius: 9px;
+        background: var(--code-bg);
+        color: var(--text-2);
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 11px;
+        line-height: 1.65;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      /* ── 思考块 ───────────────────────────────────────────────── */
+      .think {
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        background: var(--bg-elevated);
+        overflow: hidden;
+        min-width: 0;
+      }
+      .think-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 32px;
+        padding: 0 9px;
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: var(--text-2);
+        font-size: 11.5px;
+        text-align: left;
+      }
+      .think-head:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .think-head .icon {
+        width: 12px;
+        height: 12px;
+        color: var(--text-3);
+        transition: transform 0.15s;
+      }
+      .think.is-collapsed .think-head .chev {
+        transform: rotate(-90deg);
+      }
+      .think-title {
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .think-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10px;
+        color: var(--text-3);
+        white-space: nowrap;
+        flex: none;
+      }
+      .think-dots {
+        display: inline-flex;
+        gap: 2px;
+        margin-left: 2px;
+      }
+      .think-dots i {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--accent);
+        opacity: 0.55;
+        animation: think-blink 1.2s ease-in-out infinite;
+      }
+      .think-dots i:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+      .think-dots i:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      .think-body {
+        padding: 0 12px 10px 30px;
+        font-size: 11.5px;
+        line-height: 1.7;
+        color: var(--text-3);
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .think.is-collapsed .think-body {
+        display: none;
+      }
+      .think-body p {
+        margin: 0;
+      }
+      .think-body code {
+        font-size: 10.5px;
+      }
+      .think-hint {
+        margin-left: auto;
+        font-size: 10px;
+        color: var(--text-3);
+        flex: none;
+      }
+
+      /* ── 代码围栏块 ───────────────────────────────────────────── */
+      .fence {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        background: var(--code-bg);
+        min-width: 0;
+      }
+      .fence-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 6px 0 9px;
+        background: color-mix(in srgb, var(--bg-elevated) 70%, var(--code-bg));
+        border-bottom: 1px solid var(--border-soft);
+        min-width: 0;
+      }
+      .lang-pill {
+        display: inline-flex;
+        align-items: center;
+        height: 19px;
+        padding: 0 7px;
+        border-radius: 5px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        flex: none;
+      }
+      .fence-title {
+        font-size: 11px;
+        color: var(--text-3);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .fence-actions {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 1px;
+        flex: none;
+      }
+      .fence-actions .text-btn {
+        height: 24px;
+        font-size: 11px;
+        color: var(--text-3);
+      }
+      .copy-btn {
+        opacity: 0;
+        transition:
+          opacity 0.15s,
+          color 0.15s;
+      }
+      .fence:hover .copy-btn,
+      .fence:focus-within .copy-btn,
+      .copy-btn:focus-visible {
+        opacity: 1;
+      }
+      .copy-btn.is-copied {
+        opacity: 1;
+        color: var(--success);
+      }
+      .fence-body {
+        display: flex;
+        min-width: 0;
+        overflow-x: auto;
+      }
+      .fence-body.no-lines {
+        --line-w: 0px;
+      }
+      .line-nums {
+        flex: none;
+        padding: 10px 4px 10px 10px;
+        text-align: right;
+        white-space: pre;
+        color: var(--text-3);
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 11.5px;
+        line-height: 1.65;
+        user-select: none;
+        background: var(--code-bg);
+        border-right: 1px solid var(--border-soft);
+        letter-spacing: 0.02em;
+        display: none;
+      }
+      .fence.show-lines .line-nums {
+        display: block;
+      }
+      .fence-code {
+        margin: 0;
+        padding: 10px 12px;
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 11.5px;
+        line-height: 1.65;
+        color: var(--text-2);
+        white-space: pre;
+        tab-size: 2;
+        min-width: 0;
+      }
+      .fence.wrap .fence-code {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .fence.wrap .fence-body {
+        overflow-x: hidden;
+      }
+      .hl-key {
+        color: var(--hl-key);
+      }
+      .hl-str {
+        color: var(--hl-str);
+      }
+      .hl-num {
+        color: var(--hl-num);
+      }
+      .hl-com {
+        color: var(--hl-com);
+        font-style: italic;
+      }
+      .hl-fn {
+        color: var(--hl-fn);
+      }
+      .hl-tag {
+        color: var(--hl-tag);
+      }
+      .hl-prop {
+        color: var(--text);
+      }
+      .fence-foot {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 9px 6px;
+        border-top: 1px solid var(--border-soft);
+        font-size: 10px;
+        color: var(--text-3);
+        min-width: 0;
+        background: var(--code-bg);
+      }
+      .fence-foot .text-btn {
+        height: 20px;
+        font-size: 10px;
+        color: var(--text-3);
+      }
+      .fence-foot .fence-note {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* render-mode 三态 */
+      .render-mode {
+        display: inline-flex;
+        align-items: center;
+        gap: 1px;
+        padding: 2px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--bg-elevated);
+        flex: none;
+      }
+      .rm-btn {
+        height: 22px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--text-3);
+        font-size: 10.5px;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .rm-btn .icon {
+        width: 11px;
+        height: 11px;
+      }
+      .rm-btn:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .rm-btn.active {
+        background: var(--surface-raised);
+        color: var(--text);
+        font-weight: 500;
+      }
+      .rm-label {
+        font-size: 10px;
+        color: var(--text-3);
+        white-space: nowrap;
+        margin-right: 2px;
+      }
+
+      /* ── mermaid 卡片 ─────────────────────────────────────────── */
+      .mm-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+        overflow: hidden;
+        min-width: 0;
+      }
+      .mm-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 8px 7px 10px;
+        border-bottom: 1px solid var(--border-soft);
+        min-width: 0;
+        flex-wrap: nowrap;
+      }
+      .mm-title-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 22px;
+        padding: 0 8px;
+        border-radius: 6px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+        flex: none;
+        max-width: 40%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mm-title-pill .icon {
+        width: 11px;
+        height: 11px;
+      }
+      .mm-kind {
+        font-size: 10px;
+        color: var(--text-3);
+        white-space: nowrap;
+        flex: none;
+      }
+      .mm-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: auto;
+        flex: none;
+      }
+      .mm-zoom {
+        display: inline-flex;
+        align-items: center;
+        gap: 0;
+        height: 24px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--bg-elevated);
+        flex: none;
+      }
+      .mm-zoom .icon-btn {
+        width: 22px;
+        height: 22px;
+        border-radius: 0;
+      }
+      .mm-zoom .icon-btn .icon {
+        width: 12px;
+        height: 12px;
+      }
+      .mm-zoom-val {
+        min-width: 42px;
+        text-align: center;
+        font-size: 10.5px;
+        color: var(--text-2);
+        font-variant-numeric: tabular-nums;
+        padding: 0 2px;
+        border-left: 1px solid var(--border-soft);
+        border-right: 1px solid var(--border-soft);
+        line-height: 22px;
+        flex: none;
+      }
+      .mm-body {
+        padding: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at 1px 1px, var(--border-soft) 1px, transparent 0) 0 0/16px 16px;
+        min-height: 190px;
+        overflow: auto;
+        position: relative;
+      }
+      .mm-svg {
+        max-width: 100%;
+        height: auto;
+        color: var(--text-2);
+      }
+      .mm-svg .node-box {
+        fill: var(--bg-elevated);
+        stroke: var(--accent);
+        stroke-width: 1.4;
+      }
+      .mm-svg .node-alt {
+        fill: var(--bg-elevated);
+        stroke: var(--border);
+        stroke-width: 1.4;
+      }
+      .mm-svg .node-text {
+        fill: var(--text);
+        font-size: 11px;
+        font-family: inherit;
+      }
+      .mm-svg .node-sub {
+        fill: var(--text-3);
+        font-size: 9px;
+        font-family: inherit;
+      }
+      .mm-svg .edge {
+        stroke: var(--text-3);
+        stroke-width: 1.5;
+        fill: none;
+      }
+      .mm-svg .edge-label {
+        fill: var(--text-3);
+        font-size: 9px;
+        font-family: inherit;
+      }
+      .mm-svg .diamond {
+        fill: var(--bg-elevated);
+        stroke: var(--warn);
+        stroke-width: 1.4;
+      }
+      .mm-md {
+        padding: 14px;
+      }
+      .mm-md .md-body {
+        gap: 8px;
+      }
+      .mm-code {
+        margin: 0;
+        padding: 14px;
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 11.5px;
+        line-height: 1.7;
+        color: var(--text-2);
+        white-space: pre;
+        overflow: auto;
+        background: var(--code-bg);
+        min-height: 190px;
+      }
+      .mm-foot {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-top: 1px solid var(--border-soft);
+        font-size: 10px;
+        color: var(--text-3);
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      .mm-foot .spacer {
+        margin-left: auto;
+      }
+      .mm-menu {
+        position: absolute;
+        top: 34px;
+        right: 8px;
+        z-index: 40;
+        width: 196px;
+        padding: 5px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .mm-menu.is-hidden {
+        display: none;
+      }
+      .mm-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 29px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text-2);
+        font-size: 11.5px;
+        text-align: left;
+        width: 100%;
+        white-space: nowrap;
+      }
+      .mm-menu-item:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .mm-menu-item .icon {
+        width: 13px;
+        height: 13px;
+        color: var(--text-3);
+      }
+      .mm-menu-item .check {
+        margin-left: auto;
+        color: var(--accent);
+        width: 12px;
+        height: 12px;
+      }
+      .mm-menu-item .check.is-hidden {
+        visibility: hidden;
+      }
+      .mm-menu-sep {
+        height: 1px;
+        background: var(--border-soft);
+        margin: 4px 2px;
+      }
+      .mm-menu-label {
+        font-size: 10px;
+        color: var(--text-3);
+        padding: 5px 8px 2px;
+        letter-spacing: 0.04em;
+      }
+      .mm-card.is-preview-only .mm-code {
+        display: none;
+      }
+      .mm-card.is-code-only .mm-body {
+        display: none;
+      }
+
+      /* mermaid 全屏 dialog */
+      .mm-dialog {
+        width: 90vw;
+        height: 85vh;
+        max-width: none;
+        max-height: none;
+        margin: auto;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--bg-elevated);
+        color: var(--text);
+        padding: 0;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+      }
+      .mm-dialog::backdrop {
+        background: var(--overlay);
+        backdrop-filter: blur(2px);
+      }
+      .mm-dialog[open] {
+        display: flex;
+        flex-direction: column;
+        animation: modal-in 0.22s cubic-bezier(0.28, 0, 0.22, 1);
+      }
+      .mm-dialog-head {
+        height: 48px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--border-soft);
+        min-width: 0;
+      }
+      .mm-dialog-title {
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        flex: none;
+      }
+      .mm-dialog-path {
+        font-size: 10.5px;
+        color: var(--text-3);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mm-dialog-actions {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex: none;
+      }
+      .mm-dialog-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: auto;
+        padding: 24px;
+        background: radial-gradient(circle at 1px 1px, var(--border-soft) 1px, transparent 0) 0 0/18px 18px;
+      }
+      .mm-dialog-body .mm-svg {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+      }
+      .mm-dialog-foot {
+        height: 40px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+        border-top: 1px solid var(--border-soft);
+        font-size: 10.5px;
+        color: var(--text-3);
+        flex-wrap: nowrap;
+      }
+      .mm-dialog-foot .spacer {
+        margin-left: auto;
+      }
+
+      /* ── 上下文注入 / 流式 ───────────────────────────────────── */
+      .ctx-block {
+        border: 1px dashed color-mix(in srgb, var(--accent) 42%, var(--border));
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+        padding: 9px 11px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .ctx-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10.5px;
+        color: var(--accent);
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      .ctx-head .icon {
+        width: 12px;
+        height: 12px;
+        flex: none;
+      }
+      .ctx-head strong {
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .ctx-from {
+        color: var(--text-3);
+      }
+      .ctx-body {
+        font-size: 11.5px;
+        line-height: 1.65;
+        color: var(--text-2);
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        min-width: 0;
+      }
+      .ctx-body p {
+        margin: 0;
+      }
+      .ctx-body .fence {
+        border-radius: 8px;
+      }
+      .ctx-body .fence-code {
+        font-size: 11px;
+      }
+      .streaming {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        font-size: 13px;
+        line-height: 1.7;
+        color: var(--text-2);
+        min-width: 0;
+      }
+      .stream-line {
+        display: flex;
+        align-items: flex-end;
+        gap: 4px;
+        min-width: 0;
+      }
+      .caret {
+        display: inline-block;
+        width: 2px;
+        height: 15px;
+        background: var(--accent);
+        animation: caret 1s steps(2) infinite;
+        flex: none;
+      }
+      .stream-skel {
+        height: 11px;
+        border-radius: 5px;
+        background: linear-gradient(90deg, var(--bg-hover) 25%, var(--surface-raised) 50%, var(--bg-hover) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.4s linear infinite;
+      }
+      .stream-skel.w-92 {
+        width: 92%;
+      }
+      .stream-skel.w-74 {
+        width: 74%;
+      }
+      .stream-skel.w-56 {
+        width: 56%;
+      }
+      .stream-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10.5px;
+        color: var(--text-3);
+        flex-wrap: wrap;
+      }
+      .stream-meta .spinner {
+        width: 11px;
+        height: 11px;
+        border-width: 1.5px;
+      }
+      .tool-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        align-self: flex-start;
+        max-width: 100%;
+        padding: 5px 8px;
+        border: 1px solid var(--border-soft);
+        border-radius: 7px;
+        background: var(--surface);
+        font-size: 11px;
+        color: var(--text-2);
+        flex-wrap: wrap;
+      }
+      .tool-chip .icon {
+        width: 13px;
+        height: 13px;
+        color: var(--accent);
+      }
+      .tool-chip code {
+        font-size: 10.5px;
+      }
+      .tool-chip .ok {
+        color: var(--success);
+        background: var(--success-soft);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 10px;
+        white-space: nowrap;
+      }
+
+      /* ── 设置弹层 ─────────────────────────────────────────────── */
+      .settings-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: var(--overlay);
+        backdrop-filter: blur(2px);
+      }
+      .settings-overlay.is-hidden {
+        display: none;
+      }
+      .settings-modal {
+        width: min(1120px, calc(100vw - 32px));
+        height: min(740px, calc(100vh - 32px));
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        animation: modal-in 0.22s cubic-bezier(0.28, 0, 0.22, 1);
+      }
+      .settings-head {
+        height: 56px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .settings-head h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.1px;
+      }
+      .settings-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+      .settings-nav {
+        width: 220px;
+        flex: none;
+        border-right: 1px solid var(--border-soft);
+        padding: 12px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        overflow-y: auto;
+        background: var(--bg-elevated);
+      }
+      .nav-label {
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        color: var(--text-3);
+        padding: 6px 10px 4px;
+      }
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        height: 32px;
+        padding: 0 10px;
+        border: 0;
+        background: transparent;
+        border-radius: 8px;
+        color: var(--text-2);
+        font-size: 12.5px;
+        text-align: left;
+        white-space: nowrap;
+        flex: none;
+        width: 100%;
+      }
+      .nav-item .icon {
+        width: 16px;
+        height: 16px;
+        flex: none;
+      }
+      .nav-item:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .nav-item.active {
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 500;
+      }
+      .settings-content {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .plugin-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 14px 20px 12px;
+        border-bottom: 1px solid var(--border-soft);
+        flex: none;
+      }
+      .plugin-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: none;
+      }
+      .plugin-icon .icon {
+        width: 18px;
+        height: 18px;
+      }
+      .plugin-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .plugin-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .plugin-sub {
+        margin: 2px 0 0;
+        font-size: 11.5px;
+        color: var(--text-3);
+        line-height: 1.5;
+      }
+      .plugin-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: none;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .plugin-tabs {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 20px;
+        border-bottom: 1px solid var(--border-soft);
+        flex: none;
+        min-width: 0;
+      }
+      .tab-hint {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--text-3);
+        white-space: nowrap;
+      }
+      .tab-panel {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 14px 20px 18px;
+      }
+      .tab-panel > * {
+        animation: fade-up 0.22s cubic-bezier(0.28, 0, 0.22, 1);
+      }
+      .set-group {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+        margin-bottom: 12px;
+        overflow: hidden;
+      }
+      .set-group-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border-soft);
+        background: var(--bg-elevated);
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      .set-group-head .icon {
+        width: 15px;
+        height: 15px;
+        color: var(--accent);
+        flex: none;
+      }
+      .set-group-head h3 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .set-group-head .pill {
+        margin-left: auto;
+      }
+      .set-group-body {
+        display: flex;
+        flex-direction: column;
+      }
+      .set-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border-soft);
+        min-width: 0;
+      }
+      .set-row:last-child {
+        border-bottom: 0;
+      }
+      .set-row-text {
+        flex: 1;
+        min-width: 0;
+      }
+      .set-row-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12.5px;
+        color: var(--text);
+        font-weight: 500;
+        flex-wrap: wrap;
+      }
+      .set-row-desc {
+        margin: 2px 0 0;
+        font-size: 11px;
+        color: var(--text-3);
+        line-height: 1.55;
+      }
+      .set-row-desc code {
+        font-size: 10.5px;
+      }
+      .set-row-ctrl {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: none;
+        padding-top: 1px;
+      }
+      .set-note {
+        margin: 0 14px 10px;
+        padding: 8px 10px;
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        background: var(--bg-elevated);
+        font-size: 10.5px;
+        color: var(--text-3);
+        line-height: 1.6;
+      }
+      .set-note strong {
+        color: var(--text-2);
+        font-weight: 500;
+      }
+      .set-note code {
+        font-size: 10px;
+      }
+      .set-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 2px 2px 8px;
+      }
+      .set-actions .saved-line {
+        margin-top: 0;
+        margin-left: 2px;
+      }
+      .set-foot-hint {
+        font-size: 10.5px;
+        color: var(--text-3);
+        line-height: 1.6;
+        margin-left: auto;
+        text-align: right;
+      }
+
+      /* ── 空态 / 降级 ──────────────────────────────────────────── */
+      .error-banner {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        padding: 10px 11px;
+        border: 1px solid color-mix(in srgb, var(--danger) 50%, var(--border));
+        background: var(--danger-soft);
+        border-radius: 10px;
+        color: var(--danger);
+        font-size: 11.5px;
+        line-height: 1.55;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .error-banner .icon {
+        width: 15px;
+        height: 15px;
+        flex: none;
+        margin-top: 2px;
+      }
+      .error-body {
+        flex: 1;
+        min-width: 180px;
+      }
+      .error-body strong {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 1px;
+      }
+      .error-body span {
+        color: var(--text-2);
+      }
+      .error-body code {
+        font-size: 10.5px;
+      }
+      .error-banner .btn {
+        margin-left: auto;
+      }
+      .empty-state {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 12px 10px;
+        border: 1px dashed var(--border);
+        border-radius: 10px;
+        background: var(--bg-elevated);
+        color: var(--text-3);
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .empty-state .icon {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        color: var(--text-3);
+        margin-top: 1px;
+      }
+      .empty-state strong {
+        display: block;
+        color: var(--text);
+        font-size: 12.5px;
+        font-weight: 500;
+        margin-bottom: 1px;
+      }
+      .empty-state span {
+        display: block;
+      }
+      .degrade-hint {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        color: var(--warn);
+        background: var(--warn-soft);
+        border-radius: 5px;
+        padding: 2px 7px;
+        align-self: flex-start;
+        white-space: nowrap;
+      }
+
+      /* ── 固定工具 ─────────────────────────────────────────────── */
+      .scene-pill {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 90;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding: 4px;
+        background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(8px);
+        max-width: calc(100vw - 24px);
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .scene-pill::-webkit-scrollbar {
+        display: none;
+      }
+      .scene-label {
+        font-size: 10px;
+        color: var(--text-3);
+        padding: 0 7px;
+        white-space: nowrap;
+        letter-spacing: 0.04em;
+      }
+      .scene-btn {
+        height: 28px;
+        padding: 0 10px;
+        border: 0;
+        background: transparent;
+        border-radius: 14px;
+        color: var(--text-2);
+        font-size: 11.5px;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .scene-btn:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .scene-btn.active {
+        background: var(--accent);
+        color: var(--on-accent);
+      }
+      .theme-toggle {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        z-index: 95;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: 1px solid var(--border);
+        background: var(--bg-elevated);
+        color: var(--text-2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: var(--shadow);
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .theme-toggle:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .theme-toggle .icon {
+        width: 16px;
+        height: 16px;
+      }
+      .theme-toggle .icon-moon {
+        display: none;
+      }
+      :root[data-theme='light'] .theme-toggle .icon-sun {
+        display: none;
+      }
+      :root[data-theme='light'] .theme-toggle .icon-moon {
+        display: block;
+      }
+      .toast-wrap {
+        position: fixed;
+        right: 16px;
+        bottom: 64px;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        align-items: flex-end;
+        pointer-events: none;
+        max-width: min(370px, calc(100vw - 24px));
+      }
+      .toast {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        padding: 8px 11px;
+        border-radius: 10px;
+        background: var(--toast-bg);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+        color: var(--text);
+        font-size: 11.5px;
+        line-height: 1.5;
+        opacity: 0;
+        transform: translateY(6px);
+        transition:
+          opacity 0.2s,
+          transform 0.2s;
+        pointer-events: none;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+      .toast .icon {
+        width: 14px;
+        height: 14px;
+        flex: none;
+        margin-top: 1px;
+      }
+      .toast-success {
+        border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+      }
+      .toast-success .icon {
+        color: var(--success);
+      }
+      .toast-warn {
+        border-color: color-mix(in srgb, var(--warn) 48%, var(--border));
+      }
+      .toast-warn .icon {
+        color: var(--warn);
+      }
+      .toast-danger {
+        border-color: color-mix(in srgb, var(--danger) 48%, var(--border));
+      }
+      .toast-danger .icon {
+        color: var(--danger);
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes fade-up {
+        from {
+          opacity: 0;
+          transform: translateY(4px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes modal-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px) scale(0.995);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes caret {
+        50% {
+          opacity: 0;
+        }
+      }
+      @keyframes shimmer {
+        from {
+          background-position: 200% 0;
+        }
+        to {
+          background-position: -200% 0;
+        }
+      }
+      @keyframes think-blink {
+        0%,
+        100% {
+          opacity: 0.25;
+        }
+        50% {
+          opacity: 0.9;
+        }
+      }
+
+      @media (max-width: 1279px) {
+        .app-shell {
+          grid-template-columns: 248px minmax(0, 1fr);
+        }
+        .rightbar {
+          display: none;
+        }
+        .settings-nav {
+          width: 200px;
+        }
+      }
+      @media (max-width: 1100px) {
+        .settings-nav {
+          width: 196px;
+        }
+        .mm-title-pill {
+          max-width: 32%;
+        }
+      }
+      @media (max-width: 900px) {
+        .app-shell {
+          grid-template-columns: 64px minmax(0, 1fr);
+        }
+        .sidebar {
+          padding: 10px 8px;
+          align-items: center;
+        }
+        .brand {
+          justify-content: center;
+          width: 100%;
+        }
+        .brand-text,
+        .brand-collapse,
+        .new-chat span,
+        .new-chat .kbd,
+        .side-label,
+        .workspace span,
+        .session .session-title,
+        .session-time,
+        .side-action span,
+        .user-name {
+          display: none;
+        }
+        .new-chat {
+          width: 36px;
+          justify-content: center;
+          padding: 0;
+        }
+        .workspace,
+        .session {
+          width: 36px;
+          justify-content: center;
+          padding: 0;
+          flex: none;
+        }
+        .session {
+          gap: 0;
+        }
+        .side-label {
+          height: 1px;
+          padding: 0;
+          border-top: 1px solid var(--border-soft);
+          margin: 4px 0;
+          overflow: hidden;
+          width: 100%;
+        }
+        .side-section {
+          gap: 4px;
+          align-items: center;
+          width: 100%;
+        }
+        .side-action {
+          width: 36px;
+          justify-content: center;
+          padding: 0;
+          flex: none;
+        }
+        .user {
+          justify-content: center;
+          padding: 6px 0 0;
+          width: 100%;
+        }
+        .topbar-actions {
+          margin-right: 32px;
+        }
+        .settings-modal {
+          width: calc(100vw - 24px);
+          height: calc(100vh - 24px);
+        }
+        .settings-nav {
+          width: 164px;
+        }
+        .plugin-head {
+          padding: 12px 16px;
+        }
+        .plugin-tabs {
+          padding: 8px 16px;
+        }
+        .tab-panel {
+          padding: 12px 16px 22px;
+        }
+        .tab-hint {
+          display: none;
+        }
+        .scene-pill {
+          right: 8px;
+          bottom: 8px;
+          max-width: calc(100vw - 16px);
+        }
+        .toast-wrap {
+          right: 8px;
+          bottom: 56px;
+        }
+        .conv-scroll {
+          padding: 18px;
+        }
+        .composer-wrap {
+          padding: 8px 18px 10px;
+        }
+        .mm-toolbar .mm-kind {
+          display: none;
+        }
+      }
+      @media (max-width: 820px) {
+        .settings-nav {
+          width: 152px;
+          padding: 10px 8px;
+        }
+        .nav-item {
+          font-size: 12px;
+          padding: 0 8px;
+          gap: 8px;
+        }
+        .nav-item .icon {
+          width: 15px;
+          height: 15px;
+        }
+        .plugin-meta,
+        .tab-hint {
+          display: none;
+        }
+        .scene-label {
+          display: none;
+        }
+        .scene-pill {
+          padding: 3px;
+        }
+        .scene-btn {
+          height: 26px;
+          padding: 0 9px;
+          font-size: 11px;
+        }
+        .mm-title-pill {
+          max-width: 28%;
+        }
+        .mm-zoom {
+          display: none;
+        }
+        .set-row {
+          flex-wrap: wrap;
+        }
+        .set-row-ctrl {
+          margin-left: auto;
+        }
+      }
+      @media (max-height: 780px) {
+        .settings-modal {
+          height: calc(100vh - 16px);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.001ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg class="svg-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m16.5 16.5 4 4" />
+      </symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24">
+        <path d="M4 6h9M18 6h2M4 12h4M12 12h8M4 18h11M20 18h0" />
+        <circle cx="16" cy="6" r="2" />
+        <circle cx="10" cy="12" r="2" />
+        <circle cx="18" cy="18" r="2" />
+      </symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24">
+        <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z" />
+      </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+      <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6" /></symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></symbol>
+      <symbol id="i-arrow-left" viewBox="0 0 24 24">
+        <path d="M19 12H5" />
+        <path d="m12 19-7-7 7-7" />
+      </symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 24 24">
+        <path d="M5 12h14" />
+        <path d="m12 5 7 7-7 7" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24">
+        <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+        <path d="M20 4v5h-5" />
+      </symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24">
+        <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+      </symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24">
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m20 6-11 11-5-5" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <path d="M10.3 4.2 2.5 18a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+        <path d="M12 9v4M12 17h.01" />
+      </symbol>
+      <symbol id="i-info" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 11v5M12 8h.01" />
+      </symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </symbol>
+      <symbol id="i-more" viewBox="0 0 24 24">
+        <circle cx="5" cy="12" r="1" />
+        <circle cx="12" cy="12" r="1" />
+        <circle cx="19" cy="12" r="1" />
+      </symbol>
+      <symbol id="i-panel" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M15 4v16" />
+      </symbol>
+      <symbol id="i-send" viewBox="0 0 24 24">
+        <path d="M22 2 11 13" />
+        <path d="M22 2 15 22l-4-9-9-4Z" />
+      </symbol>
+      <symbol id="i-paperclip" viewBox="0 0 24 24">
+        <path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l8.5-8.5a4 4 0 0 1 5.7 5.7l-8.5 8.5a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+      </symbol>
+      <symbol id="i-cpu" viewBox="0 0 24 24">
+        <rect x="6" y="6" width="12" height="12" rx="2" />
+        <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" />
+      </symbol>
+      <symbol id="i-puzzle" viewBox="0 0 24 24">
+        <path
+          d="M20 11h-2V7a2 2 0 0 0-2-2h-4V3a2 2 0 1 0-4 0v2H4a2 2 0 0 0-2 2v4h2a2 2 0 1 1 0 4H2v4a2 2 0 0 0 2 2h4v-2a2 2 0 1 1 4 0v2h4a2 2 0 0 0 2-2v-4h2a2 2 0 1 0 0-4Z"
+        />
+      </symbol>
+      <symbol id="i-model" viewBox="0 0 24 24">
+        <path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z" />
+        <path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8Z" />
+      </symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24">
+        <path d="M9 7V3M15 7V3" />
+        <path d="M6 7h12v4a6 6 0 0 1-6 6 6 6 0 0 1-6-6Z" />
+        <path d="M12 17v4" />
+      </symbol>
+      <symbol id="i-bot" viewBox="0 0 24 24">
+        <rect x="4" y="7" width="16" height="12" rx="3" />
+        <path d="M12 3v4M8 12h.01M16 12h.01M9 16h6" />
+      </symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24">
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="m7 15 3-4 3 2 4-6" />
+      </symbol>
+      <symbol id="i-image" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <circle cx="8.5" cy="9.5" r="1.5" />
+        <path d="m21 15-5-5L5 21" />
+      </symbol>
+      <symbol id="i-bag" viewBox="0 0 24 24">
+        <path d="M6 8h12l1 13H5Z" />
+        <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+      </symbol>
+      <symbol id="i-layout" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M9 4v16M9 12h12" />
+      </symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24">
+        <path d="M12 3 5 6v6c0 5 3.5 7.5 7 9 3.5-1.5 7-4 7-9V6Z" />
+        <path d="m9 12 2 2 4-4" />
+      </symbol>
+      <symbol id="i-doc" viewBox="0 0 24 24">
+        <path d="M6 3h8l4 4v14H6Z" />
+        <path d="M14 3v5h5" />
+        <path d="M9 13h6M9 17h6" />
+      </symbol>
+      <symbol id="i-star" viewBox="0 0 24 24">
+        <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9Z" />
+      </symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24">
+        <rect x="9" y="9" width="11" height="11" rx="2" />
+        <path d="M5 15V5a2 2 0 0 1 2-2h8" />
+      </symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="m9 8-4 4 4 4M15 8l4 4-4 4" /></symbol>
+      <symbol id="i-braces" viewBox="0 0 24 24">
+        <path d="M8 3H6a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h2" />
+        <path d="M16 3h2a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-2" />
+      </symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="m7 9 3 3-3 3M13 15h4" />
+      </symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24">
+        <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+        <circle cx="12" cy="12" r="3" />
+      </symbol>
+      <symbol id="i-download" viewBox="0 0 24 24">
+        <path d="M12 3v12" />
+        <path d="m7 10 5 5 5-5" />
+        <path d="M4 21h16" />
+      </symbol>
+      <symbol id="i-maximize" viewBox="0 0 24 24">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+      </symbol>
+      <symbol id="i-minimize" viewBox="0 0 24 24">
+        <path d="M8 3v3a2 2 0 0 1-2 2H3M16 3v3a2 2 0 0 0 2 2h3M8 21v-3a2 2 0 0 0-2-2H3M16 21v-3a2 2 0 0 1 2-2h3" />
+      </symbol>
+      <symbol id="i-wrap" viewBox="0 0 24 24">
+        <path d="M3 6h18M3 12h13a3 3 0 1 1 0 6h-3" />
+        <path d="m15 15-2 3 2 3" />
+        <path d="M3 18h6" />
+      </symbol>
+      <symbol id="i-list" viewBox="0 0 24 24">
+        <path d="M9 6h11M9 12h11M9 18h11" />
+        <path d="M4 6h.01M4 12h.01M4 18h.01" />
+      </symbol>
+      <symbol id="i-hash" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18" /></symbol>
+      <symbol id="i-quote" viewBox="0 0 24 24">
+        <path d="M7 7H4v6h5V9a2 2 0 0 0-2-2ZM17 7h-3v6h5V9a2 2 0 0 0-2-2Z" />
+        <path d="M9 13v3a2 2 0 0 1-2 2M19 13v3a2 2 0 0 1-2 2" />
+      </symbol>
+      <symbol id="i-table" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M3 10h18M3 15h18M9 10v10" />
+      </symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24">
+        <path d="m12 3 1.9 5.6L19.5 10l-5.6 1.9L12 17.5 10.1 11.9 4.5 10l5.6-1.4Z" />
+      </symbol>
+      <symbol id="i-book" viewBox="0 0 24 24">
+        <path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2Z" />
+        <path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2Z" />
+      </symbol>
+      <symbol id="i-external" viewBox="0 0 24 24">
+        <path d="M15 3h6v6" />
+        <path d="M10 14 21 3" />
+        <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+      </symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24">
+        <path d="m12 3 9 5-9 5-9-5Z" />
+        <path d="m3 13 9 5 9-5" />
+        <path d="m3 18 9 5 9-5" />
+      </symbol>
+    </svg>
+
+    <div class="app-shell" id="appShell">
+      <aside class="sidebar panel" aria-label="工作区与会话">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="2" y="2" width="28" height="28" rx="9" fill="currentColor" opacity=".12" />
+            <path
+              d="M7 20c3.2 0 4.3-3 7.2-3 3 0 3.8 3 6.8 3 2 0 3-1.2 4-1.2"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+            />
+            <circle cx="11" cy="12" r="1.8" fill="currentColor" />
+          </svg>
+          <div class="brand-text"><span class="brand-name">deepseek</span><span class="brand-tag">HARNESS</span></div>
+          <button class="icon-btn brand-collapse" data-tip="收起侧栏" aria-label="收起侧栏">
+            <svg class="icon icon-sm"><use href="#i-panel" /></svg>
+          </button>
+        </div>
+        <button class="new-chat">
+          <svg class="icon icon-sm"><use href="#i-plus" /></svg><span>新建会话</span><span class="kbd">⌘N</span>
+        </button>
+        <div class="side-section">
+          <div class="side-label">
+            <span>工作区</span
+            ><span class="side-label-actions"
+              ><button class="icon-btn" data-tip="搜索" aria-label="搜索">
+                <svg class="icon icon-xs"><use href="#i-search" /></svg></button
+              ><button class="icon-btn" data-tip="筛选" aria-label="筛选">
+                <svg class="icon icon-xs"><use href="#i-sliders" /></svg></button
+            ></span>
+          </div>
+          <button class="workspace active">
+            <svg class="icon icon-xs"><use href="#i-chevron-down" /></svg
+            ><svg class="icon icon-sm"><use href="#i-folder" /></svg><span>my-dsh-plugins</span>
+          </button>
+          <button class="workspace">
+            <svg class="icon icon-xs"><use href="#i-chevron-right" /></svg
+            ><svg class="icon icon-sm"><use href="#i-folder" /></svg><span>deepseek-harness</span>
+          </button>
+        </div>
+        <div class="side-section sessions-section">
+          <div class="side-label"><span>最近会话</span></div>
+          <button class="session active">
+            <span class="status-dot warn"></span><span class="session-title">实现带重试的 HTTP 客户端</span
+            ><span class="session-time">刚刚</span>
+          </button>
+          <button class="session">
+            <span class="status-dot ok"></span><span class="session-title">md-render 重构 · 围栏块接管</span
+            ><span class="session-time">8 分钟前</span>
+          </button>
+          <button class="session">
+            <span class="status-dot ok"></span><span class="session-title">Mermaid 卡片缩放与导出</span
+            ><span class="session-time">1 小时前</span>
+          </button>
+          <button class="session">
+            <span class="status-dot ok"></span><span class="session-title">修复代码块复制失效</span
+            ><span class="session-time">昨天</span>
+          </button>
+        </div>
+        <div class="sidebar-foot">
+          <button class="side-action" id="sidebarSettings">
+            <svg class="icon icon-sm"><use href="#i-sliders" /></svg><span>设置</span>
+          </button>
+          <button class="side-action">
+            <svg class="icon icon-sm"><use href="#i-shield" /></svg><span>权限与安全</span>
+          </button>
+          <div class="user"><span class="avatar">B</span><span class="user-name">bsfeng</span></div>
+        </div>
+      </aside>
+
+      <section class="main panel" aria-label="会话主区">
+        <header class="topbar">
+          <div class="topbar-left">
+            <div class="topbar-nav">
+              <button class="icon-btn" data-tip="后退" aria-label="后退">
+                <svg class="icon icon-sm"><use href="#i-arrow-left" /></svg></button
+              ><button class="icon-btn" data-tip="前进" aria-label="前进">
+                <svg class="icon icon-sm"><use href="#i-arrow-right" /></svg>
+              </button>
+            </div>
+            <div class="chat-title">实现带重试的 HTTP 客户端</div>
+            <span class="model-chip"
+              ><svg class="icon"><use href="#i-model" /></svg>标准模式<svg class="icon icon-xs">
+                <use href="#i-chevron-down" /></svg
+            ></span>
+          </div>
+          <div class="topbar-actions">
+            <button class="icon-btn" data-tip="复制会话" aria-label="复制会话" id="copySession">
+              <svg class="icon icon-sm"><use href="#i-copy" /></svg>
+            </button>
+            <button class="icon-btn" data-tip="更多" aria-label="更多">
+              <svg class="icon icon-sm"><use href="#i-more" /></svg>
+            </button>
+            <button class="icon-btn" data-tip="右侧栏" aria-label="右侧栏">
+              <svg class="icon icon-sm"><use href="#i-panel" /></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="conversation" id="convView">
+          <div class="conv-scroll" id="convScroll">
+            <div class="conv-inner">
+              <div class="conv-date">今天 22:12</div>
+              <div class="msg user">
+                <div class="msg-bubble">实现一个带重试的 HTTP 客户端：指数退避、超时、取消都要有。</div>
+              </div>
+              <div class="msg">
+                <div class="assistant-head">
+                  <span class="ai-avatar">D</span><span>DeepSeek</span><span>22:12</span
+                  ><span class="pill success">已接管围栏块</span>
+                </div>
+
+                <!-- F1 思考块 -->
+                <div class="think" id="thinkBlock">
+                  <button class="think-head" id="thinkToggle" aria-expanded="true" aria-controls="thinkBody">
+                    <svg class="icon chev"><use href="#i-chevron-down" /></svg>
+                    <span class="think-title">已思考</span>
+                    <span class="think-meta"
+                      ><span class="think-dots"><i></i><i></i><i></i></span>12 秒</span
+                    >
+                    <span class="think-hint">默认展开 · 点击折叠</span>
+                  </button>
+                  <div class="think-body" id="thinkBody">
+                    <p>
+                      先确认边界：重试只对幂等请求和网络错误生效，<code>4xx</code> 不重试；退避用 base × 2^n
+                      并加抖动，避免同步风暴。
+                    </p>
+                    <p>
+                      取消要贯穿到单次 <code>fetch</code>：外层 <code>AbortController</code> 与超时 controller 用
+                      <code>AbortSignal.any</code> 合并，超时后抛 <code>TimeoutError</code> 以便上层区分。
+                    </p>
+                    <p>最后给出配置表与流程图，代码按可直接运行的形式写。</p>
+                  </div>
+                </div>
+
+                <!-- F2 markdown -->
+                <div class="md-body" id="mdBody">
+                  <button
+                    class="icon-btn md-copy"
+                    id="mdCopy"
+                    data-tip="复制整段 markdown"
+                    aria-label="复制整段 markdown"
+                  >
+                    <svg class="icon icon-sm"><use href="#i-copy" /></svg>
+                  </button>
+                  <h2>实现方案</h2>
+                  <p>
+                    把重试、超时、取消拆成三个正交的部分，外层只负责编排。核心是
+                    <code>fetchWithRetry</code>：每次尝试独立计时，失败后按退避策略等待，并在等待期间响应取消。
+                  </p>
+                  <ul>
+                    <li>
+                      <strong>可重试判定</strong
+                      >：网络错误、<code>408</code>、<code>429</code>、<code>5xx</code>；其余错误直接抛出。
+                    </li>
+                    <li>
+                      <strong>退避方式</strong>：指数退避 + 全抖动（<code>Math.random()</code>），上限
+                      <code>maxDelay</code>。
+                    </li>
+                    <li><strong>超时</strong>：单次尝试超时，不做整体超时，避免重试被总时长截断。</li>
+                  </ul>
+                  <div class="md-table-wrap">
+                    <table class="md-table">
+                      <thead>
+                        <tr>
+                          <th>参数</th>
+                          <th>默认值</th>
+                          <th>说明</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td><code>retries</code></td>
+                          <td>3</td>
+                          <td>最多重试次数，不含首次请求</td>
+                        </tr>
+                        <tr>
+                          <td><code>baseDelay</code></td>
+                          <td>300ms</td>
+                          <td>退避基数，第 n 次等待 ≈ base × 2^n</td>
+                        </tr>
+                        <tr>
+                          <td><code>maxDelay</code></td>
+                          <td>8000ms</td>
+                          <td>单次等待上限</td>
+                        </tr>
+                        <tr>
+                          <td><code>timeout</code></td>
+                          <td>10000ms</td>
+                          <td>单次尝试超时</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <h3>重试流程图</h3>
+
+                  <!-- F6 mermaid 卡片 -->
+                  <div class="mm-card" id="mermaidCard" data-mm>
+                    <div class="mm-head">
+                      <span class="mm-title-pill"
+                        ><svg class="icon"><use href="#i-chart" /></svg>重试流程图</span
+                      >
+                      <span class="mm-kind">flowchart</span>
+                      <div class="mm-toolbar">
+                        <div class="segmented" role="group" aria-label="图表视图切换">
+                          <button class="seg-btn active" data-mm-view="preview">
+                            <svg class="icon icon-xs"><use href="#i-eye" /></svg>预览
+                          </button>
+                          <button class="seg-btn" data-mm-view="code">
+                            <svg class="icon icon-xs"><use href="#i-code" /></svg>代码
+                          </button>
+                        </div>
+                        <div class="mm-zoom" role="group" aria-label="图表缩放">
+                          <button class="icon-btn" data-mm-zoom="-1" aria-label="缩小" data-tip="缩小">
+                            <svg class="icon"><use href="#i-minus" /></svg>
+                          </button>
+                          <span class="mm-zoom-val" data-mm-zoom-val>100%</span>
+                          <button class="icon-btn" data-mm-zoom="1" aria-label="放大" data-tip="放大">
+                            <svg class="icon"><use href="#i-plus" /></svg>
+                          </button>
+                        </div>
+                        <button class="icon-btn" id="mmFullscreen" aria-label="全屏" data-tip="全屏">
+                          <svg class="icon"><use href="#i-maximize" /></svg>
+                        </button>
+                        <button class="icon-btn" id="mmMore" aria-label="更多" data-tip="更多" aria-expanded="false">
+                          <svg class="icon"><use href="#i-more" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="mm-menu is-hidden" id="mmMenu" role="menu">
+                      <button class="mm-menu-item" role="menuitem" data-mm-menu="png">
+                        <svg class="icon"><use href="#i-image" /></svg>导出 PNG
+                      </button>
+                      <button class="mm-menu-item" role="menuitem" data-mm-menu="svg">
+                        <svg class="icon"><use href="#i-download" /></svg>导出 SVG
+                      </button>
+                      <div class="mm-menu-sep"></div>
+                      <div class="mm-menu-label">缩放模式</div>
+                      <button class="mm-menu-item" role="menuitemradio" aria-checked="true" data-mm-fit="container">
+                        <svg class="icon"><use href="#i-layout" /></svg>适应容器<svg class="icon check">
+                          <use href="#i-check" />
+                        </svg>
+                      </button>
+                      <button class="mm-menu-item" role="menuitemradio" aria-checked="false" data-mm-fit="width">
+                        <svg class="icon"><use href="#i-wrap" /></svg>适应宽度<svg class="icon check is-hidden">
+                          <use href="#i-check" />
+                        </svg>
+                      </button>
+                      <div class="mm-menu-sep"></div>
+                      <button class="mm-menu-item" role="menuitem" data-mm-menu="copy">
+                        <svg class="icon"><use href="#i-copy" /></svg>复制代码
+                      </button>
+                    </div>
+                    <div class="mm-body" id="mmBody">
+                      <svg
+                        class="mm-svg"
+                        viewBox="0 0 600 250"
+                        width="600"
+                        height="250"
+                        role="img"
+                        aria-label="带重试的 HTTP 请求流程图"
+                      >
+                        <defs>
+                          <marker
+                            id="mmArrow"
+                            viewBox="0 0 10 10"
+                            refX="8"
+                            refY="5"
+                            markerWidth="6"
+                            markerHeight="6"
+                            orient="auto-start-reverse"
+                          >
+                            <path d="M0 0 10 5 0 10Z" fill="currentColor" opacity=".75" />
+                          </marker>
+                        </defs>
+                        <rect x="18" y="100" width="88" height="40" rx="8" class="node-box" />
+                        <text x="62" y="118" text-anchor="middle" class="node-text">请求</text>
+                        <text x="62" y="131" text-anchor="middle" class="node-sub">url + init</text>
+
+                        <rect x="146" y="100" width="104" height="40" rx="8" class="node-box" />
+                        <text x="198" y="118" text-anchor="middle" class="node-text">发送 fetch</text>
+                        <text x="198" y="131" text-anchor="middle" class="node-sub">单次超时</text>
+
+                        <path d="M330 82 384 108 330 134 276 108Z" class="diamond" />
+                        <text x="330" y="105" text-anchor="middle" class="node-text">成功?</text>
+                        <text x="330" y="119" text-anchor="middle" class="node-sub">2xx / 4xx</text>
+
+                        <rect x="432" y="34" width="126" height="40" rx="8" class="node-alt" />
+                        <text x="495" y="52" text-anchor="middle" class="node-text">返回响应</text>
+                        <text x="495" y="65" text-anchor="middle" class="node-sub">解析 body</text>
+
+                        <rect x="432" y="150" width="126" height="40" rx="8" class="node-box" />
+                        <text x="495" y="168" text-anchor="middle" class="node-text">等待退避</text>
+                        <text x="495" y="181" text-anchor="middle" class="node-sub">base × 2^n + 抖动</text>
+
+                        <path d="M106 120 H142" class="edge" marker-end="url(#mmArrow)" />
+                        <path d="M250 120 H272" class="edge" marker-end="url(#mmArrow)" />
+                        <path d="M384 108 430 64" class="edge" marker-end="url(#mmArrow)" />
+                        <text x="414" y="82" text-anchor="middle" class="edge-label">是</text>
+                        <path d="M330 134 V170 H428" class="edge" marker-end="url(#mmArrow)" />
+                        <text x="348" y="163" class="edge-label">否</text>
+                        <path
+                          d="M495 190 V204 H120 V120 H142"
+                          class="edge"
+                          marker-end="url(#mmArrow)"
+                          stroke-dasharray="4 4"
+                        />
+                        <text x="200" y="198" text-anchor="middle" class="edge-label">重试（额度用尽则抛出）</text>
+                      </svg>
+                    </div>
+                    <div class="mm-md" id="mmMarkdown" hidden>
+                      <div class="md-body">
+                        <h3>重试流程图</h3>
+                        <p>
+                          下图描述
+                          <code>fetchWithRetry</code> 的控制流：每次尝试都有独立超时，失败后进入退避等待，等待结束后回到
+                          <code>fetch</code>，超过重试上限则抛出最后一个错误。
+                        </p>
+                        <ul>
+                          <li>成功（<code>2xx</code> 或不可重试状态）直接返回响应。</li>
+                          <li>
+                            失败（网络错误 / <code>408</code> / <code>429</code> /
+                            <code>5xx</code>）判断是否还有重试额度。
+                          </li>
+                          <li>
+                            额度用尽后抛出 <code>RetryExhaustedError</code>，保留最后一次错误作为 <code>cause</code>。
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                    <pre class="mm-code" id="mmCode" hidden>
+flowchart TD
+  A[请求] --> B[发送 fetch]
+  B --> C{成功?}
+  C -->|是| D[返回响应]
+  C -->|否| E[等待退避]
+  E --> F{还有额度?}
+  F -->|是| B
+  F -->|否| G[抛出 RetryExhaustedError]</pre>
+                    <div class="mm-foot">
+                      <span class="rm-label">渲染为…</span>
+                      <div class="render-mode" role="group" aria-label="围栏块渲染方式">
+                        <button class="rm-btn active" data-mm-mode="diagram">
+                          <svg class="icon"><use href="#i-chart" /></svg>图表
+                        </button>
+                        <button class="rm-btn" data-mm-mode="markdown">
+                          <svg class="icon"><use href="#i-book" /></svg>Markdown
+                        </button>
+                        <button class="rm-btn" data-mm-mode="source">
+                          <svg class="icon"><use href="#i-code" /></svg>源码
+                        </button>
+                      </div>
+                      <span class="spacer"></span>
+                      <span>flowchart · 9 节点 · 由 dsh-md-render 接管</span>
+                    </div>
+                  </div>
+
+                  <!-- F2 查看原文 -->
+                  <button class="md-raw-toggle" id="rawToggle" aria-expanded="false">
+                    <svg class="icon"><use href="#i-code" /></svg>查看原文
+                  </button>
+                  <pre class="md-raw-box" id="rawBox" hidden>
+## 实现方案
+
+把重试、超时、取消拆成三个正交的部分，外层只负责编排。
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| retries | 3 | 最多重试次数 |
+| baseDelay | 300ms | 退避基数 |
+| maxDelay | 8000ms | 单次等待上限 |
+| timeout | 10000ms | 单次尝试超时 |
+
+```mermaid
+flowchart TD
+  A[请求] --&gt; B[发送 fetch]
+  ...
+```</pre>
+
+                  <!-- F3 代码块 -->
+                  <div class="fence show-lines" data-fence data-lang="JS">
+                    <div class="fence-head">
+                      <span class="lang-pill">JS</span>
+                      <span class="fence-title">src/http/client.ts</span>
+                      <span class="fence-actions">
+                        <button class="text-btn copy-btn" data-copy-btn>复制</button>
+                        <button class="icon-btn wrap-btn" data-tip="切换自动换行" aria-label="切换自动换行">
+                          <svg class="icon icon-sm"><use href="#i-wrap" /></svg>
+                        </button>
+                        <button class="icon-btn lines-btn is-on" data-tip="切换行号" aria-label="切换行号">
+                          <svg class="icon icon-sm"><use href="#i-hash" /></svg>
+                        </button>
+                      </span>
+                    </div>
+                    <div class="fence-body">
+                      <div class="line-nums" aria-hidden="true"></div>
+                      <pre
+                        class="fence-code"
+                      ><span class="hl-key">export</span> <span class="hl-key">async</span> <span class="hl-key">function</span> <span class="hl-fn">fetchWithRetry</span>(url, opts = {}) {
+  <span class="hl-key">const</span> { retries = <span class="hl-num">3</span>, baseDelay = <span class="hl-num">300</span>, maxDelay = <span class="hl-num">8000</span>,
+    timeout = <span class="hl-num">10000</span>, signal, ...init } = opts;
+
+  <span class="hl-key">for</span> (<span class="hl-key">let</span> attempt = <span class="hl-num">0</span>; ; attempt += <span class="hl-num">1</span>) {
+    <span class="hl-key">const</span> ctrl = <span class="hl-key">new</span> <span class="hl-fn">AbortController</span>();
+    <span class="hl-key">const</span> timer = <span class="hl-fn">setTimeout</span>(() =&gt; ctrl.<span class="hl-fn">abort</span>(<span class="hl-key">new</span> <span class="hl-fn">TimeoutError</span>(url, timeout)), timeout);
+    <span class="hl-key">const</span> merged = signal ? <span class="hl-fn">AbortSignal</span>.<span class="hl-fn">any</span>([signal, ctrl.signal]) : ctrl.signal;
+
+    <span class="hl-key">try</span> {
+      <span class="hl-key">const</span> res = <span class="hl-key">await</span> <span class="hl-fn">fetch</span>(url, { ...init, signal: merged });
+      <span class="hl-key">if</span> (res.ok || !<span class="hl-fn">isRetryableStatus</span>(res.status)) <span class="hl-key">return</span> res;
+    } <span class="hl-key">catch</span> (error) {
+      <span class="hl-key">if</span> (attempt &gt;= retries || !<span class="hl-fn">isRetryableError</span>(error)) <span class="hl-key">throw</span> error;
+    } <span class="hl-key">finally</span> {
+      <span class="hl-fn">clearTimeout</span>(timer);
+    }
+
+    <span class="hl-key">const</span> delay = <span class="hl-fn">Math</span>.<span class="hl-fn">min</span>(maxDelay, baseDelay * <span class="hl-num">2</span> ** attempt);
+    <span class="hl-key">await</span> <span class="hl-fn">sleep</span>(delay * <span class="hl-fn">Math</span>.<span class="hl-fn">random</span>(), signal);
+  }
+}</pre>
+                    </div>
+                    <div class="fence-foot">
+                      <span class="fence-note">23 行 · TypeScript · 可重试状态 408 / 429 / 5xx</span
+                      ><button class="text-btn" data-fence-raw>查看原文</button>
+                    </div>
+                  </div>
+
+                  <div class="fence" data-fence data-lang="JSON">
+                    <div class="fence-head">
+                      <span class="lang-pill">JSON</span>
+                      <span class="fence-title">retry.config.json</span>
+                      <span class="fence-actions">
+                        <button class="text-btn copy-btn" data-copy-btn>复制</button>
+                        <button class="icon-btn wrap-btn" data-tip="切换自动换行" aria-label="切换自动换行">
+                          <svg class="icon icon-sm"><use href="#i-wrap" /></svg>
+                        </button>
+                        <button class="icon-btn lines-btn" data-tip="切换行号" aria-label="切换行号">
+                          <svg class="icon icon-sm"><use href="#i-hash" /></svg>
+                        </button>
+                      </span>
+                    </div>
+                    <div class="fence-body">
+                      <div class="line-nums" aria-hidden="true"></div>
+                      <pre class="fence-code">{
+  <span class="hl-prop">"retries"</span>: <span class="hl-num">3</span>,
+  <span class="hl-prop">"baseDelay"</span>: <span class="hl-num">300</span>,
+  <span class="hl-prop">"maxDelay"</span>: <span class="hl-num">8000</span>,
+  <span class="hl-prop">"timeout"</span>: <span class="hl-num">10000</span>,
+  <span class="hl-prop">"retryOn"</span>: [<span class="hl-num">408</span>, <span class="hl-num">429</span>, <span class="hl-num">500</span>, <span class="hl-num">502</span>, <span class="hl-num">503</span>, <span class="hl-num">504</span>]
+}</pre>
+                    </div>
+                    <div class="fence-foot">
+                      <span class="fence-note">9 行 · JSON</span
+                      ><button class="text-btn" data-fence-raw>查看原文</button>
+                    </div>
+                  </div>
+
+                  <div class="fence" data-fence data-lang="BASH">
+                    <div class="fence-head">
+                      <span class="lang-pill">BASH</span>
+                      <span class="fence-title">终端</span>
+                      <span class="fence-actions">
+                        <button class="text-btn copy-btn" data-copy-btn>复制</button>
+                        <button class="icon-btn wrap-btn" data-tip="切换自动换行" aria-label="切换自动换行">
+                          <svg class="icon icon-sm"><use href="#i-wrap" /></svg>
+                        </button>
+                        <button class="icon-btn lines-btn" data-tip="切换行号" aria-label="切换行号">
+                          <svg class="icon icon-sm"><use href="#i-hash" /></svg>
+                        </button>
+                      </span>
+                    </div>
+                    <div class="fence-body">
+                      <div class="line-nums" aria-hidden="true"></div>
+                      <pre class="fence-code"><span class="hl-com"># 只跑重试相关用例</span>
+npm test -- --run src/http/retry.test.ts
+
+<span class="hl-com"># 全量门禁</span>
+npm run verify</pre>
+                    </div>
+                    <div class="fence-foot">
+                      <span class="fence-note">5 行 · Bash</span
+                      ><button class="text-btn" data-fence-raw>查看原文</button>
+                    </div>
+                  </div>
+
+                  <!-- F4 无语言围栏块 -->
+                  <div class="fence" data-fence data-lang="">
+                    <div class="fence-head">
+                      <span class="lang-pill" aria-hidden="true"></span>
+                      <span class="fence-title">尝试日志</span>
+                      <span class="fence-actions">
+                        <button class="text-btn copy-btn" data-copy-btn>复制</button>
+                        <button class="icon-btn wrap-btn" data-tip="切换自动换行" aria-label="切换自动换行">
+                          <svg class="icon icon-sm"><use href="#i-wrap" /></svg>
+                        </button>
+                        <button class="icon-btn lines-btn" data-tip="切换行号" aria-label="切换行号">
+                          <svg class="icon icon-sm"><use href="#i-hash" /></svg>
+                        </button>
+                      </span>
+                    </div>
+                    <div class="fence-body">
+                      <div class="line-nums" aria-hidden="true"></div>
+                      <pre class="fence-code">
+attempt 1  429 Too Many Requests  wait 287ms
+attempt 2  503 Service Unavailable  wait 1163ms
+attempt 3  200 OK</pre>
+                    </div>
+                    <div class="fence-foot">
+                      <span class="fence-note">无法识别语言时保留代码视图，语言位留空</span
+                      ><button class="text-btn" data-fence-raw>查看原文</button>
+                    </div>
+                  </div>
+
+                  <h3>验证清单</h3>
+                  <p>写完后按下面的清单自查，未完成项保持未勾选：</p>
+                  <ul class="task-list">
+                    <li class="is-done">
+                      <span class="task-box on"
+                        ><svg class="icon"><use href="#i-check" /></svg></span
+                      ><span>指数退避 + 全抖动，等待上限 <code>maxDelay</code></span>
+                    </li>
+                    <li class="is-done">
+                      <span class="task-box on"
+                        ><svg class="icon"><use href="#i-check" /></svg></span
+                      ><span>单次尝试超时，超时抛 <code>TimeoutError</code></span>
+                    </li>
+                    <li class="is-done">
+                      <span class="task-box on"
+                        ><svg class="icon"><use href="#i-check" /></svg></span
+                      ><span>外层 <code>AbortSignal</code> 贯通到 <code>fetch</code> 与退避等待</span>
+                    </li>
+                    <li>
+                      <span class="task-box"></span><span>解析 <code>Retry-After</code> 头并优先于退避计算</span>
+                    </li>
+                    <li>
+                      <span class="task-box"></span><span>接入全量门禁 <code>npm run verify</code></span>
+                    </li>
+                  </ul>
+                  <blockquote>
+                    <p>取消优先于重试：外层 signal 一旦 abort，退避中的等待也要立即退出，否则重试会把取消吞掉。</p>
+                  </blockquote>
+                  <hr />
+                  <p>
+                    参考 <a href="#" onclick="return false">MDN · AbortSignal.any()</a> 与
+                    <a href="#" onclick="return false">fetch 标准</a>。下面是重试时间线示意：
+                  </p>
+                  <img
+                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='132' viewBox='0 0 640 132'%3E%3Cg stroke='%23c9c9cf' stroke-width='1'%3E%3Cpath d='M40 96h570'/%3E%3C/g%3E%3Cg fill='none' stroke='%230a84ff' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M40 96h88l46-46h104l46 46h96l46-46h96'/%3E%3C/g%3E%3Cg fill='%230a84ff'%3E%3Ccircle cx='40' cy='96' r='3.5'/%3E%3Ccircle cx='174' cy='50' r='3.5'/%3E%3Ccircle cx='370' cy='96' r='3.5'/%3E%3Ccircle cx='560' cy='50' r='3.5'/%3E%3C/g%3E%3Cg fill='%2386868b' font-family='sans-serif' font-size='10'%3E%3Ctext x='32' y='118'%3E0s%3C/text%3E%3Ctext x='154' y='118'%3E0.3s%3C/text%3E%3Ctext x='350' y='118'%3E1.2s%3C/text%3E%3Ctext x='540' y='118'%3E2.4s%3C/text%3E%3C/g%3E%3Cg fill='%236b7280' font-family='sans-serif' font-size='10'%3E%3Ctext x='196' y='44'%3E429%3C/text%3E%3Ctext x='392' y='90'%3E503%3C/text%3E%3Ctext x='576' y='44'%3E200%3C/text%3E%3C/g%3E%3C/svg%3E"
+                    alt="重试时间线示意：429 后退避 0.3s，503 后再退避，最终 200"
+                  />
+
+                  <!-- F8 上下文注入块 -->
+                  <div class="ctx-block">
+                    <div class="ctx-head">
+                      <svg class="icon"><use href="#i-plug" /></svg>
+                      <strong>上下文注入</strong>
+                      <span class="ctx-from">来自子代理 code-reviewer · 2 分钟前</span>
+                      <span class="badge badge-accent">按 markdown 渲染</span>
+                    </div>
+                    <div class="ctx-body">
+                      <p>审查结论：重试主流程可以通过，但有两处需要修。</p>
+                      <ul>
+                        <li><code>sleep</code> 未响应 <code>signal</code>，取消时最多多等 8 秒。</li>
+                        <li><code>isRetryableStatus</code> 漏了 <code>408</code>。</li>
+                      </ul>
+                      <div class="fence" data-fence data-lang="TS">
+                        <div class="fence-head">
+                          <span class="lang-pill">TS</span>
+                          <span class="fence-title">建议改法</span>
+                          <span class="fence-actions"
+                            ><button class="text-btn copy-btn" data-copy-btn>复制</button
+                            ><button class="icon-btn wrap-btn" data-tip="切换自动换行" aria-label="切换自动换行">
+                              <svg class="icon icon-sm"><use href="#i-wrap" /></svg></button
+                            ><button class="icon-btn lines-btn" data-tip="切换行号" aria-label="切换行号">
+                              <svg class="icon icon-sm"><use href="#i-hash" /></svg></button
+                          ></span>
+                        </div>
+                        <div class="fence-body">
+                          <div class="line-nums" aria-hidden="true"></div>
+                          <pre
+                            class="fence-code"
+                          ><span class="hl-key">function</span> <span class="hl-fn">sleep</span>(ms, signal) {
+  <span class="hl-key">return</span> <span class="hl-key">new</span> <span class="hl-fn">Promise</span>((resolve, reject) =&gt; {
+    <span class="hl-key">const</span> id = <span class="hl-fn">setTimeout</span>(resolve, ms);
+    signal?.<span class="hl-fn">addEventListener</span>(<span class="hl-str">'abort'</span>, () =&gt; {
+      <span class="hl-fn">clearTimeout</span>(id);
+      reject(signal.reason);
+    }, { once: <span class="hl-key">true</span> });
+  });
+}</pre>
+                        </div>
+                        <div class="fence-foot">
+                          <span class="fence-note">取消即退出，不再等待</span
+                          ><button class="text-btn" data-fence-raw>查看原文</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- F9 流式态 -->
+              <div class="msg">
+                <div class="assistant-head">
+                  <span class="ai-avatar">D</span><span>DeepSeek</span><span>22:13</span
+                  ><span class="pill accent">流式生成中</span>
+                </div>
+                <div class="streaming">
+                  <p>再把 <code>sleep</code> 改成可中断版本，等待期间监听 abort：</p>
+                  <div class="stream-line">
+                    <span>这样取消信号会立刻结束等待，重试不会再吞掉取消。</span><span class="caret"></span>
+                  </div>
+                  <div class="stream-skel w-92"></div>
+                  <div class="stream-skel w-74"></div>
+                  <div class="stream-skel w-56"></div>
+                  <div class="stream-meta"><span class="spinner"></span>生成中 · 1.8k tokens · 点击停止可中断</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- EMPTYVIEW -->
+        <div class="conversation" id="emptyView" hidden>
+          <div class="conv-scroll">
+            <div class="conv-inner">
+              <div class="error-banner">
+                <svg class="icon"><use href="#i-alert" /></svg>
+                <div class="error-body">
+                  <strong>渲染层未就绪，围栏块保持官方形态</strong>
+                  <span
+                    >client 扩展点注册失败（<code>already registered</code>），本会话的围栏块不会被接管；markdown
+                    正文仍由宿主渲染，消息不会丢失。</span
+                  >
+                </div>
+                <button class="btn btn-outline btn-sm" id="retryMount">
+                  <svg class="icon icon-xs"><use href="#i-refresh" /></svg>重试挂载
+                </button>
+              </div>
+
+              <div class="empty-state">
+                <svg class="icon"><use href="#i-sparkle" /></svg>
+                <div>
+                  <strong>这是一个新会话</strong
+                  ><span>发出第一条消息后，围栏块会由 dsh-md-render 接管渲染；在接管生效前，代码块仍可复制。</span>
+                </div>
+              </div>
+
+              <div
+                class="demo-label"
+                style="
+                  font-size: 12px;
+                  color: var(--text-2);
+                  display: flex;
+                  align-items: center;
+                  gap: 7px;
+                  margin-top: 4px;
+                "
+              >
+                <span class="step-num">1</span>降级形态：围栏块保持宿主原样
+                <span class="degrade-hint"
+                  ><svg class="icon icon-xs"><use href="#i-alert" /></svg>未接管</span
+                >
+              </div>
+              <pre
+                class="fence-code"
+                style="
+                  border: 1px solid var(--border);
+                  border-radius: 10px;
+                  background: var(--code-bg);
+                  padding: 12px 14px;
+                "
+              >
+const res = await fetchWithRetry(url, { retries: 3 });
+console.log(res.status);</pre>
+
+              <div
+                class="demo-label"
+                style="
+                  font-size: 12px;
+                  color: var(--text-2);
+                  display: flex;
+                  align-items: center;
+                  gap: 7px;
+                  margin-top: 10px;
+                "
+              >
+                <span class="step-num">2</span>mermaid 解析失败：保留源码并提示
+              </div>
+              <div class="fence" data-fence data-lang="MERMAID">
+                <div class="fence-head">
+                  <span class="lang-pill">Mermaid</span>
+                  <span class="fence-title">流程图（解析失败）</span>
+                  <span class="fence-actions"
+                    ><button class="text-btn copy-btn" data-copy-btn>复制</button
+                    ><button class="icon-btn wrap-btn" data-tip="切换自动换行" aria-label="切换自动换行">
+                      <svg class="icon icon-sm"><use href="#i-wrap" /></svg></button
+                    ><button class="icon-btn lines-btn" data-tip="切换行号" aria-label="切换行号">
+                      <svg class="icon icon-sm"><use href="#i-hash" /></svg></button
+                  ></span>
+                </div>
+                <div class="fence-body">
+                  <div class="line-nums" aria-hidden="true"></div>
+                  <pre class="fence-code">
+flowchart TD
+  A[请求] --&gt; B{成功?}
+  B --&gt;|是| C[返回]
+  B --&gt;|否| C[返回]
+  C --&gt; D</pre>
+                </div>
+                <div class="error-banner" style="margin: 8px 10px 10px">
+                  <svg class="icon"><use href="#i-alert" /></svg>
+                  <div class="error-body">
+                    <strong>图表解析失败</strong
+                    ><span>节点 <code>C</code> 被重复定义（第 3、4 行），已回退为源码视图。</span>
+                  </div>
+                  <button class="btn btn-outline btn-sm">查看报错</button>
+                </div>
+                <div class="fence-foot">
+                  <span class="fence-note">降级：图表不渲染，源码可复制</span
+                  ><button class="text-btn" data-fence-raw>查看原文</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="icon-btn" data-tip="附件" aria-label="附件">
+              <svg class="icon icon-sm"><use href="#i-paperclip" /></svg></button
+            ><input class="composer-input" placeholder="继续输入，或 / 唤起命令…" aria-label="消息输入" /><button
+              class="icon-btn"
+              data-tip="发送"
+              aria-label="发送"
+              id="composerSend"
+            >
+              <svg class="icon icon-sm"><use href="#i-send" /></svg>
+            </button>
+          </div>
+          <div class="composer-hint">Enter 发送 · Shift + Enter 换行</div>
+        </div>
+      </section>
+
+      <aside class="rightbar panel" aria-label="右侧栏">
+        <div class="right-tabs">
+          <button class="right-tab">
+            <svg class="icon icon-sm"><use href="#i-doc" /></svg>文件
+          </button>
+          <button class="right-tab active">
+            <svg class="icon icon-sm"><use href="#i-clock" /></svg>文件活动
+          </button>
+          <button class="right-tab" aria-label="新建面板">
+            <svg class="icon icon-sm"><use href="#i-plus" /></svg>
+          </button>
+        </div>
+        <div class="right-body">
+          <div class="right-head">
+            <svg class="icon"><use href="#i-chevron-down" /></svg>最近访问<span class="right-head-actions"
+              ><button class="icon-btn" data-tip="刷新" aria-label="刷新">
+                <svg class="icon icon-xs"><use href="#i-refresh" /></svg></button
+              ><button class="icon-btn" data-tip="清空" aria-label="清空">
+                <svg class="icon icon-xs"><use href="#i-trash" /></svg></button
+            ></span>
+          </div>
+          <div class="file-row">
+            <svg class="icon"><use href="#i-doc" /></svg><span class="file-name">brief-md-render.md</span
+            ><span class="file-meta">刚刚</span>
+          </div>
+          <div class="file-row">
+            <svg class="icon"><use href="#i-doc" /></svg><span class="file-name">设计基线.md</span
+            ><span class="file-meta">2 分钟前</span>
+          </div>
+          <div class="file-row">
+            <svg class="icon"><use href="#i-image" /></svg><span class="file-name">mermaid-flow.svg</span
+            ><span class="file-meta">6 分钟前</span>
+          </div>
+          <div class="right-empty">agent 读写文件后会出现在这里；点击可在浮窗预览。</div>
+          <div class="right-head">
+            <svg class="icon"><use href="#i-chevron-down" /></svg>对话大纲
+          </div>
+          <button class="outline-row lvl-2">
+            <svg class="icon"><use href="#i-hash" /></svg><span>实现方案</span>
+          </button>
+          <button class="outline-row lvl-3">
+            <svg class="icon"><use href="#i-hash" /></svg><span>重试流程图</span>
+          </button>
+          <button class="outline-row lvl-2">
+            <svg class="icon"><use href="#i-hash" /></svg><span>完整实现</span>
+          </button>
+          <button class="outline-row lvl-3">
+            <svg class="icon"><use href="#i-hash" /></svg><span>配置示例</span>
+          </button>
+          <button class="outline-row lvl-2">
+            <svg class="icon"><use href="#i-hash" /></svg><span>验证清单</span>
+          </button>
+          <div class="right-empty">大纲由渲染后的标题生成，mermaid 卡片不计入标题层级。</div>
+        </div>
+      </aside>
+    </div>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换为浅色主题" data-tip="切换为浅色主题">
+      <svg class="icon icon-sun"><use href="#i-sun" /></svg>
+      <svg class="icon icon-moon"><use href="#i-moon" /></svg>
+    </button>
+
+    <dialog class="mm-dialog" id="mmDialog" aria-label="mermaid 全屏">
+      <div class="mm-dialog-head">
+        <span class="mm-title-pill"
+          ><svg class="icon"><use href="#i-chart" /></svg>重试流程图</span
+        >
+        <span class="mm-dialog-path">消息 #3 · mermaid 围栏块 · flowchart</span>
+        <div class="mm-dialog-actions">
+          <div class="mm-zoom" role="group" aria-label="全屏缩放">
+            <button class="icon-btn" data-mm-zoom="-1" aria-label="缩小">
+              <svg class="icon"><use href="#i-minus" /></svg>
+            </button>
+            <span class="mm-zoom-val" data-mm-zoom-val>100%</span>
+            <button class="icon-btn" data-mm-zoom="1" aria-label="放大">
+              <svg class="icon"><use href="#i-plus" /></svg>
+            </button>
+          </div>
+          <button class="btn btn-outline btn-sm" data-export="svg">
+            <svg class="icon icon-xs"><use href="#i-download" /></svg>导出 SVG
+          </button>
+          <button class="icon-btn" id="mmDialogClose" aria-label="关闭全屏" data-tip="关闭（Esc）">
+            <svg class="icon"><use href="#i-close" /></svg>
+          </button>
+        </div>
+      </div>
+      <div class="mm-dialog-body" id="mmDialogBody"></div>
+      <div class="mm-dialog-foot">
+        <span>Esc 关闭 · 缩放只影响显示，不改变导出尺寸</span>
+        <span class="spacer"></span>
+        <span>图表渲染耗时 18ms</span>
+      </div>
+    </dialog>
+
+    <div class="settings-overlay is-hidden" id="settingsOverlay">
+      <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <header class="settings-head">
+          <h1 id="settingsTitle">设置</h1>
+          <button class="icon-btn" id="closeSettings" aria-label="关闭设置" data-tip="关闭">
+            <svg class="icon"><use href="#i-close" /></svg>
+          </button>
+        </header>
+        <div class="settings-body">
+          <nav class="settings-nav" aria-label="设置分类">
+            <div class="nav-label">设置</div>
+            <button class="nav-item" data-nav="general">
+              <svg class="icon"><use href="#i-sliders" /></svg>通用设置
+            </button>
+            <button class="nav-item" data-nav="model">
+              <svg class="icon"><use href="#i-model" /></svg>模型
+            </button>
+            <button class="nav-item" data-nav="provider">
+              <svg class="icon"><use href="#i-plug" /></svg>模型调用供应商
+            </button>
+            <button class="nav-item active" data-nav="plugins">
+              <svg class="icon"><use href="#i-puzzle" /></svg>插件
+            </button>
+            <button class="nav-item" data-nav="preset">
+              <svg class="icon"><use href="#i-bot" /></svg>Agent 预设
+            </button>
+            <button class="nav-item" data-nav="usage">
+              <svg class="icon"><use href="#i-chart" /></svg>Token 用量
+            </button>
+            <button class="nav-item" data-nav="visual">
+              <svg class="icon"><use href="#i-image" /></svg>视觉工具
+            </button>
+            <button class="nav-item" data-nav="market">
+              <svg class="icon"><use href="#i-bag" /></svg>插件市场
+            </button>
+            <button class="nav-item" data-nav="cards">
+              <svg class="icon"><use href="#i-layout" /></svg>侧边卡片
+            </button>
+          </nav>
+          <div class="settings-content">
+            <div class="plugin-head">
+              <div class="plugin-icon">
+                <svg class="icon"><use href="#i-braces" /></svg>
+              </div>
+              <div class="plugin-info">
+                <div class="plugin-title">渲染<span class="pill accent">dsh-md-render</span></div>
+                <p class="plugin-sub">接管对话内围栏块：代码高亮、mermaid 图表卡片、思考块默认展开、整段复制。</p>
+              </div>
+              <div class="plugin-meta"><span class="pill success">已启用</span><span class="pill">v0.5.2</span></div>
+            </div>
+            <div class="plugin-tabs">
+              <div class="segmented" role="tablist" aria-label="渲染插件页签">
+                <button class="seg-btn active" role="tab" aria-selected="true" data-set-tab="render">渲染</button>
+                <button class="seg-btn" role="tab" aria-selected="false" data-set-tab="about">关于</button>
+              </div>
+              <span class="tab-hint">修改即时生效 · 已打开的消息重新挂载后生效</span>
+            </div>
+            <div class="tab-panel" id="setPanelRender" role="tabpanel" aria-label="渲染设置">
+              <div class="set-group">
+                <div class="set-group-head">
+                  <svg class="icon"><use href="#i-book" /></svg>
+                  <h3>Markdown</h3>
+                  <span class="pill success">3 项</span>
+                </div>
+                <div class="set-group-body">
+                  <div class="set-row">
+                    <div class="set-row-text">
+                      <div class="set-row-title">复制按钮</div>
+                      <p class="set-row-desc">代码块右上角显示复制按钮，默认隐藏、悬停浮现；键盘聚焦时同样可见。</p>
+                    </div>
+                    <div class="set-row-ctrl">
+                      <button
+                        class="switch"
+                        role="switch"
+                        aria-checked="true"
+                        data-setting="copy"
+                        aria-label="复制按钮"
+                      ></button>
+                    </div>
+                  </div>
+                  <div class="set-row">
+                    <div class="set-row-text">
+                      <div class="set-row-title">围栏块渲染总开关</div>
+                      <p class="set-row-desc">关闭后所有围栏块保持宿主官方形态，仅保留 markdown 正文渲染。</p>
+                    </div>
+                    <div class="set-row-ctrl">
+                      <button
+                        class="switch"
+                        role="switch"
+                        aria-checked="true"
+                        data-setting="fence"
+                        aria-label="围栏块渲染总开关"
+                      ></button>
+                    </div>
+                  </div>
+                  <div class="set-row">
+                    <div class="set-row-text">
+                      <div class="set-row-title">上下文注入块</div>
+                      <p class="set-row-desc">子代理回传的消息按 markdown 渲染，并标注「上下文注入」来源。</p>
+                    </div>
+                    <div class="set-row-ctrl">
+                      <button
+                        class="switch"
+                        role="switch"
+                        aria-checked="true"
+                        data-setting="context"
+                        aria-label="上下文注入块"
+                      ></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="set-group">
+                <div class="set-group-head">
+                  <svg class="icon"><use href="#i-sparkle" /></svg>
+                  <h3>思考块</h3>
+                </div>
+                <div class="set-group-body">
+                  <div class="set-row">
+                    <div class="set-row-text">
+                      <div class="set-row-title">默认展开</div>
+                      <p class="set-row-desc">思考块加载后默认展开，可手动折叠；关闭后默认收起，只显示标题与耗时。</p>
+                    </div>
+                    <div class="set-row-ctrl">
+                      <button
+                        class="switch"
+                        role="switch"
+                        aria-checked="true"
+                        data-setting="think"
+                        aria-label="思考块默认展开"
+                      ></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="set-group">
+                <div class="set-group-head">
+                  <svg class="icon"><use href="#i-chart" /></svg>
+                  <h3>Mermaid 图表</h3>
+                  <span class="pill accent">宿主注入</span>
+                </div>
+                <div class="set-group-body">
+                  <div class="set-row">
+                    <div class="set-row-text">
+                      <div class="set-row-title">渲染为图表卡片</div>
+                      <p class="set-row-desc">
+                        mermaid 围栏块渲染为卡片：预览 / 代码切换、缩放、全屏、导出 PNG 与 SVG。
+                      </p>
+                    </div>
+                    <div class="set-row-ctrl">
+                      <button
+                        class="switch"
+                        role="switch"
+                        aria-checked="true"
+                        data-setting="mermaid"
+                        aria-label="渲染为图表卡片"
+                      ></button>
+                    </div>
+                  </div>
+                </div>
+                <p class="set-note">
+                  <strong>注入能力说明：</strong>图表由宿主注入的
+                  <code>mermaid</code>
+                  运行时渲染，插件只负责围栏块接管与卡片外壳；宿主未提供运行时时自动回退到源码视图，不阻塞对话。
+                </p>
+              </div>
+
+              <div class="set-actions">
+                <button class="btn btn-primary" id="saveRender">
+                  <svg class="icon"><use href="#i-check" /></svg>保存
+                </button>
+                <button class="btn btn-outline" id="resetRender">恢复默认</button>
+                <span class="saved-line" id="renderSaved" hidden
+                  ><svg class="icon"><use href="#i-check" /></svg>已保存</span
+                >
+                <span class="set-foot-hint">配置保存在插件设置中，随工作区同步</span>
+              </div>
+            </div>
+
+            <div class="tab-panel" id="setPanelAbout" role="tabpanel" aria-label="关于" hidden>
+              <div class="set-group">
+                <div class="set-group-head">
+                  <svg class="icon"><use href="#i-info" /></svg>
+                  <h3>关于 dsh-md-render</h3>
+                </div>
+                <div class="set-group-body">
+                  <div class="set-row">
+                    <div class="set-row-text">
+                      <div class="set-row-title">版本</div>
+                      <p class="set-row-desc">v0.5.2 · 宿主 DSH 0.2.1</p>
+                    </div>
+                  </div>
+                  <div class="set-row">
+                    <div class="set-row-text">
+                      <div class="set-row-title">扩展点</div>
+                      <p class="set-row-desc">
+                        <code>ctx.slots</code> 消息渲染插槽 · 围栏块接管 · <code>documentPreviews</code> 不参与
+                      </p>
+                    </div>
+                  </div>
+                  <div class="set-row">
+                    <div class="set-row-text">
+                      <div class="set-row-title">依赖</div>
+                      <p class="set-row-desc">marked / highlight.js 懒加载；mermaid 由宿主注入，插件不打包。</p>
+                    </div>
+                  </div>
+                  <div class="set-row">
+                    <div class="set-row-text">
+                      <div class="set-row-title">文档</div>
+                      <p class="set-row-desc">docs/md渲染/概述.md · docs/原型重构/brief-md-render.md</p>
+                    </div>
+                    <div class="set-row-ctrl"><button class="btn btn-outline btn-sm">查看文档</button></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="scene-pill" id="scenePill" role="group" aria-label="原型场景">
+      <span class="scene-label">场景</span>
+      <button class="scene-btn active" data-scene="conversation">对话渲染</button>
+      <button class="scene-btn" data-scene="mermaid">mermaid 全屏</button>
+      <button class="scene-btn" data-scene="settings">设置·渲染</button>
+      <button class="scene-btn" data-scene="degradation">空态与降级</button>
+    </div>
+
+    <div class="toast-wrap" id="toastWrap" aria-live="polite" aria-atomic="false"></div>
+    <script>
+      ;(function () {
+        'use strict'
+
+        const $ = (sel, root) => (root || document).querySelector(sel)
+        const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel))
+        const toastWrap = $('#toastWrap')
+        const settingsOverlay = $('#settingsOverlay')
+        const dialog = $('#mmDialog')
+        const convView = $('#convView')
+        const emptyView = $('#emptyView')
+        const sceneBtns = $$('.scene-btn')
+
+        const state = { scene: 'conversation', zoom: 100, settingsOpen: false }
+
+        /* ── 通用 ─────────────────────────────────────────────── */
+        function toast(message, kind) {
+          const el = document.createElement('div')
+          el.className = 'toast toast-' + (kind || 'success')
+          const icon = kind === 'warn' || kind === 'danger' ? 'i-alert' : 'i-check'
+          el.innerHTML = '<svg class="icon"><use href="#' + icon + '"/></svg><span></span>'
+          el.lastElementChild.textContent = message
+          toastWrap.appendChild(el)
+          requestAnimationFrame(() => el.classList.add('show'))
+          setTimeout(() => {
+            el.classList.remove('show')
+            setTimeout(() => el.remove(), 240)
+          }, 2200)
+        }
+
+        async function copyText(text) {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text)
+            }
+            return true
+          } catch (error) {
+            return false
+          }
+        }
+
+        function flashCopied(btn, label) {
+          if (!btn) return
+          const original = btn.dataset.label || btn.textContent.trim()
+          btn.dataset.label = original
+          btn.classList.add('is-copied')
+          btn.textContent = label || '已复制'
+          setTimeout(() => {
+            btn.classList.remove('is-copied')
+            btn.textContent = original
+          }, 1600)
+        }
+
+        /* ── 场景 ─────────────────────────────────────────────── */
+        function markScene(name) {
+          state.scene = name
+          sceneBtns.forEach((btn) => btn.classList.toggle('active', btn.dataset.scene === name))
+        }
+
+        function applyScene(name) {
+          markScene(name)
+          if (name !== 'mermaid' && dialog.open) dialog.close()
+          convView.hidden = name === 'degradation'
+          emptyView.hidden = name !== 'degradation'
+          if (name === 'settings') openSettings()
+          else closeSettings()
+          if (name === 'mermaid') openDialog()
+          const scroll = convView.hidden ? null : $('#convScroll')
+          if (scroll) scroll.scrollTop = 0
+        }
+
+        /* ── 思考块 ───────────────────────────────────────────── */
+        const think = $('#thinkBlock')
+        $('#thinkToggle').addEventListener('click', () => {
+          const collapsed = think.classList.toggle('is-collapsed')
+          $('#thinkToggle').setAttribute('aria-expanded', String(!collapsed))
+          $('.think-hint', think).textContent = collapsed ? '已折叠 · 点击展开' : '默认展开 · 点击折叠'
+        })
+
+        /* ── 整段复制 ─────────────────────────────────────────── */
+        $('#mdCopy').addEventListener('click', async () => {
+          const ok = await copyText($('#mdBody').innerText)
+          flashCopied($('#mdCopy'), '已复制')
+          toast(ok ? '已复制整段 markdown' : '复制失败，请手动选择')
+        })
+        $('#copySession').addEventListener('click', () => toast('已复制会话链接'))
+
+        /* ── 代码围栏块 ───────────────────────────────────────── */
+        $$('[data-fence]').forEach((fence) => {
+          const code = $('.fence-code', fence)
+          const nums = $('.line-nums', fence)
+          const copyBtn = $('[data-copy-btn]', fence)
+          const wrapBtn = $('.wrap-btn', fence)
+          const linesBtn = $('.lines-btn', fence)
+          const rawBtn = $('[data-fence-raw]', fence)
+
+          const text = code ? code.textContent : ''
+          if (nums)
+            nums.textContent = text
+              .split('\n')
+              .map((_, i) => i + 1)
+              .join('\n')
+
+          if (copyBtn) {
+            copyBtn.addEventListener('click', async () => {
+              const ok = await copyText(text)
+              flashCopied(copyBtn)
+              toast(ok ? '已复制代码' : '复制失败，请手动选择')
+            })
+          }
+          if (wrapBtn) {
+            wrapBtn.addEventListener('click', () => {
+              const wrapped = fence.classList.toggle('wrap')
+              wrapBtn.classList.toggle('is-on', wrapped)
+              toast(wrapped ? '已开启自动换行' : '已关闭自动换行', 'warn')
+            })
+          }
+          if (linesBtn) {
+            linesBtn.addEventListener('click', () => {
+              const shown = fence.classList.toggle('show-lines')
+              linesBtn.classList.toggle('is-on', shown)
+            })
+          }
+          if (rawBtn) {
+            let raw = null
+            rawBtn.addEventListener('click', () => {
+              if (!raw) {
+                raw = document.createElement('pre')
+                raw.className = 'md-raw-box'
+                raw.style.margin = '0 10px 10px'
+                const lang = (fence.dataset.lang || '').toLowerCase()
+                raw.textContent = '```' + lang + '\n' + text + '\n```'
+                fence.appendChild(raw)
+              }
+              const hidden = raw.hidden
+              raw.hidden = !hidden
+              rawBtn.textContent = hidden ? '收起原文' : '查看原文'
+            })
+          }
+        })
+
+        const rawToggle = $('#rawToggle')
+        rawToggle.addEventListener('click', () => {
+          const box = $('#rawBox')
+          box.hidden = !box.hidden
+          rawToggle.setAttribute('aria-expanded', String(!box.hidden))
+          rawToggle.lastChild.textContent = box.hidden ? '查看原文' : '收起原文'
+        })
+
+        /* ── mermaid 卡片 ─────────────────────────────────────── */
+        const mmCard = $('#mermaidCard')
+        const mmBody = $('#mmBody')
+        const mmMarkdown = $('#mmMarkdown')
+        const mmCode = $('#mmCode')
+        const mmMenu = $('#mmMenu')
+        const mmMore = $('#mmMore')
+        const mmSvg = $('#mmBody .mm-svg')
+
+        function showMmPanel(panel) {
+          mmBody.hidden = panel !== 'diagram'
+          mmMarkdown.hidden = panel !== 'markdown'
+          mmCode.hidden = panel !== 'source'
+          $$('[data-mm-mode]', mmCard).forEach((btn) => btn.classList.toggle('active', btn.dataset.mmMode === panel))
+          $$('[data-mm-view]', mmCard).forEach((btn) => {
+            btn.classList.toggle('active', (btn.dataset.mmView === 'code') === (panel === 'source'))
+          })
+        }
+
+        $$('[data-mm-view]', mmCard).forEach((btn) => {
+          btn.addEventListener('click', () => showMmPanel(btn.dataset.mmView === 'code' ? 'source' : 'diagram'))
+        })
+        $$('[data-mm-mode]', mmCard).forEach((btn) => {
+          btn.addEventListener('click', () => showMmPanel(btn.dataset.mmMode))
+        })
+
+        function applyZoom(value) {
+          state.zoom = Math.min(200, Math.max(50, value))
+          $$('[data-mm-zoom-val]').forEach((el) => (el.textContent = state.zoom + '%'))
+          mmSvg.setAttribute('width', String((600 * state.zoom) / 100))
+          mmSvg.setAttribute('height', String((250 * state.zoom) / 100))
+          const full = $('#mmDialogBody .mm-svg')
+          if (full) {
+            full.style.width = (760 * state.zoom) / 100 + 'px'
+            full.style.height = 'auto'
+          }
+        }
+
+        $$('[data-mm-zoom]').forEach((btn) => {
+          btn.addEventListener('click', () => applyZoom(state.zoom + (btn.dataset.mmZoom === '1' ? 25 : -25)))
+        })
+
+        function toggleMenu(force) {
+          const open = typeof force === 'boolean' ? force : mmMenu.classList.contains('is-hidden')
+          mmMenu.classList.toggle('is-hidden', !open)
+          mmMore.setAttribute('aria-expanded', String(open))
+        }
+        mmMore.addEventListener('click', (event) => {
+          event.stopPropagation()
+          toggleMenu()
+        })
+        document.addEventListener('click', (event) => {
+          if (!mmMenu.contains(event.target) && !mmMore.contains(event.target)) toggleMenu(false)
+        })
+
+        function selectFit(mode) {
+          $$('[data-mm-fit]', mmMenu).forEach((item) => {
+            const active = item.dataset.mmFit === mode
+            item.setAttribute('aria-checked', String(active))
+            $('.check', item).classList.toggle('is-hidden', !active)
+          })
+          toast(mode === 'container' ? '缩放模式：适应容器' : '缩放模式：适应宽度', 'warn')
+        }
+        $$('[data-mm-fit]', mmMenu).forEach((item) => {
+          item.addEventListener('click', () => selectFit(item.dataset.mmFit))
+        })
+
+        $$('[data-mm-menu]', mmMenu).forEach((item) => {
+          item.addEventListener('click', async () => {
+            const action = item.dataset.mmMenu
+            toggleMenu(false)
+            if (action === 'copy') {
+              const ok = await copyText(mmCode.textContent)
+              toast(ok ? '已复制 mermaid 代码' : '复制失败，请手动选择')
+              return
+            }
+            if (action === 'png') toast('已导出 PNG（1200×640）')
+            if (action === 'svg') toast('已导出 SVG（矢量）')
+          })
+        })
+        $$('[data-export="svg"]').forEach((btn) => {
+          btn.addEventListener('click', () => toast('已导出 SVG（矢量）'))
+        })
+
+        /* ── 全屏 dialog ──────────────────────────────────────── */
+        function openDialog() {
+          const body = $('#mmDialogBody')
+          body.innerHTML = ''
+          const clone = mmSvg.cloneNode(true)
+          clone.removeAttribute('width')
+          clone.removeAttribute('height')
+          body.appendChild(clone)
+          applyZoom(state.zoom)
+          if (!dialog.open) dialog.showModal()
+        }
+        $('#mmFullscreen').addEventListener('click', () => applyScene('mermaid'))
+        $('#mmDialogClose').addEventListener('click', () => dialog.close())
+        dialog.addEventListener('close', () => {
+          if (state.scene === 'mermaid') markScene('conversation')
+        })
+        dialog.addEventListener('click', (event) => {
+          if (event.target === dialog) dialog.close()
+        })
+
+        /* ── 设置弹层 ─────────────────────────────────────────── */
+        function openSettings() {
+          state.settingsOpen = true
+          settingsOverlay.classList.remove('is-hidden')
+        }
+        function closeSettings() {
+          if (!settingsOverlay.classList.contains('is-hidden')) {
+            state.settingsOpen = false
+            settingsOverlay.classList.add('is-hidden')
+            if (state.scene === 'settings') markScene('conversation')
+          }
+        }
+        $('#sidebarSettings').addEventListener('click', () => {
+          openSettings()
+          markScene('settings')
+        })
+        $('#closeSettings').addEventListener('click', closeSettings)
+        settingsOverlay.addEventListener('click', (event) => {
+          if (event.target === settingsOverlay) closeSettings()
+        })
+
+        $$('[data-set-tab]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            $$('[data-set-tab]').forEach((item) => {
+              const active = item === btn
+              item.classList.toggle('active', active)
+              item.setAttribute('aria-selected', String(active))
+            })
+            const render = btn.dataset.setTab === 'render'
+            $('#setPanelRender').hidden = !render
+            $('#setPanelAbout').hidden = render
+          })
+        })
+
+        $$('.switch[data-setting]').forEach((sw) => {
+          sw.addEventListener('click', () => {
+            sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') === 'true' ? 'false' : 'true')
+            $('#renderSaved').hidden = true
+          })
+        })
+
+        $('#saveRender').addEventListener('click', () => {
+          $('#renderSaved').hidden = false
+          toast('渲染设置已保存')
+        })
+        $('#resetRender').addEventListener('click', () => {
+          $$('.switch[data-setting]').forEach((sw) => sw.setAttribute('aria-checked', 'true'))
+          toast('已恢复默认设置', 'warn')
+        })
+
+        /* ── 其他 ─────────────────────────────────────────────── */
+        $('#retryMount').addEventListener('click', () => toast('已重新挂载渲染层，下一轮消息生效'))
+        $('#composerSend').addEventListener('click', () => toast('原型示意：发送已拦截', 'warn'))
+
+        document.addEventListener('keydown', (event) => {
+          if (event.key !== 'Escape') return
+          if (!mmMenu.classList.contains('is-hidden')) {
+            toggleMenu(false)
+            return
+          }
+          if (!settingsOverlay.classList.contains('is-hidden')) closeSettings()
+        })
+
+        /* ── 主题 ─────────────────────────────────────────────── */
+        $('#themeToggle').addEventListener('click', () => {
+          const root = document.documentElement
+          const next = root.dataset.theme === 'dark' ? 'light' : 'dark'
+          root.dataset.theme = next
+          $('#themeToggle').setAttribute('aria-label', next === 'dark' ? '切换为浅色主题' : '切换为深色主题')
+          $('#themeToggle').dataset.tip = next === 'dark' ? '切换为浅色主题' : '切换为深色主题'
+        })
+        const media = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)')
+        document.documentElement.dataset.theme = media && media.matches ? 'light' : 'dark'
+        $('#themeToggle').setAttribute('aria-label', '切换为浅色主题')
+
+        /* ── 初始化 ───────────────────────────────────────────── */
+        $$('[data-scene]').forEach((btn) => btn.addEventListener('click', () => applyScene(btn.dataset.scene)))
+        applyZoom(100)
+        const initial = (location.hash || '').replace('#', '')
+        applyScene(['conversation', 'mermaid', 'settings', 'degradation'].includes(initial) ? initial : 'conversation')
+      })()
+    </script>
+  </body>
+</html>

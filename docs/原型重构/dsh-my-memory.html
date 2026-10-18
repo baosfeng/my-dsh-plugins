@@ -1,0 +1,5083 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>dsh-my-memory · 原型</title>
+    <style>
+      :root[data-theme='dark'] {
+        --bg: #1c1c1e;
+        --bg-elevated: #232325;
+        --bg-hover: #2c2c2e;
+        --surface: #2c2c2e;
+        --surface-raised: #3a3a3c;
+        --border: #3a3a3c;
+        --border-soft: #2f2f31;
+        --text: #f5f5f7;
+        --text-2: #b0b0b4;
+        --text-3: #8e8e93;
+        --accent: #0a84ff;
+        --accent-hover: #409cff;
+        --accent-soft: rgba(10, 132, 255, 0.14);
+        --success: #30d158;
+        --success-soft: rgba(48, 209, 88, 0.14);
+        --warn: #ffd60a;
+        --warn-soft: rgba(255, 214, 10, 0.14);
+        --danger: #ff453a;
+        --danger-soft: rgba(255, 69, 58, 0.14);
+        --code-bg: #1a1a1c;
+        --toast-bg: #2c2c2e;
+        --overlay: rgba(0, 0, 0, 0.55);
+        --on-accent: #ffffff;
+        --shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+        color-scheme: dark;
+      }
+      :root[data-theme='light'] {
+        --bg: #ffffff;
+        --bg-elevated: #f5f5f7;
+        --bg-hover: #ececf0;
+        --surface: #ffffff;
+        --surface-raised: #fbfbfd;
+        --border: #d9d9de;
+        --border-soft: #ebebef;
+        --text: #1d1d1f;
+        --text-2: #515154;
+        --text-3: #86868b;
+        --accent: #0071e3;
+        --accent-hover: #0a7bea;
+        --accent-soft: rgba(0, 113, 227, 0.1);
+        --success: #248a3d;
+        --success-soft: rgba(36, 138, 61, 0.1);
+        --warn: #b25000;
+        --warn-soft: rgba(178, 80, 0, 0.1);
+        --danger: #d70015;
+        --danger-soft: rgba(215, 0, 21, 0.1);
+        --code-bg: #f6f6f8;
+        --toast-bg: #ffffff;
+        --overlay: rgba(0, 0, 0, 0.35);
+        --on-accent: #ffffff;
+        --shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      button,
+      input,
+      textarea {
+        font-family: inherit;
+        font-size: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      svg {
+        display: block;
+      }
+      ::selection {
+        background: var(--accent-soft);
+      }
+      :focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--accent-soft);
+        border-color: var(--accent);
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--surface-raised) transparent;
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--surface-raised);
+        border-radius: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      code {
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 0.92em;
+        background: var(--code-bg);
+        border: 1px solid var(--border-soft);
+        border-radius: 4px;
+        padding: 0 4px;
+      }
+      .svg-sprite {
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+      }
+      .icon {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .icon-xs {
+        width: 12px;
+        height: 12px;
+      }
+      .icon-sm {
+        width: 14px;
+        height: 14px;
+      }
+      .icon-lg {
+        width: 18px;
+        height: 18px;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      /* ── 应用外壳 ─────────────────────────────────────────────── */
+      .app-shell {
+        height: 100vh;
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr) 380px;
+        gap: 8px;
+        padding: 8px;
+        background: var(--bg);
+      }
+      .panel {
+        min-width: 0;
+        min-height: 0;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-soft);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        padding: 12px 12px 10px;
+        gap: 12px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        padding: 0 2px;
+        flex: none;
+        min-width: 0;
+      }
+      .brand-mark {
+        width: 27px;
+        height: 27px;
+        flex: none;
+        color: var(--text);
+      }
+      .brand-text {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .brand-name {
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        white-space: nowrap;
+      }
+      .brand-tag {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        color: var(--text-3);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 4px;
+        white-space: nowrap;
+      }
+      .brand-collapse {
+        margin-left: auto;
+      }
+      .new-chat {
+        height: 34px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        font-size: 12.5px;
+        color: var(--text);
+        flex: none;
+        min-width: 0;
+      }
+      .new-chat:hover {
+        background: var(--bg-hover);
+      }
+      .new-chat .kbd {
+        margin-left: auto;
+        font-size: 10px;
+        color: var(--text-3);
+        border: 1px solid var(--border-soft);
+        border-radius: 4px;
+        padding: 0 4px;
+        white-space: nowrap;
+      }
+      .side-section {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+      }
+      .sessions-section {
+        flex: 1;
+        min-height: 0;
+      }
+      .side-label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10.5px;
+        color: var(--text-3);
+        padding: 0 4px;
+        height: 24px;
+        white-space: nowrap;
+      }
+      .side-label .side-label-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 1px;
+      }
+      .workspace,
+      .session {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 30px;
+        border: 0;
+        background: transparent;
+        border-radius: 7px;
+        padding: 0 6px;
+        font-size: 12.5px;
+        color: var(--text-2);
+        text-align: left;
+        min-width: 0;
+        width: 100%;
+      }
+      .workspace:hover,
+      .session:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .workspace.active {
+        background: var(--accent-soft);
+        color: var(--text);
+        box-shadow: inset 2px 0 0 var(--accent);
+      }
+      .session.active {
+        background: var(--accent-soft);
+        color: var(--text);
+      }
+      .session-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+      .session-time {
+        font-size: 10.5px;
+        color: var(--text-3);
+        flex: none;
+        white-space: nowrap;
+      }
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--text-3);
+        flex: none;
+      }
+      .status-dot.ok {
+        background: var(--success);
+      }
+      .status-dot.warn {
+        background: var(--warn);
+      }
+      .sidebar-foot {
+        margin-top: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        flex: none;
+      }
+      .side-action {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        border: 0;
+        background: transparent;
+        border-radius: 7px;
+        padding: 0 6px;
+        font-size: 12.5px;
+        color: var(--text-2);
+        text-align: left;
+        width: 100%;
+      }
+      .side-action:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .user {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 6px 0;
+        border-top: 1px solid var(--border-soft);
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--text-2);
+        min-width: 0;
+      }
+      .avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--accent-soft);
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 600;
+        flex: none;
+      }
+      .user-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .main {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .topbar {
+        height: 48px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--border-soft);
+        background: var(--bg-elevated);
+        min-width: 0;
+      }
+      .topbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 1;
+      }
+      .topbar-nav {
+        display: flex;
+        gap: 0;
+        flex: none;
+      }
+      .chat-title {
+        font-size: 13px;
+        font-weight: 500;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .model-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 26px;
+        padding: 0 8px;
+        border-radius: 7px;
+        border: 1px solid var(--border-soft);
+        background: var(--surface);
+        font-size: 11.5px;
+        color: var(--text-2);
+        white-space: nowrap;
+        flex: none;
+      }
+      .model-chip .icon {
+        width: 13px;
+        height: 13px;
+        color: var(--accent);
+      }
+      .topbar-actions {
+        display: flex;
+        gap: 2px;
+        flex: none;
+        margin-right: 34px;
+      }
+      .conversation {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .conv-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px 28px 12px;
+        min-height: 0;
+      }
+      .conv-inner {
+        width: 100%;
+        max-width: 760px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .conv-date {
+        text-align: center;
+        font-size: 10.5px;
+        color: var(--text-3);
+      }
+      .msg {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .msg.user {
+        align-items: flex-end;
+      }
+      .msg-bubble {
+        max-width: 86%;
+        padding: 9px 12px;
+        border-radius: 12px;
+        background: var(--accent);
+        color: var(--on-accent);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .assistant-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11.5px;
+        color: var(--text-3);
+      }
+      .ai-avatar {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--accent-soft);
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 700;
+        flex: none;
+      }
+      .assistant-body {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--text-2);
+        line-height: 1.7;
+        min-width: 0;
+      }
+      .assistant-body p {
+        margin: 0;
+      }
+      .tool-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        align-self: flex-start;
+        max-width: 100%;
+        padding: 5px 8px;
+        border: 1px solid var(--border-soft);
+        border-radius: 7px;
+        background: var(--surface);
+        font-size: 11px;
+        color: var(--text-2);
+        flex-wrap: wrap;
+      }
+      .tool-chip .icon {
+        width: 13px;
+        height: 13px;
+        color: var(--accent);
+      }
+      .tool-chip code {
+        font-size: 10.5px;
+      }
+      .tool-chip .ok {
+        color: var(--success);
+        background: var(--success-soft);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 10px;
+        white-space: nowrap;
+      }
+      .thinking-block {
+        align-self: flex-start;
+        border-left: 2px solid var(--border);
+        padding-left: 10px;
+        font-size: 11.5px;
+        color: var(--text-3);
+        line-height: 1.65;
+      }
+      .thinking-block strong {
+        color: var(--text-2);
+        font-weight: 500;
+      }
+      .composer-wrap {
+        flex: none;
+        padding: 8px 28px 12px;
+        border-top: 1px solid var(--border-soft);
+      }
+      .composer {
+        max-width: 760px;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 8px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+      }
+      .composer-input {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        color: var(--text);
+        font-size: 12.5px;
+        outline: none;
+        padding: 0 4px;
+      }
+      .composer-input::placeholder {
+        color: var(--text-3);
+      }
+      .composer-hint {
+        max-width: 760px;
+        margin: 4px auto 0;
+        font-size: 10px;
+        color: var(--text-3);
+        text-align: right;
+      }
+
+      .rightbar {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .right-tabs {
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 0 8px;
+        border-bottom: 1px solid var(--border-soft);
+        flex: none;
+        min-width: 0;
+      }
+      .right-tab {
+        height: 28px;
+        padding: 0 10px;
+        border-radius: 7px;
+        border: 0;
+        background: transparent;
+        color: var(--text-2);
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+      }
+      .right-tab:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .right-tab.active {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .right-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+        min-height: 0;
+      }
+      .right-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--text-2);
+        padding: 4px 2px 6px;
+        min-width: 0;
+      }
+      .right-head .icon {
+        width: 13px;
+        height: 13px;
+        color: var(--text-3);
+      }
+      .right-head-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 1px;
+      }
+      .file-row {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 32px;
+        padding: 0 6px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        color: var(--text-2);
+        min-width: 0;
+      }
+      .file-row:hover {
+        background: var(--bg-hover);
+      }
+      .file-row .icon {
+        width: 14px;
+        height: 14px;
+        color: var(--text-3);
+      }
+      .file-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+      .file-meta {
+        font-size: 10px;
+        color: var(--text-3);
+        flex: none;
+      }
+      .right-empty {
+        padding: 10px;
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        font-size: 11px;
+        color: var(--text-3);
+        line-height: 1.6;
+        margin: 4px 0 12px;
+      }
+      .stat-tree {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 2px;
+      }
+      .tree-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 28px;
+        padding: 0 6px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        color: var(--text-2);
+        min-width: 0;
+      }
+      .tree-row:hover {
+        background: var(--bg-hover);
+      }
+      .tree-row.dir {
+        font-weight: 600;
+        color: var(--text);
+      }
+      .tree-row .icon {
+        width: 13px;
+        height: 13px;
+        color: var(--text-3);
+      }
+      .tree-count {
+        margin-left: auto;
+        font-size: 10px;
+        color: var(--text-3);
+        flex: none;
+      }
+
+      /* ── 通用控件 ─────────────────────────────────────────────── */
+      .input {
+        height: 32px;
+        width: 100%;
+        min-width: 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-elevated);
+        color: var(--text);
+        padding: 0 10px;
+        font-size: 12.5px;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s,
+          background 0.15s;
+      }
+      .input::placeholder {
+        color: var(--text-3);
+      }
+      .input:hover {
+        border-color: var(--surface-raised);
+      }
+      .input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
+      }
+      textarea.input {
+        height: auto;
+        min-height: 64px;
+        padding: 8px 10px;
+        resize: vertical;
+        line-height: 1.6;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        height: 30px;
+        padding: 0 12px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        font-size: 12.5px;
+        font-weight: 500;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          color 0.15s,
+          border-color 0.15s,
+          transform 0.15s,
+          filter 0.15s;
+        flex: none;
+      }
+      .btn .icon {
+        width: 13px;
+        height: 13px;
+      }
+      .btn:active {
+        transform: translateY(1px);
+      }
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: var(--on-accent);
+        border-color: var(--accent);
+      }
+      .btn-primary:hover:not(:disabled) {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+      }
+      .btn-green {
+        background: var(--success-soft);
+        color: var(--success);
+        border-color: color-mix(in srgb, var(--success) 45%, transparent);
+      }
+      .btn-green:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--success) 22%, transparent);
+      }
+      .btn-outline {
+        background: transparent;
+        border-color: var(--border);
+        color: var(--text-2);
+      }
+      .btn-outline:hover:not(:disabled) {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .btn-ghost {
+        background: transparent;
+        border-color: transparent;
+        color: var(--text-2);
+      }
+      .btn-ghost:hover:not(:disabled) {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .btn-danger {
+        background: var(--danger);
+        color: var(--on-accent);
+        border-color: var(--danger);
+      }
+      .btn-danger:hover:not(:disabled) {
+        filter: brightness(1.08);
+      }
+      .icon-btn {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text-3);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        flex: none;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .icon-btn:hover:not(:disabled) {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .icon-btn.danger:hover:not(:disabled) {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+      .icon-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      .icon-btn .icon {
+        width: 15px;
+        height: 15px;
+      }
+      .text-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 24px;
+        padding: 0 6px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text-2);
+        font-size: 11.5px;
+        white-space: nowrap;
+        flex: none;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .text-btn .icon {
+        width: 12px;
+        height: 12px;
+      }
+      .text-btn:hover:not(:disabled) {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .text-btn.danger:hover:not(:disabled) {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+      .text-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      .link-btn {
+        border: 0;
+        background: transparent;
+        color: var(--accent);
+        font-size: 11px;
+        padding: 0;
+        border-radius: 3px;
+        white-space: nowrap;
+      }
+      .link-btn:hover {
+        text-decoration: underline;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 20px;
+        padding: 0 7px;
+        border-radius: 10px;
+        font-size: 10.5px;
+        line-height: 1;
+        color: var(--text-2);
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-soft);
+        white-space: nowrap;
+        flex: none;
+        max-width: 100%;
+      }
+      .pill.accent {
+        color: var(--accent);
+        background: var(--accent-soft);
+        border-color: transparent;
+      }
+      .pill.success {
+        color: var(--success);
+        background: var(--success-soft);
+        border-color: transparent;
+      }
+      .pill.path-pill {
+        display: inline-block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        height: 18px;
+        padding: 0 6px;
+        border-radius: 5px;
+        font-size: 10.5px;
+        line-height: 1;
+        white-space: nowrap;
+        flex: none;
+        font-weight: 500;
+      }
+      .badge-accent {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .badge-success {
+        color: var(--success);
+        background: var(--success-soft);
+      }
+      .badge-warn {
+        color: var(--warn);
+        background: var(--warn-soft);
+      }
+      .badge-danger {
+        color: var(--danger);
+        background: var(--danger-soft);
+      }
+      .badge-neutral {
+        color: var(--text-2);
+        background: var(--bg-hover);
+        border: 1px solid var(--border-soft);
+      }
+      .cat-preference {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .cat-fact {
+        color: var(--success);
+        background: var(--success-soft);
+      }
+      .cat-project {
+        color: var(--warn);
+        background: var(--warn-soft);
+      }
+      .cat-stack {
+        color: var(--text-2);
+        background: var(--bg-hover);
+        border: 1px solid var(--border-soft);
+      }
+      .cat-workflow {
+        color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 10%, transparent);
+        border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+      }
+      .conf-meter {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        flex: none;
+      }
+      .conf-seg {
+        width: 7px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--border);
+      }
+      .conf-seg.on {
+        background: var(--warn);
+      }
+      .conf-num {
+        font-size: 9.5px;
+        color: var(--text-3);
+        margin-left: 2px;
+        white-space: nowrap;
+      }
+      .switch {
+        width: 44px;
+        height: 26px;
+        border-radius: 13px;
+        border: 1px solid var(--border);
+        background: var(--surface-raised);
+        position: relative;
+        flex: none;
+        padding: 0;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      .switch::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--text-2);
+        transition:
+          transform 0.15s,
+          background 0.15s;
+      }
+      .switch[aria-checked='true'] {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .switch[aria-checked='true']::after {
+        transform: translateX(18px);
+        background: var(--on-accent);
+      }
+      .switch:hover {
+        border-color: var(--accent);
+      }
+      .switch:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--accent-soft);
+      }
+      .char-count {
+        font-size: 10.5px;
+        color: var(--text-3);
+        white-space: nowrap;
+        flex: none;
+      }
+      .char-count.is-warn {
+        color: var(--warn);
+      }
+      .spinner {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        border: 2px solid var(--accent-soft);
+        border-top-color: var(--accent);
+        animation: spin 0.8s linear infinite;
+        flex: none;
+      }
+      .loading-card {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 12px;
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        background: var(--surface);
+        font-size: 12px;
+        color: var(--text-3);
+      }
+      .saved-line {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+        font-size: 11.5px;
+        color: var(--success);
+      }
+      .saved-line .icon {
+        width: 14px;
+        height: 14px;
+      }
+
+      /* tooltip */
+      [data-tip] {
+        position: relative;
+      }
+      [data-tip]::after {
+        content: attr(data-tip);
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 6px);
+        transform: translate(-50%, 4px);
+        background: var(--surface-raised);
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-size: 11px;
+        line-height: 1.4;
+        padding: 4px 7px;
+        border-radius: 6px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 0.15s,
+          transform 0.15s;
+        z-index: 70;
+        box-shadow: var(--shadow);
+      }
+      [data-tip]:hover::after,
+      [data-tip]:focus-visible::after {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      /* ── 设置弹层 ─────────────────────────────────────────────── */
+      .settings-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: var(--overlay);
+        backdrop-filter: blur(2px);
+      }
+      .settings-overlay.is-hidden {
+        display: none;
+      }
+      .settings-modal {
+        width: min(1120px, calc(100vw - 32px));
+        height: min(740px, calc(100vh - 32px));
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        animation: modal-in 0.22s cubic-bezier(0.28, 0, 0.22, 1);
+      }
+      .settings-head {
+        height: 56px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .settings-head h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.1px;
+      }
+      .settings-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+      .settings-nav {
+        width: 220px;
+        flex: none;
+        border-right: 1px solid var(--border-soft);
+        padding: 12px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        overflow-y: auto;
+        background: var(--bg-elevated);
+      }
+      .nav-label {
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        color: var(--text-3);
+        padding: 6px 10px 4px;
+      }
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        height: 32px;
+        padding: 0 10px;
+        border: 0;
+        background: transparent;
+        border-radius: 8px;
+        color: var(--text-2);
+        font-size: 12.5px;
+        text-align: left;
+        white-space: nowrap;
+        flex: none;
+        width: 100%;
+      }
+      .nav-item .icon {
+        width: 16px;
+        height: 16px;
+        flex: none;
+      }
+      .nav-item:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .nav-item.active {
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 500;
+      }
+      .settings-content {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .plugin-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 14px 20px 12px;
+        border-bottom: 1px solid var(--border-soft);
+        flex: none;
+      }
+      .plugin-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: none;
+      }
+      .plugin-icon .icon {
+        width: 18px;
+        height: 18px;
+      }
+      .plugin-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .plugin-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .plugin-sub {
+        margin: 2px 0 0;
+        font-size: 11.5px;
+        color: var(--text-3);
+        line-height: 1.5;
+      }
+      .plugin-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: none;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .plugin-tabs {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 20px;
+        border-bottom: 1px solid var(--border-soft);
+        flex: none;
+        min-width: 0;
+      }
+      .segmented {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding: 3px;
+        border: 1px solid var(--border-soft);
+        background: var(--bg-elevated);
+        border-radius: 9px;
+        flex: none;
+      }
+      .seg-btn {
+        height: 26px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text-2);
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+      .seg-btn:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .seg-btn.active {
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 500;
+      }
+      .tab-count {
+        font-size: 10px;
+        padding: 0 5px;
+        height: 16px;
+        border-radius: 8px;
+        background: var(--surface-raised);
+        color: var(--text-3);
+        display: inline-flex;
+        align-items: center;
+      }
+      .seg-btn.active .tab-count {
+        background: var(--accent);
+        color: var(--on-accent);
+      }
+      .tab-hint {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--text-3);
+        white-space: nowrap;
+      }
+      .tab-panel {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 14px 20px 16px;
+        scroll-behavior: auto;
+      }
+      .tab-panel > * {
+        animation: fade-up 0.22s cubic-bezier(0.28, 0, 0.22, 1);
+      }
+
+      /* ── 记忆页 ───────────────────────────────────────────────── */
+      .memory-toolbar {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin-bottom: 12px;
+      }
+      .path-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .path-input-wrap {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+      }
+      .path-input-wrap .icon {
+        position: absolute;
+        left: 9px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 14px;
+        height: 14px;
+        color: var(--text-3);
+        pointer-events: none;
+      }
+      .path-input {
+        padding-left: 28px;
+      }
+      .toolbar-note {
+        font-size: 11px;
+        color: var(--text-3);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        line-height: 1.5;
+      }
+      .toolbar-note .icon {
+        width: 12px;
+        height: 12px;
+        color: var(--accent);
+        flex: none;
+      }
+      .scope-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+        margin-bottom: 12px;
+      }
+      .section-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 0;
+      }
+      .section-card.is-project {
+        border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+        box-shadow: inset 2px 0 0 var(--accent);
+      }
+      .section-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+      .section-head .path-pill {
+        min-width: 0;
+      }
+      @media (min-width: 1101px) {
+        .section-head {
+          flex-wrap: nowrap;
+        }
+        .section-head .path-pill {
+          flex: 0 1 auto;
+        }
+      }
+      .section-title {
+        margin: 0;
+        font-size: 14.5px;
+        font-weight: 600;
+        letter-spacing: 0.1px;
+        white-space: nowrap;
+      }
+      .section-head .sort-btn {
+        margin-left: auto;
+      }
+      .sort-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 26px;
+        padding: 0 8px;
+        border: 1px solid var(--border-soft);
+        border-radius: 7px;
+        background: var(--surface-raised);
+        color: var(--text-2);
+        font-size: 11px;
+        white-space: nowrap;
+        flex: none;
+        transition:
+          background 0.15s,
+          color 0.15s,
+          border-color 0.15s;
+      }
+      .sort-btn:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+        border-color: var(--border);
+      }
+      .sort-btn .icon {
+        width: 12px;
+        height: 12px;
+      }
+      .scope-note {
+        margin: 0;
+        font-size: 11px;
+        color: var(--text-3);
+        line-height: 1.55;
+      }
+      .scope-note strong {
+        color: var(--text-2);
+        font-weight: 500;
+      }
+      .mem-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .mem-row {
+        border: 1px solid var(--border-soft);
+        background: var(--surface-raised);
+        border-radius: 8px;
+        padding: 8px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        min-width: 0;
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
+      .mem-row:hover {
+        border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+        background: var(--bg-hover);
+      }
+      .mem-row.is-open {
+        border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+      }
+      .mem-row.is-open .mem-toggle .icon {
+        transform: rotate(180deg);
+      }
+      .mem-row.is-editing {
+        border-color: var(--accent);
+      }
+      .mem-row-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .mem-summary {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        padding: 2px 0;
+        text-align: left;
+        color: inherit;
+        border-radius: 4px;
+      }
+      .mem-desc {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        color: var(--text);
+      }
+      .mem-actions {
+        display: flex;
+        align-items: center;
+        gap: 1px;
+        flex: none;
+        padding-left: 4px;
+        border-left: 1px solid var(--border-soft);
+      }
+      .mem-meta {
+        display: flex;
+        align-items: center;
+        gap: 4px 6px;
+        flex-wrap: wrap;
+        font-size: 10.5px;
+        color: var(--text-3);
+        line-height: 1.5;
+        min-width: 0;
+      }
+      .meta-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
+      }
+      .meta-item .icon {
+        width: 11px;
+        height: 11px;
+        color: var(--text-3);
+      }
+      .meta-sep {
+        color: var(--text-3);
+      }
+      .source-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        height: 16px;
+        padding: 0 5px;
+        border-radius: 4px;
+        font-size: 10px;
+        color: var(--text-3);
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-soft);
+        white-space: nowrap;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .conflict-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        height: 16px;
+        padding: 0 5px;
+        border-radius: 4px;
+        font-size: 10px;
+        color: var(--warn);
+        background: var(--warn-soft);
+        white-space: nowrap;
+      }
+      .conflict-badge .icon {
+        width: 10px;
+        height: 10px;
+      }
+      .mem-detail {
+        border-top: 1px solid var(--border-soft);
+        padding-top: 7px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .detail-full {
+        margin: 0;
+        font-size: 12.5px;
+        line-height: 1.65;
+        color: var(--text-2);
+        word-break: break-word;
+      }
+      .detail-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        font-size: 10.5px;
+        color: var(--text-3);
+      }
+      .detail-meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        min-width: 0;
+      }
+      .detail-meta .icon {
+        width: 11px;
+        height: 11px;
+      }
+      .detail-meta code {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .conflict-note {
+        display: flex;
+        gap: 7px;
+        padding: 7px 8px;
+        border-radius: 7px;
+        background: var(--warn-soft);
+        color: var(--warn);
+        font-size: 11px;
+        line-height: 1.55;
+      }
+      .conflict-note .icon {
+        width: 13px;
+        height: 13px;
+        flex: none;
+        margin-top: 2px;
+      }
+      .conflict-note strong {
+        display: block;
+        font-size: 11.5px;
+        margin-bottom: 1px;
+      }
+      .conflict-note p {
+        margin: 0;
+        color: var(--text-2);
+      }
+      .history-head {
+        font-size: 10.5px;
+        color: var(--text-3);
+      }
+      .history-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .history-list li {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-left: 11px;
+        position: relative;
+        font-size: 10.5px;
+        color: var(--text-3);
+      }
+      .history-list li::before {
+        content: '';
+        position: absolute;
+        left: 2px;
+        top: 7px;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+      .history-time {
+        margin-left: auto;
+        white-space: nowrap;
+      }
+      .edit-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--text-3);
+        flex-wrap: wrap;
+      }
+      .edit-foot {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .edit-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+        flex-wrap: wrap;
+      }
+      .addbar-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        margin-top: 2px;
+      }
+      .addbar {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .addbar .input {
+        flex: 1;
+        min-width: 140px;
+      }
+      .entry-hint {
+        font-size: 10.5px;
+        color: var(--text-3);
+        line-height: 1.5;
+        padding: 0 2px;
+      }
+      .entry-hint.is-warn {
+        color: var(--warn);
+      }
+      .empty-state {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 12px 10px;
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        background: var(--bg-elevated);
+        color: var(--text-3);
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .empty-state .icon {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        color: var(--text-3);
+        margin-top: 1px;
+      }
+      .empty-state strong {
+        display: block;
+        color: var(--text);
+        font-size: 12.5px;
+        font-weight: 500;
+        margin-bottom: 1px;
+      }
+      .empty-state span {
+        display: block;
+      }
+
+      /* ── 确认卡 ───────────────────────────────────────────────── */
+      .ask-card {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        overflow: hidden;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        animation: fade-up 0.22s cubic-bezier(0.28, 0, 0.22, 1);
+      }
+      .ask-card.is-save {
+        border-color: color-mix(in srgb, var(--success) 55%, var(--border));
+      }
+      .ask-card.is-delete {
+        border-color: var(--danger);
+      }
+      .ask-card.is-pulse {
+        animation: pulse-card 0.6s cubic-bezier(0.28, 0, 0.22, 1);
+      }
+      .ask-strip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 14px;
+        font-size: 12.5px;
+        font-weight: 500;
+        line-height: 1.4;
+        flex-wrap: wrap;
+      }
+      .ask-card.is-save .ask-strip {
+        background: var(--success-soft);
+        color: var(--success);
+      }
+      .ask-card.is-delete .ask-strip {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+      .ask-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+        flex: none;
+      }
+      .ask-scope {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        height: 18px;
+        padding: 0 8px;
+        border-radius: 9px;
+        font-size: 10.5px;
+        background: var(--surface);
+        color: var(--text-2);
+        border: 1px solid var(--border-soft);
+        white-space: nowrap;
+      }
+      .ask-body {
+        padding: 10px 14px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        max-height: min(60vh, 520px);
+        overflow-y: auto;
+      }
+      .ask-options {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .ask-option {
+        height: 34px;
+        border: 1px solid var(--border-soft);
+        border-radius: 9px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        font-size: 12px;
+        color: var(--text-2);
+        background: transparent;
+      }
+      .ask-option.is-active {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--text);
+      }
+      .ask-option-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        border: 1px solid var(--text-3);
+        flex: none;
+      }
+      .ask-option.is-active .ask-option-dot {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .ask-field {
+        display: flex;
+        gap: 8px;
+        font-size: 11.5px;
+        line-height: 1.55;
+      }
+      .ask-field-label {
+        flex: none;
+        width: 30px;
+        color: var(--text-3);
+      }
+      .ask-field-value {
+        min-width: 0;
+        color: var(--text-2);
+        word-break: break-word;
+      }
+      .ask-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 5px 7px;
+        border-radius: 6px;
+        background: var(--accent-soft);
+      }
+      .ask-summary-label {
+        font-size: 10.5px;
+        color: var(--text-3);
+      }
+      .ask-summary-text {
+        font-size: 11px;
+        color: var(--text-2);
+        word-break: break-word;
+      }
+      .ask-footer {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 11px 14px;
+        flex-wrap: wrap;
+      }
+      .ask-feedback {
+        flex: 1;
+        min-width: 150px;
+        font-size: 10.5px;
+        color: var(--text-3);
+        line-height: 1.5;
+      }
+      .ask-actions {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-left: auto;
+        flex-wrap: wrap;
+      }
+      .ask-actions .btn {
+        height: 28px;
+        font-size: 12px;
+      }
+
+      /* ── 候选 ─────────────────────────────────────────────────── */
+      .candidates-block {
+        border: 1px dashed color-mix(in srgb, var(--accent) 42%, var(--border));
+        border-radius: 12px;
+        padding: 12px;
+        background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 0;
+      }
+      .candidate-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .candidate-row {
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        background: var(--surface-raised);
+        padding: 8px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .candidate-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+      .candidate-desc {
+        flex: 1;
+        min-width: 160px;
+        font-size: 12.5px;
+        color: var(--text);
+        line-height: 1.5;
+        word-break: break-word;
+      }
+      .candidate-meta {
+        display: flex;
+        align-items: center;
+        gap: 4px 6px;
+        flex-wrap: wrap;
+        font-size: 10.5px;
+        color: var(--text-3);
+        line-height: 1.5;
+      }
+      .candidate-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+      }
+      .candidate-actions .btn {
+        height: 27px;
+        font-size: 11.5px;
+      }
+      .candidate-busy {
+        font-size: 10.5px;
+        color: var(--text-3);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .candidate-summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 8px 10px;
+        border: 1px solid var(--border-soft);
+        border-radius: 9px;
+        background: var(--surface);
+        font-size: 11px;
+        color: var(--text-3);
+      }
+      .candidate-summary strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .candidate-summary .text-btn {
+        margin-left: auto;
+      }
+
+      /* ── 场景页 ───────────────────────────────────────────────── */
+      .scene-intro {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 12px;
+      }
+      .scene-kicker {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        color: var(--accent);
+        text-transform: uppercase;
+      }
+      .scene-title {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: 0.1px;
+      }
+      .scene-desc {
+        margin: 0;
+        font-size: 11.5px;
+        color: var(--text-3);
+        line-height: 1.65;
+        max-width: 760px;
+      }
+      .demo-block {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        margin-bottom: 14px;
+        min-width: 0;
+      }
+      .demo-label {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        color: var(--text-2);
+        font-weight: 500;
+      }
+      .step-num {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 10px;
+        font-weight: 600;
+        flex: none;
+      }
+      .step-hint {
+        font-size: 10.5px;
+        color: var(--text-3);
+        font-weight: 400;
+      }
+      .demo-hint {
+        margin: 0;
+        font-size: 10.5px;
+        color: var(--text-3);
+        line-height: 1.55;
+      }
+      .demo-done {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 9px 11px;
+        border: 1px dashed var(--border);
+        border-radius: 9px;
+        background: var(--bg-elevated);
+        font-size: 11.5px;
+        color: var(--text-3);
+      }
+      .demo-done .icon {
+        width: 14px;
+        height: 14px;
+        color: var(--success);
+      }
+      .scene-foot {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 4px;
+      }
+      .confirm-pair {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+        margin-bottom: 14px;
+      }
+      .confirm-pair .demo-block {
+        margin-bottom: 0;
+      }
+      @media (max-width: 1100px) {
+        .confirm-pair {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      /* ── 提示词页 ─────────────────────────────────────────────── */
+      .prompts-section {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .isolation-note {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        padding: 6px 10px;
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        background: var(--bg-elevated);
+        font-size: 11px;
+        color: var(--text-3);
+        line-height: 1.55;
+      }
+      .isolation-note .icon {
+        width: 14px;
+        height: 14px;
+        color: var(--accent);
+        flex: none;
+        margin-top: 2px;
+      }
+      .isolation-note strong {
+        display: block;
+        color: var(--text-2);
+        font-size: 11.5px;
+        font-weight: 500;
+        margin-bottom: 1px;
+      }
+      .order-strip {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+        padding: 5px 9px;
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        background: var(--bg-elevated);
+        font-size: 10.5px;
+        color: var(--text-3);
+        line-height: 1.5;
+      }
+      .order-label {
+        font-weight: 500;
+        color: var(--text-2);
+        margin-right: 1px;
+      }
+      .order-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 20px;
+        padding: 0 7px;
+        border-radius: 10px;
+        background: var(--surface);
+        border: 1px solid var(--border-soft);
+        color: var(--text-2);
+        white-space: nowrap;
+      }
+      .order-chip.is-off {
+        text-decoration: line-through;
+        color: var(--text-3);
+        opacity: 0.75;
+      }
+      .order-sep {
+        color: var(--text-3);
+        font-size: 10px;
+      }
+      .prompt-list {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        min-width: 0;
+      }
+      .prompt-row {
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 6px 10px;
+        background: var(--surface);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+        transition:
+          opacity 0.15s,
+          border-color 0.15s,
+          background 0.15s;
+      }
+      .prompt-row:hover {
+        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+      }
+      .prompt-row.is-off {
+        opacity: 0.62;
+        background: var(--bg-elevated);
+      }
+      .prompt-row.is-off:hover {
+        opacity: 0.78;
+      }
+      .prompt-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+      .prompt-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        flex: 0 1 auto;
+      }
+      .prompt-head .prompt-actions {
+        margin-left: auto;
+      }
+      .prompt-head .link-btn {
+        height: 20px;
+        padding: 0 4px;
+      }
+      .prompt-text {
+        margin: 0;
+        font-size: 11.5px;
+        line-height: 1.65;
+        color: var(--text-2);
+        white-space: pre-wrap;
+        word-break: break-word;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .prompt-text.is-expanded {
+        display: block;
+        max-height: 150px;
+        overflow-y: auto;
+        -webkit-line-clamp: unset;
+      }
+      .prompt-foot {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        min-width: 0;
+        padding-top: 2px;
+      }
+      .prompt-foot-note {
+        font-size: 10.5px;
+        color: var(--text-3);
+        line-height: 1.5;
+      }
+      .prompt-actions {
+        display: flex;
+        align-items: center;
+        gap: 1px;
+        flex-wrap: wrap;
+        margin-left: auto;
+      }
+      .prompt-editor {
+        border: 1px solid var(--accent);
+        border-radius: 10px;
+        padding: 9px 11px;
+        background: var(--surface);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .prompt-add {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 8px 10px;
+        background: var(--surface);
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin-top: 2px;
+        min-width: 0;
+      }
+      .prompt-add-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .prompt-add-head h3 {
+        margin: 0;
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .prompt-add-head span {
+        font-size: 10.5px;
+        color: var(--text-3);
+      }
+      .prompt-add .input {
+        font-size: 12px;
+      }
+      .prompt-add textarea.input {
+        min-height: 42px;
+      }
+      .injection-note {
+        font-size: 10.5px;
+        color: var(--text-3);
+      }
+
+      /* ── 空态 / 异常 ──────────────────────────────────────────── */
+      .error-banner {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        padding: 10px 11px;
+        border: 1px solid color-mix(in srgb, var(--danger) 50%, var(--border));
+        background: var(--danger-soft);
+        border-radius: 10px;
+        color: var(--danger);
+        font-size: 11.5px;
+        line-height: 1.55;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .error-banner .icon {
+        width: 15px;
+        height: 15px;
+        flex: none;
+        margin-top: 2px;
+      }
+      .error-body {
+        flex: 1;
+        min-width: 180px;
+      }
+      .error-body strong {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 1px;
+      }
+      .error-body span {
+        color: var(--text-2);
+      }
+      .error-body code {
+        font-size: 10.5px;
+      }
+      .error-banner .btn {
+        margin-left: auto;
+        height: 27px;
+        font-size: 11.5px;
+      }
+
+      /* ── 固定工具 ─────────────────────────────────────────────── */
+      .scene-pill {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 90;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding: 4px;
+        background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(8px);
+        max-width: calc(100vw - 24px);
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .scene-pill::-webkit-scrollbar {
+        display: none;
+      }
+      .scene-label {
+        font-size: 10px;
+        color: var(--text-3);
+        padding: 0 7px;
+        white-space: nowrap;
+        letter-spacing: 0.04em;
+      }
+      .scene-btn {
+        height: 28px;
+        padding: 0 10px;
+        border: 0;
+        background: transparent;
+        border-radius: 14px;
+        color: var(--text-2);
+        font-size: 11.5px;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .scene-btn:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .scene-btn.active {
+        background: var(--accent);
+        color: var(--on-accent);
+      }
+      .theme-toggle {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        z-index: 95;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: 1px solid var(--border);
+        background: var(--bg-elevated);
+        color: var(--text-2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: var(--shadow);
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .theme-toggle:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .theme-toggle .icon {
+        width: 16px;
+        height: 16px;
+      }
+      .theme-toggle .icon-moon {
+        display: none;
+      }
+      :root[data-theme='light'] .theme-toggle .icon-sun {
+        display: none;
+      }
+      :root[data-theme='light'] .theme-toggle .icon-moon {
+        display: block;
+      }
+      .toast-wrap {
+        position: fixed;
+        right: 16px;
+        bottom: 64px;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        align-items: flex-end;
+        pointer-events: none;
+        max-width: min(370px, calc(100vw - 24px));
+      }
+      .toast {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        padding: 8px 11px;
+        border-radius: 10px;
+        background: var(--toast-bg);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+        color: var(--text);
+        font-size: 11.5px;
+        line-height: 1.5;
+        opacity: 0;
+        transform: translateY(6px);
+        transition:
+          opacity 0.2s,
+          transform 0.2s;
+        pointer-events: none;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+      .toast .icon {
+        width: 14px;
+        height: 14px;
+        flex: none;
+        margin-top: 1px;
+      }
+      .toast-success {
+        border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+      }
+      .toast-success .icon {
+        color: var(--success);
+      }
+      .toast-warn {
+        border-color: color-mix(in srgb, var(--warn) 48%, var(--border));
+      }
+      .toast-warn .icon {
+        color: var(--warn);
+      }
+      .toast-danger {
+        border-color: color-mix(in srgb, var(--danger) 48%, var(--border));
+      }
+      .toast-danger .icon {
+        color: var(--danger);
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes fade-up {
+        from {
+          opacity: 0;
+          transform: translateY(4px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes modal-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px) scale(0.995);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes pulse-card {
+        0% {
+          box-shadow: 0 0 0 0 var(--success-soft);
+        }
+        50% {
+          box-shadow: 0 0 0 4px var(--success-soft);
+        }
+        100% {
+          box-shadow: var(--shadow);
+        }
+      }
+
+      @media (max-width: 1279px) {
+        .app-shell {
+          grid-template-columns: 248px minmax(0, 1fr);
+        }
+        .rightbar {
+          display: none;
+        }
+        .settings-nav {
+          width: 200px;
+        }
+      }
+      @media (max-width: 1100px) {
+        .scope-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .settings-nav {
+          width: 196px;
+        }
+      }
+      @media (max-width: 900px) {
+        .app-shell {
+          grid-template-columns: 64px minmax(0, 1fr);
+        }
+        .sidebar {
+          padding: 10px 8px;
+          align-items: center;
+        }
+        .brand {
+          justify-content: center;
+          width: 100%;
+        }
+        .brand-text,
+        .brand-collapse,
+        .new-chat span,
+        .new-chat .kbd,
+        .side-label,
+        .workspace span,
+        .session .session-title,
+        .session-time,
+        .side-action span,
+        .user-name {
+          display: none;
+        }
+        .new-chat {
+          width: 36px;
+          justify-content: center;
+          padding: 0;
+        }
+        .workspace,
+        .session {
+          width: 36px;
+          justify-content: center;
+          padding: 0;
+          flex: none;
+        }
+        .session {
+          gap: 0;
+        }
+        .status-dot {
+          width: 8px;
+          height: 8px;
+        }
+        .side-label {
+          height: 1px;
+          padding: 0;
+          border-top: 1px solid var(--border-soft);
+          margin: 4px 0;
+          overflow: hidden;
+          width: 100%;
+        }
+        .side-section {
+          gap: 4px;
+          align-items: center;
+          width: 100%;
+        }
+        .side-action {
+          width: 36px;
+          justify-content: center;
+          padding: 0;
+          flex: none;
+        }
+        .user {
+          justify-content: center;
+          padding: 6px 0 0;
+          width: 100%;
+        }
+        .topbar-actions {
+          margin-right: 32px;
+        }
+        .settings-modal {
+          width: calc(100vw - 24px);
+          height: calc(100vh - 24px);
+        }
+        .settings-nav {
+          width: 164px;
+        }
+        .plugin-head {
+          padding: 12px 16px;
+        }
+        .plugin-tabs {
+          padding: 8px 16px;
+        }
+        .tab-panel {
+          padding: 12px 16px 22px;
+        }
+        .tab-hint {
+          display: none;
+        }
+        .scene-pill {
+          right: 8px;
+          bottom: 8px;
+          max-width: calc(100vw - 16px);
+        }
+        .toast-wrap {
+          right: 8px;
+          bottom: 56px;
+        }
+        .conversation .conv-scroll {
+          padding: 18px;
+        }
+        .composer-wrap {
+          padding: 8px 18px 10px;
+        }
+      }
+      @media (max-width: 820px) {
+        .settings-nav {
+          width: 152px;
+          padding: 10px 8px;
+        }
+        .nav-item {
+          font-size: 12px;
+          padding: 0 8px;
+          gap: 8px;
+        }
+        .nav-item .icon {
+          width: 15px;
+          height: 15px;
+        }
+        .plugin-meta {
+          display: none;
+        }
+        .search-hint,
+        .tab-hint {
+          display: none;
+        }
+        .plugin-title {
+          font-size: 14.5px;
+        }
+        .scope-grid {
+          gap: 10px;
+        }
+        .ask-footer {
+          padding: 10px 12px;
+        }
+        .ask-feedback {
+          min-width: 100%;
+        }
+        .ask-actions {
+          margin-left: 0;
+          width: 100%;
+          justify-content: flex-end;
+        }
+        .scene-label {
+          display: none;
+        }
+        .scene-pill {
+          padding: 3px;
+        }
+        .scene-btn {
+          height: 26px;
+          padding: 0 9px;
+          font-size: 11px;
+        }
+      }
+      @media (max-height: 780px) {
+        .settings-modal {
+          height: calc(100vh - 16px);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.001ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg class="svg-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m16.5 16.5 4 4" />
+      </symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24">
+        <path d="M4 6h9M18 6h2M4 12h4M12 12h8M4 18h11M20 18h0" />
+        <circle cx="16" cy="6" r="2" />
+        <circle cx="10" cy="12" r="2" />
+        <circle cx="18" cy="18" r="2" />
+      </symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24">
+        <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z" />
+      </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+      <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6" /></symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></symbol>
+      <symbol id="i-arrow-left" viewBox="0 0 24 24">
+        <path d="M19 12H5" />
+        <path d="m12 19-7-7 7-7" />
+      </symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 24 24">
+        <path d="M5 12h14" />
+        <path d="m12 5 7 7-7 7" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24">
+        <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+        <path d="M20 4v5h-5" />
+      </symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24">
+        <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+      </symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24">
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m20 6-11 11-5-5" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <path d="M10.3 4.2 2.5 18a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+        <path d="M12 9v4M12 17h.01" />
+      </symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </symbol>
+      <symbol id="i-more" viewBox="0 0 24 24">
+        <circle cx="5" cy="12" r="1" />
+        <circle cx="12" cy="12" r="1" />
+        <circle cx="19" cy="12" r="1" />
+      </symbol>
+      <symbol id="i-panel" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M15 4v16" />
+      </symbol>
+      <symbol id="i-send" viewBox="0 0 24 24">
+        <path d="M22 2 11 13" />
+        <path d="M22 2 15 22l-4-9-9-4Z" />
+      </symbol>
+      <symbol id="i-paperclip" viewBox="0 0 24 24">
+        <path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l8.5-8.5a4 4 0 0 1 5.7 5.7l-8.5 8.5a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+      </symbol>
+      <symbol id="i-cpu" viewBox="0 0 24 24">
+        <rect x="6" y="6" width="12" height="12" rx="2" />
+        <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" />
+      </symbol>
+      <symbol id="i-puzzle" viewBox="0 0 24 24">
+        <path
+          d="M20 11h-2V7a2 2 0 0 0-2-2h-4V3a2 2 0 1 0-4 0v2H4a2 2 0 0 0-2 2v4h2a2 2 0 1 1 0 4H2v4a2 2 0 0 0 2 2h4v-2a2 2 0 1 1 4 0v2h4a2 2 0 0 0 2-2v-4h2a2 2 0 1 0 0-4Z"
+        />
+      </symbol>
+      <symbol id="i-model" viewBox="0 0 24 24">
+        <path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z" />
+        <path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8Z" />
+      </symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24">
+        <path d="M9 7V3M15 7V3" />
+        <path d="M6 7h12v4a6 6 0 0 1-6 6 6 6 0 0 1-6-6Z" />
+        <path d="M12 17v4" />
+      </symbol>
+      <symbol id="i-bot" viewBox="0 0 24 24">
+        <rect x="4" y="7" width="16" height="12" rx="3" />
+        <path d="M12 3v4M8 12h.01M16 12h.01M9 16h6" />
+      </symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24">
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="m7 15 3-4 3 2 4-6" />
+      </symbol>
+      <symbol id="i-image" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <circle cx="8.5" cy="9.5" r="1.5" />
+        <path d="m21 15-5-5L5 21" />
+      </symbol>
+      <symbol id="i-bag" viewBox="0 0 24 24">
+        <path d="M6 8h12l1 13H5Z" />
+        <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+      </symbol>
+      <symbol id="i-layout" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M9 4v16M9 12h12" />
+      </symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24">
+        <path d="M12 3 5 6v6c0 5 3.5 7.5 7 9 3.5-1.5 7-4 7-9V6Z" />
+        <path d="m9 12 2 2 4-4" />
+      </symbol>
+      <symbol id="i-doc" viewBox="0 0 24 24">
+        <path d="M6 3h8l4 4v14H6Z" />
+        <path d="M14 3v5h5" />
+        <path d="M9 13h6M9 17h6" />
+      </symbol>
+      <symbol id="i-star" viewBox="0 0 24 24">
+        <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9Z" />
+      </symbol>
+    </svg>
+
+    <div class="app-shell" id="appShell">
+      <aside class="sidebar panel" aria-label="工作区与会话">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="2" y="2" width="28" height="28" rx="9" fill="currentColor" opacity=".12" />
+            <path
+              d="M7 20c3.2 0 4.3-3 7.2-3 3 0 3.8 3 6.8 3 2 0 3-1.2 4-1.2"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+            />
+            <circle cx="11" cy="12" r="1.8" fill="currentColor" />
+          </svg>
+          <div class="brand-text"><span class="brand-name">deepseek</span><span class="brand-tag">HARNESS</span></div>
+          <button class="icon-btn brand-collapse" data-tip="收起侧栏" aria-label="收起侧栏">
+            <svg class="icon icon-sm"><use href="#i-panel" /></svg>
+          </button>
+        </div>
+        <button class="new-chat">
+          <svg class="icon icon-sm"><use href="#i-plus" /></svg><span>新建会话</span><span class="kbd">⌘N</span>
+        </button>
+        <div class="side-section">
+          <div class="side-label">
+            <span>工作区</span
+            ><span class="side-label-actions"
+              ><button class="icon-btn" data-tip="搜索" aria-label="搜索">
+                <svg class="icon icon-xs"><use href="#i-search" /></svg></button
+              ><button class="icon-btn" data-tip="筛选" aria-label="筛选">
+                <svg class="icon icon-xs"><use href="#i-sliders" /></svg></button
+            ></span>
+          </div>
+          <button class="workspace active">
+            <svg class="icon icon-xs"><use href="#i-chevron-down" /></svg
+            ><svg class="icon icon-sm"><use href="#i-folder" /></svg><span>my-dsh-plugins</span>
+          </button>
+          <button class="workspace">
+            <svg class="icon icon-xs"><use href="#i-chevron-right" /></svg
+            ><svg class="icon icon-sm"><use href="#i-folder" /></svg><span>deepseek-harness</span>
+          </button>
+        </div>
+        <div class="side-section sessions-section">
+          <div class="side-label"><span>最近会话</span></div>
+          <button class="session active">
+            <span class="status-dot ok"></span><span class="session-title">调用 memory_save 工具，把…</span
+            ><span class="session-time">刚刚</span>
+          </button>
+          <button class="session">
+            <span class="status-dot ok"></span><span class="session-title">原型重构 · 四个插件面板</span
+            ><span class="session-time">12 分钟前</span>
+          </button>
+          <button class="session">
+            <span class="status-dot ok"></span><span class="session-title">修复 CI 里的门禁失败</span
+            ><span class="session-time">昨天</span>
+          </button>
+          <button class="session">
+            <span class="status-dot warn"></span><span class="session-title">记忆插件 v0.7.2 发版</span
+            ><span class="session-time">2 天前</span>
+          </button>
+        </div>
+        <div class="sidebar-foot">
+          <button class="side-action" id="sidebarSettings">
+            <svg class="icon icon-sm"><use href="#i-sliders" /></svg><span>设置</span>
+          </button>
+          <button class="side-action">
+            <svg class="icon icon-sm"><use href="#i-shield" /></svg><span>权限与安全</span>
+          </button>
+          <div class="user"><span class="avatar">B</span><span class="user-name">bsfeng</span></div>
+        </div>
+      </aside>
+
+      <section class="main panel" aria-label="会话主区">
+        <header class="topbar">
+          <div class="topbar-left">
+            <div class="topbar-nav">
+              <button class="icon-btn" data-tip="后退" aria-label="后退">
+                <svg class="icon icon-sm"><use href="#i-arrow-left" /></svg></button
+              ><button class="icon-btn" data-tip="前进" aria-label="前进">
+                <svg class="icon icon-sm"><use href="#i-arrow-right" /></svg>
+              </button>
+            </div>
+            <div class="chat-title">调用 memory_save 工具，把偏好写入全局记忆</div>
+            <span class="model-chip"
+              ><svg class="icon"><use href="#i-model" /></svg>标准模式<svg class="icon icon-xs">
+                <use href="#i-chevron-down" /></svg
+            ></span>
+          </div>
+          <div class="topbar-actions">
+            <button class="icon-btn" data-tip="分享" aria-label="分享">
+              <svg class="icon icon-sm"><use href="#i-send" /></svg>
+            </button>
+            <button class="icon-btn" data-tip="更多" aria-label="更多">
+              <svg class="icon icon-sm"><use href="#i-more" /></svg>
+            </button>
+            <button class="icon-btn" data-tip="右侧栏" aria-label="右侧栏">
+              <svg class="icon icon-sm"><use href="#i-panel" /></svg>
+            </button>
+          </div>
+        </header>
+        <div class="conversation">
+          <div class="conv-scroll">
+            <div class="conv-inner">
+              <div class="conv-date">今天 21:58</div>
+              <div class="msg user">
+                <div class="msg-bubble">把「回复使用中文」这条偏好写进全局记忆，之后每个会话都要带上。</div>
+              </div>
+              <div class="msg">
+                <div class="assistant-head">
+                  <span class="ai-avatar">D</span><span>DeepSeek</span><span>21:59</span>
+                </div>
+                <div class="assistant-body">
+                  <p>好的，已把这条偏好写入全局记忆。它会在会话开始时注入系统提示词，后续每个会话都会携带。</p>
+                  <div class="tool-chip">
+                    <svg class="icon"><use href="#i-plug" /></svg>工具调用 · <code>memory_save</code
+                    ><span>preference</span><span class="ok">成功</span>
+                  </div>
+                  <div class="thinking-block">
+                    <strong>思考</strong><br />写入需要用户确认；当前会话是 danger-full-access，按 saveApproval=auto
+                    免确认写入，并在面板标记来源会话。
+                  </div>
+                  <p>可以在「设置 → 插件 → 记忆」里查看、编辑或删除这条记忆。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="composer-wrap">
+            <div class="composer">
+              <button class="icon-btn" data-tip="附件" aria-label="附件">
+                <svg class="icon icon-sm"><use href="#i-paperclip" /></svg></button
+              ><input class="composer-input" placeholder="继续输入，或 / 唤起命令…" aria-label="消息输入" /><button
+                class="icon-btn"
+                data-tip="发送"
+                aria-label="发送"
+              >
+                <svg class="icon icon-sm"><use href="#i-send" /></svg>
+              </button>
+            </div>
+            <div class="composer-hint">Enter 发送 · Shift + Enter 换行</div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="rightbar panel" aria-label="文件活动">
+        <div class="right-tabs">
+          <button class="right-tab">
+            <svg class="icon icon-sm"><use href="#i-doc" /></svg>文件
+          </button>
+          <button class="right-tab active">
+            <svg class="icon icon-sm"><use href="#i-clock" /></svg>文件活动
+          </button>
+          <button class="right-tab" aria-label="新建面板">
+            <svg class="icon icon-sm"><use href="#i-plus" /></svg>
+          </button>
+        </div>
+        <div class="right-body">
+          <div class="right-head">
+            <svg class="icon"><use href="#i-chevron-down" /></svg>最近访问<span class="right-head-actions"
+              ><button class="icon-btn" data-tip="刷新" aria-label="刷新">
+                <svg class="icon icon-xs"><use href="#i-refresh" /></svg></button
+              ><button class="icon-btn" data-tip="清空" aria-label="清空">
+                <svg class="icon icon-xs"><use href="#i-trash" /></svg></button
+            ></span>
+          </div>
+          <div class="file-row">
+            <svg class="icon"><use href="#i-doc" /></svg><span class="file-name">brief-my-memory.md</span
+            ><span class="file-meta">刚刚</span>
+          </div>
+          <div class="file-row">
+            <svg class="icon"><use href="#i-doc" /></svg><span class="file-name">设计基线.md</span
+            ><span class="file-meta">3 分钟前</span>
+          </div>
+          <div class="file-row">
+            <svg class="icon"><use href="#i-image" /></svg><span class="file-name">issue-193-save-confirm.png</span
+            ><span class="file-meta">6 分钟前</span>
+          </div>
+          <div class="right-empty">在侧边栏打开文件、编辑保存，或让 agent 读写文件时，最近访问会记录在这里。</div>
+          <div class="right-head">
+            <svg class="icon"><use href="#i-chevron-down" /></svg>文件统计
+          </div>
+          <div class="stat-tree">
+            <div class="tree-row dir">
+              <svg class="icon"><use href="#i-chevron-down" /></svg><svg class="icon"><use href="#i-folder" /></svg
+              ><span class="file-name">plugins/dsh-my-memory</span><span class="tree-count">12</span>
+            </div>
+            <div class="tree-row">
+              <svg class="icon"><use href="#i-chevron-right" /></svg><svg class="icon"><use href="#i-folder" /></svg
+              ><span class="file-name">src/client/parts</span><span class="tree-count">14</span>
+            </div>
+            <div class="tree-row">
+              <svg class="icon"><use href="#i-doc" /></svg><span class="file-name">view.ts</span
+              ><span class="tree-count">523 行</span>
+            </div>
+            <div class="tree-row">
+              <svg class="icon"><use href="#i-doc" /></svg><span class="file-name">prompts.ts</span
+              ><span class="tree-count">359 行</span>
+            </div>
+            <div class="tree-row">
+              <svg class="icon"><use href="#i-doc" /></svg><span class="file-name">README.md</span
+              ><span class="tree-count">59 行</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换为浅色主题" data-tip="切换为浅色主题">
+      <svg class="icon icon-sun"><use href="#i-sun" /></svg>
+      <svg class="icon icon-moon"><use href="#i-moon" /></svg>
+    </button>
+
+    <div class="settings-overlay" id="settingsOverlay">
+      <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <header class="settings-head">
+          <h1 id="settingsTitle">设置</h1>
+          <button class="icon-btn" id="closeSettings" aria-label="关闭设置" data-tip="关闭">
+            <svg class="icon"><use href="#i-close" /></svg>
+          </button>
+        </header>
+        <div class="settings-body">
+          <nav class="settings-nav" aria-label="设置分类">
+            <div class="nav-label">设置</div>
+            <button class="nav-item" data-nav="general">
+              <svg class="icon"><use href="#i-sliders" /></svg>通用设置
+            </button>
+            <button class="nav-item" data-nav="model">
+              <svg class="icon"><use href="#i-model" /></svg>模型
+            </button>
+            <button class="nav-item" data-nav="provider">
+              <svg class="icon"><use href="#i-plug" /></svg>模型调用供应商
+            </button>
+            <button class="nav-item active" data-nav="plugins">
+              <svg class="icon"><use href="#i-puzzle" /></svg>插件
+            </button>
+            <button class="nav-item" data-nav="preset">
+              <svg class="icon"><use href="#i-bot" /></svg>Agent 预设
+            </button>
+            <button class="nav-item" data-nav="usage">
+              <svg class="icon"><use href="#i-chart" /></svg>Token 用量
+            </button>
+            <button class="nav-item" data-nav="visual">
+              <svg class="icon"><use href="#i-image" /></svg>视觉工具
+            </button>
+            <button class="nav-item" data-nav="market">
+              <svg class="icon"><use href="#i-bag" /></svg>插件市场
+            </button>
+            <button class="nav-item" data-nav="cards">
+              <svg class="icon"><use href="#i-layout" /></svg>侧边卡片
+            </button>
+          </nav>
+          <div class="settings-content">
+            <div class="plugin-head">
+              <div class="plugin-icon">
+                <svg class="icon"><use href="#i-cpu" /></svg>
+              </div>
+              <div class="plugin-info">
+                <div class="plugin-title">记忆<span class="pill accent">dsh-my-memory</span></div>
+                <p class="plugin-sub">全局 / 项目两级记忆；写入需确认，自动学习候选不会静默变更。</p>
+              </div>
+              <div class="plugin-meta"><span class="pill success">已启用</span><span class="pill">v0.7.2</span></div>
+            </div>
+            <div class="plugin-tabs">
+              <div class="segmented" role="tablist" aria-label="记忆插件页签">
+                <button class="seg-btn active" role="tab" aria-selected="true" data-tab="memory">
+                  记忆<span class="tab-count" data-count="memory">5</span>
+                </button>
+                <button class="seg-btn" role="tab" aria-selected="false" data-tab="prompts">
+                  全局提示词<span class="tab-count" data-count="prompts">3</span>
+                </button>
+              </div>
+              <span class="tab-hint">修改即时生效 · 下一轮组装读取</span>
+            </div>
+            <div class="tab-panel" id="tabPanel" role="tabpanel" aria-label="记忆与全局提示词">
+              <div class="loading-card"><span class="spinner"></span>加载中…</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="scene-pill" id="scenePill" role="group" aria-label="原型场景">
+      <span class="scene-label">场景</span>
+      <button class="scene-btn active" data-scene="memory">设置·记忆</button>
+      <button class="scene-btn" data-scene="confirm">确认态</button>
+      <button class="scene-btn" data-scene="candidates">候选待确认</button>
+      <button class="scene-btn" data-scene="prompts">设置·全局提示词</button>
+      <button class="scene-btn" data-scene="empty">空态与异常</button>
+    </div>
+
+    <div class="toast-wrap" id="toastWrap" aria-live="polite" aria-atomic="false"></div>
+
+    <script>
+      ;(function () {
+        'use strict'
+
+        const PROJECT_ROOT = '/Users/bsfeng/IdeaProjects/my-dsh-plugins'
+        const LONG_DRAFT =
+          '所有新增、修改和删除都必须由用户确认：保存用绿色，删除用红色，确认卡要展示范围与内容，绝不静默变更。自动学习候选也要逐个确认或拒弃，不静默写入。'
+        const CATEGORY_LABELS = {
+          preference: '偏好',
+          fact: '事实',
+          project: '项目',
+          stack: '技术栈',
+          workflow: '工作流',
+        }
+
+        const seed = {
+          global: [
+            {
+              id: 'mem_8f3a21',
+              desc: '回复使用中文；技术术语、代码、命令与文件路径保持原文。',
+              category: 'preference',
+              confidence: 5,
+              status: 'active',
+              source: 'ses_7c41a9e2',
+              updatedAgo: 2,
+              history: [
+                { action: 'add', ago: 8640 },
+                { action: 'reinforce', ago: 2880 },
+              ],
+            },
+            {
+              id: 'mem_71b0c4',
+              desc: 'Markdown 对比信息优先用表格呈现，长表格再补列表摘要。',
+              category: 'fact',
+              confidence: 3,
+              status: 'conflict-pending',
+              source: 'ses_2f9d8a13',
+              updatedAgo: 180,
+              conflict: '旧版本：对比信息用无序列表呈现，不使用表格。新版本已生效，历史保留供核对。',
+              history: [
+                { action: 'add', ago: 17280 },
+                { action: 'conflict', ago: 180 },
+              ],
+            },
+            {
+              id: 'mem_5de992',
+              desc: '提交前先跑 npm run verify，不跳过门禁；失败先定位再改。',
+              category: 'workflow',
+              confidence: 4,
+              status: 'active',
+              source: 'ses_9a30b7c1',
+              updatedAgo: 1440,
+              history: [{ action: 'add', ago: 28800 }],
+            },
+          ],
+          project: [
+            {
+              id: 'mem_p_01',
+              desc: 'Agent Teams 共享同一文件系统；写操作按互不重叠的文件范围拆分。',
+              category: 'project',
+              confidence: 5,
+              status: 'active',
+              source: 'ses_4b21e8f0',
+              updatedAgo: 60,
+              history: [
+                { action: 'add', ago: 4320 },
+                { action: 'reinforce', ago: 1440 },
+              ],
+            },
+            {
+              id: 'mem_p_02',
+              desc: '本仓库测试命令是 npm test；原型验收按 F 编号逐条核对。',
+              category: 'stack',
+              confidence: 4,
+              status: 'active',
+              source: 'ses_b71d0e44',
+              updatedAgo: 240,
+              history: [{ action: 'add', ago: 10080 }],
+            },
+          ],
+          candidates: [
+            {
+              id: 'cand_01',
+              desc: '夜间长跑任务前先 caffeinate 防止宿主休眠。',
+              category: 'preference',
+              scope: 'global',
+              source: 'ses_8f3a2c1d',
+              createdAgo: 12,
+              confidence: 2,
+            },
+            {
+              id: 'cand_02',
+              desc: '原型验收优先核对 F 编号覆盖，不逐像素对比。',
+              category: 'workflow',
+              scope: 'project',
+              source: 'ses_b71d0e44',
+              createdAgo: 60,
+              confidence: 3,
+            },
+          ],
+          prompts: [
+            {
+              id: 'builtin:think-zh',
+              title: '中文思考',
+              text: '## 输出语言规则（最高优先级）\n\n思考过程必须使用简体中文书写；最终回复默认使用简体中文。代码、命令、文件路径与技术术语保持原文，不翻译。\n\n关键场景：工具返回英文错误时继续用中文思考并解释；上下文出现大量英文时不被带偏。',
+              enabled: true,
+              order: 1,
+              builtin: true,
+            },
+            {
+              id: 'pr_02',
+              title: '结论先行',
+              text: '回答先给结论，再给理由与证据；涉及改动的说明改了哪些文件、为什么改、如何验证。',
+              enabled: true,
+              order: 2,
+            },
+            {
+              id: 'pr_03',
+              title: '少用列表',
+              text: '能连续成段说清的内容优先用段落表达，只在并列项超过 3 条时使用列表。',
+              enabled: false,
+              order: 3,
+            },
+          ],
+        }
+
+        const clone = (value) => JSON.parse(JSON.stringify(value))
+
+        const state = {
+          scene: 'memory',
+          tab: 'memory',
+          pathInput: PROJECT_ROOT,
+          data: { global: [], project: [] },
+          candidates: [],
+          prompts: [],
+          expanded: new Set(),
+          promptExpanded: new Set(),
+          editing: null,
+          confirming: null,
+          promptEditing: null,
+          drafts: { global: '', project: '' },
+          promptDraft: { title: '', text: '' },
+          sort: { global: 'desc', project: 'desc' },
+          saved: false,
+          savedLabel: '已保存',
+          error: false,
+          loading: false,
+          loadToken: 0,
+          candidateBusy: null,
+          demo: {
+            greenVisible: true,
+            redVisible: true,
+            greenPulse: false,
+            greenDoneLabel: '已保存这条记忆',
+            redDoneLabel: '已删除或取消',
+          },
+        }
+
+        const overlay = document.getElementById('settingsOverlay')
+        const appShell = document.getElementById('appShell')
+        const panel = document.getElementById('tabPanel')
+        const scenePill = document.getElementById('scenePill')
+        const themeToggle = document.getElementById('themeToggle')
+        const toastWrap = document.getElementById('toastWrap')
+
+        function esc(value) {
+          return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => {
+            if (char === '&') return '&amp;'
+            if (char === '<') return '&lt;'
+            if (char === '>') return '&gt;'
+            if (char === '"') return '&quot;'
+            return '&#39;'
+          })
+        }
+
+        function icon(name, extraClass) {
+          return (
+            '<svg class="icon ' + (extraClass || '') + '" aria-hidden="true"><use href="#i-' + name + '"></use></svg>'
+          )
+        }
+
+        function categoryLabel(category) {
+          return CATEGORY_LABELS[category] || CATEGORY_LABELS.fact
+        }
+
+        function categoryBadge(category) {
+          const key = CATEGORY_LABELS[category] ? category : 'fact'
+          return '<span class="badge cat-' + key + '">' + categoryLabel(key) + '</span>'
+        }
+
+        function scopeLabel(scope) {
+          return scope === 'project' ? '项目记忆' : '全局记忆'
+        }
+
+        function scopeShort(scope) {
+          return scope === 'project' ? '项目' : '全局'
+        }
+
+        function shortSource(source) {
+          if (!source) return '手动新增'
+          return source.slice(0, 8)
+        }
+
+        function relTime(minutes) {
+          const m = Math.max(0, Number(minutes) || 0)
+          if (m < 1) return '刚刚'
+          if (m < 60) return Math.round(m) + ' 分钟前'
+          if (m < 1440) return Math.round(m / 60) + ' 小时前'
+          return Math.round(m / 1440) + ' 天前'
+        }
+
+        function historyLabel(action) {
+          if (action === 'reinforce') return '多次出现，置信度提升'
+          if (action === 'conflict') return '内容更新（可能矛盾）'
+          if (action === 'update') return '手动修改内容'
+          return '新增'
+        }
+
+        function truncateText(value, limit) {
+          const chars = Array.from(String(value == null ? '' : value))
+          if (chars.length <= limit) return { text: chars.join(''), truncated: false }
+          return { text: chars.slice(0, limit).join('') + '…', truncated: true }
+        }
+
+        function confMeter(confidence) {
+          const n = Math.max(0, Math.min(5, Number(confidence) || 0))
+          let segments = ''
+          for (let i = 0; i < 5; i += 1) {
+            segments += '<span class="conf-seg' + (i < n ? ' on' : '') + '"></span>'
+          }
+          return (
+            '<span class="conf-meter" title="置信度 ' +
+            n +
+            '/5" aria-label="置信度 ' +
+            n +
+            '/5">' +
+            segments +
+            '<span class="conf-num">' +
+            n +
+            '/5</span></span>'
+          )
+        }
+
+        function sortItems(items, order) {
+          return items.slice().sort((a, b) => {
+            if (order === 'asc') return b.updatedAgo - a.updatedAgo
+            return a.updatedAgo - b.updatedAgo
+          })
+        }
+
+        function sortPrompts() {
+          return state.prompts.slice().sort((a, b) => a.order - b.order)
+        }
+
+        function enabledPromptCount() {
+          return state.prompts.filter((prompt) => prompt.enabled).length
+        }
+
+        function limitHint(length) {
+          if (length > 50) {
+            return '建议不超过 50 字，当前 ' + length + ' 字；内容偏长，建议精简为 1–2 句。'
+          }
+          return '建议不超过 50 字，当前 ' + length + ' 字。'
+        }
+
+        function savedLine() {
+          if (!state.saved) return ''
+          return (
+            '<div class="saved-line" role="status">' +
+            icon('check') +
+            '<span>' +
+            esc(state.savedLabel) +
+            '</span></div>'
+          )
+        }
+
+        function emptyState(title, hint, iconName) {
+          return (
+            '<div class="empty-state">' +
+            icon(iconName || 'doc') +
+            '<div><strong>' +
+            esc(title) +
+            '</strong><span>' +
+            esc(hint) +
+            '</span></div></div>'
+          )
+        }
+
+        function loadingCard() {
+          return '<div class="loading-card"><span class="spinner"></span><span>加载中…</span></div>'
+        }
+
+        function errorBanner() {
+          return (
+            '<div class="error-banner" role="alert">' +
+            icon('alert') +
+            '<div class="error-body"><strong>加载失败</strong><span>无法读取 <code>$DSH_HOME/memory.json</code>（示例：EACCES 权限不足）。历史数据未被修改。</span></div>' +
+            '<button class="btn btn-outline" data-action="retry-load">' +
+            icon('refresh') +
+            '重试</button></div>'
+          )
+        }
+
+        function scopeOptions(scope) {
+          return (
+            '<div class="ask-options" role="radiogroup" aria-label="记忆范围">' +
+            '<div class="ask-option' +
+            (scope === 'global' ? ' is-active' : '') +
+            '" role="radio" aria-checked="' +
+            (scope === 'global') +
+            '" title="范围由请求方决定，确认卡内不可更改"><span class="ask-option-dot"></span><span>全局记忆</span></div>' +
+            '<div class="ask-option' +
+            (scope === 'project' ? ' is-active' : '') +
+            '" role="radio" aria-checked="' +
+            (scope === 'project') +
+            '" title="范围由请求方决定，确认卡内不可更改"><span class="ask-option-dot"></span><span>项目记忆</span></div>' +
+            '</div>'
+          )
+        }
+
+        function renderPathToolbar() {
+          return (
+            '<div class="memory-toolbar">' +
+            '<div class="path-row">' +
+            '<div class="path-input-wrap">' +
+            icon('folder') +
+            '<input class="input path-input" data-role="path-input" aria-label="项目根路径" value="' +
+            esc(state.pathInput) +
+            '" placeholder="输入项目根路径…"></div>' +
+            '<button class="btn btn-outline" data-action="reload-project">' +
+            icon('folder') +
+            '加载</button>' +
+            '<button class="btn btn-ghost" data-action="refresh-memory">' +
+            icon('refresh') +
+            '刷新</button>' +
+            '</div>' +
+            '<div class="toolbar-note">' +
+            icon('shield') +
+            '<span>所有新增 / 修改 / 删除都需要你确认</span><span class="meta-sep">·</span><span>全局存于 <code>$DSH_HOME/memory.json</code></span></div>' +
+            '</div>'
+          )
+        }
+
+        function renderAddBar(scope) {
+          const value = state.drafts[scope] || ''
+          const length = Array.from(value).length
+          const placeholder =
+            scope === 'project'
+              ? '输入项目约定（建议 1-2 句话概括，如：测试命令是 npm test）'
+              : '输入要记住的内容（建议 1-2 句话概括，如：回复使用中文）'
+          return (
+            '<div class="addbar-wrap">' +
+            '<div class="addbar">' +
+            '<input class="input" data-role="add-input" data-scope="' +
+            scope +
+            '" aria-label="新增' +
+            scopeShort(scope) +
+            '记忆内容" placeholder="' +
+            esc(placeholder) +
+            '" value="' +
+            esc(value) +
+            '">' +
+            '<span class="char-count' +
+            (length > 50 ? ' is-warn' : '') +
+            '" data-counter="draft-' +
+            scope +
+            '">' +
+            length +
+            ' / 50</span>' +
+            '<button class="btn btn-green" data-action="add-memory" data-scope="' +
+            scope +
+            '">' +
+            icon('plus') +
+            '新增</button>' +
+            '</div>' +
+            '<div class="entry-hint' +
+            (length > 50 ? ' is-warn' : '') +
+            '" data-hint="draft-' +
+            scope +
+            '">' +
+            esc(limitHint(length)) +
+            '</div>' +
+            '</div>'
+          )
+        }
+
+        function renderMemoryEditor(item) {
+          const value = state.editing ? state.editing.value : item.desc
+          const length = Array.from(value).length
+          return (
+            '<div class="mem-row is-editing" data-od-id="memory.edit">' +
+            '<div class="edit-head">' +
+            categoryBadge(item.category) +
+            '<span>编辑 · ' +
+            scopeLabel(item.scope || (state.editing && state.editing.scope) || 'global') +
+            '</span></div>' +
+            '<input class="input" data-role="memory-edit-input" data-scope="' +
+            ((state.editing && state.editing.scope) || 'global') +
+            '" data-id="' +
+            esc(item.id) +
+            '" aria-label="编辑记忆内容" value="' +
+            esc(value) +
+            '">' +
+            '<div class="edit-foot">' +
+            '<span class="char-count' +
+            (length > 50 ? ' is-warn' : '') +
+            '" data-counter="memory-edit">' +
+            length +
+            ' 字 / 建议 50</span>' +
+            '<div class="edit-actions">' +
+            '<button class="btn btn-green" data-action="save-memory-edit">' +
+            icon('check') +
+            '保存</button>' +
+            '<button class="btn btn-outline" data-action="cancel-memory-edit">取消</button>' +
+            '</div>' +
+            '</div>' +
+            '</div>'
+          )
+        }
+
+        function renderMemoryDetail(item) {
+          const history = Array.isArray(item.history) ? item.history : []
+          let historyHtml = ''
+          if (history.length > 0) {
+            historyHtml =
+              '<div class="history-head">演进历史</div><ul class="history-list">' +
+              history
+                .map(
+                  (entry) =>
+                    '<li><span>' +
+                    esc(historyLabel(entry.action)) +
+                    '</span><span class="history-time">' +
+                    esc(relTime(entry.ago)) +
+                    '</span></li>',
+                )
+                .join('') +
+              '</ul>'
+          }
+          const conflict =
+            item.status === 'conflict-pending' && item.conflict
+              ? '<div class="conflict-note">' +
+                icon('alert') +
+                '<div><strong>待处理矛盾</strong><p>' +
+                esc(item.conflict) +
+                '</p></div></div>'
+              : ''
+          return (
+            '<div class="mem-detail">' +
+            '<p class="detail-full">' +
+            esc(item.desc) +
+            '</p>' +
+            '<div class="detail-meta">' +
+            '<span>' +
+            icon('clock') +
+            '更新于 ' +
+            esc(relTime(item.updatedAgo)) +
+            '</span>' +
+            '<span>' +
+            icon('doc') +
+            '来源会话 <code>' +
+            esc(item.source || '手动新增') +
+            '</code></span>' +
+            '</div>' +
+            conflict +
+            historyHtml +
+            '</div>'
+          )
+        }
+
+        function renderMemoryRow(item, expanded) {
+          const source = item.source
+            ? '<span class="source-badge" title="来源会话 ' +
+              esc(item.source) +
+              '">agent 保存 · ' +
+              esc(shortSource(item.source)) +
+              '</span>'
+            : '<span class="source-badge">手动新增</span>'
+          const conflict =
+            item.status === 'conflict-pending'
+              ? '<span class="conflict-badge">' + icon('alert') + '待处理矛盾</span>'
+              : ''
+          const historyButton =
+            Array.isArray(item.history) && item.history.length > 0
+              ? '<button class="link-btn" data-action="toggle-memory" data-scope="' +
+                (item.scope || '') +
+                '" data-id="' +
+                esc(item.id) +
+                '">' +
+                (expanded ? '收起' : '演进历史') +
+                '</button>'
+              : ''
+          return (
+            '<article class="mem-row' +
+            (expanded ? ' is-open' : '') +
+            '" data-od-id="memory.row.' +
+            esc(item.id) +
+            '">' +
+            '<div class="mem-row-head">' +
+            '<button class="mem-summary" data-action="toggle-memory" data-scope="' +
+            (item.scope || '') +
+            '" data-id="' +
+            esc(item.id) +
+            '" aria-expanded="' +
+            expanded +
+            '">' +
+            categoryBadge(item.category) +
+            confMeter(item.confidence) +
+            '<span class="mem-desc">' +
+            esc(item.desc) +
+            '</span>' +
+            '</button>' +
+            '<div class="mem-actions">' +
+            '<button class="text-btn" data-action="edit-memory" data-scope="' +
+            (item.scope || '') +
+            '" data-id="' +
+            esc(item.id) +
+            '">' +
+            icon('edit') +
+            '编辑</button>' +
+            '<button class="text-btn danger" data-action="delete-memory" data-scope="' +
+            (item.scope || '') +
+            '" data-id="' +
+            esc(item.id) +
+            '">' +
+            icon('trash') +
+            '删除</button>' +
+            '<button class="icon-btn mem-toggle" data-action="toggle-memory" data-scope="' +
+            (item.scope || '') +
+            '" data-id="' +
+            esc(item.id) +
+            '" aria-label="' +
+            (expanded ? '收起' : '展开') +
+            '" data-tip="' +
+            (expanded ? '收起' : '展开') +
+            '">' +
+            icon('chevron-down') +
+            '</button>' +
+            '</div>' +
+            '</div>' +
+            '<div class="mem-meta">' +
+            conflict +
+            source +
+            '<span class="meta-sep">·</span><span class="meta-item">' +
+            icon('clock') +
+            esc(relTime(item.updatedAgo)) +
+            '</span>' +
+            (historyButton ? '<span class="meta-sep">·</span>' + historyButton : '') +
+            '</div>' +
+            (expanded ? renderMemoryDetail(item) : '') +
+            '</article>'
+          )
+        }
+
+        function renderMemoryConfirm(confirm) {
+          const isDelete = confirm.kind === 'delete'
+          const item = (confirm.scope === 'project' ? state.data.project : state.data.global).find(
+            (entry) => entry.id === confirm.id,
+          )
+          const category = item ? item.category : 'fact'
+          const desc = confirm.desc || (item ? item.desc : '')
+          const title =
+            confirm.kind === 'add'
+              ? '确认新增这条记忆？'
+              : confirm.kind === 'update'
+                ? '确认保存这条记忆的修改？'
+                : '确定删除这条记忆？此操作不可撤销。'
+          const contentField =
+            '<div class="ask-field"><span class="ask-field-label">分类</span><span class="ask-field-value">' +
+            categoryLabel(category) +
+            '</span></div>' +
+            '<div class="ask-field"><span class="ask-field-label">内容</span><span class="ask-field-value">' +
+            esc(desc) +
+            '</span></div>'
+          const summary =
+            !isDelete && Array.from(desc).length > 50
+              ? '<div class="ask-summary"><span class="ask-summary-label">将保存完整内容；列表与注入显示概要：</span><span class="ask-summary-text">' +
+                esc(truncateText(desc, 50).text) +
+                '</span></div>'
+              : ''
+          const body = isDelete
+            ? '<div class="ask-field"><span class="ask-field-label">范围</span><span class="ask-field-value">' +
+              scopeLabel(confirm.scope) +
+              '</span></div>' +
+              contentField
+            : scopeOptions(confirm.scope) + contentField + summary
+          const feedback = isDelete ? '删除不可撤销 · 记忆绝不静默变更' : '所有新增 / 修改 / 删除都需要你确认'
+          return (
+            '<div class="ask-card ' +
+            (isDelete ? 'is-delete' : 'is-save') +
+            '" data-od-id="memory.confirm.' +
+            (isDelete ? 'delete' : 'save') +
+            '">' +
+            '<div class="ask-strip"><span class="ask-dot"></span><span>' +
+            title +
+            '</span><span class="ask-scope">' +
+            scopeLabel(confirm.scope) +
+            '</span></div>' +
+            '<div class="ask-body">' +
+            body +
+            '</div>' +
+            '<div class="ask-footer"><span class="ask-feedback">' +
+            feedback +
+            '</span><div class="ask-actions">' +
+            '<button class="btn ' +
+            (isDelete ? 'btn-danger' : 'btn-green') +
+            '" data-action="confirm-memory" data-op="' +
+            confirm.kind +
+            '">' +
+            icon(isDelete ? 'trash' : 'check') +
+            (isDelete ? '确认删除' : '确认保存') +
+            '</button>' +
+            '<button class="btn btn-outline" data-action="cancel-confirm">取消</button>' +
+            '</div></div>' +
+            '</div>'
+          )
+        }
+
+        function renderScopeSection(scope) {
+          const isProject = scope === 'project'
+          const items = sortItems(state.data[scope] || [], state.sort[scope])
+          const order = state.sort[scope]
+          const title = isProject ? '项目记忆' : '全局记忆'
+          const badge = isProject
+            ? '<span class="badge badge-warn">项目根</span>'
+            : '<span class="badge badge-accent">全局</span>'
+          const countLabel = isProject ? PROJECT_ROOT + ' · ' + items.length + ' 条' : items.length + ' 条'
+          const note = isProject
+            ? '按项目隔离，仅该项目会话可见 · 存于 <code>$DSH_HOME/memory/projects/&lt;项目 id&gt;.json</code>'
+            : '<strong>注入系统提示词，agent 始终携带</strong> · 存于 <code>$DSH_HOME/memory.json</code>'
+          const rows = items
+            .map((item) => {
+              const key = scope + '/' + item.id
+              const isEditing = state.editing !== null && state.editing.scope === scope && state.editing.id === item.id
+              const expanded = !isEditing && state.expanded.has(key)
+              let html = isEditing
+                ? renderMemoryEditor({ ...item, scope })
+                : renderMemoryRow({ ...item, scope }, expanded)
+              const confirm =
+                state.confirming !== null &&
+                state.confirming.type === 'memory' &&
+                state.confirming.scope === scope &&
+                state.confirming.id === item.id
+                  ? state.confirming
+                  : null
+              if (confirm) html += renderMemoryConfirm(confirm)
+              return html
+            })
+            .join('')
+          const addConfirm =
+            state.confirming !== null &&
+            state.confirming.type === 'memory' &&
+            state.confirming.scope === scope &&
+            state.confirming.kind === 'add'
+              ? renderMemoryConfirm(state.confirming)
+              : ''
+          const emptyHint = isProject ? '点击下方输入框添加第一条项目记忆。' : '点击下方输入框添加第一条记忆。'
+          return (
+            '<section class="section-card' +
+            (isProject ? ' is-project' : '') +
+            '" data-od-id="memory.' +
+            scope +
+            '">' +
+            '<div class="section-head">' +
+            '<h2 class="section-title">' +
+            title +
+            '</h2>' +
+            badge +
+            '<span class="pill' +
+            (isProject ? ' path-pill' : '') +
+            '" title="' +
+            esc(isProject ? '项目根：' + PROJECT_ROOT + ' · ' + items.length + ' 条' : items.length + ' 条') +
+            '">' +
+            esc(countLabel) +
+            '</span>' +
+            '<button class="sort-btn" data-action="sort-memory" data-scope="' +
+            scope +
+            '" data-tip="切换排序" aria-label="按更新时间排序">' +
+            icon(order === 'desc' ? 'chevron-down' : 'chevron-up') +
+            (order === 'desc' ? '最新优先' : '最旧优先') +
+            '</button>' +
+            '</div>' +
+            '<p class="scope-note">' +
+            note +
+            '</p>' +
+            '<div class="mem-list">' +
+            (rows || emptyState('暂无记忆', emptyHint, 'doc')) +
+            '</div>' +
+            renderAddBar(scope) +
+            addConfirm +
+            '</section>'
+          )
+        }
+
+        function renderCandidateRow(candidate) {
+          const busy = state.candidateBusy === candidate.id
+          const disabled = state.candidateBusy !== null
+          return (
+            '<article class="candidate-row" data-od-id="candidate.' +
+            esc(candidate.id) +
+            '">' +
+            '<div class="candidate-head">' +
+            categoryBadge(candidate.category) +
+            '<span class="candidate-desc">' +
+            esc(candidate.desc) +
+            '</span>' +
+            '</div>' +
+            '<div class="candidate-meta">' +
+            '<span class="meta-item">' +
+            icon('clock') +
+            esc(relTime(candidate.createdAgo)) +
+            '</span>' +
+            '<span class="meta-sep">·</span><span>' +
+            (candidate.scope === 'project' ? '项目候选' : '全局候选') +
+            '</span>' +
+            '<span class="meta-sep">·</span><span class="meta-item">来源会话 <code>' +
+            esc(shortSource(candidate.source)) +
+            '</code></span>' +
+            '<span class="meta-sep">·</span><span class="meta-item">置信度 ' +
+            (candidate.confidence || 1) +
+            '/5</span>' +
+            '</div>' +
+            '<div class="candidate-actions">' +
+            (busy ? '<span class="candidate-busy"><span class="spinner"></span>处理中…</span>' : '') +
+            '<button class="btn btn-green" data-action="confirm-candidate" data-id="' +
+            esc(candidate.id) +
+            '"' +
+            (disabled ? ' disabled' : '') +
+            '>' +
+            icon('check') +
+            '确认写入</button>' +
+            '<button class="btn btn-outline" data-action="dismiss-candidate" data-id="' +
+            esc(candidate.id) +
+            '"' +
+            (disabled ? ' disabled' : '') +
+            '>' +
+            icon('close') +
+            '拒弃</button>' +
+            '</div>' +
+            '</article>'
+          )
+        }
+
+        function renderCandidatesBlock() {
+          const count = state.candidates.length
+          return (
+            '<section class="candidates-block" data-od-id="memory.candidates">' +
+            '<div class="section-head"><h2 class="section-title">自动学习候选（待确认）</h2><span class="pill">' +
+            count +
+            ' 条</span></div>' +
+            '<p class="scope-note">会话结束后自动从对话提取的记忆候选（autoLearn 开启时）。确认后写入记忆（同主题自动提升置信度），拒弃则丢弃——记忆绝不静默变更。</p>' +
+            (count === 0
+              ? emptyState('暂无待确认候选', '会话结束后自动提取的候选会出现在这里。', 'shield')
+              : '<div class="candidate-list">' + state.candidates.map(renderCandidateRow).join('') + '</div>') +
+            '</section>'
+          )
+        }
+
+        function renderMemoryTab() {
+          return (
+            renderPathToolbar() +
+            '<div class="scope-grid">' +
+            renderScopeSection('global') +
+            renderScopeSection('project') +
+            '</div>' +
+            renderCandidatesBlock() +
+            savedLine()
+          )
+        }
+
+        function renderCandidatesScene() {
+          const count = state.candidates.length
+          return (
+            '<div class="scene-intro"><div class="scene-kicker">自动学习</div><h2 class="scene-title">自动学习候选（待确认）</h2>' +
+            '<p class="scene-desc">会话结束后自动从对话提取的记忆候选（autoLearn 开启时）。确认后写入记忆（同主题自动提升置信度），拒弃则丢弃——记忆绝不静默变更。</p></div>' +
+            '<div class="candidate-summary"><span>全局记忆 <strong>' +
+            state.data.global.length +
+            '</strong> 条</span><span>·</span><span>项目记忆 <strong>' +
+            state.data.project.length +
+            '</strong> 条</span><span>·</span><span>待确认 <strong>' +
+            count +
+            '</strong> 条</span><button class="text-btn" data-action="go-memory">' +
+            icon('arrow-right') +
+            '查看记忆分区</button></div>' +
+            '<section class="candidates-block" data-od-id="candidates.section">' +
+            '<div class="section-head"><h3 class="section-title">待处理候选</h3><span class="pill">' +
+            count +
+            ' 条</span></div>' +
+            '<p class="scope-note">每个候选都带来源会话、范围与置信度；只有你点「确认写入」才会进入正式记忆。</p>' +
+            (count === 0
+              ? emptyState('暂无待确认候选', '会话结束后自动提取的候选会出现在这里。', 'shield')
+              : '<div class="candidate-list">' + state.candidates.map(renderCandidateRow).join('') + '</div>') +
+            '</section>' +
+            savedLine()
+          )
+        }
+
+        function renderPromptRow(prompt, index, total) {
+          const expanded = state.promptExpanded.has(prompt.id)
+          const text = prompt.text || ''
+          const canExpand = Array.from(text).length > 90
+          const builtin = prompt.builtin ? '<span class="badge badge-neutral">内置</span>' : ''
+          const stateBadge = prompt.enabled
+            ? '<span class="badge badge-success">已启用</span>'
+            : '<span class="badge badge-warn">已停用</span>'
+          const textHtml = '<p class="prompt-text' + (expanded ? ' is-expanded' : '') + '">' + esc(text) + '</p>'
+          const expandButton = canExpand
+            ? '<button class="link-btn" data-action="toggle-prompt-text" data-id="' +
+              esc(prompt.id) +
+              '">' +
+              (expanded ? '收起全文' : '展开全文') +
+              '</button>'
+            : ''
+          const moveButton = (direction, label, disabled) =>
+            '<button class="text-btn" data-action="move-prompt" data-id="' +
+            esc(prompt.id) +
+            '" data-dir="' +
+            direction +
+            '"' +
+            (disabled ? ' disabled' : '') +
+            '>' +
+            icon(direction === 'up' ? 'chevron-up' : 'chevron-down') +
+            label +
+            '</button>'
+          return (
+            '<article class="prompt-row' +
+            (prompt.enabled ? '' : ' is-off') +
+            '" data-od-id="prompts.row.' +
+            esc(prompt.id) +
+            '">' +
+            '<div class="prompt-head">' +
+            '<button class="switch" role="switch" aria-checked="' +
+            (prompt.enabled ? 'true' : 'false') +
+            '" data-action="toggle-prompt" data-id="' +
+            esc(prompt.id) +
+            '" aria-label="' +
+            (prompt.enabled ? '停用' : '启用') +
+            '「' +
+            esc(prompt.title) +
+            '」" data-tip="' +
+            (prompt.enabled ? '停用' : '启用') +
+            '"></button>' +
+            '<span class="prompt-title">' +
+            esc(prompt.title) +
+            '</span>' +
+            builtin +
+            '<span class="badge badge-neutral">顺序 ' +
+            prompt.order +
+            '</span>' +
+            stateBadge +
+            '<span class="pill">' +
+            (prompt.enabled ? '注入中' : '不注入') +
+            '</span>' +
+            expandButton +
+            '<div class="prompt-actions">' +
+            moveButton('up', '上移', index === 0) +
+            moveButton('down', '下移', index === total - 1) +
+            '<button class="text-btn" data-action="edit-prompt" data-id="' +
+            esc(prompt.id) +
+            '">' +
+            icon('edit') +
+            '编辑</button>' +
+            '<button class="text-btn danger" data-action="delete-prompt" data-id="' +
+            esc(prompt.id) +
+            '">' +
+            icon('trash') +
+            '删除</button>' +
+            '</div>' +
+            '</div>' +
+            textHtml +
+            '</article>'
+          )
+        }
+
+        function renderPromptEditor(prompt) {
+          const editing = state.promptEditing
+          const title = editing ? editing.title : prompt.title
+          const text = editing ? editing.text : prompt.text
+          const length = Array.from(text || '').length
+          return (
+            '<div class="prompt-editor" data-od-id="prompts.edit">' +
+            '<input class="input" data-role="prompt-edit-title" maxlength="80" aria-label="编辑提示词标题" value="' +
+            esc(title) +
+            '">' +
+            '<textarea class="input" data-role="prompt-edit-text" maxlength="1000" aria-label="编辑提示词正文" placeholder="提示词正文（将完整注入系统提示）">' +
+            esc(text) +
+            '</textarea>' +
+            '<div class="edit-foot"><span class="char-count' +
+            (length > 950 ? ' is-warn' : '') +
+            '" data-counter="prompt-edit">' +
+            length +
+            ' / 1000</span>' +
+            '<div class="edit-actions"><button class="btn btn-green" data-action="save-prompt-edit">' +
+            icon('check') +
+            '保存</button><button class="btn btn-outline" data-action="cancel-prompt-edit">取消</button></div>' +
+            '</div>' +
+            '</div>'
+          )
+        }
+
+        function renderPromptConfirm(confirm) {
+          const isDelete = confirm.kind === 'delete'
+          const title =
+            confirm.kind === 'add'
+              ? '确认新增这条提示词？'
+              : confirm.kind === 'update'
+                ? '确认保存这条提示词的修改？'
+                : '确定删除这条提示词？此操作不可撤销。'
+          const text = confirm.text || ''
+          const body =
+            '<div class="ask-field"><span class="ask-field-label">标题</span><span class="ask-field-value">' +
+            esc(confirm.title || '') +
+            '</span></div>' +
+            '<div class="ask-field"><span class="ask-field-label">正文</span><span class="ask-field-value">' +
+            esc(truncateText(text, 220).text) +
+            '</span></div>' +
+            '<div class="ask-field"><span class="ask-field-label">顺序</span><span class="ask-field-value">' +
+            (isDelete ? '删除后自动重排' : confirm.kind === 'add' ? '新增到末尾' : '保持当前顺序') +
+            '</span></div>'
+          return (
+            '<div class="ask-card ' +
+            (isDelete ? 'is-delete' : 'is-save') +
+            '" data-od-id="prompts.confirm.' +
+            (isDelete ? 'delete' : 'save') +
+            '">' +
+            '<div class="ask-strip"><span class="ask-dot"></span><span>' +
+            title +
+            '</span><span class="ask-scope">全局提示词</span></div>' +
+            '<div class="ask-body">' +
+            body +
+            '</div>' +
+            '<div class="ask-footer"><span class="ask-feedback">启用的提示词全量按序注入，不评分不截断</span><div class="ask-actions">' +
+            '<button class="btn ' +
+            (isDelete ? 'btn-danger' : 'btn-green') +
+            '" data-action="confirm-prompt" data-op="' +
+            confirm.kind +
+            '">' +
+            icon(isDelete ? 'trash' : 'check') +
+            (isDelete ? '确认删除' : '确认保存') +
+            '</button>' +
+            '<button class="btn btn-outline" data-action="cancel-confirm">取消</button>' +
+            '</div></div>' +
+            '</div>'
+          )
+        }
+
+        function renderOrderStrip(prompts) {
+          if (prompts.length === 0) {
+            return '<div class="order-strip"><span class="order-label">注入顺序</span><span>暂无提示词，新增后按顺序注入。</span></div>'
+          }
+          const chips = prompts
+            .map((prompt, index) => {
+              const chip =
+                '<span class="order-chip' +
+                (prompt.enabled ? '' : ' is-off') +
+                '">' +
+                (index + 1) +
+                ' ' +
+                esc(prompt.title) +
+                (prompt.enabled ? '' : ' · 已停用') +
+                '</span>'
+              return (index === 0 ? '' : '<span class="order-sep">→</span>') + chip
+            })
+            .join('')
+          return '<div class="order-strip"><span class="order-label">注入顺序</span>' + chips + '</div>'
+        }
+
+        function renderPromptAdd() {
+          const length = Array.from(state.promptDraft.text || '').length
+          return (
+            '<div class="prompt-add" data-od-id="prompts.add">' +
+            '<div class="prompt-add-head"><h3>新增提示词</h3><span>正文上限 1000 字 · 保存后下一轮生效</span></div>' +
+            '<input class="input" data-role="prompt-title-input" maxlength="80" aria-label="新增提示词标题" placeholder="提示词标题（如：中文思考）" value="' +
+            esc(state.promptDraft.title) +
+            '">' +
+            '<textarea class="input" data-role="prompt-text-input" maxlength="1000" aria-label="新增提示词正文" placeholder="提示词正文（将完整注入系统提示）">' +
+            esc(state.promptDraft.text) +
+            '</textarea>' +
+            '<div class="edit-foot"><span class="char-count' +
+            (length > 950 ? ' is-warn' : '') +
+            '" data-counter="prompt-draft">' +
+            length +
+            ' / 1000</span>' +
+            '<div class="edit-actions"><button class="btn btn-green" data-action="add-prompt">' +
+            icon('plus') +
+            '保存</button></div>' +
+            '</div>' +
+            '</div>'
+          )
+        }
+
+        function renderPromptsTab() {
+          const prompts = sortPrompts()
+          const count = prompts.length
+          const rows = prompts
+            .map((prompt, index) => {
+              const isEditing = state.promptEditing !== null && state.promptEditing.id === prompt.id
+              let html = isEditing ? renderPromptEditor(prompt) : renderPromptRow(prompt, index, count)
+              const confirm =
+                state.confirming !== null && state.confirming.type === 'prompt' && state.confirming.id === prompt.id
+                  ? state.confirming
+                  : null
+              if (confirm) html += renderPromptConfirm(confirm)
+              return html
+            })
+            .join('')
+          const addConfirm =
+            state.confirming !== null && state.confirming.type === 'prompt' && state.confirming.kind === 'add'
+              ? renderPromptConfirm(state.confirming)
+              : ''
+          return (
+            '<section class="prompts-section" data-od-id="prompts.section">' +
+            '<div class="section-head"><h2 class="section-title">全局提示词</h2><span class="pill">' +
+            count +
+            ' 条</span><span class="pill accent">' +
+            enabledPromptCount() +
+            ' 条启用</span></div>' +
+            '<p class="scope-note">必须始终生效的指令，每轮全量按序注入，不参与记忆检索。</p>' +
+            '<div class="isolation-note">' +
+            icon('shield') +
+            '<div><strong>与记忆隔离</strong><span>独立文件 <code>$DSH_HOME/memory/prompts.json</code> · 独立端点 <code>/my-memory/api/prompts</code> · agent 无写工具，只有设置页可写。</span></div></div>' +
+            renderOrderStrip(prompts) +
+            '<div class="prompt-list">' +
+            (rows || emptyState('暂无提示词', '在下方新增第一条全局提示词。', 'doc')) +
+            '</div>' +
+            renderPromptAdd() +
+            addConfirm +
+            savedLine() +
+            '</section>'
+          )
+        }
+
+        function renderDemoDone(label) {
+          return (
+            '<div class="demo-done">' +
+            icon('check') +
+            '<span>' +
+            esc(label) +
+            '</span><button class="link-btn" data-action="reset-demo">重新演示</button></div>'
+          )
+        }
+
+        function renderDemoSaveCard(editValue) {
+          const summary =
+            Array.from(editValue).length > 50
+              ? '<div class="ask-summary"><span class="ask-summary-label">将保存完整内容；列表与注入显示概要：</span><span class="ask-summary-text">' +
+                esc(truncateText(editValue, 50).text) +
+                '</span></div>'
+              : ''
+          return (
+            '<div class="ask-card is-save' +
+            (state.demo.greenPulse ? ' is-pulse' : '') +
+            '" data-od-id="memory.confirm.save">' +
+            '<div class="ask-strip"><span class="ask-dot"></span><span>确认保存这条记忆的修改？</span><span class="ask-scope">全局记忆</span></div>' +
+            '<div class="ask-body">' +
+            scopeOptions('global') +
+            '<div class="ask-field"><span class="ask-field-label">分类</span><span class="ask-field-value">偏好</span></div>' +
+            '<div class="ask-field"><span class="ask-field-label">内容</span><span class="ask-field-value" data-demo-content>' +
+            esc(editValue) +
+            '</span></div>' +
+            summary +
+            '</div>' +
+            '<div class="ask-footer"><span class="ask-feedback">所有新增 / 修改 / 删除都需要你确认</span><div class="ask-actions">' +
+            '<button class="btn btn-green" data-action="confirm-demo-save">' +
+            icon('check') +
+            '确认保存</button>' +
+            '<button class="btn btn-outline" data-action="cancel-demo-save">取消</button>' +
+            '</div></div>' +
+            '</div>'
+          )
+        }
+
+        function renderDemoDeleteCard(item) {
+          return (
+            '<div class="ask-card is-delete" data-od-id="memory.confirm.delete">' +
+            '<div class="ask-strip"><span class="ask-dot"></span><span>确定删除这条记忆？此操作不可撤销。</span><span class="ask-scope">项目记忆</span></div>' +
+            '<div class="ask-body">' +
+            '<div class="ask-field"><span class="ask-field-label">范围</span><span class="ask-field-value">项目记忆</span></div>' +
+            '<div class="ask-field"><span class="ask-field-label">分类</span><span class="ask-field-value">' +
+            categoryLabel(item.category) +
+            '</span></div>' +
+            '<div class="ask-field"><span class="ask-field-label">内容</span><span class="ask-field-value">' +
+            esc(item.desc) +
+            '</span></div>' +
+            '</div>' +
+            '<div class="ask-footer"><span class="ask-feedback">删除不可撤销 · 记忆绝不静默变更</span><div class="ask-actions">' +
+            '<button class="btn btn-danger" data-action="confirm-demo-delete">' +
+            icon('trash') +
+            '确认删除</button>' +
+            '<button class="btn btn-outline" data-action="cancel-demo-delete">取消</button>' +
+            '</div></div>' +
+            '</div>'
+          )
+        }
+
+        function renderConfirmScene() {
+          const editItem =
+            state.data.global.find((item) => state.editing && item.id === state.editing.id) || state.data.global[0]
+          const projectItem = state.data.project[0]
+          const editValue = state.editing ? state.editing.value : editItem ? editItem.desc : ''
+          return (
+            '<div class="scene-intro"><div class="scene-kicker">写操作确认</div><h2 class="scene-title">确认态 · 所有写操作都需要你确认</h2>' +
+            '<p class="scene-desc">保存走绿色确认卡，删除走红色二次确认；下面三种形态都可交互。</p></div>' +
+            '<div class="demo-block">' +
+            '<div class="demo-label"><span class="step-num">1</span>编辑态<span class="step-hint">内联修改，保存后进入绿色确认</span></div>' +
+            (editItem
+              ? renderMemoryEditor(editItem)
+              : emptyState('没有可编辑的记忆', '请先在设置·记忆里新增一条。', 'doc')) +
+            '</div>' +
+            '<div class="confirm-pair">' +
+            '<div class="demo-block">' +
+            '<div class="demo-label"><span class="step-num">2</span>保存确认（绿色）<span class="step-hint">允许后写入 · 记忆绝不静默变更</span></div>' +
+            (state.demo.greenVisible ? renderDemoSaveCard(editValue) : renderDemoDone(state.demo.greenDoneLabel)) +
+            '</div>' +
+            '<div class="demo-block">' +
+            '<div class="demo-label"><span class="step-num">3</span>删除二次确认（红色）<span class="step-hint">点删除 → 红色确认卡 → 确认删除</span></div>' +
+            '<p class="demo-hint">第一步在条目上点「删除」，第二步在红色卡片里确认；删除不可撤销，记忆绝不静默变更。</p>' +
+            (state.demo.redVisible && projectItem
+              ? renderDemoDeleteCard(projectItem)
+              : renderDemoDone(state.demo.redDoneLabel)) +
+            '</div>' +
+            '</div>' +
+            '<div class="scene-foot"><button class="btn btn-outline" data-action="reset-demo">' +
+            icon('refresh') +
+            '重置演示数据</button><span class="demo-hint">本场景只演示确认形态，不写入真实数据。</span></div>' +
+            savedLine()
+          )
+        }
+
+        function renderTabPanel() {
+          if (state.loading) return loadingCard()
+          const banner = state.error ? errorBanner() : ''
+          if (state.tab === 'prompts') return banner + renderPromptsTab()
+          if (state.scene === 'confirm') return banner + renderConfirmScene()
+          if (state.scene === 'candidates') return banner + renderCandidatesScene()
+          return banner + renderMemoryTab()
+        }
+
+        function syncChrome() {
+          document.querySelectorAll('.scene-btn').forEach((button) => {
+            button.classList.toggle('active', button.dataset.scene === state.scene)
+          })
+          document.querySelectorAll('.seg-btn').forEach((button) => {
+            const active = button.dataset.tab === state.tab
+            button.classList.toggle('active', active)
+            button.setAttribute('aria-selected', active ? 'true' : 'false')
+          })
+          const memoryCount = document.querySelector('[data-count="memory"]')
+          const promptCount = document.querySelector('[data-count="prompts"]')
+          if (memoryCount) memoryCount.textContent = String(state.data.global.length + state.data.project.length)
+          if (promptCount) promptCount.textContent = String(state.prompts.length)
+          const light = document.documentElement.dataset.theme === 'light'
+          const label = light ? '切换为深色主题' : '切换为浅色主题'
+          themeToggle.setAttribute('aria-label', label)
+          themeToggle.dataset.tip = label
+        }
+
+        function render(resetScroll) {
+          const top = panel.scrollTop
+          panel.innerHTML = renderTabPanel()
+          panel.scrollTop = resetScroll ? 0 : top
+          syncChrome()
+        }
+
+        function toast(message, type) {
+          const kind = type || 'success'
+          const iconName = kind === 'danger' ? 'alert' : kind === 'warn' ? 'alert' : 'check'
+          const node = document.createElement('div')
+          node.className = 'toast toast-' + kind
+          node.innerHTML = icon(iconName) + '<span>' + esc(message) + '</span>'
+          toastWrap.appendChild(node)
+          requestAnimationFrame(() => node.classList.add('show'))
+          window.setTimeout(() => {
+            node.classList.remove('show')
+            window.setTimeout(() => node.remove(), 220)
+          }, 2600)
+        }
+
+        function setSettingsOpen(open, options) {
+          const silent = options && options.silent
+          overlay.classList.toggle('is-hidden', !open)
+          appShell.inert = open
+          if (!open && !silent) toast('设置已关闭，点击左下角「设置」重新打开', 'warn')
+        }
+
+        function setSaved(label) {
+          state.saved = true
+          state.savedLabel = label
+        }
+
+        function updateDraftUI(scope) {
+          const value = state.drafts[scope] || ''
+          const length = Array.from(value).length
+          const counter = panel.querySelector('[data-counter="draft-' + scope + '"]')
+          if (counter) {
+            counter.textContent = length + ' / 50'
+            counter.classList.toggle('is-warn', length > 50)
+          }
+          const hint = panel.querySelector('[data-hint="draft-' + scope + '"]')
+          if (hint) {
+            hint.textContent = limitHint(length)
+            hint.classList.toggle('is-warn', length > 50)
+          }
+        }
+
+        function updateCharCounter(name, length, limit) {
+          const counter = panel.querySelector('[data-counter="' + name + '"]')
+          if (!counter) return
+          counter.textContent = length + ' / ' + limit
+          counter.classList.toggle('is-warn', length > limit - 50)
+        }
+
+        function ensureConfirmVisible() {
+          requestAnimationFrame(() => {
+            const target = panel.querySelector('.ask-card')
+            if (!target) return
+            const panelRect = panel.getBoundingClientRect()
+            const targetRect = target.getBoundingClientRect()
+            if (targetRect.bottom > panelRect.bottom - 10) panel.scrollTop += targetRect.bottom - panelRect.bottom + 14
+            if (targetRect.top < panelRect.top + 10) panel.scrollTop -= panelRect.top - targetRect.top + 14
+          })
+        }
+
+        function focusEditor(selector) {
+          requestAnimationFrame(() => {
+            const target = panel.querySelector(selector)
+            if (!target) return
+            target.focus()
+            if (typeof target.setSelectionRange === 'function') {
+              const length = target.value.length
+              try {
+                target.setSelectionRange(length, length)
+              } catch (error) {
+                /* 光标定位失败不影响编辑 */
+              }
+            }
+          })
+        }
+
+        function applyScene(scene) {
+          state.loadToken += 1
+          state.scene = scene
+          state.tab = scene === 'prompts' ? 'prompts' : 'memory'
+          state.data = clone({ global: seed.global, project: seed.project })
+          state.candidates = clone(seed.candidates)
+          state.prompts = clone(seed.prompts)
+          state.expanded = new Set()
+          state.promptExpanded = new Set()
+          state.editing = null
+          state.confirming = null
+          state.promptEditing = null
+          state.drafts = { global: '', project: '' }
+          state.promptDraft = { title: '', text: '' }
+          state.sort = { global: 'desc', project: 'desc' }
+          state.saved = false
+          state.savedLabel = '已保存'
+          state.error = false
+          state.loading = false
+          state.candidateBusy = null
+          state.pathInput = PROJECT_ROOT
+          state.demo = {
+            greenVisible: true,
+            redVisible: true,
+            greenPulse: false,
+            greenDoneLabel: '已保存这条记忆',
+            redDoneLabel: '已删除或取消',
+          }
+          if (scene === 'memory') {
+            state.expanded.add('global/mem_71b0c4')
+            state.drafts.project = LONG_DRAFT
+          } else if (scene === 'confirm') {
+            state.editing = { scope: 'global', id: 'mem_8f3a21', value: state.data.global[0].desc }
+          } else if (scene === 'empty') {
+            state.data = { global: [], project: [] }
+            state.candidates = []
+            state.prompts = []
+            state.error = true
+            state.drafts.global = LONG_DRAFT
+          }
+          setSettingsOpen(true, { silent: true })
+          render(true)
+        }
+
+        function addMemory(scope) {
+          const value = (state.drafts[scope] || '').trim()
+          if (value === '') {
+            toast('请先输入要记住的内容', 'warn')
+            const input = panel.querySelector('[data-role="add-input"][data-scope="' + scope + '"]')
+            if (input) input.focus()
+            return
+          }
+          state.confirming = { type: 'memory', kind: 'add', scope: scope, desc: value }
+          state.saved = false
+          render(false)
+          ensureConfirmVisible()
+        }
+
+        function editMemory(scope, id) {
+          const item = (scope === 'project' ? state.data.project : state.data.global).find((entry) => entry.id === id)
+          if (!item) return
+          state.editing = { scope: scope, id: id, value: item.desc }
+          state.confirming = null
+          render(false)
+          focusEditor('[data-role="memory-edit-input"]')
+        }
+
+        function deleteMemory(scope, id) {
+          const item = (scope === 'project' ? state.data.project : state.data.global).find((entry) => entry.id === id)
+          if (!item) return
+          state.confirming = { type: 'memory', kind: 'delete', scope: scope, id: id, desc: item.desc }
+          state.saved = false
+          render(false)
+          ensureConfirmVisible()
+        }
+
+        function confirmMemory() {
+          if (!state.confirming || state.confirming.type !== 'memory') return
+          const confirm = state.confirming
+          const list = confirm.scope === 'project' ? state.data.project : state.data.global
+          if (confirm.kind === 'add') {
+            list.unshift({
+              id: 'mem_' + Date.now().toString(36),
+              desc: confirm.desc,
+              category: 'fact',
+              confidence: 1,
+              status: 'active',
+              source: '',
+              updatedAgo: 0,
+              history: [{ action: 'add', ago: 0 }],
+            })
+            state.drafts[confirm.scope] = ''
+            setSaved('已保存新记忆')
+            toast('已新增' + scopeShort(confirm.scope) + '记忆', 'success')
+          } else if (confirm.kind === 'update') {
+            const item = list.find((entry) => entry.id === confirm.id)
+            if (item) {
+              item.desc = confirm.desc
+              item.updatedAgo = 0
+              item.status = 'active'
+              item.conflict = ''
+              item.history = Array.isArray(item.history) ? item.history : []
+              item.history.push({ action: 'update', ago: 0 })
+            }
+            state.editing = null
+            setSaved('已保存修改')
+            toast('记忆修改已保存', 'success')
+          } else if (confirm.kind === 'delete') {
+            const index = list.findIndex((entry) => entry.id === confirm.id)
+            if (index >= 0) list.splice(index, 1)
+            state.editing = null
+            state.saved = false
+            toast('已删除记忆', 'success')
+          }
+          state.error = false
+          state.confirming = null
+          render(false)
+        }
+
+        function confirmCandidate(id) {
+          if (state.candidateBusy !== null) return
+          const candidate = state.candidates.find((entry) => entry.id === id)
+          if (!candidate) return
+          state.candidateBusy = id
+          render(false)
+          window.setTimeout(() => {
+            if (state.candidateBusy !== id) return
+            const target = state.candidates.find((entry) => entry.id === id)
+            if (!target) {
+              state.candidateBusy = null
+              render(false)
+              return
+            }
+            const list = target.scope === 'project' ? state.data.project : state.data.global
+            list.unshift({
+              id: 'mem_' + Date.now().toString(36),
+              desc: target.desc,
+              category: target.category,
+              confidence: target.confidence || 1,
+              status: 'active',
+              source: target.source,
+              updatedAgo: 0,
+              history: [{ action: 'add', ago: 0 }],
+            })
+            state.candidates = state.candidates.filter((entry) => entry.id !== id)
+            state.candidateBusy = null
+            setSaved('已写入' + scopeLabel(target.scope))
+            render(false)
+            toast('已确认写入' + scopeLabel(target.scope), 'success')
+          }, 360)
+        }
+
+        function dismissCandidate(id) {
+          if (state.candidateBusy !== null) return
+          const candidate = state.candidates.find((entry) => entry.id === id)
+          if (!candidate) return
+          state.candidateBusy = id
+          render(false)
+          window.setTimeout(() => {
+            if (state.candidateBusy !== id) return
+            state.candidates = state.candidates.filter((entry) => entry.id !== id)
+            state.candidateBusy = null
+            state.saved = false
+            render(false)
+            toast('已拒弃候选', 'warn')
+          }, 260)
+        }
+
+        function togglePrompt(id) {
+          const prompt = state.prompts.find((entry) => entry.id === id)
+          if (!prompt) return
+          prompt.enabled = !prompt.enabled
+          render(false)
+          toast(
+            (prompt.enabled ? '已启用' : '已停用') + '「' + prompt.title + '」',
+            prompt.enabled ? 'success' : 'warn',
+          )
+        }
+
+        function movePrompt(id, direction) {
+          const ordered = sortPrompts()
+          const index = ordered.findIndex((entry) => entry.id === id)
+          if (index < 0) return
+          const targetIndex = direction === 'up' ? index - 1 : index + 1
+          if (targetIndex < 0 || targetIndex >= ordered.length) {
+            toast(direction === 'up' ? '已经在最前' : '已经在最后', 'warn')
+            return
+          }
+          const prompt = ordered[index]
+          const swap = ordered[targetIndex]
+          const currentOrder = prompt.order
+          prompt.order = swap.order
+          swap.order = currentOrder
+          state.prompts = ordered
+          render(false)
+          toast('已' + (direction === 'up' ? '上移' : '下移') + '「' + prompt.title + '」', 'success')
+        }
+
+        function editPrompt(id) {
+          const prompt = state.prompts.find((entry) => entry.id === id)
+          if (!prompt) return
+          state.promptEditing = { id: id, title: prompt.title, text: prompt.text }
+          state.confirming = null
+          render(false)
+          focusEditor('[data-role="prompt-edit-title"]')
+        }
+
+        function savePromptEdit() {
+          if (!state.promptEditing) return
+          const title = state.promptEditing.title.trim()
+          const text = state.promptEditing.text.trim()
+          if (title === '' || text === '') {
+            toast('标题和正文都不能为空', 'warn')
+            return
+          }
+          state.confirming = {
+            type: 'prompt',
+            kind: 'update',
+            id: state.promptEditing.id,
+            title: title,
+            text: text,
+          }
+          state.saved = false
+          render(false)
+          ensureConfirmVisible()
+        }
+
+        function cancelPromptEdit() {
+          if (!state.promptEditing) return
+          if (
+            state.confirming &&
+            state.confirming.type === 'prompt' &&
+            state.confirming.id === state.promptEditing.id
+          ) {
+            state.confirming = null
+          }
+          state.promptEditing = null
+          render(false)
+        }
+
+        function deletePrompt(id) {
+          const prompt = state.prompts.find((entry) => entry.id === id)
+          if (!prompt) return
+          state.confirming = { type: 'prompt', kind: 'delete', id: id, title: prompt.title, text: prompt.text }
+          state.saved = false
+          render(false)
+          ensureConfirmVisible()
+        }
+
+        function addPrompt() {
+          const title = state.promptDraft.title.trim()
+          const text = state.promptDraft.text.trim()
+          if (title === '' || text === '') {
+            toast('标题和正文都不能为空', 'warn')
+            return
+          }
+          state.confirming = { type: 'prompt', kind: 'add', title: title, text: text }
+          state.saved = false
+          render(false)
+          ensureConfirmVisible()
+        }
+
+        function confirmPrompt() {
+          if (!state.confirming || state.confirming.type !== 'prompt') return
+          const confirm = state.confirming
+          if (confirm.kind === 'add') {
+            const order = state.prompts.length + 1
+            state.prompts.push({
+              id: 'pr_' + Date.now().toString(36),
+              title: confirm.title,
+              text: confirm.text,
+              enabled: true,
+              order: order,
+            })
+            state.promptDraft = { title: '', text: '' }
+            setSaved('提示词已保存')
+            toast('已新增提示词「' + confirm.title + '」', 'success')
+          } else if (confirm.kind === 'update') {
+            const prompt = state.prompts.find((entry) => entry.id === confirm.id)
+            if (prompt) {
+              prompt.title = confirm.title
+              prompt.text = confirm.text
+            }
+            state.promptEditing = null
+            setSaved('提示词已保存')
+            toast('提示词修改已保存', 'success')
+          } else if (confirm.kind === 'delete') {
+            state.prompts = state.prompts.filter((entry) => entry.id !== confirm.id)
+            state.prompts
+              .sort((a, b) => a.order - b.order)
+              .forEach((entry, index) => {
+                entry.order = index + 1
+              })
+            state.promptEditing = null
+            state.saved = false
+            toast('已删除提示词', 'success')
+          }
+          state.confirming = null
+          render(false)
+        }
+
+        function retryLoad() {
+          state.loadToken += 1
+          const token = state.loadToken
+          state.loading = true
+          state.error = false
+          render(true)
+          window.setTimeout(() => {
+            if (token !== state.loadToken) return
+            state.loading = false
+            applyScene('memory')
+            toast('重新加载成功', 'success')
+          }, 680)
+        }
+
+        function resetDemo() {
+          applyScene('confirm')
+          toast('演示数据已重置', 'success')
+        }
+
+        function confirmDemoSave() {
+          const item = state.data.global.find((entry) => state.editing && entry.id === state.editing.id)
+          if (item && state.editing) {
+            item.desc = state.editing.value
+            item.updatedAgo = 0
+            item.status = 'active'
+            item.history = [
+              { action: 'add', ago: 8640 },
+              { action: 'update', ago: 0 },
+            ]
+          }
+          state.demo.greenVisible = false
+          state.demo.greenDoneLabel = '已保存这条记忆'
+          setSaved('已保存这条记忆')
+          render(false)
+          toast('记忆修改已保存', 'success')
+        }
+
+        function cancelDemoSave() {
+          state.demo.greenVisible = false
+          state.demo.greenDoneLabel = '已取消保存'
+          state.saved = false
+          render(false)
+          toast('已取消保存确认', 'warn')
+        }
+
+        function confirmDemoDelete() {
+          state.data.project.shift()
+          state.demo.redVisible = false
+          state.demo.redDoneLabel = '已删除项目记忆'
+          setSaved('已删除项目记忆')
+          render(false)
+          toast('已删除项目记忆', 'success')
+        }
+
+        function cancelDemoDelete() {
+          state.demo.redVisible = false
+          state.demo.redDoneLabel = '已取消删除'
+          state.saved = false
+          render(false)
+          toast('已取消删除确认', 'warn')
+        }
+
+        function switchTab(tab) {
+          if (state.scene === 'empty') {
+            state.tab = tab
+            render(false)
+            return
+          }
+          if (tab === 'prompts') {
+            if (state.scene !== 'prompts') applyScene('prompts')
+            return
+          }
+          if (state.scene !== 'memory') applyScene('memory')
+          else {
+            state.tab = 'memory'
+            render(false)
+          }
+        }
+
+        function toggleTheme() {
+          const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'
+          document.documentElement.dataset.theme = next
+          syncChrome()
+          toast(next === 'light' ? '已切换为浅色主题' : '已切换为深色主题', 'success')
+        }
+
+        panel.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-action]')
+          if (!button || button.disabled) return
+          const action = button.dataset.action
+          const scope = button.dataset.scope
+          const id = button.dataset.id
+          if (action === 'toggle-memory') {
+            const key = scope + '/' + id
+            if (state.expanded.has(key)) state.expanded.delete(key)
+            else state.expanded.add(key)
+            render(false)
+            return
+          }
+          if (action === 'sort-memory') {
+            state.sort[scope] = state.sort[scope] === 'desc' ? 'asc' : 'desc'
+            render(false)
+            toast('已切换为' + (state.sort[scope] === 'desc' ? '最新优先' : '最旧优先'), 'success')
+            return
+          }
+          if (action === 'edit-memory') {
+            editMemory(scope, id)
+            return
+          }
+          if (action === 'delete-memory') {
+            deleteMemory(scope, id)
+            return
+          }
+          if (action === 'add-memory') {
+            addMemory(scope)
+            return
+          }
+          if (action === 'save-memory-edit') {
+            if (state.scene === 'confirm') {
+              state.demo.greenPulse = true
+              state.demo.greenVisible = true
+              render(false)
+              toast('已生成保存确认，请在绿色卡片中确认', 'success')
+              window.setTimeout(() => {
+                if (state.scene === 'confirm') {
+                  state.demo.greenPulse = false
+                  render(false)
+                }
+              }, 680)
+              return
+            }
+            if (!state.editing) return
+            const value = state.editing.value.trim()
+            if (value === '') {
+              toast('记忆内容不能为空', 'warn')
+              return
+            }
+            state.confirming = {
+              type: 'memory',
+              kind: 'update',
+              scope: state.editing.scope,
+              id: state.editing.id,
+              desc: value,
+            }
+            state.saved = false
+            render(false)
+            ensureConfirmVisible()
+            return
+          }
+          if (action === 'cancel-memory-edit') {
+            if (state.scene === 'confirm') {
+              const original = seed.global.find((entry) => entry.id === (state.editing && state.editing.id))
+              if (state.editing && original) state.editing.value = original.desc
+              render(false)
+              toast('已取消编辑', 'warn')
+              return
+            }
+            if (state.editing) {
+              if (state.confirming && state.confirming.type === 'memory' && state.confirming.id === state.editing.id)
+                state.confirming = null
+              state.editing = null
+              render(false)
+            }
+            return
+          }
+          if (action === 'confirm-memory') {
+            confirmMemory()
+            return
+          }
+          if (action === 'cancel-confirm') {
+            state.confirming = null
+            render(false)
+            return
+          }
+          if (action === 'confirm-candidate') {
+            confirmCandidate(id)
+            return
+          }
+          if (action === 'dismiss-candidate') {
+            dismissCandidate(id)
+            return
+          }
+          if (action === 'toggle-prompt') {
+            togglePrompt(id)
+            return
+          }
+          if (action === 'move-prompt') {
+            movePrompt(id, button.dataset.dir)
+            return
+          }
+          if (action === 'edit-prompt') {
+            editPrompt(id)
+            return
+          }
+          if (action === 'save-prompt-edit') {
+            savePromptEdit()
+            return
+          }
+          if (action === 'cancel-prompt-edit') {
+            cancelPromptEdit()
+            return
+          }
+          if (action === 'delete-prompt') {
+            deletePrompt(id)
+            return
+          }
+          if (action === 'add-prompt') {
+            addPrompt()
+            return
+          }
+          if (action === 'confirm-prompt') {
+            confirmPrompt()
+            return
+          }
+          if (action === 'toggle-prompt-text') {
+            if (state.promptExpanded.has(id)) state.promptExpanded.delete(id)
+            else state.promptExpanded.add(id)
+            render(false)
+            return
+          }
+          if (action === 'retry-load') {
+            retryLoad()
+            return
+          }
+          if (action === 'reset-demo') {
+            resetDemo()
+            return
+          }
+          if (action === 'confirm-demo-save') {
+            confirmDemoSave()
+            return
+          }
+          if (action === 'cancel-demo-save') {
+            cancelDemoSave()
+            return
+          }
+          if (action === 'confirm-demo-delete') {
+            confirmDemoDelete()
+            return
+          }
+          if (action === 'cancel-demo-delete') {
+            cancelDemoDelete()
+            return
+          }
+          if (action === 'go-memory') {
+            applyScene('memory')
+            return
+          }
+          if (action === 'reload-project') {
+            toast('已加载项目记忆 · ' + PROJECT_ROOT, 'success')
+            return
+          }
+          if (action === 'refresh-memory') {
+            toast('已刷新记忆与候选', 'success')
+          }
+        })
+
+        panel.addEventListener('input', (event) => {
+          const target = event.target
+          if (target.matches('[data-role="path-input"]')) {
+            state.pathInput = target.value
+            return
+          }
+          if (target.matches('[data-role="add-input"]')) {
+            state.drafts[target.dataset.scope] = target.value
+            updateDraftUI(target.dataset.scope)
+            return
+          }
+          if (target.matches('[data-role="memory-edit-input"]')) {
+            if (state.editing) state.editing.value = target.value
+            const length = Array.from(target.value).length
+            updateCharCounter('memory-edit', length, 50)
+            if (state.scene === 'confirm') {
+              const content = panel.querySelector('[data-demo-content]')
+              if (content) content.textContent = target.value
+            }
+            return
+          }
+          if (target.matches('[data-role="prompt-title-input"]')) {
+            state.promptDraft.title = target.value
+            return
+          }
+          if (target.matches('[data-role="prompt-text-input"]')) {
+            state.promptDraft.text = target.value
+            updateCharCounter('prompt-draft', Array.from(target.value).length, 1000)
+            return
+          }
+          if (target.matches('[data-role="prompt-edit-title"]')) {
+            if (state.promptEditing) state.promptEditing.title = target.value
+            return
+          }
+          if (target.matches('[data-role="prompt-edit-text"]')) {
+            if (state.promptEditing) state.promptEditing.text = target.value
+            updateCharCounter('prompt-edit', Array.from(target.value).length, 1000)
+          }
+        })
+
+        panel.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' && event.target.matches('[data-role="add-input"]') && !event.shiftKey) {
+            event.preventDefault()
+            addMemory(event.target.dataset.scope)
+          }
+        })
+
+        document.querySelectorAll('.seg-btn').forEach((button) => {
+          button.addEventListener('click', () => switchTab(button.dataset.tab))
+        })
+
+        document.querySelector('.settings-nav').addEventListener('click', (event) => {
+          const button = event.target.closest('[data-nav]')
+          if (!button) return
+          if (button.dataset.nav !== 'plugins') {
+            toast('原型聚焦「插件 → 记忆」，其他设置分类仅示意', 'warn')
+          }
+        })
+
+        scenePill.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-scene]')
+          if (!button) return
+          applyScene(button.dataset.scene)
+        })
+
+        themeToggle.addEventListener('click', toggleTheme)
+
+        document.getElementById('closeSettings').addEventListener('click', () => setSettingsOpen(false))
+        document.getElementById('sidebarSettings').addEventListener('click', () => setSettingsOpen(true))
+
+        overlay.addEventListener('click', (event) => {
+          if (event.target === overlay) setSettingsOpen(false)
+        })
+
+        document.addEventListener('keydown', (event) => {
+          if (event.key !== 'Escape') return
+          if (state.confirming) {
+            state.confirming = null
+            render(false)
+            return
+          }
+          if (!overlay.classList.contains('is-hidden')) setSettingsOpen(false)
+        })
+
+        const media = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)')
+        document.documentElement.dataset.theme = media && media.matches ? 'light' : 'dark'
+        applyScene('memory')
+      })()
+    </script>
+  </body>
+</html>

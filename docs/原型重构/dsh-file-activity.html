@@ -2797,22 +2797,22 @@
         grid-template-columns: 260px minmax(0, 1fr) var(--right-w, 380px);
       }
       .fa-panel {
-        padding: 8px 10px 12px;
+        padding: 6px 8px 10px;
       }
       .fa-section {
         display: flex;
         flex-direction: column;
-        gap: 2px;
-        margin-bottom: 12px;
+        gap: 0;
+        margin-bottom: 8px;
         min-width: 0;
       }
       .fa-head {
         display: flex;
         align-items: center;
         gap: 6px;
-        height: 28px;
+        height: 24px;
         padding: 0 4px;
-        font-size: 12px;
+        font-size: 11.5px;
         color: var(--text-2);
         min-width: 0;
         border: 0;
@@ -2827,7 +2827,7 @@
         display: flex;
         align-items: center;
         gap: 6px;
-        height: 28px;
+        height: 24px;
         border: 0;
         background: transparent;
         color: inherit;
@@ -2862,17 +2862,17 @@
       .fa-list {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 0;
         min-width: 0;
       }
       .fa-row {
         display: flex;
         align-items: center;
-        gap: 8px;
-        height: 32px;
-        padding: 0 8px;
-        border-radius: 6px;
-        font-size: 12px;
+        gap: 7px;
+        height: 26px;
+        padding: 0 7px;
+        border-radius: 5px;
+        font-size: 11.5px;
         color: var(--text-2);
         border: 0;
         background: transparent;
@@ -2886,8 +2886,8 @@
         color: var(--text);
       }
       .fa-row .file-ico {
-        width: 15px;
-        height: 15px;
+        width: 14px;
+        height: 14px;
         color: var(--text-3);
         flex: none;
       }
@@ -2952,7 +2952,7 @@
       .fa-tree {
         display: flex;
         flex-direction: column;
-        gap: 1px;
+        gap: 0;
         min-width: 0;
       }
       .tree-row {
@@ -2973,13 +2973,13 @@
         transform: rotate(-90deg);
       }
       .tree-row.depth-1 {
-        padding-left: 16px;
+        padding-left: 12px;
       }
       .tree-row.depth-2 {
-        padding-left: 28px;
+        padding-left: 22px;
       }
       .tree-row.depth-3 {
-        padding-left: 40px;
+        padding-left: 32px;
       }
       .tr-counts {
         display: flex;
@@ -3996,8 +3996,8 @@
                 <svg class="icon chev"><use href="#i-chevron-down" /></svg
                 ><svg class="icon file-ico"><use href="#i-ft-folder" /></svg><span class="fa-name">plugins</span
                 ><span class="tr-counts"
-                  ><span class="tr-c read">读 8</span><span class="tr-c add">增 2</span
-                  ><span class="tr-c mod">改 4</span></span
+                  ><span class="tr-c read">读 19</span><span class="tr-c add">增 1</span
+                  ><span class="tr-c mod">改 5</span></span
                 ><span class="fa-time" data-tip="2026-10-18 22:41:07">刚刚</span>
               </button>
               <button class="fa-row tree-row dir depth-1" data-dir="dsh-file-activity">
@@ -4005,8 +4005,8 @@
                 ><svg class="icon file-ico"><use href="#i-ft-folder" /></svg
                 ><span class="fa-name">dsh-file-activity</span
                 ><span class="tr-counts"
-                  ><span class="tr-c read">读 5</span><span class="tr-c add">增 1</span
-                  ><span class="tr-c mod">改 3</span></span
+                  ><span class="tr-c read">读 15</span><span class="tr-c add">增 0</span
+                  ><span class="tr-c mod">改 4</span></span
                 ><span class="fa-time" data-tip="2026-10-18 22:38:12">3 分钟前</span>
               </button>
               <button class="fa-row tree-row dir depth-2" data-dir="parts">
@@ -4014,8 +4014,8 @@
                 ><svg class="icon file-ico"><use href="#i-ft-folder" /></svg
                 ><span class="fa-name">src.client.parts</span
                 ><span class="tr-counts"
-                  ><span class="tr-c read">读 3</span><span class="tr-c add">增 0</span
-                  ><span class="tr-c mod">改 2</span></span
+                  ><span class="tr-c read">读 12</span><span class="tr-c add">增 0</span
+                  ><span class="tr-c mod">改 4</span></span
                 ><span class="fa-time" data-tip="2026-10-18 22:38:12">3 分钟前</span>
               </button>
               <button
@@ -4058,7 +4058,85 @@
                 ><span class="fa-time" data-tip="2026-10-17 18:12:35">昨天</span>
               </button>
               <button
-                class="fa-row tree-row depth-1"
+                class="fa-row tree-row depth-3"
+                data-preview="code"
+                data-file="api.ts"
+                data-path="plugins/dsh-file-activity/src/client/parts/api.ts"
+                data-tip="2026-10-18 22:12:41"
+              >
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">api.ts</span
+                ><span class="tr-counts"
+                  ><span class="tr-c read">读 2</span><span class="tr-c add">增 0</span
+                  ><span class="tr-c mod">改 0</span></span
+                ><span class="fa-time" data-tip="2026-10-18 22:12:41">1 小时前</span>
+              </button>
+              <button
+                class="fa-row tree-row depth-3"
+                data-preview="code"
+                data-file="rows.ts"
+                data-path="plugins/dsh-file-activity/src/client/parts/rows.ts"
+                data-tip="2026-10-18 21:34:09"
+              >
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">rows.ts</span
+                ><span class="tr-counts"
+                  ><span class="tr-c read">读 1</span><span class="tr-c add">增 0</span
+                  ><span class="tr-c mod">改 1</span></span
+                ><span class="fa-time" data-tip="2026-10-18 21:34:09">2 小时前</span>
+              </button>
+              <button
+                class="fa-row tree-row depth-3"
+                data-preview="code"
+                data-file="store.ts"
+                data-path="plugins/dsh-file-activity/src/client/parts/store.ts"
+                data-tip="2026-10-18 20:48:33"
+              >
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">store.ts</span
+                ><span class="tr-counts"
+                  ><span class="tr-c read">读 1</span><span class="tr-c add">增 0</span
+                  ><span class="tr-c mod">改 0</span></span
+                ><span class="fa-time" data-tip="2026-10-18 20:48:33">3 小时前</span>
+              </button>
+              <button
+                class="fa-row tree-row depth-3"
+                data-preview="code"
+                data-file="settings.ts"
+                data-path="plugins/dsh-file-activity/src/client/parts/settings.ts"
+                data-tip="2026-10-18 20:31:52"
+              >
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">settings.ts</span
+                ><span class="tr-counts"
+                  ><span class="tr-c read">读 1</span><span class="tr-c add">增 0</span
+                  ><span class="tr-c mod">改 0</span></span
+                ><span class="fa-time" data-tip="2026-10-18 20:31:52">3 小时前</span>
+              </button>
+              <button
+                class="fa-row tree-row depth-3"
+                data-preview="code"
+                data-file="styles.ts"
+                data-path="plugins/dsh-file-activity/src/client/parts/styles.ts"
+                data-tip="2026-10-18 19:57:26"
+              >
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">styles.ts</span
+                ><span class="tr-counts"
+                  ><span class="tr-c read">读 1</span><span class="tr-c add">增 0</span
+                  ><span class="tr-c mod">改 0</span></span
+                ><span class="fa-time" data-tip="2026-10-18 19:57:26">4 小时前</span>
+              </button>
+              <button
+                class="fa-row tree-row depth-3"
+                data-preview="code"
+                data-file="i18n.ts"
+                data-path="plugins/dsh-file-activity/src/client/parts/i18n.ts"
+                data-tip="2026-10-18 18:40:11"
+              >
+                <svg class="icon file-ico"><use href="#i-ft-ts" /></svg><span class="fa-name">i18n.ts</span
+                ><span class="tr-counts"
+                  ><span class="tr-c read">读 1</span><span class="tr-c add">增 0</span
+                  ><span class="tr-c mod">改 0</span></span
+                ><span class="fa-time" data-tip="2026-10-18 18:40:11">5 小时前</span>
+              </button>
+              <button
+                class="fa-row tree-row depth-2"
                 data-preview="markdown"
                 data-file="README.md"
                 data-path="plugins/dsh-file-activity/README.md"
@@ -4069,6 +4147,19 @@
                   ><span class="tr-c read">读 2</span><span class="tr-c add">增 0</span
                   ><span class="tr-c mod">改 0</span></span
                 ><span class="fa-time" data-tip="2026-10-18 22:41:07">刚刚</span>
+              </button>
+              <button
+                class="fa-row tree-row depth-2"
+                data-preview="code"
+                data-file="package.json"
+                data-path="plugins/dsh-file-activity/package.json"
+                data-tip="2026-10-18 20:15:00"
+              >
+                <svg class="icon file-ico"><use href="#i-ft-pkg" /></svg><span class="fa-name">package.json</span
+                ><span class="tr-counts"
+                  ><span class="tr-c read">读 1</span><span class="tr-c add">增 0</span
+                  ><span class="tr-c mod">改 0</span></span
+                ><span class="fa-time" data-tip="2026-10-18 20:15:00">2 小时前</span>
               </button>
               <button class="fa-row tree-row dir depth-1" data-dir="docs">
                 <svg class="icon chev"><use href="#i-chevron-down" /></svg

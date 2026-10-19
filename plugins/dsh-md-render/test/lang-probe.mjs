@@ -34,11 +34,11 @@ import {
 const MARKDOWN = ['## 结论', '', '| 列 | 值 |', '| --- | --- |', '| a | b |'].join('\n')
 const MERMAID = ['flowchart TD', '  A["提交订单 (v2)"] --> B[校验]'].join('\n')
 const UNKNOWN = '这个块的语言宿主与插件都不认识'
-const MD_BODY = 'div.dsh-md-render-text-md'
-const CODE_HOST = 'div.dsh-md-render-code-host'
-const CODE_LANG = 'span.dsh-md-render-code-lang'
-const TOGGLE = 'button.dsh-md-render-text-toggle'
-const MERMAID_HOST = 'div.dsh-md-render-mermaid-host'
+const MD_BODY = 'div.mdr-md.mdr-block-body'
+const CODE_HOST = 'div.mdr-block'
+const CODE_LANG = 'span.mdr-fence-pill'
+const TOGGLE = 'button.mdr-rm-btn[data-mdr-option="source"]'
+const MERMAID_HOST = 'div.mdr-mm-host'
 
 /** 让出事件循环：冲刷微任务批处理 + fetch 回调（固定的 0ms 让出，不是「赌异步完成」）。 */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -95,7 +95,7 @@ test('① 真实宿主 DOM（banner 只有「代码块」）下按内容哈希�
   assert.ok(body, 'text 块（banner 只有「代码块」）被重新认出并 markdown 化')
   assert.equal(body.querySelector('h2').textContent, '结论', '自研渲染器渲染的是哈希命中的那段内容')
   assert.ok(body.querySelector('table'), '内容里的表格也渲染为真表格')
-  assert.equal(text.getAttribute('data-dsh-md-render-text-view'), 'markdown', '进入 markdown 视图')
+  assert.equal(text.getAttribute('data-mdr-view'), 'markdown', '进入 markdown 视图')
   assert.ok(text.querySelector(TOGGLE), '带「查看原文」切换按钮')
   assert.ok(mermaidBlock.querySelector(MERMAID_HOST), 'mermaid 块被重新认出并挂卡片 host')
   assert.equal(mermaidBlock.getAttribute('data-dsh-md-render-mermaid-view'), 'preview', '进入预览视图')
@@ -122,7 +122,7 @@ test('② 索引「查不到」不等于「无语言」：按代码块接管但�
   for (const [name, block] of Object.entries({ untagged, unknown })) {
     assert.equal(block.querySelector(MD_BODY), null, name + ' 块不被误判成 markdown')
     assert.equal(block.querySelector(MERMAID_HOST), null, name + ' 块不被卡片接管')
-    assert.equal(block.getAttribute('data-dsh-md-render-text-view'), 'code', name + ' 块走代码视图')
+    assert.equal(block.getAttribute('data-mdr-view'), 'code', name + ' 块走代码视图')
     assert.ok(block.querySelector(CODE_HOST), name + ' 块按代码块接管')
     assert.equal(block.querySelector(CODE_LANG).textContent, '', name + ' 块语言位留空')
     // 官方节点结构不动（我们只追加自有容器）：官方 <code> 文本仍是原文
@@ -148,7 +148,7 @@ test('③ DOM 已给出语言名的块（js / json / bash）零额外请求，�
     ['json', json],
     ['bash', bash],
   ]) {
-    assert.equal(block.getAttribute('data-dsh-md-render-text-view'), 'code', lang + ' 块走代码视图')
+    assert.equal(block.getAttribute('data-mdr-view'), 'code', lang + ' 块走代码视图')
     assert.equal(block.querySelector(CODE_LANG).textContent, lang, lang + ' 块 banner 是真实语言名')
     assert.equal(block.querySelector(MD_BODY), null, lang + ' 块不被 markdown 接管')
     assert.equal(block.querySelector(MERMAID_HOST), null, lang + ' 块无卡片')
@@ -161,7 +161,7 @@ test('⑤ 流式块不查表（内容还在补写，哈希必然落空）；消�
   booted.loaded.exports.apply({ effect: (fn) => fn() })
   await settle()
   assert.equal(booted.stub.langCalls().length, 0, '流式中的块一次请求都不发')
-  assert.equal(text.getAttribute('data-dsh-md-render-text-view'), null, '流式中的块不接管')
+  assert.equal(text.getAttribute('data-mdr-view'), null, '流式中的块不接管')
 
   // 宿主流式结束：移除 [data-streaming] → 属性变更触发兜底重扫（真实观察器回调）
   booted.wrap.removeAttribute('data-streaming')
@@ -221,7 +221,7 @@ test('⑦ 请求失败 / 无 fetch：静默降级（不抛错；语言位留空�
   await settle()
   await settle()
   assert.equal(text.querySelector(MD_BODY), null, '查表失败 → 不猜语言（不 markdown 化）')
-  assert.equal(text.getAttribute('data-dsh-md-render-text-view'), 'code', '按代码块接管')
+  assert.equal(text.getAttribute('data-mdr-view'), 'code', '按代码块接管')
   assert.equal(text.querySelector(CODE_LANG).textContent, '', '语言位留空')
 
   // 环境里连 fetch 都没有（极老 / 裁剪宿主）：同样静默降级
@@ -247,13 +247,13 @@ test('开关关闭时既不接管也不查表（一次请求都不发）', async
   booted.loaded.exports.apply({ effect: (fn) => fn() })
   await settle()
   assert.equal(booted.stub.langCalls().length, 0, '开关关闭 → 不查表')
-  assert.equal(text.getAttribute('data-dsh-md-render-text-view'), null, 'text 块不接管')
+  assert.equal(text.getAttribute('data-mdr-view'), null, 'text 块不接管')
   assert.equal(mermaidBlock.querySelector(MERMAID_HOST), null, 'mermaid 块不接管')
 })
 
 test('本插件已渲染容器内的块不二次接管（防递归；连查表都不查）', async () => {
   const nested = makeRealHostCodeBlock({ code: MERMAID })
-  const container = makeElement('div', { className: 'tzx-md dsh-md-render-text-md' })
+  const container = makeElement('div', { className: 'mdr-md mdr-block-md' })
   container.appendChild(nested)
   const wrapper = makeElement('div')
   const scroll = makeElement('div', { 'data-conversation-scroll': 'true' })

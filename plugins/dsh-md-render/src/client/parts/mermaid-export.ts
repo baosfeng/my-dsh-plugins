@@ -1,17 +1,18 @@
-// ── mermaid 图表导出：PNG / SVG 下载 + 复制源码 ────────────────────────
-// 失败一律经卡片提示条转可见提示，绝不静默（与合并前的 dsh-mermaid-render 同款行为）。
+// ── 图表导出：PNG / SVG 真实下载 + 复制源码 ─────────────────────────────
+// 失败一律经卡片提示条转可见提示，绝不静默。导出对象是**作用域里的 SVG**
+// （卡片体或全屏 dialog 体：「导出 SVG」在两边都有入口）。
 // 复制实现复用 copy.ts 的 copyText（同一 factory 作用域），不重复一份。
 
-/** 导出处理器。 */
+/** 导出处理器（卡片 / 全屏共用）。 */
 interface ExportHandlers {
   onPng: () => void
   onSvg: () => void
   onCopy: () => void
 }
 
-/** 默认文件名：mermaid-<序号>.<ext>（序号取自 entryId，如 dsh-md-render-mermaid-3 → 3）。 */
-function buildExportFileName(entryId: string, ext: string): string {
-  const m = /(\d+)/.exec(String(entryId || ''))
+/** 默认文件名：mermaid-<序号>.<ext>（序号取自作用域 id，如 mdr-mm-3 → 3）。 */
+function buildExportFileName(scopeId: string, ext: string): string {
+  const m = /(\d+)/.exec(String(scopeId === undefined || scopeId === null ? '' : scopeId))
   return 'mermaid-' + (m ? m[1] : '1') + '.' + ext
 }
 
@@ -91,39 +92,39 @@ function downloadPngFile(svgEl: SVGElement, fileName: string): Promise<void> {
   })
 }
 
-/** 从卡片 DOM 取渲染出的 SVG 元素（按 entryId 定位，避免多卡片串扰）。 */
-function findCardSvg(entryId: string): SVGElement | null {
+/** 从作用域里取渲染出的 SVG 元素（按作用域 id 定位，多卡片互不串扰）。 */
+function findDiagramSvg(scopeId: string): SVGElement | null {
   if (typeof document === 'undefined' || document === null) return null
-  const host = document.querySelector('[data-dsh-md-render-mermaid="' + entryId + '"]')
-  if (!host || !host.querySelector) return null
-  return host.querySelector('svg')
+  const root = document.querySelector('[' + MM_SCOPE_ATTR + '="' + scopeId + '"]')
+  if (root === null || typeof root.querySelector !== 'function') return null
+  return root.querySelector('svg')
 }
 
-/** 组装卡片导出 handler：返回 { onPng, onSvg, onCopy }。 */
+/** 组装导出 handler：返回 { onPng, onSvg, onCopy }。 */
 function makeExportHandlers(
-  entryId: string,
+  scopeId: string,
   source: string,
   flashNotice: (type: string, text: string) => void,
 ): ExportHandlers {
   return {
     onPng: () => {
-      const svgEl = findCardSvg(entryId)
-      if (!svgEl) {
+      const svgEl = findDiagramSvg(scopeId)
+      if (svgEl === null) {
         flashNotice('error', '图表尚未渲染完成，无法导出 PNG')
         return
       }
-      downloadPngFile(svgEl, buildExportFileName(entryId, 'png'))
+      downloadPngFile(svgEl, buildExportFileName(scopeId, 'png'))
         .then(() => flashNotice('ok', 'PNG 已下载'))
         .catch((err) => flashNotice('error', 'PNG 导出失败：' + errMsg(err)))
     },
     onSvg: () => {
-      const svgEl = findCardSvg(entryId)
-      if (!svgEl) {
+      const svgEl = findDiagramSvg(scopeId)
+      if (svgEl === null) {
         flashNotice('error', '图表尚未渲染完成，无法导出 SVG')
         return
       }
       try {
-        downloadSvgFile(svgEl, buildExportFileName(entryId, 'svg'))
+        downloadSvgFile(svgEl, buildExportFileName(scopeId, 'svg'))
         flashNotice('ok', 'SVG 已下载')
       } catch (err) {
         flashNotice('error', 'SVG 导出失败：' + errMsg(err))
@@ -139,5 +140,5 @@ function makeExportHandlers(
 
 exports.buildExportFileName = buildExportFileName
 exports.serializeSvg = serializeSvg
-exports.findCardSvg = findCardSvg
+exports.findDiagramSvg = findDiagramSvg
 exports.makeExportHandlers = makeExportHandlers

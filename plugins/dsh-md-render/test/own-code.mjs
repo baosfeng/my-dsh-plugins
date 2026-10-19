@@ -20,11 +20,11 @@ import {
   makeElement,
 } from './support/fake-dom.mjs'
 
-const CODE_HOST = 'div.dsh-md-render-code-host'
-const CODE_VIEW = 'div.dsh-md-render-code'
-const CODE_LANG = 'span.dsh-md-render-code-lang'
-const CODE_COPY = 'button.dsh-md-render-code-copy'
-const CODE_PRE = 'pre.dsh-md-render-code-pre'
+const CODE_HOST = 'div.mdr-block'
+const CODE_VIEW = 'div.mdr-fence'
+const CODE_LANG = 'span.mdr-fence-pill'
+const CODE_COPY = 'button.mdr-fence-copy'
+const CODE_PRE = 'pre.mdr-fence-code'
 
 function boot(blocks, options = {}) {
   const scroll = makeElement('div', { 'data-conversation-scroll': 'true' })
@@ -39,11 +39,11 @@ function boot(blocks, options = {}) {
 
 test('hljs scope → CSS class 的映射与 hljs 的 scopeToCSSClass 逐字一致', () => {
   const { loaded } = boot([])
-  assert.equal(loaded.exports.hljsScopeClass('keyword'), 'hljs-keyword', '简单 scope')
-  assert.equal(loaded.exports.hljsScopeClass('comment.line'), 'hljs-comment line_', '分级 scope')
-  assert.equal(loaded.exports.hljsScopeClass('title.function'), 'hljs-title function_', '二级分级 scope')
-  assert.equal(loaded.exports.hljsScopeClass('language:json'), 'language-json', '子语言')
-  assert.equal(loaded.exports.hljsScopeClass(''), '', '空 scope 不产 class')
+  assert.equal(loaded.exports.hlClassOf('keyword'), 'hl-key', '简单 scope')
+  assert.equal(loaded.exports.hlClassOf('comment.line'), 'hl-com', '分级 scope 取首段')
+  assert.equal(loaded.exports.hlClassOf('title.function'), 'hl-fn', '二级分级 scope')
+  assert.equal(loaded.exports.hlClassOf('language:json'), '', '未知 scope 不产 class')
+  assert.equal(loaded.exports.hlClassOf(''), '', '空 scope 不产 class')
 })
 
 test('代码块 DOM：真实语言名 banner + 复制按钮 + 自动换行 pre + hljs 高亮 span', () => {
@@ -53,12 +53,12 @@ test('代码块 DOM：真实语言名 banner + 复制按钮 + 自动换行 pre +
   assert.ok(host.querySelector(CODE_VIEW), '自研代码卡片')
   assert.equal(host.querySelector(CODE_LANG).textContent, 'js', 'banner 是真实语言名（不是「代码块」）')
   const copyBtn = host.querySelector(CODE_COPY)
-  assert.equal(copyBtn.getAttribute('data-dsh-md-render-tip'), '复制', '复制按钮就位（文案在浮层）')
-  assert.equal(copyBtn.textContent, '', '复制按钮只显示图标')
+  assert.equal(copyBtn.getAttribute('data-mdr-tip'), '复制代码', '复制按钮就位（文案在浮层）')
+  assert.equal(copyBtn.textContent, '复制', '复制按钮文案')
   assert.equal(host.querySelector(CODE_PRE).textContent, 'const a = 1; // hi', '源码一字不少')
-  const spans = host.querySelectorAll('span[class*=hljs-]')
+  const spans = host.querySelectorAll('span[class*=hl-]')
   assert.ok(spans.length > 0, '有高亮 span')
-  assert.equal(spans[0].getAttribute('class'), 'hljs-keyword', 'const 关键字命中 hljs-keyword')
+  assert.equal(spans[0].getAttribute('class'), 'hl-key', 'const 关键字命中 hl-key')
   assert.equal(spans[0].textContent, 'const', '关键字 span 文本')
 })
 
@@ -89,7 +89,7 @@ test('语言不认识 / 语言位为空 → 纯文本降级（不高亮，也不
   boot([unknown, untagged])
   for (const [name, block] of Object.entries({ unknown, untagged })) {
     assert.ok(block.querySelector(CODE_HOST), name + ' 块仍然接管（代码视图）')
-    assert.equal(block.querySelectorAll('span[class*=hljs-]').length, 0, name + ' 块没有高亮 span')
+    assert.equal(block.querySelectorAll('span[class*=hl-]').length, 0, name + ' 块没有高亮 span')
     assert.equal(block.querySelector(CODE_PRE).textContent, 'x = 1', name + ' 块内容一字不少')
   }
   assert.equal(unknown.querySelector(CODE_LANG).textContent, 'definitely-not-a-language', 'hljs 不认识的标记仍照实显示')
@@ -99,9 +99,9 @@ test('语言不认识 / 语言位为空 → 纯文本降级（不高亮，也不
 test('hljs 未加载 → 纯文本代码块（内容完整，绝不因为缺库丢内容）', () => {
   const block = makeCodeBlock({ lang: 'js', code: 'const a = 1' })
   boot([block], { assets: false })
-  assert.equal(block.getAttribute('data-dsh-md-render-text-view'), 'code', '仍然接管')
+  assert.equal(block.getAttribute('data-mdr-view'), 'code', '仍然接管')
   assert.equal(block.querySelector(CODE_LANG).textContent, 'js', '语言名来自 DOM 契约，不依赖 hljs')
-  assert.equal(block.querySelectorAll('span[class*=hljs-]').length, 0, '没有高亮')
+  assert.equal(block.querySelectorAll('span[class*=hl-]').length, 0, '没有高亮')
   assert.equal(block.querySelector(CODE_PRE).textContent, 'const a = 1', '源码完整')
 })
 
@@ -111,7 +111,7 @@ test('超长代码块（> MAX_HIGHLIGHT_CHARS）跳过高亮但照常渲染', ()
   const block = makeCodeBlock({ lang: 'js', code: 'const a = 1;\n'.repeat(Math.ceil(max / 11) + 10) })
   boot([block])
   assert.ok(block.querySelector(CODE_HOST), '仍然接管')
-  assert.equal(block.querySelectorAll('span[class*=hljs-]').length, 0, '超长块不做高亮')
+  assert.equal(block.querySelectorAll('span[class*=hl-]').length, 0, '超长块不做高亮')
   assert.ok(block.querySelector(CODE_PRE).textContent.length > max, '内容完整保留')
 })
 test('行号文本按逻辑行计数（空行也占一行，末尾换行不多出一行）', () => {

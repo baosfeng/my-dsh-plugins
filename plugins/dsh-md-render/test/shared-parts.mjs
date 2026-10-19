@@ -1,12 +1,11 @@
 /**
- * 共享 client-parts 调用点门禁 ——dsh-md-render
+ * 共享 client-parts 调用点门禁 ——dsh-md-render（重构 v2）
  *
  * 归一范围：parts/apply.ts 的样式注入样板 → 共享 installStyles；
  * parts/scanner.ts 的 MutationObserver 骨架 → 共享 installDomScanner。
- * 反向范围：图标集（icons.part.js）不再消费——下线自实现渲染后本插件已无任何
- * 图标使用，产物里再出现该片段即体积回涨（最后一组断言钉住）。
- * 不得削掉的行为（精简后仍成立）：上下文注入块接管、text 围栏块接管、
- * 流式内容门控、幂等签名、宿主契约不匹配时的静默降级、data-streaming 兜底重扫。
+ * 图标集：mermaid 卡片 / 代码卡 / 设置页消费共享 icons.part.js（锚点保证恰好一份）。
+ * 不得削掉的行为：上下文注入块接管、围栏块接管、流式门控、幂等签名、
+ * 宿主契约不匹配时的静默降级、data-streaming 兜底重扫。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -17,7 +16,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SHARED_DIR = join(ROOT, '..', 'dsh-shared', 'client-parts')
 const STYLE_PART = readFileSync(join(SHARED_DIR, 'style-tag.part.js'), 'utf8').trim()
 const SCANNER_PART = readFileSync(join(SHARED_DIR, 'dom-scanner.part.js'), 'utf8').trim()
-/** 图标片段：本插件下线自实现渲染后已无任何图标使用 → 不应再出现在产物里。 */
 const ICONS_PART = readFileSync(join(SHARED_DIR, 'icons.part.js'), 'utf8').trim()
 
 /** 统计 haystack 中 needle 出现次数（split 计数：不受正则元字符影响）。 */
@@ -35,10 +33,13 @@ describe('样式注入走共享实现', () => {
     expect(read('lib/client.js').includes(STYLE_PART)).toBe(true)
   })
 
-  it('产物调用共享 installStyles（设置页自有样式表仍保留）', () => {
+  it('产物只注入一份样式表（5 个 part 聚合后统一注入）', () => {
     const artifact = read('lib/client.js')
-    expect(artifact.includes('installStyles(ctx,')).toBe(true)
+    expect(countOf(artifact, "installStyles(ctx, 'data-dsh-md-render'")).toBe(1)
     expect(styleTagCount(artifact)).toBe(1)
+    for (const part of ['STYLES_BASE', 'STYLES_MARKDOWN', 'STYLES_CODE', 'STYLES_MERMAID', 'STYLES_SETTINGS']) {
+      expect(artifact.includes('const ' + part + ' = `')).toBe(true)
+    }
   })
 })
 
@@ -59,8 +60,8 @@ describe('DOM 扫描器走共享骨架', () => {
     const scanner = read('src/client/parts/scanner.ts')
     for (const marker of [
       'scanContextBlocks',
-      'applyContextMarkdown',
       'scanFenceBlocks',
+      'scanMermaidBlocks',
       'installDomScanner',
       '[data-conversation-scroll]',
       'installRenderAssetReady',
@@ -75,7 +76,12 @@ describe('DOM 扫描器走共享骨架', () => {
       expect(text.includes(marker), `${marker} 必须保留`).toBe(true)
     }
     const context = read('src/client/parts/context-markdown.ts')
-    for (const marker of ['data-signature', 'MAX_CONTEXT_CHARS', 'renderMarkdownInto', 'data-context-text="true"']) {
+    for (const marker of [
+      'MDR_CONTEXT_SIG_ATTR',
+      'MAX_CONTEXT_CHARS',
+      'renderMarkdownInto',
+      'data-context-text="true"',
+    ]) {
       expect(context.includes(marker), `${marker} 必须保留`).toBe(true)
     }
   })
@@ -101,7 +107,7 @@ describe('内容渲染完全用插件自己的实现（不依赖官方渲染组�
     expect(artifact.includes('@deepseek-ai/dsh-client-ui-primitives')).toBe(false)
     // 自研渲染器两个部件必须在产物里（片段静默丢失是这类构建最典型的故障模式）。
     expect(artifact.includes('function markdownNodes(')).toBe(true)
-    expect(artifact.includes('function CodeBlockView(')).toBe(true)
+    expect(artifact.includes('function MdrCodeBlock(')).toBe(true)
     expect(artifact.includes('function ensureRenderAsset(')).toBe(true)
   })
 

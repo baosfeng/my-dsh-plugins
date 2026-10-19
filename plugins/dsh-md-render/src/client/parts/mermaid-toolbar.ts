@@ -1,197 +1,329 @@
-// ── mermaid 卡片工具条（React）── 从 mermaid-card.ts 拆出（单文件行数门禁 ≤400）。
-// 常驻四项：视图切换 / 缩放分段（− 百分比 + 收在一个胶囊）/ 全屏浮窗 /「更多」菜单；
-// 低频操作（适应容器 / 适应宽度 / 导出三件）收在菜单里 —— 用户口径「外面有的，里面就别再有」，
-// 所以全屏浮窗只常驻、菜单里不再重复提供。
-/** 预览 / 代码 视图切换；渲染失败时禁用预览（否则只剩激活态假象）。 */
-function ViewToggle({
-  mode,
-  setMode,
-  previewDisabled,
-}: {
-  mode: 'preview' | 'code'
-  setMode: (mode: 'preview' | 'code') => void
-  previewDisabled?: boolean
-}) {
-  const btn = (label: string, value: 'preview' | 'code', iconNode: unknown, disabled: boolean) =>
+// ── mermaid 卡片工具条（React）──────────────────────────────────────────
+// 常驻：视图分段（预览 / 代码，带文字）+ 缩放分段（− 100% +）+ 全屏 + 更多；
+// 低频操作收进「更多」菜单（导出 PNG / SVG、缩放模式、复制代码）—— 用户口径
+// 「外面有的，里面就别再有」，所以全屏只常驻、菜单里不重复。
+// 底栏「渲染为… 图表 / Markdown / 源码」**常显**（三态互斥，不藏进菜单）。
+// 所有状态走 aria-* / 属性，类名由 React 计算（不碰 classList / el.style）。
+
+/** 视图三段（卡片正文一次只显示一段）。 */
+type MmView = 'diagram' | 'markdown' | 'source'
+
+/** 图标快捷方式（共享图标集；显式尺寸，CSS 不参与图标几何）。 */
+function mmIcon(name: string, size: number): unknown {
+  return icon[name](size)
+}
+
+/** 预览 / 代码 视图分段（渲染失败时禁用预览，避免只剩激活态假象）。 */
+function MdrMmViewSeg(props: {
+  view: MmView
+  onView: (view: 'diagram' | 'source') => void
+  previewDisabled: boolean
+}): unknown {
+  const btn = (label: string, value: 'diagram' | 'source', iconNode: unknown, disabled: boolean): unknown =>
     createElement(
       'button',
       {
         type: 'button',
-        className:
-          mode === value ? 'dsh-md-render-mermaid-vt dsh-md-render-mermaid-vt-active' : 'dsh-md-render-mermaid-vt',
-        onClick: () => setMode(value),
-        disabled,
-        'aria-pressed': mode === value,
+        className: 'mdr-seg-btn' + (props.view === value ? ' is-active' : ''),
+        onClick: () => props.onView(value),
+        disabled: disabled,
+        'aria-pressed': props.view === value,
+        'data-mdr-tip': label,
+      },
+      iconNode,
+      createElement('span', null, label),
+    )
+  return createElement(
+    'div',
+    { className: 'mdr-seg', role: 'group', 'aria-label': '图表视图切换' },
+    btn('预览', 'diagram', mmIcon('eye', 12), props.previewDisabled),
+    btn('代码', 'source', mmIcon('code', 12), false),
+  )
+}
+
+/** 缩放分段：− / 百分比 / + 收进一个胶囊（百分比是显示值，由 zoom-math 更新）。 */
+function MdrMmZoomSeg(props: { scopeId: string }): unknown {
+  const btn = (label: string, tip: string, iconNode: unknown, action: string): unknown =>
+    createElement(
+      'button',
+      {
+        type: 'button',
+        className: 'mdr-icon-btn',
+        onClick: () => zoomEntry(props.scopeId, action),
         'aria-label': label,
-        'data-dsh-md-render-tip': label,
+        'data-mdr-tip': tip,
       },
       iconNode,
     )
   return createElement(
     'div',
-    { className: 'dsh-md-render-mermaid-view-toggle', role: 'group', 'aria-label': 'view mode' },
-    // 「预览」用眼睛图标（比 file 更贴语义）。
-    btn('预览', 'preview', icon.eye(14), previewDisabled === true),
-    btn('代码', 'code', icon.code(14), false),
+    { className: 'mdr-mm-zoom', role: 'group', 'aria-label': '图表缩放' },
+    btn('缩小', '缩小（键盘 −）', mmIcon('minus', 12), 'out'),
+    createElement('span', { className: 'mdr-mm-zoom-val' }, '100%'),
+    btn('放大', '放大（键盘 +）', mmIcon('plus', 12), 'in'),
   )
 }
 
-/** 缩放分段：− / 百分比 / + 收进**一个**胶囊 —— 视觉上算一个控件，卡片头因此只需一行。
- *  百分比是**显示值**（zoom-math.ts 更新其 textContent），不是动作名 —— 所以保留文字、不进浮层。
- *  「实际大小 100%」不设按钮：双击图表与键盘 0 两条路径都在（提示写在菜单「适应容器」项里）。 */
-function ZoomSeg({ entryId }: { entryId: string }) {
-  const btn = (ariaLabel: string, tip: string, iconNode: unknown, action: () => void) =>
-    createElement(
-      'button',
-      {
-        type: 'button',
-        className: 'dsh-md-render-mermaid-eb',
-        onClick: action,
-        'aria-label': ariaLabel,
-        'data-dsh-md-render-tip': tip,
-      },
-      iconNode,
-    )
-  return createElement(
-    'div',
-    { className: 'dsh-md-render-seg', role: 'group', 'aria-label': '图表缩放' },
-    btn('缩小', '缩小（键盘 −，或触控板双指捏合）', icon.minus(14), () => zoomEntry(entryId, 'out')),
-    // 实时缩放百分比：小图放大 25% 肉眼几乎无感，用数字给出明确反馈。
-    createElement('span', { className: 'dsh-md-render-mermaid-zoom-pct' }, '100%'),
-    btn('放大', '放大（键盘 +，或触控板双指捏合）', icon.plus(14), () => zoomEntry(entryId, 'in')),
-  )
-}
-
-/** 菜单项（模块级：不依赖组件状态，也让 CardMenu 保持在尺寸门禁内）。 */
-function menuItemNode(label: string, iconNode: unknown, onSelect: () => void, disabled: boolean): unknown {
+/** 全屏按钮：打开原生 <dialog>（常驻高频入口）。 */
+function MdrMmFullscreen(props: { onOpen: () => void; disabled: boolean }): unknown {
   return createElement(
     'button',
     {
       type: 'button',
-      role: 'menuitem',
-      className: 'dsh-md-render-menu-item',
-      onClick: onSelect,
-      disabled,
-      'aria-label': label,
+      className: 'mdr-icon-btn',
+      onClick: props.onOpen,
+      disabled: props.disabled,
+      'aria-label': '全屏',
+      'data-mdr-tip': '全屏（Esc 关闭）',
     },
+    mmIcon('maximize', 14),
+  )
+}
+
+/** 菜单项（模块级，压组件圈复杂度）。 */
+function mmMenuItemNode(
+  label: string,
+  iconNode: unknown,
+  onSelect: () => void,
+  opts: { role?: string; checked?: boolean; disabled?: boolean; check?: unknown } = {},
+): unknown {
+  const props: Record<string, unknown> = {
+    type: 'button',
+    role: opts.role ?? 'menuitem',
+    className: 'mdr-mm-menu-item',
+    onClick: onSelect,
+    disabled: opts.disabled === true,
+    'aria-label': label,
+  }
+  if (opts.role === 'menuitemradio') props['aria-checked'] = opts.checked === true
+  return createElement(
+    'button',
+    props,
     iconNode,
     createElement('span', null, label),
+    opts.check === undefined ? null : opts.check,
   )
 }
 
-/** 造一个「按 label 生成菜单项」的工厂：点完立刻关（菜单留着会挡住图表，让人以为点了没反应）。 */
-function makeMenuItem(close: () => void) {
-  return (label: string, iconNode: unknown, action: () => void, disabled: boolean): unknown =>
-    menuItemNode(
-      label,
-      iconNode,
-      () => {
-        close()
-        action()
-      },
-      disabled,
-    )
-}
-
-/** 全屏浮窗：**常驻**在卡片头（用户口径「全屏要放在外面」，不藏在「更多」里）——
- *  它是「把图放大看」的主入口，属高频；菜单里因此不再重复提供它。 */
-function FullscreenButton({ entryId, disabled }: { entryId: string; disabled: boolean }) {
-  return createElement(
-    'button',
-    {
-      type: 'button',
-      className: 'dsh-md-render-mermaid-eb',
-      onClick: () => toggleCardOverlay(entryId),
-      disabled,
-      'aria-label': '全屏浮窗',
-      'data-dsh-md-render-tip': '全屏浮窗（Esc 关闭）',
-    },
-    icon.maximize(14),
-  )
-}
-
-/** 菜单触发器（模块级，同上）。 */
-function menuTriggerNode(entryId: string, open: boolean, onToggle: () => void): unknown {
-  return createElement(
-    'button',
-    {
-      type: 'button',
-      className: 'dsh-md-render-mermaid-eb',
-      [MENU_BTN_ATTR]: entryId,
-      'aria-haspopup': 'menu',
-      'aria-expanded': open ? 'true' : 'false',
-      'aria-label': '更多操作',
-      'data-dsh-md-render-tip': '更多操作',
-      onClick: (e: { stopPropagation?: () => void }) => {
-        // 阻止冒泡：否则 document 的"点外关闭"会立刻把刚打开的菜单关掉
-        if (typeof e.stopPropagation === 'function') e.stopPropagation()
-        onToggle()
-      },
-    },
-    icon.more(14),
-  )
-}
-
-/**
- * 「更多」菜单：把**低频**操作收起来（缩放模式 / 导出），别让它们长期霸占卡片头。
- * 全屏浮窗**不在菜单里** —— 用户口径「全屏要放在外面」，它是常驻的 FullscreenButton。
- * 用户口径「外面有的，里面就别有了」：原「渲染为 Markdown / 源码」已删
- * —— 它与常驻的「预览 / 代码」是同一意图的两套入口。
- * 关闭路径：再点触发按钮 / 点菜单外 / Esc；Esc 都把焦点还给触发按钮（键盘用户不丢位置）。
- * 定位纯 CSS（styles.ts 的 .dsh-md-render-menu 贴到工具条右下方）—— 不写 el.style。
- */
-function CardMenu({
-  entryId,
-  ready,
-  zoomable,
-  onPng,
-  onSvg,
-  onCopy,
-}: {
-  entryId: string
-  ready: boolean
-  zoomable: boolean
-  onPng: () => void
-  onSvg: () => void
-  onCopy: () => void
-}) {
-  const [open, setOpen] = useState(false)
+/** 菜单关闭路径：点菜单外 / Esc（触发按钮的点击已 stopPropagation）。 */
+function useMenuDismiss(open: boolean, onDismiss: () => void): void {
   useEffect(() => {
     if (!open) return undefined
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return
-      setOpen(false)
-      const btn = document.querySelector('[' + MENU_BTN_ATTR + '="' + entryId + '"]') as { focus?: () => void } | null
-      if (btn !== null && typeof btn.focus === 'function') btn.focus()
+      if (e.key === 'Escape') onDismiss()
     }
-    // 点菜单外的任何地方都关；触发按钮的点击已 stopPropagation，不会误关刚打开的自己。
-    const onDoc = (): void => setOpen(false)
+    const onDoc = (): void => onDismiss()
     document.addEventListener('keydown', onKey)
     document.addEventListener('click', onDoc)
     return () => {
       document.removeEventListener('keydown', onKey)
       document.removeEventListener('click', onDoc)
     }
-  }, [open, entryId])
-  const item = makeMenuItem(() => setOpen(false))
+  }, [open, onDismiss])
+}
+
+/** 「更多」触发按钮（阻止冒泡：否则 document 的「点外关闭」会立刻关掉刚打开的菜单）。 */
+function MmMenuTrigger(props: { open: boolean; onToggle: () => void }): unknown {
+  return createElement(
+    'button',
+    {
+      type: 'button',
+      className: 'mdr-icon-btn',
+      'aria-haspopup': 'menu',
+      'aria-expanded': props.open ? 'true' : 'false',
+      'aria-label': '更多',
+      'data-mdr-tip': '更多',
+      onClick: (e: { stopPropagation?: () => void }) => {
+        if (typeof e.stopPropagation === 'function') e.stopPropagation()
+        props.onToggle()
+      },
+    },
+    mmIcon('more', 14),
+  )
+}
+
+/** 菜单内容：导出 / 缩放模式（menuitemradio + 勾）/ 复制代码。 */
+function MmMenuBody(props: {
+  open: boolean
+  fit: 'container' | 'width'
+  ready: boolean
+  zoomable: boolean
+  onFit: (value: 'container' | 'width') => void
+  onPng: () => void
+  onSvg: () => void
+  onCopy: () => void
+}): unknown {
+  const fitItem = (value: 'container' | 'width', label: string, iconName: string): unknown =>
+    mmMenuItemNode(label, mmIcon(iconName, 13), () => props.onFit(value), {
+      role: 'menuitemradio',
+      checked: props.fit === value,
+      disabled: !props.zoomable,
+      check: props.fit === value ? createElement('span', { className: 'mdr-mm-check' }, mmIcon('check', 12)) : null,
+    })
   return createElement(
     'div',
-    null,
-    menuTriggerNode(entryId, open, () => setOpen(!open)),
+    { className: 'mdr-mm-menu', role: 'menu', 'aria-label': '更多操作', hidden: !props.open },
+    mmMenuItemNode('导出 PNG', mmIcon('file', 13), props.onPng, { disabled: !props.ready }),
+    mmMenuItemNode('导出 SVG', mmIcon('download', 13), props.onSvg, { disabled: !props.ready }),
+    createElement('div', { className: 'mdr-mm-menu-sep' }),
+    createElement('div', { className: 'mdr-mm-menu-label' }, '缩放模式'),
+    fitItem('container', '适应容器', 'fit'),
+    fitItem('width', '适应宽度', 'wrap'),
+    createElement('div', { className: 'mdr-mm-menu-sep' }),
+    mmMenuItemNode('复制代码', mmIcon('copy', 13), props.onCopy),
+  )
+}
+
+/** 「更多」菜单：低频操作收纳（触发按钮 + 内容 + 关闭策略）。 */
+function MdrMmMenu(props: {
+  scopeId: string
+  ready: boolean
+  zoomable: boolean
+  onPng: () => void
+  onSvg: () => void
+  onCopy: () => void
+}): unknown {
+  const [open, setOpen] = useState(false)
+  const [fit, setFit] = useState<'container' | 'width'>('container')
+  useMenuDismiss(open, () => setOpen(false))
+  const pickFit = (value: 'container' | 'width'): void => {
+    setFit(value)
+    setOpen(false)
+    zoomEntry(props.scopeId, value === 'container' ? 'fit' : 'fill')
+  }
+  const pickExport =
+    (action: () => void): (() => void) =>
+    () => {
+      setOpen(false)
+      action()
+    }
+  return createElement(
+    'div',
+    { className: 'mdr-mm-more' },
+    createElement(MmMenuTrigger, { open: open, onToggle: () => setOpen(!open) }),
+    createElement(MmMenuBody, {
+      open: open,
+      fit: fit,
+      ready: props.ready,
+      zoomable: props.zoomable,
+      onFit: pickFit,
+      onPng: pickExport(props.onPng),
+      onSvg: pickExport(props.onSvg),
+      onCopy: pickExport(props.onCopy),
+    }),
+  )
+}
+
+/** 底栏：常显「渲染为… 图表 / Markdown / 源码」+ 右侧渲染说明。 */
+function MdrMmModeBar(props: { view: MmView; onView: (view: MmView) => void; meta: () => string }): unknown {
+  const btn = (value: MmView, label: string, iconNode: unknown): unknown =>
+    createElement(
+      'button',
+      {
+        type: 'button',
+        className: 'mdr-mm-mode',
+        onClick: () => props.onView(value),
+        'aria-pressed': props.view === value,
+        'aria-label': '渲染为' + label,
+      },
+      iconNode,
+      createElement('span', null, label),
+    )
+  return createElement(
+    'div',
+    { className: 'mdr-mm-foot' },
+    createElement('span', { className: 'mdr-mm-foot-label' }, '渲染为…'),
     createElement(
       'div',
-      { className: 'dsh-md-render-menu', role: 'menu', 'aria-label': '更多操作', hidden: !open },
-      item('适应容器', icon.fit(14), () => zoomEntry(entryId, 'fit'), !zoomable),
-      item('适应宽度', icon.fill(14), () => zoomEntry(entryId, 'fill'), !zoomable),
-      createElement('hr', { key: 'menu-sep', className: 'dsh-md-render-menu-sep' }),
-      item('下载 PNG', icon.download(14), onPng, !ready),
-      item('下载 SVG', icon.download(14), onSvg, !ready),
-      item('复制代码', icon.copy(14), onCopy, false),
+      { className: 'mdr-mm-modes', role: 'group', 'aria-label': '围栏块渲染方式' },
+      btn('diagram', '图表', mmIcon('chart', 11)),
+      btn('markdown', 'Markdown', mmIcon('markdown', 11)),
+      btn('source', '源码', mmIcon('code', 11)),
+    ),
+    createElement('span', { className: 'mdr-mm-spacer' }),
+    createElement('span', { className: 'mdr-mm-meta' }, props.meta()),
+  )
+}
+
+/** 卡片头：标题胶囊 + 类型 + 工具条（视图分段 / 缩放 / 全屏 / 更多）。 */
+function MmCardHead(props: {
+  title: string
+  kind: string
+  status: string
+  view: MmView
+  ready: boolean
+  zoomable: boolean
+  scopeId: string
+  onView: (view: 'diagram' | 'source') => void
+  onOpenFullscreen: () => void
+  exportActions: ExportHandlers
+}): unknown {
+  return createElement(
+    'div',
+    { className: 'mdr-mm-head' },
+    createElement(
+      'span',
+      { className: 'mdr-mm-title', title: props.title },
+      mmIcon('chart', 11),
+      createElement('span', null, props.title),
+    ),
+    createElement('span', { className: 'mdr-mm-kind' }, props.kind),
+    createElement(
+      'div',
+      { className: 'mdr-mm-toolbar' },
+      createElement(MdrMmViewSeg, {
+        view: props.view,
+        previewDisabled: props.status === 'error',
+        onView: props.onView,
+      }),
+      createElement(MdrMmZoomSeg, { scopeId: props.scopeId }),
+      createElement(MdrMmFullscreen, { onOpen: props.onOpenFullscreen, disabled: !props.ready }),
+      createElement(MdrMmMenu, {
+        scopeId: props.scopeId,
+        ready: props.ready,
+        zoomable: props.zoomable,
+        onPng: props.exportActions.onPng,
+        onSvg: props.exportActions.onSvg,
+        onCopy: props.exportActions.onCopy,
+      }),
     ),
   )
 }
 
-exports.ViewToggle = ViewToggle
-exports.ZoomSeg = ZoomSeg
-exports.CardMenu = CardMenu
-exports.FullscreenButton = FullscreenButton
+/** 全屏 dialog 头：标题 + 路径 + 操作（缩放 / 导出 SVG / 关闭）。 */
+function MdrMmDialogHead(props: {
+  fsId: string
+  title: string
+  kind: string
+  onClose: () => void
+  onExportSvg: () => void
+}): unknown {
+  return createElement(
+    'div',
+    { className: 'mdr-mm-dialog-head' },
+    createElement('span', { className: 'mdr-mm-title' }, mmIcon('chart', 11), createElement('span', null, props.title)),
+    createElement('span', { className: 'mdr-mm-dialog-path' }, 'mermaid 围栏块 · ' + props.kind),
+    createElement(
+      'div',
+      { className: 'mdr-mm-dialog-actions' },
+      createElement(MdrMmZoomSeg, { scopeId: props.fsId }),
+      createElement(
+        'button',
+        { type: 'button', className: 'mdr-btn', onClick: props.onExportSvg },
+        mmIcon('download', 12),
+        createElement('span', null, '导出 SVG'),
+      ),
+      createElement(
+        'button',
+        {
+          type: 'button',
+          className: 'mdr-icon-btn',
+          onClick: props.onClose,
+          'aria-label': '关闭全屏',
+          'data-mdr-tip': '关闭（Esc）',
+        },
+        mmIcon('close', 14),
+      ),
+    ),
+  )
+}

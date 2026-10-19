@@ -25,11 +25,12 @@ import {
 const SOURCE = ['## 结论', '', '模型输出的是 **markdown**。', '', '插件 | 版本', '---', 'dsh-md-render | 0.2.0'].join(
   '\n',
 )
-const MD_BODY = 'div.dsh-md-render-text-md'
-const CODE_HOST = 'div.dsh-md-render-code-host'
-const CODE_BANNER = 'span.dsh-md-render-code-lang'
-const TOGGLE = 'button.dsh-md-render-text-toggle'
-const VIEW_ATTR = 'data-dsh-md-render-text-view'
+const MD_BODY = 'div.mdr-md.mdr-block-body'
+const CODE_HOST = 'div.mdr-block'
+const CODE_BANNER = 'span.mdr-fence-pill'
+const TOGGLE = 'button.mdr-rm-btn[data-mdr-option="source"]'
+const MD_BTN = 'button.mdr-rm-btn[data-mdr-option="markdown"]'
+const VIEW_ATTR = 'data-mdr-view'
 
 /** 一套完整夹具：markdown 家族 + 代码家族 + mermaid。 */
 function setup({ assets = true } = {}) {
@@ -62,7 +63,7 @@ test('markdown 家族的围栏块交给自研渲染器（真标签）+ 每块「
   })) {
     const body = block.querySelector(MD_BODY)
     assert.ok(body, name + ' 块获得自研渲染容器')
-    assert.ok(String(body.className).includes('tzx-md'), name + ' 容器带 tzx-md 契约类')
+    assert.ok(String(body.className).includes('mdr-md'), name + ' 容器带 mdr-md 契约类')
     assert.equal(block.getAttribute(VIEW_ATTR), 'markdown', name + ' 块初始为 markdown 视图')
     assert.ok(block.querySelector(TOGGLE), name + ' 块获得切换按钮')
     assert.ok(block.querySelectorAll('h1,h2,h3,h4,ul,ol,p,pre').length > 0, name + ' 块产出了真实 markdown 标签')
@@ -89,18 +90,22 @@ test('其他语言的围栏块交给自研代码块渲染（真语言名 banner 
       lang,
       name + ' 块 banner 显示真实语言名（不是「代码块」）',
     )
-    assert.ok(block.querySelector('button.dsh-md-render-code-copy'), name + ' 块有复制按钮')
+    assert.ok(block.querySelector('button.mdr-fence-copy'), name + ' 块有复制按钮')
     assert.equal(block.querySelector(MD_BODY), null, name + ' 块不被 markdown 接管')
-    assert.equal(block.querySelector(TOGGLE), null, name + ' 代码视图不需要「查看原文」（三态控件里的「源码」承担）')
+    assert.equal(
+      block.querySelector(TOGGLE).getAttribute('data-mdr-tip'),
+      '渲染为源码',
+      name + ' 代码视图的还原入口是底栏三态里的「源码」',
+    )
   }
-  assert.ok(blocks.js.querySelectorAll('span[class*=hljs-]').length > 0, 'js 块产出 hljs-* 高亮 span')
+  assert.ok(blocks.js.querySelectorAll('span[class*=hl-]').length > 0, 'js 块产出 hl-* 高亮 span')
   assert.equal(blocks.js.querySelector('pre').textContent, 'const a = 1', '源码一字不少')
 })
 
 test('mermaid / mmd 块交给图表卡片（与 markdown / code 分流不重叠）', () => {
   const { blocks } = setup()
   assert.equal(blocks.mermaid.getAttribute('data-dsh-md-render-mermaid-view'), 'preview', '进入预览视图')
-  assert.ok(blocks.mermaid.querySelector('div.dsh-md-render-mermaid-host'), '卡片 host 已挂')
+  assert.ok(blocks.mermaid.querySelector('div.mdr-mm-host'), '卡片 host 已挂')
   assert.equal(blocks.mermaid.querySelector(MD_BODY), null, '不被 markdown 接管')
   assert.equal(blocks.mermaid.querySelector(CODE_HOST), null, '不被代码块接管')
 })
@@ -108,13 +113,17 @@ test('mermaid / mmd 块交给图表卡片（与 markdown / code 分流不重叠�
 test('「查看原文」逐块独立，来回切不重复挂载', () => {
   const { blocks } = setup()
   const toggle = blocks.text.querySelector(TOGGLE)
-  assert.equal(toggle.getAttribute('data-dsh-md-render-tip'), '查看原文', 'markdown 视图下的浮层文案（文字默认收起）')
+  assert.equal(toggle.getAttribute('data-mdr-tip'), '渲染为源码', 'markdown 视图下的还原入口（底栏三态）')
   toggle.fire('click')
-  assert.equal(blocks.text.getAttribute(VIEW_ATTR), 'source', '切到原文视图')
-  assert.equal(blocks.text.querySelector(TOGGLE).getAttribute('data-dsh-md-render-tip'), '查看渲染', '浮层文案翻转')
-  assert.equal(blocks.text.querySelector(TOGGLE).getAttribute('aria-pressed'), 'true', 'aria-pressed 反映状态')
+  assert.equal(blocks.text.getAttribute('data-dsh-md-render-lang-force'), 'source', '切到原文视图（覆盖值）')
+  assert.equal(
+    blocks.text.querySelector(TOGGLE).getAttribute('data-mdr-tip'),
+    '渲染为源码',
+    '源码视图下底栏三态仍在（源码项激活）',
+  )
   assert.equal(blocks.plaintext.getAttribute(VIEW_ATTR), 'markdown', '其它块状态独立')
-  blocks.text.querySelector(TOGGLE).fire('click')
+  // 再切回 markdown：扫描器会在官方块形态上补回三态控件，点「Markdown」
+  blocks.text.querySelector(MD_BTN).fire('click')
   assert.equal(blocks.text.getAttribute(VIEW_ATTR), 'markdown', '切回 markdown 视图')
   assert.equal(blocks.text.querySelectorAll(MD_BODY).length, 1, '容器未重复')
   assert.equal(blocks.text.querySelectorAll(TOGGLE).length, 1, '按钮未重复')

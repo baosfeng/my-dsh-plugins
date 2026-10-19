@@ -22,8 +22,8 @@ import {
   makeElement,
 } from './support/fake-dom.mjs'
 
-const MD_BODY = 'div.dsh-md-render-text-md'
-const CODE_HOST = 'div.dsh-md-render-code-host'
+const MD_BODY = 'div.mdr-block-md'
+const CODE_HOST = 'div.mdr-block'
 const MARKED_URL = '/md-render/assets/marked-18.1.0.umd.js'
 /** 只取 assets 请求（config 拉取与本套件无关，别混进计数）。 */
 const assetCalls = (stub) => stub.calls.filter((url) => url.includes('/assets/'))
@@ -54,7 +54,7 @@ test('markdown 路径：解析层按需 fetch（只要 marked），加载完成�
   try {
     booted.loaded.exports.apply({ effect: (fn) => fn() })
     assert.equal(block.querySelector(MD_BODY), null, '解析层没就绪 → 保持宿主官方形态')
-    assert.equal(block.getAttribute('data-dsh-md-render-text-view'), null, '不写半成品状态')
+    assert.equal(block.getAttribute('data-mdr-view'), null, '不写半成品状态')
     assert.deepEqual(assetCalls(booted.stub), [MARKED_URL], '只请求解析层（代码路径才需要高亮层）')
     await settle()
     await settle()
@@ -71,12 +71,12 @@ test('代码路径：高亮层按需 fetch（只要 hljs），就绪后由纯文
   const booted = boot([block])
   try {
     booted.loaded.exports.apply({ effect: (fn) => fn() })
-    assert.equal(block.getAttribute('data-dsh-md-render-text-view'), 'code', '代码块不等高亮层：先按纯文本接管')
-    assert.equal(block.querySelectorAll('span[class*=hljs-]').length, 0, '还没有高亮')
+    assert.equal(block.getAttribute('data-mdr-view'), 'code', '代码块不等高亮层：先按纯文本接管')
+    assert.equal(block.querySelectorAll('span[class*=hl-]').length, 0, '还没有高亮')
     assert.deepEqual(assetCalls(booted.stub), [HLJS_URL], '只请求高亮层')
     await settle()
     await settle()
-    assert.ok(block.querySelectorAll('span[class*=hljs-]').length > 0, '就绪后重建为高亮态')
+    assert.ok(block.querySelectorAll('span[class*=hl-]').length > 0, '就绪后重建为高亮态')
     assert.equal(block.querySelectorAll(CODE_HOST).length, 1, '重建不重复挂容器')
     assert.equal(block.querySelector('pre').textContent, 'const a = 1', '源码一字不少')
   } finally {
@@ -93,7 +93,7 @@ test('懒加载失败：静默降级、不再重试', async () => {
     await settle()
     await settle()
     assert.equal(text.querySelector(MD_BODY), null, '解析层加载失败 → markdown 块保持官方形态')
-    assert.equal(js.getAttribute('data-dsh-md-render-text-view'), 'code', '代码块不依赖任何库，照常接管')
+    assert.equal(js.getAttribute('data-mdr-view'), 'code', '代码块不依赖任何库，照常接管')
     const calls = assetCalls(booted.stub).length
     booted.loaded.exports.apply({ effect: (fn) => fn() })
     await settle()

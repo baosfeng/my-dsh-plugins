@@ -20,7 +20,8 @@ import {
 } from './support/fake-dom.mjs'
 
 const SAMPLE = ['## 子 agent 回传', '', '要点 **加粗**：', '', '- 一', '- 二'].join('\n')
-const BODY_SEL = 'div.dsh-md-render-context-md'
+const CARD_SEL = 'div.mdr-ctx'
+const BODY_SEL = 'div.mdr-ctx-body'
 
 function setup({ text = SAMPLE, assets = true } = {}) {
   const row = makeElement('div')
@@ -36,12 +37,14 @@ function setup({ text = SAMPLE, assets = true } = {}) {
 
 test('上下文块由自研 markdown 渲染器渲染，原文 pre 保留并隐藏', () => {
   const { loaded, row, pre } = setup()
-  const body = row.querySelector(BODY_SEL)
-  assert.ok(body, '渲染容器已插入')
-  assert.ok(String(body.className).includes('tzx-md'), '容器带 tzx-md 契约类')
-  assert.equal(body.getAttribute('data-dsh-md-render-context-body'), 'true', '容器标记')
-  assert.equal(pre.previousElementSibling, body, 'pre 的前一个兄弟是渲染容器')
-  assert.equal(pre.getAttribute('data-dsh-md-render-context'), 'applied', 'pre 上的已处理标记')
+  const card = row.querySelector(CARD_SEL)
+  assert.ok(card, '渲染卡片已插入')
+  const body = card.querySelector(BODY_SEL)
+  assert.ok(body, 'markdown 正文容器已插入')
+  assert.ok(String(body.className).includes('mdr-md'), '容器带 mdr-md 契约类')
+  assert.equal(card.getAttribute('data-mdr-context'), 'true', '卡片标记')
+  assert.equal(pre.previousElementSibling, card, 'pre 的前一个兄弟是渲染卡片')
+  assert.equal(pre.getAttribute('data-mdr-context-hidden'), 'true', 'pre 上的已处理标记')
   assert.equal(pre.hidden, true, '原文 pre 置 hidden')
   assert.equal(pre.textContent, SAMPLE, '原文内容未改写')
   assert.equal(body.querySelector('h2').textContent, '子 agent 回传', '真实 h2 标签（自研渲染）')
@@ -56,7 +59,7 @@ test('幂等：重扫不重建容器、不重复渲染', () => {
   loaded.exports.apply({ effect: (fn) => fn() })
   loaded.exports.apply({ effect: (fn) => fn() })
   assert.equal(row.querySelector(BODY_SEL), body, '同一容器复用')
-  assert.equal(row.querySelectorAll(BODY_SEL).length, 1, '无重复容器')
+  assert.equal(row.querySelectorAll(CARD_SEL).length, 1, '无重复卡片')
   assert.equal(body.querySelectorAll('h2').length, 1, '内容未重复渲染')
 })
 
@@ -67,7 +70,7 @@ test('注入内容变化 → 重建并卸载旧容器', () => {
   loaded.exports.apply({ effect: (fn) => fn() })
   const next = row.querySelector(BODY_SEL)
   assert.notEqual(next, body, '内容变化后重建')
-  assert.equal(row.querySelectorAll(BODY_SEL).length, 1, '旧容器已移除')
+  assert.equal(row.querySelectorAll(CARD_SEL).length, 1, '旧卡片已移除')
   assert.equal(next.querySelector('h2').textContent, '更新后的正文', '新内容已渲染')
   assert.ok(stack.reactDom.unmounts.includes(body), '旧容器的 React root 已卸载')
 })
@@ -83,7 +86,7 @@ test('超长文本 / 开关关闭 / 渲染依赖没就绪 → 保持宿主纯文
   off.row.appendChild(pre2)
   off.loaded.exports.apply({ effect: (fn) => fn() })
   assert.equal(off.row.querySelectorAll(BODY_SEL).length, 1, '关闭后不再新增容器')
-  assert.equal(pre2.getAttribute('data-dsh-md-render-context'), null, '关闭后 pre 不被标记')
+  assert.equal(pre2.getAttribute('data-mdr-context'), null, '关闭后 pre 不被标记')
   assert.equal(pre2.hidden, false, '关闭后 pre 不被隐藏')
 
   const none = setup({ assets: false })

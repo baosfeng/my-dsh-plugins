@@ -38,7 +38,6 @@ function scanNode(node: Node, round: number): void {
   refreshFenceLangIndex(fenceScanContext)
   const el = node as Element
   applyThinkExpand(el)
-  if (typeof el.matches === 'function' && el.matches(CONTEXT_TEXT_SELECTOR)) applyContextMarkdown(el)
   scanContextBlocks(el)
   scanFenceBlocks(el)
   scanMermaidBlocks(el, round)

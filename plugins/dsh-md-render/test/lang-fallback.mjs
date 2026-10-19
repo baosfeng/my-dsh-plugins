@@ -25,11 +25,11 @@ import {
   makeRealHostCodeBlock,
 } from './support/fake-dom.mjs'
 
-const MD_BODY = 'div.dsh-md-render-text-md'
-const CODE_HOST = 'div.dsh-md-render-code-host'
-const CODE_LANG = 'span.dsh-md-render-code-lang'
-const TOGGLE = 'button.dsh-md-render-text-toggle'
-const VIEW_ATTR = 'data-dsh-md-render-text-view'
+const MD_BODY = 'div.mdr-block-md'
+const CODE_HOST = 'div.mdr-block'
+const CODE_LANG = 'span.mdr-fence-pill'
+const TOGGLE = 'button.mdr-rm-btn[data-mdr-option="source"]'
+const VIEW_ATTR = 'data-mdr-view'
 const HOST_LABEL = '代码块'
 const BODY = '## 标题\n\n- 一\n- 二'
 
@@ -78,10 +78,10 @@ test("确证无语言（client 事件流索引给 ''）→ 按 markdown 渲染�
   assert.equal(block.getAttribute(VIEW_ATTR), 'markdown', '初始为 markdown 视图')
   const toggle = block.querySelector(TOGGLE)
   assert.ok(toggle, '兜底块同样带「查看原文」')
-  assert.equal(toggle.getAttribute('data-dsh-md-render-tip'), '查看原文', '浮层文案（文字默认收起）')
+  assert.equal(toggle.getAttribute('data-mdr-tip'), '渲染为源码', '还原入口文案（底栏三态）')
   toggle.fire('click')
-  assert.equal(block.getAttribute(VIEW_ATTR), 'source', '一键切回原文视图')
-  assert.equal(block.querySelectorAll(MD_BODY).length, 1, '容器未重复')
+  assert.equal(block.getAttribute('data-dsh-md-render-lang-force'), 'source', '一键切回原文视图（覆盖值）')
+  assert.equal(block.querySelectorAll(MD_BODY).length, 0, '源码视图下 markdown 容器已拆干净')
 })
 
 test('识别失败（拿不到语言）→ 按代码块接管，语言位留空（不接管成 markdown，也不编造语言名）', () => {
@@ -91,7 +91,7 @@ test('识别失败（拿不到语言）→ 按代码块接管，语言位留空�
   assert.equal(noCtx.block.querySelector(MD_BODY), null, '不被误判成 markdown')
   assert.equal(noCtx.block.querySelector(CODE_LANG).textContent, '', '语言位留空')
   assert.equal(noCtx.block.getAttribute(VIEW_ATTR), 'code', 'code 视图')
-  assert.equal(noCtx.block.querySelector(TOGGLE), null, '代码视图不带「查看原文」')
+  assert.ok(noCtx.block.querySelector(TOGGLE), '代码视图的还原入口同样在底栏三态里')
 
   // ② host 索引未命中（索引里没有这条内容）→ 同样不算确证
   const miss = setup({ entries: null, langIndex: createLangIndex() })

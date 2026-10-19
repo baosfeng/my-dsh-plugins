@@ -35,9 +35,7 @@ window.__ModuleLoader__.load({
     /*__PART_CONFIG__*/
     /*__PART_BLOCK_LANG__*/
     /*__PART_LANG_SOURCE__*/
-    // 非标准表格容错（官方 GFM 未覆盖的两种写法）
     /*__PART_TABLE_NORMALIZE__*/
-    // 渲染依赖懒加载：marked（解析层）/ highlight.js（高亮层），走 assets 静态路由
     /*__PART_RENDER_ASSETS__*/
     // 自有渲染容器的 React root 管理（不再 require 官方组件）
     /*__PART_DOM_ROOT__*/
@@ -45,9 +43,8 @@ window.__ModuleLoader__.load({
     /*__PART_OWN_CODE__*/
     // 自研 markdown 渲染（marked 词法树 → vdom，表格容错在此接上）
     /*__PART_OWN_MARKDOWN__*/
-    // markdown 图片点击放大灯箱（原生 <dialog>，三路关闭）
+    /*__PART_OWN_MARKDOWN_BLOCKS__*/
     /*__PART_IMAGE_LIGHTBOX__*/
-    // 整段 markdown 复制（官方只有代码块复制）
     /*__PART_COPY__*/
     // 统一 MarkdownView：对外公共 API（自研渲染 + 整段复制）
     /*__PART_MARKDOWN_VIEW__*/
@@ -55,7 +52,6 @@ window.__ModuleLoader__.load({
     /*__PART_CONTEXT_MARKDOWN__*/
     // 围栏块接管：markdown / 代码两路（mermaid 交给下面）
     /*__PART_BLOCK_RENDER__*/
-    // 思考块默认展开（对官方折叠行派发一次 click；不改外观）
     /*__PART_THINK__*/
     // mermaid 引擎按需加载 + 离屏渲染
     /*__PART_MERMAID_ENGINE__*/
@@ -76,7 +72,12 @@ window.__ModuleLoader__.load({
     // 共享 DOM 扫描骨架 + 单 MutationObserver 按语言分流
     /*__PART_DOM_SCANNER__*/
     /*__PART_SCANNER__*/
-    // 样式（DSH 语义 token，随 activation 注入）
+    // 样式（宿主语义 token，随 activation 注入）：5 个按职责拆分的 part + 聚合器
+    /*__PART_STYLES_BASE__*/
+    /*__PART_STYLES_MARKDOWN__*/
+    /*__PART_STYLES_CODE__*/
+    /*__PART_STYLES_MERMAID__*/
+    /*__PART_STYLES_SETTINGS__*/
     /*__PART_STYLES__*/
     // 共享样式注入 / 图标集（dsh-shared/client-parts）
     /*__PART_STYLE_TAG__*/

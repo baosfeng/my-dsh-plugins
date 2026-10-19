@@ -34,7 +34,7 @@ test('MarkdownView 导出存在且是函数组件', () => {
 test('MarkdownView 的渲染结果来自自研渲染器（自有 class + 真实标签，不经过官方组件）', () => {
   const { loaded, page } = load()
   const dom = vdomToDom(loaded.exports.MarkdownView({ text: '# 标题\n\n正文 **粗**' }), page.document)
-  assert.ok(String(dom.className).includes('tzx-md'), 'wrapper carries the tzx-md contract class')
+  assert.ok(String(dom.className).includes('mdr-md'), 'wrapper carries the mdr-md contract class')
   assert.equal(dom.querySelector('h1').textContent, '标题', '自研渲染产出真实 h1（官方组件不参与）')
   assert.equal(dom.querySelector('strong').textContent, '粗', '行内 markdown 同样是自研渲染')
   assert.equal(dom.querySelector('.official-md-stub'), null, '没有任何官方渲染器产物')
@@ -59,7 +59,7 @@ test('非字符串 text 降级为文本（不抛错）', () => {
 test('解析层未就绪 → <pre> 兜底（原文不丢、渲染期不抛错）', () => {
   const { loaded, page } = load({ assets: false })
   const dom = vdomToDom(loaded.exports.MarkdownView({ text: '# 标题' }), page.document)
-  const fallback = dom.querySelector('pre.dsh-md-render-fallback')
+  const fallback = dom.querySelector('pre.mdr-md-plain')
   assert.ok(fallback, 'fallback pre rendered')
   assert.equal(fallback.textContent, '# 标题', '原文保留')
 })

@@ -1,167 +1,294 @@
-// ── 设置页视图：单 tab「渲染」三分组（Markdown 增强 / 思考块 / Mermaid 图表）──
-// 官方 slots 扩展点：设置 → 插件 → 渲染。开关与 host 半 lib/config.js 的 schema
-// 一一对应（三段命名空间化）。保存走 PUT /md-render/api/config → host 半写回 profile
-// patch 文件（先合并行内已有键）+ 当即重同步 systemPrompt section（保存即生效）。
-// 本文件是 part 片段：与其它片段共享 factory 作用域。文件末尾的 `export {}` 只用于
-// 让 tsc 按模块作用域编译（否则 script 模式的全局作用域会让同名函数跨文件冲突）；
-// scripts/build.mjs 注入前会剥掉编译产生的 exports 样板（see unwrapModule）。
-
-/** 页签 id：必须全局唯一——复用宿主已发出的 id 会**替换**对方页签（静默故障）。 */
-const MD_RENDER_SETTINGS_TAB_ID = 'md-render-settings'
-/** 页签顺序（合并前三插件分别为 90 / 92 / 95，合一后取最前者）。 */
-const MD_RENDER_SETTINGS_TAB_ORDER = 90
-
-/** 设置页配置结构（与 host 半 MdRenderConfig 同构）。 */
+// ── 设置页视图：渲染 / 关于 双 tab + 三组开关 + 恢复默认 ────────────────
+// 官方 slots 扩展点：设置 → 插件 → 渲染（以及 >= 0.1.7 的组合包详情页，见 index.ts）。
+// 原型结构（dsh-md-render.html 3843–4064）：插件头 / 双 tab / 渲染面板（3 组开关 +
+// 注入说明）/ 底部保存 · 恢复默认 · 已保存 / 关于面板。
+// 保存走 PUT /md-render/api/config → host 半写回 profile patch 并重同步 systemPrompt；
+// 同时 setRenderOptions(draft) 让当前页面立即生效。本文件是 part 片段（共享 factory 作用域）。
 interface MdRenderSettingsConfig {
   markdown?: Record<string, boolean>
   thinking?: Record<string, boolean>
   mermaid?: Record<string, boolean>
 }
-
-/** 一个开关项（label / hint 惰性求值；section + key 定位到配置树）。 */
 interface MdRenderSwitchItem {
   section: 'markdown' | 'thinking' | 'mermaid'
   key: string
   label: () => string
   hint: () => string
 }
-
-/** 三分组的开关定义（顺序即渲染顺序）。 */
-const MD_RENDER_SWITCH_GROUPS: { title: () => string; items: MdRenderSwitchItem[] }[] = [
+interface MdRenderSwitchGroup {
+  icon: string
+  title: () => string
+  count: () => string
+  pill: 'success' | 'accent'
+  items: MdRenderSwitchItem[]
+  note: (() => string) | null
+}
+/** 开关项构造器（压掉三组表格的重复字段）。 */
+function mdRenderItem(
+  section: 'markdown' | 'thinking' | 'mermaid',
+  key: string,
+  label: () => string,
+  hint: () => string,
+): MdRenderSwitchItem {
+  return { section: section, key: key, label: label, hint: hint }
+}
+/** 三组开关（顺序即渲染顺序；覆盖 host 半 schema 的全部布尔键）。 */
+const MD_RENDER_SWITCH_GROUPS: MdRenderSwitchGroup[] = [
   {
+    icon: 'markdown',
     title: MD_RENDER_STRINGS.groupMarkdown,
+    count: MD_RENDER_STRINGS.count3,
+    pill: 'success',
     items: [
-      {
-        section: 'markdown',
-        key: 'copyButton',
-        label: MD_RENDER_STRINGS.copyButtonLabel,
-        hint: MD_RENDER_STRINGS.copyButtonHint,
-      },
-      {
-        section: 'markdown',
-        key: 'textFenceMarkdown',
-        label: MD_RENDER_STRINGS.textFenceLabel,
-        hint: MD_RENDER_STRINGS.textFenceHint,
-      },
-      {
-        section: 'markdown',
-        key: 'contextMarkdown',
-        label: MD_RENDER_STRINGS.contextLabel,
-        hint: MD_RENDER_STRINGS.contextHint,
-      },
+      mdRenderItem('markdown', 'copyButton', MD_RENDER_STRINGS.copyTitle, MD_RENDER_STRINGS.copyDesc),
+      mdRenderItem('markdown', 'textFenceMarkdown', MD_RENDER_STRINGS.fenceTitle, MD_RENDER_STRINGS.fenceDesc),
+      mdRenderItem('markdown', 'contextMarkdown', MD_RENDER_STRINGS.contextTitle, MD_RENDER_STRINGS.contextDesc),
     ],
+    note: null,
   },
   {
+    icon: 'pencil',
     title: MD_RENDER_STRINGS.groupThinking,
-    items: [
-      {
-        section: 'thinking',
-        key: 'defaultExpanded',
-        label: MD_RENDER_STRINGS.thinkingLabel,
-        hint: MD_RENDER_STRINGS.thinkingHint,
-      },
-    ],
+    count: MD_RENDER_STRINGS.count1,
+    pill: 'success',
+    items: [mdRenderItem('thinking', 'defaultExpanded', MD_RENDER_STRINGS.thinkTitle, MD_RENDER_STRINGS.thinkDesc)],
+    note: null,
   },
   {
+    icon: 'chart',
     title: MD_RENDER_STRINGS.groupMermaid,
+    count: MD_RENDER_STRINGS.injected,
+    pill: 'accent',
     items: [
-      {
-        section: 'mermaid',
-        key: 'injectPrompt',
-        label: MD_RENDER_STRINGS.injectPromptLabel,
-        hint: MD_RENDER_STRINGS.injectPromptHint,
-      },
-      {
-        section: 'mermaid',
-        key: 'render',
-        label: MD_RENDER_STRINGS.mermaidRenderLabel,
-        hint: MD_RENDER_STRINGS.mermaidRenderHint,
-      },
+      mdRenderItem('mermaid', 'render', MD_RENDER_STRINGS.mermaidTitle, MD_RENDER_STRINGS.mermaidDesc),
+      mdRenderItem('mermaid', 'injectPrompt', MD_RENDER_STRINGS.injectTitle, MD_RENDER_STRINGS.injectDesc),
     ],
+    note: MD_RENDER_STRINGS.noteMermaid,
   },
 ]
-
-/** 开关行（布尔配置项）。 */
-function MdRenderSettingsToggle(props: {
-  label: () => string
-  hint: () => string
+/** 取开关当前值：缺失 / 非布尔 → 默认开（与 host 半 schema 同口径）。纯函数。 */
+function mdrSwitchOn(
+  draft: MdRenderSettingsConfig | null,
+  section: 'markdown' | 'thinking' | 'mermaid',
+  key: string,
+): boolean {
+  if (draft === null || draft === undefined) return true
+  const sec = draft[section]
+  if (sec === null || sec === undefined) return true
+  return sec[key] !== false
+}
+/** 默认草稿（全部开启）；「恢复默认」与加载失败兜底共用。纯函数。 */
+function mdrDefaultDraft(): MdRenderSettingsConfig {
+  return {
+    markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+    thinking: { defaultExpanded: true },
+    mermaid: { injectPrompt: true, render: true },
+  }
+}
+/** 图标快捷方式（共享图标集；显式尺寸）。 */
+function mdrSetIcon(name: string, size: number): unknown {
+  return icon[name](size)
+}
+/** 插件头部：图标 + 标题（含包名徽标）+ 简介 + 状态徽标。 */
+function MdrSetHead(): unknown {
+  return createElement(
+    'div',
+    { className: 'mdr-set-head' },
+    createElement('div', { className: 'mdr-set-icon' }, mdrSetIcon('markdown', 18)),
+    createElement(
+      'div',
+      { className: 'mdr-set-info' },
+      createElement(
+        'div',
+        { className: 'mdr-set-title' },
+        createElement('span', null, MD_RENDER_STRINGS.headTitle()),
+        createElement('span', { className: 'mdr-pill mdr-pill-accent' }, MD_RENDER_STRINGS.packageName),
+      ),
+      createElement('p', { className: 'mdr-set-sub' }, MD_RENDER_STRINGS.headSub()),
+    ),
+    createElement(
+      'div',
+      { className: 'mdr-set-meta' },
+      createElement('span', { className: 'mdr-pill mdr-pill-success' }, MD_RENDER_STRINGS.enabled()),
+    ),
+  )
+}
+/** 双 tab 头（渲染 / 关于）+ 右侧提示。 */
+function MdrSetTabs(props: { tab: 'render' | 'about'; onTab: (tab: 'render' | 'about') => void }): unknown {
+  const tab = (value: 'render' | 'about', label: () => string): unknown =>
+    createElement(
+      'button',
+      {
+        type: 'button',
+        role: 'tab',
+        className: 'mdr-seg-btn' + (props.tab === value ? ' is-active' : ''),
+        'data-mdr-set-tab': value,
+        'aria-selected': props.tab === value,
+        onClick: () => props.onTab(value),
+      },
+      label(),
+    )
+  return createElement(
+    'div',
+    { className: 'mdr-set-tabs' },
+    createElement(
+      'div',
+      { className: 'mdr-seg', role: 'tablist', 'aria-label': '渲染插件页签' },
+      tab('render', MD_RENDER_STRINGS.tabRender),
+      tab('about', MD_RENDER_STRINGS.tabAbout),
+    ),
+    createElement('span', { className: 'mdr-set-tab-hint' }, MD_RENDER_STRINGS.tabHint()),
+  )
+}
+/** 开关行（标题 + 说明 + 右侧 44×26 开关）。 */
+function MdrSetSwitchRow(props: {
+  item: MdRenderSwitchItem
   on: boolean
   onChange: (value: boolean) => void
 }): unknown {
   return createElement(
     'div',
-    { className: 'dsh-md-render-settings-row' },
+    { className: 'mdr-set-row' },
     createElement(
       'div',
-      { className: 'dsh-md-render-settings-info' },
-      createElement('div', { className: 'dsh-md-render-settings-label' }, props.label()),
-      createElement('div', { className: 'dsh-md-render-settings-hint' }, props.hint()),
+      { className: 'mdr-set-row-text' },
+      createElement('div', { className: 'mdr-set-row-title' }, props.item.label()),
+      createElement('p', { className: 'mdr-set-row-desc' }, props.item.hint()),
     ),
-    createElement('div', {
-      className: 'dsh-md-render-settings-toggle',
-      'data-on': String(props.on),
-      role: 'switch',
-      'aria-checked': String(props.on),
-      onClick: () => props.onChange(!props.on),
-    }),
+    createElement(
+      'div',
+      { className: 'mdr-set-ctrl' },
+      createElement('button', {
+        type: 'button',
+        className: 'mdr-switch',
+        role: 'switch',
+        'aria-checked': props.on,
+        'aria-label': props.item.label(),
+        onClick: () => props.onChange(!props.on),
+      }),
+    ),
   )
 }
-
-/** 取开关当前值（缺失按默认开）。 */
-function mdRenderSwitchOn(draft: MdRenderSettingsConfig, item: MdRenderSwitchItem): boolean {
-  const section = draft[item.section]
-  if (section === undefined || section === null) return true
-  return section[item.key] !== false
-}
-
-/** 三分组视图。 */
-function MdRenderSettingsGroups(props: {
+/** 一个分组：分组头（图标 + 标题 + 计数徽标）+ 开关行 + 可选说明块。 */
+function MdrSetGroup(props: {
+  group: MdRenderSwitchGroup
   draft: MdRenderSettingsConfig
   onPatch: (item: MdRenderSwitchItem, value: boolean) => void
 }): unknown {
   return createElement(
     'div',
-    { className: 'dsh-md-render-settings' },
-    ...MD_RENDER_SWITCH_GROUPS.map((group, index) =>
-      createElement(
-        'div',
-        { className: 'dsh-md-render-settings-group', key: 'group-' + index },
-        createElement('div', { className: 'dsh-md-render-settings-section-title' }, group.title()),
-        ...group.items.map((item) =>
-          createElement(MdRenderSettingsToggle, {
-            key: item.section + '.' + item.key,
-            label: item.label,
-            hint: item.hint,
-            on: mdRenderSwitchOn(props.draft, item),
-            onChange: (value: boolean) => props.onPatch(item, value),
-          }),
-        ),
-      ),
+    { className: 'mdr-set-group' },
+    createElement(
+      'div',
+      { className: 'mdr-set-group-head' },
+      mdrSetIcon(props.group.icon, 15),
+      createElement('h3', null, props.group.title()),
+      createElement('span', { className: 'mdr-pill mdr-pill-' + props.group.pill }, props.group.count()),
     ),
+    ...props.group.items.map((item) =>
+      createElement(MdrSetSwitchRow, {
+        key: item.section + '.' + item.key,
+        item: item,
+        on: mdrSwitchOn(props.draft, item.section, item.key),
+        onChange: (value: boolean) => props.onPatch(item, value),
+      }),
+    ),
+    props.group.note === null
+      ? null
+      : createElement(
+          'p',
+          { className: 'mdr-set-note' },
+          createElement('strong', null, MD_RENDER_STRINGS.noteMermaidStrong()),
+          createElement('span', null, props.group.note()),
+        ),
   )
 }
-
-/** 操作区：保存按钮 + 成功/失败提示（成功失败都留在原地，不弹窗、不静默）。 */
-function MdRenderSettingsActions(props: { saved: boolean; failed: boolean; onSave: () => void }): unknown {
+/** 底部操作：保存 / 恢复默认 / 已保存 / 失败 / 说明。 */
+function MdrSetActions(props: { saved: boolean; failed: boolean; onSave: () => void; onReset: () => void }): unknown {
   return createElement(
     'div',
-    { className: 'dsh-md-render-settings-actions' },
+    { className: 'mdr-set-actions' },
     createElement(
       'button',
-      { className: 'dsh-md-render-settings-btn', onClick: props.onSave },
-      MD_RENDER_STRINGS.save(),
+      { type: 'button', className: 'mdr-set-save', onClick: props.onSave },
+      mdrSetIcon('check', 13),
+      createElement('span', null, MD_RENDER_STRINGS.save()),
+    ),
+    createElement(
+      'button',
+      { type: 'button', className: 'mdr-set-reset', onClick: props.onReset },
+      MD_RENDER_STRINGS.reset(),
     ),
     props.saved
-      ? createElement('span', { className: 'dsh-md-render-settings-saved' }, MD_RENDER_STRINGS.saved())
+      ? createElement(
+          'span',
+          { className: 'mdr-set-saved' },
+          mdrSetIcon('check', 12),
+          createElement('span', null, MD_RENDER_STRINGS.saved()),
+        )
       : null,
-    props.failed
-      ? createElement('span', { className: 'dsh-md-render-settings-error' }, MD_RENDER_STRINGS.saveFailed())
-      : null,
+    props.failed ? createElement('span', { className: 'mdr-set-error' }, MD_RENDER_STRINGS.saveFailed()) : null,
+    createElement('span', { className: 'mdr-set-foot-hint' }, MD_RENDER_STRINGS.footHint()),
   )
 }
-
+/** 关于面板：版本 / 扩展点 / 依赖 / 文档。 */
+function MdrSetAbout(): unknown {
+  const row = (title: () => string, desc: string): unknown =>
+    createElement(
+      'div',
+      { className: 'mdr-set-row' },
+      createElement(
+        'div',
+        { className: 'mdr-set-row-text' },
+        createElement('div', { className: 'mdr-set-row-title' }, title()),
+        createElement('p', { className: 'mdr-set-row-desc' }, desc),
+      ),
+    )
+  return createElement(
+    'div',
+    { className: 'mdr-set-panel', role: 'tabpanel', 'aria-label': '关于' },
+    createElement(
+      'div',
+      { className: 'mdr-set-group' },
+      createElement(
+        'div',
+        { className: 'mdr-set-group-head' },
+        mdrSetIcon('help', 15),
+        createElement('h3', null, MD_RENDER_STRINGS.groupAbout()),
+      ),
+      row(MD_RENDER_STRINGS.versionTitle, MD_RENDER_STRINGS.versionDesc()),
+      row(MD_RENDER_STRINGS.slotsTitle, MD_RENDER_STRINGS.slotsDesc()),
+      row(MD_RENDER_STRINGS.depsTitle, MD_RENDER_STRINGS.depsDesc()),
+      row(MD_RENDER_STRINGS.docsTitle, MD_RENDER_STRINGS.docsDesc()),
+    ),
+  )
+}
+/** 渲染面板：三组开关 + 底部操作（tab 切换只控制显隐）。 */
+function MdrRenderPanel(props: {
+  hidden: boolean
+  draft: MdRenderSettingsConfig
+  saved: boolean
+  failed: boolean
+  onPatch: (item: MdRenderSwitchItem, value: boolean) => void
+  onSave: () => void
+  onReset: () => void
+}): unknown {
+  return createElement(
+    'div',
+    { className: 'mdr-set-panel', role: 'tabpanel', 'aria-label': '渲染设置', hidden: props.hidden },
+    ...MD_RENDER_SWITCH_GROUPS.map((group, index) =>
+      createElement(MdrSetGroup, { key: 'group-' + index, group: group, draft: props.draft, onPatch: props.onPatch }),
+    ),
+    createElement(MdrSetActions, {
+      saved: props.saved,
+      failed: props.failed,
+      onSave: props.onSave,
+      onReset: props.onReset,
+    }),
+  )
+}
 /** 配置加载失败视图：按失败原因给针对性提示 + 重试。 */
-function MdRenderSettingsLoadError(props: { kind: string; onRetry: () => void }): unknown {
+function MdrSetLoadError(props: { kind: string; onRetry: () => void }): unknown {
   const hint =
     props.kind === 'http:404'
       ? MD_RENDER_STRINGS.errorMissingRoute()
@@ -170,67 +297,36 @@ function MdRenderSettingsLoadError(props: { kind: string; onRetry: () => void })
         : MD_RENDER_STRINGS.errorNetwork()
   return createElement(
     'div',
-    { className: 'dsh-md-render-settings' },
-    createElement('div', { className: 'dsh-md-render-settings-error' }, MD_RENDER_STRINGS.loadFailed()),
-    createElement('div', { className: 'dsh-md-render-settings-status' }, hint),
+    { className: 'mdr-set mdr-root' },
+    createElement('div', { className: 'mdr-set-error' }, mdrSetIcon('alert', 13), MD_RENDER_STRINGS.loadFailed()),
+    createElement('div', { className: 'mdr-set-status' }, hint),
     createElement(
       'div',
-      { className: 'dsh-md-render-settings-actions' },
+      { className: 'mdr-set-actions' },
       createElement(
         'button',
-        { className: 'dsh-md-render-settings-btn', onClick: props.onRetry },
+        { type: 'button', className: 'mdr-set-reset', onClick: props.onRetry },
         MD_RENDER_STRINGS.retry(),
       ),
     ),
   )
 }
-
-/** 拉取当前生效配置（GET）；失败交 onError（kind 供提示区分）。 */
-function loadMdRenderConfig(onValue: (value: MdRenderSettingsConfig) => void, onError: (kind: string) => void): void {
-  fetch(CONFIG_API_URL)
-    .then((res) => {
-      if (!res.ok) throw Object.assign(new Error('HTTP ' + res.status), { status: res.status })
-      return res.json()
-    })
-    .then((body: { ok?: boolean; value?: MdRenderSettingsConfig }) => {
-      if (body === null || body.ok !== true) throw new Error('bad config response')
-      onValue(body.value ?? {})
-    })
-    .catch((err: { status?: number }) => onError(typeof err?.status === 'number' ? 'http:' + err.status : 'network'))
-}
-
-/** 保存配置（PUT）：只发**变更的段**（host 半按段合并），成功交 onSaved。 */
-function saveMdRenderConfig(draft: MdRenderSettingsConfig, onSaved: () => void, onError: (kind: string) => void): void {
-  fetch(CONFIG_API_URL, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(draft) })
-    .then((res) => res.json())
-    .then((body: { ok?: boolean }) => {
-      if (body === null || body.ok !== true) throw new Error('save failed')
-      // 立即应用新开关（无需等待 patch 热重载，当前页面生效）。
-      setRenderOptions(draft)
-      onSaved()
-    })
-    .catch(() => onError('save'))
-}
-
-/** 设置页主视图：加载当前配置 → 三分组开关编辑 → 保存（PUT /md-render/api/config）。 */
-function mdRenderSettingsView(): unknown {
-  const [config, setConfig] = useState<MdRenderSettingsConfig | null>(null)
+/** 设置状态（加载 → 草稿 → 保存 / 恢复默认）；拆出主组件压函数长度。 */
+function useMdRenderSettings() {
   const [draft, setDraft] = useState<MdRenderSettingsConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorKind, setErrorKind] = useState('')
   const [saved, setSaved] = useState(false)
-
   const load = (): void => {
     setLoading(true)
     setErrorKind('')
-    loadMdRenderConfig(
+    mdRenderLoadConfig(
       (value) => {
-        setConfig(value)
         setDraft(value)
         setLoading(false)
       },
       (kind) => {
-        setConfig(null)
+        setDraft(null)
         setLoading(false)
         setErrorKind(kind)
       },
@@ -239,33 +335,66 @@ function mdRenderSettingsView(): unknown {
   useEffect(() => {
     load()
   }, [])
-
-  if (loading) {
-    return createElement(
-      'div',
-      { className: 'dsh-md-render-settings' },
-      createElement('div', { className: 'dsh-md-render-settings-status' }, MD_RENDER_STRINGS.loading()),
-    )
-  }
-  if (config === null) return createElement(MdRenderSettingsLoadError, { kind: errorKind, onRetry: load })
-
-  const patch = (item: MdRenderSwitchItem, value: boolean): void => {
-    const current = draft ?? {}
-    setDraft({ ...current, [item.section]: { ...(current[item.section] ?? {}), [item.key]: value } })
-  }
-  const save = (): void => {
+  const save = (next: MdRenderSettingsConfig): void => {
     setSaved(false)
     setErrorKind('')
-    saveMdRenderConfig(
-      draft ?? {},
+    mdRenderSaveConfig(
+      next,
       () => setSaved(true),
       (kind) => setErrorKind(kind),
     )
   }
+  const patch = (item: MdRenderSwitchItem, value: boolean): void => {
+    const current = draft ?? mdrDefaultDraft()
+    setSaved(false)
+    setDraft({ ...current, [item.section]: { ...(current[item.section] ?? {}), [item.key]: value } })
+  }
+  const reset = (): void => {
+    const defaults = mdrDefaultDraft()
+    setDraft(defaults)
+    save(defaults)
+  }
+  return {
+    draft: draft,
+    loading: loading,
+    errorKind: errorKind,
+    saved: saved,
+    load: load,
+    save: save,
+    patch: patch,
+    reset: reset,
+  }
+}
+/** 设置页主视图（渲染 / 关于 双 tab）。 */
+function MdrSettingsView(): unknown {
+  const [tab, setTab] = useState<'render' | 'about'>('render')
+  const state = useMdRenderSettings()
+  if (state.loading) {
+    return createElement(
+      'div',
+      { className: 'mdr-set mdr-root' },
+      createElement('div', { className: 'mdr-set-status' }, MD_RENDER_STRINGS.loading()),
+    )
+  }
+  if (state.draft === null) return createElement(MdrSetLoadError, { kind: state.errorKind, onRetry: state.load })
   return createElement(
     'div',
-    { className: 'dsh-md-render-settings' },
-    createElement(MdRenderSettingsGroups, { draft: draft ?? {}, onPatch: patch }),
-    createElement(MdRenderSettingsActions, { saved, failed: errorKind === 'save', onSave: save }),
+    { className: 'mdr-set mdr-root' },
+    createElement(MdrSetHead),
+    createElement(MdrSetTabs, { tab: tab, onTab: (next: 'render' | 'about') => setTab(next) }),
+    createElement(MdrRenderPanel, {
+      hidden: tab !== 'render',
+      draft: state.draft,
+      saved: state.saved,
+      failed: state.errorKind === 'save',
+      onPatch: state.patch,
+      onSave: () => state.save(state.draft ?? mdrDefaultDraft()),
+      onReset: state.reset,
+    }),
+    tab === 'about' ? createElement(MdrSetAbout) : null,
   )
 }
+exports.mdrSwitchOn = mdrSwitchOn
+exports.mdrDefaultDraft = mdrDefaultDraft
+exports.MD_RENDER_SWITCH_GROUPS = MD_RENDER_SWITCH_GROUPS
+exports.MdrSettingsView = MdrSettingsView

@@ -204,6 +204,11 @@ export function makeElement(tag, attrs = {}) {
     fire(type, event = {}) {
       for (const fn of this._listeners[type] || []) fn({ currentTarget: this, target: this, ...event })
     },
+    /** 真实 DOM 语义：dispatchEvent(new CustomEvent(...)) → 监听器收到带 detail 的事件。 */
+    dispatchEvent(event) {
+      this.fire(event.type, event.detail === undefined ? {} : { detail: event.detail })
+      return true
+    },
     /** 真实 DOM 语义：`el.click()` 派发一次 click（think.ts 对官方折叠行就是这么触发的）。 */
     click() {
       this.fire('click')
@@ -324,6 +329,14 @@ export function installGlobals(page) {
   globalThis.window = page.window
   globalThis.document = page.document
   globalThis.Element = function Element() {}
+  // CustomEvent：本插件的语言切换 / 缩放事件走它（真实浏览器原生存在，假环境补最小实现）。
+  globalThis.CustomEvent = class CustomEvent {
+    constructor(type, init = {}) {
+      this.type = type
+      this.bubbles = init.bubbles === true
+      this.detail = init.detail
+    }
+  }
   globalThis.MutationObserver = class MutationObserver {
     constructor(callback) {
       this.callback = callback

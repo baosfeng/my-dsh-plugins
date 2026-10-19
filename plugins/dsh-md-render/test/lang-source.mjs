@@ -38,9 +38,9 @@ import {
   makeRealHostCodeBlock,
 } from './support/fake-dom.mjs'
 
-const TEXT_BODY = 'div.dsh-md-render-text-md'
-const TOGGLE = 'button.dsh-md-render-text-toggle'
-const MERMAID_HOST = 'div.dsh-md-render-mermaid-host'
+const TEXT_BODY = 'div.mdr-block-md'
+const TOGGLE = 'button.mdr-rm-btn[data-mdr-option="source"]'
+const MERMAID_HOST = 'div.mdr-mm-host'
 const MD = '## 结论\n\n- 一\n- 二'
 const MERMAID = 'flowchart TD\n  A --> B'
 
@@ -130,7 +130,7 @@ test('③ 确证无语言（事件流索引给空串）→ 按 markdown 兜底�
   b.loaded.exports.apply(ctx)
   assert.equal(b.loaded.exports.fenceLangOf(block), '', '确证无语言（空串 = 不是「不知道」）')
   assert.ok(block.querySelector(TEXT_BODY), '#470 需求 3：无语言块按 markdown 兜底渲染')
-  assert.equal(block.getAttribute('data-dsh-md-render-text-view'), 'markdown', '初始 markdown 视图')
+  assert.equal(block.getAttribute('data-mdr-view'), 'markdown', '初始 markdown 视图')
   assert.ok(block.querySelector(TOGGLE), '带「查看原文」一键还原')
   assert.equal(block.querySelector(MERMAID_HOST), null, '无语言块绝不误伤为图表卡片')
   assert.equal(b.stub.langCalls().length, 0, '本地索引确证 → 一次 RPC 都不发')

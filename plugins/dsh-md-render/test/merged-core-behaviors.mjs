@@ -63,13 +63,16 @@ test('核心行为①：mermaid / mmd 代码块渲染为图表卡片（不改官
   loaded.exports.considerMermaidBlock(block, 1)
 
   assert.equal(block.getAttribute('data-dsh-md-render-mermaid-view'), 'preview', '块进入预览视图')
-  const host = block.querySelector('div.dsh-md-render-mermaid-host')
+  const host = block.querySelector('div.mdr-mm-host')
   assert.ok(host, '卡片 host 挂在块内')
   assert.ok(host.getAttribute('data-dsh-md-render-mermaid'), 'host 带 entryId')
   assert.equal(host.getAttribute('data-dsh-md-render-mermaid-state'), 'loading', '初始渲染态为 loading')
-  assert.ok(host.querySelector('.dsh-md-render-mermaid-card'), '卡片组件已渲染')
+  assert.ok(host.querySelector('.mdr-mm-card'), '卡片组件已渲染')
   // 官方节点结构不变：pre / code 仍在原位（隐藏交给自有 CSS）
-  assert.equal(block.querySelectorAll('pre').length, 1, '官方 pre 未被移除')
+  assert.ok(
+    block.querySelectorAll('pre').some((pre) => pre.textContent === MERMAID_SOURCE),
+    '官方 pre 未被移除（源码仍在原位）',
+  )
   assert.equal(block.querySelector('code').textContent, MERMAID_SOURCE, '源码未改写')
 })
 
@@ -82,7 +85,7 @@ test('核心行为①：引擎调用走离屏容器（失败图形不进页面�
   assert.equal(rendered.length, 1, '引擎被调用一次')
   assert.equal(rendered[0].source, MERMAID_SOURCE, '引擎收到块源码')
   // 离屏容器必须被丢弃：mermaid 10.9.3 失败时会把「炸弹图」插进渲染容器
-  assert.equal(page.document.body.querySelectorAll('[data-dsh-md-render-offscreen]').length, 0, '离屏容器已移除')
+  assert.equal(page.document.body.querySelectorAll('[data-mdr-mm-offscreen]').length, 0, '离屏容器已移除')
   assert.equal(page.document.body.querySelectorAll('.error-icon').length, 0, '引擎错误图形不进页面')
 })
 
@@ -92,14 +95,14 @@ test('核心行为①：非 mermaid 块与关闭开关时都不渲染卡片', ()
   scroll.appendChild(js)
   loaded.exports.considerMermaidBlock(js, 1)
   assert.equal(js.getAttribute('data-dsh-md-render-mermaid-view'), null, 'js 块不被接管')
-  assert.equal(js.querySelector('div.dsh-md-render-mermaid-host'), null, 'js 块无卡片 host')
+  assert.equal(js.querySelector('div.mdr-mm-host'), null, 'js 块无卡片 host')
 
   const off = setup()
   const block = makeMermaidBlock()
   off.scroll.appendChild(block)
   off.loaded.exports.setRenderOptions({ mermaid: { render: false } })
   off.loaded.exports.considerMermaidBlock(block, 1)
-  assert.equal(block.querySelector('div.dsh-md-render-mermaid-host'), null, '开关关闭后不渲染')
+  assert.equal(block.querySelector('div.mdr-mm-host'), null, '开关关闭后不渲染')
 })
 
 test('核心行为①：流式中的 mermaid 块等内容稳定（不抢先渲染残缺图）', () => {
@@ -109,7 +112,7 @@ test('核心行为①：流式中的 mermaid 块等内容稳定（不抢先渲�
   wrap.appendChild(block)
   scroll.appendChild(wrap)
   loaded.exports.considerMermaidBlock(block, 1)
-  assert.equal(block.querySelector('div.dsh-md-render-mermaid-host'), null, '流式中不挂卡片')
+  assert.equal(block.querySelector('div.mdr-mm-host'), null, '流式中不挂卡片')
   assert.equal(rendered.length, 0, '引擎未被调用')
 })
 
@@ -171,15 +174,15 @@ test('核心行为③：围栏块交给自研渲染器，并与 mermaid 分流�
   loaded.exports.scanFenceBlocks(scroll)
   loaded.exports.scanMermaidBlocks(scroll, 1)
 
-  assert.ok(text.querySelector('div.dsh-md-render-text-md'), 'text 块 markdown 化')
+  assert.ok(text.querySelector('div.mdr-block-md'), 'text 块 markdown 化')
   assert.equal(text.getAttribute('data-dsh-md-render-mermaid-view'), null, 'text 块不被 mermaid 接管')
-  assert.equal(text.querySelector('div.dsh-md-render-mermaid-host'), null, 'text 块无卡片 host')
+  assert.equal(text.querySelector('div.mdr-mm-host'), null, 'text 块无卡片 host')
 
-  assert.ok(mermaid.querySelector('div.dsh-md-render-mermaid-host'), 'mermaid 块挂卡片')
-  assert.equal(mermaid.querySelector('div.dsh-md-render-text-md'), null, 'mermaid 块不被 markdown 接管')
+  assert.ok(mermaid.querySelector('div.mdr-mm-host'), 'mermaid 块挂卡片')
+  assert.equal(mermaid.querySelector('div.mdr-block-md'), null, 'mermaid 块不被 markdown 接管')
 
-  assert.equal(js.getAttribute('data-dsh-md-render-text-view'), 'code', 'js 块走自研代码块视图')
-  assert.equal(js.querySelector('div.dsh-md-render-text-md'), null, 'js 块不被 markdown 接管')
-  assert.equal(js.querySelector('div.dsh-md-render-mermaid-host'), null, 'js 块无卡片 host')
+  assert.equal(js.getAttribute('data-mdr-view'), 'code', 'js 块走自研代码块视图')
+  assert.equal(js.querySelector('div.mdr-block-md'), null, 'js 块不被 markdown 接管')
+  assert.equal(js.querySelector('div.mdr-mm-host'), null, 'js 块无卡片 host')
   assert.equal(text.querySelectorAll('h2').length, 1, 'text 内容由自研渲染器渲染一次')
 })

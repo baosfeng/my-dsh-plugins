@@ -22,11 +22,12 @@ import {
   makeElement,
 } from './support/fake-dom.mjs'
 
-const SWITCH = 'div.dsh-md-render-lang-switch'
-const BTN = 'button.dsh-md-render-mermaid-vt'
-const TEXT_BODY = 'div.dsh-md-render-text-md'
+const SWITCH = 'span.mdr-rm'
+const BTN = 'button.mdr-rm-btn'
+const HEAD_BTN = 'button[data-mdr-tip]'
+const TEXT_BODY = 'div.mdr-md.mdr-block-body'
 const FORCE_ATTR = 'data-dsh-md-render-lang-force'
-const CARD_HOST = 'div.dsh-md-render-mermaid-host'
+const CARD_HOST = 'div.mdr-mm-host'
 
 function setup(blocks) {
   const scroll = makeElement('div', { 'data-conversation-scroll': 'true' })
@@ -40,7 +41,7 @@ function setup(blocks) {
 
 /** 按文案点某个选项按钮。 */
 function pick(block, label) {
-  const btn = block.querySelectorAll(BTN).find((b) => b.getAttribute('data-dsh-md-render-tip') === '渲染为' + label)
+  const btn = block.querySelectorAll(BTN).find((b) => b.getAttribute('data-mdr-tip') === '渲染为' + label)
   assert.ok(btn, '控件里应有「' + label + '」')
   btn.fire('click')
 }
@@ -53,11 +54,11 @@ test('未点击过控件 → 不产生任何语言覆盖（用户显式意图 !=
   assert.equal(js.getAttribute(FORCE_ATTR), null, '块上也没有覆盖属性')
   assert.ok(js.querySelector(SWITCH), '但控件已就位（三选一）')
   assert.deepEqual(
-    js.querySelectorAll(BTN).map((b) => b.getAttribute('data-dsh-md-render-tip')),
+    js.querySelectorAll(BTN).map((b) => b.getAttribute('data-mdr-tip')),
     ['渲染为图表', '渲染为Markdown', '渲染为源码'],
     '三个选项',
   )
-  assert.equal(js.getAttribute('data-dsh-md-render-text-view'), 'code', '自动判定没有被放宽：js 块走自研代码块视图')
+  assert.equal(js.getAttribute('data-mdr-view'), 'code', '自动判定没有被放宽：js 块走自研代码块视图')
   assert.equal(js.querySelector(TEXT_BODY), null, 'js 块不被 markdown 接管')
 })
 
@@ -75,7 +76,7 @@ test('任意代码块可切 Markdown / 源码，来回切不重复注入', () =>
   assert.equal(js.getAttribute(FORCE_ATTR), 'source', '切回源码')
   assert.equal(js.querySelector(TEXT_BODY), null, 'markdown 容器已拆干净')
   // 视图属性也必须清：否则块停在 markdown 视图，官方内容被自有 CSS 藏住 → 空块（真实浏览器实测）。
-  assert.equal(js.getAttribute('data-dsh-md-render-text-view'), null, '视图属性已清（否则官方内容仍被隐藏）')
+  assert.equal(js.getAttribute('data-mdr-view'), null, '视图属性已清（否则官方内容仍被隐藏）')
   assert.equal(js.querySelectorAll(TEXT_BODY).length, 0, '无残留容器')
   assert.equal(js.querySelectorAll(SWITCH).length, 1, '控件只有一份')
 
@@ -110,13 +111,13 @@ test('mermaid 卡片：块内不挂控件，卡片头不重复提供「渲染为
   // 卡片头常驻只有「视图切换 + 更多」。原来的「渲染为 Markdown / 源码」与常驻的「预览 / 代码」
   // 是同一意图的两套入口 —— 已按用户口径删掉（外面有的，里面就别再有）。这条断言防它被加回来。
   const head = block.querySelector(CARD_HOST)
-  const tips = head.querySelectorAll(BTN).map((b) => b.getAttribute('data-dsh-md-render-tip'))
+  const tips = head.querySelectorAll(HEAD_BTN).map((b) => b.getAttribute('data-mdr-tip'))
   assert.ok(tips.includes('预览') && tips.includes('代码'), '卡片头常驻视图切换')
   assert.equal(head.querySelector(SWITCH), null, '卡片头没有「渲染为…」控件（不重复）')
-  assert.ok(head.querySelector('.dsh-md-render-menu'), '卡片头有「更多」菜单（低频操作的收纳处）')
+  assert.ok(head.querySelector('.mdr-mm-menu'), '卡片头有「更多」菜单（低频操作的收纳处）')
 
   // 要看源码走「代码」视图：卡片卸载、官方代码块还原（这条路径仍在）。
-  const codeBtn = head.querySelectorAll(BTN).find((b) => b.getAttribute('data-dsh-md-render-tip') === '代码')
+  const codeBtn = head.querySelectorAll(HEAD_BTN).find((b) => b.getAttribute('data-mdr-tip') === '代码')
   assert.ok(codeBtn, '卡片头有「代码」视图')
   codeBtn.fire('click')
   // 视图切换只换卡片内的显示（卡片不卸载）：「看源码」现在走这条路 ——

@@ -24,8 +24,8 @@ import {
   makeElement,
 } from './support/fake-dom.mjs'
 
-const TEXT_BODY = 'div.dsh-md-render-text-md'
-const CONTEXT_BODY = 'div.dsh-md-render-context-md'
+const TEXT_BODY = 'div.mdr-md.mdr-block-body'
+const CONTEXT_BODY = 'div.mdr-ctx-body'
 
 /** 装配一页 + 应用插件；返回触发 observer 的辅助函数。 */
 function setup() {
@@ -121,15 +121,14 @@ test('宿主冲掉容器但保留块（React 重渲染抹掉插件节点）→ �
   const body = block.querySelector(TEXT_BODY)
   assert.ok(body, '首次接管')
 
-  // 模拟 React 重建块内部子树：容器与按钮被抹掉，宿主结构回来
-  block.removeChild(body)
-  const toggle = block.querySelector('button.dsh-md-render-text-toggle')
-  block.removeChild(toggle)
+  // 模拟 React 重建块内部子树：整张自有卡片被抹掉，宿主结构回来
+  const card = block.querySelector('div.mdr-block')
+  block.removeChild(card)
   assert.equal(block.querySelector(TEXT_BODY), null, '容器已丢失')
 
   commit(block)
   assert.ok(block.querySelector(TEXT_BODY), '兜底重扫自愈：容器重建')
   assert.equal(block.querySelectorAll(TEXT_BODY).length, 1, '不重复挂载')
-  assert.equal(block.querySelectorAll('button.dsh-md-render-text-toggle').length, 1, '切换按钮也只一份')
+  assert.equal(block.querySelectorAll('button.mdr-rm-btn').length, 3, '底栏三态控件也只一份')
   assert.ok(stack.reactDom.unmounts.includes(body), '被抹掉的容器已卸载')
 })

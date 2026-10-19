@@ -75,13 +75,13 @@ test('开关热生效：关闭后不再注入，恢复后重新注入', () => {
 
   loaded.exports.setRenderOptions({ textFenceMarkdown: false, contextMarkdown: false })
   loaded.exports.apply({ effect: (fn) => fn() })
-  assert.equal(block.querySelector('div.dsh-md-render-text-md'), null, 'text 围栏块关闭后不注入')
-  assert.equal(row.querySelector('div.dsh-md-render-context-md'), null, '上下文块关闭后不注入')
+  assert.equal(block.querySelector('div.mdr-block-md'), null, 'text 围栏块关闭后不注入')
+  assert.equal(row.querySelector('div.mdr-ctx'), null, '上下文块关闭后不注入')
 
   loaded.exports.setRenderOptions({ textFenceMarkdown: true, contextMarkdown: true })
   loaded.exports.apply({ effect: (fn) => fn() })
-  assert.ok(block.querySelector('div.dsh-md-render-text-md'), '恢复后注入 text 围栏块')
-  assert.ok(row.querySelector('div.dsh-md-render-context-md'), '恢复后注入上下文块')
+  assert.ok(block.querySelector('div.mdr-block-md'), '恢复后注入 text 围栏块')
+  assert.ok(row.querySelector('div.mdr-ctx'), '恢复后注入上下文块')
 })
 
 test('启动时拉取服务端配置并应用；拉取失败保持默认全开', async () => {
@@ -102,7 +102,7 @@ test('启动时拉取服务端配置并应用；拉取失败保持默认全开',
     // copyButton 关（不再渲染复制按钮）、contextMarkdown 保持默认开（非法值忽略）
     const view = loaded.exports.MarkdownView({ text: 'x' })
     assert.equal(view.props.children.filter(Boolean).length, 1, 'copyButton=false 生效：无复制按钮')
-    assert.ok(row.querySelector('div.dsh-md-render-context-md'), '非法值忽略：上下文渲染保持默认开')
+    assert.ok(row.querySelector('div.mdr-ctx'), '非法值忽略：上下文渲染保持默认开')
 
     // 拉取失败：保持当前状态、不抛错
     globalThis.fetch = () => Promise.reject(new Error('offline'))

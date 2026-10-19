@@ -1,8 +1,8 @@
-// ── 设置页文案（i18n）+ 样式 ───────────────────────────────────────────
-// 语言来源两级（都是浏览器全局）：宿主 locale（dsh-client-locale 把当前 UI 语言同步到
-// <html lang>）优先，其次 navigator.language。只看 navigator.language 会停在浏览器
-// 语言、与宿主 UI 语言不一致（浏览器英文 + 宿主中文时最明显）。
-// 文案全部是**惰性函数**：宿主切语言后重渲染即取到新语言，写成常量就跟不上。
+// ── 设置页文案（i18n）──────────────────────────────────────────────────
+// 语言来源两级（都是浏览器全局）：宿主 locale（宿主把当前 UI 语言同步到 <html lang>）
+// 优先，其次 navigator.language。文案全部是**惰性函数**：宿主切语言后重渲染即取到新语言，
+// 写成常量就跟不上。
+// 样式不在这里：新口径由 parts/styles-settings.ts 的 STYLES_SETTINGS 单一负责。
 // 函数名带 mdRender 前缀：本文件是 part 片段，与其它片段共享 factory 作用域。
 
 /** 宿主当前 UI 语言（读不到 / 未同步时返回空串）。 */
@@ -27,9 +27,9 @@ function mdRenderBrowserLang(): string {
 /** 当前是否中文：宿主 <html lang> 优先，其次浏览器语言，再其次英文。 */
 function mdRenderIsZh(): boolean {
   const host = mdRenderHostLang().toLowerCase()
-  if (host.startsWith('zh')) return true
-  if (host.startsWith('en')) return false
-  return mdRenderBrowserLang().startsWith('zh')
+  if (host.indexOf('zh') === 0) return true
+  if (host.indexOf('en') === 0) return false
+  return mdRenderBrowserLang().indexOf('zh') === 0
 }
 
 /** 中英二选一（惰性求值）。 */
@@ -40,43 +40,70 @@ function mdRenderText(zh: string, en: string): () => string {
 /** 设置页文案表（全部惰性）。 */
 const MD_RENDER_STRINGS = {
   tab: mdRenderText('渲染', 'Rendering'),
-  groupMarkdown: mdRenderText('Markdown 增强', 'Markdown enhancements'),
+  packageName: 'dsh-md-render',
+  headTitle: mdRenderText('渲染', 'Rendering'),
+  headSub: mdRenderText(
+    '接管对话内围栏块：代码高亮、mermaid 图表卡片、思考块默认展开、整段复制。',
+    'Takes over fenced blocks in conversations: syntax highlighting, mermaid diagram cards, expanded thinking and whole-message copy.',
+  ),
+  enabled: mdRenderText('已启用', 'Enabled'),
+  tabRender: mdRenderText('渲染', 'Rendering'),
+  tabAbout: mdRenderText('关于', 'About'),
+  tabHint: mdRenderText(
+    '修改即时生效 · 已打开的消息重新挂载后生效',
+    'Changes apply immediately · already-open messages pick them up on remount',
+  ),
+  groupMarkdown: mdRenderText('Markdown', 'Markdown'),
   groupThinking: mdRenderText('思考块', 'Thinking'),
   groupMermaid: mdRenderText('Mermaid 图表', 'Mermaid diagrams'),
-  copyButtonLabel: mdRenderText('整段复制', 'Copy whole message'),
-  copyButtonHint: mdRenderText(
-    'MarkdownView 整段内容一键复制（本插件自研 markdown 渲染 + 整段复制）',
-    'One-click copy for the whole MarkdownView (plugin-built markdown rendering + whole-content copy)',
+  count3: mdRenderText('3 项', '3 items'),
+  count2: mdRenderText('2 项', '2 items'),
+  count1: mdRenderText('1 项', '1 item'),
+  injected: mdRenderText('宿主注入', 'Host-injected'),
+  copyTitle: mdRenderText('复制按钮', 'Copy button'),
+  copyDesc: mdRenderText(
+    '代码块右上角显示复制按钮，默认隐藏、悬停浮现；键盘聚焦时同样可见。',
+    'A copy button on the top-right of code blocks; hidden until hover or keyboard focus.',
   ),
-  textFenceLabel: mdRenderText('围栏块渲染（自研）', 'Render code fences (built-in)'),
-  textFenceHint: mdRenderText(
-    '所有围栏代码块都由本插件自己的渲染器产出：text / 无语言块按 markdown 渲染，其余语言渲染为带真实语言名与语法高亮的代码块；每块可切回官方源码视图',
-    'Every fenced block is rendered by this plugin own renderer: text / unlabelled blocks as markdown, other languages as a code block with the real language name and syntax highlighting; each block can switch back to the host source view',
+  fenceTitle: mdRenderText('围栏块渲染总开关', 'Render fenced blocks'),
+  fenceDesc: mdRenderText(
+    '关闭后所有围栏块保持宿主官方形态，仅保留 markdown 正文渲染。',
+    'When off, every fenced block keeps the host look; only markdown body rendering stays on.',
   ),
-  contextLabel: mdRenderText('上下文注入块渲染', 'Render context-injection blocks'),
-  contextHint: mdRenderText(
-    '宿主以纯文本呈现的上下文注入正文（子 agent 消息 / AGENTS.md）由本插件自己的 markdown 渲染器渲染',
-    'Render plain-text context bodies (sub-agent messages / AGENTS.md) with this plugin own markdown renderer',
+  contextTitle: mdRenderText('上下文注入块', 'Context-injection blocks'),
+  contextDesc: mdRenderText(
+    '子代理回传的消息按 markdown 渲染，并标注「上下文注入」来源。',
+    'Sub-agent messages are rendered as markdown and labelled as context injection.',
   ),
-  thinkingLabel: mdRenderText('思考默认展开', 'Expand thinking by default'),
-  thinkingHint: mdRenderText(
-    '新出现的思考块自动展开；只对官方折叠行派发一次点击，外观完全由官方决定（用户手动折叠后不再干预）',
-    'Newly mounted thinking rows expand automatically by dispatching one click; the look stays fully official (a manual collapse is respected)',
+  thinkTitle: mdRenderText('默认展开', 'Expand by default'),
+  thinkDesc: mdRenderText(
+    '思考块加载后默认展开，可手动折叠；关闭后默认收起，只显示标题与耗时。',
+    'Thinking blocks start expanded and can be collapsed; when off they start collapsed with only the title and timing.',
   ),
-  injectPromptLabel: mdRenderText('注入 mermaid 能力说明', 'Inject mermaid capability note'),
-  injectPromptHint: mdRenderText(
-    '默认开启；关闭后已有代码块照常渲染，只是不再主动引导模型画图',
-    'On by default; when off, existing blocks still render — the model is just no longer nudged',
+  mermaidTitle: mdRenderText('渲染为图表卡片', 'Render as diagram cards'),
+  mermaidDesc: mdRenderText(
+    'mermaid 围栏块渲染为卡片：预览 / 代码切换、缩放、全屏、导出 PNG 与 SVG。',
+    'mermaid fences become cards: preview / code toggle, zoom, fullscreen, PNG and SVG export.',
   ),
-  mermaidRenderLabel: mdRenderText('渲染 mermaid 代码块', 'Render mermaid code blocks'),
-  mermaidRenderHint: mdRenderText(
-    'mermaid / mmd 代码块渲染为图表卡片（预览 / 代码切换、导出 PNG / SVG）；渲染失败时回显源码',
-    'Render mermaid / mmd blocks as diagram cards (preview / code toggle, PNG / SVG export); on failure the source is shown',
+  injectTitle: mdRenderText('注入 mermaid 能力说明', 'Inject the mermaid capability note'),
+  injectDesc: mdRenderText(
+    '默认开启；关闭后已有代码块照常渲染，只是不再主动引导模型画图。',
+    'On by default; when off, existing blocks still render — the model is just no longer nudged.',
   ),
-  loading: mdRenderText('加载中…', 'Loading…'),
+  noteMermaid: mdRenderText(
+    '图表由宿主注入的 mermaid 运行时渲染，插件只负责围栏块接管与卡片外壳；宿主未提供运行时时自动回退到源码视图，不阻塞对话。',
+    'Diagrams are rendered by the host-provided mermaid runtime; the plugin only owns fence takeover and the card shell, and falls back to the source view when the runtime is missing.',
+  ),
+  noteMermaidStrong: mdRenderText('注入能力说明：', 'Injection note:'),
   save: mdRenderText('保存', 'Save'),
+  reset: mdRenderText('恢复默认', 'Restore defaults'),
   saved: mdRenderText('已保存', 'Saved'),
   saveFailed: mdRenderText('保存失败', 'Save failed'),
+  footHint: mdRenderText(
+    '配置保存在插件设置中，随工作区同步',
+    'Saved in plugin settings and synced with the workspace',
+  ),
+  loading: mdRenderText('加载中…', 'Loading…'),
   loadFailed: mdRenderText('配置加载失败', 'Failed to load config'),
   retry: mdRenderText('重试', 'Retry'),
   errorMissingRoute: mdRenderText(
@@ -91,25 +118,26 @@ const MD_RENDER_STRINGS = {
     '网络错误或响应异常：请检查 DSH 服务是否正常运行',
     'Network error or bad response: check that the DSH server is running',
   ),
+  groupAbout: mdRenderText('关于 dsh-md-render', 'About dsh-md-render'),
+  versionTitle: mdRenderText('版本', 'Version'),
+  versionDesc: mdRenderText(
+    '随已安装的 npm 包发布，版本号以 package.json 为准。',
+    'Shipped with the installed npm package; the version lives in package.json.',
+  ),
+  slotsTitle: mdRenderText('扩展点', 'Extension points'),
+  slotsDesc: mdRenderText(
+    'ctx.slots 设置页签 · 围栏块接管 · 不注册节点级 seat、不使用右侧栏页签。',
+    'ctx.slots settings tab · fence takeover · no node-level seats and no right-sidebar tabs.',
+  ),
+  depsTitle: mdRenderText('依赖', 'Dependencies'),
+  depsDesc: mdRenderText(
+    'marked / highlight.js / panzoom 走 assets 懒加载；mermaid 由宿主运行时提供，均不打包。',
+    'marked / highlight.js / panzoom load lazily from assets; mermaid comes from the host runtime — none are bundled.',
+  ),
+  docsTitle: mdRenderText('文档', 'Docs'),
+  docsDesc: mdRenderText(
+    'docs/md渲染/概述.md · docs/原型重构/brief-md-render.md',
+    'docs/md渲染/概述.md · docs/原型重构/brief-md-render.md',
+  ),
+  viewDocs: mdRenderText('查看文档', 'Open docs'),
 }
-
-/** 设置页样式：只用宿主语义变量（--dsw-* / --ds-*），跟随深浅主题。 */
-const MD_RENDER_SETTINGS_STYLES: string = `
-.dsh-md-render-settings{display:flex;flex-direction:column;gap:12px;padding:12px}
-.dsh-md-render-settings-group{display:flex;flex-direction:column;gap:8px}
-.dsh-md-render-settings-section-title{font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-secondary)}
-.dsh-md-render-settings-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
-.dsh-md-render-settings-info{display:flex;flex-direction:column;gap:2px;min-width:0}
-.dsh-md-render-settings-label{font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}
-.dsh-md-render-settings-hint{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);line-height:1.5}
-.dsh-md-render-settings-toggle{flex:none;width:34px;height:20px;border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--dsw-alias-label-tertiary) 30%, transparent);position:relative;cursor:pointer;transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-md-render-settings-toggle[data-on="true"]{background:var(--dsw-alias-state-success-primary);border-color:transparent}
-.dsh-md-render-settings-toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-primary);transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-md-render-settings-toggle[data-on="true"]::after{transform:translateX(12px);background:var(--dsw-alias-label-primary-foreground)}
-.dsh-md-render-settings-actions{display:flex;align-items:center;gap:8px}
-.dsh-md-render-settings-btn{height:28px;padding:0 14px;border-radius:6px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}
-.dsh-md-render-settings-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.dsh-md-render-settings-status{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
-.dsh-md-render-settings-saved{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-success-primary)}
-.dsh-md-render-settings-error{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}
-`

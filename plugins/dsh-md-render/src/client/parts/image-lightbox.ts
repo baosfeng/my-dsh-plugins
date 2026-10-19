@@ -1,45 +1,47 @@
-// ── markdown 图片「点击放大」灯箱（原生 <dialog> 模态）──────────────────────
-// 用户反馈：图片只能静态看、点不开 —— 成熟方案（medium-zoom / PhotoSwipe /
-// lightGallery）都支持点击放大。这里只借这条交互，实现用**原生 <dialog> +
-// showModal()**（与本插件 mermaid 浮窗同款做法：零依赖，遮罩 / Esc / 焦点归还
-// 由浏览器兜底），不引入任何三方库。
+// ── 图片点击放大（B 路）：原生 <dialog> 模态灯箱 ──────────────────────────
+// 交互：markdown 图片点击 → 原生 <dialog>.showModal()（遮罩 / Esc / 焦点归还 / 背景
+// 滚动锁定由浏览器兜底，零依赖）；三路关闭 = Esc（cancel 事件）/ 点击遮罩 /
+// 点击图片本身；同一时刻只保留一个灯箱（再点第二张先收掉上一个）。
 //
-// 三路关闭：Esc（dialog 的 cancel 事件）/ 点击遮罩（点击落在 dialog 自身 =
-// 点了 ::backdrop）/ 点击图片（想立刻收起时不必去够边缘）。关闭即把 dialog 从
-// 文档移除（不留残留节点）；同一时刻只保留一个灯箱（再点第二张图先收掉上一个）。
-//
-// 安全口径与 markdown 渲染完全一致：src 仍过 mdSafeImageSrc（只放行 http / https
-// 与同源相对路径），未放行的地址**不打开灯箱**；全程只有 DOM API（className /
-// src / alt 属性赋值），没有 innerHTML / dangerouslySetInnerHTML。
+// 安全口径：只放行 http(s) 与同源相对路径（与 markdown 渲染同一条口径），未放行的
+// 地址**不打开灯箱**、不加载来路不明的资源；全程只有 DOM API，没有 innerHTML。
 
-/** 灯箱 <dialog> 类名。 */
-const LIGHTBOX_CLASS = 'dsh-md-render-img-lightbox'
-/** 灯箱内大图类名。 */
-const LIGHTBOX_IMG_CLASS = 'dsh-md-render-img-lightbox-img'
-/** 内容包装层类名（关闭按钮的定位锚点，与原型 .dlg-wrap 同构）。 */
-const LIGHTBOX_WRAP_CLASS = 'dsh-md-render-img-lightbox-wrap'
-/** 关闭按钮类名（32px 圆形，挂在图片右上角外侧；叉线由 styles.ts 的 ::before/::after 画）。 */
-const LIGHTBOX_CLOSE_CLASS = 'dsh-md-render-img-lightbox-close'
+/** 灯箱 <dialog> / 内容包装 / 大图 / 关闭按钮类名。 */
+const MDR_LIGHTBOX_CLASS = 'mdr-lightbox'
+const MDR_LIGHTBOX_WRAP_CLASS = 'mdr-lightbox-wrap'
+const MDR_LIGHTBOX_IMG_CLASS = 'mdr-lightbox-img'
+const MDR_LIGHTBOX_CLOSE_CLASS = 'mdr-lightbox-close'
+/** 宿主容器已绑定点击代理的标记。 */
+const MDR_LIGHTBOX_BOUND_ATTR = 'data-mdr-lightbox-bound'
 
 /** 当前打开的灯箱（同一时刻只允许一个）。 */
-let imageLightbox: HTMLDialogElement | null = null
+let mdrLightbox: HTMLDialogElement | null = null
+
+/** 安全图片地址：http(s) 绝对地址或同源相对路径；其余（javascript: / data: 等）→ ''。 */
+function mdrSafeImageSrc(url: unknown): string {
+  const text = typeof url === 'string' ? url.trim() : ''
+  if (text === '') return ''
+  if (/^https?:\/\//i.test(text)) return text
+  if (/^\/\//.test(text)) return text
+  if (text.charAt(0) === '/' || text.indexOf('./') === 0 || text.indexOf('../') === 0) return text
+  return ''
+}
 
 /** 关闭灯箱（幂等；Esc / 遮罩 / 点击图片三路共用）。 */
 function closeImageLightbox(): void {
-  const dialog = imageLightbox
+  const dialog = mdrLightbox
   if (dialog === null) return
-  imageLightbox = null
+  mdrLightbox = null
   try {
     dialog.close()
   } catch (_e) {
     /* 已关闭 / 伪 DOM 无此方法 */
   }
-  const parent = dialog.parentNode
-  if (parent !== null && parent !== undefined) parent.removeChild(dialog)
+  if (dialog.parentNode) dialog.parentNode.removeChild(dialog)
 }
 
 /** 以模态方式打开（无 showModal 的环境退回 open 属性 —— 绝不静默失败）。 */
-function showLightboxModal(dialog: HTMLDialogElement): void {
+function showMdrLightbox(dialog: HTMLDialogElement): void {
   try {
     dialog.showModal()
   } catch (_e) {
@@ -47,50 +49,81 @@ function showLightboxModal(dialog: HTMLDialogElement): void {
   }
 }
 
-/** 点图放大；地址不在安全口径内 → 什么都不做（不加载来路不明的资源）。 */
-function openImageLightbox(src: string, alt: string): void {
-  const safe = mdSafeImageSrc(src)
+/** 显式关闭按钮（右上角圆形；叉线由 CSS 的 ::before / ::after 画）。 */
+function mdrLightboxCloseButton(): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.className = MDR_LIGHTBOX_CLOSE_CLASS
+  button.type = 'button'
+  button.setAttribute('aria-label', '关闭')
+  button.textContent = '×'
+  button.addEventListener('click', closeImageLightbox)
+  return button
+}
+
+/** 点图放大；地址不在安全口径内 → 什么都不做。 */
+function openImageLightbox(src: unknown, alt: unknown): void {
+  const safe = mdrSafeImageSrc(src)
   if (safe === '' || typeof document === 'undefined' || document === null) return
   closeImageLightbox()
-  const dialog = document.createElement('dialog')
-  dialog.className = LIGHTBOX_CLASS
+  const dialog = document.createElement('dialog') as HTMLDialogElement
+  dialog.className = MDR_LIGHTBOX_CLASS
   const wrap = document.createElement('div')
-  wrap.className = LIGHTBOX_WRAP_CLASS
+  wrap.className = MDR_LIGHTBOX_WRAP_CLASS
   const img = document.createElement('img')
-  img.className = LIGHTBOX_IMG_CLASS
+  img.className = MDR_LIGHTBOX_IMG_CLASS
   img.src = safe
-  img.alt = alt
+  img.alt = typeof alt === 'string' ? alt : ''
   wrap.appendChild(img)
-  wrap.appendChild(makeLightboxCloseButton())
+  wrap.appendChild(mdrLightboxCloseButton())
   dialog.appendChild(wrap)
-  // ::backdrop 不是元素：点击落在 dialog 自身 = 点了遮罩；点图片同样收起。
   dialog.addEventListener('click', (event: Event) => {
     if (event.target === dialog || event.target === img) closeImageLightbox()
   })
   dialog.addEventListener('cancel', closeImageLightbox)
   document.body.appendChild(dialog)
-  imageLightbox = dialog
-  showLightboxModal(dialog)
+  mdrLightbox = dialog
+  showMdrLightbox(dialog)
+}
+
+/** 事件目标最近的 <img>（选择器不成立 / 抛错 → null）。 */
+function mdrClosestImage(target: unknown): Element | null {
+  const el = target as { closest?: (selector: string) => unknown } | null
+  if (el === null || el === undefined || typeof el.closest !== 'function') return null
+  try {
+    const img = el.closest('img')
+    return img === null || img === undefined ? null : (img as Element)
+  } catch (_e) {
+    return null
+  }
+}
+
+/** 点击代理：host 内的 <img> 被点击 → 放大（绕开按钮 / 链接内的图片）。 */
+function mdrImageFromEvent(host: Element, target: unknown): Element | null {
+  const element = mdrClosestImage(target)
+  if (element === null) return null
+  if (typeof host.contains === 'function' && !host.contains(element)) return null
+  if (typeof element.closest === 'function' && element.closest('button,a')) return null
+  return element
 }
 
 /**
- * 关闭按钮（原型 §C 的第四路关闭：Esc / 遮罩 / 点图之外再给一个显式出口，
- * 大图铺满时"点图片收起"不好发现）。叉线由 styles.ts 的 ::before/::after 画
- * （1.8px 圆角线，与原型 16px viewBox 的 1.8 stroke path 等价）——
- * 本文件走纯 DOM，不引 React 图标集，也不需要 createElementNS / innerHTML。
+ * 给宿主容器挂一次点击放大（契约导出）：同一容器重复调用是幂等的；
+ * 事件代理 → 后插入的图片也自动生效，不需要逐图绑定。
  */
-function makeLightboxCloseButton(): HTMLButtonElement {
-  const button = document.createElement('button')
-  button.className = LIGHTBOX_CLOSE_CLASS
-  button.type = 'button'
-  button.setAttribute('aria-label', '关闭')
-  button.addEventListener('click', closeImageLightbox)
-  return button
+function mountMdrLightbox(host: Element): void {
+  if (!host || typeof host.addEventListener !== 'function' || typeof host.getAttribute !== 'function') return
+  if (host.getAttribute(MDR_LIGHTBOX_BOUND_ATTR) === 'true') return
+  host.setAttribute(MDR_LIGHTBOX_BOUND_ATTR, 'true')
+  host.addEventListener('click', (event: Event) => {
+    const img = mdrImageFromEvent(host, event.target)
+    if (img === null) return
+    openImageLightbox(img.getAttribute('src'), img.getAttribute('alt'))
+  })
 }
 
-exports.LIGHTBOX_CLASS = LIGHTBOX_CLASS
-exports.LIGHTBOX_IMG_CLASS = LIGHTBOX_IMG_CLASS
-exports.LIGHTBOX_WRAP_CLASS = LIGHTBOX_WRAP_CLASS
-exports.LIGHTBOX_CLOSE_CLASS = LIGHTBOX_CLOSE_CLASS
+exports.MDR_LIGHTBOX_CLASS = MDR_LIGHTBOX_CLASS
+exports.MDR_LIGHTBOX_BOUND_ATTR = MDR_LIGHTBOX_BOUND_ATTR
+exports.mdrSafeImageSrc = mdrSafeImageSrc
 exports.openImageLightbox = openImageLightbox
 exports.closeImageLightbox = closeImageLightbox
+exports.mountMdrLightbox = mountMdrLightbox

@@ -28,6 +28,9 @@ const CODE_HOST = 'div.dsh-md-render-code-host'
 const CODE_ACTIONS = 'div.dsh-md-render-code-actions'
 const CODE_WRAP_BTN = 'button.dsh-md-render-code-wrap-btn'
 const CODE_COPY = 'button.dsh-md-render-code-copy'
+const CODE_LINES_BTN = 'button.dsh-md-render-code-lines-btn'
+const CODE_NUMS = 'div.dsh-md-render-code-nums'
+const CODE_PRE = 'pre.dsh-md-render-code-pre'
 const PRE_PLAIN = 'dsh-md-render-code-pre'
 const PRE_WRAP = 'dsh-md-render-code-pre dsh-md-render-code-wrap'
 
@@ -92,15 +95,16 @@ function boot(blocks) {
   return { page, loaded, scroll }
 }
 
-test('工具栏：换行按钮排在复制之前，默认态 = 自动换行 / aria-pressed=false', () => {
+test('工具栏：行号 / 换行 / 复制顺序固定，默认态 = 不换行且不显示行号 / aria-pressed=false', () => {
   const block = makeCodeBlock({ lang: 'js', code: 'const a = 1' })
   boot([block])
   const host = block.querySelector(CODE_HOST)
   const actions = host.querySelector(CODE_ACTIONS)
   assert.ok(actions, '操作区就位')
-  assert.equal(actions.children.length, 2, '操作区两个按钮（换行 + 复制）')
-  assert.equal(actions.children[0].getAttribute('class'), 'dsh-md-render-code-wrap-btn', '换行按钮在复制之前')
-  assert.equal(actions.children[1].getAttribute('class'), 'dsh-md-render-code-copy', '复制按钮在后')
+  assert.equal(actions.children.length, 3, '操作区三个按钮（行号 + 换行 + 复制）')
+  assert.equal(actions.children[0].getAttribute('class'), 'dsh-md-render-code-lines-btn', '行号按钮在最前')
+  assert.equal(actions.children[1].getAttribute('class'), 'dsh-md-render-code-wrap-btn', '换行按钮在复制之前')
+  assert.equal(actions.children[2].getAttribute('class'), 'dsh-md-render-code-copy', '复制按钮在后')
   const btn = host.querySelector(CODE_WRAP_BTN)
   assert.equal(btn.getAttribute('data-dsh-md-render-tip'), '自动换行', '默认浮层文案')
   assert.equal(btn.textContent, '', '只显示图标，不常显文字')
@@ -177,4 +181,35 @@ test('多块代码：换行态各自独立（点 A 不影响 B）', () => {
   assert.equal(first.querySelector(CODE_HOST).querySelector('pre').getAttribute('class'), PRE_WRAP, 'A 换行')
   assert.equal(second.querySelector(CODE_HOST).querySelector('pre').getAttribute('class'), PRE_PLAIN, 'B 仍是不换行')
   assert.equal(second.querySelector(CODE_WRAP_BTN).getAttribute('aria-pressed'), 'false', 'B 的按钮态不受影响')
+})
+test('行号切换：默认不渲染行号列，打开后按逻辑行编号出现，换行态自动让位', () => {
+  const block = makeCodeBlock({ lang: 'js', code: 'const a = 1\nconst b = 2\nconst c = 3' })
+  boot([block])
+  const host = block.querySelector(CODE_HOST)
+  const btn = host.querySelector(CODE_LINES_BTN)
+  assert.ok(btn, '行号按钮就位')
+  assert.equal(btn.getAttribute('aria-pressed'), 'false', '默认关闭行号')
+  assert.equal(btn.textContent, '', '只显示图标，不常显文字')
+  assert.equal(host.querySelector(CODE_NUMS), null, '默认不渲染行号列（不改变默认视觉行为）')
+
+  btn.fire('click')
+  const nums = host.querySelector(CODE_NUMS)
+  assert.ok(nums, '打开后出现行号列')
+  assert.equal(nums.textContent, '1\n2\n3', '行号按逻辑行逐行编号')
+  assert.equal(nums.getAttribute('aria-hidden'), 'true', '行号列不进无障碍树（纯呈现）')
+  const on = host.querySelector(CODE_LINES_BTN)
+  assert.equal(on.getAttribute('aria-pressed'), 'true', '状态同步到 aria-pressed')
+  assert.equal(on.getAttribute('aria-label'), '隐藏行号', '可访问名 = 当前动作')
+
+  // 打开换行 → 逻辑行会占多行物理行，行号列必然错位，所以让位（按钮意图保留）
+  host.querySelector(CODE_WRAP_BTN).fire('click')
+  assert.equal(host.querySelector(CODE_NUMS), null, '换行态隐藏行号列')
+  assert.ok(host.querySelector(CODE_PRE).className.includes('dsh-md-render-code-wrap'), '换行确实开启')
+
+  // 再点行号：先收起换行，再出现行号列（避免「按了没反应」）
+  host.querySelector(CODE_LINES_BTN).fire('click')
+  assert.equal(host.querySelector(CODE_NUMS), null, '这一次是关闭行号（状态仍为开 → 关）')
+  host.querySelector(CODE_LINES_BTN).fire('click')
+  assert.ok(host.querySelector(CODE_NUMS), '重新打开行号列')
+  assert.equal(host.querySelector(CODE_PRE).className, PRE_PLAIN, '打开行号时自动收起换行')
 })

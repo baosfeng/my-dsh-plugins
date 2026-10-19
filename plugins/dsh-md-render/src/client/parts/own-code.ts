@@ -25,6 +25,10 @@ const CODE_COPY_CLASS = 'dsh-md-render-code-copy'
 /** 换行切换按钮类名 / 换行态下追加到 pre 的类名（**默认不换行** = 横向滚动）。 */
 const CODE_WRAP_BTN_CLASS = 'dsh-md-render-code-wrap-btn'
 const CODE_WRAP_CLASS = 'dsh-md-render-code-wrap'
+/** 代码主体行（行号列 + pre 的横向滚动容器）/ 行号列 / 行号切换按钮类名。 */
+const CODE_BODY_CLASS = 'dsh-md-render-code-body'
+const CODE_NUMS_CLASS = 'dsh-md-render-code-nums'
+const CODE_LINES_BTN_CLASS = 'dsh-md-render-code-lines-btn'
 /** 代码主体容器（pre）/ 无高亮时的纯文本 code 类名。 */
 const CODE_PRE_CLASS = 'dsh-md-render-code-pre'
 const CODE_TEXT_CLASS = 'dsh-md-render-code-text'
@@ -127,7 +131,23 @@ function codeBodyNodes(lang: string, source: string): unknown {
 }
 
 /**
- * 自研代码块：banner（真实语言名 + 换行切换 + 复制）+ pre。
+ * 行号列文本：按**逻辑行**（`\n` 切分）逐行编号，与代码行一一对齐。
+ * 用 `\n` join + `white-space:pre` 呈现，行高与 pre 同源 → 两列天然对齐。
+ */
+function lineNumbersText(source: string): string {
+  const count = source.split('\n').length
+  const out: string[] = []
+  for (let i = 1; i <= count; i += 1) out.push(String(i))
+  return out.join('\n')
+}
+
+/**
+ * 自研代码块：banner（真实语言名 + 行号切换 + 换行切换 + 复制）+ pre。
+ *
+ * 行号切换（原型 §代码围栏块 的 lines-btn）：**默认关闭**（与现状默认形态一致），
+ * 打开后左侧出现行号列，与代码同行高对齐。行号列按逻辑行编号，**换行态下自动隐藏**
+ * （自动换行后一个逻辑行会占多行物理行，行号列会错位）；点行号时若处于换行态，
+ * 先收起换行再开行号，避免「按了没反应」。
  *
  * 换行切换（官方 CodeToolbar 有、此前自研版漏掉的能力）：按钮排在**复制之前**，
  * 点一次在「不换行（横向滚动）」与「自动换行」之间切换，可访问名 / aria-pressed 同步。
@@ -138,6 +158,7 @@ function codeBodyNodes(lang: string, source: string): unknown {
 function CodeBlockView({ lang, code }: { lang: string; code: string }): unknown {
   const [copied, setCopied] = useState(false)
   const [wrap, setWrap] = useState(false)
+  const [lines, setLines] = useState(false)
   const source = typeof code === 'string' ? code : String(code ?? '')
   const onCopy = (): void => {
     copyText(source).then(
@@ -146,8 +167,15 @@ function CodeBlockView({ lang, code }: { lang: string; code: string }): unknown 
     )
   }
   const onToggleWrap = (): void => setWrap(!wrap)
+  const onToggleLines = (): void => {
+    if (!lines && wrap) setWrap(false)
+    setLines(!lines)
+  }
+  /** 行号列只在「已开启且未换行」时出现（换行后逻辑行 ≠ 物理行，行号必然错位）。 */
+  const showLines = lines && !wrap
   const copyLabel = copied ? '已复制' : '复制'
   const wrapLabel = wrap ? '取消换行' : '自动换行'
+  const linesLabel = lines ? '隐藏行号' : '显示行号'
   return createElement(
     'div',
     { className: CODE_VIEW_CLASS },
@@ -158,6 +186,18 @@ function CodeBlockView({ lang, code }: { lang: string; code: string }): unknown 
       createElement(
         'div',
         { className: CODE_ACTIONS_CLASS },
+        createElement(
+          'button',
+          {
+            type: 'button',
+            className: CODE_LINES_BTN_CLASS,
+            'aria-label': linesLabel,
+            'data-dsh-md-render-tip': linesLabel,
+            'aria-pressed': lines ? 'true' : 'false',
+            onClick: onToggleLines,
+          },
+          icon.lines(14),
+        ),
         createElement(
           'button',
           {
@@ -189,11 +229,19 @@ function CodeBlockView({ lang, code }: { lang: string; code: string }): unknown 
         ),
       ),
     ),
-    // 换行态只**追加**类名，原有 CODE_PRE_CLASS 保留（样式由 styles.ts 统一提供）。
+    // 行号列与 pre 同属一个横向滚动容器：代码横向滚动时行号列一起走（原型 fence-body 同构）。
     createElement(
-      'pre',
-      { className: CODE_PRE_CLASS + (wrap ? ' ' + CODE_WRAP_CLASS : ''), tabIndex: 0 },
-      codeBodyNodes(lang, source),
+      'div',
+      { className: CODE_BODY_CLASS },
+      showLines
+        ? createElement('div', { className: CODE_NUMS_CLASS, 'aria-hidden': 'true' }, lineNumbersText(source))
+        : null,
+      // 换行态只**追加**类名，原有 CODE_PRE_CLASS 保留（样式由 styles.ts 统一提供）。
+      createElement(
+        'pre',
+        { className: CODE_PRE_CLASS + (wrap ? ' ' + CODE_WRAP_CLASS : ''), tabIndex: 0 },
+        codeBodyNodes(lang, source),
+      ),
     ),
   )
 }
@@ -203,8 +251,12 @@ exports.CODE_VIEW_CLASS = CODE_VIEW_CLASS
 exports.CODE_LANG_CLASS = CODE_LANG_CLASS
 exports.CODE_WRAP_BTN_CLASS = CODE_WRAP_BTN_CLASS
 exports.CODE_WRAP_CLASS = CODE_WRAP_CLASS
+exports.CODE_BODY_CLASS = CODE_BODY_CLASS
+exports.CODE_NUMS_CLASS = CODE_NUMS_CLASS
+exports.CODE_LINES_BTN_CLASS = CODE_LINES_BTN_CLASS
 exports.CODE_PRE_CLASS = CODE_PRE_CLASS
 exports.MAX_HIGHLIGHT_CHARS = MAX_HIGHLIGHT_CHARS
 exports.hljsScopeClass = hljsScopeClass
+exports.lineNumbersText = lineNumbersText
 exports.highlightCodeNodes = highlightCodeNodes
 exports.CodeBlockView = CodeBlockView

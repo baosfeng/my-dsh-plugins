@@ -154,13 +154,13 @@ test('markdown 自有层级与形状：h1 竖条 / h2 下边框 / 引用块 / �
   assert.ok(CSS.includes('font-size:.86em'), '行内代码胶囊（字号相对正文收敛，原型 .86em）')
   assert.ok(
     CSS.includes(
-      '.dsh-md-render-md-task{position:absolute;left:0;top:6px;width:15px;height:15px;margin:0;appearance:none',
+      '.dsh-md-render-md-task{position:absolute;left:0;top:4px;width:14px;height:14px;margin:0;appearance:none',
     ),
     '任务列表勾选框自绘（原生 disabled checkbox 不认 accent-color，实测恒为灰）',
   )
   assert.ok(CSS.includes(':has(>.dsh-md-render-md-task:checked)::before'), ':has() 驱动勾选态填色')
   assert.ok(CSS.includes('@supports not selector(:has(*))'), ':has() 失配时退化为原生勾选框')
-  assert.ok(CSS.includes('li::marker{color:var(--mdr-accent-text)'), '列表标记染色（自有强调方式）')
+  assert.ok(CSS.includes('li::marker{color:var(--dsw-alias-label-tertiary)'), '列表标记走三级文字色（原型口径）')
 })
 
 test('统一设计系统：代码卡片 / markdown 卡片 / 图表卡片同一套边框 · 圆角 · 层次', () => {

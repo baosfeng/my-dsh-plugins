@@ -97,7 +97,7 @@ const STYLES: string = `
 .tzx-md h1+*,.tzx-md h2+*,.tzx-md h3+*,.tzx-md h4+*,.tzx-md h5+*,.tzx-md h6+*{margin-top:0}
 .tzx-md ul,.tzx-md ol{margin:0;padding-left:var(--mdr-space-6);display:flex;flex-direction:column;gap:var(--mdr-space-1)}
 .tzx-md li>p{margin:0}
-.tzx-md li::marker{color:var(--mdr-accent-text);font-weight:600}
+.tzx-md li::marker{color:var(--dsw-alias-label-tertiary)}
 .tzx-md ol>li::marker{font-variant-numeric:tabular-nums}
 .tzx-md ul ul,.tzx-md ul ol,.tzx-md ol ul,.tzx-md ol ol{margin-top:var(--mdr-space-1);gap:var(--mdr-space-1)}
 .tzx-md blockquote{margin:0;padding:6px var(--mdr-space-3);border-left:2px solid var(--mdr-accent);border-radius:0 7px 7px 0;background:var(--mdr-accent-soft);color:var(--dsw-alias-label-secondary)}
@@ -112,7 +112,8 @@ const STYLES: string = `
 .tzx-md strong{font-weight:600}
 .tzx-md em{font-style:italic}
 .tzx-md del{color:var(--dsw-alias-label-secondary);text-decoration:line-through}
-/* 行内代码：原型 .86em / 8px 圆角 / 中性发丝边 / 4% 底色 / 强调色文字（深色自动跟随） */
+/* 行内代码：原型未单列 .md-body code 规则，按其全局 code（4px 圆角 / 中性发丝边）收敛；
+   字号 .86em 收一档、底色取宿主行内码 token、文字走强调色 —— 颜色全部随深浅色自动切换。 */
 .tzx-md code.dsh-md-render-md-code{padding:2px 6px;border:1px solid var(--mdr-hairline);border-radius:var(--mdr-radius-sm);background:var(--mdr-code-bg);font-family:var(--mdr-mono);font-size:.86em;line-height:1.5;color:var(--mdr-accent-text)}
 /* 裸链接退化成纯文本样式（原型：muted + 点状下划线） */
 .tzx-md .dsh-md-render-md-link-plain{color:var(--dsw-alias-label-secondary);text-decoration:underline dotted}
@@ -132,12 +133,15 @@ const STYLES: string = `
 /* ⚠️ 这里**不写** cursor / :focus-within：真实 input 由 own-markdown.ts 渲染为 disabled+readOnly
    （markdown 是模型输出快照，勾选无法持久 —— 见文档「有意偏离」），写了就是永不触发的死规则。
    勾选态由 :has(:checked) 跟随**原文语义**（- [x]）呈现，键盘焦点环留给真正可交互的元素。 */
-.tzx-md .dsh-md-render-md-task{position:absolute;left:0;top:6px;width:15px;height:15px;margin:0;appearance:none;border:0;background:transparent;opacity:0}
+.tzx-md .dsh-md-render-md-task{position:absolute;left:0;top:4px;width:14px;height:14px;margin:0;appearance:none;border:0;background:transparent;opacity:0}
 .tzx-md .dsh-md-render-md-task-item{position:relative;list-style:none;margin-left:calc(-1 * var(--mdr-space-6));padding-left:var(--mdr-space-6)}
-.tzx-md .dsh-md-render-md-task-item::before{content:"";position:absolute;left:0;top:6px;width:15px;height:15px;border:1.5px solid var(--dsw-alias-label-tertiary);border-radius:5px;background-color:transparent;transition:background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease)}
+.tzx-md .dsh-md-render-md-task-item::before{content:"";position:absolute;left:0;top:4px;width:14px;height:14px;border:1px solid var(--dsw-alias-label-tertiary);border-radius:4px;background-color:transparent;transition:background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease)}
 .tzx-md .dsh-md-render-md-task-item:hover::before{border-color:var(--dsw-alias-label-secondary)}
 .tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked)::before{border-color:var(--mdr-accent);background-color:var(--mdr-accent)}
-.tzx-md .dsh-md-render-md-task-item::after{content:"";position:absolute;left:4.5px;top:9px;width:4px;height:7.5px;border:solid var(--dsw-alias-label-primary-foreground);border-width:0 1.5px 1.5px 0;transform:rotate(45deg) scale(.6);opacity:0;transition:transform var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
+/* 已完成项：文字降一档 + 删除线（原型 .task-list li.is-done span 同款；本实现文字是裸内联内容，
+   装饰挂在 li 上即可传播到整行文本，勾选框是绝对定位元素不受影响）。 */
+.tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked){color:var(--dsw-alias-label-tertiary);text-decoration:line-through;text-decoration-color:var(--mdr-line)}
+.tzx-md .dsh-md-render-md-task-item::after{content:"";position:absolute;left:4px;top:8.5px;width:4px;height:7px;border:solid var(--dsw-alias-label-primary-foreground);border-width:0 1.5px 1.5px 0;transform:rotate(45deg) scale(.6);opacity:0;transition:transform var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
 .tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked)::after{transform:rotate(45deg) scale(1);opacity:1}
 @supports not selector(:has(*)){.tzx-md .dsh-md-render-md-task{position:static;width:auto;height:auto;opacity:1;appearance:auto}.tzx-md .dsh-md-render-md-task-item{padding-left:0}.tzx-md .dsh-md-render-md-task-item::before,.tzx-md .dsh-md-render-md-task-item::after{display:none}}
 /* 表格：圆角外框 + 中性表头薄底 + 发丝行线 + 行 hover（原型同款；表头不再是强调色薄底） */
@@ -171,15 +175,21 @@ const STYLES: string = `
 .dsh-md-render-code-lang{margin-right:auto;min-width:0;overflow:hidden;padding:1px 8px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 22%,transparent);border-radius:var(--mdr-pill);background:var(--mdr-accent-soft);font-family:var(--mdr-mono);font-size:10px;font-weight:600;line-height:16px;letter-spacing:.08em;text-transform:uppercase;text-overflow:ellipsis;white-space:nowrap;color:var(--mdr-accent-text)}
 .dsh-md-render-code-lang:empty{display:none}
 .dsh-md-render-code-actions{display:inline-flex;align-items:center;gap:var(--mdr-space-1);flex:none}
-.dsh-md-render-code-pre{margin:0;padding:12px 14px;overflow:auto;max-height:70vh;background:transparent;font-family:var(--mdr-mono);font-size:12.5px;line-height:1.7;tab-size:2;color:var(--dsw-alias-label-primary);white-space:pre;overflow-wrap:normal;word-break:normal}
+/* 代码主体行：行号列 + pre 共用一个滚动容器（原型 .fence-body 同构）——
+   横向滚动时行号列跟着走，纵向滚动时两者一起走，天然对齐。 */
+.dsh-md-render-code-body{display:flex;align-items:stretch;min-width:0;max-height:70vh;overflow:auto}
+/* 行号列：与 pre 同字体 / 同字号 / 同行高 → 逐行对齐；用 pre 呈现换行、不参与选中/复制。
+   右对齐 + 等宽数字（tabular-nums）：位数变化时列宽稳定。 */
+.dsh-md-render-code-nums{flex:none;padding:12px 8px 12px 10px;border-right:1px solid var(--mdr-line-soft);background:transparent;font-family:var(--mdr-mono);font-size:12.5px;line-height:1.7;text-align:right;white-space:pre;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;user-select:none}
+.dsh-md-render-code-pre{flex:1;min-width:0;margin:0;padding:12px 14px;overflow:visible;background:transparent;font-family:var(--mdr-mono);font-size:12.5px;line-height:1.7;tab-size:2;color:var(--dsw-alias-label-primary);white-space:pre;overflow-wrap:normal;word-break:normal}
 .dsh-md-render-code-pre:focus-visible{outline:none;box-shadow:var(--mdr-focus-ring-inset)}
 .dsh-md-render-code-pre code{font:inherit;color:inherit;background:none;border:0;padding:0;white-space:inherit;word-break:inherit}
 /* ── 插件控件统一形态：胶囊按钮（复制 / 查看原文 / 整段复制 / 导出 / 视图切换）── */
 /* 统一 26px 方格图标按钮：图标常显、宽度恒定 —— 收起文字后不塌、排布整齐。
    position:relative 是浮层（下方 ::after）的定位锚点。 */
-.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:26px;height:26px;padding:0;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:11px;font-weight:500;line-height:1;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--mdr-motion-fast) var(--mdr-ease),background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
-.dsh-md-render-code-copy:hover,.dsh-md-render-code-wrap-btn:hover,.dsh-md-render-text-toggle:hover,.dsh-md-render-copy:hover,.dsh-md-render-mermaid-eb:hover:not(:disabled),.dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--mdr-accent-line);color:var(--dsw-alias-label-primary)}
-.dsh-md-render-code-copy:focus-visible,.dsh-md-render-code-wrap-btn:focus-visible,.dsh-md-render-text-toggle:focus-visible,.dsh-md-render-copy:focus-visible,.dsh-md-render-mermaid-eb:focus-visible,.dsh-md-render-mermaid-vt:focus-visible{outline:none;box-shadow:var(--mdr-focus-ring)}
+.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-code-lines-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:26px;height:26px;padding:0;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:11px;font-weight:500;line-height:1;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--mdr-motion-fast) var(--mdr-ease),background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
+.dsh-md-render-code-copy:hover,.dsh-md-render-code-wrap-btn:hover,.dsh-md-render-code-lines-btn:hover,.dsh-md-render-text-toggle:hover,.dsh-md-render-copy:hover,.dsh-md-render-mermaid-eb:hover:not(:disabled),.dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--mdr-accent-line);color:var(--dsw-alias-label-primary)}
+.dsh-md-render-code-copy:focus-visible,.dsh-md-render-code-wrap-btn:focus-visible,.dsh-md-render-code-lines-btn:focus-visible,.dsh-md-render-text-toggle:focus-visible,.dsh-md-render-copy:focus-visible,.dsh-md-render-mermaid-eb:focus-visible,.dsh-md-render-mermaid-vt:focus-visible{outline:none;box-shadow:var(--mdr-focus-ring)}
 /* ── 控件「文字收起、只留图标」，悬停 / 键盘聚焦用**浮层**显示文字（用户口径）──
    为什么用浮层而不是就地撑开：就地撑开会把同一行相邻按钮推开 —— 鼠标扫过时整排抖动。
    浮层走 absolute（零布局位移）+ 向下弹出（top:100%）：卡片是 overflow:hidden，
@@ -196,7 +206,7 @@ const STYLES: string = `
 .dsh-md-render-code-copy[data-state="copied"]::after{opacity:1;transform:none}
 /* 触屏既没有 hover、也没有"悬停可发现"：按钮就地带文字（否则只剩图标，无从判断按钮做什么） */
 @media (hover:none){
-:is(.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt){width:auto;min-width:26px;padding:0 var(--mdr-space-2)}
+:is(.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-code-lines-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt){width:auto;min-width:26px;padding:0 var(--mdr-space-2)}
 :is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::before{content:attr(data-dsh-md-render-tip);white-space:nowrap}
 :is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::after{display:none}
 }
@@ -229,6 +239,11 @@ const STYLES: string = `
 .dsh-md-render-code:hover .dsh-md-render-code-wrap-btn,.dsh-md-render-code:focus-within .dsh-md-render-code-wrap-btn{opacity:1}
 @media (hover:none){.dsh-md-render-code-wrap-btn{opacity:1}}
 .dsh-md-render-code-wrap-btn[aria-pressed="true"]{border-color:var(--mdr-accent-line);background:var(--mdr-accent-soft);color:var(--mdr-accent-text)}
+/* 行号切换：与换行同一套浮现策略（两者性质相同 —— 不改内容、只改呈现），按下态同样用强调色胶囊 */
+.dsh-md-render-code-lines-btn{opacity:0}
+.dsh-md-render-code:hover .dsh-md-render-code-lines-btn,.dsh-md-render-code:focus-within .dsh-md-render-code-lines-btn{opacity:1}
+@media (hover:none){.dsh-md-render-code-lines-btn{opacity:1}}
+.dsh-md-render-code-lines-btn[aria-pressed="true"]{border-color:var(--mdr-accent-line);background:var(--mdr-accent-soft);color:var(--mdr-accent-text)}
 /* 换行态：长行折行显示（默认态是 white-space:pre 横向滚动，与官方 CodeBlock 的 wrap 语义对齐） */
 .dsh-md-render-code-pre.dsh-md-render-code-wrap{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;overflow-x:hidden}
 .dsh-md-render-text-toggle{align-self:flex-end;margin-top:4px}
@@ -356,7 +371,7 @@ const STYLES: string = `
 .tzx-md a,.tzx-md img.dsh-md-render-md-img.dsh-md-render-img-zoom,.tzx-md .dsh-md-render-md-table tbody tr td,.tzx-md .dsh-md-render-md-task-item::before{transition:none}
 .tzx-md .dsh-md-render-md-task-item::after{transform:rotate(45deg);opacity:0;transition:none}
 .tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked)::after{transform:rotate(45deg);opacity:1}
-.dsh-md-render-copy,.dsh-md-render-copy-ico,.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{transition:none}
+.dsh-md-render-copy,.dsh-md-render-copy-ico,.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-code-lines-btn,.dsh-md-render-text-toggle,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{transition:none}
 .dsh-md-render-copy[data-state="copied"] .dsh-md-render-copy-ico{transform:none}
 :is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::after{transition:none}
 .dsh-md-render-img-lightbox[open],.dsh-md-render-img-lightbox[open]::backdrop{animation:none}

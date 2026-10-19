@@ -174,7 +174,11 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
     '.md ul,ol：24px 缩进 + 4px 项间距',
   )
   assertRule('.tzx-md ul ul,', ['margin-top:var(--mdr-space-1)', 'gap:var(--mdr-space-1)'], '嵌套列表间距同源')
-  assertRule('.tzx-md li::marker{', ['color:var(--mdr-accent-text)', 'font-weight:600'], '.md li::marker：标记染线索色')
+  assertRule(
+    '.tzx-md li::marker{',
+    ['color:var(--dsw-alias-label-tertiary)'],
+    '.md li::marker：标记走三级文字色（原型 text-3）',
+  )
   assertRule('.tzx-md ol>li::marker{', ['font-variant-numeric:tabular-nums'], '.md ol>li::marker：等宽数字')
   assertRule(
     '.tzx-md blockquote{',
@@ -223,7 +227,7 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
       'font-size:.86em',
       'color:var(--mdr-accent-text)',
     ],
-    '.md code：2/6 内边距 + 8px 圆角 + 发丝边 + 4% 底 + .86em',
+    '.md code：2/6 内边距 + 4px 圆角 + 发丝边 + 宿主行内码底 + .86em',
   )
   assertRule(
     '.tzx-md .dsh-md-render-md-link-plain{',
@@ -272,8 +276,8 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
   )
   assertRule(
     '.tzx-md .dsh-md-render-md-task{',
-    ['left:0', 'top:6px', 'width:15px', 'height:15px', 'opacity:0'],
-    '任务框：15×15 自绘，真实 input 只留无障碍树',
+    ['left:0', 'top:4px', 'width:14px', 'height:14px', 'opacity:0'],
+    '任务框：14×14 自绘（原型 task-box 同款），真实 input 只留无障碍树',
   )
   assertRule(
     '.tzx-md .dsh-md-render-md-task-item{',
@@ -288,11 +292,11 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
   assertRule(
     '.tzx-md .dsh-md-render-md-task-item::before{',
     [
-      'border:1.5px solid var(--dsw-alias-label-tertiary)',
-      'border-radius:5px',
+      'border:1px solid var(--dsw-alias-label-tertiary)',
+      'border-radius:4px',
       'transition:background-color var(--mdr-motion-fast) var(--mdr-ease)',
     ],
-    '未勾选方框：1.5px 中性描边 + 5px 圆角 + 150ms 过渡',
+    '未勾选方框：1px 中性描边 + 4px 圆角 + 150ms 过渡（原型同款）',
   )
   assertRule(
     '.tzx-md .dsh-md-render-md-task-item:hover::before{',
@@ -321,6 +325,11 @@ test('markdown 元素规则逐条对齐原型（选择器 → 声明块）', () 
     '.tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked)::after{',
     ['transform:rotate(45deg) scale(1)', 'opacity:1'],
     '勾选态：勾形弹到 scale 1',
+  )
+  assertRule(
+    '.tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked){',
+    ['color:var(--dsw-alias-label-tertiary)', 'text-decoration:line-through'],
+    '已完成任务项：文字降一档 + 删除线（原型 .task-list li.is-done span 同款）',
   )
   assert.ok(CSS.includes('@supports not selector(:has(*))'), ':has() 失配时退化为原生控件（原型 @supports 块）')
   assertRule(
@@ -519,7 +528,7 @@ test('核验补强：原型字面值 / 块体完整性 / 取值来源 / 只读�
   const reduced = CSS.slice(CSS.indexOf('@media (prefers-reduced-motion:reduce){'))
   assert.ok(
     reduced.includes(
-      '.dsh-md-render-copy,.dsh-md-render-copy-ico,.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{transition:none}',
+      '.dsh-md-render-copy,.dsh-md-render-copy-ico,.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-code-lines-btn,.dsh-md-render-text-toggle,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{transition:none}',
     ),
     '复制 / 控件组在 reduced-motion 下过渡全关（整串比对）',
   )
@@ -551,7 +560,7 @@ test('范围纪律：工具条控件层已纳入原型（本轮扩围）—— �
   // 本轮起卡片工具条**纳入**原型范围（08-prototype.html §sec-toolbar），但形态是
   // 「26px 方格图标按钮 + data-dsh-md-render-tip 浮层」：文字胶囊不许回来。
   const shared = rule(
-    '.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{',
+    '.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-code-lines-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{',
   )
   assert.ok(shared !== null, '共享控件规则必须在')
   assert.ok(
@@ -678,4 +687,37 @@ test.skipIf(!existsSync(PROTOTYPE_PATH))('本文件抄录的原型取值与原�
     assert.ok(re.test(proto), `原型文件里 ${protoToken} 不是 ${value} —— 本测试的期望值该更新了`)
     assert.ok(CSS.includes(`${pluginToken}:${impl}`), `插件里 ${pluginToken} 不是 ${impl}`)
   }
+})
+test('代码块行号切换对齐原型（原型 .line-nums / lines-btn）：默认关、与代码同行高、换行态隐藏', () => {
+  const OWN_CODE = readFileSync(join(PLUGIN, 'src', 'client', 'parts', 'own-code.ts'), 'utf8')
+  // 样式：行号列与 pre 共用一个滚动容器；行号列同字体 / 同字号 / 同行高 → 逐行对齐
+  assertRule(
+    '.dsh-md-render-code-body{',
+    ['display:flex', 'min-width:0', 'max-height:70vh', 'overflow:auto'],
+    '行号列 + pre 共用滚动容器（原型 .fence-body 同构）',
+  )
+  assertRule(
+    '.dsh-md-render-code-nums{',
+    [
+      'flex:none',
+      'font-family:var(--mdr-mono)',
+      'font-size:12.5px',
+      'line-height:1.7',
+      'text-align:right',
+      'white-space:pre',
+      'font-variant-numeric:tabular-nums',
+    ],
+    '行号列：等宽字体 + 与代码同字号行高 + 右对齐 + 等宽数字',
+  )
+  assert.ok(
+    CSS.includes('.dsh-md-render-code-nums{') && CSS.includes('border-right:1px solid var(--mdr-line-soft)'),
+    '行号列右侧发丝分隔线',
+  )
+  // 行为：按钮默认关、aria-pressed 同步、行号按逻辑行编号、换行态不渲染行号列
+  assert.ok(OWN_CODE.includes("const CODE_NUMS_CLASS = 'dsh-md-render-code-nums'"), '行号列类名单一来源')
+  assert.ok(OWN_CODE.includes("const CODE_LINES_BTN_CLASS = 'dsh-md-render-code-lines-btn'"), '行号按钮类名单一来源')
+  assert.ok(OWN_CODE.includes('icon.lines(14)'), '行号按钮有图标（文字收起后不留空按钮）')
+  assert.ok(OWN_CODE.includes('const [lines, setLines] = useState(false)'), '行号默认关闭（与原型初始态一致）')
+  assert.ok(OWN_CODE.includes('showLines = lines && !wrap'), '换行态下隐藏行号列（逻辑行 ≠ 物理行会错位）')
+  assert.ok(OWN_CODE.includes('lineNumbersText'), '行号文本按逻辑行生成')
 })

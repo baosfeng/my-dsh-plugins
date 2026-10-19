@@ -1203,6 +1203,10 @@ const CODE_COPY_CLASS = 'dsh-md-render-code-copy';
 /** 换行切换按钮类名 / 换行态下追加到 pre 的类名（**默认不换行** = 横向滚动）。 */
 const CODE_WRAP_BTN_CLASS = 'dsh-md-render-code-wrap-btn';
 const CODE_WRAP_CLASS = 'dsh-md-render-code-wrap';
+/** 代码主体行（行号列 + pre 的横向滚动容器）/ 行号列 / 行号切换按钮类名。 */
+const CODE_BODY_CLASS = 'dsh-md-render-code-body';
+const CODE_NUMS_CLASS = 'dsh-md-render-code-nums';
+const CODE_LINES_BTN_CLASS = 'dsh-md-render-code-lines-btn';
 /** 代码主体容器（pre）/ 无高亮时的纯文本 code 类名。 */
 const CODE_PRE_CLASS = 'dsh-md-render-code-pre';
 const CODE_TEXT_CLASS = 'dsh-md-render-code-text';
@@ -1305,7 +1309,23 @@ function codeBodyNodes(lang, source) {
     return createElement('code', { className: HLJS_CLASS_PREFIX + 'code' }, ...nodes);
 }
 /**
- * 自研代码块：banner（真实语言名 + 换行切换 + 复制）+ pre。
+ * 行号列文本：按**逻辑行**（`\n` 切分）逐行编号，与代码行一一对齐。
+ * 用 `\n` join + `white-space:pre` 呈现，行高与 pre 同源 → 两列天然对齐。
+ */
+function lineNumbersText(source) {
+    const count = source.split('\n').length;
+    const out = [];
+    for (let i = 1; i <= count; i += 1)
+        out.push(String(i));
+    return out.join('\n');
+}
+/**
+ * 自研代码块：banner（真实语言名 + 行号切换 + 换行切换 + 复制）+ pre。
+ *
+ * 行号切换（原型 §代码围栏块 的 lines-btn）：**默认关闭**（与现状默认形态一致），
+ * 打开后左侧出现行号列，与代码同行高对齐。行号列按逻辑行编号，**换行态下自动隐藏**
+ * （自动换行后一个逻辑行会占多行物理行，行号列会错位）；点行号时若处于换行态，
+ * 先收起换行再开行号，避免「按了没反应」。
  *
  * 换行切换（官方 CodeToolbar 有、此前自研版漏掉的能力）：按钮排在**复制之前**，
  * 点一次在「不换行（横向滚动）」与「自动换行」之间切换，可访问名 / aria-pressed 同步。
@@ -1316,14 +1336,30 @@ function codeBodyNodes(lang, source) {
 function CodeBlockView({ lang, code }) {
     const [copied, setCopied] = useState(false);
     const [wrap, setWrap] = useState(false);
+    const [lines, setLines] = useState(false);
     const source = typeof code === 'string' ? code : String(code ?? '');
     const onCopy = () => {
         copyText(source).then(() => setCopied(true), () => { });
     };
     const onToggleWrap = () => setWrap(!wrap);
+    const onToggleLines = () => {
+        if (!lines && wrap)
+            setWrap(false);
+        setLines(!lines);
+    };
+    /** 行号列只在「已开启且未换行」时出现（换行后逻辑行 ≠ 物理行，行号必然错位）。 */
+    const showLines = lines && !wrap;
     const copyLabel = copied ? '已复制' : '复制';
     const wrapLabel = wrap ? '取消换行' : '自动换行';
+    const linesLabel = lines ? '隐藏行号' : '显示行号';
     return createElement('div', { className: CODE_VIEW_CLASS }, createElement('div', { className: CODE_HEAD_CLASS }, createElement('span', { className: CODE_LANG_CLASS }, lang === '' ? '' : lang), createElement('div', { className: CODE_ACTIONS_CLASS }, createElement('button', {
+        type: 'button',
+        className: CODE_LINES_BTN_CLASS,
+        'aria-label': linesLabel,
+        'data-dsh-md-render-tip': linesLabel,
+        'aria-pressed': lines ? 'true' : 'false',
+        onClick: onToggleLines,
+    }, icon.lines(14)), createElement('button', {
         type: 'button',
         className: CODE_WRAP_BTN_CLASS,
         'aria-label': wrapLabel,
@@ -1345,10 +1381,14 @@ function CodeBlockView({ lang, code }) {
     }, 
     // 图标常显、文字走悬停浮层（styles.ts 的 [data-dsh-md-render-tip]::after）。
     icon.copy(14)))), 
+    // 行号列与 pre 同属一个横向滚动容器：代码横向滚动时行号列一起走（原型 fence-body 同构）。
+    createElement('div', { className: CODE_BODY_CLASS }, showLines
+        ? createElement('div', { className: CODE_NUMS_CLASS, 'aria-hidden': 'true' }, lineNumbersText(source))
+        : null, 
     // 换行态只**追加**类名，原有 CODE_PRE_CLASS 保留（样式由 styles.ts 统一提供）。
-    createElement('pre', { className: CODE_PRE_CLASS + (wrap ? ' ' + CODE_WRAP_CLASS : ''), tabIndex: 0 }, codeBodyNodes(lang, source)));
+    createElement('pre', { className: CODE_PRE_CLASS + (wrap ? ' ' + CODE_WRAP_CLASS : ''), tabIndex: 0 }, codeBodyNodes(lang, source))));
 }
-Object.assign(exports,{CODE_HOST_CLASS,CODE_VIEW_CLASS,CODE_LANG_CLASS,CODE_WRAP_BTN_CLASS,CODE_WRAP_CLASS,CODE_PRE_CLASS,MAX_HIGHLIGHT_CHARS,hljsScopeClass,highlightCodeNodes,CodeBlockView});
+Object.assign(exports,{CODE_HOST_CLASS,CODE_VIEW_CLASS,CODE_LANG_CLASS,CODE_WRAP_BTN_CLASS,CODE_WRAP_CLASS,CODE_BODY_CLASS,CODE_NUMS_CLASS,CODE_LINES_BTN_CLASS,CODE_PRE_CLASS,MAX_HIGHLIGHT_CHARS,hljsScopeClass,lineNumbersText,highlightCodeNodes,CodeBlockView});
 
     // 自研 markdown 渲染（marked 词法树 → vdom，表格容错在此接上）
     "use strict";
@@ -4034,7 +4074,7 @@ const STYLES = `
 .tzx-md h1+*,.tzx-md h2+*,.tzx-md h3+*,.tzx-md h4+*,.tzx-md h5+*,.tzx-md h6+*{margin-top:0}
 .tzx-md ul,.tzx-md ol{margin:0;padding-left:var(--mdr-space-6);display:flex;flex-direction:column;gap:var(--mdr-space-1)}
 .tzx-md li>p{margin:0}
-.tzx-md li::marker{color:var(--mdr-accent-text);font-weight:600}
+.tzx-md li::marker{color:var(--dsw-alias-label-tertiary)}
 .tzx-md ol>li::marker{font-variant-numeric:tabular-nums}
 .tzx-md ul ul,.tzx-md ul ol,.tzx-md ol ul,.tzx-md ol ol{margin-top:var(--mdr-space-1);gap:var(--mdr-space-1)}
 .tzx-md blockquote{margin:0;padding:6px var(--mdr-space-3);border-left:2px solid var(--mdr-accent);border-radius:0 7px 7px 0;background:var(--mdr-accent-soft);color:var(--dsw-alias-label-secondary)}
@@ -4049,7 +4089,8 @@ const STYLES = `
 .tzx-md strong{font-weight:600}
 .tzx-md em{font-style:italic}
 .tzx-md del{color:var(--dsw-alias-label-secondary);text-decoration:line-through}
-/* 行内代码：原型 .86em / 8px 圆角 / 中性发丝边 / 4% 底色 / 强调色文字（深色自动跟随） */
+/* 行内代码：原型未单列 .md-body code 规则，按其全局 code（4px 圆角 / 中性发丝边）收敛；
+   字号 .86em 收一档、底色取宿主行内码 token、文字走强调色 —— 颜色全部随深浅色自动切换。 */
 .tzx-md code.dsh-md-render-md-code{padding:2px 6px;border:1px solid var(--mdr-hairline);border-radius:var(--mdr-radius-sm);background:var(--mdr-code-bg);font-family:var(--mdr-mono);font-size:.86em;line-height:1.5;color:var(--mdr-accent-text)}
 /* 裸链接退化成纯文本样式（原型：muted + 点状下划线） */
 .tzx-md .dsh-md-render-md-link-plain{color:var(--dsw-alias-label-secondary);text-decoration:underline dotted}
@@ -4069,12 +4110,15 @@ const STYLES = `
 /* ⚠️ 这里**不写** cursor / :focus-within：真实 input 由 own-markdown.ts 渲染为 disabled+readOnly
    （markdown 是模型输出快照，勾选无法持久 —— 见文档「有意偏离」），写了就是永不触发的死规则。
    勾选态由 :has(:checked) 跟随**原文语义**（- [x]）呈现，键盘焦点环留给真正可交互的元素。 */
-.tzx-md .dsh-md-render-md-task{position:absolute;left:0;top:6px;width:15px;height:15px;margin:0;appearance:none;border:0;background:transparent;opacity:0}
+.tzx-md .dsh-md-render-md-task{position:absolute;left:0;top:4px;width:14px;height:14px;margin:0;appearance:none;border:0;background:transparent;opacity:0}
 .tzx-md .dsh-md-render-md-task-item{position:relative;list-style:none;margin-left:calc(-1 * var(--mdr-space-6));padding-left:var(--mdr-space-6)}
-.tzx-md .dsh-md-render-md-task-item::before{content:"";position:absolute;left:0;top:6px;width:15px;height:15px;border:1.5px solid var(--dsw-alias-label-tertiary);border-radius:5px;background-color:transparent;transition:background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease)}
+.tzx-md .dsh-md-render-md-task-item::before{content:"";position:absolute;left:0;top:4px;width:14px;height:14px;border:1px solid var(--dsw-alias-label-tertiary);border-radius:4px;background-color:transparent;transition:background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease)}
 .tzx-md .dsh-md-render-md-task-item:hover::before{border-color:var(--dsw-alias-label-secondary)}
 .tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked)::before{border-color:var(--mdr-accent);background-color:var(--mdr-accent)}
-.tzx-md .dsh-md-render-md-task-item::after{content:"";position:absolute;left:4.5px;top:9px;width:4px;height:7.5px;border:solid var(--dsw-alias-label-primary-foreground);border-width:0 1.5px 1.5px 0;transform:rotate(45deg) scale(.6);opacity:0;transition:transform var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
+/* 已完成项：文字降一档 + 删除线（原型 .task-list li.is-done span 同款；本实现文字是裸内联内容，
+   装饰挂在 li 上即可传播到整行文本，勾选框是绝对定位元素不受影响）。 */
+.tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked){color:var(--dsw-alias-label-tertiary);text-decoration:line-through;text-decoration-color:var(--mdr-line)}
+.tzx-md .dsh-md-render-md-task-item::after{content:"";position:absolute;left:4px;top:8.5px;width:4px;height:7px;border:solid var(--dsw-alias-label-primary-foreground);border-width:0 1.5px 1.5px 0;transform:rotate(45deg) scale(.6);opacity:0;transition:transform var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
 .tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked)::after{transform:rotate(45deg) scale(1);opacity:1}
 @supports not selector(:has(*)){.tzx-md .dsh-md-render-md-task{position:static;width:auto;height:auto;opacity:1;appearance:auto}.tzx-md .dsh-md-render-md-task-item{padding-left:0}.tzx-md .dsh-md-render-md-task-item::before,.tzx-md .dsh-md-render-md-task-item::after{display:none}}
 /* 表格：圆角外框 + 中性表头薄底 + 发丝行线 + 行 hover（原型同款；表头不再是强调色薄底） */
@@ -4108,15 +4152,21 @@ const STYLES = `
 .dsh-md-render-code-lang{margin-right:auto;min-width:0;overflow:hidden;padding:1px 8px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 22%,transparent);border-radius:var(--mdr-pill);background:var(--mdr-accent-soft);font-family:var(--mdr-mono);font-size:10px;font-weight:600;line-height:16px;letter-spacing:.08em;text-transform:uppercase;text-overflow:ellipsis;white-space:nowrap;color:var(--mdr-accent-text)}
 .dsh-md-render-code-lang:empty{display:none}
 .dsh-md-render-code-actions{display:inline-flex;align-items:center;gap:var(--mdr-space-1);flex:none}
-.dsh-md-render-code-pre{margin:0;padding:12px 14px;overflow:auto;max-height:70vh;background:transparent;font-family:var(--mdr-mono);font-size:12.5px;line-height:1.7;tab-size:2;color:var(--dsw-alias-label-primary);white-space:pre;overflow-wrap:normal;word-break:normal}
+/* 代码主体行：行号列 + pre 共用一个滚动容器（原型 .fence-body 同构）——
+   横向滚动时行号列跟着走，纵向滚动时两者一起走，天然对齐。 */
+.dsh-md-render-code-body{display:flex;align-items:stretch;min-width:0;max-height:70vh;overflow:auto}
+/* 行号列：与 pre 同字体 / 同字号 / 同行高 → 逐行对齐；用 pre 呈现换行、不参与选中/复制。
+   右对齐 + 等宽数字（tabular-nums）：位数变化时列宽稳定。 */
+.dsh-md-render-code-nums{flex:none;padding:12px 8px 12px 10px;border-right:1px solid var(--mdr-line-soft);background:transparent;font-family:var(--mdr-mono);font-size:12.5px;line-height:1.7;text-align:right;white-space:pre;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;user-select:none}
+.dsh-md-render-code-pre{flex:1;min-width:0;margin:0;padding:12px 14px;overflow:visible;background:transparent;font-family:var(--mdr-mono);font-size:12.5px;line-height:1.7;tab-size:2;color:var(--dsw-alias-label-primary);white-space:pre;overflow-wrap:normal;word-break:normal}
 .dsh-md-render-code-pre:focus-visible{outline:none;box-shadow:var(--mdr-focus-ring-inset)}
 .dsh-md-render-code-pre code{font:inherit;color:inherit;background:none;border:0;padding:0;white-space:inherit;word-break:inherit}
 /* ── 插件控件统一形态：胶囊按钮（复制 / 查看原文 / 整段复制 / 导出 / 视图切换）── */
 /* 统一 26px 方格图标按钮：图标常显、宽度恒定 —— 收起文字后不塌、排布整齐。
    position:relative 是浮层（下方 ::after）的定位锚点。 */
-.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:26px;height:26px;padding:0;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:11px;font-weight:500;line-height:1;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--mdr-motion-fast) var(--mdr-ease),background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
-.dsh-md-render-code-copy:hover,.dsh-md-render-code-wrap-btn:hover,.dsh-md-render-text-toggle:hover,.dsh-md-render-copy:hover,.dsh-md-render-mermaid-eb:hover:not(:disabled),.dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--mdr-accent-line);color:var(--dsw-alias-label-primary)}
-.dsh-md-render-code-copy:focus-visible,.dsh-md-render-code-wrap-btn:focus-visible,.dsh-md-render-text-toggle:focus-visible,.dsh-md-render-copy:focus-visible,.dsh-md-render-mermaid-eb:focus-visible,.dsh-md-render-mermaid-vt:focus-visible{outline:none;box-shadow:var(--mdr-focus-ring)}
+.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-code-lines-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:26px;height:26px;padding:0;border:1px solid var(--mdr-line);border-radius:var(--mdr-pill);background:transparent;font:inherit;font-size:11px;font-weight:500;line-height:1;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color var(--mdr-motion-fast) var(--mdr-ease),background-color var(--mdr-motion-fast) var(--mdr-ease),border-color var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease)}
+.dsh-md-render-code-copy:hover,.dsh-md-render-code-wrap-btn:hover,.dsh-md-render-code-lines-btn:hover,.dsh-md-render-text-toggle:hover,.dsh-md-render-copy:hover,.dsh-md-render-mermaid-eb:hover:not(:disabled),.dsh-md-render-mermaid-vt:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--mdr-accent-line);color:var(--dsw-alias-label-primary)}
+.dsh-md-render-code-copy:focus-visible,.dsh-md-render-code-wrap-btn:focus-visible,.dsh-md-render-code-lines-btn:focus-visible,.dsh-md-render-text-toggle:focus-visible,.dsh-md-render-copy:focus-visible,.dsh-md-render-mermaid-eb:focus-visible,.dsh-md-render-mermaid-vt:focus-visible{outline:none;box-shadow:var(--mdr-focus-ring)}
 /* ── 控件「文字收起、只留图标」，悬停 / 键盘聚焦用**浮层**显示文字（用户口径）──
    为什么用浮层而不是就地撑开：就地撑开会把同一行相邻按钮推开 —— 鼠标扫过时整排抖动。
    浮层走 absolute（零布局位移）+ 向下弹出（top:100%）：卡片是 overflow:hidden，
@@ -4133,7 +4183,7 @@ const STYLES = `
 .dsh-md-render-code-copy[data-state="copied"]::after{opacity:1;transform:none}
 /* 触屏既没有 hover、也没有"悬停可发现"：按钮就地带文字（否则只剩图标，无从判断按钮做什么） */
 @media (hover:none){
-:is(.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt){width:auto;min-width:26px;padding:0 var(--mdr-space-2)}
+:is(.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-code-lines-btn,.dsh-md-render-text-toggle,.dsh-md-render-copy,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt){width:auto;min-width:26px;padding:0 var(--mdr-space-2)}
 :is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::before{content:attr(data-dsh-md-render-tip);white-space:nowrap}
 :is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::after{display:none}
 }
@@ -4166,6 +4216,11 @@ const STYLES = `
 .dsh-md-render-code:hover .dsh-md-render-code-wrap-btn,.dsh-md-render-code:focus-within .dsh-md-render-code-wrap-btn{opacity:1}
 @media (hover:none){.dsh-md-render-code-wrap-btn{opacity:1}}
 .dsh-md-render-code-wrap-btn[aria-pressed="true"]{border-color:var(--mdr-accent-line);background:var(--mdr-accent-soft);color:var(--mdr-accent-text)}
+/* 行号切换：与换行同一套浮现策略（两者性质相同 —— 不改内容、只改呈现），按下态同样用强调色胶囊 */
+.dsh-md-render-code-lines-btn{opacity:0}
+.dsh-md-render-code:hover .dsh-md-render-code-lines-btn,.dsh-md-render-code:focus-within .dsh-md-render-code-lines-btn{opacity:1}
+@media (hover:none){.dsh-md-render-code-lines-btn{opacity:1}}
+.dsh-md-render-code-lines-btn[aria-pressed="true"]{border-color:var(--mdr-accent-line);background:var(--mdr-accent-soft);color:var(--mdr-accent-text)}
 /* 换行态：长行折行显示（默认态是 white-space:pre 横向滚动，与官方 CodeBlock 的 wrap 语义对齐） */
 .dsh-md-render-code-pre.dsh-md-render-code-wrap{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;overflow-x:hidden}
 .dsh-md-render-text-toggle{align-self:flex-end;margin-top:4px}
@@ -4293,7 +4348,7 @@ const STYLES = `
 .tzx-md a,.tzx-md img.dsh-md-render-md-img.dsh-md-render-img-zoom,.tzx-md .dsh-md-render-md-table tbody tr td,.tzx-md .dsh-md-render-md-task-item::before{transition:none}
 .tzx-md .dsh-md-render-md-task-item::after{transform:rotate(45deg);opacity:0;transition:none}
 .tzx-md .dsh-md-render-md-task-item:has(>.dsh-md-render-md-task:checked)::after{transform:rotate(45deg);opacity:1}
-.dsh-md-render-copy,.dsh-md-render-copy-ico,.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-text-toggle,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{transition:none}
+.dsh-md-render-copy,.dsh-md-render-copy-ico,.dsh-md-render-code-copy,.dsh-md-render-code-wrap-btn,.dsh-md-render-code-lines-btn,.dsh-md-render-text-toggle,.dsh-md-render-mermaid-eb,.dsh-md-render-mermaid-vt{transition:none}
 .dsh-md-render-copy[data-state="copied"] .dsh-md-render-copy-ico{transform:none}
 :is(.tzx-md,.dsh-md-render-code,.dsh-md-render-mermaid-card,.md-code-block) [data-dsh-md-render-tip]::after{transition:none}
 .dsh-md-render-img-lightbox[open],.dsh-md-render-img-lightbox[open]::backdrop{animation:none}
@@ -4555,6 +4610,19 @@ const icon = {
         createElement('path', { d: 'M7 15V9l3 3 3-3v6' }),
         createElement('path', { d: 'M17 9v6' }),
         createElement('path', { d: 'm15 13 2 2 2-2' }),
+      ],
+      size,
+    ),
+  // 行号（左侧 gutter 短线列 + 右侧正文线）：代码块「显示 / 隐藏行号」切换用。
+  lines: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M4 6h1' }),
+        createElement('path', { d: 'M4 12h1' }),
+        createElement('path', { d: 'M4 18h1' }),
+        createElement('line', { x1: 9, y1: 6, x2: 20, y2: 6 }),
+        createElement('line', { x1: 9, y1: 12, x2: 20, y2: 12 }),
+        createElement('line', { x1: 9, y1: 18, x2: 20, y2: 18 }),
       ],
       size,
     ),

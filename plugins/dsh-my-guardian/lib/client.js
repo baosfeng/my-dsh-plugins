@@ -659,6 +659,19 @@ const icon = {
       ],
       size,
     ),
+  // 行号（左侧 gutter 短线列 + 右侧正文线）：代码块「显示 / 隐藏行号」切换用。
+  lines: (size = 16) =>
+    iconSvg(
+      [
+        createElement('path', { d: 'M4 6h1' }),
+        createElement('path', { d: 'M4 12h1' }),
+        createElement('path', { d: 'M4 18h1' }),
+        createElement('line', { x1: 9, y1: 6, x2: 20, y2: 6 }),
+        createElement('line', { x1: 9, y1: 12, x2: 20, y2: 12 }),
+        createElement('line', { x1: 9, y1: 18, x2: 20, y2: 18 }),
+      ],
+      size,
+    ),
   // 更多（三点）：卡片工具条的「更多」菜单触发器 —— 低频按钮收进菜单，不长期霸占头部。
   more: (size = 16) =>
     iconSvg(

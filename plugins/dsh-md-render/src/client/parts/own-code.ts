@@ -141,6 +141,105 @@ function lineNumbersText(source: string): string {
   return out.join('\n')
 }
 
+/** 代码卡片头部：语言胶囊 + 操作区（行号 / 换行 / 复制）。 */
+function CodeHead({
+  lang,
+  lines,
+  wrap,
+  copied,
+  onToggleLines,
+  onToggleWrap,
+  onCopy,
+}: {
+  lang: string
+  lines: boolean
+  wrap: boolean
+  copied: boolean
+  onToggleLines: () => void
+  onToggleWrap: () => void
+  onCopy: () => void
+}): unknown {
+  const copyLabel = copied ? '已复制' : '复制'
+  const wrapLabel = wrap ? '取消换行' : '自动换行'
+  const linesLabel = lines ? '隐藏行号' : '显示行号'
+  return createElement(
+    'div',
+    { className: CODE_HEAD_CLASS },
+    createElement('span', { className: CODE_LANG_CLASS }, lang === '' ? '' : lang),
+    createElement(
+      'div',
+      { className: CODE_ACTIONS_CLASS },
+      // data-dsh-md-render-tip = 悬停浮层文字（styles.ts 的 [data-dsh-md-render-tip]::after）；
+      // 文字收起后它是唯一的可视提示。aria-pressed 用字符串而非布尔：React 对 aria-* 原样写 true|false。
+      createElement(
+        'button',
+        {
+          type: 'button',
+          className: CODE_LINES_BTN_CLASS,
+          'aria-label': linesLabel,
+          'data-dsh-md-render-tip': linesLabel,
+          'aria-pressed': lines ? 'true' : 'false',
+          onClick: onToggleLines,
+        },
+        icon.lines(14),
+      ),
+      createElement(
+        'button',
+        {
+          type: 'button',
+          className: CODE_WRAP_BTN_CLASS,
+          'aria-label': wrapLabel,
+          'data-dsh-md-render-tip': wrapLabel,
+          'aria-pressed': wrap ? 'true' : 'false',
+          onClick: onToggleWrap,
+        },
+        icon.wrap(14),
+      ),
+      createElement(
+        'button',
+        {
+          type: 'button',
+          className: CODE_COPY_CLASS,
+          'aria-label': copyLabel,
+          // 状态也写进 data-state：styles.ts 靠它让成功态的浮层**常显** + 图标换勾（状态不能只靠悬停才知道）。
+          'data-state': copied ? 'copied' : 'idle',
+          'data-dsh-md-render-tip': copyLabel,
+          onClick: onCopy,
+        },
+        // 图标常显、文字走悬停浮层（styles.ts 的 [data-dsh-md-render-tip]::after）。
+        icon.copy(14),
+      ),
+    ),
+  )
+}
+
+/** 代码主体：行号列（可选）+ pre —— 两者同属一个横向滚动容器（原型 .fence-body 同构）。 */
+function CodeBody({
+  lang,
+  source,
+  wrap,
+  showLines,
+}: {
+  lang: string
+  source: string
+  wrap: boolean
+  showLines: boolean
+}): unknown {
+  return createElement(
+    'div',
+    { className: CODE_BODY_CLASS },
+    showLines
+      ? createElement('div', { className: CODE_NUMS_CLASS, 'aria-hidden': 'true' }, lineNumbersText(source))
+      : null,
+    // 换行态只**追加**类名，原有 CODE_PRE_CLASS 保留（样式由 styles.ts 统一提供）。
+    createElement(
+      'pre',
+      { className: CODE_PRE_CLASS + (wrap ? ' ' + CODE_WRAP_CLASS : ''), tabIndex: 0 },
+      codeBodyNodes(lang, source),
+    ),
+  )
+}
+
 /**
  * 自研代码块：banner（真实语言名 + 行号切换 + 换行切换 + 复制）+ pre。
  *
@@ -171,78 +270,12 @@ function CodeBlockView({ lang, code }: { lang: string; code: string }): unknown 
     if (!lines && wrap) setWrap(false)
     setLines(!lines)
   }
-  /** 行号列只在「已开启且未换行」时出现（换行后逻辑行 ≠ 物理行，行号必然错位）。 */
-  const showLines = lines && !wrap
-  const copyLabel = copied ? '已复制' : '复制'
-  const wrapLabel = wrap ? '取消换行' : '自动换行'
-  const linesLabel = lines ? '隐藏行号' : '显示行号'
   return createElement(
     'div',
     { className: CODE_VIEW_CLASS },
-    createElement(
-      'div',
-      { className: CODE_HEAD_CLASS },
-      createElement('span', { className: CODE_LANG_CLASS }, lang === '' ? '' : lang),
-      createElement(
-        'div',
-        { className: CODE_ACTIONS_CLASS },
-        createElement(
-          'button',
-          {
-            type: 'button',
-            className: CODE_LINES_BTN_CLASS,
-            'aria-label': linesLabel,
-            'data-dsh-md-render-tip': linesLabel,
-            'aria-pressed': lines ? 'true' : 'false',
-            onClick: onToggleLines,
-          },
-          icon.lines(14),
-        ),
-        createElement(
-          'button',
-          {
-            type: 'button',
-            className: CODE_WRAP_BTN_CLASS,
-            'aria-label': wrapLabel,
-            // data-dsh-md-render-tip = 悬停浮层文字（styles.ts 的 [data-dsh-md-render-tip]::after）；文字收起后它是唯一的可视提示。
-            'data-dsh-md-render-tip': wrapLabel,
-            // 字符串而非布尔：React 对 aria-* 会原样写成 aria-pressed="true|false"。
-            'aria-pressed': wrap ? 'true' : 'false',
-            onClick: onToggleWrap,
-          },
-          // 图标常显（本轮补齐 wrap 图标）：没有图标的按钮收起文字就成空按钮。
-          icon.wrap(14),
-        ),
-        createElement(
-          'button',
-          {
-            type: 'button',
-            className: CODE_COPY_CLASS,
-            'aria-label': copyLabel,
-            // 状态也写进 data-state：styles.ts 靠它让成功态的浮层**常显** + 图标换勾（状态不能只靠悬停才知道）。
-            'data-state': copied ? 'copied' : 'idle',
-            'data-dsh-md-render-tip': copyLabel,
-            onClick: onCopy,
-          },
-          // 图标常显、文字走悬停浮层（styles.ts 的 [data-dsh-md-render-tip]::after）。
-          icon.copy(14),
-        ),
-      ),
-    ),
-    // 行号列与 pre 同属一个横向滚动容器：代码横向滚动时行号列一起走（原型 fence-body 同构）。
-    createElement(
-      'div',
-      { className: CODE_BODY_CLASS },
-      showLines
-        ? createElement('div', { className: CODE_NUMS_CLASS, 'aria-hidden': 'true' }, lineNumbersText(source))
-        : null,
-      // 换行态只**追加**类名，原有 CODE_PRE_CLASS 保留（样式由 styles.ts 统一提供）。
-      createElement(
-        'pre',
-        { className: CODE_PRE_CLASS + (wrap ? ' ' + CODE_WRAP_CLASS : ''), tabIndex: 0 },
-        codeBodyNodes(lang, source),
-      ),
-    ),
+    createElement(CodeHead, { lang, lines, wrap, copied, onToggleLines, onToggleWrap, onCopy }),
+    // 行号列只在「已开启且未换行」时出现（换行后逻辑行 ≠ 物理行，行号必然错位）。
+    createElement(CodeBody, { lang, source, wrap, showLines: lines && !wrap }),
   )
 }
 

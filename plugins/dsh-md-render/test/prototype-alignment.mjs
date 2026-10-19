@@ -718,6 +718,6 @@ test('代码块行号切换对齐原型（原型 .line-nums / lines-btn）：默
   assert.ok(OWN_CODE.includes("const CODE_LINES_BTN_CLASS = 'dsh-md-render-code-lines-btn'"), '行号按钮类名单一来源')
   assert.ok(OWN_CODE.includes('icon.lines(14)'), '行号按钮有图标（文字收起后不留空按钮）')
   assert.ok(OWN_CODE.includes('const [lines, setLines] = useState(false)'), '行号默认关闭（与原型初始态一致）')
-  assert.ok(OWN_CODE.includes('showLines = lines && !wrap'), '换行态下隐藏行号列（逻辑行 ≠ 物理行会错位）')
+  assert.ok(OWN_CODE.includes('showLines: lines && !wrap'), '换行态下隐藏行号列（逻辑行 ≠ 物理行会错位）')
   assert.ok(OWN_CODE.includes('lineNumbersText'), '行号文本按逻辑行生成')
 })

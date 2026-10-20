@@ -35,6 +35,7 @@ window.__ModuleLoader__.load({
     /*__PART_CONFIG__*/
     /*__PART_BLOCK_LANG__*/
     /*__PART_LANG_SOURCE__*/
+    /*__PART_FENCE_CONTENT__*/ /*__PART_FENCE_LANG_INFER__*/
     /*__PART_TABLE_NORMALIZE__*/
     /*__PART_RENDER_ASSETS__*/
     // 自有渲染容器的 React root 管理（不再 require 官方组件）

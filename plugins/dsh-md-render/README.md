@@ -8,7 +8,7 @@
 
 **对话渲染插件**：对话里的**围栏代码块全部由本插件自己的渲染器产出** —— 不再调用宿主官方 `MarkdownText` / `CodeBlock`。
 
-- markdown 文本（`text` 家族围栏、确证无语言的围栏、`pre[data-context-text]` 上下文注入块、`MarkdownView`）→ 自研 markdown 渲染（解析层 **marked**，GFM 表格 / 列表 / 标题 / 链接 / 行内代码 / 代码块）；
+- markdown 文本（`text` 家族围栏、**内容确实是 markdown 文档**的无语言围栏、`pre[data-context-text]` 上下文注入块、`MarkdownView`）→ 自研 markdown 渲染（解析层 **marked**，GFM 表格 / 列表 / 标题 / 链接 / 行内代码 / 代码块）；
 - 其他语言（`js` / `ts` / `json` / `bash` / `python` …）→ 自研代码块：**语言名胶囊**显示**真实语言名**（不是宿主那个本地化标签「代码块」）+ 复制（hover / focus 浮现）+ 长行横向滚动 + **highlight.js** 语法高亮；
 - `mermaid` / `mmd` → 图表卡片（预览 / 代码切换、导出 PNG / SVG、浮窗 + 缩放平移）；
 - 另有：整段复制、统一 `MarkdownView` 导出、思考块默认展开、非标准表格容错、设置面板。
@@ -20,7 +20,9 @@
 ## 功能
 
 - **所有围栏块都由自研渲染器接管**（`div.md-code-block`）：
-  - 语言 ∈ `text` / `plaintext` / `txt` / `md` / `markdown`，或**确证无语言** → **自研 markdown 渲染**（真实 `h1`–`h6` / `ul` / `ol` / `table` / `blockquote` / `a` / `code` 标签，自有 class + **自有视觉语言**），每块带独立「查看原文」；
+  - 语言 ∈ `text` / `plaintext` / `txt` / `md` / `markdown` → **自研 markdown 渲染**（真实 `h1`–`h6` / `ul` / `ol` / `table` / `blockquote` / `a` / `code` 标签，自有 class + **自有视觉语言**），每块带独立「查看原文」；
+  - **确证无语言** → **看内容分流**：明显是 markdown 文档（标题 / 列表 / 表格 / 引用）才 markdown 化；代码 / 日志 / 纯文本 → 代码块（等宽、**保留换行与缩进**）。真实会话实测（2026-10-20 android-monitor，208 个围栏）**200 个没有语言标记**、绝大多数是 Kotlin / SQL / shell 代码 —— 「无标记一律 markdown」会把代码折叠成一坨，因此按内容保守判定，拿不准一律当代码；
+  - **无语言块的语言推断**（`markdown.inferLang`，默认开）：先按内容识别（JSON / shell / SQL / Kotlin / Python / TS / JS / Java / C++ / HTML / CSS，只认特征明确的），认不出再用**项目主语言**兜底（host 半 stat 会话 cwd 下的构建标记文件：`build.gradle.kts`→Kotlin、`tsconfig.json`→TypeScript、`go.mod`→Go、`Cargo.toml`→Rust…**不遍历目录、不读文件内容、不跟随符号链接**）；日志块（时间戳行占多数）**不推断**。推断值只用于高亮 + 胶囊展示，带 `data-mdr-lang-inferred` 与悬停「按内容推断 / 按项目推断」，**不冒充围栏原文标注**，也不改变 markdown / 代码的分流。真实会话实测：96 个无语言块里 69 个内容识别命中（Kotlin 62 / SQL 4 / shell 3）、4 个日志留空、23 个走项目兜底；
   - 其他语言 → **自研代码块渲染**：语言名做成**强调色大写胶囊**、复制按钮（默认隐形，hover / 键盘 focus / 触屏才浮现）、**长行横向滚动**（保真，不软换行；官方是 `pre-wrap` + `break-all`）、highlight.js 高亮（hljs 令牌树 → 自有 vdom `span`，**没有 innerHTML**）；
   - `mermaid` / `mmd` → 图表卡片（语言集合不重叠，分流稳定）；
   - 语言识别不出来的块同样接管（代码视图），但**语言位留空**：绝不编造语言名，也绝不把真纯文本误判成 markdown。
@@ -35,7 +37,7 @@
   - **自有语法配色 `--mdr-syn-*`**：五色语义映射（蓝=关键字、绿=字符串、琥珀=数值/常量、灰=注释、弱蓝=函数），每色由宿主状态色向正文色混合得到；实测**每个 token 的对比度都不低于官方 shiki 调色板**（官方 `string` 3.30、`comment` 3.18、`parameter` 3.43 均低于 WCAG AA 4.5，本插件对应为 5.57 / 5.08 / 5.55）；
   - **插件自绘 focus 环**：宿主在指针模态下会把官方 `:focus-visible` 描边抹成透明，自有控件因此一律用**强调色 4px 光晕**（`--mdr-focus-ring`；被 `overflow` 裁掉的滚动区用 `-inset` 变体，深色 / 浅色都可见），控件一律 **26px 方格**（对齐原型 §sec-toolbar 的 `.ctl`）；
   - **动效纪律（对齐原型 §D）**：hover 与微状态 150ms、进入 UI 220ms，**只动 `transform` / `opacity`**，动画不作为状态变化的唯一信号；`prefers-reduced-motion` 下全部关掉（不做「缩短到 1ms」的妥协式处理）。
-- **围栏语言识别（双源互补 + DOM 兜底）**：主源是 **client 侧的会话事件流索引** —— 从 `ctx.sessions.binding(id).eventSource` 的原始 Session 事件里取 markdown **原文**按内容哈希建表，**天然含历史**，因此**冷启动 / 重启后打开历史会话也命中**，且命中即**零 RPC**；未命中再回落 host 半的**实时围栏语言索引**（订阅 `session/event`，按块内容哈希批量查询）与 **DOM 契约**（`code.language-*` / banner infostring → `js` / `json` / `bash` 等零额外请求）。判定结果带出的 `confirmed` 只用来区分「**确证无语言**」（走 markdown）与「**识别失败**」（走代码视图、语言位留空）；**不做内容启发式判定**。
+- **围栏语言识别（双源互补 + DOM 兜底）**：主源是 **client 侧的会话事件流索引** —— 从 `ctx.sessions.binding(id).eventSource` 的原始 Session 事件里取 markdown **原文**按内容哈希建表，**天然含历史**，因此**冷启动 / 重启后打开历史会话也命中**，且命中即**零 RPC**；未命中再回落 host 半的**实时围栏语言索引**（订阅 `session/event`，按块内容哈希批量查询）与 **DOM 契约**（`code.language-*` / banner infostring → `js` / `json` / `bash` 等零额外请求）。判定结果带出的 `confirmed` 只用来区分「**确证无语言**」（再按内容分流出 markdown / 代码）与「**识别失败**」（走代码视图、语言位留空）；**只判「是不是 markdown 文档」，绝不猜语言、绝不编造语言名**。
 - **「渲染为…」三态切换（所有围栏块可用）**：块内「图表 / Markdown / 源码」控件（hover / 键盘 focus / 触屏三路可达；mermaid 卡片**不**承载它 —— 卡片头的「预览 / 代码」已覆盖「看源码」这条意图，同一意图只留一套入口）；优先级 **手动覆盖 > 语言索引 > DOM 契约**，用于模型把 Java 写成 `js` 这类误判；覆盖值按内容哈希记入 `sessionStorage`，刷新后仍记得。
 - **上下文注入块渲染**：宿主把上下文注入正文（**子 agent 回传消息**、AGENTS.md 等）渲染为纯文本 `pre[data-context-text]`；本插件在 DOM 层用**自研 markdown 渲染器**渲染，原文节点保留并置 `hidden`。
 - **mermaid 图表卡片**：`mermaid` / `mmd` 围栏块渲染为图表卡片（常驻「预览 / 代码」+ 缩放分段 + **全屏浮窗** +「更多」菜单；导出 PNG / SVG 与缩放模式收在菜单里）；**渲染失败时以原始源码为主**——首屏即源码（可复制），错误原因降为一行灰字并保留「重试」，绝不静默丢内容。引擎 `assets/mermaid-10.9.3.min.js` 由 host 半静态托管，client 首次渲染时按需 fetch，**不内联进 bundle**。
@@ -57,6 +59,7 @@
 | `markdown.copyButton`        | `true` | 整段 markdown 复制按钮（`MarkdownView` 容器）                      |
 | `markdown.textFenceMarkdown` | `true` | 围栏块渲染总开关（自研 markdown / 自研代码块；关掉即全部交回宿主） |
 | `markdown.contextMarkdown`   | `true` | `pre[data-context-text]` 上下文注入块按 markdown 渲染              |
+| `markdown.inferLang`         | `true` | 无语言围栏的语言推断（内容识别 → 项目主语言兜底，带推断标识）      |
 | `thinking.defaultExpanded`   | `true` | 思考块默认展开（严格布尔，缺失 / 非法回退 true）                   |
 | `mermaid.injectPrompt`       | `true` | 注入 mermaid 能力说明 section（仅显式 `false` 关）                 |
 | `mermaid.render`             | `true` | `mermaid` / `mmd` 代码块渲染为图表卡片                             |
@@ -154,6 +157,7 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
   2. **host 半实时语言索引（兜底）**：host 订阅 `session/event` 解析消息 markdown 原文，按「围栏块内容哈希 → 语言」建**有界**索引（2000 条 FIFO、登记**所有**围栏语言、**零磁盘 IO**），client 半按块 `<code>` 内容哈希经 `GET /md-render/api/langs` 批量查询（同一次扫描合成一次请求、结果有缓存、未命中最多重试 2 次后放弃）。**它只覆盖插件进程存活期间产生的消息**（不读历史）；
   3. **DOM 契约（兜底）**：`code.language-xxx` → banner infostring。官方只在**空**围栏分支写 `language-*`，banner 也只对 shiki **认识**的标记显示语言原名，其余显示本地化标签「代码块」。
   - **三者都拿不到语言**（老宿主 / 精简上下文 / 索引为空 / 历史窗口没覆盖到）→ 块仍被接管为**代码视图**（用户口径「所有围栏块都由插件接管」），但**语言位留空**：不写「代码块」、不猜语言、也**绝不**把它误判成 markdown（真纯文本被当 markdown 会走样）；想按 markdown 读，用块内「渲染为… → Markdown」。
+  - **确证无语言**（事件流索引明确给出空串）→ 内容像 markdown 文档才 markdown 化，否则按代码卡（判据见 `src/client/parts/fence-content.ts`：markdown 块级特征 ≥ 2 且零代码特征；拿不准一律当代码 —— 误判成代码只是不美化，误判成 markdown 会破坏代码结构）。
   - 主源只覆盖会话事件源**已加载的窗口**：`hasMore` 为真时更早历史里的块没有语言来源 → 走上面那条代码视图降级。同哈希多候选按 DOM 文档序 FIFO，**候选互不相容且 DOM 内同哈希块数与候选数对不上 → 整块放弃猜测**（语言位留空）。
   - 查表只在块**稳定后**（`[data-streaming]` 门控 + 400ms 稳定窗口）发生，且**门控先于语言判定**：流式块与开关关闭的块**一次请求都不发**。会话服务取不到 / 请求失败 / 无 `fetch` 一律静默降级。
 - **语言索引的服务依赖**：用 `ctx.get('sessions', false)` **惰性**取会话服务（cordis 4 的 `ReflectService.get` 契约即「read a service without the inject requirement」，与设置页取 `slots` 同款写法），**刻意不声明 `inject: ['sessions']`** —— 硬 inject 在服务缺失时会让整个 client 半**根本不 apply**（连样式与设置页一起失效）。**零新增硬依赖。**

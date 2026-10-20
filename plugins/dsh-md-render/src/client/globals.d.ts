@@ -35,6 +35,9 @@ declare const HIGHLIGHTJS_URL: string
 /** 语言索引查询端点 / 查询参数名（同一真源，issue #466）。 */
 declare const LANGS_API_URL: string
 declare const LANGS_HASH_PARAM: string
+/** 项目主语言探测端点 / cwd 参数名（无语言围栏的语言推断兜底，同一真源）。 */
+declare const PROJECT_LANG_API_URL: string
+declare const PROJECT_LANG_CWD_PARAM: string
 
 // ── 同步模块加载器（factory 参数；平台 seed 模块见 dom-root.ts）─────────
 declare function require(spec: string): Record<string, unknown>

@@ -38,11 +38,13 @@ const MARKED_URL = "/md-render/assets/marked-18.1.0.umd.js"
 const HIGHLIGHTJS_URL = "/md-render/assets/highlightjs-11.12.0.min.js"
 const LANGS_API_URL = "/md-render/api/langs"
 const LANGS_HASH_PARAM = "h"
+const PROJECT_LANG_API_URL = "/md-render/api/project-lang"
+const PROJECT_LANG_CWD_PARAM = "cwd"
     // 渲染配置（三段开关 + 旧扁平键兼容）+ 围栏语言索引（issue #466）
     "use strict";
 // ── 渲染配置：三段命名空间化开关（markdown / thinking / mermaid）─────────
 // 与 host 半 lib/config.js 的 schema 一一对应（同一份默认值语义）：
-//  - markdown.copyButton / textFenceMarkdown / contextMarkdown  默认开（!== false）
+//  - markdown.copyButton / textFenceMarkdown / contextMarkdown / inferLang  默认开（!== false）
 //  - thinking.defaultExpanded                                  默认开（严格布尔）
 //  - mermaid.injectPrompt / render                             默认开（仅显式 false 关）
 // **旧扁平键读兼容（必须）**：合并前 dsh-md-render 把开关写在顶层，用户 profile
@@ -55,7 +57,7 @@ const LANGS_HASH_PARAM = "h"
 // 与 scripts/build.mjs）—— 本文件不再各写一份字面量，避免两侧漂移。
 /** 三段默认值（缺失 / 非法值一律回退到这里）。 */
 const DEFAULT_RENDER_OPTIONS = {
-    markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+    markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true, inferLang: true },
     thinking: { defaultExpanded: true },
     mermaid: { injectPrompt: true, render: true },
 };
@@ -104,6 +106,7 @@ function readConfig(raw) {
             'copyButton',
             'textFenceMarkdown',
             'contextMarkdown',
+            'inferLang',
         ]),
         thinking: pickThinking(renderOptions.thinking, obj),
         mermaid: pickSection(renderOptions.mermaid, sectionOf(obj, 'mermaid'), obj, ['injectPrompt']),
@@ -328,9 +331,9 @@ function resolveBlockLang(block) {
  * 语言判定唯一入口（**手动覆盖 > client 事件流索引 > DOM/host 索引**）：
  *  ⓪ 手动覆盖（需求 4）：用户点过「渲染为…」→ 直接采用且 confirmed = true；
  *  ① client 事件流索引 {@link fenceLangOf}——含历史的原始 markdown，命中即零 RPC，
- *     confirmed = true；**`''` = 确证无语言**同样算确证（需求 3 的兜底只认这种情形）；
+ *     confirmed = true；**`''` = 确证无语言**同样算确证（后续交给 fence-content 按内容分流）；
  *  ② 取不到 → {@link resolveBlockLangEx}（DOM token / host 索引命中才算确证）。
- * 调用方按 `confirmed` 区分「确证无语言」与「识别失败」：后者原样保留官方代码块。
+ * 调用方按 `confirmed` 区分「确证无语言」与「识别失败」：后者原样按代码卡接管（语言位留空）。
  */
 function resolveFenceLangEx(block) {
     const forced = fenceForceOf(block);
@@ -841,6 +844,355 @@ exports.fenceIndexSize = () => fenceIndex.byHash.size;
 Object.assign(exports,{fenceLangOf});
 
     "use strict";
+// ── 无语言围栏的内容分流：像 markdown 文档 / 像代码 ──────────────────────
+// 背景（2026-10-20 真实会话取证）：208 个围栏里 200 个无语言标记（184 个在思考块里），
+// 内容是 Kotlin / SQL / shell —— 旧口径「无语言一律 markdown」把代码折叠成一坨。
+// 现在先看内容：明显是 markdown 文档才 markdown 化，否则代码卡（等宽、保留换行）。
+// 边界：只判「是不是 markdown 文档」（不猜语言、不改写内容）；拿不准一律按代码卡
+// （误判成代码只是没美化，误判成 markdown 会破坏代码结构）。判据 = markdown 块级特征
+// 加权 ≥ 2 且**零代码特征**。脚本模式片段（无 import/export）。
+/** markdown 块级特征（行首，允许 0–3 空格缩进）。 */
+const FENCE_MD_HEADING = /^ {0,3}#{1,6}[ \t]+\S/;
+const FENCE_MD_QUOTE = /^ {0,3}>[ \t]?\S/;
+const FENCE_MD_LIST = /^ {0,3}(?:[-*+][ \t]+\S|\d{1,9}\.[ \t]+\S)/;
+/** GFM 表格分隔行：至少两格 `---`，可带 `:` 对齐标记。 */
+const FENCE_MD_TABLE_SEP = /^ {0,3}\|?[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)+\|?[ \t]*$/;
+/** 首尾都有管道符的表格行。 */
+const FENCE_MD_TABLE_ROW = /^ {0,3}\|.*\|[ \t]*$/;
+/** 分隔线：`***` / `---` / `___`（≥3 个，可夹空格）。 */
+const FENCE_MD_THEMATIC = /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/;
+/** 行内 markdown 标记（粗体 / 行内代码 / 链接）——弱证据，只在非代码行计入。 */
+const FENCE_MD_INLINE = /\*\*[^*\n]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\)/;
+/** 代码特征：行首关键字（Kotlin / Java / TS / Python / Go / SQL / shell 的常见开局）。 */
+const FENCE_CODE_KEYWORD = /^[\t ]*(?:val|var|fun|class|object|interface|private|public|protected|internal|import|package|def|const|let|function|return|if|else|elif|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|yield|async|await|SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|System\.|console\.|echo|export|using|struct|enum|namespace|typedef|require|module)\b/;
+/** 代码特征：注解行（`@Composable` / `@Override` / `@Test` …）。 */
+const FENCE_CODE_ANNOTATION = /^[\t ]*@[A-Za-z_]\w*/;
+/** 代码特征：行尾语句 / 块符号（`;` `{` `}` `=>` `->` `):`）。 */
+const FENCE_CODE_TRAIL = /(?:[;{}]|=>|->|\)[ \t]*[:{])[ \t]*$/;
+/** 代码特征：以 2+ 空格或 tab 开头的续行（markdown 列表行已排除）。 */
+const FENCE_CODE_INDENT = /^(?: {2,}|\t)\S/;
+/** 代码特征：运算符（逻辑 / 比较 / 作用域 / 箭头；`--`、`++` 信号太弱、易与表格分隔线撞车，不计）。 */
+const FENCE_CODE_OPERATOR = /(?:&&|\|\||::|=>|->|!==|===|!=|==|\+=|-=)/;
+/** 单行 → markdown 结构特征（表格分隔与分隔线互斥：`| --- | --- |` 只算表格分隔）。 */
+function classifyMarkdownLine(line) {
+    const tableSep = FENCE_MD_TABLE_SEP.test(line);
+    return {
+        heading: FENCE_MD_HEADING.test(line),
+        tableSep,
+        tableRow: !tableSep && FENCE_MD_TABLE_ROW.test(line),
+        quote: FENCE_MD_QUOTE.test(line),
+        list: FENCE_MD_LIST.test(line),
+        thematic: !tableSep && FENCE_MD_THEMATIC.test(line),
+    };
+}
+/** 是否 markdown 结构行（是 → 只计正分，**不参与代码特征**）。 */
+function isMarkdownStructure(kind) {
+    return kind.heading || kind.tableSep || kind.tableRow || kind.quote || kind.list || kind.thematic;
+}
+/** 结构行的 markdown 正分（标题与表格分隔是块级强特征，各 2 分）。 */
+function markdownScoreOfStructure(kind) {
+    let score = 0;
+    if (kind.heading)
+        score += 2;
+    if (kind.tableSep)
+        score += 2;
+    if (kind.tableRow)
+        score += 1;
+    if (kind.quote)
+        score += 1;
+    if (kind.list)
+        score += 1;
+    if (kind.thematic)
+        score += 1;
+    return score;
+}
+/** 普通行的代码特征分（注解 / 行首关键字 / 行尾符号 / 缩进续行 / 运算符，各自 1 分）。 */
+function codeScoreOfLine(line) {
+    let score = 0;
+    if (FENCE_CODE_ANNOTATION.test(line))
+        score += 1;
+    if (FENCE_CODE_KEYWORD.test(line))
+        score += 1;
+    if (FENCE_CODE_TRAIL.test(line))
+        score += 1;
+    if (FENCE_CODE_INDENT.test(line))
+        score += 1;
+    if (FENCE_CODE_OPERATOR.test(line))
+        score += 1;
+    return score;
+}
+/** 普通行的行内 markdown 弱证据（只在不像代码行时计 1 分）。 */
+function inlineMarkdownScoreOfLine(line) {
+    if (FENCE_CODE_TRAIL.test(line) || FENCE_CODE_KEYWORD.test(line))
+        return 0;
+    return FENCE_MD_INLINE.test(line) ? 1 : 0;
+}
+/** 逐行计分（空行跳过；不看语言、不看代码内容语义）。 */
+function scoreFenceContent(source) {
+    const lines = String(source ?? '').split('\n');
+    let markdown = 0;
+    let code = 0;
+    for (const line of lines) {
+        if (line.trim() === '')
+            continue;
+        const kind = classifyMarkdownLine(line);
+        if (isMarkdownStructure(kind)) {
+            // 结构行只计正分：否则表格分隔行 `| --- | --- |` 会被 `--` 类运算符误伤成代码。
+            markdown += markdownScoreOfStructure(kind);
+            continue;
+        }
+        markdown += inlineMarkdownScoreOfLine(line);
+        code += codeScoreOfLine(line);
+    }
+    return { markdown, code };
+}
+/**
+ * 无语言围栏是否**明显是 markdown 文档**（判据见文件头）：
+ * `markdown 分 ≥ 2` 且 **零代码特征**；否则一律按代码卡（保守：不美化也不破坏）。
+ */
+function fenceLooksLikeMarkdown(source) {
+    const score = scoreFenceContent(source);
+    return score.markdown >= 2 && score.code === 0;
+}
+Object.assign(exports,{scoreFenceContent,fenceLooksLikeMarkdown});
+ "use strict";
+// ── 无语言围栏的语言推断：内容识别优先，项目主语言兜底 ────────────────────
+// 无语言块按代码卡渲染但语言位留空、无高亮 → 本模块推断一个语言：
+//   ① 内容识别（高置信特征、纯函数、零 IO）：JSON / shell / SQL / Kotlin / Python / TS /
+//     JS / Java / C++ / HTML / CSS；② 项目主语言（会话 cwd 的构建标记文件，见
+//     src/routes/project-lang.ts）；③ 日志块与认不出的 → 留空。
+// 边界：只用于高亮 + 胶囊，带 data-mdr-lang-inferred 标识（不冒充原文标注）、**不参与分流**；
+// 请求失败 / 无会话服务 / 无 fetch 静默降级；cwd 与结果按会话有界缓存（TTL 10 分钟）。
+// 脚本模式片段（无 import/export）。
+/** 内容识别规则（**顺序即优先级**：越特异的特征越靠前）。 */
+const INFER_CONTENT_RULES = [
+    { lang: 'json', test: (text) => looksLikeJson(text) },
+    {
+        lang: 'bash',
+        test: (text) => /^#!.*\b(?:ba|z|k)?sh\b/.test(text) ||
+            /(?:^|\n)[ \t]*(?:export[ \t]+\w+=|[A-Z][A-Z0-9_]+=\S)/.test(text) ||
+            /(?:^|\n|[\s&|;])(?:~\/|\.\/|\/)[\w./-]*\b(?:adb|gradlew|apkanalyzer|emulator|xcodebuild)\b/.test(text) ||
+            /(?:^|\n|[\s&|;])(?:adb|npm|npx|pnpm|yarn|git|brew|curl|wget|cd|ls|mkdir|rm|cp|mv|docker|kubectl|gradlew|pip3?|python3?|node|cargo|deno|bun)[ \t]+[-\w./]/.test(text),
+    },
+    {
+        lang: 'sql',
+        test: (text) => /^[ \t]*(?:SELECT|INSERT\s+INTO|UPDATE\s+\w+|DELETE\s+FROM|CREATE\s+(?:TABLE|INDEX)|ALTER\s+TABLE|DROP\s+TABLE)\b/im.test(text) ||
+            // SQL 片段（没有 SELECT 开头）：LIKE / WHERE … = / IN / IS / JOIN 这类强特征。
+            // 注意 `=` 后没有词边界（`= 1` 两侧都是非单词字符），单独用 `=(?!=)`。
+            /\b(?:LIKE[ \t]+'|WHERE[ \t]+\w+[ \t]*(?:[<>!=]=|=(?!=)|\bIN\b|\bIS\b|\bLIKE\b)|\b(?:INNER|LEFT|RIGHT)[ \t]+JOIN[ \t]+\w+\b|GROUP[ \t]+BY\b|ORDER[ \t]+BY[ \t]+\w+)/i.test(text),
+    },
+    {
+        lang: 'kotlin',
+        test: (text) => /(?:^|\n)[ \t]*(?:private\s+|internal\s+|public\s+)?(?:const\s+)?(?:val|var|fun)\s+\w+/.test(text) ||
+            /(?:^|\n)[ \t]*object\s+\w+\s*\{/.test(text) ||
+            /@[A-Z][A-Za-z0-9_]*\b/.test(text),
+    },
+    {
+        lang: 'python',
+        test: (text) => /(?:^|\n)[ \t]*(?:def\s+\w+\s*\(|class\s+\w+[^:]*:|import\s+\w+|from\s+\w+\s+import\b)/.test(text) ||
+            /\bself\.\w+/.test(text),
+    },
+    {
+        lang: 'typescript',
+        test: (text) => /\b(?:interface|type)\s+\w+\s*[={]|\bimport\s+type\b|:\s*(?:string|number|boolean|unknown|void)\b/.test(text),
+    },
+    {
+        lang: 'javascript',
+        test: (text) => /\b(?:const|let)\s+\w+\s*=|\bfunction\s+\w+\s*\(|=>\s*\{|\bconsole\.\w+|\brequire\(/.test(text),
+    },
+    {
+        lang: 'java',
+        test: (text) => /\bpublic\s+(?:static\s+)?(?:void|class|interface)\b|\bSystem\.out\.print/.test(text),
+    },
+    { lang: 'cpp', test: (text) => /^[ \t]*#include[ \t]*[<"]|\bstd::/.test(text) },
+    {
+        lang: 'html',
+        test: (text) => /^[ \t]*<!(?:DOCTYPE|doctype)\b|^[ \t]*<(?:html|head|body|div|span|section|script|style)\b/.test(text),
+    },
+    {
+        lang: 'css',
+        test: (text) => /(?:^|\n)[ \t]*[.#]?[\w-]+[ \t]*\{[^}]*:[^;{}]+;/.test(text),
+    },
+];
+/** 项目主语言缓存 TTL（与 host 半 CACHE_TTL_MS 同口径）。 */
+const INFER_PROJECT_TTL_MS = 10 * 60 * 1000;
+/** 项目主语言缓存：{ cwd, lang, at }（每会话一份，有界）。 */
+let inferredProjectLang = null;
+/** 请求进行中（避免同一轮扫描重复发请求）。 */
+let inferredProjectPending = false;
+/** 已经失败过的 cwd（不反复重试；换 cwd 会重置）。 */
+let inferredProjectFailed = '';
+/** 严格 JSON（首字符 `{` / `[` 且 JSON.parse 成功）。 */
+function looksLikeJson(text) {
+    const trimmed = text.trim();
+    if (trimmed.length < 2)
+        return false;
+    const first = trimmed.charAt(0);
+    if (first !== '{' && first !== '[')
+        return false;
+    try {
+        JSON.parse(trimmed);
+        return true;
+    }
+    catch (_e) {
+        return false;
+    }
+}
+/** 明显是运行时日志（时间戳行占多数）：日志没有语言可高亮，**不参与项目主语言兜底**。 */
+function looksLikeLog(text) {
+    const lines = String(text ?? '')
+        .split('\n')
+        .filter((line) => line.trim() !== '');
+    if (lines.length === 0)
+        return false;
+    const stamped = lines.filter((line) => /^[ \t]*\d{2}:\d{2}:\d{2}[.,]\d{1,3}\b/.test(line) ||
+        /^[ \t]*\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(line) ||
+        /^[ \t]*\d{2}-\d{2} \d{2}:\d{2}:\d{2}[.,]\d{3}\b/.test(line)).length;
+    return stamped >= Math.max(1, Math.ceil(lines.length / 2));
+}
+/** 内容识别：命中返回语言名，否则 ''（纯函数、零 IO）。 */
+function inferLangByContent(code) {
+    const text = String(code ?? '');
+    if (text.trim() === '')
+        return '';
+    for (const rule of INFER_CONTENT_RULES) {
+        if (rule.test(text))
+            return rule.lang;
+    }
+    return '';
+}
+/** 会话 cwd（`sessions.binding(id).session.getSnapshot().cwd`；取不到 → ''）。 */
+function sessionCwdOf(ctx) {
+    const sessions = sessionsService(ctx);
+    if (sessions === null)
+        return '';
+    try {
+        const id = mainSessionId(sessions);
+        if (id === '')
+            return '';
+        const binding = typeof sessions.binding === 'function' ? sessions.binding(id) : null;
+        const session = propOf(binding, 'session');
+        if (session === null || session === undefined || typeof session.getSnapshot !== 'function')
+            return '';
+        const snapshot = session.getSnapshot();
+        const cwd = propOf(snapshot, 'cwd');
+        return typeof cwd === 'string' ? cwd : '';
+    }
+    catch (_e) {
+        return '';
+    }
+}
+/** 当前缓存的项目主语言（过期 / cwd 不一致 → ''）。 */
+function cachedProjectLang(cwd) {
+    if (inferredProjectLang === null)
+        return '';
+    if (inferredProjectLang.cwd !== cwd)
+        return '';
+    if (Date.now() - inferredProjectLang.at > INFER_PROJECT_TTL_MS)
+        return '';
+    return inferredProjectLang.lang;
+}
+/** 请求 host 半探测项目主语言（失败 / 非 200 / 结构不符 → ''）。 */
+async function fetchProjectLang(cwd) {
+    if (typeof fetch !== 'function')
+        return '';
+    try {
+        const url = PROJECT_LANG_API_URL + '?' + PROJECT_LANG_CWD_PARAM + '=' + encodeURIComponent(cwd);
+        const response = await fetch(url);
+        if (response === null || response === undefined || response.ok === false)
+            return '';
+        const body = (await response.json());
+        if (body === null || body.ok !== true)
+            return '';
+        const lang = propOf(body.value, 'lang');
+        return typeof lang === 'string' ? lang.toLowerCase() : '';
+    }
+    catch (_e) {
+        return '';
+    }
+}
+/**
+ * 按需刷新「项目主语言」（每个扫描批开头调用一次）：
+ * 已有缓存 / 请求进行中 / 已失败过同一 cwd / 取不到 cwd → 直接返回（成本 = 几个属性读）。
+ * 请求成功触发一次重扫（把语言胶囊与高亮补上）。
+ */
+/** 会话切换 / 失败标记复位：cwd 变了就丢掉上一份缓存与失败记录。 */
+function syncProjectLangCwd(cwd) {
+    if (inferredProjectLang !== null && inferredProjectLang.cwd !== cwd)
+        inferredProjectLang = null;
+    if (inferredProjectFailed !== '' && inferredProjectFailed !== cwd)
+        inferredProjectFailed = '';
+}
+/** 发起一次项目主语言请求（并发去重；成功触发重扫，失败记住该 cwd 不再重试）。 */
+function requestProjectLangOnce(cwd) {
+    inferredProjectPending = true;
+    void fetchProjectLang(cwd).then((lang) => {
+        inferredProjectPending = false;
+        if (lang === '') {
+            inferredProjectFailed = cwd;
+            return;
+        }
+        inferredProjectLang = { cwd, lang, at: Date.now() };
+        if (typeof rescanForLangs === 'function')
+            rescanForLangs();
+    });
+}
+/**
+ * 按需刷新「项目主语言」（每个扫描批开头调用一次）：
+ * 已有缓存 / 请求进行中 / 已失败过同一 cwd / 取不到 cwd / 开关关闭 → 直接返回（成本 = 几个属性读）。
+ */
+function refreshInferredLang(ctx) {
+    try {
+        if (renderOptions.markdown.inferLang === false)
+            return;
+        const cwd = sessionCwdOf(ctx);
+        if (cwd === '')
+            return;
+        syncProjectLangCwd(cwd);
+        if (cachedProjectLang(cwd) !== '' || inferredProjectPending || inferredProjectFailed === cwd)
+            return;
+        requestProjectLangOnce(cwd);
+    }
+    catch (_e) {
+        inferredProjectPending = false;
+    }
+}
+/** 块源码（官方 `pre.textContent`；取不到 → ''）。 */
+function inferCodeOfBlock(block) {
+    if (block === null || block === undefined || typeof block.querySelector !== 'function')
+        return '';
+    const pre = block.querySelector('pre');
+    return pre === null || pre === undefined ? '' : (pre.textContent ?? '');
+}
+/**
+ * 推断块语言（唯一入口）：内容识别 → 项目主语言 → 留空。
+ * 返回 `source` 供胶囊标注（'content' / 'project' / ''），**不改变分流**。
+ */
+function inferredFenceLang(block) {
+    if (renderOptions.markdown.inferLang === false)
+        return { lang: '', source: '' };
+    const code = inferCodeOfBlock(block);
+    const byContent = inferLangByContent(code);
+    if (byContent !== '')
+        return { lang: byContent, source: 'content' };
+    // 日志没有语言可高亮：硬贴一个项目主语言只会是错的高亮（真实会话里日志块不少）。
+    if (looksLikeLog(code))
+        return { lang: '', source: '' };
+    const cwd = inferredProjectLang === null ? '' : inferredProjectLang.cwd;
+    const project = cwd === '' ? '' : cachedProjectLang(cwd);
+    if (project !== '')
+        return { lang: project, source: 'project' };
+    return { lang: '', source: '' };
+}
+/** teardown：清缓存与进行中标记（fiber 卸载 / HMR 无残留）。 */
+function teardownInferredLang() {
+    inferredProjectLang = null;
+    inferredProjectPending = false;
+    inferredProjectFailed = '';
+}
+Object.assign(exports,{INFER_PROJECT_TTL_MS,looksLikeJson,inferLangByContent,looksLikeLog,sessionCwdOf,refreshInferredLang,inferredFenceLang,teardownInferredLang});
+
+    "use strict";
 // ── 非标准表格容错（交给 marked 之前的一次纯文本规范化）────────────────
 // 判据（GFM 实测口径）：GFM 自己就接受这些写法 —— 无首尾管道符、紧凑分隔行
 // （---|---）、单横线分隔（-|-）、表格前有普通段落、数据行列数不等、只有表头、
@@ -1181,7 +1533,8 @@ Object.assign(exports,{platformDomRoot,domRootAvailable,renderNodeInto,renderMar
 // 用户口径（最高优先级）：「代码渲染使用我们自己的，不要使用原生的」。本卡片完全由
 // 本插件产出（不调用官方 CodeBlock / MarkdownText）：
 //   · 语言胶囊 = 围栏 info string 的真实 token（CSS 大写 + 字距 .06em），语言位为空时
-//     留空（**绝不编造语言名**）；
+//     留空（**绝不编造语言名**）；语言是推断来的（内容识别 / 项目主语言）时加 is-inferred
+//     + data-mdr-lang-inferred，浮层说明推断来源，底栏也写明「按…推断」；
 //   · 高亮走懒加载 highlight.js 的**令牌树 → vdom span**，不拼 HTML、不 innerHTML，
 //     模型输出不会被当 HTML 执行；hljs 未就绪 / 语言不认识 / 超长 → 纯文本（内容一字不少）；
 //   · 行号默认关、自动换行默认关（状态写卡片 data-mdr-lines / data-mdr-wrap，CSS 呈现）；
@@ -1201,8 +1554,19 @@ const MDR_FENCE_NUMS_CLASS = 'mdr-line-nums';
 const MDR_FENCE_CODE_CLASS = 'mdr-fence-code';
 const MDR_FENCE_FOOT_CLASS = 'mdr-fence-foot';
 const MDR_FENCE_NOTE_CLASS = 'mdr-fence-note';
+/** 推断语言的语言胶囊状态类名（虚线边等视觉区分在 styles-code.ts）。 */
+const MDR_FENCE_PILL_INFERRED = 'is-inferred';
 /** 单块高亮上限（字符）：超出只做纯文本渲染（高亮是 O(代码长度) 的正则扫描）。 */
 const MAX_HIGHLIGHT_CHARS = 60000;
+/** 推断来源 → 中文短标签（胶囊浮层 / 底栏说明共用，不写原生 title）。 */
+const MDR_INFERRED_LABEL = {
+    content: '按内容推断',
+    project: '按项目推断',
+};
+/** 规范化推断来源：只认 'content' / 'project'，其余（缺省 / 空串 / 未知值）一律视为非推断。 */
+function langInferredOf(value) {
+    return value === 'content' || value === 'project' ? value : '';
+}
 /**
  * hljs scope → 本插件语法色类名（原型 .hl-key / .hl-str / .hl-num / .hl-com /
  * .hl-fn / .hl-tag / .hl-prop）。只映射到有颜色的族；未知 scope 不包 span（纯文本）。
@@ -1333,10 +1697,17 @@ function lineNumbersText(source) {
         out.push(String(i));
     return out.join('\n');
 }
-/** 底栏说明：行数 · 语言（语言位为空时如实说「未标注语言」，不编造）。 */
-function fenceLineNote(source, lang) {
+/**
+ * 底栏说明：行数 · 语言（语言位为空时如实说「未标注语言」，不编造）；
+ * 语言是推断来的再追加推断来源（「按项目推断」），原文标注则保持原样文案。
+ */
+function fenceLineNote(source, lang, inferred = '') {
     const lines = source === '' ? 0 : source.split('\n').length;
-    return String(lines) + ' 行 · ' + (lang === '' ? '未标注语言' : lang);
+    const head = String(lines) + ' 行 · ';
+    if (inferred === '')
+        return head + (lang === '' ? '未标注语言' : lang);
+    const from = MDR_INFERRED_LABEL[inferred];
+    return head + (lang === '' ? from : lang + ' · ' + from);
 }
 /** 代码主体：有高亮 → 语法色 span 树；否则纯文本（内容一字不少）。 */
 function codeBodyNode(lang, source) {
@@ -1345,13 +1716,27 @@ function codeBodyNode(lang, source) {
         return createElement('code', { className: 'mdr-fence-text' }, source);
     return createElement('code', { className: 'mdr-fence-hl' }, ...nodes);
 }
+/**
+ * 语言胶囊的 props：原文标注 → 现状（空语言时 aria-hidden）；推断语言再加 is-inferred、
+ * data-mdr-lang-inferred 与 data-mdr-tip 浮层（复用 [data-mdr-tip] 机制，不写原生 title）。
+ */
+function fencePillProps(lang, inferred) {
+    const props = {
+        className: inferred === '' ? MDR_FENCE_PILL_CLASS : MDR_FENCE_PILL_CLASS + ' ' + MDR_FENCE_PILL_INFERRED,
+    };
+    if (inferred !== '') {
+        props['data-mdr-lang-inferred'] = inferred;
+        props['data-mdr-tip'] = MDR_INFERRED_LABEL[inferred];
+    }
+    if (lang === '')
+        props['aria-hidden'] = 'true';
+    return props;
+}
 /** 头部：语言胶囊 + 标题 + 操作区（复制 / 换行 / 行号）。 */
 function MdrFenceHead(props) {
     const wrapLabel = props.wrap ? '关闭自动换行' : '切换自动换行';
     const linesLabel = props.lines ? '隐藏行号' : '切换行号';
-    return createElement('div', { className: MDR_FENCE_HEAD_CLASS }, createElement('span', props.lang === ''
-        ? { className: MDR_FENCE_PILL_CLASS, 'aria-hidden': 'true' }
-        : { className: MDR_FENCE_PILL_CLASS }, props.lang), props.title === '' ? null : createElement('span', { className: MDR_FENCE_TITLE_CLASS }, props.title), createElement('span', { className: MDR_FENCE_ACTIONS_CLASS }, createElement(MdrCopyButton, { text: props.code, tip: '复制代码', className: MDR_FENCE_COPY_CLASS }), createElement('button', {
+    return createElement('div', { className: MDR_FENCE_HEAD_CLASS }, createElement('span', fencePillProps(props.lang, langInferredOf(props.inferred)), props.lang), props.title === '' ? null : createElement('span', { className: MDR_FENCE_TITLE_CLASS }, props.title), createElement('span', { className: MDR_FENCE_ACTIONS_CLASS }, createElement(MdrCopyButton, { text: props.code, tip: '复制代码', className: MDR_FENCE_COPY_CLASS }), createElement('button', {
         type: 'button',
         className: MDR_FENCE_ACTION_CLASS + (props.wrap ? ' is-on' : ''),
         'aria-label': wrapLabel,
@@ -1373,16 +1758,18 @@ function MdrFenceBody(props) {
 }
 /** 底栏：行数/语言说明 + 「渲染为…」三态（当前视图由 view 传入，代码视图三态均不激活）。 */
 function MdrFenceFoot(props) {
-    return createElement('div', { className: MDR_FENCE_FOOT_CLASS }, createElement('span', { className: MDR_FENCE_NOTE_CLASS }, fenceLineNote(props.code, props.lang)), MdrLangSwitchFrom({ current: props.view }));
+    return createElement('div', { className: MDR_FENCE_FOOT_CLASS }, createElement('span', { className: MDR_FENCE_NOTE_CLASS }, fenceLineNote(props.code, props.lang, langInferredOf(props.inferred))), MdrLangSwitchFrom({ current: props.view }));
 }
 /**
- * 代码围栏卡（契约导出）：props = { lang, code, title? }；内部可选 view 用于底栏三态
- * （代码视图无对应选项 → 三个按钮都不激活，如实反映「自动判定为代码」）。
+ * 代码围栏卡（契约导出）：props = { lang, code, title?, inferred?, view? }；内部可选 view 用于
+ * 底栏三态（代码视图无对应选项 → 三个按钮都不激活，如实反映「自动判定为代码」）；
+ * inferred = 语言是推断来的（'content' 按内容 / 'project' 按项目主语言），缺省 = 原文有标注。
  */
 function MdrCodeBlock(props) {
     const lang = typeof props.lang === 'string' ? props.lang : '';
     const code = typeof props.code === 'string' ? props.code : '';
     const title = typeof props.title === 'string' ? props.title : '';
+    const inferred = langInferredOf(props.inferred);
     const view = typeof props.view === 'string' && props.view !== '' ? props.view : 'code';
     const [wrap, setWrap] = useState(false);
     const [lines, setLines] = useState(false);
@@ -1398,11 +1785,12 @@ function MdrCodeBlock(props) {
         code,
         wrap,
         lines,
+        inferred,
         onWrap: () => setWrap(!wrap),
         onLines: () => setLines(!lines),
-    }), MdrFenceBody({ lang, code }), MdrFenceFoot({ lang, code, view }));
+    }), MdrFenceBody({ lang, code }), MdrFenceFoot({ lang, code, view, inferred }));
 }
-Object.assign(exports,{CODE_HOST_CLASS,MDR_FENCE_CLASS,MDR_FENCE_PILL_CLASS,MDR_FENCE_CODE_CLASS,MAX_HIGHLIGHT_CHARS,MDR_HL_SCOPE_CLASS,hlClassOf,hlTokenNodes,highlightNodes,lineNumbersText,fenceLineNote,MdrFenceHead,MdrFenceBody,MdrFenceFoot,MdrCodeBlock});
+Object.assign(exports,{CODE_HOST_CLASS,MDR_FENCE_CLASS,MDR_FENCE_PILL_CLASS,MDR_FENCE_CODE_CLASS,MAX_HIGHLIGHT_CHARS,MDR_HL_SCOPE_CLASS,hlClassOf,hlTokenNodes,highlightNodes,lineNumbersText,fenceLineNote,MDR_INFERRED_LABEL,langInferredOf,fencePillProps,MdrFenceHead,MdrFenceBody,MdrFenceFoot,MdrCodeBlock});
 
     // 自研 markdown 渲染（marked 词法树 → vdom，表格容错在此接上）
     "use strict";
@@ -2290,9 +2678,11 @@ const BLOCK_VIEW_ATTR = 'data-mdr-view';
 const BLOCK_SIG_ATTR = 'data-mdr-sig';
 const BLOCK_LANG_ATTR = 'data-mdr-lang';
 const BLOCK_BOUND_ATTR = 'data-mdr-bound';
+/** 语言是推断的（'content' / 'project'；空 = 原文标注或未推断）。 */
+const BLOCK_INFER_ATTR = 'data-mdr-lang-inferred';
 /** 底栏三态控件派发的事件名（与 lang-switch.ts 同一契约）。 */
 const BLOCK_SWITCH_EVENT = 'mdr-lang-switch';
-/** 触发 markdown 渲染的语言标记（一律渲染，不做内容判定）。 */
+/** 触发 markdown 渲染的语言标记（显式标记 → 一律 markdown；无语言块的判定见 fence-content.ts）。 */
 const TEXT_FENCE_LANGS = ['text', 'plaintext', 'txt', 'md', 'markdown'];
 /** 图表语言（渲染交给 mermaid-scan.ts；本模块不碰）。 */
 const MDR_DIAGRAM_LANGS = ['mermaid', 'mmd'];
@@ -2313,8 +2703,11 @@ function isFenceStreaming(block) {
  * 接管类型（唯一入口，手动覆盖优先级最高）：
  *  ⓪ 「渲染为…」覆盖：source → 不接管（官方原样）；markdown → 强制 markdown；mermaid → 交给图表；
  *  ① mermaid / mmd → 交给 mermaid-scan（本模块不碰）；
- *  ② text 家族，或「确证无语言」→ 自研 markdown；
- *  ③ 其余（含识别失败）→ 自研代码卡（语言位留空，绝不编造语言名）。
+ *  ② text 家族 → 自研 markdown（明确的意图）；
+ *  ③ 「确证无语言」→ **看内容**（fence-content）：明显是 markdown 文档才自研 markdown，
+ *     否则按代码卡（等宽 + 保留换行；真实会话里无标记围栏绝大多数是代码），语言位用
+ *     fence-lang-infer 的**推断值**（内容识别 > 项目主语言 > 留空，带「推断」标识）；
+ *  ④ 其余（含识别失败）→ 自研代码卡（同一套推断；认不出才留空，绝不编造语言名）。
  */
 function fenceKindOf(block) {
     const forced = fenceForceOf(block);
@@ -2330,8 +2723,16 @@ function fenceKindOf(block) {
         return { kind: 'none', lang };
     if (TEXT_FENCE_LANGS.includes(lang))
         return { kind: 'markdown', lang };
-    if (lang === '')
-        return { kind: resolved.confirmed ? 'markdown' : 'code', lang: '' };
+    if (lang === '') {
+        if (!resolved.confirmed) {
+            const guess = inferredFenceLang(block);
+            return { kind: 'code', lang: guess.lang, infer: guess.source };
+        }
+        if (fenceLooksLikeMarkdown(fenceSource(block)))
+            return { kind: 'markdown', lang: '' };
+        const guess = inferredFenceLang(block);
+        return { kind: 'code', lang: guess.lang, infer: guess.source };
+    }
     return { kind: 'code', lang };
 }
 /** 前置门控（任何语言判定之前）：开关关闭 / 渲染层不可用 / 流式块 / 已渲染容器内的块。 */
@@ -2368,17 +2769,21 @@ function clearMdrBlock(host) {
     if (typeof host.removeAttribute === 'function') {
         host.removeAttribute(BLOCK_SIG_ATTR);
         host.removeAttribute(BLOCK_VIEW_ATTR);
+        host.removeAttribute(BLOCK_INFER_ATTR);
     }
 }
 /** 幂等签名（含渲染库就绪版本：库到位后重建一次，把兜底换成渲染态）。 */
 function fenceSignature(kind, lang, source) {
     return kind + ':' + lang + ':' + String(source.length) + ':' + contextHash(source) + ':' + String(renderAssetsReady());
 }
-/** 建代码卡（React：MdrCodeBlock 自带头 / 体 / 底栏三态）。 */
-function buildMdrCodeCard(lang, source) {
+/** 建代码卡（React：MdrCodeBlock 自带头 / 体 / 底栏三态；infer 非空 = 语言是推断的）。 */
+function buildMdrCodeCard(lang, source, infer) {
     const card = document.createElement('div');
     card.className = MDR_BLOCK_CLASS;
-    const ok = renderNodeInto(card, createElement(MdrCodeBlock, { lang, code: source, view: 'code' }));
+    const props = { lang, code: source, view: 'code' };
+    if (typeof infer === 'string' && infer !== '')
+        props.inferred = infer;
+    const ok = renderNodeInto(card, createElement(MdrCodeBlock, props));
     return ok ? card : null;
 }
 /** 建 markdown 卡（正文交给 render-assets 懒加载入口；底栏保留三态控件）。 */
@@ -2445,7 +2850,7 @@ function applyMdrLangChoice(host, value) {
  * 挂载围栏块视图（契约导出）：host = div.md-code-block。
  * view = code（代码卡）| markdown（自研 markdown）| source（移除自有容器、官方原样）。
  */
-function mountMdrBlock(host, lang, source, view) {
+function mountMdrBlock(host, lang, source, view, infer) {
     if (!host || typeof host.getAttribute !== 'function')
         return;
     bindMdrBlockEvents(host);
@@ -2461,17 +2866,19 @@ function mountMdrBlock(host, lang, source, view) {
     if (host.getAttribute(BLOCK_SIG_ATTR) === signature && mdrBlockOf(host) !== null)
         return;
     clearMdrBlock(host);
-    const card = safeView === 'markdown' ? buildMdrMarkdownCard(source) : buildMdrCodeCard(lang, source);
+    const card = safeView === 'markdown' ? buildMdrMarkdownCard(source) : buildMdrCodeCard(lang, source, infer);
     if (card === null)
         return;
     host.appendChild(card);
-    markMdrBlock(host, lang, safeView, signature);
+    markMdrBlock(host, lang, safeView, signature, infer);
 }
 /** 挂载完成后的收尾：写块标记 + 去掉扫描器补的块内控件（卡片底栏自带三态，避免一套两块）。 */
-function markMdrBlock(host, lang, view, signature) {
+function markMdrBlock(host, lang, view, signature, infer) {
     host.setAttribute(BLOCK_LANG_ATTR, lang);
     host.setAttribute(BLOCK_VIEW_ATTR, view);
     host.setAttribute(BLOCK_SIG_ATTR, signature);
+    if (typeof infer === 'string' && infer !== '')
+        host.setAttribute(BLOCK_INFER_ATTR, infer);
     if (typeof removeLangSwitch === 'function')
         removeLangSwitch(host);
 }
@@ -2485,7 +2892,7 @@ function applyFenceBlock(block) {
     const source = fenceSource(block);
     if (source.trim() === '' || source.length > fenceMaxChars(target.kind))
         return;
-    mountMdrBlock(block, target.lang, source, target.kind === 'markdown' ? 'markdown' : 'code');
+    mountMdrBlock(block, target.lang, source, target.kind === 'markdown' ? 'markdown' : 'code', target.infer);
 }
 /** 扫描 root（自身 / 后代）内的围栏代码块（mermaid 块由 mermaid-scan 负责）。 */
 function scanFenceBlocks(root) {
@@ -4403,6 +4810,8 @@ function scanNode(node, round) {
     // 围栏语言表按批刷新（lang-source.ts）：事件源 revision 未变则内部直接返回。
     // 放在注入点之前：本轮所有块的语言判定共用同一份表（历史会话冷启动靠它命中）。
     refreshFenceLangIndex(fenceScanContext);
+    // 无语言围栏的语言推断：项目主语言按需请求一次（有缓存；成功后会触发重扫补胶囊与高亮）。
+    refreshInferredLang(fenceScanContext);
     const el = node;
     applyThinkExpand(el);
     scanContextBlocks(el);
@@ -4450,6 +4859,7 @@ function installScanner(ctx) {
             teardownMermaid();
             teardownZoom();
             teardownLangProbes();
+            teardownInferredLang();
             teardownRenderAssets();
             resetFenceIndex();
         },
@@ -5016,6 +5426,11 @@ const STYLES_CODE = `
 .mdr-fence-head{display:flex;align-items:center;gap:6px;height:32px;padding:0 6px 0 9px;background:color-mix(in srgb,var(--mdr-frame-layer) 70%,var(--mdr-frame-bg));border-bottom:1px solid var(--mdr-frame-hair);min-width:0}
 /* 语言胶囊：10px / 600 / 大写 / 字距 .06em（原型 .lang-pill 1432–1447） */
 .mdr-fence-pill{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:4px;background:var(--mdr-frame-accent-soft);color:var(--mdr-frame-accent);font-family:var(--mdr-frame-mono);font-size:10px;font-weight:600;line-height:1;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;flex:none}
+/* 推断语言（内容识别 / 项目主语言兜底）：虚线边 + 透明底，「原文标注」与「推断」一眼可分；
+   几何按 border-box 收进既有 19px 高，不改变头高与胶囊占位 */
+.mdr-fence-pill.is-inferred{border:1px dashed color-mix(in srgb,var(--mdr-frame-accent) 52%,var(--mdr-frame-hair));background:transparent;box-sizing:border-box}
+/* 推断胶囊的浮层朝下：卡是 overflow:hidden，朝上会被 32px 头裁掉；仍是同一套 [data-mdr-tip] 伪元素 */
+.mdr-fence-pill.is-inferred[data-mdr-tip]::after{bottom:auto;top:calc(100% + 6px)}
 .mdr-fence-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--mdr-frame-ink-3)}
 .mdr-fence-actions{display:flex;align-items:center;gap:1px;margin-left:auto;flex:none}
 .mdr-fence-action{width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:var(--mdr-frame-ink-3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background var(--mdr-frame-fast) var(--mdr-frame-ease),color var(--mdr-frame-fast) var(--mdr-frame-ease)}
@@ -5858,6 +6273,7 @@ const MD_RENDER_STRINGS = {
     groupMarkdown: mdRenderText('Markdown', 'Markdown'),
     groupThinking: mdRenderText('思考块', 'Thinking'),
     groupMermaid: mdRenderText('Mermaid 图表', 'Mermaid diagrams'),
+    count4: mdRenderText('4 项', '4 items'),
     count3: mdRenderText('3 项', '3 items'),
     count2: mdRenderText('2 项', '2 items'),
     count1: mdRenderText('1 项', '1 item'),
@@ -5866,6 +6282,8 @@ const MD_RENDER_STRINGS = {
     copyDesc: mdRenderText('代码块右上角显示复制按钮，默认隐藏、悬停浮现；键盘聚焦时同样可见。', 'A copy button on the top-right of code blocks; hidden until hover or keyboard focus.'),
     fenceTitle: mdRenderText('围栏块渲染总开关', 'Render fenced blocks'),
     fenceDesc: mdRenderText('关闭后所有围栏块保持宿主官方形态，仅保留 markdown 正文渲染。', 'When off, every fenced block keeps the host look; only markdown body rendering stays on.'),
+    inferTitle: mdRenderText('推断无标记围栏的语言', 'Infer languages for untagged fences'),
+    inferDesc: mdRenderText('没有语言标记的围栏块按内容识别语言，认不出再用当前项目主语言（构建标记文件），仅用于高亮与胶囊展示并标注「推断」。', 'Untagged fences get a language inferred from their content, then from the project main language; used only for highlighting and the language pill, marked as inferred.'),
     contextTitle: mdRenderText('上下文注入块', 'Context-injection blocks'),
     contextDesc: mdRenderText('子代理回传的消息按 markdown 渲染，并标注「上下文注入」来源。', 'Sub-agent messages are rendered as markdown and labelled as context injection.'),
     thinkTitle: mdRenderText('默认展开', 'Expand by default'),
@@ -5909,12 +6327,13 @@ const MD_RENDER_SWITCH_GROUPS = [
     {
         icon: 'markdown',
         title: MD_RENDER_STRINGS.groupMarkdown,
-        count: MD_RENDER_STRINGS.count3,
+        count: MD_RENDER_STRINGS.count4,
         pill: 'success',
         items: [
             mdRenderItem('markdown', 'copyButton', MD_RENDER_STRINGS.copyTitle, MD_RENDER_STRINGS.copyDesc),
             mdRenderItem('markdown', 'textFenceMarkdown', MD_RENDER_STRINGS.fenceTitle, MD_RENDER_STRINGS.fenceDesc),
             mdRenderItem('markdown', 'contextMarkdown', MD_RENDER_STRINGS.contextTitle, MD_RENDER_STRINGS.contextDesc),
+            mdRenderItem('markdown', 'inferLang', MD_RENDER_STRINGS.inferTitle, MD_RENDER_STRINGS.inferDesc),
         ],
         note: null,
     },
@@ -5950,12 +6369,11 @@ function mdrSwitchOn(draft, section, key) {
 /** 默认草稿（全部开启）；「恢复默认」与加载失败兜底共用。纯函数。 */
 function mdrDefaultDraft() {
     return {
-        markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+        markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true, inferLang: true },
         thinking: { defaultExpanded: true },
         mermaid: { injectPrompt: true, render: true },
     };
 }
-/** 图标快捷方式（共享图标集；显式尺寸）。 */
 function mdrSetIcon(name, size) {
     return icon[name](size);
 }

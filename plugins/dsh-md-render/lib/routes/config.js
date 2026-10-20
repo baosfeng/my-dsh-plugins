@@ -18,7 +18,8 @@
 import { createTrustFence, readJsonBody, writeError, writeJson } from 'dsh-shared';
 import { normalizeConfigPayload } from '../config.js';
 import { createLangsHandler } from './langs.js';
-import { CONFIG_API_PREFIX } from './paths.js';
+import { createProjectLangHandler } from './project-lang.js';
+import { CONFIG_API_PREFIX, PROJECT_LANG_ENDPOINT } from './paths.js';
 /**
  * API 前缀来自**单一真源** `src/routes/paths.ts`：client 端（`lib/client.js` 片段，
  * 不能 import host 代码）的同名常量由 `scripts/build.mjs` 构建期注入同一批值，
@@ -40,9 +41,9 @@ export function registerConfigRoutes(ctx, current, onConfigChange, langs) {
     disposers.set(CONFIG_API_PREFIX, target.effect(() => target.webServer?.register({
         kind: 'prefix',
         path: CONFIG_API_PREFIX,
-        // langs（语言索引查询，issue #466）与 config 共用同一前缀与同一信任围栏，
-        // handler 由本文件的 apiHandler 统一分派 —— 不新增第三条路由前缀。
-        handler: apiHandler(fence, current, onConfigChange, createLangsHandler(langs)),
+        // langs（语言索引查询，issue #466）与 project-lang（项目主语言兜底）与 config
+        // 共用同一前缀与同一信任围栏，handler 由本文件的 apiHandler 统一分派 —— 不新增路由前缀。
+        handler: apiHandler(fence, current, onConfigChange, createLangsHandler(langs), createProjectLangHandler()),
     }), 'dsh-md-render: /md-render/api routes'));
 }
 /** 已注册路由的 disposer（按常驻 root 去重；WeakMap 不阻止 GC）。 */
@@ -57,7 +58,7 @@ function createFence(ctx) {
     return createTrustFence(ctx);
 }
 /** 统一 handler：围栏 → 方法分派 → 404 / 错误兜底。 */
-function apiHandler(fence, current, onConfigChange, langs) {
+function apiHandler(fence, current, onConfigChange, langs, projectLang) {
     return async (request, response) => {
         if (!fence(request)) {
             writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } });
@@ -68,7 +69,7 @@ function apiHandler(fence, current, onConfigChange, langs) {
             ? url.pathname.slice(CONFIG_API_PREFIX.length + 1)
             : undefined;
         try {
-            if (await dispatch(method, request, response, current, onConfigChange, langs))
+            if (await dispatch(method, request, response, current, onConfigChange, langs, projectLang))
                 return;
             writeJson(response, 404, { ok: false, error: { message: 'unknown dsh-md-render API method' } });
         }
@@ -78,10 +79,15 @@ function apiHandler(fence, current, onConfigChange, langs) {
     };
 }
 /** 按 method + 动词分派；未识别返回 false（调用方回 404）。 */
-async function dispatch(method, request, response, current, onConfigChange, langs) {
+async function dispatch(method, request, response, current, onConfigChange, langs, projectLang) {
     // 语言索引查询（只读，GET only）——与配置读写共用前缀、围栏与 404 兜底。
     if (method === 'langs') {
         langs(request, response);
+        return true;
+    }
+    // 项目主语言探测（只读，GET only）：只 stat 固定标记文件，见 routes/project-lang.ts。
+    if (method === PROJECT_LANG_ENDPOINT) {
+        await projectLang(request, response);
         return true;
     }
     if (method !== 'config')

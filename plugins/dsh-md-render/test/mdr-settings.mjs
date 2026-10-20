@@ -221,7 +221,7 @@ test('纯函数：默认草稿覆盖全部 schema 键且全开', () => {
   const api = loadPure(['mdrDefaultDraft'], VIEW)
   const draft = api.mdrDefaultDraft()
   assert.deepEqual(draft, {
-    markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+    markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true, inferLang: true },
     thinking: { defaultExpanded: true },
     mermaid: { injectPrompt: true, render: true },
   })

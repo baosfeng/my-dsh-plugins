@@ -238,6 +238,8 @@ function loadBlockRender(overrides = {}) {
     renderAssetsReady: () => 0,
     fenceForceOf: () => undefined,
     resolveFenceLangEx: () => ({ lang: 'js', confirmed: true }),
+    fenceLooksLikeMarkdown: loadPart('fence-content.ts').exports.fenceLooksLikeMarkdown,
+    inferredFenceLang: () => ({ lang: '', source: '' }),
     setFenceForce: () => {},
     isInsideRenderedMarkdown: () => false,
     renderOptions: { markdown: { textFenceMarkdown: true } },
@@ -296,8 +298,11 @@ test('block-render：mountMdrBlock 三视图 + 幂等 + source 移除自有容�
   assert.equal(host.getAttribute('data-mdr-view'), null, '视图属性移除')
 })
 
-test('block-render：fenceKindOf 分流（text→markdown / mermaid→不接管 / 无语言确证→markdown）', () => {
+test('block-render：fenceKindOf 分流（text→markdown / mermaid→不接管 / 无语言看内容）', () => {
   const host = fakeElement('div')
+  const pre = fakeElement('pre')
+  pre.textContent = '## 标题\n\n- 一\n- 二\n'
+  host.appendChild(pre)
   let resolved = { lang: 'text', confirmed: true }
   const { exports, sandbox } = loadBlockRender({ resolveFenceLangEx: () => resolved })
   const site = (result) => result.kind + ':' + result.lang
@@ -305,7 +310,14 @@ test('block-render：fenceKindOf 分流（text→markdown / mermaid→不接管 
   sandbox.resolveFenceLangEx = () => ({ lang: 'mermaid', confirmed: true })
   assert.equal(site(exports.fenceKindOf(host)), 'none:mermaid', '图表交给 mermaid-scan')
   sandbox.resolveFenceLangEx = () => ({ lang: '', confirmed: true })
-  assert.equal(site(exports.fenceKindOf(host)), 'markdown:', '确证无语言 → markdown')
+  assert.equal(site(exports.fenceKindOf(host)), 'markdown:', '确证无语言 + 内容是 markdown 文档 → markdown')
+  pre.textContent = 'private const val GRID_COLUMNS = 6\n@Composable\ninternal fun BoxScope.Sheet() {}\n'
+  assert.equal(site(exports.fenceKindOf(host)), 'code:', '确证无语言 + 内容是代码 → 代码卡（语言留空）')
+  sandbox.inferredFenceLang = () => ({ lang: 'kotlin', source: 'content' })
+  const guessed = exports.fenceKindOf(host)
+  assert.equal(site(guessed), 'code:kotlin', '推断命中 → 语言位用推断值')
+  assert.equal(guessed.infer, 'content', '推断来源透传（胶囊据此打标识）')
+  sandbox.inferredFenceLang = () => ({ lang: '', source: '' })
   sandbox.resolveFenceLangEx = () => ({ lang: '', confirmed: false })
   assert.equal(site(exports.fenceKindOf(host)), 'code:', '识别失败 → 代码卡（语言位留空）')
 })

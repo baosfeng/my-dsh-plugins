@@ -40,6 +40,11 @@ const STYLES_CODE: string = `
 .mdr-fence-head{display:flex;align-items:center;gap:6px;height:32px;padding:0 6px 0 9px;background:color-mix(in srgb,var(--mdr-frame-layer) 70%,var(--mdr-frame-bg));border-bottom:1px solid var(--mdr-frame-hair);min-width:0}
 /* 语言胶囊：10px / 600 / 大写 / 字距 .06em（原型 .lang-pill 1432–1447） */
 .mdr-fence-pill{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:4px;background:var(--mdr-frame-accent-soft);color:var(--mdr-frame-accent);font-family:var(--mdr-frame-mono);font-size:10px;font-weight:600;line-height:1;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;flex:none}
+/* 推断语言（内容识别 / 项目主语言兜底）：虚线边 + 透明底，「原文标注」与「推断」一眼可分；
+   几何按 border-box 收进既有 19px 高，不改变头高与胶囊占位 */
+.mdr-fence-pill.is-inferred{border:1px dashed color-mix(in srgb,var(--mdr-frame-accent) 52%,var(--mdr-frame-hair));background:transparent;box-sizing:border-box}
+/* 推断胶囊的浮层朝下：卡是 overflow:hidden，朝上会被 32px 头裁掉；仍是同一套 [data-mdr-tip] 伪元素 */
+.mdr-fence-pill.is-inferred[data-mdr-tip]::after{bottom:auto;top:calc(100% + 6px)}
 .mdr-fence-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--mdr-frame-ink-3)}
 .mdr-fence-actions{display:flex;align-items:center;gap:1px;margin-left:auto;flex:none}
 .mdr-fence-action{width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:var(--mdr-frame-ink-3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background var(--mdr-frame-fast) var(--mdr-frame-ease),color var(--mdr-frame-fast) var(--mdr-frame-ease)}

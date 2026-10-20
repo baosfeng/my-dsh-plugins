@@ -15,9 +15,11 @@ const BLOCK_VIEW_ATTR = 'data-mdr-view'
 const BLOCK_SIG_ATTR = 'data-mdr-sig'
 const BLOCK_LANG_ATTR = 'data-mdr-lang'
 const BLOCK_BOUND_ATTR = 'data-mdr-bound'
+/** 语言是推断的（'content' / 'project'；空 = 原文标注或未推断）。 */
+const BLOCK_INFER_ATTR = 'data-mdr-lang-inferred'
 /** 底栏三态控件派发的事件名（与 lang-switch.ts 同一契约）。 */
 const BLOCK_SWITCH_EVENT = 'mdr-lang-switch'
-/** 触发 markdown 渲染的语言标记（一律渲染，不做内容判定）。 */
+/** 触发 markdown 渲染的语言标记（显式标记 → 一律 markdown；无语言块的判定见 fence-content.ts）。 */
 const TEXT_FENCE_LANGS: readonly string[] = ['text', 'plaintext', 'txt', 'md', 'markdown']
 /** 图表语言（渲染交给 mermaid-scan.ts；本模块不碰）。 */
 const MDR_DIAGRAM_LANGS: readonly string[] = ['mermaid', 'mmd']
@@ -29,6 +31,8 @@ const MAX_CODE_FENCE_CHARS = 200000
 interface MdrFenceKind {
   kind: 'markdown' | 'code' | 'none'
   lang: string
+  /** 语言来源：'content'（按内容识别）/ 'project'（按项目主语言兜底）；空 = 原文标注或未推断。 */
+  infer?: string
 }
 
 /** 块源码：官方 <pre> 文本（去掉一个尾部换行，对齐官方 display 语义）。 */
@@ -47,8 +51,11 @@ function isFenceStreaming(block: Element): boolean {
  * 接管类型（唯一入口，手动覆盖优先级最高）：
  *  ⓪ 「渲染为…」覆盖：source → 不接管（官方原样）；markdown → 强制 markdown；mermaid → 交给图表；
  *  ① mermaid / mmd → 交给 mermaid-scan（本模块不碰）；
- *  ② text 家族，或「确证无语言」→ 自研 markdown；
- *  ③ 其余（含识别失败）→ 自研代码卡（语言位留空，绝不编造语言名）。
+ *  ② text 家族 → 自研 markdown（明确的意图）；
+ *  ③ 「确证无语言」→ **看内容**（fence-content）：明显是 markdown 文档才自研 markdown，
+ *     否则按代码卡（等宽 + 保留换行；真实会话里无标记围栏绝大多数是代码），语言位用
+ *     fence-lang-infer 的**推断值**（内容识别 > 项目主语言 > 留空，带「推断」标识）；
+ *  ④ 其余（含识别失败）→ 自研代码卡（同一套推断；认不出才留空，绝不编造语言名）。
  */
 function fenceKindOf(block: Element): MdrFenceKind {
   const forced = fenceForceOf(block)
@@ -59,7 +66,15 @@ function fenceKindOf(block: Element): MdrFenceKind {
   const lang = resolved.lang
   if (MDR_DIAGRAM_LANGS.includes(lang)) return { kind: 'none', lang }
   if (TEXT_FENCE_LANGS.includes(lang)) return { kind: 'markdown', lang }
-  if (lang === '') return { kind: resolved.confirmed ? 'markdown' : 'code', lang: '' }
+  if (lang === '') {
+    if (!resolved.confirmed) {
+      const guess = inferredFenceLang(block)
+      return { kind: 'code', lang: guess.lang, infer: guess.source }
+    }
+    if (fenceLooksLikeMarkdown(fenceSource(block))) return { kind: 'markdown', lang: '' }
+    const guess = inferredFenceLang(block)
+    return { kind: 'code', lang: guess.lang, infer: guess.source }
+  }
   return { kind: 'code', lang }
 }
 
@@ -94,6 +109,7 @@ function clearMdrBlock(host: Element): void {
   if (typeof host.removeAttribute === 'function') {
     host.removeAttribute(BLOCK_SIG_ATTR)
     host.removeAttribute(BLOCK_VIEW_ATTR)
+    host.removeAttribute(BLOCK_INFER_ATTR)
   }
 }
 
@@ -102,11 +118,13 @@ function fenceSignature(kind: string, lang: string, source: string): string {
   return kind + ':' + lang + ':' + String(source.length) + ':' + contextHash(source) + ':' + String(renderAssetsReady())
 }
 
-/** 建代码卡（React：MdrCodeBlock 自带头 / 体 / 底栏三态）。 */
-function buildMdrCodeCard(lang: string, source: string): Element | null {
+/** 建代码卡（React：MdrCodeBlock 自带头 / 体 / 底栏三态；infer 非空 = 语言是推断的）。 */
+function buildMdrCodeCard(lang: string, source: string, infer?: string): Element | null {
   const card = document.createElement('div')
   card.className = MDR_BLOCK_CLASS
-  const ok = renderNodeInto(card, createElement(MdrCodeBlock, { lang, code: source, view: 'code' }))
+  const props: Record<string, unknown> = { lang, code: source, view: 'code' }
+  if (typeof infer === 'string' && infer !== '') props.inferred = infer
+  const ok = renderNodeInto(card, createElement(MdrCodeBlock, props))
   return ok ? card : null
 }
 
@@ -171,7 +189,13 @@ function applyMdrLangChoice(host: Element, value: string): void {
  * 挂载围栏块视图（契约导出）：host = div.md-code-block。
  * view = code（代码卡）| markdown（自研 markdown）| source（移除自有容器、官方原样）。
  */
-function mountMdrBlock(host: Element, lang: string, source: string, view: 'code' | 'markdown' | 'source'): void {
+function mountMdrBlock(
+  host: Element,
+  lang: string,
+  source: string,
+  view: 'code' | 'markdown' | 'source',
+  infer?: string,
+): void {
   if (!host || typeof host.getAttribute !== 'function') return
   bindMdrBlockEvents(host)
   if (view === 'source') {
@@ -184,17 +208,18 @@ function mountMdrBlock(host: Element, lang: string, source: string, view: 'code'
   const signature = fenceSignature(safeView, lang, source)
   if (host.getAttribute(BLOCK_SIG_ATTR) === signature && mdrBlockOf(host) !== null) return
   clearMdrBlock(host)
-  const card = safeView === 'markdown' ? buildMdrMarkdownCard(source) : buildMdrCodeCard(lang, source)
+  const card = safeView === 'markdown' ? buildMdrMarkdownCard(source) : buildMdrCodeCard(lang, source, infer)
   if (card === null) return
   host.appendChild(card)
-  markMdrBlock(host, lang, safeView, signature)
+  markMdrBlock(host, lang, safeView, signature, infer)
 }
 
 /** 挂载完成后的收尾：写块标记 + 去掉扫描器补的块内控件（卡片底栏自带三态，避免一套两块）。 */
-function markMdrBlock(host: Element, lang: string, view: 'code' | 'markdown', signature: string): void {
+function markMdrBlock(host: Element, lang: string, view: 'code' | 'markdown', signature: string, infer?: string): void {
   host.setAttribute(BLOCK_LANG_ATTR, lang)
   host.setAttribute(BLOCK_VIEW_ATTR, view)
   host.setAttribute(BLOCK_SIG_ATTR, signature)
+  if (typeof infer === 'string' && infer !== '') host.setAttribute(BLOCK_INFER_ATTR, infer)
   if (typeof removeLangSwitch === 'function') removeLangSwitch(host)
 }
 
@@ -205,7 +230,7 @@ function applyFenceBlock(block: Element): void {
   if (target.kind === 'none') return
   const source = fenceSource(block)
   if (source.trim() === '' || source.length > fenceMaxChars(target.kind)) return
-  mountMdrBlock(block, target.lang, source, target.kind === 'markdown' ? 'markdown' : 'code')
+  mountMdrBlock(block, target.lang, source, target.kind === 'markdown' ? 'markdown' : 'code', target.infer)
 }
 
 /** 扫描 root（自身 / 后代）内的围栏代码块（mermaid 块由 mermaid-scan 负责）。 */

@@ -56,6 +56,7 @@ const MD_RENDER_STRINGS = {
   groupMarkdown: mdRenderText('Markdown', 'Markdown'),
   groupThinking: mdRenderText('思考块', 'Thinking'),
   groupMermaid: mdRenderText('Mermaid 图表', 'Mermaid diagrams'),
+  count4: mdRenderText('4 项', '4 items'),
   count3: mdRenderText('3 项', '3 items'),
   count2: mdRenderText('2 项', '2 items'),
   count1: mdRenderText('1 项', '1 item'),
@@ -69,6 +70,11 @@ const MD_RENDER_STRINGS = {
   fenceDesc: mdRenderText(
     '关闭后所有围栏块保持宿主官方形态，仅保留 markdown 正文渲染。',
     'When off, every fenced block keeps the host look; only markdown body rendering stays on.',
+  ),
+  inferTitle: mdRenderText('推断无标记围栏的语言', 'Infer languages for untagged fences'),
+  inferDesc: mdRenderText(
+    '没有语言标记的围栏块按内容识别语言，认不出再用当前项目主语言（构建标记文件），仅用于高亮与胶囊展示并标注「推断」。',
+    'Untagged fences get a language inferred from their content, then from the project main language; used only for highlighting and the language pill, marked as inferred.',
   ),
   contextTitle: mdRenderText('上下文注入块', 'Context-injection blocks'),
   contextDesc: mdRenderText(

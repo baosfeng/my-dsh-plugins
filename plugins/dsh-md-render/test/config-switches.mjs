@@ -20,7 +20,7 @@ import {
 } from './support/fake-dom.mjs'
 
 const DEFAULTS = {
-  markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+  markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true, inferLang: true },
   thinking: { defaultExpanded: true },
   mermaid: { injectPrompt: true, render: true },
 }

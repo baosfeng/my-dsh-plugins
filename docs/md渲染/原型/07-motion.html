@@ -372,7 +372,7 @@ dialog.img-dialog::backdrop{background:var(--scrim, color-mix(in oklab, var(--fg
   <section class="sec" data-od-id="sec-inline">
     <p class="sec-label">段落与行内 <code>p strong em del code a br</code></p>
     <div class="md">
-      <p>本插件接管对话里的<strong>全部围栏块</strong>，分流的依据是三源互补：client 侧会话事件流索引（含历史、命中即零 RPC）→ host 侧实时围栏语言索引 → DOM 契约（<code>code.language-*</code> / banner infostring）。判定结果里的 <code>confirmed</code> 只用来区分「确证无语言」与「识别失败」，<em>不做内容启发式判定</em>。旧写法 <del>按内容猜语言</del> 已废弃。</p>
+      <p>本插件接管对话里的<strong>全部围栏块</strong>，分流的依据是三源互补：client 侧会话事件流索引（含历史、命中即零 RPC）→ host 侧实时围栏语言索引 → DOM 契约（<code>code.language-*</code> / banner infostring）。判定结果里的 <code>confirmed</code> 只用来区分「确证无语言」与「识别失败」；确证无语言时再看内容（像 markdown 文档才 markdown 化，否则代码卡），<em>不猜语言</em>。旧写法 <del>按内容猜语言</del> 已废弃。</p>
       <p>相关说明见 <a href="#sec-lists">列表与嵌套</a>；识别不出语言时语言位留空（<span class="md-link-plain">裸链接会退化成纯文本样式</span>）。raw HTML 一律当字面文本处理：<span class="md-html">&lt;div class="note"&gt;</span>。<br>这是同一段里的软换行。</p>
     </div>
   </section>
@@ -417,7 +417,8 @@ dialog.img-dialog::backdrop{background:var(--scrim, color-mix(in oklab, var(--fg
       <div class="md-table-wrap"><table>
         <thead><tr><th class="md-left">围栏语言</th><th class="md-center">渲染路径</th><th class="md-right">产物</th></tr></thead>
         <tbody>
-          <tr><td class="md-left"><code>text</code> / <code>md</code> / 确证无语言</td><td class="md-center">自研 markdown</td><td class="md-right"><code>div.tzx-md</code></td></tr>
+          <tr><td class="md-left"><code>text</code> / <code>md</code></td><td class="md-center">自研 markdown</td><td class="md-right"><code>div.mdr-md</code></td></tr>
+          <tr><td class="md-left">确证无语言</td><td class="md-center">看内容分流</td><td class="md-right">像 markdown 文档 → markdown；否则代码卡</td></tr>
           <tr><td class="md-left">其他语言</td><td class="md-center">自研代码块</td><td class="md-right">语言胶囊 + 高亮</td></tr>
           <tr><td class="md-left">识别失败</td><td class="md-center">代码视图</td><td class="md-right">语言位留空</td></tr>
         </tbody>

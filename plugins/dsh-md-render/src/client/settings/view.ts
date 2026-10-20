@@ -37,12 +37,13 @@ const MD_RENDER_SWITCH_GROUPS: MdRenderSwitchGroup[] = [
   {
     icon: 'markdown',
     title: MD_RENDER_STRINGS.groupMarkdown,
-    count: MD_RENDER_STRINGS.count3,
+    count: MD_RENDER_STRINGS.count4,
     pill: 'success',
     items: [
       mdRenderItem('markdown', 'copyButton', MD_RENDER_STRINGS.copyTitle, MD_RENDER_STRINGS.copyDesc),
       mdRenderItem('markdown', 'textFenceMarkdown', MD_RENDER_STRINGS.fenceTitle, MD_RENDER_STRINGS.fenceDesc),
       mdRenderItem('markdown', 'contextMarkdown', MD_RENDER_STRINGS.contextTitle, MD_RENDER_STRINGS.contextDesc),
+      mdRenderItem('markdown', 'inferLang', MD_RENDER_STRINGS.inferTitle, MD_RENDER_STRINGS.inferDesc),
     ],
     note: null,
   },
@@ -80,12 +81,11 @@ function mdrSwitchOn(
 /** 默认草稿（全部开启）；「恢复默认」与加载失败兜底共用。纯函数。 */
 function mdrDefaultDraft(): MdRenderSettingsConfig {
   return {
-    markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+    markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true, inferLang: true },
     thinking: { defaultExpanded: true },
     mermaid: { injectPrompt: true, render: true },
   }
 }
-/** 图标快捷方式（共享图标集；显式尺寸）。 */
 function mdrSetIcon(name: string, size: number): unknown {
   return icon[name](size)
 }

@@ -5,6 +5,21 @@
 > 公共 API 承诺面：`MarkdownView`（导出 / props / 自有 DOM 类名清单见 [README「公共 API 契约」](README.md)）；改类名清单 = 破坏性变更，须同步 README 与本文件。
 
 
+## [Unreleased]
+
+### 新增
+
+- **无语言围栏的语言推断**（`markdown.inferLang`，默认开）：先按内容高置信识别（JSON / shell / SQL / Kotlin / Python / TS / JS / Java / C++ / HTML / CSS），认不出再用**项目主语言**兜底 —— 新增 host 路由 `GET /md-render/api/project-lang?cwd=…`，只对**固定构建标记文件清单**做 `lstat`（`build.gradle.kts`→Kotlin、`tsconfig.json`→TypeScript、`go.mod`→Go、`Cargo.toml`→Rust、`pyproject.toml`→Python…），**不遍历目录、不读文件内容、不跟随符号链接**，结果按 cwd 有界缓存（TTL 10 分钟）。日志块（时间戳行占多数）不推断；推断值只用于高亮 + 胶囊，带 `data-mdr-lang-inferred` 标识与「按内容推断 / 按项目推断」浮层，胶囊用虚线边区分，**不冒充围栏原文标注**，也不改变 markdown / 代码分流。真实会话（android-monitor，96 个无语言块）实测：内容识别命中 69（Kotlin 62 / SQL 4 / shell 3）、日志留空 4、项目兜底 23。
+
+### 修复
+
+- **无语言围栏不再一律按 markdown 渲染**（真实会话取证，2026-10-20 android-monitor 会话 `session-4fa88602`）：实测 208 个围栏里 **200 个没有语言标记**（184 个在思考块里），内容是 Kotlin / Compose 代码、SQL、shell —— 旧口径「确证无语言 → 一律 markdown」把这些代码的换行折叠成一坨，代码再也读不了。现在**确证无语言**的块先看内容（`src/client/parts/fence-content.ts`）：markdown 块级特征（标题 / 表格 / 引用 / 列表 / 分隔线）≥ 2 且**零代码特征**才 markdown 化，否则按代码卡（等宽、保留换行与缩进、语言位留空）。判据只回答「是不是 markdown 文档」，**不猜语言**，且拿不准一律当代码（代价不对称：误判成代码只是不美化，误判成 markdown 会破坏结构）；「渲染为…」三态控件对这种块同样可用。
+
+### 测试
+
+- 新增 `test/fence-content.mjs`（6 条判据用例，含真实会话片段）；`test/lang-fallback.mjs` 补「无语言 + 代码内容 → 代码卡」「无语言 + markdown 文档 → markdown」两条防回归用例。
+- 新增 `test/project-lang-route.mjs`（9 条：标记文件映射 / 优先级 / 绝对路径与 NUL 校验 / 不跟随软链 / 不递归 / 缓存 / 405）、`test/fence-lang-infer.mjs`（内容识别 + 项目兜底 + 日志短路 + 开关）、`test/fence-lang-inferred.mjs`（胶囊推断标识与底栏文案）。
+
 ## [0.5.2] - 2026-10-17
 
 ### 变更

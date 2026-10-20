@@ -86,12 +86,13 @@ a{color:var(--fg)}
         <div class="q">dsh-md-render 怎么决定一个围栏块该走 markdown 还是代码？</div>
       <div class="md" data-od-id="answer-body">
         <h1>围栏分流：先看语言，再看证据</h1>
-        <p>本插件接管对话里的<b>全部围栏块</b>，分流的依据是<b>三源互补</b>：client 侧会话事件流索引（含历史、命中即零 RPC）→ host 侧实时围栏语言索引 → DOM 契约（<code>code.language-*</code> / banner infostring）。判定结果里的 <code>confirmed</code> 只用来区分「确证无语言」与「识别失败」，<b>不做内容启发式判定</b>。</p>
+        <p>本插件接管对话里的<b>全部围栏块</b>，分流的依据是<b>三源互补</b>：client 侧会话事件流索引（含历史、命中即零 RPC）→ host 侧实时围栏语言索引 → DOM 契约（<code>code.language-*</code> / banner infostring）。判定结果里的 <code>confirmed</code> 只用来区分「确证无语言」与「识别失败」；<b>确证无语言时再看内容</b>（像 markdown 文档才 markdown 化，否则代码卡），<b>不猜语言</b>。</p>
         <h2>分流规则</h2>
         <div class="tw"><table>
           <thead><tr><th>围栏语言</th><th>渲染路径</th><th>产物</th></tr></thead>
           <tbody>
-            <tr><td><code>text</code> / <code>md</code> / 确证无语言</td><td>自研 markdown 渲染</td><td><code>div.tzx-md</code>：真实 h1–h6 / table / blockquote</td></tr>
+            <tr><td><code>text</code> / <code>md</code></td><td>自研 markdown 渲染</td><td><code>div.mdr-md</code>：真实 h1–h6 / table / blockquote</td></tr>
+            <tr><td>确证无语言</td><td>看内容分流</td><td>像 markdown 文档 → markdown；否则代码卡（保留换行、语言位留空）</td></tr>
             <tr><td><code>js</code> / <code>ts</code> / <code>json</code> / <code>bash</code></td><td>自研代码块</td><td>语言胶囊 + highlight.js + 复制 + 换行切换</td></tr>
             <tr><td><code>mermaid</code> / <code>mmd</code></td><td>图表卡片</td><td>预览 / 代码切换 + 导出 PNG / SVG + 浮窗缩放</td></tr>
             <tr><td>识别失败</td><td>代码视图</td><td>语言位留空（绝不编造语言名）</td></tr>

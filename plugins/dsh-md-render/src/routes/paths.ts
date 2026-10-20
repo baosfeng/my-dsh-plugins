@@ -25,6 +25,14 @@ export const LANGS_API_URL = CONFIG_API_PREFIX + '/langs'
 /** 语言索引查询的参数名（client 半派生 URL 时共用，避免两侧各写一个字面量）。 */
 export const LANGS_HASH_PARAM = 'h'
 
+/**
+ * 项目主语言探测端点（host 半按会话 cwd 的**构建标记文件**推断，client 半在内容识别不出语言时兜底）。
+ * 只 stat 固定候选清单、不遍历目录、不读文件内容 —— 边界见 src/routes/project-lang.ts。
+ */
+export const PROJECT_LANG_ENDPOINT = 'project-lang'
+export const PROJECT_LANG_CWD_PARAM = 'cwd'
+export const PROJECT_LANG_API_URL = CONFIG_API_PREFIX + '/' + PROJECT_LANG_ENDPOINT
+
 /** panzoom 文件名（图表缩放 / 平移的 vendored 库；同引擎一样走 assets 懒加载，不进 client.js）。 */
 export const PANZOOM_FILE = 'panzoom-4.6.2.min.js'
 
@@ -55,5 +63,7 @@ export function clientRouteDeclarations(): string {
     'const HIGHLIGHTJS_URL = ' + JSON.stringify(HIGHLIGHTJS_URL),
     'const LANGS_API_URL = ' + JSON.stringify(LANGS_API_URL),
     'const LANGS_HASH_PARAM = ' + JSON.stringify(LANGS_HASH_PARAM),
+    'const PROJECT_LANG_API_URL = ' + JSON.stringify(PROJECT_LANG_API_URL),
+    'const PROJECT_LANG_CWD_PARAM = ' + JSON.stringify(PROJECT_LANG_CWD_PARAM),
   ].join('\n')
 }

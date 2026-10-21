@@ -1,6 +1,6 @@
 // ── 渲染配置：三段命名空间化开关（markdown / thinking / mermaid）─────────
 // 与 host 半 lib/config.js 的 schema 一一对应（同一份默认值语义）：
-//  - markdown.copyButton / textFenceMarkdown / contextMarkdown  默认开（!== false）
+//  - markdown.copyButton / textFenceMarkdown / contextMarkdown / inferLang  默认开（!== false）
 //  - thinking.defaultExpanded                                  默认开（严格布尔）
 //  - mermaid.injectPrompt / render                             默认开（仅显式 false 关）
 // **旧扁平键读兼容（必须）**：合并前 dsh-md-render 把开关写在顶层，用户 profile
@@ -15,7 +15,7 @@
 
 /** 三段默认值（缺失 / 非法值一律回退到这里）。 */
 const DEFAULT_RENDER_OPTIONS = {
-  markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+  markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true, inferLang: true },
   thinking: { defaultExpanded: true },
   mermaid: { injectPrompt: true, render: true },
 }
@@ -75,6 +75,7 @@ function readConfig(raw: unknown): RenderOptions {
       'copyButton',
       'textFenceMarkdown',
       'contextMarkdown',
+      'inferLang',
     ]),
     thinking: pickThinking(renderOptions.thinking, obj),
     mermaid: pickSection(renderOptions.mermaid, sectionOf(obj, 'mermaid'), obj, ['injectPrompt']),

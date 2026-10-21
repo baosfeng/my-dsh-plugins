@@ -198,7 +198,7 @@ test('超长块 / 开关关闭 / react-dom 不可用 → 一律不动宿主 DOM�
   assert.equal(block.getAttribute(VIEW_ATTR), null, '无视图属性（宿主保持原样）')
 })
 
-test('识别不出语言的块也接管为代码块，但语言位**留空**（绝不编造语言名）', () => {
+test('识别不出语言的块也接管为代码块；有内容特征时用推断语言并带标识，认不出才留空', () => {
   const scroll = makeElement('div', { 'data-conversation-scroll': 'true' })
   // 真实宿主形态：banner 只有本地化标签「代码块」，<code> 无 language-*
   const block = makeCodeBlock({ lang: '代码块', code: 'const a = 1', fiber: false })
@@ -209,6 +209,7 @@ test('识别不出语言的块也接管为代码块，但语言位**留空**（�
   const loaded = loadBundle({ page, react, reactDom: stack.reactDom })
   loaded.exports.apply({ effect: (fn) => fn() })
   assert.equal(block.getAttribute(VIEW_ATTR), 'code', '仍然接管（代码视图）')
-  assert.equal(block.querySelector(CODE_BANNER).textContent, '', '语言位留空，不写「代码块」也不瞎猜')
+  assert.equal(block.querySelector(CODE_BANNER).textContent.toLowerCase(), 'javascript', '内容识别出 JavaScript')
+  assert.equal(block.getAttribute('data-mdr-lang-inferred'), 'content', '推断语言带标识（不冒充原文标注）')
   assert.equal(block.querySelector('pre').textContent, 'const a = 1', '源码一字不少')
 })

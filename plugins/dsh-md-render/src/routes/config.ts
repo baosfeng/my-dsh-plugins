@@ -18,7 +18,8 @@
 import { createTrustFence, readJsonBody, writeError, writeJson } from 'dsh-shared'
 import { normalizeConfigPayload } from '../config.js'
 import { createLangsHandler } from './langs.js'
-import { CONFIG_API_PREFIX } from './paths.js'
+import { createProjectLangHandler } from './project-lang.js'
+import { CONFIG_API_PREFIX, PROJECT_LANG_ENDPOINT } from './paths.js'
 import type { ConfigPatch, MdRenderConfig } from '../config.js'
 import type { LangIndex } from '../lang-index.js'
 import type { DshContext, ServerRequest, ServerResponse } from '../types.js'
@@ -56,9 +57,9 @@ export function registerConfigRoutes(
         target.webServer?.register({
           kind: 'prefix',
           path: CONFIG_API_PREFIX,
-          // langs（语言索引查询，issue #466）与 config 共用同一前缀与同一信任围栏，
-          // handler 由本文件的 apiHandler 统一分派 —— 不新增第三条路由前缀。
-          handler: apiHandler(fence, current, onConfigChange, createLangsHandler(langs)),
+          // langs（语言索引查询，issue #466）与 project-lang（项目主语言兜底）与 config
+          // 共用同一前缀与同一信任围栏，handler 由本文件的 apiHandler 统一分派 —— 不新增路由前缀。
+          handler: apiHandler(fence, current, onConfigChange, createLangsHandler(langs), createProjectLangHandler()),
         }),
       'dsh-md-render: /md-render/api routes',
     ) as unknown as () => void,
@@ -85,6 +86,7 @@ function apiHandler(
   current: MdRenderConfig,
   onConfigChange: OnConfigChange,
   langs: (request: ServerRequest, response: ServerResponse) => void,
+  projectLang: (request: ServerRequest, response: ServerResponse) => Promise<void>,
 ): (request: ServerRequest, response: ServerResponse) => Promise<void> {
   return async (request, response) => {
     if (!fence(request)) {
@@ -96,7 +98,7 @@ function apiHandler(
       ? url.pathname.slice(CONFIG_API_PREFIX.length + 1)
       : undefined
     try {
-      if (await dispatch(method, request, response, current, onConfigChange, langs)) return
+      if (await dispatch(method, request, response, current, onConfigChange, langs, projectLang)) return
       writeJson(response, 404, { ok: false, error: { message: 'unknown dsh-md-render API method' } })
     } catch (error) {
       writeError(response, error as Error)
@@ -112,10 +114,16 @@ async function dispatch(
   current: MdRenderConfig,
   onConfigChange: OnConfigChange,
   langs: (request: ServerRequest, response: ServerResponse) => void,
+  projectLang: (request: ServerRequest, response: ServerResponse) => Promise<void>,
 ): Promise<boolean> {
   // 语言索引查询（只读，GET only）——与配置读写共用前缀、围栏与 404 兜底。
   if (method === 'langs') {
     langs(request, response)
+    return true
+  }
+  // 项目主语言探测（只读，GET only）：只 stat 固定标记文件，见 routes/project-lang.ts。
+  if (method === PROJECT_LANG_ENDPOINT) {
+    await projectLang(request, response)
     return true
   }
   if (method !== 'config') return false

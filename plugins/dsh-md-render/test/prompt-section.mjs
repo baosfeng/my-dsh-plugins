@@ -96,6 +96,36 @@ test('文案有硬性长度上限且不含未注册变量（宿主 renderPrompt 
   assert.ok(PROMPT_TEXT.includes('mermaid'), 'mentions mermaid')
 })
 
+test('带 -beta 后缀的图表明确「默认可用、无需配置或询问」', () => {
+  assert.ok(PROMPT_TEXT.includes('默认可用'), 'states beta types are available by default')
+  assert.ok(PROMPT_TEXT.includes('无需配置'), 'rules out configuration/asking')
+  assert.ok(PROMPT_TEXT.includes('-beta'), 'mentions the -beta suffix explicitly')
+})
+
+test('文案覆盖 12.2.0 新增图表类型（≥8 种关键字，实测存在的才写）', () => {
+  // 关键字全部在 assets/mermaid-12.2.0.min.js 上实测通过 detectType（见 CHANGELOG）。
+  const kinds = [
+    'kanban',
+    'timeline',
+    'mindmap',
+    'treemap',
+    'radar-beta',
+    'architecture-beta',
+    'block-beta',
+    'packet-beta',
+    'sankey-beta',
+    'xychart-beta',
+    'quadrantChart',
+    'requirementDiagram',
+    'gitGraph',
+    'journey',
+    'C4Context',
+  ]
+  const listed = kinds.filter((kind) => PROMPT_TEXT.includes(kind))
+  assert.ok(listed.length >= 8, 'prompt lists at least 8 diagram types, got ' + String(listed.length))
+  assert.ok(PROMPT_TEXT.includes('mermaid 12.2.0'), '版本与内置引擎一致')
+})
+
 test('createPromptSection：开关关 → null（调用方据此跳过注册）', () => {
   assert.equal(createPromptSection(false), null, 'off -> null')
   assert.deepEqual(

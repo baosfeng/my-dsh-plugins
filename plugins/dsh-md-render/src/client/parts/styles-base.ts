@@ -18,10 +18,10 @@ const STYLES_BASE: string = `
 --mdr-bg:var(--dsw-alias-bg-layer-1);
 --mdr-bg-elevated:var(--dsw-alias-bg-layer-2);
 --mdr-bg-hover:var(--dsw-alias-interactive-bg-hover);
---mdr-surface:var(--dsw-alias-markdown-code-block);
---mdr-surface-raised:var(--dsw-alias-markdown-code-block-banner);
---mdr-border:var(--dsw-alias-border-l2);
---mdr-border-soft:var(--dsw-alias-border-l1);
+--mdr-surface:color-mix(in srgb,var(--dsw-alias-markdown-code-block) 66%,transparent);
+--mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-markdown-code-block-banner) 58%,transparent);
+--mdr-border:color-mix(in srgb,var(--dsw-alias-label-primary) 15%,transparent);
+--mdr-border-soft:color-mix(in srgb,var(--dsw-alias-label-primary) 10%,transparent);
 --mdr-border-strong:color-mix(in srgb,var(--dsw-alias-label-primary) 26%,transparent);
 --mdr-text:var(--dsw-alias-label-primary);
 --mdr-text-2:var(--dsw-alias-label-secondary);
@@ -41,10 +41,24 @@ const STYLES_BASE: string = `
 --mdr-overlay:var(--dsw-alias-bg-mask-3);
 --mdr-shadow:var(--dsw-shadow-lv2);
 --mdr-focus-ring:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 45%,transparent);
+/* ── Liquid Glass 材质 / 排版 token（02-style §2 取值 + §5 清单）──
+   全部带默认值：未接管 / 宿主主题不支持模糊时仍然可读（backdrop-filter 不支持即不生效）。 */
+--mdr-font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+--mdr-font-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+--mdr-material:blur(22px) saturate(180%);
+--mdr-card-shadow:0 12px 32px color-mix(in srgb,var(--dsw-alias-label-primary) 10%,transparent),inset 0 1px 0 color-mix(in srgb,var(--dsw-alias-label-primary) 12%,transparent);
+--mdr-hairline:var(--mdr-border-soft);
+--mdr-heading-weight:600;
+--mdr-heading-tracking:-.015em;
+--mdr-body-gap:12px;
+--mdr-quote-bg:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 10%,transparent);
+--mdr-quote-border:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 55%,transparent);
+--mdr-table-head-bg:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 40%,transparent);
+--mdr-frame-head-bg:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 34%,transparent);
 /* ── 几何（原型 76–79）── */
---mdr-radius-sm:4px;
---mdr-radius-md:8px;
---mdr-radius-lg:10px;
+--mdr-radius-sm:6px;
+--mdr-radius-md:12px;
+--mdr-radius-lg:14px;
 --mdr-radius-pill:980px;
 /* ── 字号阶梯（原型 80–83）── */
 --mdr-fs-xs:12px;
@@ -62,8 +76,23 @@ const STYLES_BASE: string = `
 --mdr-motion-base:220ms;
 --mdr-ease:cubic-bezier(.28,0,.22,1);
 color:var(--mdr-text-2);
+font-family:var(--mdr-font-sans);
 font-size:var(--mdr-fs-sm);
 line-height:1.6;
+}
+
+/* ── 深色玻璃覆盖 ────────────────────────────────────────────────────────
+   宿主信号（核对自参考源 deepseek-harness）：
+   · body[data-ds-dark-theme]：packages/client/ui-layout/src/client/theme-presenter.ts:15 定义、:75-76 写入；
+   · html.style.color-scheme：同文件 :71（boot-theme.ts:20-24 首屏也写）。
+   颜色仍全部走 --dsw-* 派生；这里只调整透明度 / 阴影强度，不引入新色值。
+   若无该属性（主题服务未就绪 / 宿主改契约），回落浅色取值，surface 66% 仍在 54% 红线之上。 */
+body[data-ds-dark-theme] :is(.mdr-root,.mdr-md){
+--mdr-surface:color-mix(in srgb,var(--dsw-alias-markdown-code-block) 62%,transparent);
+--mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-markdown-code-block-banner) 52%,transparent);
+--mdr-card-shadow:0 14px 36px color-mix(in srgb,var(--dsw-alias-label-primary) 22%,transparent),inset 0 1px 0 color-mix(in srgb,var(--dsw-alias-label-primary) 18%,transparent);
+--mdr-table-head-bg:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent);
+--mdr-frame-head-bg:color-mix(in srgb,var(--dsw-alias-label-primary) 5%,transparent);
 }
 
 /* ══ 通用控件（只有本文件定义，其他路只引用类名）══ */

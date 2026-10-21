@@ -4,7 +4,7 @@
  * 判据：默认全开；只接受布尔值（非法值 / 未知键忽略，不覆盖默认）；保存后热生效
  * （setRenderOptions 立即影响渲染）；启动时经 GET /md-render/api/config 拉取真实配置，
  * 拉取失败保持默认全开（不阻塞能力）。已下线的旧开关（syntaxHighlight /
- * mathStructures / tableSort / codeTheme …）不再存在——迁移说明见 README。
+ * tableSort / codeTheme …）不再存在——迁移说明见 README。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
@@ -20,7 +20,7 @@ import {
 } from './support/fake-dom.mjs'
 
 const DEFAULTS = {
-  markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+  markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true, inferLang: true },
   thinking: { defaultExpanded: true },
   mermaid: { injectPrompt: true, render: true },
 }

@@ -73,3 +73,14 @@ regexTarget = "match"
 regexes = [
   '''MIIEowIBAAKCAQEA''',
 ]
+
+# 5. vendored mermaid 12.2.0 UMD 压缩产物（assets/mermaid-12.2.0.min.js:636）：minifier 把
+#    `keyCount` / `atlasCount` 两个纹理计数变量压成 `m.keyCount,v=m.atlasCount;`，
+#    generic-api-key 规则按 `key` 关键词命中，熵 3.52（远低于真实凭据）。不是凭据，
+#    且这串字面量在下一次引擎换版后会消失 —— 届时门禁会重新提示评审，属预期行为。
+[[allowlists]]
+description = "mermaid 12.2.0 UMD 里被 minifier 压掉的 keyCount/atlasCount 变量赋值（generic-api-key 误报）"
+regexTarget = "match"
+regexes = [
+  '''m\.keyCount,v=m\.atlasCount;''',
+]

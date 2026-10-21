@@ -5,6 +5,36 @@
 > 公共 API 承诺面：`MarkdownView`（导出 / props / 自有 DOM 类名清单见 [README「公共 API 契约」](README.md)）；改类名清单 = 破坏性变更，须同步 README 与本文件。
 
 
+## [Unreleased]
+
+### 变更
+
+- **mermaid 围栏闭合即渲染**：流式期间不再等整轮消息结束 —— 从事件流原文（`assistant/live-chunk` 的 `text-delta`，宿主 `StreamChunk`，`packages/llm/llm/src/types.ts:472`）拼接当前消息文本，解析围栏**闭合位**：已闭合 → 立即挂图表卡片；明确未闭合 → 不渲染残缺图；事件流不可用 / 内容查不到 → 退回原有「DOM 语言 + 400ms 稳定窗口」，行为不变。闭合位按内容哈希对齐（`fenceHash` / 文档序 FIFO），空围栏（裸 `pre > code`）不误判；事件源订阅（`eventSource.subscribe`）在「新围栏闭合」时触发一次重扫（闭合不产生 DOM mutation）；自愈机制保留（渲染后源码再变 → 卸载重挂）。失败态语义不变：事件流取不到 / 报错一律静默降级，不报错、不吞内容。
+- **mermaid 图表跟随宿主深浅 + 套用 Liquid Glass 卡片**：渲染前按宿主信号选 mermaid 12.2.0 的 `theme`（`dark` / `default`），并把宿主 `--dsw-*` 语义色映射为 `themeVariables`（`mainBkg` / `nodeBorder` / `lineColor` / `textColor` / `titleColor` / `attributeBackgroundColorOdd|Even` 等 16 项），以 `%%{init: …}%%` 前置指令**逐图**生效；源码自带 init 指令时原样尊重。宿主信号：`body[data-ds-dark-theme]`（`packages/client/ui-layout/src/client/theme-presenter.ts:15` 定义、`:75-76` 写入）与 `html` 的 `color-scheme`（同文件 `:71`），无信号回落浅色。实测 12.2.0：`mainBkg` / `nodeBorder` / `lineColor` / `textColor` 生效，flowchart 节点填充走 `mainBkg` 而非 `primaryColor`（按实测结论映射）。失败态语义不变（错误图仍随离屏容器丢弃，源码优先）。图表卡同时套用 `--mdr-material` / `--mdr-card-shadow` / `--mdr-radius-lg`。
+- **Liquid Glass 默认外观**（用户从 4 套原型候选里选定，依据 `.open-design/02-style.md` §2/§5）：markdown 正文、代码卡、mermaid 卡、表格、上下文注入块统一改为**半透明材质 + 统一卡片阴影** —— `--mdr-material: blur(22px) saturate(180%)`、`--mdr-card-shadow: 0 12px 32px` 外投影 10% + 顶部 `inset 0 1px 0` 内高光 12%；新增 12 个材质 / 排版 token（`--mdr-font-sans` / `--mdr-font-mono` / `--mdr-material` / `--mdr-card-shadow` / `--mdr-hairline` / `--mdr-heading-weight` / `--mdr-heading-tracking` / `--mdr-body-gap` / `--mdr-quote-bg` / `--mdr-quote-border` / `--mdr-table-head-bg` / `--mdr-frame-head-bg`，全部带默认值）。几何：圆角 4/8/10 → 6/12/14；`--mdr-surface` = code 66%、`--mdr-surface-raised` = banner 58%、描边 = label 15% / 10%。深色覆盖走宿主信号 `body[data-ds-dark-theme]`（`packages/client/ui-layout/src/client/theme-presenter.ts:15` 定义、`:75-76` 写入）：surface 62%、raised 52%、阴影与内高光加强，仍全部由 `--dsw-*` 派生、零裸色值；宿主不提供该属性时回落浅色取值（66% 仍高于 54% 可读红线）。类名与 DOM 结构不变，设置页外观不在本次范围。
+- **mermaid 引擎升级 10.9.3 → 12.2.0**（npm latest，MIT）：vendored UMD `assets/mermaid-12.2.0.min.js`（5.49 MB，替换原 3.34 MB 资产，**体积 +64%**）——升级代价经体积门禁显式评审后刷新基线（`scripts/client-size-baseline.json`：基线 + max(64KB, 15%) 余量，大版本换代按设计必须评审）。`MERMAID_ENGINE_FILE` / 构建期 SHA256 冻结值 / 资产路由测试同步；`mermaid.initialize` + `mermaid.render(id, source, container)` 契约在 12.2.0 上实测兼容（flowchart / sequenceDiagram / erDiagram / kanban / timeline 真实渲染零 console 错误），`suppressErrorRendering: true` 自 12.x 起生效，离屏容器保留为第二道保险。
+- **图表类型识别覆盖 12.2.0 新增类型**：`MM_KIND_NAMES` 按实测 `detectType` 补齐 architecture / block / packet / radar / treemap / venn / wardley / swimlane / ishikawa / cynefin / treeView / agentflow / railroad / usecase / eventmodeling / info 等裸名与 `-beta` 别名，规范名统一去掉 `-beta`。
+- **系统提示词同步**（`dsh-mermaid-render` section）：显式列出 12.2.0 支持的图表关键字，正文仍 ≤ 500 字符（实测 497）。
+- **清理「公式引擎」残留文案**：README 删除 `mathStructures` 旧键与「数学公式不做」声明（0.3.0 已移除 KaTeX，插件内无公式实现）。
+
+### 新增
+
+- **无语言围栏的语言推断**（`markdown.inferLang`，默认开）：先按内容高置信识别（JSON / shell / SQL / Kotlin / Python / TS / JS / Java / C++ / HTML / CSS），认不出再用**项目主语言**兜底 —— 新增 host 路由 `GET /md-render/api/project-lang?cwd=…`，只对**固定构建标记文件清单**做 `lstat`（`build.gradle.kts`→Kotlin、`tsconfig.json`→TypeScript、`go.mod`→Go、`Cargo.toml`→Rust、`pyproject.toml`→Python…），**不遍历目录、不读文件内容、不跟随符号链接**，结果按 cwd 有界缓存（TTL 10 分钟）。日志块（时间戳行占多数）不推断；推断值只用于高亮 + 胶囊，带 `data-mdr-lang-inferred` 标识与「按内容推断 / 按项目推断」浮层，胶囊用虚线边区分，**不冒充围栏原文标注**，也不改变 markdown / 代码分流。真实会话（android-monitor，96 个无语言块）实测：内容识别命中 69（Kotlin 62 / SQL 4 / shell 3）、日志留空 4、项目兜底 23。
+
+### 修复
+
+- **mermaid 闭合即渲染在真实宿主未生效（运行时取证）**：根因是事件源窗口里的流式条目类型是 `transient`（宿主 `assistant-stream.ts:141-160` 的 `assistant/live-chunk`），而 `eventOf` 只认 `type === 'event'` → live-chunk 从未被吸收，闭合位永远查不到，退回的 400ms 窗口又因 chat 的 DOM 语言恒为「代码块」而不可达。修复：`eventOf` 同时接受 `event` / `transient`；流式兜底加**内容启发式**（`mermaidKindOf(source)` 能识别图表类型即视为 mermaid），保证事件流不可用时 ≤500ms 出卡片且普通代码不误判。
+- **提示词补充 -beta 图表说明**：`architecture-beta` / `block-beta` / `packet-beta` / `radar-beta` / `sankey-beta` / `xychart-beta` 等在 12.2.0 默认可用，直接写、无需配置或询问（`PROMPT_TEXT` 仍 ≤500 字符）。
+- **无语言围栏不再一律按 markdown 渲染**（真实会话取证，2026-10-20 android-monitor 会话 `session-4fa88602`）：实测 208 个围栏里 **200 个没有语言标记**（184 个在思考块里），内容是 Kotlin / Compose 代码、SQL、shell —— 旧口径「确证无语言 → 一律 markdown」把这些代码的换行折叠成一坨，代码再也读不了。现在**确证无语言**的块先看内容（`src/client/parts/fence-content.ts`）：markdown 块级特征（标题 / 表格 / 引用 / 列表 / 分隔线）≥ 2 且**零代码特征**才 markdown 化，否则按代码卡（等宽、保留换行与缩进、语言位留空）。判据只回答「是不是 markdown 文档」，**不猜语言**，且拿不准一律当代码（代价不对称：误判成代码只是不美化，误判成 markdown 会破坏结构）；「渲染为…」三态控件对这种块同样可用。
+
+### 测试
+
+- 新增 `test/mermaid-closed.mjs`（4 条：闭合 + 流式中立即渲染 / 未闭合不渲染 / 事件流不可用退回 400ms 窗口 / 闭合后内容再变卸载重挂）。
+- 新增 `test/mermaid-theme.mjs`（宿主深浅信号 → theme 选择 / init 指令前置 / 源码自带 init 不覆盖 / 图表卡材质 4 条）。
+- 新增 `test/liquid-glass.mjs`（12 个新 token 取值 / 卡片容器消费材质 / 深色覆盖块 / `--mdr-surface` ≥54% 透明度阈值）；同步更新既有圆角与表头 token 断言。
+- 新增 `test/fence-content.mjs`（6 条判据用例，含真实会话片段）；`test/lang-fallback.mjs` 补「无语言 + 代码内容 → 代码卡」「无语言 + markdown 文档 → markdown」两条防回归用例。
+- 新增 `test/project-lang-route.mjs`（9 条：标记文件映射 / 优先级 / 绝对路径与 NUL 校验 / 不跟随软链 / 不递归 / 缓存 / 405）、`test/fence-lang-infer.mjs`（内容识别 + 项目兜底 + 日志短路 + 开关）、`test/fence-lang-inferred.mjs`（胶囊推断标识与底栏文案）。
+
 ## [0.5.2] - 2026-10-17
 
 ### 变更

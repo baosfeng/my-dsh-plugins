@@ -46,6 +46,8 @@ const PARTS = [
   ['/*__PART_MARKDOWN_VIEW__*/', 'markdown-view.js'],
   ['/*__PART_CONTEXT_MARKDOWN__*/', 'context-markdown.js'],
   ['/*__PART_LANG_SOURCE__*/', 'lang-source.js'],
+  ['/*__PART_FENCE_CONTENT__*/', 'fence-content.js'],
+  ['/*__PART_FENCE_LANG_INFER__*/', 'fence-lang-infer.js'],
   ['/*__PART_BLOCK_RENDER__*/', 'block-render.js'],
   ['/*__PART_THINK__*/', 'think.js'],
   ['/*__PART_MERMAID_ENGINE__*/', 'mermaid-engine.js'],
@@ -141,6 +143,8 @@ const {
   HIGHLIGHTJS_FILE,
   LANGS_API_URL,
   LANGS_HASH_PARAM,
+  PROJECT_LANG_API_URL,
+  PROJECT_LANG_CWD_PARAM,
 } = await import('../lib/routes/paths.js')
 const ROUTE_PATHS = [['/*__ROUTE_PATHS__*/', clientRouteDeclarations()]]
 // 锚点用**实际常量值**参与匹配：单一真源改了值，产物里就必须出现新值（不是只出现变量名）。
@@ -151,6 +155,14 @@ ANCHORS.push(
   ['const MERMAID_ENGINE_URL = ' + JSON.stringify(MERMAID_ENGINE_URL) + '\n', 'src/routes/paths.ts (single source)'],
   ['const LANGS_API_URL = ' + JSON.stringify(LANGS_API_URL) + '\n', 'src/routes/paths.ts (single source)'],
   ['const LANGS_HASH_PARAM = ' + JSON.stringify(LANGS_HASH_PARAM) + '\n', 'src/routes/paths.ts (single source)'],
+  [
+    'const PROJECT_LANG_API_URL = ' + JSON.stringify(PROJECT_LANG_API_URL) + '\n',
+    'src/routes/paths.ts (single source)',
+  ],
+  [
+    'const PROJECT_LANG_CWD_PARAM = ' + JSON.stringify(PROJECT_LANG_CWD_PARAM) + '\n',
+    'src/routes/paths.ts (single source)',
+  ],
   ['const PANZOOM_SCRIPT_URL = ' + JSON.stringify(PANZOOM_SCRIPT_URL) + '\n', 'src/routes/paths.ts (single source)'],
   ['const MARKED_URL = ' + JSON.stringify(MARKED_URL) + '\n', 'src/routes/paths.ts (single source)'],
   ['const HIGHLIGHTJS_URL = ' + JSON.stringify(HIGHLIGHTJS_URL) + '\n', 'src/routes/paths.ts (single source)'],
@@ -211,7 +223,8 @@ for (const [anchor, source] of ANCHORS) {
 //    SHA256 冻结承担「资源未被无声替换 / 未被 prettier 美化后提交」的断言（issue #296、#322）。
 /** 冻结的资产哈希（shasum -a 256 实测）；内容变了必须显式更新这里的值。 */
 const ASSET_SHA256 = {
-  [MERMAID_ENGINE_FILE]: '5a8ec91820bd55afef049068489369910e5d6ce70c8103952f27e29d3e76e8bc',
+  // mermaid 12.2.0 UMD（npm latest；MIT）：assets/mermaid-12.2.0.min.js。
+  [MERMAID_ENGINE_FILE]: 'a8a6a6f805b074a8261a2825c86f99c8054acb3b35f50bb7e24a4f9f2c3c3b9f',
   [PANZOOM_FILE]: '3ce354ef7b493efb62a4d4acaaf86fa2d6027eb629857a4e144041de1a112c1e',
   // 自研 markdown 渲染器的解析层（marked 18.1.0 UMD，MIT）。
   [MARKED_FILE]: 'f424dcb508fdf93e0137a970cfce8f3207ea2e3f37eca5f7556a52875683632a',

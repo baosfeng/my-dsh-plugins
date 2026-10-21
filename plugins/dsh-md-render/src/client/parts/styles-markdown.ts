@@ -5,8 +5,9 @@
 //   · 列表 ::marker 用三级文字色，任务列表是只读复选框（input[disabled][readonly] +
 //     :has() 画勾，勾形 150ms），已完成项灰字 + 删除线；
 //   · 表格走圆角外框 + 中性表头 + 行 hover；引用 2px 强调左线 + 薄底 + 7px 右圆角，
+//     表格卡是 Liquid Glass 材质（backdrop-filter + 统一卡片阴影）；
 //     嵌套引用降级为中性细线；
-//   · 行内码 4px 圆角 + 发丝边 + 宿主行内码底 + 强调文字色；
+//   · 行内码 6px 圆角（--mdr-radius-sm）+ 发丝边 + 宿主行内码底 + 强调文字色；
 //   · 整段复制按钮绝对定位右上角，hover / focus 浮现。
 // 颜色只取 styles-base.ts 的 --mdr-* token（或宿主 --dsw-*），本文件**不写裸十六进制**。
 // 脚本模式片段（无 import/export），与 styles-base.ts 同作用域拼接。
@@ -15,9 +16,10 @@ const STYLES_MARKDOWN: string = `
 .mdr-md{
 display:flex;
 flex-direction:column;
-gap:10px;
+gap:var(--mdr-body-gap);
 min-width:0;
 position:relative;
+font-family:var(--mdr-font-sans);
 font-size:13px;
 line-height:1.72;
 color:var(--mdr-text-2);
@@ -28,9 +30,9 @@ color:var(--mdr-text-2);
 .mdr-md h1,.mdr-md h2,.mdr-md h3,.mdr-md h4,.mdr-md h5,.mdr-md h6{
 margin:2px 0 0;
 color:var(--mdr-text);
-font-weight:600;
+font-weight:var(--mdr-heading-weight);
 line-height:1.4;
-letter-spacing:.1px;
+letter-spacing:var(--mdr-heading-tracking);
 }
 .mdr-md h1{font-size:18px}
 .mdr-md h2{font-size:16px}
@@ -115,6 +117,8 @@ overflow-x:auto;
 border:1px solid var(--mdr-border);
 border-radius:var(--mdr-radius-md);
 background:var(--mdr-surface);
+backdrop-filter:var(--mdr-material);
+box-shadow:var(--mdr-card-shadow);
 max-width:100%;
 }
 .mdr-md-table{
@@ -124,7 +128,7 @@ font-size:12px;
 min-width:420px;
 }
 .mdr-md-table th{
-background:var(--mdr-bg-elevated);
+background:var(--mdr-table-head-bg);
 color:var(--mdr-text-2);
 font-weight:600;
 text-align:left;
@@ -146,8 +150,8 @@ vertical-align:top;
 .mdr-md blockquote{
 margin:0;
 padding:6px 12px;
-border-left:2px solid var(--mdr-accent);
-background:var(--mdr-accent-soft);
+border-left:2px solid var(--mdr-quote-border);
+background:var(--mdr-quote-bg);
 border-radius:0 7px 7px 0;
 color:var(--mdr-text-2);
 }
@@ -180,7 +184,7 @@ border:1px solid var(--mdr-border-soft);
 border-radius:var(--mdr-radius-sm);
 background:var(--mdr-code-bg);
 color:var(--mdr-accent);
-font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+font-family:var(--mdr-font-mono);
 font-size:12px;
 line-height:1.5;
 overflow-wrap:anywhere;
@@ -194,7 +198,7 @@ border:1px solid var(--mdr-border-soft);
 border-radius:var(--mdr-radius-md);
 background:var(--mdr-code-bg);
 color:var(--mdr-text-2);
-font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+font-family:var(--mdr-font-mono);
 font-size:11.5px;
 line-height:1.65;
 white-space:pre-wrap;
@@ -223,7 +227,7 @@ border:1px solid var(--mdr-border-soft);
 border-radius:var(--mdr-radius-md);
 background:var(--mdr-code-bg);
 color:var(--mdr-text-2);
-font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+font-family:var(--mdr-font-mono);
 font-size:11.5px;
 line-height:1.65;
 white-space:pre-wrap;

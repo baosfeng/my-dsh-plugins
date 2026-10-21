@@ -220,7 +220,7 @@ test('视图契约：view === "page" 与缺省都渲染同一设置页且开关�
       (n) =>
         typeof (n.props && n.props.className) === 'string' && n.props.className.split(/\s+/).includes('mdr-switch'),
     )
-    assert.equal(toggles.length, 6, '三分组共 6 个开关可用（view=' + JSON.stringify(props) + '）')
+    assert.equal(toggles.length, 7, '三分组共 7 个开关可用（view=' + JSON.stringify(props) + '）')
     for (const toggle of toggles) {
       assert.equal(toggle.props.role, 'switch', '开关有 role=switch')
       assert.equal(typeof toggle.props.onClick, 'function', '开关可点击')

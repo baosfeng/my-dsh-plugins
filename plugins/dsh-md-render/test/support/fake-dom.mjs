@@ -6,7 +6,7 @@
  *  ② bundle 加载器（eval lib/client.js + 桩 require：官方组件 / react-dom/client）；
  *  ③ 官方渲染器桩：MarkdownText（记录收到的 props）+ createRoot（把 vdom 落成 DOM）。
  *
- * 为什么测试桩「官方渲染器」而不是真的渲染：GFM 表格 / 公式 / 代码块高亮的渲染
+ * 为什么测试桩「官方渲染器」而不是真的渲染：GFM 表格 / 代码块高亮的渲染
  * 正确性属于官方组件的测试面；本插件的判据是**接线正确**——把哪段文本、带什么
  * labels、交到哪个组件、渲染到哪个容器，以及注入点的门控 / 幂等 / 降级行为。
  */

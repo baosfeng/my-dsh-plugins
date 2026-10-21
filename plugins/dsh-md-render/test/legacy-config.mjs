@@ -108,7 +108,12 @@ function boot(dir, patchText, get = () => undefined) {
 
 test('createConfigState：旧扁平键读进 markdown 段（用户 profile 已落盘）', () => {
   const state = createConfigState({ copyButton: false, textFenceMarkdown: true, contextMarkdown: false })
-  assert.deepEqual(state.markdown, { copyButton: false, textFenceMarkdown: true, contextMarkdown: false })
+  assert.deepEqual(state.markdown, {
+    copyButton: false,
+    textFenceMarkdown: true,
+    contextMarkdown: false,
+    inferLang: true,
+  })
   assert.deepEqual(state.thinking, { defaultExpanded: true }, 'thinking default on')
   assert.deepEqual(state.mermaid, { injectPrompt: true, render: true }, 'mermaid default on')
 })
@@ -151,7 +156,7 @@ test('GET /md-render/api/config 返回命名空间结构', async () => {
   booted.restore()
   assert.equal(status, 200)
   assert.deepEqual(body.value, {
-    markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+    markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true, inferLang: true },
     thinking: { defaultExpanded: true },
     mermaid: { injectPrompt: true, render: true },
   })

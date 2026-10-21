@@ -2,7 +2,8 @@
 // 用户口径（最高优先级）：「代码渲染使用我们自己的，不要使用原生的」。本卡片完全由
 // 本插件产出（不调用官方 CodeBlock / MarkdownText）：
 //   · 语言胶囊 = 围栏 info string 的真实 token（CSS 大写 + 字距 .06em），语言位为空时
-//     留空（**绝不编造语言名**）；
+//     留空（**绝不编造语言名**）；语言是推断来的（内容识别 / 项目主语言）时加 is-inferred
+//     + data-mdr-lang-inferred，浮层说明推断来源，底栏也写明「按…推断」；
 //   · 高亮走懒加载 highlight.js 的**令牌树 → vdom span**，不拼 HTML、不 innerHTML，
 //     模型输出不会被当 HTML 执行；hljs 未就绪 / 语言不认识 / 超长 → 纯文本（内容一字不少）；
 //   · 行号默认关、自动换行默认关（状态写卡片 data-mdr-lines / data-mdr-wrap，CSS 呈现）；
@@ -23,8 +24,26 @@ const MDR_FENCE_NUMS_CLASS = 'mdr-line-nums'
 const MDR_FENCE_CODE_CLASS = 'mdr-fence-code'
 const MDR_FENCE_FOOT_CLASS = 'mdr-fence-foot'
 const MDR_FENCE_NOTE_CLASS = 'mdr-fence-note'
+/** 推断语言的语言胶囊状态类名（虚线边等视觉区分在 styles-code.ts）。 */
+const MDR_FENCE_PILL_INFERRED = 'is-inferred'
 /** 单块高亮上限（字符）：超出只做纯文本渲染（高亮是 O(代码长度) 的正则扫描）。 */
 const MAX_HIGHLIGHT_CHARS = 60000
+
+/**
+ * 语言推断来源：'' = 原文有语言标注（不是推断），'content' = 按内容推断，
+ * 'project' = 按项目主语言兜底推断。由 block-render.ts 的解析结果透传上来。
+ */
+type MdrLangInferred = 'content' | 'project' | ''
+/** 推断来源 → 中文短标签（胶囊浮层 / 底栏说明共用，不写原生 title）。 */
+const MDR_INFERRED_LABEL: Record<'content' | 'project', string> = {
+  content: '按内容推断',
+  project: '按项目推断',
+}
+
+/** 规范化推断来源：只认 'content' / 'project'，其余（缺省 / 空串 / 未知值）一律视为非推断。 */
+function langInferredOf(value: unknown): MdrLangInferred {
+  return value === 'content' || value === 'project' ? value : ''
+}
 
 /** hljs 令牌树节点（字符串 = 纯文本片段）。 */
 interface MdrHlNode {
@@ -161,10 +180,16 @@ function lineNumbersText(source: string): string {
   return out.join('\n')
 }
 
-/** 底栏说明：行数 · 语言（语言位为空时如实说「未标注语言」，不编造）。 */
-function fenceLineNote(source: string, lang: string): string {
+/**
+ * 底栏说明：行数 · 语言（语言位为空时如实说「未标注语言」，不编造）；
+ * 语言是推断来的再追加推断来源（「按项目推断」），原文标注则保持原样文案。
+ */
+function fenceLineNote(source: string, lang: string, inferred: MdrLangInferred = ''): string {
   const lines = source === '' ? 0 : source.split('\n').length
-  return String(lines) + ' 行 · ' + (lang === '' ? '未标注语言' : lang)
+  const head = String(lines) + ' 行 · '
+  if (inferred === '') return head + (lang === '' ? '未标注语言' : lang)
+  const from = MDR_INFERRED_LABEL[inferred]
+  return head + (lang === '' ? from : lang + ' · ' + from)
 }
 
 /** 代码主体：有高亮 → 语法色 span 树；否则纯文本（内容一字不少）。 */
@@ -174,6 +199,22 @@ function codeBodyNode(lang: string, source: string): unknown {
   return createElement('code', { className: 'mdr-fence-hl' }, ...nodes)
 }
 
+/**
+ * 语言胶囊的 props：原文标注 → 现状（空语言时 aria-hidden）；推断语言再加 is-inferred、
+ * data-mdr-lang-inferred 与 data-mdr-tip 浮层（复用 [data-mdr-tip] 机制，不写原生 title）。
+ */
+function fencePillProps(lang: string, inferred: MdrLangInferred): Record<string, unknown> {
+  const props: Record<string, unknown> = {
+    className: inferred === '' ? MDR_FENCE_PILL_CLASS : MDR_FENCE_PILL_CLASS + ' ' + MDR_FENCE_PILL_INFERRED,
+  }
+  if (inferred !== '') {
+    props['data-mdr-lang-inferred'] = inferred
+    props['data-mdr-tip'] = MDR_INFERRED_LABEL[inferred]
+  }
+  if (lang === '') props['aria-hidden'] = 'true'
+  return props
+}
+
 /** 头部：语言胶囊 + 标题 + 操作区（复制 / 换行 / 行号）。 */
 function MdrFenceHead(props: {
   lang: string
@@ -181,6 +222,7 @@ function MdrFenceHead(props: {
   code: string
   wrap: boolean
   lines: boolean
+  inferred?: MdrLangInferred
   onWrap: () => void
   onLines: () => void
 }): unknown {
@@ -189,13 +231,7 @@ function MdrFenceHead(props: {
   return createElement(
     'div',
     { className: MDR_FENCE_HEAD_CLASS },
-    createElement(
-      'span',
-      props.lang === ''
-        ? { className: MDR_FENCE_PILL_CLASS, 'aria-hidden': 'true' }
-        : { className: MDR_FENCE_PILL_CLASS },
-      props.lang,
-    ),
+    createElement('span', fencePillProps(props.lang, langInferredOf(props.inferred)), props.lang),
     props.title === '' ? null : createElement('span', { className: MDR_FENCE_TITLE_CLASS }, props.title),
     createElement(
       'span',
@@ -240,23 +276,35 @@ function MdrFenceBody(props: { lang: string; code: string }): unknown {
 }
 
 /** 底栏：行数/语言说明 + 「渲染为…」三态（当前视图由 view 传入，代码视图三态均不激活）。 */
-function MdrFenceFoot(props: { lang: string; code: string; view: string }): unknown {
+function MdrFenceFoot(props: { lang: string; code: string; view: string; inferred?: MdrLangInferred }): unknown {
   return createElement(
     'div',
     { className: MDR_FENCE_FOOT_CLASS },
-    createElement('span', { className: MDR_FENCE_NOTE_CLASS }, fenceLineNote(props.code, props.lang)),
+    createElement(
+      'span',
+      { className: MDR_FENCE_NOTE_CLASS },
+      fenceLineNote(props.code, props.lang, langInferredOf(props.inferred)),
+    ),
     MdrLangSwitchFrom({ current: props.view }),
   )
 }
 
 /**
- * 代码围栏卡（契约导出）：props = { lang, code, title? }；内部可选 view 用于底栏三态
- * （代码视图无对应选项 → 三个按钮都不激活，如实反映「自动判定为代码」）。
+ * 代码围栏卡（契约导出）：props = { lang, code, title?, inferred?, view? }；内部可选 view 用于
+ * 底栏三态（代码视图无对应选项 → 三个按钮都不激活，如实反映「自动判定为代码」）；
+ * inferred = 语言是推断来的（'content' 按内容 / 'project' 按项目主语言），缺省 = 原文有标注。
  */
-function MdrCodeBlock(props: { lang: string; code: string; title?: string; view?: string }): unknown {
+function MdrCodeBlock(props: {
+  lang: string
+  code: string
+  title?: string
+  inferred?: MdrLangInferred
+  view?: string
+}): unknown {
   const lang = typeof props.lang === 'string' ? props.lang : ''
   const code = typeof props.code === 'string' ? props.code : ''
   const title = typeof props.title === 'string' ? props.title : ''
+  const inferred = langInferredOf(props.inferred)
   const view = typeof props.view === 'string' && props.view !== '' ? props.view : 'code'
   const [wrap, setWrap] = useState(false)
   const [lines, setLines] = useState(false)
@@ -275,11 +323,12 @@ function MdrCodeBlock(props: { lang: string; code: string; title?: string; view?
       code,
       wrap,
       lines,
+      inferred,
       onWrap: () => setWrap(!wrap),
       onLines: () => setLines(!lines),
     }),
     MdrFenceBody({ lang, code }),
-    MdrFenceFoot({ lang, code, view }),
+    MdrFenceFoot({ lang, code, view, inferred }),
   )
 }
 
@@ -294,6 +343,9 @@ exports.hlTokenNodes = hlTokenNodes
 exports.highlightNodes = highlightNodes
 exports.lineNumbersText = lineNumbersText
 exports.fenceLineNote = fenceLineNote
+exports.MDR_INFERRED_LABEL = MDR_INFERRED_LABEL
+exports.langInferredOf = langInferredOf
+exports.fencePillProps = fencePillProps
 exports.MdrFenceHead = MdrFenceHead
 exports.MdrFenceBody = MdrFenceBody
 exports.MdrFenceFoot = MdrFenceFoot

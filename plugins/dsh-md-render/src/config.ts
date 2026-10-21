@@ -3,7 +3,7 @@
  *
  * 配置按能力命名空间化为三段（`markdown` / `thinking` / `mermaid`）：
  *
- *   markdown.copyButton / textFenceMarkdown / contextMarkdown   默认开（\`!== false\`）
+ *   markdown.copyButton / textFenceMarkdown / contextMarkdown / inferLang   默认开（\`!== false\`）
  *   thinking.defaultExpanded                                    默认开（严格布尔，回退 true）
  *   mermaid.injectPrompt / render                               默认开（仅显式 false 关）
  *
@@ -30,19 +30,19 @@ const CONFIG_ROW_ID = 'md-render'
 
 /** 合并后的生效配置。 */
 export interface MdRenderConfig {
-  markdown: { copyButton: boolean; textFenceMarkdown: boolean; contextMarkdown: boolean }
+  markdown: { copyButton: boolean; textFenceMarkdown: boolean; contextMarkdown: boolean; inferLang: boolean }
   thinking: { defaultExpanded: boolean }
   mermaid: { injectPrompt: boolean; render: boolean }
 }
 
 /** markdown 段开关键（默认开：仅显式 false 关闭）。 */
-const MARKDOWN_SWITCH_KEYS = ['copyButton', 'textFenceMarkdown', 'contextMarkdown'] as const
+const MARKDOWN_SWITCH_KEYS = ['copyButton', 'textFenceMarkdown', 'contextMarkdown', 'inferLang'] as const
 /** mermaid 段开关键（默认开：仅显式 false 关闭）。 */
 const MERMAID_SWITCH_KEYS = ['injectPrompt', 'render'] as const
 
 /** 三段默认值（缺失 / 非法值一律回退到这里）。 */
 const DEFAULT_CONFIG: MdRenderConfig = {
-  markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true },
+  markdown: { copyButton: true, textFenceMarkdown: true, contextMarkdown: true, inferLang: true },
   thinking: { defaultExpanded: true },
   mermaid: { injectPrompt: true, render: true },
 }

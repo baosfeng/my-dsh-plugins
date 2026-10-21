@@ -25,7 +25,17 @@
  *   这条由 scripts/test/secret-scan.test.mjs 用「塞真形态假密钥 → 断言输出里搜不到」钉死。
  */
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createHash } from 'node:crypto'
 import { get as httpGet } from 'node:http'
 import { get as httpsGet } from 'node:https'
@@ -212,7 +222,18 @@ async function downloadAndVerify() {
     if (!check.ok) throw new Error(`下载到的产物不是 gitleaks ${release.version}：${check.reason}`)
     const target = cachedPath()
     mkdirSync(dirname(target), { recursive: true })
-    renameSync(extracted, target)
+    /**
+     * 临时目录与缓存目录可能不在同一挂载点：GitHub Actions 上 `tmpdir()` 是 `/tmp`，
+     * 工作区是 `/home/runner/work`，直接 rename 会抛 `EXDEV: cross-device link not permitted`
+     * （实测 CI 必红，本地同分区永远复现不了）。跨设备时回退为「复制 + 删源」。
+     */
+    try {
+      renameSync(extracted, target)
+    } catch (error) {
+      if (error?.code !== 'EXDEV') throw error
+      copyFileSync(extracted, target)
+      rmSync(extracted, { force: true })
+    }
     return target
   } finally {
     rmSync(workDir, { recursive: true, force: true })

@@ -197,9 +197,9 @@ function resolveBlockLang(block: Element): string {
  * 语言判定唯一入口（**手动覆盖 > client 事件流索引 > DOM/host 索引**）：
  *  ⓪ 手动覆盖（需求 4）：用户点过「渲染为…」→ 直接采用且 confirmed = true；
  *  ① client 事件流索引 {@link fenceLangOf}——含历史的原始 markdown，命中即零 RPC，
- *     confirmed = true；**`''` = 确证无语言**同样算确证（需求 3 的兜底只认这种情形）；
+ *     confirmed = true；**`''` = 确证无语言**同样算确证（后续交给 fence-content 按内容分流）；
  *  ② 取不到 → {@link resolveBlockLangEx}（DOM token / host 索引命中才算确证）。
- * 调用方按 `confirmed` 区分「确证无语言」与「识别失败」：后者原样保留官方代码块。
+ * 调用方按 `confirmed` 区分「确证无语言」与「识别失败」：后者原样按代码卡接管（语言位留空）。
  */
 function resolveFenceLangEx(block: Element): FenceLangResult {
   const forced = fenceForceOf(block)

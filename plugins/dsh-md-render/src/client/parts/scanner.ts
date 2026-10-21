@@ -36,6 +36,8 @@ function scanNode(node: Node, round: number): void {
   // 围栏语言表按批刷新（lang-source.ts）：事件源 revision 未变则内部直接返回。
   // 放在注入点之前：本轮所有块的语言判定共用同一份表（历史会话冷启动靠它命中）。
   refreshFenceLangIndex(fenceScanContext)
+  // 无语言围栏的语言推断：项目主语言按需请求一次（有缓存；成功后会触发重扫补胶囊与高亮）。
+  refreshInferredLang(fenceScanContext)
   const el = node as Element
   applyThinkExpand(el)
   scanContextBlocks(el)
@@ -84,6 +86,7 @@ function installScanner(ctx?: unknown): () => void {
       teardownMermaid()
       teardownZoom()
       teardownLangProbes()
+      teardownInferredLang()
       teardownRenderAssets()
       resetFenceIndex()
     },

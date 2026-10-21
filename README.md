@@ -29,7 +29,7 @@
 | 插件                                                                               | 版本   | 简介                                                                                          |
 | ---------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------- |
 | [dsh-file-activity](plugins/dsh-file-activity/README.md)                           | 0.5.15 | 侧边栏文件活动页签：记录文件读取/新增/修改与统计，文件夹树形展示，点击浮窗预览                |
-| [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.5.2  | markdown 内容渲染增强：text 围栏块 / 上下文注入块 / mermaid 图表卡片 / 思考块默认展开 + 整段复制 |
+| [dsh-md-render](plugins/dsh-md-render/README.md)                                   | 0.7.0  | markdown 内容渲染增强：text 围栏块 / 上下文注入块 / mermaid 图表卡片 / 思考块默认展开 + 整段复制 |
 | [dsh-my-notify](plugins/dsh-my-notify/README.md)                                   | 0.4.3  | 通知提醒：会话结束 / ask / 审批时浏览器通知 + 提示音，点击跳转；远程 hook 触发 + 出站 webhook |
 | [dsh-my-remote](plugins/dsh-my-remote/README.md)                                   | 0.1.5  | 远程控制：ask / approval / 会话结束事件下行到手机或 IM，可远程回答、批准、查询、继续          |
 | [dsh-my-guardian](plugins/dsh-my-guardian/README.md)                               | 0.4.6  | 插件治理：新装插件先进候选区逐个热挂载，失败自动隔离，一键安全模式 + 诊断面板                 |

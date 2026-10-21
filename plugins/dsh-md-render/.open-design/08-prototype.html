@@ -1,0 +1,1209 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="apple-native" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-md-render · 主题候选对照（4 套 × 浅/深）</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   0. 模拟宿主语义变量（demo-only：本文件唯一出现原始色值的地方）
+   真实运行时这些 --dsw-* 由 DSH 宿主注入；此处按浅/深各模拟一套。
+   ══════════════════════════════════════════════════════════════════════ */
+:root{
+  --host-l-page:#f5f5f7;
+  --host-l-layer-1:#ffffff;
+  --host-l-layer-2:#f7f7f8;
+  --host-l-hover:#0000000a;
+  --host-l-code:#f7f7f8;
+  --host-l-code-banner:#efeff1;
+  --host-l-inline:#f0f0f3;
+  --host-l-border-l1:#ededf0;
+  --host-l-border-l2:#dcdce1;
+  --host-l-label:#1d1d1f;
+  --host-l-label-2:#55555c;
+  --host-l-label-3:#6e6e73;
+  --host-l-fg:#ffffff;
+  --host-l-business:#0a5bd3;
+  --host-l-link:#0a5bd3;
+  --host-l-success:#1a7f45;
+  --host-l-warn:#8a5a00;
+  --host-l-error:#c02626;
+  --host-l-mask:#00000052;
+  --host-l-shadow:0 1px 2px #00000012, 0 4px 12px #0000000a;
+
+  --host-d-page:#0b0b0d;
+  --host-d-layer-1:#111114;
+  --host-d-layer-2:#1a1a1e;
+  --host-d-hover:#ffffff12;
+  --host-d-code:#161619;
+  --host-d-code-banner:#202025;
+  --host-d-inline:#232328;
+  --host-d-border-l1:#26262b;
+  --host-d-border-l2:#34343a;
+  --host-d-label:#f4f4f6;
+  --host-d-label-2:#b8b8c0;
+  --host-d-label-3:#9a9aa3;
+  --host-d-fg:#111114;
+  --host-d-business:#6ea8ff;
+  --host-d-link:#6ea8ff;
+  --host-d-success:#4ed47e;
+  --host-d-warn:#e8b64a;
+  --host-d-error:#ff6b60;
+  --host-d-mask:#000000a6;
+  --host-d-shadow:0 1px 2px #00000059, 0 8px 24px #00000040;
+
+  /* 官方 schema 核心语义位（页面自身不直接引用，供 Open Design 检查口径） */
+  --bg:var(--host-l-layer-1);
+  --surface:var(--host-l-layer-2);
+  --fg:var(--host-l-label);
+  --muted:var(--host-l-label-3);
+  --border:var(--host-l-border-l2);
+  --accent:var(--host-l-business);
+}
+html[data-mode="light"]{
+  --page-bg:var(--host-l-page);
+  --dsw-alias-bg-layer:var(--host-l-layer-1);
+  --dsw-alias-bg-layer-1:var(--host-l-layer-1);
+  --dsw-alias-bg-layer-2:var(--host-l-layer-2);
+  --dsw-alias-interactive-bg-hover:var(--host-l-hover);
+  --dsw-alias-markdown-code-block:var(--host-l-code);
+  --dsw-alias-markdown-code-block-banner:var(--host-l-code-banner);
+  --dsw-alias-markdown-inline-code:var(--host-l-inline);
+  --dsw-alias-border-l1:var(--host-l-border-l1);
+  --dsw-alias-border-l2:var(--host-l-border-l2);
+  --dsw-alias-label-primary:var(--host-l-label);
+  --dsw-alias-label-secondary:var(--host-l-label-2);
+  --dsw-alias-label-tertiary:var(--host-l-label-3);
+  --dsw-alias-label-primary-foreground:var(--host-l-fg);
+  --dsw-alias-state-business-primary:var(--host-l-business);
+  --dsw-alias-link:var(--host-l-link);
+  --dsw-alias-state-success-primary:var(--host-l-success);
+  --dsw-alias-state-warn-primary:var(--host-l-warn);
+  --dsw-alias-state-warn-label:var(--host-l-warn);
+  --dsw-alias-state-error-primary:var(--host-l-error);
+  --dsw-alias-bg-mask-3:var(--host-l-mask);
+  --dsw-shadow-lv2:var(--host-l-shadow);
+}
+html[data-mode="dark"]{
+  --page-bg:var(--host-d-page);
+  --dsw-alias-bg-layer:var(--host-d-layer-1);
+  --dsw-alias-bg-layer-1:var(--host-d-layer-1);
+  --dsw-alias-bg-layer-2:var(--host-d-layer-2);
+  --dsw-alias-interactive-bg-hover:var(--host-d-hover);
+  --dsw-alias-markdown-code-block:var(--host-d-code);
+  --dsw-alias-markdown-code-block-banner:var(--host-d-code-banner);
+  --dsw-alias-markdown-inline-code:var(--host-d-inline);
+  --dsw-alias-border-l1:var(--host-d-border-l1);
+  --dsw-alias-border-l2:var(--host-d-border-l2);
+  --dsw-alias-label-primary:var(--host-d-label);
+  --dsw-alias-label-secondary:var(--host-d-label-2);
+  --dsw-alias-label-tertiary:var(--host-d-label-3);
+  --dsw-alias-label-primary-foreground:var(--host-d-fg);
+  --dsw-alias-state-business-primary:var(--host-d-business);
+  --dsw-alias-link:var(--host-d-link);
+  --dsw-alias-state-success-primary:var(--host-d-success);
+  --dsw-alias-state-warn-primary:var(--host-d-warn);
+  --dsw-alias-state-warn-label:var(--host-d-warn);
+  --dsw-alias-state-error-primary:var(--host-d-error);
+  --dsw-alias-bg-mask-3:var(--host-d-mask);
+  --dsw-shadow-lv2:var(--host-d-shadow);
+  --bg:var(--host-d-layer-1);
+  --surface:var(--host-d-layer-2);
+  --fg:var(--host-d-label);
+  --muted:var(--host-d-label-3);
+  --border:var(--host-d-border-l2);
+  --accent:var(--host-d-business);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   1. 基础（页面外壳 + 与主题无关的排版）
+   ══════════════════════════════════════════════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  min-height:100vh;
+  background:var(--page-bg);
+  color:var(--dsw-alias-label-primary);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  transition:background 220ms cubic-bezier(.28,0,.22,1);
+}
+svg{display:block}
+:focus-visible{outline:2px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);outline-offset:2px}
+
+/* 背景光斑：只给两套玻璃主题（token 派生，无裸色） */
+.blobs{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0;transition:opacity 300ms ease}
+.blobs i{position:absolute;display:block;border-radius:50%;filter:blur(70px)}
+.blobs i:nth-child(1){inset:4% auto auto 6%;width:46vw;height:38vh;background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 26%,transparent)}
+.blobs i:nth-child(2){inset:32% 4% auto auto;width:38vw;height:42vh;background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 20%,transparent)}
+.blobs i:nth-child(3){inset:auto auto 2% 18%;width:42vw;height:36vh;background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 20%,transparent)}
+.blobs i:nth-child(4){inset:40% auto auto 30%;width:34vw;height:28vh;background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 14%,transparent)}
+html[data-theme="liquid-glass"] .blobs{opacity:.45}
+html[data-theme="glassmorphism"] .blobs{opacity:.7}
+
+/* ══════════════════════════════════════════════════════════════════════
+   2. 演示控制条（demo-only，不进产品）
+   ══════════════════════════════════════════════════════════════════════ */
+.demo-bar{
+  position:sticky;top:0;z-index:50;
+  display:flex;align-items:center;gap:16px;
+  padding:10px 20px;
+  background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 84%,transparent);
+  backdrop-filter:blur(18px) saturate(170%);
+  border-bottom:1px solid var(--dsw-alias-border-l1);
+}
+html[data-theme="apple-native"] .demo-bar{background:var(--dsw-alias-bg-layer-1);backdrop-filter:none}
+html[data-theme="editorial-paper"] .demo-bar{background:color-mix(in srgb,var(--dsw-alias-state-warn-label) 6%,var(--dsw-alias-bg-layer-1));backdrop-filter:none}
+.brand{display:flex;align-items:center;gap:8px;min-width:0;flex:none}
+.brand-dot{width:9px;height:9px;border-radius:50%;background:var(--dsw-alias-state-business-primary);box-shadow:0 0 0 4px color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent)}
+.brand b{font-size:13px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.brand-sub{font-size:11px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}
+.theme-tabs{display:flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 70%,transparent);min-width:0;overflow-x:auto;scrollbar-width:none}
+.theme-tabs::-webkit-scrollbar{display:none}
+.theme-tab{
+  display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;
+  border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);
+  font:inherit;font-size:12px;white-space:nowrap;cursor:pointer;
+  transition:background 140ms ease,color 140ms ease;
+}
+.theme-tab span{font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.theme-tab:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.theme-tab[aria-selected="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-weight:600;box-shadow:var(--dsw-shadow-lv2)}
+html[data-theme="glassmorphism"] .theme-tab[aria-selected="true"]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 14%,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-state-business-primary)}
+.mode-tabs{display:inline-flex;gap:2px;margin-left:auto;padding:3px;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 70%,transparent);flex:none}
+.mode-tab{height:28px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
+.mode-tab[aria-pressed="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-weight:600;box-shadow:var(--dsw-shadow-lv2)}
+.bar-hint{font-size:11px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;flex:none}
+
+/* 页面栅格 */
+.wrap{
+  position:relative;z-index:1;
+  display:grid;grid-template-columns:minmax(0,860px) 320px;
+  gap:24px;justify-content:center;align-items:start;
+  padding:24px 20px 56px;
+  max-width:1440px;margin:0 auto;
+}
+.stage{min-width:0}
+.stage-hint{margin:14px 2px 0;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}
+.user-msg{display:flex;justify-content:flex-end;margin:0 0 18px}
+.user-msg p{
+  max-width:78%;margin:0;padding:9px 13px;border-radius:14px 14px 4px 14px;
+  background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,var(--dsw-alias-bg-layer-2));
+  border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent);
+  color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.6;
+}
+.answer{padding:2px 2px 0}
+
+/* 决策面板 */
+.notes{position:sticky;top:64px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.theme-card{
+  display:none;padding:14px 14px 12px;border-radius:12px;
+  border:1px solid var(--dsw-alias-border-l1);
+  background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 86%,transparent);
+  backdrop-filter:blur(14px);
+  box-shadow:var(--dsw-shadow-lv2);
+}
+html[data-theme="apple-native"] .theme-card{background:var(--dsw-alias-bg-layer-1);backdrop-filter:none}
+html[data-theme="editorial-paper"] .theme-card{background:color-mix(in srgb,var(--dsw-alias-state-warn-label) 5%,var(--dsw-alias-bg-layer-1));backdrop-filter:none;border-radius:4px}
+html[data-theme="apple-native"] .theme-card[data-theme-for="apple-native"],
+html[data-theme="liquid-glass"] .theme-card[data-theme-for="liquid-glass"],
+html[data-theme="glassmorphism"] .theme-card[data-theme-for="glassmorphism"],
+html[data-theme="editorial-paper"] .theme-card[data-theme-for="editorial-paper"]{display:block}
+.theme-card h3{margin:0 0 2px;font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);letter-spacing:-.01em}
+.theme-card .tagline{margin:0 0 10px;font-size:11px;line-height:1.55;color:var(--dsw-alias-label-tertiary)}
+.theme-card h4{margin:10px 0 5px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary)}
+.theme-card ol{margin:0;padding-left:17px;font-size:11.5px;line-height:1.62;color:var(--dsw-alias-label-secondary)}
+.theme-card li{margin:0 0 3px}
+.theme-card code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:10.5px;padding:0 3px;border-radius:3px;background:var(--dsw-alias-markdown-inline-code);color:var(--dsw-alias-label-primary)}
+.tok-table{width:100%;border-collapse:collapse;font-size:10.5px;line-height:1.45}
+.tok-table th{text-align:left;font-weight:600;color:var(--dsw-alias-label-tertiary);padding:3px 4px;border-bottom:1px solid var(--dsw-alias-border-l1);white-space:nowrap}
+.tok-table td{padding:3px 4px;border-bottom:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);vertical-align:top}
+.tok-table tr:last-child td{border-bottom:0}
+.tok-table td:first-child{font-family:ui-monospace,"SF Mono",Menlo,monospace;color:var(--dsw-alias-label-primary);white-space:nowrap}
+.notes-foot{font-size:10.5px;line-height:1.6;color:var(--dsw-alias-label-tertiary);padding:0 2px}
+
+/* ══════════════════════════════════════════════════════════════════════
+   3. 插件设计 token（与生产 styles-base.ts 同名同义）
+   ══════════════════════════════════════════════════════════════════════ */
+.mdr-root,.mdr-md{
+  --mdr-bg:var(--dsw-alias-bg-layer-1);
+  --mdr-bg-elevated:var(--dsw-alias-bg-layer-2);
+  --mdr-bg-hover:var(--dsw-alias-interactive-bg-hover);
+  --mdr-surface:var(--dsw-alias-markdown-code-block);
+  --mdr-surface-raised:var(--dsw-alias-markdown-code-block-banner);
+  --mdr-border:var(--dsw-alias-border-l2);
+  --mdr-border-soft:var(--dsw-alias-border-l1);
+  --mdr-border-strong:color-mix(in srgb,var(--dsw-alias-label-primary) 26%,transparent);
+  --mdr-text:var(--dsw-alias-label-primary);
+  --mdr-text-2:var(--dsw-alias-label-secondary);
+  --mdr-text-3:var(--dsw-alias-label-tertiary);
+  --mdr-accent:var(--dsw-alias-state-business-primary,var(--dsw-alias-link));
+  --mdr-accent-hover:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 78%,var(--dsw-alias-label-primary));
+  --mdr-accent-soft:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 14%,transparent);
+  --mdr-on-accent:var(--dsw-alias-label-primary-foreground);
+  --mdr-success:color-mix(in srgb,var(--dsw-alias-state-success-primary) 62%,var(--dsw-alias-label-primary));
+  --mdr-success-soft:color-mix(in srgb,var(--dsw-alias-state-success-primary) 14%,transparent);
+  --mdr-warn:color-mix(in srgb,var(--dsw-alias-state-warn-label) 62%,var(--dsw-alias-label-primary));
+  --mdr-warn-soft:color-mix(in srgb,var(--dsw-alias-state-warn-label) 14%,transparent);
+  --mdr-danger:color-mix(in srgb,var(--dsw-alias-state-error-primary) 70%,var(--dsw-alias-label-primary));
+  --mdr-danger-soft:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent);
+  --mdr-code-bg:var(--dsw-alias-markdown-inline-code);
+  --mdr-toast-bg:var(--dsw-alias-markdown-code-block-banner);
+  --mdr-overlay:var(--dsw-alias-bg-mask-3);
+  --mdr-shadow:var(--dsw-shadow-lv2);
+  --mdr-focus-ring:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 45%,transparent);
+
+  /* 几何 / 字号 / 间距 / 动效（生产同名 token） */
+  --mdr-radius-sm:4px;
+  --mdr-radius-md:8px;
+  --mdr-radius-lg:10px;
+  --mdr-radius-pill:980px;
+  --mdr-fs-xs:12px;
+  --mdr-fs-sm:14px;
+  --mdr-fs-base:16px;
+  --mdr-fs-lg:18px;
+  --mdr-space-1:4px;
+  --mdr-space-2:8px;
+  --mdr-space-3:12px;
+  --mdr-space-4:16px;
+  --mdr-space-6:24px;
+  --mdr-motion-fast:150ms;
+  --mdr-motion-base:220ms;
+  --mdr-ease:cubic-bezier(.28,0,.22,1);
+
+  /* 主题材质层（新增，见 02-style.md token 差异表） */
+  --mdr-font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+  --mdr-font-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --mdr-material:none;
+  --mdr-card-shadow:none;
+  --mdr-hairline:var(--mdr-border-soft);
+  --mdr-heading-weight:600;
+  --mdr-heading-tracking:-.01em;
+  --mdr-body-gap:10px;
+  --mdr-quote-bg:var(--mdr-accent-soft);
+  --mdr-quote-border:var(--mdr-accent);
+  --mdr-table-head-bg:var(--mdr-bg-elevated);
+  --mdr-frame-head-bg:color-mix(in srgb,var(--mdr-surface-raised) 70%,var(--mdr-surface));
+
+  color:var(--mdr-text-2);
+  font-size:var(--mdr-fs-sm);
+  line-height:1.6;
+  font-family:var(--mdr-font-sans);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   4. 四套主题（只改 token；不写裸色值）
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* 4.1 Apple Native —— 系统灰阶 / SF / 8–10 圆角 / 极细描边 / 克制阴影 */
+html[data-theme="apple-native"] :is(.mdr-root,.mdr-md){
+  --mdr-radius-sm:5px;
+  --mdr-radius-md:8px;
+  --mdr-radius-lg:10px;
+  --mdr-surface:var(--dsw-alias-bg-layer-2);
+  --mdr-surface-raised:var(--dsw-alias-bg-layer-2);
+  --mdr-border:color-mix(in srgb,var(--dsw-alias-label-primary) 13%,transparent);
+  --mdr-border-soft:color-mix(in srgb,var(--dsw-alias-label-primary) 8%,transparent);
+  --mdr-card-shadow:0 1px 1px color-mix(in srgb,var(--dsw-alias-label-primary) 4%,transparent);
+  --mdr-material:none;
+  --mdr-font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","PingFang SC","Helvetica Neue",Arial,sans-serif;
+  --mdr-heading-weight:600;
+  --mdr-heading-tracking:-.015em;
+  --mdr-body-gap:11px;
+  --mdr-table-head-bg:var(--dsw-alias-bg-layer-2);
+  --mdr-quote-bg:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,transparent);
+  --mdr-quote-border:color-mix(in srgb,var(--dsw-alias-label-primary) 22%,transparent);
+  --mdr-frame-head-bg:var(--dsw-alias-bg-layer-2);
+}
+html[data-theme="apple-native"][data-mode="dark"] :is(.mdr-root,.mdr-md){
+  --mdr-surface:var(--dsw-alias-bg-layer-2);
+  --mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 82%,var(--dsw-alias-label-primary) 4%);
+  --mdr-border:color-mix(in srgb,var(--dsw-alias-label-primary) 15%,transparent);
+  --mdr-border-soft:color-mix(in srgb,var(--dsw-alias-label-primary) 9%,transparent);
+}
+
+/* 4.2 Liquid Glass —— 半透明材质 + backdrop-filter + 高光内描边 + 柔和光晕 */
+html[data-theme="liquid-glass"] :is(.mdr-root,.mdr-md){
+  --mdr-radius-sm:6px;
+  --mdr-radius-md:12px;
+  --mdr-radius-lg:14px;
+  --mdr-surface:color-mix(in srgb,var(--dsw-alias-markdown-code-block) 66%,transparent);
+  --mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-markdown-code-block-banner) 58%,transparent);
+  --mdr-border:color-mix(in srgb,var(--dsw-alias-label-primary) 15%,transparent);
+  --mdr-border-soft:color-mix(in srgb,var(--dsw-alias-label-primary) 10%,transparent);
+  --mdr-material:blur(22px) saturate(180%);
+  --mdr-card-shadow:0 12px 32px color-mix(in srgb,var(--dsw-alias-label-primary) 10%,transparent), inset 0 1px 0 color-mix(in srgb,var(--dsw-alias-label-primary) 12%,transparent);
+  --mdr-heading-weight:600;
+  --mdr-heading-tracking:-.015em;
+  --mdr-body-gap:12px;
+  --mdr-table-head-bg:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 40%,transparent);
+  --mdr-quote-bg:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent);
+  --mdr-quote-border:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);
+  --mdr-frame-head-bg:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 34%,transparent);
+}
+html[data-theme="liquid-glass"][data-mode="dark"] :is(.mdr-root,.mdr-md){
+  --mdr-surface:color-mix(in srgb,var(--dsw-alias-markdown-code-block) 62%,transparent);
+  --mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-markdown-code-block-banner) 52%,transparent);
+  --mdr-card-shadow:0 14px 36px color-mix(in srgb,var(--dsw-alias-label-primary) 22%,transparent), inset 0 1px 0 color-mix(in srgb,var(--dsw-alias-label-primary) 18%,transparent);
+  --mdr-table-head-bg:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent);
+  --mdr-frame-head-bg:color-mix(in srgb,var(--dsw-alias-label-primary) 5%,transparent);
+}
+
+/* 4.3 Glassmorphism —— 重玻璃：大模糊 + 渐变底衬 + 明显层叠 */
+html[data-theme="glassmorphism"] :is(.mdr-root,.mdr-md){
+  --mdr-radius-sm:8px;
+  --mdr-radius-md:16px;
+  --mdr-radius-lg:18px;
+  --mdr-surface:color-mix(in srgb,var(--dsw-alias-markdown-code-block) 58%,transparent);
+  --mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-markdown-code-block-banner) 52%,transparent);
+  --mdr-border:color-mix(in srgb,var(--dsw-alias-label-primary) 20%,transparent);
+  --mdr-border-soft:color-mix(in srgb,var(--dsw-alias-label-primary) 13%,transparent);
+  --mdr-material:blur(34px) saturate(200%);
+  --mdr-card-shadow:0 24px 60px color-mix(in srgb,var(--dsw-alias-label-primary) 16%,transparent), inset 0 1px 0 color-mix(in srgb,var(--dsw-alias-label-primary) 18%,transparent);
+  --mdr-heading-weight:650;
+  --mdr-heading-tracking:-.02em;
+  --mdr-body-gap:13px;
+  --mdr-table-head-bg:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 34%,transparent);
+  --mdr-quote-bg:color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent);
+  --mdr-quote-border:color-mix(in srgb,var(--dsw-alias-state-business-primary) 75%,transparent);
+  --mdr-frame-head-bg:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 28%,transparent);
+}
+html[data-theme="glassmorphism"][data-mode="dark"] :is(.mdr-root,.mdr-md){
+  --mdr-surface:color-mix(in srgb,var(--dsw-alias-markdown-code-block) 54%,transparent);
+  --mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-markdown-code-block-banner) 48%,transparent);
+  --mdr-card-shadow:0 26px 64px color-mix(in srgb,var(--dsw-alias-label-primary) 30%,transparent), inset 0 1px 0 color-mix(in srgb,var(--dsw-alias-label-primary) 22%,transparent);
+  --mdr-table-head-bg:color-mix(in srgb,var(--dsw-alias-label-primary) 8%,transparent);
+  --mdr-frame-head-bg:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent);
+}
+
+/* 4.4 Editorial Paper —— 暖白纸感 / 衬线标题 / 低饱和 / 强呼吸 */
+html[data-theme="editorial-paper"] :is(.mdr-root,.mdr-md){
+  --mdr-radius-sm:2px;
+  --mdr-radius-md:3px;
+  --mdr-radius-lg:4px;
+  --mdr-bg:color-mix(in srgb,var(--dsw-alias-state-warn-label) 5%,var(--dsw-alias-bg-layer-1));
+  --mdr-surface:color-mix(in srgb,var(--dsw-alias-state-warn-label) 6%,var(--dsw-alias-bg-layer-1));
+  --mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-state-warn-label) 10%,var(--dsw-alias-bg-layer-1));
+  --mdr-code-bg:color-mix(in srgb,var(--dsw-alias-state-warn-label) 8%,var(--dsw-alias-bg-layer-1));
+  --mdr-border:color-mix(in srgb,var(--dsw-alias-label-primary) 15%,var(--dsw-alias-state-warn-label) 10%);
+  --mdr-border-soft:color-mix(in srgb,var(--dsw-alias-label-primary) 9%,var(--dsw-alias-state-warn-label) 6%);
+  --mdr-text:color-mix(in srgb,var(--dsw-alias-label-primary) 90%,var(--dsw-alias-state-warn-label));
+  --mdr-text-2:color-mix(in srgb,var(--dsw-alias-label-secondary) 82%,var(--dsw-alias-state-warn-label));
+  --mdr-accent:color-mix(in srgb,var(--dsw-alias-state-business-primary) 62%,var(--dsw-alias-label-primary));
+  --mdr-accent-hover:color-mix(in srgb,var(--dsw-alias-state-business-primary) 40%,var(--dsw-alias-label-primary));
+  --mdr-accent-soft:color-mix(in srgb,var(--dsw-alias-state-business-primary) 8%,transparent);
+  --mdr-card-shadow:none;
+  --mdr-font-sans:"Songti SC","Noto Serif CJK SC",ui-serif,"New York","Iowan Old Style",Georgia,serif;
+  --mdr-font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --mdr-heading-weight:600;
+  --mdr-heading-tracking:0;
+  --mdr-body-gap:14px;
+  --mdr-table-head-bg:transparent;
+  --mdr-quote-bg:color-mix(in srgb,var(--dsw-alias-state-warn-label) 8%,transparent);
+  --mdr-quote-border:color-mix(in srgb,var(--dsw-alias-label-primary) 30%,var(--dsw-alias-state-warn-label));
+  --mdr-frame-head-bg:color-mix(in srgb,var(--dsw-alias-state-warn-label) 7%,transparent);
+}
+html[data-theme="editorial-paper"][data-mode="dark"] :is(.mdr-root,.mdr-md){
+  --mdr-bg:color-mix(in srgb,var(--dsw-alias-state-warn-label) 4%,var(--dsw-alias-bg-layer-1));
+  --mdr-surface:color-mix(in srgb,var(--dsw-alias-state-warn-label) 5%,var(--dsw-alias-bg-layer-2));
+  --mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-state-warn-label) 8%,var(--dsw-alias-bg-layer-2));
+  --mdr-code-bg:color-mix(in srgb,var(--dsw-alias-state-warn-label) 6%,var(--dsw-alias-bg-layer-2));
+  --mdr-accent:color-mix(in srgb,var(--dsw-alias-state-business-primary) 70%,var(--dsw-alias-label-primary));
+  --mdr-table-head-bg:transparent;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   5. 通用控件（真实类名：.mdr-btn / .mdr-icon-btn / .mdr-seg / .mdr-pill）
+   ══════════════════════════════════════════════════════════════════════ */
+.mdr-btn{
+  display:inline-flex;align-items:center;gap:var(--mdr-space-1);height:24px;padding:0 6px;
+  border:1px solid transparent;border-radius:6px;background:transparent;color:var(--mdr-text-2);
+  font-size:11.5px;line-height:1;white-space:nowrap;flex:none;cursor:pointer;
+  transition:background var(--mdr-motion-fast) var(--mdr-ease),color var(--mdr-motion-fast) var(--mdr-ease);
+}
+.mdr-btn:hover{background:var(--mdr-bg-hover);color:var(--mdr-text)}
+.mdr-btn.is-on{background:var(--mdr-accent-soft);color:var(--mdr-accent)}
+.mdr-btn>svg{width:12px;height:12px;flex:none}
+.mdr-icon-btn{
+  display:inline-flex;align-items:center;justify-content:center;position:relative;flex:none;
+  width:24px;height:24px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;
+  color:var(--mdr-text-3);cursor:pointer;
+  transition:background var(--mdr-motion-fast) var(--mdr-ease),color var(--mdr-motion-fast) var(--mdr-ease),opacity var(--mdr-motion-fast) var(--mdr-ease);
+}
+.mdr-icon-btn:hover{background:var(--mdr-bg-hover);color:var(--mdr-text)}
+.mdr-icon-btn.is-on{background:var(--mdr-accent-soft);color:var(--mdr-accent)}
+.mdr-icon-btn>svg{width:15px;height:15px;flex:none}
+.mdr-seg{display:inline-flex;align-items:center;gap:1px;padding:2px;border:1px solid var(--mdr-border);border-radius:7px;background:color-mix(in srgb,var(--mdr-bg-elevated) 70%,transparent);flex:none}
+.mdr-seg-btn{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border:0;border-radius:5px;background:transparent;color:var(--mdr-text-3);font:inherit;font-size:11px;line-height:1;white-space:nowrap;cursor:pointer;transition:background var(--mdr-motion-fast) var(--mdr-ease),color var(--mdr-motion-fast) var(--mdr-ease)}
+.mdr-seg-btn:hover{color:var(--mdr-text)}
+.mdr-seg-btn.is-active{background:var(--mdr-bg);color:var(--mdr-text);font-weight:500}
+.mdr-seg-btn>svg{width:12px;height:12px;flex:none}
+.mdr-pill{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:var(--mdr-radius-sm);font-family:var(--mdr-font-mono);font-size:10px;font-weight:600;line-height:1;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex:none}
+.mdr-copy{display:inline-flex;align-items:center;height:24px;padding:0 6px;border:0;border-radius:6px;background:transparent;color:var(--mdr-text-3);font:inherit;font-size:11px;cursor:pointer;transition:opacity var(--mdr-motion-fast) var(--mdr-ease),color var(--mdr-motion-fast) var(--mdr-ease)}
+.mdr-copy:hover{background:var(--mdr-bg-hover);color:var(--mdr-text)}
+.mdr-copy.is-copied{color:var(--mdr-success)}
+.mdr-copy-label{line-height:1}
+
+/* ══════════════════════════════════════════════════════════════════════
+   6. markdown 正文（真实类名 .mdr-md 一族）
+   ══════════════════════════════════════════════════════════════════════ */
+.mdr-md{display:flex;flex-direction:column;gap:var(--mdr-body-gap);min-width:0;position:relative;font-size:13px;line-height:1.72;color:var(--mdr-text-2)}
+.mdr-md p{margin:0}
+.mdr-md h1,.mdr-md h2,.mdr-md h3,.mdr-md h4,.mdr-md h5,.mdr-md h6{
+  margin:2px 0 0;color:var(--mdr-text);font-weight:var(--mdr-heading-weight);line-height:1.4;letter-spacing:var(--mdr-heading-tracking);
+}
+.mdr-md h1{font-size:18px}
+.mdr-md h2{font-size:16px}
+.mdr-md h3{font-size:14px}
+.mdr-md h4{font-size:14px}
+.mdr-md h5{font-size:13px}
+.mdr-md h6{font-size:12px;color:var(--mdr-text-2)}
+.mdr-md strong{color:var(--mdr-text);font-weight:600}
+.mdr-md em{font-style:italic}
+.mdr-md del{color:var(--mdr-text-3)}
+.mdr-md a{color:var(--mdr-accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--mdr-accent) 35%,transparent);transition:border-bottom-color var(--mdr-motion-fast) var(--mdr-ease),color var(--mdr-motion-fast) var(--mdr-ease)}
+.mdr-md a:hover{border-bottom-color:var(--mdr-accent);color:var(--mdr-accent-hover)}
+.mdr-md ul,.mdr-md ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:3px}
+.mdr-md li{min-width:0}
+.mdr-md li::marker{color:var(--mdr-text-3)}
+.mdr-md-task-list{list-style:none;padding-left:2px;gap:var(--mdr-space-1)}
+.mdr-md-task-item{display:flex;align-items:flex-start;gap:7px;position:relative}
+.mdr-md-check{width:14px;height:14px;margin:4px 0 0;flex:none;border:1px solid var(--mdr-border);border-radius:var(--mdr-radius-sm);background:var(--mdr-surface);appearance:none;-webkit-appearance:none;cursor:default}
+.mdr-md-task-item::after{content:'';position:absolute;left:5px;top:8px;width:3px;height:7px;border:solid var(--mdr-on-accent);border-width:0 1.5px 1.5px 0;transform:rotate(45deg);opacity:0}
+.mdr-md-task-item:has(>.mdr-md-check:checked)::after{opacity:1}
+.mdr-md-task-item:has(>.mdr-md-check:checked)>.mdr-md-check{background:var(--mdr-accent);border-color:var(--mdr-accent)}
+.mdr-md-task-item.is-done{color:var(--mdr-text-3)}
+.mdr-md-task-item.is-done span,.mdr-md-task-item.is-done strong{color:var(--mdr-text-3);text-decoration:line-through;text-decoration-color:var(--mdr-border)}
+.mdr-md-table-wrap{overflow-x:auto;border:1px solid var(--mdr-border);border-radius:var(--mdr-radius-md);background:var(--mdr-surface);max-width:100%;backdrop-filter:var(--mdr-material);box-shadow:var(--mdr-card-shadow)}
+.mdr-md-table{width:100%;border-collapse:collapse;font-size:12px;min-width:420px}
+.mdr-md-table th{background:var(--mdr-table-head-bg);color:var(--mdr-text-2);font-weight:600;text-align:left;padding:7px 10px;border-bottom:1px solid var(--mdr-border);white-space:nowrap}
+.mdr-md-table td{padding:7px 10px;border-bottom:1px solid var(--mdr-border-soft);color:var(--mdr-text-2);vertical-align:top}
+.mdr-md-table tr:last-child td{border-bottom:0}
+.mdr-md-table tbody tr td{transition:background var(--mdr-motion-fast) var(--mdr-ease)}
+.mdr-md-table tbody tr:hover td{background:var(--mdr-bg-hover)}
+.mdr-md-cell-center{text-align:center}
+.mdr-md-cell-right{text-align:right;font-variant-numeric:tabular-nums}
+.mdr-md blockquote{margin:0;padding:6px 12px;border-left:2px solid var(--mdr-quote-border);background:var(--mdr-quote-bg);border-radius:0 7px 7px 0;color:var(--mdr-text-2)}
+.mdr-md blockquote p{margin:0}
+.mdr-md blockquote blockquote{background:transparent;border-left-color:var(--mdr-border);border-radius:0 var(--mdr-radius-sm) var(--mdr-radius-sm) 0}
+.mdr-md hr{margin:2px 0;border:0;border-top:1px solid var(--mdr-border-soft)}
+.mdr-md :not(pre)>code{
+  padding:1px 4px;border:1px solid var(--mdr-border-soft);border-radius:var(--mdr-radius-sm);
+  background:var(--mdr-code-bg);color:var(--mdr-accent);
+  font-family:var(--mdr-font-mono);font-size:12px;line-height:1.5;overflow-wrap:anywhere;
+}
+.mdr-md-copy{position:absolute;top:-2px;right:0;opacity:0;z-index:2;padding:0 6px;border:1px solid var(--mdr-border-soft);background:var(--mdr-bg-elevated);transition:opacity var(--mdr-motion-fast) var(--mdr-ease),color var(--mdr-motion-fast) var(--mdr-ease)}
+.mdr-md:hover .mdr-md-copy,.mdr-md-copy:focus-visible{opacity:1}
+.mdr-md .mdr-md-copy.is-copied{opacity:1}
+
+/* ══════════════════════════════════════════════════════════════════════
+   7. 代码围栏卡（真实类名 .mdr-fence 一族）
+   ══════════════════════════════════════════════════════════════════════ */
+.mdr-fence,.mdr-block-md,.mdr-ctx,.mdr-mm-card{
+  --mdr-frame-bg:var(--mdr-surface);
+  --mdr-frame-layer:var(--mdr-surface-raised);
+  --mdr-frame-line:var(--mdr-border);
+  --mdr-frame-hair:var(--mdr-border-soft);
+  --mdr-frame-ink:var(--mdr-text);
+  --mdr-frame-ink-2:var(--mdr-text-2);
+  --mdr-frame-ink-3:var(--mdr-text-3);
+  --mdr-frame-accent:var(--mdr-accent);
+  --mdr-frame-accent-soft:var(--mdr-accent-soft);
+  --mdr-frame-ok:var(--mdr-success);
+  --mdr-frame-bad:var(--mdr-danger);
+  --mdr-frame-mono:var(--mdr-font-mono);
+  --mdr-frame-fast:var(--mdr-motion-fast);
+  --mdr-frame-ease:var(--mdr-ease);
+  --mdr-frame-hl-key:color-mix(in srgb,var(--mdr-accent) 88%,var(--mdr-text));
+  --mdr-frame-hl-str:color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,var(--mdr-text));
+  --mdr-frame-hl-num:color-mix(in srgb,var(--dsw-alias-state-warn-label) 70%,var(--mdr-text));
+  --mdr-frame-hl-com:color-mix(in srgb,var(--mdr-text-3) 82%,var(--mdr-text));
+  --mdr-frame-hl-fn:color-mix(in srgb,var(--mdr-accent) 50%,var(--mdr-text));
+  --mdr-frame-hl-tag:color-mix(in srgb,var(--dsw-alias-state-success-primary) 70%,var(--mdr-text));
+  --mdr-frame-hl-prop:var(--mdr-text);
+}
+.mdr-fence{display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-frame-line);border-radius:var(--mdr-radius-lg);overflow:hidden;background:var(--mdr-frame-bg);font-family:var(--mdr-frame-mono);backdrop-filter:var(--mdr-material);box-shadow:var(--mdr-card-shadow)}
+.mdr-fence-head{display:flex;align-items:center;gap:6px;height:32px;padding:0 6px 0 9px;background:var(--mdr-frame-head-bg);border-bottom:1px solid var(--mdr-frame-hair);min-width:0}
+.mdr-fence-pill{background:var(--mdr-frame-accent-soft);color:var(--mdr-frame-accent)}
+.mdr-fence-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--mdr-frame-ink-3);font-family:var(--mdr-font-sans)}
+.mdr-fence-actions{display:flex;align-items:center;gap:1px;margin-left:auto;flex:none}
+.mdr-fence-action{width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:var(--mdr-frame-ink-3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background var(--mdr-frame-fast) var(--mdr-frame-ease),color var(--mdr-frame-fast) var(--mdr-frame-ease)}
+.mdr-fence-action:hover{background:color-mix(in srgb,var(--mdr-frame-ink) 8%,transparent);color:var(--mdr-frame-ink)}
+.mdr-fence-action.is-on{color:var(--mdr-frame-accent);background:var(--mdr-frame-accent-soft)}
+.mdr-fence-copy{height:24px;padding:0 6px;border:0;border-radius:6px;background:transparent;color:var(--mdr-frame-ink-3);font-size:11px;cursor:pointer;opacity:0;transition:opacity var(--mdr-frame-fast) var(--mdr-frame-ease),color var(--mdr-frame-fast) var(--mdr-frame-ease)}
+.mdr-fence:hover .mdr-fence-copy,.mdr-fence:focus-within .mdr-fence-copy,.mdr-fence-copy:focus-visible{opacity:1}
+.mdr-fence-copy.is-copied{opacity:1;color:var(--mdr-frame-ok)}
+@media (hover:none){.mdr-fence-copy{opacity:1}}
+.mdr-fence-body{display:flex;min-width:0;overflow-x:auto}
+.mdr-line-nums{display:none;flex:none;padding:10px 4px 10px 10px;text-align:right;white-space:pre;color:var(--mdr-frame-ink-3);font-family:var(--mdr-frame-mono);font-size:11.5px;line-height:1.65;user-select:none;background:var(--mdr-frame-bg);border-right:1px solid var(--mdr-frame-hair)}
+.mdr-fence[data-mdr-lines="on"] .mdr-line-nums{display:block}
+.mdr-fence-code{margin:0;padding:10px 12px;min-width:0;font-family:var(--mdr-frame-mono);font-size:11.5px;line-height:1.65;color:var(--mdr-frame-ink-2);white-space:pre;tab-size:2}
+.mdr-fence[data-mdr-wrap="on"] .mdr-fence-code{white-space:pre-wrap;word-break:break-word}
+.mdr-fence[data-mdr-wrap="on"] .mdr-fence-body{overflow-x:hidden}
+.mdr-fence-code .hl-key{color:var(--mdr-frame-hl-key)}
+.mdr-fence-code .hl-str{color:var(--mdr-frame-hl-str)}
+.mdr-fence-code .hl-num{color:var(--mdr-frame-hl-num)}
+.mdr-fence-code .hl-com{color:var(--mdr-frame-hl-com);font-style:italic}
+.mdr-fence-code .hl-fn{color:var(--mdr-frame-hl-fn)}
+.mdr-fence-code .hl-tag{color:var(--mdr-frame-hl-tag)}
+.mdr-fence-code .hl-prop{color:var(--mdr-frame-hl-prop)}
+.mdr-fence-foot{display:flex;align-items:center;gap:6px;min-width:0;padding:5px 9px 6px;border-top:1px solid var(--mdr-frame-hair);background:var(--mdr-frame-bg);font-size:10px;color:var(--mdr-frame-ink-3)}
+.mdr-fence-note{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdr-rm{display:inline-flex;align-items:center;gap:1px;margin-left:auto;padding:2px;border:1px solid var(--mdr-frame-line);border-radius:6px;background:color-mix(in srgb,var(--mdr-frame-layer) 70%,transparent);flex:none}
+.mdr-rm-btn{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:var(--mdr-frame-ink-3);font:inherit;font-size:10.5px;white-space:nowrap;cursor:pointer}
+.mdr-rm-btn:hover{background:color-mix(in srgb,var(--mdr-frame-ink) 7%,transparent);color:var(--mdr-frame-ink)}
+.mdr-rm-btn.is-active{background:var(--mdr-frame-bg);color:var(--mdr-frame-ink);font-weight:500}
+
+/* ══════════════════════════════════════════════════════════════════════
+   8. mermaid 卡片（真实类名 .mdr-mm-*）
+   ══════════════════════════════════════════════════════════════════════ */
+.mdr-mm-card,.mdr-mm-dialog{--mdr-mm-line:var(--mdr-border);--mdr-mm-line-soft:var(--mdr-border-soft);--mdr-mm-accent:var(--mdr-accent);--mdr-mm-accent-soft:var(--mdr-accent-soft);--mdr-mm-surface:var(--mdr-surface);--mdr-mm-elevated:color-mix(in srgb,var(--mdr-bg-elevated) 82%,var(--mdr-surface));--mdr-mm-code-bg:var(--mdr-code-bg);--mdr-mm-hover:var(--mdr-bg-hover);--mdr-mm-text:var(--mdr-text);--mdr-mm-text-2:var(--mdr-text-2);--mdr-mm-text-3:var(--mdr-text-3);--mdr-mm-danger:var(--mdr-danger);--mdr-mm-scrim:var(--mdr-overlay);--mdr-mm-mono:var(--mdr-font-mono);--mdr-mm-shadow:0 8px 24px color-mix(in srgb,var(--mdr-text) 18%,transparent);--mdr-mm-motion:150ms;--mdr-mm-motion-in:220ms;--mdr-mm-ease:var(--mdr-ease)}
+.mdr-mm-card{position:relative;display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-mm-line);border-radius:var(--mdr-radius-lg);background:var(--mdr-mm-surface);color:var(--mdr-mm-text);overflow:hidden;backdrop-filter:var(--mdr-material);box-shadow:var(--mdr-card-shadow)}
+.mdr-mm-head{display:flex;align-items:center;gap:7px;padding:7px 8px 7px 10px;border-bottom:1px solid var(--mdr-mm-line-soft);min-width:0;flex-wrap:nowrap}
+.mdr-mm-title{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;background:var(--mdr-mm-accent-soft);color:var(--mdr-mm-accent);font-size:11px;font-weight:600;line-height:22px;white-space:nowrap;flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis}
+.mdr-mm-title svg{width:12px;height:12px;flex:none}
+.mdr-mm-kind{font-size:10px;color:var(--mdr-mm-text-3);white-space:nowrap;flex:none;overflow:hidden;text-overflow:ellipsis;max-width:104px}
+.mdr-mm-toolbar{display:flex;align-items:center;gap:4px;margin-left:auto;flex:none;min-width:0}
+.mdr-mm-zoom{display:inline-flex;align-items:center;height:24px;border:1px solid var(--mdr-mm-line);border-radius:6px;overflow:hidden;background:var(--mdr-mm-elevated);flex:none}
+.mdr-mm-zoom .mdr-icon-btn{width:22px;height:22px;border-radius:0}
+.mdr-mm-zoom-val{min-width:42px;text-align:center;font-size:10.5px;color:var(--mdr-mm-text-2);font-variant-numeric:tabular-nums;padding:0 2px;border-left:1px solid var(--mdr-mm-line-soft);border-right:1px solid var(--mdr-mm-line-soft);line-height:22px;flex:none}
+.mdr-mm-menu{position:absolute;top:34px;right:8px;z-index:40;width:196px;padding:5px;background:var(--mdr-mm-elevated);border:1px solid var(--mdr-mm-line);border-radius:10px;box-shadow:var(--mdr-mm-shadow);display:flex;flex-direction:column;gap:1px;backdrop-filter:blur(20px)}
+.mdr-mm-menu[hidden]{display:none}
+.mdr-mm-menu-item{display:flex;align-items:center;gap:8px;height:29px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--mdr-mm-text-2);font:inherit;font-size:11.5px;line-height:1;text-align:left;width:100%;white-space:nowrap;cursor:pointer}
+.mdr-mm-menu-item:hover{background:var(--mdr-mm-hover);color:var(--mdr-mm-text)}
+.mdr-mm-menu-item svg{flex:none;color:var(--mdr-mm-text-3);width:13px;height:13px}
+.mdr-mm-check{margin-left:auto;display:inline-flex;color:var(--mdr-mm-accent);flex:none}
+.mdr-mm-menu-item[aria-checked="true"]{color:var(--mdr-mm-text)}
+.mdr-mm-menu-sep{height:1px;background:var(--mdr-mm-line-soft);margin:4px 2px}
+.mdr-mm-menu-label{font-size:10px;color:var(--mdr-mm-text-3);padding:5px 8px 2px;letter-spacing:.04em}
+.mdr-mm-body{padding:14px;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 1px 1px,var(--mdr-mm-line-soft) 1px,transparent 0) 0 0/16px 16px;min-height:190px;overflow:auto;position:relative}
+.mdr-mm-canvas{display:flex;align-items:center;justify-content:center;width:100%;min-height:160px}
+.mdr-mm-canvas svg{max-width:100%;height:auto;color:var(--mdr-mm-text-2);zoom:var(--mm-scale,.45)}
+.mdr-mm-code{margin:0;padding:14px;font-family:var(--mdr-mm-mono);font-size:11.5px;line-height:1.7;color:var(--mdr-mm-text-2);white-space:pre;overflow:auto;background:var(--mdr-mm-code-bg);min-height:190px;tab-size:2}
+.mdr-mm-md{padding:14px;min-height:190px}
+.mdr-mm-md .mdr-md{font-size:12px}
+.mdr-mm-card[data-mdr-mm-view="source"] .mdr-mm-body,
+.mdr-mm-card[data-mdr-mm-view="source"] .mdr-mm-md,
+.mdr-mm-card[data-mdr-mm-view="markdown"] .mdr-mm-body,
+.mdr-mm-card[data-mdr-mm-view="markdown"] .mdr-mm-code,
+.mdr-mm-card[data-mdr-mm-view="diagram"] .mdr-mm-code,
+.mdr-mm-card[data-mdr-mm-view="diagram"] .mdr-mm-md{display:none}
+.mdr-mm-foot{display:flex;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid var(--mdr-mm-line-soft);font-size:10px;color:var(--mdr-mm-text-3);min-width:0;flex-wrap:wrap}
+.mdr-mm-foot-label{flex:none}
+.mdr-mm-modes{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--mdr-mm-line-soft);border-radius:6px;background:var(--mdr-mm-elevated)}
+.mdr-mm-mode{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border:0;border-radius:4px;background:transparent;color:var(--mdr-mm-text-2);font:inherit;font-size:10.5px;line-height:1;cursor:pointer;white-space:nowrap}
+.mdr-mm-mode:hover{background:var(--mdr-mm-hover);color:var(--mdr-mm-text)}
+.mdr-mm-mode[aria-pressed="true"]{background:var(--mdr-mm-accent-soft);color:var(--mdr-mm-accent)}
+.mdr-mm-spacer{margin-left:auto}
+.mdr-mm-meta{font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mdr-mm-dialog{width:min(90vw,1120px);height:85vh;max-width:none;max-height:none;margin:auto;border:1px solid var(--mdr-mm-line,var(--mdr-border));border-radius:var(--mdr-radius-lg);background:var(--mdr-mm-elevated,var(--mdr-bg-elevated));color:var(--mdr-text);padding:0;overflow:hidden;box-shadow:var(--mdr-mm-shadow,none)}
+.mdr-mm-dialog::backdrop{background:var(--mdr-overlay);backdrop-filter:blur(2px)}
+.mdr-mm-dialog[open]{display:flex;flex-direction:column}
+.mdr-mm-dialog-head{height:48px;flex:none;display:flex;align-items:center;gap:9px;padding:0 12px;border-bottom:1px solid var(--mdr-border-soft);min-width:0}
+.mdr-mm-dialog-path{font-size:10.5px;color:var(--mdr-text-3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdr-mm-dialog-actions{margin-left:auto;display:flex;align-items:center;gap:5px;flex:none}
+.mdr-mm-dialog-body{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:auto;padding:24px;background:radial-gradient(circle at 1px 1px,var(--mdr-border-soft) 1px,transparent 0) 0 0/18px 18px}
+.mdr-mm-dialog-body .mdr-mm-canvas svg{max-width:100%;max-height:100%;zoom:1}
+.mdr-mm-dialog-foot{height:40px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;border-top:1px solid var(--mdr-border-soft);font-size:10.5px;color:var(--mdr-text-3);min-width:0}
+/* 流程图节点（mermaid 输出形态；颜色全部走 token） */
+.mm-node{fill:var(--mdr-mm-elevated);stroke:var(--mdr-mm-line);stroke-width:1}
+.mm-node-alt{fill:color-mix(in srgb,var(--mdr-mm-accent) 12%,var(--mdr-mm-surface));stroke:color-mix(in srgb,var(--mdr-mm-accent) 45%,transparent);stroke-width:1}
+.mm-diamond{fill:color-mix(in srgb,var(--mdr-mm-accent) 8%,var(--mdr-mm-surface));stroke:color-mix(in srgb,var(--mdr-mm-accent) 40%,transparent);stroke-width:1}
+.mm-edge{stroke:var(--mdr-mm-text-3);stroke-width:1.2;fill:none}
+.mm-arrow{fill:var(--mdr-mm-text-3)}
+.mm-text{fill:var(--mdr-mm-text);font-size:11px;font-family:var(--mdr-font-sans)}
+.mm-sub{fill:var(--mdr-mm-text-3);font-size:9px;font-family:var(--mdr-font-sans)}
+.mm-edge-label{fill:var(--mdr-mm-text-3);font-size:9px;font-family:var(--mdr-font-sans)}
+
+/* ══════════════════════════════════════════════════════════════════════
+   9. 上下文注入块 / 思考块
+   ══════════════════════════════════════════════════════════════════════ */
+.mdr-ctx{display:flex;flex-direction:column;gap:6px;min-width:0;padding:9px 11px;border:1px dashed color-mix(in srgb,var(--mdr-frame-accent) 42%,var(--mdr-frame-line));border-radius:var(--mdr-radius-lg);background:color-mix(in srgb,var(--mdr-frame-accent) 4%,var(--mdr-bg));backdrop-filter:var(--mdr-material)}
+.mdr-ctx-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;font-size:10.5px;color:var(--mdr-frame-accent)}
+.mdr-ctx-dot{width:6px;height:6px;border-radius:50%;background:var(--mdr-frame-accent);flex:none}
+.mdr-ctx-title{font-size:11px;font-weight:600}
+.mdr-ctx-from{color:var(--mdr-frame-ink-3)}
+.mdr-ctx-badge{height:18px;padding:0 6px;border-radius:4px;background:var(--mdr-frame-accent-soft);color:var(--mdr-frame-accent);font-size:10.5px;font-weight:500;letter-spacing:0;text-transform:none;font-family:var(--mdr-font-sans)}
+.mdr-ctx-body{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:11.5px;line-height:1.65;color:var(--mdr-frame-ink-2)}
+.think{display:flex;flex-direction:column;border:1px solid var(--mdr-hairline);border-radius:var(--mdr-radius-md);background:color-mix(in srgb,var(--mdr-bg-elevated) 70%,transparent);overflow:hidden}
+.think-head{display:flex;align-items:center;gap:7px;min-height:32px;padding:5px 10px;border:0;background:transparent;color:var(--mdr-text-2);font:inherit;font-size:11.5px;text-align:left;cursor:pointer;width:100%}
+.think-head:hover{background:var(--mdr-bg-hover)}
+.think-head svg{width:13px;height:13px;flex:none;color:var(--mdr-text-3);transition:transform var(--mdr-motion-fast) var(--mdr-ease)}
+.think-head[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.think-title{font-weight:600;color:var(--mdr-text)}
+.think-meta{display:inline-flex;align-items:center;gap:5px;color:var(--mdr-text-3);font-variant-numeric:tabular-nums}
+.think-dots{display:inline-flex;gap:2px}
+.think-dots i{width:3px;height:3px;border-radius:50%;background:currentColor;opacity:.6}
+.think-hint{margin-left:auto;font-size:10px;color:var(--mdr-text-3)}
+.think-body{padding:2px 12px 10px;border-top:1px solid var(--mdr-border-soft);font-size:12px;line-height:1.7;color:var(--mdr-text-2);display:flex;flex-direction:column;gap:6px}
+.think-body p{margin:0}
+.think-body code{font-family:var(--mdr-font-mono);font-size:11px;padding:0 4px;border-radius:3px;background:var(--mdr-code-bg);color:var(--mdr-accent)}
+.think[data-open="false"] .think-body{display:none}
+
+/* ══════════════════════════════════════════════════════════════════════
+   10. 响应式（同一 DOM：重排 / 收起 / 隐藏）
+   ══════════════════════════════════════════════════════════════════════ */
+@media (max-width:1440px){
+  .wrap{width:100%}
+}
+@media (max-width:1024px){
+  .wrap{grid-template-columns:minmax(0,860px);gap:16px}
+  .notes{position:static}
+  .bar-hint{display:none}
+}
+@media (max-width:768px){
+  .wrap{padding:16px 12px 40px}
+  .brand-sub{display:none}
+  .theme-tab span{display:none}
+  .theme-tab{padding:0 9px}
+  .demo-bar{gap:10px;padding:8px 12px;flex-wrap:wrap}
+  .mode-tabs{margin-left:0}
+}
+@media (max-width:390px){
+  .brand{display:none}
+  .theme-tabs{flex:1}
+  .theme-tab{font-size:11.5px;padding:0 7px}
+  .mdr-mm-kind{display:none}
+  .mdr-mm-head{flex-wrap:nowrap;overflow-x:auto}
+  .mdr-mm-toolbar{flex:none}
+  .mdr-mm-zoom-val{min-width:36px}
+  .user-msg p{max-width:92%}
+  .think-hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:1ms !important;animation-duration:1ms !important}
+}
+</style>
+</head>
+<body>
+<div class="blobs" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+<svg width="0" height="0" aria-hidden="true" style="position:absolute">
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-wrap" viewBox="0 0 24 24"><path d="M4 6h16M4 12h12a3 3 0 1 1 0 6h-4m0 0 2.5-2.5M12 18l2.5 2.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+  <symbol id="i-maximize" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="9" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 10v2.5h11V10M12 12.5V15"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m9 8-4 4 4 4M15 8l4 4-4 4"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M4 19h16"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"/></symbol>
+  <symbol id="i-layout" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5V5.5Z"/><path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+</svg>
+
+<header class="demo-bar" data-od-id="demo-only:theme-bar">
+  <div class="brand"><span class="brand-dot"></span><b>dsh-md-render</b><span class="brand-sub">主题候选对照 · 4 套 × 浅/深</span></div>
+  <nav class="theme-tabs" role="tablist" aria-label="主题候选">
+    <button class="theme-tab" role="tab" aria-selected="true" data-theme-btn="apple-native">Apple Native<span>原生</span></button>
+    <button class="theme-tab" role="tab" aria-selected="false" data-theme-btn="liquid-glass">Liquid Glass<span>液态玻璃</span></button>
+    <button class="theme-tab" role="tab" aria-selected="false" data-theme-btn="glassmorphism">Glassmorphism<span>重玻璃</span></button>
+    <button class="theme-tab" role="tab" aria-selected="false" data-theme-btn="editorial-paper">Editorial Paper<span>纸感</span></button>
+  </nav>
+  <div class="mode-tabs" role="group" aria-label="深浅色">
+    <button class="mode-tab" data-mode-btn="light" aria-pressed="true">浅色</button>
+    <button class="mode-tab" data-mode-btn="dark" aria-pressed="false">深色</button>
+  </div>
+  <span class="bar-hint">同一份真实 DOM · 只切主题 token</span>
+</header>
+
+<main class="wrap" data-od-id="page:canvas">
+  <div class="stage">
+    <div class="user-msg"><p>重试逻辑怎么设计？给我一份能直接跑的 TypeScript 实现。</p></div>
+
+    <div class="answer mdr-root" data-od-id="md:message">
+      <!-- 思考块（宿主渲染，默认展开；主题只继承 token） -->
+      <div class="think" data-od-id="md:think" data-open="true">
+        <button class="think-head" aria-expanded="true" aria-controls="thinkBody" data-think-toggle>
+          <svg><use href="#i-chevron-down"/></svg>
+          <span class="think-title">已思考</span>
+          <span class="think-meta"><span class="think-dots"><i></i><i></i><i></i></span>12 秒</span>
+          <span class="think-hint">默认展开 · 点击折叠</span>
+        </button>
+        <div class="think-body" id="thinkBody">
+          <p>先确认边界：重试只对幂等请求和网络错误生效，<code>4xx</code> 不重试；退避用 base × 2^n 并加抖动，避免同步风暴。</p>
+          <p>取消要贯穿到单次 <code>fetch</code>：外层 <code>AbortController</code> 与超时 controller 用 <code>AbortSignal.any</code> 合并。</p>
+        </div>
+      </div>
+
+      <!-- markdown 正文 -->
+      <div class="mdr-md" data-od-id="md:body">
+        <button class="mdr-copy mdr-md-copy" data-copy-role="md" aria-label="复制整段 markdown"><span class="mdr-copy-label">复制</span></button>
+        <h2>实现方案</h2>
+        <p>
+          把重试、超时、取消拆成三个正交的部分，外层只负责编排。核心是
+          <code>fetchWithRetry</code>：每次尝试独立计时，失败后按退避策略等待，并在等待期间响应取消。
+          语义边界参考 <a href="/docs/rfc9110#section-15.5">RFC 9110 §15.5</a>。
+        </p>
+        <ul>
+          <li><strong>可重试判定</strong>：网络错误、<code>408</code>、<code>429</code>、<code>5xx</code>；其余错误直接抛出。</li>
+          <li><strong>退避方式</strong>：指数退避 + 全抖动（<code>Math.random()</code>），上限 <code>maxDelay</code>。</li>
+          <li><strong>超时</strong>：单次尝试超时，不做整体超时，避免重试被总时长截断。</li>
+        </ul>
+        <ol>
+          <li>先判定请求是否幂等，非幂等只允许网络错误重试。</li>
+          <li>每次尝试用独立 <code>AbortController</code> 计时，超时抛 <code>TimeoutError</code>。</li>
+          <li>等待退避也接受取消信号，取消时立即拒绝、不再重试。</li>
+        </ol>
+        <ul class="mdr-md-list mdr-md-task-list">
+          <li class="mdr-md-task-item is-done"><input class="mdr-md-check" type="checkbox" checked disabled readonly><span>补齐 <code>408</code> / <code>429</code> 的可重试判定</span></li>
+          <li class="mdr-md-task-item"><input class="mdr-md-check" type="checkbox" disabled readonly><span>重试等待期间响应取消</span></li>
+          <li class="mdr-md-task-item"><input class="mdr-md-check" type="checkbox" disabled readonly><span>退避加全抖动并限制上限</span></li>
+        </ul>
+        <div class="mdr-md-table-wrap">
+          <table class="mdr-md-table">
+            <thead><tr><th>参数</th><th class="mdr-md-cell-center">默认值</th><th class="mdr-md-cell-right">上限</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>retries</code></td><td class="mdr-md-cell-center">3</td><td class="mdr-md-cell-right">10</td><td>最多重试次数，不含首次请求</td></tr>
+              <tr><td><code>baseDelay</code></td><td class="mdr-md-cell-center">300ms</td><td class="mdr-md-cell-right">8s</td><td>退避基数，第 n 次等待 ≈ base × 2^n</td></tr>
+              <tr><td><code>maxDelay</code></td><td class="mdr-md-cell-center">8000ms</td><td class="mdr-md-cell-right">30s</td><td>单次等待上限</td></tr>
+              <tr><td><code>timeout</code></td><td class="mdr-md-cell-center">10000ms</td><td class="mdr-md-cell-right">60s</td><td>单次尝试超时</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <blockquote>
+          <p>容错口径：非标准分隔行（<code>-- | --</code>）会先规范化再解析，表格不会整块降级成纯文本。</p>
+          <blockquote><p>嵌套引用降级为中性细线，不重复强调色。</p></blockquote>
+        </blockquote>
+        <hr>
+        <h3>重试流程图</h3>
+
+        <!-- mermaid 图表卡 -->
+        <div class="mdr-root mdr-mm-card" data-mdr-mm-view="diagram" data-od-id="md:mermaid">
+          <div class="mdr-mm-head">
+            <span class="mdr-mm-title"><svg><use href="#i-chart"/></svg>重试流程图</span>
+            <span class="mdr-mm-kind">flowchart</span>
+            <div class="mdr-mm-toolbar">
+              <div class="mdr-seg" role="group" aria-label="图表视图切换">
+                <button class="mdr-seg-btn is-active" data-mm-view="diagram"><svg><use href="#i-eye"/></svg>预览</button>
+                <button class="mdr-seg-btn" data-mm-view="source"><svg><use href="#i-code"/></svg>代码</button>
+              </div>
+              <div class="mdr-mm-zoom" role="group" aria-label="图表缩放">
+                <button class="mdr-icon-btn" data-mm-zoom="-1" aria-label="缩小"><svg><use href="#i-minus"/></svg></button>
+                <span class="mdr-mm-zoom-val" data-mm-zoom-val>45%</span>
+                <button class="mdr-icon-btn" data-mm-zoom="1" aria-label="放大"><svg><use href="#i-plus"/></svg></button>
+              </div>
+              <button class="mdr-icon-btn" data-mm-full aria-label="全屏"><svg><use href="#i-maximize"/></svg></button>
+              <button class="mdr-icon-btn" data-mm-more aria-label="更多" aria-expanded="false"><svg><use href="#i-more"/></svg></button>
+            </div>
+          </div>
+          <div class="mdr-mm-menu" role="menu" aria-label="更多操作" hidden>
+            <button class="mdr-mm-menu-item" role="menuitem"><svg><use href="#i-image"/></svg>导出 PNG</button>
+            <button class="mdr-mm-menu-item" role="menuitem"><svg><use href="#i-download"/></svg>导出 SVG</button>
+            <div class="mdr-mm-menu-sep"></div>
+            <div class="mdr-mm-menu-label">缩放模式</div>
+            <button class="mdr-mm-menu-item" role="menuitemradio" aria-checked="true"><svg><use href="#i-layout"/></svg>适应容器<span class="mdr-mm-check"><svg><use href="#i-check"/></svg></span></button>
+            <button class="mdr-mm-menu-item" role="menuitemradio" aria-checked="false"><svg><use href="#i-wrap"/></svg>适应宽度</button>
+            <div class="mdr-mm-menu-sep"></div>
+            <button class="mdr-mm-menu-item" role="menuitem"><svg><use href="#i-copy"/></svg>复制代码</button>
+          </div>
+          <div class="mdr-mm-body mdr-mm-frame">
+            <div class="mdr-mm-canvas">
+              <svg viewBox="0 0 600 250" width="1200" height="500" role="img" aria-label="带重试的 HTTP 请求流程图">
+                <defs><marker id="mmArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="mm-arrow" d="M0 0 10 5 0 10Z"/></marker></defs>
+                <rect x="18" y="100" width="88" height="40" rx="8" class="mm-node"/>
+                <text x="62" y="118" text-anchor="middle" class="mm-text">请求</text>
+                <text x="62" y="131" text-anchor="middle" class="mm-sub">url + init</text>
+                <rect x="146" y="100" width="104" height="40" rx="8" class="mm-node"/>
+                <text x="198" y="118" text-anchor="middle" class="mm-text">发送 fetch</text>
+                <text x="198" y="131" text-anchor="middle" class="mm-sub">单次超时</text>
+                <path d="M330 82 384 108 330 134 276 108Z" class="mm-diamond"/>
+                <text x="330" y="105" text-anchor="middle" class="mm-text">成功?</text>
+                <text x="330" y="119" text-anchor="middle" class="mm-sub">2xx / 4xx</text>
+                <rect x="432" y="34" width="126" height="40" rx="8" class="mm-node-alt"/>
+                <text x="495" y="52" text-anchor="middle" class="mm-text">返回响应</text>
+                <text x="495" y="65" text-anchor="middle" class="mm-sub">解析 body</text>
+                <rect x="432" y="150" width="126" height="40" rx="8" class="mm-node"/>
+                <text x="495" y="168" text-anchor="middle" class="mm-text">等待退避</text>
+                <text x="495" y="181" text-anchor="middle" class="mm-sub">base × 2^n + 抖动</text>
+                <path d="M106 120 H142" class="mm-edge" marker-end="url(#mmArrow)"/>
+                <path d="M250 120 H272" class="mm-edge" marker-end="url(#mmArrow)"/>
+                <path d="M384 108 430 64" class="mm-edge" marker-end="url(#mmArrow)"/>
+                <text x="414" y="82" text-anchor="middle" class="mm-edge-label">是</text>
+                <path d="M330 134 V170 H428" class="mm-edge" marker-end="url(#mmArrow)"/>
+                <text x="348" y="163" class="mm-edge-label">否</text>
+                <path d="M495 190 V204 H120 V120 H142" class="mm-edge" marker-end="url(#mmArrow)" stroke-dasharray="4 4"/>
+                <text x="200" y="198" text-anchor="middle" class="mm-edge-label">重试（额度用尽则抛出）</text>
+              </svg>
+            </div>
+          </div>
+          <pre class="mdr-mm-code">flowchart TD
+  A[请求] --&gt; B[发送 fetch]
+  B --&gt; C{成功?}
+  C --&gt;|是| D[返回响应]
+  C --&gt;|否| E[等待退避]
+  E --&gt; F{还有额度?}
+  F --&gt;|是| B
+  F --&gt;|否| G[抛出 RetryExhaustedError]</pre>
+          <div class="mdr-mm-md">
+            <div class="mdr-md">
+              <p>下图描述 <code>fetchWithRetry</code> 的控制流：每次尝试都有独立超时，失败后进入退避等待，等待结束后回到 <code>fetch</code>，超过上限则抛出最后一个错误。</p>
+              <ul>
+                <li>成功（<code>2xx</code> 或不可重试状态）直接返回响应。</li>
+                <li>失败（网络错误 / <code>408</code> / <code>429</code> / <code>5xx</code>）判断是否还有额度。</li>
+              </ul>
+            </div>
+          </div>
+          <div class="mdr-mm-foot">
+            <span class="mdr-mm-foot-label">渲染为…</span>
+            <div class="mdr-mm-modes" role="group" aria-label="围栏块渲染方式">
+              <button class="mdr-mm-mode" data-mm-mode="diagram" aria-pressed="true">图表</button>
+              <button class="mdr-mm-mode" data-mm-mode="markdown" aria-pressed="false">Markdown</button>
+              <button class="mdr-mm-mode" data-mm-mode="source" aria-pressed="false">源码</button>
+            </div>
+            <span class="mdr-mm-spacer"></span>
+            <span class="mdr-mm-meta">flowchart · 7 节点 · 由 dsh-md-render 接管</span>
+          </div>
+        </div>
+
+        <h3>可运行的实现</h3>
+
+        <!-- 代码围栏卡 -->
+        <div class="mdr-fence" data-mdr-fence="code" data-mdr-lang="typescript" data-mdr-lines="off" data-mdr-wrap="off" data-od-id="md:fence">
+          <div class="mdr-fence-head">
+            <span class="mdr-pill mdr-fence-pill">TS</span>
+            <span class="mdr-fence-title">src/http/client.ts</span>
+            <span class="mdr-fence-actions">
+              <button class="mdr-copy mdr-fence-copy" data-copy-role="code" aria-label="复制代码"><span class="mdr-copy-label">复制</span></button>
+              <button class="mdr-icon-btn mdr-fence-action" data-fence-wrap aria-label="切换自动换行" aria-pressed="false"><svg><use href="#i-wrap"/></svg></button>
+              <button class="mdr-icon-btn mdr-fence-action" data-fence-lines aria-label="切换行号" aria-pressed="false"><svg><use href="#i-list"/></svg></button>
+            </span>
+          </div>
+          <div class="mdr-fence-body">
+            <div class="mdr-line-nums" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18</div>
+            <pre class="mdr-fence-code" tabindex="0"><code class="mdr-fence-hl"><span class="hl-key">import</span> { fetchOnce, sleep } <span class="hl-key">from</span> <span class="hl-str">'./retry'</span>
+
+<span class="hl-key">export</span> <span class="hl-key">async</span> <span class="hl-key">function</span> <span class="hl-fn">fetchWithRetry</span>(url, init = {}) {
+  <span class="hl-key">const</span> { retries = <span class="hl-num">3</span>, baseDelay = <span class="hl-num">300</span>, maxDelay = <span class="hl-num">8000</span>, timeout = <span class="hl-num">10000</span> } = options
+  <span class="hl-key">let</span> attempt = <span class="hl-num">0</span>
+  <span class="hl-key">while</span> (<span class="hl-key">true</span>) {
+    <span class="hl-key">try</span> {
+      <span class="hl-key">return</span> <span class="hl-key">await</span> <span class="hl-fn">fetchOnce</span>(url, init, timeout, signal)
+    } <span class="hl-key">catch</span> (error) {
+      <span class="hl-com">// 只重试幂等请求与网络/超时类错误</span>
+      <span class="hl-key">if</span> (!<span class="hl-fn">isRetryable</span>(error) || attempt &gt;= retries) <span class="hl-key">throw</span> error
+      <span class="hl-key">const</span> wait = Math.<span class="hl-fn">min</span>(maxDelay, baseDelay * <span class="hl-num">2</span> ** attempt)
+      <span class="hl-key">await</span> <span class="hl-fn">sleep</span>(wait * Math.<span class="hl-fn">random</span>(), signal)
+      attempt += <span class="hl-num">1</span>
+    }
+  }
+}</code></pre>
+          </div>
+          <div class="mdr-fence-foot">
+            <span class="mdr-fence-note">18 行 · TypeScript</span>
+            <span class="mdr-rm" role="group" aria-label="围栏块渲染方式">
+              <button class="mdr-rm-btn"><svg width="11" height="11"><use href="#i-chart"/></svg>图表</button>
+              <button class="mdr-rm-btn"><svg width="11" height="11"><use href="#i-book"/></svg>Markdown</button>
+              <button class="mdr-rm-btn"><svg width="11" height="11"><use href="#i-code"/></svg>源码</button>
+            </span>
+          </div>
+        </div>
+
+        <p>
+          完整用例在 <code>test/retry.spec.ts</code>；失败路径的日志会带上
+          <code>attempt</code> 与 <code>cause</code>，便于排查。更多细节见
+          <a href="/docs/retry">内部设计文档</a>。
+        </p>
+
+        <!-- 上下文注入块 -->
+        <div class="mdr-ctx" data-od-id="md:context">
+          <div class="mdr-ctx-head">
+            <span class="mdr-ctx-dot" aria-hidden="true"></span>
+            <strong class="mdr-ctx-title">上下文注入</strong>
+            <span class="mdr-ctx-from">来自 子代理 code-reviewer · 2 分钟前</span>
+            <span class="mdr-pill mdr-ctx-badge">按 markdown 渲染</span>
+          </div>
+          <div class="mdr-md mdr-ctx-body">
+            <p>已确认三条约束：</p>
+            <ul>
+              <li><strong>幂等性</strong>优先：<code>POST</code> 默认不重试，除非调用方显式声明幂等键。</li>
+              <li>超时与取消共用一条 <code>AbortSignal</code>，避免双重计时。</li>
+              <li>日志只记录尝试序号与耗时，不记录请求体。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="stage-hint">演示件说明：顶部主题条 / 深浅切换 / 右侧决策面板只存在于原型，不进入产品；正文、代码卡、mermaid 卡、思考块、上下文块均按 src/client/parts 的真实类名与结构还原。</p>
+  </div>
+
+  <aside class="notes" data-od-id="demo-only:notes">
+    <section class="theme-card" data-theme-for="apple-native" data-od-id="notes:apple-native">
+      <h3>Apple Native</h3>
+      <p class="tagline">macOS / iOS 原生：系统灰阶、SF 字体栈、8–10px 圆角、极细描边、克制阴影。</p>
+      <h4>设计决策</h4>
+      <ol>
+        <li>层级不用「材质」表达，而用系统灰阶（layer-2 承托代码与图表），玻璃效果一律不出现。</li>
+        <li>描边降到 label 的 8–13% 透明度，接近 macOS 发丝线；阴影只保留 1px 级。</li>
+        <li>圆角收敛到 5 / 8 / 10 三档，控件 6px；标题字距 -0.015em，接近 SF Display。</li>
+        <li>引用区用中性浅底 + 22% 灰线，强调色只留给链接、语言胶囊与语法关键字。</li>
+      </ol>
+      <h4>关键 token 差异</h4>
+      <table class="tok-table">
+        <thead><tr><th>token</th><th>取值</th><th>效果</th></tr></thead>
+        <tbody>
+          <tr><td>--mdr-surface</td><td>bg-layer-2</td><td>实心卡片，不上模糊</td></tr>
+          <tr><td>--mdr-border</td><td>label 13%</td><td>发丝描边</td></tr>
+          <tr><td>--mdr-radius-md/lg</td><td>8 / 10</td><td>系统圆角</td></tr>
+          <tr><td>--mdr-card-shadow</td><td>1px 4%</td><td>几乎不可见</td></tr>
+          <tr><td>--mdr-font-sans</td><td>SF Pro Text</td><td>原生字面</td></tr>
+          <tr><td>--mdr-quote-bg</td><td>label 3%</td><td>中性引用</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="theme-card" data-theme-for="liquid-glass" data-od-id="notes:liquid-glass">
+      <h3>Liquid Glass</h3>
+      <p class="tagline">Apple 26 液态玻璃：半透明材质 + backdrop-filter 模糊 + 高光内描边 + 柔和光晕。</p>
+      <h4>设计决策</h4>
+      <ol>
+        <li>卡片材质用 62–66% 不透明度的代码底 + blur(22px) saturate(180%)，文字仍压在实色感更强的层上。</li>
+        <li>顶部 1px 内高光（label 12–18%）制造「浮起」的玻璃边，外部只有一层柔和投影。</li>
+        <li>圆角提升到 6 / 12 / 14，控件 6–7，接近 iOS 26 的连续圆角观感。</li>
+        <li>引用底改强调色 10%，比默认 14% 更低饱和，避免玻璃上出现色块。</li>
+      </ol>
+      <h4>关键 token 差异</h4>
+      <table class="tok-table">
+        <thead><tr><th>token</th><th>取值</th><th>效果</th></tr></thead>
+        <tbody>
+          <tr><td>--mdr-surface</td><td>code 66%</td><td>半透明材质</td></tr>
+          <tr><td>--mdr-material</td><td>blur(22) sat(180%)</td><td>背景透出</td></tr>
+          <tr><td>--mdr-border</td><td>label 15%</td><td>弱描边</td></tr>
+          <tr><td>--mdr-card-shadow</td><td>12px 32px + 内高光</td><td>浮起 + 高光</td></tr>
+          <tr><td>--mdr-radius-md/lg</td><td>12 / 14</td><td>连续圆角</td></tr>
+          <tr><td>--mdr-quote-bg</td><td>accent 10%</td><td>低饱和色底</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="theme-card" data-theme-for="glassmorphism" data-od-id="notes:glassmorphism">
+      <h3>Glassmorphism</h3>
+      <p class="tagline">重玻璃：大模糊、渐变底衬、明显半透明卡片层叠，视觉更张扬。</p>
+      <h4>设计决策</h4>
+      <ol>
+        <li>材质 54–58% 不透明度（深色 54%）+ blur(34px) saturate(200%)，让页底渐变光斑成为构图的参与者。</li>
+        <li>阴影放大到 0 24px 60px（16%，深色 30%），卡片之间形成明显的层叠前后关系。</li>
+        <li>圆角全线上调（8 / 16 / 18），边框透明度 13–20%，玻璃轮廓更清楚。</li>
+        <li>强调色用量最高：引用底 16%、表头用 layer-1 34% 混色，视觉重心偏「展示」。</li>
+      </ol>
+      <h4>关键 token 差异</h4>
+      <table class="tok-table">
+        <thead><tr><th>token</th><th>取值</th><th>效果</th></tr></thead>
+        <tbody>
+          <tr><td>--mdr-surface</td><td>code 58%</td><td>强半透明</td></tr>
+          <tr><td>--mdr-material</td><td>blur(34) sat(200%)</td><td>大模糊</td></tr>
+          <tr><td>--mdr-border</td><td>label 20%</td><td>清晰玻璃边</td></tr>
+          <tr><td>--mdr-card-shadow</td><td>24px 60px 16%</td><td>强层叠</td></tr>
+          <tr><td>--mdr-radius-md/lg</td><td>16 / 18</td><td>大圆角</td></tr>
+          <tr><td>--mdr-quote-bg</td><td>accent 16%</td><td>明显色块</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="theme-card" data-theme-for="editorial-paper" data-od-id="notes:editorial-paper">
+      <h3>Editorial Paper</h3>
+      <p class="tagline">对照方向：暖白纸感、衬线标题、低饱和、强呼吸感（非 Apple 路线）。</p>
+      <h4>设计决策</h4>
+      <ol>
+        <li>底色用 warn 色 4–6% 混入 layer-1，得到暖纸感而不引入任何新色值。</li>
+        <li>标题与正文切换衬线字体栈（New York / Songti SC），行距与段间距拉到 14px。</li>
+        <li>圆角压到 2 / 3 / 4，去掉阴影与模糊，靠留白与细线分区。</li>
+        <li>强调色与正文混色降低饱和度（62–70%），引用底改暖色 8%。</li>
+      </ol>
+      <h4>关键 token 差异</h4>
+      <table class="tok-table">
+        <thead><tr><th>token</th><th>取值</th><th>效果</th></tr></thead>
+        <tbody>
+          <tr><td>--mdr-bg/surface</td><td>warn 5–6%</td><td>暖纸底</td></tr>
+          <tr><td>--mdr-font-sans</td><td>ui-serif / Songti</td><td>衬线</td></tr>
+          <tr><td>--mdr-radius-*</td><td>2 / 3 / 4</td><td>近直角</td></tr>
+          <tr><td>--mdr-card-shadow</td><td>none</td><td>无阴影</td></tr>
+          <tr><td>--mdr-material</td><td>none</td><td>无模糊</td></tr>
+          <tr><td>--mdr-body-gap</td><td>14px</td><td>强呼吸</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <p class="notes-foot">面板内容与 <code>02-style.md</code> 同步；选定主题后只保留该套，其余候选与演示件清除。</p>
+  </aside>
+</main>
+
+<!-- 全屏查看（真实 dialog；原型里演示 mermaid 卡的「全屏」入口） -->
+<dialog class="mdr-root mdr-mm-dialog" id="mmDialog" data-od-id="mm:fullscreen" aria-label="图表全屏">
+  <div class="mdr-mm-dialog-head">
+    <span class="mdr-mm-title"><svg><use href="#i-chart"/></svg>重试流程图</span>
+    <span class="mdr-mm-dialog-path">mermaid 围栏块 · flowchart</span>
+    <div class="mdr-mm-dialog-actions">
+      <button class="mdr-btn"><svg><use href="#i-image"/></svg>导出 PNG</button>
+      <button class="mdr-btn"><svg><use href="#i-download"/></svg>导出 SVG</button>
+      <button class="mdr-icon-btn" data-mm-close aria-label="关闭"><svg><use href="#i-close"/></svg></button>
+    </div>
+  </div>
+  <div class="mdr-mm-dialog-body"></div>
+  <div class="mdr-mm-dialog-foot">
+    <span>Esc 关闭 · 缩放只影响显示，不改变导出尺寸</span>
+    <span class="mdr-mm-spacer"></span>
+    <span class="mdr-mm-meta">图表渲染耗时 34ms</span>
+  </div>
+</dialog>
+
+<script>
+(function(){
+  var root = document.documentElement;
+
+  /* 主题 / 深浅切换（演示件） */
+  var themeBtns = document.querySelectorAll('[data-theme-btn]');
+  themeBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      root.dataset.theme = btn.dataset.themeBtn;
+      themeBtns.forEach(function(b){ b.setAttribute('aria-selected', String(b === btn)); });
+    });
+  });
+  var modeBtns = document.querySelectorAll('[data-mode-btn]');
+  modeBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      root.dataset.mode = btn.dataset.modeBtn;
+      modeBtns.forEach(function(b){ b.setAttribute('aria-pressed', String(b === btn)); });
+    });
+  });
+
+  /* 复制：payload = 真实 DOM 内容（代码 = 围栏正文；整段 = markdown 根的真实文本） */
+  function copyPayload(btn){
+    if(btn.dataset.copyRole === 'code'){
+      var fence = btn.closest('.mdr-fence');
+      var pre = fence ? fence.querySelector('.mdr-fence-code') : null;
+      return pre ? pre.textContent : '';
+    }
+    var root = btn.closest('.mdr-md');
+    if(!root) return '';
+    var clone = root.cloneNode(true);
+    var drop = '.mdr-mm-head,.mdr-mm-body,.mdr-mm-md,.mdr-mm-foot,.mdr-mm-menu,' +
+      '.mdr-fence-head,.mdr-fence-foot,.mdr-md-copy,.mdr-line-nums,.mdr-ctx-head,.think-head,svg';
+    clone.querySelectorAll(drop).forEach(function(node){ node.parentNode.removeChild(node); });
+    return clone.textContent.replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+  }
+  document.querySelectorAll('[data-copy-role]').forEach(function(btn){
+    var payload = copyPayload(btn);
+    /* headless 读不回剪贴板：把 payload 指纹写进 title，作为 DOM 证据 */
+    btn.title = '复制 payload：' + payload.length + ' 字符 · 前 40 字：' + payload.slice(0, 40);
+    btn.addEventListener('click', function(){
+      var label = btn.querySelector('.mdr-copy-label');
+      var done = function(){
+        if(!label) return;
+        var old = label.textContent;
+        label.textContent = '已复制';
+        btn.classList.add('is-copied');
+        setTimeout(function(){ label.textContent = old; btn.classList.remove('is-copied'); }, 1600);
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(payload).then(done, done);
+      } else { done(); }
+    });
+  });
+
+  /* 代码卡：自动换行 / 行号 */
+  document.querySelectorAll('.mdr-fence').forEach(function(fence){
+    var wrap = fence.querySelector('[data-fence-wrap]');
+    var lines = fence.querySelector('[data-fence-lines]');
+    if(wrap) wrap.addEventListener('click', function(){
+      var on = fence.dataset.mdrWrap !== 'on';
+      fence.dataset.mdrWrap = on ? 'on' : 'off';
+      wrap.classList.toggle('is-on', on);
+      wrap.setAttribute('aria-pressed', String(on));
+    });
+    if(lines) lines.addEventListener('click', function(){
+      var on = fence.dataset.mdrLines !== 'on';
+      fence.dataset.mdrLines = on ? 'on' : 'off';
+      lines.classList.toggle('is-on', on);
+      lines.setAttribute('aria-pressed', String(on));
+    });
+  });
+
+  /* mermaid：视图分段 / 底栏模式 / 缩放 / 更多菜单 / 全屏 */
+  var card = document.querySelector('.mdr-mm-card');
+  var mmView = 'diagram';
+  function setView(view){
+    mmView = view;
+    card.dataset.mdrMmView = view;
+    card.querySelectorAll('[data-mm-view]').forEach(function(b){
+      b.classList.toggle('is-active', b.dataset.mmView === view);
+    });
+    card.querySelectorAll('[data-mm-mode]').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.dataset.mmMode === view));
+    });
+  }
+  card.querySelectorAll('[data-mm-view]').forEach(function(b){
+    b.addEventListener('click', function(){ setView(b.dataset.mmView); });
+  });
+  card.querySelectorAll('[data-mm-mode]').forEach(function(b){
+    b.addEventListener('click', function(){ setView(b.dataset.mmMode); });
+  });
+
+  var zoom = 45;
+  var zoomVal = card.querySelector('[data-mm-zoom-val]');
+  var canvas = card.querySelector('.mdr-mm-canvas');
+  function setZoom(next){
+    zoom = Math.max(25, Math.min(200, next));
+    zoomVal.textContent = zoom + '%';
+    canvas.style.setProperty('--mm-scale', String(zoom / 100));
+  }
+  card.querySelectorAll('[data-mm-zoom]').forEach(function(b){
+    b.addEventListener('click', function(){ setZoom(zoom + Number(b.dataset.mmZoom) * 15); });
+  });
+
+  var more = card.querySelector('[data-mm-more]');
+  var menu = card.querySelector('.mdr-mm-menu');
+  more.addEventListener('click', function(e){
+    e.stopPropagation();
+    var open = menu.hidden;
+    menu.hidden = !open;
+    more.setAttribute('aria-expanded', String(open));
+  });
+  document.addEventListener('click', function(){
+    if(!menu.hidden){ menu.hidden = true; more.setAttribute('aria-expanded', 'false'); }
+  });
+  menu.addEventListener('click', function(e){ e.stopPropagation(); });
+
+  var dialog = document.getElementById('mmDialog');
+  card.querySelector('[data-mm-full]').addEventListener('click', function(){
+    dialog.querySelector('.mdr-mm-dialog-body').innerHTML = canvas.innerHTML;
+    if(dialog.showModal) dialog.showModal(); else dialog.setAttribute('open','');
+  });
+  dialog.querySelector('[data-mm-close]').addEventListener('click', function(){ dialog.close(); });
+  dialog.addEventListener('click', function(e){ if(e.target === dialog) dialog.close(); });
+
+  /* 思考块折叠 */
+  var think = document.querySelector('.think');
+  think.querySelector('[data-think-toggle]').addEventListener('click', function(){
+    var open = think.dataset.open !== 'false';
+    think.dataset.open = open ? 'false' : 'true';
+    this.setAttribute('aria-expanded', String(!open));
+  });
+})();
+</script>
+</body>
+</html>

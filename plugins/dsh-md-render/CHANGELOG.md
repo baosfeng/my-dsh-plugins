@@ -23,6 +23,8 @@
 
 ### 修复
 
+- **mermaid 闭合即渲染在真实宿主未生效（运行时取证）**：根因是事件源窗口里的流式条目类型是 `transient`（宿主 `assistant-stream.ts:141-160` 的 `assistant/live-chunk`），而 `eventOf` 只认 `type === 'event'` → live-chunk 从未被吸收，闭合位永远查不到，退回的 400ms 窗口又因 chat 的 DOM 语言恒为「代码块」而不可达。修复：`eventOf` 同时接受 `event` / `transient`；流式兜底加**内容启发式**（`mermaidKindOf(source)` 能识别图表类型即视为 mermaid），保证事件流不可用时 ≤500ms 出卡片且普通代码不误判。
+- **提示词补充 -beta 图表说明**：`architecture-beta` / `block-beta` / `packet-beta` / `radar-beta` / `sankey-beta` / `xychart-beta` 等在 12.2.0 默认可用，直接写、无需配置或询问（`PROMPT_TEXT` 仍 ≤500 字符）。
 - **无语言围栏不再一律按 markdown 渲染**（真实会话取证，2026-10-20 android-monitor 会话 `session-4fa88602`）：实测 208 个围栏里 **200 个没有语言标记**（184 个在思考块里），内容是 Kotlin / Compose 代码、SQL、shell —— 旧口径「确证无语言 → 一律 markdown」把这些代码的换行折叠成一坨，代码再也读不了。现在**确证无语言**的块先看内容（`src/client/parts/fence-content.ts`）：markdown 块级特征（标题 / 表格 / 引用 / 列表 / 分隔线）≥ 2 且**零代码特征**才 markdown 化，否则按代码卡（等宽、保留换行与缩进、语言位留空）。判据只回答「是不是 markdown 文档」，**不猜语言**，且拿不准一律当代码（代价不对称：误判成代码只是不美化，误判成 markdown 会破坏结构）；「渲染为…」三态控件对这种块同样可用。
 
 ### 测试

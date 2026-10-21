@@ -603,7 +603,10 @@ function eventMarkdowns(event) {
 /** 事件流条目 → 原始 Session 事件（非 durable 事件条目返回 null）。 */
 function eventOf(entry) {
     const record = entry;
-    if (record === null || record === undefined || record.type !== 'event')
+    // 宿主事件源窗口里有两类条目：durable `event` 与流式 `transient`
+    // （assistant-stream.ts:141-160 的 assistant/live-chunk 就是 transient）。
+    // 两类都要读 —— live-chunk 只存在于 transient 条目里。
+    if (record === null || record === undefined || (record.type !== 'event' && record.type !== 'transient'))
         return null;
     return record.event !== null && typeof record.event === 'object' ? record.event : null;
 }
@@ -4010,11 +4013,8 @@ function mountableSource(block) {
     return source;
 }
 /**
- * 单个候选块：挂载 / 继续等待 / 自愈卸载。非 mermaid 块立即返回（性能护栏）。
- * 流式分支的判据优先级：
- *  ① 事件流围栏**已闭合** → 立即渲染（不等消息结束，也不等 400ms 窗口）；
- *  ② 事件流明确**未闭合** → 不渲染（也不排窗口，避免残缺图）；
- *  ③ 事件流不可用 / 查不到该内容 → 退回原有「DOM 语言 + 400ms 稳定窗口」（不劣化）。
+ * 单个候选块：挂载 / 继续等待 / 自愈卸载。流式分支优先级：
+ * ① 事件流围栏已闭合 → 立即渲染；② 明确未闭合 → 不渲染；③ 查不到 → 旧判据兜底。
  */
 function considerMermaidBlock(block, round) {
     if (!renderOptions.mermaid.render)
@@ -4048,13 +4048,19 @@ function considerStreaming(block, round) {
     if (source !== null)
         mountMermaidCard(block, source);
 }
-/** 旧判据兜底：DOM 语言 + 400ms 稳定窗口（事件流不可用时行为与今天一致）。 */
+/** 内容启发式：源码首行能识别出图表类型（flowchart / erDiagram…）即认为像 mermaid。 */
+function looksLikeMermaid(source) {
+    return source.trim() !== '' && mermaidKindOf(source) !== 'mermaid';
+}
+/** 旧判据兜底：DOM 语言 OR 内容启发式 + 400ms 窗口（chat 的 DOM 语言恒为「代码块」）。 */
 function considerByWindow(block, round) {
-    if (!isMermaidBlock(block, false))
+    const source = mermaidSourceOf(block);
+    const byDom = isMermaidBlock(block, false);
+    if (!byDom && !looksLikeMermaid(source))
         return;
-    const source = mountableSource(block);
-    if (source !== null)
-        watchStream(block, source, round);
+    const mountable = mountableSource(block);
+    if (mountable !== null)
+        watchStream(block, mountable, round);
 }
 /** 扫描 root（自身 / 后代）内的会话滚动容器里的 mermaid 代码块。 */
 function scanMermaidBlocks(root, round) {
@@ -4076,7 +4082,7 @@ function teardownMermaid() {
         clearStreamWatch(block);
     mmMounts.clear();
 }
-Object.assign(exports,{STREAM_SETTLE_MS,MM_FENCE_LANGS,mmSkipKindLine,mmCanonicalKind,mermaidKindOf,mermaidTitleOf,isMermaidBlock,mermaidSourceOf,fenceTrustOf,installFenceCloseRescan,dropFenceSubscription,ensureFenceSubscription,mountableSource,considerStreaming,considerByWindow,considerMermaidBlock,scanMermaidBlocks,teardownMermaid});
+Object.assign(exports,{STREAM_SETTLE_MS,MM_FENCE_LANGS,mmSkipKindLine,mmCanonicalKind,mermaidKindOf,mermaidTitleOf,isMermaidBlock,mermaidSourceOf,fenceTrustOf,installFenceCloseRescan,dropFenceSubscription,ensureFenceSubscription,mountableSource,looksLikeMermaid,considerStreaming,considerByWindow,considerMermaidBlock,scanMermaidBlocks,teardownMermaid});
 
     // mermaid 图表导出（PNG / SVG 下载 + 复制源码）
     "use strict";

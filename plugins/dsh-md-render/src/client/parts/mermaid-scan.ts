@@ -23,7 +23,6 @@ const MM_FENCE_LANGS: readonly string[] = ['mermaid', 'mmd']
 function fenceTrustOf(block: Element): { lang: string; closed: boolean } | undefined {
   return typeof fenceFactsOfText === 'function' ? fenceFactsOfText(mermaidSourceOf(block)) : undefined
 }
-
 /** 新围栏闭合后的重扫钩子（由本文件装配；未装配 → 不重扫）。 */
 let fenceCloseRescan: (() => void) | null = null
 /** 当前已订阅的事件源（同一 source 不重复订阅）。 */
@@ -34,7 +33,6 @@ let fenceUnsubscribe: (() => void) | null = null
 function installFenceCloseRescan(callback: (() => void) | null): void {
   fenceCloseRescan = typeof callback === 'function' ? callback : null
 }
-
 /** 退订（会话切换 / teardown）。 */
 function dropFenceSubscription(): void {
   if (fenceUnsubscribe !== null) {
@@ -47,7 +45,6 @@ function dropFenceSubscription(): void {
   fenceUnsubscribe = null
   fenceSubscribedSource = null
 }
-
 /** 事件源 revision 变化 → 刷新索引 → 有新闭合围栏才重扫（防抖到下一拍）。 */
 function ensureFenceSubscription(ctx: unknown): void {
   const current = typeof currentEventSource === 'function' ? currentEventSource(ctx) : null
@@ -77,7 +74,6 @@ function ensureFenceSubscription(ctx: unknown): void {
 if (typeof installFenceCloseRescan === 'function' && typeof rescanForLangs === 'function') {
   installFenceCloseRescan(rescanForLangs)
 }
-
 /** 已知图表类型关键字 → 展示用规范名（原型 .mm-kind 显示 flowchart 等）。
  *  清单按 mermaid 12.2.0 实测（initialize 后逐个 detectType 命中）补齐；裸关键字与
  *  `-beta` 别名都收，规范名统一去掉 `-beta` 后缀。 */
@@ -318,11 +314,8 @@ function mountableSource(block: Element): string | null {
 }
 
 /**
- * 单个候选块：挂载 / 继续等待 / 自愈卸载。非 mermaid 块立即返回（性能护栏）。
- * 流式分支的判据优先级：
- *  ① 事件流围栏**已闭合** → 立即渲染（不等消息结束，也不等 400ms 窗口）；
- *  ② 事件流明确**未闭合** → 不渲染（也不排窗口，避免残缺图）；
- *  ③ 事件流不可用 / 查不到该内容 → 退回原有「DOM 语言 + 400ms 稳定窗口」（不劣化）。
+ * 单个候选块：挂载 / 继续等待 / 自愈卸载。流式分支优先级：
+ * ① 事件流围栏已闭合 → 立即渲染；② 明确未闭合 → 不渲染；③ 查不到 → 旧判据兜底。
  */
 function considerMermaidBlock(block: Element, round: number): void {
   if (!renderOptions.mermaid.render) return
@@ -352,11 +345,18 @@ function considerStreaming(block: Element, round: number): void {
   if (source !== null) mountMermaidCard(block, source)
 }
 
-/** 旧判据兜底：DOM 语言 + 400ms 稳定窗口（事件流不可用时行为与今天一致）。 */
+/** 内容启发式：源码首行能识别出图表类型（flowchart / erDiagram…）即认为像 mermaid。 */
+function looksLikeMermaid(source: string): boolean {
+  return source.trim() !== '' && mermaidKindOf(source) !== 'mermaid'
+}
+
+/** 旧判据兜底：DOM 语言 OR 内容启发式 + 400ms 窗口（chat 的 DOM 语言恒为「代码块」）。 */
 function considerByWindow(block: Element, round: number): void {
-  if (!isMermaidBlock(block, false)) return
-  const source = mountableSource(block)
-  if (source !== null) watchStream(block, source, round)
+  const source = mermaidSourceOf(block)
+  const byDom = isMermaidBlock(block, false)
+  if (!byDom && !looksLikeMermaid(source)) return
+  const mountable = mountableSource(block)
+  if (mountable !== null) watchStream(block, mountable, round)
 }
 
 /** 扫描 root（自身 / 后代）内的会话滚动容器里的 mermaid 代码块。 */
@@ -390,6 +390,7 @@ exports.installFenceCloseRescan = installFenceCloseRescan
 exports.dropFenceSubscription = dropFenceSubscription
 exports.ensureFenceSubscription = ensureFenceSubscription
 exports.mountableSource = mountableSource
+exports.looksLikeMermaid = looksLikeMermaid
 exports.considerStreaming = considerStreaming
 exports.considerByWindow = considerByWindow
 exports.considerMermaidBlock = considerMermaidBlock

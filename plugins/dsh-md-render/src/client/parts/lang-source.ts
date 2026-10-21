@@ -139,7 +139,10 @@ function eventMarkdowns(event: Record<string, unknown>): string[] {
 /** 事件流条目 → 原始 Session 事件（非 durable 事件条目返回 null）。 */
 function eventOf(entry: unknown): Record<string, unknown> | null {
   const record = entry as { type?: unknown; event?: unknown } | null
-  if (record === null || record === undefined || record.type !== 'event') return null
+  // 宿主事件源窗口里有两类条目：durable `event` 与流式 `transient`
+  // （assistant-stream.ts:141-160 的 assistant/live-chunk 就是 transient）。
+  // 两类都要读 —— live-chunk 只存在于 transient 条目里。
+  if (record === null || record === undefined || (record.type !== 'event' && record.type !== 'transient')) return null
   return record.event !== null && typeof record.event === 'object' ? (record.event as Record<string, unknown>) : null
 }
 /**

@@ -34,13 +34,13 @@ export const PROMPT_MAX_CHARS = 500
 /** 注入到每次系统提示词组装的中文能力说明（默认注入）。 */
 export const PROMPT_TEXT = `## Mermaid 图表（本环境原生支持）
 
-本环境内置 mermaid 12.2.0 渲染，无需工具或外部图片服务：需要画流程图、时序图、状态图、类图、ER 图、甘特图等时，直接输出 \`\`\`mermaid 代码块。
+内置 mermaid 12.2.0（无需工具/图片服务）：需要图表时直接输出 \`\`\`mermaid 代码块。
 
-写法要点：
-- 围栏语言必须写 \`mermaid\`；用图类型关键字开头：flowchart/sequenceDiagram/stateDiagram-v2/classDiagram/erDiagram/gantt/pie/mindmap/timeline/kanban/architecture-beta/block-beta/packet-beta/radar-beta/treemap/sankey-beta/xychart-beta/quadrantChart/requirementDiagram/gitGraph/journey/C4Context；
-- 节点标签含空格或 ()[]{}:;,<> 时用双引号包裹，如 A["提交订单 (v2)"]；
-- 不要嵌套 markdown（不加粗、不放链接和列表）；
-- 渲染失败会回显代码块与错误提示，修正后重新输出。`
+要点：
+- 围栏写 mermaid；首行用图表关键字：flowchart/sequenceDiagram/stateDiagram-v2/classDiagram/erDiagram/gantt/pie/mindmap/timeline/kanban/architecture-beta/block-beta/packet-beta/radar-beta/treemap/sankey-beta/xychart-beta/quadrantChart/requirementDiagram/gitGraph/journey/C4Context；
+- 带 -beta 的图表（architecture/block/packet/radar/sankey 等）默认可用，无需配置或询问；
+- 标签含空格/()[]{}:;,<> 时用双引号包裹，如 A["提交订单 (v2)"]；
+- 不要嵌套 markdown；失败会回显代码与错误，修正后重试。`
 
 /** 待注册的 section；开关关闭时返回 null（调用方据此跳过注册）。 */
 export function createPromptSection(inject: boolean): { name: string; order: number; text: string } | null {

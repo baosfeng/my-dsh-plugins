@@ -52,9 +52,9 @@ function makeStreamingBlock(source = MERMAID_SOURCE, lang = 'mermaid') {
 }
 
 /** 一条 assistant/live-chunk 事件（text-delta）。 */
-function liveEvent(seq, text) {
+function liveEvent(seq, text, entryType = 'transient') {
   return {
-    type: 'event',
+    type: entryType,
     event: {
       type: 'assistant/live-chunk',
       seq,
@@ -81,7 +81,7 @@ function ctxWith(entries) {
   }
 }
 
-test('a) 事件流围栏已闭合 + 仍在流式 → 立即渲染（不等 400ms 窗口）', () => {
+test('a) 事件流围栏已闭合 + 仍在流式 → 立即渲染（transient live-chunk 条目）', () => {
   const { loaded, scroll } = setup()
   const { wrap, block } = makeStreamingBlock()
   scroll.appendChild(wrap)
@@ -104,16 +104,30 @@ test('b) 事件流明确未闭合 + 流式中 → 不渲染（也不排窗口）
   assert.equal(block.querySelector('div.mdr-mm-host'), null, '未闭合不挂卡片')
 })
 
-test('c) 事件流不可用 → 退回 400ms 稳定窗口（不劣化）', () => {
+test('c) 事件流不可用 + 无 DOM 语言 → 内容启发式 + 400ms 窗口兜底', () => {
   vi.useFakeTimers()
   try {
     const { loaded, scroll } = setup()
-    const { wrap, block } = makeStreamingBlock()
+    const { wrap, block } = makeStreamingBlock(MERMAID_SOURCE, '代码块')
     scroll.appendChild(wrap)
     loaded.exports.considerMermaidBlock(block, 1)
     assert.equal(block.querySelector('div.mdr-mm-host'), null, '窗口未到期不渲染')
     vi.advanceTimersByTime(450)
-    assert.ok(block.querySelector('div.mdr-mm-host'), '窗口到期后按旧判据渲染')
+    assert.ok(block.querySelector('div.mdr-mm-host'), '窗口到期后按内容启发式渲染')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('c2) 非图表内容不被启发式误判（无 DOM 语言、事件流不可用 → 不渲染）', () => {
+  vi.useFakeTimers()
+  try {
+    const { loaded, scroll } = setup()
+    const { wrap, block } = makeStreamingBlock('const answer = 42\nconsole.log(answer)', '代码块')
+    scroll.appendChild(wrap)
+    loaded.exports.considerMermaidBlock(block, 1)
+    vi.advanceTimersByTime(600)
+    assert.equal(block.querySelector('div.mdr-mm-host'), null, '普通代码不接管')
   } finally {
     vi.useRealTimers()
   }

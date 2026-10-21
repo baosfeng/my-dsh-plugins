@@ -223,7 +223,8 @@ for (const [anchor, source] of ANCHORS) {
 //    SHA256 冻结承担「资源未被无声替换 / 未被 prettier 美化后提交」的断言（issue #296、#322）。
 /** 冻结的资产哈希（shasum -a 256 实测）；内容变了必须显式更新这里的值。 */
 const ASSET_SHA256 = {
-  [MERMAID_ENGINE_FILE]: '5a8ec91820bd55afef049068489369910e5d6ce70c8103952f27e29d3e76e8bc',
+  // mermaid 12.2.0 UMD（npm latest；MIT）：assets/mermaid-12.2.0.min.js。
+  [MERMAID_ENGINE_FILE]: 'a8a6a6f805b074a8261a2825c86f99c8054acb3b35f50bb7e24a4f9f2c3c3b9f',
   [PANZOOM_FILE]: '3ce354ef7b493efb62a4d4acaaf86fa2d6027eb629857a4e144041de1a112c1e',
   // 自研 markdown 渲染器的解析层（marked 18.1.0 UMD，MIT）。
   [MARKED_FILE]: 'f424dcb508fdf93e0137a970cfce8f3207ea2e3f37eca5f7556a52875683632a',

@@ -19,7 +19,9 @@ const STREAM_MIN_OBSERVATIONS = 2
 /** 本插件接管的围栏语言（与其它注入点的语言集合不重叠 → 分流稳定）。 */
 const MM_FENCE_LANGS: readonly string[] = ['mermaid', 'mmd']
 
-/** 已知图表类型关键字 → 展示用规范名（原型 .mm-kind 显示 flowchart 等）。 */
+/** 已知图表类型关键字 → 展示用规范名（原型 .mm-kind 显示 flowchart 等）。
+ *  清单按 mermaid 12.2.0 实测（initialize 后逐个 detectType 命中）补齐；裸关键字与
+ *  `-beta` 别名都收，规范名统一去掉 `-beta` 后缀。 */
 const MM_KIND_NAMES: readonly string[] = [
   'flowchart',
   'graph',
@@ -40,23 +42,42 @@ const MM_KIND_NAMES: readonly string[] = [
   'C4Dynamic',
   'mindmap',
   'timeline',
+  'sankey',
   'sankey-beta',
+  'xychart',
   'xychart-beta',
+  'block',
   'block-beta',
+  'packet',
   'packet-beta',
+  'architecture',
   'architecture-beta',
   'kanban',
+  'info',
+  'eventmodeling',
+  'ishikawa',
+  'ishikawa-beta',
+  'cynefin-beta',
+  'radar-beta',
+  'treemap',
+  'treemap-beta',
+  'venn-beta',
+  'wardley-beta',
+  'swimlane-beta',
+  'treeView-beta',
+  'agentflow-beta',
+  'railroad-beta',
+  'railroad-abnf-beta',
+  'railroad-ebnf-beta',
+  'railroad-peg-beta',
+  'usecase-beta',
 ]
 
 /** 类型关键字 → 规范名（纯函数）。 */
 function mmCanonicalKind(word: string): string {
   if (word === 'graph') return 'flowchart'
   if (word === 'stateDiagram-v2') return 'stateDiagram'
-  if (word === 'xychart-beta') return 'xychart'
-  if (word === 'sankey-beta') return 'sankey'
-  if (word === 'block-beta') return 'block'
-  if (word === 'packet-beta') return 'packet'
-  if (word === 'architecture-beta') return 'architecture'
+  if (word.slice(-5) === '-beta') return word.slice(0, -5)
   return word
 }
 

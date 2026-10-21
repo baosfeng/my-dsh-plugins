@@ -34,7 +34,10 @@ plugins/*/lib/.client-build/
 # test/mermaid-asset-route.mjs 与 scripts/build.mjs 的 SHA256 冻结断言；合并后随 dsh-md-render 分发）。
 # 此前 asset 被 `prettier --write .` 美化后提交（6.9MB/177k 行进仓库），发布测试长期红 ——
 # 压缩产物必须始终排除在 prettier 之外，否则下一次有人跑 prettier 就会复现。
-plugins/dsh-md-render/assets/mermaid-10.9.3.min.js
+plugins/dsh-md-render/assets/mermaid-12.2.0.min.js
+# open-design 原型工作区（单文件自包含原型 + 过程存档）：格式由原型流水线决定，
+# 与下方 docs/md渲染/原型/ 同口径；入库范围只含定稿与决策链，不入库的中间产物同样不参与格式门禁。
+plugins/dsh-md-render/.open-design/
 # panzoom 4.6.2（图表缩放 / 平移的 vendored 库，issue #470）：同上——
 # 压缩产物被 prettier 美化会破坏 build.mjs 冻结的 SHA256 与发布断言。
 plugins/dsh-md-render/assets/panzoom-4.6.2.min.js

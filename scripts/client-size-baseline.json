@@ -48,11 +48,11 @@
       }
     },
     "dsh-md-render": {
-      "total": 4040377,
+      "total": 6199895,
       "files": {
         "assets/highlightjs-11.12.0.min.js": 129254,
         "assets/marked-18.1.0.umd.js": 47225,
-        "assets/mermaid-10.9.3.min.js": 3336760,
+        "assets/mermaid-12.2.0.min.js": 5494801,
         "assets/panzoom-4.6.2.min.js": 10125,
         "assets/text-fence-markdown.png": 70863,
         "lib/client.js": 320590,

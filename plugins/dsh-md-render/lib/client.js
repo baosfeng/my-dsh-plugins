@@ -32,7 +32,7 @@ window.__ModuleLoader__.load({
     // 路由路径（构建期由 host 半 lib/routes/paths.js 注入的单一真源）
     // ── 路由路径（构建期由 host 半 lib/routes/paths.js 注入的单一真源）──────
 const CONFIG_API_URL = "/md-render/api/config"
-const MERMAID_ENGINE_URL = "/md-render/assets/mermaid-10.9.3.min.js"
+const MERMAID_ENGINE_URL = "/md-render/assets/mermaid-12.2.0.min.js"
 const PANZOOM_SCRIPT_URL = "/md-render/assets/panzoom-4.6.2.min.js"
 const MARKED_URL = "/md-render/assets/marked-18.1.0.umd.js"
 const HIGHLIGHTJS_URL = "/md-render/assets/highlightjs-11.12.0.min.js"
@@ -2999,14 +2999,15 @@ Object.assign(exports,{THINK_ROW_SELECTOR,THINK_ROOT_SELECTOR,MAX_THINK_ROWS_PER
 //  · 无 document（伪 DOM / SSR）→ ensureMermaid() 返回 null；
 //  · fetch / 注入失败 / 注入后仍缺 window.mermaid → reject，卡片显示源码 + 原因。
 //
-// 离屏渲染：mermaid 10.9.3 解析失败时会**自己**往渲染容器里插「炸弹图」，该版本不认
-// suppressErrorRendering。把渲染导向一个脱离视口、但仍参与布局的容器，失败图形随容器
-// 一起消失（display:none / visibility:hidden 会让 mermaid 量不到节点尺寸，不能用）。
+// 离屏渲染：把渲染导向一个脱离视口、但仍参与布局的容器，SVG / 错误输出都留在容器里，
+// 失败随容器一起丢弃（display:none / visibility:hidden 会让 mermaid 量不到节点尺寸，不能用）。
+// 12.2.0 起 suppressErrorRendering 生效（解析失败不再往页面插「炸弹图」），离屏容器
+// 仍是第二道保险 —— 引擎行为变化不会把错误图形漏到对话里。
 /** 超长块跳过（与 mermaid 自身 maxTextSize 5e4 对齐，不做无谓渲染）。 */
 const MAX_SOURCE_CHARS = 50000;
 /** 离屏渲染容器标记（自有 data-*：回归测试据此断言渲染发生在脱离视口流的节点里）。 */
 const OFFSCREEN_ATTR = 'data-mdr-mm-offscreen';
-/** 引擎初始化配置（10.9.3 不认识 suppressErrorRendering，留着是为了升级后自动多一层保险）。 */
+/** 引擎初始化配置（12.2.0 认 suppressErrorRendering：失败不渲染炸弹图，直接 reject）。 */
 const MERMAID_INIT = { startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true };
 /** 在飞的加载 Promise（失败即清空：卡片「重试」必须能真的重新加载一次）。 */
 let mermaidReady = null;
@@ -3570,7 +3571,9 @@ const STREAM_SETTLE_MS = 400;
 const STREAM_MIN_OBSERVATIONS = 2;
 /** 本插件接管的围栏语言（与其它注入点的语言集合不重叠 → 分流稳定）。 */
 const MM_FENCE_LANGS = ['mermaid', 'mmd'];
-/** 已知图表类型关键字 → 展示用规范名（原型 .mm-kind 显示 flowchart 等）。 */
+/** 已知图表类型关键字 → 展示用规范名（原型 .mm-kind 显示 flowchart 等）。
+ *  清单按 mermaid 12.2.0 实测（initialize 后逐个 detectType 命中）补齐；裸关键字与
+ *  `-beta` 别名都收，规范名统一去掉 `-beta` 后缀。 */
 const MM_KIND_NAMES = [
     'flowchart',
     'graph',
@@ -3591,12 +3594,35 @@ const MM_KIND_NAMES = [
     'C4Dynamic',
     'mindmap',
     'timeline',
+    'sankey',
     'sankey-beta',
+    'xychart',
     'xychart-beta',
+    'block',
     'block-beta',
+    'packet',
     'packet-beta',
+    'architecture',
     'architecture-beta',
     'kanban',
+    'info',
+    'eventmodeling',
+    'ishikawa',
+    'ishikawa-beta',
+    'cynefin-beta',
+    'radar-beta',
+    'treemap',
+    'treemap-beta',
+    'venn-beta',
+    'wardley-beta',
+    'swimlane-beta',
+    'treeView-beta',
+    'agentflow-beta',
+    'railroad-beta',
+    'railroad-abnf-beta',
+    'railroad-ebnf-beta',
+    'railroad-peg-beta',
+    'usecase-beta',
 ];
 /** 类型关键字 → 规范名（纯函数）。 */
 function mmCanonicalKind(word) {
@@ -3604,16 +3630,8 @@ function mmCanonicalKind(word) {
         return 'flowchart';
     if (word === 'stateDiagram-v2')
         return 'stateDiagram';
-    if (word === 'xychart-beta')
-        return 'xychart';
-    if (word === 'sankey-beta')
-        return 'sankey';
-    if (word === 'block-beta')
-        return 'block';
-    if (word === 'packet-beta')
-        return 'packet';
-    if (word === 'architecture-beta')
-        return 'architecture';
+    if (word.slice(-5) === '-beta')
+        return word.slice(0, -5);
     return word;
 }
 /** 无类型信息的行：空行 / mermaid 注释 / frontmatter 键（纯函数）。 */

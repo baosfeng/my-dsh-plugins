@@ -13,9 +13,10 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { createAssetHandler, assetNameOf, ASSETS_PREFIX } from '../lib/routes/assets.js'
+import { MERMAID_ENGINE_FILE } from '../lib/routes/paths.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const ENGINE = join(here, '..', 'assets', 'mermaid-10.9.3.min.js')
+const ENGINE = join(here, '..', 'assets', MERMAID_ENGINE_FILE)
 const PANZOOM = join(here, '..', 'assets', 'panzoom-4.6.2.min.js')
 const MARKED = join(here, '..', 'assets', 'marked-18.1.0.umd.js')
 const HIGHLIGHTJS = join(here, '..', 'assets', 'highlightjs-11.12.0.min.js')
@@ -35,12 +36,18 @@ function mockResponse() {
   }
   return res
 }
-const req = (method = 'GET', headers = {}) => ({ method, headers, url: ASSETS_PREFIX + '/mermaid-10.9.3.min.js' })
+const req = (method = 'GET', headers = {}) => ({ method, headers, url: ASSETS_PREFIX + '/' + MERMAID_ENGINE_FILE })
 
 test('资源路由前缀与 client 端字面量一致（跨半边契约）', () => {
   assert.equal(ASSETS_PREFIX, '/md-render/assets')
   const client = readFileSync(join(here, '..', 'lib', 'client.js'), 'utf8')
-  assert.ok(client.includes('/md-render/assets/mermaid-10.9.3.min.js'), 'client fetches the same prefix')
+  assert.ok(client.includes(ASSETS_PREFIX + '/' + MERMAID_ENGINE_FILE), 'client fetches the same prefix')
+})
+
+test('引擎文件名 = paths.ts 常量（升级到 12.2.0 后仍单一真源）', () => {
+  // 版本号显式钉住：升级时这里必须改，避免文件名静默漂移。
+  assert.equal(MERMAID_ENGINE_FILE, 'mermaid-12.2.0.min.js')
+  assert.equal(assetNameOf(ASSETS_PREFIX + '/' + MERMAID_ENGINE_FILE), MERMAID_ENGINE_FILE, '白名单命中')
 })
 
 test('引擎文件存在、是 UMD、且 SHA256 与构建期冻结值一致', () => {
@@ -48,11 +55,14 @@ test('引擎文件存在、是 UMD、且 SHA256 与构建期冻结值一致', ()
   const bytes = readFileSync(ENGINE)
   const text = bytes.toString('utf8')
   assert.ok(text.includes('window') || text.includes('globalThis'), 'UMD build')
-  assert.equal(
-    createHash('sha256').update(bytes).digest('hex'),
-    '5a8ec91820bd55afef049068489369910e5d6ce70c8103952f27e29d3e76e8bc',
-    'frozen engine SHA256',
-  )
+  assert.ok(text.includes('globalThis["mermaid"]'), '注入 <script> 后落 window.mermaid')
+  const actual = createHash('sha256').update(bytes).digest('hex')
+  assert.equal(actual, 'a8a6a6f805b074a8261a2825c86f99c8054acb3b35f50bb7e24a4f9f2c3c3b9f', 'frozen engine SHA256')
+  // 冻结值必须与构建期脚本里的值一致（两处各自硬编码会漂移）。
+  const build = readFileSync(join(here, '..', 'scripts', 'build.mjs'), 'utf8')
+  const frozen = new RegExp("\\[MERMAID_ENGINE_FILE\\]:\\s*'([0-9a-f]{64})'").exec(build)
+  assert.ok(frozen, 'build.mjs 冻结了 MERMAID_ENGINE_FILE 的 SHA256')
+  assert.equal(frozen[1], actual, 'build.mjs SHA256 = assets 实算值')
 })
 
 test('panzoom 也随包发布、UMD 形态、SHA256 与构建期冻结值一致（需求 1 的 vendored 库）', () => {
@@ -109,8 +119,8 @@ test('两个新资产也在白名单里可服务（client 的懒加载 URL 与�
 test('按白名单文件名分派：panzoom 可服务，未登记资源 404（不做目录穿越）', async () => {
   assert.equal(assetNameOf(ASSETS_PREFIX + '/panzoom-4.6.2.min.js'), 'panzoom-4.6.2.min.js', '白名单命中')
   assert.equal(
-    assetNameOf(ASSETS_PREFIX + '/mermaid-10.9.3.min.js?x=1#y'),
-    'mermaid-10.9.3.min.js',
+    assetNameOf(ASSETS_PREFIX + '/' + MERMAID_ENGINE_FILE + '?x=1#y'),
+    MERMAID_ENGINE_FILE,
     '忽略 query / hash',
   )
   assert.equal(assetNameOf(ASSETS_PREFIX + '/../../package.json'), null, '未登记一律拒绝')

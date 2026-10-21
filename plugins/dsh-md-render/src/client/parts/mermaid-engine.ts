@@ -9,9 +9,10 @@
 //  · 无 document（伪 DOM / SSR）→ ensureMermaid() 返回 null；
 //  · fetch / 注入失败 / 注入后仍缺 window.mermaid → reject，卡片显示源码 + 原因。
 //
-// 离屏渲染：mermaid 10.9.3 解析失败时会**自己**往渲染容器里插「炸弹图」，该版本不认
-// suppressErrorRendering。把渲染导向一个脱离视口、但仍参与布局的容器，失败图形随容器
-// 一起消失（display:none / visibility:hidden 会让 mermaid 量不到节点尺寸，不能用）。
+// 离屏渲染：把渲染导向一个脱离视口、但仍参与布局的容器，SVG / 错误输出都留在容器里，
+// 失败随容器一起丢弃（display:none / visibility:hidden 会让 mermaid 量不到节点尺寸，不能用）。
+// 12.2.0 起 suppressErrorRendering 生效（解析失败不再往页面插「炸弹图」），离屏容器
+// 仍是第二道保险 —— 引擎行为变化不会把错误图形漏到对话里。
 
 /** 超长块跳过（与 mermaid 自身 maxTextSize 5e4 对齐，不做无谓渲染）。 */
 const MAX_SOURCE_CHARS = 50000
@@ -22,11 +23,11 @@ const OFFSCREEN_ATTR = 'data-mdr-mm-offscreen'
 /** mermaid 引擎契约（window.mermaid 用到的最小面）。 */
 interface MermaidEngine {
   initialize(config: { startOnLoad: boolean; securityLevel: string; suppressErrorRendering?: boolean }): void
-  /** 第三个参数是渲染容器：失败时引擎的错误图形只落在这个容器里。 */
+  /** 第三个参数是渲染容器：SVG / 错误输出都落在这个容器里，便于整体丢弃。 */
   render(id: string, source: string, container?: Element): Promise<{ svg: string }>
 }
 
-/** 引擎初始化配置（10.9.3 不认识 suppressErrorRendering，留着是为了升级后自动多一层保险）。 */
+/** 引擎初始化配置（12.2.0 认 suppressErrorRendering：失败不渲染炸弹图，直接 reject）。 */
 const MERMAID_INIT = { startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true }
 
 /** 在飞的加载 Promise（失败即清空：卡片「重试」必须能真的重新加载一次）。 */

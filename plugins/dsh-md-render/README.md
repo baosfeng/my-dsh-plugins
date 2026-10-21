@@ -40,7 +40,7 @@
 - **围栏语言识别（双源互补 + DOM 兜底）**：主源是 **client 侧的会话事件流索引** —— 从 `ctx.sessions.binding(id).eventSource` 的原始 Session 事件里取 markdown **原文**按内容哈希建表，**天然含历史**，因此**冷启动 / 重启后打开历史会话也命中**，且命中即**零 RPC**；未命中再回落 host 半的**实时围栏语言索引**（订阅 `session/event`，按块内容哈希批量查询）与 **DOM 契约**（`code.language-*` / banner infostring → `js` / `json` / `bash` 等零额外请求）。判定结果带出的 `confirmed` 只用来区分「**确证无语言**」（再按内容分流出 markdown / 代码）与「**识别失败**」（走代码视图、语言位留空）；**只判「是不是 markdown 文档」，绝不猜语言、绝不编造语言名**。
 - **「渲染为…」三态切换（所有围栏块可用）**：块内「图表 / Markdown / 源码」控件（hover / 键盘 focus / 触屏三路可达；mermaid 卡片**不**承载它 —— 卡片头的「预览 / 代码」已覆盖「看源码」这条意图，同一意图只留一套入口）；优先级 **手动覆盖 > 语言索引 > DOM 契约**，用于模型把 Java 写成 `js` 这类误判；覆盖值按内容哈希记入 `sessionStorage`，刷新后仍记得。
 - **上下文注入块渲染**：宿主把上下文注入正文（**子 agent 回传消息**、AGENTS.md 等）渲染为纯文本 `pre[data-context-text]`；本插件在 DOM 层用**自研 markdown 渲染器**渲染，原文节点保留并置 `hidden`。
-- **mermaid 图表卡片**：`mermaid` / `mmd` 围栏块渲染为图表卡片（常驻「预览 / 代码」+ 缩放分段 + **全屏浮窗** +「更多」菜单；导出 PNG / SVG 与缩放模式收在菜单里）；**渲染失败时以原始源码为主**——首屏即源码（可复制），错误原因降为一行灰字并保留「重试」，绝不静默丢内容。引擎 `assets/mermaid-10.9.3.min.js` 由 host 半静态托管，client 首次渲染时按需 fetch，**不内联进 bundle**。
+- **mermaid 图表卡片**：`mermaid` / `mmd` 围栏块渲染为图表卡片（常驻「预览 / 代码」+ 缩放分段 + **全屏浮窗** +「更多」菜单；导出 PNG / SVG 与缩放模式收在菜单里）；**渲染失败时以原始源码为主**——首屏即源码（可复制），错误原因降为一行灰字并保留「重试」，绝不静默丢内容。引擎 `assets/mermaid-12.2.0.min.js`（npm latest，覆盖 flowchart / sequence / class / state / ER / gantt / pie / mindmap / timeline / kanban / architecture / block / packet / radar / treemap / sankey / xychart / quadrant / requirement / gitGraph / journey / C4 等）由 host 半静态托管，client 首次渲染时按需 fetch，**不内联进 bundle**。
 - **图表浮窗 + 缩放 / 平移**：卡片可开**页面内 `<dialog>` 浮窗**（90vw × 85vh + 遮罩，Esc / 关闭按钮 / 点遮罩三路退出，宿主节点原位归还）——**不是**浏览器 Fullscreen API；缩放 / 平移**优先**用 vendored `@panzoom/panzoom@4.6.2`（走 `assets/` 懒加载，对 `lib/client.js` 增量 0），**它拉不起来时自动切内置降级引擎**（纯 CSS `transform`，零运行时加载）—— 任何环境下按钮都必须有反应，**绝不静默丢弃点击**。缩放分段 = **实时百分比 / ±**（− 与 + 夹一个显示值，视觉上算一个控件）；**全屏浮窗 / 适应 / 铺满**收进「更多」菜单：**「适应」是跟随容器的保持态**（全屏 / 窗口 / 容器尺寸变化自动重算，draw.io 的 `Fit Window` 同款），**「铺满」**按容器宽度填满（PhotoSwipe 的 `fill` / Panzoom 的 `cover`），**双击在「适应 ↔ 实际大小」间切换**（键盘 `0` 才是真复位）；缩放锚点**跟随指针 / 手势中心**；进浏览器全屏**先收掉浮窗**（两层容器绝不同时存在）；键盘 `+ - 0` 与方向键、`Ctrl+滚轮`（触控板捏合）、拖拽平移 —— **快捷键与手势全部写进按钮 hover 提示**（此前实现了却没人知道）。
 - **预览交互便捷性（对照市面成熟产品取证后补齐）**：代码块**行号切换**（默认关；打开后左侧行号列与代码同字体同字高逐行对齐，**换行态自动让位**——逻辑行会占多行物理行、行号必然错位）、代码块**换行切换**（官方 `CodeToolbar` 有 wrap/unwrap，自研版此前漏掉 = 能力倒退；默认不换行 ⇒ 默认视觉零变化）、markdown **图片点击放大**（原生 `<dialog>` 模态，Esc / 点遮罩 / 点图片三路关闭 + 键盘可达，`src` 仍过 `mdSafeImageSrc` 白名单）。
 - **思考块默认展开**：对官方折叠行派发**一次真实 click**，展开动画 / 结构 / a11y 全走官方；用户手动折叠后不再干预。
@@ -75,7 +75,7 @@
 | ---------------------------------------------- | ---------- | ---------------------------------------------------- |
 | `/md-render/api/config`                        | GET / PUT  | 配置读写（归一 + 合并行内已有键后落盘）              |
 | `/md-render/api/langs?h=<hash>&h=<hash>…`      | GET        | 围栏语言索引查询（内容哈希 → 语言；单次 ≤64 个哈希） |
-| `/md-render/assets/mermaid-10.9.3.min.js`      | GET / HEAD | mermaid 引擎静态资源（ETag / 304 / 405）             |
+| `/md-render/assets/mermaid-12.2.0.min.js`      | GET / HEAD | mermaid 引擎静态资源（ETag / 304 / 405）             |
 | `/md-render/assets/panzoom-4.6.2.min.js`       | GET / HEAD | panzoom 缩放 / 平移库静态资源                        |
 | `/md-render/assets/marked-18.1.0.umd.js`       | GET / HEAD | **自研 markdown 渲染器的解析层**（MIT）              |
 | `/md-render/assets/highlightjs-11.12.0.min.js` | GET / HEAD | **自研代码块渲染器的高亮层**（BSD-3-Clause）         |
@@ -97,7 +97,7 @@
 | 旧路由 `/md/api`、`/think-zh-expand/api`、`/mermaid-render/api`、`/mermaid-render/assets/*` | 不兼容、直接 404：改用 `/md-render/api`、`/md-render/assets`（仅包内契约，无外部消费者）                                                                                                                                                                                       |
 | 设置页 3 个 tab → 1 个「渲染」tab（三分组）                                                 | 无需动作                                                                                                                                                                                                                                                                       |
 | 配置键扁平 → 命名空间（`markdown.*` / `thinking.*` / `mermaid.*`）                          | **读取兼容**，旧键继续生效；下次保存起落盘为新结构                                                                                                                                                                                                                             |
-| 自实现渲染开关（0.3.0 起已下线，0.5.0 起能力回归**自研**）                                  | `syntaxHighlight` / `languageLabel` / `lineNumbers` / `taskList` / `strikethrough` / `image` / `nestedList` / `mathStructures` / `tableSort` / `tableFold` / `copyButtonPosition` / `codeTheme` 仍不存在（能力由自研渲染器提供，无开关）；patch 里的旧键**保留无害**（被忽略） |
+| 自实现渲染开关（0.3.0 起已下线，0.5.0 起能力回归**自研**）                                  | `syntaxHighlight` / `languageLabel` / `lineNumbers` / `taskList` / `strikethrough` / `image` / `nestedList` / `tableSort` / `tableFold` / `copyButtonPosition` / `codeTheme` 仍不存在（能力由自研渲染器提供，无开关）；patch 里的旧键**保留无害**（被忽略） |
 
 system-prompt section 名保持 `dsh-mermaid-render`（宿主按 name 去重），**非破坏性**；中文思考指令不在此注入，由 dsh-my-memory 的「全局提示词」提供。
 
@@ -164,7 +164,7 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-md-render
 - **解析层 / 高亮层是懒加载的**：页面首次需要时 fetch 并注入 `<script>`，因此**首屏到「接管」之间有一个微任务 + 一次同源请求的窗口**（期间块保持宿主官方形态，就绪通知后自动补渲染）；加载失败按会话缓存（不再重试），块停在宿主官方形态，不报错。
 - **官方 `react-dom/client` 不可用**（极旧或裁剪宿主）：DOM 注入点不动宿主 DOM，`MarkdownView` 落 `<pre>` 兜底。
 - **单块超长**保持宿主原样：markdown 围栏块 > 10 万字符、代码块 > 20 万字符（其中 > 6 万字符只跳过高亮、内容照常渲染）、上下文注入块 > 20 万字符、mermaid 源码 > 5 万字符。
-- **数学公式不做**（用户口径：暂不做）；表格容错只覆盖上述两种写法（纯空格分隔、缺分隔行等「不是表格」的写法不会渲染为表格）。
+- 表格容错只覆盖上述两种写法（纯空格分隔、缺分隔行等「不是表格」的写法不会渲染为表格）。
 - **raw HTML 永远是字面文本**（与官方 `MarkdownText` 同口径）：模型输出不会被当 HTML 执行；链接只放行 `http` / `https` / `mailto` 与同源相对路径，图片只放行 `http(s)` 与同源相对路径（其余渲染 alt 文本）。
 - **思考块默认展开**是 DOM 层派发点击（官方没有任何扩展点）；选择器失配（宿主升级改属性）时静默退回官方默认。
 - **外观是插件自己的、不承诺跨版本稳定**：`--mdr-*` 设计 token 与具体字号 / 圆角 / 间距会随视觉迭代调整（类名契约不变，见「公共 API 契约」）。颜色取自宿主语义变量，因此**极端自定义主题**下若宿主别名色本身对比度不足，本插件也只会给出同样不足的观感（语法配色已按「向正文色混合」尽量保底，实测不低于官方 shiki 调色板）。代码块**长行横向滚动**（不软换行）是有意的保真取舍：与官方 `pre-wrap` + `break-all` 的换行口径不同，超长单行需要横向拖动查看。

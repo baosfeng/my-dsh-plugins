@@ -14,7 +14,7 @@ export const CONFIG_API_PREFIX = '/md-render/api';
 /** 静态资源前缀（client 侧派生出引擎 URL）。 */
 export const ASSETS_PREFIX = '/md-render/assets';
 /** 引擎文件名（host 读 assets/ 下同名文件；client fetch 同一名字）。 */
-export const MERMAID_ENGINE_FILE = 'mermaid-10.9.3.min.js';
+export const MERMAID_ENGINE_FILE = 'mermaid-12.2.0.min.js';
 /** 语言索引查询端点（host 半按消息 markdown 建「内容哈希 → 语言」索引，client 半查表，issue #466）。 */
 export const LANGS_API_URL = CONFIG_API_PREFIX + '/langs';
 /** 语言索引查询的参数名（client 半派生 URL 时共用，避免两侧各写一个字面量）。 */

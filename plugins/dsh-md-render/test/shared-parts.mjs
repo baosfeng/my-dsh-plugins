@@ -88,7 +88,7 @@ describe('DOM 扫描器走共享骨架', () => {
 })
 
 describe('内容渲染完全用插件自己的实现（不依赖官方渲染组件）', () => {
-  it('产物里没有旧的重复实现（数学 / 表格渲染 / 轨迹接管）', () => {
+  it('产物里没有旧的重复实现（表格渲染 / 代码分词 / 轨迹接管）', () => {
     const artifact = read('lib/client.js')
     for (const gone of [
       'parseMath',

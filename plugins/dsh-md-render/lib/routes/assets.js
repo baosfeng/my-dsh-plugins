@@ -2,7 +2,7 @@
  * dsh-md-render — `/md-render/assets` 静态资源路由（mermaid 引擎 + panzoom + marked + highlight.js）。
  *
  * 四个库都**不内联**进 client bundle（issue #185 的 4.48 MB base64 冗余教训）：
- * `assets/mermaid-10.9.3.min.js`（3.34 MB）、`assets/panzoom-4.6.2.min.js`（10 KB）、
+ * `assets/mermaid-12.2.0.min.js`（5.49 MB）、`assets/panzoom-4.6.2.min.js`（10 KB）、
  * `assets/marked-18.1.0.umd.js`（47 KB，自研 markdown 渲染器的解析层）与
  * `assets/highlightjs-11.12.0.min.js`（129 KB，自研代码块渲染器的高亮层）
  * 由 webServer 静态托管，client 首次需要时 fetch 并按需注入 `<script>`（不影响启动速度）。

@@ -92,7 +92,7 @@ test('client bundle：不含自绘助手节点 / 自绘思考块 / 旧包名', (
 })
 
 test('client bundle：不内联 mermaid 引擎（走 assets 静态路由）', () => {
-  assert.equal(CODE.includes('/md-render/assets/mermaid-10.9.3.min.js'), true, 'engine served from the assets route')
+  assert.equal(CODE.includes('/md-render/assets/mermaid-12.2.0.min.js'), true, 'engine served from the assets route')
 })
 
 test('client bundle：内容渲染完全用插件自己的实现（不碰官方 MarkdownText / CodeBlock）', () => {

@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+### 变更
+
+- **mermaid 引擎升级 10.9.3 → 12.2.0**（npm latest，MIT）：vendored UMD `assets/mermaid-12.2.0.min.js`（5.49 MB，替换原 3.34 MB 资产，**体积 +64%**）——升级代价经体积门禁显式评审后刷新基线（`scripts/client-size-baseline.json`：基线 + max(64KB, 15%) 余量，大版本换代按设计必须评审）。`MERMAID_ENGINE_FILE` / 构建期 SHA256 冻结值 / 资产路由测试同步；`mermaid.initialize` + `mermaid.render(id, source, container)` 契约在 12.2.0 上实测兼容（flowchart / sequenceDiagram / erDiagram / kanban / timeline 真实渲染零 console 错误），`suppressErrorRendering: true` 自 12.x 起生效，离屏容器保留为第二道保险。
+- **图表类型识别覆盖 12.2.0 新增类型**：`MM_KIND_NAMES` 按实测 `detectType` 补齐 architecture / block / packet / radar / treemap / venn / wardley / swimlane / ishikawa / cynefin / treeView / agentflow / railroad / usecase / eventmodeling / info 等裸名与 `-beta` 别名，规范名统一去掉 `-beta`。
+- **系统提示词同步**（`dsh-mermaid-render` section）：显式列出 12.2.0 支持的图表关键字，正文仍 ≤ 500 字符（实测 497）。
+- **清理「公式引擎」残留文案**：README 删除 `mathStructures` 旧键与「数学公式不做」声明（0.3.0 已移除 KaTeX，插件内无公式实现）。
+
 ### 新增
 
 - **无语言围栏的语言推断**（`markdown.inferLang`，默认开）：先按内容高置信识别（JSON / shell / SQL / Kotlin / Python / TS / JS / Java / C++ / HTML / CSS），认不出再用**项目主语言**兜底 —— 新增 host 路由 `GET /md-render/api/project-lang?cwd=…`，只对**固定构建标记文件清单**做 `lstat`（`build.gradle.kts`→Kotlin、`tsconfig.json`→TypeScript、`go.mod`→Go、`Cargo.toml`→Rust、`pyproject.toml`→Python…），**不遍历目录、不读文件内容、不跟随符号链接**，结果按 cwd 有界缓存（TTL 10 分钟）。日志块（时间戳行占多数）不推断；推断值只用于高亮 + 胶囊，带 `data-mdr-lang-inferred` 标识与「按内容推断 / 按项目推断」浮层，胶囊用虚线边区分，**不冒充围栏原文标注**，也不改变 markdown / 代码分流。真实会话（android-monitor，96 个无语言块）实测：内容识别命中 69（Kotlin 62 / SQL 4 / shell 3）、日志留空 4、项目兜底 23。

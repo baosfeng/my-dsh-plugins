@@ -197,7 +197,7 @@ test('解析层懒加载：mermaid / panzoom 走运行时脚本，不进 bundle'
   const zoom = read('src/client/parts/mermaid-zoom.ts')
   assert.ok(zoom.includes('fetch(PANZOOM_SCRIPT_URL)'), 'fetches panzoom lazily')
   assert.equal(/require\(['"]panzoom['"]\)/.test(zoom), false, 'no bundled panzoom')
-  // 离屏渲染失败容器（mermaid 10.9.3 的错误图形只落在这里）
+  // 离屏渲染失败容器（12.2.0 的失败输出也只会落在离屏容器里）
   assert.ok(engine.includes('function renderSvg(') && engine.includes('dropOffscreen'))
 })
 
@@ -222,6 +222,28 @@ test('纯函数：mermaid 类型 / 标题提取', () => {
   assert.equal(api.mermaidKindOf('flowchart TD\n  A-->B'), 'flowchart')
   assert.equal(api.mermaidKindOf('graph LR\n  A-->B'), 'flowchart')
   assert.equal(api.mermaidKindOf('sequenceDiagram\n  A->>B: hi'), 'sequenceDiagram')
+  // 12.2.0 新增 / 变体的关键字（裸名与 -beta 别名都识别，规范名去掉 -beta）
+  for (const [source, kind] of [
+    ['kanban\n  Todo\n    A', 'kanban'],
+    ['timeline\n  title 发布节奏', 'timeline'],
+    ['treemap-beta\n  "a"', 'treemap'],
+    ['treemap\n  "a"', 'treemap'],
+    ['radar-beta\n  axis a', 'radar'],
+    ['venn-beta\n  set A', 'venn'],
+    ['wardley-beta\n  A [1,2]', 'wardley'],
+    ['swimlane-beta\n  A', 'swimlane'],
+    ['ishikawa-beta\n  A', 'ishikawa'],
+    ['cynefin-beta\n  A', 'cynefin'],
+    ['treeView-beta\n  A', 'treeView'],
+    ['agentflow-beta\n  A', 'agentflow'],
+    ['railroad-beta\n  A', 'railroad'],
+    ['usecase-beta\n  A', 'usecase'],
+    ['eventmodeling\n  A', 'eventmodeling'],
+    ['architectural note\n  A', 'mermaid'],
+    ['unknown-beta\n  A', 'mermaid'],
+  ]) {
+    assert.equal(api.mermaidKindOf(source), kind, 'kind of ' + JSON.stringify(source))
+  }
   assert.equal(api.mermaidKindOf('stateDiagram-v2\n  [*] --> A'), 'stateDiagram')
   assert.equal(api.mermaidKindOf('%%{init: {"theme":"dark"}}%%\nflowchart LR\n  A-->B'), 'flowchart')
   assert.equal(api.mermaidKindOf('plain words'), 'mermaid')

@@ -482,50 +482,13 @@ Object.assign(exports,{LANGS_API_URL,LANGS_HASH_PARAM,LANG_BATCH_MAX,LANG_MAX_RE
 
     "use strict";
 // ── 围栏语言索引（client 半，双源互补的**主源**）：会话事件流 ────────────
-// 宿主 0.2.0-rc.2 实测（调研报告 tmp/md-render-lang-source/report.md §7）：
-//   · banner 文本走 `supportsHighlighting(lang) ? lang : labels.codeLabel`
-//     —— 只有 shiki 语法表认识的标记才进 DOM，其余一律显示本地化标签「代码块」；
-//   · 非空代码块的 <code> 也不带 language-*（只有 node.value === '' 的
-//     空围栏分支才带）；
-//   ⇒ text / plaintext / txt / mermaid / mmd 与「无语言」块在 DOM 里**完全同形**，
-//     任何 DOM 启发式都取不到语言（实测接管数 toggles=0 / views=0）。
-//
-// **为什么必须有这一半**（host 半实时索引的结构性缺口）：host 半只订阅
-// `session/event`、**不读历史** —— 用户打开的是历史会话、而插件实例是之后才启动
-// （冷启动 / 重启后打开历史会话）时，host 索引为空，按哈希查表永不命中。
-// 而 `ctx.sessions.binding(id).eventSource` 的窗口里就是这个会话**已加载的全部**
-// 原始事件（含历史），所以本表是「历史会话 + 冷启动」唯一能命中的来源。
-//
-// 语言的真源在**会话事件流**：官方 ctx.sessions.binding(id).eventSource 的窗口里就是
-// 未经裁剪的原始 Session 事件，assistant/message.data.message.content[].text 与
-// user/message.data.content[].text 是模型可见消息的 markdown 原文。
-// host 半的实时索引（src/lang-index.ts，`session/event` 订阅）作为**兜底**保留：
-//   本表命中 → 零 RPC；本表未命中 / 取不到 → 才可能走那一次批量查询（routes/langs.ts）。
-//
-// 映射（内容哈希 + 文档序 FIFO，报告 §3.2-A）：
-//   1. 事件侧：扫每段 markdown 的围栏块，建 hash(规范化代码) → langs[]（文档序，
-//      含 '' = 确证无语言）；只取 surfaceOp === 'append' 的 durable 事件；
-//   2. DOM 侧：对 div.md-code-block 取 <pre>.textContent 算同一哈希查表；
-//   3. 候选互不相同 → 按 DOM 文档序 FIFO，且要求 DOM 内同哈希块数与候选数一致；
-//      数量不符 / 取不到位 → 返回 undefined（调用方静默退回现状），**绝不猜**。
-//
-// 降级（真降级）：ctx.get('sessions') 取不到 / 任何异常 → 空表 → 调用方退回
-// resolveBlockLang（DOM 契约 + host 索引），行为与修复前一致。
-// 无语言 / 非目标语言的块在任何路径下都不会被接管。
-//
-// 依赖注入（R1 三方案实测结论，见报告；本轮已用 rc.2 asar 抽出的真实 cordis 4.0.4 复测）：
-//   · 采用：`ctx.get('sessions', false)` + `exports.inject` 保持 `[]` —— 服务在则取到，
-//     服务缺则返回 undefined（不抛）；服务晚于 apply 提供（真实首屏顺序）也照样取到。
-//     cordis 4 的 ReflectService.get 契约原文即 "read a service ... without the inject
-//     requirement"，零新增硬依赖；
-//   · `inject: { optional: [...] }` —— cordis 4.0.4 **不支持可选注入**（对象形式是
-//     「服务名 → intercept 配置」），实测 apply 根本不执行：不采用；
-//   · `inject: ['sessions']` —— 服务缺失时 apply 完全不执行 → **整个 client 半失效**
-//     （连样式与设置页一起没）：不采用（本轮实测确认）。
-//
-// 硬约束：不读 React fiber 私有属性；不写官方元素的 style / class / aria；
-// 不注册任何节点级 seat；调用时机由调用方钉死在 [data-streaming] 门控之后
-// （块稳定时才查表）。
+// 非空代码块不带 language-*、banner 只显示 shiki 认识的语言名 —— mermaid / mmd /
+// 无语言块在 DOM 里完全同形，只能靠事件流原文的哈希查表（host 半不读历史，本表读
+// eventSource 全量窗口，是历史会话 + 冷启动唯一命中来源）。映射：hash(规范化代码)
+// → 文档序候选（含 '' = 确证无语言）；多候选按文档序 FIFO，数量不符 → undefined。
+// 流式：live-chunk text-delta 拼接后解析围栏，闭合位进 byHash、未闭合尾进 liveOpen。
+// 降级：取不到 sessions / 异常 → 空表，调用方退回 DOM 契约 + host 索引。
+// 依赖注入 ctx.get('sessions', false)；不读 fiber、不写官方 style / class / aria。
 /** 已解析事件的上限（性能护栏：seen 集合规模）。 */
 const MAX_FENCE_EVENTS = 20000;
 /** 单段 markdown 的扫描上限（字符）；超出不参与建表。 */
@@ -535,12 +498,21 @@ const MAX_FENCE_CODE_CHARS = 200000;
 /** 歧义消解时一次枚举的代码块上限（性能护栏）。 */
 const MAX_ORDER_SCAN_BLOCKS = 4000;
 function emptyFenceIndex() {
-    return { sessionId: '', revision: -1, byHash: new Map(), seen: new Set() };
+    return {
+        sessionId: '',
+        revision: -1,
+        byHash: new Map(),
+        seen: new Set(),
+        live: new Map(),
+        liveOpen: new Map(),
+        closedCount: 0,
+    };
 }
 let fenceIndex = emptyFenceIndex();
-/** 重置为空表（会话切换 / 取不到事件源 / 任何异常）。已是空表则原样返回
- *  （本函数每批扫描都会被调用，避免每次重新分配 Map / Set）。 */
+/** 重置为空表（已是空表直接返回，避免每批重分配 Map / Set）。 */
 function resetFenceIndex() {
+    if (typeof dropFenceSubscription === 'function')
+        dropFenceSubscription();
     if (fenceIndex.revision === -1)
         return;
     fenceIndex = emptyFenceIndex();
@@ -565,13 +537,8 @@ function fenceInfoLang(info) {
         .split(/\s+/)[0];
     return token === undefined ? '' : token.toLowerCase();
 }
-/**
- * 保守围栏解析（报告 §8-R2）：行首 0–3 空格 + 三反引号/三波浪号（≥3）+ info string 开栏，
- * 同字符且长度不短于开栏的纯围栏行闭栏；未闭合的尾巴一律忽略（成对才算）。
- * 与官方 remark 的边角行为可能不同 —— 因此结果只用于**白名单语言匹配**，
- * 误判不会造成破坏，只会少接管。
- */
-function collectFences(text, sink) {
+/** 保守围栏解析（闭栏 = 同字符、不短于开栏的纯围栏行）；只用于白名单语言匹配。 */
+function collectFences(text, sink, onOpen) {
     const lines = String(text ?? '').split(/\r?\n/);
     let open = null;
     for (let i = 0; i < lines.length; i += 1) {
@@ -587,17 +554,23 @@ function collectFences(text, sink) {
         sink(open.lang, lines.slice(open.line + 1, i).join('\n'));
         open = null;
     }
+    if (open !== null && onOpen !== undefined)
+        onOpen(open.lang, lines.slice(open.line + 1).join('\n'));
 }
 /** 收下一段围栏块（空内容 / 超长不计入 —— 下游同样会拒绝它们）。 */
-function collectInto(byHash, lang, code) {
-    const hash = fenceHash(fenceNormalize(code));
+function pushFenceEntry(index, hash, lang, closed) {
     if (hash === '')
         return;
-    const list = byHash.get(hash);
+    const list = index.byHash.get(hash);
     if (list === undefined)
-        byHash.set(hash, [lang]);
+        index.byHash.set(hash, [{ lang: lang, closed: closed }]);
     else
-        list.push(lang);
+        list.push({ lang: lang, closed: closed });
+    if (closed)
+        index.closedCount += 1;
+}
+function collectInto(index, lang, code) {
+    pushFenceEntry(index, fenceHash(fenceNormalize(code)), lang, true);
 }
 /** 内容块数组 → 文本段（只认 string 的 text 字段；其它块类型原样跳过）。 */
 function pushTexts(out, content) {
@@ -629,10 +602,8 @@ function eventMarkdowns(event) {
 }
 /** 事件流条目 → 原始 Session 事件（非 durable 事件条目返回 null）。 */
 function eventOf(entry) {
-    if (entry === null || typeof entry !== 'object')
-        return null;
     const record = entry;
-    if (record.type !== 'event')
+    if (record === null || record === undefined || record.type !== 'event')
         return null;
     return record.event !== null && typeof record.event === 'object' ? record.event : null;
 }
@@ -653,12 +624,54 @@ function absorbFences(index, entries) {
                 continue;
             index.seen.add(seq);
         }
+        if (event.type === 'assistant/live-chunk') {
+            absorbLiveChunk(index, event);
+            continue;
+        }
         if (event.surfaceOp !== 'append')
             continue;
         for (const markdown of eventMarkdowns(event)) {
-            collectFences(markdown, (lang, code) => collectInto(index.byHash, lang, code));
+            collectFences(markdown, (lang, code) => collectInto(index, lang, code));
         }
     }
+}
+/**
+ * 流式增量：assistant/live-chunk 的 text-delta 是流式原文（StreamChunk，
+ * packages/llm/llm/src/types.ts:472）。拼接后只在出现围栏标记时重解析一次。
+ */
+function absorbLiveChunk(index, event) {
+    const data = (event.data ?? {});
+    const chunk = data.chunk;
+    if (chunk === undefined || chunk === null || chunk.type !== 'text-delta' || typeof chunk.text !== 'string')
+        return;
+    if (index.live.size > 64)
+        index.live.clear(); // 会话异常增长时的护栏（正常 ≤ 每轮 1 条）
+    const key = String(data.turn) + ':' + String(data.step) + ':' + String(data.attemptId);
+    const prev = index.live.get(key);
+    const state = prev === undefined ? { text: '', closed: new Set() } : prev;
+    state.text += chunk.text;
+    index.live.set(key, state);
+    if (chunk.text.indexOf('`') >= 0 || chunk.text.indexOf('~') >= 0)
+        registerLiveFences(index, key, state);
+}
+/** 解析一段流式原文的围栏：已闭合 → byHash（按哈希去重）；未闭合尾 → liveOpen。 */
+function registerLiveFences(index, key, state) {
+    let hasOpen = false;
+    collectFences(state.text, (lang, code) => {
+        const hash = fenceHash(fenceNormalize(code));
+        if (hash === '' || state.closed.has(hash))
+            return;
+        state.closed.add(hash);
+        pushFenceEntry(index, hash, lang, true);
+    }, (lang, code) => {
+        const hash = fenceHash(fenceNormalize(code));
+        if (hash === '')
+            return;
+        hasOpen = true;
+        index.liveOpen.set(key, { hash: hash, lang: lang });
+    });
+    if (!hasOpen)
+        index.liveOpen.delete(key);
 }
 /** 安全取属性（null / undefined / 标量 → undefined）——宿主契约缺失时只降级不抛。 */
 function propOf(value, key) {
@@ -666,10 +679,7 @@ function propOf(value, key) {
 }
 /** 会话列表行是否被主视图持有（与官方 dsh-client-ui-session 同一判据：retainedBy.mainView > 0）。 */
 function isMainViewRow(row) {
-    const retained = propOf(row, 'retainedBy');
-    if (retained === undefined)
-        return false;
-    return Number(propOf(retained, 'mainView')) > 0;
+    return Number(propOf(propOf(row, 'retainedBy'), 'mainView')) > 0;
 }
 /** 当前主视图会话 id；列表结构不符 / 没有主视图会话 → ''（调用方退回空表）。 */
 function mainSessionId(sessions) {
@@ -686,14 +696,9 @@ function mainSessionId(sessions) {
     }
     return '';
 }
-/**
- * ctx.get('sessions', false) —— cordis 4 的 ReflectService.get 契约即
- * "Read a service from the store without the inject requirement"，因此**不需要**
- * 声明 inject（硬 inject 在服务缺失时会让 apply 根本不执行，整插件失效）。
- * strict = false：首屏时服务提供者 fiber 可能尚未 active（同 dsh-my-remote 的教训）。
- */
+/** ctx.get('sessions', false)：cordis 4 免 inject 读服务；strict=false 容忍首屏未 active。 */
 function sessionsService(ctx) {
-    if (ctx === null || ctx === undefined || typeof ctx !== 'object')
+    if (ctx === null || typeof ctx !== 'object')
         return null;
     const get = ctx.get;
     if (typeof get !== 'function')
@@ -747,28 +752,35 @@ function fenceEventWindow(ctx) {
         return null;
     }
 }
-/**
- * 按需刷新语言表（每批扫描开头调用一次）：事件源 revision 未变则内部直接返回。
- * 任何异常 / 服务缺失 → 空表（调用方自然降级到原有 DOM 读法）。
- */
-function refreshFenceLangIndex(ctx) {
+/** 事件窗口 → 索引（只刷新，不装配订阅；订阅回调也走这里）。 */
+function refreshFenceLangIndexOnly(ctx) {
     try {
-        const window = fenceEventWindow(ctx);
-        if (window === null) {
+        const win = fenceEventWindow(ctx);
+        if (win === null) {
             resetFenceIndex();
             return;
         }
-        if (window.sessionId === fenceIndex.sessionId && window.revision === fenceIndex.revision)
+        if (win.sessionId === fenceIndex.sessionId && win.revision === fenceIndex.revision)
             return;
-        if (window.sessionId !== fenceIndex.sessionId)
+        if (win.sessionId !== fenceIndex.sessionId)
             resetFenceIndex();
-        fenceIndex.sessionId = window.sessionId;
-        fenceIndex.revision = window.revision;
-        absorbFences(fenceIndex, window.entries);
+        fenceIndex.sessionId = win.sessionId;
+        fenceIndex.revision = win.revision;
+        absorbFences(fenceIndex, win.entries);
     }
     catch (_e) {
         resetFenceIndex();
     }
+}
+/** 已登记闭合围栏数（订阅回调用它判断是否有新闭合）。 */
+function fenceClosedCountOf() {
+    return fenceIndex.closedCount;
+}
+/** 按需刷新语言表；订阅装配在 mermaid-scan（流式闭合可能没有 DOM mutation 事件）。 */
+function refreshFenceLangIndex(ctx) {
+    refreshFenceLangIndexOnly(ctx);
+    if (typeof ensureFenceSubscription === 'function')
+        ensureFenceSubscription(ctx);
 }
 /** 块源码（官方 <pre>.textContent 的规范化形式）；空 / 超长 / 结构不符 → null。 */
 function fenceBlockCode(block) {
@@ -817,18 +829,18 @@ function fenceLangAtDocumentOrder(block, hash, langs) {
         return undefined;
     return langs[position.index];
 }
-/**
- * 块的围栏语言（新来源：会话事件流哈希表）。取不到 / 有歧义 → undefined
- * （调用方回退到原有的 DOM 契约读法）。**绝不猜语言**。
- */
+/** 块的围栏语言（事件流哈希表）；取不到 / 有歧义 → undefined，绝不猜。 */
 function fenceLangOf(block) {
     try {
         const entry = fenceIndex.byHash.size === 0 ? null : fenceBlockCode(block);
         if (entry === null)
             return undefined;
         const hash = fenceHash(entry);
-        const langs = hash === '' ? undefined : fenceIndex.byHash.get(hash);
-        if (langs === undefined)
+        const entries = hash === '' ? undefined : fenceIndex.byHash.get(hash);
+        if (entries === undefined || entries.length === 0)
+            return undefined;
+        const langs = entries.filter((item) => item.closed).map((item) => item.lang);
+        if (langs.length === 0)
             return undefined;
         const first = langs[0];
         if (langs.every((lang) => lang === first))
@@ -839,9 +851,31 @@ function fenceLangOf(block) {
         return undefined;
     }
 }
+/** 按源码查围栏信任：闭合 true / 未闭合尾 false / 查不到或歧义 undefined。 */
+function fenceFactsOfText(source) {
+    try {
+        const code = fenceNormalize(source);
+        const hash = code === '' ? '' : fenceHash(code);
+        if (hash === '')
+            return undefined;
+        const entries = fenceIndex.byHash.get(hash);
+        if (entries !== undefined && entries.length > 0) {
+            const first = entries[0].lang;
+            return entries.every((item) => item.lang === first) ? { lang: first, closed: true } : undefined;
+        }
+        for (const open of fenceIndex.liveOpen.values()) {
+            if (open.hash === hash)
+                return { lang: open.lang, closed: false };
+        }
+        return undefined;
+    }
+    catch (_e) {
+        return undefined;
+    }
+}
 Object.assign(exports,{MAX_FENCE_EVENTS,MAX_FENCE_CODE_CHARS,fenceNormalize,fenceHash,fenceInfoLang,collectFences,refreshFenceLangIndex,resetFenceIndex});
 exports.fenceIndexSize = () => fenceIndex.byHash.size;
-Object.assign(exports,{fenceLangOf});
+Object.assign(exports,{fenceLangOf,fenceFactsOfText,fenceClosedCountOf,currentEventSource,refreshFenceLangIndexOnly,registerLiveFences,absorbLiveChunk});
 
     "use strict";
 // ── 无语言围栏的内容分流：像 markdown 文档 / 像代码 ──────────────────────
@@ -3685,6 +3719,65 @@ const STREAM_SETTLE_MS = 400;
 const STREAM_MIN_OBSERVATIONS = 2;
 /** 本插件接管的围栏语言（与其它注入点的语言集合不重叠 → 分流稳定）。 */
 const MM_FENCE_LANGS = ['mermaid', 'mmd'];
+/** 围栏信任查询：源码文本 → { lang, closed }（lang-source 维护的哈希表）。 */
+function fenceTrustOf(block) {
+    return typeof fenceFactsOfText === 'function' ? fenceFactsOfText(mermaidSourceOf(block)) : undefined;
+}
+/** 新围栏闭合后的重扫钩子（由本文件装配；未装配 → 不重扫）。 */
+let fenceCloseRescan = null;
+/** 当前已订阅的事件源（同一 source 不重复订阅）。 */
+let fenceSubscribedSource = null;
+let fenceUnsubscribe = null;
+/** 装配「围栏闭合」重扫回调（null = 卸掉）。 */
+function installFenceCloseRescan(callback) {
+    fenceCloseRescan = typeof callback === 'function' ? callback : null;
+}
+/** 退订（会话切换 / teardown）。 */
+function dropFenceSubscription() {
+    if (fenceUnsubscribe !== null) {
+        try {
+            fenceUnsubscribe();
+        }
+        catch (_e) {
+            /* 退订异常不影响后续扫描 */
+        }
+    }
+    fenceUnsubscribe = null;
+    fenceSubscribedSource = null;
+}
+/** 事件源 revision 变化 → 刷新索引 → 有新闭合围栏才重扫（防抖到下一拍）。 */
+function ensureFenceSubscription(ctx) {
+    const current = typeof currentEventSource === 'function' ? currentEventSource(ctx) : null;
+    if (current === null)
+        return;
+    const source = current.source;
+    if (typeof source.subscribe !== 'function')
+        return;
+    if (fenceSubscribedSource === current.source)
+        return;
+    dropFenceSubscription();
+    try {
+        const stop = source.subscribe.call(current.source, () => {
+            const before = fenceClosedCountOf();
+            refreshFenceLangIndexOnly(ctx);
+            if (fenceClosedCountOf() <= before || fenceCloseRescan === null)
+                return;
+            setTimeout(fenceCloseRescan, 0);
+        });
+        fenceSubscribedSource = current.source;
+        fenceUnsubscribe = typeof stop === 'function' ? stop : null;
+    }
+    catch (_e) {
+        fenceSubscribedSource = null;
+        fenceUnsubscribe = null;
+    }
+}
+// 事件流里出现「新闭合围栏」时触发一次重扫（scanner.ts 的 rescanForLangs 在同一
+// factory 作用域内；流式闭合不产生 DOM 变更，必须靠事件订阅叫醒扫描）。
+// 上下文中没有扫描器（纯单测）→ 静默跳过，行为不变。
+if (typeof installFenceCloseRescan === 'function' && typeof rescanForLangs === 'function') {
+    installFenceCloseRescan(rescanForLangs);
+}
 /** 已知图表类型关键字 → 展示用规范名（原型 .mm-kind 显示 flowchart 等）。
  *  清单按 mermaid 12.2.0 实测（initialize 后逐个 detectType 命中）补齐；裸关键字与
  *  `-beta` 别名都收，规范名统一去掉 `-beta` 后缀。 */
@@ -3903,31 +3996,65 @@ function settleStream(block) {
     }
     mountMermaidCard(block, source);
 }
+/** 取可挂载源码：空 / 超长 → null；已挂载且内容变了 → 先自愈卸载（绝不留残缺卡片）。 */
+function mountableSource(block) {
+    const source = mermaidSourceOf(block);
+    if (!source.trim() || source.length > MAX_SOURCE_CHARS)
+        return null;
+    const mounted = mmMounts.get(block);
+    if (mounted === undefined)
+        return source;
+    if (mounted.text === source)
+        return null;
+    unmountMermaidCard(block, mounted);
+    return source;
+}
 /**
  * 单个候选块：挂载 / 继续等待 / 自愈卸载。非 mermaid 块立即返回（性能护栏）。
- * 语言判定放在开关之后（关掉 mermaid 渲染时一次请求都不发）；流式块只读 DOM。
+ * 流式分支的判据优先级：
+ *  ① 事件流围栏**已闭合** → 立即渲染（不等消息结束，也不等 400ms 窗口）；
+ *  ② 事件流明确**未闭合** → 不渲染（也不排窗口，避免残缺图）；
+ *  ③ 事件流不可用 / 查不到该内容 → 退回原有「DOM 语言 + 400ms 稳定窗口」（不劣化）。
  */
 function considerMermaidBlock(block, round) {
     if (!renderOptions.mermaid.render)
         return;
     if (isInsideRenderedMarkdown(block))
         return;
-    if (!isMermaidBlock(block, !isMmStreaming(block)))
-        return;
-    const source = mermaidSourceOf(block);
-    if (!source.trim() || source.length > MAX_SOURCE_CHARS)
-        return;
-    const mounted = mmMounts.get(block);
-    if (mounted !== undefined) {
-        if (mounted.text === source)
-            return;
-        unmountMermaidCard(block, mounted); // 源码还在变：拆掉重来，绝不留残缺卡片
-    }
-    if (!isMmStreaming(block)) {
-        mountMermaidCard(block, source); // 历史消息 / 流式已结束：立即渲染
+    if (isMmStreaming(block)) {
+        considerStreaming(block, round);
         return;
     }
-    watchStream(block, source, round);
+    if (!isMermaidBlock(block, true))
+        return;
+    const source = mountableSource(block);
+    if (source !== null)
+        mountMermaidCard(block, source);
+}
+/** 流式分支：闭合位优先，事件流不可用才退回 400ms 窗口。 */
+function considerStreaming(block, round) {
+    const trust = typeof fenceTrustOf === 'function' ? fenceTrustOf(block) : undefined;
+    if (trust === undefined) {
+        considerByWindow(block, round);
+        return;
+    }
+    if (MM_FENCE_LANGS.indexOf(trust.lang) < 0)
+        return;
+    if (!trust.closed) {
+        clearStreamWatch(block);
+        return;
+    }
+    const source = mountableSource(block);
+    if (source !== null)
+        mountMermaidCard(block, source);
+}
+/** 旧判据兜底：DOM 语言 + 400ms 稳定窗口（事件流不可用时行为与今天一致）。 */
+function considerByWindow(block, round) {
+    if (!isMermaidBlock(block, false))
+        return;
+    const source = mountableSource(block);
+    if (source !== null)
+        watchStream(block, source, round);
 }
 /** 扫描 root（自身 / 后代）内的会话滚动容器里的 mermaid 代码块。 */
 function scanMermaidBlocks(root, round) {
@@ -3949,7 +4076,7 @@ function teardownMermaid() {
         clearStreamWatch(block);
     mmMounts.clear();
 }
-Object.assign(exports,{STREAM_SETTLE_MS,MM_FENCE_LANGS,mmSkipKindLine,mmCanonicalKind,mermaidKindOf,mermaidTitleOf,isMermaidBlock,mermaidSourceOf,considerMermaidBlock,scanMermaidBlocks,teardownMermaid});
+Object.assign(exports,{STREAM_SETTLE_MS,MM_FENCE_LANGS,mmSkipKindLine,mmCanonicalKind,mermaidKindOf,mermaidTitleOf,isMermaidBlock,mermaidSourceOf,fenceTrustOf,installFenceCloseRescan,dropFenceSubscription,ensureFenceSubscription,mountableSource,considerStreaming,considerByWindow,considerMermaidBlock,scanMermaidBlocks,teardownMermaid});
 
     // mermaid 图表导出（PNG / SVG 下载 + 复制源码）
     "use strict";

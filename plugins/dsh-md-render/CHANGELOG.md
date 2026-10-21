@@ -9,6 +9,7 @@
 
 ### 变更
 
+- **mermaid 围栏闭合即渲染**：流式期间不再等整轮消息结束 —— 从事件流原文（`assistant/live-chunk` 的 `text-delta`，宿主 `StreamChunk`，`packages/llm/llm/src/types.ts:472`）拼接当前消息文本，解析围栏**闭合位**：已闭合 → 立即挂图表卡片；明确未闭合 → 不渲染残缺图；事件流不可用 / 内容查不到 → 退回原有「DOM 语言 + 400ms 稳定窗口」，行为不变。闭合位按内容哈希对齐（`fenceHash` / 文档序 FIFO），空围栏（裸 `pre > code`）不误判；事件源订阅（`eventSource.subscribe`）在「新围栏闭合」时触发一次重扫（闭合不产生 DOM mutation）；自愈机制保留（渲染后源码再变 → 卸载重挂）。失败态语义不变：事件流取不到 / 报错一律静默降级，不报错、不吞内容。
 - **mermaid 图表跟随宿主深浅 + 套用 Liquid Glass 卡片**：渲染前按宿主信号选 mermaid 12.2.0 的 `theme`（`dark` / `default`），并把宿主 `--dsw-*` 语义色映射为 `themeVariables`（`mainBkg` / `nodeBorder` / `lineColor` / `textColor` / `titleColor` / `attributeBackgroundColorOdd|Even` 等 16 项），以 `%%{init: …}%%` 前置指令**逐图**生效；源码自带 init 指令时原样尊重。宿主信号：`body[data-ds-dark-theme]`（`packages/client/ui-layout/src/client/theme-presenter.ts:15` 定义、`:75-76` 写入）与 `html` 的 `color-scheme`（同文件 `:71`），无信号回落浅色。实测 12.2.0：`mainBkg` / `nodeBorder` / `lineColor` / `textColor` 生效，flowchart 节点填充走 `mainBkg` 而非 `primaryColor`（按实测结论映射）。失败态语义不变（错误图仍随离屏容器丢弃，源码优先）。图表卡同时套用 `--mdr-material` / `--mdr-card-shadow` / `--mdr-radius-lg`。
 - **Liquid Glass 默认外观**（用户从 4 套原型候选里选定，依据 `.open-design/02-style.md` §2/§5）：markdown 正文、代码卡、mermaid 卡、表格、上下文注入块统一改为**半透明材质 + 统一卡片阴影** —— `--mdr-material: blur(22px) saturate(180%)`、`--mdr-card-shadow: 0 12px 32px` 外投影 10% + 顶部 `inset 0 1px 0` 内高光 12%；新增 12 个材质 / 排版 token（`--mdr-font-sans` / `--mdr-font-mono` / `--mdr-material` / `--mdr-card-shadow` / `--mdr-hairline` / `--mdr-heading-weight` / `--mdr-heading-tracking` / `--mdr-body-gap` / `--mdr-quote-bg` / `--mdr-quote-border` / `--mdr-table-head-bg` / `--mdr-frame-head-bg`，全部带默认值）。几何：圆角 4/8/10 → 6/12/14；`--mdr-surface` = code 66%、`--mdr-surface-raised` = banner 58%、描边 = label 15% / 10%。深色覆盖走宿主信号 `body[data-ds-dark-theme]`（`packages/client/ui-layout/src/client/theme-presenter.ts:15` 定义、`:75-76` 写入）：surface 62%、raised 52%、阴影与内高光加强，仍全部由 `--dsw-*` 派生、零裸色值；宿主不提供该属性时回落浅色取值（66% 仍高于 54% 可读红线）。类名与 DOM 结构不变，设置页外观不在本次范围。
 - **mermaid 引擎升级 10.9.3 → 12.2.0**（npm latest，MIT）：vendored UMD `assets/mermaid-12.2.0.min.js`（5.49 MB，替换原 3.34 MB 资产，**体积 +64%**）——升级代价经体积门禁显式评审后刷新基线（`scripts/client-size-baseline.json`：基线 + max(64KB, 15%) 余量，大版本换代按设计必须评审）。`MERMAID_ENGINE_FILE` / 构建期 SHA256 冻结值 / 资产路由测试同步；`mermaid.initialize` + `mermaid.render(id, source, container)` 契约在 12.2.0 上实测兼容（flowchart / sequenceDiagram / erDiagram / kanban / timeline 真实渲染零 console 错误），`suppressErrorRendering: true` 自 12.x 起生效，离屏容器保留为第二道保险。
@@ -26,6 +27,7 @@
 
 ### 测试
 
+- 新增 `test/mermaid-closed.mjs`（4 条：闭合 + 流式中立即渲染 / 未闭合不渲染 / 事件流不可用退回 400ms 窗口 / 闭合后内容再变卸载重挂）。
 - 新增 `test/mermaid-theme.mjs`（宿主深浅信号 → theme 选择 / init 指令前置 / 源码自带 init 不覆盖 / 图表卡材质 4 条）。
 - 新增 `test/liquid-glass.mjs`（12 个新 token 取值 / 卡片容器消费材质 / 深色覆盖块 / `--mdr-surface` ≥54% 透明度阈值）；同步更新既有圆角与表头 token 断言。
 - 新增 `test/fence-content.mjs`（6 条判据用例，含真实会话片段）；`test/lang-fallback.mjs` 补「无语言 + 代码内容 → 代码卡」「无语言 + markdown 文档 → markdown」两条防回归用例。

@@ -119,7 +119,10 @@ function fakeElement(tag = 'div') {
 test('styles-code：围栏卡几何 / 字号 / 语法色 / 底栏三态逐条对齐原型', () => {
   const css = readPart('styles-code.ts')
   assert.ok(css.includes('const STYLES_CODE: string'), '导出 STYLES_CODE 常量')
-  assert.ok(css.includes('.mdr-fence{') && css.includes('border-radius:10px'), '围栏卡 10px 圆角')
+  assert.ok(
+    css.includes('.mdr-fence{') && css.includes('border-radius:var(--mdr-radius-lg)'),
+    '围栏卡走 --mdr-radius-lg（Liquid Glass 14px）',
+  )
   assert.ok(css.includes('border:1px solid var(--mdr-frame-line)'), '1px 发丝边')
   assert.ok(css.includes('.mdr-fence-head{') && css.includes('height:32px'), '头高 32')
   assert.ok(/\.mdr-fence-pill\{[^}]*font-size:10px/.test(css), '语言胶囊 10px')

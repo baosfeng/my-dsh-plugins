@@ -3007,8 +3007,122 @@ Object.assign(exports,{THINK_ROW_SELECTOR,THINK_ROOT_SELECTOR,MAX_THINK_ROWS_PER
 const MAX_SOURCE_CHARS = 50000;
 /** 离屏渲染容器标记（自有 data-*：回归测试据此断言渲染发生在脱离视口流的节点里）。 */
 const OFFSCREEN_ATTR = 'data-mdr-mm-offscreen';
-/** 引擎初始化配置（12.2.0 认 suppressErrorRendering：失败不渲染炸弹图，直接 reject）。 */
+/** 引擎初始化配置基线（12.2.0 认 suppressErrorRendering：失败不渲染炸弹图，直接 reject）。 */
 const MERMAID_INIT = { startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true };
+/** 计算值里的 color-scheme（伪 DOM 没有 computed style / 抛错 → 空串）。 */
+function computedSchemeOf(root) {
+    try {
+        if (typeof getComputedStyle !== 'function')
+            return '';
+        const computed = getComputedStyle(root);
+        return computed === null || computed === undefined ? '' : String(computed.colorScheme || '');
+    }
+    catch (_e) {
+        return '';
+    }
+}
+/** 内联 style 属性里的 color-scheme（首屏 boot-theme 会写内联值）。 */
+function inlineSchemeOf(root) {
+    return typeof root.getAttribute === 'function' ? String(root.getAttribute('style') || '') : '';
+}
+/** 读 html 的 color-scheme：计算值优先，内联样式兜底。 */
+function rootColorScheme(root) {
+    if (root === null || root === undefined)
+        return '';
+    const computed = computedSchemeOf(root);
+    return computed !== '' ? computed : inlineSchemeOf(root);
+}
+/** color-scheme 取值里是否含 dark。 */
+function isDarkScheme(value) {
+    return value.toLowerCase().indexOf('dark') >= 0;
+}
+/**
+ * 宿主深浅信号（调研自参考源 deepseek-harness，web 端主题机制）：
+ *  · body[data-ds-dark-theme]：packages/client/ui-layout/src/client/theme-presenter.ts:15 定义、
+ *    :75-76 在深色调色板生效时写入（system 解析为 dark 时同样写入）；
+ *  · documentElement 的 color-scheme：同文件 :71 每次 apply 都写（boot-theme.ts:20-24 首屏也写）。
+ * 两个信号任一命中即深色；都没有（主题服务未就绪 / 伪 DOM）→ 浅色。
+ */
+function mermaidSchemeOf() {
+    if (typeof document === 'undefined' || document === null)
+        return 'light';
+    const body = document.body;
+    const darkAttr = body !== null &&
+        body !== undefined &&
+        typeof body.hasAttribute === 'function' &&
+        body.hasAttribute('data-ds-dark-theme');
+    if (darkAttr)
+        return 'dark';
+    return isDarkScheme(rootColorScheme(document.documentElement)) ? 'dark' : 'light';
+}
+/** 深浅 → mermaid 内置 theme 名（12.2.0 认 'dark' / 'default'）。 */
+function mermaidThemeOf(scheme) {
+    return scheme === 'dark' ? 'dark' : 'default';
+}
+/** 图表配色要跟随的宿主语义位（key = mermaid themeVariables 名）。 */
+const MERMAID_THEME_VARS = [
+    ['primaryColor', '--dsw-alias-markdown-code-block'],
+    ['primaryTextColor', '--dsw-alias-label-primary'],
+    ['primaryBorderColor', '--dsw-alias-border-l2'],
+    ['mainBkg', '--dsw-alias-bg-layer-2'],
+    ['nodeBorder', '--dsw-alias-border-l2'],
+    ['lineColor', '--dsw-alias-label-tertiary'],
+    ['secondaryColor', '--dsw-alias-markdown-code-block'],
+    ['tertiaryColor', '--dsw-alias-bg-layer-1'],
+    ['textColor', '--dsw-alias-label-secondary'],
+    ['titleColor', '--dsw-alias-label-primary'],
+    ['edgeLabelBackground', '--dsw-alias-bg-layer-1'],
+    ['clusterBkg', '--dsw-alias-markdown-code-block'],
+    ['clusterBorder', '--dsw-alias-border-l1'],
+    ['attributeBackgroundColorOdd', '--dsw-alias-markdown-code-block'],
+    ['attributeBackgroundColorEven', '--dsw-alias-bg-layer-1'],
+    ['fontFamily', '--mdr-font-sans'],
+];
+/** 取用于读 token 的 computed style（伪 DOM / 无 getComputedStyle → null）。 */
+function probeStyle() {
+    if (typeof document === 'undefined' || document === null)
+        return null;
+    const body = document.body;
+    const probe = body === null || body === undefined ? document.documentElement : body;
+    if (probe === null || probe === undefined)
+        return null;
+    try {
+        return typeof getComputedStyle === 'function' ? getComputedStyle(probe) : null;
+    }
+    catch (_e) {
+        return null;
+    }
+}
+/** 读宿主语义色（取不到 → 不传，回落 mermaid 内置主题自己的配色）。 */
+function mermaidHostVars() {
+    const computed = probeStyle();
+    const out = {};
+    if (computed === null)
+        return out;
+    for (const pair of MERMAID_THEME_VARS) {
+        const value = String(computed.getPropertyValue(pair[1]) || '').trim();
+        if (value !== '')
+            out[pair[0]] = value;
+    }
+    return out;
+}
+/**
+ * 每次渲染前置的 init 指令：theme 跟随宿主深浅，themeVariables 把宿主语义色带进图。
+ * 源码自己写了 init 指令（作者/模型显式指定主题）→ 原样尊重，不覆盖。
+ */
+function mermaidThemeDirective(scheme) {
+    const vars = mermaidHostVars();
+    const config = { theme: mermaidThemeOf(scheme) };
+    if (Object.keys(vars).length > 0)
+        config.themeVariables = vars;
+    return '%%{init: ' + JSON.stringify(config) + '}%%\n';
+}
+/** 给源码加主题指令（已有 init 指令则原样返回）。 */
+function decorateSource(source, scheme) {
+    if (source.indexOf('%%{init') >= 0)
+        return source;
+    return mermaidThemeDirective(scheme) + source;
+}
 /** 在飞的加载 Promise（失败即清空：卡片「重试」必须能真的重新加载一次）。 */
 let mermaidReady = null;
 /** 页面里已有的引擎（别的插件先加载过 / 复跑）→ 直接复用，零请求。 */
@@ -3018,7 +3132,7 @@ function mermaidGlobal() {
 /** initialize 重复调用会抛错（配置已经在）——忽略即可。 */
 function initEngine(engine) {
     try {
-        engine.initialize(MERMAID_INIT);
+        engine.initialize({ ...MERMAID_INIT, theme: mermaidThemeOf(mermaidSchemeOf()) });
     }
     catch (_e) {
         /* already initialized */
@@ -3103,7 +3217,7 @@ function renderSvg(engine, entryId, source) {
         return Promise.reject(new Error('没有可用的 document.body'));
     const host = createOffscreenHost(entryId);
     body.appendChild(host);
-    return engine.render(entryId, source, host).then((out) => {
+    return engine.render(entryId, decorateSource(source, mermaidSchemeOf()), host).then((out) => {
         const svg = out !== null && out !== undefined && typeof out.svg === 'string' ? out.svg : '';
         dropOffscreen(host);
         if (svg === '')
@@ -3120,7 +3234,7 @@ function errMsg(err) {
         return err.message;
     return String(err);
 }
-Object.assign(exports,{MERMAID_ENGINE_URL,MAX_SOURCE_CHARS,OFFSCREEN_ATTR,MERMAID_ASSET,ensureMermaid,resetMermaidEngine,renderSvg,errMsg});
+Object.assign(exports,{MERMAID_ENGINE_URL,MAX_SOURCE_CHARS,OFFSCREEN_ATTR,MERMAID_ASSET,ensureMermaid,resetMermaidEngine,rootColorScheme,computedSchemeOf,inlineSchemeOf,isDarkScheme,mermaidSchemeOf,mermaidThemeOf,mermaidThemeDirective,decorateSource,renderSvg,errMsg});
 
     // mermaid 卡片工具条（常驻四项：视图切换 / 缩放分段 / 全屏浮窗 / 更多菜单）
     "use strict";
@@ -4912,10 +5026,10 @@ const STYLES_BASE = `
 --mdr-bg:var(--dsw-alias-bg-layer-1);
 --mdr-bg-elevated:var(--dsw-alias-bg-layer-2);
 --mdr-bg-hover:var(--dsw-alias-interactive-bg-hover);
---mdr-surface:var(--dsw-alias-markdown-code-block);
---mdr-surface-raised:var(--dsw-alias-markdown-code-block-banner);
---mdr-border:var(--dsw-alias-border-l2);
---mdr-border-soft:var(--dsw-alias-border-l1);
+--mdr-surface:color-mix(in srgb,var(--dsw-alias-markdown-code-block) 66%,transparent);
+--mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-markdown-code-block-banner) 58%,transparent);
+--mdr-border:color-mix(in srgb,var(--dsw-alias-label-primary) 15%,transparent);
+--mdr-border-soft:color-mix(in srgb,var(--dsw-alias-label-primary) 10%,transparent);
 --mdr-border-strong:color-mix(in srgb,var(--dsw-alias-label-primary) 26%,transparent);
 --mdr-text:var(--dsw-alias-label-primary);
 --mdr-text-2:var(--dsw-alias-label-secondary);
@@ -4935,10 +5049,24 @@ const STYLES_BASE = `
 --mdr-overlay:var(--dsw-alias-bg-mask-3);
 --mdr-shadow:var(--dsw-shadow-lv2);
 --mdr-focus-ring:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 45%,transparent);
+/* ── Liquid Glass 材质 / 排版 token（02-style §2 取值 + §5 清单）──
+   全部带默认值：未接管 / 宿主主题不支持模糊时仍然可读（backdrop-filter 不支持即不生效）。 */
+--mdr-font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+--mdr-font-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+--mdr-material:blur(22px) saturate(180%);
+--mdr-card-shadow:0 12px 32px color-mix(in srgb,var(--dsw-alias-label-primary) 10%,transparent),inset 0 1px 0 color-mix(in srgb,var(--dsw-alias-label-primary) 12%,transparent);
+--mdr-hairline:var(--mdr-border-soft);
+--mdr-heading-weight:600;
+--mdr-heading-tracking:-.015em;
+--mdr-body-gap:12px;
+--mdr-quote-bg:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 10%,transparent);
+--mdr-quote-border:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 55%,transparent);
+--mdr-table-head-bg:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 40%,transparent);
+--mdr-frame-head-bg:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 34%,transparent);
 /* ── 几何（原型 76–79）── */
---mdr-radius-sm:4px;
---mdr-radius-md:8px;
---mdr-radius-lg:10px;
+--mdr-radius-sm:6px;
+--mdr-radius-md:12px;
+--mdr-radius-lg:14px;
 --mdr-radius-pill:980px;
 /* ── 字号阶梯（原型 80–83）── */
 --mdr-fs-xs:12px;
@@ -4956,8 +5084,23 @@ const STYLES_BASE = `
 --mdr-motion-base:220ms;
 --mdr-ease:cubic-bezier(.28,0,.22,1);
 color:var(--mdr-text-2);
+font-family:var(--mdr-font-sans);
 font-size:var(--mdr-fs-sm);
 line-height:1.6;
+}
+
+/* ── 深色玻璃覆盖 ────────────────────────────────────────────────────────
+   宿主信号（核对自参考源 deepseek-harness）：
+   · body[data-ds-dark-theme]：packages/client/ui-layout/src/client/theme-presenter.ts:15 定义、:75-76 写入；
+   · html.style.color-scheme：同文件 :71（boot-theme.ts:20-24 首屏也写）。
+   颜色仍全部走 --dsw-* 派生；这里只调整透明度 / 阴影强度，不引入新色值。
+   若无该属性（主题服务未就绪 / 宿主改契约），回落浅色取值，surface 66% 仍在 54% 红线之上。 */
+body[data-ds-dark-theme] :is(.mdr-root,.mdr-md){
+--mdr-surface:color-mix(in srgb,var(--dsw-alias-markdown-code-block) 62%,transparent);
+--mdr-surface-raised:color-mix(in srgb,var(--dsw-alias-markdown-code-block-banner) 52%,transparent);
+--mdr-card-shadow:0 14px 36px color-mix(in srgb,var(--dsw-alias-label-primary) 22%,transparent),inset 0 1px 0 color-mix(in srgb,var(--dsw-alias-label-primary) 18%,transparent);
+--mdr-table-head-bg:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent);
+--mdr-frame-head-bg:color-mix(in srgb,var(--dsw-alias-label-primary) 5%,transparent);
 }
 
 /* ══ 通用控件（只有本文件定义，其他路只引用类名）══ */
@@ -5169,8 +5312,9 @@ Object.assign(exports,{STYLES_BASE});
 //   · 列表 ::marker 用三级文字色，任务列表是只读复选框（input[disabled][readonly] +
 //     :has() 画勾，勾形 150ms），已完成项灰字 + 删除线；
 //   · 表格走圆角外框 + 中性表头 + 行 hover；引用 2px 强调左线 + 薄底 + 7px 右圆角，
+//     表格卡是 Liquid Glass 材质（backdrop-filter + 统一卡片阴影）；
 //     嵌套引用降级为中性细线；
-//   · 行内码 4px 圆角 + 发丝边 + 宿主行内码底 + 强调文字色；
+//   · 行内码 6px 圆角（--mdr-radius-sm）+ 发丝边 + 宿主行内码底 + 强调文字色；
 //   · 整段复制按钮绝对定位右上角，hover / focus 浮现。
 // 颜色只取 styles-base.ts 的 --mdr-* token（或宿主 --dsw-*），本文件**不写裸十六进制**。
 // 脚本模式片段（无 import/export），与 styles-base.ts 同作用域拼接。
@@ -5179,9 +5323,10 @@ const STYLES_MARKDOWN = `
 .mdr-md{
 display:flex;
 flex-direction:column;
-gap:10px;
+gap:var(--mdr-body-gap);
 min-width:0;
 position:relative;
+font-family:var(--mdr-font-sans);
 font-size:13px;
 line-height:1.72;
 color:var(--mdr-text-2);
@@ -5192,9 +5337,9 @@ color:var(--mdr-text-2);
 .mdr-md h1,.mdr-md h2,.mdr-md h3,.mdr-md h4,.mdr-md h5,.mdr-md h6{
 margin:2px 0 0;
 color:var(--mdr-text);
-font-weight:600;
+font-weight:var(--mdr-heading-weight);
 line-height:1.4;
-letter-spacing:.1px;
+letter-spacing:var(--mdr-heading-tracking);
 }
 .mdr-md h1{font-size:18px}
 .mdr-md h2{font-size:16px}
@@ -5279,6 +5424,8 @@ overflow-x:auto;
 border:1px solid var(--mdr-border);
 border-radius:var(--mdr-radius-md);
 background:var(--mdr-surface);
+backdrop-filter:var(--mdr-material);
+box-shadow:var(--mdr-card-shadow);
 max-width:100%;
 }
 .mdr-md-table{
@@ -5288,7 +5435,7 @@ font-size:12px;
 min-width:420px;
 }
 .mdr-md-table th{
-background:var(--mdr-bg-elevated);
+background:var(--mdr-table-head-bg);
 color:var(--mdr-text-2);
 font-weight:600;
 text-align:left;
@@ -5310,8 +5457,8 @@ vertical-align:top;
 .mdr-md blockquote{
 margin:0;
 padding:6px 12px;
-border-left:2px solid var(--mdr-accent);
-background:var(--mdr-accent-soft);
+border-left:2px solid var(--mdr-quote-border);
+background:var(--mdr-quote-bg);
 border-radius:0 7px 7px 0;
 color:var(--mdr-text-2);
 }
@@ -5344,7 +5491,7 @@ border:1px solid var(--mdr-border-soft);
 border-radius:var(--mdr-radius-sm);
 background:var(--mdr-code-bg);
 color:var(--mdr-accent);
-font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+font-family:var(--mdr-font-mono);
 font-size:12px;
 line-height:1.5;
 overflow-wrap:anywhere;
@@ -5358,7 +5505,7 @@ border:1px solid var(--mdr-border-soft);
 border-radius:var(--mdr-radius-md);
 background:var(--mdr-code-bg);
 color:var(--mdr-text-2);
-font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+font-family:var(--mdr-font-mono);
 font-size:11.5px;
 line-height:1.65;
 white-space:pre-wrap;
@@ -5387,7 +5534,7 @@ border:1px solid var(--mdr-border-soft);
 border-radius:var(--mdr-radius-md);
 background:var(--mdr-code-bg);
 color:var(--mdr-text-2);
-font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+font-family:var(--mdr-font-mono);
 font-size:11.5px;
 line-height:1.65;
 white-space:pre-wrap;
@@ -5415,18 +5562,18 @@ Object.assign(exports,{STYLES_MARKDOWN});
 const STYLES_CODE = `
 /* ══ 帧 token（局部定义：只在插件自建节点上生效，不外溢到官方元素）══ */
 .mdr-fence,.mdr-block,.mdr-ctx,.mdr-lightbox,.mdr-lang-switch{
---mdr-frame-bg:var(--dsw-alias-markdown-code-block,var(--dsw-alias-bg-layer));
---mdr-frame-layer:var(--dsw-alias-bg-layer,var(--dsw-alias-markdown-code-block));
---mdr-frame-line:var(--dsw-alias-border-l2,var(--dsw-alias-border-l1));
---mdr-frame-hair:var(--dsw-alias-border-l1,var(--dsw-alias-border-l2));
---mdr-frame-ink:var(--dsw-alias-label-primary);
---mdr-frame-ink-2:var(--dsw-alias-label-secondary,var(--dsw-alias-label-primary));
---mdr-frame-ink-3:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));
---mdr-frame-accent:var(--dsw-alias-state-business-primary,var(--dsw-alias-link,var(--dsw-alias-label-primary)));
---mdr-frame-accent-soft:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 14%,transparent);
---mdr-frame-ok:color-mix(in srgb,var(--dsw-alias-state-success-primary) 60%,var(--dsw-alias-label-primary));
---mdr-frame-bad:color-mix(in srgb,var(--dsw-alias-state-error-primary) 60%,var(--dsw-alias-label-primary));
---mdr-frame-mono:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+--mdr-frame-bg:var(--mdr-surface);
+--mdr-frame-layer:var(--mdr-surface-raised);
+--mdr-frame-line:var(--mdr-border);
+--mdr-frame-hair:var(--mdr-border-soft);
+--mdr-frame-ink:var(--mdr-text);
+--mdr-frame-ink-2:var(--mdr-text-2);
+--mdr-frame-ink-3:var(--mdr-text-3);
+--mdr-frame-accent:var(--mdr-accent);
+--mdr-frame-accent-soft:var(--mdr-accent-soft);
+--mdr-frame-ok:var(--mdr-success);
+--mdr-frame-bad:var(--mdr-danger);
+--mdr-frame-mono:var(--mdr-font-mono);
 --mdr-frame-fast:150ms;
 --mdr-frame-ease:cubic-bezier(0.28,0,0.22,1);
 /* 语法色：五色语义映射全部由宿主状态色向正文色混合得到（与官方 shiki 调色板无关） */
@@ -5440,10 +5587,10 @@ const STYLES_CODE = `
 }
 
 /* ══ 围栏卡（原型 .fence：10px 圆角 + 1px 发丝边 + 代码底）══ */
-.mdr-fence{display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-frame-line);border-radius:10px;overflow:hidden;background:var(--mdr-frame-bg);font-family:var(--mdr-frame-mono)}
-.mdr-fence-head{display:flex;align-items:center;gap:6px;height:32px;padding:0 6px 0 9px;background:color-mix(in srgb,var(--mdr-frame-layer) 70%,var(--mdr-frame-bg));border-bottom:1px solid var(--mdr-frame-hair);min-width:0}
+.mdr-fence{display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-frame-line);border-radius:var(--mdr-radius-lg);overflow:hidden;background:var(--mdr-frame-bg);font-family:var(--mdr-frame-mono);backdrop-filter:var(--mdr-material);box-shadow:var(--mdr-card-shadow)}
+.mdr-fence-head{display:flex;align-items:center;gap:6px;height:32px;padding:0 6px 0 9px;background:var(--mdr-frame-head-bg);border-bottom:1px solid var(--mdr-frame-hair);min-width:0}
 /* 语言胶囊：10px / 600 / 大写 / 字距 .06em（原型 .lang-pill 1432–1447） */
-.mdr-fence-pill{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:4px;background:var(--mdr-frame-accent-soft);color:var(--mdr-frame-accent);font-family:var(--mdr-frame-mono);font-size:10px;font-weight:600;line-height:1;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;flex:none}
+.mdr-fence-pill{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:var(--mdr-radius-sm);background:var(--mdr-frame-accent-soft);color:var(--mdr-frame-accent);font-family:var(--mdr-frame-mono);font-size:10px;font-weight:600;line-height:1;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;flex:none}
 /* 推断语言（内容识别 / 项目主语言兜底）：虚线边 + 透明底，「原文标注」与「推断」一眼可分；
    几何按 border-box 收进既有 19px 高，不改变头高与胶囊占位 */
 .mdr-fence-pill.is-inferred{border:1px dashed color-mix(in srgb,var(--mdr-frame-accent) 52%,var(--mdr-frame-hair));background:transparent;box-sizing:border-box}
@@ -5487,7 +5634,7 @@ const STYLES_CODE = `
 .mdr-lang-switch{display:flex;justify-content:flex-end}
 
 /* ══ 上下文注入块（原型 .ctx-block 1938–1987）══ */
-.mdr-ctx{display:flex;flex-direction:column;gap:6px;min-width:0;padding:9px 11px;border:1px dashed color-mix(in srgb,var(--mdr-frame-accent) 42%,var(--mdr-frame-line));border-radius:10px;background:color-mix(in srgb,var(--mdr-frame-accent) 4%,var(--dsw-alias-bg-layer))}
+.mdr-ctx{display:flex;flex-direction:column;gap:6px;min-width:0;padding:9px 11px;border:1px dashed color-mix(in srgb,var(--mdr-frame-accent) 42%,var(--mdr-frame-line));border-radius:var(--mdr-radius-lg);background:color-mix(in srgb,var(--mdr-frame-accent) 4%,var(--mdr-bg));backdrop-filter:var(--mdr-material);box-shadow:var(--mdr-card-shadow)}
 .mdr-ctx-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;font-size:10.5px;color:var(--mdr-frame-accent)}
 .mdr-ctx-title{font-size:11px;font-weight:600}
 .mdr-ctx-from{color:var(--mdr-frame-ink-3)}
@@ -5499,7 +5646,7 @@ const STYLES_CODE = `
 .mdr-lightbox::backdrop{background:var(--dsw-alias-bg-mask-3,color-mix(in srgb,var(--mdr-frame-ink) 45%,transparent))}
 .mdr-lightbox[open]{display:grid}
 .mdr-lightbox-wrap{position:relative;display:inline-flex;max-width:88vw;max-height:82vh}
-.mdr-lightbox-img{display:block;max-width:88vw;max-height:82vh;border-radius:10px;background:var(--mdr-frame-bg);box-shadow:0 18px 48px color-mix(in srgb,var(--mdr-frame-ink) 28%,transparent)}
+.mdr-lightbox-img{display:block;max-width:88vw;max-height:82vh;border-radius:var(--mdr-radius-lg);background:var(--mdr-frame-bg);box-shadow:0 18px 48px color-mix(in srgb,var(--mdr-frame-ink) 28%,transparent)}
 .mdr-lightbox-close{position:absolute;top:-14px;right:-14px;width:32px;height:32px;padding:0;border:1px solid var(--mdr-frame-line);border-radius:50%;background:var(--mdr-frame-layer);color:var(--mdr-frame-ink-2);font-size:16px;line-height:1;cursor:pointer}
 .mdr-lightbox-close:hover{color:var(--mdr-frame-ink);background:color-mix(in srgb,var(--mdr-frame-ink) 10%,var(--mdr-frame-layer))}
 .mdr-lightbox-close:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--mdr-frame-accent) 35%,transparent)}
@@ -5508,7 +5655,7 @@ const STYLES_CODE = `
 div.md-code-block[data-mdr-view] > :not(.mdr-block){display:none !important}
 .mdr-block{display:block;min-width:0}
 /* markdown 卡：与围栏卡同一帧，正文走 A 路的 .mdr-md */
-.mdr-block-md{display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-frame-line);border-radius:10px;overflow:hidden;background:var(--mdr-frame-bg)}
+.mdr-block-md{display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-frame-line);border-radius:var(--mdr-radius-lg);overflow:hidden;background:var(--mdr-frame-bg);backdrop-filter:var(--mdr-material);box-shadow:var(--mdr-card-shadow)}
 .mdr-block-md .mdr-block-body{padding:10px 12px;min-width:0}
 
 /* ══ 复制兜底 textarea（不写 el.style：位置/隐藏全走类名）══ */
@@ -5538,10 +5685,10 @@ const STYLES_MERMAID = `
 .mdr-mm-card,.mdr-mm-dialog{
 --mdr-mm-line:var(--dsw-alias-border-l2);
 --mdr-mm-line-soft:var(--dsw-alias-border-l1);
---mdr-mm-accent:var(--dsw-alias-state-business-primary,var(--dsw-alias-link));
---mdr-mm-accent-soft:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 12%,transparent);
---mdr-mm-surface:var(--dsw-alias-markdown-code-block);
---mdr-mm-elevated:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 88%,var(--dsw-alias-markdown-code-block));
+--mdr-mm-accent:var(--mdr-accent,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)));
+--mdr-mm-accent-soft:var(--mdr-accent-soft,color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 12%,transparent));
+--mdr-mm-surface:var(--mdr-surface,var(--dsw-alias-markdown-code-block));
+--mdr-mm-elevated:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 82%,var(--dsw-alias-markdown-code-block));
 --mdr-mm-code-bg:var(--dsw-alias-markdown-inline-code);
 --mdr-mm-hover:var(--dsw-alias-interactive-bg-hover);
 --mdr-mm-text:var(--dsw-alias-label-primary);
@@ -5556,12 +5703,12 @@ const STYLES_MERMAID = `
 }
 
 /* ══ 卡片外壳 ══ */
-.mdr-mm-card{position:relative;display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-mm-line);border-radius:10px;background:var(--mdr-mm-surface);color:var(--mdr-mm-text);overflow:hidden;animation:mdr-mm-in var(--mdr-mm-motion-in) var(--mdr-mm-ease)}
+.mdr-mm-card{position:relative;display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-mm-line);border-radius:var(--mdr-radius-lg,10px);background:var(--mdr-mm-surface);color:var(--mdr-mm-text);overflow:hidden;backdrop-filter:var(--mdr-material,none);box-shadow:var(--mdr-card-shadow,var(--mdr-mm-shadow));animation:mdr-mm-in var(--mdr-mm-motion-in) var(--mdr-mm-ease)}
 @keyframes mdr-mm-in{from{opacity:0;transform:translateY(1px)}to{opacity:1;transform:none}}
 
 /* ══ 卡片头：标题胶囊 / 类型 / 工具条（7 8 7 10 + 发丝下边）══ */
 .mdr-mm-head{display:flex;align-items:center;gap:7px;padding:7px 8px 7px 10px;border-bottom:1px solid var(--mdr-mm-line-soft);min-width:0;flex-wrap:nowrap}
-.mdr-mm-title{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;background:var(--mdr-mm-accent-soft);color:var(--mdr-mm-accent);font-size:11px;font-weight:600;line-height:22px;white-space:nowrap;flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis}
+.mdr-mm-title{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--mdr-radius-sm,6px);background:var(--mdr-mm-accent-soft);color:var(--mdr-mm-accent);font-size:11px;font-weight:600;line-height:22px;white-space:nowrap;flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis}
 .mdr-mm-kind{font-size:10px;color:var(--mdr-mm-text-3);white-space:nowrap;flex:none;overflow:hidden;text-overflow:ellipsis;max-width:104px}
 .mdr-mm-toolbar{display:flex;align-items:center;gap:4px;margin-left:auto;flex:none}
 /* 工具条按钮 24×24（原型 .icon-btn；外观在 styles-base，这里只锁卡片头尺寸） */
@@ -5576,7 +5723,7 @@ const STYLES_MERMAID = `
 .mdr-mm-zoom-val{min-width:42px;text-align:center;font-size:10.5px;color:var(--mdr-mm-text-2);font-variant-numeric:tabular-nums;padding:0 2px;border-left:1px solid var(--mdr-mm-line-soft);border-right:1px solid var(--mdr-mm-line-soft);line-height:22px;flex:none}
 
 /* ══ 更多菜单：低频操作（导出 / 缩放模式 / 复制）══ */
-.mdr-mm-menu{position:absolute;top:34px;right:8px;z-index:40;width:196px;padding:5px;background:var(--mdr-mm-elevated);border:1px solid var(--mdr-mm-line);border-radius:10px;box-shadow:var(--mdr-mm-shadow);display:flex;flex-direction:column;gap:1px}
+.mdr-mm-menu{position:absolute;top:34px;right:8px;z-index:40;width:196px;padding:5px;background:var(--mdr-mm-elevated);border:1px solid var(--mdr-mm-line);border-radius:var(--mdr-radius-md,10px);box-shadow:var(--mdr-mm-shadow);display:flex;flex-direction:column;gap:1px}
 .mdr-mm-menu[hidden]{display:none}
 .mdr-mm-menu-item{display:flex;align-items:center;gap:8px;height:29px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--mdr-mm-text-2);font-size:11.5px;line-height:1;text-align:left;width:100%;white-space:nowrap;cursor:pointer;transition:background var(--mdr-mm-motion) var(--mdr-mm-ease),color var(--mdr-mm-motion) var(--mdr-mm-ease)}
 .mdr-mm-menu-item:hover{background:var(--mdr-mm-hover);color:var(--mdr-mm-text)}
@@ -5632,7 +5779,7 @@ const STYLES_MERMAID = `
 .mdr-mm-notice svg{flex:none}
 
 /* ══ 全屏浮窗：原生 <dialog>（90vw × 85vh + 遮罩）══ */
-.mdr-mm-dialog{width:90vw;height:85vh;max-width:none;max-height:none;margin:auto;border:1px solid var(--mdr-mm-line);border-radius:10px;background:var(--mdr-mm-elevated);color:var(--mdr-mm-text);padding:0;overflow:hidden;box-shadow:var(--mdr-mm-shadow)}
+.mdr-mm-dialog{width:90vw;height:85vh;max-width:none;max-height:none;margin:auto;border:1px solid var(--mdr-mm-line);border-radius:var(--mdr-radius-lg,10px);background:var(--mdr-mm-elevated);color:var(--mdr-mm-text);padding:0;overflow:hidden;box-shadow:var(--mdr-mm-shadow)}
 .mdr-mm-dialog::backdrop{background:var(--mdr-mm-scrim);backdrop-filter:blur(2px)}
 .mdr-mm-dialog[open]{display:flex;flex-direction:column;animation:mdr-mm-in var(--mdr-mm-motion-in) var(--mdr-mm-ease)}
 .mdr-mm-dialog-head{height:48px;flex:none;display:flex;align-items:center;gap:9px;padding:0 12px;border-bottom:1px solid var(--mdr-mm-line-soft);min-width:0}

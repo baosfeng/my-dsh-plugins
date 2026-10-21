@@ -76,7 +76,7 @@ test('代码卡辨识点：语言胶囊 + 24px 图标按钮 + 复制三路浮现
 
 test('统一设计系统：代码卡 / markdown 卡 / 图表卡同一套边框 · 圆角 · 层次', () => {
   assert.ok(/\.mdr-fence\{[^}]*border:1px solid var\(--mdr-frame-line\)/.test(ALL), '代码卡边框')
-  assert.ok(/\.mdr-fence\{[^}]*border-radius:10px/.test(ALL), '代码卡圆角')
+  assert.ok(/\.mdr-fence\{[^}]*border-radius:var\(--mdr-radius-lg\)/.test(ALL), '代码卡圆角')
   assert.ok(ALL.includes('.mdr-block-md'), 'markdown 卡自有类')
   assert.ok(ALL.includes('.mdr-mm-card'), '图表卡自有类')
   assert.ok(ALL.includes('--mdr-shadow'), '统一阴影 token')

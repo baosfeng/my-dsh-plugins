@@ -181,7 +181,7 @@ test('styles-code：.mdr-fence-pill.is-inferred 虚线边区分，既有胶囊�
   for (const snippet of [
     'height:19px',
     'padding:0 7px',
-    'border-radius:4px',
+    'border-radius:var(--mdr-radius-sm)',
     'font-size:10px',
     'font-weight:600',
     'letter-spacing:0.06em',

@@ -83,7 +83,9 @@ test('核心行为①：引擎调用走离屏容器（失败图形不进页面�
   const svg = await loaded.exports.renderSvg(engine, 'dsh-md-render-mermaid-9', MERMAID_SOURCE)
   assert.equal(svg, '<svg data-mermaid="dsh-md-render-mermaid-9"></svg>', '返回引擎产出的 SVG 字符串')
   assert.equal(rendered.length, 1, '引擎被调用一次')
-  assert.equal(rendered[0].source, MERMAID_SOURCE, '引擎收到块源码')
+  // 渲染前会前置主题 init 指令（宿主深浅），源码本体必须原样跟在后面
+  assert.ok(rendered[0].source.endsWith(MERMAID_SOURCE), '引擎收到块源码')
+  assert.ok(rendered[0].source.startsWith('%%{init: '), '渲染前前置主题 init 指令')
   // 离屏容器必须被丢弃：失败输出（12.2.0 起由 suppressErrorRendering 拦截）不能留在页面
   assert.equal(page.document.body.querySelectorAll('[data-mdr-mm-offscreen]').length, 0, '离屏容器已移除')
   assert.equal(page.document.body.querySelectorAll('.error-icon').length, 0, '引擎错误图形不进页面')

@@ -11,18 +11,18 @@
 const STYLES_CODE: string = `
 /* ══ 帧 token（局部定义：只在插件自建节点上生效，不外溢到官方元素）══ */
 .mdr-fence,.mdr-block,.mdr-ctx,.mdr-lightbox,.mdr-lang-switch{
---mdr-frame-bg:var(--dsw-alias-markdown-code-block,var(--dsw-alias-bg-layer));
---mdr-frame-layer:var(--dsw-alias-bg-layer,var(--dsw-alias-markdown-code-block));
---mdr-frame-line:var(--dsw-alias-border-l2,var(--dsw-alias-border-l1));
---mdr-frame-hair:var(--dsw-alias-border-l1,var(--dsw-alias-border-l2));
---mdr-frame-ink:var(--dsw-alias-label-primary);
---mdr-frame-ink-2:var(--dsw-alias-label-secondary,var(--dsw-alias-label-primary));
---mdr-frame-ink-3:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));
---mdr-frame-accent:var(--dsw-alias-state-business-primary,var(--dsw-alias-link,var(--dsw-alias-label-primary)));
---mdr-frame-accent-soft:color-mix(in srgb,var(--dsw-alias-state-business-primary,var(--dsw-alias-link)) 14%,transparent);
---mdr-frame-ok:color-mix(in srgb,var(--dsw-alias-state-success-primary) 60%,var(--dsw-alias-label-primary));
---mdr-frame-bad:color-mix(in srgb,var(--dsw-alias-state-error-primary) 60%,var(--dsw-alias-label-primary));
---mdr-frame-mono:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+--mdr-frame-bg:var(--mdr-surface);
+--mdr-frame-layer:var(--mdr-surface-raised);
+--mdr-frame-line:var(--mdr-border);
+--mdr-frame-hair:var(--mdr-border-soft);
+--mdr-frame-ink:var(--mdr-text);
+--mdr-frame-ink-2:var(--mdr-text-2);
+--mdr-frame-ink-3:var(--mdr-text-3);
+--mdr-frame-accent:var(--mdr-accent);
+--mdr-frame-accent-soft:var(--mdr-accent-soft);
+--mdr-frame-ok:var(--mdr-success);
+--mdr-frame-bad:var(--mdr-danger);
+--mdr-frame-mono:var(--mdr-font-mono);
 --mdr-frame-fast:150ms;
 --mdr-frame-ease:cubic-bezier(0.28,0,0.22,1);
 /* 语法色：五色语义映射全部由宿主状态色向正文色混合得到（与官方 shiki 调色板无关） */
@@ -36,10 +36,10 @@ const STYLES_CODE: string = `
 }
 
 /* ══ 围栏卡（原型 .fence：10px 圆角 + 1px 发丝边 + 代码底）══ */
-.mdr-fence{display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-frame-line);border-radius:10px;overflow:hidden;background:var(--mdr-frame-bg);font-family:var(--mdr-frame-mono)}
-.mdr-fence-head{display:flex;align-items:center;gap:6px;height:32px;padding:0 6px 0 9px;background:color-mix(in srgb,var(--mdr-frame-layer) 70%,var(--mdr-frame-bg));border-bottom:1px solid var(--mdr-frame-hair);min-width:0}
+.mdr-fence{display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-frame-line);border-radius:var(--mdr-radius-lg);overflow:hidden;background:var(--mdr-frame-bg);font-family:var(--mdr-frame-mono);backdrop-filter:var(--mdr-material);box-shadow:var(--mdr-card-shadow)}
+.mdr-fence-head{display:flex;align-items:center;gap:6px;height:32px;padding:0 6px 0 9px;background:var(--mdr-frame-head-bg);border-bottom:1px solid var(--mdr-frame-hair);min-width:0}
 /* 语言胶囊：10px / 600 / 大写 / 字距 .06em（原型 .lang-pill 1432–1447） */
-.mdr-fence-pill{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:4px;background:var(--mdr-frame-accent-soft);color:var(--mdr-frame-accent);font-family:var(--mdr-frame-mono);font-size:10px;font-weight:600;line-height:1;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;flex:none}
+.mdr-fence-pill{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:var(--mdr-radius-sm);background:var(--mdr-frame-accent-soft);color:var(--mdr-frame-accent);font-family:var(--mdr-frame-mono);font-size:10px;font-weight:600;line-height:1;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;flex:none}
 /* 推断语言（内容识别 / 项目主语言兜底）：虚线边 + 透明底，「原文标注」与「推断」一眼可分；
    几何按 border-box 收进既有 19px 高，不改变头高与胶囊占位 */
 .mdr-fence-pill.is-inferred{border:1px dashed color-mix(in srgb,var(--mdr-frame-accent) 52%,var(--mdr-frame-hair));background:transparent;box-sizing:border-box}
@@ -83,7 +83,7 @@ const STYLES_CODE: string = `
 .mdr-lang-switch{display:flex;justify-content:flex-end}
 
 /* ══ 上下文注入块（原型 .ctx-block 1938–1987）══ */
-.mdr-ctx{display:flex;flex-direction:column;gap:6px;min-width:0;padding:9px 11px;border:1px dashed color-mix(in srgb,var(--mdr-frame-accent) 42%,var(--mdr-frame-line));border-radius:10px;background:color-mix(in srgb,var(--mdr-frame-accent) 4%,var(--dsw-alias-bg-layer))}
+.mdr-ctx{display:flex;flex-direction:column;gap:6px;min-width:0;padding:9px 11px;border:1px dashed color-mix(in srgb,var(--mdr-frame-accent) 42%,var(--mdr-frame-line));border-radius:var(--mdr-radius-lg);background:color-mix(in srgb,var(--mdr-frame-accent) 4%,var(--mdr-bg));backdrop-filter:var(--mdr-material);box-shadow:var(--mdr-card-shadow)}
 .mdr-ctx-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;font-size:10.5px;color:var(--mdr-frame-accent)}
 .mdr-ctx-title{font-size:11px;font-weight:600}
 .mdr-ctx-from{color:var(--mdr-frame-ink-3)}
@@ -95,7 +95,7 @@ const STYLES_CODE: string = `
 .mdr-lightbox::backdrop{background:var(--dsw-alias-bg-mask-3,color-mix(in srgb,var(--mdr-frame-ink) 45%,transparent))}
 .mdr-lightbox[open]{display:grid}
 .mdr-lightbox-wrap{position:relative;display:inline-flex;max-width:88vw;max-height:82vh}
-.mdr-lightbox-img{display:block;max-width:88vw;max-height:82vh;border-radius:10px;background:var(--mdr-frame-bg);box-shadow:0 18px 48px color-mix(in srgb,var(--mdr-frame-ink) 28%,transparent)}
+.mdr-lightbox-img{display:block;max-width:88vw;max-height:82vh;border-radius:var(--mdr-radius-lg);background:var(--mdr-frame-bg);box-shadow:0 18px 48px color-mix(in srgb,var(--mdr-frame-ink) 28%,transparent)}
 .mdr-lightbox-close{position:absolute;top:-14px;right:-14px;width:32px;height:32px;padding:0;border:1px solid var(--mdr-frame-line);border-radius:50%;background:var(--mdr-frame-layer);color:var(--mdr-frame-ink-2);font-size:16px;line-height:1;cursor:pointer}
 .mdr-lightbox-close:hover{color:var(--mdr-frame-ink);background:color-mix(in srgb,var(--mdr-frame-ink) 10%,var(--mdr-frame-layer))}
 .mdr-lightbox-close:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--mdr-frame-accent) 35%,transparent)}
@@ -104,7 +104,7 @@ const STYLES_CODE: string = `
 div.md-code-block[data-mdr-view] > :not(.mdr-block){display:none !important}
 .mdr-block{display:block;min-width:0}
 /* markdown 卡：与围栏卡同一帧，正文走 A 路的 .mdr-md */
-.mdr-block-md{display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-frame-line);border-radius:10px;overflow:hidden;background:var(--mdr-frame-bg)}
+.mdr-block-md{display:flex;flex-direction:column;min-width:0;border:1px solid var(--mdr-frame-line);border-radius:var(--mdr-radius-lg);overflow:hidden;background:var(--mdr-frame-bg);backdrop-filter:var(--mdr-material);box-shadow:var(--mdr-card-shadow)}
 .mdr-block-md .mdr-block-body{padding:10px 12px;min-width:0}
 
 /* ══ 复制兜底 textarea（不写 el.style：位置/隐藏全走类名）══ */

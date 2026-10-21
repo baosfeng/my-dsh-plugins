@@ -9,6 +9,8 @@
 
 ### 变更
 
+- **mermaid 图表跟随宿主深浅 + 套用 Liquid Glass 卡片**：渲染前按宿主信号选 mermaid 12.2.0 的 `theme`（`dark` / `default`），并把宿主 `--dsw-*` 语义色映射为 `themeVariables`（`mainBkg` / `nodeBorder` / `lineColor` / `textColor` / `titleColor` / `attributeBackgroundColorOdd|Even` 等 16 项），以 `%%{init: …}%%` 前置指令**逐图**生效；源码自带 init 指令时原样尊重。宿主信号：`body[data-ds-dark-theme]`（`packages/client/ui-layout/src/client/theme-presenter.ts:15` 定义、`:75-76` 写入）与 `html` 的 `color-scheme`（同文件 `:71`），无信号回落浅色。实测 12.2.0：`mainBkg` / `nodeBorder` / `lineColor` / `textColor` 生效，flowchart 节点填充走 `mainBkg` 而非 `primaryColor`（按实测结论映射）。失败态语义不变（错误图仍随离屏容器丢弃，源码优先）。图表卡同时套用 `--mdr-material` / `--mdr-card-shadow` / `--mdr-radius-lg`。
+- **Liquid Glass 默认外观**（用户从 4 套原型候选里选定，依据 `.open-design/02-style.md` §2/§5）：markdown 正文、代码卡、mermaid 卡、表格、上下文注入块统一改为**半透明材质 + 统一卡片阴影** —— `--mdr-material: blur(22px) saturate(180%)`、`--mdr-card-shadow: 0 12px 32px` 外投影 10% + 顶部 `inset 0 1px 0` 内高光 12%；新增 12 个材质 / 排版 token（`--mdr-font-sans` / `--mdr-font-mono` / `--mdr-material` / `--mdr-card-shadow` / `--mdr-hairline` / `--mdr-heading-weight` / `--mdr-heading-tracking` / `--mdr-body-gap` / `--mdr-quote-bg` / `--mdr-quote-border` / `--mdr-table-head-bg` / `--mdr-frame-head-bg`，全部带默认值）。几何：圆角 4/8/10 → 6/12/14；`--mdr-surface` = code 66%、`--mdr-surface-raised` = banner 58%、描边 = label 15% / 10%。深色覆盖走宿主信号 `body[data-ds-dark-theme]`（`packages/client/ui-layout/src/client/theme-presenter.ts:15` 定义、`:75-76` 写入）：surface 62%、raised 52%、阴影与内高光加强，仍全部由 `--dsw-*` 派生、零裸色值；宿主不提供该属性时回落浅色取值（66% 仍高于 54% 可读红线）。类名与 DOM 结构不变，设置页外观不在本次范围。
 - **mermaid 引擎升级 10.9.3 → 12.2.0**（npm latest，MIT）：vendored UMD `assets/mermaid-12.2.0.min.js`（5.49 MB，替换原 3.34 MB 资产，**体积 +64%**）——升级代价经体积门禁显式评审后刷新基线（`scripts/client-size-baseline.json`：基线 + max(64KB, 15%) 余量，大版本换代按设计必须评审）。`MERMAID_ENGINE_FILE` / 构建期 SHA256 冻结值 / 资产路由测试同步；`mermaid.initialize` + `mermaid.render(id, source, container)` 契约在 12.2.0 上实测兼容（flowchart / sequenceDiagram / erDiagram / kanban / timeline 真实渲染零 console 错误），`suppressErrorRendering: true` 自 12.x 起生效，离屏容器保留为第二道保险。
 - **图表类型识别覆盖 12.2.0 新增类型**：`MM_KIND_NAMES` 按实测 `detectType` 补齐 architecture / block / packet / radar / treemap / venn / wardley / swimlane / ishikawa / cynefin / treeView / agentflow / railroad / usecase / eventmodeling / info 等裸名与 `-beta` 别名，规范名统一去掉 `-beta`。
 - **系统提示词同步**（`dsh-mermaid-render` section）：显式列出 12.2.0 支持的图表关键字，正文仍 ≤ 500 字符（实测 497）。
@@ -24,6 +26,8 @@
 
 ### 测试
 
+- 新增 `test/mermaid-theme.mjs`（宿主深浅信号 → theme 选择 / init 指令前置 / 源码自带 init 不覆盖 / 图表卡材质 4 条）。
+- 新增 `test/liquid-glass.mjs`（12 个新 token 取值 / 卡片容器消费材质 / 深色覆盖块 / `--mdr-surface` ≥54% 透明度阈值）；同步更新既有圆角与表头 token 断言。
 - 新增 `test/fence-content.mjs`（6 条判据用例，含真实会话片段）；`test/lang-fallback.mjs` 补「无语言 + 代码内容 → 代码卡」「无语言 + markdown 文档 → markdown」两条防回归用例。
 - 新增 `test/project-lang-route.mjs`（9 条：标记文件映射 / 优先级 / 绝对路径与 NUL 校验 / 不跟随软链 / 不递归 / 缓存 / 405）、`test/fence-lang-infer.mjs`（内容识别 + 项目兜底 + 日志短路 + 开关）、`test/fence-lang-inferred.mjs`（胶囊推断标识与底栏文案）。
 

@@ -26,9 +26,9 @@ const CSS = Object.fromEntries(Object.entries(RAW).map(([k, v]) => [k, strip(v)]
 
 test('设计 token：几何 / 字号 / 间距 / 动效逐条对齐原型', () => {
   const tokens = [
-    '--mdr-radius-sm:4px',
-    '--mdr-radius-md:8px',
-    '--mdr-radius-lg:10px',
+    '--mdr-radius-sm:6px',
+    '--mdr-radius-md:12px',
+    '--mdr-radius-lg:14px',
     '--mdr-radius-pill:980px',
     '--mdr-fs-xs:12px',
     '--mdr-fs-sm:14px',
@@ -86,7 +86,7 @@ test('markdown 排版：正文 13px / 标题阶梯 18-16-14-14-13-12 / 表格滚
 
 test('代码卡：10px 圆角 / 32px 头 / 24px 工具按钮 / 行号与换行属性开关', () => {
   const code = CSS.code
-  assert.ok(/\.mdr-fence\{[^}]*border-radius:10px/.test(code), '卡片 10px 圆角')
+  assert.ok(/\.mdr-fence\{[^}]*border-radius:var\(--mdr-radius-lg\)/.test(code), '卡片 10px 圆角')
   assert.ok(/\.mdr-fence-head\{[^}]*height:32px/.test(code), '卡头 32px')
   assert.ok(/\.mdr-fence-action\{[^}]*width:24px/.test(code), '工具按钮 24×24')
   assert.ok(/\.mdr-fence-pill\{[^}]*text-transform:uppercase/.test(code), '语言胶囊大写')

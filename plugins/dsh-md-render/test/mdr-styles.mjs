@@ -78,9 +78,9 @@ test('token 全表：26 项色彩 token 齐备且全部取宿主变量 / color-m
 
 test('几何 / 字号 / 间距 / 动效 token 照原型取值', () => {
   for (const rule of [
-    '--mdr-radius-sm:4px;',
-    '--mdr-radius-md:8px;',
-    '--mdr-radius-lg:10px;',
+    '--mdr-radius-sm:6px;',
+    '--mdr-radius-md:12px;',
+    '--mdr-radius-lg:14px;',
     '--mdr-radius-pill:980px;',
     '--mdr-fs-xs:12px;',
     '--mdr-fs-sm:14px;',
@@ -169,13 +169,16 @@ test('表格：圆角外框 + 中性表头 + 行 hover + 12px/420px 基线', () 
     /\.mdr-md-table-wrap\{[^}]*border:1px solid var\(--mdr-border\)[^}]*border-radius:var\(--mdr-radius-md\)/,
   )
   assert.match(md, /\.mdr-md-table\{[^}]*font-size:12px[^}]*min-width:420px/)
-  assert.match(md, /\.mdr-md-table th\{[^}]*background:var\(--mdr-bg-elevated\)[^}]*padding:7px 10px/)
+  assert.match(md, /\.mdr-md-table th\{[^}]*background:var\(--mdr-table-head-bg\)[^}]*padding:7px 10px/)
   assert.match(md, /\.mdr-md-table td\{[^}]*padding:7px 10px/)
   assert.match(md, /\.mdr-md-table tbody tr:hover td\{background:var\(--mdr-bg-hover\)\}/)
 })
 
 test('引用 / 分隔线 / 链接 / 图片 / 行内码 / 整段复制按钮', () => {
-  assert.match(md, /\.mdr-md blockquote\{[^}]*border-left:2px solid var\(--mdr-accent\)[^}]*border-radius:0 7px 7px 0/)
+  assert.match(
+    md,
+    /\.mdr-md blockquote\{[^}]*border-left:2px solid var\(--mdr-quote-border\)[^}]*border-radius:0 7px 7px 0/,
+  )
   assert.match(md, /\.mdr-md blockquote blockquote\{[^}]*background:transparent/)
   assert.match(md, /\.mdr-md hr\{[^}]*border-top:1px solid var\(--mdr-border-soft\)/)
   assert.match(

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0] - 2026-10-23
+
+### 变更
+
+- refactor(dsh-my-memory)!: 三 tab 面板按原型复刻，移除自动候选记忆
+- refactor(md-render): 拆出 CodeHead/CodeBody 守住函数尺寸门禁
+
 ## [Unreleased]
 
 ### 变更

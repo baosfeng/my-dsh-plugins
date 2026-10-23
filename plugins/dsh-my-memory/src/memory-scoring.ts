@@ -16,7 +16,6 @@
 import type * as MemoryTypes from './memory-types.js'
 
 export type MemoryItem = MemoryTypes.MemoryItem
-export type CandidateItem = MemoryTypes.CandidateItem
 export type Category = MemoryTypes.Category
 export type InjectionScore = MemoryTypes.InjectionScore
 export type InjectionOptions = MemoryTypes.InjectionOptions

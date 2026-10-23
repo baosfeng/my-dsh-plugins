@@ -127,26 +127,9 @@ export interface MemoryEntry {
   status?: 'active' | 'archived' | 'pending'
 }
 
-/** 候选记忆条目结构。 */
-export interface CandidateMemoryEntry {
-  id: string
-  content: string
-  source: string
-  sessionId: string
-  createdAt: string
-  status: 'pending' | 'confirmed' | 'dismissed'
-}
-
 /** 记忆存储结构。 */
 export interface MemoryStore {
   entries: MemoryEntry[]
-  version: number
-  lastUpdated: string
-}
-
-/** 候选记忆存储结构。 */
-export interface CandidateStore {
-  candidates: CandidateMemoryEntry[]
   version: number
   lastUpdated: string
 }

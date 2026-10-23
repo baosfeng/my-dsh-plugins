@@ -3,10 +3,10 @@
  *
  * 定义 API 路由处理器相关的类型。
  */
-import type { MemoryStore, StoreInstance, CandidateStoreInstance } from './memory-types.js'
+import type { MemoryStore, StoreInstance } from './memory-types.js'
 import type { PromptStoreInstance } from './prompt-types.js'
 
-export type { MemoryStore, StoreInstance, CandidateStoreInstance }
+export type { MemoryStore, StoreInstance }
 
 /** DSH HTTP 请求（node:http IncomingMessage 的最小契约）。 */
 export interface ServerRequest {
@@ -56,7 +56,6 @@ export type FenceFunction = (request: ServerRequest) => boolean
 export interface ApiHandlerParams {
   globalStore: StoreInstance
   getProjectStore: (cwd: string) => Promise<StoreInstance>
-  candidatesStore: CandidateStoreInstance | null | undefined
   /** 全局提示词 store（issue #465）：与记忆 store 并列但完全独立。 */
   promptsStore: PromptStoreInstance
   fence: FenceFunction
@@ -69,56 +68,11 @@ export interface ApiHandlerParams {
 export interface RouteRequestParams {
   globalStore: StoreInstance
   getProjectStore: (cwd: string) => Promise<StoreInstance>
-  candidatesStore: CandidateStoreInstance | null | undefined
   promptsStore: PromptStoreInstance
   sessions?: SessionsService
   config?: ApiConfig
   logger?: LoggerService
 }
-
-/** 候选路由参数接口。 */
-export interface CandidateRouteParams {
-  candidatesStore: CandidateStoreInstance | null | undefined
-  globalStore: StoreInstance
-  getProjectStore: (cwd: string) => Promise<StoreInstance>
-  logger?: LoggerService
-}
-
-/** 候选解析结果接口。 */
-export interface ResolveCandidateResult {
-  ok: false
-  status: number
-  message: string
-}
-
-/** 候选解析成功结果接口。 */
-export interface ResolveCandidateSuccess {
-  ok: true
-  candidate: unknown
-  id: string
-}
-
-/** 候选解析联合类型。 */
-export type ResolveCandidateOutcome = ResolveCandidateResult | ResolveCandidateSuccess
-
-/** 候选合并结果接口。 */
-export interface MergeCandidateResult {
-  ok: false
-  status: number
-  message: string
-}
-
-/** 候选合并成功结果接口。 */
-export interface MergeCandidateSuccess {
-  ok: true
-  scope: 'global' | 'project'
-  cwd: string
-  item: unknown
-  outcome: string
-}
-
-/** 候选合并联合类型。 */
-export type MergeCandidateOutcome = MergeCandidateResult | MergeCandidateSuccess
 
 /** 写操作负载接口。 */
 export interface WritePayload {

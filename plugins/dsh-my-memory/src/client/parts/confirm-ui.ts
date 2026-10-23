@@ -44,8 +44,9 @@ function parseAskReason(reason: unknown): AskReasonFields {
   }
 }
 
-/** 范围显示名（全局 / 项目 / 未标注）。 */
+/** 范围显示名（全局 / 项目 / 全局提示词 / 未标注）。 */
 function scopeTextOf(scope: string): string {
+  if (scope === 'prompts') return strings.promptsScope()
   if (scope === 'project') return strings.projectScope()
   if (scope === 'global') return strings.globalScope()
   return strings.scopeUnknown()
@@ -68,6 +69,8 @@ function AskStrip({ title, scope, variant }: { title: string; scope: string; var
 
 /** 选项行组：保存列全局/项目（当前项选中），删除只列该记忆所属范围。 */
 function AskOptions({ variant, scope }: { variant: string; scope: string }): ReactNode {
+  // 提示词不是记忆范围：不展示「全局 / 项目」二选一（范围由请求方决定）。
+  if (scope === 'prompts') return null
   const scopes = variant === 'delete' ? (scope === '' ? [] : [scope]) : ['global', 'project']
   if (scopes.length === 0) return null
   return createElement(
@@ -110,7 +113,12 @@ function AskFields({
         }),
     content === ''
       ? null
-      : createElement(AskField, { key: 'content', label: strings.askContentLabel(), value: content }),
+      : createElement(
+          'div',
+          { key: 'content', className: 'dsh-my-memory-ask-preview' },
+          createElement('div', { className: 'dsh-my-memory-ask-field-label' }, strings.askContentLabel()),
+          createElement('div', { className: 'dsh-my-memory-ask-preview-text' }, content),
+        ),
   ]
   return createElement(
     'div',
@@ -185,6 +193,8 @@ interface AskConfirmCardProps {
   showSummary?: boolean
   note: string
   allowLabel: string
+  /** 是否展示「全局 / 项目」范围选项行（面板侧确认不展示，工具侧展示）。 */
+  showOptions?: boolean
   /** 二次确认（危险操作）armed 后的按钮文案；不给则不做二次确认。 */
   armedLabel?: string
   onAllow: () => void
@@ -219,7 +229,7 @@ function AskConfirmCard(props: AskConfirmCardProps): ReactNode {
       createElement(
         'div',
         { className: 'dsh-my-memory-ask-body' },
-        createElement(AskOptions, { variant: props.variant, scope: props.scope }),
+        props.showOptions === false ? null : createElement(AskOptions, { variant: props.variant, scope: props.scope }),
         createElement(AskFields, {
           category: props.category ?? '',
           content: props.content ?? '',

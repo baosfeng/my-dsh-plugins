@@ -37,16 +37,9 @@ import { homedir } from 'node:os'
 import { dirname, join, normalize, resolve } from 'node:path'
 import { findProjectRoot } from 'dsh-shared'
 import { mergeCandidate, withDefaults } from './memory-scoring.js'
-import type {
-  MemoryItem,
-  CandidateItem,
-  MemoryStore,
-  CandidateStore,
-  StoreInstance,
-  CandidateStoreInstance,
-} from './memory-types.js'
+import type { MemoryItem, MemoryStore, StoreInstance } from './memory-types.js'
 
-export type { MemoryItem, CandidateItem, MemoryStore, CandidateStore, StoreInstance, CandidateStoreInstance }
+export type { MemoryItem, MemoryStore, StoreInstance }
 
 /** The DSH home directory: $DSH_HOME, or ~/.dsh when unset (shared by the
  *  global memory file and the centralized project memory directory). */
@@ -64,13 +57,6 @@ export function globalMemoryFile(): string {
 /** Project memory directory: $DSH_HOME/memory/projects (issue #108). */
 export function projectMemoryDir(): string {
   return join(dshHome(), 'memory', 'projects')
-}
-
-/** Learning-candidate file: $DSH_HOME/memory/candidates.json (issue #78).
- *  Pending auto-extracted candidates live separately from confirmed
- *  memories so the memory files only ever hold user-confirmed entries. */
-export function candidateMemoryFile(): string {
-  return join(dshHome(), 'memory', 'candidates.json')
 }
 
 /**
@@ -199,42 +185,6 @@ function isMemoryItem(item: unknown): item is MemoryItem {
   )
 }
 
-/** One well-formed learning candidate (issue #78 auto-extraction):
- *  id/category/desc/scope/source/createdAt required; scope ∈ {global|project};
- *  cwd optional (required for project-scope candidates). */
-function isCandidateItem(item: unknown): item is CandidateItem {
-  return (
-    hasCandidateFields(item) &&
-    typeof (item as Record<string, unknown>).category === 'string' &&
-    ((item as Record<string, unknown>).scope === 'global' || (item as Record<string, unknown>).scope === 'project') &&
-    (item as Record<string, unknown>).source !== null &&
-    typeof (item as Record<string, unknown>).source === 'object'
-  )
-}
-
-/** 候选基础字段（id/desc/createdAt 与语言无关的数值/字符串完整性）。 */
-function hasCandidateFields(item: unknown): boolean {
-  return (
-    item !== null &&
-    typeof item === 'object' &&
-    typeof (item as Record<string, unknown>).id === 'string' &&
-    (item as Record<string, string>).id !== '' &&
-    typeof (item as Record<string, unknown>).desc === 'string' &&
-    (item as Record<string, string>).desc !== '' &&
-    typeof (item as Record<string, unknown>).createdAt === 'number'
-  )
-}
-
-/** Normalize one learning candidate file; malformed entries are dropped. */
-function normalizeCandidates(memory: unknown): CandidateStore {
-  const items = Array.isArray((memory as Record<string, unknown>)?.items)
-    ? (memory as Record<string, unknown[]>).items
-    : []
-  return {
-    items: items.filter((item) => isCandidateItem(item)),
-  }
-}
-
 const PREFIX = '[dsh-my-memory]' // 护栏 warn 用
 /** 快照字节上限（issue #198）：单条 ≤ 数百字节、条目数无上限 → 4MB 保守上界；
  *  超限由 shared 护栏拒绝写入 + 计数（`atomicWriteStats().rejected`），不再无界放大。 */
@@ -255,8 +205,8 @@ function tsOf(item: { updatedAt?: unknown; createdAt?: unknown }): number {
 
 /** Shared debounced-store core (pre-migration createGenericStore): in-memory
  *  cache + idempotent startup restore + debounced atomic writes, reused by the
- *  memory store, the candidate store and the global-prompt store (issue #465)
- *  so every store shares one write path (debounce + atomic write + byte cap).
+ *  memory store and the global-prompt store (issue #465) so every store shares
+ *  one write path (debounce + atomic write + byte cap).
  *  `sortBy` only shapes list(); default = newest-updatedAt-first. */
 export function createDebouncedStore<T extends { id: string; createdAt?: number; updatedAt?: number }>(
   file: string,
@@ -369,9 +319,9 @@ export function createStore(options: { file: string; debounceMs?: number }): Sto
     return updated
   }
 
-  async function mergeAdd(candidate: unknown, now: number = Date.now()): Promise<{ item: unknown; outcome: string }> {
+  async function mergeAdd(entry: unknown, now: number = Date.now()): Promise<{ item: unknown; outcome: string }> {
     await core.load()
-    const { items, outcome } = mergeCandidate(core.state.items, candidate as Partial<MemoryItem>, now)
+    const { items, outcome } = mergeCandidate(core.state.items, entry as Partial<MemoryItem>, now)
     core.state.items = items
     core.scheduleWrite()
     return { item: items[items.length - 1], outcome }
@@ -386,36 +336,6 @@ export function createStore(options: { file: string; debounceMs?: number }): Sto
     add,
     mergeAdd,
     update,
-    remove: core.removeById,
-  }
-}
-
-/**
- * Create a debounced, atomic file-backed store for learning candidates.
- * @param options.file The JSON file path.
- * @param options.debounceMs Write coalescing window (default 300ms).
- */
-export function createCandidatesStore(options: { file: string; debounceMs?: number }): CandidateStoreInstance {
-  const { file, debounceMs = 300 } = options
-  const core = createDebouncedStore<CandidateItem>(file, debounceMs, normalizeCandidates)
-
-  /** Append an already-shaped candidate: the passed id/createdAt are preserved
-   *  (the extractor owns candidate ids), malformed shapes are dropped
-   *  defensively (undefined) — pre-migration addRawItem semantics. */
-  async function addRaw(item: unknown): Promise<CandidateItem | undefined> {
-    await core.load()
-    if (!isCandidateItem(item)) return undefined
-    core.push(item)
-    return { ...item }
-  }
-
-  return {
-    state: core.state,
-    load: core.load,
-    flush: core.flush,
-    dispose: core.dispose,
-    list: core.list,
-    addRaw,
     remove: core.removeById,
   }
 }

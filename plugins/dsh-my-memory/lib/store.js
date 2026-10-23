@@ -53,12 +53,6 @@ export function globalMemoryFile() {
 export function projectMemoryDir() {
     return join(dshHome(), 'memory', 'projects');
 }
-/** Learning-candidate file: $DSH_HOME/memory/candidates.json (issue #78).
- *  Pending auto-extracted candidates live separately from confirmed
- *  memories so the memory files only ever hold user-confirmed entries. */
-export function candidateMemoryFile() {
-    return join(dshHome(), 'memory', 'candidates.json');
-}
 /**
  * Stable project id for a project root (issue #108, scheme A): sha256 of the
  * normalized absolute root path, first 12 hex chars. Deterministic across
@@ -164,35 +158,6 @@ function isMemoryItem(item) {
         typeof item.createdAt === 'number' &&
         typeof item.updatedAt === 'number');
 }
-/** One well-formed learning candidate (issue #78 auto-extraction):
- *  id/category/desc/scope/source/createdAt required; scope ∈ {global|project};
- *  cwd optional (required for project-scope candidates). */
-function isCandidateItem(item) {
-    return (hasCandidateFields(item) &&
-        typeof item.category === 'string' &&
-        (item.scope === 'global' || item.scope === 'project') &&
-        item.source !== null &&
-        typeof item.source === 'object');
-}
-/** 候选基础字段（id/desc/createdAt 与语言无关的数值/字符串完整性）。 */
-function hasCandidateFields(item) {
-    return (item !== null &&
-        typeof item === 'object' &&
-        typeof item.id === 'string' &&
-        item.id !== '' &&
-        typeof item.desc === 'string' &&
-        item.desc !== '' &&
-        typeof item.createdAt === 'number');
-}
-/** Normalize one learning candidate file; malformed entries are dropped. */
-function normalizeCandidates(memory) {
-    const items = Array.isArray(memory?.items)
-        ? memory.items
-        : [];
-    return {
-        items: items.filter((item) => isCandidateItem(item)),
-    };
-}
 const PREFIX = '[dsh-my-memory]'; // 护栏 warn 用
 /** 快照字节上限（issue #198）：单条 ≤ 数百字节、条目数无上限 → 4MB 保守上界；
  *  超限由 shared 护栏拒绝写入 + 计数（`atomicWriteStats().rejected`），不再无界放大。 */
@@ -211,8 +176,8 @@ function tsOf(item) {
 }
 /** Shared debounced-store core (pre-migration createGenericStore): in-memory
  *  cache + idempotent startup restore + debounced atomic writes, reused by the
- *  memory store, the candidate store and the global-prompt store (issue #465)
- *  so every store shares one write path (debounce + atomic write + byte cap).
+ *  memory store and the global-prompt store (issue #465) so every store shares
+ *  one write path (debounce + atomic write + byte cap).
  *  `sortBy` only shapes list(); default = newest-updatedAt-first. */
 export function createDebouncedStore(file, debounceMs, normalize, sortBy = (a, b) => tsOf(b) - tsOf(a)) {
     const state = {
@@ -294,9 +259,9 @@ export function createStore(options) {
         core.scheduleWrite();
         return updated;
     }
-    async function mergeAdd(candidate, now = Date.now()) {
+    async function mergeAdd(entry, now = Date.now()) {
         await core.load();
-        const { items, outcome } = mergeCandidate(core.state.items, candidate, now);
+        const { items, outcome } = mergeCandidate(core.state.items, entry, now);
         core.state.items = items;
         core.scheduleWrite();
         return { item: items[items.length - 1], outcome };
@@ -310,34 +275,6 @@ export function createStore(options) {
         add,
         mergeAdd,
         update,
-        remove: core.removeById,
-    };
-}
-/**
- * Create a debounced, atomic file-backed store for learning candidates.
- * @param options.file The JSON file path.
- * @param options.debounceMs Write coalescing window (default 300ms).
- */
-export function createCandidatesStore(options) {
-    const { file, debounceMs = 300 } = options;
-    const core = createDebouncedStore(file, debounceMs, normalizeCandidates);
-    /** Append an already-shaped candidate: the passed id/createdAt are preserved
-     *  (the extractor owns candidate ids), malformed shapes are dropped
-     *  defensively (undefined) — pre-migration addRawItem semantics. */
-    async function addRaw(item) {
-        await core.load();
-        if (!isCandidateItem(item))
-            return undefined;
-        core.push(item);
-        return { ...item };
-    }
-    return {
-        state: core.state,
-        load: core.load,
-        flush: core.flush,
-        dispose: core.dispose,
-        list: core.list,
-        addRaw,
         remove: core.removeById,
     };
 }

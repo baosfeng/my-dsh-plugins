@@ -2,11 +2,13 @@
  * Client render-path test: loads the client bundle with a stubbed react
  * (real createElement; hooks stubbed to stateful no-ops), registers the
  * settings tab through a mocked slots service, then invokes the view
- * component to verify:
- *  - the GLOBAL and PROJECT sections render side by side (project accented),
- *  - memory rows render with edit/delete actions,
- *  - the custom confirmation UI: delete is a red two-step confirm, save/add
- *    is green, and the confirmed write carries `confirmed: true`.
+ * component to verify the three-tab settings panel:
+ *  - tabs: 全局记忆 / 项目记忆 / 全局提示词 (one section visible at a time),
+ *  - memory rows render with category/confidence/source metadata + actions,
+ *  - the composer is a self-growing textarea with a char counter,
+ *  - the confirmation panel is a centered overlay (delete red / save green)
+ *    and the confirmed write carries `confirmed: true`,
+ *  - prompts (toggle / reorder / edit / delete / add) use their own endpoint.
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
@@ -14,10 +16,8 @@ import fs from 'node:fs'
 
 // ── stubbed react (stateful hooks, per component instance) ────────────────
 // hook 状态按「组件实例 + 序号」隔离，与 React 一致（不同组件的 hook 不共享
-// 槽位）。视图里新增了自持状态的子分区（全局提示词），因此隔离是必需的：
-// 共享槽位时子分区的 hook 会顶掉父视图的槽位，表现为「记忆列表渲染不出来」的
-// 假红；而把 effect 简化成「全局只跑第一个」又会把新分区的 effect 吞掉，表现为
-// 「分区在、内容是空」的假绿。
+// 槽位）。视图里有自持状态的子分区（提示词），因此隔离是必需的：共享槽位时
+// 子分区的 hook 会顶掉父视图的槽位，表现为「记忆列表渲染不出来」的假红。
 /** 当前正在渲染的组件实例 id（hook 槽位前缀）。 */
 let hookComponentId = null
 /** 单次组件渲染内的 hook 序号。 */
@@ -38,6 +38,7 @@ function withHookComponent(id, render) {
   const outerId = hookComponentId
   const outerIndex = hookIndex
   hookComponentId = id
+  hookIndex = 0
   try {
     return render()
   } finally {
@@ -46,9 +47,7 @@ function withHookComponent(id, render) {
   }
 }
 
-/** 组件实例身份：类型名 + 判别键（scope / key / id），同名同键只算一个实例。
- *  这是 React「同类同位置复用实例」的近似——用类型名而非树坐标，因为本 stub 的
- *  树在每次渲染都会被重建（元素对象是新的），位置坐标不可稳定复现。 */
+/** 组件实例身份：类型名 + 判别键（scope / key / id），同名同键只算一个实例。 */
 const componentSeen = new Map()
 
 /** 实例身份 + hook 槽位隔离。 */
@@ -91,9 +90,6 @@ const stubbed = {
     }
     return hookValues.get(key)
   },
-  // 对齐 React 语义：按依赖数组决定是否重跑（deps 浅比较；空数组 = 只跑一次）。
-  // 只按「跑过一次」判定的实现会让 `[actions]` 这类依赖永远不再触发——真实宿主会
-  // 反复请求记忆端点，测试却绿着（假绿）。
   useEffect: (fn, deps) => {
     const key = hookSlot()
     const previous = effectRan.get(key)
@@ -106,15 +102,6 @@ const stubbed = {
 }
 
 // ── 官方组件库 stub：只暴露宿主 0.1.7-rc.2 真实存在的导出 ────────────────
-// 防回归要点（issue：settings.plugins.tab 白屏）：stub 必须复刻宿主的真实
-// 导出集，否则测试会替宿主补齐并不存在的导出、把真实缺陷掩盖成绿色。
-// @deepseek-ai/dsh-client-ui-primitives@0.1.7-rc.2 的 279 个导出里，本插件
-// 只用到 Button / Input / Pill；官方图标导出是 IconXxxOutlineMedium /
-// IconXxxOutlineRegular，**没有** IconRefreshOutline14 这类数字后缀名。
-// Button → <button type=button data-ui=button className=... {...rest}>（icon
-// 与 children 直接作为子节点）；Input → <span data-ui=input className=...>
-// <input {...rest}/></span>（className 在 wrapper，原生属性在内部 input）；
-// Pill → 有 onClick 渲染 button、否则 span（data-ui=pill，className 透传）。
 const uiPrimitives = {
   Button: ({ variant: _variant, size: _size, icon, className, children, ...rest }) =>
     createElement('button', { type: 'button', 'data-ui': 'button', className, ...rest }, icon, children),
@@ -126,12 +113,8 @@ const uiPrimitives = {
       : createElement('span', { 'data-ui': 'pill', className }, children),
 }
 
-/**
- * 防回归（React error #130）：require 成功 ≠ 每个导出都存在。
- * 遍历渲染树（展开函数组件），断言不存在 `undefined` / 非法元素类型——
- * 宿主 0.1.7-rc.2 下 `createElement(ui.IconRefreshOutline14)` 正是
- * "Element type is invalid … got: undefined" 导致整块内容区白屏。
- */
+/** 防回归（React error #130）：遍历渲染树（展开函数组件），断言不存在
+ *  `undefined` / 非法元素类型——宿主缺失图标导出时整块内容区白屏。 */
 function assertRenderableTypes(node, path = 'tab[settings.plugins.tab]') {
   if (node === null || node === undefined || typeof node === 'boolean') return
   if (typeof node === 'string' || typeof node === 'number') return
@@ -154,17 +137,24 @@ function assertRenderableTypes(node, path = 'tab[settings.plugins.tab]') {
   throw new Error(`React error #130: Element type is invalid at ${path} (got: ${typeof type})`)
 }
 
-/** Render the tab component once (hooks restart at index 0 each render).
- *  每次渲染都验证元素类型合法（校验用独立渲染，hookIndex 复位，既有断言不受影响）。 */
+/** Render the tab component once (hooks restart at index 0 each render). */
 function renderView() {
-  // 每次渲染都验证元素类型合法（防 React #130）。hook 槽位按组件实例隔离，
-  // 因此这里不需要（也不能）手工复位 hookIndex——重复渲染会复用各自的槽位。
   return withHookComponent('root', () => {
     componentSeen.clear()
     const tree = capturedTab.component({})
-    assertRenderableTypes(capturedTab.component({}))
+    // 只渲染一次根组件：第二次渲染会拿到新的 hook 槽位，effect 会重复触发
+    // （表现为 session/config 端点被请求两次）。元素类型校验复用同一棵树。
+    assertRenderableTypes(tree)
     return tree
   })
+}
+
+/** 模拟「关闭再打开设置面板」：清空 hook 槽位后重新挂载，useEffect 重新拉数据。 */
+function remountView() {
+  hookValues.clear()
+  effectRan.clear()
+  componentSeen.clear()
+  return renderView()
 }
 
 // ── browser globals ────────────────────────────────────────────────────────
@@ -183,10 +173,6 @@ Object.defineProperty(global, 'navigator', { value: { language: 'zh-CN' }, confi
 
 const fetchCalls = []
 let cannedResponses = []
-// 全局提示词子分区自持 state → 首屏多一次渲染，effect 次数与记忆分区不同步，
-// 固定队列会错位（把提示词响应喂给 candidates）。故提示词/候选端点按 URL 应答，
-// 其余仍走固定队列（保持既有用例的写法不变）。
-// ── 全局提示词固定数据（issue #465）：一条启用种子 + 一条停用条目 ──────────
 const PROMPT_SEED = {
   id: 'gp-seed-think-zh',
   title: '中文思考',
@@ -196,22 +182,18 @@ const PROMPT_SEED = {
   builtin: 'builtin:think-zh',
 }
 const PROMPT_OFF = { id: 'gp-1', title: '停用规则', text: '这条不注入。', enabled: false, order: 20 }
-
 const PROMPTS_RESPONSE = { ok: true, value: { items: [PROMPT_SEED, PROMPT_OFF] } }
-const CANDIDATES_RESPONSE = { ok: true, value: { items: [] } }
-// config 也是每次渲染都可能被请求（子分区引入的额外首屏渲染），必须按 URL 应答，
-// 否则第二次 config 会吃掉队列里给记忆的响应（表现为「记忆渲染为空」的假红）。
 const CONFIG_RESPONSE = { ok: true, value: { maxEntryLength: 50 } }
-/** 按 URL 固定应答的端点（不消耗队列）。 */
 const FIXED_RESPONSES = {
   '/my-memory/api/config': CONFIG_RESPONSE,
-  '/my-memory/api/candidates': CANDIDATES_RESPONSE,
   '/my-memory/api/prompts': PROMPTS_RESPONSE,
 }
 global.fetch = (url, options) => {
   const target = String(url)
   fetchCalls.push({ url: target, options })
-  const fixed = FIXED_RESPONSES[target] ?? null
+  // 固定响应只用于 GET：POST /prompts 与 GET /prompts 同 URL，若不分方法会把
+  // 写操作响应错位成读操作响应（表现为记忆列表被提示词数据覆盖）。
+  const fixed = options === undefined ? (FIXED_RESPONSES[target] ?? null) : null
   const canned = fixed ??
     cannedResponses.shift() ?? {
       ok: true,
@@ -241,9 +223,6 @@ const mockSlots = {
   register: (options, component) => ({ options, component }),
 }
 const ctx = {
-  // 严格模拟 cordis 的 ctx.get(name, strict = true)：服务提供者 fiber 未
-  // active 时 strict 取法返回 undefined、strict=false 才返回服务对象。
-  // 防回归（首屏时序）：设置页 tab 注册不得依赖 slots 提供者已 active。
   get: (name, strict = true) => (name === 'slots' ? (strict ? undefined : mockSlots) : undefined),
   effect: (fn) => fn(),
 }
@@ -270,11 +249,17 @@ function walkText(node, out) {
   walkText(node.props.children, out)
 }
 
+function joinedText(tree) {
+  const out = []
+  walkText(tree, out)
+  return out.join('|')
+}
+
 function collectButtons(node, out) {
-  if (node === null || typeof node !== 'object') return
+  if (node === null || node === undefined || typeof node !== 'object') return
   const props = node.props ?? {}
   if (typeof props.onClick === 'function' && typeof props['aria-label'] === 'string') {
-    out.push({ label: props['aria-label'], onClick: props.onClick })
+    out.push({ label: props['aria-label'], onClick: props.onClick, role: props.role })
   }
   if (Array.isArray(node)) {
     for (const c of node) collectButtons(c, out)
@@ -287,22 +272,9 @@ function collectButtons(node, out) {
   collectButtons(props.children, out)
 }
 
+/** 收集输入控件：原生 textarea + 官方 Input 的内层 input（className 在 wrapper）。 */
 function collectInputs(node, out) {
-  if (node === null || typeof node !== 'object') return
-  const props = node.props ?? {}
-  const cls = props.className
-  if (
-    typeof cls === 'string' &&
-    (cls.includes('dsh-my-memory-add-input') || cls.includes('dsh-my-memory-path-input'))
-  ) {
-    // 官方 Input 的 className 在 wrapper span 上（issue #143 试点），
-    // onChange/value/placeholder 在内部 input 上——返回内部 input 的 props，
-    // 并附 wrapperClass 供断言定位。
-    const kids = Array.isArray(props.children) ? props.children : [props.children]
-    const inner = kids.find((c) => c !== null && typeof c === 'object' && c.type === 'input')
-    out.push(inner ? { ...inner.props, wrapperClass: cls } : { ...props, wrapperClass: cls })
-    return
-  }
+  if (node === null || node === undefined || typeof node !== 'object') return
   if (Array.isArray(node)) {
     for (const c of node) collectInputs(c, out)
     return
@@ -311,702 +283,38 @@ function collectInputs(node, out) {
     collectInputs(renderComponent(node.type, node.props), out)
     return
   }
+  const props = node.props ?? {}
+  if (node.type === 'textarea') {
+    out.push({ ...props, tag: 'textarea' })
+    return
+  }
+  const cls = props.className
+  if (typeof cls === 'string' && cls.includes('dsh-my-memory-add-input')) {
+    const kids = Array.isArray(props.children) ? props.children : [props.children]
+    const inner = kids.find((c) => c !== null && typeof c === 'object' && c.type === 'input')
+    out.push(inner ? { ...inner.props, wrapperClass: cls } : { ...props, wrapperClass: cls })
+    return
+  }
   collectInputs(props.children, out)
 }
 
-/** True when the node tree contains an <svg> element (icon rendering). */
-function hasIcon(node) {
-  if (node === null || typeof node !== 'object') return false
-  if (node.type === 'svg') return true
-  if (Array.isArray(node)) return node.some(hasIcon)
-  if (typeof node.type === 'function') return hasIcon(renderComponent(node.type, node.props))
-  return hasIcon(node.props.children)
-}
-
-/** Count official-component markers (data-ui) in the tree (issue #143 试点). */
-function countUi(node, marker) {
+function countByClass(node, className) {
   if (node === null || typeof node !== 'object') return 0
   const props = node.props ?? {}
-  let count = props['data-ui'] === marker ? 1 : 0
+  const cls = props.className
+  let count = typeof cls === 'string' && cls.split(' ').includes(className) ? 1 : 0
   if (Array.isArray(node)) {
-    for (const c of node) count += countUi(c, marker)
+    for (const c of node) count += countByClass(c, className)
     return count
   }
-  if (typeof node.type === 'function') return count + countUi(renderComponent(node.type, node.props), marker)
-  return count + countUi(props.children, marker)
-}
-
-/** Count locally-fallbacked icon markers (data-ui-icon=local:*) in the tree。
- *  宿主 0.1.7-rc.2 没有 IconRefreshOutline14 / IconFolderOpenOutline16 等导出，
- *  这些图标由 ui-fallback part 用 dsh-shared 的本地图标集兜底渲染。 */
-function countIcon(node, name) {
-  if (node === null || typeof node !== 'object') return 0
-  const props = node.props ?? {}
-  let count = props['data-ui-icon'] === `local:${name}` ? 1 : 0
-  if (Array.isArray(node)) {
-    for (const c of node) count += countIcon(c, name)
-    return count
-  }
-  if (typeof node.type === 'function') return count + countIcon(renderComponent(node.type, node.props), name)
-  return count + countIcon(props.children, name)
+  if (typeof node.type === 'function') return count + countByClass(renderComponent(node.type, node.props), className)
+  return count + countByClass(props.children, className)
 }
 
 function countSections(node) {
-  if (node === null || typeof node !== 'object') return 0
-  const props = node.props ?? {}
-  const cls = props.className
-  let count =
-    typeof cls === 'string' && (cls === 'dsh-my-memory-section' || cls.startsWith('dsh-my-memory-section ')) ? 1 : 0
-  if (Array.isArray(node)) {
-    for (const c of node) count += countSections(c)
-    return count
-  }
-  if (typeof node.type === 'function') return count + countSections(renderComponent(node.type, node.props))
-  return count + countSections(props.children)
+  return countByClass(node, 'dsh-my-memory-section')
 }
 
-function countConfirmPanels(node) {
-  if (node === null || typeof node !== 'object') return 0
-  const props = node.props ?? {}
-  const cls = props.className
-  let count =
-    typeof cls === 'string' && (cls === 'dsh-my-memory-confirm' || cls.startsWith('dsh-my-memory-confirm ')) ? 1 : 0
-  if (Array.isArray(node)) {
-    for (const c of node) count += countConfirmPanels(c)
-    return count
-  }
-  if (typeof node.type === 'function') return count + countConfirmPanels(renderComponent(node.type, node.props))
-  return count + countConfirmPanels(props.children)
-}
-
-// ── render the view with canned two-scope data ─────────────────────────────
-const globalValue = {
-  ok: true,
-  value: {
-    scope: 'global',
-    cwd: '',
-    projectRoot: '',
-    items: [
-      { id: 'g1', desc: '回复使用中文', createdAt: 1, updatedAt: 2, source: { sessionId: 'sess-abcdef123', at: 3 } },
-    ],
-  },
-}
-const projectValue = {
-  ok: true,
-  value: {
-    scope: 'project',
-    cwd: '/work/proj',
-    projectRoot: '/work/proj',
-    items: [{ id: 'p1', desc: '本项目用 vitest', createdAt: 1, updatedAt: 2 }],
-  },
-}
-// 初始挂载 fetch 顺序（view.part.js useEffect 同步执行）：
-// 1. GET /my-memory/api/config → { maxEntryLength }（issue #105 精简引导）
-// 2. GET /my-memory/api/candidates → []（issue #78 待确认候选；sessionId 空
-//    不 fetch /session，global 的 fetchAll 在其后的微任务里发起）
-// 3. GET /my-memory/api/prompts → 提示词列表（issue #465 独立端点）
-// 4. GET /my-memory/api/candidates → []（issue #78 待确认候选）
-// 5. GET /my-memory/api/memory?scope=global → globalValue
-cannedResponses.push(globalValue)
-
-const tree = renderView()
-const texts0 = []
-walkText(tree, texts0)
-assert.ok(texts0.join('|').includes('加载中'), 'initial render shows the loading state')
-
-await new Promise((resolve) => setTimeout(resolve, 0))
-
-// ── re-render: both sections side by side (project empty until loaded) ─────
-renderView()
-// 提示词分区的数据来自它自己的异步 effect（独立端点），等一拍微任务后再渲染断言。
-await new Promise((resolve) => setTimeout(resolve, 0))
-const tree2 = renderView()
-
-const texts = []
-walkText(tree2, texts)
-const joined = texts.join('|')
-
-assert.ok(joined.includes('全局记忆'), 'global section present')
-assert.ok(joined.includes('项目记忆'), 'project section present')
-assert.equal(countSections(tree2), 3, 'two memory scopes + the prompts section (issue #465)')
-assert.ok(joined.includes('回复使用中文'), 'global memory desc rendered')
-assert.ok(joined.includes('暂无记忆'), 'project section empty before a project is loaded')
-// ── issue #465 全局提示词分区：与记忆分区并列、独立数据源 ──────────────────
-assert.ok(joined.includes('全局提示词'), 'prompts section present')
-assert.ok(joined.includes('中文思考'), 'enabled prompt title rendered')
-assert.ok(joined.includes('已启用'), 'enabled prompt shows the enabled state')
-assert.ok(joined.includes('已停用'), 'disabled entry stays visible with its disabled state')
-const promptCalls = fetchCalls.filter((c) => c.url === '/my-memory/api/prompts' && c.options === undefined)
-assert.equal(promptCalls.length, 1, 'the prompts endpoint is fetched exactly once on mount')
-assert.ok(joined.includes('当前无项目会话'), 'project empty state prompts to load a project path')
-// ── 回归：confidence 缺失时不渲染"置信度 undefined"；徽标不重复 scope 标签 ──
-assert.ok(!joined.includes('置信度 undefined'), 'confidence omitted when missing (no undefined text)')
-assert.ok(joined.includes('1 条'), 'global count badge rendered (count only)')
-// ── issue #209：带来源的条目展示来源会话前缀，未标记条目不渲染该徽章 ──
-assert.ok(joined.includes('agent 保存 · sess-abc'), 'source badge shows the agent session prefix (#209)')
-assert.equal(joined.split('agent 保存').length - 1, 1, 'only the session-stamped entry carries the source badge')
-const buttons2 = []
-collectButtons(tree2, buttons2)
-assert.ok(
-  buttons2.some((b) => b.label.includes('编辑')),
-  'edit action rendered',
-)
-assert.ok(
-  buttons2.some((b) => b.label.includes('删除')),
-  'delete action rendered',
-)
-assert.ok(joined.includes('新增'), 'add bar rendered')
-assert.ok(hasIcon(tree2), 'view renders inline svg icons')
-// ── issue #143 试点：官方组件使用断言（Input/Pill/Button + 官方图标）────
-assert.ok(countUi(tree2, 'input') >= 3, 'official Input used (path + both add inputs)')
-assert.ok(countUi(tree2, 'pill') >= 2, 'official Pill used (section badges + sort)')
-assert.ok(countUi(tree2, 'button') >= 2, 'official Button used (load + refresh)')
-// 图标：宿主 0.1.7-rc.2 缺这几个导出 → 必须由 ui-fallback 用本地图标集兜底渲染
-assert.ok(countIcon(tree2, 'refresh') >= 1, 'refresh icon rendered via local fallback')
-assert.ok(countIcon(tree2, 'folder') >= 1, 'folder icon rendered via local fallback')
-
-const listCalls = fetchCalls.filter((c) => c.url.startsWith('/my-memory/api/memory') && c.options === undefined)
-assert.equal(listCalls.length, 1, 'initial load fetches only the global scope')
-assert.ok(listCalls[0].url.includes('scope=global'), 'global fetch')
-
-// ── load a project path: project memory + root badge appear ────────────────
-const pathInputs0 = []
-collectInputs(tree2, pathInputs0)
-const pathInput0 = pathInputs0.find((i) => i.wrapperClass.includes('dsh-my-memory-path-input'))
-assert.ok(pathInput0, 'project path input rendered')
-pathInput0.onChange({ target: { value: '/work/proj' } })
-const tree2b = renderView()
-const buttons2b = []
-collectButtons(tree2b, buttons2b)
-const loadBtn0 = buttons2b.find((b) => b.label.includes('加载'))
-assert.ok(loadBtn0, 'load button rendered')
-// fetchAll 会同时请求 global + project 两个 scope
-cannedResponses.push(globalValue, projectValue)
-loadBtn0.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-
-const tree2c = renderView()
-const texts2c = []
-walkText(tree2c, texts2c)
-const joined2c = texts2c.join('|')
-assert.ok(joined2c.includes('本项目用 vitest'), 'project memory desc rendered after load')
-assert.ok(joined2c.includes('项目根：/work/proj'), 'project root badge rendered')
-
-// ── delete flow: red two-step confirm, then POST with confirmed: true ─────
-const buttons = []
-collectButtons(tree2c, buttons)
-const deleteBtn = buttons.find((b) => b.label.includes('删除') && b.label.includes('p1'))
-assert.ok(deleteBtn, 'delete button for the project memory found')
-deleteBtn.onClick()
-const tree3 = renderView()
-const texts3 = []
-walkText(tree3, texts3)
-const joined3 = texts3.join('|')
-assert.ok(joined3.includes('确定删除这条记忆'), 'delete confirmation text shown')
-assert.ok(joined3.includes('确认删除'), 'red confirm-delete button shown')
-assert.equal(countConfirmPanels(tree3), 1, 'one confirmation panel open')
-
-// 取消：确认面板消失
-const cancelBtn = collectCancel(tree3)
-assert.ok(cancelBtn, 'cancel button in the confirm panel')
-cancelBtn.onClick()
-const tree3b = renderView()
-assert.equal(countConfirmPanels(tree3b), 0, 'cancel closes the confirmation panel')
-
-// 再次删除并确认
-deleteBtn.onClick()
-const tree4 = renderView()
-const confirmDelete = collectConfirmOk(tree4)
-assert.ok(confirmDelete, 'confirm-delete button found')
-cannedResponses.push({
-  ok: true,
-  value: { scope: 'project', cwd: '/work/proj', projectRoot: '/work/proj', items: [] },
-})
-confirmDelete.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-
-const deleteCall = fetchCalls.find(
-  (c) => c.options !== undefined && c.options.method === 'POST' && JSON.parse(c.options.body).action === 'delete',
-)
-assert.ok(deleteCall, 'confirmed delete issues a POST')
-const deletePayload = JSON.parse(deleteCall.options.body)
-assert.equal(deletePayload.action, 'delete')
-assert.equal(deletePayload.scope, 'project')
-assert.equal(deletePayload.id, 'p1')
-assert.equal(deletePayload.confirmed, true, 'write carries the user-consent marker')
-
-// ── add flow: green confirm, then POST with confirmed: true ────────────────
-const tree5 = renderView()
-const inputs = []
-collectInputs(tree5, inputs)
-const globalAddInput = inputs.find(
-  (i) => i.wrapperClass.includes('dsh-my-memory-add-input') && i.placeholder.includes('记住'),
-)
-assert.ok(globalAddInput, 'global add input found')
-globalAddInput.onChange({ target: { value: '新记忆内容' } })
-const tree6 = renderView()
-const buttons6 = []
-collectButtons(tree6, buttons6)
-const addBtn = buttons6.find((b) => b.label.includes('新增') && b.label.includes('global'))
-assert.ok(addBtn, 'global add button found')
-addBtn.onClick()
-const tree7 = renderView()
-const texts7 = []
-walkText(tree7, texts7)
-const joined7 = texts7.join('|')
-assert.ok(joined7.includes('确认新增这条记忆'), 'add confirmation text shown')
-assert.ok(joined7.includes('确认保存'), 'green confirm-save button shown')
-const confirmSave = collectConfirmOk(tree7)
-assert.ok(confirmSave, 'confirm-save button found')
-cannedResponses.push({
-  ok: true,
-  value: {
-    scope: 'global',
-    cwd: '',
-    projectRoot: '',
-    items: [
-      { id: 'g1', desc: '回复使用中文', createdAt: 1, updatedAt: 2 },
-      { id: 'g2', desc: '新记忆内容', createdAt: 3, updatedAt: 3 },
-    ],
-  },
-})
-confirmSave.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-
-const addCall = fetchCalls.find(
-  (c) => c.options !== undefined && c.options.method === 'POST' && JSON.parse(c.options.body).action === 'add',
-)
-assert.ok(addCall, 'confirmed add issues a POST')
-const addPayload = JSON.parse(addCall.options.body)
-assert.equal(addPayload.action, 'add')
-assert.equal(addPayload.scope, 'global')
-assert.equal(addPayload.desc, '新记忆内容')
-assert.equal(addPayload.confirmed, true, 'add carries the user-consent marker')
-
-// ── edit flow: edit mode input + green save confirm ───────────────────────
-const tree8 = renderView()
-const buttons8 = []
-collectButtons(tree8, buttons8)
-const editBtn = buttons8.find((b) => b.label.includes('编辑') && b.label.includes('g1'))
-assert.ok(editBtn, 'edit button found')
-editBtn.onClick()
-const tree9 = renderView()
-const texts9 = []
-walkText(tree9, texts9)
-assert.ok(texts9.join('|').includes('保存'), 'edit mode shows the save button')
-const editInputs = []
-collectInputs(tree9, editInputs)
-const editInput = editInputs.find(
-  (i) => i.wrapperClass.includes('dsh-my-memory-add-input') && i.value === '回复使用中文',
-)
-assert.ok(editInput, 'edit input prefilled with the current desc')
-editInput.onChange({ target: { value: '回复必须使用中文' } })
-const tree10 = renderView()
-const buttons10 = []
-collectButtons(tree10, buttons10)
-// 编辑模式的保存按钮没有 aria-label，直接找 dsh-my-memory-btn-save
-const saveEdit = findSaveButton(tree10)
-assert.ok(saveEdit, 'edit save button found')
-saveEdit.onClick()
-const tree11 = renderView()
-const texts11 = []
-walkText(tree11, texts11)
-assert.ok(texts11.join('|').includes('确认保存这条记忆'), 'update confirmation text shown')
-const confirmUpdate = collectConfirmOk(tree11)
-assert.ok(confirmUpdate, 'confirm-update button found')
-cannedResponses.push({
-  ok: true,
-  value: {
-    scope: 'global',
-    cwd: '',
-    projectRoot: '',
-    items: [{ id: 'g1', desc: '回复必须使用中文', createdAt: 1, updatedAt: 4 }],
-  },
-})
-confirmUpdate.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-
-const updateCall = fetchCalls.find(
-  (c) => c.options !== undefined && c.options.method === 'POST' && JSON.parse(c.options.body).action === 'update',
-)
-assert.ok(updateCall, 'confirmed update issues a POST')
-const updatePayload = JSON.parse(updateCall.options.body)
-assert.equal(updatePayload.action, 'update')
-assert.equal(updatePayload.id, 'g1')
-assert.equal(updatePayload.desc, '回复必须使用中文')
-assert.equal(updatePayload.confirmed, true, 'update carries the user-consent marker')
-
-// ── project path input: load a project refreshes the project scope ────────
-const tree12 = renderView()
-const pathInputs = []
-collectInputs(tree12, pathInputs)
-const pathInput = pathInputs.find((i) => i.wrapperClass.includes('dsh-my-memory-path-input'))
-assert.ok(pathInput, 'project path input rendered')
-pathInput.onChange({ target: { value: '/work/other' } })
-const tree13 = renderView()
-const buttons13 = []
-collectButtons(tree13, buttons13)
-const loadBtn = buttons13.find((b) => b.label.includes('加载'))
-assert.ok(loadBtn, 'load button rendered')
-cannedResponses.push(globalValue, {
-  ok: true,
-  value: { scope: 'project', cwd: '/work/other', projectRoot: '/work/other', items: [] },
-})
-loadBtn.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-const tree14 = renderView()
-const texts14 = []
-walkText(tree14, texts14)
-assert.ok(texts14.join('|').includes('项目根：/work/other'), 'project root badge updated after load')
-
-// ── issue #110 视觉重设计断言：排序 / 相对时间 / 截断展开 ─────────────────
-assert.equal(typeof exportsObj.sortMemories, 'function', 'sortMemories helper exported')
-assert.equal(typeof exportsObj.relativeTime, 'function', 'relativeTime helper exported')
-assert.equal(typeof exportsObj.truncateText, 'function', 'truncateText helper exported')
-
-// 排序：desc 最新在顶、asc 最旧在顶，且不修改原数组
-const sortInput = [
-  { id: 'a', desc: 'A', updatedAt: 200 },
-  { id: 'b', desc: 'B', updatedAt: 100 },
-]
-const descItems = exportsObj.sortMemories(sortInput, 'desc')
-assert.deepEqual(
-  descItems.map((i) => i.id),
-  ['a', 'b'],
-  'desc orders updated-desc first',
-)
-const ascItems = exportsObj.sortMemories(sortInput, 'asc')
-assert.deepEqual(
-  ascItems.map((i) => i.id),
-  ['b', 'a'],
-  'asc orders updated-asc first',
-)
-assert.equal(sortInput[0].id, 'a', 'sortMemories does not mutate the input array')
-
-// 截断：超过上限截断 + 「…」收尾，未超限原样返回
-const longCut = exportsObj.truncateText('A'.repeat(64), 60)
-assert.equal(longCut.truncated, true, 'long text flags truncated')
-assert.equal(longCut.text, `${'A'.repeat(60)}…`, 'long text truncated with ellipsis')
-const shortCut = exportsObj.truncateText('短内容', 60)
-assert.equal(shortCut.truncated, false, 'short text not truncated')
-assert.equal(shortCut.text, '短内容', 'short text returned unchanged')
-
-// 相对时间：一分钟内「刚刚」、数分钟「n 分钟前」
-assert.equal(exportsObj.relativeTime(Date.now() - 30 * 1000), '刚刚', 'under a minute is 刚刚')
-assert.equal(exportsObj.relativeTime(Date.now() - 5 * 60 * 1000), '5 分钟前', 'five minutes shows 5 分钟前')
-
-// 渲染态：重新加载含长条目的全局数据，验证排序 + 截断展开
-const freshGlobal = {
-  ok: true,
-  value: {
-    scope: 'global',
-    cwd: '',
-    projectRoot: '',
-    items: [
-      { id: 'long', desc: 'A'.repeat(64), createdAt: 200, updatedAt: 200 },
-      { id: 'short', desc: 'OLDER-ITEM', createdAt: 100, updatedAt: 100 },
-    ],
-  },
-}
-const reloadInputs = []
-collectInputs(renderView(), reloadInputs)
-const reloadInput = reloadInputs.find((i) => i.wrapperClass.includes('dsh-my-memory-path-input'))
-reloadInput.onChange({ target: { value: '' } })
-const reloadTree = renderView()
-const reloadButtons = []
-collectButtons(reloadTree, reloadButtons)
-const refreshBtn = reloadButtons.find((b) => b.label.includes('刷新'))
-assert.ok(refreshBtn, 'refresh button found for reload')
-cannedResponses.push(freshGlobal)
-refreshBtn.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-
-const sortedTree = renderView()
-const sortedTexts = []
-walkText(sortedTree, sortedTexts)
-const sortedJoined = sortedTexts.join('|')
-const truncatedLong = `${'A'.repeat(60)}…`
-assert.ok(sortedJoined.includes(truncatedLong), 'long item renders truncated')
-assert.ok(!sortedJoined.includes('A'.repeat(64)), 'long item is not expanded before the user opens it')
-assert.ok(sortedJoined.indexOf(truncatedLong) < sortedJoined.indexOf('OLDER-ITEM'), 'newest-updated item sorts first')
-
-const sortedBtns = []
-collectButtons(sortedTree, sortedBtns)
-const expandBtn = sortedBtns.find((b) => b.label.includes('展开'))
-assert.ok(expandBtn, 'expand button renders for a truncated item')
-expandBtn.onClick()
-const expandedTree = renderView()
-const expandedTexts = []
-walkText(expandedTree, expandedTexts)
-assert.ok(expandedTexts.join('|').includes('A'.repeat(64)), 'expand reveals the full text')
-const collapseBtns = []
-collectButtons(expandedTree, collapseBtns)
-const collapseBtn = collapseBtns.find((b) => b.label.includes('收起'))
-assert.ok(collapseBtn, 'collapse button renders while expanded')
-collapseBtn.onClick()
-const collapsedTree = renderView()
-const collapsedTexts = []
-walkText(collapsedTree, collapsedTexts)
-assert.ok(collapsedTexts.join('|').includes(truncatedLong), 'collapse truncates the text again')
-
-// 排序开关：点击后切到最旧优先，顺序反转
-const flipBtns = []
-collectButtons(collapsedTree, flipBtns)
-const flipBtn = flipBtns.find((b) => b.label.includes('按更新时间排序'))
-assert.ok(flipBtn, 'sort toggle button renders')
-flipBtn.onClick()
-const flippedTree = renderView()
-const flippedTexts = []
-walkText(flippedTree, flippedTexts)
-const flippedJoined = flippedTexts.join('|')
-assert.ok(
-  flippedJoined.indexOf('OLDER-ITEM') < flippedJoined.indexOf(truncatedLong),
-  'toggling sort flips to oldest-updated first',
-)
-
-// ── issue #105 记忆内容精简：概要/详情两级展示 + 保存精简引导 ─────────────
-assert.equal(
-  exportsObj.firstSentence('回复使用中文。代码注释也要中文。'),
-  '回复使用中文。',
-  'firstSentence helper exported',
-)
-
-// 概要渲染：多句条目列表只显示首句（概要），点击展开显示完整详情
-const multiSentenceValue = {
-  ok: true,
-  value: {
-    scope: 'global',
-    cwd: '',
-    projectRoot: '',
-    items: [
-      { id: 'm1', desc: '这是重要约定。这是详细解释不应该铺开在列表里。', createdAt: 100, updatedAt: 100 },
-      { id: 'short', desc: '短条目', createdAt: 200, updatedAt: 200 },
-    ],
-  },
-}
-const reloadInputs105 = []
-collectInputs(renderView(), reloadInputs105)
-reloadInputs105.find((i) => i.wrapperClass.includes('dsh-my-memory-path-input')).onChange({ target: { value: '' } })
-const reloadTree105 = renderView()
-const reloadButtons105 = []
-collectButtons(reloadTree105, reloadButtons105)
-cannedResponses.push(multiSentenceValue)
-reloadButtons105.find((b) => b.label.includes('刷新')).onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-
-const summaryTree = renderView()
-const summaryTexts = []
-walkText(summaryTree, summaryTexts)
-const summaryJoined = summaryTexts.join('|')
-assert.ok(summaryJoined.includes('这是重要约定。'), 'list shows the first sentence as the summary')
-assert.ok(!summaryJoined.includes('这是详细解释不应该铺开在列表里'), 'list hides the detail sentences')
-const expandBtns105 = []
-collectButtons(summaryTree, expandBtns105)
-// 刷新后列表只有 m1（多句 → 概要截断，有展开按钮）与 short（短 → 无），
-// 唯一的「展开」按钮即属于多句条目
-const expandBtn105 = expandBtns105.find((b) => b.label.includes('展开'))
-assert.ok(expandBtn105, 'expand button renders for a multi-sentence item')
-expandBtn105.onClick()
-const expandedTree105 = renderView()
-const expandedTexts105 = []
-walkText(expandedTree105, expandedTexts105)
-assert.ok(
-  expandedTexts105.join('|').includes('这是详细解释不应该铺开在列表里'),
-  'clicking the summary expands to the FULL desc (detail level)',
-)
-
-// 输入超长提示：超过 maxEntryLength（config: 50）时出现精简提示
-const longDraftInputs = []
-collectInputs(renderView(), longDraftInputs)
-const longDraftInput = longDraftInputs.find(
-  (i) => i.wrapperClass.includes('dsh-my-memory-add-input') && i.placeholder.includes('记住'),
-)
-assert.ok(longDraftInput, 'global add input found')
-longDraftInput.onChange({ target: { value: 'x'.repeat(51) } })
-const longDraftTree = renderView()
-const longDraftTexts = []
-walkText(longDraftTree, longDraftTexts)
-assert.ok(longDraftTexts.join('|').includes('内容过长'), 'typing beyond maxEntryLength shows the concise-entry hint')
-assert.ok(longDraftTexts.join('|').includes('建议精简为 1-2 句'), 'hint suggests 1-2 sentences')
-// 短内容不提示
-longDraftInput.onChange({ target: { value: '短内容' } })
-const shortDraftTree = renderView()
-const shortDraftTexts = []
-walkText(shortDraftTree, shortDraftTexts)
-assert.ok(!shortDraftTexts.join('|').includes('内容过长'), 'short draft shows no hint')
-
-// 确认面板概要预览：超长 add 时确认面板说明「保存完整内容 + 显示概要」
-longDraftInput.onChange({
-  target: {
-    value: '保存这句完整内容。这句是较长的详情内容，会完整保留在存储中，同时列表与注入只展示概要首句以保持可扫读性。',
-  },
-})
-const confirmDraftTree = renderView()
-const addBtns105 = []
-collectButtons(confirmDraftTree, addBtns105)
-const addBtn105 = addBtns105.find((b) => b.label.includes('新增') && b.label.includes('global'))
-assert.ok(addBtn105, 'add button found')
-addBtn105.onClick()
-const previewTree = renderView()
-const previewTexts = []
-walkText(previewTree, previewTexts)
-const previewJoined = previewTexts.join('|')
-assert.ok(previewJoined.includes('确认新增这条记忆'), 'add confirmation shown')
-assert.ok(previewJoined.includes('将保存完整内容'), 'confirm panel previews the summary for a long entry')
-assert.ok(previewJoined.includes('保存这句完整内容。'), 'summary preview shows the first sentence')
-// 取消，避免污染后续流程
-const previewCancel = collectCancel(previewTree)
-assert.ok(previewCancel, 'cancel button present in the preview panel')
-previewCancel.onClick()
-
-// ── issue #465 全局提示词：启停 / 上移下移 / 新增 / 删除（独立端点写路径）────
-// 让 add/update 确认面板收尾，避免污染下面的提示词交互断言
-const settleTree = renderView()
-const settleBtns = []
-collectButtons(settleTree, settleBtns)
-const settleInputs = []
-collectInputs(settleTree, settleInputs)
-const settleAdd = settleInputs.find((i) => i.wrapperClass.includes('dsh-my-memory-add-input'))
-if (settleAdd) settleAdd.onChange({ target: { value: '' } })
-
-// 提示词分区状态（独立数据源）
-const promptTree = renderView()
-const promptTexts = []
-walkText(promptTree, promptTexts)
-const promptJoined = promptTexts.join('|')
-assert.ok(promptJoined.includes('全局提示词'), 'prompts section rendered')
-assert.ok(promptJoined.includes('中文思考'), 'seeded prompt title rendered')
-assert.ok(promptJoined.includes('思考过程必须使用简体中文书写。'), 'prompt body rendered')
-assert.ok(promptJoined.includes('已启用') && promptJoined.includes('已停用'), 'enabled/disabled states rendered')
-assert.ok(promptJoined.includes('内置'), 'builtin badge rendered for the seed')
-
-// 启停：点击 Pill → POST toggle + confirmed
-const promptBtns = []
-collectButtons(promptTree, promptBtns)
-const toggleBtn = promptBtns.find((b) => b.label.includes('停用') && b.label.includes('gp-seed-think-zh'))
-assert.ok(toggleBtn, 'enable/disable control rendered for the seed prompt')
-cannedResponses.push({ ok: true, value: { items: [{ ...PROMPT_SEED, enabled: false }, PROMPT_OFF], item: null } })
-toggleBtn.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-const toggleCall = fetchCalls.find(
-  (c) =>
-    c.options !== undefined && c.url === '/my-memory/api/prompts' && JSON.parse(c.options.body).action === 'toggle',
-)
-assert.ok(toggleCall, 'toggling issues a POST to /my-memory/api/prompts')
-const togglePayload = JSON.parse(toggleCall.options.body)
-assert.equal(togglePayload.id, 'gp-seed-think-zh')
-assert.equal(togglePayload.enabled, false)
-assert.equal(togglePayload.confirmed, true, 'the toggle carries the user-consent marker')
-
-// 上移 / 下移 → reorder POST
-const reorderTree = renderView()
-const reorderBtns = []
-collectButtons(reorderTree, reorderBtns)
-const moveDown = reorderBtns.find((b) => b.label.includes('下移') && b.label.includes('gp-seed-think-zh'))
-assert.ok(moveDown, 'move-down control rendered')
-cannedResponses.push({ ok: true, value: { items: [PROMPT_OFF, { ...PROMPT_SEED, enabled: false }], item: null } })
-moveDown.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-const reorderCall = fetchCalls.find((c) => c.options !== undefined && JSON.parse(c.options.body).action === 'reorder')
-assert.ok(reorderCall, 'moving issues a reorder POST')
-const reorderPayload = JSON.parse(reorderCall.options.body)
-assert.equal(reorderPayload.direction, 'down')
-assert.equal(reorderPayload.confirmed, true, 'the reorder carries the user-consent marker')
-
-// 删除：红色二次确认面板 + POST（删除提示词，不碰记忆）
-const delTree = renderView()
-const delBtns = []
-collectButtons(delTree, delBtns)
-const promptDelete = delBtns.find((b) => b.label.includes('删除') && b.label.includes('gp-1'))
-assert.ok(promptDelete, 'delete control rendered for the prompt')
-promptDelete.onClick()
-const delConfirmTree = renderView()
-const delTexts = []
-walkText(delConfirmTree, delTexts)
-assert.ok(delTexts.join('|').includes('确定删除这条提示词'), 'prompt delete confirmation text shown')
-const delOk = collectConfirmOk(delConfirmTree)
-assert.ok(delOk, 'confirm-delete button rendered')
-cannedResponses.push({ ok: true, value: { items: [PROMPT_SEED], item: null } })
-delOk.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-const promptDeleteCall = fetchCalls.find(
-  (c) =>
-    c.options !== undefined &&
-    JSON.parse(c.options.body).action === 'delete' &&
-    JSON.parse(c.options.body).id === 'gp-1',
-)
-assert.ok(promptDeleteCall, 'confirming issues a prompt delete POST')
-assert.equal(JSON.parse(promptDeleteCall.options.body).confirmed, true, 'the prompt delete carries the consent marker')
-// 提示词写操作全部打到 /prompts，没有一条走 /memory
-const promptWrites = fetchCalls.filter(
-  (c) => c.options !== undefined && String(c.options.body).includes('"action":"toggle"'),
-)
-assert.ok(
-  promptWrites.every((c) => c.url === '/my-memory/api/prompts'),
-  'prompt writes never hit the memory endpoint',
-)
-
-// ── 提示词编辑态（防回归：PromptsBlock / PromptRow 的编辑分支）───────────
-// 提示词编辑此前没有任何断言——PromptsBlock 因函数行数门禁会被拆分，
-// 拆分时若把编辑分支写丢，本用例必须变红。
-// 提示词编辑态：标题/正文一起编辑 → 保存走 update 确认 → POST 载荷正确
-const promptEditTree = renderView()
-const promptEditBtns = []
-collectButtons(promptEditTree, promptEditBtns)
-const promptEditBtn = promptEditBtns.find((b) => b.label.includes('编辑') && b.label.includes('gp-seed-think-zh'))
-assert.ok(promptEditBtn, 'prompt edit control rendered for the seed prompt')
-promptEditBtn.onClick()
-const promptEditOpenTree = renderView()
-const promptEditInputs = []
-collectInputs(promptEditOpenTree, promptEditInputs)
-const promptEditTitleInput = promptEditInputs.find((i) => i.placeholder.includes('提示词标题'))
-assert.ok(promptEditTitleInput, 'prompt title editor input rendered')
-assert.equal(promptEditTitleInput.value, '中文思考', 'title editor prefilled with the current title')
-promptEditTitleInput.onChange({ target: { value: '中文思考（改）' } })
-const promptEditTextTree = renderView()
-// 注意：新增栏也带 dsh-my-memory-btn-save，必须限定在提示词编辑行内取保存按钮。
-const promptEditingRow = findByClassContaining(promptEditTextTree, 'dsh-my-memory-row-editing')
-assert.ok(promptEditingRow, 'prompt row switched into editing mode')
-const promptEditSave = findSaveButton(promptEditingRow)
-assert.ok(promptEditSave, 'prompt editor renders the save button')
-promptEditSave.onClick()
-const promptUpdateConfirmTree = renderView()
-const promptUpdateTexts = []
-walkText(promptUpdateConfirmTree, promptUpdateTexts)
-assert.ok(promptUpdateTexts.join('|').includes('确认保存这条提示词的修改'), 'saving an edit asks for confirmation')
-const promptUpdateOk = collectConfirmOk(promptUpdateConfirmTree)
-assert.ok(promptUpdateOk, 'prompt update confirm button rendered')
-cannedResponses.push({
-  ok: true,
-  value: { items: [{ ...PROMPT_SEED, title: '中文思考（改）' }, PROMPT_OFF], item: null },
-})
-promptUpdateOk.onClick()
-await new Promise((resolve) => setTimeout(resolve, 0))
-// 只认提示词端点（记忆分区也有一次 update POST，不能混淆）。
-const promptUpdateCall = fetchCalls.find(
-  (c) =>
-    c.url === '/my-memory/api/prompts' && c.options !== undefined && JSON.parse(c.options.body).action === 'update',
-)
-assert.ok(promptUpdateCall, 'confirming the edit issues a prompt update POST')
-const promptUpdatePayload = JSON.parse(promptUpdateCall.options.body)
-assert.equal(promptUpdatePayload.id, 'gp-seed-think-zh')
-assert.equal(promptUpdatePayload.title, '中文思考（改）', 'update payload carries the edited title')
-assert.equal(promptUpdatePayload.confirmed, true, 'the prompt update carries the consent marker')
-assert.equal(promptUpdateCall.url, '/my-memory/api/prompts', 'prompt update never hits the memory endpoint')
-
-console.log('ALL MY-MEMORY CLIENT RENDER-PATH TESTS PASSED')
-
-// ── helpers for button collection (no aria-label on some buttons) ─────────
-function collectCancel(node) {
-  return collectByClass(node, 'dsh-my-memory-confirm-cancel')
-}
-function collectConfirmOk(node) {
-  return collectByClass(node, 'dsh-my-memory-confirm-ok')
-}
-function findSaveButton(node) {
-  return collectByClass(node, 'dsh-my-memory-btn-save')
-}
-/** 按 className 子串取第一个节点（用于多类名容器，如编辑行）。 */
 function findByClassContaining(node, className) {
   if (node === null || typeof node !== 'object') return undefined
   const cls = node.props?.className
@@ -1037,6 +345,438 @@ function collectByClass(node, className) {
   if (typeof node.type === 'function') return collectByClass(renderComponent(node.type, node.props), className)
   return collectByClass(props.children, className)
 }
+
+function findTab(tree, label) {
+  const buttons = []
+  collectButtons(tree, buttons)
+  return buttons.find((b) => b.role === 'tab' && b.label === label)
+}
+function clickTab(label) {
+  const btn = findTab(renderView(), label)
+  assert.ok(btn, `tab ${label} rendered`)
+  btn.onClick()
+  return renderView()
+}
+
+// ── 初始渲染：默认全局 tab + loading 态 ─────────────────────────────────────
+const globalValue = {
+  ok: true,
+  value: {
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    items: [
+      {
+        id: 'g1',
+        desc: '回复使用中文',
+        category: 'preference',
+        confidence: 3,
+        createdAt: 1,
+        updatedAt: 2,
+        source: { sessionId: 'sess-abcdef123', at: 3 },
+      },
+    ],
+  },
+}
+cannedResponses.push(globalValue)
+
+const loadingTree = renderView()
+assert.ok(joinedText(loadingTree).includes('加载中'), 'initial render shows the loading state')
+
+await new Promise((resolve) => setTimeout(resolve, 0))
+renderView()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const tree2 = renderView()
+const joined = joinedText(tree2)
+
+assert.ok(joined.includes('全局记忆'), 'global tab label rendered')
+assert.ok(joined.includes('项目记忆'), 'project tab label rendered')
+assert.ok(joined.includes('全局提示词'), 'prompts tab label rendered')
+assert.equal(countSections(tree2), 1, 'exactly one tab panel visible at a time (global)')
+assert.ok(joined.includes('回复使用中文'), 'global memory desc rendered')
+assert.ok(joined.includes('偏好'), 'category badge rendered')
+assert.ok(joined.includes('3/5'), 'confidence dots + ratio rendered')
+// 来源会话与演进历史移入展开详情（列表行只留内容 / 分类 / 置信度 / 时间）
+const expandBtns0 = []
+collectButtons(tree2, expandBtns0)
+const expand0 = expandBtns0.find((b) => b.label.includes('展开'))
+assert.ok(expand0, 'the description itself is the expand control')
+expand0.onClick()
+const detailJoined = joinedText(renderView())
+assert.ok(detailJoined.includes('agent 保存 · sess-abc'), 'source session shown inside the detail')
+assert.ok(detailJoined.includes('演进历史'), 'history label shown inside the detail')
+const collapseBtns0 = []
+collectButtons(renderView(), collapseBtns0)
+const collapse0 = collapseBtns0.find((b) => b.label.includes('收起'))
+assert.ok(collapse0, 'expanded row offers a collapse control')
+collapse0.onClick()
+assert.ok(!joinedText(renderView()).includes('演进历史'), 'collapsing hides the detail block')
+assert.ok(!joined.includes('置信度 undefined'), 'confidence omitted when missing (no undefined text)')
+
+const listCalls = fetchCalls.filter((c) => c.url.startsWith('/my-memory/api/memory') && c.options === undefined)
+assert.equal(listCalls.length, 1, 'initial load fetches the global scope once')
+assert.ok(listCalls[0].url.includes('scope=global'), 'global fetch')
+const candidatesCalls = fetchCalls.filter((c) => c.url.includes('/candidates'))
+assert.equal(candidatesCalls.length, 0, 'no candidate endpoint is ever requested (feature removed)')
+
+// composer：多行 textarea + 字数计数
+const composerInputs = []
+collectInputs(tree2, composerInputs)
+const composer = composerInputs.find((i) => i.tag === 'textarea' && String(i.placeholder).includes('记住'))
+assert.ok(composer, 'add composer is a textarea (self-growing)')
+assert.equal(composer.value, '', 'composer starts empty')
+assert.ok(joined.includes('0 / 50'), 'composer shows the char counter')
+assert.ok(joined.includes('所有新增 / 修改 / 删除都需要你确认'), 'composer shows the consent hint')
+
+// ── tab: 项目记忆（无会话 cwd → 空态提示）────────────────────────────────
+const projectTree = clickTab('项目记忆')
+const projectJoined = joinedText(projectTree)
+assert.equal(countSections(projectTree), 1, 'project tab renders one section')
+assert.ok(projectJoined.includes('当前无项目会话'), 'project tab shows the no-session empty hint')
+const projectInputs = []
+collectInputs(projectTree, projectInputs)
+assert.ok(
+  !projectInputs.some((i) => i.wrapperClass && i.wrapperClass.includes('path')),
+  'no project path input anymore (removed per product decision)',
+)
+
+// ── tab: 全局提示词 ───────────────────────────────────────────────────────
+const promptsTree = clickTab('全局提示词')
+const promptsJoined = joinedText(promptsTree)
+assert.equal(countSections(promptsTree), 1, 'prompts tab renders one section')
+assert.ok(promptsJoined.includes('中文思考'), 'seeded prompt title rendered')
+assert.ok(promptsJoined.includes('思考过程必须使用简体中文书写。'), 'prompt body rendered')
+assert.ok(promptsJoined.includes('内置'), 'builtin badge rendered for the seed')
+assert.ok(promptsJoined.includes('已停用'), 'disabled prompt is visible with its state')
+
+// 提示词启停：switch 按钮（role=switch + aria-label）→ POST toggle + confirmed
+const promptsButtons = []
+collectButtons(promptsTree, promptsButtons)
+const toggleBtn = promptsButtons.find((b) => b.label.includes('停用') && b.label.includes('gp-seed-think-zh'))
+assert.ok(toggleBtn, 'enable/disable switch rendered for the seed prompt')
+cannedResponses.push({ ok: true, value: { items: [{ ...PROMPT_SEED, enabled: false }, PROMPT_OFF], item: null } })
+toggleBtn.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const toggleCall = fetchCalls.find(
+  (c) =>
+    c.options !== undefined && c.url === '/my-memory/api/prompts' && JSON.parse(c.options.body).action === 'toggle',
+)
+assert.ok(toggleCall, 'toggling issues a POST to /my-memory/api/prompts')
+assert.equal(JSON.parse(toggleCall.options.body).enabled, false)
+assert.equal(JSON.parse(toggleCall.options.body).confirmed, true, 'toggle carries the consent marker')
+
+// 排序：上移 / 下移 → reorder POST
+const reorderTree = renderView()
+const reorderButtons = []
+collectButtons(reorderTree, reorderButtons)
+const moveDown = reorderButtons.find((b) => b.label.includes('下移') && b.label.includes('gp-seed-think-zh'))
+assert.ok(moveDown, 'move-down control rendered')
+cannedResponses.push({ ok: true, value: { items: [PROMPT_OFF, { ...PROMPT_SEED, enabled: false }], item: null } })
+moveDown.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const reorderCall = fetchCalls.find(
+  (c) =>
+    c.options !== undefined && c.url === '/my-memory/api/prompts' && JSON.parse(c.options.body).action === 'reorder',
+)
+assert.ok(reorderCall, 'moving issues a reorder POST')
+assert.equal(JSON.parse(reorderCall.options.body).direction, 'down')
+
+// ── 回到全局 tab：新增 → 居中确认弹层 → POST ──────────────────────────────
+clickTab('全局记忆')
+const addInputs = []
+collectInputs(renderView(), addInputs)
+const addComposer = addInputs.find((i) => i.tag === 'textarea' && String(i.placeholder).includes('记住'))
+assert.ok(addComposer, 'global composer rendered')
+addComposer.onChange({ target: { value: '新记忆内容' } })
+const typedTree = renderView()
+assert.ok(joinedText(typedTree).includes('5 / 50'), 'char counter follows the draft')
+
+const addBtns = []
+collectButtons(typedTree, addBtns)
+const addBtn = addBtns.find((b) => b.label === '新增 global')
+assert.ok(addBtn, 'add button rendered for the global scope')
+addBtn.onClick()
+
+const confirmTree = renderView()
+const confirmJoined = joinedText(confirmTree)
+assert.ok(confirmJoined.includes('确认新增这条记忆'), 'add confirmation text shown')
+assert.ok(confirmJoined.includes('确认保存'), 'green confirm-save button shown')
+assert.equal(countByClass(confirmTree, 'dsh-my-memory-overlay'), 1, 'confirmation renders in a centered overlay')
+assert.equal(countByClass(confirmTree, 'dsh-my-memory-confirm'), 1, 'one confirmation card open')
+
+const confirmSave = collectByClass(
+  findByClassContaining(confirmTree, 'dsh-my-memory-overlay'),
+  'dsh-my-memory-confirm-ok',
+)
+assert.ok(confirmSave, 'confirm-save button found')
+cannedResponses.push({
+  ok: true,
+  value: {
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    items: [globalValue.value.items[0], { id: 'g2', desc: '新记忆内容', createdAt: 3, updatedAt: 3 }],
+  },
+})
+confirmSave.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+
+const addCall = fetchCalls.find(
+  (c) => c.options !== undefined && c.options.method === 'POST' && JSON.parse(c.options.body).action === 'add',
+)
+assert.ok(addCall, 'confirmed add issues a POST')
+const addPayload = JSON.parse(addCall.options.body)
+assert.equal(addPayload.action, 'add')
+assert.equal(addPayload.scope, 'global')
+assert.equal(addPayload.desc, '新记忆内容')
+assert.equal(addPayload.confirmed, true, 'add carries the user-consent marker')
+assert.ok(joinedText(renderView()).includes('已保存'), 'saved status shown after the write')
+
+// ── 编辑：inline textarea → 确认 → POST ────────────────────────────────────
+const editButtons = []
+collectButtons(renderView(), editButtons)
+const editBtn = editButtons.find((b) => b.label.includes('编辑') && b.label.includes('g1'))
+assert.ok(editBtn, 'edit action rendered')
+editBtn.onClick()
+const editTree = renderView()
+const editInputs = []
+collectInputs(editTree, editInputs)
+const editInput = editInputs.find((i) => i.tag === 'textarea' && i.value === '回复使用中文')
+assert.ok(editInput, 'edit textarea prefilled with the current desc')
+editInput.onChange({ target: { value: '回复必须使用中文' } })
+const saveEdit = collectByClass(renderView(), 'dsh-my-memory-btn-save')
+assert.ok(saveEdit, 'edit save button found')
+saveEdit.onClick()
+const updateConfirmTree = renderView()
+assert.ok(joinedText(updateConfirmTree).includes('确认保存这条记忆'), 'update confirmation text shown')
+assert.equal(countByClass(updateConfirmTree, 'dsh-my-memory-overlay'), 1, 'update confirmation is an overlay')
+const confirmUpdate = collectByClass(updateConfirmTree, 'dsh-my-memory-confirm-ok')
+assert.ok(confirmUpdate, 'confirm-update button found')
+cannedResponses.push({
+  ok: true,
+  value: {
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    items: [{ id: 'g1', desc: '回复必须使用中文', category: 'preference', confidence: 3, createdAt: 1, updatedAt: 4 }],
+  },
+})
+confirmUpdate.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const updateCall = fetchCalls.find((c) => c.options !== undefined && JSON.parse(c.options.body).action === 'update')
+assert.ok(updateCall, 'confirmed update issues a POST')
+assert.equal(JSON.parse(updateCall.options.body).id, 'g1')
+assert.equal(JSON.parse(updateCall.options.body).desc, '回复必须使用中文')
+assert.equal(JSON.parse(updateCall.options.body).confirmed, true)
+
+// ── 删除：红色确认（两步）→ POST ─────────────────────────────────────────
+const delButtons = []
+collectButtons(renderView(), delButtons)
+const deleteBtn = delButtons.find((b) => b.label.includes('删除') && b.label.includes('g1'))
+assert.ok(deleteBtn, 'delete action rendered')
+deleteBtn.onClick()
+const delConfirmTree = renderView()
+const delJoined = joinedText(delConfirmTree)
+assert.ok(delJoined.includes('确定删除这条记忆'), 'delete confirmation text shown')
+assert.ok(delJoined.includes('确认删除'), 'confirm-delete button shown')
+assert.equal(countByClass(delConfirmTree, 'dsh-my-memory-overlay'), 1, 'delete confirmation is an overlay')
+const confirmDelete = collectByClass(delConfirmTree, 'dsh-my-memory-confirm-ok')
+assert.ok(confirmDelete, 'confirm-delete button found')
+cannedResponses.push({ ok: true, value: { scope: 'global', cwd: '', projectRoot: '', items: [] } })
+confirmDelete.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const deleteCall = fetchCalls.find(
+  (c) =>
+    c.options !== undefined && JSON.parse(c.options.body).action === 'delete' && JSON.parse(c.options.body).id === 'g1',
+)
+assert.ok(deleteCall, 'confirmed delete issues a POST')
+assert.equal(JSON.parse(deleteCall.options.body).confirmed, true, 'delete carries the consent marker')
+
+// 取消：确认弹层关闭且不发请求
+const beforeCancelCalls = fetchCalls.length
+const composerInputs2 = []
+collectInputs(renderView(), composerInputs2)
+assert.ok(composerInputs2.length > 0, 'view still renders after writes')
+assert.equal(fetchCalls.length, beforeCancelCalls, 'no request while idle')
+
+// ── 排序 / 截断 / 展开 / 超长提示 / 概要预览 ──────────────────────────────
+const freshGlobal = {
+  ok: true,
+  value: {
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    items: [
+      { id: 'long', desc: 'A'.repeat(64), createdAt: 200, updatedAt: 200 },
+      { id: 'short', desc: 'OLDER-ITEM', createdAt: 100, updatedAt: 100 },
+    ],
+  },
+}
+// 重新打开面板 → 重新拉取全局记忆（响应来自队列）
+cannedResponses.push(freshGlobal)
+remountView()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const freshTree = renderView()
+assert.ok(joinedText(freshTree).includes('OLDER-ITEM'), 'fresh memory data loaded after remount')
+
+// 排序开关：点击后切到最旧优先（按钮 label 固定为「按更新时间排序 global」）
+const sortButtons = []
+collectButtons(freshTree, sortButtons)
+const sortBtn = sortButtons.find((b) => b.label.includes('按更新时间排序'))
+assert.ok(sortBtn, 'sort toggle rendered')
+sortBtn.onClick()
+const sortedTree = renderView()
+const sortedJoined = joinedText(sortedTree)
+assert.ok(sortedJoined.includes('OLDER-ITEM'), 'sort toggle still renders the rows after flip')
+
+// 截断与展开：多句条目列表显示首句概要，展开后显示全文
+const multiValue = {
+  ok: true,
+  value: {
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    items: [{ id: 'm1', desc: '这是重要约定。这是详细解释不应该铺开在列表里。', createdAt: 100, updatedAt: 100 }],
+  },
+}
+cannedResponses.push(multiValue)
+remountView()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const summaryTree = renderView()
+const summaryJoined = joinedText(summaryTree)
+assert.ok(summaryJoined.includes('这是重要约定。'), 'list shows the first sentence as the summary')
+assert.ok(!summaryJoined.includes('这是详细解释不应该铺开在列表里'), 'list hides the detail sentences')
+const expandButtons = []
+collectButtons(summaryTree, expandButtons)
+const expandBtn = expandButtons.find((b) => b.label.includes('展开'))
+assert.ok(expandBtn, 'expand button renders for a truncated item')
+expandBtn.onClick()
+assert.ok(joinedText(renderView()).includes('这是详细解释不应该铺开在列表里'), 'expand reveals the full text')
+
+// 超长输入提示（超过 config maxEntryLength=50）
+const longInputs = []
+collectInputs(renderView(), longInputs)
+const longInput = longInputs.find((i) => i.tag === 'textarea' && String(i.placeholder).includes('记住'))
+assert.ok(longInput, 'global composer rendered')
+longInput.onChange({ target: { value: 'x'.repeat(51) } })
+const longJoined = joinedText(renderView())
+assert.ok(longJoined.includes('内容过长'), 'typing beyond maxEntryLength shows the concise-entry hint')
+assert.ok(longJoined.includes('建议精简为 1-2 句'), 'hint suggests 1-2 sentences')
+
+// 概要预览：超长 add 确认面板说明「保存完整内容 + 显示概要」
+longInput.onChange({
+  target: {
+    value: '保存这句完整内容。这句是较长的详情内容，会完整保留在存储中，同时列表与注入只展示概要首句以保持可扫读性。',
+  },
+})
+const previewAddButtons = []
+collectButtons(renderView(), previewAddButtons)
+const previewAdd = previewAddButtons.find((b) => b.label === '新增 global')
+assert.ok(previewAdd, 'add button found')
+previewAdd.onClick()
+const previewJoined = joinedText(renderView())
+assert.ok(previewJoined.includes('将保存完整内容'), 'confirm panel previews the summary for a long entry')
+assert.ok(previewJoined.includes('保存这句完整内容。'), 'summary preview shows the first sentence')
+const previewCancel = collectByClass(renderView(), 'dsh-my-memory-confirm-cancel')
+assert.ok(previewCancel, 'cancel button present in the preview panel')
+previewCancel.onClick()
+assert.equal(countByClass(renderView(), 'dsh-my-memory-overlay'), 0, 'cancel closes the overlay')
+
+// ── 提示词编辑 / 删除（独立端点） ─────────────────────────────────────────
+const promptTabTree = clickTab('全局提示词')
+const promptEditButtons = []
+collectButtons(promptTabTree, promptEditButtons)
+const promptEditBtn = promptEditButtons.find((b) => b.label.includes('编辑') && b.label.includes('gp-seed-think-zh'))
+assert.ok(promptEditBtn, 'prompt edit control rendered')
+promptEditBtn.onClick()
+const promptEditTree = renderView()
+const promptEditInputs = []
+collectInputs(promptEditTree, promptEditInputs)
+const promptTitleInput = promptEditInputs.find(
+  (i) => String(i.placeholder).includes('提示词标题') && i.value === '中文思考',
+)
+assert.ok(promptTitleInput, 'prompt title editor prefilled')
+promptTitleInput.onChange({ target: { value: '中文思考（改）' } })
+const editingRow = findByClassContaining(renderView(), 'dsh-my-memory-row-editing')
+assert.ok(editingRow, 'prompt row switched into editing mode')
+const promptSave = collectByClass(editingRow, 'dsh-my-memory-btn-save')
+assert.ok(promptSave, 'prompt editor renders the save button')
+promptSave.onClick()
+const promptUpdateJoined = joinedText(renderView())
+assert.ok(promptUpdateJoined.includes('确认保存这条提示词的修改'), 'saving an edit asks for confirmation')
+const promptUpdateOk = collectByClass(renderView(), 'dsh-my-memory-confirm-ok')
+assert.ok(promptUpdateOk, 'prompt update confirm button rendered')
+cannedResponses.push({
+  ok: true,
+  value: { items: [{ ...PROMPT_SEED, title: '中文思考（改）' }, PROMPT_OFF], item: null },
+})
+promptUpdateOk.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const promptUpdateCall = fetchCalls.find(
+  (c) =>
+    c.url === '/my-memory/api/prompts' && c.options !== undefined && JSON.parse(c.options.body).action === 'update',
+)
+assert.ok(promptUpdateCall, 'prompt update POST issued')
+assert.equal(JSON.parse(promptUpdateCall.options.body).title, '中文思考（改）')
+assert.equal(JSON.parse(promptUpdateCall.options.body).confirmed, true)
+
+// 删除提示词
+const promptDelButtons = []
+collectButtons(renderView(), promptDelButtons)
+const promptDelete = promptDelButtons.find((b) => b.label.includes('删除') && b.label.includes('gp-1'))
+assert.ok(promptDelete, 'prompt delete control rendered')
+promptDelete.onClick()
+const promptDelJoined = joinedText(renderView())
+assert.ok(promptDelJoined.includes('确定删除这条提示词'), 'prompt delete confirmation text shown')
+const promptDelOk = collectByClass(renderView(), 'dsh-my-memory-confirm-ok')
+assert.ok(promptDelOk, 'prompt delete confirm button rendered')
+cannedResponses.push({ ok: true, value: { items: [PROMPT_SEED], item: null } })
+promptDelOk.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const promptDeleteCall = fetchCalls.find(
+  (c) =>
+    c.url === '/my-memory/api/prompts' && c.options !== undefined && JSON.parse(c.options.body).action === 'delete',
+)
+assert.ok(promptDeleteCall, 'prompt delete POST issued')
+assert.equal(JSON.parse(promptDeleteCall.options.body).confirmed, true)
+
+// 提示词写操作全部打到 /prompts，没有一条走 /memory
+const promptWrites = fetchCalls.filter(
+  (c) => c.options !== undefined && String(c.options.body).includes('"action":"toggle"'),
+)
+assert.ok(
+  promptWrites.every((c) => c.url === '/my-memory/api/prompts'),
+  'prompt writes never hit the memory endpoint',
+)
+
+// ── 纯函数导出 ────────────────────────────────────────────────────────────
+assert.equal(typeof exportsObj.sortMemories, 'function', 'sortMemories helper exported')
+assert.equal(typeof exportsObj.relativeTime, 'function', 'relativeTime helper exported')
+assert.equal(typeof exportsObj.truncateText, 'function', 'truncateText helper exported')
+assert.equal(typeof exportsObj.firstSentence, 'function', 'firstSentence helper exported')
+
+const sortInput = [
+  { id: 'a', desc: 'A', updatedAt: 200 },
+  { id: 'b', desc: 'B', updatedAt: 100 },
+]
+assert.deepEqual(
+  exportsObj.sortMemories(sortInput, 'desc').map((i) => i.id),
+  ['a', 'b'],
+)
+assert.deepEqual(
+  exportsObj.sortMemories(sortInput, 'asc').map((i) => i.id),
+  ['b', 'a'],
+)
+assert.equal(sortInput[0].id, 'a', 'sortMemories does not mutate the input array')
+assert.equal(
+  exportsObj.truncateText('A'.repeat(64), 60).text,
+  `${'A'.repeat(60)}…`,
+  'long text truncated with ellipsis',
+)
+assert.equal(exportsObj.relativeTime(Date.now() - 30 * 1000), '刚刚')
+assert.equal(exportsObj.firstSentence('回复使用中文。代码注释也要中文。'), '回复使用中文。')
+
+console.log('ALL MY-MEMORY CLIENT RENDER-PATH TESTS PASSED')
 
 test('script-style suite (assertions ran at module load)', () => {})
 

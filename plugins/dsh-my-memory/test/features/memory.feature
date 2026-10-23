@@ -91,47 +91,6 @@
     那么 返回精简单条长度上限 50
     并且 返回单条注入长度上限 200
 
-  场景: 会话结束后自动提取记忆候选进入待确认列表（issue #78）
-    当 开启自动学习 autoLearn
-    当 会话 "auto-session" 收到用户消息 "请用中文回复我"
-    并且 会话 "auto-session" 收到用户消息 "本项目用 vitest 测试"
-    当 会话 "auto-session" 结束（顶层 agent idle）
-    那么 待确认候选列表包含偏好候选 "请用中文回复我"
-    并且 待确认候选列表包含项目候选 "本项目用 vitest 测试"
-    并且 正式记忆列表为空
-
-  场景: 用户确认候选后写入记忆，且 autoLearn 关闭时无候选（issue #78）
-    当 开启自动学习 autoLearn
-    当 会话 "confirm-session" 收到用户消息 "回复使用中文"
-    当 会话 "confirm-session" 结束（顶层 agent idle）
-    当 用户确认候选 "回复使用中文"
-    那么 全局记忆包含 "回复使用中文"
-    当 关闭自动学习 autoLearn 且会话 "off-session" 收到用户消息 "回复使用英文"
-    当 会话 "off-session" 结束（顶层 agent idle）
-    那么 待确认候选列表为空
-
-  场景: 同主题多次确认提升置信度（渐进式更新，issue #78）
-    当 开启自动学习 autoLearn
-    当 会话 "prog-1" 收到用户消息 "回复使用中文" 并确认候选
-    当 会话 "prog-2" 收到用户消息 "回复使用中文" 并确认候选
-    那么 全局记忆包含置信度为 2 的 "回复使用中文"
-
-  场景: 记忆条目带分类/来源/置信度元数据（接口返回，issue #78）
-    当 开启自动学习 autoLearn
-    当 会话 "meta-session" 收到用户消息 "本项目用 vitest 测试"
-    当 会话 "meta-session" 结束（顶层 agent idle）
-    当 用户确认候选 "本项目用 vitest 测试"
-    那么 项目记忆条目带元数据：分类 "stack" 且来源会话为 "meta-session"
-
-  场景: 智能注入按相关性/时效性/置信度选择（issue #78）
-    当 组装系统提示词
-    那么 section 评分选择器按 相关性+时效性+置信度 选择条目
-
-  场景: 自动提取的候选确认写入需用户同意标记，绝不静默变更（issue #78）
-    当 提交未携带同意标记的候选确认
-    那么 接口返回 400
-    并且 正式记忆列表为空
-
   场景: danger-full-access（approval policy=never）下 memory_save 免确认写入并标记来源（issue #208/#209）
     当 会话 "auto-session" 的审批策略为 "never" 且 saveApproval 为 "auto"
     当 agent 调用 memory_save 保存全局记忆 "用户偏好用 pnpm"

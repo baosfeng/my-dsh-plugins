@@ -62,19 +62,14 @@ const strings = {
     title: () => (isZh() ? '记忆' : 'Memory'),
     globalSection: () => (isZh() ? '全局记忆' : 'Global memory'),
     projectSection: () => (isZh() ? '项目记忆' : 'Project memory'),
-    projectHint: () => isZh()
-        ? '输入项目根路径以查看 / 编辑该项目记忆（存储于 $DSH_HOME/memory/projects/）'
-        : 'Enter a project root to view/edit its project memory (stored under $DSH_HOME/memory/projects/)',
-    loadProject: () => (isZh() ? '加载' : 'Load'),
-    refresh: () => (isZh() ? '刷新' : 'Refresh'),
     retry: () => (isZh() ? '重试' : 'Retry'),
     loading: () => (isZh() ? '加载中…' : 'Loading…'),
     loadError: () => (isZh() ? '加载失败' : 'Load failed'),
     empty: () => (isZh() ? '暂无记忆' : 'No memories yet'),
-    emptyHint: () => (isZh() ? '点击下方输入框添加第一条记忆' : 'Add your first memory below'),
+    emptyHint: () => (isZh() ? '在下方输入框添加第一条记忆' : 'Add your first memory below'),
     projectEmptyHint: () => isZh()
-        ? '当前无项目会话，请在上方输入项目根路径加载项目记忆'
-        : 'No active project session; enter a project root above to load its memory',
+        ? '当前无项目会话；打开项目会话后，这里会显示该项目的记忆'
+        : 'No active project session; open one to see its project memory',
     addPlaceholder: () => isZh()
         ? '输入要记住的内容（建议 1-2 句话概括，如：回复使用中文）'
         : 'Type what to remember (keep it to 1-2 sentences, e.g. reply in Chinese)',
@@ -95,7 +90,6 @@ const strings = {
     confirmDeleteBtn: () => (isZh() ? '确认删除' : 'Confirm delete'),
     saved: () => (isZh() ? '已保存' : 'Saved'),
     saveFailed: () => (isZh() ? '操作失败' : 'Operation failed'),
-    projectRoot: () => (isZh() ? '项目根：' : 'Project root: '),
     globalNote: () => isZh()
         ? '全局记忆在会话开始时注入系统提示词（agent 始终携带）；存于 $DSH_HOME/memory.json'
         : 'Global memories are injected into the system prompt at session start; stored in $DSH_HOME/memory.json',
@@ -103,14 +97,12 @@ const strings = {
         ? '项目记忆按项目隔离，仅该项目会话可见；存于 $DSH_HOME/memory/projects/（按项目根路径哈希分文件）'
         : 'Project memories are scoped to this project only; stored under $DSH_HOME/memory/projects/ (one file per project-root hash)',
     confirmHint: () => isZh() ? '所有新增 / 修改 / 删除都需要你确认' : 'Every add / edit / delete needs your confirmation',
+    updatedPrefix: () => (isZh() ? '更新于 ' : 'Updated '),
     updatedAt: (ts) => isZh() ? `更新于 ${new Date(ts).toLocaleString()}` : `Updated ${new Date(ts).toLocaleString()}`,
     // ── issue #110 视觉重设计：徽标分类/数量、相对时间、排序、截断展开 ──
     globalScope: () => (isZh() ? '全局' : 'Global'),
     projectScope: () => (isZh() ? '项目' : 'Project'),
-    countBadge: (label, n) => (isZh() ? `${label} · ${n} 条` : `${label} · ${n}`),
     countOnly: (n) => (isZh() ? `${n} 条` : `${n}`),
-    projectBadge: (root, n) => isZh() ? `项目根：${root} · ${n} 条` : `Project root: ${root} · ${n}`,
-    pathInputAria: () => (isZh() ? '项目根路径' : 'Project root path'),
     addInputAria: (scope) => isZh() ? `新增记忆内容（${scope === 'project' ? '项目' : '全局'}）` : `New memory (${scope})`,
     justNow: () => (isZh() ? '刚刚' : 'just now'),
     minutesAgo: (n) => (isZh() ? `${n} 分钟前` : `${n} min ago`),
@@ -121,18 +113,6 @@ const strings = {
     sortOldest: () => (isZh() ? '最旧优先' : 'Oldest first'),
     expand: () => (isZh() ? '展开' : 'Expand'),
     collapse: () => (isZh() ? '收起' : 'Collapse'),
-    // ── issue #78 渐进式索引记忆：待确认候选 + 元数据展示 ──
-    candidatesSection: () => (isZh() ? '自动学习候选（待确认）' : 'Auto-learned candidates (pending)'),
-    candidatesNote: () => isZh()
-        ? '会话结束后自动从对话提取的记忆候选（autoLearn 开启时）。确认后写入记忆（同主题自动提升置信度），拒绝则丢弃——记忆绝不静默变更'
-        : 'Memory candidates auto-extracted from conversations (when autoLearn is on). Confirm to store them (same themes gain confidence), dismiss to drop — memories never change silently',
-    candidatesEmpty: () => (isZh() ? '暂无待确认候选' : 'No pending candidates'),
-    confirmCandidate: () => (isZh() ? '确认写入' : 'Confirm'),
-    dismissCandidate: () => (isZh() ? '拒弃' : 'Dismiss'),
-    candidateSource: (sessionId) => isZh()
-        ? `来源会话：${sessionId === '' ? '(无)' : sessionId}`
-        : `Source session: ${sessionId === '' ? '(none)' : sessionId}`,
-    candidateScopeBadge: (scope) => isZh() ? (scope === 'project' ? '项目候选' : '全局候选') : scope === 'project' ? 'Project' : 'Global',
     categoryLabel: (category) => ({
         preference: isZh() ? '偏好' : 'Preference',
         fact: isZh() ? '事实' : 'Fact',
@@ -143,6 +123,10 @@ const strings = {
     confidenceLabel: (n) => (isZh() ? `置信度 ${n}` : `Confidence ${n}`),
     sourceAgentLabel: (sessionId) => isZh() ? `agent 保存 · ${sessionId.slice(0, 8)}` : `saved by agent · ${sessionId.slice(0, 8)}`,
     statusConflict: () => (isZh() ? '待处理矛盾' : 'Conflict'),
+    conflictNote: () => isZh()
+        ? '内容曾更新，与旧版本存在差异，待你处理：确认保留当前版本，或改写后再保存。'
+        : 'Updated content differs from the previous version — review it.',
+    sourceLabel: () => (isZh() ? '来源会话' : 'Source session'),
     historyLabel: () => (isZh() ? '演进历史' : 'History'),
     historyEntry: (action) => isZh()
         ? action === 'reinforce'
@@ -168,8 +152,9 @@ const strings = {
     askNoteDelete: () => isZh() ? '删除不可撤销 · 记忆绝不静默变更' : 'Deletion is irreversible · memories never change silently',
     // ── issue #465 全局提示词（与记忆并列但完全隔离）──
     promptsSection: () => (isZh() ? '全局提示词' : 'Global prompts'),
+    promptsScope: () => (isZh() ? '全局提示词' : 'Global prompts'),
     promptsNote: () => isZh()
-        ? '每轮组装时**全量按序**注入系统提示（启用即注入、停用即不注入；不参与记忆的评分与条数上限）——存于 $DSH_HOME/memory/prompts.json'
+        ? '每轮组装时全量按序注入系统提示（启用即注入、停用即不注入；不参与记忆的评分与条数上限）——存于 $DSH_HOME/memory/prompts.json'
         : 'Every enabled prompt is injected into the system prompt in full order each turn (disabled = not injected; never scored or capped by the memory limits) — stored in $DSH_HOME/memory/prompts.json',
     promptsEmpty: () => (isZh() ? '暂无提示词' : 'No prompts yet'),
     promptsEmptyHint: () => (isZh() ? '在下方新增第一条全局提示词' : 'Add your first global prompt below'),
@@ -191,193 +176,205 @@ const strings = {
     confirmUpdatePrompt: () => (isZh() ? '确认保存这条提示词的修改？' : 'Save this prompt change?'),
     confirmDeletePrompt: () => isZh() ? '确定删除这条提示词？此操作不可撤销。' : 'Delete this prompt? This cannot be undone.',
     promptCount: (n) => (isZh() ? `${n} 条` : `${n}`),
-    promptOrderBadge: (n) => (isZh() ? `顺序 ${n}` : `Order ${n}`),
 };
 // 导出给其他 part 文件使用
 
     "use strict";
-// ── styles (DSH semantic tokens, injected on activate, removed on teardown) ──
-// Mirrors the dsh-file-activity design language (issue #54): tight 2px 6px 8px
-// body, 26px rows with hover fills, 24px circular icon buttons, two-line empty
-// states, and motion on every state change. All colors ride the DSH semantic
-// tokens (--dsw-alias-*), typography rides the font roles (--dsw-font-*).
+// ── styles：按 docs/原型重构/dsh-my-memory-v2.html 一比一复刻 ─────────────
+// 设计值直接取自原型（浅色单主题）：卡片白底、#e8eaee 描边、#2f6fed 主色、
+// 分类徽标软底、5 点置信度、居中确认弹层。类名沿用 dsh-my-memory-* 契约，
+// 只重写取值与结构间距。注入在 activate，卸载时移除。
 const STYLES = `
-.dsh-my-memory-root { display:flex; flex-direction:column; gap:8px; padding:2px 6px 8px;
-  font:var(--dsw-font-s-14); color:var(--dsw-alias-label-primary); }
-.dsh-my-memory-toolbar { display:flex; flex-direction:column; gap:4px; }
-.dsh-my-memory-pathbar { display:flex; gap:6px; align-items:center; }
-/* 路径输入/加载/刷新按钮由官方 Input/Button 提供视觉（issue #143 试点）；
-   仅保留布局微调：路径输入 wrapper 撑满剩余宽度。 */
-.dsh-my-memory-path-input { flex:1; min-width:0; }
-.dsh-my-memory-iconbtn { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0;
-  border:none; border-radius:50%; background:transparent; color:var(--dsw-alias-label-secondary); cursor:pointer; flex:none;
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
+.dsh-my-memory-root { display:flex; flex-direction:column; gap:10px; padding:2px 6px 8px;
+  color:#15181c; font:14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; }
+.dsh-my-memory-body { display:flex; flex-direction:column; gap:10px; }
+/* ── 三 tab 分段控件 ── */
+.dsh-my-memory-tabs { display:inline-flex; gap:2px; padding:3px; border-radius:10px;
+  background:#f1f3f6; align-self:flex-start; }
+.dsh-my-memory-tab { display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 15px;
+  border:none; border-radius:8px; background:transparent; color:#4b5563; font:inherit; font-size:13px;
+  cursor:pointer; transition:background .15s, color .15s, box-shadow .15s; }
+.dsh-my-memory-tab:hover:not(.is-active) { color:#111827; }
+.dsh-my-memory-tab.is-active { background:#fff; color:#111827; font-weight:600;
+  box-shadow:0 1px 2px rgba(16,24,40,.1), 0 0 0 1px rgba(16,24,40,.04); }
+.dsh-my-memory-tab-count { display:inline-flex; align-items:center; height:17px; padding:0 7px; border-radius:999px;
+  background:#eef1f5; color:#6b7280; font-size:11px; font-variant-numeric:tabular-nums; }
+.dsh-my-memory-tab.is-active .dsh-my-memory-tab-count { background:#eef4ff; color:#2456b3; }
+/* ── 说明行 + 排序 ── */
+.dsh-my-memory-section-head { display:flex; align-items:center; gap:8px; }
+.dsh-my-memory-section-title { color:#15181c; font-size:14px; font-weight:600; }
+.dsh-my-memory-prompt-count { display:inline-flex; align-items:center; height:17px; padding:0 7px; border-radius:999px;
+  background:#eef1f5; color:#6b7280; font-size:11px; }
+.dsh-my-memory-note-row { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.dsh-my-memory-note { margin:0; color:#6b7280; font-size:12.5px; line-height:1.6; }
+.dsh-my-memory-note code { padding:1px 5px; border-radius:4px; background:#f1f3f6; color:#4b5563;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11.5px; }
+.dsh-my-memory-sort { display:inline-flex; align-items:center; gap:4px; flex:none; height:26px; padding:0 10px;
+  border:1px solid #dfe3e8; border-radius:7px; background:#fff; color:#4b5563; font:inherit; font-size:12px;
+  cursor:pointer; white-space:nowrap; }
+.dsh-my-memory-sort svg { display:block; flex:none; }
+.dsh-my-memory-sort:hover { background:#f6f7f9; }
+/* ── 记忆列表：整块白卡 + 行分隔 ── */
+.dsh-my-memory-section { display:flex; flex-direction:column; gap:10px; }
+.dsh-my-memory-list { border:1px solid #e8eaee; border-radius:10px; background:#fff; overflow:hidden; }
+.dsh-my-memory-row { box-sizing:border-box; width:100%; padding:11px 13px; background:#fff;
+  transition:background .15s; }
+.dsh-my-memory-row + .dsh-my-memory-row { border-top:1px solid #e8eaee; }
+.dsh-my-memory-row:hover { background:#fafbfc; }
+.dsh-my-memory-row-editing { background:#fbfcff; }
+.dsh-my-memory-row-head { display:flex; align-items:flex-start; gap:10px; }
+.dsh-my-memory-desc { flex:1; min-width:0; padding:0; border:none; background:transparent; text-align:left;
+  color:#1b1f24; font:inherit; font-size:14px; line-height:1.6; cursor:pointer; word-break:break-word;
+  display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+.dsh-my-memory-desc:hover { color:#2f6fed; }
+.dsh-my-memory-desc-open { display:block; overflow:visible; color:#1b1f24; }
+.dsh-my-memory-desc-open:hover { color:#1b1f24; }
+.dsh-my-memory-actions { display:flex; align-items:center; gap:2px; flex:none; margin-left:auto; }
+.dsh-my-memory-iconbtn { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px;
+  padding:0; border:none; border-radius:6px; background:transparent; color:#5b6470; cursor:pointer; flex:none;
+  transition:background .15s, color .15s; }
 .dsh-my-memory-iconbtn svg { display:block; }
-.dsh-my-memory-iconbtn:hover:not(:disabled) { background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-primary); }
+.dsh-my-memory-iconbtn:hover:not(:disabled) { background:#f1f3f6; color:#111827; }
 .dsh-my-memory-iconbtn:disabled { opacity:.4; cursor:default; }
-.dsh-my-memory-iconbtn-danger:hover:not(:disabled) { color:var(--dsw-alias-state-error-primary); }
-.dsh-my-memory-status { display:flex; align-items:center; gap:5px; font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-tertiary); }
+.dsh-my-memory-iconbtn-danger:hover:not(:disabled) { background:#fdeceb; color:#c8322b; }
+.dsh-my-memory-row-head .dsh-my-memory-actions { opacity:.65; transition:opacity .15s; }
+.dsh-my-memory-row:hover .dsh-my-memory-row-head .dsh-my-memory-actions,
+.dsh-my-memory-row:focus-within .dsh-my-memory-row-head .dsh-my-memory-actions { opacity:1; }
+/* ── 元信息 ── */
+.dsh-my-memory-meta { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:6px;
+  color:#6b7280; font-size:12px; }
+.dsh-my-memory-meta-time { color:#6b7280; }
+.dsh-my-memory-ct-badge { display:inline-flex; align-items:center; height:20px; padding:0 7px; border-radius:5px;
+  font-size:11.5px; font-weight:500; line-height:1; white-space:nowrap; color:#4b5563; background:#f2f4f7; }
+.dsh-my-memory-conf { display:inline-flex; align-items:center; gap:3px; }
+.dsh-my-memory-conf i { width:5px; height:5px; border-radius:50%; background:#dfe3e8; }
+.dsh-my-memory-conf i.on { background:#4a7dde; }
+.dsh-my-memory-conf b { margin-left:3px; font-weight:500; color:#6b7280; }
+.dsh-my-memory-conflict-badge { display:inline-flex; align-items:center; height:20px; padding:0 7px; border-radius:5px;
+  background:#fdf0ee; color:#b42318; font-size:11.5px; font-weight:500; }
+/* ── 展开详情 ── */
+.dsh-my-memory-detail { display:flex; flex-direction:column; gap:10px; margin-top:10px; padding-top:10px;
+  border-top:1px dashed #e8eaee; }
+.dsh-my-memory-detail-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px 16px; }
+.dsh-my-memory-detail-label { margin-bottom:2px; color:#8b9199; font-size:11.5px; }
+.dsh-my-memory-detail-value { color:#374151; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dsh-my-memory-detail-block { display:flex; flex-direction:column; gap:2px; }
+.dsh-my-memory-detail-empty { color:#8b9199; font-size:12px; }
+.dsh-my-memory-history { display:flex; flex-direction:column; gap:2px; margin:0; padding:0; list-style:none; }
+.dsh-my-memory-history li { color:#4b5563; font-size:12px; }
+.dsh-my-memory-conflict-note { padding:8px 10px; border:1px solid #f7d9d6; border-radius:8px;
+  background:#fdf3f2; color:#a3231b; font-size:12.5px; line-height:1.55; }
+/* ── 空态 / 状态行 ── */
+.dsh-my-memory-empty { padding:22px 16px; border:1px dashed #dfe3e8; border-radius:10px;
+  text-align:center; color:#8b9199; font-size:13px; }
+.dsh-my-memory-empty-body { display:flex; flex-direction:column; gap:2px; }
+.dsh-my-memory-empty-main { color:#4b5563; font-size:13.5px; font-weight:500; }
+.dsh-my-memory-empty-hint { color:#8b9199; font-size:12px; line-height:1.7; }
+.dsh-my-memory-status { display:flex; align-items:center; gap:5px; color:#8b9199; font-size:12px; }
 .dsh-my-memory-status svg { display:block; flex:none; }
 .dsh-my-memory-loading { padding:4px 2px; }
 .dsh-my-memory-spinner { display:inline-block; width:12px; height:12px; border-radius:50%; flex:none;
-  border:2px solid color-mix(in srgb, var(--dsw-alias-accent) 30%, transparent); border-top-color:var(--dsw-alias-accent);
-  animation:dsh-my-memory-spin 800ms linear infinite; }
-.dsh-my-memory-saved { color:var(--dsw-alias-state-success-primary); }
-.dsh-my-memory-error { display:flex; align-items:center; gap:6px; font:var(--dsw-font-xxs-12);
-  color:var(--dsw-alias-state-error-primary); white-space:pre-wrap; }
-.dsh-my-memory-sections { display:flex; flex-direction:column; gap:8px; }
-.dsh-my-memory-section { display:flex; flex-direction:column; gap:6px; padding:8px; border-radius:8px;
-  border:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-1); }
-/* The project scope gets a subtle accent border (keeps the two scopes
-    distinguishable without breaking the neutral baseline — 之前 45% 边框 +
-   6% 底色过于抢眼，弱化为 28% 描边 + 中性底). */
-.dsh-my-memory-section-project { border-color:color-mix(in srgb, var(--dsw-alias-accent) 28%, transparent); }
-.dsh-my-memory-section-head { display:flex; align-items:center; gap:8px; }
-.dsh-my-memory-section-title { font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
-/* 分区徽标由官方 Pill 提供视觉（issue #143 试点）；排序 Pill 仅保留靠右布局。 */
-.dsh-my-memory-sort { margin-left:auto; }
-.dsh-my-memory-note { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); line-height:1.7; }
-.dsh-my-memory-empty { display:flex; align-items:flex-start; gap:8px; padding:12px 10px;
-  font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-tertiary); }
-.dsh-my-memory-empty-body { display:flex; flex-direction:column; gap:2px; }
-.dsh-my-memory-empty-main { font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
-.dsh-my-memory-empty-icon { display:inline-flex; margin-top:1px; color:var(--dsw-alias-label-dimmed); }
-.dsh-my-memory-empty-hint { color:var(--dsw-alias-label-dimmed); font:var(--dsw-font-xxxs-11); line-height:1.7; }
-/* 条目卡片化：背景 + 边框 + 圆角，与内容视觉分离；hover 高亮边框（issue #110）。 */
-.dsh-my-memory-row { display:flex; flex-direction:column; gap:4px; box-sizing:border-box; width:100%; min-height:26px;
-  margin:0; padding:8px 10px; border:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-2);
-  border-radius:6px;
-  transition:border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out), background var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-memory-row:hover { border-color:color-mix(in srgb, var(--dsw-alias-accent) 40%, transparent);
-  background:var(--dsw-alias-interactive-bg-hover); }
-.dsh-my-memory-row-editing { border-color:var(--dsw-alias-accent); }
-.dsh-my-memory-row-head { display:flex; align-items:center; gap:8px; }
-.dsh-my-memory-row-desc-wrap { display:flex; align-items:center; gap:4px; flex:1; min-width:0; }
-.dsh-my-memory-desc { flex:1; min-width:0; font:var(--dsw-font-s-14); color:var(--dsw-alias-label-primary); word-break:break-word; }
-.dsh-my-memory-expand { display:inline-flex; align-items:center; gap:3px; flex:none; height:20px; padding:0 6px; border-radius:4px;
-  cursor:pointer; border:none; background:transparent; color:var(--dsw-alias-accent); font:var(--dsw-font-xxxs-11);
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-memory-expand svg { display:block; flex:none; transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-memory-expand-open svg { transform:rotate(180deg); }
-.dsh-my-memory-expand:hover { background:var(--dsw-alias-interactive-bg-hover); }
-/* 操作区：统一右侧图标组，与内容用分隔线分离；删除 hover 保持红色警示。 */
-.dsh-my-memory-actions { display:flex; align-items:center; gap:2px; flex:none; padding-left:8px;
-  border-left:1px solid var(--dsw-alias-border-l2); }
-.dsh-my-memory-meta { display:flex; align-items:center; gap:4px; font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); }
-.dsh-my-memory-meta-icon { display:inline-flex; color:var(--dsw-alias-label-dimmed); }
-.dsh-my-memory-addbar { display:flex; gap:6px; align-items:center; }
-.dsh-my-memory-addbar-wrap { display:flex; flex-direction:column; gap:3px; }
-.dsh-my-memory-entry-hint { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-state-warn-primary);
-  line-height:1.7; padding:0 2px; }
-/* 新增/编辑输入由官方 Input 提供视觉（issue #143 试点）；仅保留撑满布局。 */
+  border:2px solid rgba(47,111,237,.3); border-top-color:#2f6fed; animation:dsh-my-memory-spin 800ms linear infinite; }
+.dsh-my-memory-saved { color:#128a4f; }
+.dsh-my-memory-error { display:flex; align-items:center; gap:6px; color:#c8322b; font-size:12px; white-space:pre-wrap; }
+/* ── 输入区 ── */
+.dsh-my-memory-composer { display:flex; flex-direction:column; gap:6px; margin-top:2px; padding:12px 14px;
+  border:1px solid #e8eaee; border-radius:10px; background:#fbfcfd; }
+.dsh-my-memory-composer-input { box-sizing:border-box; width:100%; min-height:52px; max-height:180px; resize:none;
+  overflow-y:auto; padding:9px 11px; border:1px solid #dfe3e8; border-radius:9px; background:#fff;
+  color:#111827; font:inherit; font-size:13.5px; line-height:1.6; }
+.dsh-my-memory-composer-input:focus,
+.dsh-my-memory-prompt-textarea:focus { outline:none; border-color:#2f6fed; box-shadow:0 0 0 3px rgba(47,111,237,.12); }
+.dsh-my-memory-composer-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.dsh-my-memory-composer-hint { color:#8b9199; font-size:12px; line-height:1.5; }
+.dsh-my-memory-count { font-variant-numeric:tabular-nums; }
+.dsh-my-memory-entry-hint { color:#b45309; font-size:12px; line-height:1.7; }
+.dsh-my-memory-btn-add, .dsh-my-memory-btn-save { display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  height:32px; padding:0 14px; border:1px solid transparent; border-radius:8px; background:#2f6fed; color:#fff;
+  font:inherit; font-size:13px; cursor:pointer; white-space:nowrap; transition:background .15s; }
+.dsh-my-memory-btn-add svg, .dsh-my-memory-btn-save svg { display:block; flex:none; }
+.dsh-my-memory-btn-add:hover:not(:disabled), .dsh-my-memory-btn-save:hover:not(:disabled) { background:#2560d8; }
+.dsh-my-memory-btn-add:disabled, .dsh-my-memory-btn-save:disabled { background:#c3cfe8; cursor:not-allowed; }
 .dsh-my-memory-add-input { flex:1; min-width:0; }
-.dsh-my-memory-btn-save { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 12px; border-radius:6px; cursor:pointer;
-  border:1px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
-  color:var(--dsw-alias-state-success-primary); font:var(--dsw-font-xxs-12);
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out), border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-memory-btn-save svg { display:block; flex:none; }
-.dsh-my-memory-btn-save:hover:not(:disabled) { background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 18%, transparent); }
-.dsh-my-memory-btn-save:disabled { opacity:.4; cursor:default; }
-/* ── issue #193：ask 范式确认卡（面板侧与工具侧共用同一 DOM 契约）──────
-   规格对齐宿主 ask/approval 卡：条带（8px 状态点）+ 20px 大卡 + min(60vh,520px)
-   主体 + 40px/12px 选项行 + footer 左右分布；删除危险色、保存成功色。 */
+/* ── 确认弹层（居中） ── */
+.dsh-my-memory-overlay { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;
+  padding:24px; background:rgba(15,23,42,.38); animation:dsh-my-memory-fade .16s ease; }
+.dsh-my-memory-overlay .dsh-my-memory-ask { width:min(480px, 100%); padding:0; }
 .dsh-my-memory-ask { display:flex; flex-direction:column; align-items:center; box-sizing:border-box; width:100%; padding:8px 0 12px; }
-.dsh-my-memory-ask-card { display:flex; flex-direction:column; box-sizing:border-box; width:100%; padding:0; gap:0;
-  border:1px solid var(--dsw-alias-border-l1); border-radius:20px; overflow:hidden;
-  background:var(--dsw-alias-bg-layer-1); box-shadow:var(--dsw-shadow-lv2);
-  animation:dsh-my-memory-row-in 150ms var(--ds-ease-in-out); }
-.dsh-my-memory-ask-save .dsh-my-memory-ask-card { border-color:color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, transparent); }
-.dsh-my-memory-ask-delete .dsh-my-memory-ask-card { border-color:var(--dsw-alias-state-error-primary); }
-.dsh-my-memory-ask-strip { display:flex; align-items:center; gap:8px; padding:10px 16px; font-size:13px; line-height:18px; }
-.dsh-my-memory-ask-save .dsh-my-memory-ask-strip { color:var(--dsw-alias-state-success-primary);
-  background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent); }
-.dsh-my-memory-ask-delete .dsh-my-memory-ask-strip { color:var(--dsw-alias-state-error-primary);
-  background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent); }
-.dsh-my-memory-ask-dot { flex:none; width:8px; height:8px; border-radius:50%; background:currentColor; }
-.dsh-my-memory-ask-strip-title { font-weight:500; }
-.dsh-my-memory-ask-scope-badge { display:inline-flex; align-items:center; flex:none; margin-left:auto; height:18px; padding:0 8px;
-  border-radius:9px; font:var(--dsw-font-xxxs-11); }
-.dsh-my-memory-ask-save .dsh-my-memory-ask-scope-badge { color:var(--dsw-alias-state-success-primary);
-  background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 16%, transparent); }
-.dsh-my-memory-ask-delete .dsh-my-memory-ask-scope-badge { color:var(--dsw-alias-state-error-primary);
-  background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 16%, transparent); }
-.dsh-my-memory-ask-body { display:flex; flex-direction:column; gap:6px; padding:12px 16px 0; max-height:min(60vh, 520px); overflow-y:auto; }
+.dsh-my-memory-ask-card { display:flex; flex-direction:column; box-sizing:border-box; width:100%; padding:0;
+  border-radius:14px; overflow:hidden; background:#fff; box-shadow:0 20px 48px rgba(15,23,42,.24);
+  animation:dsh-my-memory-pop .18s cubic-bezier(.2,0,.2,1); }
+.dsh-my-memory-ask-strip { display:flex; align-items:center; gap:8px; padding:12px 16px; font-size:13px; font-weight:600; }
+.dsh-my-memory-ask-save .dsh-my-memory-ask-strip { background:#eaf7ef; color:#12603a; }
+.dsh-my-memory-ask-delete .dsh-my-memory-ask-strip { background:#fdecea; color:#a3231b; }
+.dsh-my-memory-ask-dot { flex:none; width:7px; height:7px; border-radius:50%; background:currentColor; }
+.dsh-my-memory-ask-strip-title { font-weight:600; }
+.dsh-my-memory-ask-scope-badge { display:inline-flex; align-items:center; flex:none; margin-left:auto; height:20px;
+  padding:0 8px; border-radius:999px; background:rgba(255,255,255,.75); color:#374151; font-size:11.5px; font-weight:500; }
+.dsh-my-memory-ask-body { display:flex; flex-direction:column; gap:8px; padding:16px; max-height:min(60vh, 520px); overflow-y:auto; }
 .dsh-my-memory-ask-options { display:flex; flex-direction:column; gap:6px; }
-.dsh-my-memory-ask-option { display:flex; align-items:center; gap:8px; box-sizing:border-box; height:40px; padding:0 12px;
-  border:1px solid transparent; border-radius:12px; background:transparent; color:var(--dsw-alias-label-primary);
-  font:var(--dsw-font-s-14); cursor:default;
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
-.dsh-my-memory-ask-option:hover { background:var(--dsw-alias-interactive-bg-hover); }
-.dsh-my-memory-ask-option.is-active { border-color:var(--dsw-alias-accent); background:color-mix(in srgb, var(--dsw-alias-accent) 10%, transparent); }
-.dsh-my-memory-ask-option-dot { flex:none; width:8px; height:8px; border-radius:50%; border:1px solid var(--dsw-alias-label-dimmed); }
-.dsh-my-memory-ask-option.is-active .dsh-my-memory-ask-option-dot { border-color:var(--dsw-alias-accent); background:var(--dsw-alias-accent); }
-.dsh-my-memory-ask-fields { display:flex; flex-direction:column; gap:4px; }
-.dsh-my-memory-ask-field { display:flex; gap:6px; font:var(--dsw-font-xxs-12); }
-.dsh-my-memory-ask-field-label { flex:none; color:var(--dsw-alias-label-tertiary); }
-.dsh-my-memory-ask-field-value { min-width:0; color:var(--dsw-alias-label-primary); word-break:break-word; }
-.dsh-my-memory-ask-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; }
-.dsh-my-memory-ask-feedback { min-width:0; font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); }
+.dsh-my-memory-ask-option { display:flex; align-items:center; gap:8px; height:34px; padding:0 10px;
+  border:1px solid #dfe3e8; border-radius:8px; color:#6b7280; font-size:12.5px; cursor:default; }
+.dsh-my-memory-ask-option.is-active { border-color:#c9d6f5; background:#f3f7ff; color:#2456b3; font-weight:500; }
+.dsh-my-memory-ask-option-dot { flex:none; width:6px; height:6px; border-radius:50%; background:#c4c9d0; }
+.dsh-my-memory-ask-option.is-active .dsh-my-memory-ask-option-dot { background:#2f6fed; }
+.dsh-my-memory-ask-fields { display:flex; flex-direction:column; gap:6px; }
+.dsh-my-memory-ask-field { display:flex; gap:10px; font-size:12.5px; line-height:1.6; }
+.dsh-my-memory-ask-field-label { flex:none; color:#8b9199; }
+.dsh-my-memory-ask-field-value { min-width:0; color:#1f2937; word-break:break-word; }
+.dsh-my-memory-ask-preview { display:flex; flex-direction:column; gap:4px; padding:10px 12px; border:1px solid #eceef1;
+  border-radius:8px; background:#f7f8fa; }
+.dsh-my-memory-ask-preview-text { color:#1f2937; font-size:13.5px; line-height:1.65; white-space:pre-wrap;
+  word-break:break-word; max-height:180px; overflow:auto; }
+.dsh-my-memory-ask-footer { display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:12px 16px; border-top:1px solid #eceef1; background:#fbfcfd; }
+.dsh-my-memory-ask-feedback { min-width:0; color:#8b9199; font-size:12px; line-height:1.5; }
 .dsh-my-memory-ask-actions { display:flex; align-items:center; flex:none; gap:8px; margin-left:auto; }
-.dsh-my-memory-confirm-summary { display:flex; flex-direction:column; gap:2px; padding:4px 6px; border-radius:4px;
-  background:color-mix(in srgb, var(--dsw-alias-accent) 8%, transparent); }
-.dsh-my-memory-confirm-summary-label { font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary); }
-.dsh-my-memory-confirm-summary-text { font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-secondary); word-break:break-word; }
-.dsh-my-memory-confirm-actions { display:flex; gap:6px; align-items:center; }
-.dsh-my-memory-confirm-ok { display:inline-flex; align-items:center; gap:5px; height:26px; padding:0 12px; border-radius:6px; cursor:pointer;
-  font:var(--dsw-font-xxs-12);
-  transition:filter var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
+.dsh-my-memory-confirm-summary { display:flex; flex-direction:column; gap:2px; padding:8px 10px; border-radius:8px;
+  border:1px solid #eceef1; background:#f7f8fa; }
+.dsh-my-memory-confirm-summary-label { color:#8b9199; font-size:11.5px; }
+.dsh-my-memory-confirm-summary-text { color:#1f2937; font-size:13px; word-break:break-word; }
+.dsh-my-memory-confirm-ok { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 14px;
+  border:1px solid transparent; border-radius:8px; font:inherit; font-size:13px; cursor:pointer;
+  transition:filter .15s; }
 .dsh-my-memory-confirm-ok svg { display:block; flex:none; }
-.dsh-my-memory-confirm-ok-save { border:1px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 60%, transparent);
-  background:var(--dsw-alias-state-success-primary); color:var(--dsw-alias-label-primary-foreground); }
-.dsh-my-memory-confirm-ok-delete { border:1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 60%, transparent);
-  background:var(--dsw-alias-state-error-primary); color:var(--dsw-alias-label-primary-foreground); }
-.dsh-my-memory-confirm-ok:hover { filter:brightness(1.1); }
-.dsh-my-memory-confirm-cancel { display:inline-flex; align-items:center; gap:5px; height:26px; padding:0 12px; border-radius:6px; cursor:pointer;
-  border:1px solid var(--dsw-alias-border-l1); background:transparent; color:var(--dsw-alias-label-secondary);
-  font:var(--dsw-font-xxs-12);
-  transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out), color var(--ds-transition-duration-slow) var(--ds-ease-in-out); }
+.dsh-my-memory-confirm-ok-save { background:#138a52; color:#fff; }
+.dsh-my-memory-confirm-ok-delete { background:#c8322b; color:#fff; }
+.dsh-my-memory-confirm-ok:hover { filter:brightness(1.08); }
+.dsh-my-memory-confirm-cancel { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 14px;
+  border:1px solid #dfe3e8; border-radius:8px; background:#fff; color:#374151; font:inherit; font-size:13px;
+  cursor:pointer; }
 .dsh-my-memory-confirm-cancel svg { display:block; flex:none; }
-.dsh-my-memory-confirm-cancel:hover { background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-primary); }
-@keyframes dsh-my-memory-row-in { from { opacity:0; transform:translateY(1px); } to { opacity:1; transform:none; } }
-@keyframes dsh-my-memory-spin { to { transform:rotate(360deg); } }
-/* ── issue #78 渐进式索引记忆：候选区块 + 元数据徽标 + 演进历史 ── */
-.dsh-my-memory-candidates { display:flex; flex-direction:column; gap:6px; padding:8px; border-radius:8px;
-  border:1px dashed color-mix(in srgb, var(--dsw-alias-accent) 45%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-accent) 4%, var(--dsw-alias-bg-layer-1)); }
-.dsh-my-memory-row-candidate { border-style:dashed; }
-.dsh-my-memory-ct-badge { flex:none; display:inline-flex; align-items:center; height:16px; padding:0 5px; border-radius:4px;
-  font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-accent);
-  background:color-mix(in srgb, var(--dsw-alias-accent) 12%, transparent); }
-.dsh-my-memory-conf-badge { flex:none; display:inline-flex; align-items:center; height:16px; padding:0 5px; border-radius:4px;
-  font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-secondary);
-  background:var(--dsw-alias-bg-layer-1); border:1px solid var(--dsw-alias-border-l1); }
-.dsh-my-memory-conflict-badge { flex:none; display:inline-flex; align-items:center; height:16px; padding:0 5px; border-radius:4px;
-  font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-state-warn-primary);
-  background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 15%, transparent); }
-.dsh-my-memory-source-badge { flex:none; display:inline-flex; align-items:center; height:16px; padding:0 5px; border-radius:4px;
-  font:var(--dsw-font-xxxs-11); color:var(--dsw-alias-label-tertiary);
-  background:var(--dsw-alias-bg-layer-1); border:1px solid var(--dsw-alias-border-l1); }
-.dsh-my-memory-meta-sep { color:var(--dsw-alias-label-dimmed); }
-.dsh-my-memory-history-entry { display:inline-flex; font:var(--dsw-font-xxxs-11);
-  color:var(--dsw-alias-label-tertiary); }
-.dsh-my-memory-iconbtn-confirm:hover:not(:disabled) { color:var(--dsw-alias-state-success-primary); }
-/* ── issue #465 全局提示词：与记忆分区并列的独立分区 ── */
-.dsh-my-memory-section-prompts { border-color:color-mix(in srgb, var(--dsw-alias-accent) 28%, transparent); }
-.dsh-my-memory-prompt-row { gap:6px; }
-/* 停用条目降不透明度但不隐藏：用户要能看见「它还在、只是不注入」 */
-.dsh-my-memory-prompt-row-off { opacity:.55; }
-.dsh-my-memory-prompt-title { flex:none; font:var(--dsw-font-s-strong-14); color:var(--dsw-alias-label-primary); }
-.dsh-my-memory-prompt-text { white-space:pre-wrap; word-break:break-word; max-height:96px; overflow-y:auto;
-  font:var(--dsw-font-xxs-12); color:var(--dsw-alias-label-secondary); }
-.dsh-my-memory-prompt-toggle { flex:none; cursor:pointer; }
-.dsh-my-memory-prompt-toggle[disabled] { opacity:.5; cursor:default; }
-.dsh-my-memory-prompt-textarea { box-sizing:border-box; width:100%; min-height:60px; resize:vertical; padding:6px 8px;
-  border:1px solid var(--dsw-alias-border-l1); border-radius:6px; background:var(--dsw-alias-bg-layer-1);
-  color:var(--dsw-alias-label-primary); font:var(--dsw-font-xxs-12); line-height:1.6; }
-.dsh-my-memory-prompt-textarea:focus { outline:none; border-color:var(--dsw-alias-accent); }
-.dsh-my-memory-prompt-addbar { align-items:stretch; }
+.dsh-my-memory-confirm-cancel:hover { background:#f6f7f9; }
+/* ── 提示词 tab ── */
+.dsh-my-memory-section-prompts { gap:10px; }
+.dsh-my-memory-prompt-list { display:flex; flex-direction:column; gap:8px; }
+.dsh-my-memory-prompt-row { display:flex; flex-direction:column; gap:6px; padding:11px 13px; border:1px solid #e8eaee;
+  border-radius:10px; background:#fff; }
+.dsh-my-memory-prompt-row:hover { border-color:#d7dbe2; }
+.dsh-my-memory-prompt-row-off { background:#fafbfc; }
+.dsh-my-memory-prompt-row-off .dsh-my-memory-prompt-title,
+.dsh-my-memory-prompt-row-off .dsh-my-memory-prompt-text { color:#9aa1aa; }
+.dsh-my-memory-prompt-title { color:#111827; font-size:13.5px; font-weight:600; }
+.dsh-my-memory-prompt-text { color:#4b5563; font-size:13px; line-height:1.6; white-space:pre-wrap; word-break:break-word;
+  max-height:96px; overflow-y:auto; }
+.dsh-my-memory-switch { position:relative; flex:none; width:30px; height:18px; padding:0; border:none; border-radius:999px;
+  background:#d5dae1; cursor:pointer; transition:background .15s; }
+.dsh-my-memory-switch.is-on { background:#1f9d55; }
+.dsh-my-memory-switch:disabled { opacity:.5; cursor:default; }
+.dsh-my-memory-switch-dot { position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%;
+  background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .15s; }
+.dsh-my-memory-switch.is-on .dsh-my-memory-switch-dot { transform:translateX(12px); }
+.dsh-my-memory-prompt-textarea { box-sizing:border-box; width:100%; min-height:56px; max-height:180px; resize:none;
+  overflow-y:auto; padding:9px 11px; border:1px solid #dfe3e8; border-radius:9px; background:#fff;
+  color:#111827; font:inherit; font-size:13.5px; line-height:1.6; }
 .dsh-my-memory-iconbtn-up svg { transform:rotate(180deg); }
+@keyframes dsh-my-memory-spin { to { transform:rotate(360deg); } }
+@keyframes dsh-my-memory-fade { from { opacity:0; } }
+@keyframes dsh-my-memory-pop { from { opacity:0; transform:translateY(6px) scale(.985); } }
+@media (prefers-reduced-motion: reduce) {
+  .dsh-my-memory-overlay, .dsh-my-memory-ask-card { animation:none; }
+}
 `.trim();
 const STYLE_TAG = 'data-dsh-my-memory';
 // 导出给其他 part 文件使用
@@ -417,47 +414,6 @@ function writeMemory({ action, scope, cwd, id, desc, }) {
         if (body === null || body.ok !== true)
             throw new Error('write failed');
         return normalizeMemory({ ...body.value, scope });
-    });
-}
-/** GET /my-memory/api/candidates → the pending auto-extracted candidates
- *  (issue #78; read-only — candidates never touch memory before confirm). */
-function fetchCandidates() {
-    return fetch(`${API_BASE}/candidates`)
-        .then((res) => res.json())
-        .then((body) => {
-        if (body === null || body.ok !== true)
-            throw new Error('bad candidates response');
-        return Array.isArray(body.value?.items) ? body.value.items : [];
-    });
-}
-/** POST /my-memory/api/candidates/confirm — accept one candidate (user
- *  consent marker; progressive-merged into the target scope on the server). */
-function confirmCandidate(id) {
-    return fetch(`${API_BASE}/candidates/confirm`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id, confirmed: true }),
-    })
-        .then((res) => res.json())
-        .then((body) => {
-        if (body === null || body.ok !== true)
-            throw new Error('candidate confirm failed');
-        return body.value;
-    });
-}
-/** POST /my-memory/api/candidates/dismiss — reject one candidate (drop it;
- *  gated on the user-consent marker, never touches any memory). */
-function dismissCandidate(id) {
-    return fetch(`${API_BASE}/candidates/dismiss`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id, confirmed: true }),
-    })
-        .then((res) => res.json())
-        .then((body) => {
-        if (body === null || body.ok !== true)
-            throw new Error('candidate dismiss failed');
-        return body.value;
     });
 }
 /** One GET/POST prompts payload into { items, item }. */
@@ -1181,8 +1137,10 @@ function parseAskReason(reason) {
         return { text, scope: '', category: '', content: '' };
     }
 }
-/** 范围显示名（全局 / 项目 / 未标注）。 */
+/** 范围显示名（全局 / 项目 / 全局提示词 / 未标注）。 */
 function scopeTextOf(scope) {
+    if (scope === 'prompts')
+        return strings.promptsScope();
     if (scope === 'project')
         return strings.projectScope();
     if (scope === 'global')
@@ -1195,6 +1153,9 @@ function AskStrip({ title, scope, variant }) {
 }
 /** 选项行组：保存列全局/项目（当前项选中），删除只列该记忆所属范围。 */
 function AskOptions({ variant, scope }) {
+    // 提示词不是记忆范围：不展示「全局 / 项目」二选一（范围由请求方决定）。
+    if (scope === 'prompts')
+        return null;
     const scopes = variant === 'delete' ? (scope === '' ? [] : [scope]) : ['global', 'project'];
     if (scopes.length === 0)
         return null;
@@ -1218,7 +1179,7 @@ function AskFields({ category, content, showSummary, }) {
             }),
         content === ''
             ? null
-            : createElement(AskField, { key: 'content', label: strings.askContentLabel(), value: content }),
+            : createElement('div', { key: 'content', className: 'dsh-my-memory-ask-preview' }, createElement('div', { className: 'dsh-my-memory-ask-field-label' }, strings.askContentLabel()), createElement('div', { className: 'dsh-my-memory-ask-preview-text' }, content)),
     ];
     return createElement('div', { className: 'dsh-my-memory-ask-fields' }, ...fields, showSummary ? createElement(SummaryPreview, { desc: content }) : null);
 }
@@ -1251,7 +1212,7 @@ function AskConfirmCard(props) {
         props.onAllow();
     };
     const allowLabel = armed && props.armedLabel !== undefined ? props.armedLabel : props.allowLabel;
-    return createElement('div', { className: `dsh-my-memory-ask dsh-my-memory-ask-${props.variant}` }, createElement('div', { className: 'dsh-my-memory-confirm dsh-my-memory-ask-card' }, createElement(AskStrip, { title: props.title, scope: props.scope, variant: props.variant }), createElement('div', { className: 'dsh-my-memory-ask-body' }, createElement(AskOptions, { variant: props.variant, scope: props.scope }), createElement(AskFields, {
+    return createElement('div', { className: `dsh-my-memory-ask dsh-my-memory-ask-${props.variant}` }, createElement('div', { className: 'dsh-my-memory-confirm dsh-my-memory-ask-card' }, createElement(AskStrip, { title: props.title, scope: props.scope, variant: props.variant }), createElement('div', { className: 'dsh-my-memory-ask-body' }, props.showOptions === false ? null : createElement(AskOptions, { variant: props.variant, scope: props.scope }), createElement(AskFields, {
         category: props.category ?? '',
         content: props.content ?? '',
         showSummary: props.showSummary === true && !isDelete,
@@ -1268,41 +1229,59 @@ function AskConfirmCard(props) {
 // 导出给其他 part 文件使用
 
     "use strict";
-// ── view-rows: row/entry widgets for the Memory tab ─────────────────────
-// 拆分自 view.part.js（issue #110 视觉重设计）：条目卡片、空状态、排序开关、
-// 新增栏与确认面板。纯渲染组件，共用 view 工厂作用域内的 strings/icon/utils。
-/** 排序开关：按更新时间切换最新/最旧优先（每分区独立）。官方 Pill 承载
- *  （issue #143 试点）：active 表示当前排序方向，点击切换。 */
+// ── view-rows: row / composer / confirm modal widgets for the Memory tab ──
+// 条目卡片、空状态、排序开关、新增输入区（自适应高度 textarea）与确认弹层。
+// 纯渲染组件，共用 view 工厂作用域内的 strings/icon/ui/utils。
+/** 排序开关：原型式小按钮（最新 / 最旧优先）。 */
 function SortToggle({ scope, order, onSort, }) {
-    return createElement(ui.Pill, {
+    return createElement('button', {
         className: 'dsh-my-memory-sort',
-        active: order === 'desc',
+        type: 'button',
         'aria-label': `${strings.sortLabel()} ${scope}`,
         onClick: () => onSort(scope),
-    }, createElement(ui.IconChevronDownOutline14), order === 'desc' ? strings.sortNewest() : strings.sortOldest());
+    }, icon.chevronDown(14), order === 'desc' ? strings.sortNewest() : strings.sortOldest());
 }
-/** 空状态：无条目时的引导（hint 优先，如无会话项目提示输入项目根路径）。 */
+/** 空状态：无条目时的引导（hint 优先，如无项目会话时提示打开项目会话）。 */
 function EmptyState({ hint }) {
-    return createElement('div', { className: 'dsh-my-memory-empty' }, createElement('span', { className: 'dsh-my-memory-empty-icon' }, icon.file(16)), createElement('div', { className: 'dsh-my-memory-empty-body' }, createElement('span', { className: 'dsh-my-memory-empty-main' }, strings.empty()), createElement('span', { className: 'dsh-my-memory-empty-hint' }, hint ?? strings.emptyHint())));
+    return createElement('div', { className: 'dsh-my-memory-empty' }, createElement('span', { className: 'dsh-my-memory-empty-body' }, createElement('span', { className: 'dsh-my-memory-empty-main' }, strings.empty()), createElement('span', { className: 'dsh-my-memory-empty-hint' }, hint ?? strings.emptyHint())));
 }
-/** 新增条目的输入 + 保存按钮；超长时给出精简提示（issue #105）。
- *  输入用官方 Input（issue #143 试点）；保存按钮保留自研（语义绿）。 */
+/** 自适应高度 textarea：内容变高时按 scrollHeight 抬升，封顶 180px。
+ *  node 环境（测试渲染）没有 DOM，直接跳过。 */
+function autoGrowTextarea(target) {
+    const el = target;
+    if (el === null || typeof el !== 'object' || el.style === undefined || typeof el.scrollHeight !== 'number')
+        return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+}
+/** 新增条目的输入区：多行自适应 textarea + 字数计数 + 超长提示 + 新增按钮。 */
 function AddBar({ scope, value, onChange, onAdd, entryLimit, }) {
-    return createElement('div', { className: 'dsh-my-memory-addbar-wrap' }, createElement('div', { className: 'dsh-my-memory-addbar' }, createElement(ui.Input, {
-        className: 'dsh-my-memory-add-input',
+    const over = isOverEntryLimit(value, entryLimit);
+    return createElement('div', { className: 'dsh-my-memory-composer' }, createElement('textarea', {
+        className: 'dsh-my-memory-composer-input',
+        rows: 2,
         placeholder: strings.addPlaceholder(),
         'aria-label': strings.addInputAria(scope),
         value,
         onChange: (event) => onChange(event.target.value),
-    }), createElement('button', {
-        className: 'dsh-my-memory-btn-save',
-        'aria-label': `${strings.add()} ${scope}`,
-        onClick: onAdd,
-    }, icon.plus(14), strings.add())), isOverEntryLimit(value, entryLimit)
+        onInput: (event) => autoGrowTextarea(event.target),
+        onKeyDown: (event) => {
+            if (event.key === 'Enter' && event.shiftKey !== true) {
+                event.preventDefault?.();
+                if (value.trim() !== '')
+                    onAdd();
+            }
+        },
+    }), over
         ? createElement('div', { className: 'dsh-my-memory-entry-hint' }, strings.entryTooLongHint(value.length, entryLimit))
-        : null);
+        : null, createElement('div', { className: 'dsh-my-memory-composer-foot' }, createElement('span', { className: 'dsh-my-memory-composer-hint' }, createElement('span', { className: 'dsh-my-memory-count' }, `${value.length} / ${entryLimit}`), ' · ', strings.confirmHint()), createElement('button', {
+        className: 'dsh-my-memory-btn-add',
+        'aria-label': `${strings.add()} ${scope}`,
+        disabled: value.trim() === '',
+        onClick: onAdd,
+    }, icon.plus(14), strings.add())));
 }
-function buildRows(items, scope, editing, onEdit, onEditDesc, onCancelEdit, onConfirm, expanded, onToggle) {
+function buildRows(items, scope, editing, onEdit, onEditDesc, onCancelEdit, onConfirm, expanded, onToggle, entryLimit) {
     return items.map((item) => {
         const isEditing = editing !== null && editing.scope === scope && editing.id === item.id;
         const key = `${scope}/${item.id}`;
@@ -1315,67 +1294,61 @@ function buildRows(items, scope, editing, onEdit, onEditDesc, onCancelEdit, onCo
             onEdit: () => onEdit(scope, item.id, item.desc),
             onEditDesc,
             onCancelEdit,
-            onSaveEdit: () => onConfirm({ kind: 'update', scope, id: item.id, desc: editing.desc }),
-            onDelete: () => onConfirm({ kind: 'delete', scope, id: item.id, desc: item.desc }),
+            onSaveEdit: () => onConfirm({ kind: 'update', scope, id: item.id, desc: editing.desc, category: item.category }),
+            onDelete: () => onConfirm({ kind: 'delete', scope, id: item.id, desc: item.desc, category: item.category }),
             onToggle: () => onToggle(key),
+            entryLimit,
         });
     });
 }
 function IconButton({ className, label, onClick, children, }) {
     return createElement('button', { className, 'aria-label': label, onClick }, children);
 }
-/** 编辑态：输入 + 保存/取消，保留卡片底与操作/内容分离。输入用官方
- *  Input、取消用官方 Button（issue #143 试点）；保存保留自研（语义绿）。 */
-function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit, }) {
-    return createElement('div', { className: 'dsh-my-memory-row dsh-my-memory-row-editing' }, createElement(ui.Input, {
-        className: 'dsh-my-memory-add-input',
+/** 编辑态：多行自适应输入 + 保存/取消（保存前仍需确认）。 */
+function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit, entryLimit, }) {
+    const over = isOverEntryLimit(editingDesc, entryLimit);
+    return createElement('div', { className: 'dsh-my-memory-row dsh-my-memory-row-editing' }, createElement('textarea', {
+        className: 'dsh-my-memory-composer-input',
+        rows: 2,
         value: editingDesc,
+        'aria-label': strings.edit(),
         onChange: (event) => onEditDesc(event.target.value),
-    }), createElement('div', { className: 'dsh-my-memory-actions' }, createElement('button', { className: 'dsh-my-memory-btn-save', onClick: onSaveEdit }, icon.check(14), strings.save()), createElement(ui.Button, {
+        onInput: (event) => autoGrowTextarea(event.target),
+    }), over
+        ? createElement('div', { className: 'dsh-my-memory-entry-hint' }, strings.entryTooLongHint(editingDesc.length, entryLimit))
+        : null, createElement('div', { className: 'dsh-my-memory-composer-foot' }, createElement('span', { className: 'dsh-my-memory-composer-hint' }, createElement('span', { className: 'dsh-my-memory-count' }, `${editingDesc.length} / ${entryLimit}`), ' · ', strings.confirmHint()), createElement('div', { className: 'dsh-my-memory-actions' }, createElement('button', { className: 'dsh-my-memory-btn-save', onClick: onSaveEdit }, icon.check(14), strings.save()), createElement(ui.Button, {
         variant: 'ghost',
         size: 'sm',
         onClick: onCancelEdit,
         icon: createElement(ui.IconCloseOutline16),
-    }, strings.cancel())));
+    }, strings.cancel()))));
 }
-// MemoryRow 的描述/操作子部件（MemoryRowDesc / MemoryRowActions）见 rows.ts
-// ——该文件是行级子部件的共同落点，同时守住单文件 ≤400 行门禁。
-/** 一条记忆卡片：描述（+截断/展开）+ 操作图标组 + 元数据（分类/置信度/
- *  冲突/演进历史，issue #78）+ 更新时间。 */
-function MemoryRow({ item, isEditing, isExpanded, editingDesc, onEdit, onEditDesc, onCancelEdit, onSaveEdit, onDelete, onToggle, }) {
-    if (isEditing)
-        return createElement(MemoryRowEdit, { editingDesc, onEditDesc, onSaveEdit, onCancelEdit });
+/** 一条记忆卡片：描述（概要/展开）+ 操作图标组 + 元数据（分类/置信度/
+ *  冲突/演进历史）+ 更新时间。 */
+function MemoryRow({ item, isEditing, isExpanded, editingDesc, onEdit, onEditDesc, onCancelEdit, onSaveEdit, onDelete, onToggle, entryLimit, }) {
+    if (isEditing) {
+        return createElement(MemoryRowEdit, { editingDesc, onEditDesc, onSaveEdit, onCancelEdit, entryLimit });
+    }
     const cut = truncateText(item.desc);
     return createElement('div', { className: 'dsh-my-memory-row' }, createElement('div', { className: 'dsh-my-memory-row-head' }, createElement(MemoryRowDesc, {
         shown: isExpanded ? item.desc : cut.text,
-        truncated: cut.truncated,
         isExpanded,
         onToggle,
-    }), createElement(MemoryRowActions, { id: item.id, onEdit, onDelete })), createElement(MetadataRow, { item, isExpanded, onToggle }));
+    }), createElement(MemoryRowActions, { id: item.id, onEdit, onDelete })), createElement(MetadataRow, { item }), isExpanded ? createElement(MemoryDetail, { item }) : null);
+}
+/** 展开详情：矛盾提示 + 来源会话/分类/置信度 + 演进历史（原型的信息层级）。 */
+function MemoryDetail({ item }) {
+    const confidence = typeof item.confidence === 'number' && Number.isFinite(item.confidence)
+        ? Math.min(5, Math.round(item.confidence))
+        : 1;
+    return createElement('div', { className: 'dsh-my-memory-detail' }, item.status === 'conflict-pending'
+        ? createElement('div', { className: 'dsh-my-memory-conflict-note' }, strings.conflictNote())
+        : null, createElement('div', { className: 'dsh-my-memory-detail-grid' }, createElement('div', null, createElement('div', { className: 'dsh-my-memory-detail-label' }, strings.sourceLabel()), createElement('div', { className: 'dsh-my-memory-detail-value' }, item.source?.sessionId ? strings.sourceAgentLabel(item.source.sessionId) : '—')), createElement('div', null, createElement('div', { className: 'dsh-my-memory-detail-label' }, strings.askCategoryLabel()), createElement('div', { className: 'dsh-my-memory-detail-value' }, strings.categoryLabel(item.category))), createElement('div', null, createElement('div', { className: 'dsh-my-memory-detail-label' }, strings.confidenceLabel(confidence)), createElement('div', { className: 'dsh-my-memory-detail-value' }, `${confidence}/5`))), createElement(HistoryList, { item }));
 }
 /** 概要预览行（issue #105）：add/update 内容超长时提示「完整内容保存 + 显示概要」。 */
 function SummaryPreview({ desc }) {
     const summary = truncateText(desc, TRUNCATE_LEN);
     return createElement('div', { className: 'dsh-my-memory-confirm-summary' }, createElement('span', { className: 'dsh-my-memory-confirm-summary-label' }, strings.summaryPreview()), createElement('span', { className: 'dsh-my-memory-confirm-summary-text' }, summary.text));
-}
-/** 自定义确认面板（ask 模式，非原生 confirm）：删除红、保存绿。
- *  issue #193：改用与工具侧共用同一份 ask 范式卡（AskConfirmCard：条带 +
- *  20px 大卡 + 范围选项行 + footer 动作区），两边形态一致。
- *  add/update 时若内容超长，显示概要预览（完整内容仍保存，issue #105）。 */
-function ConfirmPanel({ confirm, onCancel, onOk, entryLimit, }) {
-    const isDelete = confirm.kind === 'delete';
-    return createElement(AskConfirmCard, {
-        variant: isDelete ? 'delete' : 'save',
-        title: CONFIRM_TEXTS[confirm.kind](),
-        scope: confirm.scope,
-        category: '',
-        content: confirm.desc ?? '',
-        showSummary: !isDelete && isOverEntryLimit(confirm.desc, entryLimit),
-        note: strings.confirmHint(),
-        allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
-        onAllow: onOk,
-        onReject: onCancel,
-    });
 }
 /** 确认面板标题文案（按 kind 取；未知 kind 回落删除文案）。 */
 const CONFIRM_TEXTS = {
@@ -1383,51 +1356,38 @@ const CONFIRM_TEXTS = {
     update: () => strings.confirmUpdate(),
     delete: () => strings.confirmDelete(),
 };
-/** Path input + load/refresh buttons + consent note. 路径输入用官方 Input、
- *  加载/刷新用官方 Button（size sm，issue #143 试点）。 */
-function Toolbar({ pathInput, onInput, onLoad, onRefresh, }) {
-    return createElement('div', { className: 'dsh-my-memory-toolbar' }, createElement('div', { className: 'dsh-my-memory-pathbar' }, createElement(ui.Input, {
-        className: 'dsh-my-memory-path-input',
-        icon: createElement(ui.IconFolderOpenOutline16),
-        placeholder: strings.projectHint(),
-        'aria-label': strings.pathInputAria(),
-        title: strings.pathInputAria(),
-        value: pathInput,
-        onChange: (event) => onInput(event.target.value),
-        onKeyDown: (event) => {
-            if (event.key === 'Enter')
-                onLoad(pathInput);
-        },
-    }), createElement(ui.Button, {
-        variant: 'outline',
-        size: 'sm',
-        'aria-label': strings.loadProject(),
-        onClick: () => onLoad(pathInput),
-        icon: createElement(ui.IconFolderOpenOutline16),
-    }, strings.loadProject()), createElement(ui.Button, {
-        variant: 'outline',
-        size: 'sm',
-        'aria-label': strings.refresh(),
-        onClick: () => onRefresh(pathInput),
-        icon: createElement(ui.IconRefreshOutline14),
-    }, strings.refresh())), createElement('div', { className: 'dsh-my-memory-note' }, strings.confirmHint()));
+/** 记忆写操作确认：居中弹层 + 共用 ask 范式卡（保存绿 / 删除红）。 */
+function ConfirmPanel({ confirm, onCancel, onOk, entryLimit, }) {
+    const isDelete = confirm.kind === 'delete';
+    return createElement('div', { className: 'dsh-my-memory-overlay', role: 'presentation' }, createElement(AskConfirmCard, {
+        variant: isDelete ? 'delete' : 'save',
+        title: CONFIRM_TEXTS[confirm.kind](),
+        scope: confirm.scope,
+        category: confirm.category ?? '',
+        content: confirm.desc ?? '',
+        showSummary: !isDelete && isOverEntryLimit(confirm.desc, entryLimit),
+        note: strings.confirmHint(),
+        allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
+        showOptions: false,
+        onAllow: onOk,
+        onReject: onCancel,
+    }));
 }
 // 导出给其他 part 文件使用
 
     "use strict";
-// ── rows: 行级子部件（记忆条目行 / 提示词行）────────────────────────────
-// 与「候选条目」语义（candidates.ts）解耦：这里只放**单行渲染**的通用子部件，
-// 供 view-rows.ts / candidates.ts / prompts.ts 共用（client 片段为 script 模式，
-// 无 import/export，靠命名避免重名；拼接顺序见 scripts/build.mjs 的 pieces）。
-/** 描述 + 截断/展开开关（cut 由调用方算好，避免重复截断）。 */
-function MemoryRowDesc({ shown, truncated, isExpanded, onToggle, }) {
-    return createElement('div', { className: 'dsh-my-memory-row-desc-wrap' }, createElement('span', { className: 'dsh-my-memory-desc' }, shown), truncated
-        ? createElement('button', {
-            className: `dsh-my-memory-expand${isExpanded ? ' dsh-my-memory-expand-open' : ''}`,
-            'aria-label': isExpanded ? strings.collapse() : strings.expand(),
-            onClick: onToggle,
-        }, icon.chevronDown(14), isExpanded ? strings.collapse() : strings.expand())
-        : null);
+// ── rows: 行级子部件（记忆条目行 / 提示词行 / 元数据行）──────────────────
+// client 片段为 script 模式，无 import/export，靠命名避免重名；拼接顺序见
+// scripts/build.mjs 的 pieces。这里只放**单行渲染**的通用子部件，供
+// view-rows.ts / prompts.ts 共用。
+/** 描述即展开开关：整段内容可点击，展开后显示全文（原型的信息层级）。 */
+function MemoryRowDesc({ shown, isExpanded, onToggle, }) {
+    return createElement('button', {
+        className: `dsh-my-memory-desc${isExpanded ? ' dsh-my-memory-desc-open' : ''}`,
+        type: 'button',
+        'aria-label': isExpanded ? strings.collapse() : strings.expand(),
+        onClick: onToggle,
+    }, shown);
 }
 /** 条目操作图标组（编辑 / 删除）。 */
 function MemoryRowActions({ id, onEdit, onDelete, }) {
@@ -1437,9 +1397,28 @@ function MemoryRowActions({ id, onEdit, onDelete, }) {
         onClick: onDelete,
     }, icon.trash(14)));
 }
+/** 演进历史列表（详情区）：无历史时给占位。 */
+function HistoryList({ item }) {
+    const history = Array.isArray(item.history) ? item.history : [];
+    return createElement('div', { className: 'dsh-my-memory-detail-block' }, createElement('div', { className: 'dsh-my-memory-detail-label' }, strings.historyLabel()), history.length === 0
+        ? createElement('span', { className: 'dsh-my-memory-detail-empty' }, strings.noHistory())
+        : createElement('ul', { className: 'dsh-my-memory-history' }, history.map((entry, index) => createElement('li', { key: `${entry.at}-${index}` }, `${strings.historyEntry(entry.action)} · ${relativeTime(entry.at)}`))));
+}
+/** 记忆条目元数据行：分类徽标 + 置信度点 + 矛盾标记 + 更新时间。
+ *  来源会话与演进历史移入展开详情（原型的信息层级）。 */
+function MetadataRow({ item }) {
+    const confidence = typeof item.confidence === 'number' && Number.isFinite(item.confidence) && item.confidence >= 0
+        ? Math.min(5, Math.round(item.confidence))
+        : null;
+    return createElement('div', { className: 'dsh-my-memory-meta' }, createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(item.category)), confidence === null
+        ? null
+        : createElement('span', { className: 'dsh-my-memory-conf', 'aria-label': strings.confidenceLabel(confidence) }, [1, 2, 3, 4, 5].map((n) => createElement('i', { key: n, className: n <= confidence ? 'on' : '' })), createElement('b', null, `${confidence}/5`)), item.status === 'conflict-pending'
+        ? createElement('span', { className: 'dsh-my-memory-conflict-badge' }, strings.statusConflict())
+        : null, createElement('span', { className: 'dsh-my-memory-meta-time' }, `${strings.updatedPrefix()}${relativeTime(item.updatedAt)}`));
+}
 /** 分区标题行（标题 + 条数徽标）。 */
 function PromptsSectionHead({ count }) {
-    return createElement('div', { className: 'dsh-my-memory-section-head' }, createElement('span', { className: 'dsh-my-memory-section-title' }, strings.promptsSection()), createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, strings.promptCount(count)));
+    return createElement('div', { className: 'dsh-my-memory-section-head' }, createElement('span', { className: 'dsh-my-memory-section-title' }, strings.promptsSection()), createElement('span', { className: 'dsh-my-memory-prompt-count' }, strings.promptCount(count)));
 }
 /** 一条提示词的编辑态：标题输入 + 正文 textarea + 保存/取消。 */
 function PromptRowEdit({ editing, onTitle, onText, onSave, onCancel, }) {
@@ -1462,70 +1441,29 @@ function PromptRowEdit({ editing, onTitle, onText, onSave, onCancel, }) {
         icon: createElement(ui.IconCloseOutline16),
     }, strings.cancel())));
 }
-/** 启停 Pill（点击翻转 enabled）。 */
-function PromptToggle({ item, busy, onToggle }) {
-    return createElement(ui.Pill, {
-        className: 'dsh-my-memory-prompt-toggle',
-        active: item.enabled === true,
-        disabled: busy,
-        'aria-label': (item.enabled === true ? strings.promptToggleOff() : strings.promptToggleOn()) + ' ' + item.id,
-        onClick: onToggle,
-    }, item.enabled === true ? strings.promptEnabled() : strings.promptDisabled());
-}
-// 导出给其他 part 文件使用
-
-    "use strict";
-/** 一条待确认候选（issue #78）：分类徽标 + 描述 + 范围 + 来源 + 确认/拒弃。 */
-function CandidateRow({ candidate, busy, onConfirm, onDismiss, }) {
-    return createElement('div', { className: 'dsh-my-memory-row dsh-my-memory-row-candidate' }, createElement('div', { className: 'dsh-my-memory-row-head' }, createElement('div', { className: 'dsh-my-memory-row-desc-wrap' }, createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(candidate.category)), createElement('span', { className: 'dsh-my-memory-desc' }, candidate.desc)), createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, {
-        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-confirm',
-        label: `${strings.confirmCandidate()} ${candidate.id}`,
-        onClick: onConfirm,
-    }, icon.check(14)), createElement(IconButton, {
+/** 提示词行操作组（上移 / 下移 / 编辑 / 删除）。 */
+function PromptRowActions({ id, onMoveUp, onMoveDown, onEdit, onDelete, }) {
+    return createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, {
+        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-up',
+        label: strings.promptMoveUp() + ' ' + id,
+        onClick: onMoveUp,
+    }, icon.chevronDown(14)), createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: strings.promptMoveDown() + ' ' + id, onClick: onMoveDown }, icon.chevronDown(14)), createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: strings.edit() + ' ' + id, onClick: onEdit }, icon.pencil(14)), createElement(IconButton, {
         className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
-        label: `${strings.dismissCandidate()} ${candidate.id}`,
-        onClick: onDismiss,
-    }, icon.close(14)))), createElement('div', { className: 'dsh-my-memory-meta' }, createElement('span', { className: 'dsh-my-memory-meta-icon' }, icon.clock(11)), relativeTime(candidate.createdAt), createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'), strings.candidateScopeBadge(candidate.scope), createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'), strings.candidateSource(candidate.source?.sessionId)), busy ? createElement('div', { className: 'dsh-my-memory-entry-hint' }, strings.loading()) : null);
+        label: strings.delete() + ' ' + id,
+        onClick: onDelete,
+    }, icon.trash(14)));
 }
-/** 演进历史控件：展开/收起按钮 + 历史条目列表（有 history 才渲染）。 */
-function HistoryControl({ item, isExpanded, onToggle, }) {
-    const hasHistory = Array.isArray(item.history) && item.history.length > 0;
-    if (!hasHistory)
-        return null;
-    return createElement('span', null, createElement('button', {
-        className: 'dsh-my-memory-expand',
-        'aria-label': isExpanded ? strings.collapse() : strings.historyLabel(),
+/** 启停开关（点击翻转 enabled）：原型一致的 30×18 胶囊开关。 */
+function PromptToggle({ item, busy, onToggle }) {
+    const enabled = item.enabled === true;
+    return createElement('button', {
+        className: `dsh-my-memory-switch${enabled ? ' is-on' : ''}`,
+        role: 'switch',
+        'aria-checked': enabled,
+        'aria-label': (enabled ? strings.promptToggleOff() : strings.promptToggleOn()) + ' ' + item.id,
+        disabled: busy,
         onClick: onToggle,
-    }, icon.chevronDown(14), isExpanded ? strings.collapse() : strings.historyLabel()), isExpanded
-        ? item.history.map((entry, index) => createElement('span', { key: `${entry.at}-${index}`, className: 'dsh-my-memory-history-entry' }, `${strings.historyEntry(entry.action)} · ${relativeTime(entry.at)}`))
-        : null);
-}
-/** 记忆条目元数据行（issue #78）：分类徽标 + 置信度 + 矛盾标记 + 演进历史
- *  （展开时显示 history 列表）。confidence 缺失/非数字时不渲染置信度徽标
- *  （之前直接拼 "置信度 ${n}"，缺失时出现"置信度 undefined"）。 */
-function MetadataRow({ item, isExpanded, onToggle, }) {
-    const hasConfidence = typeof item.confidence === 'number' && Number.isFinite(item.confidence) && item.confidence >= 0;
-    return createElement('div', { className: 'dsh-my-memory-meta' }, createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(item.category)), hasConfidence
-        ? createElement('span', { className: 'dsh-my-memory-conf-badge' }, strings.confidenceLabel(item.confidence))
-        : null, item.status === 'conflict-pending'
-        ? createElement('span', { className: 'dsh-my-memory-conflict-badge' }, strings.statusConflict())
-        : null, typeof item.source?.sessionId === 'string' && item.source.sessionId !== ''
-        ? createElement('span', { className: 'dsh-my-memory-source-badge' }, strings.sourceAgentLabel(item.source.sessionId))
-        : null, createElement('span', { className: 'dsh-my-memory-meta-sep' }, '·'), createElement('span', { className: 'dsh-my-memory-meta-icon' }, icon.clock(11)), relativeTime(item.updatedAt), createElement(HistoryControl, { item, isExpanded, onToggle }));
-}
-/** 待确认候选区块（issue #78）：自动提取的记忆候选，确认后写入（渐进
- *  合并）、拒弃则丢弃——记忆绝不静默变更。 */
-function CandidatesBlock({ candidates, busy, onConfirmCandidate, onDismissCandidate, }) {
-    const list = Array.isArray(candidates) ? candidates : [];
-    return createElement('div', { className: 'dsh-my-memory-candidates' }, createElement('div', { className: 'dsh-my-memory-section-head' }, createElement('span', { className: 'dsh-my-memory-section-title' }, strings.candidatesSection()), createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, strings.countBadge(strings.candidatesSection(), list.length))), createElement('div', { className: 'dsh-my-memory-note' }, strings.candidatesNote()), list.length === 0
-        ? createElement('div', { className: 'dsh-my-memory-empty' }, strings.candidatesEmpty())
-        : list.map((candidate) => createElement(CandidateRow, {
-            key: candidate.id,
-            candidate,
-            busy,
-            onConfirm: () => onConfirmCandidate(candidate.id),
-            onDismiss: () => onDismissCandidate(candidate.id),
-        })));
+    }, createElement('span', { className: 'dsh-my-memory-switch-dot' }));
 }
 // 导出给其他 part 文件使用
 
@@ -1611,64 +1549,48 @@ function usePromptsBlockProps() {
     };
 }
 /** Data actions bound to the state setters; error: null | 'load' | 'save'. */
-function createActions({ setData, setLoading, setError, setSaved, setCandidates, setCandidateBusy, }) {
+function createActions({ setData, setLoading, setError, setSaved, }) {
     const applyValue = (value) => {
         setData(value);
         setLoading(false);
     };
-    const refreshWith = (fetcher, cwd) => {
+    const run = (cwd) => {
         setLoading(true);
         setError(null);
         setSaved(false);
-        fetcher(cwd)
+        fetchMemoryOnce(cwd)
             .then(applyValue)
             .catch(() => {
             setLoading(false);
             setError('load');
         });
     };
-    const loadCandidates = () => {
-        fetchCandidates()
-            .then((items) => setCandidates(items))
-            .catch(() => setCandidates([]));
-    };
-    const run = (cwd) => refreshWith(fetchMemoryOnce, cwd);
-    const refreshCandidates = () => {
-        setCandidateBusy(false);
-        loadCandidates();
-    };
-    return { load: run, refresh: run, loadCandidates, refreshCandidates };
+    return { load: run, refresh: run };
 }
+// 导出给其他 part 文件使用
 
     "use strict";
-// ── prompts: 全局提示词的设置分区（issue #465）────────────────────────────
-// 与记忆分区并列但完全隔离：独立数据源（/my-memory/api/prompts）、独立状态、
+// ── prompts: 全局提示词的设置 tab（issue #465）────────────────────────────
+// 与记忆 tab 并列但完全隔离：独立数据源（/my-memory/api/prompts）、独立状态、
 // 独立确认面板。交互：新增 / 编辑 / 删除 / 启用停用 / 上移下移（写回 order）；
 // **不做拖拽**（零依赖、可测）。删除走红色二次确认，保存走绿色。
-/** 稳定的 React key。 */
-function promptKey(id) {
-    return 'prompt/' + id;
-}
+/** 提示词正文上限（与宿主默认 maxPromptLength 一致；仅用于输入计数提示）。 */
+const PROMPT_TEXT_LIMIT = 1000;
 /** 一条提示词卡片：启停 + 标题（+ 内置徽标）+ 正文 + 排序/编辑/删除。 */
 function PromptRow({ item, isEditing, busy, onToggle, onMoveUp, onMoveDown, onEdit, onDelete, }) {
     const head = createElement('div', { className: 'dsh-my-memory-row-head' }, createElement(PromptToggle, { item, busy, onToggle }), createElement('span', { className: 'dsh-my-memory-prompt-title' }, item.title), item.builtin === undefined
         ? null
-        : createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.promptBuiltin()), createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, {
-        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-up',
-        label: strings.promptMoveUp() + ' ' + item.id,
-        onClick: onMoveUp,
-    }, icon.chevronDown(14)), createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: strings.promptMoveDown() + ' ' + item.id, onClick: onMoveDown }, icon.chevronDown(14)), createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: strings.edit() + ' ' + item.id, onClick: onEdit }, icon.pencil(14)), createElement(IconButton, {
-        className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
-        label: strings.delete() + ' ' + item.id,
-        onClick: onDelete,
-    }, icon.trash(14))));
+        : createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.promptBuiltin()), item.enabled === true
+        ? null
+        : createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.promptDisabled()), createElement(PromptRowActions, { id: item.id, onMoveUp, onMoveDown, onEdit, onDelete }));
     return createElement('div', {
         className: 'dsh-my-memory-row dsh-my-memory-prompt-row' + (item.enabled === true ? '' : ' dsh-my-memory-prompt-row-off'),
     }, head, createElement('div', { className: 'dsh-my-memory-prompt-text' }, item.text));
 }
-/** 新增栏：标题 + 正文（textarea）+ 新增按钮。 */
+/** 新增栏：标题 + 正文（自适应 textarea）+ 字数 + 新增按钮。 */
 function PromptAddBar({ draft, busy, onDraft, onAdd, }) {
-    return createElement('div', { className: 'dsh-my-memory-addbar-wrap dsh-my-memory-prompt-addbar' }, createElement(ui.Input, {
+    const over = draft.text.length > PROMPT_TEXT_LIMIT;
+    return createElement('div', { className: 'dsh-my-memory-composer' }, createElement(ui.Input, {
         className: 'dsh-my-memory-add-input',
         placeholder: strings.promptsAddPlaceholder(),
         'aria-label': strings.promptsAddInputAria(),
@@ -1678,15 +1600,24 @@ function PromptAddBar({ draft, busy, onDraft, onAdd, }) {
         className: 'dsh-my-memory-prompt-textarea',
         placeholder: strings.promptsTextPlaceholder(),
         'aria-label': strings.promptsTextInputAria(),
+        rows: 2,
         value: draft.text,
         onChange: (event) => onDraft({ text: event.target.value }),
-    }), createElement('button', { className: 'dsh-my-memory-btn-save', disabled: busy, 'aria-label': strings.add(), onClick: onAdd }, icon.plus(14), strings.add()));
+        onInput: (event) => autoGrowTextarea(event.target),
+    }), over
+        ? createElement('div', { className: 'dsh-my-memory-entry-hint' }, strings.entryTooLongHint(draft.text.length, PROMPT_TEXT_LIMIT))
+        : null, createElement('div', { className: 'dsh-my-memory-composer-foot' }, createElement('span', { className: 'dsh-my-memory-composer-hint' }, createElement('span', { className: 'dsh-my-memory-count' }, `${draft.text.length} / ${PROMPT_TEXT_LIMIT}`), ' · ', strings.promptHint()), createElement('button', {
+        className: 'dsh-my-memory-btn-add',
+        disabled: busy || draft.title.trim() === '' || draft.text.trim() === '',
+        'aria-label': strings.add(),
+        onClick: onAdd,
+    }, icon.plus(14), strings.add())));
 }
 /** 一条提示词：编辑态走编辑器，否则走卡片（纯渲染，无状态）。 */
 function PromptEntry({ item, editing, busy, onToggle, onMove, onEdit, onEditTitle, onEditText, onCancelEdit, onSaveEdit, onDelete, }) {
     if (editing !== null && editing.id === item.id) {
         return createElement(PromptRowEdit, {
-            key: promptKey(item.id),
+            key: 'prompt/' + item.id,
             editing,
             onTitle: onEditTitle,
             onText: onEditText,
@@ -1695,7 +1626,7 @@ function PromptEntry({ item, editing, busy, onToggle, onMove, onEdit, onEditTitl
         });
     }
     return createElement(PromptRow, {
-        key: promptKey(item.id),
+        key: 'prompt/' + item.id,
         item,
         isEditing: false,
         busy,
@@ -1709,10 +1640,10 @@ function PromptEntry({ item, editing, busy, onToggle, onMove, onEdit, onEditTitl
 /** 列表主体：无条目时给引导空状态，否则渲染条目（纯渲染，无状态）。 */
 function PromptEntryList({ items, editing, busy, onToggle, onMove, onEdit, onEditTitle, onEditText, onCancelEdit, onSaveEdit, onDelete, }) {
     if (items.length === 0) {
-        return createElement('div', { className: 'dsh-my-memory-empty' }, strings.promptsEmpty(), '·', strings.promptsEmptyHint());
+        return createElement('div', { className: 'dsh-my-memory-empty' }, createElement('span', { className: 'dsh-my-memory-empty-body' }, createElement('span', { className: 'dsh-my-memory-empty-main' }, strings.promptsEmpty()), createElement('span', { className: 'dsh-my-memory-empty-hint' }, strings.promptsEmptyHint())));
     }
     return items.map((item) => createElement(PromptEntry, {
-        key: promptKey(item.id),
+        key: 'prompt/' + item.id,
         item,
         editing,
         busy,
@@ -1726,9 +1657,9 @@ function PromptEntryList({ items, editing, busy, onToggle, onMove, onEdit, onEdi
         onDelete: () => onDelete(item),
     }));
 }
-/** 全局提示词分区（列表 + 新增栏 + 确认面板）。 */
+/** 全局提示词 tab（列表 + 新增栏 + 确认弹层）。 */
 function PromptsBlock({ items, busy, editing, confirming, draft, onToggle, onMove, onEdit, onEditTitle, onEditText, onCancelEdit, onSaveEdit, onDelete, onDraft, onAdd, onConfirm, onCancelConfirm, onCommit, }) {
-    return createElement('div', { className: 'dsh-my-memory-section dsh-my-memory-section-prompts' }, createElement(PromptsSectionHead, { count: items.length }), createElement('div', { className: 'dsh-my-memory-note' }, strings.promptsNote()), createElement(PromptEntryList, {
+    return createElement('div', { className: 'dsh-my-memory-section dsh-my-memory-section-prompts' }, createElement(PromptsSectionHead, { count: items.length }), createElement('div', { className: 'dsh-my-memory-note' }, strings.promptsNote()), createElement('div', { className: 'dsh-my-memory-prompt-list' }, createElement(PromptEntryList, {
         items,
         editing,
         busy,
@@ -1740,22 +1671,21 @@ function PromptsBlock({ items, busy, editing, confirming, draft, onToggle, onMov
         onCancelEdit,
         onSaveEdit,
         onDelete,
-    }), createElement(PromptAddBar, { draft, busy, onDraft, onAdd }), createElement(PromptConfirmPanel, { confirming, busy, onCommit, onCancelConfirm }));
+    })), createElement(PromptAddBar, { draft, busy, onDraft, onAdd }), createElement(PromptConfirmPanel, { confirming, busy, onCommit, onCancelConfirm }));
 }
-/** 提示词确认面板（与记忆分区共用 ask 范式卡：删除红 / 保存绿）。
- *  拆成独立组件：单函数行数与圈复杂度都守门禁，且确认语义与列表渲染解耦。 */
+/** 提示词确认弹层（与记忆分区共用 ask 范式卡：删除红 / 保存绿）。 */
 function PromptConfirmPanel({ confirming, busy, onCommit, onCancelConfirm, }) {
     if (confirming === null)
         return null;
     const isDelete = confirming.kind === 'delete';
-    return createElement(AskConfirmCard, {
+    return createElement('div', { className: 'dsh-my-memory-overlay', role: 'presentation' }, createElement(AskConfirmCard, {
         variant: isDelete ? 'delete' : 'save',
         title: isDelete
             ? strings.confirmDeletePrompt()
             : confirming.kind === 'update'
                 ? strings.confirmUpdatePrompt()
                 : strings.confirmAddPrompt(),
-        scope: '',
+        scope: 'prompts',
         category: '',
         content: (confirming.title ?? '') + (confirming.text === undefined ? '' : '\n' + confirming.text),
         note: strings.promptHint(),
@@ -1763,7 +1693,7 @@ function PromptConfirmPanel({ confirming, busy, onCommit, onCancelConfirm, }) {
         disabled: busy,
         onAllow: () => onCommit(confirming),
         onReject: onCancelConfirm,
-    });
+    }));
 }
 /** 目标条目的当前启用态（toggle 需要翻转值；找不到时按「未启用」处理）。 */
 function enabledOf(items, id) {
@@ -1782,8 +1712,8 @@ function confirmPayload(confirm) {
 // 导出给其他 part 文件使用
 
     "use strict";
-// ── view: Memory settings tab ─────────────────────────────────────────
-// 跨 part 引用（strings/utils/api/view-rows/candidates）由拼接作用域解析，
+// ── view: Memory settings tab（三个 tab：全局记忆 / 项目记忆 / 全局提示词）──
+// 跨 part 引用（strings/utils/api/view-rows/rows/prompts）由拼接作用域解析，
 // 无需 require——浏览器 ModuleLoader 不支持 factory 内相对路径 require。
 /** Load both scopes: global always; project only when a cwd is given. */
 function fetchAll(cwd) {
@@ -1813,54 +1743,9 @@ function fetchMemoryOnce(cwd) {
 function mergeScope(data, scope, value) {
     return scope === 'global' ? { ...data, global: value } : { ...data, project: value };
 }
-/** 候选确认 / 拒弃处理器（issue #78）：写入/丢弃都要用户显式动作（服务端强制 confirmed），成功后刷新候选与分区。 */
-function createCandidateHandlers({ candidateBusy, setCandidateBusy, setSaved, setError, actions, pathInput, }) {
-    const busy = () => {
-        if (candidateBusy)
-            return true;
-        setCandidateBusy(true);
-        return false;
-    };
-    const settle = () => setCandidateBusy(false);
-    const refreshScope = (value, pathInput) => {
-        actions.loadCandidates();
-        if (value?.scope === 'project' && value?.cwd !== '')
-            actions.load(value.cwd);
-        else
-            actions.refresh(pathInput);
-    };
-    const onConfirmCandidate = (id) => {
-        if (busy())
-            return;
-        confirmCandidate(id)
-            .then((value) => {
-            settle();
-            setSaved(true);
-            refreshScope(value, pathInput);
-        })
-            .catch(() => {
-            settle();
-            setError('save');
-        });
-    };
-    const onDismissCandidate = (id) => {
-        if (busy())
-            return;
-        dismissCandidate(id)
-            .then(() => {
-            settle();
-            actions.loadCandidates();
-        })
-            .catch(() => {
-            settle();
-            setError('save');
-        });
-    };
-    return { onConfirmCandidate, onDismissCandidate };
-}
 function MemoryView() {
+    const [tab, setTab] = useState('global');
     const [data, setData] = useState(null);
-    const [pathInput, setPathInput] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [saved, setSaved] = useState(false);
@@ -1873,34 +1758,23 @@ function MemoryView() {
         project: 'desc',
     });
     const [entryLimit, setEntryLimit] = useState(DEFAULT_ENTRY_LIMIT);
-    const [candidates, setCandidates] = useState([]);
-    const [candidateBusy, setCandidateBusy] = useState(false);
-    const actions = createActions({ setData, setLoading, setError, setSaved, setCandidates, setCandidateBusy });
-    // 空依赖数组 = 只在挂载时拉一次配置 / 会话 cwd / 记忆 / 候选（React 挂载语义；
-    // 这里刻意不把 actions 放进依赖：它是每次渲染新建的闭包对象，放进依赖会导致
-    // 每次渲染都重新拉取记忆端点）。
+    const actions = createActions({ setData, setLoading, setError, setSaved });
+    // 提示词数据（独立端点）：计数用于 tab 徽标，列表在提示词 tab 内渲染。
+    const promptsProps = usePromptsBlockProps();
+    // 空依赖数组 = 只在挂载时拉一次配置 / 会话 cwd / 记忆。会话 cwd 决定项目
+    // 记忆是否自动加载（issue #104）；面板不再有路径输入。
     useEffect(() => {
-        // 面板打开拉取引导配置（issue #105；失败回落默认值），再解析 cwd 加载记忆（issue #104）。
         fetchConfig()
             .then((value) => setEntryLimit(value.maxEntryLength))
             .catch(() => { });
         fetchSessionCwd(currentSessionId()).then((cwd) => actions.load(cwd));
-        actions.loadCandidates();
     }, []);
     const commit = createCommitHandler({ data, setData, setSaved, setError, setDrafts, setEditing, setConfirming });
-    const { onConfirmCandidate, onDismissCandidate } = createCandidateHandlers({
-        candidateBusy,
-        setCandidateBusy,
-        setSaved,
-        setError,
-        actions,
-        pathInput,
-    });
-    return renderRoot({
+    return renderMemoryRoot({
+        tab,
         data,
         loading,
         error,
-        pathInput,
         saved,
         drafts,
         editing,
@@ -1908,59 +1782,112 @@ function MemoryView() {
         expanded,
         sortOrder,
         entryLimit,
-        candidates,
-        candidateBusy,
-        actions,
+        promptsProps,
+        commit,
+        reload: () => actions.load(''),
+        setTab: (next) => {
+            setTab(next);
+            setEditing(null);
+            setConfirming(null);
+        },
         setDrafts,
         setEditing,
+        setConfirming,
         setExpanded,
         setSortOrder,
-        setConfirming,
-        setPathInput,
-        commit,
-        onConfirmCandidate,
-        onDismissCandidate,
     });
 }
-/** 根视图渲染（保持 MemoryView 简洁；全部状态经 props 传入）。 */
-function renderRoot({ data, loading, error, pathInput, saved, drafts, editing, confirming, expanded, sortOrder, entryLimit, candidates, candidateBusy, actions, setDrafts, setEditing, setExpanded, setSortOrder, setConfirming, setPathInput, commit, onConfirmCandidate, onDismissCandidate, }) {
-    return createElement('div', { className: 'dsh-my-memory-root' }, createElement(Toolbar, { pathInput, onInput: setPathInput, onLoad: actions.load, onRefresh: actions.refresh }), error === null ? null : createElement(ErrorBanner, { kind: error, onRetry: () => actions.load(pathInput) }), loading
-        ? createElement('div', { className: 'dsh-my-memory-status dsh-my-memory-loading' }, createElement('span', { className: 'dsh-my-memory-spinner' }), strings.loading())
-        : data === null
-            ? null
-            : createElement(Sections, {
-                data,
-                saved,
-                drafts,
-                editing,
-                confirming,
-                expanded,
-                sortOrder,
-                entryLimit,
-                candidates,
-                candidateBusy,
-                onDraft: (scope, value) => setDrafts({ ...drafts, [scope]: value }),
-                onEdit: (scope, id, desc) => setEditing({ scope, id, desc }),
-                onEditDesc: (value) => setEditing({ ...editing, desc: value }),
-                onCancelEdit: () => setEditing(null),
-                onConfirm: (confirm) => setConfirming(confirm),
-                onCancelConfirm: () => setConfirming(null),
-                onToggle: (key) => setExpanded((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(key))
-                        next.delete(key);
-                    else
-                        next.add(key);
-                    return next;
-                }),
-                onSort: (scope) => setSortOrder((prev) => ({
-                    ...prev,
-                    [scope]: prev[scope] === 'desc' ? 'asc' : 'desc',
-                })),
-                onCommit: commit,
-                onConfirmCandidate,
-                onDismissCandidate,
-            }));
+/** 渲染根视图：tab 栏 + 当前 tab 内容 + 状态行 + 居中确认弹层。 */
+function renderMemoryRoot(props) {
+    const counts = {
+        global: props.data === null ? 0 : props.data.global.items.length,
+        project: props.data === null ? 0 : props.data.project.items.length,
+        prompts: props.promptsProps.items.length,
+    };
+    return createElement('div', { className: 'dsh-my-memory-root' }, createElement(TabBar, { tab: props.tab, counts, onTab: props.setTab }), createElement('div', { className: 'dsh-my-memory-body' }, props.error === null ? null : createElement(ErrorBanner, { kind: props.error, onRetry: props.reload }), renderTabContent(props), props.saved
+        ? createElement('div', { className: 'dsh-my-memory-status dsh-my-memory-saved' }, icon.check(14), strings.saved())
+        : null), props.confirming === null
+        ? null
+        : createElement(ConfirmPanel, {
+            confirm: props.confirming,
+            entryLimit: props.entryLimit,
+            onCancel: () => props.setConfirming(null),
+            onOk: () => props.commit(props.confirming),
+        }));
+}
+/** 当前 tab 的内容：加载态 / 记忆分区 / 提示词 tab。 */
+function renderTabContent(props) {
+    if (props.loading) {
+        return createElement('div', { className: 'dsh-my-memory-status dsh-my-memory-loading' }, createElement('span', { className: 'dsh-my-memory-spinner' }), strings.loading());
+    }
+    if (props.data === null)
+        return null;
+    if (props.tab === 'prompts')
+        return createElement(PromptsTab, props.promptsProps);
+    const scope = props.tab === 'project' ? 'project' : 'global';
+    return createElement(ScopePanel, {
+        scope,
+        data: scope === 'global' ? props.data.global : props.data.project,
+        draft: props.drafts[scope],
+        order: props.sortOrder[scope],
+        editing: props.editing,
+        expanded: props.expanded,
+        entryLimit: props.entryLimit,
+        onDraft: (value) => props.setDrafts({ ...props.drafts, [scope]: value }),
+        onEdit: (scopeName, id, desc) => props.setEditing({ scope: scopeName, id, desc }),
+        onEditDesc: (value) => props.setEditing(props.editing === null ? null : { ...props.editing, desc: value }),
+        onCancelEdit: () => props.setEditing(null),
+        onConfirm: (confirm) => props.setConfirming(confirm),
+        onToggle: (key) => props.setExpanded((prev) => {
+            const next = new Set(prev);
+            if (next.has(key))
+                next.delete(key);
+            else
+                next.add(key);
+            return next;
+        }),
+        onSort: (scopeName) => props.setSortOrder((prev) => ({
+            ...prev,
+            [scopeName]: prev[scopeName] === 'desc' ? 'asc' : 'desc',
+        })),
+    });
+}
+/** 三个 tab 的分段控件（计数徽标直接标在 tab 上）。 */
+function TabBar({ tab, counts, onTab, }) {
+    const tabs = [
+        { id: 'global', label: strings.globalSection(), count: counts.global },
+        { id: 'project', label: strings.projectSection(), count: counts.project },
+        { id: 'prompts', label: strings.promptsSection(), count: counts.prompts },
+    ];
+    return createElement('div', { className: 'dsh-my-memory-tabs', role: 'tablist', 'aria-label': strings.title() }, tabs.map((item) => createElement('button', {
+        key: item.id,
+        role: 'tab',
+        className: `dsh-my-memory-tab${tab === item.id ? ' is-active' : ''}`,
+        'aria-selected': tab === item.id,
+        'aria-label': item.label,
+        onClick: () => onTab(item.id),
+    }, item.label, createElement('span', { className: 'dsh-my-memory-tab-count' }, item.count))));
+}
+/** 一个记忆分区（全局或项目）：说明行 + 排序 + 列表 + 新增输入区。 */
+function ScopePanel(props) {
+    const { scope, data, draft, order, entryLimit } = props;
+    const isProject = scope === 'project';
+    const items = sortMemories(data.items, order);
+    const rows = buildRows(items, scope, props.editing, props.onEdit, props.onEditDesc, props.onCancelEdit, props.onConfirm, props.expanded, props.onToggle, entryLimit);
+    const emptyHint = isProject && data.cwd === '' ? strings.projectEmptyHint() : undefined;
+    return createElement('section', { className: `dsh-my-memory-section${isProject ? ' dsh-my-memory-section-project' : ''}` }, createElement('div', { className: 'dsh-my-memory-note-row' }, createElement('p', { className: 'dsh-my-memory-note' }, isProject ? strings.projectNote() : strings.globalNote()), createElement(SortToggle, { scope, order, onSort: props.onSort })), rows.length === 0
+        ? createElement(EmptyState, { hint: emptyHint })
+        : createElement('div', { className: 'dsh-my-memory-list' }, rows), createElement(AddBar, {
+        scope,
+        value: draft,
+        entryLimit,
+        onChange: props.onDraft,
+        onAdd: () => props.onConfirm({ kind: 'add', scope, desc: draft, category: 'fact' }),
+    }));
+}
+/** 提示词 tab：独立数据源，与记忆状态机零耦合。 */
+function PromptsTab(props) {
+    return createElement(PromptsBlock, props);
 }
 /** Load-failure banner with a retry entry; write-failure banner without. */
 function ErrorBanner({ kind, onRetry }) {
@@ -1983,7 +1910,7 @@ function createCommitHandler({ data, setData, setSaved, setError, setDrafts, set
         writeMemory({
             action: confirm.kind,
             scope: confirm.scope,
-            cwd: confirm.scope === 'project' ? data.project.cwd : '',
+            cwd: confirm.scope === 'project' && data !== null ? data.project.cwd : '',
             id: confirm.id,
             desc: confirm.desc,
         })
@@ -1996,80 +1923,6 @@ function createCommitHandler({ data, setData, setSaved, setError, setDrafts, set
         })
             .catch(() => setError('save'));
     };
-}
-/** Two scopes side by side (global + project), plus pending candidates (issue #78). */
-function Sections({ data, saved, drafts, editing, confirming, expanded, sortOrder, entryLimit, candidates, candidateBusy, onDraft, onEdit, onEditDesc, onCancelEdit, onConfirm, onCancelConfirm, onToggle, onSort, onCommit, onConfirmCandidate, onDismissCandidate, }) {
-    // 提示词分区状态（独立于记忆状态机；hook 必须在组件顶层调用，故提到根视图）。
-    const promptsProps = usePromptsBlockProps();
-    const blockProps = {
-        drafts,
-        editing,
-        confirming,
-        expanded,
-        sortOrder,
-        entryLimit,
-        onDraft,
-        onEdit,
-        onEditDesc,
-        onCancelEdit,
-        onConfirm,
-        onCancelConfirm,
-        onToggle,
-        onSort,
-        onCommit,
-    };
-    return createElement('div', { className: 'dsh-my-memory-sections' }, createElement(SectionBlock, {
-        scope: 'global',
-        title: strings.globalSection(),
-        note: strings.globalNote(),
-        data: data.global,
-        ...blockProps,
-    }), createElement(SectionBlock, {
-        scope: 'project',
-        title: strings.projectSection(),
-        note: strings.projectNote(),
-        data: data.project,
-        ...blockProps,
-    }), 
-    // 全局提示词（issue #465）：独立分区 + 独立状态源（/my-memory/api/prompts），
-    // 与记忆的 data/drafts/editing/confirming 状态机零耦合（各自的 hook 与数据流）。
-    createElement(PromptsBlock, { key: 'prompts', ...promptsProps }), createElement(CandidatesBlock, {
-        candidates,
-        busy: candidateBusy,
-        onConfirmCandidate,
-        onDismissCandidate,
-    }), saved
-        ? createElement('div', { className: 'dsh-my-memory-status dsh-my-memory-saved' }, icon.check(14), strings.saved())
-        : null);
-}
-/** One scope's section: 区块标题 / 徽标 / 排序开关 / 列表 / 新增栏 / 确认面板。 */
-function SectionBlock({ scope, title, note, data, drafts, editing, confirming, expanded, sortOrder, entryLimit, onDraft, onEdit, onEditDesc, onCancelEdit, onConfirm, onCancelConfirm, onToggle, onSort, onCommit, }) {
-    const isProject = scope === 'project';
-    // 徽标：数量（标题已含 scope 标签）；项目加载后附带项目根路径信息。
-    const badge = scope === 'global'
-        ? strings.countOnly(data.items.length)
-        : data.cwd !== ''
-            ? strings.projectBadge(data.projectRoot, data.items.length)
-            : strings.countOnly(data.items.length);
-    const order = sortOrder[scope];
-    const items = sortMemories(data.items, order);
-    const rows = buildRows(items, scope, editing, onEdit, onEditDesc, onCancelEdit, onConfirm, expanded, onToggle);
-    // 空状态：无会话项目时提示输入项目根路径（issue #104），否则提示新增（issue #110 视觉统一）。
-    const emptyHint = isProject && data.cwd === '' ? strings.projectEmptyHint() : undefined;
-    return createElement('div', { className: `dsh-my-memory-section${isProject ? ' dsh-my-memory-section-project' : ''}` }, createElement('div', { className: 'dsh-my-memory-section-head' }, createElement('span', { className: 'dsh-my-memory-section-title' }, title), createElement(ui.Pill, { className: 'dsh-my-memory-badge' }, badge), createElement(SortToggle, { scope, order, onSort })), createElement('div', { className: 'dsh-my-memory-note' }, note), rows.length === 0 ? createElement(EmptyState, { hint: emptyHint }) : rows, createElement(AddBar, {
-        scope,
-        value: drafts[scope],
-        entryLimit,
-        onChange: (value) => onDraft(scope, value),
-        onAdd: () => onConfirm({ kind: 'add', scope, desc: drafts[scope] }),
-    }), confirming !== null && confirming.scope === scope
-        ? createElement(ConfirmPanel, {
-            confirm: confirming,
-            entryLimit,
-            onCancel: onCancelConfirm,
-            onOk: () => onCommit(confirming),
-        })
-        : null);
 }
 // 导出给 apply.ts 使用
 

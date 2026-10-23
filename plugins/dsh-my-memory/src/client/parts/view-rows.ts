@@ -1,9 +1,8 @@
-// ── view-rows: row/entry widgets for the Memory tab ─────────────────────
-// 拆分自 view.part.js（issue #110 视觉重设计）：条目卡片、空状态、排序开关、
-// 新增栏与确认面板。纯渲染组件，共用 view 工厂作用域内的 strings/icon/utils。
+// ── view-rows: row / composer / confirm modal widgets for the Memory tab ──
+// 条目卡片、空状态、排序开关、新增输入区（自适应高度 textarea）与确认弹层。
+// 纯渲染组件，共用 view 工厂作用域内的 strings/icon/ui/utils。
 
-/** 排序开关：按更新时间切换最新/最旧优先（每分区独立）。官方 Pill 承载
- *  （issue #143 试点）：active 表示当前排序方向，点击切换。 */
+/** 排序开关：原型式小按钮（最新 / 最旧优先）。 */
 function SortToggle({
   scope,
   order,
@@ -14,26 +13,25 @@ function SortToggle({
   onSort: (scope: string) => void
 }): ReactNode {
   return createElement(
-    ui.Pill,
+    'button',
     {
       className: 'dsh-my-memory-sort',
-      active: order === 'desc',
+      type: 'button',
       'aria-label': `${strings.sortLabel()} ${scope}`,
       onClick: () => onSort(scope),
     },
-    createElement(ui.IconChevronDownOutline14),
+    icon.chevronDown(14),
     order === 'desc' ? strings.sortNewest() : strings.sortOldest(),
   )
 }
 
-/** 空状态：无条目时的引导（hint 优先，如无会话项目提示输入项目根路径）。 */
+/** 空状态：无条目时的引导（hint 优先，如无项目会话时提示打开项目会话）。 */
 function EmptyState({ hint }: { hint?: string }): ReactNode {
   return createElement(
     'div',
     { className: 'dsh-my-memory-empty' },
-    createElement('span', { className: 'dsh-my-memory-empty-icon' }, icon.file(16)),
     createElement(
-      'div',
+      'span',
       { className: 'dsh-my-memory-empty-body' },
       createElement('span', { className: 'dsh-my-memory-empty-main' }, strings.empty()),
       createElement('span', { className: 'dsh-my-memory-empty-hint' }, hint ?? strings.emptyHint()),
@@ -41,8 +39,16 @@ function EmptyState({ hint }: { hint?: string }): ReactNode {
   )
 }
 
-/** 新增条目的输入 + 保存按钮；超长时给出精简提示（issue #105）。
- *  输入用官方 Input（issue #143 试点）；保存按钮保留自研（语义绿）。 */
+/** 自适应高度 textarea：内容变高时按 scrollHeight 抬升，封顶 180px。
+ *  node 环境（测试渲染）没有 DOM，直接跳过。 */
+function autoGrowTextarea(target: unknown): void {
+  const el = target as { style?: { height: string }; scrollHeight?: number } | null
+  if (el === null || typeof el !== 'object' || el.style === undefined || typeof el.scrollHeight !== 'number') return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 180)}px`
+}
+
+/** 新增条目的输入区：多行自适应 textarea + 字数计数 + 超长提示 + 新增按钮。 */
 function AddBar({
   scope,
   value,
@@ -56,37 +62,54 @@ function AddBar({
   onAdd: () => void
   entryLimit: number
 }): ReactNode {
+  const over = isOverEntryLimit(value, entryLimit)
   return createElement(
     'div',
-    { className: 'dsh-my-memory-addbar-wrap' },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-addbar' },
-      createElement(ui.Input, {
-        className: 'dsh-my-memory-add-input',
-        placeholder: strings.addPlaceholder(),
-        'aria-label': strings.addInputAria(scope),
-        value,
-        onChange: (event: { target: { value: string } }) => onChange(event.target.value),
-      }),
-      createElement(
-        'button',
-        {
-          className: 'dsh-my-memory-btn-save',
-          'aria-label': `${strings.add()} ${scope}`,
-          onClick: onAdd,
-        },
-        icon.plus(14),
-        strings.add(),
-      ),
-    ),
-    isOverEntryLimit(value, entryLimit)
+    { className: 'dsh-my-memory-composer' },
+    createElement('textarea', {
+      className: 'dsh-my-memory-composer-input',
+      rows: 2,
+      placeholder: strings.addPlaceholder(),
+      'aria-label': strings.addInputAria(scope),
+      value,
+      onChange: (event: { target: { value: string } }) => onChange(event.target.value),
+      onInput: (event: { target: unknown }) => autoGrowTextarea(event.target),
+      onKeyDown: (event: { key: string; shiftKey?: boolean; preventDefault?: () => void }) => {
+        if (event.key === 'Enter' && event.shiftKey !== true) {
+          event.preventDefault?.()
+          if (value.trim() !== '') onAdd()
+        }
+      },
+    }),
+    over
       ? createElement(
           'div',
           { className: 'dsh-my-memory-entry-hint' },
           strings.entryTooLongHint(value.length, entryLimit),
         )
       : null,
+    createElement(
+      'div',
+      { className: 'dsh-my-memory-composer-foot' },
+      createElement(
+        'span',
+        { className: 'dsh-my-memory-composer-hint' },
+        createElement('span', { className: 'dsh-my-memory-count' }, `${value.length} / ${entryLimit}`),
+        ' · ',
+        strings.confirmHint(),
+      ),
+      createElement(
+        'button',
+        {
+          className: 'dsh-my-memory-btn-add',
+          'aria-label': `${strings.add()} ${scope}`,
+          disabled: value.trim() === '',
+          onClick: onAdd,
+        },
+        icon.plus(14),
+        strings.add(),
+      ),
+    ),
   )
 }
 
@@ -103,6 +126,7 @@ interface ConfirmingState {
   scope: string
   id?: string
   desc?: string
+  category?: string
 }
 
 /** 记忆条目类型 */
@@ -128,6 +152,7 @@ function buildRows(
   onConfirm: (confirm: ConfirmingState) => void,
   expanded: Set<string>,
   onToggle: (key: string) => void,
+  entryLimit: number,
 ): ReactNode[] {
   return items.map((item) => {
     const isEditing = editing !== null && editing.scope === scope && editing.id === item.id
@@ -141,9 +166,10 @@ function buildRows(
       onEdit: () => onEdit(scope, item.id, item.desc),
       onEditDesc,
       onCancelEdit,
-      onSaveEdit: () => onConfirm({ kind: 'update', scope, id: item.id, desc: editing.desc }),
-      onDelete: () => onConfirm({ kind: 'delete', scope, id: item.id, desc: item.desc }),
+      onSaveEdit: () => onConfirm({ kind: 'update', scope, id: item.id, desc: editing.desc, category: item.category }),
+      onDelete: () => onConfirm({ kind: 'delete', scope, id: item.id, desc: item.desc, category: item.category }),
       onToggle: () => onToggle(key),
+      entryLimit,
     })
   })
 }
@@ -162,55 +188,75 @@ function IconButton({
   return createElement('button', { className, 'aria-label': label, onClick }, children)
 }
 
-/** 编辑态：输入 + 保存/取消，保留卡片底与操作/内容分离。输入用官方
- *  Input、取消用官方 Button（issue #143 试点）；保存保留自研（语义绿）。 */
+/** 编辑态：多行自适应输入 + 保存/取消（保存前仍需确认）。 */
 function MemoryRowEdit({
   editingDesc,
   onEditDesc,
   onSaveEdit,
   onCancelEdit,
+  entryLimit,
 }: {
   editingDesc: string
   onEditDesc: (value: string) => void
   onSaveEdit: () => void
   onCancelEdit: () => void
+  entryLimit: number
 }): ReactNode {
+  const over = isOverEntryLimit(editingDesc, entryLimit)
   return createElement(
     'div',
     { className: 'dsh-my-memory-row dsh-my-memory-row-editing' },
-    createElement(ui.Input, {
-      className: 'dsh-my-memory-add-input',
+    createElement('textarea', {
+      className: 'dsh-my-memory-composer-input',
+      rows: 2,
       value: editingDesc,
+      'aria-label': strings.edit(),
       onChange: (event: { target: { value: string } }) => onEditDesc(event.target.value),
+      onInput: (event: { target: unknown }) => autoGrowTextarea(event.target),
     }),
+    over
+      ? createElement(
+          'div',
+          { className: 'dsh-my-memory-entry-hint' },
+          strings.entryTooLongHint(editingDesc.length, entryLimit),
+        )
+      : null,
     createElement(
       'div',
-      { className: 'dsh-my-memory-actions' },
+      { className: 'dsh-my-memory-composer-foot' },
       createElement(
-        'button',
-        { className: 'dsh-my-memory-btn-save', onClick: onSaveEdit },
-        icon.check(14),
-        strings.save(),
+        'span',
+        { className: 'dsh-my-memory-composer-hint' },
+        createElement('span', { className: 'dsh-my-memory-count' }, `${editingDesc.length} / ${entryLimit}`),
+        ' · ',
+        strings.confirmHint(),
       ),
       createElement(
-        ui.Button,
-        {
-          variant: 'ghost',
-          size: 'sm',
-          onClick: onCancelEdit,
-          icon: createElement(ui.IconCloseOutline16),
-        },
-        strings.cancel(),
+        'div',
+        { className: 'dsh-my-memory-actions' },
+        createElement(
+          'button',
+          { className: 'dsh-my-memory-btn-save', onClick: onSaveEdit },
+          icon.check(14),
+          strings.save(),
+        ),
+        createElement(
+          ui.Button,
+          {
+            variant: 'ghost',
+            size: 'sm',
+            onClick: onCancelEdit,
+            icon: createElement(ui.IconCloseOutline16),
+          },
+          strings.cancel(),
+        ),
       ),
     ),
   )
 }
 
-// MemoryRow 的描述/操作子部件（MemoryRowDesc / MemoryRowActions）见 rows.ts
-// ——该文件是行级子部件的共同落点，同时守住单文件 ≤400 行门禁。
-
-/** 一条记忆卡片：描述（+截断/展开）+ 操作图标组 + 元数据（分类/置信度/
- *  冲突/演进历史，issue #78）+ 更新时间。 */
+/** 一条记忆卡片：描述（概要/展开）+ 操作图标组 + 元数据（分类/置信度/
+ *  冲突/演进历史）+ 更新时间。 */
 function MemoryRow({
   item,
   isEditing,
@@ -222,6 +268,7 @@ function MemoryRow({
   onSaveEdit,
   onDelete,
   onToggle,
+  entryLimit,
 }: {
   item: MemoryItem
   isEditing: boolean
@@ -233,8 +280,11 @@ function MemoryRow({
   onSaveEdit: () => void
   onDelete: () => void
   onToggle: () => void
+  entryLimit: number
 }): ReactNode {
-  if (isEditing) return createElement(MemoryRowEdit, { editingDesc, onEditDesc, onSaveEdit, onCancelEdit })
+  if (isEditing) {
+    return createElement(MemoryRowEdit, { editingDesc, onEditDesc, onSaveEdit, onCancelEdit, entryLimit })
+  }
   const cut = truncateText(item.desc)
   return createElement(
     'div',
@@ -244,13 +294,55 @@ function MemoryRow({
       { className: 'dsh-my-memory-row-head' },
       createElement(MemoryRowDesc, {
         shown: isExpanded ? item.desc : cut.text,
-        truncated: cut.truncated,
         isExpanded,
         onToggle,
       }),
       createElement(MemoryRowActions, { id: item.id, onEdit, onDelete }),
     ),
-    createElement(MetadataRow, { item, isExpanded, onToggle }),
+    createElement(MetadataRow, { item }),
+    isExpanded ? createElement(MemoryDetail, { item }) : null,
+  )
+}
+
+/** 展开详情：矛盾提示 + 来源会话/分类/置信度 + 演进历史（原型的信息层级）。 */
+function MemoryDetail({ item }: { item: MemoryItem }): ReactNode {
+  const confidence =
+    typeof item.confidence === 'number' && Number.isFinite(item.confidence)
+      ? Math.min(5, Math.round(item.confidence))
+      : 1
+  return createElement(
+    'div',
+    { className: 'dsh-my-memory-detail' },
+    item.status === 'conflict-pending'
+      ? createElement('div', { className: 'dsh-my-memory-conflict-note' }, strings.conflictNote())
+      : null,
+    createElement(
+      'div',
+      { className: 'dsh-my-memory-detail-grid' },
+      createElement(
+        'div',
+        null,
+        createElement('div', { className: 'dsh-my-memory-detail-label' }, strings.sourceLabel()),
+        createElement(
+          'div',
+          { className: 'dsh-my-memory-detail-value' },
+          item.source?.sessionId ? strings.sourceAgentLabel(item.source.sessionId) : '—',
+        ),
+      ),
+      createElement(
+        'div',
+        null,
+        createElement('div', { className: 'dsh-my-memory-detail-label' }, strings.askCategoryLabel()),
+        createElement('div', { className: 'dsh-my-memory-detail-value' }, strings.categoryLabel(item.category)),
+      ),
+      createElement(
+        'div',
+        null,
+        createElement('div', { className: 'dsh-my-memory-detail-label' }, strings.confidenceLabel(confidence)),
+        createElement('div', { className: 'dsh-my-memory-detail-value' }, `${confidence}/5`),
+      ),
+    ),
+    createElement(HistoryList, { item }),
   )
 }
 
@@ -265,10 +357,14 @@ function SummaryPreview({ desc }: { desc: string }): ReactNode {
   )
 }
 
-/** 自定义确认面板（ask 模式，非原生 confirm）：删除红、保存绿。
- *  issue #193：改用与工具侧共用同一份 ask 范式卡（AskConfirmCard：条带 +
- *  20px 大卡 + 范围选项行 + footer 动作区），两边形态一致。
- *  add/update 时若内容超长，显示概要预览（完整内容仍保存，issue #105）。 */
+/** 确认面板标题文案（按 kind 取；未知 kind 回落删除文案）。 */
+const CONFIRM_TEXTS: Record<string, () => string> = {
+  add: () => strings.confirmAdd(),
+  update: () => strings.confirmUpdate(),
+  delete: () => strings.confirmDelete(),
+}
+
+/** 记忆写操作确认：居中弹层 + 共用 ask 范式卡（保存绿 / 删除红）。 */
 function ConfirmPanel({
   confirm,
   onCancel,
@@ -281,82 +377,22 @@ function ConfirmPanel({
   entryLimit: number
 }): ReactNode {
   const isDelete = confirm.kind === 'delete'
-  return createElement(AskConfirmCard, {
-    variant: isDelete ? 'delete' : 'save',
-    title: CONFIRM_TEXTS[confirm.kind](),
-    scope: confirm.scope,
-    category: '',
-    content: confirm.desc ?? '',
-    showSummary: !isDelete && isOverEntryLimit(confirm.desc, entryLimit),
-    note: strings.confirmHint(),
-    allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
-    onAllow: onOk,
-    onReject: onCancel,
-  })
-}
-
-/** 确认面板标题文案（按 kind 取；未知 kind 回落删除文案）。 */
-const CONFIRM_TEXTS: Record<string, () => string> = {
-  add: () => strings.confirmAdd(),
-  update: () => strings.confirmUpdate(),
-  delete: () => strings.confirmDelete(),
-}
-
-/** Path input + load/refresh buttons + consent note. 路径输入用官方 Input、
- *  加载/刷新用官方 Button（size sm，issue #143 试点）。 */
-function Toolbar({
-  pathInput,
-  onInput,
-  onLoad,
-  onRefresh,
-}: {
-  pathInput: string
-  onInput: (value: string) => void
-  onLoad: (path: string) => void
-  onRefresh: (path: string) => void
-}): ReactNode {
   return createElement(
     'div',
-    { className: 'dsh-my-memory-toolbar' },
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-pathbar' },
-      createElement(ui.Input, {
-        className: 'dsh-my-memory-path-input',
-        icon: createElement(ui.IconFolderOpenOutline16),
-        placeholder: strings.projectHint(),
-        'aria-label': strings.pathInputAria(),
-        title: strings.pathInputAria(),
-        value: pathInput,
-        onChange: (event: { target: { value: string } }) => onInput(event.target.value),
-        onKeyDown: (event: { key: string }) => {
-          if (event.key === 'Enter') onLoad(pathInput)
-        },
-      }),
-      createElement(
-        ui.Button,
-        {
-          variant: 'outline',
-          size: 'sm',
-          'aria-label': strings.loadProject(),
-          onClick: () => onLoad(pathInput),
-          icon: createElement(ui.IconFolderOpenOutline16),
-        },
-        strings.loadProject(),
-      ),
-      createElement(
-        ui.Button,
-        {
-          variant: 'outline',
-          size: 'sm',
-          'aria-label': strings.refresh(),
-          onClick: () => onRefresh(pathInput),
-          icon: createElement(ui.IconRefreshOutline14),
-        },
-        strings.refresh(),
-      ),
-    ),
-    createElement('div', { className: 'dsh-my-memory-note' }, strings.confirmHint()),
+    { className: 'dsh-my-memory-overlay', role: 'presentation' },
+    createElement(AskConfirmCard, {
+      variant: isDelete ? 'delete' : 'save',
+      title: CONFIRM_TEXTS[confirm.kind](),
+      scope: confirm.scope,
+      category: confirm.category ?? '',
+      content: confirm.desc ?? '',
+      showSummary: !isDelete && isOverEntryLimit(confirm.desc, entryLimit),
+      note: strings.confirmHint(),
+      allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
+      showOptions: false,
+      onAllow: onOk,
+      onReject: onCancel,
+    }),
   )
 }
 

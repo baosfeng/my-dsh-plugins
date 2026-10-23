@@ -97,40 +97,28 @@ function createActions({
   setLoading,
   setError,
   setSaved,
-  setCandidates,
-  setCandidateBusy,
 }: {
   setData: React.Dispatch<React.SetStateAction<MemoryData | null>>
   setLoading: React.Dispatch<React.SetStateAction<boolean>>
   setError: React.Dispatch<React.SetStateAction<'load' | 'save' | null>>
   setSaved: React.Dispatch<React.SetStateAction<boolean>>
-  setCandidates: React.Dispatch<React.SetStateAction<MemoryItem[]>>
-  setCandidateBusy: React.Dispatch<React.SetStateAction<boolean>>
 }) {
   const applyValue = (value: MemoryData) => {
     setData(value)
     setLoading(false)
   }
-  const refreshWith = (fetcher: (cwd: string) => Promise<MemoryData>, cwd: string) => {
+  const run = (cwd: string) => {
     setLoading(true)
     setError(null)
     setSaved(false)
-    fetcher(cwd)
+    fetchMemoryOnce(cwd)
       .then(applyValue)
       .catch(() => {
         setLoading(false)
         setError('load')
       })
   }
-  const loadCandidates = () => {
-    fetchCandidates()
-      .then((items) => setCandidates(items))
-      .catch(() => setCandidates([]))
-  }
-  const run = (cwd: string) => refreshWith(fetchMemoryOnce, cwd)
-  const refreshCandidates = () => {
-    setCandidateBusy(false)
-    loadCandidates()
-  }
-  return { load: run, refresh: run, loadCandidates, refreshCandidates }
+  return { load: run, refresh: run }
 }
+
+// 导出给其他 part 文件使用

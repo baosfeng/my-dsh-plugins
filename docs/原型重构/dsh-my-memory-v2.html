@@ -1,0 +1,2188 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>记忆 · 功能原型</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f4f6f8;
+        color: #15181c;
+        font:
+          14px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          'PingFang SC',
+          'Hiragino Sans GB',
+          'Microsoft YaHei',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .app {
+        max-width: 880px;
+        margin: 40px auto 96px;
+        padding: 0 20px;
+      }
+      .page-head {
+        margin-bottom: 16px;
+      }
+      h1 {
+        font-size: 22px;
+        font-weight: 600;
+        margin: 0;
+        letter-spacing: -0.01em;
+      }
+      .page-sub {
+        margin: 4px 0 0;
+        font-size: 13px;
+        color: #6b7280;
+      }
+      .panel {
+        background: #fff;
+        border: 1px solid #e4e7eb;
+        border-radius: 14px;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+        overflow: hidden;
+      }
+
+      /* ── tabs ─────────────────────────────────────────────── */
+      .tabbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px 0;
+      }
+      .segmented {
+        display: inline-flex;
+        gap: 2px;
+        padding: 3px;
+        background: #f1f3f6;
+        border-radius: 10px;
+      }
+      .seg {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        height: 32px;
+        padding: 0 15px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: #4b5563;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          color 0.15s,
+          box-shadow 0.15s;
+      }
+      .seg:hover:not([aria-selected='true']) {
+        color: #111827;
+      }
+      .seg[aria-selected='true'] {
+        background: #fff;
+        color: #111827;
+        font-weight: 600;
+        box-shadow:
+          0 1px 2px rgba(16, 24, 40, 0.1),
+          0 0 0 1px rgba(16, 24, 40, 0.04);
+      }
+      .tab-count {
+        font-size: 11px;
+        font-weight: 500;
+        color: #6b7280;
+        background: #eef1f5;
+        border-radius: 999px;
+        padding: 1px 7px;
+        font-variant-numeric: tabular-nums;
+      }
+      .seg[aria-selected='true'] .tab-count {
+        background: #eef4ff;
+        color: #2456b3;
+      }
+
+      /* ── view ─────────────────────────────────────────────── */
+      #view {
+        padding: 16px 20px 0;
+      }
+      .note-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .note {
+        margin: 0;
+        font-size: 12.5px;
+        line-height: 1.6;
+        color: #6b7280;
+      }
+      .note code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11.5px;
+        color: #4b5563;
+        background: #f1f3f6;
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+      .mini {
+        flex: none;
+        height: 26px;
+        padding: 0 10px;
+        border: 1px solid #dfe3e8;
+        border-radius: 7px;
+        background: #fff;
+        color: #4b5563;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .mini:hover {
+        background: #f6f7f9;
+      }
+
+      /* ── 条目列表 ──────────────────────────────────────────── */
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .entry {
+        border: 1px solid #e8eaee;
+        border-radius: 10px;
+        padding: 11px 13px;
+        background: #fff;
+        transition: border-color 0.15s;
+      }
+      .entry:hover {
+        border-color: #d7dbe2;
+      }
+      .entry-main {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .entry-desc {
+        flex: 1;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #1b1f24;
+        cursor: pointer;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        word-break: break-word;
+      }
+      .entry.expanded .entry-desc {
+        display: block;
+        overflow: visible;
+      }
+      .entry-actions {
+        display: flex;
+        gap: 2px;
+        opacity: 0.65;
+        transition: opacity 0.15s;
+      }
+      .entry:hover .entry-actions,
+      .entry:focus-within .entry-actions {
+        opacity: 1;
+      }
+      .icon-btn {
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: #5b6470;
+        cursor: pointer;
+      }
+      .icon-btn:hover {
+        background: #f1f3f6;
+        color: #111827;
+      }
+      .icon-btn.danger:hover {
+        background: #fdeceb;
+        color: #c8322b;
+      }
+      .entry-meta {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 6px;
+        font-size: 12px;
+        color: #6b7280;
+      }
+      .meta-sep {
+        color: #c4c9d0;
+      }
+
+      /* 徽标 */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 7px;
+        border-radius: 5px;
+        font-size: 11.5px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .cat-preference {
+        background: #eef4ff;
+        color: #2456b3;
+      }
+      .cat-fact {
+        background: #f2f4f7;
+        color: #4b5563;
+      }
+      .cat-project {
+        background: #e9f7f4;
+        color: #0f766e;
+      }
+      .cat-stack {
+        background: #f3efff;
+        color: #5b3fb8;
+      }
+      .cat-workflow {
+        background: #fff4e6;
+        color: #9a5b00;
+      }
+      .badge.warn {
+        background: #fdf0ee;
+        color: #b42318;
+      }
+      .badge.builtin {
+        background: #eef4ff;
+        color: #2456b3;
+      }
+      .badge.off {
+        background: #f2f4f7;
+        color: #6b7280;
+      }
+
+      /* 置信度 */
+      .conf {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .conf i {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #dfe3e8;
+      }
+      .conf i.on {
+        background: #4a7dde;
+      }
+      .conf b {
+        margin-left: 3px;
+        font-weight: 500;
+      }
+
+      /* 展开详情 */
+      .entry-detail {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px dashed #e8eaee;
+      }
+      .detail-label {
+        margin-bottom: 4px;
+        font-size: 11.5px;
+        color: #8b9199;
+        letter-spacing: 0.02em;
+      }
+      .detail-text {
+        margin: 0;
+        font-size: 13.5px;
+        line-height: 1.65;
+        color: #374151;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .conflict-note {
+        margin-top: 10px;
+        padding: 8px 10px;
+        border: 1px solid #f7d9d6;
+        border-radius: 8px;
+        background: #fdf3f2;
+        color: #a3231b;
+        font-size: 12.5px;
+        line-height: 1.55;
+      }
+      .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px 16px;
+        margin: 12px 0 0;
+        font-size: 12px;
+      }
+      .detail-grid div {
+        min-width: 0;
+      }
+      .detail-grid dt {
+        color: #8b9199;
+        margin-bottom: 1px;
+      }
+      .detail-grid dd {
+        margin: 0;
+        color: #374151;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .history {
+        margin: 2px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .history li {
+        display: flex;
+        gap: 8px;
+        padding: 2px 0;
+        font-size: 12px;
+        color: #4b5563;
+      }
+      .history li span {
+        flex: none;
+        color: #8b9199;
+      }
+
+      /* 空态 */
+      .empty {
+        padding: 22px 16px;
+        margin-bottom: 14px;
+        border: 1px dashed #dfe3e8;
+        border-radius: 10px;
+        text-align: center;
+        font-size: 13px;
+        color: #8b9199;
+      }
+      .empty b {
+        display: block;
+        margin-bottom: 2px;
+        font-size: 13.5px;
+        font-weight: 500;
+        color: #4b5563;
+      }
+
+      /* 编辑态 */
+      .entry.editing {
+        padding: 10px 12px;
+        border-color: #c9d6f5;
+        background: #fbfcff;
+      }
+
+      /* ── 输入区（自适应） ───────────────────────────────────── */
+      .composer {
+        margin: 10px -20px 0;
+        padding: 12px 20px 14px;
+        border-top: 1px solid #eceef1;
+        background: #fbfcfd;
+      }
+      .composer-input {
+        display: block;
+        width: 100%;
+        min-height: 52px;
+        max-height: 180px;
+        padding: 9px 11px;
+        border: 1px solid #dfe3e8;
+        border-radius: 9px;
+        background: #fff;
+        color: #111827;
+        font: inherit;
+        font-size: 13.5px;
+        line-height: 1.6;
+        outline: none;
+        resize: none;
+        overflow-y: auto;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      .composer-title {
+        display: block;
+        width: 100%;
+        height: 34px;
+        margin-bottom: 8px;
+        padding: 0 11px;
+        border: 1px solid #dfe3e8;
+        border-radius: 9px;
+        background: #fff;
+        color: #111827;
+        font: inherit;
+        font-size: 13.5px;
+        outline: none;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      .composer-input:focus,
+      .composer-title:focus {
+        border-color: #2f6fed;
+        box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.12);
+      }
+      .composer-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 8px;
+      }
+      .composer-hint {
+        font-size: 12px;
+        color: #8b9199;
+        line-height: 1.5;
+      }
+      .dot-sep {
+        margin: 0 5px;
+        color: #c4c9d0;
+      }
+      .char-count {
+        font-variant-numeric: tabular-nums;
+      }
+      .char-count.over {
+        color: #b45309;
+      }
+      .over-hint {
+        margin: 6px 0 0;
+        font-size: 12px;
+        color: #b45309;
+      }
+      .foot-actions {
+        display: flex;
+        flex: none;
+        gap: 8px;
+      }
+
+      /* ── 按钮 ──────────────────────────────────────────────── */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 14px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          color 0.15s;
+      }
+      .btn svg {
+        flex: none;
+      }
+      .btn:focus-visible,
+      .icon-btn:focus-visible,
+      .mini:focus-visible,
+      .seg:focus-visible,
+      .switch:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.22);
+      }
+      .btn.primary {
+        background: #2f6fed;
+        color: #fff;
+      }
+      .btn.primary:hover {
+        background: #2560d8;
+      }
+      .btn.primary:disabled {
+        background: #c3cfe8;
+        cursor: not-allowed;
+      }
+      .btn.ghost {
+        background: #fff;
+        border-color: #dfe3e8;
+        color: #374151;
+      }
+      .btn.ghost:hover {
+        background: #f6f7f9;
+      }
+      .btn.sm {
+        height: 28px;
+        padding: 0 11px;
+        font-size: 12.5px;
+      }
+
+      /* ── 提示词 ────────────────────────────────────────────── */
+      .prompt-row {
+        border: 1px solid #e8eaee;
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: #fff;
+      }
+      .prompt-row:hover {
+        border-color: #d7dbe2;
+      }
+      .prompt-row.off {
+        background: #fafbfc;
+      }
+      .prompt-row.off .prompt-title,
+      .prompt-row.off .prompt-text {
+        color: #9aa1aa;
+      }
+      .prompt-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .switch {
+        position: relative;
+        flex: none;
+        width: 30px;
+        height: 18px;
+        padding: 0;
+        border: 0;
+        border-radius: 999px;
+        background: #d5dae1;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .switch::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        transition: transform 0.15s;
+      }
+      .switch[aria-checked='true'] {
+        background: #1f9d55;
+      }
+      .switch[aria-checked='true']::after {
+        transform: translateX(12px);
+      }
+      .order-index {
+        width: 16px;
+        font-size: 11.5px;
+        color: #8b9199;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .prompt-title {
+        font-size: 13.5px;
+        font-weight: 600;
+        color: #111827;
+      }
+      .row-actions {
+        display: flex;
+        gap: 2px;
+        margin-left: auto;
+        opacity: 0.5;
+        transition: opacity 0.15s;
+      }
+      .prompt-row:hover .row-actions,
+      .prompt-row:focus-within .row-actions {
+        opacity: 1;
+      }
+      .prompt-text {
+        margin: 6px 0 0 46px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #4b5563;
+        cursor: pointer;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .prompt-row.expanded .prompt-text {
+        display: block;
+        overflow: visible;
+      }
+      .prompt-row.editing {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 12px;
+        border-color: #c9d6f5;
+        background: #fbfcff;
+      }
+      .prompt-row.editing .composer-title {
+        margin-bottom: 0;
+      }
+      .prompt-row.editing .composer-foot {
+        margin-top: 0;
+      }
+
+      /* ── 确认面板 ──────────────────────────────────────────── */
+      .overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(15, 23, 42, 0.38);
+        animation: fade 0.16s ease;
+      }
+      .modal {
+        width: min(480px, 100%);
+        background: #fff;
+        border-radius: 14px;
+        box-shadow: 0 20px 48px rgba(15, 23, 42, 0.24);
+        overflow: hidden;
+        animation: pop 0.18s cubic-bezier(0.2, 0, 0.2, 1);
+      }
+      .modal-strip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .modal.save .modal-strip {
+        background: #eaf7ef;
+        color: #12603a;
+      }
+      .modal.delete .modal-strip {
+        background: #fdecea;
+        color: #a3231b;
+      }
+      .strip-dot {
+        flex: none;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .modal-strip .scope {
+        margin-left: auto;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.75);
+        color: #374151;
+        font-size: 11.5px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .modal-body {
+        padding: 16px;
+      }
+      .scope-line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+        margin-bottom: 10px;
+        font-size: 12.5px;
+        color: #374151;
+      }
+      .field {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .field > span:first-child {
+        color: #8b9199;
+      }
+      .preview {
+        padding: 10px 12px;
+        border: 1px solid #eceef1;
+        border-radius: 8px;
+        background: #f7f8fa;
+        color: #1f2937;
+        font-size: 13.5px;
+        line-height: 1.65;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 180px;
+        overflow: auto;
+      }
+      .preview-note {
+        margin: 8px 0 0;
+        font-size: 12px;
+        color: #8b9199;
+      }
+      .danger-note {
+        margin-top: 12px;
+        padding: 8px 10px;
+        border: 1px solid #f7d9d6;
+        border-radius: 8px;
+        background: #fdf3f2;
+        color: #a3231b;
+        font-size: 12.5px;
+        line-height: 1.55;
+      }
+      .modal-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 16px;
+        border-top: 1px solid #eceef1;
+        background: #fbfcfd;
+      }
+      .foot-note {
+        font-size: 12px;
+        color: #8b9199;
+        line-height: 1.5;
+      }
+      .btn.confirm-save {
+        background: #138a52;
+        color: #fff;
+      }
+      .btn.confirm-save:hover {
+        background: #0f7546;
+      }
+      .btn.confirm-delete {
+        background: #c8322b;
+        color: #fff;
+      }
+      .btn.confirm-delete:hover {
+        background: #ad281f;
+      }
+
+      /* ── 工具侧确认卡（对话中的 memory_save / memory_delete） ── */
+      .tool-demo {
+        margin-top: 20px;
+        padding: 16px 20px 18px;
+        background: #fff;
+        border: 1px solid #e4e7eb;
+        border-radius: 14px;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+      }
+      .tool-demo h2 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .tool-sub {
+        margin: 4px 0 14px;
+        font-size: 12.5px;
+        line-height: 1.6;
+        color: #8b9199;
+      }
+      .ask-card {
+        border: 1px solid #e8eaee;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .ask-card + .ask-card {
+        margin-top: 12px;
+      }
+      .ask-strip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .ask-card.save .ask-strip {
+        background: #eaf7ef;
+        color: #12603a;
+      }
+      .ask-card.delete .ask-strip {
+        background: #fdecea;
+        color: #a3231b;
+      }
+      .ask-strip .scope {
+        margin-left: auto;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.75);
+        color: #374151;
+        font-size: 11px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .ask-body {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 14px;
+      }
+      .ask-options {
+        display: flex;
+        gap: 8px;
+      }
+      .ask-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 28px;
+        padding: 0 10px;
+        border: 1px solid #dfe3e8;
+        border-radius: 8px;
+        color: #6b7280;
+        font-size: 12.5px;
+      }
+      .ask-option.is-active {
+        border-color: #c9d6f5;
+        background: #f3f7ff;
+        color: #2456b3;
+        font-weight: 500;
+      }
+      .ask-option-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #c4c9d0;
+      }
+      .ask-option.is-active .ask-option-dot {
+        background: #2f6fed;
+      }
+      .ask-field {
+        display: flex;
+        gap: 10px;
+        font-size: 12.5px;
+        line-height: 1.6;
+      }
+      .ask-field-label {
+        flex: none;
+        width: 32px;
+        color: #8b9199;
+      }
+      .ask-field-value {
+        color: #1f2937;
+        word-break: break-word;
+      }
+      .ask-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 14px;
+        border-top: 1px solid #eceef1;
+        background: #fbfcfd;
+      }
+      .ask-result {
+        padding: 11px 14px;
+        border-top: 1px solid #eceef1;
+        background: #fbfcfd;
+        color: #4b5563;
+        font-size: 12.5px;
+      }
+      .ask-result.allowed {
+        color: #12603a;
+      }
+      .ask-result.rejected {
+        color: #6b7280;
+      }
+      .ask-result.deleted {
+        color: #a3231b;
+      }
+
+      /* ── toast ────────────────────────────────────────────── */
+      .toast-root {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 60;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .toast {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 14px;
+        border-radius: 9px;
+        background: #111827;
+        color: #fff;
+        font-size: 12.5px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.24);
+        animation: toast-in 0.2s ease;
+        transition:
+          opacity 0.2s,
+          transform 0.2s;
+      }
+      .toast.out {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+
+      @keyframes fade {
+        from {
+          opacity: 0;
+        }
+      }
+      @keyframes pop {
+        from {
+          opacity: 0;
+          transform: translateY(6px) scale(0.985);
+        }
+      }
+      @keyframes toast-in {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+      @media (max-width: 720px) {
+        .app {
+          margin-top: 24px;
+        }
+        .tabbar {
+          overflow-x: auto;
+        }
+        .detail-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .modal-foot {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .foot-actions {
+          justify-content: flex-end;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <header class="page-head">
+        <h1>记忆</h1>
+        <p class="page-sub">agent 的长期记忆与全局提示词</p>
+      </header>
+      <div class="panel">
+        <div class="tabbar">
+          <div class="segmented" id="tabs" role="tablist" aria-label="记忆分区"></div>
+        </div>
+        <div id="view"></div>
+      </div>
+      <section class="tool-demo" id="tool-demo"></section>
+    </main>
+    <div id="modal-root"></div>
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+    <script>
+      ;(function () {
+        'use strict'
+
+        var LIMIT_MEMORY = 50
+        var LIMIT_PROMPT = 1000
+        var HOUR = 3600 * 1000
+        var DAY = 24 * HOUR
+
+        var CATEGORY = {
+          preference: '偏好',
+          fact: '事实',
+          project: '项目',
+          stack: '技术栈',
+          workflow: '工作流',
+        }
+
+        var SVG = {
+          pencil:
+            '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>',
+          trash:
+            '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/></svg>',
+          up: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>',
+          down: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>',
+          check:
+            '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-10"/></svg>',
+          plus: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
+        }
+
+        var now = Date.now()
+
+        var db = {
+          global: [
+            {
+              id: 'g1',
+              desc: '回复与思考使用简体中文；代码、命令、文件路径保持原文不翻译。',
+              category: 'preference',
+              confidence: 5,
+              updatedAt: now - 2 * HOUR,
+              time: '2 小时前',
+              source: '会话 3f8a12c9',
+              status: 'active',
+              history: [
+                { rel: '8 月 12 日', text: '新增' },
+                { rel: '9 月 3 日', text: '再次出现，置信度提升' },
+                { rel: '10 月 18 日', text: '再次出现，置信度提升' },
+              ],
+            },
+            {
+              id: 'g2',
+              desc: '长跑或无人值守任务开始前先防休眠：macOS 用 pmset -g 查空闲休眠设置，再用 caffeinate -dimsu -w $$ 把主进程包住。',
+              category: 'preference',
+              confidence: 4,
+              updatedAt: now - 1 * DAY,
+              time: '昨天',
+              source: '会话 8a71ff30',
+              status: 'active',
+              history: [
+                { rel: '9 月 20 日', text: '新增' },
+                { rel: '10 月 9 日', text: '再次出现，置信度提升' },
+              ],
+            },
+            {
+              id: 'g3',
+              desc: '多 agent 共享同一台模拟器或同一条构建队列会互相拖死；模拟器、构建这类全量门禁资源按独占串行使用。',
+              category: 'workflow',
+              confidence: 3,
+              updatedAt: now - 3 * DAY,
+              time: '3 天前',
+              source: '会话 51b0c7de',
+              status: 'active',
+              history: [{ rel: '10 月 3 日', text: '新增' }],
+            },
+            {
+              id: 'g4',
+              desc: '写规则和规范文档时用「推荐 / 默认 / 优先」的正向表述，少用禁止式否定句。',
+              category: 'preference',
+              confidence: 2,
+              updatedAt: now - 46 * DAY,
+              time: '46 天前',
+              source: '会话 0d9e4a12',
+              status: 'conflict-pending',
+              history: [
+                { rel: '7 月 2 日', text: '新增' },
+                { rel: '9 月 6 日', text: '内容更新（可能矛盾）' },
+              ],
+            },
+          ],
+          project: [
+            {
+              id: 'p1',
+              desc: '本仓库推送前跑 npm run verify 做 CI 等价全量门禁；出现本地绿而 CI 红，要定位并修掉。',
+              category: 'workflow',
+              confidence: 4,
+              updatedAt: now - 1 * DAY,
+              time: '昨天',
+              source: '会话 3f8a12c9',
+              status: 'active',
+              history: [
+                { rel: '9 月 28 日', text: '新增' },
+                { rel: '10 月 11 日', text: '再次出现，置信度提升' },
+              ],
+            },
+            {
+              id: 'p2',
+              desc: '插件都在 plugins/<name> 下自包含，宿主扩展点用 sidebarRightTabs 与 slots 注册。',
+              category: 'project',
+              confidence: 3,
+              updatedAt: now - 5 * DAY,
+              time: '5 天前',
+              source: '会话 51b0c7de',
+              status: 'active',
+              history: [{ rel: '10 月 6 日', text: '新增' }],
+            },
+            {
+              id: 'p3',
+              desc: 'UI 与原型类需求先出可交互原型、单独验收，通过后再进入实现。',
+              category: 'workflow',
+              confidence: 5,
+              updatedAt: now - 8 * DAY,
+              time: '8 天前',
+              source: '会话 3f8a12c9',
+              status: 'active',
+              history: [
+                { rel: '8 月 30 日', text: '新增' },
+                { rel: '9 月 14 日', text: '再次出现，置信度提升' },
+                { rel: '10 月 2 日', text: '再次出现，置信度提升' },
+              ],
+            },
+          ],
+          prompts: [
+            {
+              id: 'gp-1',
+              title: '中文思考',
+              text: '## 输出语言规则（最高优先级）\n\n1. 思考过程（reasoning）必须使用简体中文书写。\n2. 最终回复默认使用简体中文；用户用其他语言提问时跟随用户。\n3. 代码、命令、文件路径与技术术语保持原文，不翻译。',
+              enabled: true,
+              order: 0,
+              builtin: true,
+            },
+            {
+              id: 'gp-2',
+              title: '代码审查',
+              text: '提交前检查错误处理、边界条件与资源释放；不为边角项反复开修复轮。',
+              enabled: true,
+              order: 1,
+            },
+            {
+              id: 'gp-3',
+              title: '提交信息规范',
+              text: '使用 Conventional Commits：<type>(<scope>): <summary>，一类改动一个提交。',
+              enabled: false,
+              order: 2,
+            },
+          ],
+        }
+
+        var state = {
+          tab: 'global',
+          order: { global: 'desc', project: 'desc' },
+          expanded: new Set(),
+          editing: null,
+          confirm: null,
+          draft: { global: '', project: '' },
+          promptDraft: { title: '', text: '' },
+          seq: 0,
+        }
+
+        // ── 小工具 ───────────────────────────────────────────────
+        function $(sel, root) {
+          return (root || document).querySelector(sel)
+        }
+        function esc(value) {
+          return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+        }
+        function newId(prefix) {
+          state.seq += 1
+          return prefix + '-' + Date.now().toString(36) + '-' + state.seq
+        }
+        function findItem(scope, id) {
+          return db[scope].filter(function (item) {
+            return item.id === id
+          })[0]
+        }
+        function findPrompt(id) {
+          return db.prompts.filter(function (item) {
+            return item.id === id
+          })[0]
+        }
+        function toggleKey(key) {
+          if (state.expanded.has(key)) state.expanded.delete(key)
+          else state.expanded.add(key)
+        }
+        function sortedMemory(scope) {
+          var list = db[scope].slice()
+          list.sort(function (a, b) {
+            return state.order[scope] === 'desc' ? b.updatedAt - a.updatedAt : a.updatedAt - b.updatedAt
+          })
+          return list
+        }
+        function autoGrow(el) {
+          if (!el || el.tagName !== 'TEXTAREA') return
+          el.style.height = 'auto'
+          el.style.height = Math.min(el.scrollHeight, 180) + 'px'
+        }
+        function autoGrowAll() {
+          var nodes = document.querySelectorAll('textarea')
+          for (var i = 0; i < nodes.length; i += 1) autoGrow(nodes[i])
+        }
+        function focusAtEnd(sel) {
+          var el = $(sel)
+          if (!el) return
+          el.focus()
+          if (typeof el.setSelectionRange === 'function') {
+            try {
+              el.setSelectionRange(el.value.length, el.value.length)
+            } catch (err) {
+              /* 非文本输入忽略 */
+            }
+          }
+          autoGrow(el)
+        }
+        // ── 渲染：tabs ───────────────────────────────────────────
+        function renderTabs() {
+          var tabs = [
+            { id: 'global', label: '全局记忆', count: db.global.length },
+            { id: 'project', label: '项目记忆', count: db.project.length },
+            { id: 'prompts', label: '全局提示词', count: db.prompts.length },
+          ]
+          $('#tabs').innerHTML = tabs
+            .map(function (tab) {
+              return (
+                '<button class="seg" role="tab" aria-selected="' +
+                (state.tab === tab.id) +
+                '" data-act="tab" data-tab="' +
+                tab.id +
+                '">' +
+                tab.label +
+                '<span class="tab-count">' +
+                tab.count +
+                '</span></button>'
+              )
+            })
+            .join('')
+        }
+
+        // ── 渲染：记忆视图 ───────────────────────────────────────
+        function memoryView(scope) {
+          var isProject = scope === 'project'
+          var note = isProject
+            ? '项目记忆按项目隔离，仅该项目会话可见；存于 <code>$DSH_HOME/memory/projects/</code>'
+            : '全局记忆在会话开始时注入系统提示词（agent 始终携带）；存于 <code>$DSH_HOME/memory.json</code>'
+          var items = sortedMemory(scope)
+          var rows = items.length
+            ? items
+                .map(function (item) {
+                  return memoryRow(item, scope)
+                })
+                .join('')
+            : emptyState(scope)
+          var draft = state.draft[scope]
+          var over = draft.length > LIMIT_MEMORY
+          return (
+            '<div class="note-row">' +
+            '<p class="note">' +
+            note +
+            '</p>' +
+            '<button class="mini" data-act="sort" data-scope="' +
+            scope +
+            '">' +
+            (state.order[scope] === 'desc' ? '最新优先' : '最旧优先') +
+            '</button>' +
+            '</div>' +
+            '<div class="list">' +
+            rows +
+            '</div>' +
+            composer(scope, draft, over)
+          )
+        }
+
+        function memoryRow(item, scope) {
+          var isEditing =
+            state.editing &&
+            state.editing.kind === 'memory' &&
+            state.editing.scope === scope &&
+            state.editing.id === item.id
+          if (isEditing) return memoryEditRow(item, scope)
+
+          var key = scope + '/' + item.id
+          var expanded = state.expanded.has(key)
+          var conf = Math.max(1, Math.min(5, item.confidence || 1))
+          var dots = ''
+          for (var i = 1; i <= 5; i += 1) dots += '<i class="' + (i <= conf ? 'on' : '') + '"></i>'
+          var warn = item.status === 'conflict-pending' ? '<span class="badge warn">待处理矛盾</span>' : ''
+          return (
+            '<article class="entry' +
+            (expanded ? ' expanded' : '') +
+            '" data-scope="' +
+            scope +
+            '" data-id="' +
+            item.id +
+            '">' +
+            '<div class="entry-main">' +
+            '<div class="entry-desc" data-act="toggle" data-scope="' +
+            scope +
+            '" data-id="' +
+            item.id +
+            '" role="button" tabindex="0" aria-expanded="' +
+            expanded +
+            '" title="' +
+            (expanded ? '收起' : '展开') +
+            '">' +
+            esc(item.desc) +
+            '</div>' +
+            '<div class="entry-actions">' +
+            '<button class="icon-btn" data-act="edit" data-scope="' +
+            scope +
+            '" data-id="' +
+            item.id +
+            '" title="编辑" aria-label="编辑">' +
+            SVG.pencil +
+            '</button>' +
+            '<button class="icon-btn danger" data-act="delete" data-scope="' +
+            scope +
+            '" data-id="' +
+            item.id +
+            '" title="删除" aria-label="删除">' +
+            SVG.trash +
+            '</button>' +
+            '</div>' +
+            '</div>' +
+            '<div class="entry-meta">' +
+            '<span class="badge cat-' +
+            item.category +
+            '">' +
+            (CATEGORY[item.category] || '事实') +
+            '</span>' +
+            '<span class="conf" aria-label="置信度 ' +
+            conf +
+            '/5">' +
+            dots +
+            '<b>' +
+            conf +
+            '/5</b></span>' +
+            '<span class="meta-sep">·</span>' +
+            '<span>更新于 ' +
+            esc(item.time) +
+            '</span>' +
+            warn +
+            '</div>' +
+            (expanded ? detail(item) : '') +
+            '</article>'
+          )
+        }
+
+        function detail(item) {
+          var history = (item.history || [])
+            .map(function (entry) {
+              return '<li><span>' + esc(entry.rel) + '</span>' + esc(entry.text) + '</li>'
+            })
+            .join('')
+          var conflict =
+            item.status === 'conflict-pending'
+              ? '<div class="conflict-note">内容曾更新，与旧版本存在差异，待你处理：确认保留当前版本，或改写后再保存。</div>'
+              : ''
+          return (
+            '<div class="entry-detail">' +
+            conflict +
+            '<dl class="detail-grid">' +
+            '<div><dt>来源会话</dt><dd>' +
+            esc(item.source || '面板内新增') +
+            '</dd></div>' +
+            '<div><dt>分类</dt><dd>' +
+            (CATEGORY[item.category] || '事实') +
+            '</dd></div>' +
+            '<div><dt>置信度</dt><dd>' +
+            (item.confidence || 1) +
+            '/5</dd></div>' +
+            '</dl>' +
+            '<div class="detail-label" style="margin-top: 12px">演进历史</div>' +
+            '<ul class="history">' +
+            (history || '<li><span>—</span>暂无演进历史</li>') +
+            '</ul>' +
+            '</div>'
+          )
+        }
+
+        function memoryEditRow(item, scope) {
+          var count = state.editing.desc.length
+          return (
+            '<div class="entry editing" data-scope="' +
+            scope +
+            '" data-id="' +
+            item.id +
+            '">' +
+            '<textarea class="composer-input" id="edit-input" rows="1" aria-label="编辑记忆内容">' +
+            esc(state.editing.desc) +
+            '</textarea>' +
+            '<div class="composer-foot">' +
+            '<span class="composer-hint"><span class="char-count' +
+            (count > LIMIT_MEMORY ? ' over' : '') +
+            '" id="edit-count">' +
+            count +
+            ' / ' +
+            LIMIT_MEMORY +
+            '</span><span class="dot-sep">·</span>保存前会再次确认</span>' +
+            '<div class="foot-actions">' +
+            '<button class="btn ghost sm" data-act="edit-cancel">取消</button>' +
+            '<button class="btn primary sm" data-act="edit-save" data-scope="' +
+            scope +
+            '">保存</button>' +
+            '</div>' +
+            '</div>' +
+            '</div>'
+          )
+        }
+
+        function emptyState(scope) {
+          return (
+            '<div class="empty"><b>暂无记忆</b>' +
+            (scope === 'project' ? '在下方输入框添加这个项目的第一条记忆' : '在下方输入框添加第一条全局记忆') +
+            '</div>'
+          )
+        }
+
+        function composer(scope, draft, over) {
+          return (
+            '<div class="composer">' +
+            '<textarea class="composer-input" id="draft-' +
+            scope +
+            '" rows="1" placeholder="输入要记住的内容（建议 1-2 句话概括，如：回复使用中文）" aria-label="新增记忆内容">' +
+            esc(draft) +
+            '</textarea>' +
+            '<p class="over-hint" data-scope="' +
+            scope +
+            '"' +
+            (over ? '' : ' hidden') +
+            '>内容过长（' +
+            draft.length +
+            ' 字，建议 ≤ ' +
+            LIMIT_MEMORY +
+            ' 字），建议精简为 1-2 句</p>' +
+            '<div class="composer-foot">' +
+            '<span class="composer-hint"><span class="char-count' +
+            (over ? ' over' : '') +
+            '" id="count-' +
+            scope +
+            '">' +
+            draft.length +
+            ' / ' +
+            LIMIT_MEMORY +
+            '</span><span class="dot-sep">·</span>所有新增 / 修改 / 删除都需要你确认</span>' +
+            '<button class="btn primary" data-act="add-submit" data-scope="' +
+            scope +
+            '"' +
+            (draft.trim() === '' ? ' disabled' : '') +
+            '>' +
+            SVG.plus +
+            '新增</button>' +
+            '</div>' +
+            '</div>'
+          )
+        }
+
+        // ── 渲染：提示词视图 ─────────────────────────────────────
+        function promptsView() {
+          var list = db.prompts.slice().sort(function (a, b) {
+            return a.order - b.order
+          })
+          var rows = list.length
+            ? list
+                .map(function (item) {
+                  return promptRow(item)
+                })
+                .join('')
+            : '<div class="empty"><b>暂无提示词</b>在下方新增第一条全局提示词</div>'
+          var draft = state.promptDraft
+          return (
+            '<div class="note-row">' +
+            '<p class="note">每轮组装时全量按序注入系统提示；启用即注入、停用即不注入，不参与记忆检索。存于 <code>$DSH_HOME/memory/prompts.json</code></p>' +
+            '</div>' +
+            '<div class="list">' +
+            rows +
+            '</div>' +
+            '<div class="composer">' +
+            '<input class="composer-title" id="draft-prompt-title" placeholder="提示词标题（如：中文思考）" aria-label="新增提示词标题" value="' +
+            esc(draft.title) +
+            '" />' +
+            '<textarea class="composer-input" id="draft-prompt-text" rows="1" placeholder="提示词正文（将完整注入系统提示）" aria-label="新增提示词正文">' +
+            esc(draft.text) +
+            '</textarea>' +
+            '<div class="composer-foot">' +
+            '<span class="composer-hint"><span class="char-count' +
+            (draft.text.length > LIMIT_PROMPT ? ' over' : '') +
+            '" id="prompt-char-count">' +
+            draft.text.length +
+            ' / ' +
+            LIMIT_PROMPT +
+            '</span><span class="dot-sep">·</span>启用的提示词全量按序注入，不评分不截断</span>' +
+            '<button class="btn primary" data-act="prompt-add"' +
+            (draft.title.trim() === '' || draft.text.trim() === '' ? ' disabled' : '') +
+            '>' +
+            SVG.plus +
+            '新增</button>' +
+            '</div>' +
+            '</div>'
+          )
+        }
+
+        function promptRow(item) {
+          var isEditing = state.editing && state.editing.kind === 'prompt' && state.editing.id === item.id
+          if (isEditing) return promptEditRow(item)
+
+          var key = 'prompt/' + item.id
+          var expanded = state.expanded.has(key)
+          var enabled = item.enabled === true
+          return (
+            '<article class="prompt-row' +
+            (enabled ? '' : ' off') +
+            (expanded ? ' expanded' : '') +
+            '" data-id="' +
+            item.id +
+            '">' +
+            '<div class="prompt-head">' +
+            '<button class="switch" role="switch" aria-checked="' +
+            enabled +
+            '" data-act="prompt-toggle" data-id="' +
+            item.id +
+            '" aria-label="' +
+            (enabled ? '停用' : '启用') +
+            ' ' +
+            esc(item.title) +
+            '"></button>' +
+            '<span class="order-index">' +
+            (item.order + 1) +
+            '</span>' +
+            '<span class="prompt-title">' +
+            esc(item.title) +
+            '</span>' +
+            (item.builtin ? '<span class="badge builtin">内置</span>' : '') +
+            (enabled ? '' : '<span class="badge off">已停用</span>') +
+            '<div class="row-actions">' +
+            '<button class="icon-btn" data-act="prompt-up" data-id="' +
+            item.id +
+            '" title="上移" aria-label="上移">' +
+            SVG.up +
+            '</button>' +
+            '<button class="icon-btn" data-act="prompt-down" data-id="' +
+            item.id +
+            '" title="下移" aria-label="下移">' +
+            SVG.down +
+            '</button>' +
+            '<button class="icon-btn" data-act="prompt-edit" data-id="' +
+            item.id +
+            '" title="编辑" aria-label="编辑">' +
+            SVG.pencil +
+            '</button>' +
+            '<button class="icon-btn danger" data-act="prompt-delete" data-id="' +
+            item.id +
+            '" title="删除" aria-label="删除">' +
+            SVG.trash +
+            '</button>' +
+            '</div>' +
+            '</div>' +
+            '<p class="prompt-text" data-act="prompt-expand" data-id="' +
+            item.id +
+            '" role="button" tabindex="0" aria-expanded="' +
+            expanded +
+            '">' +
+            esc(item.text) +
+            '</p>' +
+            '</article>'
+          )
+        }
+
+        function promptEditRow(item) {
+          var editing = state.editing
+          var count = (editing.text || '').length
+          return (
+            '<article class="prompt-row editing" data-id="' +
+            item.id +
+            '">' +
+            '<input class="composer-title" id="prompt-edit-title" aria-label="编辑提示词标题" value="' +
+            esc(editing.title) +
+            '" />' +
+            '<textarea class="composer-input" id="prompt-edit-text" rows="1" aria-label="编辑提示词正文">' +
+            esc(editing.text) +
+            '</textarea>' +
+            '<div class="composer-foot">' +
+            '<span class="composer-hint"><span class="char-count' +
+            (count > LIMIT_PROMPT ? ' over' : '') +
+            '" id="prompt-edit-count">' +
+            count +
+            ' / ' +
+            LIMIT_PROMPT +
+            '</span><span class="dot-sep">·</span>保存前会再次确认</span>' +
+            '<div class="foot-actions">' +
+            '<button class="btn ghost sm" data-act="prompt-edit-cancel">取消</button>' +
+            '<button class="btn primary sm" data-act="prompt-edit-save" data-id="' +
+            item.id +
+            '">保存</button>' +
+            '</div>' +
+            '</div>' +
+            '</article>'
+          )
+        }
+
+        // ── 渲染：确认面板 ───────────────────────────────────────
+        function modalTitle(confirm) {
+          var isPrompt = confirm.target === 'prompt'
+          if (confirm.kind === 'delete') {
+            return isPrompt ? '确定删除这条提示词？此操作不可撤销。' : '确定删除这条记忆？此操作不可撤销。'
+          }
+          if (confirm.kind === 'update') {
+            return isPrompt ? '确认保存这条提示词的修改？' : '确认保存这条记忆的修改？'
+          }
+          return isPrompt ? '确认新增这条提示词？' : '确认新增这条记忆？'
+        }
+
+        function renderModal() {
+          var root = $('#modal-root')
+          var confirm = state.confirm
+          if (!confirm) {
+            root.innerHTML = ''
+            return
+          }
+          var isDelete = confirm.kind === 'delete'
+          var isPrompt = confirm.target === 'prompt'
+          var content = isPrompt
+            ? [confirm.title, confirm.text]
+                .filter(function (part) {
+                  return part !== undefined && part !== ''
+                })
+                .join('\n')
+            : confirm.desc || ''
+          var scopeBadge = isPrompt ? '全局提示词' : confirm.scope === 'project' ? '项目记忆' : '全局记忆'
+          var meta = isPrompt
+            ? '<span class="field"><span>范围</span>全局提示词</span>' +
+              '<span class="field"><span>注入</span>' +
+              (isDelete ? '删除后不再注入' : '启用') +
+              '</span>'
+            : '<span class="field"><span>范围</span>' +
+              scopeBadge +
+              '</span><span class="field"><span>分类</span><span class="badge cat-' +
+              confirm.category +
+              '">' +
+              (CATEGORY[confirm.category] || '事实') +
+              '</span></span>'
+          var overLimit = !isPrompt && !isDelete && content.length > LIMIT_MEMORY
+          var danger = isDelete
+            ? '<div class="danger-note">' +
+              (isPrompt ? '删除后不再注入，且不可撤销 · 提示词不会自动恢复' : '删除不可撤销 · 记忆绝不静默变更') +
+              '</div>'
+            : ''
+          root.innerHTML =
+            '<div class="overlay" data-act="modal-backdrop">' +
+            '<div class="modal ' +
+            (isDelete ? 'delete' : 'save') +
+            '" role="dialog" aria-modal="true" aria-labelledby="modal-title">' +
+            '<div class="modal-strip"><span class="strip-dot"></span>' +
+            '<span id="modal-title">' +
+            esc(modalTitle(confirm)) +
+            '</span><span class="scope">' +
+            scopeBadge +
+            '</span></div>' +
+            '<div class="modal-body">' +
+            '<div class="scope-line">' +
+            meta +
+            '</div>' +
+            '<div class="preview">' +
+            esc(content) +
+            '</div>' +
+            (overLimit
+              ? '<p class="preview-note">将保存完整内容；列表与注入显示概要（前 ' + LIMIT_MEMORY + ' 字）</p>'
+              : '') +
+            danger +
+            '</div>' +
+            '<div class="modal-foot">' +
+            '<span class="foot-note">' +
+            (isPrompt ? '启用的提示词全量按序注入，不评分不截断' : '所有新增 / 修改 / 删除都需要你确认') +
+            '</span>' +
+            '<div class="foot-actions">' +
+            '<button class="btn ghost" data-act="modal-cancel">取消</button>' +
+            '<button class="btn ' +
+            (isDelete ? 'confirm-delete' : 'confirm-save') +
+            '" data-act="modal-ok">' +
+            (isDelete ? '确认删除' : '确认保存') +
+            '</button>' +
+            '</div>' +
+            '</div>' +
+            '</div>' +
+            '</div>'
+        }
+
+        // ── 工具侧确认卡（agent 调 memory_save / memory_delete） ───
+        var toolState = { save: 'idle', del: 'idle' }
+
+        function renderToolDemo() {
+          $('#tool-demo').innerHTML =
+            '<h2>工具调用确认</h2>' +
+            '<p class="tool-sub">agent 调用 memory_save / memory_delete 时，宿主在对话中弹出的确认卡；与设置页的确认面板同一套视觉与语义。范围由请求方决定，删除要点两次才执行。</p>' +
+            toolSaveCard() +
+            toolDeleteCard()
+        }
+
+        function toolSaveCard() {
+          var status = toolState.save
+          if (status !== 'idle') {
+            return (
+              '<div class="ask-card save">' +
+              '<div class="ask-strip"><span class="strip-dot"></span><span>agent 请求保存记忆</span><span class="scope">全局记忆</span></div>' +
+              '<div class="ask-result ' +
+              (status === 'allowed' ? 'allowed' : 'rejected') +
+              '">' +
+              (status === 'allowed' ? '已允许 · 写入全局记忆（分类：偏好）' : '已拒绝 · 未写入任何记忆') +
+              '</div></div>'
+            )
+          }
+          return (
+            '<div class="ask-card save">' +
+            '<div class="ask-strip"><span class="strip-dot"></span><span>agent 请求保存记忆</span><span class="scope">全局记忆</span></div>' +
+            '<div class="ask-body">' +
+            '<div class="ask-options" role="radiogroup" aria-label="记忆范围">' +
+            '<div class="ask-option is-active" role="radio" aria-checked="true"><span class="ask-option-dot"></span>全局记忆</div>' +
+            '<div class="ask-option" role="radio" aria-checked="false" title="范围由请求方决定，确认卡内不可更改"><span class="ask-option-dot"></span>项目记忆</div>' +
+            '</div>' +
+            '<div class="ask-field"><span class="ask-field-label">分类</span><span class="badge cat-preference">偏好</span></div>' +
+            '<div class="ask-field"><span class="ask-field-label">内容</span><span class="ask-field-value">回复与思考使用简体中文；代码、命令、文件路径保持原文不翻译。</span></div>' +
+            '</div>' +
+            '<div class="ask-foot"><span class="foot-note">允许后写入记忆 · 记忆绝不静默变更</span>' +
+            '<div class="foot-actions">' +
+            '<button class="btn ghost sm" data-act="tool-reject" data-tool="save">拒绝</button>' +
+            '<button class="btn confirm-save sm" data-act="tool-allow-save">允许保存</button>' +
+            '</div></div></div>'
+          )
+        }
+
+        function toolDeleteCard() {
+          var status = toolState.del
+          if (status === 'done' || status === 'rejected') {
+            return (
+              '<div class="ask-card delete">' +
+              '<div class="ask-strip"><span class="strip-dot"></span><span>agent 请求删除记忆</span><span class="scope">项目记忆</span></div>' +
+              '<div class="ask-result ' +
+              (status === 'done' ? 'deleted' : 'rejected') +
+              '">' +
+              (status === 'done' ? '已删除 · 项目记忆中的这一条已被移除' : '已拒绝 · 未删除任何记忆') +
+              '</div></div>'
+            )
+          }
+          var armed = status === 'armed'
+          return (
+            '<div class="ask-card delete">' +
+            '<div class="ask-strip"><span class="strip-dot"></span><span>agent 请求删除记忆</span><span class="scope">项目记忆</span></div>' +
+            '<div class="ask-body">' +
+            '<div class="ask-options" role="radiogroup" aria-label="记忆范围">' +
+            '<div class="ask-option is-active" role="radio" aria-checked="true"><span class="ask-option-dot"></span>项目记忆</div>' +
+            '</div>' +
+            '<div class="ask-field"><span class="ask-field-label">分类</span><span class="badge cat-workflow">工作流</span></div>' +
+            '<div class="ask-field"><span class="ask-field-label">内容</span><span class="ask-field-value">本仓库推送前跑 npm run verify 做 CI 等价全量门禁；出现本地绿而 CI 红，要定位并修掉。</span></div>' +
+            '</div>' +
+            '<div class="ask-foot"><span class="foot-note">删除不可撤销 · 记忆绝不静默变更</span>' +
+            '<div class="foot-actions">' +
+            '<button class="btn ghost sm" data-act="tool-reject" data-tool="del">拒绝</button>' +
+            '<button class="btn confirm-delete sm" data-act="tool-delete">' +
+            (armed ? '确认删除（不可撤销）' : '删除这条记忆') +
+            '</button>' +
+            '</div></div></div>'
+          )
+        }
+
+        // ── 渲染入口 ─────────────────────────────────────────────
+        function render() {
+          renderTabs()
+          $('#view').innerHTML = state.tab === 'prompts' ? promptsView() : memoryView(state.tab)
+          autoGrowAll()
+          renderModal()
+          renderToolDemo()
+        }
+
+        // ── 写操作 ───────────────────────────────────────────────
+        function commitConfirm() {
+          var confirm = state.confirm
+          if (!confirm) return
+          if (confirm.target === 'prompt') commitPrompt(confirm)
+          else commitMemory(confirm)
+          state.confirm = null
+          render()
+          toast(confirm.kind === 'delete' ? '已删除' : '已保存')
+        }
+
+        function commitMemory(confirm) {
+          if (confirm.kind === 'add') {
+            db[confirm.scope].unshift({
+              id: newId('m'),
+              desc: confirm.desc,
+              category: 'fact',
+              confidence: 1,
+              updatedAt: Date.now(),
+              time: '刚刚',
+              source: '面板内新增',
+              status: 'active',
+              history: [{ rel: '刚刚', text: '新增' }],
+            })
+            state.draft[confirm.scope] = ''
+            return
+          }
+          if (confirm.kind === 'update') {
+            var item = findItem(confirm.scope, confirm.id)
+            if (!item) return
+            item.desc = confirm.desc
+            item.updatedAt = Date.now()
+            item.time = '刚刚'
+            item.history = (item.history || []).concat([{ rel: '刚刚', text: '内容更新' }])
+            state.editing = null
+            return
+          }
+          db[confirm.scope] = db[confirm.scope].filter(function (entry) {
+            return entry.id !== confirm.id
+          })
+        }
+
+        function commitPrompt(confirm) {
+          if (confirm.kind === 'add') {
+            var order = db.prompts.length
+            db.prompts.push({
+              id: newId('gp'),
+              title: confirm.title,
+              text: confirm.text,
+              enabled: true,
+              order: order,
+            })
+            state.promptDraft = { title: '', text: '' }
+            return
+          }
+          if (confirm.kind === 'update') {
+            var item = findPrompt(confirm.id)
+            if (!item) return
+            item.title = confirm.title
+            item.text = confirm.text
+            state.editing = null
+            return
+          }
+          db.prompts = db.prompts
+            .filter(function (entry) {
+              return entry.id !== confirm.id
+            })
+            .map(function (entry, index) {
+              entry.order = index
+              return entry
+            })
+        }
+
+        function movePrompt(id, direction) {
+          var list = db.prompts.slice().sort(function (a, b) {
+            return a.order - b.order
+          })
+          var index = list.findIndex(function (item) {
+            return item.id === id
+          })
+          var target = direction === 'up' ? index - 1 : index + 1
+          if (index < 0 || target < 0 || target >= list.length) return
+          var swap = list[index]
+          list[index] = list[target]
+          list[target] = swap
+          list.forEach(function (item, i) {
+            item.order = i
+          })
+          render()
+        }
+
+        // ── 输入联动（不整页重渲染，保住焦点与光标） ──────────────
+        function updateMemoryComposer(scope, value) {
+          var count = $('#count-' + scope)
+          var over = value.length > LIMIT_MEMORY
+          if (count) {
+            count.textContent = value.length + ' / ' + LIMIT_MEMORY
+            count.classList.toggle('over', over)
+          }
+          var hint = $('.over-hint[data-scope="' + scope + '"]')
+          if (hint) {
+            hint.hidden = !over
+            hint.textContent = '内容过长（' + value.length + ' 字，建议 ≤ ' + LIMIT_MEMORY + ' 字），建议精简为 1-2 句'
+          }
+          var addBtn = $('[data-act="add-submit"][data-scope="' + scope + '"]')
+          if (addBtn) addBtn.disabled = value.trim() === ''
+        }
+
+        function updateEditCount(value) {
+          var count = $('#edit-count')
+          if (!count) return
+          count.textContent = value.length + ' / ' + LIMIT_MEMORY
+          count.classList.toggle('over', value.length > LIMIT_MEMORY)
+        }
+
+        function updatePromptComposer() {
+          var draft = state.promptDraft
+          var count = $('#prompt-char-count')
+          if (count) {
+            count.textContent = draft.text.length + ' / ' + LIMIT_PROMPT
+            count.classList.toggle('over', draft.text.length > LIMIT_PROMPT)
+          }
+          var addBtn = $('[data-act="prompt-add"]')
+          if (addBtn) addBtn.disabled = draft.title.trim() === '' || draft.text.trim() === ''
+        }
+
+        function updatePromptEditCount(value) {
+          var count = $('#prompt-edit-count')
+          if (!count) return
+          count.textContent = value.length + ' / ' + LIMIT_PROMPT
+          count.classList.toggle('over', value.length > LIMIT_PROMPT)
+        }
+
+        // ── toast ──────────────────────────────────────────────
+        function toast(message) {
+          var root = $('#toast-root')
+          var el = document.createElement('div')
+          el.className = 'toast'
+          el.innerHTML = SVG.check + '<span>' + esc(message) + '</span>'
+          root.appendChild(el)
+          setTimeout(function () {
+            el.classList.add('out')
+            setTimeout(function () {
+              el.remove()
+            }, 200)
+          }, 1800)
+        }
+
+        // ── 事件 ────────────────────────────────────────────────
+        document.addEventListener('click', function (event) {
+          var target = event.target.closest ? event.target.closest('[data-act]') : null
+          if (!target) return
+          var act = target.getAttribute('data-act')
+          if (act === 'modal-backdrop') {
+            if (event.target !== target) return
+            state.confirm = null
+            render()
+            return
+          }
+
+          if (act === 'tab') {
+            state.tab = target.getAttribute('data-tab')
+            state.editing = null
+            state.confirm = null
+            render()
+            return
+          }
+          if (act === 'sort') {
+            var sortScope = target.getAttribute('data-scope')
+            state.order[sortScope] = state.order[sortScope] === 'desc' ? 'asc' : 'desc'
+            render()
+            return
+          }
+          if (act === 'toggle') {
+            toggleKey(target.getAttribute('data-scope') + '/' + target.getAttribute('data-id'))
+            render()
+            return
+          }
+          if (act === 'edit') {
+            var editScope = target.getAttribute('data-scope')
+            var editItem = findItem(editScope, target.getAttribute('data-id'))
+            if (!editItem) return
+            state.editing = { kind: 'memory', scope: editScope, id: editItem.id, desc: editItem.desc }
+            render()
+            focusAtEnd('#edit-input')
+            return
+          }
+          if (act === 'edit-cancel') {
+            state.editing = null
+            render()
+            return
+          }
+          if (act === 'edit-save') {
+            var saveScope = target.getAttribute('data-scope')
+            var desc = state.editing ? state.editing.desc.trim() : ''
+            if (!desc) {
+              focusAtEnd('#edit-input')
+              return
+            }
+            var source = findItem(saveScope, state.editing.id)
+            state.confirm = {
+              kind: 'update',
+              target: 'memory',
+              scope: saveScope,
+              id: state.editing.id,
+              desc: desc,
+              category: source ? source.category : 'fact',
+            }
+            render()
+            return
+          }
+          if (act === 'delete') {
+            var delScope = target.getAttribute('data-scope')
+            var delItem = findItem(delScope, target.getAttribute('data-id'))
+            if (!delItem) return
+            state.confirm = {
+              kind: 'delete',
+              target: 'memory',
+              scope: delScope,
+              id: delItem.id,
+              desc: delItem.desc,
+              category: delItem.category,
+            }
+            render()
+            return
+          }
+          if (act === 'add-submit') {
+            var addScope = target.getAttribute('data-scope')
+            var draft = (state.draft[addScope] || '').trim()
+            if (!draft) {
+              focusAtEnd('#draft-' + addScope)
+              return
+            }
+            state.confirm = { kind: 'add', target: 'memory', scope: addScope, desc: draft, category: 'fact' }
+            render()
+            return
+          }
+          if (act === 'prompt-toggle') {
+            var toggleItem = findPrompt(target.getAttribute('data-id'))
+            if (!toggleItem) return
+            toggleItem.enabled = toggleItem.enabled !== true
+            render()
+            toast(toggleItem.enabled ? '已启用' : '已停用')
+            return
+          }
+          if (act === 'prompt-up' || act === 'prompt-down') {
+            movePrompt(target.getAttribute('data-id'), act === 'prompt-up' ? 'up' : 'down')
+            return
+          }
+          if (act === 'prompt-expand') {
+            toggleKey('prompt/' + target.getAttribute('data-id'))
+            render()
+            return
+          }
+          if (act === 'prompt-edit') {
+            var editPrompt = findPrompt(target.getAttribute('data-id'))
+            if (!editPrompt) return
+            state.editing = {
+              kind: 'prompt',
+              id: editPrompt.id,
+              title: editPrompt.title,
+              text: editPrompt.text,
+            }
+            render()
+            focusAtEnd('#prompt-edit-text')
+            return
+          }
+          if (act === 'prompt-edit-cancel') {
+            state.editing = null
+            render()
+            return
+          }
+          if (act === 'prompt-edit-save') {
+            var editing = state.editing
+            if (!editing) return
+            var title = (editing.title || '').trim()
+            var text = (editing.text || '').trim()
+            if (!title) {
+              focusAtEnd('#prompt-edit-title')
+              return
+            }
+            if (!text) {
+              focusAtEnd('#prompt-edit-text')
+              return
+            }
+            state.confirm = { kind: 'update', target: 'prompt', id: editing.id, title: title, text: text }
+            render()
+            return
+          }
+          if (act === 'prompt-delete') {
+            var deletePrompt = findPrompt(target.getAttribute('data-id'))
+            if (!deletePrompt) return
+            state.confirm = {
+              kind: 'delete',
+              target: 'prompt',
+              id: deletePrompt.id,
+              title: deletePrompt.title,
+              text: deletePrompt.text,
+            }
+            render()
+            return
+          }
+          if (act === 'prompt-add') {
+            var promptDraft = state.promptDraft
+            if (!promptDraft.title.trim()) {
+              focusAtEnd('#draft-prompt-title')
+              return
+            }
+            if (!promptDraft.text.trim()) {
+              focusAtEnd('#draft-prompt-text')
+              return
+            }
+            state.confirm = {
+              kind: 'add',
+              target: 'prompt',
+              title: promptDraft.title.trim(),
+              text: promptDraft.text.trim(),
+            }
+            render()
+            return
+          }
+          if (act === 'modal-cancel') {
+            state.confirm = null
+            render()
+            return
+          }
+          if (act === 'modal-ok') {
+            commitConfirm()
+            return
+          }
+          if (act === 'tool-allow-save') {
+            toolState.save = 'allowed'
+            renderToolDemo()
+            toast('已允许 · 记忆已写入')
+            return
+          }
+          if (act === 'tool-reject') {
+            if (target.getAttribute('data-tool') === 'save') toolState.save = 'rejected'
+            else toolState.del = 'rejected'
+            renderToolDemo()
+            toast('已拒绝')
+            return
+          }
+          if (act === 'tool-delete') {
+            if (toolState.del === 'idle') {
+              toolState.del = 'armed'
+              renderToolDemo()
+              return
+            }
+            toolState.del = 'done'
+            renderToolDemo()
+            toast('已删除')
+          }
+        })
+
+        document.addEventListener('input', function (event) {
+          var target = event.target
+          if (!target || !target.id) return
+          var id = target.id
+          autoGrow(target)
+
+          if (id === 'draft-global' || id === 'draft-project') {
+            var scope = id === 'draft-global' ? 'global' : 'project'
+            state.draft[scope] = target.value
+            updateMemoryComposer(scope, target.value)
+            return
+          }
+          if (id === 'edit-input') {
+            if (state.editing) state.editing.desc = target.value
+            updateEditCount(target.value)
+            return
+          }
+          if (id === 'draft-prompt-title') {
+            state.promptDraft.title = target.value
+            updatePromptComposer()
+            return
+          }
+          if (id === 'draft-prompt-text') {
+            state.promptDraft.text = target.value
+            updatePromptComposer()
+            return
+          }
+          if (id === 'prompt-edit-title') {
+            if (state.editing) state.editing.title = target.value
+            return
+          }
+          if (id === 'prompt-edit-text') {
+            if (state.editing) state.editing.text = target.value
+            updatePromptEditCount(target.value)
+            return
+          }
+        })
+
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape' && state.confirm) {
+            state.confirm = null
+            render()
+            return
+          }
+          if (event.key === 'Enter' && event.target && event.target.id === 'draft-prompt-title') {
+            event.preventDefault()
+            focusAtEnd('#draft-prompt-text')
+            return
+          }
+          if (event.key === 'Enter' && !event.shiftKey && event.target) {
+            if (
+              event.target.id === 'draft-global' ||
+              event.target.id === 'draft-project' ||
+              event.target.id === 'draft-prompt-text'
+            ) {
+              event.preventDefault()
+              var submit = event.target.id === 'draft-prompt-text' ? 'prompt-add' : 'add-submit'
+              var btn = $('[data-act="' + submit + '"]')
+              if (btn && !btn.disabled) btn.click()
+            }
+          }
+        })
+
+        render()
+      })()
+    </script>
+  </body>
+</html>

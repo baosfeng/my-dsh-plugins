@@ -1,6 +1,6 @@
 # dsh-my-memory
 
-**dsh-my-memory**：DSH 记忆插件——**全局/项目两级记忆持久化**，全局记忆在会话开始时注入系统提示词，设置页可视化面板管理；提供 `memory_query`（只读查询）/ `memory_save` / `memory_delete` 三个 agent 工具，写操作默认经用户确认；可选**自动学习**从对话提取记忆候选待确认写入，条目带分类/来源/置信度/演进历史并按相关性 + 时效性 + 置信度智能选择注入。
+**dsh-my-memory**：DSH 记忆插件——**全局/项目两级记忆持久化**，全局记忆在会话开始时注入系统提示词，设置页三 tab 面板（全局记忆 / 项目记忆 / 全局提示词）管理；提供 `memory_query`（只读查询）/ `memory_save` / `memory_delete` 三个 agent 工具，写操作默认经用户确认。条目带分类/来源/置信度/演进历史，按相关性 + 时效性 + 置信度智能选择注入。
 
 [![npm](https://img.shields.io/npm/v/dsh-my-memory)](https://www.npmjs.com/package/dsh-my-memory)
 
@@ -10,13 +10,12 @@
 
 - **两级记忆**：全局记忆（跨项目偏好，存 `$DSH_HOME/memory.json`）与项目记忆（按项目 cwd 隔离的约定与决策，存 `$DSH_HOME/memory/projects/<项目 id>.json`）；旧位置 `<项目根>/.dsh/memory.json` 的记忆首次访问该项目时自动迁移，项目目录不再产生 `.dsh/`。
 - **系统提示词注入**：会话开始时注入全局记忆（order -95，persona 之前），受条数 `maxItems` 与单条长度 `maxDescLength` 限制，按语义截断（优先概要/首句，不截断在句子中间）；选择条目时先对长期未用降权，再按相关性 + 时效性 + 置信度评分取 top-N。
-- **可视化面板**：设置 → 插件 → 「记忆」，全局/项目分区显示（项目区带 accent 与项目根徽标），支持新增/修改/删除；列表显示首句概要、可展开详情；底部「自动学习候选（待确认）」区块。
+- **可视化面板**：设置 → 插件 → 「记忆」，三个 tab 切换：**全局记忆 / 项目记忆 / 全局提示词**。记忆条目显示首句概要，可展开查看来源会话、分类、置信度与演进历史；新增与编辑用多行自适应输入框（带字数计数与超长精简提示），保存/删除走居中确认弹层。项目 tab 跟随当前会话的项目根自动加载，无需手填路径。
 - **写操作需确认**：所有新增/修改/删除经自定义确认 UI（删除红色 + 二次确认，保存绿色），服务端强制 `confirmed: true` 标记，缺失即 400 拒绝，记忆绝不静默变更。
 - **工具**：`memory_query` 只读查询（全局/项目 + 关键词过滤，输出带每条记忆的分类与 id）；`memory_save` 保存（`scope`/`desc` 必填，`category` 为偏好/事实/项目/技术栈/工作流，默认 `fact`）；`memory_delete` 按 id 删除（删除不存在的 id 明确报错）。
-- **自动学习（可选）**：开启 `autoLearn` 后会话结束自动提取记忆候选进待确认区，确认才写入（同主题自动提升置信度），拒弃即丢弃。
 - **渐进式索引**：条目带分类/来源（会话 id + 时间）/置信度（上限 5）/更新时间/演进历史；同主题多次出现提升置信度或更新内容，内容分歧标记「待处理矛盾」，长期未用（默认 90 天）降权。
 - **全局提示词（与记忆隔离）**：设置页「全局提示词」分区可新增 / 编辑 / 删除 / 启停 / 上移下移任意自由文本指令；**启用的提示词每轮组装全量按序注入**（独立 section `dsh-my-memory:prompts`，order -85），不评分、不截断、不占记忆的 top-N 名额，保存后下一轮即生效（无需重启）。它们**不是记忆**：独立文件 `$DSH_HOME/memory/prompts.json`、独立端点 `/my-memory/api/prompts`、agent 无写工具；首次运行迁入内置种子「中文思考」（可停用/删除，删除不复活）。
-- **持久化可靠**：原子写（tmp+rename）+ 防抖（300ms），重启后自动恢复；候选独立存 `$DSH_HOME/memory/candidates.json`、提示词独立存 `$DSH_HOME/memory/prompts.json`，与正式记忆隔离。
+- **持久化可靠**：原子写（tmp+rename）+ 防抖（300ms），重启后自动恢复；提示词独立存 `$DSH_HOME/memory/prompts.json`，与正式记忆隔离。
 
 ## 安装
 
@@ -38,8 +37,6 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-memory
 | `maxItems`         | `5`      | 注入系统提示词的全局记忆条数上限                               |
 | `maxDescLength`    | `200`    | 单条记忆注入长度上限（字符，语义截断优先概要/首句）            |
 | `maxEntryLength`   | `50`     | 建议单条记忆长度上限（字符），超长时面板提示精简               |
-| `autoLearn`        | `false`  | 自动学习开关：会话结束提取候选进待确认区，确认后才写入         |
-| `extractor`        | `'rule'` | 候选提取方式：`rule` 确定性规则提取器 / `llm`（预留）          |
 | `proactivePropose` | `false`  | 开启后引导 agent 主动向你提议保存记忆                          |
 | `saveApproval`     | `'auto'` | 记忆写操作（保存 + 删除）确认策略：`auto` / `always` / `never` |
 | `maxPromptItems`   | `20`     | 注入系统提示词的全局提示词条数上限（超出不注入 + warn）       |

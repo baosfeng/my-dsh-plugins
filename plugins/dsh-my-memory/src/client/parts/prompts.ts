@@ -1,24 +1,10 @@
-// ── prompts: 全局提示词的设置分区（issue #465）────────────────────────────
-// 与记忆分区并列但完全隔离：独立数据源（/my-memory/api/prompts）、独立状态、
+// ── prompts: 全局提示词的设置 tab（issue #465）────────────────────────────
+// 与记忆 tab 并列但完全隔离：独立数据源（/my-memory/api/prompts）、独立状态、
 // 独立确认面板。交互：新增 / 编辑 / 删除 / 启用停用 / 上移下移（写回 order）；
 // **不做拖拽**（零依赖、可测）。删除走红色二次确认，保存走绿色。
 
-/** 提示词条目类型 */
-interface PromptItem {
-  id: string
-  title: string
-  text: string
-  enabled: boolean
-  order: number
-  builtin?: string
-}
-
-/** 提示词编辑态（标题 + 正文一起编辑） */
-interface PromptEditing {
-  id: string
-  title: string
-  text: string
-}
+/** 提示词正文上限（与宿主默认 maxPromptLength 一致；仅用于输入计数提示）。 */
+const PROMPT_TEXT_LIMIT: number = 1000
 
 /** 提示词确认态 */
 interface PromptConfirming {
@@ -26,11 +12,6 @@ interface PromptConfirming {
   id?: string
   title?: string
   text?: string
-}
-
-/** 稳定的 React key。 */
-function promptKey(id: string): string {
-  return 'prompt/' + id
 }
 
 /** 一条提示词卡片：启停 + 标题（+ 内置徽标）+ 正文 + 排序/编辑/删除。 */
@@ -61,38 +42,10 @@ function PromptRow({
     item.builtin === undefined
       ? null
       : createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.promptBuiltin()),
-    createElement(
-      'div',
-      { className: 'dsh-my-memory-actions' },
-      createElement(
-        IconButton,
-        {
-          className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-up',
-          label: strings.promptMoveUp() + ' ' + item.id,
-          onClick: onMoveUp,
-        },
-        icon.chevronDown(14),
-      ),
-      createElement(
-        IconButton,
-        { className: 'dsh-my-memory-iconbtn', label: strings.promptMoveDown() + ' ' + item.id, onClick: onMoveDown },
-        icon.chevronDown(14),
-      ),
-      createElement(
-        IconButton,
-        { className: 'dsh-my-memory-iconbtn', label: strings.edit() + ' ' + item.id, onClick: onEdit },
-        icon.pencil(14),
-      ),
-      createElement(
-        IconButton,
-        {
-          className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
-          label: strings.delete() + ' ' + item.id,
-          onClick: onDelete,
-        },
-        icon.trash(14),
-      ),
-    ),
+    item.enabled === true
+      ? null
+      : createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.promptDisabled()),
+    createElement(PromptRowActions, { id: item.id, onMoveUp, onMoveDown, onEdit, onDelete }),
   )
   return createElement(
     'div',
@@ -105,7 +58,7 @@ function PromptRow({
   )
 }
 
-/** 新增栏：标题 + 正文（textarea）+ 新增按钮。 */
+/** 新增栏：标题 + 正文（自适应 textarea）+ 字数 + 新增按钮。 */
 function PromptAddBar({
   draft,
   busy,
@@ -117,9 +70,10 @@ function PromptAddBar({
   onDraft: (patch: { title?: string; text?: string }) => void
   onAdd: () => void
 }): ReactNode {
+  const over = draft.text.length > PROMPT_TEXT_LIMIT
   return createElement(
     'div',
-    { className: 'dsh-my-memory-addbar-wrap dsh-my-memory-prompt-addbar' },
+    { className: 'dsh-my-memory-composer' },
     createElement(ui.Input, {
       className: 'dsh-my-memory-add-input',
       placeholder: strings.promptsAddPlaceholder(),
@@ -131,14 +85,39 @@ function PromptAddBar({
       className: 'dsh-my-memory-prompt-textarea',
       placeholder: strings.promptsTextPlaceholder(),
       'aria-label': strings.promptsTextInputAria(),
+      rows: 2,
       value: draft.text,
       onChange: (event: { target: { value: string } }) => onDraft({ text: event.target.value }),
+      onInput: (event: { target: unknown }) => autoGrowTextarea(event.target),
     }),
+    over
+      ? createElement(
+          'div',
+          { className: 'dsh-my-memory-entry-hint' },
+          strings.entryTooLongHint(draft.text.length, PROMPT_TEXT_LIMIT),
+        )
+      : null,
     createElement(
-      'button',
-      { className: 'dsh-my-memory-btn-save', disabled: busy, 'aria-label': strings.add(), onClick: onAdd },
-      icon.plus(14),
-      strings.add(),
+      'div',
+      { className: 'dsh-my-memory-composer-foot' },
+      createElement(
+        'span',
+        { className: 'dsh-my-memory-composer-hint' },
+        createElement('span', { className: 'dsh-my-memory-count' }, `${draft.text.length} / ${PROMPT_TEXT_LIMIT}`),
+        ' · ',
+        strings.promptHint(),
+      ),
+      createElement(
+        'button',
+        {
+          className: 'dsh-my-memory-btn-add',
+          disabled: busy || draft.title.trim() === '' || draft.text.trim() === '',
+          'aria-label': strings.add(),
+          onClick: onAdd,
+        },
+        icon.plus(14),
+        strings.add(),
+      ),
     ),
   )
 }
@@ -171,7 +150,7 @@ function PromptEntry({
 }): ReactNode {
   if (editing !== null && editing.id === item.id) {
     return createElement(PromptRowEdit, {
-      key: promptKey(item.id),
+      key: 'prompt/' + item.id,
       editing,
       onTitle: onEditTitle,
       onText: onEditText,
@@ -180,7 +159,7 @@ function PromptEntry({
     })
   }
   return createElement(PromptRow, {
-    key: promptKey(item.id),
+    key: 'prompt/' + item.id,
     item,
     isEditing: false,
     busy,
@@ -222,14 +201,17 @@ function PromptEntryList({
     return createElement(
       'div',
       { className: 'dsh-my-memory-empty' },
-      strings.promptsEmpty(),
-      '·',
-      strings.promptsEmptyHint(),
+      createElement(
+        'span',
+        { className: 'dsh-my-memory-empty-body' },
+        createElement('span', { className: 'dsh-my-memory-empty-main' }, strings.promptsEmpty()),
+        createElement('span', { className: 'dsh-my-memory-empty-hint' }, strings.promptsEmptyHint()),
+      ),
     )
   }
   return items.map((item) =>
     createElement(PromptEntry, {
-      key: promptKey(item.id),
+      key: 'prompt/' + item.id,
       item,
       editing,
       busy,
@@ -245,7 +227,7 @@ function PromptEntryList({
   )
 }
 
-/** 全局提示词分区（列表 + 新增栏 + 确认面板）。 */
+/** 全局提示词 tab（列表 + 新增栏 + 确认弹层）。 */
 function PromptsBlock({
   items,
   busy,
@@ -290,26 +272,29 @@ function PromptsBlock({
     { className: 'dsh-my-memory-section dsh-my-memory-section-prompts' },
     createElement(PromptsSectionHead, { count: items.length }),
     createElement('div', { className: 'dsh-my-memory-note' }, strings.promptsNote()),
-    createElement(PromptEntryList, {
-      items,
-      editing,
-      busy,
-      onToggle,
-      onMove,
-      onEdit,
-      onEditTitle,
-      onEditText,
-      onCancelEdit,
-      onSaveEdit,
-      onDelete,
-    }),
+    createElement(
+      'div',
+      { className: 'dsh-my-memory-prompt-list' },
+      createElement(PromptEntryList, {
+        items,
+        editing,
+        busy,
+        onToggle,
+        onMove,
+        onEdit,
+        onEditTitle,
+        onEditText,
+        onCancelEdit,
+        onSaveEdit,
+        onDelete,
+      }),
+    ),
     createElement(PromptAddBar, { draft, busy, onDraft, onAdd }),
     createElement(PromptConfirmPanel, { confirming, busy, onCommit, onCancelConfirm }),
   )
 }
 
-/** 提示词确认面板（与记忆分区共用 ask 范式卡：删除红 / 保存绿）。
- *  拆成独立组件：单函数行数与圈复杂度都守门禁，且确认语义与列表渲染解耦。 */
+/** 提示词确认弹层（与记忆分区共用 ask 范式卡：删除红 / 保存绿）。 */
 function PromptConfirmPanel({
   confirming,
   busy,
@@ -323,22 +308,26 @@ function PromptConfirmPanel({
 }): ReactNode {
   if (confirming === null) return null
   const isDelete = confirming.kind === 'delete'
-  return createElement(AskConfirmCard, {
-    variant: isDelete ? 'delete' : 'save',
-    title: isDelete
-      ? strings.confirmDeletePrompt()
-      : confirming.kind === 'update'
-        ? strings.confirmUpdatePrompt()
-        : strings.confirmAddPrompt(),
-    scope: '',
-    category: '',
-    content: (confirming.title ?? '') + (confirming.text === undefined ? '' : '\n' + confirming.text),
-    note: strings.promptHint(),
-    allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
-    disabled: busy,
-    onAllow: () => onCommit(confirming),
-    onReject: onCancelConfirm,
-  })
+  return createElement(
+    'div',
+    { className: 'dsh-my-memory-overlay', role: 'presentation' },
+    createElement(AskConfirmCard, {
+      variant: isDelete ? 'delete' : 'save',
+      title: isDelete
+        ? strings.confirmDeletePrompt()
+        : confirming.kind === 'update'
+          ? strings.confirmUpdatePrompt()
+          : strings.confirmAddPrompt(),
+      scope: 'prompts',
+      category: '',
+      content: (confirming.title ?? '') + (confirming.text === undefined ? '' : '\n' + confirming.text),
+      note: strings.promptHint(),
+      allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
+      disabled: busy,
+      onAllow: () => onCommit(confirming),
+      onReject: onCancelConfirm,
+    }),
+  )
 }
 
 /** 目标条目的当前启用态（toggle 需要翻转值；找不到时按「未启用」处理）。 */

@@ -78,47 +78,6 @@ function writeMemory({
     })
 }
 
-/** GET /my-memory/api/candidates → the pending auto-extracted candidates
- *  (issue #78; read-only — candidates never touch memory before confirm). */
-function fetchCandidates(): Promise<MemoryItem[]> {
-  return fetch(`${API_BASE}/candidates`)
-    .then((res) => res.json())
-    .then((body: ApiResponse<{ items?: MemoryItem[] }>) => {
-      if (body === null || body.ok !== true) throw new Error('bad candidates response')
-      return Array.isArray(body.value?.items) ? body.value.items : []
-    })
-}
-
-/** POST /my-memory/api/candidates/confirm — accept one candidate (user
- *  consent marker; progressive-merged into the target scope on the server). */
-function confirmCandidate(id: string): Promise<MemoryValue> {
-  return fetch(`${API_BASE}/candidates/confirm`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id, confirmed: true }),
-  })
-    .then((res) => res.json())
-    .then((body: ApiResponse<MemoryValue>) => {
-      if (body === null || body.ok !== true) throw new Error('candidate confirm failed')
-      return body.value
-    })
-}
-
-/** POST /my-memory/api/candidates/dismiss — reject one candidate (drop it;
- *  gated on the user-consent marker, never touches any memory). */
-function dismissCandidate(id: string): Promise<MemoryValue> {
-  return fetch(`${API_BASE}/candidates/dismiss`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id, confirmed: true }),
-  })
-    .then((res) => res.json())
-    .then((body: ApiResponse<MemoryValue>) => {
-      if (body === null || body.ok !== true) throw new Error('candidate dismiss failed')
-      return body.value
-    })
-}
-
 // ── 全局提示词（issue #465）：独立端点 /my-memory/api/prompts，不复用 /memory ──
 
 /** 提示词条目类型 */

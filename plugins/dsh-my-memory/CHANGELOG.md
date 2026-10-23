@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### 变更
+
+- **breaking**: 移除「自动学习候选记忆」：删除 `autoLearn` / `extractor` / `maxMessagesPerSession` 配置、`/my-memory/api/candidates*` 端点、候选存储与规则提取器；记忆写入仍只经用户确认（`memory_save` 确认门 + 面板确认弹层）
+- feat(client): 设置页改为三个 tab（全局记忆 / 项目记忆 / 全局提示词）；移除项目路径输入，项目记忆随当前会话 cwd 自动加载
+- feat(client): 新增 / 编辑改为多行自适应输入框（字数计数 + 超长精简提示，回车提交）；保存 / 删除确认改为居中弹层（保存绿 / 删除红），与工具侧确认卡同构
+- feat(client): 全局提示词启停改为胶囊开关；新增 / 编辑带 1000 字计数
+- chore(test): 删除候选相关单测与 Gherkin 场景；客户端渲染测试按三 tab 结构重写
+
 ## [0.1.12] - 2026-10-17
 
 ### 变更

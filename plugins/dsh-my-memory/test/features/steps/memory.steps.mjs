@@ -26,7 +26,6 @@ class World {
     this.lastToolValue = null
     this.lastSaveValue = null
     this.lastAsk = null
-    this.autoLearn = false
     this.saveApproval = undefined
     this.policy = 'ask'
     this.sessionId = undefined
@@ -77,7 +76,7 @@ class World {
 
   /** 本次挂载的插件配置（saveApproval 仅在场景显式设置时出现）。 */
   defaultConfig() {
-    const config = { autoLearn: this.autoLearn }
+    const config = {}
     if (this.saveApproval !== undefined) config.saveApproval = this.saveApproval
     return config
   }
@@ -102,29 +101,6 @@ class World {
   /** 工具调用载荷（带 agent/session；未设置会话时为空对象）。 */
   defaultExec() {
     return this.sessionId === undefined ? {} : { agent: { id: this.sessionId, session: this.session() } }
-  }
-
-  /** Toggle autoLearn and re-boot so the collector listens (issue #78). */
-  setAutoLearn(on) {
-    this.autoLearn = on === true
-    this.events.length = 0
-    this.sections.length = 0
-    this.tools.length = 0
-    this.boot()
-  }
-
-  /** Feed one user message to the session/event listener. */
-  receiveMessage(sessionId, text) {
-    const listener = this.events.find((e) => e.name === 'session/event')?.listener
-    assert.ok(listener, 'session/event listener registered')
-    listener({ id: sessionId }, { type: 'user/message', data: { content: [{ type: 'text', text }] } })
-  }
-
-  /** End a session (top-level agent idle) so extraction runs. */
-  endSession(sessionId, cwd) {
-    const listener = this.events.find((e) => e.name === 'agent/status')?.listener
-    assert.ok(listener, 'agent/status listener registered')
-    listener({ agent: { id: sessionId, session: { header: { cwd: cwd ?? this.dir } }, options: {} }, status: 'idle' })
   }
 
   async callRoute(method, url, body) {
@@ -263,8 +239,7 @@ When('查询全局记忆', async function () {
 })
 
 Then('全局记忆包含 {string}', async function (desc) {
-  // 主动查询（不依赖上一步是否是 GET /memory——候选确认等写步骤返回 items
-  // 之外的载荷）。
+  // 主动查询（不依赖上一步是否是 GET /memory——写步骤返回的载荷可能不含 items）。
   const r = await this.callRoute('GET', '/my-memory/api/memory?scope=global')
   const items = r.json.value.items
   assert.ok(
@@ -535,106 +510,6 @@ Then('返回单条注入长度上限 {int}', function (limit) {
   assert.equal(this.lastResponse.json.value.maxDescLength, limit)
 })
 
-// ── issue #78：自动提取 + 待确认候选 + 确认写入 + 渐进更新 + 元数据 ──────
-
-When('开启自动学习 autoLearn', function () {
-  this.setAutoLearn(true)
-})
-
-When('关闭自动学习 autoLearn 且会话 {string} 收到用户消息 {string}', function (sessionId, text) {
-  this.setAutoLearn(false)
-  this.receiveMessage(sessionId, text)
-})
-
-When('会话 {string} 收到用户消息 {string}', function (sessionId, text) {
-  this.receiveMessage(sessionId, text)
-})
-
-When('会话 {string} 结束（顶层 agent idle）', async function (sessionId) {
-  this.endSession(sessionId)
-  // 等待提取 → 候选落盘（异步 storeCandidates 链）
-  await new Promise((resolve) => setTimeout(resolve, 30))
-})
-
-Then('待确认候选列表包含偏好候选 {string}', async function (desc) {
-  const r = await this.callRoute('GET', '/my-memory/api/candidates')
-  const items = r.json.value.items
-  assert.ok(
-    items.some((c) => c.category === 'preference' && c.desc.includes(desc)),
-    `pending candidates contain preference ${desc}`,
-  )
-})
-
-Then('待确认候选列表包含项目候选 {string}', async function (desc) {
-  const r = await this.callRoute('GET', '/my-memory/api/candidates')
-  const items = r.json.value.items
-  assert.ok(
-    items.some((c) => c.scope === 'project' && c.desc.includes(desc)),
-    `pending candidates contain project ${desc}`,
-  )
-})
-
-Then('正式记忆列表为空', async function () {
-  const r = await this.callRoute('GET', '/my-memory/api/memory?scope=global')
-  assert.deepEqual(r.json.value.items, [])
-})
-
-Then('待确认候选列表为空', async function () {
-  const r = await this.callRoute('GET', '/my-memory/api/candidates')
-  assert.deepEqual(r.json.value.items, [])
-})
-
-When('用户确认候选 {string}', async function (desc) {
-  const r = await this.callRoute('GET', '/my-memory/api/candidates')
-  const matches = r.json.value.items.filter((c) => c.desc.includes(desc))
-  assert.ok(matches.length > 0, `candidate ${desc} exists`)
-  // 同一句可能被多个分类规则命中（如「本项目用 vitest」→ project + stack），
-  // 全部确认（渐进合并到各自的记录）。
-  for (const candidate of matches) {
-    await this.callRoute('POST', '/my-memory/api/candidates/confirm', { id: candidate.id, confirmed: true })
-  }
-})
-
-When('会话 {string} 收到用户消息 {string} 并确认候选', async function (sessionId, text) {
-  this.receiveMessage(sessionId, text)
-  this.endSession(sessionId)
-  await new Promise((resolve) => setTimeout(resolve, 30))
-  const r = await this.callRoute('GET', '/my-memory/api/candidates')
-  const candidate = r.json.value.items.find((c) => c.desc.includes(text))
-  assert.ok(candidate, `candidate ${text} exists`)
-  await this.callRoute('POST', '/my-memory/api/candidates/confirm', { id: candidate.id, confirmed: true })
-})
-
-Then('全局记忆包含置信度为 {int} 的 {string}', async function (confidence, desc) {
-  const r = await this.callRoute('GET', '/my-memory/api/memory?scope=global')
-  const item = r.json.value.items.find((i) => i.desc.includes(desc))
-  assert.ok(item, `memory contains ${desc}`)
-  assert.equal(item.confidence, confidence, `confidence is ${confidence}`)
-})
-
-Then('项目记忆条目带元数据：分类 {string} 且来源会话为 {string}', async function (category, sessionId) {
-  const r = await this.callRoute('GET', `/my-memory/api/memory?scope=project&cwd=${encodeURIComponent(this.dir)}`)
-  const item = r.json.value.items.find((i) => i.category === category)
-  assert.ok(item, `project memory has an item of category ${category}`)
-  assert.equal(item.source?.sessionId, sessionId, `source session is ${sessionId}`)
-  assert.equal(item.confidence, 1, 'first confirmed candidate starts at confidence 1')
-})
-
-Then('section 评分选择器按 相关性+时效性+置信度 选择条目', function () {
-  // issue #78 智能注入：section text provider 使用评分选择（prompt.js /
-  // memory-scoring.js 的 pickForInjection），非简单 top-N——单测已断言
-  // 选择行为；此处断言 provider 关联的 scoring 行为等价（空记忆渲染为空）。
-  const section = this.section()
-  assert.ok(section, 'dsh-my-memory section registered')
-  this.lastSectionText = section.text({})
-  // 纯断言：provider 可求值（不抛错），返回字符串
-  assert.equal(typeof this.lastSectionText, 'string')
-})
-
-When('提交未携带同意标记的候选确认', async function () {
-  await this.callRoute('POST', '/my-memory/api/candidates/confirm', { id: 'cand-any' })
-})
-
 // ── 场景 18-22：按类型保存 + memory_delete 工具（issue #192）─────────────
 When('agent 调用 memory_save 保存全局记忆 {string} 类型为 {string}', async function (desc, category) {
   this.lastSaveArgs = { scope: 'global', desc, category }
@@ -897,5 +772,5 @@ When('以 maxPromptItems 为 {int} 重载提示词能力', function (maxPromptIt
   this.sections.length = 0
   this.tools.length = 0
   this.events.length = 0
-  this.boot({ autoLearn: false, maxPromptItems })
+  this.boot({ maxPromptItems })
 })

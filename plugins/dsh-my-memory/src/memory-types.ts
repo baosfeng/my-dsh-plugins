@@ -26,25 +26,9 @@ export interface MemoryItem {
   status: 'active' | 'conflict-pending'
 }
 
-/** 候选记忆条目接口（统一定义）。 */
-export interface CandidateItem {
-  id: string
-  desc: string
-  category: Category
-  scope: 'global' | 'project'
-  source: { sessionId: string; at: number }
-  createdAt: number
-  cwd?: string
-}
-
 /** 记忆存储结构。 */
 export interface MemoryStore {
   items: MemoryItem[]
-}
-
-/** 候选存储结构。 */
-export interface CandidateStore {
-  items: CandidateItem[]
 }
 
 /** 存储实例接口。 */
@@ -55,19 +39,8 @@ export interface StoreInstance {
   dispose(): void
   list(): MemoryItem[]
   add(item: string | (Partial<MemoryItem> & { desc: string }), now?: number): Promise<MemoryItem>
-  mergeAdd(candidate: unknown, now?: number): Promise<{ item: unknown; outcome: string }>
+  mergeAdd(entry: unknown, now?: number): Promise<{ item: unknown; outcome: string }>
   update(id: string, changes: string | Partial<MemoryItem>, now?: number): Promise<MemoryItem | null>
-  remove(id: string): Promise<boolean>
-}
-
-/** 候选存储实例接口。 */
-export interface CandidateStoreInstance {
-  state: CandidateStore
-  load(): Promise<void>
-  flush(): Promise<void>
-  dispose(): void
-  list(): CandidateItem[]
-  addRaw(item: unknown): Promise<CandidateItem | undefined>
   remove(id: string): Promise<boolean>
 }
 

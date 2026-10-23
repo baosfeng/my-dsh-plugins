@@ -436,7 +436,8 @@ hookValues = []
 renderPanel()
 await settle()
 let panelTree = renderPanel()
-assert.ok(classes(panelTree).includes('dsh-my-memory-sections'), 'panel renders its global/project sections')
+assert.ok(classes(panelTree).includes('dsh-my-memory-tabs'), 'panel renders the global/project/prompts tabs')
+assert.ok(classes(panelTree).includes('dsh-my-memory-section'), 'panel renders the active memory section')
 
 // 面板内删除 → 确认面板必须与工具侧同一组 ask 契约类
 const panelDelete = buttons(panelTree, 'dsh-my-memory-iconbtn-danger')
@@ -450,13 +451,14 @@ for (const token of [
   'dsh-my-memory-ask-strip',
   'dsh-my-memory-ask-dot',
   'dsh-my-memory-ask-body',
-  'dsh-my-memory-ask-options',
   'dsh-my-memory-ask-footer',
   'dsh-my-memory-confirm-ok',
   'dsh-my-memory-confirm-cancel',
 ]) {
   assert.ok(panelClasses.includes(token), 'panel confirm shares the tool-side ask class: ' + token)
 }
+// 面板侧确认卡范围已锁定：不展示「全局 / 项目」选项行（原型同款，工具侧仍保留）
+assert.ok(!panelClasses.includes('dsh-my-memory-ask-options'), 'panel confirm hides the scope option rows')
 assert.ok(panelClasses.includes('dsh-my-memory-ask-delete'), 'panel delete confirm uses the danger variant')
 const panelTexts = texts(panelTree).join('|')
 assert.ok(panelTexts.includes('全局'), 'panel delete confirm names the owning scope')

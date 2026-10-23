@@ -6,69 +6,25 @@
     "complexity": 10
   },
   "files": {
-    "plugins/dsh-my-memory/src/api-route.ts": {
-      "lines": 410,
-      "functions": {
-        "routeRequest": {
-          "line": 99,
-          "lines": 27,
-          "complexity": 11
-        }
-      }
-    },
-    "plugins/dsh-my-memory/src/client/parts/view.ts": {
-      "lines": 548,
-      "functions": {
-        "renderRoot": {
-          "line": 205,
-          "lines": 98,
-          "complexity": 4
-        },
-        "Sections": {
-          "line": 367,
-          "lines": 95,
-          "complexity": 2
-        },
-        "SectionBlock": {
-          "line": 464,
-          "lines": 83,
-          "complexity": 9
-        }
-      }
-    },
     "plugins/dsh-my-memory/src/index.ts": {
-      "lines": 401,
+      "lines": 191,
       "functions": {
-        "extractUserText": {
-          "line": 141,
-          "lines": 11,
-          "complexity": 11
-        },
-        "<anonymous>#6": {
-          "line": 252,
-          "lines": 12,
-          "complexity": 11
-        },
         "apply": {
-          "line": 266,
-          "lines": 99,
-          "complexity": 6
+          "line": 83,
+          "lines": 77,
+          "complexity": 3
         }
       }
     },
     "plugins/dsh-my-memory/src/prompts-route.ts": {
-      "lines": 182,
+      "lines": 186,
       "functions": {
         "applyPromptUpdate": {
-          "line": 126,
+          "line": 130,
           "lines": 17,
           "complexity": 12
         }
       }
-    },
-    "plugins/dsh-my-memory/src/store.ts": {
-      "lines": 428,
-      "functions": {}
     },
     "plugins/dsh-my-notify/src/webhook/pusher.ts": {
       "lines": 135,

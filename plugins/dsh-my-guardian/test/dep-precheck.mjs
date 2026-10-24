@@ -420,7 +420,7 @@ test('#481: 客户端插件（dsh.client）的前端种子模块视为已满足'
   assert.deepEqual(result.missing, [])
 })
 
-test('#481: 非客户端插件不套用前端种子模块（react 仍按缺失判定，但不给安装命令）', () => {
+test('#488: 非客户端插件声明宿主前端注入模块也视为已满足（不再刷缺失）', () => {
   const dir = freshDir()
   writePlugin(dir, 'dsh-server-app', { peerDependencies: { react: '^18.2.0' } })
   const result = checkPeerDependencies({
@@ -428,10 +428,28 @@ test('#481: 非客户端插件不套用前端种子模块（react 仍按缺失�
     pluginName: 'dsh-server-app',
     hostInventory: EMPTY_HOST_INVENTORY,
   })
-  assert.equal(result.ok, false)
-  assert.deepEqual(result.missing, ['react'])
-  assert.deepEqual(result.suggestions, [], 'react 由宿主前端供给，装进 profile 只会遮蔽宿主版本')
-  assert.ok(result.warnings.length === 0, '缺失就是缺失，不混进可选依赖告警')
+  assert.equal(result.ok, true, '前端注入模块与 dsh.client 标记无关：磁盘/asar 都没有实体，判缺失只会刷屏')
+  assert.deepEqual(result.missing, [])
+  assert.deepEqual(result.suggestions, [], '不产出 dsh plugin add（装进 profile 只会遮蔽宿主版本）')
+})
+
+test('#488: 前端静态模块裸名回退 dsh-client-ui-primitives → @deepseek-ai/…', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-panel-app', {
+    peerDependencies: {
+      'dsh-client-ui-primitives': '^1.0.0',
+      'dsh-client-ui-slots': '^1.0.0',
+      'dsh-client-store': '^1.0.0',
+    },
+  })
+  const result = checkPeerDependencies({
+    profileDir: dir,
+    pluginName: 'dsh-panel-app',
+    hostInventory: EMPTY_HOST_INVENTORY,
+  })
+  assert.equal(result.ok, true, '社区插件把前端种子模块写成裸名，应回退 @deepseek-ai/<name> 判定')
+  assert.deepEqual(result.missing, [])
+  assert.deepEqual(result.suggestions, [], '裸名静态模块不得产出 dsh plugin add')
 })
 
 test('#481: 宿主内置包版本不满足只记警告（不阻塞、不刷 dependency 告警）', () => {

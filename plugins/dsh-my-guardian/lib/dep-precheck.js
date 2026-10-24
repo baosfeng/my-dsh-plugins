@@ -19,6 +19,10 @@
  * 宿主清单（host-inventory.ts）：sharedPackages 提供版本、files 覆盖第三方包；
  * 裸名（cordis / schemastery）回退 `@deepseek-ai/<name>`；客户端插件（有
  * `dsh.client`）把宿主前端注入的 9 个静态模块视为已满足。
+ *
+ * #488：前端静态模块的判定不再要求 `dsh.client`，且裸名同样回退
+ * `@deepseek-ai/<name>`——社区插件普遍把 `dsh-client-ui-primitives` 这类裸名写进
+ * peer，磁盘与 asar 里都没有实体，判缺失只会刷屏并诱导装出双实例。
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -78,11 +82,6 @@ function readPackageJson(dir) {
         return null;
     }
 }
-/** 官方清单：`dsh.client` 存在即客户端插件（宿主前端会注入 9 个静态模块，#481）。 */
-function isClientPlugin(pkg) {
-    const dsh = pkg.dsh;
-    return dsh !== null && typeof dsh === 'object' && dsh.client !== undefined;
-}
 function installedVersion(dir) {
     const pkg = readPackageJson(dir);
     return pkg !== null && typeof pkg.version === 'string' ? pkg.version : null;
@@ -104,9 +103,22 @@ function hostVersionOf(spec, inventory) {
     }
     return { provided: false, version: null };
 }
-/** 客户端插件可用的宿主前端静态模块（种子模块 9 项，磁盘与 asar 里都没有实体）。 */
-function isClientSeedModule(spec) {
-    return STATIC_MODULES.has(spec) || STATIC_MODULES.has(basePackage(spec));
+/**
+ * 宿主前端注入的静态模块（种子模块 9 项，磁盘与 asar 里都没有实体，#481/#488）。
+ * 判定不依赖 `dsh.client`：社区插件常把 `dsh-client-ui-primitives` 这类裸名写进
+ * peer，而这些模块只能由宿主前端提供——判缺失既修不好，也会诱导用户把另一份
+ * 拷贝装进 profile（#407/#410 的同一类事故）。裸名按宿主命名回退
+ * `@deepseek-ai/<name>`（与 hostVersionOf 同一约定）。
+ */
+function isHostSeedModule(spec) {
+    const base = basePackage(spec);
+    if (STATIC_MODULES.has(spec) || STATIC_MODULES.has(base))
+        return true;
+    // cordis 例外：它在 server 侧由宿主清单 / profiles 根 node_modules 提供，前端注入
+    // 不构成「server 侧可用」的证据——纯 Node 环境下它缺失是真问题（可选依赖走 warning）。
+    if (base.startsWith('@') || base === 'cordis')
+        return false;
+    return STATIC_MODULES.has(`@deepseek-ai/${base}`);
 }
 /** 声明范围是否不满足实装版本（空范围 / 未知版本视为满足）。 */
 function isStaleVersion(version, range) {
@@ -118,20 +130,22 @@ function versionIssue(dep, range, version, source) {
 }
 /** 磁盘解析不到时的宿主侧判定；未命中返回 null（交给调用方判缺失）。 */
 function examineHosted(dep, range, host) {
-    // 客户端插件的种子模块由宿主前端注入（#481：react / react-dom 永远「缺」）。
-    if (host.clientPlugin && isClientSeedModule(dep))
-        return { kind: 'ok' };
+    // 宿主清单有版本 → 按版本判（版本不满足只 warn，用户装不了第二份）。
     const hosted = hostVersionOf(dep, host.inventory);
-    if (!hosted.provided)
-        return null;
-    if (!isStaleVersion(hosted.version, range))
+    if (hosted.provided) {
+        if (!isStaleVersion(hosted.version, range))
+            return { kind: 'ok' };
+        // 宿主内置包版本不满足 → warning（#481）：用户装不了第二份，也不该装；记成 dependency
+        // 会让真实名册在每次 DSH 升级后刷屏一片「版本不满足」。
+        return {
+            kind: 'warn',
+            message: `依赖 ${dep} 由 DSH 宿主内置（${hosted.version}），不在声明范围 ${range} 内：请升级 DSH 或调整插件声明`,
+        };
+    }
+    // 前端种子模块由宿主注入（#481 / #488：react / react-dom 磁盘上永远「缺」）。
+    if (isHostSeedModule(dep))
         return { kind: 'ok' };
-    // 宿主内置包版本不满足 → warning（#481）：用户装不了第二份，也不该装；记成 dependency
-    // 会让真实名册在每次 DSH 升级后刷屏一片「版本不满足」。
-    return {
-        kind: 'warn',
-        message: `依赖 ${dep} 由 DSH 宿主内置（${hosted.version}），不在声明范围 ${range} 内：请升级 DSH 或调整插件声明`,
-    };
+    return null;
 }
 /** 磁盘解析到包之后的版本判定。 */
 function examineInstalled(dep, range, optional, depDir, host) {
@@ -244,7 +258,7 @@ export function checkPeerDependencies({ profileDir, pluginName, pluginDir = null
     const pkg = readPackageJson(dir);
     if (pkg === null)
         return skippedResult(`无法解析 ${pluginName} 的 package.json`);
-    const { missing, mismatched, warnings } = classifyPeers(objectOrEmpty(pkg.peerDependencies), objectOrEmpty(pkg.peerDependenciesMeta), dir, profileDir, { inventory: hostInventory, clientPlugin: isClientPlugin(pkg) });
+    const { missing, mismatched, warnings } = classifyPeers(objectOrEmpty(pkg.peerDependencies), objectOrEmpty(pkg.peerDependenciesMeta), dir, profileDir, { inventory: hostInventory });
     return {
         ok: missing.length === 0 && mismatched.length === 0,
         missing,

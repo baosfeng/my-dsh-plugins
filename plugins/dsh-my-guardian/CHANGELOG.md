@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.4.8] - 2026-10-24
+
+### 变更
+
+- fix(guardian): #488 前端注入模块不再误判缺失并补裸名回退 (#493)
+- refactor(md-render): 拆出 CodeHead/CodeBody 守住函数尺寸门禁
+- chore(guardian): 宿主事件 fixture 同步到 0.2.1-rc.2（升级后重新取证）
+
+## [0.4.7] - 2026-10-24
+
+### 变更
+
+- fix(guardian): #488 前端注入模块不再误判缺失并补裸名回退 (#493)
+- chore(guardian): 宿主事件 fixture 同步到 0.2.1-rc.2（升级后重新取证）
+
 ## [0.4.6] - 2026-10-17
 
 ### 变更

@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 变更
 
+- fix(guardian): #488 依赖预检不再要求 `dsh.client` 标记才把宿主前端注入的静态模块（`react` / `react-dom` /
+  client UI 包）视为已满足，且裸名 `dsh-client-ui-primitives` 回退 `@deepseek-ai/<name>`——社区插件普遍写裸名，
+  此前 14 条「缺少依赖」误报里仍有 3 条残留并给出会装出双实例的 `dsh plugin add`。宿主清单带版本时仍按版本判
+  （stale 只 warn），`cordis` 裸名保持磁盘/清单判定（server 侧真实依赖不被前端注入掩盖）。真实桌面 asar 清单
+  复验：14 条 → 0；`left-pad` 类真缺失仍报 `dependency-missing` 并给安装命令。
 - fix(guardian): #481 依赖预检识别桌面版宿主内置包——读 `app.asar/dsh/desktop-runtime.json` 的
   `sharedPackages`（287 个包带版本）与 `files`（覆盖面更广、含第三方包）建索引；裸名
   `cordis` / `schemastery` 回退 `@deepseek-ai/<name>`；客户端插件（`dsh.client`）把宿主前端注入的

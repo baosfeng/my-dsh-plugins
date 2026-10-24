@@ -85,6 +85,8 @@
   },
   "overrides": {
     "qs": "6.16.0",
+    "fast-uri": "3.1.9",
+    "zod": "4.6.7",
     "eslint-plugin-import": {
       "eslint": "$eslint"
     }

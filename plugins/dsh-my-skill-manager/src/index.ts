@@ -1,87 +1,63 @@
 /**
- * dsh-my-skill-manager — host half.
+ * dsh-my-skill-manager — 插件入口（host half）。
  *
- * Skill 管理（issue #23）：分「全局 / 项目」查看 skill 列表、按项目启用/禁用。
- *
- *  - 禁用机制：向 `ctx.skills` 注册一个 rank-0 占位 provider（全局层），
- *    被禁用的 skill 名在合并目录里被占位覆盖（filesystem rank 100–500、
- *    runtime 250 都低于 rank 0 优先级…… 注：rank 数值越小优先级越高），
- *    模型侧只见「已禁用」占位、`get()` 拒绝加载正文；`list()` 按会话 cwd
- *    解析项目配置，因此禁用可按项目生效、也可在项目内禁用全局 skill。
- *  - 配置：全局 `$DSH_HOME/skills.enabled.json` + 项目
- *    `<projectRoot>/.dsh/skills.enabled.json`（随仓库版本化）。
- *  - 使用统计（issue #91）：包装 `ctx.skills.get()`——skill 正文被加载
- *    （模型 skill 工具 / 用户 /name 手势注入）即计数；`tools/pre-execute`
- *    标记模型来源；持久化 `$DSH_HOME/skills.usage.json`（防抖 + 原子写）。
- *  - Client：官方 slots 注册「设置 → 插件」下的 Skill 管理页签（纯官方
- *    依赖，不依赖 dsh-better-sidebar）。
+ * 能力面（契约见 docs/原型重构/impl-contract-skill-manager.md）：
+ *  - 禁用机制：向 `ctx.skills` 注册 rank-0 占位 provider；被禁用名字在合并
+ *    目录里被占位覆盖，模型侧看到「已禁用」，`get()` 不加载正文。配置按
+ *    会话 cwd 解析，因此项目禁用只影响该项目。
+ *  - 使用统计：包装 `ctx.skills.get()`，`tools/pre-execute` 标记模型来源，
+ *    防抖 500ms 原子写 `$DSH_HOME/skills.usage.json`。
+ *  - HTTP：`/my-skill-manager/api` 下的 list / detail / rescan / session /
+ *    config 路由，前置信任围栏。
+ *  - Client：由 `lib/client.js` 注册「设置 → 插件」页签（独立构建）。
  */
 import { createTrustFence } from 'dsh-shared'
-import { createApiHandler } from './api-route.js'
-import { createDisablerProvider } from './provider.js'
-import { createUsageStore, recordUsage, usageFile } from './usage.js'
-import type { DshContext, ServerRequest } from './types.js'
+import { createDisablerProvider } from './server/disabler.js'
+import { API_PREFIX, createApiHandler } from './server/http.js'
+import type { DshContext } from './server/types.js'
+import { createModelCallTracker, createUsageStore, usageFile, wrapSkillGet } from './server/usage.js'
 
 export const name = 'dsh-my-skill-manager'
 
 export const inject = ['skills', 'webServer', 'sessions']
 
 export function apply(ctx: DshContext): void {
-  // 禁用占位 provider：配置变化时 invalidate 让 skill 目录立即重算。
+  // 禁用占位 provider：配置变化时 invalidate 让宿主 skill 目录立即重算。
   let invalidate = (): void => {}
-  const disposer = ctx.skills!.registerProvider((control) => {
+  const disposeProvider = ctx.skills!.registerProvider((control) => {
     invalidate = () => control.invalidate()
     return createDisablerProvider()
   })
-  ctx.effect(() => disposer, 'dsh-my-skill-manager: disabler provider')
+  ctx.effect(() => disposeProvider, 'dsh-my-skill-manager: disabler provider')
 
-  // 使用统计（issue #91）：包装 ctx.skills.get——成功加载 skill 正文即计数。
-  // 来源判定：tools/pre-execute 标记最近一次模型 skill 工具调用；get 命中
-  // 该标记记 model，否则记 user（用户 /name 手势注入等）。
+  // 使用统计：包装 get 计数，tools/pre-execute 标记模型调用来源。
   const usage = createUsageStore({ file: usageFile(), logger: ctx.logger })
-  let pendingModelSkill: string | null = null
-  const originalGet = ctx.skills?.get
-  if (typeof originalGet === 'function') {
-    const boundGet = originalGet.bind(ctx.skills)
-    ctx.skills!.get = async (skillName: string, options?: unknown) => {
-      const skill = await boundGet(skillName, options)
-      const source = pendingModelSkill === skillName ? 'model' : 'user'
-      if (pendingModelSkill === skillName) pendingModelSkill = null
-      if (skill !== undefined) recordUsage(usage, skillName, source)
-      return skill
+  const tracker = createModelCallTracker()
+  const restoreGet = wrapSkillGet(ctx.skills!, usage, tracker)
+  const disposePreExecute = ctx.on('tools/pre-execute', (...args: unknown[]) => {
+    const execution = args[0]
+    const next = args[1]
+    if (execution !== null && typeof execution === 'object') {
+      const call = execution as { name?: unknown; arguments?: { name?: unknown } }
+      if (call.name === 'skill' && typeof call.arguments?.name === 'string') tracker.mark(call.arguments.name)
     }
-  }
-  const usageDisposers = [
-    ctx.on('tools/pre-execute', (...args: unknown[]) => {
-      const exec = args[0]
-      const next = args[1]
-      if (exec !== null && typeof exec === 'object') {
-        const call = exec as { name?: unknown; arguments?: { name?: unknown } }
-        if (call.name === 'skill' && typeof call.arguments?.name === 'string') {
-          pendingModelSkill = call.arguments.name
-        }
-      }
-      return (next as () => unknown)()
-    }),
-  ]
+    return typeof next === 'function' ? next() : undefined
+  })
   ctx.effect(
     () => () => {
-      for (const dispose of usageDisposers) {
-        if (typeof dispose === 'function') dispose()
-      }
-      if (typeof originalGet === 'function' && ctx.skills !== null && ctx.skills !== undefined) {
-        ctx.skills.get = originalGet
-      }
+      if (typeof disposePreExecute === 'function') disposePreExecute()
+      restoreGet()
+      void usage.flush()
     },
     'dsh-my-skill-manager: usage listeners',
   )
 
-  const fence = createTrustFence(ctx) as (request: ServerRequest) => boolean
+  const fence = createTrustFence(ctx)
   ctx.effect(
     () =>
-      ctx.webServer.register({
+      ctx.webServer!.register({
         kind: 'prefix',
-        path: '/my-skill-manager/api',
+        path: API_PREFIX,
         handler: createApiHandler({ ctx, invalidate, fence, usage }),
       }),
     'dsh-my-skill-manager: /my-skill-manager/api routes',

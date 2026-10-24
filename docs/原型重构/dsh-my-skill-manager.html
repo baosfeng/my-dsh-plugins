@@ -1,0 +1,2420 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill 管理 · 技能台（v3）</title>
+<style>
+/* ============================================================
+   技能台 Skill Deck — v3 原型
+   颜色全部收敛在 :root（含浅色主题 :root[data-theme="light"]）
+   ============================================================ */
+:root{
+  color-scheme: dark;
+  --sk-desk:#050607;
+  --sk-bg:#0d0f13;
+  --sk-chrome:#111419;
+  --sk-panel:#14171c;
+  --sk-surface:#191d24;
+  --sk-surface-2:#1e232b;
+  --sk-surface-3:#252b34;
+  --sk-fg:#dfe3ea;
+  --sk-fg-strong:#f4f6fa;
+  --sk-muted:#9aa3b0;
+  --sk-subtle:#8b94a1;
+  --sk-border:#252b34;
+  --sk-border-strong:#363e49;
+  --sk-accent:#7aa2f7;
+  --sk-accent-strong:#93b4ff;
+  --sk-accent-soft:#1a2433;
+  --sk-accent-ring:rgba(122,162,247,.3);
+  --sk-on-accent:#0b0f16;
+  --sk-success:#57c08a;
+  --sk-success-soft:#14251c;
+  --sk-warn:#dda05e;
+  --sk-warn-soft:#2a2117;
+  --sk-danger:#e07a7a;
+  --sk-danger-soft:#2b1a1c;
+  --sk-on-danger:#1b0e0e;
+  --sk-focus:#7aa2f7;
+  --sk-code-bg:#101318;
+  --sk-code-fg:#b9c2cf;
+  --sk-track:#2a313b;
+  --sk-knob:#c6cedb;
+  --sk-hover:#1e232b;
+  --sk-selected:#1b2536;
+  --sk-scroll:#343c47;
+  --sk-fake:#12151a;
+  --sk-fake-line:#1b2028;
+  --sk-selection:#263449;
+  --sk-overlay:rgba(0,0,0,.4);
+  --sk-shadow-color:rgba(0,0,0,.55);
+  --bg:var(--sk-bg);
+  --surface:var(--sk-surface);
+  --fg:var(--sk-fg);
+  --muted:var(--sk-muted);
+  --border:var(--sk-border);
+  --accent:var(--sk-accent);
+}
+/* 浅色主题 token 调色板：色值统一收敛在 :root，主题块只做别名映射 */
+:root{
+  --sk-l-desk:#dfe3e9;
+  --sk-l-bg:#eef0f3;
+  --sk-l-chrome:#f5f6f8;
+  --sk-l-panel:#ffffff;
+  --sk-l-surface:#ffffff;
+  --sk-l-surface-2:#f3f5f8;
+  --sk-l-surface-3:#e9edf2;
+  --sk-l-fg:#2a3038;
+  --sk-l-fg-strong:#12161c;
+  --sk-l-muted:#5c6674;
+  --sk-l-subtle:#69737f;
+  --sk-l-border:#e1e5ea;
+  --sk-l-border-strong:#cbd2db;
+  --sk-l-accent:#2f6fd0;
+  --sk-l-accent-strong:#255ab0;
+  --sk-l-accent-soft:#e9f1fc;
+  --sk-l-accent-ring:rgba(47,111,208,.22);
+  --sk-l-on-accent:#ffffff;
+  --sk-l-success:#268a5b;
+  --sk-l-success-soft:#e7f5ee;
+  --sk-l-warn:#a8641c;
+  --sk-l-warn-soft:#fbf1e4;
+  --sk-l-danger:#b84747;
+  --sk-l-danger-soft:#fbecec;
+  --sk-l-on-danger:#ffffff;
+  --sk-l-focus:#2f6fd0;
+  --sk-l-code-bg:#f7f8fa;
+  --sk-l-code-fg:#3b4552;
+  --sk-l-track:#dfe4ea;
+  --sk-l-knob:#ffffff;
+  --sk-l-hover:#f2f4f7;
+  --sk-l-selected:#eef4fd;
+  --sk-l-scroll:#c4ccd6;
+  --sk-l-fake:#e7eaef;
+  --sk-l-fake-line:#d9dee5;
+  --sk-l-selection:#d6e4fb;
+  --sk-l-overlay:rgba(20,26,34,.16);
+  --sk-l-shadow-color:rgba(20,30,45,.18);
+}
+:root[data-theme="light"]{
+  color-scheme: light;
+  --sk-desk:var(--sk-l-desk);
+  --sk-bg:var(--sk-l-bg);
+  --sk-chrome:var(--sk-l-chrome);
+  --sk-panel:var(--sk-l-panel);
+  --sk-surface:var(--sk-l-surface);
+  --sk-surface-2:var(--sk-l-surface-2);
+  --sk-surface-3:var(--sk-l-surface-3);
+  --sk-fg:var(--sk-l-fg);
+  --sk-fg-strong:var(--sk-l-fg-strong);
+  --sk-muted:var(--sk-l-muted);
+  --sk-subtle:var(--sk-l-subtle);
+  --sk-border:var(--sk-l-border);
+  --sk-border-strong:var(--sk-l-border-strong);
+  --sk-accent:var(--sk-l-accent);
+  --sk-accent-strong:var(--sk-l-accent-strong);
+  --sk-accent-soft:var(--sk-l-accent-soft);
+  --sk-accent-ring:var(--sk-l-accent-ring);
+  --sk-on-accent:var(--sk-l-on-accent);
+  --sk-success:var(--sk-l-success);
+  --sk-success-soft:var(--sk-l-success-soft);
+  --sk-warn:var(--sk-l-warn);
+  --sk-warn-soft:var(--sk-l-warn-soft);
+  --sk-danger:var(--sk-l-danger);
+  --sk-danger-soft:var(--sk-l-danger-soft);
+  --sk-on-danger:var(--sk-l-on-danger);
+  --sk-focus:var(--sk-l-focus);
+  --sk-code-bg:var(--sk-l-code-bg);
+  --sk-code-fg:var(--sk-l-code-fg);
+  --sk-track:var(--sk-l-track);
+  --sk-knob:var(--sk-l-knob);
+  --sk-hover:var(--sk-l-hover);
+  --sk-selected:var(--sk-l-selected);
+  --sk-scroll:var(--sk-l-scroll);
+  --sk-fake:var(--sk-l-fake);
+  --sk-fake-line:var(--sk-l-fake-line);
+  --sk-selection:var(--sk-l-selection);
+  --sk-overlay:var(--sk-l-overlay);
+  --sk-shadow-color:var(--sk-l-shadow-color);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--sk-desk);color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+  font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+}
+button{font:inherit;color:var(--fg);background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit}
+code,pre,kbd{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+svg{display:block;flex:none}
+[hidden]{display:none!important}
+::selection{background:var(--sk-selection);color:var(--sk-fg-strong)}
+:where(button,input,a,[tabindex]):focus-visible{outline:2px solid var(--sk-focus);outline-offset:2px;border-radius:6px}
+.sk-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+@keyframes sk-pop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes sk-fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes sk-spin{to{transform:rotate(360deg)}}
+@keyframes sk-pulse{0%,100%{opacity:.5}50%{opacity:.9}}
+
+/* ---------- 画布与窗口 ---------- */
+.sk-canvas{
+  position:relative;width:min(1440px,100vw);height:min(900px,100vh);
+  background:var(--bg);box-shadow:inset 0 0 0 1px var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.sk-winbar{
+  position:relative;z-index:30;flex:none;height:40px;display:flex;align-items:center;gap:14px;
+  padding:0 14px;background:var(--sk-chrome);box-shadow:inset 0 -1px 0 var(--border);
+}
+.sk-traffic{display:flex;align-items:center;gap:7px}
+.sk-traffic span{width:10px;height:10px;border-radius:50%;background:var(--sk-subtle);opacity:.45}
+.sk-win-title{font-size:11.5px;color:var(--sk-subtle);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sk-win-title b{color:var(--sk-muted);font-weight:500}
+.sk-tools{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.sk-tool-btn{
+  display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 8px;border-radius:7px;
+  color:var(--sk-muted);font-size:11.5px;white-space:nowrap;
+}
+.sk-tool-btn:hover{background:var(--sk-hover);color:var(--fg)}
+.sk-tool-btn[aria-expanded="true"]{background:var(--sk-surface-2);color:var(--fg)}
+.sk-demo-wrap{position:relative}
+.sk-menu{
+  position:absolute;top:calc(100% + 8px);right:0;width:200px;padding:6px;
+  background:var(--sk-surface);border-radius:10px;box-shadow:0 0 0 1px var(--sk-border-strong),0 16px 44px var(--sk-shadow-color);
+  z-index:60;animation:sk-pop .2s ease-out both;
+}
+.sk-menu-label{padding:6px 8px 4px;font-size:10px;letter-spacing:.08em;color:var(--sk-subtle)}
+.sk-menu-item{
+  display:flex;align-items:center;gap:8px;width:100%;height:30px;padding:0 8px;border-radius:6px;
+  font-size:12px;color:var(--sk-muted);text-align:left;
+}
+.sk-menu-item:hover{background:var(--sk-hover);color:var(--fg)}
+.sk-menu-item[aria-checked="true"]{color:var(--sk-fg-strong)}
+.sk-menu-check{display:inline-grid;place-items:center;width:14px;color:var(--sk-accent);opacity:0}
+.sk-menu-item[aria-checked="true"] .sk-menu-check{opacity:1}
+.sk-menu-sep{height:1px;background:var(--border);margin:6px 4px}
+
+/* ---------- 舞台与面板 ---------- */
+.sk-stage{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:30px}
+.sk-appfake{position:absolute;inset:0;display:flex;gap:14px;padding:22px;pointer-events:none;opacity:.42}
+.sk-fake-rail{
+  flex:none;width:210px;border-radius:10px;background:var(--sk-fake);
+  box-shadow:inset 0 0 0 1px var(--border);padding:14px;display:flex;flex-direction:column;gap:9px;
+}
+.sk-fake-line{height:8px;border-radius:4px;background:var(--sk-fake-line)}
+.sk-fake-line.sk-w25{width:25%}.sk-fake-line.sk-w40{width:40%}.sk-fake-line.sk-w60{width:60%}.sk-fake-line.sk-w80{width:80%}
+.sk-fake-main{
+  flex:1;border-radius:10px;background:var(--sk-fake);box-shadow:inset 0 0 0 1px var(--border);
+  display:flex;flex-direction:column;gap:12px;padding:18px;
+}
+.sk-fake-block{flex:1;border-radius:8px;background:var(--sk-fake-line);opacity:.6}
+.sk-panel{
+  position:relative;z-index:2;width:min(800px,100%);height:min(800px,100%);
+  display:flex;flex-direction:column;background:var(--sk-panel);border-radius:14px;
+  box-shadow:0 0 0 1px var(--sk-border-strong),0 30px 80px var(--sk-shadow-color);
+  overflow:hidden;
+}
+.sk-panel-head{
+  flex:none;height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;
+  background:var(--sk-panel);box-shadow:inset 0 -1px 0 var(--border);
+}
+.sk-panel-head h1{margin:0;font-size:14px;font-weight:600;color:var(--sk-fg-strong);letter-spacing:.01em}
+.sk-crumb{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--sk-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sk-slash{color:var(--sk-subtle)}
+.sk-panel-head .sk-icon-btn{margin-left:auto}
+.sk-panel-body{flex:1;min-height:0;display:flex}
+.sk-nav{
+  flex:none;width:188px;padding:12px 10px 10px;display:flex;flex-direction:column;gap:2px;
+  background:var(--sk-panel);box-shadow:inset -1px 0 0 var(--border);overflow:auto;
+}
+.sk-nav-label{margin:10px 8px 4px;font-size:10px;letter-spacing:.1em;color:var(--sk-subtle)}
+.sk-nav-label:first-child{margin-top:0}
+.sk-nav-item{
+  display:flex;align-items:center;gap:9px;width:100%;height:30px;padding:0 9px;border-radius:7px;
+  font-size:12.5px;color:var(--sk-muted);text-align:left;white-space:nowrap;
+}
+.sk-nav-item svg{color:var(--sk-subtle)}
+.sk-nav-item:hover{background:var(--sk-hover);color:var(--fg)}
+.sk-nav-item[aria-current="page"]{background:var(--sk-surface-2);color:var(--sk-fg-strong);box-shadow:inset 2px 0 0 var(--sk-accent)}
+.sk-nav-item[aria-current="page"] svg{color:var(--sk-accent)}
+.sk-nav-foot{
+  margin-top:auto;padding:10px 8px 2px;display:flex;align-items:center;gap:8px;
+  box-shadow:inset 0 1px 0 var(--border);
+}
+.sk-avatar{
+  flex:none;width:22px;height:22px;border-radius:50%;background:var(--sk-surface-3);
+  display:grid;place-items:center;font-size:9px;color:var(--sk-muted);letter-spacing:.02em;
+}
+.sk-nav-foot div{min-width:0;font-size:10.5px;color:var(--sk-subtle);line-height:1.35}
+.sk-nav-foot b{display:block;font-weight:500;font-size:11.5px;color:var(--sk-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- 内容列 / 页签 ---------- */
+.sk-content{flex:1;min-width:0;display:flex;flex-direction:column;padding:0 24px 16px}
+.sk-tabs{flex:none;display:flex;align-items:stretch;gap:18px;height:44px;box-shadow:inset 0 -1px 0 var(--border)}
+.sk-tab{position:relative;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--sk-muted);padding:0 1px}
+.sk-tab:hover{color:var(--fg)}
+.sk-tab[aria-selected="true"]{color:var(--sk-fg-strong);font-weight:500}
+.sk-tab[aria-selected="true"]::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;border-radius:2px;background:var(--accent)}
+.sk-tab-count{
+  display:inline-flex;align-items:center;height:15px;padding:0 4px;border-radius:4px;
+  background:var(--sk-surface-2);box-shadow:inset 0 0 0 1px var(--border);
+  font-size:9px;font-weight:500;color:var(--sk-subtle);font-variant-numeric:tabular-nums;
+}
+.sk-tab-badge{
+  display:inline-flex;align-items:center;height:15px;padding:0 4px;border-radius:4px;
+  background:var(--sk-accent-soft);color:var(--sk-accent);font-size:9px;font-weight:600;
+}
+.sk-view{flex:1;min-height:0;display:flex;flex-direction:column;padding-top:12px;position:relative}
+.sk-fade{animation:sk-fade .2s ease-out both}
+
+/* ---------- 命令条 ---------- */
+.sk-command{flex:none;display:flex;flex-direction:column;gap:8px}
+.sk-search-row{display:flex;align-items:center;gap:8px}
+.sk-search{
+  flex:1;min-width:0;display:flex;align-items:center;gap:7px;height:34px;padding:0 9px;border-radius:8px;
+  background:var(--sk-surface);box-shadow:inset 0 0 0 1px var(--border);color:var(--sk-subtle);
+}
+.sk-search:focus-within{box-shadow:inset 0 0 0 1px var(--sk-accent),0 0 0 3px var(--sk-accent-ring)}
+.sk-search input{flex:1;min-width:0;background:none;border:0;outline:none;color:var(--sk-fg-strong);font-size:12.5px;caret-color:var(--sk-accent)}
+.sk-search input::placeholder{color:var(--sk-subtle)}
+.sk-kbd{
+  flex:none;display:inline-flex;align-items:center;height:18px;padding:0 5px;border-radius:4px;
+  background:var(--sk-surface-2);box-shadow:inset 0 0 0 1px var(--border);
+  color:var(--sk-subtle);font-size:10px;font-family:inherit;
+}
+.sk-search-clear{flex:none;display:grid;place-items:center;width:18px;height:18px;border-radius:4px;color:var(--sk-subtle)}
+.sk-search-clear:hover{background:var(--sk-hover);color:var(--fg)}
+.sk-scan{
+  flex:none;height:34px;padding:0 10px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;
+  background:var(--sk-surface);box-shadow:inset 0 0 0 1px var(--border);color:var(--sk-muted);font-size:11.5px;
+}
+.sk-scan:hover{background:var(--sk-surface-2);color:var(--fg)}
+.sk-scan:disabled{cursor:progress;color:var(--sk-subtle)}
+.sk-scan.sk-loading svg{animation:sk-spin .9s linear infinite}
+.sk-stats-row{display:flex;align-items:center;gap:8px}
+.sk-stats{
+  flex:1;min-width:0;display:flex;border-radius:8px;overflow:hidden;
+  background:var(--sk-surface);box-shadow:inset 0 0 0 1px var(--border);
+}
+.sk-stat{
+  flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;height:34px;
+  color:var(--sk-muted);font-size:11px;box-shadow:inset -1px 0 0 var(--border);
+}
+.sk-stat:last-child{box-shadow:none}
+.sk-stat b{font-size:14px;font-weight:600;color:var(--sk-fg-strong);font-variant-numeric:tabular-nums}
+.sk-stat:hover{background:var(--sk-hover)}
+.sk-stat[aria-pressed="true"]{background:var(--sk-accent-soft)}
+.sk-stat[aria-pressed="true"] b{color:var(--sk-accent)}
+.sk-stat--warn b{color:var(--sk-warn)}
+.sk-diag-entry{
+  flex:none;height:34px;padding:0 10px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;
+  background:var(--sk-warn-soft);color:var(--sk-warn);font-size:11.5px;
+  box-shadow:inset 0 0 0 1px var(--sk-warn);white-space:nowrap;
+}
+.sk-diag-entry b{font-variant-numeric:tabular-nums}
+.sk-diag-entry:hover{background:var(--sk-surface-2)}
+
+/* ---------- 筛选 ---------- */
+.sk-filters{
+  flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 0;margin-top:8px;
+  box-shadow:inset 0 -1px 0 var(--border);
+}
+.sk-filter-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.sk-filter-label{min-width:24px;margin-right:2px;font-size:10px;color:var(--sk-subtle);letter-spacing:.04em}
+.sk-chip{
+  display:inline-flex;align-items:center;gap:4px;height:23px;padding:0 8px;border-radius:999px;
+  background:var(--sk-surface);box-shadow:inset 0 0 0 1px var(--border);
+  color:var(--sk-muted);font-size:10.5px;white-space:nowrap;
+}
+.sk-chip b{font-weight:600;color:var(--sk-subtle);font-variant-numeric:tabular-nums}
+.sk-chip:hover{background:var(--sk-surface-2);color:var(--fg)}
+.sk-chip[aria-pressed="true"]{background:var(--sk-accent-soft);box-shadow:inset 0 0 0 1px var(--sk-accent);color:var(--sk-fg-strong)}
+.sk-chip[aria-pressed="true"] b{color:var(--sk-accent)}
+.sk-chip--unused[aria-pressed="true"]{background:var(--sk-warn-soft);box-shadow:inset 0 0 0 1px var(--sk-warn);color:var(--sk-fg-strong)}
+.sk-chip--unused[aria-pressed="true"] b{color:var(--sk-warn)}
+.sk-filter-sep{width:1px;height:14px;margin:0 3px;background:var(--border)}
+.sk-chip .sk-src-dot{display:inline-block;width:5px;height:5px;margin-right:1px}
+
+/* ---------- 工具条 ---------- */
+.sk-toolbar{flex:none;display:flex;align-items:center;gap:8px;height:38px}
+.sk-result{font-size:11px;color:var(--sk-subtle);white-space:nowrap}
+.sk-result b{font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums}
+.sk-scan-time{font-size:10.5px;color:var(--sk-subtle);white-space:nowrap}
+.sk-toolbar-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.sk-seg{display:inline-flex;padding:2px;border-radius:7px;background:var(--sk-surface);box-shadow:inset 0 0 0 1px var(--border)}
+.sk-seg button{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 7px;border-radius:5px;font-size:10.5px;color:var(--sk-muted)}
+.sk-seg button:hover{color:var(--fg)}
+.sk-seg button[aria-pressed="true"]{background:var(--sk-surface-3);color:var(--sk-fg-strong)}
+.sk-sortwrap{position:relative}
+.sk-tool-btn--text{
+  display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 8px;border-radius:7px;
+  background:var(--sk-surface);box-shadow:inset 0 0 0 1px var(--border);color:var(--sk-muted);font-size:11px;
+}
+.sk-tool-btn--text:hover{background:var(--sk-surface-2);color:var(--fg)}
+.sk-sort-menu{width:164px}
+.sk-sort-dir{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;color:var(--sk-muted)}
+.sk-sort-dir:hover{background:var(--sk-hover);color:var(--fg)}
+.sk-select-btn{
+  display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 8px;border-radius:7px;
+  background:var(--sk-surface);box-shadow:inset 0 0 0 1px var(--border);color:var(--sk-muted);font-size:11px;
+}
+.sk-select-btn:hover{background:var(--sk-surface-2);color:var(--fg)}
+.sk-select-btn[aria-pressed="true"]{background:var(--sk-accent-soft);box-shadow:inset 0 0 0 1px var(--sk-accent);color:var(--sk-fg-strong)}
+
+/* ---------- 列表区 ---------- */
+.sk-stagearea{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.sk-listwrap{
+  flex:1;min-height:0;overflow:auto;padding:2px 2px 4px;
+  scrollbar-width:thin;scrollbar-color:var(--sk-scroll) var(--sk-panel);
+}
+.sk-listwrap::-webkit-scrollbar,.sk-statearea::-webkit-scrollbar,.sk-tablewrap::-webkit-scrollbar,.sk-diag::-webkit-scrollbar{width:8px;height:8px}
+.sk-listwrap::-webkit-scrollbar-thumb,.sk-statearea::-webkit-scrollbar-thumb,.sk-tablewrap::-webkit-scrollbar-thumb,.sk-diag::-webkit-scrollbar-thumb{background:var(--sk-scroll);border-radius:8px}
+.sk-listwrap::-webkit-scrollbar-track,.sk-statearea::-webkit-scrollbar-track,.sk-tablewrap::-webkit-scrollbar-track,.sk-diag::-webkit-scrollbar-track{background:var(--sk-panel)}
+
+/* ---------- 来源分组 ---------- */
+.sk-group{padding-bottom:6px}
+.sk-group-head{
+  position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:7px;
+  padding:7px 2px 6px;margin-bottom:7px;background:var(--sk-panel);
+  box-shadow:inset 0 -1px 0 var(--border);
+}
+.sk-group-head h3{margin:0;font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--sk-fg)}
+.sk-group-count{
+  display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:4px;
+  background:var(--sk-surface-2);box-shadow:inset 0 0 0 1px var(--border);
+  color:var(--sk-muted);font-size:9.5px;font-variant-numeric:tabular-nums;
+}
+.sk-group-provider{
+  margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:10px;color:var(--sk-subtle);
+}
+.sk-group-body{display:flex;flex-direction:column;gap:7px}
+.sk-src-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--sk-subtle)}
+.sk-src-dot--project{background:var(--sk-accent)}
+.sk-src-dot--user{background:var(--sk-muted)}
+.sk-src-dot--bundled{background:var(--sk-subtle)}
+.sk-src-dot--anomaly{background:var(--sk-warn)}
+
+/* ---------- 技能卡 ---------- */
+.sk-card{
+  position:relative;padding:9px 10px 8px 16px;border-radius:10px;
+  background:var(--sk-surface,var(--surface));box-shadow:inset 0 0 0 1px var(--border);
+}
+.sk-card:hover{background:var(--sk-surface-2)}
+.sk-card.sk-selected{box-shadow:inset 0 0 0 1px var(--sk-accent),0 0 0 3px var(--sk-accent-ring)}
+.sk-card-bar{
+  position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:10px 0 0 10px;
+  background:var(--sk-success);
+}
+.sk-card.sk-off .sk-card-bar{background:var(--sk-subtle)}
+.sk-card.sk-anomaly .sk-card-bar{background:var(--sk-warn)}
+.sk-card-top{display:flex;align-items:center;gap:8px;min-width:0}
+.sk-checkbox{flex:none;width:13px;height:13px;margin:0;accent-color:var(--sk-accent);cursor:pointer}
+.sk-card-open{display:flex;align-items:center;gap:6px;flex:1;min-width:0;text-align:left}
+.sk-card-open:focus-visible{outline-offset:3px}
+.sk-name{
+  min-width:0;font-size:12.8px;font-weight:600;color:var(--sk-fg-strong);letter-spacing:.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sk-card.sk-off .sk-name{color:var(--sk-muted)}
+.sk-badge{
+  display:inline-flex;align-items:center;flex:none;height:16px;padding:0 5px;border-radius:4px;
+  background:var(--sk-surface-3);color:var(--sk-muted);font-size:9.5px;font-weight:500;white-space:nowrap;
+}
+.sk-badge--warn{background:var(--sk-warn-soft);color:var(--sk-warn);box-shadow:inset 0 0 0 1px var(--sk-warn)}
+.sk-badge--quiet{background:var(--sk-panel);color:var(--sk-subtle);box-shadow:inset 0 0 0 1px var(--border)}
+.sk-usage{
+  display:inline-flex;align-items:center;gap:4px;margin-left:auto;flex:none;
+  font-size:10px;color:var(--sk-subtle);white-space:nowrap;font-variant-numeric:tabular-nums;
+}
+.sk-usage svg{color:var(--sk-subtle)}
+.sk-chevron{flex:none;color:var(--sk-subtle);transition:transform .18s ease}
+.sk-card[data-expanded="true"] .sk-chevron{transform:rotate(180deg)}
+.sk-desc{
+  margin:4px 0 7px;font-size:11px;line-height:1.5;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sk-card.sk-off .sk-desc{color:var(--sk-subtle)}
+.sk-card-foot{display:flex;align-items:center;gap:8px;min-height:20px;flex-wrap:wrap}
+.sk-scopes{display:inline-flex;align-items:center;gap:10px}
+.sk-scopes.sk-dim{opacity:.55}
+.sk-switch{
+  display:inline-flex;align-items:center;gap:5px;padding:1px 2px;border-radius:6px;
+  font-size:10px;color:var(--sk-subtle);white-space:nowrap;
+}
+.sk-switch:hover{color:var(--sk-muted)}
+.sk-track{
+  position:relative;width:26px;height:15px;border-radius:999px;background:var(--sk-track);
+  box-shadow:inset 0 0 0 1px var(--sk-border-strong);
+}
+.sk-knob{
+  position:absolute;top:1.5px;left:1.5px;width:12px;height:12px;border-radius:50%;
+  background:var(--sk-knob);transition:transform .16s ease;
+}
+.sk-switch[aria-checked="true"]{color:var(--sk-fg)}
+.sk-switch[aria-checked="true"] .sk-track{background:var(--sk-accent-soft);box-shadow:inset 0 0 0 1px var(--sk-accent)}
+.sk-switch[aria-checked="true"] .sk-knob{transform:translateX(11px);background:var(--sk-accent)}
+.sk-switch.sk-warn-switch .sk-track{background:var(--sk-warn-soft);box-shadow:inset 0 0 0 1px var(--sk-warn)}
+.sk-switch.sk-warn-switch .sk-knob{background:var(--sk-warn)}
+.sk-switch[aria-disabled="true"],.sk-switch:disabled{cursor:not-allowed;opacity:.45}
+.sk-switch--mini{gap:0}
+.sk-switch--mini .sk-track{width:22px;height:13px}
+.sk-switch--mini .sk-knob{width:10px;height:10px;top:1.5px;left:1.5px}
+.sk-switch--mini[aria-checked="true"] .sk-knob{transform:translateX(9px)}
+.sk-foot-note{margin-left:auto;font-size:9.8px;color:var(--sk-subtle);white-space:nowrap}
+
+/* ---------- 内联错误 ---------- */
+.sk-inline-error{
+  display:flex;align-items:flex-start;gap:7px;margin-top:8px;padding:7px 8px;border-radius:7px;
+  background:var(--sk-danger-soft);box-shadow:inset 0 0 0 1px var(--sk-danger);
+  font-size:10.5px;color:var(--sk-danger);
+}
+.sk-inline-error > svg{color:var(--sk-danger);margin-top:1px}
+.sk-inline-error div{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.sk-inline-error b{font-size:11px;font-weight:600;color:var(--sk-fg-strong)}
+.sk-inline-error span{color:var(--sk-muted);line-height:1.45}
+
+/* ---------- 焦点详情 ---------- */
+.sk-detail{
+  display:grid;grid-template-columns:1fr 1fr;margin-top:9px;padding-top:9px;
+  box-shadow:inset 0 1px 0 var(--border);animation:sk-fade .18s ease-out both;
+}
+.sk-detail-col{min-width:0;padding-right:12px}
+.sk-detail-col--right{padding-right:0;padding-left:12px;box-shadow:inset 1px 0 0 var(--border)}
+.sk-detail-desc{margin:0 0 7px;font-size:11px;line-height:1.55;color:var(--sk-fg)}
+.sk-meta{margin:0;display:flex;flex-direction:column;gap:5px}
+.sk-meta-row{display:grid;grid-template-columns:52px 1fr;gap:6px;align-items:start;font-size:10.5px}
+.sk-meta dt{color:var(--sk-subtle)}
+.sk-meta dd{margin:0;min-width:0;display:flex;align-items:flex-start;gap:4px;flex-wrap:wrap;color:var(--sk-muted)}
+.sk-meta code{font-size:9.8px;line-height:1.45;color:var(--sk-muted);word-break:break-all}
+.sk-cap{
+  display:inline-flex;align-items:center;height:17px;padding:0 5px;border-radius:4px;
+  background:var(--sk-surface-2);box-shadow:inset 0 0 0 1px var(--border);font-size:9.5px;color:var(--sk-muted);
+}
+.sk-icon-btn{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:7px;color:var(--sk-muted)}
+.sk-icon-btn:hover{background:var(--sk-hover);color:var(--fg)}
+.sk-icon-btn--sm{width:20px;height:20px;border-radius:5px;color:var(--sk-subtle);flex:none}
+.sk-icon-btn--sm:hover{background:var(--sk-hover);color:var(--fg)}
+.sk-preview-head{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:10px;color:var(--sk-subtle)}
+.sk-preview-head em{font-style:normal;opacity:.8}
+.sk-mini-btn{
+  margin-left:auto;display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 6px;border-radius:5px;
+  background:var(--sk-surface-2);box-shadow:inset 0 0 0 1px var(--border);font-size:10px;color:var(--sk-muted);
+}
+.sk-mini-btn:hover{color:var(--fg)}
+.sk-pre{
+  margin:0;padding:7px 8px;border-radius:7px;background:var(--sk-code-bg);
+  box-shadow:inset 0 0 0 1px var(--border);color:var(--sk-code-fg);
+  font-size:9.6px;line-height:1.5;max-height:240px;overflow:auto;white-space:pre;
+  scrollbar-width:thin;scrollbar-color:var(--sk-scroll) var(--sk-code-bg);
+}
+.sk-pre::-webkit-scrollbar{width:7px;height:7px}
+.sk-pre::-webkit-scrollbar-thumb{background:var(--sk-scroll);border-radius:7px}
+.sk-usage-stats{display:flex;align-items:center;gap:10px;margin-top:6px;font-size:9.8px;color:var(--sk-subtle);flex-wrap:wrap}
+.sk-usage-stats b{font-size:11px;font-weight:600;color:var(--sk-fg)}
+.sk-missing{
+  display:flex;flex-direction:column;gap:5px;padding:9px;border-radius:7px;
+  background:var(--sk-warn-soft);box-shadow:inset 0 0 0 1px var(--sk-warn);
+  font-size:10px;line-height:1.5;color:var(--sk-muted);
+}
+.sk-missing b{font-size:10.5px;color:var(--sk-warn)}
+.sk-missing code{font-size:9.6px;word-break:break-all;color:var(--sk-muted)}
+
+/* ---------- 紧凑表 ---------- */
+.sk-tablewrap{
+  flex:1;min-height:0;overflow:auto;padding-right:2px;
+  scrollbar-width:thin;scrollbar-color:var(--sk-scroll) var(--sk-panel);
+}
+.sk-table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:11px}
+.sk-table thead th{
+  position:sticky;top:0;z-index:2;height:28px;padding:0 6px;background:var(--sk-panel);
+  box-shadow:inset 0 -1px 0 var(--border);color:var(--sk-subtle);font-weight:500;
+  text-align:left;font-size:10px;letter-spacing:.02em;
+}
+.sk-table th.sk-th-sort{padding:0 2px}
+.sk-sortbtn{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 4px;border-radius:5px;color:var(--sk-subtle);font:inherit}
+.sk-sortbtn:hover{background:var(--sk-hover);color:var(--fg)}
+.sk-sortbtn svg{opacity:.4}
+.sk-table th[aria-sort="ascending"] .sk-sortbtn,.sk-table th[aria-sort="descending"] .sk-sortbtn{color:var(--sk-fg)}
+.sk-table th[aria-sort="ascending"] .sk-sortbtn svg,.sk-table th[aria-sort="descending"] .sk-sortbtn svg{opacity:1;color:var(--sk-accent)}
+.sk-col-check{width:26px}
+.sk-col-source{width:50px}
+.sk-col-usage{width:40px}
+.sk-col-recent{width:78px}
+.sk-col-scope{width:66px}
+.sk-table tbody tr.sk-row{height:32px}
+.sk-table tbody tr.sk-row:hover td{background:var(--sk-hover)}
+.sk-row td{
+  padding:0 6px;background:var(--sk-panel);box-shadow:inset 0 -1px 0 var(--border);
+  color:var(--sk-muted);vertical-align:middle;white-space:nowrap;
+}
+.sk-row[data-expanded="true"] .sk-chevron{transform:rotate(180deg)}
+.sk-row.sk-selected td{background:var(--sk-selected)}
+.sk-row.sk-selected td:first-child{box-shadow:inset 2px 0 0 var(--sk-accent),inset 0 -1px 0 var(--border)}
+.sk-row-name{display:flex;align-items:center;gap:6px;min-width:0}
+.sk-row-bar{flex:none;width:2px;height:12px;border-radius:1px;background:var(--sk-success)}
+.sk-row.sk-off .sk-row-bar{background:var(--sk-subtle)}
+.sk-row.sk-anomaly .sk-row-bar{background:var(--sk-warn)}
+.sk-row-open{display:flex;align-items:center;gap:6px;min-width:0;text-align:left;color:var(--sk-fg)}
+.sk-row-open .sk-name{font-size:11px;font-weight:500}
+.sk-row-open .sk-chevron{opacity:.55}
+.sk-table .sk-badge{height:14px;font-size:9px}
+.sk-th-scope{text-align:center}
+.sk-scope-cell{display:flex;align-items:center;justify-content:center;gap:4px}
+.sk-detail-row td{padding:0 8px 10px;background:var(--sk-surface);box-shadow:inset 0 -1px 0 var(--border)}
+.sk-detail-row .sk-detail{margin-top:8px;padding-top:8px}
+.sk-detail-row .sk-inline-error{margin-bottom:8px}
+
+/* ---------- 批量操作条 ---------- */
+.sk-action{
+  flex:none;height:76px;display:flex;align-items:center;gap:10px;padding:0 12px;border-radius:9px;
+  background:var(--sk-surface);box-shadow:inset 0 0 0 1px var(--sk-accent);
+  animation:sk-fade .18s ease-out both;
+}
+.sk-action-info{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:11.5px;color:var(--sk-muted);min-width:0}
+.sk-action-info > svg{color:var(--sk-accent)}
+.sk-action-info b{font-size:14px;font-weight:600;color:var(--sk-fg-strong);font-variant-numeric:tabular-nums}
+.sk-action-note{font-size:10px;color:var(--sk-subtle)}
+.sk-action-btns{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.sk-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;height:26px;padding:0 10px;border-radius:7px;
+  background:var(--sk-surface-2);box-shadow:inset 0 0 0 1px var(--sk-border-strong);
+  color:var(--sk-fg);font-size:11px;white-space:nowrap;
+}
+.sk-btn:hover{background:var(--sk-surface-3)}
+.sk-btn:disabled{opacity:.4;cursor:not-allowed}
+.sk-btn--primary{background:var(--sk-accent);color:var(--sk-on-accent);box-shadow:none}
+.sk-btn--primary:hover{background:var(--sk-accent-strong)}
+.sk-btn--ghost{background:none;box-shadow:none;color:var(--sk-muted)}
+.sk-btn--ghost:hover{background:var(--sk-hover);color:var(--fg)}
+.sk-btn--danger{background:var(--sk-danger);color:var(--sk-on-danger);box-shadow:none}
+.sk-btn--danger-ghost{background:none;box-shadow:inset 0 0 0 1px var(--sk-danger);color:var(--sk-danger)}
+.sk-btn--danger-ghost:hover{background:var(--sk-danger-soft)}
+.sk-action--confirm{background:var(--sk-danger-soft);box-shadow:inset 0 0 0 1px var(--sk-danger)}
+.sk-action--confirm > svg{color:var(--sk-danger)}
+.sk-action--confirm .sk-action-info{color:var(--sk-fg)}
+.sk-action--confirm .sk-action-info em{font-style:normal;color:var(--sk-subtle);font-size:10px}
+
+/* ---------- 状态页：空 / 错 / 加载 ---------- */
+.sk-statearea{
+  flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;
+  scrollbar-width:thin;scrollbar-color:var(--sk-scroll) var(--sk-panel);
+}
+.sk-empty,.sk-error{
+  flex:1;min-height:320px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:28px 24px;text-align:center;
+}
+.sk-empty > svg{margin-bottom:10px;color:var(--sk-subtle)}
+.sk-error > svg{margin-bottom:10px;color:var(--sk-danger)}
+.sk-empty h2,.sk-error h2{margin:0 0 6px;font-size:14px;font-weight:600;color:var(--sk-fg-strong)}
+.sk-empty p,.sk-error p{margin:0;max-width:372px;font-size:11.5px;line-height:1.6;color:var(--sk-muted)}
+.sk-error p code{font-size:10.5px;color:var(--sk-warn);word-break:break-all}
+.sk-empty-actions{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;flex-wrap:wrap}
+.sk-empty-preview{
+  display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:7px 10px;border-radius:8px;
+  background:var(--sk-surface);box-shadow:inset 0 0 0 1px var(--border);font-size:10.5px;color:var(--sk-muted);
+}
+.sk-demo-switch{
+  display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;
+  width:100%;max-width:430px;margin-top:22px;padding-top:14px;
+  box-shadow:inset 0 1px 0 var(--border);font-size:10px;color:var(--sk-subtle);
+}
+.sk-demo-switch > span{margin-right:2px}
+.sk-demo-switch .sk-chip{height:22px;font-size:10px}
+.sk-skeleton{display:flex;flex-direction:column;gap:8px;padding:6px 2px}
+.sk-skel-head{width:110px;height:10px;border-radius:4px;background:var(--sk-surface-3);animation:sk-pulse 1.4s ease-in-out infinite}
+.sk-skel-card{
+  height:72px;border-radius:10px;background:var(--sk-surface);box-shadow:inset 0 0 0 1px var(--border);
+  padding:12px 14px;display:flex;flex-direction:column;gap:9px;animation:sk-pulse 1.4s ease-in-out infinite;
+}
+.sk-skel-line{height:8px;border-radius:4px;background:var(--sk-surface-3)}
+.sk-skel-line.sk-w25{width:25%}.sk-skel-line.sk-w40{width:40%}.sk-skel-line.sk-w55{width:55%}.sk-skel-line.sk-w70{width:70%}
+
+/* ---------- 诊断台 ---------- */
+.sk-diag{flex:1;min-height:0;overflow:auto;padding:2px 2px 8px;scrollbar-width:thin;scrollbar-color:var(--sk-scroll) var(--sk-panel)}
+.sk-diag-head{
+  display:flex;align-items:center;gap:10px;padding:6px 2px 12px;margin-bottom:12px;
+  box-shadow:inset 0 -1px 0 var(--border);
+}
+.sk-diag-title h2{margin:0;font-size:14px;font-weight:600;color:var(--sk-fg-strong)}
+.sk-diag-title p{margin:2px 0 0;font-size:10.5px;color:var(--sk-subtle)}
+.sk-diag-head .sk-btn{margin-left:auto}
+.sk-diag-card{
+  padding:12px;margin-bottom:10px;border-radius:10px;background:var(--sk-surface);
+  box-shadow:inset 0 0 0 1px var(--border);
+}
+.sk-diag-card-head{display:flex;align-items:flex-start;gap:9px;margin-bottom:10px}
+.sk-diag-card-head > svg{margin-top:1px;color:var(--sk-warn)}
+.sk-diag-card-head h3{margin:0;font-size:12.5px;font-weight:600;color:var(--sk-fg-strong)}
+.sk-diag-card-head p{margin:2px 0 0;font-size:10px;color:var(--sk-subtle)}
+.sk-diag-card-head .sk-badge{margin-left:auto}
+.sk-diag-meta{margin:0;display:flex;flex-direction:column;gap:7px}
+.sk-diag-meta .sk-meta-row{grid-template-columns:38px 1fr;font-size:10.5px}
+.sk-diag-meta .sk-meta-row dd{align-items:center}
+.sk-diag-meta code{font-size:9.8px;color:var(--sk-muted);word-break:break-all}
+.sk-diag-foot{margin-top:14px;font-size:10px;color:var(--sk-subtle);text-align:center}
+
+/* ---------- Toast ---------- */
+.sk-toast{
+  position:absolute;left:50%;bottom:22px;z-index:80;transform:translateX(-50%) translateY(6px);
+  display:flex;align-items:center;gap:7px;max-width:min(640px,calc(100% - 48px));padding:8px 12px;
+  border-radius:8px;background:var(--sk-surface-3);
+  box-shadow:0 12px 30px var(--sk-shadow-color),inset 0 0 0 1px var(--sk-border-strong);
+  color:var(--sk-fg);font-size:11.5px;opacity:0;pointer-events:none;
+  transition:opacity .18s ease,transform .18s ease;
+}
+.sk-toast.sk-on{opacity:1;transform:translateX(-50%) translateY(0)}
+.sk-toast-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--sk-accent)}
+.sk-toast[data-kind="error"] .sk-toast-dot{background:var(--sk-danger)}
+.sk-toast[data-kind="success"] .sk-toast-dot{background:var(--sk-success)}
+
+/* ---------- 响应式 ---------- */
+@media (max-width:1024px){
+  .sk-stage{padding:20px}
+  .sk-nav{width:64px;padding:10px 6px}
+  .sk-nav-label{display:none}
+  .sk-nav-item{justify-content:center;padding:0}
+  .sk-nav-item span{display:none}
+  .sk-nav-foot{justify-content:center;padding:8px 0 0}
+  .sk-nav-foot div{display:none}
+  .sk-content{padding:0 16px 14px}
+  .sk-appfake{display:none}
+}
+@media (max-width:768px){
+  .sk-canvas{width:100vw;height:100vh}
+  .sk-stage{padding:0}
+  .sk-panel{width:100%;height:100%;border-radius:0}
+  .sk-nav{display:none}
+  .sk-content{padding:0 12px 12px}
+  .sk-crumb{display:none}
+  .sk-detail{grid-template-columns:1fr}
+  .sk-detail-col{padding-right:0}
+  .sk-detail-col--right{padding-left:0;margin-top:9px;padding-top:9px;box-shadow:inset 0 1px 0 var(--border)}
+  .sk-toolbar{height:auto;min-height:38px;flex-wrap:wrap;padding:4px 0}
+  .sk-toolbar-right{margin-left:0;width:100%;justify-content:flex-end;flex-wrap:wrap}
+  .sk-seg button span,.sk-select-btn span{display:none}
+  .sk-stats-row{flex-wrap:wrap}
+  .sk-stats{flex:none;width:100%}
+  .sk-diag-entry{width:100%;justify-content:center}
+  .sk-foot-note{display:none}
+  .sk-win-title{display:none}
+  .sk-action{height:auto;min-height:76px;flex-wrap:wrap;padding:10px 12px}
+  .sk-action-btns{margin-left:0;width:100%;justify-content:flex-end}
+}
+@media (max-width:520px){
+  .sk-filter-label{min-width:0}
+  .sk-scan{padding:0 8px}
+  .sk-stats .sk-stat span{display:none}
+  .sk-group-provider{display:none}
+  .sk-usage{font-size:9.5px}
+  .sk-card{padding-left:13px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  .sk-scan.sk-loading svg{animation:none}
+  .sk-fade{animation:none}
+}
+</style>
+</head>
+
+<body>
+<main class="sk-canvas" data-od-id="canvas-1440">
+  <header class="sk-winbar" data-od-id="window-chrome">
+    <div class="sk-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="sk-win-title"><b>DeepSeek Harness</b> — 设置 · Skill 管理</div>
+    <div class="sk-tools" data-od-id="demo-tools">
+      <button class="sk-tool-btn" id="skThemeBtn" type="button" aria-label="切换到浅色主题" title="切换主题">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
+      </button>
+      <div class="sk-demo-wrap">
+        <button class="sk-tool-btn" id="skDemoBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="skDemoMenu">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M8 15h8"/></svg>
+          <span>演示</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="sk-menu" id="skDemoMenu" role="menu" aria-label="演示场景" hidden>
+          <div class="sk-menu-label">演示场景</div>
+          <button class="sk-menu-item" type="button" role="menuitemradio" data-scenario="default" aria-checked="true"><span class="sk-menu-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>默认</span></button>
+          <button class="sk-menu-item" type="button" role="menuitemradio" data-scenario="search" aria-checked="false"><span class="sk-menu-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>搜索</span></button>
+          <button class="sk-menu-item" type="button" role="menuitemradio" data-scenario="batch" aria-checked="false"><span class="sk-menu-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>批量</span></button>
+          <button class="sk-menu-item" type="button" role="menuitemradio" data-scenario="diag" aria-checked="false"><span class="sk-menu-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>诊断</span></button>
+          <button class="sk-menu-item" type="button" role="menuitemradio" data-scenario="empty" aria-checked="false"><span class="sk-menu-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>空态</span></button>
+          <div class="sk-menu-sep"></div>
+          <div class="sk-menu-label">状态演练</div>
+          <button class="sk-menu-item" type="button" role="menuitemradio" data-scenario="error" aria-checked="false"><span class="sk-menu-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>加载失败</span></button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="sk-stage" data-od-id="stage">
+    <div class="sk-appfake" aria-hidden="true">
+      <div class="sk-fake-rail">
+        <div class="sk-fake-line sk-w60"></div>
+        <div class="sk-fake-line sk-w80"></div>
+        <div class="sk-fake-line sk-w40"></div>
+        <div class="sk-fake-line sk-w80"></div>
+        <div class="sk-fake-line sk-w60"></div>
+        <div class="sk-fake-line sk-w40"></div>
+        <div class="sk-fake-line sk-w80"></div>
+        <div class="sk-fake-line sk-w60"></div>
+      </div>
+      <div class="sk-fake-main">
+        <div class="sk-fake-line sk-w25"></div>
+        <div class="sk-fake-block"></div>
+        <div class="sk-fake-line sk-w40"></div>
+      </div>
+    </div>
+
+    <section class="sk-panel" id="skPanel" role="dialog" aria-modal="true" aria-labelledby="skPanelTitle" data-od-id="settings-panel">
+      <header class="sk-panel-head" data-od-id="panel-head">
+        <h1 id="skPanelTitle">设置</h1>
+        <div class="sk-crumb"><span>插件</span><span class="sk-slash">/</span><span>Skill 管理</span></div>
+        <button class="sk-icon-btn" type="button" data-action="close-panel" aria-label="关闭设置面板">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+
+      <div class="sk-panel-body">
+        <nav class="sk-nav" aria-label="设置导航" data-od-id="settings-nav">
+          <div class="sk-nav-label">应用</div>
+          <button class="sk-nav-item" type="button" data-action="nav" data-nav="general">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.8 12h2.4M18.8 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
+            <span>通用</span>
+          </button>
+          <button class="sk-nav-item" type="button" data-action="nav" data-nav="appearance">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            <span>外观</span>
+          </button>
+          <button class="sk-nav-item" type="button" data-action="nav" data-nav="model">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.5 13.6 9l4.4 1.6-4.4 1.6L12 16.5l-1.6-4.3L6 10.6 10.4 9 12 4.5Z"/><path d="M18.5 3.5v3M17 5h3"/></svg>
+            <span>模型与推理</span>
+          </button>
+          <button class="sk-nav-item" type="button" data-action="nav" data-nav="keys">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+            <span>快捷键</span>
+          </button>
+          <div class="sk-nav-label">扩展</div>
+          <button class="sk-nav-item" type="button" aria-current="page" data-action="nav" data-nav="plugins">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h5v2.2a2 2 0 1 0 0 4V13h-2.8a2 2 0 1 0-4 0H4V9.2h2.2a2 2 0 1 0 0-4H4V4h5Z"/><path d="M14 13v3.8a2 2 0 0 1-2 2H9"/></svg>
+            <span>插件</span>
+          </button>
+          <button class="sk-nav-item" type="button" data-action="nav" data-nav="mcp">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M8 7h.01M8 17h.01"/></svg>
+            <span>MCP 服务</span>
+          </button>
+          <button class="sk-nav-item" type="button" data-action="nav" data-nav="presets">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 4v4M8 13h.01M16 13h.01M9 17h6"/></svg>
+            <span>Agent 预设</span>
+          </button>
+          <div class="sk-nav-label">系统</div>
+          <button class="sk-nav-item" type="button" data-action="nav" data-nav="privacy">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 5 6v5.5c0 4.4 2.9 7.7 7 9.5 4.1-1.8 7-5.1 7-9.5V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+            <span>数据与隐私</span>
+          </button>
+          <button class="sk-nav-item" type="button" data-action="nav" data-nav="about">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>
+            <span>关于</span>
+          </button>
+          <div class="sk-nav-foot">
+            <span class="sk-avatar" aria-hidden="true">BS</span>
+            <div><b>bsfeng</b><span>本地 · 管理员</span></div>
+          </div>
+        </nav>
+
+        <div class="sk-content" data-od-id="content-564">
+          <div class="sk-tabs" id="skTabs" role="tablist" aria-label="插件设置" data-od-id="plugin-tabs">
+            <button class="sk-tab" type="button" role="tab" aria-selected="false" data-tab="installed" tabindex="-1">已安装 <span class="sk-tab-count">11</span></button>
+            <button class="sk-tab" type="button" role="tab" aria-selected="false" data-tab="updates" tabindex="-1">更新 <span class="sk-tab-badge">1</span></button>
+            <button class="sk-tab" type="button" role="tab" aria-selected="true" data-tab="skills">Skill 管理</button>
+          </div>
+
+          <div class="sk-view" id="skView" data-od-id="skill-view">
+            <div class="sk-command" id="skCommand" data-od-id="command-bar">
+              <div class="sk-search-row">
+                <div class="sk-search">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+                  <input id="skSearch" type="text" role="searchbox" autocomplete="off" spellcheck="false" placeholder="搜索名称、描述或路径" aria-label="搜索技能">
+                  <kbd class="sk-kbd">⌘K</kbd>
+                  <button class="sk-search-clear" id="skSearchClear" type="button" data-action="clear-search" aria-label="清空搜索" hidden>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                  </button>
+                </div>
+                <button class="sk-scan" id="skScan" type="button" data-action="rescan" aria-label="重新扫描技能目录">
+                  <span class="sk-scan-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 6.1"/><path d="M20 5v6h-6"/></svg></span>
+                  <span id="skScanLabel">重新扫描</span>
+                </button>
+              </div>
+              <div class="sk-stats-row" data-od-id="overview-stats">
+                <div class="sk-stats" role="group" aria-label="概览筛选">
+                  <button class="sk-stat" type="button" data-stat="all" aria-pressed="true"><b data-count="all">27</b><span>全部</span></button>
+                  <button class="sk-stat" type="button" data-stat="enabled" aria-pressed="false"><b data-count="enabled">22</b><span>启用</span></button>
+                  <button class="sk-stat" type="button" data-stat="disabled" aria-pressed="false"><b data-count="disabled">3</b><span>禁用</span></button>
+                  <button class="sk-stat sk-stat--warn" type="button" data-stat="anomaly" aria-pressed="false"><b data-count="anomaly">2</b><span>异常</span></button>
+                </div>
+                <button class="sk-diag-entry" type="button" data-action="open-diag" aria-label="打开异常诊断，当前 2 项异常">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 2.8 20h18.4L12 4Z"/><path d="M12 10v4M12 17h.01"/></svg>
+                  <span>诊断</span><b data-count="anomaly">2</b>
+                </button>
+              </div>
+            </div>
+
+            <div class="sk-action" id="skActionBar" hidden data-od-id="batch-bar" aria-live="polite"></div>
+
+            <div class="sk-filters" id="skFilters" data-od-id="filters">
+              <div class="sk-filter-row" role="group" aria-label="按来源筛选">
+                <span class="sk-filter-label">来源</span>
+                <button class="sk-chip" type="button" data-source="all" aria-pressed="true">全部 <b data-count="all">27</b></button>
+                <button class="sk-chip" type="button" data-source="project" aria-pressed="false"><i class="sk-src-dot sk-src-dot--project"></i>本项目 <b data-count="project">10</b></button>
+                <button class="sk-chip" type="button" data-source="user" aria-pressed="false"><i class="sk-src-dot sk-src-dot--user"></i>用户 <b data-count="user">13</b></button>
+                <button class="sk-chip" type="button" data-source="bundled" aria-pressed="false"><i class="sk-src-dot sk-src-dot--bundled"></i>内置 <b data-count="bundled">2</b></button>
+                <button class="sk-chip" type="button" data-source="anomaly" aria-pressed="false"><i class="sk-src-dot sk-src-dot--anomaly"></i>异常 <b data-count="anomaly">2</b></button>
+              </div>
+              <div class="sk-filter-row" role="group" aria-label="按状态筛选">
+                <span class="sk-filter-label">状态</span>
+                <button class="sk-chip" type="button" data-status="all" aria-pressed="true">全部状态</button>
+                <button class="sk-chip" type="button" data-status="enabled" aria-pressed="false">启用 <b data-count="enabled">22</b></button>
+                <button class="sk-chip" type="button" data-status="disabled" aria-pressed="false">禁用 <b data-count="disabled">3</b></button>
+                <button class="sk-chip" type="button" data-status="anomaly" aria-pressed="false">异常 <b data-count="anomaly">2</b></button>
+                <span class="sk-filter-sep" aria-hidden="true"></span>
+                <button class="sk-chip sk-chip--unused" id="skUnused" type="button" data-action="toggle-unused" aria-pressed="false">只看未使用 <b data-count="unused">8</b></button>
+              </div>
+            </div>
+
+            <div class="sk-toolbar" id="skToolbar" data-od-id="view-toolbar">
+              <span class="sk-result" id="skResult"><b>27</b> 项结果</span>
+              <span class="sk-scan-time" id="skScanTime">上次扫描 18:12</span>
+              <div class="sk-toolbar-right">
+                <div class="sk-seg" role="group" aria-label="视图切换">
+                  <button id="skCardsBtn" type="button" data-view="cards" aria-pressed="true">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/></svg>
+                    <span>卡片流</span>
+                  </button>
+                  <button id="skTableBtn" type="button" data-view="table" aria-pressed="false">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>
+                    <span>紧凑表</span>
+                  </button>
+                </div>
+                <div class="sk-sortwrap">
+                  <button class="sk-tool-btn--text" id="skSortBtn" type="button" data-action="toggle-sort-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="skSortMenu">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+                    <span id="skSortLabel">名称</span>
+                  </button>
+                  <div class="sk-menu sk-sort-menu" id="skSortMenu" role="menu" aria-label="排序方式" hidden>
+                    <button class="sk-menu-item" type="button" role="menuitemradio" data-sort="name" aria-checked="true"><span class="sk-menu-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>名称</span></button>
+                    <button class="sk-menu-item" type="button" role="menuitemradio" data-sort="usage" aria-checked="false"><span class="sk-menu-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>使用次数</span></button>
+                    <button class="sk-menu-item" type="button" role="menuitemradio" data-sort="recent" aria-checked="false"><span class="sk-menu-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>最近使用</span></button>
+                    <button class="sk-menu-item" type="button" role="menuitemradio" data-sort="source" aria-checked="false"><span class="sk-menu-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>来源</span></button>
+                  </div>
+                </div>
+                <button class="sk-sort-dir" id="skSortDir" type="button" data-action="sort-dir" aria-label="切换排序方向（当前升序）">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>
+                </button>
+                <button class="sk-select-btn" id="skSelectBtn" type="button" data-action="select-mode" aria-pressed="false">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 12 3 3 6-6"/></svg>
+                  <span>选择</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="sk-stagearea" id="skStageArea">
+              <div class="sk-listwrap" id="skListWrap" data-od-id="skill-list"></div>
+              <div class="sk-statearea" id="skStateArea" data-od-id="state-area" hidden></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="sk-toast" id="skToast" role="status" aria-live="polite" data-kind="default" data-od-id="toast">
+    <span class="sk-toast-dot" aria-hidden="true"></span>
+    <span id="skToastMsg"></span>
+  </div>
+</main>
+
+<script>
+
+
+(function () {
+  'use strict';
+
+  /* ------------------------------------------------------------------
+     数据：来源 / 使用统计 / 双作用域状态（演示样本）
+     ------------------------------------------------------------------ */
+  var ROOT = '/Users/bsfeng/IdeaProjects/my-dsh-plugins';
+  var HOME = '/Users/bsfeng/.dsh/skills';
+  var BUNDLED = '/Applications/DeepSeek Harness.app/Contents/Resources/dsh/skills';
+
+  var SOURCE_META = {
+    project: { label: '本项目', provider: 'project-dsh · my-dsh-plugins' },
+    user: { label: '用户', provider: 'user-agents · ~/.dsh/skills' },
+    bundled: { label: '内置', provider: 'DSH 内置能力' },
+    anomaly: { label: '异常', provider: '未被收录 · 扫描跳过' }
+  };
+  var GROUP_ORDER = { project: 0, user: 1, bundled: 2, anomaly: 3 };
+  var SORT_LABELS = { name: '名称', usage: '使用次数', recent: '最近使用', source: '来源' };
+  var TABLE_LABELS = { name: '名称', usage: '使用', recent: '最近', source: '来源' };
+  var SORT_DEFAULT_DIR = { name: 'asc', usage: 'desc', recent: 'desc', source: 'asc' };
+  var SCENARIO_LABELS = { default: '默认', search: '搜索', batch: '批量', diag: '诊断', empty: '空态', error: '加载失败' };
+
+  var RAW = [
+    ['development-lifecycle', 'project', '需求登记 → 确认拆解 → 开发 → 验证 → 发版 → 文档的端到端流程与门禁。', { usage: 3, recent: '10-22 09:14', via: 'model', failOnce: true }],
+    ['dsh-github-triage', 'project', '巡检 issue / PR / CI 与依赖告警，并把模糊想法登记成规范需求。', { usage: 1, recent: '10-18 11:02' }],
+    ['dsh-plugin-development', 'project', '新建、修改、调试与发布 DSH 插件：五种形态与目录约定。', { usage: 4, recent: '10-23 15:40' }],
+    ['plugin-release', 'project', '发布轨校验、逐层门禁与 npm publish / Git tag 的安全执行。', { usage: 2, recent: '10-20 17:11' }],
+    ['plugin-runtime-debug', 'project', '浏览器运行时异常：对照宿主 API 契约定位，而不是按名字猜。', { usage: 0 }],
+    ['plugin-test', 'project', '为 DSH 插件选择最小充分的测试层级，迁移时跑七触点流程。', { usage: 5, recent: '10-23 10:18' }],
+    ['plugin-upgrade', 'project', '宿主升级四模式：inspect / update / author-migrate / audit。', { usage: 0 }],
+    ['plugin-write', 'project', '插件命名、清单校验与中央注册表冲突查询，避免发布即冲突。', { usage: 2, recent: '10-19 20:31' }],
+    ['resource-budget-review', 'project', '持续运行逻辑的磁盘 IO、CPU、内存、网络与存量预算评审。', { usage: 0 }],
+    ['verifying-dsh-plugins', 'project', '隔离实例起停与真实浏览器人工走查的发版前功能级验证。', { usage: 3, recent: '10-22 16:40' }],
+
+    ['agent-browser', 'user', '使用本地 agent-browser CLI 完成浏览器自动化、取证与截图。', { usage: 8, recent: '10-23 18:20' }],
+    ['brainstorming', 'user', '创意与功能开始前，澄清意图、约束、验收边界与不做清单。', { usage: 11, recent: '10-15 14:03', global: false, project: false }],
+    ['codebase-memory', 'user', '用本地知识图谱查符号、调用链、影响面与死代码。', { usage: 7, recent: '10-22 11:36' }],
+    ['crafting-code', 'user', '按系统类型决定必须加、按需加、可以省掉的工程能力。', { usage: 0 }],
+    ['github-ops', 'user', '提交推送、issue / PR、安全告警与 Release 的 GitHub 操作。', { usage: 6, recent: '10-21 09:47' }],
+    ['leader-ops', 'user', '大任务拆解、派发、并行控制、验收与汇报纪律。', { usage: 42, recent: '10-24 16:02', via: 'model' }],
+    ['npm-ops', 'user', 'npm 发布、撤销、弃用、dist-tag 与打包预览。', { usage: 2, recent: '10-09 13:12', global: false }],
+    ['open-design', 'user', 'Open Design 原型、设计风格、导出与反 AI-slop 检查。', { usage: 17, recent: '10-23 17:25' }],
+    ['quality-gates', 'user', '交付前的质量门禁、证据留存与回归防复发。', { usage: 9, recent: '10-22 15:08' }],
+    ['ssh-ops', 'user', 'SSH 远程命令、上传下载、交互登录与端口转发。', { usage: 4, recent: '10-18 16:55', project: false }],
+    ['systematic-debugging', 'user', '出现 bug 时先复现与定位根因，再提出修复。', { usage: 1, recent: '10-11 10:26' }],
+    ['writing-plans', 'user', '把规格拆成可执行、可验收、有顺序的多步计划。', { usage: 2, recent: '10-12 09:05', global: false, project: false }],
+    ['writing-skills', 'user', '技能结构、description 写法与上线前的盲测验证。', { usage: 0 }],
+
+    ['web-search', 'bundled', '宿主内置联网检索：返回摘要与可引用的来源链接。', { usage: 5, recent: '10-21 14:18' }],
+    ['image-gen', 'bundled', '宿主内置图片生成：按提示词产出位图素材。', { usage: 0, invoke: ['user'] }],
+
+    ['old-skill', 'anomaly', '历史技能入口已失效，未纳入技能台，仅保留诊断信息。', {
+      anomaly: {
+        label: '坏符号链接',
+        reason: '符号链接指向 ../../archived/old-skill，目标目录已不存在，扫描时被跳过。',
+        suggestion: '恢复目标目录，或在确认无用后移除该符号链接，然后重新扫描。',
+        path: ROOT + '/skills/old-skill'
+      }
+    }],
+    ['draft-skill', 'anomaly', '草稿目录未补全元信息，暂不可被调用。', {
+      anomaly: {
+        label: '缺 SKILL.md',
+        reason: '目录存在，但缺少 SKILL.md 与 frontmatter（name / description）。',
+        suggestion: '补写 SKILL.md 与 frontmatter，或删除草稿目录后重新扫描。',
+        path: HOME + '/draft-skill'
+      }
+    }]
+  ];
+
+  function pathFor(source, id) {
+    if (source === 'project') return ROOT + '/skills/' + id + '/SKILL.md';
+    if (source === 'user') return HOME + '/' + id + '/SKILL.md';
+    if (source === 'bundled') return BUNDLED + '/' + id + '/SKILL.md';
+    return HOME + '/' + id;
+  }
+
+  var SKILLS = RAW.map(function (row) {
+    var id = row[0], source = row[1], desc = row[2], opts = row[3] || {};
+    var anomaly = opts.anomaly || null;
+    var isGlobal = anomaly ? false : opts.global !== false;
+    var isProject = anomaly ? false : opts.project !== false;
+    var failPending = !!opts.failOnce;
+    return {
+      id: id,
+      source: source,
+      desc: desc,
+      path: anomaly ? anomaly.path : pathFor(source, id),
+      provider: SOURCE_META[source].provider,
+      anomaly: anomaly,
+      global: isGlobal,
+      project: isProject,
+      baseGlobal: isGlobal,
+      baseProject: isProject,
+      usage: opts.usage || 0,
+      recent: opts.recent || null,
+      via: (opts.usage ? (opts.via || 'user') : null),
+      invoke: opts.invoke || (anomaly ? [] : ['model', 'user']),
+      failPending: failPending,
+      baseFailPending: failPending
+    };
+  });
+
+  var BY_ID = {};
+  SKILLS.forEach(function (s) { BY_ID[s.id] = s; });
+
+  /* ------------------------------------------------------------------
+     状态
+     ------------------------------------------------------------------ */
+  var state = {
+    theme: 'dark',
+    scenario: 'default',
+    loading: true,
+    hasLoaded: false,
+    error: false,
+    scanTime: '18:12',
+    query: '',
+    source: 'all',
+    status: 'all',
+    unused: false,
+    view: 'cards',
+    sortKey: 'name',
+    sortDir: 'asc',
+    expanded: new Set(),
+    selection: false,
+    selected: new Set(),
+    batchConfirm: false,
+    diagnostics: false,
+    projectCtx: true,
+    emptyDemo: false,
+    emptyVariant: 'nodata',
+    inlineError: null
+  };
+
+  var scanTimer = null;
+  var toastTimer = null;
+  var els = {};
+
+  function el(id) {
+    if (!els[id]) els[id] = document.getElementById(id);
+    return els[id];
+  }
+
+  /* ------------------------------------------------------------------
+     图标（内联 SVG，stroke 1.8 / viewBox 24）
+     ------------------------------------------------------------------ */
+  var ICONS = {
+    chevron: '<path d="m6 9 6 6 6-6"/>',
+    activity: '<path d="M3 12h4l2.5 6 4-14 2.5 8H21"/>',
+    copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
+    check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+    checkSquare: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/>',
+    alert: '<path d="M12 4 2.8 20h18.4L12 4Z"/><path d="M12 10v4M12 17h.01"/>',
+    refresh: '<path d="M20 11a8 8 0 1 0-2.3 6.1"/><path d="M20 5v6h-6"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/>',
+    back: '<path d="M19 12H5"/><path d="m11 6-6 6 6 6"/>',
+    package: '<path d="M3 7l9-4 9 4-9 4-9-4Z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>',
+    folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>',
+    x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    arrowUp: '<path d="M12 19V5"/><path d="m6 11 6-6 6 6"/>',
+    arrowDown: '<path d="M12 5v14"/><path d="m6 13 6 6 6-6"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/>',
+    sortNeutral: '<path d="m8 9 4-4 4 4"/><path d="m8 15 4 4 4-4"/>',
+    fileMissing: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/><path d="M9 14h6"/>'
+  };
+
+  function icon(name, size) {
+    var s = size || 14;
+    return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || '') + '</svg>';
+  }
+
+  /* ------------------------------------------------------------------
+     工具函数
+     ------------------------------------------------------------------ */
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"]/g, function (ch) {
+      return ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : '&quot;';
+    });
+  }
+
+  function nowHM() {
+    var d = new Date();
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  function viaLabel(via) {
+    if (via === 'model') return '模型调用';
+    if (via === 'user') return '用户调用';
+    return '—';
+  }
+
+  function mdFull(s) {
+    if (s.anomaly) return '';
+    return [
+      '---',
+      'name: ' + s.id,
+      'description: ' + s.desc,
+      '---',
+      '',
+      '# ' + s.id,
+      '',
+      s.desc,
+      '',
+      '## 何时使用',
+      '- 任务与该能力匹配时优先加载，而不是凭记忆作答。',
+      '',
+      '## 流程',
+      '1. 读取上下文，确认边界与验收标准。',
+      '2. 按清单执行，保留可复核的证据。',
+      '3. 交付前自检，说明已知偏差。',
+      '',
+      '## 约定',
+      '- 遵循仓库既有规范；引入外部依赖前先确认资源预算。',
+      '- 写规范文档时使用推荐 / 默认 / 优先等正向表述。'
+    ].join('\n');
+  }
+
+  function previewMd(s) {
+    return mdFull(s).split('\n').slice(0, 15).join('\n');
+  }
+
+  function computeCounts() {
+    var c = { all: SKILLS.length, project: 0, user: 0, bundled: 0, anomaly: 0, enabled: 0, disabled: 0, unused: 0 };
+    SKILLS.forEach(function (s) {
+      if (s.source === 'project') c.project++;
+      else if (s.source === 'user') c.user++;
+      else if (s.source === 'bundled') c.bundled++;
+      if (s.anomaly) c.anomaly++;
+      else if (s.global) c.enabled++;
+      else c.disabled++;
+      if (s.usage === 0) c.unused++;
+    });
+    return c;
+  }
+
+  function getVisible() {
+    var q = state.query.trim().toLowerCase();
+    return SKILLS.filter(function (s) {
+      if (!state.projectCtx && s.source === 'project') return false;
+      if (state.source !== 'all' && s.source !== state.source) return false;
+      if (state.status === 'enabled' && !(s.global && !s.anomaly)) return false;
+      if (state.status === 'disabled' && !(s.global === false && !s.anomaly)) return false;
+      if (state.status === 'anomaly' && !s.anomaly) return false;
+      if (state.unused && s.usage > 0) return false;
+      if (q) {
+        var hay = (s.id + ' ' + s.desc + ' ' + s.path + ' ' + s.provider).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function sortList(list) {
+    var dir = state.sortDir === 'asc' ? 1 : -1;
+    var key = state.sortKey;
+    return list.slice().sort(function (a, b) {
+      var r = 0;
+      if (key === 'name') r = a.id.localeCompare(b.id, 'en');
+      else if (key === 'usage') r = a.usage - b.usage;
+      else if (key === 'recent') r = (a.recent || '').localeCompare(b.recent || '');
+      else if (key === 'source') r = (GROUP_ORDER[a.source] - GROUP_ORDER[b.source]) || a.id.localeCompare(b.id, 'en');
+      return r * dir;
+    });
+  }
+
+  function activeStat() {
+    if (state.status === 'enabled') return 'enabled';
+    if (state.status === 'disabled') return 'disabled';
+    if (state.status === 'anomaly' || state.source === 'anomaly') return 'anomaly';
+    if (state.source === 'all' && state.status === 'all' && !state.unused) return 'all';
+    return '';
+  }
+
+  function footNote(s) {
+    if (s.anomaly) return '未收录 · 两个作用域不可用';
+    if (!state.projectCtx) return '未绑定项目 · 本项目不可用';
+    if (!s.global) return '全局关闭 · 本项目不生效';
+    if (!s.project) return '本项目作用域已关闭';
+    return '';
+  }
+
+  /* ------------------------------------------------------------------
+     片段：开关 / 详情 / 卡片 / 表格
+     ------------------------------------------------------------------ */
+  function scopeButton(s, scope) {
+    var on = scope === 'global' ? s.global : s.project;
+    var disabled = !!s.anomaly || (scope === 'project' && !state.projectCtx);
+    var warn = scope === 'project' && !s.project && !s.anomaly;
+    var label = scope === 'global' ? '全局' : '本项目';
+    return '<button class="sk-switch' + (warn ? ' sk-warn-switch' : '') + '" type="button" role="switch" aria-checked="' + on + '"' +
+      ' data-action="toggle-scope" data-id="' + s.id + '" data-scope="' + scope + '" data-focus="sw-' + s.id + '-' + scope + '"' +
+      ' aria-label="' + esc(s.id) + ' ' + label + '作用域：' + (on ? '已启用' : '已禁用') + (disabled ? '（不可切换）' : '') + '"' +
+      (disabled ? ' disabled aria-disabled="true"' : '') + '>' +
+      '<span class="sk-switch-label">' + label + '</span>' +
+      '<span class="sk-track" aria-hidden="true"><span class="sk-knob"></span></span>' +
+      '</button>';
+  }
+
+  function scopeButtonMini(s, scope) {
+    var on = scope === 'global' ? s.global : s.project;
+    var disabled = !!s.anomaly || (scope === 'project' && !state.projectCtx);
+    var warn = scope === 'project' && !s.project && !s.anomaly;
+    var label = scope === 'global' ? '全局' : '本项目';
+    return '<button class="sk-switch sk-switch--mini' + (warn ? ' sk-warn-switch' : '') + '" type="button" role="switch" aria-checked="' + on + '"' +
+      ' data-action="toggle-scope" data-id="' + s.id + '" data-scope="' + scope + '" data-focus="sw-' + s.id + '-' + scope + '"' +
+      ' aria-label="' + esc(s.id) + ' ' + label + '作用域：' + (on ? '已启用' : '已禁用') + (disabled ? '（不可切换）' : '') + '"' +
+      ' title="' + label + '作用域：' + (on ? '启用' : '关闭') + '"' +
+      (disabled ? ' disabled aria-disabled="true"' : '') + '>' +
+      '<span class="sk-track" aria-hidden="true"><span class="sk-knob"></span></span>' +
+      '</button>';
+  }
+
+  function inlineErrorHTML(s) {
+    var err = state.inlineError;
+    if (!err || err.id !== s.id) return '';
+    return '<div class="sk-inline-error" role="alert">' + icon('alert', 14) +
+      '<div><b>未能更新「' + esc(s.id) + '」</b><span>' + esc(err.msg) + '</span></div>' +
+      '<button class="sk-btn" type="button" data-action="retry-error" data-id="' + s.id + '" data-focus="retry-' + s.id + '">重试</button>' +
+      '</div>';
+  }
+
+  function detailInner(s) {
+    var inv = s.invoke.map(function (x) {
+      return '<span class="sk-cap">' + (x === 'model' ? '模型可调用' : '用户可调用') + '</span>';
+    }).join('');
+    var scopes = s.anomaly ? '未收录 · 不可用' : ('全局 ' + (s.global ? '启用' : '关闭') + ' · 本项目 ' + (s.project ? '启用' : '关闭'));
+    var pathCopy = '<button class="sk-icon-btn sk-icon-btn--sm" type="button" data-action="copy-path" data-id="' + s.id + '" aria-label="复制 ' + esc(s.id) + ' 的路径">' + icon('copy', 13) + '</button>';
+
+    var left = '<div class="sk-detail-col">' +
+      '<p class="sk-detail-desc">' + esc(s.desc) + '</p>' +
+      '<dl class="sk-meta">' +
+      '<div class="sk-meta-row"><dt>路径</dt><dd><code>' + esc(s.path) + '</code>' + pathCopy + '</dd></div>' +
+      '<div class="sk-meta-row"><dt>Provider</dt><dd>' + esc(s.provider) + '</dd></div>' +
+      '<div class="sk-meta-row"><dt>调用能力</dt><dd>' + (inv || '<span class="sk-cap">不可调用</span>') + '</dd></div>' +
+      '<div class="sk-meta-row"><dt>来源</dt><dd>' + SOURCE_META[s.source].label + ' · ' + (s.anomaly ? '未收录' : '已收录') + '</dd></div>' +
+      '<div class="sk-meta-row"><dt>作用域</dt><dd>' + scopes + '</dd></div>' +
+      (s.anomaly ? '<div class="sk-meta-row"><dt>原因</dt><dd>' + esc(s.anomaly.reason) + '</dd></div>' +
+        '<div class="sk-meta-row"><dt>建议</dt><dd>' + esc(s.anomaly.suggestion) + '</dd></div>' : '') +
+      '</dl></div>';
+
+    var right;
+    if (s.anomaly) {
+      right = '<div class="sk-detail-col sk-detail-col--right">' +
+        '<div class="sk-preview-head"><span>SKILL.md</span><em>无法读取</em></div>' +
+        '<div class="sk-missing"><b>' + esc(s.anomaly.label) + '</b><span>' + esc(s.anomaly.reason) + '</span><code>' + esc(s.path) + '</code></div>' +
+        '<div class="sk-usage-stats"><span><b>' + s.usage + '</b> 次调用</span><span>最近 ' + esc(s.recent || '—') + '</span><span>来源 ' + viaLabel(s.via) + '</span></div>' +
+        '</div>';
+    } else {
+      right = '<div class="sk-detail-col sk-detail-col--right">' +
+        '<div class="sk-preview-head"><span>SKILL.md</span><em>前 15 行</em>' +
+        '<button class="sk-mini-btn" type="button" data-action="copy-md" data-id="' + s.id + '" aria-label="复制 ' + esc(s.id) + ' 的 SKILL.md 全文">' + icon('copy', 12) + '复制全文</button></div>' +
+        '<pre class="sk-pre">' + esc(previewMd(s)) + '</pre>' +
+        '<div class="sk-usage-stats"><span><b>' + s.usage + '</b> 次调用</span><span>最近 ' + esc(s.recent || '—') + '</span><span>来源 ' + viaLabel(s.via) + '</span></div>' +
+        '</div>';
+    }
+    return left + right;
+  }
+
+  function cardHTML(s) {
+    var expanded = state.expanded.has(s.id);
+    var cls = ['sk-card', 'sk-src-' + s.source];
+    if (s.anomaly) cls.push('sk-anomaly');
+    else if (!s.global) cls.push('sk-off', 'sk-global-off');
+    else if (!s.project) cls.push('sk-project-off');
+    if (state.selected.has(s.id)) cls.push('sk-selected');
+
+    var badges = '';
+    if (s.anomaly) {
+      badges = '<span class="sk-badge sk-badge--warn">' + esc(s.anomaly.label) + '</span><span class="sk-badge sk-badge--quiet">未收录</span>';
+    } else if (!s.global) {
+      badges = '<span class="sk-badge sk-badge--quiet">全局关闭</span>';
+    } else if (!s.project) {
+      badges = '<span class="sk-badge sk-badge--quiet">本项目关闭</span>';
+    }
+
+    var usage = s.usage > 0
+      ? '<span class="sk-usage" title="调用 ' + s.usage + ' 次，最近 ' + esc(s.recent || '—') + '">' + icon('activity', 12) + s.usage + ' 次 · ' + esc(s.recent || '') + '</span>'
+      : '<span class="sk-usage">' + icon('activity', 12) + '未使用</span>';
+
+    var check = state.selection
+      ? '<input class="sk-checkbox" type="checkbox" data-select="' + s.id + '" data-focus="check-' + s.id + '" aria-label="选择 ' + esc(s.id) + '"' + (state.selected.has(s.id) ? ' checked' : '') + '>'
+      : '';
+
+    var scopesDim = (!s.global && !s.anomaly) ? ' sk-dim' : '';
+
+    return '<article class="' + cls.join(' ') + '" data-id="' + s.id + '" data-expanded="' + expanded + '">' +
+      '<span class="sk-card-bar" aria-hidden="true"></span>' +
+      '<div class="sk-card-top">' + check +
+      '<button class="sk-card-open" type="button" data-action="toggle-detail" data-id="' + s.id + '" data-focus="open-' + s.id + '"' +
+      ' aria-expanded="' + expanded + '" aria-controls="detail-' + s.id + '" title="展开或收起详情">' +
+      '<span class="sk-name">' + esc(s.id) + '</span>' +
+      '<span class="sk-src-dot sk-src-dot--' + s.source + '" aria-hidden="true"></span>' +
+      badges + usage +
+      '<span class="sk-chevron">' + icon('chevron', 14) + '</span>' +
+      '</button></div>' +
+      '<p class="sk-desc">' + esc(s.desc) + '</p>' +
+      '<div class="sk-card-foot">' +
+      '<div class="sk-scopes' + scopesDim + '">' + scopeButton(s, 'global') + scopeButton(s, 'project') + '</div>' +
+      '<span class="sk-foot-note">' + footNote(s) + '</span>' +
+      '</div>' +
+      inlineErrorHTML(s) +
+      '<div class="sk-detail" id="detail-' + s.id + '" data-od-id="focus-detail-' + s.id + '"' + (expanded ? '' : ' hidden') + '>' + detailInner(s) + '</div>' +
+      '</article>';
+  }
+
+  function sortIcon(key) {
+    if (state.sortKey !== key) return icon('sortNeutral', 12);
+    return icon(state.sortDir === 'asc' ? 'arrowUp' : 'arrowDown', 12);
+  }
+
+  function ariaSort(key) {
+    if (state.sortKey !== key) return 'none';
+    return state.sortDir === 'asc' ? 'ascending' : 'descending';
+  }
+
+  function sortHeader(key) {
+    return '<button class="sk-sortbtn" type="button" data-sort="' + key + '" aria-label="按' + SORT_LABELS[key] + '排序">' +
+      TABLE_LABELS[key] + sortIcon(key) + '</button>';
+  }
+
+  function rowHTML(s, showCheck) {
+    var expanded = state.expanded.has(s.id);
+    var cls = ['sk-row', 'sk-src-' + s.source];
+    if (s.anomaly) cls.push('sk-anomaly');
+    else if (!s.global) cls.push('sk-off');
+    if (state.selected.has(s.id)) cls.push('sk-selected');
+
+    var badges = s.anomaly ? '<span class="sk-badge sk-badge--warn">异常</span>' : '';
+    var check = showCheck
+      ? '<td class="sk-col-check"><input class="sk-checkbox" type="checkbox" data-select="' + s.id + '" data-focus="check-' + s.id + '" aria-label="选择 ' + esc(s.id) + '"' + (state.selected.has(s.id) ? ' checked' : '') + '></td>'
+      : '';
+
+    var cols = showCheck ? 6 : 5;
+    var hasInlineError = !!(state.inlineError && state.inlineError.id === s.id);
+    var errorRow = hasInlineError && !expanded
+      ? '<tr class="sk-detail-row" role="row"><td colspan="' + cols + '">' + inlineErrorHTML(s) + '</td></tr>'
+      : '';
+
+    return '<tr class="' + cls.join(' ') + '" data-row-id="' + s.id + '" data-expanded="' + expanded + '">' + check +
+      '<td><div class="sk-row-name"><span class="sk-row-bar" aria-hidden="true"></span>' +
+      '<button class="sk-row-open" type="button" data-action="toggle-detail" data-id="' + s.id + '" data-focus="open-' + s.id + '" aria-expanded="' + expanded + '" aria-controls="detail-row-' + s.id + '">' +
+      '<span class="sk-name">' + esc(s.id) + '</span>' + badges + '<span class="sk-chevron">' + icon('chevron', 12) + '</span></button></div></td>' +
+      '<td>' + SOURCE_META[s.source].label + '</td>' +
+      '<td title="调用 ' + s.usage + ' 次">' + s.usage + '</td>' +
+      '<td title="' + esc(s.recent || '从未使用') + '">' + (s.recent ? esc(s.recent) : '—') + '</td>' +
+      '<td><div class="sk-scope-cell">' + scopeButtonMini(s, 'global') + scopeButtonMini(s, 'project') + '</div></td>' +
+      '</tr>' + errorRow +
+      '<tr class="sk-detail-row" id="detail-row-' + s.id + '" data-detail-for="' + s.id + '"' + (expanded ? '' : ' hidden') + '>' +
+      '<td colspan="' + cols + '">' + (expanded ? inlineErrorHTML(s) : '') +
+      '<div class="sk-detail" id="detail-' + s.id + '" data-od-id="focus-detail-' + s.id + '">' + detailInner(s) + '</div>' +
+      '</td></tr>';
+  }
+
+  function tableHTML(list) {
+    var showCheck = state.selection;
+    var head = '<tr>' +
+      (showCheck ? '<th class="sk-col-check"><input type="checkbox" id="skSelectAll" aria-label="选择当前视图全部技能"></th>' : '') +
+      '<th class="sk-th-sort" aria-sort="' + ariaSort('name') + '">' + sortHeader('name') + '</th>' +
+      '<th class="sk-th-sort" aria-sort="' + ariaSort('source') + '">' + sortHeader('source') + '</th>' +
+      '<th class="sk-th-sort" aria-sort="' + ariaSort('usage') + '">' + sortHeader('usage') + '</th>' +
+      '<th class="sk-th-sort" aria-sort="' + ariaSort('recent') + '">' + sortHeader('recent') + '</th>' +
+      '<th class="sk-th-scope" title="作用域：左为全局，右为本项目">作用域</th>' +
+      '</tr>';
+    var cols = (showCheck ? '<col class="sk-col-check">' : '') +
+      '<col><col class="sk-col-source"><col class="sk-col-usage"><col class="sk-col-recent"><col class="sk-col-scope">';
+    return '<div class="sk-tablewrap" data-od-id="compact-table"><table class="sk-table"><colgroup>' + cols + '</colgroup>' +
+      '<thead>' + head + '</thead><tbody>' + list.map(function (s) { return rowHTML(s, showCheck); }).join('') + '</tbody></table></div>';
+  }
+
+  function cardsHTML(list) {
+    return ['project', 'user', 'bundled', 'anomaly'].map(function (key) {
+      var items = list.filter(function (s) { return s.source === key; });
+      if (!items.length) return '';
+      return '<section class="sk-group" data-group="' + key + '" data-od-id="skill-group-' + key + '">' +
+        '<header class="sk-group-head" data-od-id="skill-group-head-' + key + '">' +
+        '<span class="sk-src-dot sk-src-dot--' + key + '" aria-hidden="true"></span>' +
+        '<h3>' + SOURCE_META[key].label + '</h3>' +
+        '<span class="sk-group-count">' + items.length + '</span>' +
+        '<span class="sk-group-provider">' + esc(SOURCE_META[key].provider) + '</span>' +
+        '</header>' +
+        '<div class="sk-group-body">' + items.map(cardHTML).join('') + '</div>' +
+        '</section>';
+    }).join('');
+  }
+
+  function actionBarHTML() {
+    var sel = Array.from(state.selected).map(function (id) { return BY_ID[id]; }).filter(Boolean);
+    var anomalies = sel.filter(function (s) { return s.anomaly; }).length;
+    var eligible = sel.length - anomalies;
+    if (state.batchConfirm) {
+      return '<div class="sk-action sk-action--confirm" data-od-id="batch-bar">' + icon('alert', 16) +
+        '<div class="sk-action-info">确认禁用 <b>' + eligible + '</b> 项技能？全局与本项目作用域都会关闭。' +
+        (anomalies ? '<em>' + anomalies + ' 项异常将跳过。</em>' : '') + '</div>' +
+        '<div class="sk-action-btns">' +
+        '<button class="sk-btn sk-btn--danger" type="button" data-action="batch-confirm"' + (eligible ? '' : ' disabled') + '>确认禁用</button>' +
+        '<button class="sk-btn" type="button" data-action="batch-cancel" data-focus="batch-cancel">取消</button>' +
+        '</div></div>';
+    }
+    return '<div class="sk-action" data-od-id="batch-bar">' + icon('checkSquare', 16) +
+      '<div class="sk-action-info"><span>已选 <b>' + sel.length + '</b> 项</span>' +
+      (anomalies ? '<span class="sk-action-note">' + anomalies + ' 项异常将跳过</span>' : '') + '</div>' +
+      '<div class="sk-action-btns">' +
+      '<button class="sk-btn" type="button" data-action="batch-enable"' + (sel.length ? '' : ' disabled') + '>启用</button>' +
+      '<button class="sk-btn sk-btn--danger-ghost" type="button" data-action="batch-disable"' + (sel.length ? '' : ' disabled') + '>禁用</button>' +
+      '<button class="sk-btn sk-btn--ghost" type="button" data-action="batch-exit" data-focus="batch-exit">退出</button>' +
+      '</div></div>';
+  }
+
+  function skeletonHTML() {
+    var cards = '';
+    for (var i = 0; i < 6; i++) {
+      var w = i % 2 === 0 ? 'sk-w55' : 'sk-w70';
+      cards += '<div class="sk-skel-card"><div class="sk-skel-line sk-w25"></div><div class="sk-skel-line ' + w + '"></div><div class="sk-skel-line sk-w40"></div></div>';
+    }
+    return '<div class="sk-skeleton" data-od-id="loading-state" role="status" aria-live="polite" aria-label="正在读取技能目录">' +
+      '<div class="sk-skel-head"></div>' + cards + '</div>';
+  }
+
+  function errorHTML() {
+    return '<div class="sk-error" data-od-id="error-state" role="alert">' + icon('alert', 28) +
+      '<h2>扫描失败</h2>' +
+      '<p>无法读取 <code>~/.dsh/skills</code>：EACCES（权限不足）。请检查技能目录权限后重试。</p>' +
+      '<div class="sk-empty-actions">' +
+      '<button class="sk-btn sk-btn--primary" type="button" data-action="retry-scan">' + icon('refresh', 14) + '重试扫描</button>' +
+      '<button class="sk-btn" type="button" data-action="open-diag">查看诊断</button>' +
+      '</div></div>';
+  }
+
+  function emptyHTML(kind, demo) {
+    var iconName = 'package';
+    var title = '';
+    var body = '';
+    var preview = '';
+    var actions = '';
+
+    if (kind === 'nodata') {
+      title = '技能台还是空的';
+      body = '没有扫描到任何 skill。确认项目与用户技能目录存在后，重新扫描一次。';
+      actions = '<button class="sk-btn sk-btn--primary" type="button" data-action="rescan">' + icon('refresh', 14) + '重新扫描</button>';
+    } else if (kind === 'noresult') {
+      iconName = 'search';
+      title = '没有找到「' + esc(state.query) + '」';
+      body = '试试缩短关键词，或清除来源与状态筛选后再看一次。';
+      actions = '<button class="sk-btn sk-btn--primary" type="button" data-action="clear-search-all">' + icon('x', 13) + '清除搜索</button>' +
+        '<button class="sk-btn" type="button" data-action="reset-filters">重置筛选</button>';
+    } else if (kind === 'filtered') {
+      iconName = 'search';
+      title = '没有符合条件的技能';
+      body = '当前来源与状态筛选组合下没有结果。重置筛选，或换一个来源继续看。';
+      actions = '<button class="sk-btn sk-btn--primary" type="button" data-action="reset-filters">重置筛选</button>';
+    } else {
+      iconName = 'folder';
+      title = '没有可用的项目上下文';
+      body = '当前窗口没有打开项目。项目级 skill 不会出现在技能台，卡片上的「本项目」开关也暂不可用。';
+      preview = '<div class="sk-empty-preview">' +
+        '<button class="sk-switch" type="button" role="switch" aria-checked="false" aria-disabled="true" disabled aria-label="本项目作用域（未绑定项目，已禁用）">' +
+        '<span class="sk-switch-label">本项目</span><span class="sk-track" aria-hidden="true"><span class="sk-knob"></span></span></button>' +
+        '<span>未绑定项目 · 已禁用</span></div>';
+      actions = '<button class="sk-btn sk-btn--primary" type="button" data-action="select-project">选择项目…</button>' +
+        '<button class="sk-btn" type="button" data-action="open-all-sources">查看全部来源</button>';
+    }
+
+    var switcher = demo
+      ? '<div class="sk-demo-switch" data-od-id="empty-preview"><span>演示预览</span>' +
+        '<button class="sk-chip" type="button" data-empty="nodata" aria-pressed="' + (state.emptyVariant === 'nodata') + '">无数据</button>' +
+        '<button class="sk-chip" type="button" data-empty="noresult" aria-pressed="' + (state.emptyVariant === 'noresult') + '">搜索无结果</button>' +
+        '<button class="sk-chip" type="button" data-empty="noproject" aria-pressed="' + (state.emptyVariant === 'noproject') + '">无项目上下文</button>' +
+        '</div>'
+      : '';
+
+    return '<div class="sk-empty" data-od-id="empty-state">' + icon(iconName, 28) +
+      '<h2>' + title + '</h2><p>' + body + '</p>' + preview +
+      '<div class="sk-empty-actions">' + actions + '</div>' + switcher + '</div>';
+  }
+
+  function diagHTML() {
+    var items = SKILLS.filter(function (s) { return s.anomaly; });
+    return '<div class="sk-diag" data-od-id="diagnostics">' +
+      '<div class="sk-diag-head">' +
+      '<button class="sk-icon-btn" type="button" data-action="close-diag" aria-label="返回技能台">' + icon('back', 16) + '</button>' +
+      '<div class="sk-diag-title"><h2>诊断</h2><p>' + items.length + ' 项异常 · 上次扫描 ' + esc(state.scanTime) + '</p></div>' +
+      '<button class="sk-btn" type="button" data-action="rescan">' + icon('refresh', 13) + '重新扫描</button>' +
+      '</div>' +
+      items.map(function (s) {
+        return '<article class="sk-diag-card" data-od-id="diag-item-' + s.id + '">' +
+          '<div class="sk-diag-card-head">' + icon('alert', 16) +
+          '<div><h3>' + esc(s.id) + '</h3><p>' + esc(s.anomaly.label) + '</p></div>' +
+          '<span class="sk-badge sk-badge--warn">未收录</span></div>' +
+          '<dl class="sk-diag-meta">' +
+          '<div class="sk-meta-row"><dt>路径</dt><dd><code>' + esc(s.path) + '</code>' +
+          '<button class="sk-icon-btn sk-icon-btn--sm" type="button" data-action="copy-path" data-id="' + s.id + '" aria-label="复制 ' + esc(s.id) + ' 的路径">' + icon('copy', 13) + '</button></dd></div>' +
+          '<div class="sk-meta-row"><dt>原因</dt><dd>' + esc(s.anomaly.reason) + '</dd></div>' +
+          '<div class="sk-meta-row"><dt>建议</dt><dd>' + esc(s.anomaly.suggestion) + '</dd></div>' +
+          '</dl></article>';
+      }).join('') +
+      '<p class="sk-diag-foot">扫描范围：本项目 · 用户 · 内置。修复目录后重新扫描即可恢复收纳。</p>' +
+      '</div>';
+  }
+
+
+  /* ------------------------------------------------------------------
+     渲染
+     ------------------------------------------------------------------ */
+  function syncSearch() {
+    var input = el('skSearch');
+    if (input && input.value !== state.query) input.value = state.query;
+    var clear = el('skSearchClear');
+    if (clear) clear.hidden = !state.query;
+  }
+
+  function updateChrome(counts, display, pending) {
+    document.querySelectorAll('[data-count]').forEach(function (node) {
+      var key = node.getAttribute('data-count');
+      node.textContent = pending ? '—' : (display[key] == null ? counts[key] : display[key]);
+    });
+
+    var active = activeStat();
+    document.querySelectorAll('.sk-stat').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', String(btn.getAttribute('data-stat') === active));
+    });
+    document.querySelectorAll('#skFilters [data-source]').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', String(btn.getAttribute('data-source') === state.source));
+    });
+    document.querySelectorAll('#skFilters [data-status]').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', String(btn.getAttribute('data-status') === state.status));
+    });
+    var unusedBtn = el('skUnused');
+    if (unusedBtn) unusedBtn.setAttribute('aria-pressed', String(state.unused));
+
+    var diagEntry = document.querySelector('.sk-diag-entry');
+    if (diagEntry) diagEntry.setAttribute('aria-label', '打开异常诊断，当前 ' + display.anomaly + ' 项异常');
+
+    syncSearch();
+
+    var scan = el('skScan');
+    if (scan) {
+      scan.disabled = state.loading;
+      scan.classList.toggle('sk-loading', state.loading);
+    }
+    var scanLabel = el('skScanLabel');
+    if (scanLabel) scanLabel.textContent = state.loading ? '扫描中…' : '重新扫描';
+
+    var visible = sortList(getVisible());
+    var resultCount = (state.emptyDemo && state.emptyVariant === 'nodata') ? 0 : visible.length;
+    var result = el('skResult');
+    if (result) result.innerHTML = pending ? '<b>—</b> 项结果' : '<b>' + resultCount + '</b> 项结果';
+    var scanTime = el('skScanTime');
+    if (scanTime) scanTime.textContent = '上次扫描 ' + state.scanTime;
+
+    var cardsBtn = el('skCardsBtn');
+    var tableBtn = el('skTableBtn');
+    if (cardsBtn) cardsBtn.setAttribute('aria-pressed', String(state.view === 'cards'));
+    if (tableBtn) tableBtn.setAttribute('aria-pressed', String(state.view === 'table'));
+
+    var sortLabel = el('skSortLabel');
+    if (sortLabel) sortLabel.textContent = SORT_LABELS[state.sortKey];
+    var sortDir = el('skSortDir');
+    if (sortDir) {
+      sortDir.innerHTML = icon(state.sortDir === 'asc' ? 'arrowUp' : 'arrowDown', 14);
+      sortDir.setAttribute('aria-label', '切换排序方向（当前' + (state.sortDir === 'asc' ? '升序' : '降序') + '）');
+    }
+    document.querySelectorAll('#skSortMenu .sk-menu-item').forEach(function (item) {
+      item.setAttribute('aria-checked', String(item.getAttribute('data-sort') === state.sortKey));
+    });
+
+    var selectBtn = el('skSelectBtn');
+    if (selectBtn) {
+      selectBtn.hidden = state.selection;
+      selectBtn.setAttribute('aria-pressed', String(state.selection));
+    }
+    document.querySelectorAll('#skDemoMenu .sk-menu-item').forEach(function (item) {
+      item.setAttribute('aria-checked', String(item.getAttribute('data-scenario') === state.scenario));
+    });
+  }
+
+  function setStage(kind, html) {
+    var list = el('skListWrap');
+    var stateArea = el('skStateArea');
+    if (!list || !stateArea) return;
+    if (kind === 'list') {
+      stateArea.hidden = true;
+      stateArea.innerHTML = '';
+      list.hidden = false;
+      list.innerHTML = html;
+    } else {
+      list.hidden = true;
+      list.innerHTML = '';
+      stateArea.hidden = false;
+      stateArea.innerHTML = html;
+    }
+  }
+
+  function updateSelectAll() {
+    var box = document.getElementById('skSelectAll');
+    if (!box) return;
+    var visible = sortList(getVisible());
+    var picked = visible.filter(function (s) { return state.selected.has(s.id); }).length;
+    box.checked = visible.length > 0 && picked === visible.length;
+    box.indeterminate = picked > 0 && picked < visible.length;
+  }
+
+  function render(opts) {
+    opts = opts || {};
+    var counts = computeCounts();
+    var display = {};
+    Object.keys(counts).forEach(function (k) { display[k] = counts[k]; });
+    if (state.emptyDemo && state.emptyVariant === 'nodata') {
+      Object.keys(display).forEach(function (k) { display[k] = 0; });
+    }
+    if (!state.projectCtx) {
+      var projectEnabled = SKILLS.filter(function (s) { return s.source === 'project' && !s.anomaly && s.global; }).length;
+      var projectUnused = SKILLS.filter(function (s) { return s.source === 'project' && s.usage === 0; }).length;
+      display.project = 0;
+      display.all = Math.max(0, counts.all - counts.project);
+      display.enabled = Math.max(0, counts.enabled - projectEnabled);
+      display.unused = Math.max(0, counts.unused - projectUnused);
+    }
+    var pending = state.loading && !state.hasLoaded;
+
+    updateChrome(counts, display, pending);
+
+    var diag = state.diagnostics;
+    var command = el('skCommand');
+    var filters = el('skFilters');
+    var toolbar = el('skToolbar');
+    var actionBar = el('skActionBar');
+    if (command) command.hidden = diag || state.selection;
+    if (filters) filters.hidden = diag;
+    if (toolbar) toolbar.hidden = diag;
+    if (actionBar) {
+      actionBar.hidden = !(state.selection && !diag);
+      if (state.selection && !diag) actionBar.innerHTML = actionBarHTML();
+    }
+
+    var list = sortList(getVisible());
+    if (diag) {
+      setStage('state', diagHTML());
+    } else if (state.loading) {
+      setStage('state', skeletonHTML());
+    } else if (state.error) {
+      setStage('state', errorHTML());
+    } else if (state.emptyDemo) {
+      setStage('state', emptyHTML(state.emptyVariant, true));
+    } else if (list.length === 0) {
+      var kind = 'nodata';
+      if (state.query.trim()) kind = 'noresult';
+      else if (!state.projectCtx && state.source === 'project') kind = 'noproject';
+      else if (state.source !== 'all' || state.status !== 'all' || state.unused) kind = 'filtered';
+      setStage('state', emptyHTML(kind, false));
+    } else if (state.view === 'cards') {
+      setStage('list', cardsHTML(list));
+    } else {
+      setStage('list', tableHTML(list));
+    }
+
+    updateSelectAll();
+
+    if (opts.focus) {
+      requestAnimationFrame(function () {
+        var target = document.querySelector(opts.focus);
+        if (target) target.focus({ preventScroll: true });
+      });
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     菜单 / 主题 / Toast / 复制
+     ------------------------------------------------------------------ */
+  function closeDemoMenu() {
+    var menu = el('skDemoMenu');
+    var btn = el('skDemoBtn');
+    if (menu) menu.hidden = true;
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleDemoMenu() {
+    var menu = el('skDemoMenu');
+    var btn = el('skDemoBtn');
+    if (!menu || !btn) return;
+    var open = menu.hidden;
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+    if (open) {
+      var first = menu.querySelector('.sk-menu-item');
+      if (first) first.focus({ preventScroll: true });
+    }
+  }
+
+  function closeSortMenu() {
+    var menu = el('skSortMenu');
+    var btn = el('skSortBtn');
+    if (menu) menu.hidden = true;
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleSortMenu() {
+    var menu = el('skSortMenu');
+    var btn = el('skSortBtn');
+    if (!menu || !btn) return;
+    var open = menu.hidden;
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+    if (open) {
+      var active = menu.querySelector('[aria-checked="true"]') || menu.querySelector('.sk-menu-item');
+      if (active) active.focus({ preventScroll: true });
+    }
+  }
+
+  function showToast(message, kind) {
+    var toast = el('skToast');
+    var msg = el('skToastMsg');
+    if (!toast || !msg) return;
+    msg.textContent = message;
+    toast.setAttribute('data-kind', kind || 'default');
+    toast.classList.add('sk-on');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.classList.remove('sk-on'); }, 2400);
+  }
+
+  function copyText(text, label) {
+    if (!text) {
+      showToast('没有可复制的内容', 'error');
+      return;
+    }
+    function done(ok) {
+      showToast(ok ? '已复制' + label : '复制失败，请手动选择文本', ok ? 'success' : 'error');
+    }
+    function fallback() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-1000px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand('copy');
+        ta.remove();
+        done(!!ok);
+      } catch (err) {
+        done(false);
+      }
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+      } else {
+        fallback();
+      }
+    } catch (err2) {
+      fallback();
+    }
+  }
+
+  function copyPath(id) {
+    var s = BY_ID[id];
+    if (s) copyText(s.path, '路径');
+  }
+
+  function copyMD(id) {
+    var s = BY_ID[id];
+    if (s) copyText(mdFull(s), 'SKILL.md 全文');
+  }
+
+  function setTheme(theme) {
+    state.theme = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', state.theme);
+    var btn = el('skThemeBtn');
+    if (btn) {
+      btn.innerHTML = icon(state.theme === 'light' ? 'moon' : 'sun', 15);
+      var label = state.theme === 'light' ? '切换到深色主题' : '切换到浅色主题';
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('title', label);
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     交互动作
+     ------------------------------------------------------------------ */
+  function leaveEmptyDemo() {
+    if (!state.emptyDemo) return;
+    state.emptyDemo = false;
+    if (state.emptyVariant === 'noproject') {
+      state.projectCtx = true;
+      state.source = 'all';
+    }
+    state.emptyVariant = 'nodata';
+  }
+
+  function applyStat(key) {
+    leaveEmptyDemo();
+    if (key === 'all') {
+      state.source = 'all';
+      state.status = 'all';
+      state.unused = false;
+    } else if (state.status === key && state.source === 'all') {
+      state.status = 'all';
+    } else {
+      state.source = 'all';
+      state.status = key;
+      state.unused = false;
+    }
+    render();
+  }
+
+  function setView(view) {
+    if (state.view === view) return;
+    state.view = view;
+    closeSortMenu();
+    render({ focus: view === 'cards' ? '#skCardsBtn' : '#skTableBtn' });
+  }
+
+  function setSort(key) {
+    leaveEmptyDemo();
+    if (state.sortKey === key) {
+      state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.sortKey = key;
+      state.sortDir = SORT_DEFAULT_DIR[key];
+    }
+    closeSortMenu();
+    render({ focus: '#skSortBtn' });
+  }
+
+  function toggleDetail(id) {
+    if (state.expanded.has(id)) state.expanded.delete(id);
+    else state.expanded.add(id);
+    render({ focus: '[data-focus="open-' + id + '"]' });
+  }
+
+  function toggleScope(id, scope) {
+    var s = BY_ID[id];
+    if (!s || s.anomaly) return;
+    if (scope === 'project' && !state.projectCtx) {
+      showToast('未绑定项目，本项目作用域不可用', 'error');
+      return;
+    }
+    if (s.failPending) {
+      s.failPending = false;
+      state.inlineError = {
+        id: id,
+        scope: scope,
+        msg: '无法写入启用配置：EACCES permission denied（项目技能配置只读）。'
+      };
+      render({ focus: '[data-focus="retry-' + id + '"]' });
+      showToast('更新失败 · 可在行内重试', 'error');
+      return;
+    }
+    s[scope] = !s[scope];
+    state.inlineError = null;
+    render({ focus: '[data-focus="sw-' + id + '-' + scope + '"]' });
+    showToast((s[scope] ? '已启用' : '已禁用') + '「' + id + '」 · ' + (scope === 'global' ? '全局' : '本项目'), s[scope] ? 'success' : 'default');
+  }
+
+  function retryInlineError(id) {
+    var err = state.inlineError;
+    if (!err || err.id !== id) return;
+    var s = BY_ID[id];
+    if (!s) return;
+    s[err.scope] = !s[err.scope];
+    var wasOn = s[err.scope];
+    state.inlineError = null;
+    render({ focus: '[data-focus="sw-' + id + '-' + err.scope + '"]' });
+    showToast('重试成功 · 已' + (wasOn ? '启用' : '禁用') + '「' + id + '」的' + (err.scope === 'global' ? '全局' : '本项目') + '作用域', 'success');
+  }
+
+  function enterSelection() {
+    state.selection = true;
+    state.selected.clear();
+    state.batchConfirm = false;
+    render({ focus: '[data-focus="batch-exit"]' });
+  }
+
+  function exitSelection() {
+    state.selection = false;
+    state.selected.clear();
+    state.batchConfirm = false;
+    render({ focus: '#skSelectBtn' });
+  }
+
+  function batchApply(enable) {
+    var picked = Array.from(state.selected).map(function (id) { return BY_ID[id]; }).filter(Boolean);
+    var eligible = picked.filter(function (s) { return !s.anomaly; });
+    if (!eligible.length) {
+      state.batchConfirm = false;
+      showToast('所选项目没有可切换的普通技能', 'error');
+      render();
+      return;
+    }
+    eligible.forEach(function (s) { s.global = enable; s.project = enable; });
+    state.inlineError = null;
+    state.selection = false;
+    state.selected.clear();
+    state.batchConfirm = false;
+    render({ focus: '#skSelectBtn' });
+    showToast('已' + (enable ? '启用' : '禁用') + ' ' + eligible.length + ' 项' + (picked.length > eligible.length ? ' · 跳过 ' + (picked.length - eligible.length) + ' 项异常' : ''), enable ? 'success' : 'default');
+  }
+
+  function openDiag() {
+    state.diagnostics = true;
+    state.selection = false;
+    state.selected.clear();
+    state.batchConfirm = false;
+    closeSortMenu();
+    closeDemoMenu();
+    render({ focus: '[data-action="close-diag"]' });
+  }
+
+  function closeDiag() {
+    state.diagnostics = false;
+    render({ focus: '[data-action="open-diag"]' });
+  }
+
+  function resetFilters() {
+    state.emptyDemo = false;
+    state.emptyVariant = 'nodata';
+    state.projectCtx = true;
+    state.query = '';
+    state.source = 'all';
+    state.status = 'all';
+    state.unused = false;
+    syncSearch();
+    render({ focus: '#skSearch' });
+  }
+
+  function applyEmptyVariant(variant) {
+    state.emptyDemo = true;
+    state.emptyVariant = variant;
+    state.error = false;
+    state.loading = false;
+    state.diagnostics = false;
+    state.selection = false;
+    state.batchConfirm = false;
+    state.selected.clear();
+    state.inlineError = null;
+    state.query = '';
+    state.source = 'all';
+    state.status = 'all';
+    state.unused = false;
+    state.projectCtx = true;
+    if (variant === 'noresult') state.query = 'kubernetes-operator';
+    if (variant === 'noproject') {
+      state.projectCtx = false;
+      state.source = 'project';
+    }
+    syncSearch();
+    render();
+  }
+
+  function startScan() {
+    if (scanTimer) clearTimeout(scanTimer);
+    state.loading = true;
+    state.error = false;
+    state.diagnostics = false;
+    state.emptyDemo = false;
+    state.emptyVariant = 'nodata';
+    state.projectCtx = true;
+    state.selection = false;
+    state.batchConfirm = false;
+    state.selected.clear();
+    state.inlineError = null;
+    render();
+    scanTimer = setTimeout(function () {
+      state.loading = false;
+      state.hasLoaded = true;
+      state.scanTime = nowHM();
+      render();
+      showToast('扫描完成 · ' + SKILLS.length + ' 项，' + computeCounts().anomaly + ' 项异常', 'success');
+    }, 900);
+  }
+
+  function applyScenario(name) {
+    closeDemoMenu();
+    closeSortMenu();
+    if (scanTimer) {
+      clearTimeout(scanTimer);
+      scanTimer = null;
+    }
+    resetSkillData();
+    state.scenario = name;
+    state.loading = false;
+    state.hasLoaded = true;
+    state.error = false;
+    state.diagnostics = false;
+    state.selection = false;
+    state.batchConfirm = false;
+    state.selected.clear();
+    state.expanded.clear();
+    state.inlineError = null;
+    state.emptyDemo = false;
+    state.emptyVariant = 'nodata';
+    state.projectCtx = true;
+    state.query = '';
+    state.source = 'all';
+    state.status = 'all';
+    state.unused = false;
+    state.view = 'cards';
+    state.sortKey = 'name';
+    state.sortDir = 'asc';
+
+    if (name === 'search') {
+      state.query = 'plugin';
+    } else if (name === 'batch') {
+      state.selection = true;
+      ['development-lifecycle', 'dsh-plugin-development', 'plugin-test'].forEach(function (id) {
+        state.selected.add(id);
+      });
+    } else if (name === 'diag') {
+      state.diagnostics = true;
+    } else if (name === 'empty') {
+      state.emptyDemo = true;
+      state.emptyVariant = 'nodata';
+    } else if (name === 'error') {
+      state.error = true;
+    }
+    syncSearch();
+    setFade();
+    render();
+    if (name === 'batch') {
+      requestAnimationFrame(function () {
+        var exitBtn = document.querySelector('[data-focus="batch-exit"]');
+        if (exitBtn) exitBtn.focus({ preventScroll: true });
+      });
+    }
+  }
+
+  function resetSkillData() {
+    SKILLS.forEach(function (s) {
+      s.global = s.baseGlobal;
+      s.project = s.baseProject;
+      s.failPending = s.baseFailPending;
+    });
+  }
+
+  function setFade() {
+    var view = el('skView');
+    if (!view) return;
+    view.classList.remove('sk-fade');
+    void view.offsetWidth;
+    view.classList.add('sk-fade');
+  }
+
+  function focusSearch() {
+    closeDemoMenu();
+    closeSortMenu();
+    if (state.diagnostics) state.diagnostics = false;
+    if (state.selection) {
+      state.selection = false;
+      state.selected.clear();
+      state.batchConfirm = false;
+    }
+    render();
+    var input = el('skSearch');
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     键盘
+     ------------------------------------------------------------------ */
+  function handleEsc() {
+    var demoMenu = el('skDemoMenu');
+    var sortMenu = el('skSortMenu');
+    if (demoMenu && !demoMenu.hidden) {
+      closeDemoMenu();
+      var demoBtn = el('skDemoBtn');
+      if (demoBtn) demoBtn.focus({ preventScroll: true });
+      return;
+    }
+    if (sortMenu && !sortMenu.hidden) {
+      closeSortMenu();
+      var sortBtn = el('skSortBtn');
+      if (sortBtn) sortBtn.focus({ preventScroll: true });
+      return;
+    }
+    if (state.batchConfirm) {
+      state.batchConfirm = false;
+      render({ focus: '[data-action="batch-disable"]' });
+      return;
+    }
+    var search = el('skSearch');
+    if (search && document.activeElement === search && state.query) {
+      state.query = '';
+      syncSearch();
+      render();
+      return;
+    }
+    if (state.selection) {
+      exitSelection();
+      return;
+    }
+    if (state.diagnostics) {
+      closeDiag();
+      return;
+    }
+    if (state.emptyDemo) {
+      state.emptyDemo = false;
+      state.projectCtx = true;
+      state.query = '';
+      syncSearch();
+      render();
+      return;
+    }
+    if (state.query) {
+      state.query = '';
+      syncSearch();
+      render();
+      return;
+    }
+    if (state.expanded.size) {
+      state.expanded.clear();
+      render();
+    }
+  }
+
+  function onKeydown(e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      focusSearch();
+      return;
+    }
+    if (e.key === 'Escape') handleEsc();
+  }
+
+  /* ------------------------------------------------------------------
+     事件
+     ------------------------------------------------------------------ */
+  function handleAction(node) {
+    var action = node.getAttribute('data-action');
+    switch (action) {
+      case 'rescan':
+      case 'retry-scan':
+        startScan();
+        break;
+      case 'clear-search':
+        leaveEmptyDemo();
+        state.query = '';
+        syncSearch();
+        render({ focus: '#skSearch' });
+        break;
+      case 'toggle-detail':
+        toggleDetail(node.getAttribute('data-id'));
+        break;
+      case 'toggle-scope':
+        toggleScope(node.getAttribute('data-id'), node.getAttribute('data-scope'));
+        break;
+      case 'retry-error':
+        retryInlineError(node.getAttribute('data-id'));
+        break;
+      case 'copy-path':
+        copyPath(node.getAttribute('data-id'));
+        break;
+      case 'copy-md':
+        copyMD(node.getAttribute('data-id'));
+        break;
+      case 'open-diag':
+        openDiag();
+        break;
+      case 'close-diag':
+        closeDiag();
+        break;
+      case 'select-mode':
+        enterSelection();
+        break;
+      case 'batch-exit':
+        exitSelection();
+        break;
+      case 'batch-enable':
+        batchApply(true);
+        break;
+      case 'batch-disable':
+        state.batchConfirm = true;
+        render({ focus: '[data-action="batch-confirm"]' });
+        break;
+      case 'batch-confirm':
+        batchApply(false);
+        break;
+      case 'batch-cancel':
+        state.batchConfirm = false;
+        render({ focus: '[data-action="batch-disable"]' });
+        break;
+      case 'toggle-unused':
+        leaveEmptyDemo();
+        state.unused = !state.unused;
+        render();
+        break;
+      case 'sort-dir':
+        state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+        render({ focus: '#skSortDir' });
+        break;
+      case 'toggle-sort-menu':
+        toggleSortMenu();
+        break;
+      case 'reset-filters':
+        resetFilters();
+        break;
+      case 'clear-search-all':
+        state.emptyDemo = false;
+        state.emptyVariant = 'nodata';
+        state.projectCtx = true;
+        state.query = '';
+        state.source = 'all';
+        state.status = 'all';
+        state.unused = false;
+        syncSearch();
+        render({ focus: '#skSearch' });
+        break;
+      case 'select-project':
+        showToast('原型演示：打开项目选择器');
+        break;
+      case 'open-all-sources':
+        state.emptyDemo = false;
+        state.projectCtx = true;
+        state.source = 'all';
+        state.status = 'all';
+        state.unused = false;
+        render();
+        break;
+      case 'close-panel':
+        showToast('原型演示：关闭设置面板');
+        break;
+      case 'nav':
+        showToast('原型仅演示「插件 → Skill 管理」');
+        break;
+      default:
+        break;
+    }
+  }
+
+  function onViewClick(e) {
+    var target = e.target;
+
+    var actionEl = target.closest('[data-action]');
+    if (actionEl) {
+      handleAction(actionEl);
+      return;
+    }
+    var statEl = target.closest('[data-stat]');
+    if (statEl) {
+      applyStat(statEl.getAttribute('data-stat'));
+      return;
+    }
+    var sourceEl = target.closest('#skFilters [data-source]');
+    if (sourceEl) {
+      leaveEmptyDemo();
+      state.source = sourceEl.getAttribute('data-source');
+      render();
+      return;
+    }
+    var statusEl = target.closest('#skFilters [data-status]');
+    if (statusEl) {
+      leaveEmptyDemo();
+      state.status = statusEl.getAttribute('data-status');
+      render();
+      return;
+    }
+    var viewEl = target.closest('[data-view]');
+    if (viewEl) {
+      setView(viewEl.getAttribute('data-view'));
+      return;
+    }
+    var sortEl = target.closest('[data-sort]');
+    if (sortEl) {
+      setSort(sortEl.getAttribute('data-sort'));
+      return;
+    }
+    var emptyEl = target.closest('[data-empty]');
+    if (emptyEl) {
+      applyEmptyVariant(emptyEl.getAttribute('data-empty'));
+      return;
+    }
+    var tabEl = target.closest('[data-tab]');
+    if (tabEl) {
+      if (tabEl.getAttribute('data-tab') !== 'skills') showToast('原型仅演示「Skill 管理」页签');
+      return;
+    }
+
+    var row = target.closest('tr.sk-row');
+    if (row && !target.closest('button,input,a,label,pre,code,.sk-detail,.sk-inline-error')) {
+      toggleDetail(row.getAttribute('data-row-id'));
+      return;
+    }
+    var card = target.closest('.sk-card');
+    if (card && !target.closest('button,input,a,label,pre,code,.sk-detail,.sk-inline-error')) {
+      toggleDetail(card.getAttribute('data-id'));
+    }
+  }
+
+  function onViewChange(e) {
+    var box = e.target.closest('input[data-select]');
+    if (box) {
+      var id = box.getAttribute('data-select');
+      if (box.checked) state.selected.add(id);
+      else state.selected.delete(id);
+      state.batchConfirm = false;
+      render({ focus: '[data-focus="check-' + id + '"]' });
+      return;
+    }
+    var all = e.target.closest('#skSelectAll');
+    if (all) {
+      var visible = sortList(getVisible()).map(function (s) { return s.id; });
+      visible.forEach(function (sid) {
+        if (all.checked) state.selected.add(sid);
+        else state.selected.delete(sid);
+      });
+      state.batchConfirm = false;
+      render({ focus: '#skSelectAll' });
+    }
+  }
+
+  function bindEvents() {
+    var view = el('skView');
+    view.addEventListener('click', onViewClick);
+    view.addEventListener('change', onViewChange);
+    view.addEventListener('input', function (e) {
+      if (e.target && e.target.id === 'skSearch') {
+        var value = e.target.value;
+        leaveEmptyDemo();
+        state.emptyDemo = false;
+        state.projectCtx = true;
+        state.query = value;
+        render();
+      }
+    });
+
+    el('skDemoBtn').addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleDemoMenu();
+    });
+    el('skDemoMenu').addEventListener('click', function (e) {
+      var item = e.target.closest('[data-scenario]');
+      if (!item) return;
+      applyScenario(item.getAttribute('data-scenario'));
+    });
+    el('skThemeBtn').addEventListener('click', function () {
+      setTheme(state.theme === 'dark' ? 'light' : 'dark');
+    });
+
+    document.querySelectorAll('.sk-nav-item').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (btn.getAttribute('aria-current') === 'page') return;
+        showToast('原型仅演示「插件 → Skill 管理」');
+      });
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.sk-sortwrap')) closeSortMenu();
+      if (!e.target.closest('.sk-demo-wrap')) closeDemoMenu();
+    });
+    document.addEventListener('keydown', onKeydown);
+  }
+
+  /* ------------------------------------------------------------------
+     启动
+     ------------------------------------------------------------------ */
+  function init() {
+    state.scanTime = nowHM();
+    setTheme('dark');
+    bindEvents();
+    state.loading = false;
+    state.hasLoaded = true;
+    render();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+
+</script>
+</body>
+</html>

@@ -34,7 +34,7 @@
 | [dsh-my-remote](plugins/dsh-my-remote/README.md)                                   | 0.1.5  | 远程控制：ask / approval / 会话结束事件下行到手机或 IM，可远程回答、批准、查询、继续          |
 | [dsh-my-guardian](plugins/dsh-my-guardian/README.md)                               | 0.4.8  | 插件治理：新装插件先进候选区逐个热挂载，失败自动隔离，一键安全模式 + 诊断面板                 |
 | [dsh-task-reliability](plugins/dsh-task-reliability/README.md)                     | 0.4.11  | 任务可靠性：超时重试、未完成自动继续、完成度校验 agent、思考重复干预、重启恢复、自主决策      |
-| [dsh-my-skill-manager](plugins/dsh-my-skill-manager/README.md)                     | 0.1.12  | Skill 管理：分全局/项目查看 skill，按项目启用/禁用（禁用即不注入会话）                        |
+| [dsh-my-skill-manager](plugins/dsh-my-skill-manager/README.md)                     | 0.2.0  | Skill 管理：全量目录 + 全局/项目双作用域启停 + 搜索筛选排序 + 详情与 SKILL.md 预览 + 诊断     |
 | [dsh-my-memory](plugins/dsh-my-memory/README.md)                                   | 0.2.0  | 记忆：全局/项目两级持久化，会话开始注入系统提示词；三 tab 设置面板 + 写操作确认               |
 | [dsh-my-observability](plugins/dsh-my-observability/README.md)                     | 0.3.6  | 可观测性：事件审计与查询 API、资源看门狗面板、结构化 Git 类型化提交、提交前增量 diff 审查               |
 | [dsh-my-context](plugins/dsh-my-context/README.md)                                 | 0.1.7  | 上下文透镜：token 用量与上下文构成可视化、KV 缓存命中率、每轮/每会话预算控制                  |

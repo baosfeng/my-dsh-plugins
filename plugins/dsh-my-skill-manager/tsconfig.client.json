@@ -17,7 +17,10 @@
     "forceConsistentCasingInFileNames": true,
     "types": [],
     "declaration": false,
-    "sourceMap": false
+    "sourceMap": false,
+    // 产物是发给浏览器的单 bundle：源码里的分区注释与说明不需要跟着发货
+    //（DSH 不跑构建，产物即发布面；注释在这里是纯体积）。
+    "removeComments": true
   },
   "include": ["src/client/**/*.ts"]
 }

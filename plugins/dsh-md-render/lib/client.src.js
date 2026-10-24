@@ -62,15 +62,15 @@ window.__ModuleLoader__.load({
     /*__PART_MERMAID_CARD__*/
     // mermaid 代码块识别 + 流式稳定窗口
     /*__PART_MERMAID_SCAN__*/
-    // mermaid 图表导出（PNG / SVG 下载 + 复制源码）
+    // mermaid 导出（PNG / SVG）+ 全屏 / 缩放平移（panzoom 懒加载，失败切内置降级）
     /*__PART_MERMAID_EXPORT__*/
-    // mermaid 图表全屏 + 缩放 / 平移（panzoom 懒加载；失败切内置降级引擎）
     /*__PART_ZOOM_MATH__*/
     /*__PART_ZOOM_FALLBACK__*/
     /*__PART_MERMAID_ZOOM__*/
     // 「渲染为…」语言手动切换（覆盖层 + 块内控件 + 卡片头并项）
     /*__PART_LANG_SWITCH__*/
-    // 共享 DOM 扫描骨架 + 单 MutationObserver 按语言分流
+    // 视口队列（增量渲染）+ 共享 DOM 扫描骨架（单 MutationObserver 按语言分流）
+    /*__PART_VIEWPORT_QUEUE__*/
     /*__PART_DOM_SCANNER__*/
     /*__PART_SCANNER__*/
     // 样式（宿主语义 token，随 activation 注入）：5 个按职责拆分的 part + 聚合器

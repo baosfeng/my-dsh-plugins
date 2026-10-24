@@ -361,13 +361,14 @@ function considerByWindow(block: Element, round: number): void {
 
 /** 扫描 root（自身 / 后代）内的会话滚动容器里的 mermaid 代码块。 */
 function scanMermaidBlocks(root: Element, round: number): void {
-  const scrolls: Element[] = []
-  if (root.matches && root.matches('[data-conversation-scroll]')) scrolls.push(root)
-  if (root.querySelectorAll) {
-    for (const sc of root.querySelectorAll('[data-conversation-scroll]')) scrolls.push(sc)
-  }
+  const scrolls: Element[] = root.matches && root.matches('[data-conversation-scroll]') ? [root] : []
+  if (root.querySelectorAll) scrolls.push(...root.querySelectorAll('[data-conversation-scroll]'))
+  // **增量渲染**：只登记，块进入视口才判定是否 mermaid 并渲染（图谱分析 / 布局都在回调里）。
+  // round 是「本批次」标记，登记后已经过期，回调里统一用 0（各注入点自身的幂等判定负责去重）。
   for (const sc of scrolls) {
-    for (const block of sc.querySelectorAll('div.md-code-block')) considerMermaidBlock(block, round)
+    for (const block of sc.querySelectorAll('div.md-code-block')) {
+      enqueueWhenVisible(block, 'mermaid', () => considerMermaidBlock(block, 0))
+    }
   }
 }
 

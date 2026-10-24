@@ -233,11 +233,22 @@ function applyFenceBlock(block: Element): void {
   mountMdrBlock(block, target.lang, source, target.kind === 'markdown' ? 'markdown' : 'code', target.infer)
 }
 
-/** 扫描 root（自身 / 后代）内的围栏代码块（mermaid 块由 mermaid-scan 负责）。 */
+/**
+ * 扫描 root（自身 / 后代）内的围栏代码块（mermaid 块由 mermaid-scan 负责）。
+ *
+ * **增量渲染**：这里只登记候选，块进入视口才真正渲染（viewport-queue.ts）。
+ * 代价高的一律留在回调里 —— 语言判定、全文正则、内容哈希、hljs 高亮、React 卡片。
+ * 未看到的块保持宿主原生形态，滚动到时再增强（内容不丢）。
+ */
 function scanFenceBlocks(root: Element): void {
   if (!root || typeof root.querySelectorAll !== 'function') return
-  if (typeof root.matches === 'function' && root.matches('div.md-code-block')) applyFenceBlock(root)
-  for (const block of Array.from(root.querySelectorAll('div.md-code-block'))) applyFenceBlock(block)
+  if (typeof root.matches === 'function' && root.matches('div.md-code-block')) {
+    const self = root
+    enqueueWhenVisible(self, 'fence', () => applyFenceBlock(self))
+  }
+  for (const block of Array.from(root.querySelectorAll('div.md-code-block'))) {
+    enqueueWhenVisible(block, 'fence', () => applyFenceBlock(block))
+  }
 }
 
 exports.MDR_BLOCK_CLASS = MDR_BLOCK_CLASS

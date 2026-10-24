@@ -31,24 +31,65 @@
 function installDomScanner(options) {
   const rescanSelectors = options.rescanSelectors ?? []
   const attributeFilter = options.attributeFilter ?? ['data-streaming']
+  // 兜底重扫节流（2026-10-24 卡死取证）：旧实现**每批** mutation 都对会话容器全量重扫，
+  // 长会话（实测 200+ 围栏块）下主线程被钉在同步 JS 上（/usr/bin/sample：288 帧、100% 样本）。
+  // 现在合并成「每 rescanThrottleMs 最多一次」；新增节点仍逐批同步处理，不丢内容。
+  const rescanThrottleMs = typeof options.rescanThrottleMs === 'number' ? options.rescanThrottleMs : 250
   let round = 0
+  let rescanTimer = null
+  let lastRescanRound = 0
   options.scan(document.body, ++round)
+  const rescanAll = () => {
+    for (const selector of rescanSelectors) {
+      for (const el of document.querySelectorAll(selector)) options.scan(el, lastRescanRound)
+    }
+  }
+  const scheduleRescan = (current) => {
+    lastRescanRound = current
+    if (rescanSelectors.length === 0 || rescanTimer !== null) return
+    rescanTimer = setTimeout(() => {
+      rescanTimer = null
+      rescanAll()
+    }, rescanThrottleMs)
+  }
   const observer = new MutationObserver((mutations) => {
     const current = ++round
+    let streamEnded = false
     for (const mutation of mutations) {
-      for (const added of mutation.addedNodes) {
+      for (const added of mutation.addedNodes || []) {
         if (added.nodeType === 1) options.scan(added, current)
       }
+      // 「流式结束」是要立刻补一次全量的关键时点：内容补全往往不产生 addedNodes。
+      // 其余变更走节流合并（见 scheduleRescan），避免流式期间每批全量重扫。
+      if (mutation.type === 'attributes' && mutation.attributeName === 'data-streaming') {
+        const target = mutation.target
+        const stillStreaming =
+          typeof target.hasAttribute === 'function'
+            ? target.hasAttribute('data-streaming')
+            : typeof target.closest === 'function' && target.closest('[data-streaming]') !== null
+        if (!stillStreaming) streamEnded = true
+      }
+    }
+    if (streamEnded) {
+      if (rescanTimer !== null) {
+        clearTimeout(rescanTimer)
+        rescanTimer = null
+      }
+      lastRescanRound = current
+      rescanAll()
+      return
     }
     // 兜底重扫：流式结束后的内容补全 / 轨迹视图虚拟列表回收不一定以 addedNodes
-    // 形式出现，按选择器整体重扫，保证最终一致。
-    for (const selector of rescanSelectors) {
-      for (const el of document.querySelectorAll(selector)) options.scan(el, current)
-    }
+    // 形式出现，按选择器整体重扫，保证最终一致（时间上合并，见上）。
+    scheduleRescan(current)
   })
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter })
   return () => {
     observer.disconnect()
+    if (rescanTimer !== null) {
+      clearTimeout(rescanTimer)
+      rescanTimer = null
+    }
     if (options.onTeardown) options.onTeardown()
   }
 }

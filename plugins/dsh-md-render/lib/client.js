@@ -2686,14 +2686,21 @@ function mountMdrContext(host) {
     host.hidden = true;
     host.setAttribute(MDR_CONTEXT_HIDDEN_ATTR, 'true');
 }
-/** 扫描 root（自身 / 后代）内的上下文注入块（供 scanner 调用）。 */
+/**
+ * 扫描 root（自身 / 后代）内的上下文注入块（供 scanner 调用）。
+ *
+ * **增量渲染**：只登记，块进入视口才挂卡片（内容哈希 / markdown 渲染都留在回调里）。
+ */
 function scanContextBlocks(root) {
     if (!root || typeof root.querySelectorAll !== 'function')
         return;
-    if (typeof root.matches === 'function' && root.matches(CONTEXT_TEXT_SELECTOR))
-        mountMdrContext(root);
-    for (const pre of Array.from(root.querySelectorAll(CONTEXT_TEXT_SELECTOR)))
-        mountMdrContext(pre);
+    if (typeof root.matches === 'function' && root.matches(CONTEXT_TEXT_SELECTOR)) {
+        const self = root;
+        enqueueWhenVisible(self, 'context', () => mountMdrContext(self));
+    }
+    for (const pre of Array.from(root.querySelectorAll(CONTEXT_TEXT_SELECTOR))) {
+        enqueueWhenVisible(pre, 'context', () => mountMdrContext(pre));
+    }
 }
 Object.assign(exports,{CONTEXT_TEXT_SELECTOR,MAX_CONTEXT_CHARS,MDR_CONTEXT_CLASS,contextHash,mdrContextSourceOf,mountMdrContext,scanContextBlocks});
 
@@ -2931,14 +2938,23 @@ function applyFenceBlock(block) {
         return;
     mountMdrBlock(block, target.lang, source, target.kind === 'markdown' ? 'markdown' : 'code', target.infer);
 }
-/** 扫描 root（自身 / 后代）内的围栏代码块（mermaid 块由 mermaid-scan 负责）。 */
+/**
+ * 扫描 root（自身 / 后代）内的围栏代码块（mermaid 块由 mermaid-scan 负责）。
+ *
+ * **增量渲染**：这里只登记候选，块进入视口才真正渲染（viewport-queue.ts）。
+ * 代价高的一律留在回调里 —— 语言判定、全文正则、内容哈希、hljs 高亮、React 卡片。
+ * 未看到的块保持宿主原生形态，滚动到时再增强（内容不丢）。
+ */
 function scanFenceBlocks(root) {
     if (!root || typeof root.querySelectorAll !== 'function')
         return;
-    if (typeof root.matches === 'function' && root.matches('div.md-code-block'))
-        applyFenceBlock(root);
-    for (const block of Array.from(root.querySelectorAll('div.md-code-block')))
-        applyFenceBlock(block);
+    if (typeof root.matches === 'function' && root.matches('div.md-code-block')) {
+        const self = root;
+        enqueueWhenVisible(self, 'fence', () => applyFenceBlock(self));
+    }
+    for (const block of Array.from(root.querySelectorAll('div.md-code-block'))) {
+        enqueueWhenVisible(block, 'fence', () => applyFenceBlock(block));
+    }
 }
 Object.assign(exports,{MDR_BLOCK_CLASS,BLOCK_MD_CLASS,BLOCK_VIEW_ATTR,BLOCK_SIG_ATTR,BLOCK_SWITCH_EVENT,TEXT_FENCE_LANGS,MAX_TEXT_FENCE_CHARS,MAX_CODE_FENCE_CHARS,fenceSource,isFenceStreaming,fenceKindOf,fenceSignature,mdrBlockOf,clearMdrBlock,bindMdrBlockEvents,mountMdrBlock,applyFenceBlock,scanFenceBlocks});
 
@@ -4064,16 +4080,15 @@ function considerByWindow(block, round) {
 }
 /** 扫描 root（自身 / 后代）内的会话滚动容器里的 mermaid 代码块。 */
 function scanMermaidBlocks(root, round) {
-    const scrolls = [];
-    if (root.matches && root.matches('[data-conversation-scroll]'))
-        scrolls.push(root);
-    if (root.querySelectorAll) {
-        for (const sc of root.querySelectorAll('[data-conversation-scroll]'))
-            scrolls.push(sc);
-    }
+    const scrolls = root.matches && root.matches('[data-conversation-scroll]') ? [root] : [];
+    if (root.querySelectorAll)
+        scrolls.push(...root.querySelectorAll('[data-conversation-scroll]'));
+    // **增量渲染**：只登记，块进入视口才判定是否 mermaid 并渲染（图谱分析 / 布局都在回调里）。
+    // round 是「本批次」标记，登记后已经过期，回调里统一用 0（各注入点自身的幂等判定负责去重）。
     for (const sc of scrolls) {
-        for (const block of sc.querySelectorAll('div.md-code-block'))
-            considerMermaidBlock(block, round);
+        for (const block of sc.querySelectorAll('div.md-code-block')) {
+            enqueueWhenVisible(block, 'mermaid', () => considerMermaidBlock(block, 0));
+        }
     }
 }
 /** teardown：清掉全部观察与挂载记录（observer 断连由共享骨架负责）。 */
@@ -4084,7 +4099,7 @@ function teardownMermaid() {
 }
 Object.assign(exports,{STREAM_SETTLE_MS,MM_FENCE_LANGS,mmSkipKindLine,mmCanonicalKind,mermaidKindOf,mermaidTitleOf,isMermaidBlock,mermaidSourceOf,fenceTrustOf,installFenceCloseRescan,dropFenceSubscription,ensureFenceSubscription,mountableSource,looksLikeMermaid,considerStreaming,considerByWindow,considerMermaidBlock,scanMermaidBlocks,teardownMermaid});
 
-    // mermaid 图表导出（PNG / SVG 下载 + 复制源码）
+    // mermaid 导出（PNG / SVG）+ 全屏 / 缩放平移（panzoom 懒加载，失败切内置降级）
     "use strict";
 // ── 图表导出：PNG / SVG 真实下载 + 复制源码 ─────────────────────────────
 // 失败一律经卡片提示条转可见提示，绝不静默。导出对象是**作用域里的 SVG**
@@ -4208,7 +4223,6 @@ function makeExportHandlers(scopeId, source, flashNotice) {
 }
 Object.assign(exports,{buildExportFileName,serializeSvg,findDiagramSvg,makeExportHandlers});
 
-    // mermaid 图表全屏 + 缩放 / 平移（panzoom 懒加载；失败切内置降级引擎）
     "use strict";
 // ── 缩放几何与策略：上下界 / fit / fill / 100% / 锚点手势 / 跟随 / 键盘 ──
 // 从 mermaid-zoom.ts 拆出（单文件行数门禁）。几何基准一律量**裁剪容器**（state.frame）
@@ -4978,18 +4992,215 @@ function applyLangForce(block, value) {
     if (typeof rescanForLangs === 'function')
         rescanForLangs();
 }
-/** 扫描 root（自身 / 后代）内的围栏代码块，同步各自的语言控件。 */
+/**
+ * 扫描 root（自身 / 后代）内的围栏代码块，同步各自的语言控件。
+ *
+ * **增量渲染**：登记在 'lang' 键上，与同一块的 'fence' / 'mermaid' 回调按登记顺序执行
+ * （scanner 的调用顺序保证卡片先挂、控件后同步）。
+ */
 function scanLangSwitches(root) {
     if (!root || typeof root.querySelectorAll !== 'function')
         return;
-    if (typeof root.matches === 'function' && root.matches('div.md-code-block'))
-        syncLangSwitch(root);
-    for (const block of Array.from(root.querySelectorAll('div.md-code-block')))
-        syncLangSwitch(block);
+    if (typeof root.matches === 'function' && root.matches('div.md-code-block')) {
+        const self = root;
+        enqueueWhenVisible(self, 'lang', () => syncLangSwitch(self));
+    }
+    for (const block of Array.from(root.querySelectorAll('div.md-code-block'))) {
+        enqueueWhenVisible(block, 'lang', () => syncLangSwitch(block));
+    }
 }
 Object.assign(exports,{LANG_SWITCH_CLASS,MDR_RM_CLASS,MDR_RM_BTN_CLASS,MDR_SWITCH_EVENT,MDR_RENDER_OPTIONS,mdrDispatchLangSwitch,MdrLangSwitchFrom,MdrLangSwitch,langSwitchValue,syncLangSwitch,removeLangSwitch,applyLangForce,scanLangSwitches});
 
-    // 共享 DOM 扫描骨架 + 单 MutationObserver 按语言分流
+    // 视口队列（增量渲染）+ 共享 DOM 扫描骨架（单 MutationObserver 按语言分流）
+    "use strict";
+// ── 视口队列：元素进入视口才执行渲染回调（增量渲染）─────────────────────────
+// 背景（2026-10-24 卡死取证）：会话里每批 DOM 变更都会把「全部候选块」收集一遍并**立即渲染**，
+// 长会话（实测 200+ 围栏块）里主线程被钉在同步 JS 上（/usr/bin/sample：288 帧、100% 样本）。
+//
+// 现在把「发现候选」与「真正渲染」拆开：扫描只登记，元素进入视口（含 rootMargin 预取）才执行。
+// 未看到的块保持**宿主原生形态**——内容永远不丢，只是插件的增强（代码卡片 / 图表卡片 /
+// 语言控件）延后到看见时。这同时天然解决「流式期间对大块反复重建」：同一元素同一用途的
+// 回调按 key 覆盖，只保留最新一次。
+//
+// 契约：
+//  - 一个元素可登记多个用途的回调（如围栏卡片 fence + 语言控件 lang），按登记顺序执行；
+//  - 已在视口内的元素重复登记 → **同步执行**（流式块零延迟，行为与改造前一致）；
+//  - 无 IntersectionObserver / 精简环境 → 一律同步执行（降级，测试与老宿主依赖它）；
+//  - dispose 后断开观察并清空登记，新登记直接丢弃（不回写 DOM）。
+/** 预取边距：进入视口前 400px 就渲染，滚动时不出现「先原生后变卡片」的明显跳变。 */
+const VIEWPORT_ROOT_MARGIN = '400px 0px';
+/** 每登记多少次顺带清一次死元素（脱离文档的元素永远等不到 IO 回调）。 */
+const VIEWPORT_SWEEP_EVERY = 40;
+/** 待渲染表上限：会话切换后旧块可能永远等不到回调，靠这个上限保证内存有界。 */
+const VIEWPORT_PENDING_MAX = 1500;
+/** 单块渲染失败不能拖垮整批（宿主契约失配 / 渲染库缺失都走这里）。 */
+function runSafely(run) {
+    try {
+        run();
+    }
+    catch (_e) {
+        // 有意静默：一块坏掉不影响后面的块。
+    }
+}
+/** 执行某元素已登记的全部回调（按登记顺序），并从待执行表移除。 */
+function flushViewportEntry(state, el) {
+    const runs = state.pending.get(el);
+    if (runs === undefined)
+        return;
+    state.pending.delete(el);
+    for (const run of runs.values())
+        runSafely(run);
+}
+/** 清掉登记表里已经脱离文档的元素（observer 对死元素不会再有回调）。 */
+function sweepViewportDetached(state) {
+    for (const el of state.pending.keys()) {
+        if (el.isConnected === false) {
+            if (state.observer !== null)
+                state.observer.unobserve(el);
+            state.pending.delete(el);
+        }
+    }
+}
+/** 硬上限兜底：先清死元素，仍超量就按登记顺序丢掉最早的（多半在视口外很远）。 */
+function enforceViewportPendingLimit(state) {
+    if (state.pending.size <= VIEWPORT_PENDING_MAX)
+        return;
+    sweepViewportDetached(state);
+    let overflow = state.pending.size - VIEWPORT_PENDING_MAX;
+    if (overflow <= 0)
+        return;
+    for (const el of state.pending.keys()) {
+        if (overflow <= 0)
+            break;
+        if (state.observer !== null)
+            state.observer.unobserve(el);
+        state.pending.delete(el);
+        overflow -= 1;
+    }
+}
+/** IntersectionObserver 回调：维护可见集合、冲刷可见元素的待渲染项。 */
+function handleViewportEntries(state, records) {
+    if (state.disposed)
+        return;
+    for (const record of records) {
+        const el = record.target;
+        if (el.isConnected === false) {
+            if (state.observer !== null)
+                state.observer.unobserve(el);
+            state.pending.delete(el);
+            state.visible.delete(el);
+            continue;
+        }
+        if (record.isIntersecting) {
+            state.visible.add(el);
+            flushViewportEntry(state, el);
+        }
+        else {
+            state.visible.delete(el);
+        }
+    }
+}
+/** 登记一条「可见时执行」；已可见则同步执行；已脱离文档则不登记。 */
+function enqueueIntoViewport(state, el, key, run) {
+    if (state.disposed || el.isConnected === false)
+        return;
+    state.sinceSweep += 1;
+    if (state.visible.has(el)) {
+        runSafely(run);
+    }
+    else {
+        const runs = state.pending.get(el);
+        if (runs === undefined)
+            state.pending.set(el, new Map([[key, run]]));
+        else
+            runs.set(key, run);
+        if (state.observer !== null)
+            state.observer.observe(el);
+    }
+    if (state.sinceSweep >= VIEWPORT_SWEEP_EVERY) {
+        state.sinceSweep = 0;
+        enforceViewportPendingLimit(state);
+    }
+}
+/**
+ * 建一个视口队列。环境不支持 IntersectionObserver 时返回 null —— 调用方据此走同步**降级**。
+ */
+function createViewportQueue(rootMargin) {
+    const Ctor = typeof IntersectionObserver === 'function' ? IntersectionObserver : undefined;
+    if (Ctor === undefined)
+        return null;
+    const state = {
+        pending: new Map(),
+        visible: new WeakSet(),
+        observer: null,
+        disposed: false,
+        sinceSweep: 0,
+    };
+    try {
+        const handle = (records) => handleViewportEntries(state, records);
+        state.observer = new Ctor(handle, {
+            root: null,
+            rootMargin,
+            threshold: 0,
+        });
+    }
+    catch (_e) {
+        return null;
+    }
+    return {
+        enqueue: (el, key, run) => enqueueIntoViewport(state, el, key, run),
+        dispose: () => {
+            state.disposed = true;
+            state.pending.clear();
+            if (state.observer !== null)
+                state.observer.disconnect();
+            state.observer = null;
+        },
+    };
+}
+/** 单例队列 + 装配计数（HMR / 双挂载时新旧 fiber 的 install / teardown 可能交错）。 */
+let viewportQueue = null;
+let viewportQueueRefs = 0;
+/** teardown 之后不要再接新活（与「从未装配 → 同步降级」区分开）。 */
+let viewportQueueTornDown = false;
+/** 装配视口队列（installScanner 调用；重复装配只建一次，靠引用计数配对销毁）。 */
+function installViewportQueue() {
+    viewportQueueRefs += 1;
+    if (viewportQueue !== null)
+        return;
+    viewportQueueTornDown = false;
+    viewportQueue = createViewportQueue(VIEWPORT_ROOT_MARGIN);
+}
+/** teardown：最后一个持有者释放时才真正断开（未执行的登记一并丢弃）。 */
+function disposeViewportQueue() {
+    if (viewportQueueRefs > 0)
+        viewportQueueRefs -= 1;
+    if (viewportQueueRefs > 0)
+        return;
+    if (viewportQueue !== null)
+        viewportQueue.dispose();
+    viewportQueue = null;
+    viewportQueueTornDown = true;
+}
+/**
+ * 登记「元素可见时执行」。队列不存在（降级 / 已 teardown）→ 立即执行（或丢弃）。
+ *
+ * @param el  目标元素（围栏块 / 上下文块 / 图表块）
+ * @param key 用途标识：同一元素同一 key 的旧回调会被覆盖
+ * @param run 渲染动作（必须幂等：重复执行只做签名比对）
+ */
+function enqueueWhenVisible(el, key, run) {
+    if (viewportQueue === null) {
+        // 已 teardown：不再渲染（残留的 mutation 不该把 DOM 改回来）。
+        if (viewportQueueTornDown)
+            return;
+        runSafely(run);
+        return;
+    }
+    viewportQueue.enqueue(el, key, run);
+}
+Object.assign(exports,{VIEWPORT_ROOT_MARGIN,VIEWPORT_PENDING_MAX,runSafely,createViewportQueue,installViewportQueue,disposeViewportQueue,enqueueWhenVisible});
+
     // ── shared DOM scanner skeleton (dsh-shared/client-parts) ──
 // 单一来源（issue #186 P2）：渲染类插件各自的 MutationObserver 骨架结构等价，收口到这里。
 // 当前唯一消费者是 dsh-md-render（parts/scanner.ts：思考行 / 上下文块 / text 围栏 /
@@ -5023,24 +5234,65 @@ Object.assign(exports,{LANG_SWITCH_CLASS,MDR_RM_CLASS,MDR_RM_BTN_CLASS,MDR_SWITC
 function installDomScanner(options) {
   const rescanSelectors = options.rescanSelectors ?? []
   const attributeFilter = options.attributeFilter ?? ['data-streaming']
+  // 兜底重扫节流（2026-10-24 卡死取证）：旧实现**每批** mutation 都对会话容器全量重扫，
+  // 长会话（实测 200+ 围栏块）下主线程被钉在同步 JS 上（/usr/bin/sample：288 帧、100% 样本）。
+  // 现在合并成「每 rescanThrottleMs 最多一次」；新增节点仍逐批同步处理，不丢内容。
+  const rescanThrottleMs = typeof options.rescanThrottleMs === 'number' ? options.rescanThrottleMs : 250
   let round = 0
+  let rescanTimer = null
+  let lastRescanRound = 0
   options.scan(document.body, ++round)
+  const rescanAll = () => {
+    for (const selector of rescanSelectors) {
+      for (const el of document.querySelectorAll(selector)) options.scan(el, lastRescanRound)
+    }
+  }
+  const scheduleRescan = (current) => {
+    lastRescanRound = current
+    if (rescanSelectors.length === 0 || rescanTimer !== null) return
+    rescanTimer = setTimeout(() => {
+      rescanTimer = null
+      rescanAll()
+    }, rescanThrottleMs)
+  }
   const observer = new MutationObserver((mutations) => {
     const current = ++round
+    let streamEnded = false
     for (const mutation of mutations) {
-      for (const added of mutation.addedNodes) {
+      for (const added of mutation.addedNodes || []) {
         if (added.nodeType === 1) options.scan(added, current)
       }
+      // 「流式结束」是要立刻补一次全量的关键时点：内容补全往往不产生 addedNodes。
+      // 其余变更走节流合并（见 scheduleRescan），避免流式期间每批全量重扫。
+      if (mutation.type === 'attributes' && mutation.attributeName === 'data-streaming') {
+        const target = mutation.target
+        const stillStreaming =
+          typeof target.hasAttribute === 'function'
+            ? target.hasAttribute('data-streaming')
+            : typeof target.closest === 'function' && target.closest('[data-streaming]') !== null
+        if (!stillStreaming) streamEnded = true
+      }
+    }
+    if (streamEnded) {
+      if (rescanTimer !== null) {
+        clearTimeout(rescanTimer)
+        rescanTimer = null
+      }
+      lastRescanRound = current
+      rescanAll()
+      return
     }
     // 兜底重扫：流式结束后的内容补全 / 轨迹视图虚拟列表回收不一定以 addedNodes
-    // 形式出现，按选择器整体重扫，保证最终一致。
-    for (const selector of rescanSelectors) {
-      for (const el of document.querySelectorAll(selector)) options.scan(el, current)
-    }
+    // 形式出现，按选择器整体重扫，保证最终一致（时间上合并，见上）。
+    scheduleRescan(current)
   })
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter })
   return () => {
     observer.disconnect()
+    if (rescanTimer !== null) {
+      clearTimeout(rescanTimer)
+      rescanTimer = null
+    }
     if (options.onTeardown) options.onTeardown()
   }
 }
@@ -5112,6 +5364,8 @@ function rescanForLangs() {
  */
 function installScanner(ctx) {
     fenceScanContext = ctx ?? null;
+    // 视口队列：扫描只登记候选，块可见才渲染（增量渲染，见 viewport-queue.ts）。
+    installViewportQueue();
     const uninstallRescan = installLangRescan(rescanForLangs);
     // 懒加载的渲染库（marked / hljs）就绪后重扫一次：加载期间落在「宿主官方形态」的块补渲染
     // （代码块则从纯文本换成高亮 —— 签名含就绪版本，重扫会重建）。
@@ -5121,6 +5375,7 @@ function installScanner(ctx) {
         // 兜底重扫目标：会话滚动容器（流式结束后内容补全，不一定以 addedNodes 出现）。
         rescanSelectors: ['[data-conversation-scroll]'],
         onTeardown: () => {
+            disposeViewportQueue();
             teardownMermaid();
             teardownZoom();
             teardownLangProbes();

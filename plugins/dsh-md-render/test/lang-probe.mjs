@@ -165,7 +165,9 @@ test('⑤ 流式块不查表（内容还在补写，哈希必然落空）；消�
 
   // 宿主流式结束：移除 [data-streaming] → 属性变更触发兜底重扫（真实观察器回调）
   booted.wrap.removeAttribute('data-streaming')
-  booted.page.observers[0].callback([{ addedNodes: [] }])
+  booted.page.observers[0].callback([
+    { type: 'attributes', attributeName: 'data-streaming', target: booted.wrap, addedNodes: [] },
+  ])
   await settle()
   await settle()
   assert.equal(booted.stub.langCalls().length, 1, '稳定后才查表')

@@ -112,7 +112,7 @@
     ]
   },
   "installed": {
-    "version": "0.2.1-rc.2",
+    "version": "0.2.1-rc.3",
     "source": "已安装宿主：node_modules/@deepseek-ai/*/lib 的 .d.ts 声明与 .js 派发",
     "events": [
       "agent-preset/selected",

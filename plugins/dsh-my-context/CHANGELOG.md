@@ -3,6 +3,12 @@
 本文件记录 dsh-my-context 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [0.1.8] - 2026-10-29
+
+### 变更
+
+- fix(dsh-my-context,dsh-my-observability): 未设 DSH_HOME 时数据不再落到用户根目录 (#500)
+
 ## [0.1.7] - 2026-10-17
 
 ### 变更

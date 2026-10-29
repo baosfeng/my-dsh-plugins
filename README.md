@@ -36,8 +36,8 @@
 | [dsh-task-reliability](plugins/dsh-task-reliability/README.md)                     | 0.4.11  | 任务可靠性：超时重试、未完成自动继续、完成度校验 agent、思考重复干预、重启恢复、自主决策      |
 | [dsh-my-skill-manager](plugins/dsh-my-skill-manager/README.md)                     | 0.1.12  | Skill 管理：分全局/项目查看 skill，按项目启用/禁用（禁用即不注入会话）                        |
 | [dsh-my-memory](plugins/dsh-my-memory/README.md)                                   | 0.2.0  | 记忆：全局/项目两级持久化，会话开始注入系统提示词；三 tab 设置面板 + 写操作确认               |
-| [dsh-my-observability](plugins/dsh-my-observability/README.md)                     | 0.3.6  | 可观测性：事件审计与查询 API、资源看门狗面板、结构化 Git 类型化提交、提交前增量 diff 审查               |
-| [dsh-my-context](plugins/dsh-my-context/README.md)                                 | 0.1.7  | 上下文透镜：token 用量与上下文构成可视化、KV 缓存命中率、每轮/每会话预算控制                  |
+| [dsh-my-observability](plugins/dsh-my-observability/README.md)                     | 0.3.7  | 可观测性：事件审计与查询 API、资源看门狗面板、结构化 Git 类型化提交、提交前增量 diff 审查               |
+| [dsh-my-context](plugins/dsh-my-context/README.md)                                 | 0.1.8  | 上下文透镜：token 用量与上下文构成可视化、KV 缓存命中率、每轮/每会话预算控制                  |
 | [dsh-my-opencode-session-header](plugins/dsh-my-opencode-session-header/README.md) | 0.1.0  | OpenCode 会话头：为 opencode 路由注入按会话稳定的 `x-opencode-session` 头                     |
 | [dsh-shared](plugins/dsh-shared/README.md)                                         | 0.1.7  | 共享工具包：多插件共用的 server 端工具（信任围栏 / HTTP JSON / 配置持久化 / 原子写）          |
 

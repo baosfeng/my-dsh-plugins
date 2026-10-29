@@ -60,6 +60,8 @@ description: 症状 → 解法速查表：按报错关键词一行一条，教�
 - 状态文件停在旧内容且不报错，只有 `write blocked … dropping pending snapshot` → 调度器与快照原语双节流互斥；详见 [异步落盘与时序.md](异步落盘与时序.md)
 - 要靠改宿主「硬编码且不持久化」的布局值（如右侧边栏首次打开宽度 45%），而 `ctx.layout` / `ctx.sidebarRight` 都没有宽度面 → 走**已注册 root 席位的 store 座位**：`ctx.slots.entries('root')` 找到 ui-layout 条目 → `entry.store.create()`（handle 形态；AppFrame 订阅的同一实例）→ `actions.setRightbar(px)`。只在快照字段为 `null`（本次运行尚无偏好）时写、非 handle 形态一律不猜调用、全链路 detect 静默降级 + `ctx.slots.subscribe('root', …)` 应对 HMR 重挂载；固化在 `plugins/dsh-file-activity/src/client/parts/rightbar-width.ts`，防回归 `plugins/dsh-file-activity/test/client-rightbar-width.mjs`
 
+- 用户根目录冒出 `context/`、`observability/` 等目录（桌面版）→ 插件把 `$DSH_HOME` 的 fallback 写成**裸 `homedir()`**：宿主只在 boot 时 `ctx.provide('dshHomePath')` / 内部配置里持有 home，**不保证把 `DSH_HOME` 注入插件进程的 `process.env`**；未设时家目录 ≠ home。fallback 必须是 `join(homedir(), '.dsh')`（官方默认），并在无 `DSH_HOME` 的测试里断言路径落在 `~/.dsh` 下（只断言「不在 /tmp」对两种 fallback 都绿，抓不到）。固化在 `plugins/dsh-my-context/src/store.ts` 的 `stateFile()`、`plugins/dsh-my-observability/src/store-persist.ts` 的 `dataHome()`，防回归 `test/host-store.mjs`、`test/host-mutation.mjs`；存量数据用 `~/.dsh/tools/migrate-home-root-data.mjs` 幂等并入
+
 ## 验证环境
 
 > 人工起隔离实例的完整步骤与坑：`skills/verifying-dsh-plugins/`（references/isolation-instance.md）。

@@ -5,6 +5,7 @@
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
 import { rmSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { stateFile } from '../lib/store.js'
@@ -217,6 +218,19 @@ test('store: stateFile respects DSH_HOME', () => {
   process.env.DSH_HOME = home
   try {
     assert.equal(stateFile(), join(home, 'context', 'context.json'))
+  } finally {
+    if (old !== undefined) process.env.DSH_HOME = old
+    else delete process.env.DSH_HOME
+  }
+})
+
+test('store: stateFile falls back to ~/.dsh without DSH_HOME', () => {
+  // 回归：fallback 曾是裸 homedir()，桌面版未注入 DSH_HOME 时数据落到 ~/context
+  // 污染用户根目录。默认 home 必须是宿主 dshHome 的官方默认 ~/.dsh。
+  const old = process.env.DSH_HOME
+  delete process.env.DSH_HOME
+  try {
+    assert.equal(stateFile(), join(homedir(), '.dsh', 'context', 'context.json'))
   } finally {
     if (old !== undefined) process.env.DSH_HOME = old
     else delete process.env.DSH_HOME

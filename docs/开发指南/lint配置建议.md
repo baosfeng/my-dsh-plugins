@@ -30,9 +30,14 @@ npm run lint:size     # TS 源码尺寸门禁（check-ts-size + 冻结债务基�
 | client 端 | `plugins/**/lib/client.src.js`、`plugins/**/lib/parts/*.js`                                            | 尺寸规则 + `import/no-unresolved`；`no-undef`/`no-unused-vars` 关闭（`__ModuleLoader__` 拼接格式，片段互相引用） |
 | 测试文件  | `plugins/**/test/**/*.mjs`                                                                             | `recommended` + `import/no-unresolved`；`no-unused-vars` 豁免下划线参数                                          |
 | TS 源码   | `plugins/*/src/**/*.ts`                                                                                | **不在 ESLint 范围内** → 由 `check-ts-size.mjs` 施加同样三项尺寸门禁                                             |
-| ignores   | `lib/client.js`（产物）、`vendor/`、`coverage/`、`.stryker-tmp/`、`reports/`、`dist/`、`node_modules/` | —                                                                                                                |
+| ignores   | `lib/client.js`（产物）、`vendor/`、`coverage/`、`reports/`、`dist/`、`node_modules/`            | —                                                                                                                |
 
 产物 `lib/client.js` 必须排除：mermaid 产物内嵌 8.9MB base64，ESLint 正则规则会崩溃。
+
+## 依赖解析与 knip 豁免
+
+- **插件测试用的构建工具声明在根 `package.json`**：CI 只跑根 `npm ci`，`plugins/<name>/` 没有自己的 `node_modules`，所以 `@babel/core` / `@babel/preset-typescript`（`plugins/dsh-md-render/test/*.mjs` 用它把 TS 片段编译后送进 `vm` 沙箱）必须由根安装，同时各插件在自己的 `devDependencies` 里再声明一次（发布面自洽）。
+- **knip 会把这些根依赖判成「未使用」**（真正 import 它们的文件在另一个 workspace），因此在 `knip.json` 的 `"."` workspace 里用 `ignoreDependencies` 显式登记。**必须是 workspace 级而不是顶层**：顶层会把所有 workspace 的同名依赖一并豁免，掩盖真实的死依赖。
 
 ## `import/no-unresolved` 配置要点
 

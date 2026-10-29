@@ -73,9 +73,7 @@ reasonix.toml
 .dsh/
 **/.dsh/
 
-# Stryker 变异测试产物
-.stryker-tmp/
-**/.stryker-tmp/
+# 工具报告产物（一次性输出，绝不入库）
 reports/
 **/reports/
 

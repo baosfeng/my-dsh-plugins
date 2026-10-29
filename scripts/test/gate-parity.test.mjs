@@ -55,9 +55,11 @@ describe('ci.yml 解析（lib/ci-workflow.mjs）', () => {
     expect(names).toContain('audit')
     expect(names).toContain('test')
     expect(names).toContain('resource-smoke')
-    expect(names).toContain('mutation')
+    // 变异测试（Stryker）已整体移除：三份 @stryker-mutator 依赖 + 9 份插件配置 + CI mutation job
+    // 全部删除（成本与维护面不成比例）。此断言防止它被顺手加回 CI——门禁变了必须有记录。
+    expect(names).not.toContain('mutation')
     // 每个 job 都在 jobs: 下被识别（不是漏读成 0 个）
-    expect(names.length).toBeGreaterThanOrEqual(5)
+    expect(names.length).toBeGreaterThanOrEqual(4)
   })
 
   it('quality job 的聚合步骤存在，且命令是 --ci-quality', () => {

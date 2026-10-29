@@ -2,8 +2,6 @@
 node_modules/
 coverage/
 **/coverage/
-.stryker-tmp/
-**/.stryker-tmp/
 reports/
 **/reports/
 dist/

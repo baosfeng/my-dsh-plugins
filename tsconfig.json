@@ -22,5 +22,5 @@
     "noImplicitOverride": true
   },
   "include": ["plugins/**/*.ts", "plugins/**/*.d.ts"],
-  "exclude": ["node_modules", "**/.stryker-tmp/**", "**/lib/.client-build/**", "plugins/*/src/client/**"]
+  "exclude": ["node_modules", "**/lib/.client-build/**", "plugins/*/src/client/**"]
 }

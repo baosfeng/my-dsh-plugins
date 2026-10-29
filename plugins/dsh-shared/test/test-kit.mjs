@@ -93,6 +93,20 @@ test('yieldLoop：必然晚于已排队的 microtask（不依赖机器负载）'
   assert.deepEqual(order, ['microtask', 'after-yield'])
 })
 
+test('包名子路径 dsh-shared/test-kit/wait.mjs 可被 Node ESM 解析（stryker 沙箱依赖）', async () => {
+  /*
+   * 为什么必须有这条：stryker 的 sandbox 只复制**插件目录**，测试里跨插件的
+   * 相对路径（'../../dsh-shared/test-kit/wait.mjs'）在沙箱内会解析成
+   * '/dsh-shared/test-kit/wait.mjs'（沙箱根）→ Cannot find module，dry run 直接崩，
+   * 变异测试门禁整条红。走包名才有唯一正确解析路径，而包名子路径要求 package.json
+   * exports 显式声明（Node ESM 严格模式，缺失即 ERR_PACKAGE_PATH_NOT_EXPORTED）。
+   * 断言用真实 import：exports 被改坏时这里必红，不用等 CI 的 mutation job。
+   */
+  const mod = await import('dsh-shared/test-kit/wait.mjs')
+  assert.equal(typeof mod.waitFor, 'function', '包名子路径必须导出 waitFor')
+  assert.equal(typeof mod.sleepFor, 'function', '包名子路径必须导出 sleepFor')
+})
+
 test('waitForFile：文件出现并满足条件后返回；文件不存在时轮询而非抛 ENOENT', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'wait-kit-'))
   try {

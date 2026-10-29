@@ -230,7 +230,9 @@ test('a memory-shaped file in prompts.json position is not read as prompts', asy
 })
 
 test('cleanup', () => {
-  rmSync(dir, { recursive: true, force: true })
+  // 用重试参数兜住与上一条用例异步写的竞态：写入线程刚建完子目录、rm 抢先删除父目录
+  // 时会抛 ENOTEMPTY（CI 实测偶发，本地不易复现）——force 只忽略"不存在"，不管竞态。
+  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
 })
 
 /** 条目是否有可用的时间戳（种子断言用）。 */

@@ -19,7 +19,9 @@ import assert from 'node:assert/strict'
 import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import tmp from 'tmp'
-import { sleepFor, yieldLoop } from '../../dsh-shared/test-kit/wait.mjs'
+// 必须走包名（不是 '../../dsh-shared/test-kit/wait.mjs'）：stryker 的 sandbox 只复制
+// 插件目录，跨插件相对路径在沙箱内解析成 '/dsh-shared/...' → dry run 崩（mutation 门禁红）。
+import { sleepFor, yieldLoop } from 'dsh-shared/test-kit/wait.mjs'
 
 /** 受控 IO 闸门（vi.hoisted：mock 工厂与用例共享的可变状态）。 */
 const io = vi.hoisted(() => ({ delayMs: 0 }))

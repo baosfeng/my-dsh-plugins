@@ -21,10 +21,12 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./test-kit/wait.mjs": "./test-kit/wait.mjs",
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
+    "test-kit/wait.mjs",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

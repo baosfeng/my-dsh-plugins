@@ -1,4 +1,4 @@
-# 发版前人工自测清单 — dsh-my-observability@0.3.7
+# 发版前人工自测清单 — dsh-my-observability@0.3.8
 
 - 验证环境：隔离实例 DSH_HOME=`/private/tmp/dsh-verify-3157/dsh-home`（独立 HOME=`/private/tmp/dsh-verify-3157/user-home`）/ 端口 3157（有 DSH_HOME）与 3160（无 DSH_HOME）/ Chrome for Testing（agent-browser 驱动，独立浏览器）
 - 待验插件处于启用态：是（隔离副本内移除 `disabled: true`，生产配置未改）

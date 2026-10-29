@@ -7,13 +7,6 @@
 
 ### 变更
 
-- chore(release): 批量发版 2 个插件
-- fix(dsh-my-context,dsh-my-observability): 未设 DSH_HOME 时数据不再落到用户根目录 (#500)
-
-## [0.1.8] - 2026-10-29
-
-### 变更
-
 - fix(dsh-my-context,dsh-my-observability): 未设 DSH_HOME 时数据不再落到用户根目录 (#500)
 
 ## [0.1.7] - 2026-10-17

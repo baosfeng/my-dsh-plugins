@@ -6,6 +6,7 @@
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { execFileSync } from 'node:child_process'
@@ -353,13 +354,15 @@ test('AI timeout degrades with a note', async () => {
 
 // ── 变异补充：store 边界（杀 store.js 存活变异体）────────────────────────
 
-test('jsonlFile falls back to homedir without DSH_HOME', async () => {
+test('jsonlFile falls back to ~/.dsh without DSH_HOME', async () => {
+  // 回归：fallback 曾是裸 homedir()，桌面版未注入 DSH_HOME 时审计日志落到
+  // ~/observability 污染用户根目录；默认 home 必须是 ~/.dsh（与 resource-monitor 一致）。
   const { jsonlFile } = await import('../lib/store-persist.js')
   const old = process.env.DSH_HOME
   delete process.env.DSH_HOME
   try {
     const file = jsonlFile()
-    assert.ok(file.includes('observability'), 'path contains observability dir')
+    assert.equal(file, join(homedir(), '.dsh', 'observability', 'audit.jsonl'))
     assert.ok(!file.startsWith('/tmp/'), 'not under DSH_HOME when unset')
   } finally {
     if (old !== undefined) process.env.DSH_HOME = old

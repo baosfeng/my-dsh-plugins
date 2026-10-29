@@ -56,10 +56,12 @@ export interface PersistLogger {
   warn(message: string): void
 }
 
-/** 数据根目录：$DSH_HOME（fallback 家目录）。 */
+/** 数据根目录：$DSH_HOME（未设时 ~/.dsh，即宿主 dshHome 的官方默认）。 */
 function dataHome(): string {
   const home = process.env.DSH_HOME
-  return typeof home === 'string' && home !== '' ? home : homedir()
+  // fallback 不能是裸家目录：桌面版未注入 DSH_HOME 时会把审计日志写到 ~/observability，
+  // 污染用户根目录（与 resource-monitor 的 jsonlFile() 落点保持一致）。
+  return typeof home === 'string' && home !== '' ? home : join(homedir(), '.dsh')
 }
 
 /** 追加日志文件路径（新格式）。 */

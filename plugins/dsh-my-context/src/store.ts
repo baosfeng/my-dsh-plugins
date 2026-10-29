@@ -29,10 +29,12 @@ import type { SessionState } from './state.js'
 import type { DshContext } from './types.js'
 import type { PersistHandle } from './persist.js'
 
-/** 统计数据文件：$DSH_HOME/context/context.json（fallback ~/.dsh/…）。 */
+/** 统计数据文件：$DSH_HOME/context/context.json（未设 DSH_HOME 时 ~/.dsh/context/context.json）。 */
 export function stateFile(): string {
   const home = process.env.DSH_HOME
-  const base = typeof home === 'string' && home !== '' ? home : homedir()
+  // fallback 必须是 ~/.dsh（宿主 dshHome 的官方默认），不能是裸家目录：
+  // 否则桌面版未注入 DSH_HOME 时数据落到 ~/context，污染用户根目录。
+  const base = typeof home === 'string' && home !== '' ? home : join(homedir(), '.dsh')
   return join(base, 'context', 'context.json')
 }
 

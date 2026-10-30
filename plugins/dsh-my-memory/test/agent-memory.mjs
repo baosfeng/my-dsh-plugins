@@ -183,6 +183,10 @@ test('section text carries rules but zero memory content (no resident injection)
   // 规则在
   assert.match(text, /宁缺毋滥/)
   assert.match(text, /不要写日期/)
+  // 冲突处理协议在（系统不做冲突判断，判据全部交给 agent）
+  assert.match(text, /遇到矛盾时/)
+  assert.match(text, /能共存就别删/)
+  assert.match(text, /不留两条并存/)
   // 正文不在（说明段不含任何实际记忆条目）
   assert.ok(!text.includes('- 提交前必须跑'), 'no memory body injected into the system prompt')
 })

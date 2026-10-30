@@ -33,17 +33,17 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-memory
 
 `cordis.yml` 中 my-memory 的 `config` 字段，均可省略：
 
-| 配置键             | 默认     | 作用                                                           |
-| ------------------ | -------- | -------------------------------------------------------------- |
-| `maxItems`         | `5`      | 注入系统提示词的全局记忆条数上限                               |
-| `maxDescLength`    | `200`    | 单条记忆注入长度上限（字符，语义截断优先概要/首句）            |
-| `maxEntryLength`   | `50`     | 建议单条记忆长度上限（字符），超长时面板提示精简               |
-| `proactivePropose` | `false`  | 开启后引导 agent 主动向你提议保存记忆                          |
-| `saveApproval`     | `'auto'` | 记忆写操作（保存 + 删除）确认策略：`auto` / `always` / `never` |
-| `maxPromptItems`   | `20`     | 注入系统提示词的全局提示词条数上限（超出不注入 + warn）       |
-| `maxPromptLength`  | `1000`   | 单条提示词正文上限（字符，超出截断 + warn）                   |
-| `agentMemory.enabled` | `true` | 是否启用 agent 记忆（第四套体系，issue #502） |
-| `agentMemory.archiveDays` | `180` | 冷记忆归档阈值（天）：超过该天数未被 agent 读取即移入 `archive/`（面板可见并可恢复） |
+| 配置键                    | 默认     | 作用                                                                                 |
+| ------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| `maxItems`                | `5`      | 注入系统提示词的全局记忆条数上限                                                     |
+| `maxDescLength`           | `200`    | 单条记忆注入长度上限（字符，语义截断优先概要/首句）                                  |
+| `maxEntryLength`          | `50`     | 建议单条记忆长度上限（字符），超长时面板提示精简                                     |
+| `proactivePropose`        | `false`  | 开启后引导 agent 主动向你提议保存记忆                                                |
+| `saveApproval`            | `'auto'` | 记忆写操作（保存 + 删除）确认策略：`auto` / `always` / `never`                       |
+| `maxPromptItems`          | `20`     | 注入系统提示词的全局提示词条数上限（超出不注入 + warn）                              |
+| `maxPromptLength`         | `1000`   | 单条提示词正文上限（字符，超出截断 + warn）                                          |
+| `agentMemory.enabled`     | `true`   | 是否启用 agent 记忆（第四套体系，issue #502）                                        |
+| `agentMemory.archiveDays` | `180`    | 冷记忆归档阈值（天）：超过该天数未被 agent 读取即移入 `archive/`（面板可见并可恢复） |
 
 ## 权限模式与保存确认
 

@@ -46,6 +46,7 @@ async function archivedFixture(name, body) {
   const store = createAgentMemoryStore({ index })
   await store.write(name, body)
   index.state().files[name].createdAt = Date.now() - COLD_AGE_MS
+  index.state().files[name].updatedAt = Date.now() - COLD_AGE_MS
   index.state().files[name].lastReadAt = 0
   await store.archiveCold(ARCHIVE_MS)
   return { index, store }
@@ -121,6 +122,7 @@ test('route GET 把归档项连同 archived 标记一起返回，POST restore �
   const store = createAgentMemoryStore({ index })
   await store.write('feedback.md', '- 被纠正过的做法')
   index.state().files['feedback.md'].createdAt = Date.now() - COLD_AGE_MS
+  index.state().files['feedback.md'].updatedAt = Date.now() - COLD_AGE_MS
   index.state().files['feedback.md'].lastReadAt = 0
   await store.archiveCold(ARCHIVE_MS)
   const routeDeps = { index, store }
@@ -143,4 +145,25 @@ test('归档后再写同名文件即复活，不会一边归档一边可见', as
   assert.equal(index.metaOf('MEMORY.md').archivedAt, undefined, '写入清掉归档标记')
   assert.equal((await store.read('MEMORY.md')).content, '- 新索引', '活跃文件是新内容')
   assert.ok(existsSync(archivedAbsoluteOf('MEMORY.md')), '旧归档副本留在 archive/（不参与可见性）')
+})
+
+test('复活（重新写入）不会被旧 createdAt 再次归档', async () => {
+  const { createIndexStore, createAgentMemoryStore } = await deps()
+  const index = createIndexStore({})
+  const store = createAgentMemoryStore({ index })
+  await store.write('user.md', '- 旧内容')
+  index.state().files['user.md'].createdAt = Date.now() - COLD_AGE_MS
+  index.state().files['user.md'].lastReadAt = 0
+  await store.write('user.md', '- 新内容')
+  const moved = await store.archiveCold(ARCHIVE_MS)
+  assert.deepEqual(moved, [], '刚写过的条目不算冷记忆（updatedAt 计入判定）')
+  assert.equal((await store.read('user.md')).content, '- 新内容', '正文仍是新写的')
+})
+
+test('已归档条目可被删除，归档副本一并清理', async () => {
+  const { archivedAbsoluteOf } = await deps()
+  const { store } = await archivedFixture('feedback.md', '- 要被删掉的归档')
+  assert.deepEqual(await store.remove('feedback.md'), { ok: true })
+  assert.ok(!existsSync(join(home, 'agent-memory', 'feedback.md')), '活跃区无残留')
+  assert.ok(!existsSync(archivedAbsoluteOf('feedback.md')), '归档副本一并清理')
 })

@@ -3,7 +3,7 @@
  *
  * 工具面收敛为 4 个，全部限定在 $DSH_HOME/agent-memory/ 内（白名单见
  * paths.ts）。签名刻意做得像文件操作，但**不带任何元数据**——
- * `memory_read` 返回的字节就是正文本身，一个多余字符都没有。
+ * `agent_memory_read` 返回的字节就是正文本身，一个多余字符都没有。
  *
  * 返回值纪律（issue #502）：**成功只有一个词 `ok`**，不汇报条数、不解释、
  * 不回显内容。失败才给可操作的原因。这条是「保存时不污染上下文」的落点：
@@ -35,21 +35,43 @@ function cwdOf(exec) {
     const agent = exec?.agent;
     return agent?.session?.header?.cwd ?? '';
 }
+/** 项目作用域的别名前缀：agent 不必知道项目 id（宿主按项目根 hash 生成）。 */
+const CURRENT_PROJECT = 'projects/current/';
+/**
+ * 把 `projects/current/…` 解析为当前项目的真实前缀，其余名字原样返回。
+ *
+ * 项目 id 是宿主按项目根算出来的 hash，agent 无从得知也不该背——它只写
+ * 「当前项目」，解析交给系统。list 返回的仍是真实路径，两者指向同一文件。
+ */
+async function resolveAlias(rawName, exec, resolveProjectPrefix) {
+    if (typeof rawName !== 'string')
+        return rawName;
+    const cleaned = rawName.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+    if (!cleaned.startsWith(CURRENT_PROJECT))
+        return rawName;
+    const prefix = await resolveProjectPrefix(cwdOf(exec));
+    return prefix + cleaned.slice(CURRENT_PROJECT.length);
+}
 /** 把 store 的返回摊平成模型可读的文本。 */
 function renderRead(result) {
     return result.ok ? result.content : result.error;
 }
-/** 渲染 list 结果。 */
+/** 渲染 list 结果（条目数 >1 才标出来，避免把 60 条看成一两条）。 */
 function renderList(items) {
     if (items.length === 0)
         return '（空）';
-    return items.map((item) => (item.firstLine === '' ? item.name : `${item.name} — ${item.firstLine}`)).join('\n');
+    return items
+        .map((item) => {
+        const summary = item.firstLine === '' ? item.name : `${item.name} — ${item.firstLine}`;
+        return item.count > 1 ? `${summary}（${item.count} 条）` : summary;
+    })
+        .join('\n');
 }
 /** agent_memory_list：列出可读的记忆文件（冷记忆不列出）。 */
 function listTool({ store, resolveProjectPrefix }) {
     return {
         name: 'agent_memory_list',
-        description: '列出你的跨会话记忆文件（冷记忆不列出）。不确定有没有相关记忆时先调用它。',
+        description: '列出你的跨会话记忆文件（文件名 + 概要）。不确定有没有相关记忆时先调用它。',
         parameters: {
             type: 'object',
             properties: {
@@ -70,7 +92,7 @@ function listTool({ store, resolveProjectPrefix }) {
     };
 }
 /** agent_memory_read：读一份正文（返回的字节就是正文本身，无元数据）。 */
-function readTool({ store }) {
+function readTool({ store, resolveProjectPrefix }) {
     return {
         name: 'agent_memory_read',
         description: '读取一份跨会话记忆的正文。',
@@ -83,16 +105,17 @@ function readTool({ store }) {
             additionalProperties: false,
         },
         output: TEXT_OUTPUT,
-        async execute(params) {
-            return renderRead(await store.read(params.name));
+        async execute(params, exec) {
+            const name = await resolveAlias(params.name, exec, resolveProjectPrefix);
+            return renderRead(await store.read(name));
         },
     };
 }
 /** agent_memory_write：整份覆盖写入（成功只回 ok）。 */
-function writeTool({ store }) {
+function writeTool({ store, resolveProjectPrefix }) {
     return {
         name: 'agent_memory_write',
-        description: '写入一份跨会话记忆（整份覆盖）。写入前先用 memory_read 读，已有同主题就合并或替换，绝不新增重复条目。',
+        description: '写入一份跨会话记忆（整份覆盖）。写入前先用 agent_memory_read 读，已有同主题就合并或替换，绝不新增重复条目。',
         parameters: {
             type: 'object',
             properties: {
@@ -103,14 +126,15 @@ function writeTool({ store }) {
             additionalProperties: false,
         },
         output: TEXT_OUTPUT,
-        async execute(params) {
-            const result = await store.write(params.name, params.content);
+        async execute(params, exec) {
+            const name = await resolveAlias(params.name, exec, resolveProjectPrefix);
+            const result = await store.write(name, params.content);
             return result.ok ? 'ok' : result.error;
         },
     };
 }
 /** agent_memory_delete：删除一份记忆。 */
-function deleteTool({ store }) {
+function deleteTool({ store, resolveProjectPrefix }) {
     return {
         name: 'agent_memory_delete',
         description: '删除一份跨会话记忆。',
@@ -123,22 +147,34 @@ function deleteTool({ store }) {
             additionalProperties: false,
         },
         output: TEXT_OUTPUT,
-        async execute(params) {
-            const result = await store.remove(params.name);
+        async execute(params, exec) {
+            const name = await resolveAlias(params.name, exec, resolveProjectPrefix);
+            const result = await store.remove(name);
             return result.ok ? 'ok' : result.error;
         },
     };
+}
+/**
+ * 构造 agent 记忆的运行时（index + store 单实例）。
+ *
+ * **必须全进程只有一份**：index.json 的持久化是「整份 cache 覆盖落盘」，
+ * 两个实例各持一份 cache 时，一次面板写入会把工具侧 cache 里的旧值整体
+ * 写回去（lost update——面板刚清掉的归档标记可能被回滚）。所以 index.ts
+ * 建一份，工具与面板路由共用。
+ */
+export function createAgentMemoryRuntime({ logger } = {}) {
+    const index = createIndexStore({ logger });
+    return { index, store: createAgentMemoryStore({ index, logger }) };
 }
 /** 构造四个工具定义（不含注册副作用，便于单测）。 */
 export function createAgentMemoryTools(deps) {
     return [listTool(deps), readTool(deps), writeTool(deps), deleteTool(deps)];
 }
 /** 注册四个工具 + 启动时归档冷记忆；返回 disposer 集合。 */
-export function registerAgentMemoryTools(ctx, { config, resolveProjectPrefix, }) {
+export function registerAgentMemoryTools(ctx, { config, resolveProjectPrefix, runtime, }) {
     if (config?.enabled === false)
         return () => { };
-    const index = createIndexStore({ logger: ctx.logger });
-    const store = createAgentMemoryStore({ index, logger: ctx.logger });
+    const { index, store } = runtime ?? createAgentMemoryRuntime({ logger: ctx.logger });
     const archiveMs = Number.isFinite(config?.archiveDays) && (config?.archiveDays ?? 0) > 0
         ? config.archiveDays * 24 * 60 * 60 * 1000
         : DEFAULT_ARCHIVE_MS;

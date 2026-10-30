@@ -116,7 +116,9 @@ async function archiveColdEntries(
   const moved: string[] = []
   for (const [name, meta] of Object.entries(index.state().files)) {
     if (meta.archivedAt !== undefined) continue
-    const last = Math.max(meta.lastReadAt, meta.createdAt)
+    // updatedAt 必须计入：复活（重新写入）只刷新 updatedAt，createdAt 仍是
+    // 很久以前——只看 createdAt 会让刚复活的记忆在下次启动立刻又被归档。
+    const last = Math.max(meta.lastReadAt, meta.createdAt, meta.updatedAt)
     if (now - last < archiveMs) continue
     const from = absoluteFileOf(name)
     try {
@@ -145,16 +147,23 @@ async function readEntry(
   return { ok: true, content: text }
 }
 
-/** 删除一份正文与它的元数据（串行化，避免与并发写互相踩）。 */
+/**
+ * 删除一份正文与它的元数据（串行化，避免与并发写互相踩）。
+ *
+ * 活跃正文与归档副本一起清：删掉一份「已归档」的记忆不该报「不存在」，
+ * 也不该在 archive/ 里留一份孤儿。
+ */
 async function removeEntry(
   name: string,
   index: IndexStore,
   serial: <T>(task: () => Promise<T>) => Promise<T>,
 ): Promise<WriteOutcome> {
-  const text = await readText(name)
-  if (text === null) return { ok: false, error: `${name} 不存在` }
+  const active = await readText(name)
+  const archived = await readAt(archivedAbsoluteOf(name))
+  if (active === null && archived === null) return { ok: false, error: `${name} 不存在` }
   await serial(async () => {
     await rm(absoluteFileOf(name), { force: true })
+    await rm(archivedAbsoluteOf(name), { force: true })
     await index.drop(name)
   })
   return { ok: true }
@@ -195,15 +204,36 @@ function createSerial(): <T>(task: () => Promise<T>) => Promise<T> {
   }
 }
 
-/** 列出可读记忆（冷记忆不列出）：文件名 + 首行概要。 */
-async function listEntries(index: IndexStore, prefix: string): Promise<Array<{ name: string; firstLine: string }>> {
-  const out: Array<{ name: string; firstLine: string }> = []
+/** 解析 MEMORY.md 的索引行（「文件名 — 何时读」）；没有索引就是空表。 */
+async function indexHints(): Promise<Map<string, string>> {
+  const hints = new Map<string, string>()
+  const text = await readText('MEMORY.md')
+  if (text === null) return hints
+  for (const line of text.split('\n')) {
+    const matched = /^\s*-\s*([^\s—–-]+)\s*[—–-]\s*(.+)$/u.exec(line)
+    if (matched !== null) hints.set(matched[1], matched[2].trim())
+  }
+  return hints
+}
+
+/** 列出可读记忆（冷记忆不列出）：文件名 + 概要（索引行优先，其次正文首行）+ 条目数。 */
+async function listEntries(
+  index: IndexStore,
+  prefix: string,
+): Promise<Array<{ name: string; firstLine: string; count: number }>> {
+  // 必须先 load：启动时 index.load() 是异步的，list 可能早于它完成——
+  // 那时 state() 是空索引，agent 会把「暂时没加载」误读成「我什么都没写过」。
+  await index.load()
+  const hints = await indexHints()
+  const out: Array<{ name: string; firstLine: string; count: number }> = []
   for (const [name, meta] of Object.entries(index.state().files)) {
     if (meta.archivedAt !== undefined) continue // 冷记忆不列出
     if (prefix !== '' && !name.startsWith(prefix)) continue
     const text = await readText(name)
     if (text === null) continue
-    out.push({ name, firstLine: firstLineOf(text) })
+    // 索引写了的用索引描述（那是 agent 写给自己的「何时读」线索），否则首行。
+    const firstLine = hints.get(name) ?? (name === 'MEMORY.md' ? '索引（一行一个文件 + 何时读）' : firstLineOf(text))
+    out.push({ name, firstLine, count: countEntries(text) })
   }
   return out.sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -230,7 +260,7 @@ export function createAgentMemoryStore({
   write: (name: unknown, content: unknown) => Promise<WriteOutcome>
   remove: (name: unknown) => Promise<WriteOutcome>
   restore: (name: unknown) => Promise<WriteOutcome>
-  list: (prefix?: string) => Promise<Array<{ name: string; firstLine: string }>>
+  list: (prefix?: string) => Promise<Array<{ name: string; firstLine: string; count: number }>>
   archiveCold: (archiveMs: number, now?: number) => Promise<string[]>
   readForPanel: (name: string) => Promise<string | null>
   validate: (content: string) => string | null

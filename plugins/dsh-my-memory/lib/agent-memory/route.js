@@ -13,19 +13,18 @@
  * 热度（它们不注入上下文、也不能被 agent 改），但用户必须看得到。
  */
 import { readJsonBody, writeJson } from 'dsh-shared';
-import { createIndexStore } from './index-store.js';
-import { createAgentMemoryStore } from './store.js';
+import { createAgentMemoryRuntime } from './tools.js';
 import { normalizeName } from './paths.js';
 /**
  * 构造路由依赖（issue #502）。
  *
- * 与工具的 store 是**独立实例**：工具侧与面板侧并发读写同一批文件时，
- * 各自的 index 缓存不会互相打架（原子写已保证磁盘一致）。
+ * **必须与工具侧共用同一个 runtime**：index.json 是整份 cache 覆盖落盘，
+ * 两个实例各持一份 cache 会互相覆盖（lost update）。调用方传 runtime；
+ * 未传时自建一份（仅面板使用、无并发写者的场景）。
  */
-export function createAgentMemoryRouteDeps({ logger, enabled, }) {
-    const index = createIndexStore({ logger });
-    const store = createAgentMemoryStore({ index, logger });
-    // 关闭 agent 记忆时面板仍可读（展示历史），只是工具不再注册。
+export function createAgentMemoryRouteDeps({ logger, enabled, runtime, }) {
+    const { index, store } = runtime ?? createAgentMemoryRuntime({ logger });
+    // 关闭 agent 记忆时面板仍可读（展示历史），只是工具与说明段不再注册。
     void enabled;
     return { index, store, logger };
 }

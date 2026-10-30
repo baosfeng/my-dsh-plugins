@@ -27,6 +27,12 @@
 - fix(agent-memory): 四个 `agent_memory_*` 工具补齐宿主强制的 `output { schema, render }` 声明——缺它宿主 `tools.register()` 直接抛 `TypeError`，工具在真实环境里根本注册不上（此前测试直接调 `execute`，绕过了注册校验）。新增 `test/host-register-contract.mjs`：把宿主注册契约内联成断言，对全部 7 个注册工具跑一遍，任何工具退回「没有 output」立即红灯。
 - fix(agent-memory): 归档不再等于「凭空消失」——面板可读归档正文并一键恢复（正文搬回原位 + 清归档标记），GET 列表返回 `archived: true` 与正文；**agent 通道仍读不到归档内容**（遗忘语义不变）；写入同名文件自动复活。新增 `test/agent-memory-recovery.mjs` 锁死这四条。
 - fix(docs): README 删除重复的「Agent 记忆」条目。
+- fix(agent-memory): **盲测（4 个不知情执行者）暴露的问题**——`projects/<id>` 的 id 是宿主按项目根算的 hash、agent 无从得知（3/4 盲测卡在这里只能猜目录名）：新增 `projects/current/` 别名由系统解析；`list` 只显示正文首行导致 60 条被看成 1 条：改为返回条目数且优先用 `MEMORY.md` 索引行当描述（索引终于有回报）；`agent_memory_write` 描述里写着不存在的 `memory_read`：改为 `agent_memory_read`；`list` 描述里的「冷记忆」无处定义：改为「文件名 + 概要」。
+- fix(agent-memory): index + store 改为**全进程单实例**（工具与面板路由共用）——两份 index 缓存各自整份落盘会 lost update，面板刚恢复的归档标记可能被工具侧旧缓存回滚。
+- fix(agent-memory): 归档判定计入 `updatedAt`（复活后的记忆不会在下次启动被旧 `createdAt` 立刻又归档）；已归档条目可删除且一并清理 `archive/` 副本。
+- fix(agent-memory): `agentMemory.enabled=false` 时**连说明段也不注册**（此前 agent 会被告知一套它根本调不到的工具）。
+- fix(agent-memory): `archive/` 移出写白名单（agent 不该直接写归档区），删除未使用的常量。
+- fix(agent-memory): `list` 先 `await index.load()`——启动竞态下会把「索引还没加载」误报成「空记忆库」。
 
 ### 变更
 

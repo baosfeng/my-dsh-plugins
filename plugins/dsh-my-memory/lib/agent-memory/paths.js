@@ -6,7 +6,7 @@
  *
  * 设计契约（issue #502 验收标准）：
  *  - **零常驻注入**：不注册 systemPrompt.section，正文只在 agent 主动
- *    `memory_read` 时进入上下文，不命中则零成本；
+ *    `agent_memory_read` 时进入上下文，不命中则零成本；
  *  - **文件是存储、不是接口**：正文是纯 markdown，元数据（创建/最后读取/
  *    读取次数）单独存 index.json，**agent 永不可见、不可写**——时间戳与
  *    热度可被篡改就等于遗忘机制失效，故必须封装；
@@ -34,15 +34,16 @@ export function indexFile() {
 export function archiveDir() {
     return join(agentMemoryDir(), 'archive');
 }
-/** 根索引文件名。 */
-const INDEX_MEMORY_FILE = 'MEMORY.md';
 /**
  * 允许的记忆文件名白名单（相对 agent-memory 根，正斜杠分隔）。
  *
  * 白名单而非黑名单：agent 只能读写这几个位置，路径逃逸（`../`、符号链接、
  * 绝对路径）在结构上就不可能发生，无需再做 realpath 校验。
+ *
+ * `archive/` 不在白名单里：归档区由系统独占搬运，agent 既不该写进去，也
+ * 不该读出来（「不常用就不进上下文」正是归档的意义）。
  */
-const ALLOWED_FILES = Object.freeze(['MEMORY.md', 'user.md', 'feedback.md', 'archive/MEMORY.md']);
+const ALLOWED_FILES = Object.freeze(['MEMORY.md', 'user.md', 'feedback.md']);
 /** 是否当前项目作用域的路径（projects/<id>/...）。 */
 const PROJECT_PREFIX = 'projects/';
 /** 项目作用域内的文件名（projects/<id>/ 之下）。 */

@@ -136,8 +136,9 @@ test('cold entries are archived and then disappear from list', async () => {
   const index = createIndexStore({})
   const store = createAgentMemoryStore({ index })
   await store.write('user.md', '- 很久没读的记忆')
-  // 把创建时间推到 400 天前，模拟冷记忆
+  // 把创建与写入时间都推到 400 天前，模拟冷记忆（判定取三者最新）
   index.state().files['user.md'].createdAt = Date.now() - 400 * 24 * 60 * 60 * 1000
+  index.state().files['user.md'].updatedAt = Date.now() - 400 * 24 * 60 * 60 * 1000
   index.state().files['user.md'].lastReadAt = 0
   const moved = await store.archiveCold(180 * 24 * 60 * 60 * 1000)
   assert.deepEqual(moved, ['user.md'])

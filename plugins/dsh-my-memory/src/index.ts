@@ -19,7 +19,8 @@
  *    自定义确认 UI：删除红色、保存绿色）。
  */
 import { createAgentMemorySection } from './agent-memory/prompt.js'
-import { registerAgentMemoryTools } from './agent-memory/tools.js'
+import { createAgentMemoryRuntime, registerAgentMemoryTools } from './agent-memory/tools.js'
+import type { AgentMemoryRuntime } from './agent-memory/tools.js'
 import { createAgentMemoryRouteDeps } from './agent-memory/route.js'
 import { createApiHandler } from './api-route.js'
 import { createTrustFence } from 'dsh-shared'
@@ -117,7 +118,10 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
   registerPromptsSection(ctx, promptsStore, config)
 
   // ── agent 记忆（issue #502）：第四套独立体系，零常驻注入 ──────────────
-  registerAgentMemory(ctx, config)
+  // runtime（index + store）全进程只建一份：工具与面板路由共用，避免两份
+  // index 缓存各自整份落盘导致 lost update（恢复/归档标记被回滚）。
+  const agentMemoryRuntime = createAgentMemoryRuntime({ logger: ctx.logger })
+  registerAgentMemory(ctx, config, agentMemoryRuntime)
 
   // ── memory_query 只读工具 ─────────────────────────────────────────────
   ctx.effect(
@@ -129,7 +133,7 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
   // 门按会话审批策略 + saveApproval 决定确认/免确认放行/明确拒绝——绝不静默变更。
   registerMemoryWriteTools(ctx, { globalStore, getProjectStore, config })
 
-  registerMemoryApi(ctx, { globalStore, getProjectStore, promptsStore, config })
+  registerMemoryApi(ctx, { globalStore, getProjectStore, promptsStore, config, agentMemoryRuntime })
   registerMemoryStatusQuery(ctx, globalStore, projectStores, { config })
 }
 
@@ -171,6 +175,7 @@ function registerMemoryApi(
     getProjectStore: (cwd: string) => Promise<ReturnType<typeof createStore>>
     promptsStore: ReturnType<typeof createPromptsStore>
     config: MemoryConfig
+    agentMemoryRuntime: AgentMemoryRuntime
   },
 ): void {
   const fence = createTrustFence(ctx) as (request: unknown) => boolean
@@ -185,6 +190,7 @@ function registerMemoryApi(
     agentMemoryDeps: createAgentMemoryRouteDeps({
       logger: ctx.logger,
       enabled: deps.config?.agentMemory?.enabled,
+      runtime: deps.agentMemoryRuntime,
     }),
   })
   ctx.effect(
@@ -200,7 +206,11 @@ function registerMemoryApi(
  * memory_read 时才进入上下文，不命中则一分 token 都不花。与全局记忆的
  * 「固定 top-5 注入」是相反策略，也正是本体系存在的理由。
  */
-function registerAgentMemory(ctx: DshContext, config: MemoryConfig): void {
+function registerAgentMemory(ctx: DshContext, config: MemoryConfig, runtime: AgentMemoryRuntime): void {
+  // 关闭整块能力时**连说明段也不注册**：否则 agent 会被告知有一套它根本
+  // 调不到的工具（section 在、工具不在），比没有这段更糟。
+  if (config?.agentMemory?.enabled === false) return
+
   ctx.effect(() => {
     try {
       return ctx.systemPrompt?.section(createAgentMemorySection())
@@ -215,6 +225,7 @@ function registerAgentMemory(ctx: DshContext, config: MemoryConfig): void {
       registerAgentMemoryTools(ctx, {
         config: config?.agentMemory,
         resolveProjectPrefix: async (cwd: string) => `projects/${projectIdOf(await findProjectRoot(cwd || '.'))}/`,
+        runtime,
       }),
     'dsh-my-memory: agent memory tools',
   )

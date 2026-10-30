@@ -125,6 +125,30 @@ const strings = {
     isZh() ? '删除不可撤销 · 记忆绝不静默变更' : 'Deletion is irreversible · memories never change silently',
   // ── issue #465 全局提示词（与记忆并列但完全隔离）──
   promptsSection: (): string => (isZh() ? '全局提示词' : 'Global prompts'),
+  // ── agent 记忆（issue #502）：第四个 tab ──
+  agentMemorySection: (): string => (isZh() ? 'Agent 记忆' : 'Agent memory'),
+  agentMemoryNote: (): string =>
+    isZh()
+      ? 'agent 自主维护的跨会话记忆，与上面的全局/项目记忆相互独立。正文不注入上下文——只有 agent 主动读取时才消耗 token；这里的时间与次数只给你看，agent 看不到也改不了。'
+      : 'Cross-session memory the agent maintains on its own, independent of the global/project memory above. Bodies are never injected into context — only an explicit read by the agent costs tokens; the timestamps and counts below are for you only (the agent cannot see or change them).',
+  agentMemoryEmpty: (): string => (isZh() ? '还没有记忆' : 'No memories yet'),
+  agentMemoryEmptyHint: (): string =>
+    isZh()
+      ? '这是正常状态——agent 只在遇到下次会话仍有用、且代码里推不出来的信息时才会写。'
+      : 'That is normal: the agent only writes when something is useful in a later session and cannot be derived from the code.',
+  agentMemoryCreated: (value: string): string => (isZh() ? `创建 ${value}` : `created ${value}`),
+  agentMemoryRead: (count: number, value: string): string =>
+    isZh() ? `读过 ${count} 次（最近 ${value}）` : `read ${count}× (last ${value})`,
+  agentMemoryArchived: (): string => (isZh() ? '已归档（长期未读）' : 'archived (long unread)'),
+  agentMemoryArchiveTitle: (count: number): string => (isZh() ? `已归档（${count}）` : `Archived (${count})`),
+  agentMemoryNever: (): string => (isZh() ? '从未' : 'never'),
+  agentMemoryToday: (): string => (isZh() ? '今天' : 'today'),
+  agentMemoryDaysAgo: (days: number): string => (isZh() ? `${days} 天前` : `${days}d ago`),
+  agentMemoryEdit: (): string => (isZh() ? '编辑' : 'Edit'),
+  agentMemoryCancel: (): string => (isZh() ? '取消' : 'Cancel'),
+  agentMemorySave: (): string => (isZh() ? '保存' : 'Save'),
+  agentMemoryDelete: (): string => (isZh() ? '删除' : 'Delete'),
+  agentMemorySaveFailed: (): string => (isZh() ? '保存失败' : 'Save failed'),
   promptsScope: (): string => (isZh() ? '全局提示词' : 'Global prompts'),
   promptsNote: (): string =>
     isZh()

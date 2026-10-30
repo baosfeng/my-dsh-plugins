@@ -138,6 +138,49 @@ function writePrompt(payload: {
     })
 }
 
+// ── agent 记忆（issue #502）：独立端点 /my-memory/api/agent-memory ──
+// 与上面两套的语义相反：**写入不需要 confirmed 标记**（agent 自主维护，
+// 面板是用户自己的入口，改自己的记忆不必再问一次）。
+
+/** 面板上的一份 agent 记忆（正文 + 只有用户可见的元数据）。 */
+interface AgentMemoryEntry {
+  name: string
+  content: string
+  createdAt: number
+  updatedAt: number
+  lastReadAt: number
+  readCount: number
+  archived: boolean
+}
+
+/** GET /my-memory/api/agent-memory → 全部记忆（含已归档，面板分区展示）。 */
+function fetchAgentMemory(): Promise<AgentMemoryEntry[]> {
+  return fetch(`${API_BASE}/agent-memory`)
+    .then((res) => res.json())
+    .then((body: ApiResponse<{ items?: AgentMemoryEntry[] }>) => {
+      if (body === null || body.ok !== true) throw new Error('bad agent-memory response')
+      return Array.isArray(body.value?.items) ? body.value.items : []
+    })
+}
+
+/** POST /my-memory/api/agent-memory — write | delete（用户自己的面板入口）。 */
+function writeAgentMemory(payload: {
+  action: 'write' | 'delete'
+  name: string
+  content?: string
+}): Promise<AgentMemoryEntry[]> {
+  return fetch(`${API_BASE}/agent-memory`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+    .then((res) => res.json())
+    .then((body: ApiResponse<{ items?: AgentMemoryEntry[] }>) => {
+      if (body === null || body.ok !== true) throw new Error('agent-memory write failed')
+      return Array.isArray(body.value?.items) ? body.value.items : []
+    })
+}
+
 /** Current session id from localStorage ('dsh.sessions.current' → { sessionId }). */
 function currentSessionId(): string {
   try {

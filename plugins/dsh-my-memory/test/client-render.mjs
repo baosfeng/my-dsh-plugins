@@ -187,6 +187,8 @@ const CONFIG_RESPONSE = { ok: true, value: { maxEntryLength: 50 } }
 const FIXED_RESPONSES = {
   '/my-memory/api/config': CONFIG_RESPONSE,
   '/my-memory/api/prompts': PROMPTS_RESPONSE,
+  // agent 记忆面板挂载即拉一次（issue #502）：固定空响应，不占用 FIFO 队列
+  '/my-memory/api/agent-memory': { ok: true, value: { items: [] } },
 }
 global.fetch = (url, options) => {
   const target = String(url)

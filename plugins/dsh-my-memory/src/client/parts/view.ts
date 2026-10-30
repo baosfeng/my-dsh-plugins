@@ -9,7 +9,7 @@ interface MemoryData {
 }
 
 /** 当前 tab。 */
-type TabId = 'global' | 'project' | 'prompts'
+type TabId = 'global' | 'project' | 'prompts' | 'agent'
 
 /** Load both scopes: global always; project only when a cwd is given. */
 function fetchAll(cwd: string): Promise<MemoryData> {
@@ -45,6 +45,7 @@ function mergeScope(data: MemoryData, scope: string, value: Required<MemoryValue
 /** 根视图 props（状态 + 动作；渲染逻辑抽到 renderMemoryRoot，守住函数行数门禁）。 */
 interface MemoryRootProps {
   tab: TabId
+  agent: AgentMemoryState
   data: MemoryData | null
   loading: boolean
   error: 'load' | 'save' | null
@@ -84,6 +85,8 @@ function MemoryView(): ReactNode {
   const actions = createActions({ setData, setLoading, setError, setSaved })
   // 提示词数据（独立端点）：计数用于 tab 徽标，列表在提示词 tab 内渲染。
   const promptsProps = usePromptsBlockProps()
+  // agent 记忆（issue #502）：独立端点，独立写入语义（无需 confirmed）。
+  const agent = useAgentMemoryState()
 
   // 空依赖数组 = 只在挂载时拉一次配置 / 会话 cwd / 记忆。会话 cwd 决定项目
   // 记忆是否自动加载（issue #104）；面板不再有路径输入。
@@ -97,6 +100,7 @@ function MemoryView(): ReactNode {
   const commit = createCommitHandler({ data, setData, setSaved, setError, setDrafts, setEditing, setConfirming })
   return renderMemoryRoot({
     tab,
+    agent,
     data,
     loading,
     error,
@@ -128,6 +132,7 @@ function renderMemoryRoot(props: MemoryRootProps): ReactNode {
   const counts = {
     global: props.data === null ? 0 : props.data.global.items.length,
     project: props.data === null ? 0 : props.data.project.items.length,
+    agent: props.agent.entries.filter((entry) => !entry.archived).length,
     prompts: props.promptsProps.items.length,
   }
   return createElement(
@@ -169,6 +174,7 @@ function renderTabContent(props: MemoryRootProps): ReactNode {
       strings.loading(),
     )
   }
+  if (props.tab === 'agent') return createElement(AgentMemoryPanel, { ...props.agent })
   if (props.data === null) return null
   if (props.tab === 'prompts') return createElement(PromptsTab, props.promptsProps)
   const scope: 'global' | 'project' = props.tab === 'project' ? 'project' : 'global'
@@ -207,13 +213,14 @@ function TabBar({
   onTab,
 }: {
   tab: TabId
-  counts: { global: number; project: number; prompts: number }
+  counts: { global: number; project: number; prompts: number; agent: number }
   onTab: (next: TabId) => void
 }): ReactNode {
   const tabs: Array<{ id: TabId; label: string; count: number }> = [
     { id: 'global', label: strings.globalSection(), count: counts.global },
     { id: 'project', label: strings.projectSection(), count: counts.project },
     { id: 'prompts', label: strings.promptsSection(), count: counts.prompts },
+    { id: 'agent', label: strings.agentMemorySection(), count: counts.agent },
   ]
   return createElement(
     'div',

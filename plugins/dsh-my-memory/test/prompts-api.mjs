@@ -131,7 +131,17 @@ test('a duplicate/foreign section registration must not break apply (try/catch d
       },
     },
   })
-  assert.equal(sections.length, 1, 'the memory section still registered')
+  // 记忆段落有 2 个：全局记忆（dsh-my-memory）+ agent 记忆说明段（issue #502）。
+  // 提示词 section 抛错只降级它自己，这两段必须仍然注册成功。
+  assert.equal(sections.length, 2, 'the memory + agent-memory sections still registered')
+  assert.ok(
+    sections.some((s) => s.name === 'dsh-my-memory'),
+    'memory section survived',
+  )
+  assert.ok(
+    sections.some((s) => s.name === 'dsh-my-memory:agent-memory'),
+    'agent-memory section survived',
+  )
   assert.ok(getRoute(), 'apply finished: routes still registered after the section failure')
 })
 

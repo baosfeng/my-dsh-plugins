@@ -187,6 +187,25 @@ const STYLES: string = `
   overflow-y:auto; padding:9px 11px; border:1px solid #dfe3e8; border-radius:9px; background:#fff;
   color:#111827; font:inherit; font-size:13.5px; line-height:1.6; }
 .dsh-my-memory-iconbtn-up svg { transform:rotate(180deg); }
+/* ── agent 记忆（issue #502）：文件视图，正文等宽、元数据弱化 ── */
+.dsh-my-memory-agent-card { display:flex; flex-direction:column; gap:6px; padding:11px 13px;
+  border:1px solid #e6e9ee; border-radius:10px; background:#fff; }
+.dsh-my-memory-agent-card.is-archived { opacity:.72; background:#fafbfc; }
+.dsh-my-memory-agent-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.dsh-my-memory-agent-name { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
+  color:#111827; background:#f3f4f6; padding:2px 7px; border-radius:6px; }
+.dsh-my-memory-agent-actions { display:flex; gap:6px; flex:none; }
+.dsh-my-memory-agent-meta { margin:0; color:#6b7280; font-size:12px; line-height:1.5; }
+.dsh-my-memory-agent-body { margin:0; padding:9px 11px; border-radius:8px; background:#f8f9fb;
+  color:#374151; font-size:13px; line-height:1.65; white-space:pre-wrap; word-break:break-word;
+  max-height:220px; overflow-y:auto; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.dsh-my-memory-agent-editor { box-sizing:border-box; width:100%; min-height:120px; resize:vertical;
+  padding:9px 11px; border:1px solid #dfe3e8; border-radius:9px; background:#fff; color:#111827;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; line-height:1.65; }
+.dsh-my-memory-agent-save { display:flex; justify-content:flex-end; gap:8px; }
+.dsh-my-memory-agent-archive { margin-top:10px; }
+.dsh-my-memory-agent-archive > summary { cursor:pointer; color:#6b7280; font-size:12.5px; padding:6px 0; }
+.dsh-my-memory-agent-archive .dsh-my-memory-agent-card { margin-top:8px; }
 @keyframes dsh-my-memory-spin { to { transform:rotate(360deg); } }
 @keyframes dsh-my-memory-fade { from { opacity:0; } }
 @keyframes dsh-my-memory-pop { from { opacity:0; transform:translateY(6px) scale(.985); } }

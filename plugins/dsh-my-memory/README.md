@@ -15,7 +15,9 @@
 - **工具**：`memory_query` 只读查询（全局/项目 + 关键词过滤，输出带每条记忆的分类与 id）；`memory_save` 保存（`scope`/`desc` 必填，`category` 为偏好/事实/项目/技术栈/工作流，默认 `fact`）；`memory_delete` 按 id 删除（删除不存在的 id 明确报错）。
 - **渐进式索引**：条目带分类/来源（会话 id + 时间）/置信度（上限 5）/更新时间/演进历史；同主题多次出现提升置信度或更新内容，内容分歧标记「待处理矛盾」，长期未用（默认 90 天）降权。
 - **全局提示词（与记忆隔离）**：设置页「全局提示词」分区可新增 / 编辑 / 删除 / 启停 / 上移下移任意自由文本指令；**启用的提示词每轮组装全量按序注入**（独立 section `dsh-my-memory:prompts`，order -85），不评分、不截断、不占记忆的 top-N 名额，保存后下一轮即生效（无需重启）。它们**不是记忆**：独立文件 `$DSH_HOME/memory/prompts.json`、独立端点 `/my-memory/api/prompts`、agent 无写工具；首次运行迁入内置种子「中文思考」（可停用/删除，删除不复活）。
+- **Agent 记忆（issue #502，第四套体系）**：agent 自主维护的跨会话记忆，与全局/项目记忆、全局提示词完全隔离。**零常驻注入**——正文只在 agent 主动读取时进入上下文，不命中则零 token；正文是纯 markdown（无日期、无 id），元数据（创建时间/最后读取/读取次数/归档）单独存 `index.json` 且 **agent 不可见、不可写**；4 个工具 `agent_memory_{list,read,write,delete}`（成功只回 `ok`），路径白名单 + 尺寸红线 + 敏感信息扫描三道硬门禁；超过 `archiveDays`（默认 180 天）未读自动归档。设置页第四个 tab 提供文件视图与元数据面板。
 - **持久化可靠**：原子写（tmp+rename）+ 防抖（300ms），重启后自动恢复；提示词独立存 `$DSH_HOME/memory/prompts.json`，与正式记忆隔离。
+- **Agent 记忆（issue #502，第四套体系）**：agent 自主维护的跨会话记忆，与全局/项目记忆、全局提示词完全隔离。**零常驻注入**——正文只在 agent 主动读取时进入上下文，不命中则零 token；正文是纯 markdown（无日期、无 id），元数据（创建时间/最后读取/读取次数/归档）单独存 `index.json` 且 **agent 不可见、不可写**；4 个工具 `agent_memory_{list,read,write,delete}`（成功只回 `ok`），路径白名单 + 尺寸红线 + 敏感信息扫描三道硬门禁；超过 `archiveDays`（默认 180 天）未读自动归档。设置页第四个 tab 提供文件视图与元数据面板。
 
 ## 安装
 
@@ -41,6 +43,8 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-memory
 | `saveApproval`     | `'auto'` | 记忆写操作（保存 + 删除）确认策略：`auto` / `always` / `never` |
 | `maxPromptItems`   | `20`     | 注入系统提示词的全局提示词条数上限（超出不注入 + warn）       |
 | `maxPromptLength`  | `1000`   | 单条提示词正文上限（字符，超出截断 + warn）                   |
+| `agentMemory.enabled` | `true` | 是否启用 agent 记忆（第四套体系，issue #502） |
+| `agentMemory.archiveDays` | `180` | 冷记忆归档阈值（天）：超过该天数未被 agent 读取即移入 `archive/` |
 
 ## 权限模式与保存确认
 

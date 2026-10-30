@@ -9,6 +9,18 @@
 
 ## [Unreleased]
 
+### 新功能
+
+- **agent 记忆（issue #502）**：第四套独立体系——agent 自主维护的跨会话记忆，与全局记忆 / 项目记忆 / 全局提示词完全隔离。
+  - **零常驻注入**：不注册记忆正文段，正文只在 agent 主动 `agent_memory_read` 时才进入上下文，不命中则零 token；系统提示词里只有一段固定规则说明（order -80）。
+  - **文件是存储、不是接口**：正文是纯 markdown（无日期、无 id、无 frontmatter），元数据（创建时间 / 最后读取 / 读取次数 / 归档）单独存 `index.json`，**agent 读不到也写不到**——时间戳与热度可篡改就等于遗忘机制失效。
+  - **4 个工具**：`agent_memory_list` / `agent_memory_read` / `agent_memory_write` / `agent_memory_delete`，路径限定 `$DSH_HOME/agent-memory/` 白名单内（逃逸结构上不可能）；成功只返回 `ok`，不回显不汇报，**写入不污染上下文**。
+  - **三道硬门禁**：尺寸红线（单文件 4 KB / 60 条 / 单条 100 字符，超限报错要求先整理）、敏感信息扫描（密钥 / token / 密码 / 私钥拒写）、并发写串行化。
+  - **遗忘机制**：读取计数由系统独占维护；超过 `archiveDays`（默认 180 天）未读自动移入 `archive/`，不再列出。面板浏览**不计入** readCount——人肉翻看不该让死记忆续命。
+  - **面板第四个 tab「Agent 记忆」**：文件视图（正文原样 + 等宽展示，可直接编辑）+ **元数据可见**（创建 / 最近读取 / 读取次数 / 归档标记），这是「给用户了解原因」的唯一落点；归档区可展开。
+  - 端点 `/my-memory/api/agent-memory`（GET 列表 + 元数据、POST write/delete）；面板是用户自己的入口，写操作**不需要** confirmed 标记（与全局记忆的确认门语义相反）。
+  - 配置 `agentMemory: { enabled?, archiveDays? }`。
+
 ### 变更
 
 - **breaking**: 移除「自动学习候选记忆」：删除 `autoLearn` / `extractor` / `maxMessagesPerSession` 配置、`/my-memory/api/candidates*` 端点、候选存储与规则提取器；记忆写入仍只经用户确认（`memory_save` 确认门 + 面板确认弹层）

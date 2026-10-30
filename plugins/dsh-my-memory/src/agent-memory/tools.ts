@@ -20,13 +20,31 @@ import { DEFAULT_ARCHIVE_MS } from './paths.js'
 import type { AgentMemoryStore } from './store.js'
 import type { LoggerService, ToolsService } from '../types.js'
 
-/** 单个工具的定义（与宿主 tools.register 契约的最小交集）。 */
+/** 单个工具的定义（与宿主 tools.register 契约的最小交集：output 是宿主强制的）。 */
 interface ToolDefinition {
   name: string
   description: string
   parameters: Record<string, unknown>
+  output: {
+    schema: Record<string, unknown>
+    render: (args: unknown, value: unknown) => Array<{ type: 'text'; text: string }>
+  }
   execute: (params: Record<string, unknown>, exec?: unknown) => Promise<unknown>
 }
+
+/**
+ * 四个工具共用的输出契约。
+ *
+ * 宿主 `tools.register()` **强制**要求 `output { schema, render }`：缺了直接抛
+ * `TypeError: tool "…" must declare output { schema, render, presentationMeta? }`
+ * （已装宿主 0.2.1-rc.3 实测），工具连注册都过不去——所以它既是契约也是门禁。
+ * 本体系的成功值本来就是纯文本（成功一个 `ok`，失败一句可操作原因），故 schema
+ * 就是 string，render 原样包一个 text block，模型看到的字节与之前完全一致。
+ */
+const TEXT_OUTPUT = Object.freeze({
+  schema: { type: 'string' } as Record<string, unknown>,
+  render: (_args: unknown, value: unknown) => [{ type: 'text' as const, text: String(value) }],
+})
 
 /** 工具配置（issue #502）。 */
 export interface AgentMemoryConfig {
@@ -75,6 +93,7 @@ function listTool({ store, resolveProjectPrefix }: AgentMemoryToolDeps): ToolDef
       },
       additionalProperties: false,
     },
+    output: TEXT_OUTPUT,
     async execute(params, exec) {
       const scope = typeof params.scope === 'string' ? params.scope : 'all'
       const prefix = scope === 'project' ? await resolveProjectPrefix(cwdOf(exec)) : ''
@@ -96,6 +115,7 @@ function readTool({ store }: AgentMemoryToolDeps): ToolDefinition {
       required: ['name'],
       additionalProperties: false,
     },
+    output: TEXT_OUTPUT,
     async execute(params) {
       return renderRead(await store.read(params.name))
     },
@@ -117,6 +137,7 @@ function writeTool({ store }: AgentMemoryToolDeps): ToolDefinition {
       required: ['name', 'content'],
       additionalProperties: false,
     },
+    output: TEXT_OUTPUT,
     async execute(params) {
       const result = await store.write(params.name, params.content)
       return result.ok ? 'ok' : result.error
@@ -137,6 +158,7 @@ function deleteTool({ store }: AgentMemoryToolDeps): ToolDefinition {
       required: ['name'],
       additionalProperties: false,
     },
+    output: TEXT_OUTPUT,
     async execute(params) {
       const result = await store.remove(params.name)
       return result.ok ? 'ok' : result.error

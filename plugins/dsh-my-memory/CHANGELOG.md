@@ -21,6 +21,12 @@
   - 端点 `/my-memory/api/agent-memory`（GET 列表 + 元数据、POST write/delete）；面板是用户自己的入口，写操作**不需要** confirmed 标记（与全局记忆的确认门语义相反）。
   - 配置 `agentMemory: { enabled?, archiveDays? }`。
 
+### 修复
+
+- fix(agent-memory): 四个 `agent_memory_*` 工具补齐宿主强制的 `output { schema, render }` 声明——缺它宿主 `tools.register()` 直接抛 `TypeError`，工具在真实环境里根本注册不上（此前测试直接调 `execute`，绕过了注册校验）。新增 `test/host-register-contract.mjs`：把宿主注册契约内联成断言，对全部 7 个注册工具跑一遍，任何工具退回「没有 output」立即红灯。
+- fix(agent-memory): 归档不再等于「凭空消失」——面板可读归档正文并一键恢复（正文搬回原位 + 清归档标记），GET 列表返回 `archived: true` 与正文；**agent 通道仍读不到归档内容**（遗忘语义不变）；写入同名文件自动复活。新增 `test/agent-memory-recovery.mjs` 锁死这四条。
+- fix(docs): README 删除重复的「Agent 记忆」条目。
+
 ### 变更
 
 - **breaking**: 移除「自动学习候选记忆」：删除 `autoLearn` / `extractor` / `maxMessagesPerSession` 配置、`/my-memory/api/candidates*` 端点、候选存储与规则提取器；记忆写入仍只经用户确认（`memory_save` 确认门 + 面板确认弹层）

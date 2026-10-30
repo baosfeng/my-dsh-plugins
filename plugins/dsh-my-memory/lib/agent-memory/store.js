@@ -13,7 +13,9 @@
  */
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { MAX_ENTRIES, MAX_ENTRY_CHARS, MAX_FILE_BYTES, absoluteFileOf, archiveDir, normalizeName } from './paths.js';
+import { MAX_ENTRIES, MAX_ENTRY_CHARS, MAX_FILE_BYTES, absoluteFileOf, archiveDir, archivedAbsoluteOf, normalizeName, } from './paths.js';
+/** 名字非法时的统一原因（四个入口复用，措辞与提示词里的文件分工一致）。 */
+const INVALID_NAME = '无效的文件名，可选：MEMORY.md / user.md / feedback.md / projects/<id>/*.md';
 /** 敏感信息模式：API key / token / 密码 / 私钥。 */
 const SECRET_PATTERNS = Object.freeze([
     /\bsk-[A-Za-z0-9_-]{16,}\b/, // OpenAI / DeepSeek 风格
@@ -57,14 +59,18 @@ function validateContent(text) {
         return '含密钥或口令，拒绝写入';
     return null;
 }
-/** 读一份正文；缺失返回 null（调用方给出可操作错误）。 */
-async function readText(name) {
+/** 读一个物理路径；缺失返回 null（调用方给出可操作错误）。 */
+async function readAt(file) {
     try {
-        return await readFile(absoluteFileOf(name), 'utf8');
+        return await readFile(file, 'utf8');
     }
     catch {
         return null;
     }
+}
+/** 读一份正文；缺失返回 null（调用方给出可操作错误）。 */
+async function readText(name) {
+    return readAt(absoluteFileOf(name));
 }
 /** 原子写一份正文（tmp + rename，不产生半截文件）。 */
 async function writeText(name, content) {
@@ -105,6 +111,46 @@ async function archiveColdEntries(index, archiveMs, now, logger) {
         logger?.info?.(`agent-memory: 归档 ${moved.length} 个冷记忆（${moved.join(', ')}）`);
     return moved;
 }
+/** 读一份正文并记一次取用（readCount 只由 agent 通道产生）。 */
+async function readEntry(name, index) {
+    const text = await readText(name);
+    if (text === null)
+        return { ok: false, error: `${name} 不存在` };
+    await index.touchRead(name);
+    return { ok: true, content: text };
+}
+/** 删除一份正文与它的元数据（串行化，避免与并发写互相踩）。 */
+async function removeEntry(name, index, serial) {
+    const text = await readText(name);
+    if (text === null)
+        return { ok: false, error: `${name} 不存在` };
+    await serial(async () => {
+        await rm(absoluteFileOf(name), { force: true });
+        await index.drop(name);
+    });
+    return { ok: true };
+}
+/**
+ * 恢复一条已归档记忆：正文从 archive/ 搬回原位 + 清归档标记。
+ *
+ * 只动归档区与实际正文，不碰 readCount——恢复是对「遗忘」的撤销，不是一次取用。
+ */
+async function restoreArchived(name, index, serial) {
+    await index.load();
+    const meta = index.metaOf(name);
+    if (meta === undefined || meta.archivedAt === undefined)
+        return { ok: false, error: `${name} 未归档` };
+    if ((await readAt(archivedAbsoluteOf(name))) === null) {
+        return { ok: false, error: `${name} 的归档文件已不存在` };
+    }
+    await serial(async () => {
+        const target = absoluteFileOf(name);
+        await mkdir(dirname(target), { recursive: true });
+        await rename(archivedAbsoluteOf(name), target);
+        await index.markRestored(name);
+    });
+    return { ok: true };
+}
 /** 单文件写入的串行互斥（promise 链）：并发写同一文件不会互相覆盖。 */
 function createSerial() {
     let chain = Promise.resolve();
@@ -144,17 +190,13 @@ export function createAgentMemoryStore({ index, logger, }) {
         async read(rawName) {
             const name = normalizeName(rawName);
             if (name === null)
-                return { ok: false, error: '无效的文件名，可选：MEMORY.md / user.md / feedback.md / projects/<id>/*.md' };
-            const text = await readText(name);
-            if (text === null)
-                return { ok: false, error: `${name} 不存在` };
-            await index.touchRead(name);
-            return { ok: true, content: text };
+                return { ok: false, error: INVALID_NAME };
+            return readEntry(name, index);
         },
         async write(rawName, rawContent) {
             const name = normalizeName(rawName);
             if (name === null)
-                return { ok: false, error: '无效的文件名，可选：MEMORY.md / user.md / feedback.md / projects/<id>/*.md' };
+                return { ok: false, error: INVALID_NAME };
             if (typeof rawContent !== 'string')
                 return { ok: false, error: 'content 必须是字符串' };
             const invalid = validateContent(rawContent);
@@ -170,21 +212,21 @@ export function createAgentMemoryStore({ index, logger, }) {
         async remove(rawName) {
             const name = normalizeName(rawName);
             if (name === null)
-                return { ok: false, error: '无效的文件名' };
-            const text = await readText(name);
-            if (text === null)
-                return { ok: false, error: `${name} 不存在` };
-            await serial(async () => {
-                await rm(absoluteFileOf(name), { force: true });
-                await index.drop(name);
-            });
-            return { ok: true };
+                return { ok: false, error: INVALID_NAME };
+            return removeEntry(name, index, serial);
+        },
+        async restore(rawName) {
+            const name = normalizeName(rawName);
+            if (name === null)
+                return { ok: false, error: INVALID_NAME };
+            return restoreArchived(name, index, serial);
         },
         list: (prefix = '') => listEntries(index, prefix),
         archiveCold: (archiveMs, now) => archiveColdEntries(index, archiveMs, now ?? Date.now(), logger),
         // 面板读取**不计 readCount**：热度只应由 agent 的真实取用产生，
         // 用户翻看一眼不该让死记忆续命（否则遗忘机制被人肉浏览废掉）。
-        readForPanel: (name) => readText(name),
+        // 落位优先正文原位，其次归档区——归档不再等于「从面板消失」（issue #502 修复）。
+        readForPanel: async (name) => (await readText(name)) ?? (await readAt(archivedAbsoluteOf(name))),
         // 供测试/未来面板预校验复用（knip 通过门面引用，不产生游离导出）。
         validate: (content) => validateContent(content),
     };

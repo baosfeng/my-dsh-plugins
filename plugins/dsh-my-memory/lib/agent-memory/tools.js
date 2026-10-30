@@ -17,6 +17,19 @@
 import { createIndexStore } from './index-store.js';
 import { createAgentMemoryStore } from './store.js';
 import { DEFAULT_ARCHIVE_MS } from './paths.js';
+/**
+ * 四个工具共用的输出契约。
+ *
+ * 宿主 `tools.register()` **强制**要求 `output { schema, render }`：缺了直接抛
+ * `TypeError: tool "…" must declare output { schema, render, presentationMeta? }`
+ * （已装宿主 0.2.1-rc.3 实测），工具连注册都过不去——所以它既是契约也是门禁。
+ * 本体系的成功值本来就是纯文本（成功一个 `ok`，失败一句可操作原因），故 schema
+ * 就是 string，render 原样包一个 text block，模型看到的字节与之前完全一致。
+ */
+const TEXT_OUTPUT = Object.freeze({
+    schema: { type: 'string' },
+    render: (_args, value) => [{ type: 'text', text: String(value) }],
+});
 /** 会话 cwd（用于拼项目作用域路径）。 */
 function cwdOf(exec) {
     const agent = exec?.agent;
@@ -48,6 +61,7 @@ function listTool({ store, resolveProjectPrefix }) {
             },
             additionalProperties: false,
         },
+        output: TEXT_OUTPUT,
         async execute(params, exec) {
             const scope = typeof params.scope === 'string' ? params.scope : 'all';
             const prefix = scope === 'project' ? await resolveProjectPrefix(cwdOf(exec)) : '';
@@ -68,6 +82,7 @@ function readTool({ store }) {
             required: ['name'],
             additionalProperties: false,
         },
+        output: TEXT_OUTPUT,
         async execute(params) {
             return renderRead(await store.read(params.name));
         },
@@ -87,6 +102,7 @@ function writeTool({ store }) {
             required: ['name', 'content'],
             additionalProperties: false,
         },
+        output: TEXT_OUTPUT,
         async execute(params) {
             const result = await store.write(params.name, params.content);
             return result.ok ? 'ok' : result.error;
@@ -106,6 +122,7 @@ function deleteTool({ store }) {
             required: ['name'],
             additionalProperties: false,
         },
+        output: TEXT_OUTPUT,
         async execute(params) {
             const result = await store.remove(params.name);
             return result.ok ? 'ok' : result.error;

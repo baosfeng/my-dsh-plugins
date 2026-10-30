@@ -14,6 +14,12 @@ interface AgentMemoryState {
   onCancel: () => void
   onSave: () => void
   onDelete: (name: string) => void
+  onRestore: (name: string) => void
+}
+
+/** 恢复一条已归档记忆（服务端搬回原位 + 清归档标记），返回最新列表。 */
+function restoreAgentMemory(name: string): Promise<AgentMemoryEntry[]> {
+  return writeAgentMemory({ action: 'restore', name })
 }
 
 /** agent 记忆 tab 的状态钩子（挂载即拉一次；写后直接用回传结果刷新）。 */
@@ -60,6 +66,12 @@ function useAgentMemoryState(): AgentMemoryState {
       .catch(() => setError(true))
   }
 
+  const restore = (name: string): void => {
+    restoreAgentMemory(name)
+      .then(setEntries)
+      .catch(() => setError(true))
+  }
+
   return {
     entries,
     loading,
@@ -78,5 +90,6 @@ function useAgentMemoryState(): AgentMemoryState {
     },
     onSave: save,
     onDelete: remove,
+    onRestore: restore,
   }
 }

@@ -99,3 +99,13 @@ export function normalizeName(name: unknown): string | null {
 export function absoluteFileOf(name: string): string {
   return join(agentMemoryDir(), ...name.split('/'))
 }
+
+/**
+ * 归档后的物理路径（`archive/<name>`）。
+ *
+ * 只给**面板**读正文与恢复用：agent 通道仍只认 `absoluteFileOf`，所以归档
+ * 记忆对 agent 不可读——「不常用就不进上下文」的语义不被恢复能力破坏。
+ */
+export function archivedAbsoluteOf(name: string): string {
+  return join(archiveDir(), ...name.split('/'))
+}

@@ -31,9 +31,14 @@ async function readIndex() {
         return { files: {} };
     }
 }
-/** 写入时间戳。 */
+/** 写入时间戳；同时清掉归档标记——重新写入即复活（归档副本不参与可见性）。 */
 function markWritten(meta, at) {
     meta.updatedAt = at;
+    delete meta.archivedAt;
+}
+/** 清除归档标记（面板「恢复」用：正文已搬回原位，元数据同步复活）。 */
+function clearArchived(meta) {
+    delete meta.archivedAt;
 }
 /** 读取时间戳 + 计数自增（遗忘机制的唯一事实来源）。 */
 function markRead(meta, at) {
@@ -87,6 +92,7 @@ export function createIndexStore({ logger } = {}) {
         touchWrite: (name, now) => mutate(name, markWritten, now),
         touchRead: (name, now) => mutate(name, markRead, now),
         markArchived: (name, now) => mutate(name, markArchivedAt, now),
+        markRestored: (name, now) => mutate(name, clearArchived, now),
         async drop(name) {
             await load();
             delete cache.files[name];

@@ -148,6 +148,7 @@ const strings = {
   agentMemoryCancel: (): string => (isZh() ? '取消' : 'Cancel'),
   agentMemorySave: (): string => (isZh() ? '保存' : 'Save'),
   agentMemoryDelete: (): string => (isZh() ? '删除' : 'Delete'),
+  agentMemoryRestore: (): string => (isZh() ? '恢复' : 'Restore'),
   agentMemorySaveFailed: (): string => (isZh() ? '保存失败' : 'Save failed'),
   promptsScope: (): string => (isZh() ? '全局提示词' : 'Global prompts'),
   promptsNote: (): string =>

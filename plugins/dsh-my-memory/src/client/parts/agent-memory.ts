@@ -126,8 +126,14 @@ function AgentMemoryCard({
   )
 }
 
-/** 归档区：已归档的记忆只读展示（不可编辑、不在主列表）。 */
-function AgentMemoryArchive({ entries }: { entries: AgentMemoryEntry[] }): ReactNode {
+/** 归档区：已归档的记忆只读展示（不可编辑、不在主列表），可一键恢复。 */
+function AgentMemoryArchive({
+  entries,
+  onRestore,
+}: {
+  entries: AgentMemoryEntry[]
+  onRestore: (name: string) => void
+}): ReactNode {
   return createElement(
     'details',
     { className: 'dsh-my-memory-agent-archive' },
@@ -136,7 +142,23 @@ function AgentMemoryArchive({ entries }: { entries: AgentMemoryEntry[] }): React
       createElement(
         'div',
         { key: entry.name, className: 'dsh-my-memory-agent-card is-archived' },
-        createElement('code', { className: 'dsh-my-memory-agent-name' }, entry.name),
+        createElement(
+          'div',
+          { className: 'dsh-my-memory-agent-head' },
+          createElement('code', { className: 'dsh-my-memory-agent-name' }, entry.name),
+          createElement('span', { className: 'dsh-my-memory-agent-actions' }, [
+            createElement(
+              'button',
+              {
+                key: 'restore',
+                type: 'button',
+                className: 'dsh-my-memory-btn',
+                onClick: () => onRestore(entry.name),
+              },
+              strings.agentMemoryRestore(),
+            ),
+          ]),
+        ),
         createElement(AgentMemoryMeta, { entry }),
         createElement('pre', { className: 'dsh-my-memory-agent-body' }, entry.content),
       ),
@@ -166,6 +188,7 @@ function AgentMemoryPanel({
   onCancel,
   onSave,
   onDelete,
+  onRestore,
 }: {
   entries: AgentMemoryEntry[]
   loading: boolean
@@ -177,6 +200,7 @@ function AgentMemoryPanel({
   onCancel: () => void
   onSave: () => void
   onDelete: (name: string) => void
+  onRestore: (name: string) => void
 }): ReactNode {
   const active = entries.filter((entry) => !entry.archived)
   const archived = entries.filter((entry) => entry.archived)
@@ -201,6 +225,6 @@ function AgentMemoryPanel({
     error ? createElement('p', { className: 'dsh-my-memory-error' }, strings.loadError()) : null,
     cards.length === 0 && !loading && !error ? createElement(AgentMemoryEmpty, null) : null,
     cards.length > 0 ? createElement('div', { className: 'dsh-my-memory-list' }, cards) : null,
-    archived.length > 0 ? createElement(AgentMemoryArchive, { entries: archived }) : null,
+    archived.length > 0 ? createElement(AgentMemoryArchive, { entries: archived, onRestore }) : null,
   )
 }

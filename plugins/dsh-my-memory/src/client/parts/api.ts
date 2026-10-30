@@ -163,9 +163,9 @@ function fetchAgentMemory(): Promise<AgentMemoryEntry[]> {
     })
 }
 
-/** POST /my-memory/api/agent-memory — write | delete（用户自己的面板入口）。 */
+/** POST /my-memory/api/agent-memory — write | delete | restore（用户自己的面板入口）。 */
 function writeAgentMemory(payload: {
-  action: 'write' | 'delete'
+  action: 'write' | 'delete' | 'restore'
   name: string
   content?: string
 }): Promise<AgentMemoryEntry[]> {

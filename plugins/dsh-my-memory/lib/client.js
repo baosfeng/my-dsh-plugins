@@ -172,6 +172,7 @@ const strings = {
     agentMemoryCancel: () => (isZh() ? '取消' : 'Cancel'),
     agentMemorySave: () => (isZh() ? '保存' : 'Save'),
     agentMemoryDelete: () => (isZh() ? '删除' : 'Delete'),
+    agentMemoryRestore: () => (isZh() ? '恢复' : 'Restore'),
     agentMemorySaveFailed: () => (isZh() ? '保存失败' : 'Save failed'),
     promptsScope: () => (isZh() ? '全局提示词' : 'Global prompts'),
     promptsNote: () => isZh()
@@ -498,7 +499,7 @@ function fetchAgentMemory() {
         return Array.isArray(body.value?.items) ? body.value.items : [];
     });
 }
-/** POST /my-memory/api/agent-memory — write | delete（用户自己的面板入口）。 */
+/** POST /my-memory/api/agent-memory — write | delete | restore（用户自己的面板入口）。 */
 function writeAgentMemory(payload) {
     return fetch(`${API_BASE}/agent-memory`, {
         method: 'POST',
@@ -1779,6 +1780,10 @@ function confirmPayload(confirm) {
 // ── agent 记忆面板的状态（issue #502）────────────────────────────────
 // 与 prompts-state 同构：把「加载 / 编辑 / 草稿 / 保存」从 view.ts 里析出，
 // 守住 apply 与 view 的函数行数门禁。
+/** 恢复一条已归档记忆（服务端搬回原位 + 清归档标记），返回最新列表。 */
+function restoreAgentMemory(name) {
+    return writeAgentMemory({ action: 'restore', name });
+}
 /** agent 记忆 tab 的状态钩子（挂载即拉一次；写后直接用回传结果刷新）。 */
 function useAgentMemoryState() {
     const [entries, setEntries] = useState([]);
@@ -1819,6 +1824,11 @@ function useAgentMemoryState() {
         })
             .catch(() => setError(true));
     };
+    const restore = (name) => {
+        restoreAgentMemory(name)
+            .then(setEntries)
+            .catch(() => setError(true));
+    };
     return {
         entries,
         loading,
@@ -1837,6 +1847,7 @@ function useAgentMemoryState() {
         },
         onSave: save,
         onDelete: remove,
+        onRestore: restore,
     };
 }
 
@@ -1879,16 +1890,23 @@ function AgentMemoryCard({ entry, editing, draft, onEdit, onDraft, onCancel, onS
         ? createElement(AgentMemoryEditor, { draft, onDraft, onCancel, onSave })
         : createElement('pre', { className: 'dsh-my-memory-agent-body' }, entry.content));
 }
-/** 归档区：已归档的记忆只读展示（不可编辑、不在主列表）。 */
-function AgentMemoryArchive({ entries }) {
-    return createElement('details', { className: 'dsh-my-memory-agent-archive' }, createElement('summary', null, strings.agentMemoryArchiveTitle(entries.length)), entries.map((entry) => createElement('div', { key: entry.name, className: 'dsh-my-memory-agent-card is-archived' }, createElement('code', { className: 'dsh-my-memory-agent-name' }, entry.name), createElement(AgentMemoryMeta, { entry }), createElement('pre', { className: 'dsh-my-memory-agent-body' }, entry.content))));
+/** 归档区：已归档的记忆只读展示（不可编辑、不在主列表），可一键恢复。 */
+function AgentMemoryArchive({ entries, onRestore, }) {
+    return createElement('details', { className: 'dsh-my-memory-agent-archive' }, createElement('summary', null, strings.agentMemoryArchiveTitle(entries.length)), entries.map((entry) => createElement('div', { key: entry.name, className: 'dsh-my-memory-agent-card is-archived' }, createElement('div', { className: 'dsh-my-memory-agent-head' }, createElement('code', { className: 'dsh-my-memory-agent-name' }, entry.name), createElement('span', { className: 'dsh-my-memory-agent-actions' }, [
+        createElement('button', {
+            key: 'restore',
+            type: 'button',
+            className: 'dsh-my-memory-btn',
+            onClick: () => onRestore(entry.name),
+        }, strings.agentMemoryRestore()),
+    ])), createElement(AgentMemoryMeta, { entry }), createElement('pre', { className: 'dsh-my-memory-agent-body' }, entry.content))));
 }
 /** 空态提示（agent 还没写过记忆是常态，不是错误）。 */
 function AgentMemoryEmpty() {
     return createElement('div', { className: 'dsh-my-memory-empty' }, createElement('p', null, strings.agentMemoryEmpty()), createElement('p', { className: 'dsh-my-memory-empty-hint' }, strings.agentMemoryEmptyHint()));
 }
 /** 第四个 tab 的整体视图：说明 + 提示 + 卡片列表 + 归档区。 */
-function AgentMemoryPanel({ entries, loading, error, editing, draft, onEdit, onDraft, onCancel, onSave, onDelete, }) {
+function AgentMemoryPanel({ entries, loading, error, editing, draft, onEdit, onDraft, onCancel, onSave, onDelete, onRestore, }) {
     const active = entries.filter((entry) => !entry.archived);
     const archived = entries.filter((entry) => entry.archived);
     const cards = active.map((entry) => createElement(AgentMemoryCard, {
@@ -1902,7 +1920,7 @@ function AgentMemoryPanel({ entries, loading, error, editing, draft, onEdit, onD
         onSave,
         onDelete: () => onDelete(entry.name),
     }));
-    return createElement('section', { className: 'dsh-my-memory-section dsh-my-memory-agent' }, createElement('p', { className: 'dsh-my-memory-note' }, strings.agentMemoryNote()), loading ? createElement('p', { className: 'dsh-my-memory-note' }, strings.loading()) : null, error ? createElement('p', { className: 'dsh-my-memory-error' }, strings.loadError()) : null, cards.length === 0 && !loading && !error ? createElement(AgentMemoryEmpty, null) : null, cards.length > 0 ? createElement('div', { className: 'dsh-my-memory-list' }, cards) : null, archived.length > 0 ? createElement(AgentMemoryArchive, { entries: archived }) : null);
+    return createElement('section', { className: 'dsh-my-memory-section dsh-my-memory-agent' }, createElement('p', { className: 'dsh-my-memory-note' }, strings.agentMemoryNote()), loading ? createElement('p', { className: 'dsh-my-memory-note' }, strings.loading()) : null, error ? createElement('p', { className: 'dsh-my-memory-error' }, strings.loadError()) : null, cards.length === 0 && !loading && !error ? createElement(AgentMemoryEmpty, null) : null, cards.length > 0 ? createElement('div', { className: 'dsh-my-memory-list' }, cards) : null, archived.length > 0 ? createElement(AgentMemoryArchive, { entries: archived, onRestore }) : null);
 }
 
     "use strict";

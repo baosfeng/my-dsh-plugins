@@ -4,9 +4,10 @@
  * 与 /memory、/prompts 都是**独立端点**（不复用）：
  *  - GET  → 文件列表 + 每份记忆正文 + **index.json 元数据**（创建时间、
  *           最后读取、读取次数、是否已归档）。
- *  - POST → 写操作 write | delete，**不需要 confirmed** —— agent 记忆本就是
- *           agent 自主维护的，与「全局记忆必须用户确认」的语义相反。
+ *  - POST → 写操作 write | delete | restore，**不需要 confirmed** —— agent
+ *           记忆本就是 agent 自主维护的，与「全局记忆必须用户确认」的语义相反。
  *           面板是**用户**的入口，用户改自己的记忆当然也不需要再问一次。
+ *           restore 把归档条目搬回原位（面板能看见归档正文，才谈得上恢复）。
  *
  * 面板读元数据是本体系「给用户了解原因」的唯一落点：agent 看不到时间戳与
  * 热度（它们不注入上下文、也不能被 agent 改），但用户必须看得到。
@@ -90,7 +91,31 @@ function reject(response: ServerResponse, status: number, message: string): void
   writeJson(response, status, { ok: false, error: { message } })
 }
 
-/** POST 分派：write | delete（面板是用户入口，不需要 confirmed 标记）。 */
+/**
+ * 执行一个面板写动作；成功返 null，失败返可操作原因。
+ *
+ * 动作与 store 方法的映射收在一处：新增动作时只改这里，handleWrite 的
+ * 分支数不再随动作增长（守住圈复杂度门禁）。
+ */
+async function applyAction(
+  store: AgentMemoryRouteDeps['store'],
+  action: string,
+  name: string,
+  content: unknown,
+): Promise<string | null> {
+  const result =
+    action === 'write'
+      ? await store.write(name, content)
+      : action === 'delete'
+        ? await store.remove(name)
+        : action === 'restore'
+          ? await store.restore(name)
+          : null
+  if (result === null) return 'action must be write, delete or restore'
+  return result.ok ? null : result.error
+}
+
+/** POST 分派：write | delete | restore（面板是用户入口，不需要 confirmed 标记）。 */
 async function handleWrite(
   request: ServerRequest,
   response: ServerResponse,
@@ -103,20 +128,9 @@ async function handleWrite(
     reject(response, 400, 'invalid or missing name')
     return
   }
-  if (action === 'write') {
-    const result = await deps.store.write(name, payload?.content)
-    if (!result.ok) {
-      reject(response, 400, result.error)
-      return
-    }
-  } else if (action === 'delete') {
-    const result = await deps.store.remove(name)
-    if (!result.ok) {
-      reject(response, 400, result.error)
-      return
-    }
-  } else {
-    reject(response, 400, 'action must be write or delete')
+  const error = await applyAction(deps.store, action, name, payload?.content)
+  if (error !== null) {
+    reject(response, 400, error)
     return
   }
   writeJson(response, 200, { ok: true, value: { items: await readAll(deps) } })

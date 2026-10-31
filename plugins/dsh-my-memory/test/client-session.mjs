@@ -165,7 +165,10 @@ global.fetch = (url, options) => {
           ? CONFIG_RESPONSE
           : target.startsWith('/my-memory/api/session')
             ? SESSION_RESPONSE
-            : null
+            : target === '/my-memory/api/agent-memory'
+              ? // agent 记忆面板挂载即拉一次（issue #502）：固定空响应，不占 FIFO
+                { ok: true, value: { items: [] } }
+              : null
   const canned = fixed ??
     cannedResponses.shift() ?? {
       ok: true,

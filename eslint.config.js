@@ -74,13 +74,11 @@ export default [
   {
     // 构建产物与工具临时产物不 lint：client.js 由 client.src.js 模板生成
     // （mermaid 产物内嵌 8.9MB base64，ESLint 正则规则会崩溃）；
-    // **/coverage 为 vitest 覆盖率产物、**/.stryker-tmp 为变异测试 sandbox、
-    // **/reports 为 Stryker 报告产物（各插件目录下）
+    // **/coverage 为 vitest 覆盖率产物、**/reports 为工具报告产物（各插件目录下）
     ignores: [
       '**/dist/',
       '**/coverage/',
       '**/node_modules/',
-      '**/.stryker-tmp/',
       '**/reports/',
       // client.js 构建产物（由 client.src.js 模板 + lib/parts/ 片段经
       // scripts/build.mjs 拼接生成）：产物行数 = 源码总和，尺寸规则只查源；

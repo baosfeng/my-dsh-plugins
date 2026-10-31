@@ -59,6 +59,7 @@ const PARTS = [
   ['/*__PART_ZOOM_FALLBACK__*/', 'zoom-fallback.js'],
   ['/*__PART_MERMAID_ZOOM__*/', 'mermaid-zoom.js'],
   ['/*__PART_LANG_SWITCH__*/', 'lang-switch.js'],
+  ['/*__PART_VIEWPORT_QUEUE__*/', 'viewport-queue.js'],
   ['/*__PART_DOM_SCANNER__*/', 'dom-scanner.part.js', { shared: true }],
   ['/*__PART_SCANNER__*/', 'scanner.js'],
   // 样式按职责拆分（base → markdown → code → mermaid → settings），styles.js 只做有序聚合。
@@ -80,6 +81,7 @@ const PARTS = [
 const ANCHORS = [
   ['function installStyles(', 'style-tag.part.js'],
   ['function installDomScanner(', 'dom-scanner.part.js'],
+  ['function installViewportQueue(', 'viewport-queue.ts'],
   ['const ICON_STROKE = 1.8', 'icons.part.js'],
   ['function attachSettingsTab(', 'settings/index.ts'],
   ['function MdrSettingsView(', 'settings/view.ts'],

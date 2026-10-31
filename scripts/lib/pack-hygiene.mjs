@@ -355,7 +355,7 @@ export function findReadmeRefProblems(refs, { exists, isPacked }) {
  * findPackProblems），不是"不在 files 就报警"。
  *
  * `entries` 为 `{ name, isDirectory }`。顶层**文件**（`tsconfig.json` / `vitest.config.mjs` /
- * `stryker.config.mjs` 这类构建配置）不发布是常识，不提示；只有**目录**才有"是不是漏发了"的
+ * `eslint.config.mjs` 这类构建配置）不发布是常识，不提示；只有**目录**才有"是不是漏发了"的
  * 疑问，因此只对不在 KNOWN_SOURCE_DIRS 里的目录标 `unexpected`（报告里加一句确认提示）。
  */
 export function describeUnpackedEntries(entries, packedPaths) {

@@ -1,0 +1,15 @@
+# CodeQL 扫描范围配置
+#
+# 只排除「设计稿/原型」这类不参与运行的 HTML：
+#   - docs/原型重构/**.html 是界面原型（open-design 产物，供人评审与实现对照），
+#     不是产品代码；其中的 innerHTML 拼接会触发 js/xss-through-dom（#120），
+#     但原型不会被宿主加载、也不会处理任何不可信输入。
+#   - 产品代码（plugins/**、scripts/**、apps/**）与工作流仍然全量扫描。
+#
+# 排除原型不等于放松安全：真实 XSS 面在 plugins/*/src/client/**（React 渲染），
+# 那里不在 ignore 列表内。
+name: 'my-dsh-plugins CodeQL config'
+
+paths-ignore:
+  - 'docs/原型重构/**'
+  - 'docs/**/*.html'

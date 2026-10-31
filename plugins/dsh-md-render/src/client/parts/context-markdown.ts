@@ -148,11 +148,20 @@ function mountMdrContext(host: Element): void {
   host.setAttribute(MDR_CONTEXT_HIDDEN_ATTR, 'true')
 }
 
-/** 扫描 root（自身 / 后代）内的上下文注入块（供 scanner 调用）。 */
+/**
+ * 扫描 root（自身 / 后代）内的上下文注入块（供 scanner 调用）。
+ *
+ * **增量渲染**：只登记，块进入视口才挂卡片（内容哈希 / markdown 渲染都留在回调里）。
+ */
 function scanContextBlocks(root: Element): void {
   if (!root || typeof root.querySelectorAll !== 'function') return
-  if (typeof root.matches === 'function' && root.matches(CONTEXT_TEXT_SELECTOR)) mountMdrContext(root)
-  for (const pre of Array.from(root.querySelectorAll(CONTEXT_TEXT_SELECTOR))) mountMdrContext(pre)
+  if (typeof root.matches === 'function' && root.matches(CONTEXT_TEXT_SELECTOR)) {
+    const self = root
+    enqueueWhenVisible(self, 'context', () => mountMdrContext(self))
+  }
+  for (const pre of Array.from(root.querySelectorAll(CONTEXT_TEXT_SELECTOR))) {
+    enqueueWhenVisible(pre, 'context', () => mountMdrContext(pre))
+  }
 }
 
 exports.CONTEXT_TEXT_SELECTOR = CONTEXT_TEXT_SELECTOR

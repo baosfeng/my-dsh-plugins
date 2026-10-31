@@ -43,6 +43,9 @@ const pieces = [
   ['__PART_ROWS__', 'rows.js'],
   ['__PART_PROMPTS_STATE__', 'prompts-state.js'],
   ['__PART_PROMPTS__', 'prompts.js'],
+  ['__PART_AGENT_MEMORY_STATE__', 'agent-memory-state.js'],
+  ['__PART_AGENT_MEMORY__', 'agent-memory.js'],
+  ['__PART_AGENT_MEMORY_GROUPS__', 'agent-memory-groups.js'],
   ['__PART_VIEW__', 'view.js'],
   ['__PART_APPLY__', 'apply.js'],
 ]

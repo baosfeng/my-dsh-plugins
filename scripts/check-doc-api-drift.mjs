@@ -28,8 +28,8 @@
  *      （只校验范围 + 文件确实含该 API），避免每次改代码都红。
  *   4. 同一 API 既在代码又在文档 → 通过。全文无 findings 即打印 ✓ 并 exit 0。
  *
- * 扫描范围与稳定性（CI 可用）：只读仓库内文件——plugins/*\/src/**（排除 node_modules、
- * .stryker-tmp）与各 plugins/*\/package.json，**不依赖 ~/.dsh-refs、不依赖官方仓库检出**。
+ * 扫描范围与稳定性（CI 可用）：只读仓库内文件——plugins/*\/src/**（排除 node_modules）
+ * 与各 plugins/*\/package.json，**不依赖 ~/.dsh-refs、不依赖官方仓库检出**。
  *
  * 用法：
  *   node scripts/check-doc-api-drift.mjs               # 仓库自检（CI / 本地门禁）
@@ -47,8 +47,8 @@ export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 /** 被守护的派生文档（仓库相对路径）。 */
 export const DOC_REL = 'docs/官方文档/本仓库重点.md'
 
-/** 扫描时排除的目录：`.stryker-tmp` 是变异测试留下的陈旧代码副本，统计进去必然虚高。 */
-const SKIP_DIRS = new Set(['node_modules', '.stryker-tmp', '.git', 'lib', 'dist', 'coverage'])
+/** 扫描时排除的目录：产物 / 依赖 / 构建中间态。 */
+const SKIP_DIRS = new Set(['node_modules', '.git', 'lib', 'dist', 'coverage'])
 const SRC_EXT_RE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
 
 // ── A. 代码侧口径：哪些 `ctx.X` 不是宿主服务 ────────────────────────────────

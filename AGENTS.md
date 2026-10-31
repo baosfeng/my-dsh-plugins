@@ -34,7 +34,7 @@
 - **官方文档**：docs/官方文档/索引.md（检索入口：本地参考源 + 知识图谱 + grep 用法，**官方内容不在此维护副本**）· docs/官方文档/本仓库重点.md（我们实际调用什么、官方答不了什么）；本地参考源 `/Users/bsfeng/IdeaProjects/deepseek-harness`。
 - **开发/发版**：skills/development-lifecycle/（需求→确认→梳理→开发→验证→发版→文档→release 全流程）。
 - **插件开发**：skills/dsh-plugin-development/（插件形态/目录结构/发布流程）。
-- **质量**：quality-gates skill（**11 项门禁**，清单见该 skill；**不以 TDD 为驱动**，开发顺序见全局 `leader-ops` skill §八；真实环境 / 浏览器验证由用户本人手工做）；资源预算见 skills/resource-budget-review/。
+- **质量**：quality-gates skill（**8 项门禁**，清单见该 skill；**不以 TDD 为驱动**，开发顺序见全局 `leader-ops` skill §八；真实环境 / 浏览器验证由用户本人手工做）；资源预算见 skills/resource-budget-review/。
 - **仓库健康**：skills/dsh-github-triage/（issue/PR/CI 处理 + 需求登记 + fork 池隔离）；建 fork 用 `node scripts/fork-pool.mjs create <编号>`（一条命令含装 hooks），推送前用 `check` 自检。
 - **升级兼容**：skills/plugin-upgrade/（DSH 版本升级 / 插件迁移 / 两版本间兼容性审计）。
 - **验证**：verifying-dsh-plugins skill（用户本人人工自测：隔离实例起停 + 浏览器走查 + 收尾清理；agent 只提供步骤，不代跑）。

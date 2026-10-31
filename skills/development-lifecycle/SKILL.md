@@ -41,7 +41,7 @@ description: 使用当 要把一个需求/想法在本仓库（my-dsh-plugins）
 | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
 | 插件形态、目录结构、client bundle 格式、命名规范             | `dsh-plugin-development`（仓库内插件）· `plugin-write`（外部插件/命名注册表）            |
 | 开发顺序：先实现、后测试（全局 `leader-ops` §八）             | `plugin-test` skill（测试层级选择）                                                     |
-| 交付质量门禁（覆盖率/复杂度/大小/依赖/变异/防复发） | `quality-gates` skill + `.reasonix/skills/quality-gates/SKILL.md`（阈值以该 skill 为准） |
+| 交付质量门禁（覆盖率/复杂度/大小/依赖/防复发） | `quality-gates` skill + `.reasonix/skills/quality-gates/SKILL.md`（阈值以该 skill 为准） |
 | 编码、注释、异常处理                                         | `.reasonix/skills/coding-standards/SKILL.md`                                             |
 | 工程原则、错误日志规范、发布检查清单                         | `.reasonix/skills/engineering-standards/SKILL.md`                                        |
 | 持久化 / 事件监听 / 轮询 / 后台任务                          | `skills/resource-budget-review/`（五维资源预算未评估不得声称完成）                       |
@@ -132,7 +132,7 @@ node scripts/release.mjs <插件名> --bump patch --push --confirm-manual-tested
 | ---------------------------------------- | ------------------------------------------------------ |
 | 没 issue 就开写                          | 无法验收、无回归基准 → 先走阶段 0/1                    |
 | 只跑单测就说"功能可用"                   | 真实环境验证归用户本人 → agent 不得声称已验证          |
-| 覆盖率达标就以为测住了                   | 变异分数不过 = 测试无效 → 两项都要过                   |
+| 覆盖率达标就以为测住了                   | 覆盖率只证明"跑到过"，断言强度靠防复发测试与 Gherkin 验收 |
 | 没人工自测就想发版                       | `release.mjs` 3c 阻断（不静默跳过）→ 自测后加 `--confirm-manual-tested` |
 | 发版后不重启 `dsh web` 就汇报"已交付"    | `link:` 安装不重启不生效                               |
 | 验证残留不清理                           | 干扰并行开发与其他 agent 的验证                        |

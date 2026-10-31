@@ -8,15 +8,16 @@ export default defineConfig({
     include: ['test/*.mjs'],
     coverage: {
       ...root.test.coverage,
+      // 纯类型模块 types.js 无运行时语句，不纳入统计（避免 0/0 拖低分母）。
       include: [
         'lib/index.js',
-        'lib/config.js',
-        'lib/provider.js',
-        'lib/api-route.js',
-        'lib/fence.js',
-        'lib/http.js',
-        'lib/diagnose.js',
-        'lib/usage.js',
+        'lib/server/catalog.js',
+        'lib/server/config-store.js',
+        'lib/server/detail.js',
+        'lib/server/diagnostics.js',
+        'lib/server/disabler.js',
+        'lib/server/http.js',
+        'lib/server/usage.js',
       ],
     },
   },

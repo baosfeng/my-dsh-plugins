@@ -138,6 +138,118 @@ function writePrompt(payload: {
     })
 }
 
+// ── agent 记忆（issue #502）：独立端点 /my-memory/api/agent-memory ──
+// 与上面两套的语义相反：**写入不需要 confirmed 标记**（agent 自主维护，
+// 面板是用户自己的入口，改自己的记忆不必再问一次）。
+
+/** 面板上的一份 agent 记忆（正文 + 只有用户可见的元数据）。 */
+interface AgentMemoryEntry {
+  name: string
+  /** 项目可读名（服务端从 index.json 补齐；缺失时面板退回显示 hash id）。 */
+  projectName?: string
+  content: string
+  createdAt: number
+  updatedAt: number
+  lastReadAt: number
+  readCount: number
+  archived: boolean
+}
+
+/** 面板分组：全局一份 + 每个项目一份（只装活跃条目，归档区单独给）。 */
+interface AgentMemoryGroup {
+  /** 稳定开关 id：`global` / `project:<id>`。 */
+  id: string
+  kind: 'global' | 'project'
+  projectId?: string
+  projectName?: string
+  entries: AgentMemoryEntry[]
+  count: number
+  latestUpdatedAt: number
+}
+
+/** 晋升时会被删除的一处（项目文件 + 那一行）。 */
+interface PromoteSource {
+  name: string
+  projectId: string
+  projectName: string
+  line: string
+}
+
+/** 跨项目晋升建议（服务端用 duplicates.ts 的相似度算出，阈值不另设）。 */
+interface PromoteSuggestion {
+  text: string
+  similarity: number
+  sources: PromoteSource[]
+  /** 不能进全局的原因（路径 / 地址 / 端口 / 仓库名）；null = 可晋升。 */
+  blocked: string | null
+}
+
+/** agent 记忆端点的载荷：分组 + 归档区 + 晋升建议。 */
+interface AgentMemoryPayload {
+  groups: AgentMemoryGroup[]
+  archived: AgentMemoryEntry[]
+  suggestions: PromoteSuggestion[]
+}
+
+/** 空载荷（首次渲染 / 响应形状漂移时的兜底）。 */
+function emptyAgentMemoryPayload(): AgentMemoryPayload {
+  return { groups: [], archived: [], suggestions: [] }
+}
+
+/** 归一化端点返回值：缺字段一律当空，绝不因形状漂移让整个面板崩掉。 */
+function normalizeAgentMemory(value: Partial<AgentMemoryPayload> | undefined): AgentMemoryPayload {
+  return {
+    groups: Array.isArray(value?.groups) ? value.groups : [],
+    archived: Array.isArray(value?.archived) ? value.archived : [],
+    suggestions: Array.isArray(value?.suggestions) ? value.suggestions : [],
+  }
+}
+
+/**
+ * 响应 → 载荷；失败时把**服务端给的原因**抛出去（晋升被拒绝时用户必须看到
+ * 为什么，所以这里不能像别处那样只抛一句通用文案）。
+ */
+function agentMemoryPayloadOf(
+  body: (ApiResponse<AgentMemoryPayload> & { error?: { message?: string } }) | null,
+  fallback: string,
+): AgentMemoryPayload {
+  if (body === null || body.ok !== true) throw new Error(body?.error?.message ?? fallback)
+  return normalizeAgentMemory(body.value)
+}
+
+/** GET /my-memory/api/agent-memory → 分组 + 归档 + 晋升建议。 */
+function fetchAgentMemory(): Promise<AgentMemoryPayload> {
+  return fetch(`${API_BASE}/agent-memory`)
+    .then((res) => res.json())
+    .then((body) => agentMemoryPayloadOf(body, strings.loadError()))
+}
+
+/** POST /my-memory/api/agent-memory — write | delete | restore（用户自己的面板入口）。 */
+function writeAgentMemory(payload: {
+  action: 'write' | 'delete' | 'restore'
+  name: string
+  content?: string
+}): Promise<AgentMemoryPayload> {
+  return fetch(`${API_BASE}/agent-memory`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+    .then((res) => res.json())
+    .then((body) => agentMemoryPayloadOf(body, strings.saveFailed()))
+}
+
+/** POST promote：把一条跨项目重复的条目晋升进 user.md（服务端重算建议再执行）。 */
+function promoteAgentMemory(text: string): Promise<AgentMemoryPayload> {
+  return fetch(`${API_BASE}/agent-memory`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'promote', text }),
+  })
+    .then((res) => res.json())
+    .then((body) => agentMemoryPayloadOf(body, strings.agentMemoryPromoteFailed()))
+}
+
 /** Current session id from localStorage ('dsh.sessions.current' → { sessionId }). */
 function currentSessionId(): string {
   try {

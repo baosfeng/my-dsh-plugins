@@ -41,7 +41,7 @@ const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 /** 冻结的两宿主事件清单（ci 无参考源时唯一依据）。 */
 const FIXTURE_PATH = join(PLUGIN_ROOT, 'test', 'fixtures', 'host-events.json')
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'lib', 'dist', 'coverage', '.stryker-tmp', 'reports'])
+const SKIP_DIRS = new Set(['node_modules', '.git', 'lib', 'dist', 'coverage', 'reports'])
 const DECL_RE = /interface Events\s*\{/g
 const DECL_KEY_RE = /'([\w/-]+)'\s*[(:]/g
 const DISPATCH_RE = /\b(?:ctx|context)\.(?:emit|parallel|serial|bail|waterfall)\(\s*(['"])([^'"]+)\1/g

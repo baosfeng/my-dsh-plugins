@@ -22,8 +22,6 @@
  *                  则查）+ npm test（单元测试 + 覆盖率门禁 + Gherkin 验收），与
  *                  scripts/test-all.sh 同逻辑（区别：本脚本不 set -e，单个插件失败
  *                  继续其余插件并汇总；支持 --plugin 过滤）
- *   mutation     → (cd plugins/dsh-file-activity && npx stryker run)（默认跳过：
- *                  本地约 20s，push 场景太重，CI 独立 job 强制）
  *   typecheck    → npx tsc --noEmit（根 tsconfig：只覆盖 plugins/<插件>/lib/*.d.ts 产物与根级 TS）
  *   typecheck-plugins → node scripts/typecheck-all.mjs（13 插件的 server + client 端，并发）
  *                  issue #330：这是 CI 一直在跑、而**本地此前完全没跑**的那一项——client 端
@@ -71,14 +69,13 @@
  *    两者与登记表逐字比对（`gate-parity` 门禁），任何一边改了另一边没跟上就红。
  *
  * 用法：
- *   node scripts/verify-local.mjs                    # full：全部检查（跳过 audit/mutation）
+ *   node scripts/verify-local.mjs                    # full：全部检查（跳过 audit）
  *   node scripts/verify-local.mjs --fast             # fast：按变更裁剪（pre-push 用）
  *   node scripts/verify-local.mjs --ci-quality       # CI quality job 的执行体（并发跑 ciQuality 项，
  *                                                    # 并写 GitHub job summary；见 .github/workflows/ci.yml）
  *   node scripts/verify-local.mjs --fast --base <r>  # 指定比较基准（默认 @{upstream} → origin/main）
  *   node scripts/verify-local.mjs --full             # 强制全量（与 --fast 同给时 --full 生效）
  *   node scripts/verify-local.mjs --audit            # 额外执行 npm audit
- *   node scripts/verify-local.mjs --mutation         # 额外执行 stryker 变异测试
  *   node scripts/verify-local.mjs --only <id>        # 只跑单项（可重复，如 --only knip）
  *   node scripts/verify-local.mjs --plugin <name>    # 只跑该插件的 test/--check（可重复）
  *   node scripts/verify-local.mjs --timeout <sec>    # 覆盖整体超时上限（秒；none = 显式关闭）
@@ -166,7 +163,6 @@ const options = {
   only: [],
   plugins: [],
   audit: false,
-  mutation: false,
   fast: false,
   full: false,
   ciQuality: false,
@@ -193,7 +189,6 @@ for (let i = 0; i < args.length; i += 1) {
   else if (flag === '--commits-from') options.commitsFrom = value()
   else if (flag === '--timeout') options.timeout = value()
   else if (flag === '--audit') options.audit = true
-  else if (flag === '--mutation') options.mutation = true
   else if (flag === '--fast' || flag === '--changed-only') options.fast = true
   else if (flag === '--full') options.full = true
   else if (flag === '--ci-quality') options.ciQuality = true
@@ -211,7 +206,7 @@ if (options.full && options.fast) {
   options.fast = false
 }
 // --ci-quality 是「CI quality job 的执行体」：CI 上永远是全量（不做范围裁剪），
-// 但只跑登记表里 ci.job === 'quality' 的那些检查项（插件测试/资源冒烟/审计/变异各有独立 job）。
+// 但只跑登记表里 ci.job === 'quality' 的那些检查项（插件测试/资源冒烟/审计各有独立 job）。
 if (options.ciQuality && options.fast) {
   console.error('[verify] --ci-quality 在 CI 上按全量执行，忽略 --fast')
   options.fast = false
@@ -608,7 +603,6 @@ async function runAudit() {
 // ── 检查项定义 ──────────────────────────────────────────────────────────────
 // CI 强制、本地默认跳过的项（= 白名单豁免，理由见 `scripts/lib/gate-registry.mjs` 的 LOCAL_EXEMPTIONS，
 // 由 `gate-parity` 门禁逐条校验「有理由 + CI 侧真有执行点」，防止「本地慢」被塞进白名单）。
-// issue #330 前这里是 ['audit','mutation']；mutation 按规范第十四节改为默认执行。
 const OPTIONAL_CHECKS = ['audit']
 
 /**
@@ -616,7 +610,7 @@ const OPTIONAL_CHECKS = ['audit']
  *   command   —— 本文件**实际执行**的命令（与 `scripts/lib/gate-registry.mjs` 的 `localCommand`
  *                逐字比对，见 `scripts/check-gate-parity.mjs`；漂移即门禁变红）
  *   ciQuality —— 是否属于 CI 的 `quality` job 聚合步骤（`--ci-quality` 只跑这些项）。
- *                插件测试 / 资源冒烟 / 审计 / 变异各有独立 CI job，因此为 false。
+ *                插件测试 / 资源冒烟 / 审计各有独立 CI job，因此为 false。
  *
  * 为什么集中成一张表：让「检查项定义」与「机器可读声明」在同一屏内可直接对照。
  * ⚠️ 改任一 `run()` 的命令，必须同步本表与 `gate-registry.mjs`——否则 `gate-parity` 门禁会点名。
@@ -625,7 +619,6 @@ const OPTIONAL_CHECKS = ['audit']
  */
 const CHECK_META = {
   audit: { command: 'npm audit --audit-level=moderate', ciQuality: false },
-  mutation: { command: 'npx --no-install stryker run', ciQuality: false },
   test: { command: 'npm test（逐插件）', ciQuality: false },
   typecheck: { command: 'npx --no-install tsc --noEmit', ciQuality: true },
   'typecheck-plugins': { command: 'node scripts/typecheck-all.mjs', ciQuality: true },
@@ -679,23 +672,6 @@ const CHECK_DEFS = [
     note: 'CI 强制；本地默认跳过（需联网 + 官方 registry 可直连/可代理），--audit 或 --only audit 开启',
     optional: true,
     run: runAudit,
-  },
-  {
-    // issue #330 + 工程效率规范第十四节「本地绿 ⇒ CI 绿」：CI 的 mutation job 是**阻断性**的，
-    // 因此本地默认也跑。白名单只认「CI 专属环境/凭据」这类理由，**「本地慢」不是理由**
-    // （唯一白名单项是 audit，见 gate-registry 的 LOCAL_EXEMPTIONS）。
-    // 仅显式 `--fast`（快速通道）才跳过，并打印原因与未跑清单。
-    id: 'mutation',
-    label: 'mutation (npx stryker run @ dsh-file-activity)',
-    note: 'issue #13：变异分 ≥70 才算测试有效。CI mutation job 阻断；本地默认执行（约 20s），--fast 才跳过',
-    run: () => runCapture('npx', [...NPX_BASE_ARGS, 'stryker', 'run'], join(root, 'plugins', 'dsh-file-activity')),
-    // 独占（issue #330 实测）：stryker **自己就会起多个 worker 吃满 CPU**，与并发池里的
-    // eslint / prettier / test-scripts 叠加会超卖 → 实测在 `--full` 并发下失败、单独跑 11.9s 全绿
-    // （典型资源争抢型 flaky）。「本地绿 ⇒ CI 绿」不允许 flaky，故把它排到并发池之后独占执行。
-    // 代价：`--full` 墙钟 +约 12s；换取 pre-push 不再偶发红（一次 CI 往返约半小时）。
-    exclusive: true,
-    skip: (ctx) =>
-      ctx.fast ? '快速通道（--fast，显式选择）：约 20s，CI mutation job 强制；本地等价全量用 npm run verify' : null,
   },
   {
     id: 'test',
@@ -1438,12 +1414,10 @@ const ctx = {
 const runList = (() => {
   if (options.only.length > 0) return CHECK_DEFS.filter((c) => options.only.includes(c.id))
   // --ci-quality：CI quality job 的执行体。只跑登记表里标记 ciQuality 的项——
-  // 插件测试（test job matrix）、资源冒烟（resource-smoke job）、审计/变异（各独立 job）
+  // 插件测试（test job matrix）、资源冒烟（resource-smoke job）、审计（独立 job）
   // 都不在这里重跑，否则就是把独立 job 的墙钟全加回 quality job。
   if (options.ciQuality) return CHECK_DEFS.filter((c) => CHECK_META[c.id].ciQuality)
-  return CHECK_DEFS.filter(
-    (c) => !c.optional || (c.id === 'audit' && options.audit) || (c.id === 'mutation' && options.mutation),
-  )
+  return CHECK_DEFS.filter((c) => !c.optional || (c.id === 'audit' && options.audit))
 })()
 
 const SKIPPED_BY_SCOPE_NOTE = new Map() // id → 跳过原因（快速模式裁剪）
@@ -1504,12 +1478,10 @@ const UNTRUSTED_ASSERTION_STAGES = new Set(['test-scripts'])
 
 /**
  * 不参与「疑似并发冲突 → 串行复测」的检查项（其余**所有并发执行的检查项**都参与）：
- *   · test     —— 池内部已是逐插件任务，重跑整个池 = 重复跑一遍全套插件测试（贵且无必要）；
- *                 其自身的假红由插件池那层复测兜住（见 runPluginTests）。
- *   · mutation —— stryker 独占整机 CPU 的变异测试，复测等于把最贵的项再跑一遍；
- *                 且它是 `--full` / CI 才跑的独占项。
+ *   · test —— 池内部已是逐插件任务，重跑整个池 = 重复跑一遍全套插件测试（贵且无必要）；
+ *             其自身的假红由插件池那层复测兜住（见 runPluginTests）。
  */
-const CHECK_POOL_NO_RETRY = new Set(['test', 'mutation'])
+const CHECK_POOL_NO_RETRY = new Set(['test'])
 
 const HARD_SKIPPED = CHECK_DEFS.filter((c) => !runList.includes(c))
 /**
@@ -1539,7 +1511,7 @@ const CONCURRENCY = checkConcurrency()
 log('')
 log(
   options.ciQuality
-    ? `CI quality job：并发执行 ${tasks.length} 项检查（${describeConcurrency('检查项', concurrencyFor('check'))}；插件测试/资源冒烟/审计/变异各由独立 job 覆盖）`
+    ? `CI quality job：并发执行 ${tasks.length} 项检查（${describeConcurrency('检查项', concurrencyFor('check'))}；插件测试/资源冒烟/审计各由独立 job 覆盖）`
     : `开始校验：${tasks.length} 项${SKIPPED_BY_SCOPE_NOTE.size > 0 ? `，按范围跳过 ${SKIPPED_BY_SCOPE_NOTE.size} 项` : ''}${HARD_SKIPPED.filter((c) => c.optional).length > 0 ? `，默认跳过 ${HARD_SKIPPED.filter((c) => c.optional).length} 项（CI 强制）` : ''}（${describeConcurrency('检查项', concurrencyFor('check'))}，${describeConcurrency('插件测试', concurrencyFor('plugin'))} × 每路 vitest worker ${vitestWorkersBudget()}）`,
 )
 if (options.plugins.length > 0) log(`--plugin 过滤：${options.plugins.join('、')}`)
@@ -1563,7 +1535,8 @@ const onTaskDone = (r) => {
 //   ② `after` 门控项：必须等插件测试结束的（depcruise —— 插件测试会生成/清理 coverage/ 目录）
 //   ③ 独占项（`exclusive: true`）：需要**独占总有资源**的检查项，两类用途——
 //      ① 会写工作区（历史上 artifacts 曾原地重建 `lib/parts/*.js`，现已被 #336 改为只读镜像）；
-//      ② 自身就是重负载（mutation 的 stryker 会起多个 worker 吃满 CPU，与并发池叠加会超卖 → flaky）。
+//      ② 自身就是重负载（历史先例：多 worker 的变异测试与并发池叠加会超卖 → flaky）。
+//      当前没有检查项使用 exclusive；机制保留，供未来任何写工作区或重负载的检查项使用。
 //      以下是历史上对 ① 的说明：
 //      （artifacts 走各插件 build.mjs，
 //      会重写 lib/parts/*.js 并 `prettier --write`），必须独占，否则并发的 format / lint /
@@ -1690,7 +1663,6 @@ function printHelp() {
   log('  --plugin <name> 只跑该插件的 test/--check（可重复）')
   log('  --timeout <sec> 覆盖整体超时上限（秒；none = 显式关闭）')
   log('  --audit         额外执行 npm audit（默认跳过：本地 registry 可能不支持 audit API）')
-  log('  --mutation      额外执行 stryker 变异测试（默认跳过：约 20s）')
   log('  --list          列出检查项 id')
   log('  --help          显示本帮助')
   log('检查项: ' + CHECK_IDS.join(' / '))

@@ -53,16 +53,15 @@
     "dsh-shared": "file:plugins/dsh-shared"
   },
   "devDependencies": {
+    "@babel/core": "^8.0.9",
     "@babel/parser": "^8.0.8",
+    "@babel/preset-typescript": "^8.0.7",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.2",
     "@commitlint/lint": "^21.2.2",
     "@commitlint/load": "^21.2.2",
     "@cucumber/cucumber": "^13.3.0",
     "@eslint/js": "^10.0.1",
-    "@stryker-mutator/core": "^10.1.1",
-    "@stryker-mutator/html-reporter": "^3.1.0",
-    "@stryker-mutator/vitest-runner": "^10.1.1",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -87,6 +86,7 @@
     "qs": "6.17.1",
     "fast-uri": "3.1.9",
     "zod": "4.6.7",
+    "minimatch": "^11.0.1",
     "eslint-plugin-import": {
       "eslint": "$eslint"
     }

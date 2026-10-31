@@ -74,6 +74,8 @@ function rescanForLangs(): void {
  */
 function installScanner(ctx?: unknown): () => void {
   fenceScanContext = ctx ?? null
+  // 视口队列：扫描只登记候选，块可见才渲染（增量渲染，见 viewport-queue.ts）。
+  installViewportQueue()
   const uninstallRescan = installLangRescan(rescanForLangs)
   // 懒加载的渲染库（marked / hljs）就绪后重扫一次：加载期间落在「宿主官方形态」的块补渲染
   // （代码块则从纯文本换成高亮 —— 签名含就绪版本，重扫会重建）。
@@ -83,6 +85,7 @@ function installScanner(ctx?: unknown): () => void {
     // 兜底重扫目标：会话滚动容器（流式结束后内容补全，不一定以 addedNodes 出现）。
     rescanSelectors: ['[data-conversation-scroll]'],
     onTeardown: () => {
+      disposeViewportQueue()
       teardownMermaid()
       teardownZoom()
       teardownLangProbes()

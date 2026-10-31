@@ -15,12 +15,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { createRequire } from 'node:module'
 import vm from 'node:vm'
 
-const require = createRequire(import.meta.url)
-const babel = require('@babel/core')
-const presetTypescript = require('@babel/preset-typescript')
+import { transformSync } from '@babel/core'
+import presetTypescript from '@babel/preset-typescript'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const partsDir = join(here, '..', 'src', 'client', 'parts')
@@ -37,7 +35,7 @@ function codeOnly(source) {
 /** 用 babel 把 TS 片段转成可执行 JS，在独立 vm 沙箱里求值（片段无 import/export 语句）。 */
 function loadPart(name, globals = {}) {
   const source = readPart(name)
-  const compiled = babel.transformSync(source, {
+  const compiled = transformSync(source, {
     filename: name,
     babelrc: false,
     configFile: false,

@@ -166,11 +166,21 @@ function applyLangForce(block: Element, value: string): void {
   if (typeof rescanForLangs === 'function') rescanForLangs()
 }
 
-/** 扫描 root（自身 / 后代）内的围栏代码块，同步各自的语言控件。 */
+/**
+ * 扫描 root（自身 / 后代）内的围栏代码块，同步各自的语言控件。
+ *
+ * **增量渲染**：登记在 'lang' 键上，与同一块的 'fence' / 'mermaid' 回调按登记顺序执行
+ * （scanner 的调用顺序保证卡片先挂、控件后同步）。
+ */
 function scanLangSwitches(root: Element): void {
   if (!root || typeof root.querySelectorAll !== 'function') return
-  if (typeof root.matches === 'function' && root.matches('div.md-code-block')) syncLangSwitch(root)
-  for (const block of Array.from(root.querySelectorAll('div.md-code-block'))) syncLangSwitch(block)
+  if (typeof root.matches === 'function' && root.matches('div.md-code-block')) {
+    const self = root
+    enqueueWhenVisible(self, 'lang', () => syncLangSwitch(self))
+  }
+  for (const block of Array.from(root.querySelectorAll('div.md-code-block'))) {
+    enqueueWhenVisible(block, 'lang', () => syncLangSwitch(block))
+  }
 }
 
 exports.LANG_SWITCH_CLASS = LANG_SWITCH_CLASS

@@ -1,7 +1,7 @@
 /**
  * Unit tests for lib/text.js — 会话文本提取（顶层会话判定 / 最后 assistant
  * 文本 / 会话摘要）。直接 import 纯函数，覆盖 P2 拆分后子模块的全部逻辑
- * 分支（变异测试补盲：text.js 拆分后变异分 50.81% → 目标 ≥90%）。
+ * 分支（text.js 拆分后的补盲用例：当时覆盖率缺口集中在子模块边界分支）。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'

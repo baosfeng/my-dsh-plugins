@@ -5,6 +5,7 @@
  */
 import type { MemoryStore, StoreInstance } from './memory-types.js'
 import type { PromptStoreInstance } from './prompt-types.js'
+import type { AgentMemoryRouteDeps } from './agent-memory/route.js'
 
 export type { MemoryStore, StoreInstance }
 
@@ -62,6 +63,8 @@ export interface ApiHandlerParams {
   sessions?: SessionsService
   config?: ApiConfig
   logger?: LoggerService
+  /** agent 记忆的路由依赖（issue #502）：正文 store + 元数据 index。 */
+  agentMemoryDeps: AgentMemoryRouteDeps
 }
 
 /** 路由请求参数接口。 */
@@ -72,6 +75,8 @@ export interface RouteRequestParams {
   sessions?: SessionsService
   config?: ApiConfig
   logger?: LoggerService
+  /** agent 记忆的路由依赖（issue #502）：正文 store + 元数据 index。 */
+  agentMemoryDeps: AgentMemoryRouteDeps
 }
 
 /** 写操作负载接口。 */

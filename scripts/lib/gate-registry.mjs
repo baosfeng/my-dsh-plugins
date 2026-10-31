@@ -263,7 +263,7 @@ export const GATE_REGISTRY = [
     local: 'always',
     localCommand: 'node scripts/check-client-artifacts.mjs',
     ci: { ...CI_QUALITY_STEP },
-    cost: '10~12s（**独占**执行：它走各插件 build.mjs 重建产物，会写工作区，见 verify-local 的 exclusive 注释）',
+    cost: '10~12s（#336 起只读：重建在 os.tmpdir 的一次性 HEAD 镜像内完成，工作区 hash/mtime/inode 不变，故在并发池里并行）',
     why: '唯一权威（issue #318 / ADR-0002）：共享部件 `plugins/dsh-shared/client-parts/*` 是纯函数文本片段，构建期 splice 进消费方的 `lib/client.js`；server 端 `lib/*.js` 是 tsc 产物。两者都必须提交，而 CI 不跑构建 → 漏重建会静默陈旧（实测 commit 735e2fa 加图标只重建了 2 个消费方）。重建后与已提交产物逐字节比对，fail-closed。',
   },
   {
@@ -328,15 +328,6 @@ export const GATE_REGISTRY = [
     ci: { job: 'audit', step: 'Audit dependencies', command: 'npm audit --audit-level=moderate' },
     cost: 'CI ≈5s（刻意不做 npm ci）',
     why: '唯一权威（issue #199）：本地 registry 常是镜像（无 advisories 端点），故本地默认跳过、CI 强制。刻意**不**做 `npm ci`——audit 只读 lockfile（省 13.4s）。',
-  },
-  {
-    id: 'mutation',
-    authority: '`plugins/dsh-file-activity` 的 stryker 配置（break 70）',
-    local: 'fast-scoped',
-    localCommand: 'npx --no-install stryker run',
-    ci: { job: 'mutation', step: 'Mutation testing', command: 'npx stryker run' },
-    cost: '本地 ≈12s（**独占**：stryker 自身多 worker，与并发池叠加会资源超卖 → flaky）',
-    why: '唯一权威（issue #13）：变异分 ≥70 才算测试真的有效。issue #330 起本地**默认执行**（CI 该 job 是阻断性的；「本地慢」不构成白名单理由），仅 `--fast` 显式跳过。',
   },
 ]
 

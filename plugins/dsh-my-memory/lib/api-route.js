@@ -23,6 +23,7 @@
  */
 import { readJsonBody, writeError, writeJson } from 'dsh-shared';
 import { findProjectRoot } from 'dsh-shared';
+import { routeAgentMemory } from './agent-memory/route.js';
 import { routePrompts } from './prompts-route.js';
 import { DEFAULT_MAX_DESC_LENGTH, DEFAULT_MAX_ENTRY_LENGTH } from './memory-text.js';
 /** The cwd query parameter, normalized to undefined when absent. */
@@ -30,7 +31,7 @@ function cwdOf(url) {
     const cwd = url.searchParams.get('cwd') ?? '';
     return cwd !== '' ? cwd : undefined;
 }
-export function createApiHandler({ globalStore, getProjectStore, promptsStore, fence, sessions, config, logger, }) {
+export function createApiHandler({ globalStore, getProjectStore, promptsStore, fence, sessions, config, logger, agentMemoryDeps, }) {
     return async (request, response) => {
         if (!fence(request)) {
             writeJson(response, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } });
@@ -45,6 +46,7 @@ export function createApiHandler({ globalStore, getProjectStore, promptsStore, f
                 sessions,
                 config,
                 logger,
+                agentMemoryDeps,
             });
         }
         catch (error) {
@@ -53,27 +55,43 @@ export function createApiHandler({ globalStore, getProjectStore, promptsStore, f
     };
 }
 /** Dispatch one request to the matching handler by path + method. */
-async function routeRequest(url, request, response, { globalStore, getProjectStore, promptsStore, sessions, config, logger }) {
-    // 提示词是**独立端点**（不复用 /memory）；分派在自己的模块里，与记忆分支无耦合。
+async function routeRequest(url, request, response, { globalStore, getProjectStore, promptsStore, sessions, config, logger, agentMemoryDeps }) {
+    // 提示词与 agent 记忆都是**独立端点**（不复用 /memory），分派在各自模块里。
     if (await routePrompts(url, request, response, { promptsStore, logger }))
         return;
+    if (await routeAgentMemory(url, request, response, agentMemoryDeps))
+        return;
+    if (await routeMeta(url, request, response, { sessions, config }))
+        return;
+    if (await routeMemoryStore(url, request, response, { globalStore, getProjectStore, logger }))
+        return;
+    writeJson(response, 404, { ok: false, error: { message: 'unknown my-memory API method' } });
+}
+/** /config 与 /session 两个元信息端点：与记忆数据无关，单独一组便于扩展。 */
+async function routeMeta(url, request, response, { sessions, config }) {
     if (url.pathname.endsWith('/config') && request.method === 'GET') {
         handleConfig(config, response);
-        return;
+        return true;
     }
     if (url.pathname.endsWith('/session') && request.method === 'GET') {
         await handleSession(sessions, url, response);
-        return;
+        return true;
     }
-    if (url.pathname.endsWith('/memory') && request.method === 'GET') {
-        await handleList(url, response, globalStore, getProjectStore);
-        return;
+    return false;
+}
+/** /memory 的读写端点（全局/项目记忆，写操作需 confirmed 标记）。 */
+async function routeMemoryStore(url, request, response, deps) {
+    if (!url.pathname.endsWith('/memory'))
+        return false;
+    if (request.method === 'GET') {
+        await handleList(url, response, deps.globalStore, deps.getProjectStore);
+        return true;
     }
-    if (url.pathname.endsWith('/memory') && request.method === 'POST') {
-        await handleWrite(request, response, globalStore, getProjectStore, logger);
-        return;
+    if (request.method === 'POST') {
+        await handleWrite(request, response, deps.globalStore, deps.getProjectStore, deps.logger);
+        return true;
     }
-    writeJson(response, 404, { ok: false, error: { message: 'unknown my-memory API method' } });
+    return false;
 }
 /** GET /config — the entry-length guidance for the panel (issue #105). */
 function handleConfig(config, response) {

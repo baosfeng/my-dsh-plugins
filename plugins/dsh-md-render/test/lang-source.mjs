@@ -384,6 +384,7 @@ test('⑰ 流式门控：仍在 [data-streaming] 里的块不接管，稳定后�
   loaded.exports.apply(ctx)
   assert.equal(block.querySelector(TEXT_BODY), null, '流式中的块跳过（内容还在补写）')
   wrap.removeAttribute('data-streaming')
-  page.observers[0].callback([{ addedNodes: [] }]) // 真实兜底重扫路径
+  // 真实的流式结束信号：attributes 变更 + attributeName=data-streaming（共享骨架据此**立即**补扫）
+  page.observers[0].callback([{ type: 'attributes', attributeName: 'data-streaming', target: wrap, addedNodes: [] }])
   assert.ok(block.querySelector(TEXT_BODY), '消息稳定后由事件流索引识别并接管')
 })

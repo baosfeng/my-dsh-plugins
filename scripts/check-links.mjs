@@ -149,7 +149,7 @@ const HISTORY_FILE_RE = [/(^|\/)CHANGELOG\.md$/i, /(^|\/)docs\/adr\//]
 const MD_RE = /\.(md|markdown)$/i
 const SCAN_RE = /\.(md|markdown|ya?ml|sh|bash|mjs|cjs|js|ts|tsx|json|feature|txt)$/i
 const SCAN_EXTRA_RE = /(^|\/)\.husky\/|(^|\/)\.(gitignore|prettierignore)$/
-const SKIP_WALK = new Set(['node_modules', '.git', 'coverage', '.stryker-tmp', 'reports', 'dist', 'build', '.reasonix'])
+const SKIP_WALK = new Set(['node_modules', '.git', 'coverage', 'reports', 'dist', 'build', '.reasonix'])
 
 /**
  * 不扫的文件：构建产物/压缩产物（不是文档，且超长行会让 markdown 正则退化为 O(n²)——

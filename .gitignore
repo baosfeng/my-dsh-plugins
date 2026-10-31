@@ -73,9 +73,7 @@ reasonix.toml
 .dsh/
 **/.dsh/
 
-# Stryker 变异测试产物
-.stryker-tmp/
-**/.stryker-tmp/
+# 工具报告产物（一次性输出，绝不入库）
 reports/
 **/reports/
 
@@ -84,3 +82,5 @@ reports/
 
 # 审计/探查临时产物（一次性输出，绝不入库；避免 prettier --check . 产生假红）
 tmp/
+# open-design 原型工作区（Skill 管理重设计）：本地过程存档不入库，定稿复制到 docs/原型重构/
+.open-design/

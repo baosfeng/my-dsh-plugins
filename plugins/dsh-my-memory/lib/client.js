@@ -152,6 +152,44 @@ const strings = {
     askNoteDelete: () => isZh() ? '删除不可撤销 · 记忆绝不静默变更' : 'Deletion is irreversible · memories never change silently',
     // ── issue #465 全局提示词（与记忆并列但完全隔离）──
     promptsSection: () => (isZh() ? '全局提示词' : 'Global prompts'),
+    // ── agent 记忆（issue #502）：第四个 tab ──
+    agentMemorySection: () => (isZh() ? 'Agent 记忆' : 'Agent memory'),
+    agentMemoryNote: () => isZh()
+        ? 'agent 自主维护的跨会话记忆，与上面的全局/项目记忆相互独立。正文不注入上下文——只有 agent 主动读取时才消耗 token；这里的时间与次数只给你看，agent 看不到也改不了。'
+        : 'Cross-session memory the agent maintains on its own, independent of the global/project memory above. Bodies are never injected into context — only an explicit read by the agent costs tokens; the timestamps and counts below are for you only (the agent cannot see or change them).',
+    agentMemoryEmpty: () => (isZh() ? '还没有记忆' : 'No memories yet'),
+    agentMemoryEmptyHint: () => isZh()
+        ? '这是正常状态——agent 只在遇到下次会话仍有用、且代码里推不出来的信息时才会写。'
+        : 'That is normal: the agent only writes when something is useful in a later session and cannot be derived from the code.',
+    agentMemoryCreated: (value) => (isZh() ? `创建 ${value}` : `created ${value}`),
+    agentMemoryRead: (count, value) => isZh() ? `读过 ${count} 次（最近 ${value}）` : `read ${count}× (last ${value})`,
+    agentMemoryArchived: () => (isZh() ? '已归档（长期未读）' : 'archived (long unread)'),
+    agentMemoryArchiveTitle: (count) => (isZh() ? `已归档（${count}）` : `Archived (${count})`),
+    agentMemoryNever: () => (isZh() ? '从未' : 'never'),
+    agentMemoryToday: () => (isZh() ? '今天' : 'today'),
+    agentMemoryDaysAgo: (days) => (isZh() ? `${days} 天前` : `${days}d ago`),
+    agentMemoryEdit: () => (isZh() ? '编辑' : 'Edit'),
+    agentMemoryCancel: () => (isZh() ? '取消' : 'Cancel'),
+    agentMemorySave: () => (isZh() ? '保存' : 'Save'),
+    agentMemoryDelete: () => (isZh() ? '删除' : 'Delete'),
+    agentMemoryRestore: () => (isZh() ? '恢复' : 'Restore'),
+    agentMemorySaveFailed: () => (isZh() ? '保存失败' : 'Save failed'),
+    agentMemoryScopeGlobal: () => (isZh() ? '全局' : 'Global'),
+    agentMemoryScopeProject: () => (isZh() ? '项目' : 'Project'),
+    agentMemoryDeleteTitle: () => (isZh() ? '删除这份 agent 记忆' : 'Delete this agent memory'),
+    agentMemoryDeleteNote: () => isZh()
+        ? '正文与索引元数据一并移除，不可撤销（agent 下次会话也读不到）'
+        : 'Body and index metadata are removed for good (the agent will not see it in later sessions either)',
+    agentMemoryGroupLabel: (name, count) => isZh() ? `${name} · ${count} 条` : `${name} · ${count}`,
+    agentMemorySuggestTitle: (count) => isZh() ? `可晋升到全局（${count}）` : `Promotable to global (${count})`,
+    agentMemorySuggestMeta: (projects, percent) => isZh() ? `出现在 ${projects} · 相似度 ${percent}%` : `in ${projects} · similarity ${percent}%`,
+    agentMemorySuggestBlocked: (reason) => isZh() ? `这条不能进全局：${reason}` : `Cannot go global: ${reason}`,
+    agentMemoryPromoteBtn: () => (isZh() ? '晋升到 user.md' : 'Promote to user.md'),
+    agentMemoryPromoteTitle: () => (isZh() ? '晋升这条记忆到全局层' : 'Promote this memory to global'),
+    agentMemoryPromoteNote: (count) => isZh()
+        ? `追加写入 user.md，并从 ${count} 个项目文件里删除该条`
+        : `Appends to user.md and removes it from ${count} project files`,
+    agentMemoryPromoteFailed: () => (isZh() ? '晋升失败' : 'Promotion failed'),
     promptsScope: () => (isZh() ? '全局提示词' : 'Global prompts'),
     promptsNote: () => isZh()
         ? '每轮组装时全量按序注入系统提示（启用即注入、停用即不注入；不参与记忆的评分与条数上限）——存于 $DSH_HOME/memory/prompts.json'
@@ -301,6 +339,8 @@ const STYLES = `
   padding:24px; background:rgba(15,23,42,.38); animation:dsh-my-memory-fade .16s ease; }
 .dsh-my-memory-overlay .dsh-my-memory-ask { width:min(480px, 100%); padding:0; }
 .dsh-my-memory-ask { display:flex; flex-direction:column; align-items:center; box-sizing:border-box; width:100%; padding:8px 0 12px; }
+/* ask 卡的对外句柄（测试与外部样式按此定位；视觉全部在 .dsh-my-memory-ask-card 上） */
+.dsh-my-memory-confirm { box-sizing:border-box; width:100%; }
 .dsh-my-memory-ask-card { display:flex; flex-direction:column; box-sizing:border-box; width:100%; padding:0;
   border-radius:14px; overflow:hidden; background:#fff; box-shadow:0 20px 48px rgba(15,23,42,.24);
   animation:dsh-my-memory-pop .18s cubic-bezier(.2,0,.2,1); }
@@ -317,6 +357,7 @@ const STYLES = `
   border:1px solid #dfe3e8; border-radius:8px; color:#6b7280; font-size:12.5px; cursor:default; }
 .dsh-my-memory-ask-option.is-active { border-color:#c9d6f5; background:#f3f7ff; color:#2456b3; font-weight:500; }
 .dsh-my-memory-ask-option-dot { flex:none; width:6px; height:6px; border-radius:50%; background:#c4c9d0; }
+.dsh-my-memory-ask-option-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dsh-my-memory-ask-option.is-active .dsh-my-memory-ask-option-dot { background:#2f6fed; }
 .dsh-my-memory-ask-fields { display:flex; flex-direction:column; gap:6px; }
 .dsh-my-memory-ask-field { display:flex; gap:10px; font-size:12.5px; line-height:1.6; }
@@ -369,6 +410,53 @@ const STYLES = `
   overflow-y:auto; padding:9px 11px; border:1px solid #dfe3e8; border-radius:9px; background:#fff;
   color:#111827; font:inherit; font-size:13.5px; line-height:1.6; }
 .dsh-my-memory-iconbtn-up svg { transform:rotate(180deg); }
+/* ── agent 记忆（issue #502）：文件视图，正文等宽、元数据弱化 ── */
+.dsh-my-memory-agent-card { display:flex; flex-direction:column; gap:6px; padding:11px 13px;
+  border:1px solid #e6e9ee; border-radius:10px; background:#fff; }
+.dsh-my-memory-agent-card.is-archived { opacity:.72; background:#fafbfc; }
+.dsh-my-memory-agent-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.dsh-my-memory-agent-title { display:flex; align-items:center; gap:6px; min-width:0; }
+.dsh-my-memory-agent-name { min-width:0; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
+  color:#111827; background:#f3f4f6; padding:2px 7px; border-radius:6px; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+/* 作用域徽标：项目相关的内容写进全局层时，这里会把错位直接暴露给用户 */
+.dsh-my-memory-agent-scope { flex:none; display:inline-flex; align-items:center; height:18px; padding:0 7px;
+  border-radius:999px; background:#f2f4f7; color:#6b7280; font-size:11px; line-height:1; white-space:nowrap; }
+.dsh-my-memory-agent-scope.is-project { background:#eef4ff; color:#2456b3; }
+/* 行内操作与其它 tab 一致：hover / 聚焦才完全显现 */
+.dsh-my-memory-agent-head .dsh-my-memory-actions { opacity:.65; transition:opacity .15s; }
+.dsh-my-memory-agent-card:hover .dsh-my-memory-agent-head .dsh-my-memory-actions,
+.dsh-my-memory-agent-card:focus-within .dsh-my-memory-agent-head .dsh-my-memory-actions { opacity:1; }
+.dsh-my-memory-agent-meta { margin:0; color:#6b7280; font-size:12px; line-height:1.5; }
+.dsh-my-memory-agent-body { margin:0; padding:9px 11px; border-radius:8px; background:#f8f9fb;
+  color:#374151; font-size:13px; line-height:1.65; white-space:pre-wrap; word-break:break-word;
+  max-height:220px; overflow-y:auto; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.dsh-my-memory-agent-editor { box-sizing:border-box; width:100%; min-height:120px; resize:vertical;
+  padding:9px 11px; border:1px solid #dfe3e8; border-radius:9px; background:#fff; color:#111827;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; line-height:1.65; }
+.dsh-my-memory-agent-editing { display:flex; flex-direction:column; gap:8px; }
+.dsh-my-memory-agent-save { display:flex; justify-content:flex-end; gap:8px; }
+.dsh-my-memory-agent-archive { margin-top:10px; }
+.dsh-my-memory-agent-archive > summary { cursor:pointer; color:#6b7280; font-size:12.5px; padding:6px 0; }
+.dsh-my-memory-agent-archive .dsh-my-memory-agent-card { margin-top:8px; }
+/* 分组折叠头：项目名 · N 条（默认展开全局 + 最近写入的项目） */
+.dsh-my-memory-agent-group { margin-top:10px; }
+.dsh-my-memory-agent-group-head { display:flex; align-items:center; gap:6px; width:100%; padding:7px 9px;
+  border:none; border-radius:8px; background:#f5f6f8; color:#374151; font:inherit; font-size:12.5px;
+  font-weight:600; text-align:left; cursor:pointer; }
+.dsh-my-memory-agent-group-head:hover { background:#eef0f4; }
+.dsh-my-memory-agent-group-head:focus-visible { outline:2px solid #2456b3; outline-offset:1px; }
+.dsh-my-memory-agent-group-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dsh-my-memory-agent-group > .dsh-my-memory-list { margin-top:8px; }
+/* 跨项目晋升建议：面板顶部醒目区（被护栏拒绝的条目按钮置灰，原因用红字给出来） */
+.dsh-my-memory-agent-suggest { display:flex; flex-direction:column; gap:8px; padding:11px 13px;
+  border:1px solid #dfe6f5; border-radius:10px; background:#f8faff; }
+.dsh-my-memory-agent-suggest-title { margin:0; color:#2456b3; font-size:12.5px; font-weight:600; }
+.dsh-my-memory-agent-suggest-row { display:flex; flex-direction:column; gap:5px; align-items:flex-start;
+  padding:9px 11px; border:1px solid #e6e9ee; border-radius:9px; background:#fff; }
+.dsh-my-memory-agent-suggest-text { margin:0; color:#111827; font-size:13px; line-height:1.6; word-break:break-word; }
+.dsh-my-memory-agent-suggest-meta { margin:0; color:#6b7280; font-size:12px; line-height:1.5; }
+.dsh-my-memory-agent-suggest-blocked { margin:0; color:#c8322b; font-size:12px; line-height:1.6; }
 @keyframes dsh-my-memory-spin { to { transform:rotate(360deg); } }
 @keyframes dsh-my-memory-fade { from { opacity:0; } }
 @keyframes dsh-my-memory-pop { from { opacity:0; transform:translateY(6px) scale(.985); } }
@@ -447,6 +535,53 @@ function writePrompt(payload) {
             throw new Error('prompt write failed');
         return normalizePrompts(body.value);
     });
+}
+/** 空载荷（首次渲染 / 响应形状漂移时的兜底）。 */
+function emptyAgentMemoryPayload() {
+    return { groups: [], archived: [], suggestions: [] };
+}
+/** 归一化端点返回值：缺字段一律当空，绝不因形状漂移让整个面板崩掉。 */
+function normalizeAgentMemory(value) {
+    return {
+        groups: Array.isArray(value?.groups) ? value.groups : [],
+        archived: Array.isArray(value?.archived) ? value.archived : [],
+        suggestions: Array.isArray(value?.suggestions) ? value.suggestions : [],
+    };
+}
+/**
+ * 响应 → 载荷；失败时把**服务端给的原因**抛出去（晋升被拒绝时用户必须看到
+ * 为什么，所以这里不能像别处那样只抛一句通用文案）。
+ */
+function agentMemoryPayloadOf(body, fallback) {
+    if (body === null || body.ok !== true)
+        throw new Error(body?.error?.message ?? fallback);
+    return normalizeAgentMemory(body.value);
+}
+/** GET /my-memory/api/agent-memory → 分组 + 归档 + 晋升建议。 */
+function fetchAgentMemory() {
+    return fetch(`${API_BASE}/agent-memory`)
+        .then((res) => res.json())
+        .then((body) => agentMemoryPayloadOf(body, strings.loadError()));
+}
+/** POST /my-memory/api/agent-memory — write | delete | restore（用户自己的面板入口）。 */
+function writeAgentMemory(payload) {
+    return fetch(`${API_BASE}/agent-memory`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+    })
+        .then((res) => res.json())
+        .then((body) => agentMemoryPayloadOf(body, strings.saveFailed()));
+}
+/** POST promote：把一条跨项目重复的条目晋升进 user.md（服务端重算建议再执行）。 */
+function promoteAgentMemory(text) {
+    return fetch(`${API_BASE}/agent-memory`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'promote', text }),
+    })
+        .then((res) => res.json())
+        .then((body) => agentMemoryPayloadOf(body, strings.agentMemoryPromoteFailed()));
 }
 /** Current session id from localStorage ('dsh.sessions.current' → { sessionId }). */
 function currentSessionId() {
@@ -1712,6 +1847,395 @@ function confirmPayload(confirm) {
 // 导出给其他 part 文件使用
 
     "use strict";
+// ── agent 记忆面板的状态（issue #502）────────────────────────────────
+// 与 prompts-state 同构：把「加载 / 分组折叠 / 编辑 / 草稿 / 保存 / 删除确认 /
+// 晋升」从 view.ts 里析出，守住 apply 与 view 的函数行数门禁。
+/** 分组里的全部活跃条目（编辑 / 删除要按文件名回查正文）。 */
+function activeEntriesOf(groups) {
+    return groups.flatMap((group) => group.entries);
+}
+/** 按文件名在任一分组里找一条（删除确认层 / 编辑态回查用）。 */
+function findAgentEntry(groups, name) {
+    for (const group of groups) {
+        const hit = group.entries.find((entry) => entry.name === name);
+        if (hit !== undefined)
+            return hit;
+    }
+    return undefined;
+}
+/** 默认展开：全局 + 最近写入的项目（服务端已把最近写入的项目排在第一个）。 */
+function defaultExpandedOf(groups) {
+    const ids = groups.filter((group) => group.kind === 'global').map((group) => group.id);
+    const recent = groups.find((group) => group.kind === 'project');
+    if (recent !== undefined)
+        ids.push(recent.id);
+    return new Set(ids);
+}
+/** 恢复一条已归档记忆（服务端搬回原位 + 清归档标记），返回最新载荷。 */
+function restoreAgentMemory(name) {
+    return writeAgentMemory({ action: 'restore', name });
+}
+/** 进入编辑态：把该文件当前正文载入草稿（write 是整份覆盖，必须先拿到原文）。 */
+function beginAgentEdit(groups, name, setEditing, setDraft) {
+    const target = findAgentEntry(groups, name);
+    setEditing(name);
+    setDraft(target === undefined ? '' : target.content);
+}
+/** 挂载即拉一次：默认展开「全局 + 最近写入的项目」（用户手动的展开只在本次有效）。 */
+function loadAgentMemory(set) {
+    set.setLoading(true);
+    set.setError(false);
+    fetchAgentMemory()
+        .then((next) => {
+        set.setPayload(next);
+        set.setExpanded(defaultExpandedOf(next.groups));
+    })
+        .catch(() => set.setError(true))
+        .finally(() => set.setLoading(false));
+}
+/** 保存一个文件的正文（write 是整份覆盖）；成功清编辑态，失败只标错不吞掉。 */
+function saveAgentMemory(groups, name, draft, settle) {
+    if (findAgentEntry(groups, name) === undefined)
+        return;
+    writeAgentMemory({ action: 'write', name, content: draft })
+        .then((next) => {
+        settle.setPayload(next);
+        settle.setEditing('');
+        settle.setDraft('');
+    })
+        .catch(() => settle.setError(true));
+}
+/** 确认层通过后真正落盘删除，并用服务端回传的最新载荷刷新。 */
+function commitAgentDelete(name, editing, settle) {
+    settle.setPendingDelete('');
+    writeAgentMemory({ action: 'delete', name })
+        .then((next) => {
+        settle.setPayload(next);
+        if (editing === name) {
+            settle.setEditing('');
+            settle.setDraft('');
+        }
+    })
+        .catch(() => settle.setError(true));
+}
+/**
+ * 确认层通过后执行晋升。
+ *
+ * 失败时必须把**服务端给的原因**（护栏拒绝 / 建议已过期 / 全局层写满）放到
+ * 面板上：晋升是用户点过确认的动作，静默失败等于骗他「已经合并了」。
+ */
+function commitAgentPromote(text, settle) {
+    settle.setPendingPromote('');
+    settle.setPromoteError('');
+    promoteAgentMemory(text)
+        .then((next) => {
+        settle.setPayload(next);
+        settle.setEditing('');
+        settle.setDraft('');
+    })
+        .catch((reason) => settle.setPromoteError(reason.message));
+}
+/** 由设置器拼出落盘动作的回调集。 */
+function settleOf(set, setPromoteError) {
+    return {
+        setPendingDelete: set.setPendingDelete,
+        setPendingPromote: set.setPendingPromote,
+        setPayload: set.setPayload,
+        setError: set.setError,
+        setPromoteError,
+        setEditing: set.setEditing,
+        setDraft: set.setDraft,
+    };
+}
+/** agent 记忆 tab 的状态钩子：状态 + 设置器拼成面板 props。 */
+function useAgentMemoryState() {
+    const [payload, setPayload] = useState(emptyAgentMemoryPayload);
+    const [expanded, setExpanded] = useState(() => new Set());
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+    const [promoteError, setPromoteError] = useState('');
+    const [editing, setEditing] = useState('');
+    const [draft, setDraft] = useState('');
+    const [pendingDelete, setPendingDelete] = useState('');
+    const [pendingPromote, setPendingPromote] = useState('');
+    const set = {
+        setPayload,
+        setExpanded,
+        setLoading,
+        setError,
+        setEditing,
+        setDraft,
+        setPendingDelete,
+        setPendingPromote,
+    };
+    const settle = settleOf(set, setPromoteError);
+    const reload = () => loadAgentMemory(set);
+    // 空依赖 = 只在挂载时拉一次；agent 改了文件后下次打开面板即最新。
+    useEffect(reload, []);
+    return {
+        groups: payload.groups,
+        archived: payload.archived,
+        suggestions: payload.suggestions,
+        expanded,
+        loading,
+        error,
+        promoteError,
+        editing,
+        draft,
+        pendingDelete,
+        pendingPromote,
+        onEdit: (name) => beginAgentEdit(payload.groups, name, setEditing, setDraft),
+        onDraft: setDraft,
+        onCancel: () => {
+            setEditing('');
+            setDraft('');
+        },
+        onSave: () => saveAgentMemory(payload.groups, editing, draft, settle),
+        onDeleteAsk: setPendingDelete,
+        onDeleteConfirm: (name) => commitAgentDelete(name, editing, settle),
+        onDeleteCancel: () => setPendingDelete(''),
+        onRestore: (name) => {
+            restoreAgentMemory(name)
+                .then(setPayload)
+                .catch(() => setError(true));
+        },
+        onToggleGroup: (id) => setExpanded((prev) => {
+            const next = new Set(prev);
+            if (next.has(id))
+                next.delete(id);
+            else
+                next.add(id);
+            return next;
+        }),
+        onPromoteAsk: setPendingPromote,
+        onPromoteConfirm: () => commitAgentPromote(pendingPromote, settle),
+        onPromoteCancel: () => setPendingPromote(''),
+    };
+}
+
+    "use strict";
+// ── agent 记忆面板（issue #502）：第四个 tab ─────────────────────────
+// 与现有三 tab 的关系：**完全独立的数据源与语义**。
+//  - 全局记忆/项目记忆：用户确认后写入，条目卡片视图；
+//  - agent 记忆：agent 自主写入，**文件视图**——正文原样展示，
+//    元数据（创建时间/最后读取/读取次数）来自 index.json，agent 看不到
+//    但**用户必须看得到**，这是「给用户了解原因」的唯一落点。
+// 跨 part 引用（createElement/strings/utils/icon/IconButton/ui）由拼接作用域解析。
+/**
+ * 记忆文件的作用域：根级（user.md / feedback.md / MEMORY.md）= 全局，
+ * `projects/<id>/…` = 项目。
+ *
+ * 这是用户能看见「为什么这条会出现在这里」的唯一线索——项目相关的规则被
+ * agent 写进全局层时，徽标会把错位直接暴露出来。
+ */
+function agentMemoryScopeOf(name) {
+    return name.startsWith('projects/') ? 'project' : 'global';
+}
+/**
+ * 卡片标题：项目文件显示「项目名 / 文件名」，其余保持原名。
+ *
+ * 用户看不懂 `projects/ba7b32df3d04/pitfalls.md` 是哪个仓库——实测他的库里
+ * 两个项目各有一条「门禁假红」，靠 hash 根本分不清。
+ */
+function agentMemoryTitleOf(entry) {
+    if (entry.projectName === undefined || !entry.name.startsWith('projects/'))
+        return entry.name;
+    return entry.projectName + ' / ' + (entry.name.split('/')[2] ?? entry.name);
+}
+/** 作用域徽标。 */
+function AgentMemoryScope({ name }) {
+    const scope = agentMemoryScopeOf(name);
+    return createElement('span', { className: `dsh-my-memory-agent-scope is-${scope}` }, scope === 'project' ? strings.agentMemoryScopeProject() : strings.agentMemoryScopeGlobal());
+}
+/** 一份记忆的元数据行（时间 + 读取次数 + 归档标记）。 */
+function AgentMemoryMeta({ entry }) {
+    const created = entry.createdAt > 0 ? relativeTime(entry.createdAt) : strings.agentMemoryNever();
+    const lastRead = entry.lastReadAt > 0 ? relativeTime(entry.lastReadAt) : strings.agentMemoryNever();
+    const parts = [strings.agentMemoryCreated(created), strings.agentMemoryRead(entry.readCount, lastRead)];
+    if (entry.archived)
+        parts.push(strings.agentMemoryArchived());
+    return createElement('p', { className: 'dsh-my-memory-agent-meta' }, parts.join(' · '));
+}
+/**
+ * 卡片头部：文件名 + 作用域徽标 + 行内操作。
+ *
+ * 操作按钮**必须**走设计系统里那一套 `.dsh-my-memory-iconbtn`（与全局记忆 /
+ * 项目记忆 / 提示词三个 tab 的行内操作完全一致）。此前这里用 `dsh-my-memory-btn`
+ * ——一个 styles.ts 里不存在的类名，按钮静默退化成浏览器默认样式。
+ * 编辑态下头部不再显示操作：编辑器底部已有「保存 / 取消」，两处并存就会出现
+ * 两个「取消」。
+ */
+function AgentMemoryHead({ entry, editing, onEdit, onDelete, }) {
+    return createElement('div', { className: 'dsh-my-memory-agent-head' }, createElement('span', { className: 'dsh-my-memory-agent-title' }, createElement('code', { className: 'dsh-my-memory-agent-name', title: entry.name }, agentMemoryTitleOf(entry)), createElement(AgentMemoryScope, { name: entry.name })), editing
+        ? null
+        : createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, {
+            className: 'dsh-my-memory-iconbtn',
+            label: `${strings.agentMemoryEdit()} ${entry.name}`,
+            onClick: onEdit,
+        }, icon.pencil(14)), createElement(IconButton, {
+            className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
+            label: `${strings.agentMemoryDelete()} ${entry.name}`,
+            onClick: onDelete,
+        }, icon.trash(14))));
+}
+/** 编辑态：多行等宽输入框 + 保存 / 取消（与 MemoryRowEdit 同一套按钮样式）。 */
+function AgentMemoryEditor({ draft, onDraft, onCancel, onSave, }) {
+    return createElement('div', { className: 'dsh-my-memory-agent-editing' }, createElement('textarea', {
+        className: 'dsh-my-memory-agent-editor',
+        value: draft,
+        rows: 8,
+        'aria-label': strings.agentMemoryEdit(),
+        onChange: (event) => onDraft(event.target.value),
+    }), createElement('div', { className: 'dsh-my-memory-agent-save' }, createElement('button', { type: 'button', className: 'dsh-my-memory-btn-save', onClick: onSave }, icon.check(14), strings.agentMemorySave()), createElement(ui.Button, {
+        variant: 'ghost',
+        size: 'sm',
+        onClick: onCancel,
+        icon: createElement(ui.IconCloseOutline16),
+    }, strings.agentMemoryCancel())));
+}
+/** 一份记忆的完整卡片：文件名 + 元数据 + 正文（纯文本，等宽）。 */
+function AgentMemoryCard({ entry, editing, draft, onEdit, onDraft, onCancel, onSave, onDelete, }) {
+    return createElement('div', { className: 'dsh-my-memory-agent-card' }, createElement(AgentMemoryHead, { entry, editing, onEdit, onDelete }), createElement(AgentMemoryMeta, { entry }), editing
+        ? createElement(AgentMemoryEditor, { draft, onDraft, onCancel, onSave })
+        : createElement('pre', { className: 'dsh-my-memory-agent-body' }, entry.content));
+}
+/** 归档区：已归档的记忆只读展示（不可编辑、不在主列表），可一键恢复。 */
+function AgentMemoryArchive({ entries, onRestore, }) {
+    return createElement('details', { className: 'dsh-my-memory-agent-archive' }, createElement('summary', null, strings.agentMemoryArchiveTitle(entries.length)), entries.map((entry) => createElement('div', { key: entry.name, className: 'dsh-my-memory-agent-card is-archived' }, createElement('div', { className: 'dsh-my-memory-agent-head' }, createElement('span', { className: 'dsh-my-memory-agent-title' }, createElement('code', { className: 'dsh-my-memory-agent-name' }, entry.name), createElement(AgentMemoryScope, { name: entry.name })), createElement('div', { className: 'dsh-my-memory-actions' }, createElement(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => onRestore(entry.name) }, strings.agentMemoryRestore()))), createElement(AgentMemoryMeta, { entry }), createElement('pre', { className: 'dsh-my-memory-agent-body' }, entry.content))));
+}
+/** 空态提示（agent 还没写过记忆是常态，不是错误）。 */
+function AgentMemoryEmpty() {
+    return createElement('div', { className: 'dsh-my-memory-empty' }, createElement('p', null, strings.agentMemoryEmpty()), createElement('p', { className: 'dsh-my-memory-empty-hint' }, strings.agentMemoryEmptyHint()));
+}
+/** 删除确认层（复用 ask 范式卡片）：agent 记忆是长期数据，误删不可恢复。 */
+function AgentMemoryDeleteConfirm({ entry, onCancel, onConfirm, }) {
+    return createElement('div', { className: 'dsh-my-memory-overlay', role: 'presentation' }, createElement(AskConfirmCard, {
+        variant: 'delete',
+        title: strings.agentMemoryDeleteTitle(),
+        scope: agentMemoryScopeOf(entry.name),
+        category: '',
+        content: entry.content,
+        showSummary: false,
+        note: strings.agentMemoryDeleteNote(),
+        allowLabel: strings.confirmDeleteBtn(),
+        onAllow: onConfirm,
+        onReject: onCancel,
+    }));
+}
+/**
+ * 一个分组里的卡片（编辑态 / 草稿 / 动作都来自面板状态）。
+ *
+ * 独立成函数而不是内联 map：否则 AgentMemoryPanel 会被卡片 props 撑过函数
+ * 行数门禁，而且这层映射在分组视图里要复用。
+ */
+function agentMemoryCardsOf(group, props) {
+    return group.entries.map((entry) => createElement(AgentMemoryCard, {
+        key: entry.name,
+        entry,
+        editing: props.editing === entry.name,
+        draft: props.draft,
+        onEdit: () => props.onEdit(entry.name),
+        onDraft: props.onDraft,
+        onCancel: props.onCancel,
+        onSave: props.onSave,
+        onDelete: () => props.onDeleteAsk(entry.name),
+    }));
+}
+/** 第四个 tab 的整体视图：说明 + 晋升建议 + 分组卡片 + 归档区 + 两个确认层。 */
+function AgentMemoryPanel(props) {
+    const active = activeEntriesOf(props.groups).length;
+    const pendingDelete = findAgentEntry(props.groups, props.pendingDelete);
+    const pendingPromote = props.suggestions.find((item) => item.text === props.pendingPromote);
+    return createElement('section', { className: 'dsh-my-memory-section' }, createElement('p', { className: 'dsh-my-memory-note' }, strings.agentMemoryNote()), props.loading ? createElement('p', { className: 'dsh-my-memory-note' }, strings.loading()) : null, props.error ? createElement('p', { className: 'dsh-my-memory-error' }, strings.loadError()) : null, props.promoteError === '' ? null : createElement('p', { className: 'dsh-my-memory-error' }, props.promoteError), createElement(AgentMemorySuggests, { suggestions: props.suggestions, onPromote: props.onPromoteAsk }), active === 0 && !props.loading && !props.error ? createElement(AgentMemoryEmpty, null) : null, props.groups.map((group) => createElement(AgentMemoryGroupBlock, {
+        key: group.id,
+        group,
+        expanded: props.expanded.has(group.id),
+        onToggle: () => props.onToggleGroup(group.id),
+        renderCards: () => agentMemoryCardsOf(group, props),
+    })), props.archived.length > 0
+        ? createElement(AgentMemoryArchive, { entries: props.archived, onRestore: props.onRestore })
+        : null, pendingDelete === undefined
+        ? null
+        : createElement(AgentMemoryDeleteConfirm, {
+            entry: pendingDelete,
+            onCancel: props.onDeleteCancel,
+            onConfirm: () => props.onDeleteConfirm(pendingDelete.name),
+        }), pendingPromote === undefined
+        ? null
+        : createElement(AgentMemoryPromoteConfirm, {
+            suggestion: pendingPromote,
+            onCancel: props.onPromoteCancel,
+            onConfirm: props.onPromoteConfirm,
+        }));
+}
+
+    "use strict";
+// ── agent 记忆：分组折叠 + 跨项目晋升（issue #502 后续）────────────────
+// 从 agent-memory.ts 析出（单文件 400 行 / 单函数 70 行门禁）。卡片、编辑、
+// 删除确认仍在 agent-memory.ts：这里只有「外面这层」——分组头、晋升建议、
+// 晋升确认层。跨 part 引用（createElement/strings/icon/ui/AskConfirmCard）
+// 由拼接作用域解析。
+/** 分组标题文案：`全局 · N 条` / `项目名 · N 条`。 */
+function agentGroupLabel(group) {
+    const name = group.kind === 'global' ? strings.agentMemoryScopeGlobal() : (group.projectName ?? group.projectId ?? '');
+    return strings.agentMemoryGroupLabel(name, group.count);
+}
+/**
+ * 一个可折叠分组：头（项目名 · N 条）+ 展开后的卡片。
+ *
+ * 卡片由调用方渲染（它持有编辑态 / 草稿 / 动作），这里只负责「折叠」这一个
+ * 关注点——否则卡片 props 会再抄一遍，两处迟早不同步。
+ */
+function AgentMemoryGroupBlock({ group, expanded, onToggle, renderCards, }) {
+    return createElement('section', { className: 'dsh-my-memory-agent-group' }, createElement('button', {
+        type: 'button',
+        className: 'dsh-my-memory-agent-group-head',
+        'aria-expanded': expanded,
+        'aria-label': agentGroupLabel(group),
+        onClick: onToggle,
+    }, expanded ? icon.chevronDown(14) : icon.chevronRight(14), createElement('span', { className: 'dsh-my-memory-agent-group-name', title: group.projectId ?? '' }, agentGroupLabel(group))), expanded ? createElement('div', { className: 'dsh-my-memory-list' }, renderCards()) : null);
+}
+/** 一条晋升建议：正文 + 涉及项目 + 相似度 + 「晋升到 user.md」按钮。 */
+function AgentMemorySuggestRow({ suggestion, onPromote, }) {
+    const blocked = suggestion.blocked !== null;
+    const projects = suggestion.sources.map((source) => source.projectName).join(' / ');
+    return createElement('div', { className: 'dsh-my-memory-agent-suggest-row' }, createElement('p', { className: 'dsh-my-memory-agent-suggest-text' }, suggestion.text), createElement('p', { className: 'dsh-my-memory-agent-suggest-meta' }, strings.agentMemorySuggestMeta(projects, Math.round(suggestion.similarity * 100))), blocked
+        ? createElement('p', { className: 'dsh-my-memory-agent-suggest-blocked' }, strings.agentMemorySuggestBlocked(suggestion.blocked ?? ''))
+        : null, createElement(ui.Button, {
+        variant: 'outline',
+        size: 'sm',
+        disabled: blocked,
+        onClick: () => onPromote(suggestion.text),
+    }, strings.agentMemoryPromoteBtn()));
+}
+/**
+ * 晋升建议区块（面板顶部）：同一事实被写进 ≥2 个项目层时才出现。
+ *
+ * 被全局层护栏拒绝的条目**照样列出来**并给原因——静默隐藏会让用户以为
+ * 面板漏了东西，而「为什么不能进全局」正是他要的信息。
+ */
+function AgentMemorySuggests({ suggestions, onPromote, }) {
+    if (suggestions.length === 0)
+        return null;
+    return createElement('div', { className: 'dsh-my-memory-agent-suggest' }, createElement('p', { className: 'dsh-my-memory-agent-suggest-title' }, strings.agentMemorySuggestTitle(suggestions.length)), suggestions.map((suggestion) => createElement(AgentMemorySuggestRow, { key: suggestion.text, suggestion, onPromote })));
+}
+/** 晋升确认层（复用 ask 范式卡片）：一次要改全局层 + 多个项目文件。 */
+function AgentMemoryPromoteConfirm({ suggestion, onCancel, onConfirm, }) {
+    return createElement('div', { className: 'dsh-my-memory-overlay', role: 'presentation' }, createElement(AskConfirmCard, {
+        variant: 'save',
+        title: strings.agentMemoryPromoteTitle(),
+        scope: 'global',
+        category: '',
+        content: suggestion.text,
+        showSummary: false,
+        note: strings.agentMemoryPromoteNote(suggestion.sources.length),
+        allowLabel: strings.agentMemoryPromoteBtn(),
+        onAllow: onConfirm,
+        onReject: onCancel,
+    }));
+}
+
+    "use strict";
 // ── view: Memory settings tab（三个 tab：全局记忆 / 项目记忆 / 全局提示词）──
 // 跨 part 引用（strings/utils/api/view-rows/rows/prompts）由拼接作用域解析，
 // 无需 require——浏览器 ModuleLoader 不支持 factory 内相对路径 require。
@@ -1761,6 +2285,8 @@ function MemoryView() {
     const actions = createActions({ setData, setLoading, setError, setSaved });
     // 提示词数据（独立端点）：计数用于 tab 徽标，列表在提示词 tab 内渲染。
     const promptsProps = usePromptsBlockProps();
+    // agent 记忆（issue #502）：独立端点，独立写入语义（无需 confirmed）。
+    const agent = useAgentMemoryState();
     // 空依赖数组 = 只在挂载时拉一次配置 / 会话 cwd / 记忆。会话 cwd 决定项目
     // 记忆是否自动加载（issue #104）；面板不再有路径输入。
     useEffect(() => {
@@ -1772,6 +2298,7 @@ function MemoryView() {
     const commit = createCommitHandler({ data, setData, setSaved, setError, setDrafts, setEditing, setConfirming });
     return renderMemoryRoot({
         tab,
+        agent,
         data,
         loading,
         error,
@@ -1802,6 +2329,7 @@ function renderMemoryRoot(props) {
     const counts = {
         global: props.data === null ? 0 : props.data.global.items.length,
         project: props.data === null ? 0 : props.data.project.items.length,
+        agent: activeEntriesOf(props.agent.groups).length,
         prompts: props.promptsProps.items.length,
     };
     return createElement('div', { className: 'dsh-my-memory-root' }, createElement(TabBar, { tab: props.tab, counts, onTab: props.setTab }), createElement('div', { className: 'dsh-my-memory-body' }, props.error === null ? null : createElement(ErrorBanner, { kind: props.error, onRetry: props.reload }), renderTabContent(props), props.saved
@@ -1820,6 +2348,8 @@ function renderTabContent(props) {
     if (props.loading) {
         return createElement('div', { className: 'dsh-my-memory-status dsh-my-memory-loading' }, createElement('span', { className: 'dsh-my-memory-spinner' }), strings.loading());
     }
+    if (props.tab === 'agent')
+        return createElement(AgentMemoryPanel, { ...props.agent });
     if (props.data === null)
         return null;
     if (props.tab === 'prompts')
@@ -1858,6 +2388,7 @@ function TabBar({ tab, counts, onTab, }) {
         { id: 'global', label: strings.globalSection(), count: counts.global },
         { id: 'project', label: strings.projectSection(), count: counts.project },
         { id: 'prompts', label: strings.promptsSection(), count: counts.prompts },
+        { id: 'agent', label: strings.agentMemorySection(), count: counts.agent },
     ];
     return createElement('div', { className: 'dsh-my-memory-tabs', role: 'tablist', 'aria-label': strings.title() }, tabs.map((item) => createElement('button', {
         key: item.id,
@@ -1895,7 +2426,6 @@ function ErrorBanner({ kind, onRetry }) {
         return createElement('div', { className: 'dsh-my-memory-error' }, strings.loadError(), createElement(ui.Button, {
             variant: 'outline',
             size: 'sm',
-            className: 'dsh-my-memory-btn-retry',
             onClick: onRetry,
             icon: createElement(ui.IconRefreshOutline14),
         }, strings.retry()));

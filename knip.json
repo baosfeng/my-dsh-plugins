@@ -3,22 +3,16 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/*.mjs", "scripts/lib/*.mjs", "scripts/test/*.mjs"],
-      "project": ["scripts/**", "*.js", "*.mjs"]
+      "project": ["scripts/**", "*.js", "*.mjs"],
+      "ignoreDependencies": ["@babel/core", "@babel/preset-typescript"]
     },
     "plugins/*": {
-      "entry": [
-        "src/index.ts",
-        "src/client/**/*.ts",
-        "test/*.mjs",
-        "test/features/steps/*.mjs",
-        "vitest.stryker.config.mjs"
-      ],
+      "entry": ["src/index.ts", "src/client/**/*.ts", "test/*.mjs", "test/features/steps/*.mjs"],
       "project": ["src/**", "scripts/**", "test/**", "*.mjs"]
     }
   },
   "ignoreDependencies": [
     "dsh-shared",
-    "@stryker-mutator/html-reporter",
     "react",
     "react-dom",
     "@deepseek-ai/dsh-client-ui-primitives",

@@ -5,8 +5,8 @@
  * The client half is browser-only (lib/client.js, __ModuleLoader__ format);
  * CI checks its syntax with `node --check`.
  *
- * NOTE: assertions live INSIDE test() (not at module top level) so Stryker's
- * vitest-runner correctly attributes mutant kills to this test file.
+ * NOTE: assertions live INSIDE test() (not at module top level) so each
+ * assertion is attributed to the test that actually exercises it.
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'

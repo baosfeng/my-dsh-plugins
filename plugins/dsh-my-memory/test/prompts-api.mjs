@@ -55,7 +55,7 @@ function makeRequest(method, url, body, overrides) {
 }
 
 /** 挂载插件并捕获 /my-memory/api 前缀路由 + 已注册的 system-prompt section。 */
-async function boot(overrides) {
+async function boot(overrides, config) {
   const home = dirSync({ unsafeCleanup: true, prefix: 'dmm-prompts-home-' }).name
   homes.push(home)
   process.env.DSH_HOME = home
@@ -88,7 +88,7 @@ async function boot(overrides) {
     },
     ...(overrides ?? {}),
   }
-  apply(ctx)
+  apply(ctx, config)
   return { ctx, sections, getRoute: () => route }
 }
 
@@ -131,8 +131,27 @@ test('a duplicate/foreign section registration must not break apply (try/catch d
       },
     },
   })
-  assert.equal(sections.length, 1, 'the memory section still registered')
+  // 记忆段落有 2 个：全局记忆（dsh-my-memory）+ agent 记忆说明段（issue #502）。
+  // 提示词 section 抛错只降级它自己，这两段必须仍然注册成功。
+  assert.equal(sections.length, 2, 'the memory + agent-memory sections still registered')
+  assert.ok(
+    sections.some((s) => s.name === 'dsh-my-memory'),
+    'memory section survived',
+  )
+  assert.ok(
+    sections.some((s) => s.name === 'dsh-my-memory:agent-memory'),
+    'agent-memory section survived',
+  )
   assert.ok(getRoute(), 'apply finished: routes still registered after the section failure')
+})
+
+test('agentMemory.enabled=false 时连说明段也不注册（不告知 agent 调不到的工具）', async () => {
+  const { sections } = await boot(undefined, { agentMemory: { enabled: false } })
+  assert.ok(!sections.some((s) => s.name === 'dsh-my-memory:agent-memory'), '关闭时 agent 记忆说明段不注册')
+  assert.ok(
+    sections.some((s) => s.name === 'dsh-my-memory'),
+    '全局记忆段与开关无关，仍然注册',
+  )
 })
 
 test('GET /prompts returns the seeded builtin entry (enabled)', async () => {

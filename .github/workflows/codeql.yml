@@ -78,6 +78,9 @@ jobs:
           # 安全覆盖不受影响：regex-injection / file-system-race / http-to-file-access /
           # log-injection / insecure-temporary-file 等均属 security 类，仍会被扫到。
           queries: security-extended
+          # 扫描范围：产品代码全量，仅排除 docs 下的界面原型 HTML（设计稿，不参与运行；
+          # 其中的 innerHTML 拼接会触发 js/xss-through-dom，见 #120）。理由写在配置里。
+          config-file: .github/codeql/codeql-config.yml
           # 配置 CodeQL 扫描类别
           category: '/language:${{matrix.language}}'
 

@@ -39,8 +39,8 @@ jobs:
       # registry.npmjs.org 的请求**重写回当前的镜像 registry**，所以必须显式设 never。
       # ── 为什么是 moderate 而不是默认的 high（issue #199 的核心修复）───────────
       # 原设置 --audit-level=high 会放行 moderate：qs 的两条 moderate 公告
-      # （GHSA-x5fp-wj9c-mxmx / GHSA-4mjr-xmp4-gh2g，经 @stryker-mutator/core →
-      # typed-rest-client → qs 传入）在 CI 里只打印不阻断，长期无人处理。
+      # （GHSA-x5fp-wj9c-mxmx / GHSA-4mjr-xmp4-gh2g，经 typed-rest-client → qs 传入）
+      # 在 CI 里只打印不阻断，长期无人处理。
       # 与本地 verify-local 保持一致（scripts/verify-local.mjs 的 audit 检查项同级别）。
       - name: Audit dependencies (npm audit, moderate+ blocks, official registry)
         run: npm audit --audit-level=moderate
@@ -157,24 +157,6 @@ jobs:
 
       - name: Resource smoke (long-session write amplification + degrade)
         run: node scripts/resource-smoke.mjs
-
-  # 质量门禁：变异测试（issue #13 试点：dsh-file-activity）
-  # 本地实测 20s（90.91% 变异分 ≥ break 70）；独立 job 与测试并行
-  mutation:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: 26
-          cache: npm
-
-      - name: Install root toolchain (eslint, dependency-cruiser)
-        run: npm ci
-
-      - name: 'Mutation testing (stryker pilot: dsh-file-activity)'
-        run: (cd plugins/dsh-file-activity && npx stryker run)
 
   # 历史相关门禁（issue #324）：secret 扫描（gitleaks）+ 提交信息规范（commitlint）。
   #

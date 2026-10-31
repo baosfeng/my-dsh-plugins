@@ -18,13 +18,20 @@
  *  - Client：官方 slots 设置页签（全局/项目分区 + 分类/置信度/来源/演进展示 +
  *    自定义确认 UI：删除红色、保存绿色）。
  */
+import { createAgentMemorySection } from './agent-memory/prompt.js'
+import { createAgentMemoryCatalog } from './agent-memory/catalog.js'
+import type { AgentMemoryCatalog } from './agent-memory/catalog.js'
+import { createAgentMemoryRuntime, registerAgentMemoryTools } from './agent-memory/tools.js'
+import type { AgentMemoryRuntime } from './agent-memory/tools.js'
+import { createAgentMemoryRouteDeps } from './agent-memory/route.js'
 import { createApiHandler } from './api-route.js'
 import { createTrustFence } from 'dsh-shared'
 import { DEFAULT_MAX_ENTRY_LENGTH } from './memory-text.js'
 import { createMemorySection } from './prompt.js'
 import { createPromptsSection } from './prompts.js'
 import { createPromptsStore, promptsFile } from './prompts-store.js'
-import { createStore, globalMemoryFile, migrateProjectMemory, resolveProjectMemory } from './store.js'
+import { createStore, globalMemoryFile, migrateProjectMemory, projectIdOf, resolveProjectMemory } from './store.js'
+import { findProjectRoot } from 'dsh-shared'
 import { createMemoryQueryTool } from './tool.js'
 import { registerMemoryWriteTools } from './write-tools.js'
 import { saveApprovalOf } from './save-policy.js'
@@ -53,6 +60,8 @@ export interface MemoryConfig {
   maxPromptItems?: number
   /** 单条提示词正文上限（字符，默认 1000，超出截断 + warn；issue #465）。 */
   maxPromptLength?: number
+  /** agent 记忆开关（默认开启；issue #502）。 */
+  agentMemory?: { enabled?: boolean; archiveDays?: number }
 }
 
 /** maxEntryLength 配置（issue #105 精简引导）；非法值回落默认 50。 */
@@ -108,26 +117,24 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
     'dsh-my-memory: system prompt section',
   )
 
-  // ── 全局提示词注入（issue #465）：单 section、固定字面量名、order -85 ──
-  // provider 读内存态 → 保存后**下一轮组装即生效**，无需重注册/重启。
-  // section 名是幂等键：重复注册宿主会抛错，而抛错会打断整个 apply →
-  // 这里必须 try/catch 降级（丢提示词注入，绝不拖垮记忆能力）。
-  ctx.effect(() => {
-    try {
-      return ctx.systemPrompt?.section(
-        createPromptsSection(promptsStore, {
-          maxItems: Number.isInteger(config?.maxPromptItems) ? config!.maxPromptItems : undefined,
-          maxLength: Number.isInteger(config?.maxPromptLength) ? config!.maxPromptLength : undefined,
-          logger: ctx.logger,
-        }),
-      )
-    } catch (error) {
-      ctx.logger?.warn(
-        `[dsh-my-memory] 全局提示词 section 注册失败（已降级：提示词不注入，记忆能力不受影响）：${String(error)}`,
-      )
-      return () => {}
-    }
-  }, 'dsh-my-memory: prompts system prompt section')
+  registerPromptsSection(ctx, promptsStore, config)
+
+  // ── agent 记忆（issue #502）：第四套独立体系，零常驻注入 ──────────────
+  // runtime（index + store）全进程只建一份：工具与面板路由共用，避免两份
+  // index 缓存各自整份落盘导致 lost update（恢复/归档标记被回滚）。
+  // 目录（catalog）与 store 互相依赖：目录读 store.entries()，store 写完后回调
+  // 目录重建。用「先声明、后赋值 + 闭包延迟求值」打破循环。
+  let agentMemoryCatalog: AgentMemoryCatalog | undefined
+  const agentMemoryRuntime = createAgentMemoryRuntime({
+    logger: ctx.logger,
+    onChange: () => {
+      void agentMemoryCatalog?.refresh()
+    },
+  })
+  agentMemoryCatalog = createAgentMemoryCatalog(() => agentMemoryRuntime.store.entries())
+  // 启动时同步装载一次：宿主首轮组装就要目录，异步等不及。
+  agentMemoryCatalog.prime()
+  registerAgentMemory(ctx, config, agentMemoryRuntime, agentMemoryCatalog)
 
   // ── memory_query 只读工具 ─────────────────────────────────────────────
   ctx.effect(
@@ -139,23 +146,107 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
   // 门按会话审批策略 + saveApproval 决定确认/免确认放行/明确拒绝——绝不静默变更。
   registerMemoryWriteTools(ctx, { globalStore, getProjectStore, config })
 
-  // ── 写操作 API（需用户同意标记）──────────────────────────────────────
+  registerMemoryApi(ctx, { globalStore, getProjectStore, promptsStore, config, agentMemoryRuntime })
+  registerMemoryStatusQuery(ctx, globalStore, projectStores, { config })
+}
+
+/**
+ * 注册全局提示词 section（issue #465）：单 section、固定字面量名、order -85。
+ *
+ * provider 读内存态 → 保存后**下一轮组装即生效**，无需重注册/重启。
+ * section 名是幂等键：重复注册宿主会抛错，而抛错会打断整个 apply →
+ * 这里必须 try/catch 降级（丢提示词注入，绝不拖垮记忆能力）。
+ */
+function registerPromptsSection(
+  ctx: DshContext,
+  promptsStore: ReturnType<typeof createPromptsStore>,
+  config: MemoryConfig,
+): void {
+  ctx.effect(() => {
+    try {
+      return ctx.systemPrompt?.section(
+        createPromptsSection(promptsStore, {
+          maxItems: Number.isInteger(config?.maxPromptItems) ? config.maxPromptItems : undefined,
+          maxLength: Number.isInteger(config?.maxPromptLength) ? config.maxPromptLength : undefined,
+          logger: ctx.logger,
+        }),
+      )
+    } catch (error) {
+      ctx.logger?.warn(
+        `[dsh-my-memory] 全局提示词 section 注册失败（已降级：提示词不注入，记忆能力不受影响）：${String(error)}`,
+      )
+      return () => {}
+    }
+  }, 'dsh-my-memory: prompts system prompt section')
+}
+
+/** 注册写操作 API（/my-memory/api，需用户同意标记）。 */
+function registerMemoryApi(
+  ctx: DshContext,
+  deps: {
+    globalStore: ReturnType<typeof createStore>
+    getProjectStore: (cwd: string) => Promise<ReturnType<typeof createStore>>
+    promptsStore: ReturnType<typeof createPromptsStore>
+    config: MemoryConfig
+    agentMemoryRuntime: AgentMemoryRuntime
+  },
+): void {
   const fence = createTrustFence(ctx) as (request: unknown) => boolean
   const apiHandler = createApiHandler({
-    globalStore,
-    getProjectStore,
-    promptsStore,
+    globalStore: deps.globalStore,
+    getProjectStore: deps.getProjectStore,
+    promptsStore: deps.promptsStore,
     fence,
     sessions: ctx.sessions,
     logger: ctx.logger,
-    config: { ...config, maxEntryLength: maxEntryLengthOf(config) },
+    config: { ...deps.config, maxEntryLength: maxEntryLengthOf(deps.config) },
+    agentMemoryDeps: createAgentMemoryRouteDeps({
+      logger: ctx.logger,
+      enabled: deps.config?.agentMemory?.enabled,
+      runtime: deps.agentMemoryRuntime,
+    }),
   })
   ctx.effect(
     () => ctx.webServer?.register({ kind: 'prefix', path: '/my-memory/api', handler: apiHandler }),
     'dsh-my-memory: /my-memory/api routes',
   )
+}
 
-  registerMemoryStatusQuery(ctx, globalStore, projectStores, { config })
+/**
+ * 注册 agent 记忆（issue #502）：一段固定说明 + 4 个工具。
+ *
+ * **零常驻注入**——说明段只含规则，不含任何记忆正文；正文只在 agent 主动
+ * memory_read 时才进入上下文，不命中则一分 token 都不花。与全局记忆的
+ * 「固定 top-5 注入」是相反策略，也正是本体系存在的理由。
+ */
+function registerAgentMemory(
+  ctx: DshContext,
+  config: MemoryConfig,
+  runtime: AgentMemoryRuntime,
+  catalog: AgentMemoryCatalog,
+): void {
+  // 关闭整块能力时**连说明段也不注册**：否则 agent 会被告知有一套它根本
+  // 调不到的工具（section 在、工具不在），比没有这段更糟。
+  if (config?.agentMemory?.enabled === false) return
+
+  ctx.effect(() => {
+    try {
+      return ctx.systemPrompt?.section(createAgentMemorySection(catalog))
+    } catch (error) {
+      ctx.logger?.warn(`[dsh-my-memory] agent 记忆说明段注册失败（已降级）：${String(error)}`)
+      return () => {}
+    }
+  }, 'dsh-my-memory: agent memory prompt section')
+
+  ctx.effect(
+    () =>
+      registerAgentMemoryTools(ctx, {
+        config: config?.agentMemory,
+        resolveProjectPrefix: async (cwd: string) => `projects/${projectIdOf(await findProjectRoot(cwd || '.'))}/`,
+        runtime,
+      }),
+    'dsh-my-memory: agent memory tools',
+  )
 }
 
 /** 插件状态查询（#155 聚合层）：返回全局/项目记忆条目数 + 启动日志。 */

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.0] - 2026-10-24
+
+### 破坏性变更
+
+- **界面与实现重写**（按已验收原型）：命令条 + 卡片流/紧凑表双视图 + 双作用域并排开关 + 焦点详情 + 批量条 + 诊断台；旧「全局/项目分段视图 + 排序药丸 + 四层行」结构移除。
+- **API 形状变更**：`/list` 返回全量 skill（不再按视图过滤），新增 `globalDisabled` / `projectDisabled` / `scannedAt`，行内增加 `path` / `cataloged` / `invocation`；新增 `GET /detail`（SKILL.md 只读，白名单根 + 256KB 截断）。
+- **服务端模块重组**：`src/server/{types,config-store,catalog,detail,disabler,usage,diagnostics,http}.ts` 替代旧的扁平模块；配置路径与 JSON 形状保持兼容。
+
+### 新增
+
+- 搜索、来源/状态筛选、只看未使用、四种排序、概览计数可点筛。
+- 详情（路径/provider/调用能力/使用统计）与 SKILL.md 只读预览、复制。
+- 批量启停（内联二次确认）、诊断台整页、重新扫描时间提示。
+- 无障碍：`role=switch` + `aria-checked`、图标按钮 `aria-label`、`focus-visible`、Esc 分级处理。
+
+### 测试
+
+- 服务端 7 个测试文件 43 用例（覆盖率 语句 96.6% / 分支 87.0% / 函数 96.4%），客户端渲染与关键交互测试重写。
 
 ## [0.1.12] - 2026-10-17
 

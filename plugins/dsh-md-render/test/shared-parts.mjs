@@ -70,6 +70,24 @@ describe('DOM 扫描器走共享骨架', () => {
     }
   })
 
+  it('增量渲染：视口队列片段在产物里恰好一份，scanner 装配 / 销毁它', () => {
+    const artifact = read('lib/client.js')
+    expect(countOf(artifact, 'function installViewportQueue('), '视口队列片段不得丢失或重复').toBe(1)
+    expect(artifact.includes('function enqueueWhenVisible(')).toBe(true)
+    const scanner = read('src/client/parts/scanner.ts')
+    expect(scanner.includes('installViewportQueue()')).toBe(true)
+    expect(scanner.includes('disposeViewportQueue()')).toBe(true)
+    // 五个注入点的入口都要走「登记」，不得回退成「发现即渲染」。
+    for (const rel of [
+      'src/client/parts/block-render.ts',
+      'src/client/parts/context-markdown.ts',
+      'src/client/parts/lang-switch.ts',
+      'src/client/parts/mermaid-scan.ts',
+    ]) {
+      expect(read(rel).includes('enqueueWhenVisible('), rel + ' 必须走视口队列').toBe(true)
+    }
+  })
+
   it('流式门控与幂等签名仍在下游模块里（不得回退）', () => {
     const text = read('src/client/parts/block-render.ts')
     for (const marker of ['[data-streaming]', 'BLOCK_SIG_ATTR', 'MAX_TEXT_FENCE_CHARS', 'renderMarkdownInto']) {

@@ -2,8 +2,6 @@
 node_modules/
 coverage/
 **/coverage/
-.stryker-tmp/
-**/.stryker-tmp/
 reports/
 **/reports/
 dist/
@@ -66,3 +64,7 @@ package-lock.json
 # 换行风格由作者掌握。文档正确性由 scripts/check-docs.mjs 承担（它用 \s* 容忍空白，
 # 不依赖 prettier 对齐）；lint-staged 也不再对 md 跑 prettier --write。
 *.md
+# 仓库根的 open-design 原型工作区（Skill 管理重设计）：单文件原型的格式由流水线决定，不参与 prettier 门禁。
+.open-design/
+# 原型定稿（单文件自包含 HTML，由原型流水线产出，格式即交付件本身）：不参与 prettier 门禁。
+docs/原型重构/*.html

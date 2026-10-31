@@ -50,6 +50,9 @@ window.__ModuleLoader__.load({
     __PART_ROWS__
     __PART_PROMPTS_STATE__
     __PART_PROMPTS__
+    __PART_AGENT_MEMORY_STATE__
+    __PART_AGENT_MEMORY__
+    __PART_AGENT_MEMORY_GROUPS__
     __PART_VIEW__
     __PART_APPLY__
 

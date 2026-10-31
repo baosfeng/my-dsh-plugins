@@ -129,6 +129,7 @@ const AGENT_ITEMS = [
   },
   {
     name: 'projects/c1a9a5e21a94/decisions.md',
+    projectName: 'android-monitor',
     content: '- 选 A 因为 B',
     createdAt: NOW - 7200_000,
     updatedAt: NOW - 60_000,
@@ -320,6 +321,16 @@ test('每张卡片显示作用域徽标：全局 / 项目', async () => {
   const texts = badges.map((badge) => textOf(badge.props.children))
   assert.ok(texts.includes('全局'), 'user.md 标注为全局')
   assert.ok(texts.includes('项目'), 'projects/<id>/decisions.md 标注为项目')
+})
+
+test('项目卡片标题显示项目可读名，不再是 hash id', async () => {
+  const tree = await openAgentTab()
+  const names = collectByClass(tree, 'dsh-my-memory-agent-name')
+  const texts = names.map((node) => textOf(node.props.children))
+  assert.ok(texts.includes('android-monitor / decisions.md'), `项目卡片显示项目名，实际 ${JSON.stringify(texts)}`)
+  assert.ok(texts.includes('user.md'), '全局文件保持原名')
+  const projectTitle = names.find((node) => textOf(node.props.children).includes('android-monitor'))
+  assert.equal(projectTitle.props.title, 'projects/c1a9a5e21a94/decisions.md', '悬停仍显示全路径')
 })
 
 test('编辑态只有编辑器底部一组「取消 / 保存」，头部不再出现第二个「取消」', async () => {

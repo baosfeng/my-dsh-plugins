@@ -32,6 +32,15 @@ export interface FileMeta {
 /** 元数据索引。 */
 export interface AgentMemoryIndex {
   files: Record<string, FileMeta>
+  /**
+   * 项目 id → 可读名（写入时从会话 cwd 记录，只用于目录/面板展示）。
+   *
+   * 为什么要它：项目 id 是 sha256 前 12 位，agent 与用户都看不出
+   * `projects/ba7b32df3d04` 是哪个仓库——目录里两条不同项目的「门禁假红」
+   * 长得一模一样。记录名字后，目录显示 `my-dsh-plugins/坑`，一眼可辨。
+   * 只做展示，读写路径仍走 id，白名单不受影响。
+   */
+  projects?: Record<string, string>
 }
 
 /** 日志接口（与其它模块保持同构，避免引入宿主类型依赖）。 */
@@ -48,11 +57,15 @@ function freshMeta(now: number): FileMeta {
 async function readIndex(): Promise<AgentMemoryIndex> {
   try {
     const raw = JSON.parse(await readFile(indexFile(), 'utf8')) as unknown
-    if (raw === null || typeof raw !== 'object' || !('files' in raw)) return { files: {} }
+    if (raw === null || typeof raw !== 'object' || !('files' in raw)) return { files: {}, projects: {} }
     const files = (raw as AgentMemoryIndex).files
-    return { files: files !== null && typeof files === 'object' ? files : {} }
+    const projects = (raw as AgentMemoryIndex).projects
+    return {
+      files: files !== null && typeof files === 'object' ? files : {},
+      projects: projects !== null && typeof projects === 'object' ? projects : {},
+    }
   } catch {
-    return { files: {} }
+    return { files: {}, projects: {} }
   }
 }
 
@@ -78,6 +91,34 @@ function markArchivedAt(meta: FileMeta, at: number): void {
   meta.archivedAt = at
 }
 
+/** 删除一条元数据并落盘（面板「删除记忆」用）。 */
+async function dropIn(
+  cache: AgentMemoryIndex,
+  name: string,
+  load: () => Promise<unknown>,
+  persist: () => Promise<void>,
+): Promise<void> {
+  await load()
+  delete cache.files[name]
+  await persist()
+}
+
+/** 记录项目名（值未变时不落盘，避免读放大）。 */
+async function rememberProjectIn(
+  cache: AgentMemoryIndex,
+  id: string,
+  label: string,
+  load: () => Promise<unknown>,
+  persist: () => Promise<void>,
+): Promise<void> {
+  if (id === '' || label === '') return
+  await load()
+  const projects = (cache.projects ??= {})
+  if (projects[id] === label) return
+  projects[id] = label
+  await persist()
+}
+
 /** agent 记忆元数据索引的读写门面。 */
 export function createIndexStore({ logger }: { logger?: IndexLogger } = {}): {
   load: () => Promise<AgentMemoryIndex>
@@ -88,9 +129,13 @@ export function createIndexStore({ logger }: { logger?: IndexLogger } = {}): {
   markRestored: (name: string, now?: number) => Promise<void>
   drop: (name: string) => Promise<void>
   metaOf: (name: string) => FileMeta | undefined
+  /** 项目 id → 可读名（目录/面板展示用）。 */
+  projectNames: () => Record<string, string>
+  /** 记录项目 id 的可读名（值未变时不落盘，避免读放大）。 */
+  rememberProject: (id: string, label: string) => Promise<void>
   flush: () => Promise<void>
 } {
-  let cache: AgentMemoryIndex = { files: {} }
+  let cache: AgentMemoryIndex = { files: {}, projects: {} }
   let loaded = false
 
   const persist = async (): Promise<void> => {
@@ -138,11 +183,9 @@ export function createIndexStore({ logger }: { logger?: IndexLogger } = {}): {
     touchRead: (name, now?) => mutate(name, markRead, now),
     markArchived: (name, now?) => mutate(name, markArchivedAt, now),
     markRestored: (name, now?) => mutate(name, clearArchived, now),
-    async drop(name) {
-      await load()
-      delete cache.files[name]
-      await persist()
-    },
+    drop: (name) => dropIn(cache, name, load, persist),
+    projectNames: () => cache.projects ?? {},
+    rememberProject: (id, label) => rememberProjectIn(cache, id, label, load, persist),
     flush: persist,
   }
 }

@@ -21,9 +21,11 @@ import {
   absoluteFileOf,
   archiveDir,
   archivedAbsoluteOf,
+  entryLinesOf,
   listExistingFiles,
   normalizeName,
 } from './paths.js'
+import { duplicateError } from './duplicates.js'
 import type { IndexStore } from './index-store.js'
 
 /** 写入结果：ok 或一条可操作的拒绝原因（失败才给信息，成功只有一个词）。 */
@@ -208,6 +210,9 @@ async function writeEntry(
   if (typeof rawContent !== 'string') return { ok: false, error: 'content 必须是字符串' }
   const invalid = validateContent(rawContent)
   if (invalid !== null) return { ok: false, error: invalid }
+  // 去重是确定性检查（字符级相似度）：提示词管不到跨文件/跨项目，见 duplicates.ts。
+  const duplicate = duplicateError({ name, content: rawContent, entries: await listEntryLines(index, '') })
+  if (duplicate !== null) return { ok: false, error: duplicate }
   // 先读后写由 agent 自己负责（提示词引导），这里只保证落盘正确。
   await serial(async () => {
     await writeText(name, rawContent)
@@ -260,14 +265,6 @@ async function listEntries(
     out.push({ name, firstLine, count: countEntries(text) })
   }
   return out.sort((a, b) => a.name.localeCompare(b.name))
-}
-
-/** 正文的条目行（`- xxx` 的行，去掉列表符号）——目录与 list 的数据源。 */
-function entryLinesOf(text: string): string[] {
-  return text
-    .split('\n')
-    .filter((line) => /^\s*-\s+\S/.test(line))
-    .map((line) => line.replace(/^\s*-\s+/, '').trim())
 }
 
 /**

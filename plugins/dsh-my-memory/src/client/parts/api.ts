@@ -145,6 +145,8 @@ function writePrompt(payload: {
 /** 面板上的一份 agent 记忆（正文 + 只有用户可见的元数据）。 */
 interface AgentMemoryEntry {
   name: string
+  /** 项目可读名（服务端从 index.json 补齐；缺失时面板退回显示 hash id）。 */
+  projectName?: string
   content: string
   createdAt: number
   updatedAt: number

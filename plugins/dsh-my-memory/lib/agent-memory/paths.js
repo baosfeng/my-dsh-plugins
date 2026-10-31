@@ -180,6 +180,17 @@ function sortNames(names) {
     return names.sort((a, b) => a.localeCompare(b));
 }
 /**
+ * 正文的条目行（`- xxx` 的行，去掉列表符号）——列表、目录与去重共用同一份解析。
+ *
+ * 放这里而不是 store：duplicates 与 store 都要用，放任一侧都会形成环。
+ */
+export function entryLinesOf(text) {
+    return text
+        .split('\n')
+        .filter((line) => /^\s*-\s+\S/.test(line))
+        .map((line) => line.replace(/^\s*-\s+/, '').trim());
+}
+/**
  * 归档后的物理路径（`archive/<name>`）。
  *
  * 只给**面板**读正文与恢复用：agent 通道仍只认 `absoluteFileOf`，所以归档

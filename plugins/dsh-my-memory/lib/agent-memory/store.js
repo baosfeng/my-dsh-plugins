@@ -13,7 +13,8 @@
  */
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { MAX_ENTRIES, MAX_ENTRY_CHARS, MAX_FILE_BYTES, absoluteFileOf, archiveDir, archivedAbsoluteOf, listExistingFiles, normalizeName, } from './paths.js';
+import { MAX_ENTRIES, MAX_ENTRY_CHARS, MAX_FILE_BYTES, absoluteFileOf, archiveDir, archivedAbsoluteOf, entryLinesOf, listExistingFiles, normalizeName, } from './paths.js';
+import { duplicateError } from './duplicates.js';
 /** 名字非法时的统一原因（四个入口复用，措辞与提示词里的文件分工一致）。 */
 const INVALID_NAME = '无效的文件名，可选：MEMORY.md / user.md / feedback.md / projects/<id>/*.md';
 /** 敏感信息模式：API key / token / 密码 / 私钥。 */
@@ -170,6 +171,10 @@ async function writeEntry(rawName, rawContent, index, serial, onChange) {
     const invalid = validateContent(rawContent);
     if (invalid !== null)
         return { ok: false, error: invalid };
+    // 去重是确定性检查（字符级相似度）：提示词管不到跨文件/跨项目，见 duplicates.ts。
+    const duplicate = duplicateError({ name, content: rawContent, entries: await listEntryLines(index, '') });
+    if (duplicate !== null)
+        return { ok: false, error: duplicate };
     // 先读后写由 agent 自己负责（提示词引导），这里只保证落盘正确。
     await serial(async () => {
         await writeText(name, rawContent);
@@ -221,13 +226,6 @@ async function listEntries(index, prefix) {
         out.push({ name, firstLine, count: countEntries(text) });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
-}
-/** 正文的条目行（`- xxx` 的行，去掉列表符号）——目录与 list 的数据源。 */
-function entryLinesOf(text) {
-    return text
-        .split('\n')
-        .filter((line) => /^\s*-\s+\S/.test(line))
-        .map((line) => line.replace(/^\s*-\s+/, '').trim());
 }
 /**
  * 列出可读记忆的**每一条**（目录与 list 用）：文件名 + 条目行。

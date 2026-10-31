@@ -140,6 +140,22 @@ function renderList(items: Array<{ name: string; lines: string[] }>): string {
 export interface AgentMemoryToolDeps {
   store: AgentMemoryStore
   resolveProjectPrefix: (cwd: string) => Promise<string>
+  /**
+   * 记录「项目 id → 可读名」，只用于目录/面板展示。
+   *
+   * 项目 id 是 hash，agent 和用户都看不出 `projects/ba7b32df3d04` 是哪个仓库；
+   * 写入时顺手从会话 cwd 记下名字，目录就能显示 `my-dsh-plugins/坑`。
+   */
+  rememberProject?: (id: string, label: string) => void
+}
+
+/** 写入后记录项目名（只在项目层文件、且 cwd 可用时）。 */
+function rememberProjectOf(name: unknown, exec: unknown, remember?: (id: string, label: string) => void): void {
+  if (remember === undefined) return
+  const id = projectIdFromName(name)
+  const cwd = cwdOf(exec)
+  if (id === '' || cwd === '') return
+  remember(id, basename(cwd))
 }
 
 /** agent_memory_list：列出可读的记忆文件（冷记忆不列出）。 */
@@ -189,7 +205,7 @@ function readTool({ store, resolveProjectPrefix }: AgentMemoryToolDeps): ToolDef
 }
 
 /** agent_memory_write：整份覆盖写入（成功只回 ok）。 */
-function writeTool({ store, resolveProjectPrefix }: AgentMemoryToolDeps): ToolDefinition {
+function writeTool({ store, resolveProjectPrefix, rememberProject }: AgentMemoryToolDeps): ToolDefinition {
   return {
     name: 'agent_memory_write',
     description:
@@ -209,6 +225,7 @@ function writeTool({ store, resolveProjectPrefix }: AgentMemoryToolDeps): ToolDe
       const rejected = globalScopeReject(name, params.content, cwdOf(exec))
       if (rejected !== null) return rejected
       const result = await store.write(name, params.content)
+      if (result.ok) rememberProjectOf(name, exec, rememberProject)
       return result.ok ? 'ok' : result.error
     },
   }
@@ -234,6 +251,13 @@ function deleteTool({ store, resolveProjectPrefix }: AgentMemoryToolDeps): ToolD
       return result.ok ? 'ok' : result.error
     },
   }
+}
+
+/** 从 projects/<id>/<file> 里取出项目 id；不是项目文件返回空串。 */
+function projectIdFromName(name: unknown): string {
+  if (typeof name !== 'string') return ''
+  const parts = name.split('/')
+  return parts.length === 3 && parts[0] === 'projects' ? (parts[1] ?? '') : ''
 }
 
 /** agent 记忆的运行时依赖（index + store）。 */
@@ -287,7 +311,8 @@ export function registerAgentMemoryTools(
       ? (config!.archiveDays as number) * 24 * 60 * 60 * 1000
       : DEFAULT_ARCHIVE_MS
 
-  const disposers = createAgentMemoryTools({ store, resolveProjectPrefix }).map((tool) =>
+  const rememberProject = (id: string, label: string): void => void index.rememberProject(id, label)
+  const disposers = createAgentMemoryTools({ store, resolveProjectPrefix, rememberProject }).map((tool) =>
     ctx.tools?.register(tool as never),
   )
 

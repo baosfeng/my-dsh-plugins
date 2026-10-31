@@ -104,6 +104,16 @@ function renderList(items) {
         return '（空）';
     return items.flatMap((item) => item.lines.map((line) => `${item.name} · ${line}`)).join('\n');
 }
+/** 写入后记录项目名（只在项目层文件、且 cwd 可用时）。 */
+function rememberProjectOf(name, exec, remember) {
+    if (remember === undefined)
+        return;
+    const id = projectIdFromName(name);
+    const cwd = cwdOf(exec);
+    if (id === '' || cwd === '')
+        return;
+    remember(id, basename(cwd));
+}
 /** agent_memory_list：列出可读的记忆文件（冷记忆不列出）。 */
 function listTool({ store, resolveProjectPrefix }) {
     return {
@@ -149,7 +159,7 @@ function readTool({ store, resolveProjectPrefix }) {
     };
 }
 /** agent_memory_write：整份覆盖写入（成功只回 ok）。 */
-function writeTool({ store, resolveProjectPrefix }) {
+function writeTool({ store, resolveProjectPrefix, rememberProject }) {
     return {
         name: 'agent_memory_write',
         description: '写入一份跨会话记忆（整份覆盖）。写入前先用 agent_memory_read 读，已有同主题就合并或替换，绝不新增重复条目。',
@@ -169,6 +179,8 @@ function writeTool({ store, resolveProjectPrefix }) {
             if (rejected !== null)
                 return rejected;
             const result = await store.write(name, params.content);
+            if (result.ok)
+                rememberProjectOf(name, exec, rememberProject);
             return result.ok ? 'ok' : result.error;
         },
     };
@@ -194,6 +206,13 @@ function deleteTool({ store, resolveProjectPrefix }) {
         },
     };
 }
+/** 从 projects/<id>/<file> 里取出项目 id；不是项目文件返回空串。 */
+function projectIdFromName(name) {
+    if (typeof name !== 'string')
+        return '';
+    const parts = name.split('/');
+    return parts.length === 3 && parts[0] === 'projects' ? (parts[1] ?? '') : '';
+}
 /**
  * 构造 agent 记忆的运行时（index + store 单实例）。
  *
@@ -218,7 +237,8 @@ export function registerAgentMemoryTools(ctx, { config, resolveProjectPrefix, ru
     const archiveMs = Number.isFinite(config?.archiveDays) && (config?.archiveDays ?? 0) > 0
         ? config.archiveDays * 24 * 60 * 60 * 1000
         : DEFAULT_ARCHIVE_MS;
-    const disposers = createAgentMemoryTools({ store, resolveProjectPrefix }).map((tool) => ctx.tools?.register(tool));
+    const rememberProject = (id, label) => void index.rememberProject(id, label);
+    const disposers = createAgentMemoryTools({ store, resolveProjectPrefix, rememberProject }).map((tool) => ctx.tools?.register(tool));
     // 启动时归档一次冷记忆（不阻塞启动：失败只 warn）。
     void index
         .load()

@@ -23,12 +23,16 @@ async function readIndex() {
     try {
         const raw = JSON.parse(await readFile(indexFile(), 'utf8'));
         if (raw === null || typeof raw !== 'object' || !('files' in raw))
-            return { files: {} };
+            return { files: {}, projects: {} };
         const files = raw.files;
-        return { files: files !== null && typeof files === 'object' ? files : {} };
+        const projects = raw.projects;
+        return {
+            files: files !== null && typeof files === 'object' ? files : {},
+            projects: projects !== null && typeof projects === 'object' ? projects : {},
+        };
     }
     catch {
-        return { files: {} };
+        return { files: {}, projects: {} };
     }
 }
 /** 写入时间戳；同时清掉归档标记——重新写入即复活（归档副本不参与可见性）。 */
@@ -49,9 +53,26 @@ function markRead(meta, at) {
 function markArchivedAt(meta, at) {
     meta.archivedAt = at;
 }
+/** 删除一条元数据并落盘（面板「删除记忆」用）。 */
+async function dropIn(cache, name, load, persist) {
+    await load();
+    delete cache.files[name];
+    await persist();
+}
+/** 记录项目名（值未变时不落盘，避免读放大）。 */
+async function rememberProjectIn(cache, id, label, load, persist) {
+    if (id === '' || label === '')
+        return;
+    await load();
+    const projects = (cache.projects ??= {});
+    if (projects[id] === label)
+        return;
+    projects[id] = label;
+    await persist();
+}
 /** agent 记忆元数据索引的读写门面。 */
 export function createIndexStore({ logger } = {}) {
-    let cache = { files: {} };
+    let cache = { files: {}, projects: {} };
     let loaded = false;
     const persist = async () => {
         try {
@@ -93,11 +114,9 @@ export function createIndexStore({ logger } = {}) {
         touchRead: (name, now) => mutate(name, markRead, now),
         markArchived: (name, now) => mutate(name, markArchivedAt, now),
         markRestored: (name, now) => mutate(name, clearArchived, now),
-        async drop(name) {
-            await load();
-            delete cache.files[name];
-            await persist();
-        },
+        drop: (name) => dropIn(cache, name, load, persist),
+        projectNames: () => cache.projects ?? {},
+        rememberProject: (id, label) => rememberProjectIn(cache, id, label, load, persist),
         flush: persist,
     };
 }

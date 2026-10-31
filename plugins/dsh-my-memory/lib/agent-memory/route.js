@@ -29,15 +29,25 @@ export function createAgentMemoryRouteDeps({ logger, enabled, runtime, }) {
     return { index, store, logger };
 }
 /** 一份记忆的面板视图（缺元数据时给零值，绝不因元数据缺失隐藏正文）。 */
-function viewOf(name, content, meta) {
+/** 项目文件的可读名；不是项目文件或未记录过名字时 undefined。 */
+function projectNameOf(name, projectNames) {
+    const parts = name.split('/');
+    return parts[0] === 'projects' && parts.length === 3 ? projectNames[parts[1] ?? ''] : undefined;
+}
+/** 缺元数据时的零值（绝不因元数据缺失隐藏正文）。 */
+const EMPTY_META = Object.freeze({ createdAt: 0, updatedAt: 0, lastReadAt: 0, readCount: 0 });
+function viewOf(name, content, meta, projectNames) {
+    const projectName = projectNameOf(name, projectNames);
+    const m = meta ?? EMPTY_META;
     return {
         name,
+        ...(projectName === undefined ? {} : { projectName }),
         content,
-        createdAt: meta?.createdAt ?? 0,
-        updatedAt: meta?.updatedAt ?? 0,
-        lastReadAt: meta?.lastReadAt ?? 0,
-        readCount: meta?.readCount ?? 0,
-        archived: meta?.archivedAt !== undefined,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+        lastReadAt: m.lastReadAt,
+        readCount: m.readCount,
+        archived: meta !== undefined && meta.archivedAt !== undefined,
     };
 }
 /** 读全部（含已归档，面板需要展示归档区）。 */
@@ -50,12 +60,13 @@ async function readAll({ index, store }) {
         if (index.metaOf(name)?.archivedAt !== undefined)
             names.add(name);
     }
+    const projectNames = index.projectNames();
     const entries = [];
     for (const name of [...names].sort((a, b) => a.localeCompare(b))) {
         const read = await store.readForPanel(name);
         if (read === null)
             continue;
-        entries.push(viewOf(name, read, index.metaOf(name)));
+        entries.push(viewOf(name, read, index.metaOf(name), projectNames));
     }
     return entries;
 }

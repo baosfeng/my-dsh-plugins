@@ -1,12 +1,13 @@
 /**
  * dsh-my-memory — agent 记忆的「常驻目录」与「全局写入护栏」（issue #502 后续）。
  *
- * 锁两件事：
- *  1. 目录必须**一行一条**且**有硬上限**（40 行 / 3 KB）——它常驻系统提示词，
- *     无上限就会把上下文吃光；超限时给「还有 N 条，read 对应文件」，绝不静默丢。
- *  2. 全局层写入护栏：含项目专属标识（仓库内路径 / IP / 端口 / 当前仓库名）
- *     的条目不许进全局——真实事故就是这么发生的（安卓仓库的调试脚本规则
- *     被写进 user.md，每个项目都受影响）。
+ * 锁三件事：
+ *  1. 目录**一行一条**且有硬上限（70 行 / 6 KB）——它常驻系统提示词，无上限
+ *     就会把上下文吃光；超限时给「另有 N 条」，绝不静默丢。
+ *  2. 排序规则：全局偏好整体优先，项目层**轮转**——实测整体按文件名排序时，
+ *     排在后面的项目 21 条一条都进不了目录。
+ *  3. 全局层写入护栏：含项目专属标识（仓库内路径 / IP / 端口 / 当前仓库名）
+ *     的条目不许进全局——真实事故就是这么发生的。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
@@ -20,61 +21,79 @@ process.on('exit', () => {
   void rm(home, { recursive: true, force: true })
 })
 
-test('目录一行一条，带文件前缀', async () => {
+test('目录一行一条，前缀压缩为 u / f / 项目名', async () => {
   const { renderCatalog } = await import('../lib/agent-memory/catalog.js')
   const text = renderCatalog([
-    { name: 'user.md', lines: ['交付改动要给改前改后数字', '多 agent 别抢模拟器'] },
-    { name: 'projects/a/decisions.md', lines: ['选 A 因为 B'] },
+    { name: 'user.md', lines: ['交付改动要给改前改后数字'] },
+    { name: 'projects/pid/decisions.md', lines: ['选 A 因为 B'] },
   ])
-  assert.equal(
-    text,
-    [
-      'user.md · 交付改动要给改前改后数字',
-      'user.md · 多 agent 别抢模拟器',
-      'projects/a/decisions.md · 选 A 因为 B',
-    ].join('\n'),
-  )
+  assert.equal(text, ['u · 交付改动要给改前改后数字', 'pid/决 · 选 A 因为 B'].join('\n'))
 })
 
-test('单行超过 32 字截断（一条长记忆不能吃掉整份目录）', async () => {
+test('项目名映射：已记录项目名时显示名字，未记录时退回 id 前 6 位', async () => {
+  const { renderCatalog, catalogPrefix } = await import('../lib/agent-memory/catalog.js')
+  assert.equal(catalogPrefix('projects/ba7b32df3d04/pitfalls.md'), 'ba7b32/坑')
+  assert.equal(
+    catalogPrefix('projects/ba7b32df3d04/pitfalls.md', { ba7b32df3d04: 'my-dsh-plugins' }),
+    'my-dsh-plugins/坑',
+  )
+  assert.equal(catalogPrefix('feedback.md'), 'f')
+  // 长仓库名截断，不吃预算
+  assert.equal(catalogPrefix('projects/x/decisions.md', { x: 'a-very-long-repository-name' }), 'a-very-long-repo/决')
+  const text = renderCatalog([{ name: 'projects/pid/pitfalls.md', lines: ['坑一'] }], { pid: 'demo' })
+  assert.equal(text, 'demo/坑 · 坑一')
+})
+
+test('单行超过 30 字截断（一条长记忆不能吃掉整份目录）', async () => {
   const { renderCatalog, truncateEntry } = await import('../lib/agent-memory/catalog.js')
-  assert.equal(truncateEntry('短', 32), '短')
+  assert.equal(truncateEntry('短', 30), '短')
   const long = '字'.repeat(50)
-  const cut = truncateEntry(long, 32)
-  assert.equal([...cut].length, 33, '32 字 + 省略号')
+  const cut = truncateEntry(long, 30)
+  assert.equal([...cut].length, 31, '30 字 + 省略号')
   assert.ok(cut.endsWith('…'))
   assert.ok(renderCatalog([{ name: 'user.md', lines: [long] }]).includes('…'))
 })
 
-test('超过行数上限就截断，末尾给「还有 N 条」而不是静默丢', async () => {
+test('超过行数上限就截断，末尾给「另有 N 条」而不是静默丢', async () => {
   const { renderCatalog, MAX_CATALOG_LINES } = await import('../lib/agent-memory/catalog.js')
   const overflow = 20
-  const lines = Array.from({ length: MAX_CATALOG_LINES + overflow }, (_, i) => '条目 ' + (i + 1))
+  const lines = Array.from({ length: MAX_CATALOG_LINES + overflow }, (_, i) => '条目内容 ' + (i + 1))
   const text = renderCatalog([{ name: 'user.md', lines }])
   const rows = text.split('\n')
   assert.equal(rows.length, MAX_CATALOG_LINES + 1, '正文占满上限 + 1 行尾注')
   assert.match(rows[rows.length - 1], new RegExp('另有 ' + overflow + ' 条未展开'))
 })
 
-test('目录按「全局偏好 → 反馈 → 项目层」排序，全局条目不会被项目挤掉', async () => {
+test('目录按「全局偏好 → 反馈 → 项目层」排序，全局条目整体优先', async () => {
   const { renderCatalog } = await import('../lib/agent-memory/catalog.js')
   const text = renderCatalog([
     { name: 'projects/zzz/pitfalls.md', lines: ['项目坑'] },
-    { name: 'user.md', lines: ['全局偏好'] },
+    { name: 'user.md', lines: ['全局偏好一', '全局偏好二'] },
     { name: 'feedback.md', lines: ['被纠正的做法'] },
   ])
   const rows = text.split('\n')
-  assert.match(rows[0], /^user\.md · 全局偏好/)
-  assert.match(rows[1], /^feedback\.md · 被纠正的做法/)
-  assert.match(rows[2], /^projects\/zzz\/pitfalls\.md · 项目坑/)
+  assert.match(rows[0], /^u · 全局偏好一/)
+  assert.match(rows[1], /^u · 全局偏好二/)
+  assert.match(rows[2], /^f · 被纠正的做法/)
+  assert.match(rows[3], /^zzz\/坑 · 项目坑/)
+})
+
+test('项目层轮转：一个项目条目再多，也不会让另一个项目整体消失', async () => {
+  const { renderCatalog, MAX_CATALOG_LINES } = await import('../lib/agent-memory/catalog.js')
+  const big = Array.from({ length: MAX_CATALOG_LINES + 10 }, (_, i) => '大项目条目 ' + (i + 1))
+  const text = renderCatalog([
+    { name: 'projects/bbb/pitfalls.md', lines: ['小项目唯一一条'] },
+    { name: 'projects/aaa/pitfalls.md', lines: big },
+  ])
+  assert.match(text, /bbb\/坑 · 小项目唯一一条/, '排在后面的项目必须有代表')
 })
 
 test('字节上限先于行数生效时也照样截断', async () => {
   const { renderCatalog } = await import('../lib/agent-memory/catalog.js')
-  const heavy = '字'.repeat(32)
-  const lines = Array.from({ length: 80 }, () => heavy)
+  const heavy = '字'.repeat(30)
+  const lines = Array.from({ length: 120 }, () => heavy)
   const text = renderCatalog([{ name: 'user.md', lines }])
-  assert.ok(Buffer.byteLength(text, 'utf8') < 4200, '目录正文不可能无限膨胀')
+  assert.ok(Buffer.byteLength(text, 'utf8') < 6300, '目录正文不可能无限膨胀')
   assert.match(text, /未展开/)
 })
 
@@ -91,13 +110,38 @@ test('目录缓存：prime 从磁盘同步装载，refresh 在写入后重建', 
   await store.write('user.md', '- 第一条偏好')
   await store.write('projects/pid/decisions.md', '- 第二条决策')
   await catalog.refresh()
-  assert.match(catalog.text(), /user\.md · 第一条偏好/)
-  assert.match(catalog.text(), /projects\/pid\/decisions\.md · 第二条决策/)
+  assert.match(catalog.text(), /u · 第一条偏好/)
+  assert.match(catalog.text(), /pid\/决 · 第二条决策/)
 
   // 新建一个 catalog 模拟「进程重启」：prime 必须能同步读出已有内容
   const rebooted = createAgentMemoryCatalog(() => store.entries())
   rebooted.prime()
   assert.match(rebooted.text(), /第一条偏好/)
+})
+
+test('目录展示项目名：写入项目层时把 cwd 的 basename 记进 index', async () => {
+  const { createIndexStore } = await import('../lib/agent-memory/index-store.js')
+  const { createAgentMemoryStore } = await import('../lib/agent-memory/store.js')
+  const { createAgentMemoryCatalog } = await import('../lib/agent-memory/catalog.js')
+  const { createAgentMemoryTools } = await import('../lib/agent-memory/tools.js')
+
+  const index = createIndexStore({})
+  const store = createAgentMemoryStore({ index })
+  const tools = createAgentMemoryTools({
+    store,
+    resolveProjectPrefix: async () => 'projects/pid/',
+    rememberProject: (id, label) => void index.rememberProject(id, label),
+  })
+  const write = tools.find((tool) => tool.name === 'agent_memory_write')
+  const exec = { agent: { session: { header: { cwd: '/Users/me/IdeaProjects/demo-repo' } } } }
+  assert.equal(
+    await write.execute({ name: 'projects/current/pitfalls.md', content: '- 坑一：并发跑门禁会假红' }, exec),
+    'ok',
+  )
+
+  const catalog = createAgentMemoryCatalog(() => store.entries())
+  await catalog.refresh()
+  assert.match(catalog.text(), /demo-repo\/坑 · 坑一/)
 })
 
 test('index.json 丢了条目键，正文还在磁盘上时依旧可见（多进程覆盖落盘的兜底）', async () => {

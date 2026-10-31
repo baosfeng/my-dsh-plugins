@@ -1895,6 +1895,17 @@ function useAgentMemoryState() {
 function agentMemoryScopeOf(name) {
     return name.startsWith('projects/') ? 'project' : 'global';
 }
+/**
+ * 卡片标题：项目文件显示「项目名 / 文件名」，其余保持原名。
+ *
+ * 用户看不懂 `projects/ba7b32df3d04/pitfalls.md` 是哪个仓库——实测他的库里
+ * 两个项目各有一条「门禁假红」，靠 hash 根本分不清。
+ */
+function agentMemoryTitleOf(entry) {
+    if (entry.projectName === undefined || !entry.name.startsWith('projects/'))
+        return entry.name;
+    return entry.projectName + ' / ' + (entry.name.split('/')[2] ?? entry.name);
+}
 /** 作用域徽标。 */
 function AgentMemoryScope({ name }) {
     const scope = agentMemoryScopeOf(name);
@@ -1919,7 +1930,7 @@ function AgentMemoryMeta({ entry }) {
  * 两个「取消」。
  */
 function AgentMemoryHead({ entry, editing, onEdit, onDelete, }) {
-    return createElement('div', { className: 'dsh-my-memory-agent-head' }, createElement('span', { className: 'dsh-my-memory-agent-title' }, createElement('code', { className: 'dsh-my-memory-agent-name' }, entry.name), createElement(AgentMemoryScope, { name: entry.name })), editing
+    return createElement('div', { className: 'dsh-my-memory-agent-head' }, createElement('span', { className: 'dsh-my-memory-agent-title' }, createElement('code', { className: 'dsh-my-memory-agent-name', title: entry.name }, agentMemoryTitleOf(entry)), createElement(AgentMemoryScope, { name: entry.name })), editing
         ? null
         : createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, {
             className: 'dsh-my-memory-iconbtn',

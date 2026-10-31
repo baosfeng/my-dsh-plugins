@@ -23,6 +23,8 @@ import type { LoggerService, ServerRequest, ServerResponse } from '../api-route.
 /** 一份记忆的面板视图（正文 + 元数据）。 */
 interface AgentMemoryEntry {
   name: string
+  /** 项目可读名（只在 `projects/<id>/…` 且已记录时存在），面板用它替代 hash id。 */
+  projectName?: string
   content: string
   createdAt: number
   updatedAt: number
@@ -61,20 +63,33 @@ export function createAgentMemoryRouteDeps({
 }
 
 /** 一份记忆的面板视图（缺元数据时给零值，绝不因元数据缺失隐藏正文）。 */
+/** 项目文件的可读名；不是项目文件或未记录过名字时 undefined。 */
+function projectNameOf(name: string, projectNames: Record<string, string>): string | undefined {
+  const parts = name.split('/')
+  return parts[0] === 'projects' && parts.length === 3 ? projectNames[parts[1] ?? ''] : undefined
+}
+
+/** 缺元数据时的零值（绝不因元数据缺失隐藏正文）。 */
+const EMPTY_META = Object.freeze({ createdAt: 0, updatedAt: 0, lastReadAt: 0, readCount: 0 })
+
 function viewOf(
   name: string,
   content: string,
   meta:
     { createdAt: number; updatedAt: number; lastReadAt: number; readCount: number; archivedAt?: number } | undefined,
+  projectNames: Record<string, string>,
 ): AgentMemoryEntry {
+  const projectName = projectNameOf(name, projectNames)
+  const m = meta ?? EMPTY_META
   return {
     name,
+    ...(projectName === undefined ? {} : { projectName }),
     content,
-    createdAt: meta?.createdAt ?? 0,
-    updatedAt: meta?.updatedAt ?? 0,
-    lastReadAt: meta?.lastReadAt ?? 0,
-    readCount: meta?.readCount ?? 0,
-    archived: meta?.archivedAt !== undefined,
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+    lastReadAt: m.lastReadAt,
+    readCount: m.readCount,
+    archived: meta !== undefined && meta.archivedAt !== undefined,
   }
 }
 
@@ -87,11 +102,12 @@ async function readAll({ index, store }: AgentMemoryRouteDeps): Promise<AgentMem
   for (const name of Object.keys(index.state().files)) {
     if (index.metaOf(name)?.archivedAt !== undefined) names.add(name)
   }
+  const projectNames = index.projectNames()
   const entries: AgentMemoryEntry[] = []
   for (const name of [...names].sort((a, b) => a.localeCompare(b))) {
     const read = await store.readForPanel(name)
     if (read === null) continue
-    entries.push(viewOf(name, read, index.metaOf(name)))
+    entries.push(viewOf(name, read, index.metaOf(name), projectNames))
   }
   return entries
 }

@@ -15,6 +15,7 @@ export default {
     'lib/api.js',
     'lib/dep-version.js',
     'lib/dep-precheck.js',
+    'lib/dep-hints.js',
     'lib/startup-check.js',
   ],
   mutator: {

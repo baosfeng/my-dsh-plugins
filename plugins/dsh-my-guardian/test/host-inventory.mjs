@@ -8,11 +8,13 @@
  */
 import { test, afterAll } from 'vitest'
 import assert from 'node:assert/strict'
-import { rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import {
   buildHostInventory,
+  buildInstallDirInventory,
+  hostInstallRoot,
   loadHostInventory,
   packageNameFromFile,
   readHostText,
@@ -122,4 +124,75 @@ test('#481: readHostText 读普通路径，也能按字节读 asar 归档内的�
   const inventory = loadHostInventory({ runtimeJsonPath: join(asarPath, 'runtime.json') })
   assert.equal(inventory.available, true)
   assert.equal(inventory.versionOf('@deepseek-ai/cordis'), '4.0.4', '能从 asar 内读清单')
+})
+
+// ── #503: npm 全局 dsh web 的宿主安装目录（无 app.asar、profiles 根无 node_modules）───
+/** #503 夹具：写一套 npm 全局安装布局 <prefix>/lib/node_modules/@deepseek-ai/dsh。 */
+function writeGlobalHost(prefixDir, packages) {
+  const hostRoot = join(prefixDir, 'lib', 'node_modules', '@deepseek-ai', 'dsh')
+  mkdirSync(join(hostRoot, 'lib'), { recursive: true })
+  writeFileSync(
+    join(hostRoot, 'package.json'),
+    JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.2.1-rc.3' }),
+    'utf8',
+  )
+  writeFileSync(join(hostRoot, 'lib', 'bin.js'), '#!/usr/bin/env node\n', 'utf8')
+  for (const [name, version] of Object.entries(packages)) {
+    const dir = join(hostRoot, 'node_modules', name)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version }), 'utf8')
+  }
+  return hostRoot
+}
+
+test('#503: 从 bin 脚本（argv[1] 形态）向上找到宿主安装根', () => {
+  const prefix = freshDir()
+  const hostRoot = writeGlobalHost(prefix, { '@deepseek-ai/dsh-agent': '0.2.1-rc.3' })
+  assert.equal(hostInstallRoot({ seeds: [join(hostRoot, 'lib', 'bin.js')] }), hostRoot)
+  assert.equal(hostInstallRoot({ hostRoot }), hostRoot, 'hostRoot 直指（等价 DSH_HOST_ROOT）')
+  assert.equal(hostInstallRoot({ seeds: [join(prefix, 'bin', 'dsh')] }), null, '不存在的种子不猜')
+})
+
+test('#503: bin 软链（/usr/local/bin/dsh → …/dsh/lib/bin.js）按真实路径解析', () => {
+  const prefix = freshDir()
+  const hostRoot = writeGlobalHost(prefix, { '@deepseek-ai/dsh-tools': '0.2.1-rc.3' })
+  mkdirSync(join(prefix, 'bin'), { recursive: true })
+  const link = join(prefix, 'bin', 'dsh')
+  symlinkSync(join(hostRoot, 'lib', 'bin.js'), link)
+  assert.equal(hostInstallRoot({ seeds: [link] }), hostRoot)
+})
+
+test('#503: 宿主安装目录清单只认 @deepseek-ai/*，第三方包不算宿主供给', () => {
+  const hostRoot = writeGlobalHost(freshDir(), { '@deepseek-ai/dsh-agent': '0.2.1-rc.3', yaml: '2.8.1' })
+  const inventory = buildInstallDirInventory(hostRoot)
+  assert.equal(inventory.available, true)
+  assert.equal(inventory.source, join(hostRoot, 'node_modules'))
+  assert.equal(inventory.has('@deepseek-ai/dsh-agent'), true)
+  assert.equal(inventory.versionOf('@deepseek-ai/dsh-agent'), '0.2.1-rc.3')
+  assert.equal(inventory.has('yaml'), false, '宿主树里的第三方包算成宿主供给，会把「插件真缺 yaml」掩盖成漏报')
+  assert.equal(inventory.versionOf('yaml'), null)
+  assert.equal(inventory.has('@deepseek-ai/dsh-nope'), false)
+})
+
+test('#503: asar 清单落空时兜底到宿主安装目录（纯 npm 全局 dsh web）', () => {
+  const hostRoot = writeGlobalHost(freshDir(), { '@deepseek-ai/dsh-tools': '0.2.1-rc.3' })
+  const savedResources = process.env.DSH_APP_RESOURCES
+  delete process.env.DSH_APP_RESOURCES
+  try {
+    resetHostInventoryCache()
+    const inventory = loadHostInventory({ hostRoot })
+    assert.equal(inventory.available, true)
+    assert.equal(inventory.versionOf('@deepseek-ai/dsh-tools'), '0.2.1-rc.3')
+  } finally {
+    if (savedResources !== undefined) process.env.DSH_APP_RESOURCES = savedResources
+    resetHostInventoryCache()
+  }
+})
+
+test('#503: 显式传 runtimeJsonPath 时不兜底宿主安装目录（指定文件不存在就是不存在）', () => {
+  const hostRoot = writeGlobalHost(freshDir(), { '@deepseek-ai/dsh-tools': '0.2.1-rc.3' })
+  resetHostInventoryCache()
+  const inventory = loadHostInventory({ runtimeJsonPath: join(freshDir(), 'missing.json'), hostRoot })
+  assert.equal(inventory.available, false)
+  assert.equal(inventory.has('@deepseek-ai/dsh-tools'), false)
 })

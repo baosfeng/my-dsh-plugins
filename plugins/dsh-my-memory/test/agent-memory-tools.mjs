@@ -50,15 +50,17 @@ test('projects/current 解析为当前项目前缀，与真实路径指向同一
   assert.equal(await call('read', { name: `${PROJECT_PREFIX}decisions.md` }), '- 选 vitest 因为门禁统一')
 })
 
-test('list 标出条目数，60 条不会显示成 1 条', async () => {
+test('list 一条记忆一行（60 条不会显示成 1 条）', async () => {
   const { call } = await fixture()
   const many = Array.from({ length: 60 }, (_, i) => `- 偏好 ${i + 1}`).join('\n')
   assert.equal(await call('write', { name: 'user.md', content: many }), 'ok')
   const text = await call('list', {})
-  assert.match(text, /user\.md — - 偏好 1（60 条）/, '列表必须暴露真实内容量')
+  assert.match(text, /user\.md · 偏好 1/, '第一条可见')
+  assert.match(text, /user\.md · 偏好 60/, '最后一条也可见（不是被压成一行概要）')
+  assert.equal(text.split('\n').filter((line) => line.startsWith('user.md · ')).length, 60, '一条记忆一行')
 })
 
-test('MEMORY.md 里写了的索引行优先于正文首行作为 list 描述', async () => {
+test('MEMORY.md 不进入条目列表（目录已由系统按条目自动生成）', async () => {
   const { call } = await fixture()
   assert.equal(await call('write', { name: 'projects/current/pitfalls.md', content: '- 坑一\n- 坑二' }), 'ok')
   assert.equal(
@@ -66,6 +68,7 @@ test('MEMORY.md 里写了的索引行优先于正文首行作为 list 描述', a
     'ok',
   )
   const text = await call('list', {})
-  assert.match(text, /projects\/hash123\/pitfalls\.md — 改构建配置前读（2 条）/, '索引描述优先')
-  assert.match(text, /MEMORY\.md — 索引/, '索引文件自身给出固定说明')
+  assert.match(text, /projects\/hash123\/pitfalls\.md · 坑一/)
+  assert.match(text, /projects\/hash123\/pitfalls\.md · 坑二/)
+  assert.ok(!text.includes('MEMORY.md'), '索引文件不再自我描述（目录是系统自动生成的）')
 })

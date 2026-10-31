@@ -174,13 +174,15 @@ test('concurrent writes are serialized (no interleaved corruption)', async () =>
   assert.match(read.content, /^- 第[一二三]条$/)
 })
 
-test('section text carries rules but zero memory content (no resident injection)', async () => {
+test('section 常驻「规则 + 条目级目录」，但不含条目正文', async () => {
   const { createAgentMemorySection, AGENT_MEMORY_SECTION_TEXT } = await import('../lib/agent-memory/prompt.js')
-  const section = createAgentMemorySection()
+  const section = createAgentMemorySection({
+    text: () => 'user.md · 交付改动要给改前改后数字\nprojects/x/pitfalls.md · 类名先查样式表',
+  })
   assert.equal(section.name, 'dsh-my-memory:agent-memory')
   assert.equal(section.order, -80)
   const text = section.text()
-  assert.equal(text, AGENT_MEMORY_SECTION_TEXT)
+  assert.ok(text.startsWith(AGENT_MEMORY_SECTION_TEXT), '规则段在前（恒定，可缓存）')
   // 规则在
   assert.match(text, /宁缺毋滥/)
   assert.match(text, /不要写日期/)
@@ -188,8 +190,22 @@ test('section text carries rules but zero memory content (no resident injection)
   assert.match(text, /遇到矛盾时/)
   assert.match(text, /能共存就别删/)
   assert.match(text, /不留两条并存/)
-  // 正文不在（说明段不含任何实际记忆条目）
+  // 层级判据在（默认项目层 + 进全局两问）
+  assert.match(text, /默认写项目层/)
+  assert.match(text, /通用能力/)
+  assert.match(text, /对别的项目也有帮助/)
+  // 目录在（一行一条，带文件前缀）
+  assert.match(text, /## 我的记忆目录/)
+  assert.match(text, /user\.md · 交付改动要给改前改后数字/)
+  assert.match(text, /projects\/x\/pitfalls\.md · 类名先查样式表/)
+  // 正文不在：目录只有摘要，没有「正文里别的内容」
   assert.ok(!text.includes('- 提交前必须跑'), 'no memory body injected into the system prompt')
+})
+
+test('目录为空时给「还没有记忆」而不是一片空白', async () => {
+  const { createAgentMemorySection } = await import('../lib/agent-memory/prompt.js')
+  const text = createAgentMemorySection({ text: () => '' }).text()
+  assert.match(text, /还没有记忆/)
 })
 
 test('four tools are constructed with the documented faces', async () => {

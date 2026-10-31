@@ -17,7 +17,7 @@ import { createAgentMemoryRuntime } from './tools.js'
 import type { AgentMemoryRuntime } from './tools.js'
 import { createIndexStore } from './index-store.js'
 import { createAgentMemoryStore } from './store.js'
-import { normalizeName } from './paths.js'
+import { listExistingFiles, normalizeName } from './paths.js'
 import type { LoggerService, ServerRequest, ServerResponse } from '../api-route.types.js'
 
 /** 一份记忆的面板视图（正文 + 元数据）。 */
@@ -81,13 +81,19 @@ function viewOf(
 /** 读全部（含已归档，面板需要展示归档区）。 */
 async function readAll({ index, store }: AgentMemoryRouteDeps): Promise<AgentMemoryEntry[]> {
   await index.load()
-  const entries: AgentMemoryEntry[] = []
+  // 活跃条目以文件系统为准（索引丢键时正文不该跟着消失）；已归档条目扫描不到，
+  // 从索引补回来（正文在 archive/，readForPanel 会兜底读到）。
+  const names = new Set(await listExistingFiles())
   for (const name of Object.keys(index.state().files)) {
+    if (index.metaOf(name)?.archivedAt !== undefined) names.add(name)
+  }
+  const entries: AgentMemoryEntry[] = []
+  for (const name of [...names].sort((a, b) => a.localeCompare(b))) {
     const read = await store.readForPanel(name)
     if (read === null) continue
     entries.push(viewOf(name, read, index.metaOf(name)))
   }
-  return entries.sort((a, b) => a.name.localeCompare(b.name))
+  return entries
 }
 
 /** 拒绝：状态码 + 可读原因。 */

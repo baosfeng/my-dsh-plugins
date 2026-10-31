@@ -19,6 +19,7 @@
  *    自定义确认 UI：删除红色、保存绿色）。
  */
 import { createAgentMemorySection } from './agent-memory/prompt.js';
+import { createAgentMemoryCatalog } from './agent-memory/catalog.js';
 import { createAgentMemoryRuntime, registerAgentMemoryTools } from './agent-memory/tools.js';
 import { createAgentMemoryRouteDeps } from './agent-memory/route.js';
 import { createApiHandler } from './api-route.js';
@@ -82,8 +83,19 @@ export function apply(ctx, config) {
     // ── agent 记忆（issue #502）：第四套独立体系，零常驻注入 ──────────────
     // runtime（index + store）全进程只建一份：工具与面板路由共用，避免两份
     // index 缓存各自整份落盘导致 lost update（恢复/归档标记被回滚）。
-    const agentMemoryRuntime = createAgentMemoryRuntime({ logger: ctx.logger });
-    registerAgentMemory(ctx, config, agentMemoryRuntime);
+    // 目录（catalog）与 store 互相依赖：目录读 store.entries()，store 写完后回调
+    // 目录重建。用「先声明、后赋值 + 闭包延迟求值」打破循环。
+    let agentMemoryCatalog;
+    const agentMemoryRuntime = createAgentMemoryRuntime({
+        logger: ctx.logger,
+        onChange: () => {
+            void agentMemoryCatalog?.refresh();
+        },
+    });
+    agentMemoryCatalog = createAgentMemoryCatalog(() => agentMemoryRuntime.store.entries());
+    // 启动时同步装载一次：宿主首轮组装就要目录，异步等不及。
+    agentMemoryCatalog.prime();
+    registerAgentMemory(ctx, config, agentMemoryRuntime, agentMemoryCatalog);
     // ── memory_query 只读工具 ─────────────────────────────────────────────
     ctx.effect(() => ctx.tools?.register(createMemoryQueryTool({ globalStore, getProjectStore })), 'dsh-my-memory: memory_query tool');
     // ── 记忆写工具（save/delete）+ 用户确认门（#107/#192，#208 起策略感知）──
@@ -140,14 +152,14 @@ function registerMemoryApi(ctx, deps) {
  * memory_read 时才进入上下文，不命中则一分 token 都不花。与全局记忆的
  * 「固定 top-5 注入」是相反策略，也正是本体系存在的理由。
  */
-function registerAgentMemory(ctx, config, runtime) {
+function registerAgentMemory(ctx, config, runtime, catalog) {
     // 关闭整块能力时**连说明段也不注册**：否则 agent 会被告知有一套它根本
     // 调不到的工具（section 在、工具不在），比没有这段更糟。
     if (config?.agentMemory?.enabled === false)
         return;
     ctx.effect(() => {
         try {
-            return ctx.systemPrompt?.section(createAgentMemorySection());
+            return ctx.systemPrompt?.section(createAgentMemorySection(catalog));
         }
         catch (error) {
             ctx.logger?.warn(`[dsh-my-memory] agent 记忆说明段注册失败（已降级）：${String(error)}`);

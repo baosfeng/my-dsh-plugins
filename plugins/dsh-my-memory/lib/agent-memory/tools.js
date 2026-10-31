@@ -14,6 +14,7 @@
  * 且 fs-observation-policy 强制先读后写。自建工具是唯一可行路径，
  * 顺带把「路径逃逸 / 尺寸 / 敏感信息」三道硬门禁关在插件侧。
  */
+import { basename } from 'node:path';
 import { createIndexStore } from './index-store.js';
 import { createAgentMemoryStore } from './store.js';
 import { DEFAULT_ARCHIVE_MS } from './paths.js';
@@ -52,20 +53,56 @@ async function resolveAlias(rawName, exec, resolveProjectPrefix) {
     const prefix = await resolveProjectPrefix(cwdOf(exec));
     return prefix + cleaned.slice(CURRENT_PROJECT.length);
 }
+/** 全局层文件（agent 可写，但要过「通用性」护栏）。 */
+const GLOBAL_FILES = new Set(['user.md', 'feedback.md', 'MEMORY.md']);
+/** 项目专属标识：带扩展名的仓库内路径、本机地址、端口。 */
+const PROJECT_MARKERS = Object.freeze([
+    /\bscripts\/[\w.-]+/, // scripts/debug-cli.sh
+    /\bsrc\/[\w-]+\/[\w.-]+/, // src/client/foo.ts
+    /\bapps\/[\w-]+\/[\w.-]+/, // apps/web/src/x.ts
+    /\b\d{1,3}(?:\.\d{1,3}){3}\b/, // 124.222.x.x
+    /\blocalhost:\d{2,5}\b/, // localhost:3080
+]);
+/**
+ * 全局层写入护栏：**含项目专属标识的条目不许进全局**。
+ *
+ * 这是确定性规则、不是模型判断：一条「走 scripts/debug-cli.sh」写进全局，
+ * 就会在每个项目里误导 agent（真实事故就是这么发生的）。判据只认「这条
+ * 内容里有没有指向某个具体仓库的东西」，命中就要求改写进项目层——误判的
+ * 代价是 agent 改写一次，漏判的代价是全局污染，两者不对称。
+ *
+ * @returns null 表示放行；否则返回给 agent 的可操作提示。
+ */
+export function globalScopeReject(name, content, cwd) {
+    if (typeof name !== 'string' || !GLOBAL_FILES.has(name))
+        return null;
+    if (typeof content !== 'string')
+        return null;
+    const repo = cwd === '' ? '' : basename(cwd);
+    const haystack = content;
+    const hit = PROJECT_MARKERS.find((pattern) => pattern.test(haystack));
+    if (hit !== undefined) {
+        return '这条含项目专属标识（路径 / 地址 / 端口），请写 projects/current/…；全局层只放跨项目通用的能力';
+    }
+    if (repo.length >= 4 && haystack.includes(repo)) {
+        return `这条点名了当前仓库（${repo}），请写 projects/current/…；只有换个项目仍成立的内容才进全局`;
+    }
+    return null;
+}
 /** 把 store 的返回摊平成模型可读的文本。 */
 function renderRead(result) {
     return result.ok ? result.content : result.error;
 }
-/** 渲染 list 结果（条目数 >1 才标出来，避免把 60 条看成一两条）。 */
+/**
+ * 渲染 list 结果：**一条记忆一行**，不是「一个文件一行」。
+ *
+ * 文件级概要等于让 agent 读文件名猜内容——它只能二选一：不读（猜错）或
+ * 整份读（付 4 KB）。条目级才能「先扫一遍，只读命中的那一份」。
+ */
 function renderList(items) {
     if (items.length === 0)
         return '（空）';
-    return items
-        .map((item) => {
-        const summary = item.firstLine === '' ? item.name : `${item.name} — ${item.firstLine}`;
-        return item.count > 1 ? `${summary}（${item.count} 条）` : summary;
-    })
-        .join('\n');
+    return items.flatMap((item) => item.lines.map((line) => `${item.name} · ${line}`)).join('\n');
 }
 /** agent_memory_list：列出可读的记忆文件（冷记忆不列出）。 */
 function listTool({ store, resolveProjectPrefix }) {
@@ -87,7 +124,7 @@ function listTool({ store, resolveProjectPrefix }) {
         async execute(params, exec) {
             const scope = typeof params.scope === 'string' ? params.scope : 'all';
             const prefix = scope === 'project' ? await resolveProjectPrefix(cwdOf(exec)) : '';
-            return renderList(await store.list(prefix));
+            return renderList(await store.entries(prefix));
         },
     };
 }
@@ -128,6 +165,9 @@ function writeTool({ store, resolveProjectPrefix }) {
         output: TEXT_OUTPUT,
         async execute(params, exec) {
             const name = await resolveAlias(params.name, exec, resolveProjectPrefix);
+            const rejected = globalScopeReject(name, params.content, cwdOf(exec));
+            if (rejected !== null)
+                return rejected;
             const result = await store.write(name, params.content);
             return result.ok ? 'ok' : result.error;
         },
@@ -162,9 +202,9 @@ function deleteTool({ store, resolveProjectPrefix }) {
  * 写回去（lost update——面板刚清掉的归档标记可能被回滚）。所以 index.ts
  * 建一份，工具与面板路由共用。
  */
-export function createAgentMemoryRuntime({ logger } = {}) {
+export function createAgentMemoryRuntime({ logger, onChange, } = {}) {
     const index = createIndexStore({ logger });
-    return { index, store: createAgentMemoryStore({ index, logger }) };
+    return { index, store: createAgentMemoryStore({ index, logger, onChange }) };
 }
 /** 构造四个工具定义（不含注册副作用，便于单测）。 */
 export function createAgentMemoryTools(deps) {

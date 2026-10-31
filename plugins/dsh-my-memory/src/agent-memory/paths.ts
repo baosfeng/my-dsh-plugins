@@ -12,7 +12,10 @@
  *    热度可被篡改就等于遗忘机制失效，故必须封装；
  *  - **正文不带日期**：时间戳全在 index.json，正文一个多余字符都没有。
  */
+import { readdir, stat } from 'node:fs/promises'
+import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+
 import { dshHome } from '../store.js'
 
 /** 单文件字节上限（4 KB）：约 1k token，超限 memory_write 报错要求先整理。 */
@@ -98,6 +101,87 @@ export function normalizeName(name: unknown): string | null {
 /** 拼出绝对路径（调用前必须已经过 normalizeName 校验）。 */
 export function absoluteFileOf(name: string): string {
   return join(agentMemoryDir(), ...name.split('/'))
+}
+
+/** 根级白名单文件（与 ALLOWED_FILES 同一份事实，扫描用）。 */
+const ROOT_FILES: readonly string[] = ALLOWED_FILES
+
+/** 是否合法的项目目录名（宿主按项目根 hash 生成，只含字母数字与连字符）。 */
+function isProjectDir(name: string): boolean {
+  return /^[0-9a-zA-Z-]+$/.test(name)
+}
+
+/**
+ * 磁盘上**真实存在**的记忆文件（相对路径，升序）。
+ *
+ * 为什么不信 index.json：index 是元数据缓存，多进程（宿主 + 命令行脚本、
+ * 或多开）各持一份内存态、整份覆盖落盘时会丢键——**条目本身还在磁盘上，
+ * 却因为索引里没有它而不被列出**。以文件系统为准，索引只提供元数据。
+ */
+export async function listExistingFiles(): Promise<string[]> {
+  const out: string[] = []
+  for (const name of ROOT_FILES) {
+    try {
+      if ((await stat(absoluteFileOf(name))).isFile()) out.push(name)
+    } catch {
+      // 不存在（或不可读）：跳过
+    }
+  }
+  let dirs: string[] = []
+  try {
+    dirs = (await readdir(join(agentMemoryDir(), 'projects'), { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory() && isProjectDir(entry.name))
+      .map((entry) => entry.name)
+  } catch {
+    dirs = []
+  }
+  for (const id of dirs) {
+    for (const file of PROJECT_FILES) {
+      const name = `projects/${id}/${file}`
+      try {
+        if ((await stat(absoluteFileOf(name))).isFile()) out.push(name)
+      } catch {
+        // 同上
+      }
+    }
+  }
+  return out.sort((a, b) => a.localeCompare(b))
+}
+
+/** 同步版（系统提示词首轮组装用：宿主组装是同步的，等不了 Promise）。 */
+export function listExistingFilesSync(): string[] {
+  const out: string[] = []
+  for (const name of ROOT_FILES) {
+    try {
+      if (statSync(absoluteFileOf(name)).isFile()) out.push(name)
+    } catch {
+      // 不存在
+    }
+  }
+  let dirs: string[] = []
+  try {
+    dirs = readdirSync(join(agentMemoryDir(), 'projects'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && isProjectDir(entry.name))
+      .map((entry) => entry.name)
+  } catch {
+    dirs = []
+  }
+  for (const id of dirs) {
+    for (const file of PROJECT_FILES) {
+      const name = `projects/${id}/${file}`
+      try {
+        if (statSync(absoluteFileOf(name)).isFile()) out.push(name)
+      } catch {
+        // 同上
+      }
+    }
+  }
+  return sortNames(out)
+}
+
+/** 排序（两版扫描共用，避免行为漂移）。 */
+function sortNames(names: string[]): string[] {
+  return names.sort((a, b) => a.localeCompare(b))
 }
 
 /**

@@ -21,6 +21,7 @@ import {
   absoluteFileOf,
   archiveDir,
   archivedAbsoluteOf,
+  listExistingFiles,
   normalizeName,
 } from './paths.js'
 import type { IndexStore } from './index-store.js'
@@ -194,6 +195,28 @@ async function restoreArchived(
   return { ok: true }
 }
 
+/** 写一份正文：校验 → 串行落盘 → 索引 → 目录回调（失败给可操作原因）。 */
+async function writeEntry(
+  rawName: unknown,
+  rawContent: unknown,
+  index: IndexStore,
+  serial: <T>(task: () => Promise<T>) => Promise<T>,
+  onChange?: () => void,
+): Promise<WriteOutcome> {
+  const name = normalizeName(rawName)
+  if (name === null) return { ok: false, error: INVALID_NAME }
+  if (typeof rawContent !== 'string') return { ok: false, error: 'content 必须是字符串' }
+  const invalid = validateContent(rawContent)
+  if (invalid !== null) return { ok: false, error: invalid }
+  // 先读后写由 agent 自己负责（提示词引导），这里只保证落盘正确。
+  await serial(async () => {
+    await writeText(name, rawContent)
+    await index.touchWrite(name)
+  })
+  onChange?.()
+  return { ok: true }
+}
+
 /** 单文件写入的串行互斥（promise 链）：并发写同一文件不会互相覆盖。 */
 function createSerial(): <T>(task: () => Promise<T>) => Promise<T> {
   let chain: Promise<unknown> = Promise.resolve()
@@ -226,14 +249,46 @@ async function listEntries(
   await index.load()
   const hints = await indexHints()
   const out: Array<{ name: string; firstLine: string; count: number }> = []
-  for (const [name, meta] of Object.entries(index.state().files)) {
-    if (meta.archivedAt !== undefined) continue // 冷记忆不列出
+  // 以文件系统为准（见 paths.listExistingFiles 的理由）：索引丢键时条目不会跟着消失。
+  for (const name of await listExistingFiles()) {
+    if (index.metaOf(name)?.archivedAt !== undefined) continue // 冷记忆不列出
     if (prefix !== '' && !name.startsWith(prefix)) continue
     const text = await readText(name)
     if (text === null) continue
     // 索引写了的用索引描述（那是 agent 写给自己的「何时读」线索），否则首行。
     const firstLine = hints.get(name) ?? (name === 'MEMORY.md' ? '索引（一行一个文件 + 何时读）' : firstLineOf(text))
     out.push({ name, firstLine, count: countEntries(text) })
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** 正文的条目行（`- xxx` 的行，去掉列表符号）——目录与 list 的数据源。 */
+function entryLinesOf(text: string): string[] {
+  return text
+    .split('\n')
+    .filter((line) => /^\s*-\s+\S/.test(line))
+    .map((line) => line.replace(/^\s*-\s+/, '').trim())
+}
+
+/**
+ * 列出可读记忆的**每一条**（目录与 list 用）：文件名 + 条目行。
+ *
+ * 与 listEntries 的差别是粒度：listEntries 给「一个文件一行」，这里给
+ * 「一条记忆一行」。目录要够细才能让 agent 判断相关性——只看文件名等于
+ * 什么都没说。
+ */
+async function listEntryLines(index: IndexStore, prefix: string): Promise<Array<{ name: string; lines: string[] }>> {
+  await index.load()
+  const out: Array<{ name: string; lines: string[] }> = []
+  for (const name of await listExistingFiles()) {
+    if (index.metaOf(name)?.archivedAt !== undefined) continue
+    if (prefix !== '' && !name.startsWith(prefix)) continue
+    if (name === 'MEMORY.md') continue // 索引文件本身不进目录（避免自己描述自己）
+    const text = await readText(name)
+    if (text === null) continue
+    const lines = entryLinesOf(text)
+    if (lines.length === 0) continue
+    out.push({ name, lines })
   }
   return out.sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -252,15 +307,19 @@ function firstLineOf(text: string): string {
 export function createAgentMemoryStore({
   index,
   logger,
+  onChange,
 }: {
   index: IndexStore
   logger?: { warn(m: string): void; info?(m: string): void }
+  /** 写/删/恢复之后回调（目录重建用）；回调失败不影响写入结果。 */
+  onChange?: () => void
 }): {
   read: (name: unknown) => Promise<{ ok: true; content: string } | { ok: false; error: string }>
   write: (name: unknown, content: unknown) => Promise<WriteOutcome>
   remove: (name: unknown) => Promise<WriteOutcome>
   restore: (name: unknown) => Promise<WriteOutcome>
   list: (prefix?: string) => Promise<Array<{ name: string; firstLine: string; count: number }>>
+  entries: (prefix?: string) => Promise<Array<{ name: string; lines: string[] }>>
   archiveCold: (archiveMs: number, now?: number) => Promise<string[]>
   readForPanel: (name: string) => Promise<string | null>
   validate: (content: string) => string | null
@@ -275,33 +334,27 @@ export function createAgentMemoryStore({
       return readEntry(name, index)
     },
 
-    async write(rawName, rawContent) {
-      const name = normalizeName(rawName)
-      if (name === null) return { ok: false, error: INVALID_NAME }
-      if (typeof rawContent !== 'string') return { ok: false, error: 'content 必须是字符串' }
-      const invalid = validateContent(rawContent)
-      if (invalid !== null) return { ok: false, error: invalid }
-      // 先读后写由 agent 自己负责（提示词引导），这里只保证落盘正确。
-      await serial(async () => {
-        await writeText(name, rawContent)
-        await index.touchWrite(name)
-      })
-      return { ok: true }
-    },
+    write: (rawName, rawContent) => writeEntry(rawName, rawContent, index, serial, onChange),
 
     async remove(rawName) {
       const name = normalizeName(rawName)
       if (name === null) return { ok: false, error: INVALID_NAME }
-      return removeEntry(name, index, serial)
+      const result = await removeEntry(name, index, serial)
+      if (result.ok) onChange?.()
+      return result
     },
 
     async restore(rawName) {
       const name = normalizeName(rawName)
       if (name === null) return { ok: false, error: INVALID_NAME }
-      return restoreArchived(name, index, serial)
+      const result = await restoreArchived(name, index, serial)
+      if (result.ok) onChange?.()
+      return result
     },
 
     list: (prefix = '') => listEntries(index, prefix),
+
+    entries: (prefix = '') => listEntryLines(index, prefix),
 
     archiveCold: (archiveMs, now?) => archiveColdEntries(index, archiveMs, now ?? Date.now(), logger),
     // 面板读取**不计 readCount**：热度只应由 agent 的真实取用产生，

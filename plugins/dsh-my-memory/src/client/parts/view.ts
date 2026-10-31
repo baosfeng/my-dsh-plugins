@@ -318,7 +318,6 @@ function ErrorBanner({ kind, onRetry }: { kind: 'load' | 'save'; onRetry: () => 
         {
           variant: 'outline',
           size: 'sm',
-          className: 'dsh-my-memory-btn-retry',
           onClick: onRetry,
           icon: createElement(ui.IconRefreshOutline14),
         },

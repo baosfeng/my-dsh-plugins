@@ -24,6 +24,11 @@
 
 ### 修复
 
+- fix(agent-memory): **分层写入判据**——真实用户报告「项目相关的规则（`scripts/debug-cli.sh`、adb）被写进了全局 `user.md`」。根因是 `user.md` 的分工写着「以及『以后每次都要做』的动作」，把「本项目以后每次都做」也放进了全局层。新增「写到哪里」一节：换项目就不成立 → `projects/current/…`（提到具体仓库 / 路径 / 脚本 / 命令 / 端口 / 依赖 / 设备的都算），换任何项目都成立 → `user.md` / `feedback.md`；给自检句与「拿不准写项目层」的不对称代价判据；`user.md` 条目限定为「跨项目通用」；原则 3 明确「项目层带命令 / 路径正是它的价值」；`projects/current` 与 `list` / `read` 返回的真实 id 路径钉成同一个文件。三个不知情盲测全部落对层。
+- fix(agent-memory): **面板行内操作按钮退化成浏览器默认样式**——agent 记忆卡片用了 `dsh-my-memory-btn` / `-btn-danger` / `-btn-primary` 三个 `styles.ts` 里根本不存在的类名。改为复用设计系统的 `dsh-my-memory-iconbtn`（铅笔 / 垃圾桶图标、hover 显现、danger 红），编辑器底部改用 `dsh-my-memory-btn-save` + 宿主 ghost Button；编辑态头部不再显示操作（此前同一卡片上出现两个「取消」）。
+- fix(agent-memory): 卡片新增**作用域徽标**（全局 / 项目）——项目内容误写进全局层时，用户一眼能看出来。
+- fix(agent-memory): 删除改为**二次确认**（复用 ask 范式卡片），此前一点即删、不可恢复。
+- fix(client): 新增 `test/client-style-contract.mjs`——扫描 `lib/client.js`，断言每个被使用的 `dsh-my-memory-*` 类名都在 STYLES 里有定义（类名是字符串，TS 查不出来）；这条门禁顺带抓出 `dsh-my-memory-btn-retry` 等 4 个存量未定义类名，已清零。
 - fix(agent-memory): 四个 `agent_memory_*` 工具补齐宿主强制的 `output { schema, render }` 声明——缺它宿主 `tools.register()` 直接抛 `TypeError`，工具在真实环境里根本注册不上（此前测试直接调 `execute`，绕过了注册校验）。新增 `test/host-register-contract.mjs`：把宿主注册契约内联成断言，对全部 7 个注册工具跑一遍，任何工具退回「没有 output」立即红灯。
 - fix(agent-memory): 归档不再等于「凭空消失」——面板可读归档正文并一键恢复（正文搬回原位 + 清归档标记），GET 列表返回 `archived: true` 与正文；**agent 通道仍读不到归档内容**（遗忘语义不变）；写入同名文件自动复活。新增 `test/agent-memory-recovery.mjs` 锁死这四条。
 - fix(docs): README 删除重复的「Agent 记忆」条目。

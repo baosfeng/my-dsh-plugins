@@ -150,6 +150,13 @@ const strings = {
   agentMemoryDelete: (): string => (isZh() ? '删除' : 'Delete'),
   agentMemoryRestore: (): string => (isZh() ? '恢复' : 'Restore'),
   agentMemorySaveFailed: (): string => (isZh() ? '保存失败' : 'Save failed'),
+  agentMemoryScopeGlobal: (): string => (isZh() ? '全局' : 'Global'),
+  agentMemoryScopeProject: (): string => (isZh() ? '项目' : 'Project'),
+  agentMemoryDeleteTitle: (): string => (isZh() ? '删除这份 agent 记忆' : 'Delete this agent memory'),
+  agentMemoryDeleteNote: (): string =>
+    isZh()
+      ? '正文与索引元数据一并移除，不可撤销（agent 下次会话也读不到）'
+      : 'Body and index metadata are removed for good (the agent will not see it in later sessions either)',
   promptsScope: (): string => (isZh() ? '全局提示词' : 'Global prompts'),
   promptsNote: (): string =>
     isZh()

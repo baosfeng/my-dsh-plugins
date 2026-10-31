@@ -4,7 +4,7 @@
 //  - agent 记忆：agent 自主写入，**文件视图**——正文原样展示，
 //    元数据（创建时间/最后读取/读取次数）来自 index.json，agent 看不到
 //    但**用户必须看得到**，这是「给用户了解原因」的唯一落点。
-// 跨 part 引用（createElement/strings/utils）由拼接作用域解析。
+// 跨 part 引用（createElement/strings/utils/icon/IconButton/ui）由拼接作用域解析。
 
 /** 面板上的一份 agent 记忆（正文 + 元数据）。 */
 interface AgentMemoryEntry {
@@ -17,6 +17,27 @@ interface AgentMemoryEntry {
   archived: boolean
 }
 
+/**
+ * 记忆文件的作用域：根级（user.md / feedback.md / MEMORY.md）= 全局，
+ * `projects/<id>/…` = 项目。
+ *
+ * 这是用户能看见「为什么这条会出现在这里」的唯一线索——项目相关的规则被
+ * agent 写进全局层时，徽标会把错位直接暴露出来。
+ */
+function agentMemoryScopeOf(name: string): 'global' | 'project' {
+  return name.startsWith('projects/') ? 'project' : 'global'
+}
+
+/** 作用域徽标。 */
+function AgentMemoryScope({ name }: { name: string }): ReactNode {
+  const scope = agentMemoryScopeOf(name)
+  return createElement(
+    'span',
+    { className: `dsh-my-memory-agent-scope is-${scope}` },
+    scope === 'project' ? strings.agentMemoryScopeProject() : strings.agentMemoryScopeGlobal(),
+  )
+}
+
 /** 一份记忆的元数据行（时间 + 读取次数 + 归档标记）。 */
 function AgentMemoryMeta({ entry }: { entry: AgentMemoryEntry }): ReactNode {
   const created = entry.createdAt > 0 ? relativeTime(entry.createdAt) : strings.agentMemoryNever()
@@ -26,7 +47,15 @@ function AgentMemoryMeta({ entry }: { entry: AgentMemoryEntry }): ReactNode {
   return createElement('p', { className: 'dsh-my-memory-agent-meta' }, parts.join(' · '))
 }
 
-/** 卡片头部：文件名 + 编辑 / 删除按钮。 */
+/**
+ * 卡片头部：文件名 + 作用域徽标 + 行内操作。
+ *
+ * 操作按钮**必须**走设计系统里那一套 `.dsh-my-memory-iconbtn`（与全局记忆 /
+ * 项目记忆 / 提示词三个 tab 的行内操作完全一致）。此前这里用 `dsh-my-memory-btn`
+ * ——一个 styles.ts 里不存在的类名，按钮静默退化成浏览器默认样式。
+ * 编辑态下头部不再显示操作：编辑器底部已有「保存 / 取消」，两处并存就会出现
+ * 两个「取消」。
+ */
 function AgentMemoryHead({
   entry,
   editing,
@@ -41,23 +70,40 @@ function AgentMemoryHead({
   return createElement(
     'div',
     { className: 'dsh-my-memory-agent-head' },
-    createElement('code', { className: 'dsh-my-memory-agent-name' }, entry.name),
-    createElement('span', { className: 'dsh-my-memory-agent-actions' }, [
-      createElement(
-        'button',
-        { key: 'edit', type: 'button', className: 'dsh-my-memory-btn', disabled: entry.archived, onClick: onEdit },
-        editing ? strings.agentMemoryCancel() : strings.agentMemoryEdit(),
-      ),
-      createElement(
-        'button',
-        { key: 'delete', type: 'button', className: 'dsh-my-memory-btn dsh-my-memory-btn-danger', onClick: onDelete },
-        strings.agentMemoryDelete(),
-      ),
-    ]),
+    createElement(
+      'span',
+      { className: 'dsh-my-memory-agent-title' },
+      createElement('code', { className: 'dsh-my-memory-agent-name' }, entry.name),
+      createElement(AgentMemoryScope, { name: entry.name }),
+    ),
+    editing
+      ? null
+      : createElement(
+          'div',
+          { className: 'dsh-my-memory-actions' },
+          createElement(
+            IconButton,
+            {
+              className: 'dsh-my-memory-iconbtn',
+              label: `${strings.agentMemoryEdit()} ${entry.name}`,
+              onClick: onEdit,
+            },
+            icon.pencil(14),
+          ),
+          createElement(
+            IconButton,
+            {
+              className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
+              label: `${strings.agentMemoryDelete()} ${entry.name}`,
+              onClick: onDelete,
+            },
+            icon.trash(14),
+          ),
+        ),
   )
 }
 
-/** 编辑态：多行等宽输入框 + 保存 / 取消。 */
+/** 编辑态：多行等宽输入框 + 保存 / 取消（与 MemoryRowEdit 同一套按钮样式）。 */
 function AgentMemoryEditor({
   draft,
   onDraft,
@@ -76,6 +122,7 @@ function AgentMemoryEditor({
       className: 'dsh-my-memory-agent-editor',
       value: draft,
       rows: 8,
+      'aria-label': strings.agentMemoryEdit(),
       onChange: (event: { target: { value: string } }) => onDraft(event.target.value),
     }),
     createElement(
@@ -83,13 +130,19 @@ function AgentMemoryEditor({
       { className: 'dsh-my-memory-agent-save' },
       createElement(
         'button',
-        { type: 'button', className: 'dsh-my-memory-btn', onClick: onCancel },
-        strings.agentMemoryCancel(),
+        { type: 'button', className: 'dsh-my-memory-btn-save', onClick: onSave },
+        icon.check(14),
+        strings.agentMemorySave(),
       ),
       createElement(
-        'button',
-        { type: 'button', className: 'dsh-my-memory-btn dsh-my-memory-btn-primary', onClick: onSave },
-        strings.agentMemorySave(),
+        ui.Button,
+        {
+          variant: 'ghost',
+          size: 'sm',
+          onClick: onCancel,
+          icon: createElement(ui.IconCloseOutline16),
+        },
+        strings.agentMemoryCancel(),
       ),
     ),
   )
@@ -145,19 +198,21 @@ function AgentMemoryArchive({
         createElement(
           'div',
           { className: 'dsh-my-memory-agent-head' },
-          createElement('code', { className: 'dsh-my-memory-agent-name' }, entry.name),
-          createElement('span', { className: 'dsh-my-memory-agent-actions' }, [
+          createElement(
+            'span',
+            { className: 'dsh-my-memory-agent-title' },
+            createElement('code', { className: 'dsh-my-memory-agent-name' }, entry.name),
+            createElement(AgentMemoryScope, { name: entry.name }),
+          ),
+          createElement(
+            'div',
+            { className: 'dsh-my-memory-actions' },
             createElement(
-              'button',
-              {
-                key: 'restore',
-                type: 'button',
-                className: 'dsh-my-memory-btn',
-                onClick: () => onRestore(entry.name),
-              },
+              ui.Button,
+              { variant: 'ghost', size: 'sm', onClick: () => onRestore(entry.name) },
               strings.agentMemoryRestore(),
             ),
-          ]),
+          ),
         ),
         createElement(AgentMemoryMeta, { entry }),
         createElement('pre', { className: 'dsh-my-memory-agent-body' }, entry.content),
@@ -176,18 +231,49 @@ function AgentMemoryEmpty(): ReactNode {
   )
 }
 
-/** 第四个 tab 的整体视图：说明 + 提示 + 卡片列表 + 归档区。 */
+/** 删除确认层（复用 ask 范式卡片）：agent 记忆是长期数据，误删不可恢复。 */
+function AgentMemoryDeleteConfirm({
+  entry,
+  onCancel,
+  onConfirm,
+}: {
+  entry: AgentMemoryEntry
+  onCancel: () => void
+  onConfirm: () => void
+}): ReactNode {
+  return createElement(
+    'div',
+    { className: 'dsh-my-memory-overlay', role: 'presentation' },
+    createElement(AskConfirmCard, {
+      variant: 'delete',
+      title: strings.agentMemoryDeleteTitle(),
+      scope: agentMemoryScopeOf(entry.name),
+      category: '',
+      content: entry.content,
+      showSummary: false,
+      note: strings.agentMemoryDeleteNote(),
+      allowLabel: strings.confirmDeleteBtn(),
+      onAllow: onConfirm,
+      onReject: onCancel,
+    }),
+  )
+}
+
+/** 第四个 tab 的整体视图：说明 + 提示 + 卡片列表 + 归档区 + 删除确认层。 */
 function AgentMemoryPanel({
   entries,
   loading,
   error,
   editing,
   draft,
+  pendingDelete,
   onEdit,
   onDraft,
   onCancel,
   onSave,
-  onDelete,
+  onDeleteAsk,
+  onDeleteConfirm,
+  onDeleteCancel,
   onRestore,
 }: {
   entries: AgentMemoryEntry[]
@@ -195,15 +281,19 @@ function AgentMemoryPanel({
   error: boolean
   editing: string
   draft: string
+  pendingDelete: string
   onEdit: (name: string) => void
   onDraft: (value: string) => void
   onCancel: () => void
   onSave: () => void
-  onDelete: (name: string) => void
+  onDeleteAsk: (name: string) => void
+  onDeleteConfirm: (name: string) => void
+  onDeleteCancel: () => void
   onRestore: (name: string) => void
 }): ReactNode {
   const active = entries.filter((entry) => !entry.archived)
   const archived = entries.filter((entry) => entry.archived)
+  const pending = entries.find((entry) => entry.name === pendingDelete)
   const cards = active.map((entry) =>
     createElement(AgentMemoryCard, {
       key: entry.name,
@@ -214,17 +304,24 @@ function AgentMemoryPanel({
       onDraft,
       onCancel,
       onSave,
-      onDelete: () => onDelete(entry.name),
+      onDelete: () => onDeleteAsk(entry.name),
     }),
   )
   return createElement(
     'section',
-    { className: 'dsh-my-memory-section dsh-my-memory-agent' },
+    { className: 'dsh-my-memory-section' },
     createElement('p', { className: 'dsh-my-memory-note' }, strings.agentMemoryNote()),
     loading ? createElement('p', { className: 'dsh-my-memory-note' }, strings.loading()) : null,
     error ? createElement('p', { className: 'dsh-my-memory-error' }, strings.loadError()) : null,
     cards.length === 0 && !loading && !error ? createElement(AgentMemoryEmpty, null) : null,
     cards.length > 0 ? createElement('div', { className: 'dsh-my-memory-list' }, cards) : null,
     archived.length > 0 ? createElement(AgentMemoryArchive, { entries: archived, onRestore }) : null,
+    pending === undefined
+      ? null
+      : createElement(AgentMemoryDeleteConfirm, {
+          entry: pending,
+          onCancel: onDeleteCancel,
+          onConfirm: () => onDeleteConfirm(pending.name),
+        }),
   )
 }

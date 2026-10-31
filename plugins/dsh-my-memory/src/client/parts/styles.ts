@@ -119,6 +119,8 @@ const STYLES: string = `
   padding:24px; background:rgba(15,23,42,.38); animation:dsh-my-memory-fade .16s ease; }
 .dsh-my-memory-overlay .dsh-my-memory-ask { width:min(480px, 100%); padding:0; }
 .dsh-my-memory-ask { display:flex; flex-direction:column; align-items:center; box-sizing:border-box; width:100%; padding:8px 0 12px; }
+/* ask 卡的对外句柄（测试与外部样式按此定位；视觉全部在 .dsh-my-memory-ask-card 上） */
+.dsh-my-memory-confirm { box-sizing:border-box; width:100%; }
 .dsh-my-memory-ask-card { display:flex; flex-direction:column; box-sizing:border-box; width:100%; padding:0;
   border-radius:14px; overflow:hidden; background:#fff; box-shadow:0 20px 48px rgba(15,23,42,.24);
   animation:dsh-my-memory-pop .18s cubic-bezier(.2,0,.2,1); }
@@ -135,6 +137,7 @@ const STYLES: string = `
   border:1px solid #dfe3e8; border-radius:8px; color:#6b7280; font-size:12.5px; cursor:default; }
 .dsh-my-memory-ask-option.is-active { border-color:#c9d6f5; background:#f3f7ff; color:#2456b3; font-weight:500; }
 .dsh-my-memory-ask-option-dot { flex:none; width:6px; height:6px; border-radius:50%; background:#c4c9d0; }
+.dsh-my-memory-ask-option-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dsh-my-memory-ask-option.is-active .dsh-my-memory-ask-option-dot { background:#2f6fed; }
 .dsh-my-memory-ask-fields { display:flex; flex-direction:column; gap:6px; }
 .dsh-my-memory-ask-field { display:flex; gap:10px; font-size:12.5px; line-height:1.6; }
@@ -192,9 +195,18 @@ const STYLES: string = `
   border:1px solid #e6e9ee; border-radius:10px; background:#fff; }
 .dsh-my-memory-agent-card.is-archived { opacity:.72; background:#fafbfc; }
 .dsh-my-memory-agent-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.dsh-my-memory-agent-name { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
-  color:#111827; background:#f3f4f6; padding:2px 7px; border-radius:6px; }
-.dsh-my-memory-agent-actions { display:flex; gap:6px; flex:none; }
+.dsh-my-memory-agent-title { display:flex; align-items:center; gap:6px; min-width:0; }
+.dsh-my-memory-agent-name { min-width:0; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
+  color:#111827; background:#f3f4f6; padding:2px 7px; border-radius:6px; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+/* 作用域徽标：项目相关的内容写进全局层时，这里会把错位直接暴露给用户 */
+.dsh-my-memory-agent-scope { flex:none; display:inline-flex; align-items:center; height:18px; padding:0 7px;
+  border-radius:999px; background:#f2f4f7; color:#6b7280; font-size:11px; line-height:1; white-space:nowrap; }
+.dsh-my-memory-agent-scope.is-project { background:#eef4ff; color:#2456b3; }
+/* 行内操作与其它 tab 一致：hover / 聚焦才完全显现 */
+.dsh-my-memory-agent-head .dsh-my-memory-actions { opacity:.65; transition:opacity .15s; }
+.dsh-my-memory-agent-card:hover .dsh-my-memory-agent-head .dsh-my-memory-actions,
+.dsh-my-memory-agent-card:focus-within .dsh-my-memory-agent-head .dsh-my-memory-actions { opacity:1; }
 .dsh-my-memory-agent-meta { margin:0; color:#6b7280; font-size:12px; line-height:1.5; }
 .dsh-my-memory-agent-body { margin:0; padding:9px 11px; border-radius:8px; background:#f8f9fb;
   color:#374151; font-size:13px; line-height:1.65; white-space:pre-wrap; word-break:break-word;
@@ -202,6 +214,7 @@ const STYLES: string = `
 .dsh-my-memory-agent-editor { box-sizing:border-box; width:100%; min-height:120px; resize:vertical;
   padding:9px 11px; border:1px solid #dfe3e8; border-radius:9px; background:#fff; color:#111827;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; line-height:1.65; }
+.dsh-my-memory-agent-editing { display:flex; flex-direction:column; gap:8px; }
 .dsh-my-memory-agent-save { display:flex; justify-content:flex-end; gap:8px; }
 .dsh-my-memory-agent-archive { margin-top:10px; }
 .dsh-my-memory-agent-archive > summary { cursor:pointer; color:#6b7280; font-size:12.5px; padding:6px 0; }

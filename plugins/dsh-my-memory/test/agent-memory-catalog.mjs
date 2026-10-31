@@ -46,19 +46,33 @@ test('单行超过 32 字截断（一条长记忆不能吃掉整份目录）', a
   assert.ok(renderCatalog([{ name: 'user.md', lines: [long] }]).includes('…'))
 })
 
-test('超过 40 行截断，末尾给「还有 N 条」而不是静默丢', async () => {
+test('超过行数上限就截断，末尾给「还有 N 条」而不是静默丢', async () => {
   const { renderCatalog, MAX_CATALOG_LINES } = await import('../lib/agent-memory/catalog.js')
-  const lines = Array.from({ length: 60 }, (_, i) => '条目 ' + (i + 1))
+  const overflow = 20
+  const lines = Array.from({ length: MAX_CATALOG_LINES + overflow }, (_, i) => '条目 ' + (i + 1))
   const text = renderCatalog([{ name: 'user.md', lines }])
   const rows = text.split('\n')
-  assert.equal(rows.length, MAX_CATALOG_LINES + 1, '40 行正文 + 1 行尾注')
-  assert.match(rows[rows.length - 1], /另有 20 条未展开/)
+  assert.equal(rows.length, MAX_CATALOG_LINES + 1, '正文占满上限 + 1 行尾注')
+  assert.match(rows[rows.length - 1], new RegExp('另有 ' + overflow + ' 条未展开'))
+})
+
+test('目录按「全局偏好 → 反馈 → 项目层」排序，全局条目不会被项目挤掉', async () => {
+  const { renderCatalog } = await import('../lib/agent-memory/catalog.js')
+  const text = renderCatalog([
+    { name: 'projects/zzz/pitfalls.md', lines: ['项目坑'] },
+    { name: 'user.md', lines: ['全局偏好'] },
+    { name: 'feedback.md', lines: ['被纠正的做法'] },
+  ])
+  const rows = text.split('\n')
+  assert.match(rows[0], /^user\.md · 全局偏好/)
+  assert.match(rows[1], /^feedback\.md · 被纠正的做法/)
+  assert.match(rows[2], /^projects\/zzz\/pitfalls\.md · 项目坑/)
 })
 
 test('字节上限先于行数生效时也照样截断', async () => {
   const { renderCatalog } = await import('../lib/agent-memory/catalog.js')
   const heavy = '字'.repeat(32)
-  const lines = Array.from({ length: 40 }, () => heavy)
+  const lines = Array.from({ length: 80 }, () => heavy)
   const text = renderCatalog([{ name: 'user.md', lines }])
   assert.ok(Buffer.byteLength(text, 'utf8') < 4200, '目录正文不可能无限膨胀')
   assert.match(text, /未展开/)

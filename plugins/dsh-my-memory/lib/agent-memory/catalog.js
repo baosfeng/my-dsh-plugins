@@ -17,9 +17,9 @@
 import { readFileSync } from 'node:fs';
 import { absoluteFileOf, listExistingFilesSync } from './paths.js';
 /** 目录最多展示的行数（超过按文件顺序截断，末尾给剩余条数）。 */
-export const MAX_CATALOG_LINES = 40;
+export const MAX_CATALOG_LINES = 60;
 /** 目录正文的字节上限（UTF-8，约 1.5k 汉字）。 */
-const MAX_CATALOG_BYTES = 3072;
+const MAX_CATALOG_BYTES = 4096;
 /** 单行摘要的字符上限（超出截断，避免一条长记忆把整份目录吃掉）。 */
 const CATALOG_LINE_CHARS = 32;
 /** 截断一条摘要（按字符，不切坏代理对）。 */
@@ -28,16 +28,34 @@ export function truncateEntry(line, limit = CATALOG_LINE_CHARS) {
     return chars.length <= limit ? line : chars.slice(0, limit).join('') + '…';
 }
 /**
+ * 目录里的展示优先级：全局偏好最先，其次反馈，最后项目层。
+ *
+ * 为什么必须排：目录是硬截断的，谁排后面谁就看不见。按文件名排会把
+ * user.md（全局偏好，跨项目都该生效）排到 projects/ 之后——实测过，
+ * 13 条全局偏好被一个项目的 16 条坑挤到截断之外，一条都没露出来。
+ */
+function catalogRank(name) {
+    if (name === 'user.md')
+        return 0;
+    if (name === 'feedback.md')
+        return 1;
+    if (name.startsWith('projects/'))
+        return 2;
+    return 3;
+}
+/**
  * 把「文件 → 条目行」渲染成目录正文。
  *
- * @param entries - 每个文件的条目行（顺序即展示顺序，调用方负责排序）。
+ * @param entries - 每个文件的条目行（调用方给的文件顺序无关，本函数按
+ *   「全局偏好 → 反馈 → 项目层」重排，保证最重要的先占位）。
  * @returns 一行一条的目录；空库返回空串（调用方给「还没有记忆」的说明）。
  */
 export function renderCatalog(entries) {
     const rows = [];
     let bytes = 0;
     let dropped = 0;
-    for (const entry of entries) {
+    const ordered = [...entries].sort((a, b) => catalogRank(a.name) - catalogRank(b.name) || a.name.localeCompare(b.name));
+    for (const entry of ordered) {
         for (const line of entry.lines) {
             const row = entry.name + ' · ' + truncateEntry(line);
             const size = Buffer.byteLength(row, 'utf8') + 1;

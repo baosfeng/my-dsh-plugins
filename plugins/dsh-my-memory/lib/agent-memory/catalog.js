@@ -19,8 +19,8 @@
  * 会让排在后面的项目整段消失。轮转让每个项目都有代表，全局偏好仍整体
  * 优先（它们是跨项目的，不该被任何单项目挤掉）。
  */
-import { readFileSync } from 'node:fs';
-import { absoluteFileOf, indexFile, listExistingFilesSync } from './paths.js';
+import { readFileSync, statSync } from 'node:fs';
+import { absoluteFileOf, entryLinesOf, indexFile, listExistingFilesSync } from './paths.js';
 /** 目录最多展示的行数（超出按「全局优先 + 项目轮转」丢弃，末尾给剩余条数）。 */
 export const MAX_CATALOG_LINES = 70;
 /** 目录正文的字节上限（UTF-8，约 2k 汉字）。 */
@@ -132,15 +132,35 @@ function isCatalogFile(name) {
 /** 同步读一个文件的条目行；缺失或读失败返回空数组。 */
 function entryLinesSync(name) {
     try {
-        const text = readFileSync(absoluteFileOf(name), 'utf8');
-        return text
-            .split('\n')
-            .filter((line) => /^\s*-\s+\S/.test(line))
-            .map((line) => line.replace(/^\s*-\s+/, '').trim());
+        return entryLinesOf(readFileSync(absoluteFileOf(name), 'utf8'));
     }
     catch {
         return [];
     }
+}
+/** 目录校验的默认节流阈值（毫秒）：系统提示词每轮求值都调 text()，不能每轮 stat。 */
+const DEFAULT_REVALIDATE_MS = 1000;
+/** 默认指纹：stat 一遍磁盘上真实存在的记忆文件（不读正文）。 */
+function diskStamp() {
+    const stamp = {};
+    for (const name of listExistingFilesSync()) {
+        if (!isCatalogFile(name))
+            continue;
+        try {
+            stamp[name] = statSync(absoluteFileOf(name)).mtimeMs;
+        }
+        catch {
+            // 刚被删除/不可读：跳过——列表本身的变化会让指纹不等
+        }
+    }
+    return stamp;
+}
+/** 指纹归一化为可比对的字符串（按文件名排序，保证顺序稳定）。 */
+function stampKey(stamp) {
+    return Object.keys(stamp)
+        .sort((a, b) => a.localeCompare(b))
+        .map((name) => name + ':' + String(stamp[name]))
+        .join('\n');
 }
 /**
  * 同步读项目名映射（index.json 的 `projects` 字段）。
@@ -164,24 +184,53 @@ function projectNamesSync() {
  * 构造目录缓存。
  *
  * @param source - 提供「文件 → 条目行」的函数；由 store 实现（已含 index 加载与归档过滤）。
+ * @param options - 节流阈值 / 时钟 / 指纹（默认取生产值；测试注入以免 sleep）。
  */
-export function createAgentMemoryCatalog(source) {
+export function createAgentMemoryCatalog(source, options = {}) {
+    const revalidateMs = options.revalidateMs ?? DEFAULT_REVALIDATE_MS;
+    const now = options.now ?? Date.now;
+    const readStamp = options.stamp ?? diskStamp;
     let cached = '';
+    let snapshot = '';
+    let checkedAt = Number.NEGATIVE_INFINITY;
     const rebuild = (entries) => {
         cached = renderCatalog(entries.filter((entry) => entry.lines.length > 0), projectNamesSync());
     };
+    /**
+     * 以文件系统为准重建（prime 与自愈共用）：扫描根级白名单 + projects/<id>/。
+     * 顺序是「先取指纹、再读正文」：中途有别的进程写入时指纹偏旧，下次校验会
+     * 自然重扫一次——宁可多扫一次，不可把新内容永久挡在缓存外。
+     */
+    const reloadFromDisk = () => {
+        snapshot = stampKey(readStamp());
+        rebuild(listExistingFilesSync()
+            .filter(isCatalogFile)
+            .map((name) => ({ name, lines: entryLinesSync(name) })));
+        checkedAt = now();
+    };
+    /** 节流校验：窗口内直接返回；窗口外 stat 一遍，指纹变了才重建。 */
+    const revalidate = (at) => {
+        if (at - checkedAt < revalidateMs)
+            return;
+        checkedAt = at;
+        if (stampKey(readStamp()) !== snapshot)
+            reloadFromDisk();
+    };
     return {
-        text: () => cached,
+        text: () => {
+            revalidate(now());
+            return cached;
+        },
         prime() {
-            // 以文件系统为准（索引丢键时条目不该跟着消失）：扫描根级白名单 + projects/<id>/。
-            const entries = listExistingFilesSync()
-                .filter(isCatalogFile)
-                .map((name) => ({ name, lines: entryLinesSync(name) }));
-            rebuild(entries);
+            reloadFromDisk();
         },
         async refresh() {
             try {
+                // 同 reloadFromDisk：先取指纹再读正文，写入竞态只会导致多扫一次。
+                const mark = stampKey(readStamp());
                 rebuild(await source());
+                snapshot = mark;
+                checkedAt = now();
             }
             catch {
                 // 目录重建失败不覆盖旧值：宁可展示上一次的目录，也不要把「读不到」当空库。

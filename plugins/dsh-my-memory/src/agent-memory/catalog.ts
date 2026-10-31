@@ -19,9 +19,9 @@
  * 会让排在后面的项目整段消失。轮转让每个项目都有代表，全局偏好仍整体
  * 优先（它们是跨项目的，不该被任何单项目挤掉）。
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 
-import { absoluteFileOf, indexFile, listExistingFilesSync } from './paths.js'
+import { absoluteFileOf, entryLinesOf, indexFile, listExistingFilesSync } from './paths.js'
 
 /** 目录最多展示的行数（超出按「全局优先 + 项目轮转」丢弃，末尾给剩余条数）。 */
 export const MAX_CATALOG_LINES = 70
@@ -140,14 +140,43 @@ function isCatalogFile(name: string): boolean {
 /** 同步读一个文件的条目行；缺失或读失败返回空数组。 */
 function entryLinesSync(name: string): string[] {
   try {
-    const text = readFileSync(absoluteFileOf(name), 'utf8')
-    return text
-      .split('\n')
-      .filter((line) => /^\s*-\s+\S/.test(line))
-      .map((line) => line.replace(/^\s*-\s+/, '').trim())
+    return entryLinesOf(readFileSync(absoluteFileOf(name), 'utf8'))
   } catch {
     return []
   }
+}
+
+/** 目录校验的默认节流阈值（毫秒）：系统提示词每轮求值都调 text()，不能每轮 stat。 */
+const DEFAULT_REVALIDATE_MS = 1000
+
+/**
+ * 磁盘指纹：文件 → mtime(ms)。
+ *
+ * 为什么是 mtime 而不是内容摘要：校验发生在系统提示词的同步求值里，内容摘要
+ * 要把每个文件都读一遍——那等于取消了缓存本身。mtime 只要 stat，代价恒定。
+ */
+export type CatalogStamp = Record<string, number>
+
+/** 默认指纹：stat 一遍磁盘上真实存在的记忆文件（不读正文）。 */
+function diskStamp(): CatalogStamp {
+  const stamp: CatalogStamp = {}
+  for (const name of listExistingFilesSync()) {
+    if (!isCatalogFile(name)) continue
+    try {
+      stamp[name] = statSync(absoluteFileOf(name)).mtimeMs
+    } catch {
+      // 刚被删除/不可读：跳过——列表本身的变化会让指纹不等
+    }
+  }
+  return stamp
+}
+
+/** 指纹归一化为可比对的字符串（按文件名排序，保证顺序稳定）。 */
+function stampKey(stamp: CatalogStamp): string {
+  return Object.keys(stamp)
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => name + ':' + String(stamp[name]))
+    .join('\n')
 }
 
 /**
@@ -169,27 +198,52 @@ function projectNamesSync(): Record<string, string> {
 
 /**
  * 目录缓存：text() 同步返回当前目录（系统提示词每轮求值都要它），
- * refresh() 在写入/删除后重建。
+ * refresh() 在写入/删除后重建；此外 text() 自己按节流阈值做一次磁盘指纹校验。
  *
  * 为什么同步：宿主组装系统提示词是同步的（section.text()），目录必须是
  * 已算好的字符串；重建走异步，写完立刻刷新，下一轮组装即生效。
+ *
+ * 为什么要自己校验（跨进程自愈）：onChange→refresh() 只覆盖**本进程**的写入。
+ * 命令行脚本写记忆、第二个 DSH 窗口、用户手改文件，本进程的目录永远是旧的，
+ * 也没有任何周期性兜底。所以 text() 里加一节流指纹校验：窗口外 stat 一遍，
+ * 指纹变了才同步重建；没变必须原样返回（前缀缓存友好，也不每轮读正文）。
  */
 export interface AgentMemoryCatalog {
-  /** 当前目录正文（同步，读缓存）。 */
+  /** 当前目录正文（同步读缓存；窗口外顺带做一次节流指纹校验）。 */
   text: () => string
   /** 启动时同步装载一次：否则首轮组装会拿到空目录，agent 以为记忆库是空的。 */
   prime: () => void
-  /** 重建目录（写入/删除/归档后调用）。 */
+  /** 重建目录（本进程写入/删除/归档后调用）。 */
   refresh: () => Promise<void>
+}
+
+/** 目录缓存的构造参数（阈值 / 时钟 / 指纹可注入：测试不必 sleep 真实的一秒）。 */
+export interface AgentMemoryCatalogOptions {
+  /** 校验节流阈值（毫秒，默认 1000）：距上次校验不足该值就跳过 stat。 */
+  revalidateMs?: number
+  /** 时钟（默认 Date.now）。 */
+  now?: () => number
+  /** 磁盘指纹来源（默认 stat 白名单文件；注入后可直接断言 stat 次数）。 */
+  stamp?: () => CatalogStamp
 }
 
 /**
  * 构造目录缓存。
  *
  * @param source - 提供「文件 → 条目行」的函数；由 store 实现（已含 index 加载与归档过滤）。
+ * @param options - 节流阈值 / 时钟 / 指纹（默认取生产值；测试注入以免 sleep）。
  */
-export function createAgentMemoryCatalog(source: () => Promise<CatalogEntry[]>): AgentMemoryCatalog {
+export function createAgentMemoryCatalog(
+  source: () => Promise<CatalogEntry[]>,
+  options: AgentMemoryCatalogOptions = {},
+): AgentMemoryCatalog {
+  const revalidateMs = options.revalidateMs ?? DEFAULT_REVALIDATE_MS
+  const now = options.now ?? Date.now
+  const readStamp = options.stamp ?? diskStamp
+
   let cached = ''
+  let snapshot = ''
+  let checkedAt = Number.NEGATIVE_INFINITY
 
   const rebuild = (entries: CatalogEntry[]): void => {
     cached = renderCatalog(
@@ -198,20 +252,45 @@ export function createAgentMemoryCatalog(source: () => Promise<CatalogEntry[]>):
     )
   }
 
+  /**
+   * 以文件系统为准重建（prime 与自愈共用）：扫描根级白名单 + projects/<id>/。
+   * 顺序是「先取指纹、再读正文」：中途有别的进程写入时指纹偏旧，下次校验会
+   * 自然重扫一次——宁可多扫一次，不可把新内容永久挡在缓存外。
+   */
+  const reloadFromDisk = (): void => {
+    snapshot = stampKey(readStamp())
+    rebuild(
+      listExistingFilesSync()
+        .filter(isCatalogFile)
+        .map((name) => ({ name, lines: entryLinesSync(name) })),
+    )
+    checkedAt = now()
+  }
+
+  /** 节流校验：窗口内直接返回；窗口外 stat 一遍，指纹变了才重建。 */
+  const revalidate = (at: number): void => {
+    if (at - checkedAt < revalidateMs) return
+    checkedAt = at
+    if (stampKey(readStamp()) !== snapshot) reloadFromDisk()
+  }
+
   return {
-    text: () => cached,
+    text: () => {
+      revalidate(now())
+      return cached
+    },
 
     prime() {
-      // 以文件系统为准（索引丢键时条目不该跟着消失）：扫描根级白名单 + projects/<id>/。
-      const entries = listExistingFilesSync()
-        .filter(isCatalogFile)
-        .map((name) => ({ name, lines: entryLinesSync(name) }))
-      rebuild(entries)
+      reloadFromDisk()
     },
 
     async refresh() {
       try {
+        // 同 reloadFromDisk：先取指纹再读正文，写入竞态只会导致多扫一次。
+        const mark = stampKey(readStamp())
         rebuild(await source())
+        snapshot = mark
+        checkedAt = now()
       } catch {
         // 目录重建失败不覆盖旧值：宁可展示上一次的目录，也不要把「读不到」当空库。
       }

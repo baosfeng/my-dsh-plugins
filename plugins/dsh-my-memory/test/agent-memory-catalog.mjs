@@ -8,10 +8,13 @@
  *     排在后面的项目 21 条一条都进不了目录。
  *  3. 全局层写入护栏：含项目专属标识（仓库内路径 / IP / 端口 / 当前仓库名）
  *     的条目不许进全局——真实事故就是这么发生的。
+ *  4. 目录**跨进程自愈**：onChange→refresh() 只覆盖本进程的写入，命令行脚本、
+ *     第二个窗口、用户手改文件都看不见。text() 的节流 mtime 校验补上这一块，
+ *     且没变化时必须返回同一字符串（系统提示词前缀缓存不能每轮失效）。
  */
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -200,4 +203,78 @@ test('护栏接在 write 工具上：拒写时返回可操作提示，且不落�
     exec,
   )
   assert.equal(accepted, 'ok', '写项目层放行')
+})
+
+test('目录跨进程自愈：绕开 store 直接落盘的新条目，节流窗口一到就进目录', async () => {
+  const { createIndexStore } = await import('../lib/agent-memory/index-store.js')
+  const { createAgentMemoryStore } = await import('../lib/agent-memory/store.js')
+  const { createAgentMemoryCatalog } = await import('../lib/agent-memory/catalog.js')
+
+  const index = createIndexStore({})
+  const store = createAgentMemoryStore({ index })
+  // 时钟注入：不 sleep 真实的 1 秒，直接推窗口
+  let clock = 0
+  const catalog = createAgentMemoryCatalog(() => store.entries(), { revalidateMs: 1000, now: () => clock })
+  catalog.prime()
+  const before = catalog.text()
+
+  // 模拟命令行脚本 / 第二个 DSH 窗口：不经过 store，也不触发 onChange，直接落盘
+  const dir = join(home, 'agent-memory', 'projects', 'cliw')
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'pitfalls.md'), '- 另一个进程写的坑\n', 'utf8')
+
+  clock += 999
+  assert.equal(catalog.text(), before, '节流窗口内不校验（否则等于每轮 stat）')
+  clock += 1
+  assert.match(catalog.text(), /cliw\/坑 · 另一个进程写的坑/, '窗口一到，目录按磁盘自愈')
+})
+
+test('目录缓存：指纹没变就返回同一字符串，也不重复 stat / 重读正文', async () => {
+  const { createAgentMemoryCatalog } = await import('../lib/agent-memory/catalog.js')
+  let stats = 0
+  let clock = 0
+  // 指纹注入成常量：谁改盘都不该触发重读，用来锁「没变化 → 同一字符串」
+  const catalog = createAgentMemoryCatalog(async () => [], {
+    revalidateMs: 1000,
+    now: () => clock,
+    stamp: () => {
+      stats += 1
+      return { 'user.md': 1 }
+    },
+  })
+  catalog.prime()
+  const first = catalog.text()
+  assert.equal(stats, 1, 'prime 取过一次指纹')
+
+  await mkdir(join(home, 'agent-memory'), { recursive: true })
+  await writeFile(join(home, 'agent-memory', 'feedback.md'), '- 本窗口不该出现的条目\n', 'utf8')
+
+  assert.equal(catalog.text(), first, '窗口内直接读缓存')
+  assert.equal(stats, 1, '窗口内一次 stat 都不做')
+  clock += 1000
+  assert.equal(catalog.text(), first, '窗口外指纹未变 → 同一字符串（前缀缓存不失效）')
+  assert.equal(stats, 2, '窗口外只 stat 一次，没有每轮读整个目录')
+  assert.doesNotMatch(catalog.text(), /本窗口不该出现的条目/)
+})
+
+test('目录跨进程自愈：用户手改已有文件（只有 mtime 变）同样被发现', async () => {
+  const { createAgentMemoryCatalog } = await import('../lib/agent-memory/catalog.js')
+  const target = join(home, 'agent-memory', 'user.md')
+  await mkdir(join(home, 'agent-memory'), { recursive: true })
+  const past = new Date(Date.now() - 60_000)
+  await writeFile(target, '- 手改之前\n', 'utf8')
+  await utimes(target, past, past)
+
+  let clock = 0
+  const catalog = createAgentMemoryCatalog(async () => [], { revalidateMs: 1000, now: () => clock })
+  catalog.prime()
+  assert.match(catalog.text(), /手改之前/)
+
+  await writeFile(target, '- 手改之后\n', 'utf8')
+  const later = new Date(Date.now() + 60_000)
+  await utimes(target, later, later) // 显式推后 mtime：同一毫秒内写入也不会漏判
+
+  clock += 1000
+  assert.match(catalog.text(), /手改之后/, '内容按磁盘重建')
+  assert.doesNotMatch(catalog.text(), /手改之前/)
 })

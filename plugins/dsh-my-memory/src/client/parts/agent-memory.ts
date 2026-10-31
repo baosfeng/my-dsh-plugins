@@ -272,69 +272,72 @@ function AgentMemoryDeleteConfirm({
   )
 }
 
-/** 第四个 tab 的整体视图：说明 + 提示 + 卡片列表 + 归档区 + 删除确认层。 */
-function AgentMemoryPanel({
-  entries,
-  loading,
-  error,
-  editing,
-  draft,
-  pendingDelete,
-  onEdit,
-  onDraft,
-  onCancel,
-  onSave,
-  onDeleteAsk,
-  onDeleteConfirm,
-  onDeleteCancel,
-  onRestore,
-}: {
-  entries: AgentMemoryEntry[]
-  loading: boolean
-  error: boolean
-  editing: string
-  draft: string
-  pendingDelete: string
-  onEdit: (name: string) => void
-  onDraft: (value: string) => void
-  onCancel: () => void
-  onSave: () => void
-  onDeleteAsk: (name: string) => void
-  onDeleteConfirm: (name: string) => void
-  onDeleteCancel: () => void
-  onRestore: (name: string) => void
-}): ReactNode {
-  const active = entries.filter((entry) => !entry.archived)
-  const archived = entries.filter((entry) => entry.archived)
-  const pending = entries.find((entry) => entry.name === pendingDelete)
-  const cards = active.map((entry) =>
+/**
+ * 一个分组里的卡片（编辑态 / 草稿 / 动作都来自面板状态）。
+ *
+ * 独立成函数而不是内联 map：否则 AgentMemoryPanel 会被卡片 props 撑过函数
+ * 行数门禁，而且这层映射在分组视图里要复用。
+ */
+function agentMemoryCardsOf(
+  group: AgentMemoryGroup,
+  props: AgentMemoryState,
+): ReactNode {
+  return group.entries.map((entry) =>
     createElement(AgentMemoryCard, {
       key: entry.name,
       entry,
-      editing: editing === entry.name,
-      draft,
-      onEdit: () => onEdit(entry.name),
-      onDraft,
-      onCancel,
-      onSave,
-      onDelete: () => onDeleteAsk(entry.name),
+      editing: props.editing === entry.name,
+      draft: props.draft,
+      onEdit: () => props.onEdit(entry.name),
+      onDraft: props.onDraft,
+      onCancel: props.onCancel,
+      onSave: props.onSave,
+      onDelete: () => props.onDeleteAsk(entry.name),
     }),
   )
+}
+
+/** 第四个 tab 的整体视图：说明 + 晋升建议 + 分组卡片 + 归档区 + 两个确认层。 */
+function AgentMemoryPanel(props: AgentMemoryState): ReactNode {
+  const active = activeEntriesOf(props.groups).length
+  const pendingDelete = findAgentEntry(props.groups, props.pendingDelete)
+  const pendingPromote = props.suggestions.find((item) => item.text === props.pendingPromote)
   return createElement(
     'section',
     { className: 'dsh-my-memory-section' },
     createElement('p', { className: 'dsh-my-memory-note' }, strings.agentMemoryNote()),
-    loading ? createElement('p', { className: 'dsh-my-memory-note' }, strings.loading()) : null,
-    error ? createElement('p', { className: 'dsh-my-memory-error' }, strings.loadError()) : null,
-    cards.length === 0 && !loading && !error ? createElement(AgentMemoryEmpty, null) : null,
-    cards.length > 0 ? createElement('div', { className: 'dsh-my-memory-list' }, cards) : null,
-    archived.length > 0 ? createElement(AgentMemoryArchive, { entries: archived, onRestore }) : null,
-    pending === undefined
+    props.loading ? createElement('p', { className: 'dsh-my-memory-note' }, strings.loading()) : null,
+    props.error ? createElement('p', { className: 'dsh-my-memory-error' }, strings.loadError()) : null,
+    props.promoteError === ''
+      ? null
+      : createElement('p', { className: 'dsh-my-memory-error' }, props.promoteError),
+    createElement(AgentMemorySuggests, { suggestions: props.suggestions, onPromote: props.onPromoteAsk }),
+    active === 0 && !props.loading && !props.error ? createElement(AgentMemoryEmpty, null) : null,
+    props.groups.map((group) =>
+      createElement(AgentMemoryGroupBlock, {
+        key: group.id,
+        group,
+        expanded: props.expanded.has(group.id),
+        onToggle: () => props.onToggleGroup(group.id),
+        renderCards: () => agentMemoryCardsOf(group, props),
+      }),
+    ),
+    props.archived.length > 0
+      ? createElement(AgentMemoryArchive, { entries: props.archived, onRestore: props.onRestore })
+      : null,
+    pendingDelete === undefined
       ? null
       : createElement(AgentMemoryDeleteConfirm, {
-          entry: pending,
-          onCancel: onDeleteCancel,
-          onConfirm: () => onDeleteConfirm(pending.name),
+          entry: pendingDelete,
+          onCancel: props.onDeleteCancel,
+          onConfirm: () => props.onDeleteConfirm(pendingDelete.name),
+        }),
+    pendingPromote === undefined
+      ? null
+      : createElement(AgentMemoryPromoteConfirm, {
+          suggestion: pendingPromote,
+          onCancel: props.onPromoteCancel,
+          onConfirm: props.onPromoteConfirm,
         }),
   )
 }

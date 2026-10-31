@@ -18,6 +18,8 @@ import type { AgentMemoryRuntime } from './tools.js'
 import { createIndexStore } from './index-store.js'
 import { createAgentMemoryStore } from './store.js'
 import { listExistingFiles, normalizeName } from './paths.js'
+import { buildGroups, buildSuggestions, promoteToGlobal } from './promote.js'
+import type { AgentMemoryGroup, PromoteSuggestion } from './promote.js'
 import type { LoggerService, ServerRequest, ServerResponse } from '../api-route.types.js'
 
 /** 一份记忆的面板视图（正文 + 元数据）。 */
@@ -112,6 +114,32 @@ async function readAll({ index, store }: AgentMemoryRouteDeps): Promise<AgentMem
   return entries
 }
 
+/** 面板载荷：分组（分组内自带正文）+ 归档区 + 跨项目晋升建议。 */
+export interface AgentMemoryPanelValue {
+  groups: AgentMemoryGroup<AgentMemoryEntry>[]
+  /** 已归档条目（只读展示 + 恢复，不混进分组）。 */
+  archived: AgentMemoryEntry[]
+  /** 跨项目晋升建议（同一事实出现在 ≥2 个项目层）。 */
+  suggestions: PromoteSuggestion[]
+}
+
+/**
+ * 组一次面板载荷。
+ *
+ * 分组与建议都由 promote.ts 从**同一份条目快照**派生：分组只装活跃条目，
+ * 归档条目单独一栏，两者不重叠——面板上「恢复」与「编辑」的入口因此不会
+ * 混在一张卡片上。
+ */
+async function panelValue(deps: AgentMemoryRouteDeps): Promise<AgentMemoryPanelValue> {
+  const entries = await readAll(deps)
+  const projectNames = deps.index.projectNames()
+  return {
+    groups: buildGroups(entries, projectNames),
+    archived: entries.filter((entry) => entry.archived),
+    suggestions: buildSuggestions(entries, projectNames),
+  }
+}
+
 /** 拒绝：状态码 + 可读原因。 */
 function reject(response: ServerResponse, status: number, message: string): void {
   writeJson(response, status, { ok: false, error: { message } })
@@ -141,7 +169,39 @@ async function applyAction(
   return result.ok ? null : result.error
 }
 
-/** POST 分派：write | delete | restore（面板是用户入口，不需要 confirmed 标记）。 */
+/**
+ * 晋升动作（action=promote）：输入是一条**建议文本**而不是文件名。
+ *
+ * 服务端拿当前磁盘内容**重新算一遍建议**再执行，所以面板上的旧文案不会
+ * 造成误删：文本对不上任何建议就 400（让用户刷新），被全局层护栏拒绝时把
+ * 原因原样回给面板展示——绝不静默失败。
+ */
+async function runPromote(
+  payload: Record<string, unknown>,
+  response: ServerResponse,
+  deps: AgentMemoryRouteDeps,
+): Promise<void> {
+  const raw = payload.text
+  const text = typeof raw === 'string' ? raw : ''
+  if (text === '') {
+    reject(response, 400, 'invalid or missing text')
+    return
+  }
+  const entries = await readAll(deps)
+  const suggestion = buildSuggestions(entries, deps.index.projectNames()).find((item) => item.text === text)
+  if (suggestion === undefined) {
+    reject(response, 400, '这条晋升建议已变化，刷新面板后再试')
+    return
+  }
+  const result = await promoteToGlobal(deps.store, suggestion)
+  if (!result.ok) {
+    reject(response, 400, result.error)
+    return
+  }
+  writeJson(response, 200, { ok: true, value: await panelValue(deps) })
+}
+
+/** POST 分派：write | delete | restore | promote（面板是用户入口，不需要 confirmed 标记）。 */
 async function handleWrite(
   request: ServerRequest,
   response: ServerResponse,
@@ -149,6 +209,10 @@ async function handleWrite(
 ): Promise<void> {
   const payload = await readJsonBody(request)
   const action = typeof payload?.action === 'string' ? payload.action : ''
+  if (action === 'promote') {
+    await runPromote(payload, response, deps)
+    return
+  }
   const name = normalizeName(payload?.name)
   if (name === null) {
     reject(response, 400, 'invalid or missing name')
@@ -159,7 +223,7 @@ async function handleWrite(
     reject(response, 400, error)
     return
   }
-  writeJson(response, 200, { ok: true, value: { items: await readAll(deps) } })
+  writeJson(response, 200, { ok: true, value: await panelValue(deps) })
 }
 
 /**
@@ -175,7 +239,7 @@ export async function routeAgentMemory(
   if (!url.pathname.endsWith('/agent-memory')) return false
   try {
     if (request.method === 'GET') {
-      writeJson(response, 200, { ok: true, value: { items: await readAll(deps) } })
+      writeJson(response, 200, { ok: true, value: await panelValue(deps) })
       return true
     }
     if (request.method === 'POST') {

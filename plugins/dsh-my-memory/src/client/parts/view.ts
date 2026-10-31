@@ -132,7 +132,7 @@ function renderMemoryRoot(props: MemoryRootProps): ReactNode {
   const counts = {
     global: props.data === null ? 0 : props.data.global.items.length,
     project: props.data === null ? 0 : props.data.project.items.length,
-    agent: props.agent.entries.filter((entry) => !entry.archived).length,
+    agent: activeEntriesOf(props.agent.groups).length,
     prompts: props.promptsProps.items.length,
   }
   return createElement(

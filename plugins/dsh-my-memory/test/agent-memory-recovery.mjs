@@ -39,6 +39,12 @@ async function deps() {
   return { ...paths, ...indexStore, ...storeMod }
 }
 
+/** 面板载荷里的全部条目（GET/POST 返回分组 + 归档区，这里是它们的并集）。 */
+function allEntries(json) {
+  const value = json.value
+  return [...value.groups.flatMap((group) => group.entries), ...value.archived]
+}
+
 /** 造一个已归档的记忆，返回它的 store 与 index。 */
 async function archivedFixture(name, body) {
   const { createIndexStore, createAgentMemoryStore } = await deps()
@@ -128,13 +134,13 @@ test('route GET 把归档项连同 archived 标记一起返回，POST restore �
   const routeDeps = { index, store }
 
   const listed = await routeCall(routeDeps)
-  const archived = listed.json.value.items.find((item) => item.name === 'feedback.md')
+  const archived = allEntries(listed.json).find((item) => item.name === 'feedback.md')
   assert.equal(archived.archived, true, '归档标记暴露给面板')
   assert.equal(archived.content, '- 被纠正过的做法', '归档正文在面板可见')
 
   const restored = await routeCall(routeDeps, { action: 'restore', name: 'feedback.md' })
   assert.equal(restored.status, 200)
-  const after = restored.json.value.items.find((item) => item.name === 'feedback.md')
+  const after = allEntries(restored.json).find((item) => item.name === 'feedback.md')
   assert.equal(after.archived, false, '恢复后不再是归档态')
 })
 

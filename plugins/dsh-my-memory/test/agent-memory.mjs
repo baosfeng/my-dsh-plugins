@@ -35,6 +35,12 @@ async function mods() {
   return { ...paths, ...indexStore, ...store }
 }
 
+/** 面板载荷里的全部条目（GET/POST 返回分组 + 归档区，这里是它们的并集）。 */
+function allEntries(json) {
+  const value = json.value
+  return [...value.groups.flatMap((group) => group.entries), ...value.archived]
+}
+
 test('normalizeName accepts only whitelisted names', async () => {
   const { normalizeName } = await mods()
   assert.equal(normalizeName('user.md'), 'user.md')
@@ -314,7 +320,7 @@ test('route: GET returns entries with panel-only metadata', async () => {
   )
   assert.equal(handled, true)
   const payload = JSON.parse(captured[0])
-  const entry = payload.value.items.find((i) => i.name === 'user.md')
+  const entry = allEntries(payload).find((i) => i.name === 'user.md')
   assert.ok(entry, 'entry listed')
   assert.equal(entry.content, '- 面板要能看到这条', 'body visible to user')
   assert.ok(entry.createdAt > 0, 'createdAt exposed to the panel (agent never sees it)')
@@ -347,10 +353,10 @@ test('route: POST write then delete via the panel', async () => {
   }
   const wrote = await call({ action: 'write', name: 'feedback.md', content: '- 面板写入' })
   assert.equal(wrote.status, 200)
-  assert.ok(wrote.json.value.items.some((i) => i.name === 'feedback.md'))
+  assert.ok(allEntries(wrote.json).some((i) => i.name === 'feedback.md'))
   const removed = await call({ action: 'delete', name: 'feedback.md' })
   assert.equal(removed.status, 200)
-  assert.ok(!removed.json.value.items.some((i) => i.name === 'feedback.md'))
+  assert.ok(!allEntries(removed.json).some((i) => i.name === 'feedback.md'))
 })
 
 test('route: rejects invalid name and unknown action', async () => {

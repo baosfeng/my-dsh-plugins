@@ -219,6 +219,24 @@ const STYLES: string = `
 .dsh-my-memory-agent-archive { margin-top:10px; }
 .dsh-my-memory-agent-archive > summary { cursor:pointer; color:#6b7280; font-size:12.5px; padding:6px 0; }
 .dsh-my-memory-agent-archive .dsh-my-memory-agent-card { margin-top:8px; }
+/* 分组折叠头：项目名 · N 条（默认展开全局 + 最近写入的项目） */
+.dsh-my-memory-agent-group { margin-top:10px; }
+.dsh-my-memory-agent-group-head { display:flex; align-items:center; gap:6px; width:100%; padding:7px 9px;
+  border:none; border-radius:8px; background:#f5f6f8; color:#374151; font:inherit; font-size:12.5px;
+  font-weight:600; text-align:left; cursor:pointer; }
+.dsh-my-memory-agent-group-head:hover { background:#eef0f4; }
+.dsh-my-memory-agent-group-head:focus-visible { outline:2px solid #2456b3; outline-offset:1px; }
+.dsh-my-memory-agent-group-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dsh-my-memory-agent-group > .dsh-my-memory-list { margin-top:8px; }
+/* 跨项目晋升建议：面板顶部醒目区（被护栏拒绝的条目按钮置灰，原因用红字给出来） */
+.dsh-my-memory-agent-suggest { display:flex; flex-direction:column; gap:8px; padding:11px 13px;
+  border:1px solid #dfe6f5; border-radius:10px; background:#f8faff; }
+.dsh-my-memory-agent-suggest-title { margin:0; color:#2456b3; font-size:12.5px; font-weight:600; }
+.dsh-my-memory-agent-suggest-row { display:flex; flex-direction:column; gap:5px; align-items:flex-start;
+  padding:9px 11px; border:1px solid #e6e9ee; border-radius:9px; background:#fff; }
+.dsh-my-memory-agent-suggest-text { margin:0; color:#111827; font-size:13px; line-height:1.6; word-break:break-word; }
+.dsh-my-memory-agent-suggest-meta { margin:0; color:#6b7280; font-size:12px; line-height:1.5; }
+.dsh-my-memory-agent-suggest-blocked { margin:0; color:#c8322b; font-size:12px; line-height:1.6; }
 @keyframes dsh-my-memory-spin { to { transform:rotate(360deg); } }
 @keyframes dsh-my-memory-fade { from { opacity:0; } }
 @keyframes dsh-my-memory-pop { from { opacity:0; transform:translateY(6px) scale(.985); } }

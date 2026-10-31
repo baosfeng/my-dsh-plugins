@@ -15,6 +15,7 @@
 import { readJsonBody, writeJson } from 'dsh-shared';
 import { createAgentMemoryRuntime } from './tools.js';
 import { listExistingFiles, normalizeName } from './paths.js';
+import { buildGroups, buildSuggestions, promoteToGlobal } from './promote.js';
 /**
  * 构造路由依赖（issue #502）。
  *
@@ -70,6 +71,22 @@ async function readAll({ index, store }) {
     }
     return entries;
 }
+/**
+ * 组一次面板载荷。
+ *
+ * 分组与建议都由 promote.ts 从**同一份条目快照**派生：分组只装活跃条目，
+ * 归档条目单独一栏，两者不重叠——面板上「恢复」与「编辑」的入口因此不会
+ * 混在一张卡片上。
+ */
+async function panelValue(deps) {
+    const entries = await readAll(deps);
+    const projectNames = deps.index.projectNames();
+    return {
+        groups: buildGroups(entries, projectNames),
+        archived: entries.filter((entry) => entry.archived),
+        suggestions: buildSuggestions(entries, projectNames),
+    };
+}
 /** 拒绝：状态码 + 可读原因。 */
 function reject(response, status, message) {
     writeJson(response, status, { ok: false, error: { message } });
@@ -92,10 +109,41 @@ async function applyAction(store, action, name, content) {
         return 'action must be write, delete or restore';
     return result.ok ? null : result.error;
 }
-/** POST 分派：write | delete | restore（面板是用户入口，不需要 confirmed 标记）。 */
+/**
+ * 晋升动作（action=promote）：输入是一条**建议文本**而不是文件名。
+ *
+ * 服务端拿当前磁盘内容**重新算一遍建议**再执行，所以面板上的旧文案不会
+ * 造成误删：文本对不上任何建议就 400（让用户刷新），被全局层护栏拒绝时把
+ * 原因原样回给面板展示——绝不静默失败。
+ */
+async function runPromote(payload, response, deps) {
+    const raw = payload.text;
+    const text = typeof raw === 'string' ? raw : '';
+    if (text === '') {
+        reject(response, 400, 'invalid or missing text');
+        return;
+    }
+    const entries = await readAll(deps);
+    const suggestion = buildSuggestions(entries, deps.index.projectNames()).find((item) => item.text === text);
+    if (suggestion === undefined) {
+        reject(response, 400, '这条晋升建议已变化，刷新面板后再试');
+        return;
+    }
+    const result = await promoteToGlobal(deps.store, suggestion);
+    if (!result.ok) {
+        reject(response, 400, result.error);
+        return;
+    }
+    writeJson(response, 200, { ok: true, value: await panelValue(deps) });
+}
+/** POST 分派：write | delete | restore | promote（面板是用户入口，不需要 confirmed 标记）。 */
 async function handleWrite(request, response, deps) {
     const payload = await readJsonBody(request);
     const action = typeof payload?.action === 'string' ? payload.action : '';
+    if (action === 'promote') {
+        await runPromote(payload, response, deps);
+        return;
+    }
     const name = normalizeName(payload?.name);
     if (name === null) {
         reject(response, 400, 'invalid or missing name');
@@ -106,7 +154,7 @@ async function handleWrite(request, response, deps) {
         reject(response, 400, error);
         return;
     }
-    writeJson(response, 200, { ok: true, value: { items: await readAll(deps) } });
+    writeJson(response, 200, { ok: true, value: await panelValue(deps) });
 }
 /**
  * 分派一条 agent-memory 请求。
@@ -117,7 +165,7 @@ export async function routeAgentMemory(url, request, response, deps) {
         return false;
     try {
         if (request.method === 'GET') {
-            writeJson(response, 200, { ok: true, value: { items: await readAll(deps) } });
+            writeJson(response, 200, { ok: true, value: await panelValue(deps) });
             return true;
         }
         if (request.method === 'POST') {

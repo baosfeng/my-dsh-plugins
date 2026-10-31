@@ -117,36 +117,123 @@ global.localStorage = { getItem: () => null }
 Object.defineProperty(global, 'navigator', { value: { language: 'zh-CN' }, configurable: true })
 
 const NOW = 1793460239913
-const AGENT_ITEMS = [
-  {
-    name: 'user.md',
-    content: '# 用户偏好\n- 交付 UI 改动时给实测数字表',
-    createdAt: NOW - 7200_000,
-    updatedAt: NOW - 60_000,
-    lastReadAt: NOW - 120_000,
-    readCount: 3,
-    archived: false,
+
+/** 三个分组：全局 + 最近写入的项目（android-monitor）+ 更早写入的项目（my-dsh-plugins）。 */
+const USER_ENTRY = {
+  name: 'user.md',
+  content: '# 用户偏好\n- 交付 UI 改动时给实测数字表',
+  createdAt: NOW - 7200_000,
+  updatedAt: NOW - 60_000,
+  lastReadAt: NOW - 120_000,
+  readCount: 3,
+  archived: false,
+}
+const ANDROID_ENTRY = {
+  name: 'projects/c1a9a5e21a94/decisions.md',
+  projectName: 'android-monitor',
+  content: '- 选 A 因为 B',
+  createdAt: NOW - 7200_000,
+  updatedAt: NOW - 60_000,
+  lastReadAt: 0,
+  readCount: 0,
+  archived: false,
+}
+const PLUGINS_ENTRY = {
+  name: 'projects/ba7b32df3d04/pitfalls.md',
+  projectName: 'my-dsh-plugins',
+  content: '- 探针文件不要落在 src/main 下',
+  createdAt: NOW - 90_000_000,
+  updatedAt: NOW - 86_400_000,
+  lastReadAt: 0,
+  readCount: 0,
+  archived: false,
+}
+
+/** 跨项目重复的一条：可晋升（两个项目都记了同一句门禁假红）。 */
+const PROMOTABLE = {
+  text: '门禁九项并行时 vitest 偶发单例超时假红',
+  similarity: 0.72,
+  sources: [
+    {
+      name: 'projects/c1a9a5e21a94/pitfalls.md',
+      projectId: 'c1a9a5e21a94',
+      projectName: 'android-monitor',
+      line: '门禁九项并行时 vitest 偶发单例超时假红',
+    },
+    {
+      name: 'projects/ba7b32df3d04/pitfalls.md',
+      projectId: 'ba7b32df3d04',
+      projectName: 'my-dsh-plugins',
+      line: '门禁九项并行时 vitest 偶发单例超时假红',
+    },
+  ],
+  blocked: null,
+}
+
+/** 被全局层护栏拒绝的一条：含项目内路径，必须把原因显示出来而不是静默隐藏。 */
+const BLOCKED = {
+  text: '手机测试走 scripts/debug-cli.sh ui',
+  similarity: 0.61,
+  sources: [
+    {
+      name: 'projects/c1a9a5e21a94/pitfalls.md',
+      projectId: 'c1a9a5e21a94',
+      projectName: 'android-monitor',
+      line: '手机测试走 scripts/debug-cli.sh ui',
+    },
+    {
+      name: 'projects/ba7b32df3d04/pitfalls.md',
+      projectId: 'ba7b32df3d04',
+      projectName: 'my-dsh-plugins',
+      line: '手机测试走 scripts/debug-cli.sh ui',
+    },
+  ],
+  blocked: '这条含项目专属标识（路径 / 地址 / 端口），请写 projects/current/…；全局层只放跨项目通用的能力',
+}
+
+const AGENT_PAYLOAD = {
+  ok: true,
+  value: {
+    groups: [
+      { id: 'global', kind: 'global', entries: [USER_ENTRY], count: 1, latestUpdatedAt: NOW - 60_000 },
+      {
+        id: 'project:c1a9a5e21a94',
+        kind: 'project',
+        projectId: 'c1a9a5e21a94',
+        projectName: 'android-monitor',
+        entries: [ANDROID_ENTRY],
+        count: 1,
+        latestUpdatedAt: NOW - 60_000,
+      },
+      {
+        id: 'project:ba7b32df3d04',
+        kind: 'project',
+        projectId: 'ba7b32df3d04',
+        projectName: 'my-dsh-plugins',
+        entries: [PLUGINS_ENTRY],
+        count: 1,
+        latestUpdatedAt: NOW - 86_400_000,
+      },
+    ],
+    archived: [],
+    suggestions: [PROMOTABLE, BLOCKED],
   },
-  {
-    name: 'projects/c1a9a5e21a94/decisions.md',
-    projectName: 'android-monitor',
-    content: '- 选 A 因为 B',
-    createdAt: NOW - 7200_000,
-    updatedAt: NOW - 60_000,
-    lastReadAt: 0,
-    readCount: 0,
-    archived: false,
-  },
-]
+}
+
 const FIXED_RESPONSES = {
   '/my-memory/api/config': { ok: true, value: { maxEntryLength: 50 } },
   '/my-memory/api/prompts': { ok: true, value: { items: [] } },
-  '/my-memory/api/agent-memory': { ok: true, value: { items: AGENT_ITEMS } },
+  '/my-memory/api/agent-memory': AGENT_PAYLOAD,
 }
 const fetchCalls = []
+/** 写动作（POST）的排队响应：为空时走固定响应；晋升成功 / 被拒绝的用例在这里塞。 */
+let postResponses = []
 global.fetch = (url, options) => {
   const target = String(url)
   fetchCalls.push({ url: target, options })
+  if (options !== undefined && postResponses.length > 0) {
+    return Promise.resolve({ json: () => Promise.resolve(postResponses.shift()) })
+  }
   const fixed = options === undefined ? (FIXED_RESPONSES[target] ?? null) : null
   const canned = fixed ?? { ok: true, value: { scope: 'global', cwd: '', projectRoot: '', items: [] } }
   return Promise.resolve({ json: () => Promise.resolve(canned) })
@@ -205,6 +292,8 @@ function collectButtonNodes(node, out) {
         className: props.className ?? '',
         text: textOf(props.children),
         label: props['aria-label'] ?? '',
+        expanded: props['aria-expanded'],
+        disabled: props.disabled === true,
         onClick: props.onClick,
       })
     }
@@ -374,4 +463,106 @@ test('删除先弹确认层，确认后才发 POST', async () => {
   const posted = fetchCalls.filter((call) => call.options !== undefined && String(call.url).includes('agent-memory'))
   assert.equal(posted.length, 1, '确认后发出一次删除请求')
   assert.equal(JSON.parse(posted[0].options.body).action, 'delete', '请求体 action=delete')
+})
+
+// ── 分组折叠 + 跨项目晋升（issue #502 后续）──────────────────────────────────
+
+/** 分组头按钮（可折叠的「项目名 · N 条」）。 */
+function groupHeadsOf(tree) {
+  const buttons = []
+  collectButtonNodes(tree, buttons)
+  return buttons.filter((button) => button.className.includes('dsh-my-memory-agent-group-head'))
+}
+
+test('分组默认展开全局 + 最近写入的项目，其余折叠成「项目名 · N 条」', async () => {
+  const tree = await openAgentTab()
+  const heads = groupHeadsOf(tree)
+  assert.deepEqual(
+    heads.map((head) => head.label),
+    ['全局 · 1 条', 'android-monitor · 1 条', 'my-dsh-plugins · 1 条'],
+    '分组顺序：全局 → 最近写入的项目 → 更早的项目',
+  )
+  assert.deepEqual(
+    heads.map((head) => head.expanded),
+    [true, true, false],
+    '默认只展开全局与最近写入的项目',
+  )
+  assert.equal(collectByClass(tree, 'dsh-my-memory-agent-card').length, 2, '折叠的项目不渲染卡片')
+
+  const collapsed = heads[2]
+  assert.ok(collapsed.onClick, '折叠头可点击')
+  collapsed.onClick()
+  const opened = renderView()
+  assert.equal(collectByClass(opened, 'dsh-my-memory-agent-card').length, 3, '点开后显示该项目的卡片')
+  assert.deepEqual(
+    groupHeadsOf(opened).map((head) => head.expanded),
+    [true, true, true],
+    '展开状态记在面板状态里',
+  )
+})
+
+test('晋升建议：顶部列出跨项目重复条目，被护栏拒绝的直接给原因', async () => {
+  const tree = await openAgentTab()
+  assert.equal(collectByClass(tree, 'dsh-my-memory-agent-suggest').length, 1, '顶部有晋升建议区块')
+  const texts = collectByClass(tree, 'dsh-my-memory-agent-suggest-text').map((node) => textOf(node.props.children))
+  assert.deepEqual(texts, [PROMOTABLE.text, BLOCKED.text], '两条建议都列出来（被拒绝的也不隐藏）')
+  const blockedNotes = collectByClass(tree, 'dsh-my-memory-agent-suggest-blocked').map((node) =>
+    textOf(node.props.children),
+  )
+  assert.equal(blockedNotes.length, 1, '只有被拒绝的那条有原因')
+  assert.match(blockedNotes[0], /项目专属标识/, '原因文案来自 globalScopeReject，原样展示')
+  const buttons = []
+  collectButtonNodes(tree, buttons)
+  const promoteButtons = buttons.filter((button) => button.text === '晋升到 user.md')
+  assert.equal(promoteButtons.length, 2, '每条建议一个晋升按钮')
+  assert.equal(promoteButtons.filter((button) => button.disabled).length, 1, '被拒绝的那条按钮不可点')
+})
+
+test('晋升先弹确认层，确认后才发 POST（action=promote）', async () => {
+  const tree = await openAgentTab()
+  fetchCalls.length = 0
+  const buttons = []
+  collectButtonNodes(tree, buttons)
+  const promote = buttons.find((button) => button.text === '晋升到 user.md' && !button.disabled)
+  assert.ok(promote, '可晋升的那条有按钮')
+  promote.onClick()
+  const confirmTree = renderView()
+  const overlays = collectByClass(confirmTree, 'dsh-my-memory-overlay')
+  assert.equal(overlays.length, 1, '晋升弹出确认层')
+  assert.equal(
+    fetchCalls.filter((call) => call.options !== undefined).length,
+    0,
+    '确认前不得发出写请求',
+  )
+  const confirmButtons = []
+  collectButtonNodes(overlays[0], confirmButtons)
+  const allow = confirmButtons.find((button) => button.text === '晋升到 user.md')
+  assert.ok(allow, '确认层有「晋升到 user.md」按钮')
+  postResponses.push({ ok: true, value: { groups: [], archived: [], suggestions: [] } })
+  allow.onClick()
+  const posted = fetchCalls.filter((call) => call.options !== undefined && String(call.url).includes('agent-memory'))
+  assert.equal(posted.length, 1, '确认后发出一次晋升请求')
+  const body = JSON.parse(posted[0].options.body)
+  assert.equal(body.action, 'promote', '请求体 action=promote')
+  assert.equal(body.text, PROMOTABLE.text, '请求体带建议文本（服务端据此重算，不信任面板状态）')
+})
+
+test('晋升被服务端拒绝时把原因显示在面板上，不静默失败', async () => {
+  const tree = await openAgentTab()
+  const buttons = []
+  collectButtonNodes(tree, buttons)
+  buttons.find((button) => button.text === '晋升到 user.md' && !button.disabled).onClick()
+  const overlays = collectByClass(renderView(), 'dsh-my-memory-overlay')
+  const confirmButtons = []
+  collectButtonNodes(overlays[0], confirmButtons)
+  const reason = '不能进全局层：这条含项目专属标识（路径 / 地址 / 端口），请写 projects/current/…；全局层只放跨项目通用的能力'
+  postResponses.push({ ok: false, error: { message: reason } })
+  confirmButtons.find((button) => button.text === '晋升到 user.md').onClick()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const after = renderView()
+  const errors = collectByClass(after, 'dsh-my-memory-error').map((node) => textOf(node.props.children))
+  assert.ok(
+    errors.some((text) => text.includes('不能进全局层')),
+    `面板应显示拒绝原因，实际 ${JSON.stringify(errors)}`,
+  )
 })

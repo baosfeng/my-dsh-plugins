@@ -121,7 +121,8 @@ test('#410: host-provided peer mismatch gets its own sentence and no install com
 test('#410: host-provided peer miss gets no install command either', () => {
   const dir = freshDir()
   writePlugin(dir, 'dsh-pet', { peerDependencies: { '@deepseek-ai/dsh-llm': '^0.1.5-rc.1' } })
-  const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-pet' })
+  // #503：显式注入「没有宿主清单」，用例不依赖运行机器上是否装了全局 dsh。
+  const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-pet', hostInventory: EMPTY_HOST_INVENTORY })
   assert.deepEqual(result.missing, ['@deepseek-ai/dsh-llm'])
   assert.deepEqual(result.mismatched, [])
   assert.deepEqual(result.suggestions, [], 'a @deepseek-ai/* peer must never be installed into the profile (#407)')
@@ -165,7 +166,8 @@ test('precheck: optional missing dependency does not block', () => {
     peerDependencies: { cordis: '^4.0.0-rc.8' },
     peerDependenciesMeta: { cordis: { optional: true } },
   })
-  const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-app' })
+  // #503：显式注入空宿主清单——否则机器上装了全局 dsh 时 cordis 会被宿主安装目录命中。
+  const result = checkPeerDependencies({ profileDir: dir, pluginName: 'dsh-app', hostInventory: EMPTY_HOST_INVENTORY })
   assert.equal(result.ok, true)
   assert.deepEqual(result.missing, [])
   assert.equal(result.warnings.length, 1)
@@ -478,6 +480,100 @@ test('#481: files 清单覆盖的第三方包（无版本）视为已满足', ()
     hostInventory: hostInventoryOf({}, ['node_modules/left-pad/index.js']),
   })
   assert.equal(result.ok, true)
+})
+
+// ── #503: npm 全局 dsh web 形态（宿主安装目录供给，profiles 根没有 node_modules）─────
+/** issue #503 复现里的 10 个服务端宿主 peer（dsh-better-sidebar@0.28.2）。 */
+const HOST_PEERS_503 = {
+  '@deepseek-ai/dsh-agent': '^0.2.1-rc.1',
+  '@deepseek-ai/dsh-client-locale': '^0.2.1-rc.1',
+  '@deepseek-ai/dsh-client-ui-conversation': '^0.2.1-rc.1',
+  '@deepseek-ai/dsh-client-ui-settings': '^0.2.1-rc.1',
+  '@deepseek-ai/dsh-host-webserver': '^0.2.1-rc.1',
+  '@deepseek-ai/dsh-llm': '^0.2.1-rc.1',
+  '@deepseek-ai/dsh-session': '^0.2.1-rc.1',
+  '@deepseek-ai/dsh-settings': '^0.2.1-rc.1',
+  '@deepseek-ai/dsh-subagent': '^0.2.1-rc.1',
+  '@deepseek-ai/dsh-tools': '^0.2.1-rc.1',
+}
+
+/** #503 夹具：模拟 npm 全局安装 <prefix>/lib/node_modules/@deepseek-ai/dsh 的宿主树。 */
+function writeHostInstall(packages) {
+  const hostRoot = join(freshDir(), 'lib', 'node_modules', '@deepseek-ai', 'dsh')
+  mkdirSync(hostRoot, { recursive: true })
+  writeFileSync(
+    join(hostRoot, 'package.json'),
+    JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.2.1-rc.3' }),
+    'utf8',
+  )
+  for (const [name, version] of Object.entries(packages)) {
+    const dir = join(hostRoot, 'node_modules', name)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version }), 'utf8')
+  }
+  return hostRoot
+}
+
+test('#503: npm 全局 dsh web 的 10 个服务端宿主 peer 不再误报缺失', () => {
+  const versions = Object.fromEntries(Object.keys(HOST_PEERS_503).map((name) => [name, '0.2.1-rc.3']))
+  const hostRoot = writeHostInstall(versions)
+  const profileDir = join(freshDir(), 'profiles', 'web')
+  writePlugin(profileDir, 'dsh-better-sidebar', { peerDependencies: HOST_PEERS_503 })
+  // 复现里的 profile：只有 cosmokit / schemastery，profiles 根根本没有 node_modules。
+  writeDep(profileDir, '@deepseek-ai/cosmokit', '0.5.0')
+  writeDep(profileDir, '@deepseek-ai/schemastery', '2.0.0')
+  resetHostInventoryCache()
+  const result = checkPeerDependencies({
+    profileDir,
+    pluginName: 'dsh-better-sidebar',
+    hostInventory: loadHostInventory({ hostRoot }),
+  })
+  assert.equal(result.ok, true, '宿主安装目录里的服务器宿主包版本满足 → 预检通过')
+  assert.deepEqual(result.missing, [], 'issues: [] —— 不再刷 dependency-missing')
+  assert.deepEqual(result.missingHostNamespace, [])
+  assert.deepEqual(result.mismatched, [])
+  assert.deepEqual(result.suggestions, [])
+  assert.deepEqual(result.warnings, [])
+})
+
+test('#503: 宿主安装目录里的包版本不满足只记警告（用户装不了第二份）', () => {
+  const hostRoot = writeHostInstall({ '@deepseek-ai/dsh-agent': '0.2.1-rc.3' })
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-pet', { peerDependencies: { '@deepseek-ai/dsh-agent': '^0.2.1-rc.5' } })
+  resetHostInventoryCache()
+  const result = checkPeerDependencies({
+    profileDir: dir,
+    pluginName: 'dsh-pet',
+    hostInventory: loadHostInventory({ hostRoot }),
+  })
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.mismatched, [], '宿主内置包的版本不满足延续 #481 的 warning 语义')
+  assert.deepEqual(result.suggestions, [])
+  assert.ok(
+    result.warnings.some((warning) => warning.includes('宿主内置') && warning.includes('0.2.1-rc.3')),
+    result.warnings.join('；'),
+  )
+})
+
+test('#503: 宿主命名空间的包没有任何证据命中时，文案与判定同源（不再说「无需安装」）', () => {
+  const dir = freshDir()
+  writePlugin(dir, 'dsh-needy', { peerDependencies: { '@deepseek-ai/dsh-ghost': '^0.2.1' } })
+  const result = checkPeerDependencies({
+    profileDir: dir,
+    pluginName: 'dsh-needy',
+    hostInventory: EMPTY_HOST_INVENTORY,
+  })
+  assert.deepEqual(result.missing, ['@deepseek-ai/dsh-ghost'])
+  assert.deepEqual(
+    result.missingHostNamespace,
+    ['@deepseek-ai/dsh-ghost'],
+    '缺失项带上「宿主命名空间」标注，文案据此成句（不再从包名前缀反推）',
+  )
+  assert.deepEqual(result.suggestions, [], '宿主命名空间的包不给安装命令')
+  const message = buildDependencyMessage(result)
+  assert.ok(message.includes('缺少依赖 @deepseek-ai/dsh-ghost'), message)
+  assert.ok(!message.includes('无需安装'), `判定是缺失，文案不得反过来说「无需安装」：${message}`)
+  assert.ok(!message.includes('dsh plugin add'), message)
 })
 
 afterAll(() => {

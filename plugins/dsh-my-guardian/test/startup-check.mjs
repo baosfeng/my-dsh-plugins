@@ -24,7 +24,7 @@ import {
 // 掩盖「每个行为断言各自先失败」的证据（#424 A′）。
 import * as startupModule from '../lib/startup-check.js'
 import { checkPeerDependencies } from '../lib/dep-precheck.js'
-import { loadHostInventory, resetHostInventoryCache } from '../lib/host-inventory.js'
+import { EMPTY_HOST_INVENTORY, loadHostInventory, resetHostInventoryCache } from '../lib/host-inventory.js'
 import { apply } from '../lib/index.js'
 
 const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-guardian-startup-' }).name
@@ -211,6 +211,8 @@ test('#410: host-provided peers produce no dsh plugin add fix at all', () => {
   const { issues } = checkStartupRoster({
     entries: [{ id: 'hostly', name: 'dsh-hostly', disabled: false }],
     profileDir: dir,
+    // #503：显式注入「没有宿主清单」，用例不依赖运行机器上是否装了全局 dsh。
+    hostInventory: EMPTY_HOST_INVENTORY,
   })
   assert.equal(issues.length, 1)
   const issue = issues[0]
@@ -219,7 +221,9 @@ test('#410: host-provided peers produce no dsh plugin add fix at all', () => {
   assert.equal(issue.installHint, null, 'no install hint for host-provided packages')
   assert.equal(issue.fix, null, 'no repair command: executing it would install a second host copy (#407)')
   assert.ok(!JSON.stringify(issue).includes('dsh plugin add'), 'no install command anywhere in the issue')
-  assert.ok(issue.message.includes('由宿主运行时供给'), 'the message says the host supplies it')
+  // #503：文案与判定同源——判的是「缺失」，就不能同时声称「由宿主运行时供给，无需安装」。
+  assert.ok(issue.message.includes('缺少依赖 @deepseek-ai/dsh-llm'), issue.message)
+  assert.ok(!issue.message.includes('无需安装'), '判定是缺失，文案不得反过来说「无需安装」')
 })
 
 test('healthy dsh-* entries and host-provided rows produce no issues', () => {
@@ -677,6 +681,38 @@ test('#481: 名册 peer 检查认宿主清单（桌面版 app.asar 内的宿主�
   })
   assert.deepEqual(issues, [], '宿主内置包不再误报「缺少依赖」')
 })
+
+// ── #503: npm 全局 dsh web 形态（宿主安装目录，没有 app.asar）────────────────────
+
+test('#503: npm 全局 dsh web 形态下名册行不再报 dependency-missing', () => {
+  writePkg('dsh-sidebar-503', {
+    peers: { '@deepseek-ai/dsh-agent': '^0.2.1-rc.1', '@deepseek-ai/dsh-tools': '^0.2.1-rc.1' },
+  })
+  const { issues } = checkStartupRoster({
+    entries: [{ id: 'sidebar-503', name: 'dsh-sidebar-503', disabled: false }],
+    profileDir: dir,
+    hostInventory: loadHostInventory({ hostRoot: writeHostInstall503() }),
+  })
+  assert.deepEqual(issues, [], '宿主安装目录供给且版本满足 → issues: []')
+})
+
+/** #503 夹具：<tmp>/host-install/lib/node_modules/@deepseek-ai/dsh 的宿主树。 */
+function writeHostInstall503() {
+  const hostRoot = join(dir, 'host-install', 'lib', 'node_modules', '@deepseek-ai', 'dsh')
+  mkdirSync(hostRoot, { recursive: true })
+  writeFileSync(
+    join(hostRoot, 'package.json'),
+    JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.2.1-rc.3' }),
+    'utf8',
+  )
+  const packages = { 'dsh-agent': '0.2.1-rc.3', 'dsh-tools': '0.2.1-rc.3' }
+  for (const [name, version] of Object.entries(packages)) {
+    const pkgDir = join(hostRoot, 'node_modules', '@deepseek-ai', name)
+    mkdirSync(pkgDir, { recursive: true })
+    writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: `@deepseek-ai/${name}`, version }), 'utf8')
+  }
+  return hostRoot
+}
 
 /** #481 夹具：写一份 desktop-runtime.json 并读成宿主清单。 */
 function hostInventoryOf(shared = {}, files = []) {

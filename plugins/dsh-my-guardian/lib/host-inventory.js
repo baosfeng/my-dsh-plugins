@@ -12,16 +12,20 @@
  * 只给「存在」，无版本）。读取失败（纯 Node 环境没有 asar）一律降级为空索引，
  * 绝不抛错——预检是 best-effort，不能反过来拖垮启动。
  *
- * 探测顺序（只在宿主真的以桌面 App 形态安装时命中）：
- *  1. 调用方显式传入的 `runtimeJsonPath`（测试 / 脚本）；
+ * 探测顺序（#503 起四条）：
+ *  1. 调用方显式传入的 `runtimeJsonPath`（测试 / 脚本；显式传路径时**绝不**兜底）；
  *  2. Electron 主进程的 `process.resourcesPath` → `app.asar/dsh/desktop-runtime.json`；
- *  3. `DSH_APP_RESOURCES`（非标准安装位置，与 scripts/lib/asar-host.mjs 同源约定）。
+ *  3. `DSH_APP_RESOURCES`（非标准安装位置，与 scripts/lib/asar-host.mjs 同源约定）；
+ *  4. 宿主安装目录（npm 全局 `dsh web`）：`<prefix>/lib/node_modules/@deepseek-ai/dsh`
+ *     下的 node_modules——从 `argv[1]` / `execPath` 向上找，或用 `DSH_HOST_ROOT` 直指。
  *
- * 纯 `dsh web`（npm 全局）环境没有 `process.resourcesPath`，宿主包由 profiles
- * 根 node_modules 的链接提供，走原有磁盘解析即可——这里保持空索引。
+ * 本文件此前假设「纯 dsh web 的宿主包由 profiles 根 node_modules 的链接提供」，但那个
+ * profiles 根在 npm 全局安装形态下根本不存在（#503）→ 清单长期为空、服务端宿主包整片
+ * 误报。安装目录清单**刻意只认 @deepseek-ai/***：宿主树里还有 yaml / ws / zod 等第三方
+ * 包，一并算成「宿主供给」会把「插件真缺 yaml」掩盖成漏报。
  */
-import { closeSync, existsSync, openSync, readFileSync, readSync } from 'node:fs';
-import { join } from 'node:path';
+import { closeSync, existsSync, openSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 /** 宿主前端注入的静态模块（packages/client/web/src/seed.ts 的 getStaticModules，9 项）。 */
 export const STATIC_MODULES = new Set([
     'react',
@@ -129,6 +133,133 @@ function runtimeJsonCandidates(explicit) {
     }
     return candidates;
 }
+/** 宿主包名（npm 全局安装与桌面版 asar 内的 DSH 本体）。 */
+const HOST_PACKAGE = '@deepseek-ai/dsh';
+/** 只有 @deepseek-ai/* 由宿主统一供给：宿主树里的第三方包不算（#503）。 */
+const HOST_SCOPE = '@deepseek-ai/';
+/** 读目录下 package.json 的 name / version（读失败一律 null：预检是 best-effort）。 */
+function readPackageMeta(dir) {
+    try {
+        const meta = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+        return {
+            name: typeof meta.name === 'string' ? meta.name : null,
+            version: typeof meta.version === 'string' ? meta.version : null,
+        };
+    }
+    catch {
+        return null;
+    }
+}
+/** realpath，失败退回原路径（软链断掉也不抛）。 */
+function resolveReal(path) {
+    try {
+        return realpathSync(path);
+    }
+    catch {
+        return path;
+    }
+}
+function isDirectory(path) {
+    try {
+        return statSync(path).isDirectory();
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * 默认探测种子（#503）：当前进程能暴露的宿主入口——npm bin 软链落点（`argv[1]`，
+ * `dsh web` 时就是 `<prefix>/lib/node_modules/@deepseek-ai/dsh/lib/bin.js`）、node
+ * 可执行文件（`execPath`），以及由 execPath 推出的 npm 全局前缀（`<prefix>/bin/dsh`
+ * 与包本体分离的经典布局）。
+ */
+function defaultSeeds() {
+    const seeds = [];
+    const script = process.argv[1];
+    if (typeof script === 'string' && script !== '')
+        seeds.push(script);
+    const execPath = process.execPath;
+    if (typeof execPath === 'string' && execPath !== '') {
+        seeds.push(execPath);
+        seeds.push(join(dirname(execPath), '..', 'lib', 'node_modules', HOST_PACKAGE, 'package.json'));
+        seeds.push(join(dirname(execPath), '..', 'node_modules', HOST_PACKAGE, 'package.json'));
+    }
+    return seeds;
+}
+/** 一个种子（文件或目录）向上 12 层找 name === @deepseek-ai/dsh 的 package.json。 */
+function hostRootFromSeed(seed) {
+    let dir = resolveReal(seed);
+    if (!isDirectory(dir))
+        dir = dirname(dir);
+    for (let depth = 0; depth < 12; depth += 1) {
+        if (readPackageMeta(dir)?.name === HOST_PACKAGE)
+            return dir;
+        const parent = dirname(dir);
+        if (parent === dir)
+            return null;
+        dir = parent;
+    }
+    return null;
+}
+/**
+ * 宿主安装根目录（#503）：npm 全局安装时是 `<prefix>/lib/node_modules/@deepseek-ai/dsh`；
+ * 桌面版仍是 `app.asar/dsh`（那条链由 desktop-runtime.json 先行命中，这里只兜底）。
+ * seeds 可注入——测试不依赖真实安装位置；hostRoot 直指宿主根（等价 DSH_HOST_ROOT）。
+ */
+export function hostInstallRoot(options = {}) {
+    const override = options.hostRoot;
+    if (typeof override === 'string' && override !== '' && readPackageMeta(override)?.name === HOST_PACKAGE) {
+        return resolveReal(override);
+    }
+    for (const seed of options.seeds ?? defaultSeeds()) {
+        const root = hostRootFromSeed(seed);
+        if (root !== null)
+            return root;
+    }
+    return null;
+}
+/** 宿主 node_modules 候选：自身树 + 全局根里的兄弟包（npm 提升 / pnpm 符号链接两种布局）。 */
+function installNodeModulesRoots(hostRoot) {
+    const roots = [join(hostRoot, 'node_modules')];
+    const index = hostRoot.lastIndexOf('node_modules/');
+    if (index >= 0) {
+        const globalRoot = hostRoot.slice(0, index + 'node_modules'.length);
+        if (!roots.includes(globalRoot))
+            roots.push(globalRoot);
+    }
+    return roots;
+}
+/** 在候选根里读已装版本（没有 package.json / 没有 version 都是 null）。 */
+function readInstalledVersion(roots, name) {
+    for (const root of roots) {
+        const meta = readPackageMeta(join(root, name));
+        if (meta !== null)
+            return meta.version;
+    }
+    return null;
+}
+/**
+ * 宿主安装目录清单（#503）：npm 全局 dsh 的 node_modules 树，按需读 package.json 版本
+ * （一次进程内缓存，不做整树枚举）。只认 @deepseek-ai/*（见文件头）。
+ */
+export function buildInstallDirInventory(hostRoot) {
+    const roots = installNodeModulesRoots(hostRoot);
+    const versions = new Map();
+    const versionOf = (name) => {
+        if (!versions.has(name))
+            versions.set(name, readInstalledVersion(roots, name));
+        return versions.get(name) ?? null;
+    };
+    const has = (name) => name.startsWith(HOST_SCOPE) && (versionOf(name) !== null || roots.some((root) => existsSync(join(root, name))));
+    return {
+        available: true,
+        source: roots[0] ?? hostRoot,
+        shared: new Map(),
+        files: new Set(),
+        has,
+        versionOf: (name) => (name.startsWith(HOST_SCOPE) ? versionOf(name) : null),
+    };
+}
 /** 从 `node_modules/<pkg>/…` 形式的清单路径里取出包名（含 scoped）。 */
 export function packageNameFromFile(filePath) {
     const marker = 'node_modules/';
@@ -187,34 +318,49 @@ export function buildHostInventory(json, source) {
         versionOf: (name) => shared.get(name) ?? null,
     };
 }
-/** 缓存：按显式路径分键（显式路径用于测试/脚本，不进全局缓存语义）。 */
+/** DSH_HOST_ROOT：非常规安装位置（与 scripts/lib/asar-host.mjs 同源约定）。 */
+function hostRootFromEnv() {
+    const value = process.env.DSH_HOST_ROOT;
+    return typeof value === 'string' && value !== '' ? value : undefined;
+}
+/** 缓存：按显式路径 / 宿主根 / 探测种子分键（显式参数用于测试/脚本，不进全局缓存语义）。 */
 const inventoryCache = new Map();
 /** 清空缓存（测试用：避免用例之间互相污染）。 */
 export function resetHostInventoryCache() {
     inventoryCache.clear();
 }
-/**
- * 读取宿主内置包清单。任何失败都降级为 `EMPTY_HOST_INVENTORY`（不抛错）。
- * 结果按路径缓存——宿主安装目录在一次进程生命周期内不会变。
- */
-export function loadHostInventory(options = {}) {
-    const key = options.runtimeJsonPath ?? '';
-    const cached = inventoryCache.get(key);
-    if (cached !== undefined)
-        return cached;
-    let inventory = EMPTY_HOST_INVENTORY;
+/** 探测清单；任何失败都降级为 `EMPTY_HOST_INVENTORY`（预检是 best-effort，绝不抛错）。 */
+function readInventory(options) {
     for (const candidate of runtimeJsonCandidates(options.runtimeJsonPath)) {
         const text = readHostText(candidate);
         if (text === null)
             continue;
         try {
-            inventory = buildHostInventory(JSON.parse(text), candidate);
-            break;
+            return buildHostInventory(JSON.parse(text), candidate);
         }
         catch {
-            // 损坏的清单位于候选链中：继续试下一个，全部失败则保持降级。
+            // 损坏的清单位于候选链中：继续试下一个，全部失败则继续兜底。
         }
     }
+    // 显式传路径时不兜底：「指定文件不存在」必须保持失败（测试/脚本语义）。
+    if (typeof options.runtimeJsonPath === 'string' && options.runtimeJsonPath !== '')
+        return EMPTY_HOST_INVENTORY;
+    // #503：asar 清单落空（纯 npm 全局 dsh web）→ 兜底宿主安装目录。
+    const root = hostInstallRoot({ hostRoot: options.hostRoot ?? hostRootFromEnv(), seeds: options.hostSeeds });
+    if (root === null)
+        return EMPTY_HOST_INVENTORY;
+    return existsSync(join(root, 'node_modules')) ? buildInstallDirInventory(root) : EMPTY_HOST_INVENTORY;
+}
+/**
+ * 读取宿主内置包清单（#503：唯一入口）。任何失败都降级为 `EMPTY_HOST_INVENTORY`（不抛错）。
+ * 结果按参数分键缓存——宿主安装在一次进程生命周期内不会变。
+ */
+export function loadHostInventory(options = {}) {
+    const key = [options.runtimeJsonPath ?? '', options.hostRoot ?? '', (options.hostSeeds ?? []).join('\n')].join('\u0000');
+    const cached = inventoryCache.get(key);
+    if (cached !== undefined)
+        return cached;
+    const inventory = readInventory(options);
     inventoryCache.set(key, inventory);
     return inventory;
 }

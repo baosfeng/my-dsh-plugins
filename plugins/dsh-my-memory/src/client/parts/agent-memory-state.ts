@@ -129,12 +129,7 @@ function loadAgentMemory(set: AgentSetters): void {
 }
 
 /** 保存一个文件的正文（write 是整份覆盖）；成功清编辑态，失败只标错不吞掉。 */
-function saveAgentMemory(
-  groups: AgentMemoryGroup[],
-  name: string,
-  draft: string,
-  settle: AgentSettle,
-): void {
+function saveAgentMemory(groups: AgentMemoryGroup[], name: string, draft: string, settle: AgentSettle): void {
   if (findAgentEntry(groups, name) === undefined) return
   writeAgentMemory({ action: 'write', name, content: draft })
     .then((next) => {

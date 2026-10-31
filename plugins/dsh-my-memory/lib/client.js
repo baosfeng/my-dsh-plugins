@@ -180,7 +180,7 @@ const strings = {
     agentMemoryDeleteNote: () => isZh()
         ? '正文与索引元数据一并移除，不可撤销（agent 下次会话也读不到）'
         : 'Body and index metadata are removed for good (the agent will not see it in later sessions either)',
-    agentMemoryGroupLabel: (name, count) => (isZh() ? `${name} · ${count} 条` : `${name} · ${count}`),
+    agentMemoryGroupLabel: (name, count) => isZh() ? `${name} · ${count} 条` : `${name} · ${count}`,
     agentMemorySuggestTitle: (count) => isZh() ? `可晋升到全局（${count}）` : `Promotable to global (${count})`,
     agentMemorySuggestMeta: (projects, percent) => isZh() ? `出现在 ${projects} · 相似度 ${percent}%` : `in ${projects} · similarity ${percent}%`,
     agentMemorySuggestBlocked: (reason) => isZh() ? `这条不能进全局：${reason}` : `Cannot go global: ${reason}`,
@@ -2146,9 +2146,7 @@ function AgentMemoryPanel(props) {
     const active = activeEntriesOf(props.groups).length;
     const pendingDelete = findAgentEntry(props.groups, props.pendingDelete);
     const pendingPromote = props.suggestions.find((item) => item.text === props.pendingPromote);
-    return createElement('section', { className: 'dsh-my-memory-section' }, createElement('p', { className: 'dsh-my-memory-note' }, strings.agentMemoryNote()), props.loading ? createElement('p', { className: 'dsh-my-memory-note' }, strings.loading()) : null, props.error ? createElement('p', { className: 'dsh-my-memory-error' }, strings.loadError()) : null, props.promoteError === ''
-        ? null
-        : createElement('p', { className: 'dsh-my-memory-error' }, props.promoteError), createElement(AgentMemorySuggests, { suggestions: props.suggestions, onPromote: props.onPromoteAsk }), active === 0 && !props.loading && !props.error ? createElement(AgentMemoryEmpty, null) : null, props.groups.map((group) => createElement(AgentMemoryGroupBlock, {
+    return createElement('section', { className: 'dsh-my-memory-section' }, createElement('p', { className: 'dsh-my-memory-note' }, strings.agentMemoryNote()), props.loading ? createElement('p', { className: 'dsh-my-memory-note' }, strings.loading()) : null, props.error ? createElement('p', { className: 'dsh-my-memory-error' }, strings.loadError()) : null, props.promoteError === '' ? null : createElement('p', { className: 'dsh-my-memory-error' }, props.promoteError), createElement(AgentMemorySuggests, { suggestions: props.suggestions, onPromote: props.onPromoteAsk }), active === 0 && !props.loading && !props.error ? createElement(AgentMemoryEmpty, null) : null, props.groups.map((group) => createElement(AgentMemoryGroupBlock, {
         key: group.id,
         group,
         expanded: props.expanded.has(group.id),

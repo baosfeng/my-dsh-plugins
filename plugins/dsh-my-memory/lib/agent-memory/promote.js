@@ -29,7 +29,7 @@ const GLOBAL_FILE = 'user.md';
 /** 项目层路径前缀。 */
 const PROJECT_PREFIX = 'projects';
 /** 项目 id（projects/<id>/<file>）或空串（全局层文件）。 */
-export function projectIdOf(name) {
+function projectIdOf(name) {
     const parts = name.split('/');
     return parts.length === 3 && parts[0] === PROJECT_PREFIX ? (parts[1] ?? '') : '';
 }

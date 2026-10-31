@@ -80,7 +80,7 @@ const GLOBAL_FILE = 'user.md'
 const PROJECT_PREFIX = 'projects'
 
 /** 项目 id（projects/<id>/<file>）或空串（全局层文件）。 */
-export function projectIdOf(name: string): string {
+function projectIdOf(name: string): string {
   const parts = name.split('/')
   return parts.length === 3 && parts[0] === PROJECT_PREFIX ? (parts[1] ?? '') : ''
 }
@@ -333,10 +333,7 @@ async function rollback(store: AgentMemoryStore, done: readonly Rewrite[]): Prom
  * 顺序不可颠倒：先写 user.md 会撞上 duplicates 的「与 projects/… 重复」护栏
  * ——那条重复正是我们要合并掉的东西。所以先删再写，写失败再把删掉的恢复回去。
  */
-export async function promoteToGlobal(
-  store: AgentMemoryStore,
-  suggestion: PromoteSuggestion,
-): Promise<PromoteOutcome> {
+export async function promoteToGlobal(store: AgentMemoryStore, suggestion: PromoteSuggestion): Promise<PromoteOutcome> {
   if (suggestion.blocked !== null) return { ok: false, error: '不能进全局层：' + suggestion.blocked }
   const before = (await store.readForPanel(GLOBAL_FILE)) ?? ''
   const after = appendLine(before, suggestion.text)

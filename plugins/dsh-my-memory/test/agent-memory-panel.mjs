@@ -529,11 +529,7 @@ test('晋升先弹确认层，确认后才发 POST（action=promote）', async (
   const confirmTree = renderView()
   const overlays = collectByClass(confirmTree, 'dsh-my-memory-overlay')
   assert.equal(overlays.length, 1, '晋升弹出确认层')
-  assert.equal(
-    fetchCalls.filter((call) => call.options !== undefined).length,
-    0,
-    '确认前不得发出写请求',
-  )
+  assert.equal(fetchCalls.filter((call) => call.options !== undefined).length, 0, '确认前不得发出写请求')
   const confirmButtons = []
   collectButtonNodes(overlays[0], confirmButtons)
   const allow = confirmButtons.find((button) => button.text === '晋升到 user.md')
@@ -555,7 +551,8 @@ test('晋升被服务端拒绝时把原因显示在面板上，不静默失败',
   const overlays = collectByClass(renderView(), 'dsh-my-memory-overlay')
   const confirmButtons = []
   collectButtonNodes(overlays[0], confirmButtons)
-  const reason = '不能进全局层：这条含项目专属标识（路径 / 地址 / 端口），请写 projects/current/…；全局层只放跨项目通用的能力'
+  const reason =
+    '不能进全局层：这条含项目专属标识（路径 / 地址 / 端口），请写 projects/current/…；全局层只放跨项目通用的能力'
   postResponses.push({ ok: false, error: { message: reason } })
   confirmButtons.find((button) => button.text === '晋升到 user.md').onClick()
   await new Promise((resolve) => setTimeout(resolve, 0))

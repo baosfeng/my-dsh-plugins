@@ -157,7 +157,8 @@ const strings = {
     isZh()
       ? '正文与索引元数据一并移除，不可撤销（agent 下次会话也读不到）'
       : 'Body and index metadata are removed for good (the agent will not see it in later sessions either)',
-  agentMemoryGroupLabel: (name: string, count: number): string => (isZh() ? `${name} · ${count} 条` : `${name} · ${count}`),
+  agentMemoryGroupLabel: (name: string, count: number): string =>
+    isZh() ? `${name} · ${count} 条` : `${name} · ${count}`,
   agentMemorySuggestTitle: (count: number): string =>
     isZh() ? `可晋升到全局（${count}）` : `Promotable to global (${count})`,
   agentMemorySuggestMeta: (projects: string, percent: number): string =>

@@ -248,11 +248,7 @@ test('route POST promote：写入 user.md 并从涉及的项目文件删除该�
   assert.match(await bodyOf('user.md'), new RegExp('- ' + DUPLICATED), '全局层拿到这条')
   assert.ok(!(await bodyOf('projects/aaa111/pitfalls.md')).includes(DUPLICATED), '项目 A 删掉该条')
   assert.ok(!(await bodyOf('projects/bbb222/decisions.md')).includes(DUPLICATED), '项目 B 删掉该条')
-  assert.match(
-    await bodyOf('projects/aaa111/pitfalls.md'),
-    /本项目独有的坑/,
-    '同文件里无关的条目必须留着',
-  )
+  assert.match(await bodyOf('projects/aaa111/pitfalls.md'), /本项目独有的坑/, '同文件里无关的条目必须留着')
   assert.equal(promoted.json.value.suggestions.length, 0, '晋升后建议消失')
 })
 
@@ -297,7 +293,11 @@ test('route POST promote：全局层写满时 400，项目层回滚不丢数据'
   assert.equal(rejected.status, 400)
   assert.match(rejected.json.error.message, /已满/, '把 store 的尺寸红线原样告诉用户')
   assert.equal((await store.readForPanel('user.md')).split('\n').length, 60, '全局层没有被追加')
-  assert.match(await bodyOf('projects/r1/pitfalls.md'), new RegExp(DUPLICATED), '项目层没有被删（做任何删除之前就失败）')
+  assert.match(
+    await bodyOf('projects/r1/pitfalls.md'),
+    new RegExp(DUPLICATED),
+    '项目层没有被删（做任何删除之前就失败）',
+  )
 })
 
 test('route POST promote 不影响原有写动作的响应形状', async () => {

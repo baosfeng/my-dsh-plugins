@@ -6,8 +6,7 @@
 
 /** 分组标题文案：`全局 · N 条` / `项目名 · N 条`。 */
 function agentGroupLabel(group: AgentMemoryGroup): string {
-  const name =
-    group.kind === 'global' ? strings.agentMemoryScopeGlobal() : (group.projectName ?? group.projectId ?? '')
+  const name = group.kind === 'global' ? strings.agentMemoryScopeGlobal() : (group.projectName ?? group.projectId ?? '')
   return strings.agentMemoryGroupLabel(name, group.count)
 }
 

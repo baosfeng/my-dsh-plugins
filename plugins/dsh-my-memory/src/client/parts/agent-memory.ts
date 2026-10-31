@@ -278,10 +278,7 @@ function AgentMemoryDeleteConfirm({
  * 独立成函数而不是内联 map：否则 AgentMemoryPanel 会被卡片 props 撑过函数
  * 行数门禁，而且这层映射在分组视图里要复用。
  */
-function agentMemoryCardsOf(
-  group: AgentMemoryGroup,
-  props: AgentMemoryState,
-): ReactNode {
+function agentMemoryCardsOf(group: AgentMemoryGroup, props: AgentMemoryState): ReactNode {
   return group.entries.map((entry) =>
     createElement(AgentMemoryCard, {
       key: entry.name,
@@ -308,9 +305,7 @@ function AgentMemoryPanel(props: AgentMemoryState): ReactNode {
     createElement('p', { className: 'dsh-my-memory-note' }, strings.agentMemoryNote()),
     props.loading ? createElement('p', { className: 'dsh-my-memory-note' }, strings.loading()) : null,
     props.error ? createElement('p', { className: 'dsh-my-memory-error' }, strings.loadError()) : null,
-    props.promoteError === ''
-      ? null
-      : createElement('p', { className: 'dsh-my-memory-error' }, props.promoteError),
+    props.promoteError === '' ? null : createElement('p', { className: 'dsh-my-memory-error' }, props.promoteError),
     createElement(AgentMemorySuggests, { suggestions: props.suggestions, onPromote: props.onPromoteAsk }),
     active === 0 && !props.loading && !props.error ? createElement(AgentMemoryEmpty, null) : null,
     props.groups.map((group) =>

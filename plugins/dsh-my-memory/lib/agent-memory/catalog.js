@@ -10,7 +10,7 @@
  * 「系统替 agent 想」，只是把 agent 自己的目录摆出来。
  *
  * 成本边界（硬上限，绝不静默膨胀）：
- *  - 70 行 / 6 KB，超出按「全局优先 + 项目轮转」丢弃，末尾给剩余条数；
+ *  - 100 行 / 8 KB，超出按「全局优先 + 项目轮转」丢弃，末尾给剩余条数；
  *  - 单行摘要 30 字，超长截断；
  *  - 内容恒定 → 前缀缓存可命中；写入/删除后重建一次，只失效一次。
  *
@@ -22,9 +22,9 @@
 import { readFileSync, statSync } from 'node:fs';
 import { absoluteFileOf, entryLinesOf, indexFile, listExistingFilesSync } from './paths.js';
 /** 目录最多展示的行数（超出按「全局优先 + 项目轮转」丢弃，末尾给剩余条数）。 */
-export const MAX_CATALOG_LINES = 70;
-/** 目录正文的字节上限（UTF-8，约 2k 汉字）。 */
-const MAX_CATALOG_BYTES = 6144;
+export const MAX_CATALOG_LINES = 100;
+/** 目录正文的字节上限（UTF-8，约 2.7k 汉字）。 */
+export const MAX_CATALOG_BYTES = 8192;
 /** 单行摘要的字符上限（超出截断，避免一条长记忆把整份目录吃掉）。 */
 const CATALOG_LINE_CHARS = 30;
 /** 项目名在目录里的最大长度（超出截断，防止长仓库名吃掉预算）。 */

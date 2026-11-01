@@ -2,7 +2,7 @@
  * dsh-my-memory — agent 记忆的「常驻目录」与「全局写入护栏」（issue #502 后续）。
  *
  * 锁三件事：
- *  1. 目录**一行一条**且有硬上限（70 行 / 6 KB）——它常驻系统提示词，无上限
+ *  1. 目录**一行一条**且有硬上限（100 行 / 8 KB）——它常驻系统提示词，无上限
  *     就会把上下文吃光；超限时给「另有 N 条」，绝不静默丢。
  *  2. 排序规则：全局偏好整体优先，项目层**轮转**——实测整体按文件名排序时，
  *     排在后面的项目 21 条一条都进不了目录。
@@ -92,11 +92,16 @@ test('项目层轮转：一个项目条目再多，也不会让另一个项目�
 })
 
 test('字节上限先于行数生效时也照样截断', async () => {
-  const { renderCatalog } = await import('../lib/agent-memory/catalog.js')
+  const { renderCatalog, MAX_CATALOG_LINES, MAX_CATALOG_BYTES } = await import('../lib/agent-memory/catalog.js')
   const heavy = '字'.repeat(30)
-  const lines = Array.from({ length: 120 }, () => heavy)
+  const lines = Array.from({ length: MAX_CATALOG_LINES + 60 }, () => heavy)
   const text = renderCatalog([{ name: 'user.md', lines }])
-  assert.ok(Buffer.byteLength(text, 'utf8') < 6300, '目录正文不可能无限膨胀')
+  // 上限取常量而不是硬编码字节数：硬编码会在调上限时静默漂移（本次就是这样被测试抓到的）
+  assert.ok(
+    Buffer.byteLength(text, 'utf8') <= MAX_CATALOG_BYTES + 200,
+    '目录正文不可能无限膨胀（+200 留给「另有 N 条」尾注）',
+  )
+  assert.ok(text.split('\n').length <= MAX_CATALOG_LINES + 1, '此处必须是字节上限先到，不是行数上限')
   assert.match(text, /未展开/)
 })
 

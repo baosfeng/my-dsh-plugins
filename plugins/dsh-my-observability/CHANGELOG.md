@@ -2,7 +2,7 @@
 
 本文件记录 dsh-my-observability 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.4.0] - 2026-11-01
 
 ### 移除
 
@@ -15,6 +15,12 @@
 - 面板内搜索/导出/统计无界面替代：改用审计查询 API（`GET /observability/api/sessions`、`GET /observability/api/events?sessionId=&type=&limit=`，跨会话 `sessionId=*`）。
 - 保留不变：审计落盘（`$DSH_HOME/observability/audit.jsonl`）与 `sessions` / `events` / `status` / `errors` / `plugin-status` / `resources` 端点、结构化 Git 工具、提交前增量 diff 审查（含 AI 增强与设置页）、资源看门狗降级/恢复。
 - 客户端共享助手 `apiJson` 拆到 `src/client/parts/api.ts`（原先放在回放面板片段里）。
+
+### 变更
+
+- fix(guardian): #508 桌面 asar 宿主清单按 @deepseek-ai/* 过滤，两形态同口径 (#511)
+- feat(dsh-my-memory): agent 自主维护的跨会话记忆（#502） (#504)
+- docs(release): 修正 0.1.9/0.3.8 的 CHANGELOG 与人工自测清单（去掉未发布的空版本段）
 
 ## [0.3.8] - 2026-10-29
 

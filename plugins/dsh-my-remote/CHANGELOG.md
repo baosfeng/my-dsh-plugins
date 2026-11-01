@@ -2,7 +2,7 @@
 
 本文件记录 dsh-my-remote 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.2.0] - 2026-11-01
 
 ### 新增
 
@@ -16,6 +16,10 @@
 ### 修复（测试基础设施）
 
 - 测试曾整文件覆盖真实 `~/.dsh/profiles/web/cordis.patch.yml`：`writePatchFile` 无路径防护 + `DSH_HOME` 隔离只存在于 `boot()` 内。现改为三层防线——cucumber `Before` / vitest `setupFiles` 提前隔离 `DSH_HOME`；写入前 fail-closed 断言（拒绝 `~/.dsh` 与临时目录之外的路径）；`test/host-home-isolation.mjs` 防回归（含真实配置内容 / mtime 零变化断言）。
+
+### 变更
+
+- fix(guardian): #508 桌面 asar 宿主清单按 @deepseek-ai/* 过滤，两形态同口径 (#511)
 
 ## [0.1.5] - 2026-10-17
 

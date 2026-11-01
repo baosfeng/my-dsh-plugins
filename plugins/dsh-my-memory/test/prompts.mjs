@@ -39,6 +39,12 @@ test('exactly one section with a fixed literal name and order -85', () => {
   assert.equal(section.text({}), '', 'no prompts → empty section (dropped by the renderer, zero cost)')
 })
 
+test('section disables host interpolation: {{...}} in a prompt stays literal (regression)', () => {
+  const section = createPromptsSection(fakeStore([prompt('a', 10, '输出 {{session.title}} 原文')]), {})
+  assert.equal(section.interpolate, false, 'prompt text is user data, never a prompt template')
+  assert.ok(section.text({}).includes('{{session.title}}'), 'double braces survive verbatim')
+})
+
 test('enabled=true prompts are injected in full, in order', () => {
   const section = createPromptsSection(fakeStore([prompt('b', 20, '第二条规则'), prompt('a', 10, '第一条规则')]), {})
   const text = section.text({})

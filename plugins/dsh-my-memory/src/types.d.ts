@@ -73,7 +73,7 @@ export interface SystemPromptService {
   /** 添加系统提示词片段；返回 disposer。 */
   add(content: string, priority?: number): () => void
   /** 注册一个系统提示词 section（provider 模式）。 */
-  section(options: { name: string; order: number; text: () => string }): () => void
+  section(options: { name: string; order: number; text: () => string; interpolate?: boolean }): () => void
 }
 
 /** tools 服务（工具管理）。 */

@@ -81,6 +81,9 @@ export function createAgentMemorySection(catalog) {
     return {
         name: 'dsh-my-memory:agent-memory',
         order: AGENT_MEMORY_SECTION_ORDER,
+        // 目录摘要来自 agent 自己写的记忆：保持字面量，避免 {{...}} 让宿主
+        // 解析器抛错并拖垮整轮 prompt 组装。
+        interpolate: false,
         text: () => AGENT_MEMORY_SECTION_TEXT + '\n\n' + catalogBlock(catalog.text()),
     };
 }

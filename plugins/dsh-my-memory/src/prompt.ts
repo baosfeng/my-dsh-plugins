@@ -69,6 +69,7 @@ export function createMemorySection(
   name: string
   order: number
   text: () => string
+  interpolate: false
 } {
   const maxItems = Number.isInteger(config?.maxItems) && config!.maxItems! > 0 ? config!.maxItems! : DEFAULT_MAX_ITEMS
   const maxDescLength =
@@ -79,6 +80,9 @@ export function createMemorySection(
   return {
     name: 'dsh-my-memory',
     order: -95,
+    // 记忆正文是用户数据，绝不能被宿主的 {{变量}} 解析器当成模板：
+    // 一条含 {{...}} 的记忆曾让整个 prompt 组装抛错、所有回合失败。
+    interpolate: false,
     text: () => {
       // issue #78 智能注入：先做长期未用降权（时效性），再按 相关性 +
       // 时效性 + 置信度 评分选 top-N（替代简单按 updatedAt 取最新 N 条）。

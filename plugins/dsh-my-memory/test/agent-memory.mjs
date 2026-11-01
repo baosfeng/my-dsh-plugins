@@ -208,6 +208,13 @@ test('section 常驻「规则 + 条目级目录」，但不含条目正文', asy
   assert.ok(!text.includes('- 提交前必须跑'), 'no memory body injected into the system prompt')
 })
 
+test('section disables host interpolation: {{...}} in a catalog summary stays literal (regression)', async () => {
+  const { createAgentMemorySection } = await import('../lib/agent-memory/prompt.js')
+  const section = createAgentMemorySection({ text: () => 'user.md · 变量写法 {{title}}' })
+  assert.equal(section.interpolate, false, 'catalog text is agent data, never a prompt template')
+  assert.ok(section.text().includes('{{title}}'), 'double braces survive verbatim')
+})
+
 test('目录为空时给「还没有记忆」而不是一片空白', async () => {
   const { createAgentMemorySection } = await import('../lib/agent-memory/prompt.js')
   const text = createAgentMemorySection({ text: () => '' }).text()

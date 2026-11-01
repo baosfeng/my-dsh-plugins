@@ -98,7 +98,7 @@ function createWarnOnce(logger: PromptsSectionConfig['logger']) {
 export function createPromptsSection(
   source: PromptSource,
   config: PromptsSectionConfig | undefined,
-): { name: string; order: number; text: () => string } {
+): { name: string; order: number; text: () => string; interpolate: false } {
   const maxItems =
     Number.isInteger(config?.maxItems) && config!.maxItems! > 0 ? config!.maxItems! : DEFAULT_MAX_PROMPT_ITEMS
   const maxLength =
@@ -107,6 +107,8 @@ export function createPromptsSection(
   return {
     name: PROMPT_SECTION_NAME,
     order: PROMPT_SECTION_ORDER,
+    // 提示词正文是用户数据，保持字面量：宿主的 {{变量}} 解析器不得介入。
+    interpolate: false,
     text: () => {
       // 只读内存态（list() 返回条目快照），不做任何磁盘 IO、不做评分。
       const items = source.list()

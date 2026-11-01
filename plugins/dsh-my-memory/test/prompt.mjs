@@ -20,6 +20,15 @@ test('section registration: stable name, early order, provider text', () => {
   assert.equal(section.text({}), '', 'empty memory renders an empty section (dropped by renderPrompt)')
 })
 
+test('section disables host interpolation: {{...}} in a memory stays literal (regression)', () => {
+  const section = createMemorySection(
+    fakeStore([{ id: 'a', desc: '模板写法 {{title}} 原样记录', createdAt: 1, updatedAt: 2 }]),
+    {},
+  )
+  assert.equal(section.interpolate, false, 'memory text is user data, never a prompt template')
+  assert.ok(section.text({}).includes('{{title}}'), 'double braces survive verbatim')
+})
+
 test('injected text carries the global memories the agent must carry', () => {
   const section = createMemorySection(
     fakeStore([

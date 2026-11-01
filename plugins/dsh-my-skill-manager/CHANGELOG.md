@@ -1,10 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.1] - 2026-11-01
 
 ### 修复
 
 - fix(skill-manager): SKILL.md **详情读取改用同一个 fd** 取类型 / 大小 / 内容（`open(O_RDONLY|O_NONBLOCK)` → `handle.stat()` → 同一 handle read → close），消除「按名 stat 取 size 后再按名 open 读内容」的 TOCTOU 窗口（CodeQL `js/file-system-race` #121）。`realpath` 结果仍是唯一打开目标（不回退 candidate）；`O_NONBLOCK` 避免候选是 FIFO 时阻塞，类型判定在 read 之前，非普通文件不读。
+
+### 变更
+
+- docs(release): 补齐待发插件的 Unreleased 条目与人工自测清单
+- feat(dsh-my-memory): agent 自主维护的跨会话记忆（#502） (#504)
+- refactor(md-render): 拆出 CodeHead/CodeBody 守住函数尺寸门禁
 
 ## [0.2.0] - 2026-10-24
 

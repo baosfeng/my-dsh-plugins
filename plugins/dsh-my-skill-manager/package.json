@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-skill-manager",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DSH skill 管理：全量 skill 列表 + 全局/项目双作用域启停 + 搜索筛选排序 + 详情与 SKILL.md 预览 + 批量启停 + 扫描诊断。禁用即不注入会话。DSH web plugin: full skill catalog with global/project scoped toggles, search/filter/sort, detail preview, batch actions and scan diagnostics.",
   "type": "module",
   "main": "lib/index.js",

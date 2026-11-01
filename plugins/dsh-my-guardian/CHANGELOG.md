@@ -5,8 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
-## [Unreleased]
+## [0.4.9] - 2026-11-01
 
 ### 修复
 
@@ -16,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 变更
 
 - chore(guardian): 宿主事件 fixture 重新取证到 **0.2.1-rc.5**——已装宿主从 rc.3 升级后 fixture 漂移，重新取证结果：事件清单 44 → 44，`removed` / `added` 均空，`HOST_EVENT_FALLBACKS` / `LISTENED_HOST_EVENTS` 无需调整。
+- docs(release): 补齐待发插件的 Unreleased 条目与人工自测清单
+- feat(dsh-my-memory): agent 自主维护的跨会话记忆（#502） (#504)
+- docs(release): dsh-my-guardian 0.4.8 人工自测清单与 CHANGELOG 修正
 
 ## [0.4.8] - 2026-10-24
 

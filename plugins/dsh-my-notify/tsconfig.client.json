@@ -21,6 +21,8 @@
     "forceConsistentCasingInFileNames": true,
     "types": [],
     "declaration": false,
+    // 编译产物去注释（体积门禁）：中文注释保留在 TS 源码里
+    "removeComments": true,
     "sourceMap": false
   },
   "include": ["src/client/**/*.ts"]

@@ -7,10 +7,9 @@
  * 已装插件被整片误报「缺少依赖」，还给出会把宿主自有包再装一份进 profile 的
  * `dsh plugin add` 建议（#407/#410 的同一类事故）。
  *
- * 本模块提供宿主清单的唯一解析入口：读 `desktop-runtime.json` 的
- * `sharedPackages`（name + version，可做版本校验）与 `files`（覆盖第三方包，
- * 只给「存在」，无版本）。读取失败（纯 Node 环境没有 asar）一律降级为空索引，
- * 绝不抛错——预检是 best-effort，不能反过来拖垮启动。
+ * 本模块提供宿主清单的唯一解析入口：读 `desktop-runtime.json` 的 `sharedPackages`
+ * （带版本，可做版本校验）与 `files`（只给「存在」，无版本）。读取失败（纯 Node 环境
+ * 没有 asar）一律降级为空索引，绝不抛错——预检是 best-effort，不能反过来拖垮启动。
  *
  * 探测顺序（#503 起四条）：
  *  1. 调用方显式传入的 `runtimeJsonPath`（测试 / 脚本；显式传路径时**绝不**兜底）；
@@ -19,10 +18,13 @@
  *  4. 宿主安装目录（npm 全局 `dsh web`）：`<prefix>/lib/node_modules/@deepseek-ai/dsh`
  *     下的 node_modules——从 `argv[1]` / `execPath` 向上找，或用 `DSH_HOST_ROOT` 直指。
  *
- * 本文件此前假设「纯 dsh web 的宿主包由 profiles 根 node_modules 的链接提供」，但那个
- * profiles 根在 npm 全局安装形态下根本不存在（#503）→ 清单长期为空、服务端宿主包整片
- * 误报。安装目录清单**刻意只认 @deepseek-ai/***：宿主树里还有 yaml / ws / zod 等第三方
- * 包，一并算成「宿主供给」会把「插件真缺 yaml」掩盖成漏报。
+ * 本文件此前假设「纯 dsh web 的宿主包由 profiles 根 node_modules 的链接提供」，但那个根在
+ * npm 全局安装形态下不存在（#503）→ 清单长期为空、服务端宿主包整片误报。两条清单路径都
+ * **刻意只认 @deepseek-ai/***：宿主树里的 yaml / ws / zod 算成「宿主供给」就是静默漏报。
+ *
+ * #508：这条口径原只落在安装目录清单上，asar 清单按 `files` 文件名判定 → 桌面形态下插件
+ * 真缺 yaml 被静默漏报。现在两者共用 `isHostSupplied()`，过滤落在清单构建层（shared /
+ * files / has / versionOf 一起收敛）而非判定层：命名空间是该接口本身的语义，落进实现才不再分叉。
  */
 import { closeSync, existsSync, openSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -45,13 +47,13 @@ export interface HostInventory {
   available: boolean
   /** 清单来源路径（诊断用；降级时为 null）。 */
   source: string | null
-  /** sharedPackages：包名 → 版本（无版本信息时为 null）。 */
+  /** sharedPackages 里的宿主包名 → 版本（无版本信息时为 null）。 */
   shared: Map<string, string | null>
-  /** files 清单里出现过的包名（覆盖面更广，无版本）。 */
+  /** files 清单里的宿主包名（补齐 sharedPackages 的覆盖面，无版本）。 */
   files: Set<string>
-  /** 该包是否由宿主安装目录提供。 */
+  /** 该包是否由宿主统一供给（#508）：只认 @deepseek-ai/*，第三方包一律 false。 */
   has(name: string): boolean
-  /** sharedPackages 里的版本；没有版本信息时返回 null。 */
+  /** sharedPackages 里的版本；非宿主命名空间 / 没有版本信息时返回 null。 */
   versionOf(name: string): string | null
 }
 
@@ -154,6 +156,9 @@ const HOST_PACKAGE = '@deepseek-ai/dsh'
 
 /** 只有 @deepseek-ai/* 由宿主统一供给：宿主树里的第三方包不算（#503）。 */
 const HOST_SCOPE = '@deepseek-ai/'
+
+/** 宿主供给的命名空间判据（#503 / #508）：两条清单路径共用；第三方包（yaml / ws / zod）不算。 */
+const isHostSupplied = (name: string): boolean => name.startsWith(HOST_SCOPE)
 
 /** 读目录下 package.json 的 name / version（读失败一律 null：预检是 best-effort）。 */
 function readPackageMeta(dir: string): { name: string | null; version: string | null } | null {
@@ -266,14 +271,14 @@ export function buildInstallDirInventory(hostRoot: string): HostInventory {
     return versions.get(name) ?? null
   }
   const has = (name: string): boolean =>
-    name.startsWith(HOST_SCOPE) && (versionOf(name) !== null || roots.some((root) => existsSync(join(root, name))))
+    isHostSupplied(name) && (versionOf(name) !== null || roots.some((root) => existsSync(join(root, name))))
   return {
     available: true,
     source: roots[0] ?? hostRoot,
     shared: new Map(),
     files: new Set(),
     has,
-    versionOf: (name) => (name.startsWith(HOST_SCOPE) ? versionOf(name) : null),
+    versionOf: (name) => (isHostSupplied(name) ? versionOf(name) : null),
   }
 }
 
@@ -295,30 +300,31 @@ function isPackageName(value: unknown): value is string {
   return typeof value === 'string' && value !== ''
 }
 
-/** sharedPackages → 包名到版本的映射（异常条目跳过）。 */
+/** sharedPackages → 宿主包名到版本的映射（异常条目 / 非宿主命名空间跳过，#508）。 */
 function collectShared(packages: unknown): Map<string, string | null> {
   const shared = new Map<string, string | null>()
   if (!Array.isArray(packages)) return shared
   for (const item of packages) {
     const entry = (item ?? {}) as { name?: unknown; version?: unknown }
-    if (isPackageName(entry.name)) shared.set(entry.name, typeof entry.version === 'string' ? entry.version : null)
+    if (!isPackageName(entry.name) || !isHostSupplied(entry.name)) continue
+    shared.set(entry.name, typeof entry.version === 'string' ? entry.version : null)
   }
   return shared
 }
 
-/** files 清单 → 出现过的包名集合（只给「存在」，无版本）。 */
+/** files 清单 → 宿主命名空间包名集合（只给「存在」，无版本；过滤在此完成，直接读 files 也不读错，#508）。 */
 function collectFiles(files: unknown): Set<string> {
   const names = new Set<string>()
   if (!Array.isArray(files)) return names
   for (const item of files) {
     const entry = (item ?? {}) as { path?: unknown }
     const name = typeof entry.path === 'string' ? packageNameFromFile(entry.path) : null
-    if (name !== null) names.add(name)
+    if (name !== null && isHostSupplied(name)) names.add(name)
   }
   return names
 }
 
-/** 把 desktop-runtime.json 解析成索引（结构异常时按空清单处理，不抛错）。 */
+/** 把 desktop-runtime.json 解析成索引（结构异常按空清单处理，不抛错；命名空间过滤在收集阶段完成，#508）。 */
 export function buildHostInventory(json: unknown, source: string): HostInventory {
   const data = (json !== null && typeof json === 'object' ? json : {}) as {
     sharedPackages?: unknown

@@ -2,21 +2,6 @@
 
 ## [0.3.0] - 2026-11-01
 
-### 变更
-
-- fix(dsh-my-memory): 目录上限上调至 100 行 / 8 KB，真实库 91 条全量可见
-- feat(dsh-my-memory): agent 自主维护的跨会话记忆（#502） (#504)
-- fix(ci): 修好 mutation 沙箱导入与 qs 中等漏洞（两个长期红的 job） (#501)
-
-## [0.2.0] - 2026-10-23
-
-### 变更
-
-- refactor(dsh-my-memory)!: 三 tab 面板按原型复刻，移除自动候选记忆
-- refactor(md-render): 拆出 CodeHead/CodeBody 守住函数尺寸门禁
-
-## [Unreleased]
-
 ### 新功能
 
 - **面板按项目分组折叠 + 跨项目晋升建议（issue #502 后续）**：agent 记忆面板不再平铺全部文件。
@@ -65,6 +50,14 @@
 - feat(client): 新增 / 编辑改为多行自适应输入框（字数计数 + 超长精简提示，回车提交）；保存 / 删除确认改为居中弹层（保存绿 / 删除红），与工具侧确认卡同构
 - feat(client): 全局提示词启停改为胶囊开关；新增 / 编辑带 1000 字计数
 - chore(test): 删除候选相关单测与 Gherkin 场景；客户端渲染测试按三 tab 结构重写
+- fix(ci): 修好 mutation 沙箱导入与 qs 中等漏洞（两个长期红的 job） (#501)
+
+## [0.2.0] - 2026-10-23
+
+### 变更
+
+- refactor(dsh-my-memory)!: 三 tab 面板按原型复刻，移除自动候选记忆
+- refactor(md-render): 拆出 CodeHead/CodeBody 守住函数尺寸门禁
 
 ## [0.1.12] - 2026-10-17
 
@@ -88,13 +81,7 @@
 - fix(compat): 插件适配 DSH 0.2.0-rc.2 宿主（peer 声明 + 取证通道 + fixture）
 - chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#453)
 - chore(deps)(deps-dev): bump the plugin-devdeps-minor-patch group across 3 directories with 1 update (#448)
-
-## [Unreleased]
-
-### 新功能
-
 - 全局提示词：设置页新增「全局提示词」分区（新增/编辑/删除/启停/上移下移），启用的提示词每轮组装全量按序注入独立 section `dsh-my-memory:prompts`（order -85），保存后下一轮即生效；与全局记忆在存储 / 检索 / 注入 / 写入 / 失效五处完全隔离（独立文件 `$DSH_HOME/memory/prompts.json`、独立端点 `/my-memory/api/prompts`）；首次运行迁入内置种子「中文思考」（默认启用，删除不复活）
-
 
 ## [0.1.10] - 2026-09-25
 

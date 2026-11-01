@@ -44,13 +44,14 @@ const RUNTIME = {
     { name: '@deepseek-ai/dsh-tools', version: '0.5.0', path: 'node_modules/@deepseek-ai/dsh-tools' },
   ],
   files: [
+    { path: 'node_modules/@deepseek-ai/dsh-llm/package.json', bytes: 1 },
     { path: 'node_modules/react/package.json', bytes: 1 },
     { path: 'node_modules/@scope/pkg/lib/index.js', bytes: 1 },
     { path: 'dsh/package.json', bytes: 1 },
   ],
 }
 
-test('#481: sharedPackages 提供版本、files 覆盖第三方包', () => {
+test('#481/#508: sharedPackages 提供版本，files 只补宿主命名空间的包', () => {
   const path = writeRuntimeJson(freshDir(), RUNTIME)
   resetHostInventoryCache()
   const inventory = loadHostInventory({ runtimeJsonPath: path })
@@ -58,10 +59,21 @@ test('#481: sharedPackages 提供版本、files 覆盖第三方包', () => {
   assert.equal(inventory.source, path)
   assert.equal(inventory.has('@deepseek-ai/cordis'), true)
   assert.equal(inventory.versionOf('@deepseek-ai/cordis'), '4.0.4', 'sharedPackages 带版本')
-  assert.equal(inventory.has('react'), true, 'files 清单覆盖第三方包')
-  assert.equal(inventory.versionOf('react'), null, 'files 只给「存在」，没有版本')
-  assert.equal(inventory.has('@scope/pkg'), true, 'scoped 包名从 files 路径正确提取')
+  assert.equal(inventory.has('@deepseek-ai/dsh-llm'), true, 'files 里的 @deepseek-ai/* 仍是宿主供给')
+  assert.equal(inventory.versionOf('@deepseek-ai/dsh-llm'), null, 'files 只给「存在」，没有版本')
+  assert.equal(inventory.has('react'), false, '#508: files 里的第三方包不算宿主供给（react 由前端种子模块另行判定）')
+  assert.equal(inventory.versionOf('react'), null)
+  assert.equal(inventory.has('@scope/pkg'), false, '#508: 非 @deepseek-ai/* 的 scope 同样不算宿主供给')
   assert.equal(inventory.has('@deepseek-ai/absent'), false)
+  // 集合本身就只装宿主供给的包名：直接读 files / shared 的新消费者也不会读错。
+  assert.deepEqual(
+    [...inventory.files].filter((name) => !name.startsWith('@deepseek-ai/')),
+    [],
+  )
+  assert.deepEqual(
+    [...inventory.shared.keys()].filter((name) => !name.startsWith('@deepseek-ai/')),
+    [],
+  )
 })
 
 test('#481: 清单文件不存在时降级为空索引（纯 Node 环境），不抛错', () => {

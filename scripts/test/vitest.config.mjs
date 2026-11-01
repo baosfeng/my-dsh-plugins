@@ -20,6 +20,7 @@
 // action-pins.mjs = workflow 里同一 Action 多子路径的 ref 一致性判定（Dependabot 单侧 bump 防线），issue #435，
 // dep-resolution.mjs = 插件对 workspace 内包的解析一致性判定（node_modules 陈旧副本遮蔽源码 = 本地绿 CI 红的根因），
 // standalone-install.mjs = 插件可单独安装判定（server 面声明完整性 / peer 形态 / 离线单装入口冒烟），issue #485，
+// changelog-merge.mjs = 发版时消费 CHANGELOG 的 `## [Unreleased]` 段（手写优先 / 摘要判重 / 无段时逐字节不变），
 // 阈值与根配置一致（行 85 / 分支 75 / 函数 80）。
 //
 // 为什么放宽 testTimeout/hookTimeout 到 60s（issue #353）：本目录大量用例 spawn 真实 CLI
@@ -57,6 +58,7 @@ export default defineConfig({
         'scripts/lib/action-pins.mjs',
         'scripts/lib/dep-resolution.mjs',
         'scripts/lib/standalone-install.mjs',
+        'scripts/lib/changelog-merge.mjs',
       ],
       thresholds: {
         lines: 85,

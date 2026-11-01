@@ -6,9 +6,12 @@
  *  - name 必须符合 kebab-case（天然排除 `/`、`..` 等）；
  *  - 候选路径先 realpath，再校验落在根目录内（挡住符号链接逃逸）；
  *  - 读取上限 256KB，超出截断并置 truncated:true（不整文件读入，避免大文件
- *    把进程内存拉高）。
+ *    把进程内存拉高）；
+ *  - 类型判定 / 大小 / 内容全部取自**同一个 fd**（open → handle.stat() → handle.read），
+ *    不再「按名 stat 取 size 后再按名 open 读内容」（CodeQL js/file-system-race #121）。
  */
-import { open, realpath, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { open, realpath } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { skillRootsOf } from './catalog.js';
 import { SKILL_FILE_NAME, SKILL_NAME_RE } from './diagnostics.js';
@@ -23,12 +26,37 @@ export class DetailError extends Error {
         this.code = code;
     }
 }
-/** 读取有上限的文本：超过上限时只读前 256KB 并标记截断。 */
+/** 路径类错误：realpath 之后、open 之前文件消失，按未命中处理而不是升级成 500。 */
+function isVanished(error) {
+    const code = error?.code;
+    return code === 'ENOENT' || code === 'ENOTDIR';
+}
+/**
+ * 读取有上限的文本：超过上限时只读前 256KB 并标记截断。
+ *
+ * 大小与内容必须同源于**一个 fd**：先 open，再用 handle.stat()（fstat）取 size，再用同一个
+ * handle 读。旧写法「按名 stat 取 size → 按名 open 读内容」在两次按名解析之间留了窗口
+ * （CodeQL #121）：窗口里文件被替换，truncated 会按旧 size 判定、内容却来自新 inode。
+ * O_NONBLOCK：候选可能是 FIFO，O_RDONLY 无写端时会一直阻塞，类型判定交给 fstat
+ * （同 scripts/check-links.mjs 的「open + fd stat + fd 读」）。
+ *
+ * 返回 null = 不是普通文件，或 open 时已消失（调用方继续下一个候选）。
+ */
 async function readCapped(file) {
-    const info = await stat(file);
-    const limit = Math.min(info.size, MAX_DETAIL_BYTES);
-    const handle = await open(file, 'r');
+    let handle;
     try {
+        handle = await open(file, constants.O_RDONLY | constants.O_NONBLOCK);
+    }
+    catch (error) {
+        if (isVanished(error))
+            return null;
+        throw error;
+    }
+    try {
+        const info = await handle.stat();
+        if (!info.isFile())
+            return null;
+        const limit = Math.min(info.size, MAX_DETAIL_BYTES);
         const buffer = Buffer.alloc(limit);
         const { bytesRead } = await handle.read(buffer, 0, limit, 0);
         // 截断点可能落在多字节字符中间：去掉尾部的替换字符，避免显示成乱码。
@@ -74,17 +102,12 @@ export async function readSkillDetail(input) {
                 sawOutside = true;
                 continue;
             }
-            let info;
-            try {
-                info = await stat(fileReal);
-            }
-            catch {
+            // realpath 的结果直接作为打开目标（不回退 candidate）：类型 / 大小 / 内容
+            // 都来自这一次 open 拿到的 fd，候选被替换或删除都不会读到另一个 inode。
+            const detail = await readCapped(fileReal);
+            if (detail === null)
                 continue;
-            }
-            if (!info.isFile())
-                continue;
-            const { content, truncated } = await readCapped(fileReal);
-            return { name, path: fileReal, content, truncated };
+            return { name, path: fileReal, content: detail.content, truncated: detail.truncated };
         }
     }
     if (sawOutside)

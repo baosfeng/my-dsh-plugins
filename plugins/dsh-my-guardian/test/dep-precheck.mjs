@@ -471,7 +471,7 @@ test('#481: 宿主内置包版本不满足只记警告（不阻塞、不刷 depe
   )
 })
 
-test('#481: files 清单覆盖的第三方包（无版本）视为已满足', () => {
+test('#508: files 清单里的第三方包不再算宿主供给（判 dependency-missing）', () => {
   const dir = freshDir()
   writePlugin(dir, 'dsh-app', { peerDependencies: { 'left-pad': '^1.0.0' } })
   const result = checkPeerDependencies({
@@ -479,7 +479,9 @@ test('#481: files 清单覆盖的第三方包（无版本）视为已满足', ()
     pluginName: 'dsh-app',
     hostInventory: hostInventoryOf({}, ['node_modules/left-pad/index.js']),
   })
-  assert.equal(result.ok, true)
+  assert.deepEqual(result.missing, ['left-pad'], '宿主树里躺着 ≠ 宿主供给：插件真缺必须报缺失（#508）')
+  assert.equal(dependencyFailureType(result), 'dependency-missing')
+  assert.deepEqual(result.suggestions, ['dsh plugin add left-pad'], '第三方包给可执行安装建议')
 })
 
 // ── #503: npm 全局 dsh web 形态（宿主安装目录供给，profiles 根没有 node_modules）─────

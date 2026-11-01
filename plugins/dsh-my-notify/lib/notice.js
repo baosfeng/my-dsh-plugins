@@ -72,6 +72,11 @@ function noticeFrame(notice, now) {
         sessionUrl: str(notice.sessionUrl),
         question: str(notice.question),
         questions: Array.isArray(notice.questions) ? notice.questions : [],
+        cwd: str(notice.cwd),
+        model: str(notice.model),
+        provider: str(notice.provider),
+        preset: str(notice.preset),
+        parentId: str(notice.parentId),
     };
 }
 /** 字符串字段规整：缺失/非字符串回退空串。 */

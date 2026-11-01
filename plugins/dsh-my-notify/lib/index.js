@@ -43,6 +43,8 @@ import { createTokenMeter } from './token-meter.js';
 import { registerNotifyRoutes } from './routes.js';
 import { createWebhookStore } from './webhook-store.js';
 import { dispatchWebhooks } from './webhook/pusher.js';
+import { normalizeSound, normalizeSystem, normalizeToast } from './notify/config.js';
+import { resolveMessages, renderNoticeMessages } from './notify/defaults.js';
 import { currentProfile, patchFileOf, profileDirOf, writePatchConfig } from 'dsh-shared';
 import { join } from 'node:path';
 export const name = 'dsh-my-notify';
@@ -69,14 +71,17 @@ export function apply(ctx, config) {
     // `subagentEnd` 开启时才广播。过滤集中在这个出口做，SSE（bus.emitNotice）
     // 与 webhook（dispatchWebhooks）两条通道行为一致，都继承全局开关——即使
     // 上游误判把子代理当顶层产生子代理标记帧，也无法绕过开关双通道轰炸。
+    // 文案渲染统一在广播前（契约）：client 端不做模板引擎，页面 toast 与系统
+    // 通知直接显示渲染后的 title / note；webhook 通道继承同一份渲染结果。
     const emitNotice = (notice) => {
         if (notice?.agentType === 'subagent' && !options.subagentEnd)
             return;
         // 免打扰：在 quietHours 指定时段内静默所有通知（SSE + webhook 双通道）
         if (isQuietNow(options.quietHours))
             return;
-        bus.emitNotice(notice);
-        dispatchWebhooks(options.webhooks, notice, {
+        const frame = renderNoticeMessages(notice, options.messages, { channel: 'browser' });
+        bus.emitNotice(frame);
+        dispatchWebhooks(options.webhooks, frame, {
             onFailure: (failure) => webhookStore.failures.add(failure),
             formatOpts: { askFull: options.askMode !== 'summary' },
         });
@@ -102,9 +107,10 @@ export function apply(ctx, config) {
     // ── 路由（SSE / trigger / info / config / webhooks + 心跳清理）──────
     registerNotifyRoutes(ctx, options, bus, onConfigChange, emitNotice, webhookStore);
 }
-/** 应用层配置 → options（默认值 + 类型规整）。 */
+/** 应用层配置 → options（默认值 + 类型规整；坏字段逐个回退默认值）。 */
 function buildOptions(config) {
     const c = config ?? {};
+    const flat = c;
     return {
         end: notFalse(c.end),
         ask: notFalse(c.ask),
@@ -116,7 +122,23 @@ function buildOptions(config) {
         dedupeMs: num(c.dedupeMs, 3000),
         webhooks: [],
         quietHours: buildQuietHours(c),
+        sound: normalizeSound(c.sound ?? parseJsonField(flat.soundJson)),
+        toast: normalizeToast(c.toast ?? parseJsonField(flat.toastJson)),
+        system: normalizeSystem(c.system ?? parseJsonField(flat.systemJson)),
+        messages: resolveMessages(c.messages ?? parseJsonField(flat.messagesJson)),
     };
+}
+/** 解析 JSON 字符串字段（patch 文件里嵌套对象以 JSON 串持久化）；失败返回 undefined。 */
+function parseJsonField(value) {
+    if (typeof value !== 'string' || value === '')
+        return undefined;
+    try {
+        return JSON.parse(value);
+    }
+    catch {
+        // 手写损坏的 patch 字段 → 回退默认值（fail-open）
+        return undefined;
+    }
 }
 /** 布尔开关默认开启：缺省/true → true，false → false。 */
 function notFalse(value) {
@@ -145,7 +167,26 @@ function patchConfigOf(merged) {
     rest.quietHoursStart = qh.start;
     rest.quietHoursEnd = qh.end;
     delete rest.quietHours;
+    // sound / toast / system / messages 是嵌套对象（YAML 子集序列化为 null），
+    // 统一以 JSON 串字段持久化，启动时 parseJsonField 还原；等于默认值时省略，
+    // 保持 patch 文件精简（升级后不因新增默认字段而膨胀）。
+    for (const key of ['sound', 'toast', 'system', 'messages']) {
+        const value = merged[key];
+        if (JSON.stringify(value) !== JSON.stringify(defaultOf(key)))
+            rest[`${key}Json`] = JSON.stringify(value);
+        delete rest[key];
+    }
     return rest;
+}
+/** 高级配置的默认值（用于判断 patch 文件是否需要落盘该字段）。 */
+function defaultOf(key) {
+    if (key === 'sound')
+        return normalizeSound(undefined);
+    if (key === 'toast')
+        return normalizeToast(undefined);
+    if (key === 'system')
+        return normalizeSystem(undefined);
+    return resolveMessages(undefined);
 }
 /** 规整免打扰配置：缺失/非法回退默认（关闭，23:00-08:00）。 */
 function normalizeQuietHours(value) {

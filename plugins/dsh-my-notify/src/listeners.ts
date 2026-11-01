@@ -13,7 +13,15 @@
  * 这里始终产出 `agentType: 'subagent'` 帧，是否广播（SSE + webhook）由
  * emitNotice 按全局开关决定，SSE 与 webhook 双通道一致。
  */
-import { isTopLevelAgent, titleOf, subagentTitleOf, askNoteOf, askQuestionsOf, askFullNoteOf } from './session.js'
+import {
+  agentMetaOf,
+  isTopLevelAgent,
+  titleOf,
+  subagentTitleOf,
+  askNoteOf,
+  askQuestionsOf,
+  askFullNoteOf,
+} from './session.js'
 import { createTokenMeter } from './token-meter.js'
 import type { Agent, DshContext, NoticeFrame, NotifyOptions, TokenMeter, TokenSummary } from './types.js'
 
@@ -31,8 +39,8 @@ export function attachListeners(
   const disposers: Array<() => void> = []
   disposers.push(attachTokenMeterListener(ctx, tokenMeter))
   if (options.end) disposers.push(attachEndListener(ctx, options, emitNotice, tokenMeter))
-  if (options.ask) disposers.push(attachAskListener(ctx, emitNotice))
-  if (options.approval) disposers.push(attachApprovalListener(ctx, emitNotice))
+  if (options.ask) disposers.push(attachAskListener(ctx, options, emitNotice))
+  if (options.approval) disposers.push(attachApprovalListener(ctx, options, emitNotice))
   return disposers
 }
 
@@ -62,6 +70,7 @@ function attachEndListener(
       sessionId,
       title: isTopLevelAgent(agent) ? titleOf(ctx, agent) : subagentTitleOf(ctx, agent),
       agentType: isTopLevelAgent(agent) ? 'top' : 'subagent',
+      ...agentMetaOf(agent),
       tokens: summaryToTokens(summary),
       duration: summaryToDuration(summary),
       sessionUrl: sessionUrlOf(sessionId, options?.webBaseUrl),
@@ -72,7 +81,11 @@ function attachEndListener(
 }
 
 /** tools/pre-execute 命中 ask_user_question → ask 通知（透传 next）。 */
-function attachAskListener(ctx: DshContext, emitNotice: (notice: NoticeFrame) => void): () => void {
+function attachAskListener(
+  ctx: DshContext,
+  options: NotifyOptions,
+  emitNotice: (notice: NoticeFrame) => void,
+): () => void {
   return ctx.on('tools/pre-execute', async (exec: unknown, next: () => Promise<void>) => {
     const e = exec as { name?: string; agent?: Agent; arguments?: unknown } | undefined
     if (e !== undefined && e !== null && e.name === 'ask_user_question') {
@@ -86,6 +99,9 @@ function attachAskListener(ctx: DshContext, emitNotice: (notice: NoticeFrame) =>
           question: askFullNoteOf(e.arguments),
           questions: askQuestionsOf(e.arguments),
           agentType: 'top',
+          // 会话链接：卡片「查看会话」按钮依赖它（ask 也要有，否则按钮恒不渲染）
+          sessionUrl: sessionUrlOf(agent.id, options?.webBaseUrl),
+          ...agentMetaOf(agent),
         })
       }
     }
@@ -94,7 +110,11 @@ function attachAskListener(ctx: DshContext, emitNotice: (notice: NoticeFrame) =>
 }
 
 /** approval/request → approval 通知（透传 next）。 */
-function attachApprovalListener(ctx: DshContext, emitNotice: (notice: NoticeFrame) => void): () => void {
+function attachApprovalListener(
+  ctx: DshContext,
+  options: NotifyOptions,
+  emitNotice: (notice: NoticeFrame) => void,
+): () => void {
   return ctx.on('approval/request', async (req: unknown, next: () => Promise<void>) => {
     const r = req as { agent?: Agent; reason?: string; toolName?: string } | undefined
     if (r !== undefined && r !== null && isTopLevelAgent(r.agent)) {
@@ -105,6 +125,9 @@ function attachApprovalListener(ctx: DshContext, emitNotice: (notice: NoticeFram
         note: typeof r.reason === 'string' ? r.reason : '',
         toolName: typeof r.toolName === 'string' ? r.toolName : '',
         agentType: 'top',
+        // 会话链接：卡片「查看会话」按钮依赖它（approval 也要有）
+        sessionUrl: sessionUrlOf(r.agent!.id, options?.webBaseUrl),
+        ...agentMetaOf(r.agent),
       })
     }
     return next()
@@ -118,7 +141,16 @@ function summaryToTokens(summary: TokenSummary | undefined): NoticeFrame['tokens
   const output = nonNegative(summary.output)
   const total = nonNegative(summary.total)
   if (input === 0 && output === 0 && total === 0) return null
-  return { input, output, total }
+  // 缓存 / 推理 / 请求数一并透传：模板变量 tokens.cacheRead 等据此取值
+  return {
+    input,
+    output,
+    total,
+    cacheRead: nonNegative(summary.cacheRead),
+    cacheWrite: nonNegative(summary.cacheWrite),
+    reasoning: nonNegative(summary.reasoning),
+    requests: nonNegative(summary.requests),
+  }
 }
 
 /** token 计量 → 会话耗时（秒；无起点参考 → null）。 */
@@ -132,7 +164,7 @@ function summaryToDuration(summary: TokenSummary | undefined): number | null {
  * 会话链接：配置了 webBaseUrl 时拼 `/sessions/<id>`，否则空串（模板变量可回退）。
  * 去尾斜杠用一次遍历定位（无正则回溯，CodeQL js/polynomial-redos，issue 修复）。
  */
-function sessionUrlOf(sessionId: string, webBaseUrl: string | undefined): string {
+export function sessionUrlOf(sessionId: string, webBaseUrl: string | undefined): string {
   if (typeof webBaseUrl !== 'string' || webBaseUrl === '') return ''
   let end = webBaseUrl.length
   while (end > 0 && webBaseUrl[end - 1] === '/') end--

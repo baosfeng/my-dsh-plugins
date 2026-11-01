@@ -7,8 +7,12 @@
  *
  * 依赖注入（deps）：fetchImpl / now / sleep / onFailure 均可注入，单测
  * 无需真实网络与等待；生产默认 global fetch + setTimeout。
+ *
+ * 结构（每个函数圈复杂度 ≤10）：pushContext 组装请求上下文 →
+ * attemptLoop 走重试链 → failureOf 生成失败记录，pushWebhook 只做串联。
  */
-import { formatMessage, sign } from './adapters.js'
+import { formatMessage, sign, toTimestampSeconds } from './adapters.js'
+import { normalizeRetry } from '../notify/config.js'
 import type { NoticeFrame, WebhookConfig, WebhookFailure, PusherDeps } from '../types.js'
 
 /** 单次请求超时（毫秒）。 */
@@ -25,9 +29,15 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/** 第 attempt 次重试的退避时长（attempt 从 1 开始）。 */
-export function backoffMs(attempt: number): number {
-  return BACKOFF_BASE_MS * 2 ** (attempt - 1)
+/**
+ * 第 attempt 次重试的退避时长（attempt 从 1 开始；base 为基数，默认 1s）。
+ *
+ * @example
+ *   backoffMs(1) // → 1000
+ *   backoffMs(3, 500) // → 2000
+ */
+export function backoffMs(attempt: number, base: number = BACKOFF_BASE_MS): number {
+  return base * 2 ** (attempt - 1)
 }
 
 /** webhook 是否启用（enabled 缺省视为启用）。 */
@@ -60,6 +70,71 @@ export function dispatchWebhooks(
   return Promise.allSettled(tasks)
 }
 
+/** 一次推送的请求上下文（签名后的 URL / 请求体 / 重试参数）。 */
+interface PushContext {
+  fetchImpl: typeof fetch
+  now: () => number
+  sleep: (ms: number) => Promise<void>
+  url: string
+  body: unknown
+  timeoutMs: number
+  maxAttempts: number
+  backoff: number
+}
+
+/** 组装推送上下文：格式化 → 秒级加签 → 拼 URL → 读重试配置。 */
+function pushContext(webhook: WebhookConfig, notice: NoticeFrame, deps: PusherDeps): PushContext {
+  const now = deps.now ?? Date.now
+  const signed = signRequest(webhook, formatMessage(webhook, notice, deps.formatOpts), now)
+  const retry = normalizeRetry(webhook?.retry)
+  return {
+    fetchImpl: deps.fetchImpl ?? fetch,
+    now,
+    sleep: deps.sleep ?? defaultSleep,
+    url: signed.url,
+    body: signed.body,
+    timeoutMs: deps.timeoutMs ?? TIMEOUT_MS,
+    maxAttempts: retry.attempts ?? RETRY_MAX,
+    backoff: retry.backoffMs ?? BACKOFF_BASE_MS,
+  }
+}
+
+/** 加签并拼接最终 URL（时间戳按秒级换算，见 toTimestampSeconds）。 */
+function signRequest(webhook: WebhookConfig, body: unknown, now: () => number): { url: string; body: unknown } {
+  // 加签时间戳必须是**秒级**：now() 给的是毫秒，先换算再签（否则线上校验失败）
+  const { query, body: finalBody } = sign(webhook, webhook?.secret, body, toTimestampSeconds(now()))
+  return { url: buildUrl(webhook?.url ?? '', query), body: finalBody }
+}
+
+/** 重试链结果。 */
+interface AttemptOutcome {
+  ok: boolean
+  attempts: number
+  error: unknown
+}
+
+/** 走完重试链：第 n 次退避后重发，成功即返回。 */
+async function attemptLoop(context: PushContext): Promise<AttemptOutcome> {
+  let lastError: unknown = null
+  for (let attempt = 0; attempt <= context.maxAttempts; attempt += 1) {
+    if (attempt > 0) await context.sleep(backoffMs(attempt, context.backoff))
+    const sent = await sendOnce(context)
+    if (sent.ok) return { ok: true, attempts: attempt + 1, error: null }
+    lastError = sent.error
+  }
+  return { ok: false, attempts: context.maxAttempts + 1, error: lastError }
+}
+
+/** 单次发送：网络异常 / 超时 / 非 2xx 都归为失败（不抛出）。 */
+async function sendOnce(context: PushContext): Promise<{ ok: boolean; error: unknown }> {
+  try {
+    const ok = await postWithTimeout(context.fetchImpl, context.url, context.body, context.timeoutMs)
+    return { ok, error: ok ? null : new Error(`HTTP ${ok}`) }
+  } catch (error) {
+    return { ok: false, error }
+  }
+}
+
 /**
  * 推送单条 webhook：成功返回 { ok: true, attempts }；重试耗尽返回
  * { ok: false, ...failure } 并回调 onFailure（失败记录）。
@@ -69,38 +144,43 @@ export async function pushWebhook(
   notice: NoticeFrame,
   deps: PusherDeps = {},
 ): Promise<Record<string, unknown>> {
-  const fetchImpl = deps.fetchImpl ?? fetch
-  const now = deps.now ?? Date.now
-  const sleep = deps.sleep ?? defaultSleep
-  const onFailure = deps.onFailure
-  const body = formatMessage(webhook, notice, deps.formatOpts)
-  const { query, body: finalBody } = sign(webhook, webhook?.secret, body, now())
-  const url = buildUrl(webhook?.url ?? '', query)
-  let lastError: Error | unknown = null
-  for (let attempt = 0; attempt <= RETRY_MAX; attempt += 1) {
-    if (attempt > 0) await sleep(backoffMs(attempt))
-    try {
-      const ok = await postWithTimeout(fetchImpl, url, finalBody, deps.timeoutMs ?? TIMEOUT_MS)
-      if (ok) return { ok: true, attempts: attempt + 1 }
-      lastError = new Error(`HTTP ${ok}`)
-    } catch (error) {
-      lastError = error
-    }
-  }
-  const failure: WebhookFailure = {
-    time: now(),
-    webhookName: typeof webhook?.name === 'string' ? webhook.name : '',
-    channel:
-      (typeof webhook?.channel === 'string' ? webhook.channel : '') ||
-      (typeof (webhook as unknown as Record<string, unknown>)?.type === 'string'
-        ? String((webhook as unknown as Record<string, unknown>).type)
-        : ''),
-    url,
-    error: lastError instanceof Error ? lastError.message : String(lastError),
-    attempts: RETRY_MAX + 1,
-  }
-  onFailure?.(failure)
+  const context = pushContext(webhook, notice, deps)
+  const outcome = await attemptLoop(context)
+  if (outcome.ok) return { ok: true, attempts: outcome.attempts }
+  const failure = failureOf(webhook, context, outcome)
+  deps.onFailure?.(failure)
   return { ok: false, ...failure }
+}
+
+/** 失败记录（webhook 名 / 渠道 / URL / 错误 / 尝试次数）。 */
+function failureOf(webhook: WebhookConfig, context: PushContext, outcome: AttemptOutcome): WebhookFailure {
+  return {
+    time: context.now(),
+    webhookName: nameOf(webhook),
+    channel: channelOf(webhook),
+    url: context.url,
+    error: errorText(outcome.error),
+    attempts: outcome.attempts,
+  }
+}
+
+/** webhook 名称（缺失回退空串）。 */
+function nameOf(webhook: WebhookConfig): string {
+  const w = webhook as unknown as Record<string, unknown>
+  return typeof w?.name === 'string' ? w.name : ''
+}
+
+/** 渠道标识：channel 优先，回退 type 别名，再回退空串。 */
+function channelOf(webhook: WebhookConfig): string {
+  const w = webhook as unknown as Record<string, unknown>
+  const channel = typeof w?.channel === 'string' ? w.channel : ''
+  if (channel !== '') return channel
+  return typeof w?.type === 'string' ? w.type : ''
+}
+
+/** 错误文本：Error 取 message，其余转字符串。 */
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /** POST JSON 到目标 URL（AbortController 超时；res.ok 为成功判定）。 */

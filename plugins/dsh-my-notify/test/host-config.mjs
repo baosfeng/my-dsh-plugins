@@ -19,6 +19,20 @@ import { extractConfig, patchFileOf } from 'dsh-shared'
 const tmpDirs = []
 const disposeAlls = []
 
+/** 高级配置（sound / toast / system / messages）的默认值 —— GET /config 必含的新字段。 */
+const ADVANCED_DEFAULTS = {
+  sound: { enabled: true, preset: 'chime', volume: 0.6 },
+  toast: { enabled: true, durationMs: 4000, position: 'top-right', maxStack: 3 },
+  system: { enabled: true, requireInteraction: false },
+  messages: {
+    end: { title: '{{session.title}}', body: '{{event.note}}' },
+    ask: { title: '{{session.title}}', body: '{{ask.summary}}' },
+    approval: { title: '{{session.title}}', body: '{{approval.reason}}' },
+    subagentEnd: { title: '{{session.title}}', body: '{{event.note}}' },
+    remote: { title: '{{session.title}}', body: '{{event.note}}' },
+  },
+}
+
 function tempDir() {
   const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-notify-api-' }).name
   tmpDirs.push(dir)
@@ -165,6 +179,7 @@ test('config API suite', async () => {
           webBaseUrl: '',
           webhooks: [],
           quietHours: { enabled: false, start: '23:00', end: '08:00' },
+          ...ADVANCED_DEFAULTS,
         },
         'defaults reported',
       )
@@ -189,6 +204,7 @@ test('config API suite', async () => {
           webBaseUrl: '',
           webhooks: [],
           quietHours: { enabled: false, start: '23:00', end: '08:00' },
+          ...ADVANCED_DEFAULTS,
         },
         'app-level config reflected',
       )
@@ -231,6 +247,7 @@ test('config API suite', async () => {
           webBaseUrl: '',
           webhooks: [],
           quietHours: { enabled: false, start: '23:00', end: '08:00' },
+          ...ADVANCED_DEFAULTS,
         },
         'saved config read back',
       )
@@ -350,6 +367,7 @@ test('config API suite', async () => {
           ...saved,
           webhooks: [],
           quietHours: { enabled: false, start: '23:00', end: '08:00' },
+          ...ADVANCED_DEFAULTS,
         },
         'config survives restart',
       )

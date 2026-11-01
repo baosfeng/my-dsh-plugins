@@ -23,6 +23,19 @@ import { patchFileOf } from 'dsh-shared'
 const tmpDirs = []
 const disposeAlls = []
 
+/** 卡片 / 重试配置的默认值（PUT 后 GET 必含的新字段，fail-open 规整结果）。 */
+const CARD_DEFAULTS = {
+  schemaVersion: '2.0',
+  // 空串 = 未指定配色（按事件自动配色），不是 'default'
+  template: '',
+  fields: [],
+  buttonText: '',
+  mentionOpenIds: [],
+  mentionAll: false,
+  accentByKind: true,
+}
+const RETRY_DEFAULTS = { attempts: 3, backoffMs: 1000 }
+
 function tempDir() {
   const dir = dirSync({ unsafeCleanup: true, prefix: 'dsh-my-notify-webhook-' }).name
   tmpDirs.push(dir)
@@ -474,6 +487,8 @@ test(
               enabled: true,
               msgType: 'markdown',
               template: '',
+              card: CARD_DEFAULTS,
+              retry: RETRY_DEFAULTS,
             },
           ],
           'events deduped, defaults filled',
@@ -493,6 +508,8 @@ test(
             enabled: true,
             msgType: 'text',
             template: '',
+            card: CARD_DEFAULTS,
+            retry: RETRY_DEFAULTS,
           },
         ]
         const put = mockResponse()
@@ -523,7 +540,17 @@ test(
       // ── 7. GET /notify/api/webhooks 返回列表 + 失败记录（重试耗尽后） ──
       {
         const webhooks = [
-          { name: 'w', channel: 'generic', url: 'https://a.example/hook', events: ['end'], enabled: true },
+          {
+            name: 'w',
+            channel: 'generic',
+            url: 'https://a.example/hook',
+            events: ['end'],
+            enabled: true,
+            msgType: 'text',
+            template: '',
+            card: CARD_DEFAULTS,
+            retry: RETRY_DEFAULTS,
+          },
         ]
         // dedupeMs 显式归零：去重窗口只作用于 SSE 广播（notice.ts 的 bus 内部），
         // 本用例断言的是 webhook 分发与留痕——固定它，消除「窗口撞车」这一变量。

@@ -55,6 +55,7 @@ export function createTokenMeter() {
             total: totalOf(usage),
             requests: bucket.requests,
             startedAt: bucket.startedAt,
+            reasoning: usage.reasoningTokens,
         };
     }
     /** 删除会话桶（end 通知构造后调用，释放内存）。 */

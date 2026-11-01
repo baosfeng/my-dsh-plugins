@@ -78,13 +78,33 @@ export interface NoticeFrame {
   question?: string
   questions?: string[]
   time?: number
+  /** 会话工作目录（模板变量 session.cwd）。 */
+  cwd?: string
+  /** 模型名（模板变量 session.model）。 */
+  model?: string
+  /** 模型供应商（模板变量 session.provider）。 */
+  provider?: string
+  /** agent preset 名（模板变量 session.preset）。 */
+  preset?: string
+  /** 父会话 id（模板变量 session.parentId）。 */
+  parentId?: string
+  /** 显式值不被 messages 模板覆盖的字段（远程触发的用户指定 title / body）。 */
+  preserve?: Array<'title' | 'note'>
 }
 
-/** Token 用量。 */
+/** Token 用量（含缓存 / 推理 / 请求数；模板变量 tokens.* 的取值来源）。 */
 export interface TokenUsage {
   input?: number
   output?: number
   total?: number
+  /** 缓存命中 token 数。 */
+  cacheRead?: number
+  /** 缓存写入 token 数。 */
+  cacheWrite?: number
+  /** 推理 token 数。 */
+  reasoning?: number
+  /** assistant 消息条数（请求数）。 */
+  requests?: number
 }
 
 /** 免打扰时间段配置。 */
@@ -92,6 +112,32 @@ export interface QuietHours {
   enabled: boolean
   start: string // "HH:mm" 格式，如 "23:00"
   end: string // "HH:mm" 格式，如 "08:00"
+}
+
+/** 飞书卡片配置（msgType = interactive 时生效）。 */
+export interface CardConfig {
+  /** 卡片结构版本：'2.0'（默认）或 '1.0'。 */
+  schemaVersion?: '2.0' | '1.0'
+  /** 头部配色（13 色之一）；accentByKind 为 true 时被事件配色覆盖。 */
+  template?: string
+  /** 卡片字段列表：模板变量名（如 tokens.text），仅显示列出的项。 */
+  fields?: string[]
+  /** 跳转按钮文案（配置 session.url 时渲染 open_url 按钮）。 */
+  buttonText?: string
+  /** @ 的 open_id / user_id 列表（空项自动剥离）。 */
+  mentionOpenIds?: string[]
+  /** 是否 @ 所有人。 */
+  mentionAll?: boolean
+  /** 按事件类型自动配色（默认 true）。 */
+  accentByKind?: boolean
+}
+
+/** 推送重试配置。 */
+export interface RetryConfig {
+  /** 失败后最大重试次数（默认 3）。 */
+  attempts?: number
+  /** 退避基数（毫秒，默认 1000，按指数增长）。 */
+  backoffMs?: number
 }
 
 /** Webhook 配置。 */
@@ -102,8 +148,69 @@ export interface WebhookConfig {
   secret?: string
   events?: string[]
   enabled?: boolean
-  msgType?: 'text' | 'markdown' | 'post'
+  /** 消息类型；'interactive' 仅飞书支持（卡片）。 */
+  msgType?: 'text' | 'markdown' | 'post' | 'interactive'
+  /** 旧版整段模板（bodyTemplate 未配置时生效，兼容旧配置）。 */
   template?: string
+  /** 标题模板（为空回退会话标题）。 */
+  titleTemplate?: string
+  /** 正文模板（为空回退默认富格式正文）。 */
+  bodyTemplate?: string
+  /** 飞书卡片配置（msgType = interactive 时生效）。 */
+  card?: CardConfig
+  /** 重试配置（缺省 3 次 / 1s 指数退避）。 */
+  retry?: RetryConfig
+}
+
+/** 提示音配置。 */
+export interface SoundConfig {
+  enabled: boolean
+  /** 音色预设标识（由 client 端解释）。 */
+  preset: string
+  /** 音量 0-1。 */
+  volume: number
+}
+
+/** 页面 toast 配置。 */
+export interface ToastConfig {
+  enabled: boolean
+  /** 停留时长（毫秒）。 */
+  durationMs: number
+  /** 出现位置。 */
+  position: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'top' | 'bottom'
+  /** 最大堆叠条数。 */
+  maxStack: number
+}
+
+/** 系统通知配置。 */
+export interface SystemConfig {
+  enabled: boolean
+  /** 是否常驻（需用户手动关闭）。 */
+  requireInteraction: boolean
+}
+
+/** 单条事件文案模板（title / body 均可含变量占位符）。 */
+export interface MessageTemplate {
+  title: string
+  body: string
+}
+
+/** 五类事件的文案模板（含 subagentEnd 与 remote）。 */
+export interface MessagesConfig {
+  end?: Partial<MessageTemplate>
+  ask?: Partial<MessageTemplate>
+  approval?: Partial<MessageTemplate>
+  subagentEnd?: Partial<MessageTemplate>
+  remote?: Partial<MessageTemplate>
+}
+
+/** 填充默认值后的文案模板（运行时生效值）。 */
+export interface ResolvedMessages {
+  end: MessageTemplate
+  ask: MessageTemplate
+  approval: MessageTemplate
+  subagentEnd: MessageTemplate
+  remote: MessageTemplate
 }
 
 /** 通知选项（运行时配置）。 */
@@ -118,6 +225,14 @@ export interface NotifyOptions {
   dedupeMs: number
   webhooks: WebhookConfig[]
   quietHours: QuietHours
+  /** 提示音配置。 */
+  sound: SoundConfig
+  /** 页面 toast 配置。 */
+  toast: ToastConfig
+  /** 系统通知配置。 */
+  system: SystemConfig
+  /** 五类事件文案模板（已填充默认值）。 */
+  messages: ResolvedMessages
 }
 
 /** 插件应用层配置（cordis.patch.yml 的 config 字段）。 */
@@ -132,6 +247,14 @@ export interface PluginConfig {
   dedupeMs?: number
   webhooks?: WebhookConfig[]
   quietHours?: QuietHours
+  /** 提示音配置（部分字段，缺失回退默认值）。 */
+  sound?: Partial<SoundConfig>
+  /** 页面 toast 配置（部分字段，缺失回退默认值）。 */
+  toast?: Partial<ToastConfig>
+  /** 系统通知配置（部分字段，缺失回退默认值）。 */
+  system?: Partial<SystemConfig>
+  /** 五类事件文案模板（部分字段，缺失回退默认文案）。 */
+  messages?: MessagesConfig
   /** 扁平持久化字段（patch 文件写入/读取）。 */
   quietHoursEnabled?: boolean
   quietHoursStart?: string
@@ -193,6 +316,8 @@ export interface TokenSummary {
   total: number
   requests: number
   startedAt: number
+  /** 推理 token 数（模板变量 tokens.reasoning）。 */
+  reasoning?: number
 }
 
 /** Token 计量器。 */

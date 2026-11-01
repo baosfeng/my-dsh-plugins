@@ -48,7 +48,37 @@ export function subagentTitleOf(ctx, agent) {
     const label = base !== '' ? base : short;
     return label !== '' ? `子代理 ${label}` : '子代理';
 }
-/** 会话标题：优先 sessionTitle 快照，回退 cwd 末段，再回退空串（由 client 显示短 id）。 */
+/**
+ * 会话元信息（模板变量 session.cwd / model / provider / preset / parentId 的
+ * 取值来源）：尽力而为，任何字段缺失 / 结构异常都回退空串，绝不抛错。
+ *
+ * @example
+ *   agentMetaOf({ id: 's1', session: { header: { cwd: '/w/p' } }, options: { model: 'm' } })
+ *   // → { cwd: '/w/p', model: 'm', provider: '', preset: '', parentId: '' }
+ */
+export function agentMetaOf(agent) {
+    try {
+        const a = agent;
+        const header = (a?.session?.header ?? {});
+        const options = (a?.options ?? {});
+        return {
+            cwd: stringOf(header.cwd),
+            model: stringOf(options.model),
+            provider: stringOf(options.provider),
+            preset: stringOf(header.agentPreset),
+            parentId: stringOf(header.parentSession),
+        };
+    }
+    catch {
+        // 元信息是尽力而为：结构异常回退空串，不打断通知路径
+        return { cwd: '', model: '', provider: '', preset: '', parentId: '' };
+    }
+}
+/** 非字符串回退空串。 */
+function stringOf(value) {
+    return typeof value === 'string' ? value : '';
+}
+/** 会话标题：优先 sessionTitle 快照，回退 cwd 末段，再回复空串（由 client 显示短 id）。 */
 export function titleOf(ctx, agent) {
     try {
         const a = agent;

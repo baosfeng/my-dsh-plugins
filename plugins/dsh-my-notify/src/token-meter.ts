@@ -58,6 +58,7 @@ export function createTokenMeter(): TokenMeter {
       total: totalOf(usage),
       requests: bucket.requests,
       startedAt: bucket.startedAt,
+      reasoning: usage.reasoningTokens,
     }
   }
 

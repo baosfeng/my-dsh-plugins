@@ -81,6 +81,11 @@ function noticeFrame(notice: NoticeFrame, now: number): NoticeFrame {
     sessionUrl: str(notice.sessionUrl),
     question: str(notice.question),
     questions: Array.isArray(notice.questions) ? notice.questions : [],
+    cwd: str(notice.cwd),
+    model: str(notice.model),
+    provider: str(notice.provider),
+    preset: str(notice.preset),
+    parentId: str(notice.parentId),
   } as NoticeFrame & { type: string }
 }
 

@@ -13,6 +13,7 @@ import { test } from 'vitest'
  */
 import assert from 'node:assert/strict'
 import { dispatchWebhooks, pushWebhook, buildUrl, backoffMs, RETRY_MAX, TIMEOUT_MS } from '../lib/webhook/pusher.js'
+import { toTimestampSeconds } from '../lib/webhook/adapters.js'
 
 const notice = { kind: 'end', sessionId: 's1', title: '标题', note: '摘要', agentType: 'top', time: 123 }
 
@@ -193,8 +194,45 @@ test('webhook pusher suite', async () => {
       { fetchImpl, now: () => 1700000000000 },
     )
     const url = fetchImpl.calls[0].url
-    assert.ok(url.includes('timestamp=1700000000000'), 'timestamp appended')
+    // 加签时间戳必须是秒级（官方要求）：now() 的 1700000000000 毫秒 → 1700000000 秒
+    assert.ok(url.includes('timestamp=1700000000'), 'timestamp is second-level, not milliseconds')
+    assert.ok(!url.includes('timestamp=1700000000000'), 'millisecond timestamp never reaches the signer')
     assert.ok(url.includes('sign='), 'sign appended')
+  }
+
+  // ── 11. 加签时间戳换算：毫秒 → 秒（幂等），非法值回退当前秒 ────────────
+  {
+    assert.equal(toTimestampSeconds(1700000000000), 1700000000, 'milliseconds converted to seconds')
+    assert.equal(toTimestampSeconds(1700000000), 1700000000, 'seconds pass through unchanged')
+    const now = Math.floor(Date.now() / 1000)
+    assert.ok(Math.abs(toTimestampSeconds(Number.NaN) - now) <= 2, 'invalid input falls back to now (seconds)')
+  }
+
+  // ── 12. 飞书加签：body.timestamp 为秒级 ──────────────────────────────
+  {
+    const fetchImpl = mockFetch(() => ({ ok: true }))
+    await pushWebhook(
+      { name: 'f', channel: 'feishu', secret: 'tok', url: 'https://open.feishu.cn/open-apis/bot/v2/hook/x' },
+      notice,
+      { fetchImpl, now: () => 1711673182000 },
+    )
+    const posted = JSON.parse(fetchImpl.calls[0].options.body)
+    assert.equal(posted.timestamp, '1711673182', 'feishu body timestamp is second-level')
+  }
+
+  // ── 13. 每 webhook 重试配置：attempts / backoffMs 覆盖默认值 ───────────
+  {
+    const fetchImpl = mockFetch(() => ({ ok: false }))
+    const sleep = mockSleep()
+    const failures = []
+    const result = await pushWebhook(
+      { name: 'r', channel: 'wecom', url: 'https://a.example/hook', retry: { attempts: 1, backoffMs: 500 } },
+      notice,
+      { fetchImpl, sleep, now: () => 1700000000000, onFailure: (failure) => failures.push(failure) },
+    )
+    assert.deepEqual(sleep.waits, [500], 'one retry with the configured backoff base')
+    assert.equal(result.attempts, 2, 'attempts = retry count + 1')
+    assert.equal(failures[0].attempts, 2)
   }
 
   console.log('ALL WEBHOOK PUSHER TESTS PASSED')

@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### 修复
+
+- fix(skill-manager): SKILL.md **详情读取改用同一个 fd** 取类型 / 大小 / 内容（`open(O_RDONLY|O_NONBLOCK)` → `handle.stat()` → 同一 handle read → close），消除「按名 stat 取 size 后再按名 open 读内容」的 TOCTOU 窗口（CodeQL `js/file-system-race` #121）。`realpath` 结果仍是唯一打开目标（不回退 candidate）；`O_NONBLOCK` 避免候选是 FIFO 时阻塞，类型判定在 read 之前，非普通文件不读。
+
 ## [0.2.0] - 2026-10-24
 
 ### 破坏性变更

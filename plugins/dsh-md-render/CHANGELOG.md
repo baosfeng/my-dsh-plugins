@@ -4,7 +4,6 @@
 
 > 公共 API 承诺面：`MarkdownView`（导出 / props / 自有 DOM 类名清单见 [README「公共 API 契约」](README.md)）；改类名清单 = 破坏性变更，须同步 README 与本文件。
 
-
 ## [Unreleased]
 
 ### 性能
@@ -25,21 +24,7 @@
 - refactor(md-render): markdown 标题与引用块形状对齐重构原型
 - refactor(md-render): 样式底座对齐重构原型（圆角 / 标题阶梯 / 代码卡片形状）
 
-## [0.6.0] - 2026-10-21
-
-### 变更
-
-- feat(md-render): mermaid 12.2.0 + Liquid Glass 主题 + 闭合即渲染 (#490)
-- refactor(md-render)!: 按重构原型独立重建渲染层（mdr 设计系统）
-- refactor(md-render): 拆出 CodeHead/CodeBody 守住函数尺寸门禁
-- feat(md-render): 代码块行号切换; 任务列表/列表标记对齐原型
-- refactor(md-render): 表格与分隔线对齐重构原型
-- refactor(md-render): markdown 标题与引用块形状对齐重构原型
-- refactor(md-render): 样式底座对齐重构原型（圆角 / 标题阶梯 / 代码卡片形状）
-
-## [Unreleased]
-
-### 变更
+### 详细变更
 
 - **mermaid 围栏闭合即渲染**：流式期间不再等整轮消息结束 —— 从事件流原文（`assistant/live-chunk` 的 `text-delta`，宿主 `StreamChunk`，`packages/llm/llm/src/types.ts:472`）拼接当前消息文本，解析围栏**闭合位**：已闭合 → 立即挂图表卡片；明确未闭合 → 不渲染残缺图；事件流不可用 / 内容查不到 → 退回原有「DOM 语言 + 400ms 稳定窗口」，行为不变。闭合位按内容哈希对齐（`fenceHash` / 文档序 FIFO），空围栏（裸 `pre > code`）不误判；事件源订阅（`eventSource.subscribe`）在「新围栏闭合」时触发一次重扫（闭合不产生 DOM mutation）；自愈机制保留（渲染后源码再变 → 卸载重挂）。失败态语义不变：事件流取不到 / 报错一律静默降级，不报错、不吞内容。
 - **mermaid 图表跟随宿主深浅 + 套用 Liquid Glass 卡片**：渲染前按宿主信号选 mermaid 12.2.0 的 `theme`（`dark` / `default`），并把宿主 `--dsw-*` 语义色映射为 `themeVariables`（`mainBkg` / `nodeBorder` / `lineColor` / `textColor` / `titleColor` / `attributeBackgroundColorOdd|Even` 等 16 项），以 `%%{init: …}%%` 前置指令**逐图**生效；源码自带 init 指令时原样尊重。宿主信号：`body[data-ds-dark-theme]`（`packages/client/ui-layout/src/client/theme-presenter.ts:15` 定义、`:75-76` 写入）与 `html` 的 `color-scheme`（同文件 `:71`），无信号回落浅色。实测 12.2.0：`mainBkg` / `nodeBorder` / `lineColor` / `textColor` 生效，flowchart 节点填充走 `mainBkg` 而非 `primaryColor`（按实测结论映射）。失败态语义不变（错误图仍随离屏容器丢弃，源码优先）。图表卡同时套用 `--mdr-material` / `--mdr-card-shadow` / `--mdr-radius-lg`。

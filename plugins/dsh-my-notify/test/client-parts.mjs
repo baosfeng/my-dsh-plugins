@@ -55,14 +55,17 @@ function createDomStub() {
 function loadParts() {
   const iconsSrc = fs.readFileSync(new URL('../../dsh-shared/client-parts/icons.part.js', import.meta.url), 'utf8')
   const i18nSrc = fs.readFileSync(new URL('../lib/parts/i18n.js', import.meta.url), 'utf8')
+  const runtimeconfigSrc = fs.readFileSync(new URL('../lib/parts/runtime-config.js', import.meta.url), 'utf8')
   const renderSrc = fs.readFileSync(new URL('../lib/parts/render.js', import.meta.url), 'utf8')
+  const audioSrc = fs.readFileSync(new URL('../lib/parts/audio.js', import.meta.url), 'utf8')
+  const toastSrc = fs.readFileSync(new URL('../lib/parts/toast.js', import.meta.url), 'utf8')
   const dom = createDomStub()
   const factory = new Function(
     'createElement',
     'document',
     'navigator',
     'window',
-    `${iconsSrc}\n${i18nSrc}\n${renderSrc}\nreturn { buildToastItem, kindIcon, kindIconClass, attachToastEvents }`,
+    `${iconsSrc}\n${i18nSrc}\n${runtimeconfigSrc}\n${renderSrc}\n${audioSrc}\n${toastSrc}\nreturn { buildToastItem, kindIcon, kindIconClass, attachToastEvents }`,
   )
   return factory(createElement, dom, { language: 'zh-CN' }, {})
 }

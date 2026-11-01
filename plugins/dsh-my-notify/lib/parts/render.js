@@ -1,5 +1,4 @@
 'use strict'
-// ── 通知内容构造 ────────────────────────────────────────────────────
 function shortId(id) {
   if (typeof id !== 'string' || id === '') return ''
   return id.length > 8 ? id.slice(0, 8) : id
@@ -35,69 +34,6 @@ function faviconOf() {
     return ''
   }
 }
-// ── 提示音（Web Audio 合成短促滴声）────────────────────────────────
-let audioCtx = null
-function baseAudio() {
-  const AC = window.AudioContext || window.webkitAudioContext
-  if (typeof AC !== 'function') return null
-  if (audioCtx === null) {
-    try {
-      audioCtx = new AC()
-    } catch {
-      return null
-    }
-  }
-  return audioCtx
-}
-function beep() {
-  const ac = baseAudio()
-  if (ac === null) return
-  const resume = typeof ac.resume === 'function' ? ac.resume() : Promise.resolve()
-  void Promise.resolve(resume)
-    .then(() => {
-      if (!prefOn(LS.sound, true)) return
-      const volume = prefVolume()
-      const t0 = ac.currentTime
-      const osc = ac.createOscillator()
-      const gain = ac.createGain()
-      osc.type = 'sine'
-      osc.frequency.value = 880
-      gain.gain.setValueAtTime(0.0001, t0)
-      gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.015)
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22)
-      osc.connect(gain)
-      gain.connect(ac.destination)
-      osc.start(t0)
-      osc.stop(t0 + 0.24)
-    })
-    .catch(() => {
-      // autoplay policy / audio hardware: sound is best-effort
-    })
-}
-/** 浏览器自动播放策略：首次用户交互后解锁 AudioContext。 */
-function armAudioUnlock() {
-  if (typeof document === 'undefined') return () => {}
-  const unlock = () => {
-    try {
-      const ac = baseAudio()
-      if (ac !== null && typeof ac.resume === 'function') void ac.resume()
-    } catch {
-      // ignore
-    }
-    document.removeEventListener('pointerdown', unlock)
-    document.removeEventListener('keydown', unlock)
-  }
-  document.addEventListener('pointerdown', unlock, { passive: true })
-  document.addEventListener('keydown', unlock)
-  return () => {
-    document.removeEventListener('pointerdown', unlock)
-    document.removeEventListener('keydown', unlock)
-  }
-}
-// ── 页面内 toast（通知权限关闭/被拒时的兜底）────────────────────────
-/** 共享图标是 React 元素树（icon.* 返回 createElement 树），toast 是命令式
- *  DOM 构建：把元素树转成 SVG DOM 节点复用同一套图标（stroke=currentColor
- *  继承周围文字色）。camelCase 属性转 SVG 属性名（viewBox 特例保持原样）。 */
 function svgAttrName(key) {
   if (key === 'viewBox') return 'viewBox'
   return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
@@ -127,7 +63,6 @@ function elementToDom(node) {
   }
   return el
 }
-/** 通知类型 → 共享图标（stroke=currentColor，颜色语义由 CSS 类区分）。 */
 function kindIcon(kind) {
   switch (kind) {
     case 'end':
@@ -140,7 +75,6 @@ function kindIcon(kind) {
       return icon.external(16)
   }
 }
-/** 通知类型 → 图标颜色语义类（end/remote=品牌色信息、ask=警告、approval=成功）。 */
 function kindIconClass(kind) {
   switch (kind) {
     case 'end':
@@ -153,124 +87,6 @@ function kindIconClass(kind) {
       return 'dsh-my-notify-toast-icon-remote'
   }
 }
-function ensureToastBox() {
-  let box = document.getElementById('dsh-my-notify-toast-box')
-  if (box === null) {
-    box = document.createElement('div')
-    box.id = 'dsh-my-notify-toast-box'
-    box.className = 'dsh-my-notify-toast-box'
-    document.body.appendChild(box)
-  }
-  return box
-}
-function buildToastItem(notice) {
-  const item = document.createElement('div')
-  item.className = 'dsh-my-notify-toast'
-  item.setAttribute('role', 'status')
-  const head = document.createElement('div')
-  head.className = 'dsh-my-notify-toast-head'
-  // 类型图标：共享图标 + 颜色语义（end=clock/品牌色、ask=help/警告、
-  // approval=check/成功、remote=external/品牌色）。
-  const iconWrap = document.createElement('span')
-  iconWrap.className = `dsh-my-notify-toast-icon ${kindIconClass(notice.kind)}`
-  iconWrap.appendChild(elementToDom(kindIcon(notice.kind)))
-  head.appendChild(iconWrap)
-  const title = document.createElement('span')
-  title.className = 'dsh-my-notify-toast-title'
-  title.textContent = noticeTitle(notice)
-  head.appendChild(title)
-  // 关闭按钮：close 图标按钮（纯图标，aria-label 无障碍）。
-  const closeBtn = document.createElement('button')
-  closeBtn.type = 'button'
-  closeBtn.className = 'dsh-my-notify-toast-close'
-  closeBtn.setAttribute('aria-label', strings.closeToast())
-  closeBtn.appendChild(elementToDom(icon.close(15)))
-  head.appendChild(closeBtn)
-  item.appendChild(head)
-  const body = document.createElement('div')
-  body.className = 'dsh-my-notify-toast-body'
-  const bodyText = noticeBody(notice) || kindLabel(notice.kind)
-  body.textContent = bodyText
-  item.appendChild(body)
-  // 操作按钮：打开会话（external 图标 + 文字，点击跳转会话）。
-  const actions = document.createElement('div')
-  actions.className = 'dsh-my-notify-toast-actions'
-  const openBtn = document.createElement('button')
-  openBtn.type = 'button'
-  openBtn.className = 'dsh-my-notify-toast-open'
-  openBtn.appendChild(elementToDom(icon.external(14)))
-  const openLabel = document.createElement('span')
-  openLabel.textContent = strings.openSession()
-  openBtn.appendChild(openLabel)
-  actions.appendChild(openBtn)
-  item.appendChild(actions)
-  // 只允许 textContent 渲染：note/远程 body 不受信任，禁止 innerHTML。
-  return item
-}
-function attachToastEvents(item, onOpen) {
-  let timer = null
-  const dismiss = () => {
-    if (timer !== null) clearTimeout(timer)
-    if (item.parentNode === null) return
-    // 退场动画：先播 150ms 过渡再移除节点。
-    item.classList.add('dsh-my-notify-toast-out')
-    setTimeout(() => {
-      if (item.parentNode !== null) item.parentNode.removeChild(item)
-    }, 150)
-  }
-  // toast 整体点击：关闭 + 跳转会话（保留原行为）。
-  item.addEventListener('click', (event) => {
-    if (event !== null && event.stopPropagation) event.stopPropagation()
-    dismiss()
-    try {
-      onOpen()
-    } catch {
-      // opening the session is best-effort
-    }
-  })
-  // 关闭按钮：只关闭不跳转。
-  const closeBtn = item.querySelector('.dsh-my-notify-toast-close')
-  if (closeBtn !== null) {
-    closeBtn.addEventListener('click', (event) => {
-      if (event !== null && event.stopPropagation) event.stopPropagation()
-      if (event !== null && event.preventDefault) event.preventDefault()
-      dismiss()
-    })
-  }
-  // 打开会话按钮：关闭 + 跳转（与整体点击一致，stopPropagation 防双重触发）。
-  const openBtn = item.querySelector('.dsh-my-notify-toast-open')
-  if (openBtn !== null) {
-    openBtn.addEventListener('click', (event) => {
-      if (event !== null && event.stopPropagation) event.stopPropagation()
-      if (event !== null && event.preventDefault) event.preventDefault()
-      dismiss()
-      try {
-        onOpen()
-      } catch {
-        // opening the session is best-effort
-      }
-    })
-  }
-  timer = setTimeout(dismiss, 6000)
-}
-function showToast(notice, onOpen) {
-  if (!prefOn(LS.toast, true)) return
-  if (typeof document === 'undefined') return
-  const box = ensureToastBox()
-  const item = buildToastItem(notice)
-  attachToastEvents(item, onOpen)
-  box.appendChild(item)
-  if (box.children.length > 4) box.removeChild(box.firstChild)
-}
-function removeToastBox() {
-  try {
-    const box = document.getElementById('dsh-my-notify-toast-box')
-    if (box !== null && box.parentNode !== null) box.parentNode.removeChild(box)
-  } catch {
-    // ignore
-  }
-}
-// ── 系统通知（Notification API）────────────────────────────────────
 function fireSystemNotification(notice, sessionId, openSession) {
   try {
     const bodyText = noticeBody(notice)
@@ -278,23 +94,27 @@ function fireSystemNotification(notice, sessionId, openSession) {
       body: bodyText !== '' ? bodyText : kindLabel(notice.kind),
       tag: `dsh-my-notify:${notice.kind}:${sessionId}`,
       icon: faviconOf(),
+      requireInteraction: systemConfigNow().requireInteraction === true,
     })
     notification.onclick = () => {
       try {
         notification.close()
       } catch {
-        // ignore
+        void 0
       }
       openSession()
     }
   } catch {
-    // Notification constructor failure: fall back to the toast.
     showToast(notice, openSession)
   }
 }
-// ── 样式（DSH 语义 token，随 activation 注入）───────────────────────
 const STYLES = `
 .dsh-my-notify-toast-box{position:fixed;right:16px;bottom:16px;z-index:3000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.dsh-my-notify-toast-box[data-pos="bottom-left"]{right:auto;left:16px;bottom:16px;top:auto}
+.dsh-my-notify-toast-box[data-pos="top-right"]{right:16px;left:auto;top:16px;bottom:auto;flex-direction:column-reverse}
+.dsh-my-notify-toast-box[data-pos="top-left"]{right:auto;left:16px;top:16px;bottom:auto;flex-direction:column-reverse}
+.dsh-my-notify-toast-box[data-pos="top"]{right:auto;left:50%;top:16px;bottom:auto;transform:translateX(-50%);flex-direction:column-reverse}
+.dsh-my-notify-toast-box[data-pos="bottom"]{right:auto;left:50%;bottom:16px;top:auto;transform:translateX(-50%)}
 .dsh-my-notify-toast{pointer-events:auto;width:284px;max-width:calc(100vw - 32px);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);
   border:1px solid var(--dsw-alias-border-l2);border-radius:10px;box-shadow:var(--dsw-shadow-lv2);padding:10px 12px;cursor:pointer;
   animation:dsh-my-notify-toast-in 160ms var(--ds-ease-in-out);display:flex;flex-direction:column;gap:6px;

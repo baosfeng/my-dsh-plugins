@@ -35,14 +35,12 @@ window.__ModuleLoader__.load({
 
     // ── i18n 文案与本地偏好（src/client/parts/i18n.ts）──────────────────
     'use strict'
-// ── i18n（浏览器语言判定）──────────────────────────────────────────
 function isZh() {
-  // 宿主 locale（dsh-client-locale 同步到 <html lang>）优先；空则回退浏览器语言。
   try {
     const host = (document.documentElement.lang || '').toLowerCase()
     if (host !== '') return host.startsWith('zh')
   } catch {
-    /* 非浏览器环境（node 渲染）无 document */
+    void 0
   }
   try {
     return (navigator.language || 'en').toLowerCase().startsWith('zh')
@@ -59,57 +57,31 @@ const strings = {
     isZh() ? (short !== '' ? `会话 ${short}` : '会话') : short !== '' ? `Session ${short}` : 'Session',
   openSession: () => (isZh() ? '打开会话' : 'Open session'),
   closeToast: () => (isZh() ? '关闭通知' : 'Dismiss notification'),
-  // 设置页（issue #27 配置可视化）
   settingsTitle: () => (isZh() ? '通知提醒' : 'Notifications'),
-  settingsTriggers: () => (isZh() ? '触发开关' : 'Triggers'),
-  settingsEnd: () => (isZh() ? '会话结束提醒' : 'Session end'),
-  settingsEndHint: () => (isZh() ? '本轮对话结束后弹通知' : 'Notify when a session finishes'),
-  settingsAsk: () => (isZh() ? '询问提醒' : 'Ask'),
-  settingsAskHint: () => (isZh() ? 'agent 询问问题时弹通知' : 'Notify when the agent asks you'),
-  settingsApproval: () => (isZh() ? '审批提醒' : 'Approval'),
-  settingsApprovalHint: () => (isZh() ? '等待批准时弹通知' : 'Notify when approval is needed'),
-  settingsSubagentEnd: () => (isZh() ? '子代理完成提醒' : 'Subagent end'),
   settingsSubagentEndHint: () =>
     isZh() ? '子代理完成时也弹通知（默认关闭）' : 'Also notify when a subagent finishes (off by default)',
-  settingsAdvanced: () => (isZh() ? '高级' : 'Advanced'),
   settingsApiToken: () => (isZh() ? '远程触发 Token' : 'Remote trigger token'),
   settingsApiTokenHint: () =>
     isZh() ? '配置后远程 hook 需携带 x-notify-token 头' : 'Remote hooks must send x-notify-token when set',
-  settingsDedupeMs: () => (isZh() ? '去重窗口（毫秒）' : 'Dedupe window (ms)'),
-  settingsDedupeMsHint: () => (isZh() ? '同类通知在窗口内只推一次' : 'Same-kind notices are deduped within the window'),
   settingsVolume: () => (isZh() ? '提示音音量' : 'Sound volume'),
   settingsVolumeHint: () => (isZh() ? '调节提示音大小（0~100%）' : 'Adjust the beep volume (0-100%)'),
-  // 免打扰（quiet hours）
-  settingsQuietHours: () => (isZh() ? '免打扰' : 'Do Not Disturb'),
   settingsQuietHoursHint: () =>
     isZh() ? '在指定时段内静默所有通知' : 'Silence all notifications during the specified time window',
   settingsQuietHoursEnabled: () => (isZh() ? '启用免打扰' : 'Enable DND'),
   settingsQuietHoursEnabledHint: () =>
     isZh() ? '开启后在指定时段内不弹通知' : 'When on, notifications are silenced during quiet hours',
-  settingsQuietHoursStart: () => (isZh() ? '开始时间' : 'Start time'),
-  settingsQuietHoursStartHint: () => (isZh() ? '免打扰开始时间（如 23:00）' : 'Quiet hours start (e.g. 23:00)'),
-  settingsQuietHoursEnd: () => (isZh() ? '结束时间' : 'End time'),
-  settingsQuietHoursEndHint: () => (isZh() ? '免打扰结束时间（如 08:00）' : 'Quiet hours end (e.g. 08:00)'),
-  // 出站 webhook（issue #92）
-  settingsWebhooks: () => (isZh() ? '出站 Webhook' : 'Outbound webhooks'),
   settingsWebhooksHint: () =>
     isZh() ? '事件发生时推送到企微/飞书/钉钉机器人（手机可收）' : 'Push events to WeCom/Feishu/DingTalk bots',
-  webhookName: () => (isZh() ? '名称' : 'Name'),
   webhookNamePlaceholder: () => (isZh() ? '如：企微-工作群' : 'e.g. WeCom group'),
-  webhookChannel: () => (isZh() ? '渠道' : 'Channel'),
   webhookUrl: () => (isZh() ? 'Webhook URL' : 'Webhook URL'),
   webhookUrlPlaceholder: () => (isZh() ? '机器人 webhook 地址' : 'Bot webhook URL'),
-  webhookSecret: () => (isZh() ? '签名密钥（可选）' : 'Secret (optional)'),
   webhookSecretPlaceholder: () => (isZh() ? '机器人签名密钥' : 'Bot signing secret'),
-  webhookEvents: () => (isZh() ? '触发事件' : 'Trigger events'),
   webhookMsgType: () => (isZh() ? '消息类型' : 'Message type'),
   webhookTemplate: () => (isZh() ? '自定义模板（可选）' : 'Content template (optional)'),
   webhookTemplatePlaceholder: () =>
     isZh() ? '如 {title} {kind} {note} {tokens} {question} {sessionUrl} {time}' : 'e.g. {title} {kind} {note} {tokens}',
   webhookAdd: () => (isZh() ? '添加 Webhook' : 'Add webhook'),
   webhookEdit: () => (isZh() ? '编辑' : 'Edit'),
-  webhookDelete: () => (isZh() ? '删除' : 'Delete'),
-  webhookSave: () => (isZh() ? '保存' : 'Save'),
   webhookCancel: () => (isZh() ? '取消' : 'Cancel'),
   webhookFailures: () => (isZh() ? '推送失败记录' : 'Push failures'),
   webhookNoFailures: () => (isZh() ? '暂无失败记录' : 'No failures yet'),
@@ -130,13 +102,225 @@ const strings = {
   saveFailed: () => (isZh() ? '保存失败' : 'Save failed'),
   loading: () => (isZh() ? '加载中…' : 'Loading…'),
   loadError: () => (isZh() ? '加载失败' : 'Load failed'),
+  viewCopy: () => (isZh() ? '文案' : 'Copy'),
+  viewChannel: () => (isZh() ? '渠道' : 'Channels'),
+  viewPresent: () => (isZh() ? '呈现' : 'Delivery'),
+  viewSecure: () => (isZh() ? '高级' : 'Advanced'),
+  evTemplates: () => (isZh() ? '事件模板' : 'Event templates'),
+  eventEnabled: () => (isZh() ? '已启用' : 'Enabled'),
+  eventDisabled: () => (isZh() ? '已关闭' : 'Off'),
+  editorEnabled: () => (isZh() ? '发送该事件通知' : 'Notify on this event'),
+  editorEnabledHint: () => (isZh() ? '关闭后仍记录投递历史，只是不弹窗、不推送' : 'History is kept; no popup or push'),
+  varTree: () => (isZh() ? '变量树' : 'Variables'),
+  varSearch: () => (isZh() ? '搜索变量' : 'Search variables'),
+  varSearchPlaceholder: () => (isZh() ? '搜索变量，如 duration / 耗时' : 'Search e.g. duration'),
+  varNoMatch: () => (isZh() ? '没有匹配的变量' : 'No matching variable'),
+  varOpen: () => (isZh() ? '变量…' : 'Variables…'),
+  close: () => (isZh() ? '关闭' : 'Close'),
+  bandTitle: () => (isZh() ? '五形态预览' : 'Five-form preview'),
+  bandHint: () =>
+    isZh()
+      ? '正文五处联动，「标题」进四处（企业微信无标题字段）'
+      : 'Body updates all five; title reaches four (WeCom has none)',
+  bandCollapse: () => (isZh() ? '折叠' : 'Collapse'),
+  bandExpand: () => (isZh() ? '展开' : 'Expand'),
+  bandFeishuIndependent: () => (isZh() ? '独立模板 · 设计器控制' : 'Custom template'),
+  panePresent: () => (isZh() ? '呈现' : 'Delivery'),
+  paneChannel: () => (isZh() ? '渠道推送' : 'Channels'),
+  paneSecure: () => (isZh() ? '高级与安全' : 'Advanced'),
+  navLabel: () => (isZh() ? '通知设置分区' : 'Notification settings sections'),
+  panelSubtitle: () =>
+    isZh()
+      ? '五类事件、五个分区；文案与卡片外观都在这里改完即预览'
+      : 'Five events, five sections; copy and card appearance preview live',
+  resetDefaults: () => (isZh() ? '恢复默认' : 'Reset defaults'),
+  dirty: () => (isZh() ? '未保存' : 'Unsaved'),
+  presentHint: () =>
+    isZh() ? '通知怎么送到你眼前 —— 系统通知、页面 toast、提示音、免打扰。' : 'How notices reach you.',
+  systemTitle: () => (isZh() ? '系统通知' : 'System notification'),
+  systemEnable: () => (isZh() ? '桌面通知' : 'Desktop notification'),
+  systemEnableHint: () => (isZh() ? '窗口在后台时也弹出系统级通知' : 'Also pop a OS-level notice in background'),
+  systemPersist: () => (isZh() ? '常驻通知' : 'Sticky notice'),
+  systemPersistHint: () =>
+    isZh()
+      ? '需要浏览器「常驻」权限；未授权时降级为普通通知'
+      : 'Needs the sticky permission; falls back to a normal notice',
+  permGranted: () => (isZh() ? '已授权' : 'Granted'),
+  permDenied: () => (isZh() ? '已拒绝' : 'Denied'),
+  permDefault: () => (isZh() ? '未授权' : 'Not granted'),
+  toastTitle2: () => (isZh() ? '页面 toast' : 'Page toast'),
+  toastEnableHint: () => (isZh() ? '应用在前台时用 toast 代替系统通知' : 'Use a toast while the app is focused'),
+  toastPosition: () => (isZh() ? '位置' : 'Position'),
+  toastDuration: () => (isZh() ? '显示时长' : 'Duration'),
+  toastMaxStack: () => (isZh() ? '最大堆叠' : 'Max stack'),
+  toastHoverPause: () => (isZh() ? '暂停倒计时' : 'Pause the countdown'),
+  posTopRight: () => (isZh() ? '右上' : 'Top right'),
+  posTopLeft: () => (isZh() ? '左上' : 'Top left'),
+  posBottomRight: () => (isZh() ? '右下' : 'Bottom right'),
+  posBottomLeft: () => (isZh() ? '左下' : 'Bottom left'),
+  posTop: () => (isZh() ? '顶部居中' : 'Top center'),
+  posBottom: () => (isZh() ? '底部居中' : 'Bottom center'),
+  dur3s: () => (isZh() ? '3 秒' : '3s'),
+  dur5s: () => (isZh() ? '5 秒' : '5s'),
+  dur8s: () => (isZh() ? '8 秒' : '8s'),
+  stack1: () => (isZh() ? '1 条' : '1'),
+  stack3: () => (isZh() ? '3 条' : '3'),
+  stack5: () => (isZh() ? '5 条' : '5'),
+  soundTitle: () => (isZh() ? '提示音' : 'Sound'),
+  soundEnable: () => (isZh() ? '启用提示音' : 'Enable sound'),
+  soundEnableHint: () => (isZh() ? '只在窗口可见时播放' : 'Plays only while the window is visible'),
+  soundTone: () => (isZh() ? '音色' : 'Tone'),
+  soundTest: () => (isZh() ? '试听' : 'Preview'),
+  toneChime: () => (isZh() ? '清脆 · chime' : 'Chime'),
+  toneDrop: () => (isZh() ? '柔和水滴 · drop' : 'Drop'),
+  toneDeep: () => (isZh() ? '低沉提示 · deep' : 'Deep'),
+  quietDedupeTitle: () => (isZh() ? '免打扰与去重' : 'DND & dedupe'),
+  quietEnable: () => (isZh() ? '免打扰时段' : 'Do not disturb'),
+  quietEnableHint: () => (isZh() ? '时段内只记录到侧边活动，不弹窗' : 'Silence during the window'),
+  quietStart: () => (isZh() ? '开始' : 'Start'),
+  quietEnd: () => (isZh() ? '结束' : 'End'),
+  dedupeWindow: () => (isZh() ? '去重窗口' : 'Dedupe window'),
+  dedupeWindowHint: () =>
+    isZh() ? '同会话同事件在此窗口内只推一次' : 'One notice per session+event inside the window',
+  ms: () => (isZh() ? '毫秒' : 'milliseconds'),
+  askModeTitle: () => (isZh() ? '询问呈现' : 'Ask rendering'),
+  askModeFull: () => (isZh() ? '完整问题 + 选项' : 'Full question + options'),
+  askModeSummary: () => (isZh() ? '仅摘要' : 'Summary only'),
+  askModeHint: () =>
+    isZh()
+      ? '完整模式会把问题全文与选项按钮带进通知；摘要模式只发首行，适合问题很长的会话。'
+      : 'Full mode carries the whole question and option buttons; summary only sends the first line.',
+  copyHint: () =>
+    isZh()
+      ? '每类事件独立配标题与正文；右侧五种形态改字即变。'
+      : 'One template per event; the preview follows your edits.',
+  copyEvent: () => (isZh() ? '事件' : 'Event'),
+  evSubagentEnd: () => (isZh() ? '子代理结束' : 'Subagent end'),
+  eventSubagentEnd: () => (isZh() ? '子代理结束' : 'Subagent end'),
+  dzButtonDefault: () => (isZh() ? '查看会话' : 'View session'),
+  retryAttemptsUsed: (n) => (isZh() ? `${n} 次尝试` : `${n} attempts`),
+  sampleTitle: () => (isZh() ? '构建完成' : 'Build finished'),
+  sampleBody: () => (isZh() ? '耗时 3m12s' : 'Took 3m12s'),
+  sampleQuestion: () => (isZh() ? '确认部署到生产环境？' : 'Deploy to production?'),
+  previewLoading: () => (isZh() ? '预览生成中…' : 'Rendering preview…'),
+  previewFailed: () =>
+    isZh() ? '预览生成失败：确认本地服务在运行后重试' : 'Preview failed — check the local server and retry',
+  previewRetry: () => (isZh() ? '重试' : 'Retry'),
+  previewEmpty: () => (isZh() ? '改标题或正文后这里会实时出现效果' : 'Edit the template to see the preview'),
+  tplTitle: () => (isZh() ? '通知标题' : 'Title'),
+  tplBody: () => (isZh() ? '通知正文' : 'Body'),
+  varLibrary: () => (isZh() ? '变量库 · 点击插入光标处' : 'Variables · click to insert at the caret'),
+  varCount: (n) => (isZh() ? `${n} 个变量` : `${n} variables`),
+  varInsertDesc: () => (isZh() ? '点击插入变量' : 'Insert variable'),
+  formSys: () => (isZh() ? '系统通知' : 'System'),
+  formToast: () => (isZh() ? 'toast' : 'Toast'),
+  formFeishu: () => (isZh() ? '飞书' : 'Feishu'),
+  formWecom: () => (isZh() ? '企微' : 'WeCom'),
+  formDing: () => (isZh() ? '钉钉' : 'DingTalk'),
+  viewJson: () => (isZh() ? 'JSON' : 'JSON'),
+  previewTip: (feishu) =>
+    feishu
+      ? isZh()
+        ? '卡片字段 / 配色 / 按钮在「渠道推送 → 飞书」里改，这里同步。'
+        : 'Card fields / accent / button are edited under Channels → Feishu.'
+      : isZh()
+        ? '改标题或正文，右侧立刻变；点变量插入到光标处。'
+        : 'Editing the template updates the preview; click a variable to insert it.',
+  channelHint: () =>
+    isZh()
+      ? '一个渠道一套消息类型与模板；点卡片改细节，飞书可进卡片设计器。'
+      : 'One message type and template per channel.',
+  channelAddNew: () => (isZh() ? '添加渠道' : 'Add channel'),
+  channelEditTitle: () => (isZh() ? '编辑渠道' : 'Edit channel'),
+  channelSecret: () => (isZh() ? '加签 secret' : 'Signing secret'),
+  msgTypeInteractive: () => (isZh() ? 'interactive 卡片' : 'interactive card'),
+  channelName: () => (isZh() ? '渠道名称' : 'Channel name'),
+  channelType: () => (isZh() ? '渠道类型' : 'Channel type'),
+  channelSecretHint: () => (isZh() ? '（可选，与 URL 同时配置才生效）' : '(optional, only with a URL)'),
+  channelEventsSubscribe: () => (isZh() ? '订阅事件' : 'Subscribed events'),
+  channelTestSend: () => (isZh() ? '测试发送' : 'Send test'),
+  channelTestHint: () =>
+    isZh() ? '使用上方模板与卡片配置构造一条真实请求' : 'Sends a real request built from the fields above',
+  channelSave: () => (isZh() ? '保存渠道' : 'Save channel'),
+  channelDelete: () => (isZh() ? '删除渠道' : 'Delete channel'),
+  channelEnabled: () => (isZh() ? '已启用' : 'Enabled'),
+  channelDisabled: () => (isZh() ? '已停用' : 'Disabled'),
+  channelNoWebhooks: () => (isZh() ? '还没有渠道，点「添加渠道」开始' : 'No channel yet'),
+  designerTitle: () => (isZh() ? '飞书卡片设计器' : 'Feishu card designer'),
+  designerView: () => (isZh() ? '设计器视图' : 'Designer view'),
+  dzCardTitle: () => (isZh() ? '卡片标题模板' : 'Card title template'),
+  dzAccent: () => (isZh() ? '主题色' : 'Header accent'),
+  dzAccentAuto: () => (isZh() ? '按事件自动' : 'Auto by event'),
+  dzFields: () => (isZh() ? '显示字段' : 'Fields'),
+  dzButton: () => (isZh() ? '按钮文案' : 'Button label'),
+  dzMention: () => (isZh() ? '@ 提醒' : 'Mentions'),
+  dzMentionAll: () => (isZh() ? '@所有人' : '@all'),
+  dzPreviewLabel: () => (isZh() ? '卡片预览（飞书客户端）' : 'Card preview (Feishu client)'),
+  dzMeta: (fields, accent, buttons) =>
+    isZh()
+      ? `${fields} 个字段 · ${accent} header · ${buttons} 个按钮`
+      : `${fields} fields · ${accent} header · ${buttons} buttons`,
+  retryAttempts: () => (isZh() ? '重试次数' : 'Retries'),
+  secureHint: () =>
+    isZh() ? '回调鉴权、站点根、远程触发、配置搬迁。' : 'Auth, base URL, remote trigger, config portability.',
+  secureApiToken: () => (isZh() ? '回调 apiToken' : 'Callback apiToken'),
+  secureShow: () => (isZh() ? '显示' : 'Show'),
+  secureHide: () => (isZh() ? '隐藏' : 'Hide'),
+  secureRegenerate: () => (isZh() ? '重新生成' : 'Regenerate'),
+  secureBaseUrl: () => (isZh() ? '站点根 webBaseUrl' : 'Site root webBaseUrl'),
+  secureBaseUrlHint: () => (isZh() ? '用于会话链接拼接' : 'Used to build session links'),
+  secureRemoteTitle: () => (isZh() ? '远程触发测试' : 'Remote trigger test'),
+  secureRemoteSample: () => (isZh() ? '样例数据（JSON）' : 'Sample payload (JSON)'),
+  secureRemoteSend: () => (isZh() ? '发送测试' : 'Send'),
+  secureRemoteUnsent: () => (isZh() ? '未发送' : 'Not sent yet'),
+  secureRemoteSending: () => (isZh() ? '发送中…' : 'Sending…'),
+  secureRemoteTimeout: () => (isZh() ? '发送超时（8s）' : 'Timed out after 8s'),
+  secureRemoteOk: () => (isZh() ? '已发送' : 'Sent'),
+  secureRemoteFail: () => (isZh() ? '发送失败' : 'Send failed'),
+  secureExport: () => (isZh() ? '导出配置' : 'Export config'),
+  secureImport: () => (isZh() ? '导入配置…' : 'Import config…'),
+  permSelfCheck: () => (isZh() ? '权限与自检' : 'Permission & self-check'),
+  soundAvailable: () => (isZh() ? '提示音可用（WebAudio 合成，无音频文件）' : 'Sound available (WebAudio, no asset)'),
+  fieldTokens: () => (isZh() ? 'token 用量' : 'Token usage'),
+  fieldDuration: () => (isZh() ? '耗时' : 'Duration'),
+  fieldTool: () => (isZh() ? '工具' : 'Tool'),
+  fieldQuestion: () => (isZh() ? '问题' : 'Question'),
+  fieldLink: () => (isZh() ? '会话链接' : 'Session link'),
+  fieldTime: () => (isZh() ? '时间' : 'Time'),
+  fcardApp: () => (isZh() ? 'DeepSeek Harness · 通知' : 'DeepSeek Harness · Notice'),
+  fcardMentionAll: () => (isZh() ? '@所有人' : '@all'),
+  accentGreen: () => (isZh() ? '绿色' : 'Green'),
+  accentBlue: () => (isZh() ? '蓝色' : 'Blue'),
+  accentOrange: () => (isZh() ? '橙色' : 'Orange'),
+  accentGrey: () => (isZh() ? '灰色' : 'Grey'),
 }
-// ── 本地开关（localStorage 覆盖，默认全开）──────────────────────────
+function eventLabelOf(key) {
+  if (key === 'end') return strings.eventEnd()
+  if (key === 'ask') return strings.eventAsk()
+  if (key === 'approval') return strings.eventApproval()
+  if (key === 'subagentEnd') return strings.evSubagentEnd()
+  if (key === 'remote') return strings.eventRemote()
+  return key
+}
+
+
+    // ── 共享图标（dsh-shared/client-parts/icons.part.js，issue #54）────
+    'use strict'
 const LS = {
   notify: 'dsh-notify:notify',
   sound: 'dsh-notify:sound',
   toast: 'dsh-notify:toast',
   volume: 'dsh-notify:volume',
+  tone: 'dsh-notify:tone',
+}
+function prefTone() {
+  try {
+    const raw = window.localStorage.getItem(LS.tone)
+    if (raw === 'drop' || raw === 'deep' || raw === 'chime') return raw
+  } catch {
+    void 0
+  }
+  return 'chime'
 }
 function prefOn(key, def) {
   try {
@@ -147,7 +331,45 @@ function prefOn(key, def) {
     return def
   }
 }
-/** 提示音音量（0~1，默认 0.6；issue #71：0.18 太小听不见）。 */
+function writePref(key, on) {
+  try {
+    window.localStorage.setItem(key, on ? '1' : '0')
+  } catch {
+    void 0
+  }
+}
+function writePrefNum(key, value) {
+  try {
+    window.localStorage.setItem(key, String(value))
+  } catch {
+    void 0
+  }
+}
+function prefNum(key, fallback) {
+  const def = Number.isFinite(fallback) && fallback >= 0 && fallback <= 1 ? fallback : 0.6
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (raw === null) return def
+    const value = Number(raw)
+    if (Number.isFinite(value) && value >= 0 && value <= 1) return value
+  } catch {
+    void 0
+  }
+  return def
+}
+function readPrefRaw(key) {
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return undefined
+  }
+}
+function seedPref(key, on) {
+  if (readPrefRaw(key) === null) writePref(key, on)
+}
+function seedPrefNum(key, value) {
+  if (readPrefRaw(key) === null) writePrefNum(key, value)
+}
 function prefVolume() {
   try {
     const raw = window.localStorage.getItem(LS.volume)
@@ -155,13 +377,12 @@ function prefVolume() {
     const v = Number(raw)
     if (Number.isFinite(v) && v >= 0 && v <= 1) return v
   } catch {
-    // fall through to default
+    void 0
   }
   return 0.6
 }
 
 
-    // ── 共享图标（dsh-shared/client-parts/icons.part.js，issue #54）────
     // ── shared icons (inline, stroke=currentColor, matching better-sidebar) ──
 // Single source of truth for the plugin UI icon set (issue #54 阶段 0).
 // Extracted from dsh-file-activity's lib/parts/icons.part.js; every plugin's
@@ -614,10 +835,8 @@ const fileIconByExt = (ext, size = 14) => {
 }
 
 
-    // ── 通知渲染：内容构造 / 提示音 / toast / 系统通知 / 样式 ───────────
-    // （src/client/parts/render.ts）
+    // ── 通知内容构造 / 系统通知（render.ts）────────────────────────────
     'use strict'
-// ── 通知内容构造 ────────────────────────────────────────────────────
 function shortId(id) {
   if (typeof id !== 'string' || id === '') return ''
   return id.length > 8 ? id.slice(0, 8) : id
@@ -653,69 +872,6 @@ function faviconOf() {
     return ''
   }
 }
-// ── 提示音（Web Audio 合成短促滴声）────────────────────────────────
-let audioCtx = null
-function baseAudio() {
-  const AC = window.AudioContext || window.webkitAudioContext
-  if (typeof AC !== 'function') return null
-  if (audioCtx === null) {
-    try {
-      audioCtx = new AC()
-    } catch {
-      return null
-    }
-  }
-  return audioCtx
-}
-function beep() {
-  const ac = baseAudio()
-  if (ac === null) return
-  const resume = typeof ac.resume === 'function' ? ac.resume() : Promise.resolve()
-  void Promise.resolve(resume)
-    .then(() => {
-      if (!prefOn(LS.sound, true)) return
-      const volume = prefVolume()
-      const t0 = ac.currentTime
-      const osc = ac.createOscillator()
-      const gain = ac.createGain()
-      osc.type = 'sine'
-      osc.frequency.value = 880
-      gain.gain.setValueAtTime(0.0001, t0)
-      gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.015)
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22)
-      osc.connect(gain)
-      gain.connect(ac.destination)
-      osc.start(t0)
-      osc.stop(t0 + 0.24)
-    })
-    .catch(() => {
-      // autoplay policy / audio hardware: sound is best-effort
-    })
-}
-/** 浏览器自动播放策略：首次用户交互后解锁 AudioContext。 */
-function armAudioUnlock() {
-  if (typeof document === 'undefined') return () => {}
-  const unlock = () => {
-    try {
-      const ac = baseAudio()
-      if (ac !== null && typeof ac.resume === 'function') void ac.resume()
-    } catch {
-      // ignore
-    }
-    document.removeEventListener('pointerdown', unlock)
-    document.removeEventListener('keydown', unlock)
-  }
-  document.addEventListener('pointerdown', unlock, { passive: true })
-  document.addEventListener('keydown', unlock)
-  return () => {
-    document.removeEventListener('pointerdown', unlock)
-    document.removeEventListener('keydown', unlock)
-  }
-}
-// ── 页面内 toast（通知权限关闭/被拒时的兜底）────────────────────────
-/** 共享图标是 React 元素树（icon.* 返回 createElement 树），toast 是命令式
- *  DOM 构建：把元素树转成 SVG DOM 节点复用同一套图标（stroke=currentColor
- *  继承周围文字色）。camelCase 属性转 SVG 属性名（viewBox 特例保持原样）。 */
 function svgAttrName(key) {
   if (key === 'viewBox') return 'viewBox'
   return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
@@ -745,7 +901,6 @@ function elementToDom(node) {
   }
   return el
 }
-/** 通知类型 → 共享图标（stroke=currentColor，颜色语义由 CSS 类区分）。 */
 function kindIcon(kind) {
   switch (kind) {
     case 'end':
@@ -758,7 +913,6 @@ function kindIcon(kind) {
       return icon.external(16)
   }
 }
-/** 通知类型 → 图标颜色语义类（end/remote=品牌色信息、ask=警告、approval=成功）。 */
 function kindIconClass(kind) {
   switch (kind) {
     case 'end':
@@ -771,124 +925,6 @@ function kindIconClass(kind) {
       return 'dsh-my-notify-toast-icon-remote'
   }
 }
-function ensureToastBox() {
-  let box = document.getElementById('dsh-my-notify-toast-box')
-  if (box === null) {
-    box = document.createElement('div')
-    box.id = 'dsh-my-notify-toast-box'
-    box.className = 'dsh-my-notify-toast-box'
-    document.body.appendChild(box)
-  }
-  return box
-}
-function buildToastItem(notice) {
-  const item = document.createElement('div')
-  item.className = 'dsh-my-notify-toast'
-  item.setAttribute('role', 'status')
-  const head = document.createElement('div')
-  head.className = 'dsh-my-notify-toast-head'
-  // 类型图标：共享图标 + 颜色语义（end=clock/品牌色、ask=help/警告、
-  // approval=check/成功、remote=external/品牌色）。
-  const iconWrap = document.createElement('span')
-  iconWrap.className = `dsh-my-notify-toast-icon ${kindIconClass(notice.kind)}`
-  iconWrap.appendChild(elementToDom(kindIcon(notice.kind)))
-  head.appendChild(iconWrap)
-  const title = document.createElement('span')
-  title.className = 'dsh-my-notify-toast-title'
-  title.textContent = noticeTitle(notice)
-  head.appendChild(title)
-  // 关闭按钮：close 图标按钮（纯图标，aria-label 无障碍）。
-  const closeBtn = document.createElement('button')
-  closeBtn.type = 'button'
-  closeBtn.className = 'dsh-my-notify-toast-close'
-  closeBtn.setAttribute('aria-label', strings.closeToast())
-  closeBtn.appendChild(elementToDom(icon.close(15)))
-  head.appendChild(closeBtn)
-  item.appendChild(head)
-  const body = document.createElement('div')
-  body.className = 'dsh-my-notify-toast-body'
-  const bodyText = noticeBody(notice) || kindLabel(notice.kind)
-  body.textContent = bodyText
-  item.appendChild(body)
-  // 操作按钮：打开会话（external 图标 + 文字，点击跳转会话）。
-  const actions = document.createElement('div')
-  actions.className = 'dsh-my-notify-toast-actions'
-  const openBtn = document.createElement('button')
-  openBtn.type = 'button'
-  openBtn.className = 'dsh-my-notify-toast-open'
-  openBtn.appendChild(elementToDom(icon.external(14)))
-  const openLabel = document.createElement('span')
-  openLabel.textContent = strings.openSession()
-  openBtn.appendChild(openLabel)
-  actions.appendChild(openBtn)
-  item.appendChild(actions)
-  // 只允许 textContent 渲染：note/远程 body 不受信任，禁止 innerHTML。
-  return item
-}
-function attachToastEvents(item, onOpen) {
-  let timer = null
-  const dismiss = () => {
-    if (timer !== null) clearTimeout(timer)
-    if (item.parentNode === null) return
-    // 退场动画：先播 150ms 过渡再移除节点。
-    item.classList.add('dsh-my-notify-toast-out')
-    setTimeout(() => {
-      if (item.parentNode !== null) item.parentNode.removeChild(item)
-    }, 150)
-  }
-  // toast 整体点击：关闭 + 跳转会话（保留原行为）。
-  item.addEventListener('click', (event) => {
-    if (event !== null && event.stopPropagation) event.stopPropagation()
-    dismiss()
-    try {
-      onOpen()
-    } catch {
-      // opening the session is best-effort
-    }
-  })
-  // 关闭按钮：只关闭不跳转。
-  const closeBtn = item.querySelector('.dsh-my-notify-toast-close')
-  if (closeBtn !== null) {
-    closeBtn.addEventListener('click', (event) => {
-      if (event !== null && event.stopPropagation) event.stopPropagation()
-      if (event !== null && event.preventDefault) event.preventDefault()
-      dismiss()
-    })
-  }
-  // 打开会话按钮：关闭 + 跳转（与整体点击一致，stopPropagation 防双重触发）。
-  const openBtn = item.querySelector('.dsh-my-notify-toast-open')
-  if (openBtn !== null) {
-    openBtn.addEventListener('click', (event) => {
-      if (event !== null && event.stopPropagation) event.stopPropagation()
-      if (event !== null && event.preventDefault) event.preventDefault()
-      dismiss()
-      try {
-        onOpen()
-      } catch {
-        // opening the session is best-effort
-      }
-    })
-  }
-  timer = setTimeout(dismiss, 6000)
-}
-function showToast(notice, onOpen) {
-  if (!prefOn(LS.toast, true)) return
-  if (typeof document === 'undefined') return
-  const box = ensureToastBox()
-  const item = buildToastItem(notice)
-  attachToastEvents(item, onOpen)
-  box.appendChild(item)
-  if (box.children.length > 4) box.removeChild(box.firstChild)
-}
-function removeToastBox() {
-  try {
-    const box = document.getElementById('dsh-my-notify-toast-box')
-    if (box !== null && box.parentNode !== null) box.parentNode.removeChild(box)
-  } catch {
-    // ignore
-  }
-}
-// ── 系统通知（Notification API）────────────────────────────────────
 function fireSystemNotification(notice, sessionId, openSession) {
   try {
     const bodyText = noticeBody(notice)
@@ -896,23 +932,27 @@ function fireSystemNotification(notice, sessionId, openSession) {
       body: bodyText !== '' ? bodyText : kindLabel(notice.kind),
       tag: `dsh-my-notify:${notice.kind}:${sessionId}`,
       icon: faviconOf(),
+      requireInteraction: systemConfigNow().requireInteraction === true,
     })
     notification.onclick = () => {
       try {
         notification.close()
       } catch {
-        // ignore
+        void 0
       }
       openSession()
     }
   } catch {
-    // Notification constructor failure: fall back to the toast.
     showToast(notice, openSession)
   }
 }
-// ── 样式（DSH 语义 token，随 activation 注入）───────────────────────
 const STYLES = `
 .dsh-my-notify-toast-box{position:fixed;right:16px;bottom:16px;z-index:3000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.dsh-my-notify-toast-box[data-pos="bottom-left"]{right:auto;left:16px;bottom:16px;top:auto}
+.dsh-my-notify-toast-box[data-pos="top-right"]{right:16px;left:auto;top:16px;bottom:auto;flex-direction:column-reverse}
+.dsh-my-notify-toast-box[data-pos="top-left"]{right:auto;left:16px;top:16px;bottom:auto;flex-direction:column-reverse}
+.dsh-my-notify-toast-box[data-pos="top"]{right:auto;left:50%;top:16px;bottom:auto;transform:translateX(-50%);flex-direction:column-reverse}
+.dsh-my-notify-toast-box[data-pos="bottom"]{right:auto;left:50%;bottom:16px;top:auto;transform:translateX(-50%)}
 .dsh-my-notify-toast{pointer-events:auto;width:284px;max-width:calc(100vw - 32px);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);
   border:1px solid var(--dsw-alias-border-l2);border-radius:10px;box-shadow:var(--dsw-shadow-lv2);padding:10px 12px;cursor:pointer;
   animation:dsh-my-notify-toast-in 160ms var(--ds-ease-in-out);display:flex;flex-direction:column;gap:6px;
@@ -955,30 +995,297 @@ function injectStyles() {
 }
 
 
-    // ── SSE 客户端：通知分发 / EventSource 订阅 / 插件体 ─────────────────
-    // （src/client/parts/stream.ts）
+    // ── 运行时配置（server config → localStorage 播种 / toast / 音量）──
     'use strict'
-// ── 通知分发（SSE 帧 → 渲染入口）───────────────────────────────────
+const DEFAULT_TOAST_CONFIG = { enabled: true, durationMs: 4000, position: 'bottom-right', maxStack: 3 }
+const TOAST_POSITIONS = ['top-right', 'top-left', 'bottom-right', 'bottom-left', 'top', 'bottom']
+const DEFAULT_SYSTEM_CONFIG = { enabled: true, requireInteraction: false }
+let toastConfigCache = null
+let soundEnabledCache = null
+let soundVolumeCache = null
+let systemConfigCache = null
+let toastConfigRequested = false
+function invalidateRuntimeConfig() {
+  toastConfigCache = null
+  soundEnabledCache = null
+  soundVolumeCache = null
+  systemConfigCache = null
+  toastConfigRequested = false
+}
+function toastPositionOf(source) {
+  const position = source.position
+  return typeof position === 'string' && TOAST_POSITIONS.indexOf(position) >= 0
+    ? position
+    : DEFAULT_TOAST_CONFIG.position
+}
+function toastNumberIn(source, key, fallback, min) {
+  const value = Number(source[key])
+  if (!Number.isFinite(value) || value < min) return fallback
+  return Math.round(value)
+}
+function toastConfigOf(config) {
+  const raw = config !== null && config !== undefined ? config.toast : undefined
+  const source = raw !== null && raw !== undefined && typeof raw === 'object' ? raw : {}
+  return {
+    enabled: source.enabled !== false,
+    durationMs: Math.min(
+      60_000,
+      Math.max(1000, toastNumberIn(source, 'durationMs', DEFAULT_TOAST_CONFIG.durationMs, 1000)),
+    ),
+    position: toastPositionOf(source),
+    maxStack: Math.min(10, toastNumberIn(source, 'maxStack', DEFAULT_TOAST_CONFIG.maxStack, 1)),
+  }
+}
+function systemConfigOf(config) {
+  const system = config !== null && config !== undefined ? config.system : undefined
+  if (system === null || system === undefined || typeof system !== 'object') return { ...DEFAULT_SYSTEM_CONFIG }
+  return {
+    enabled: system.enabled !== false,
+    requireInteraction: system.requireInteraction === true,
+  }
+}
+function soundVolumeOf(config) {
+  const sound = config !== null && config !== undefined ? config.sound : undefined
+  const volume = sound !== null && sound !== undefined && typeof sound === 'object' ? Number(sound.volume) : Number.NaN
+  return Number.isFinite(volume) && volume >= 0 && volume <= 1 ? volume : 0.6
+}
+function seedRuntimePrefs(config) {
+  seedPref(LS.notify, systemConfigOf(config).enabled)
+  seedPref(LS.sound, soundEnabledOf(config))
+  seedPref(LS.toast, toastConfigOf(config).enabled)
+  seedPrefNum(LS.volume, soundVolumeOf(config))
+}
+function applyRuntimeConfig(config) {
+  toastConfigCache = toastConfigOf(config)
+  soundEnabledCache = soundEnabledOf(config)
+  soundVolumeCache = soundVolumeOf(config)
+  systemConfigCache = systemConfigOf(config)
+  seedRuntimePrefs(config)
+}
+function loadRuntimeConfig() {
+  if (toastConfigRequested || toastConfigCache !== null) return
+  if (typeof fetch !== 'function') return
+  toastConfigRequested = true
+  fetch('/notify/api/config')
+    .then((res) => res.json())
+    .then((body) => {
+      if (body !== null && body !== undefined && body.ok === true) applyRuntimeConfig(body.value)
+    })
+    .catch(() => {})
+}
+function toastConfigNow() {
+  return toastConfigCache !== null ? toastConfigCache : DEFAULT_TOAST_CONFIG
+}
+function soundEnabledOf(config) {
+  const sound = config !== null && config !== undefined ? config.sound : undefined
+  if (sound === null || sound === undefined || typeof sound !== 'object') return true
+  return sound.enabled !== false
+}
+function soundEnabledNow() {
+  return soundEnabledCache !== null ? soundEnabledCache : true
+}
+function soundVolumeNow() {
+  return soundVolumeCache !== null ? soundVolumeCache : 0.6
+}
+function systemConfigNow() {
+  return systemConfigCache !== null ? systemConfigCache : DEFAULT_SYSTEM_CONFIG
+}
+
+
+    // ── 提示音 / 页面 toast / SSE 客户端 ──────────────────────────────
+    'use strict'
+let audioCtx = null
+function baseAudio() {
+  const AC = window.AudioContext || window.webkitAudioContext
+  if (typeof AC !== 'function') return null
+  if (audioCtx === null) {
+    try {
+      audioCtx = new AC()
+    } catch {
+      return null
+    }
+  }
+  return audioCtx
+}
+function toneSpecs(preset) {
+  if (preset === 'drop') return { wave: 'sine', notes: [1040, 780], gap: 0.11, length: 0.2 }
+  if (preset === 'deep') return { wave: 'triangle', notes: [320], gap: 0, length: 0.36 }
+  return { wave: 'sine', notes: [880], gap: 0, length: 0.22 }
+}
+function beep(preset) {
+  const ac = baseAudio()
+  if (ac === null) return
+  const resume = typeof ac.resume === 'function' ? ac.resume() : Promise.resolve()
+  void Promise.resolve(resume)
+    .then(() => {
+      if (!prefOn(LS.sound, true)) return
+      const volume = prefNum(LS.volume, soundVolumeNow())
+      const spec = toneSpecs(typeof preset === 'string' && preset !== '' ? preset : prefTone())
+      spec.notes.forEach((frequency, index) => {
+        const t0 = ac.currentTime + index * spec.gap
+        const osc = ac.createOscillator()
+        const gain = ac.createGain()
+        osc.type = spec.wave
+        osc.frequency.value = frequency
+        gain.gain.setValueAtTime(0.0001, t0)
+        gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.015)
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + spec.length)
+        osc.connect(gain)
+        gain.connect(ac.destination)
+        osc.start(t0)
+        osc.stop(t0 + spec.length + 0.02)
+      })
+    })
+    .catch(() => {})
+}
+function armAudioUnlock() {
+  if (typeof document === 'undefined') return () => {}
+  const unlock = () => {
+    try {
+      const ac = baseAudio()
+      if (ac !== null && typeof ac.resume === 'function') void ac.resume()
+    } catch {
+      void 0
+    }
+    document.removeEventListener('pointerdown', unlock)
+    document.removeEventListener('keydown', unlock)
+  }
+  document.addEventListener('pointerdown', unlock, { passive: true })
+  document.addEventListener('keydown', unlock)
+  return () => {
+    document.removeEventListener('pointerdown', unlock)
+    document.removeEventListener('keydown', unlock)
+  }
+}
+
+    'use strict'
+function ensureToastBox() {
+  let box = document.getElementById('dsh-my-notify-toast-box')
+  if (box === null) {
+    box = document.createElement('div')
+    box.id = 'dsh-my-notify-toast-box'
+    box.className = 'dsh-my-notify-toast-box'
+    document.body.appendChild(box)
+  }
+  const config = toastConfigNow()
+  box.setAttribute('data-pos', config.position)
+  return box
+}
+function buildToastItem(notice) {
+  const item = document.createElement('div')
+  item.className = 'dsh-my-notify-toast'
+  item.setAttribute('role', 'status')
+  const head = document.createElement('div')
+  head.className = 'dsh-my-notify-toast-head'
+  const iconWrap = document.createElement('span')
+  iconWrap.className = `dsh-my-notify-toast-icon ${kindIconClass(notice.kind)}`
+  iconWrap.appendChild(elementToDom(kindIcon(notice.kind)))
+  head.appendChild(iconWrap)
+  const title = document.createElement('span')
+  title.className = 'dsh-my-notify-toast-title'
+  title.textContent = noticeTitle(notice)
+  head.appendChild(title)
+  const closeBtn = document.createElement('button')
+  closeBtn.type = 'button'
+  closeBtn.className = 'dsh-my-notify-toast-close'
+  closeBtn.setAttribute('aria-label', strings.closeToast())
+  closeBtn.appendChild(elementToDom(icon.close(15)))
+  head.appendChild(closeBtn)
+  item.appendChild(head)
+  const body = document.createElement('div')
+  body.className = 'dsh-my-notify-toast-body'
+  const bodyText =
+    (typeof notice.note === 'string' && notice.note !== '' ? notice.note : noticeBody(notice)) || kindLabel(notice.kind)
+  body.textContent = bodyText
+  item.appendChild(body)
+  const actions = document.createElement('div')
+  actions.className = 'dsh-my-notify-toast-actions'
+  const openBtn = document.createElement('button')
+  openBtn.type = 'button'
+  openBtn.className = 'dsh-my-notify-toast-open'
+  openBtn.appendChild(elementToDom(icon.external(14)))
+  const openLabel = document.createElement('span')
+  openLabel.textContent = strings.openSession()
+  openBtn.appendChild(openLabel)
+  actions.appendChild(openBtn)
+  item.appendChild(actions)
+  return item
+}
+function attachToastEvents(item, onOpen, durationMs) {
+  const duration = typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 4000
+  let timer = null
+  const dismiss = () => {
+    if (timer !== null) clearTimeout(timer)
+    if (item.parentNode === null) return
+    item.classList.add('dsh-my-notify-toast-out')
+    setTimeout(() => {
+      if (item.parentNode !== null) item.parentNode.removeChild(item)
+    }, 150)
+  }
+  item.addEventListener('click', (event) => {
+    if (event !== null && event.stopPropagation) event.stopPropagation()
+    dismiss()
+    try {
+      onOpen()
+    } catch {
+      void 0
+    }
+  })
+  const closeBtn = item.querySelector('.dsh-my-notify-toast-close')
+  if (closeBtn !== null) {
+    closeBtn.addEventListener('click', (event) => {
+      if (event !== null && event.stopPropagation) event.stopPropagation()
+      if (event !== null && event.preventDefault) event.preventDefault()
+      dismiss()
+    })
+  }
+  const openBtn = item.querySelector('.dsh-my-notify-toast-open')
+  if (openBtn !== null) {
+    openBtn.addEventListener('click', (event) => {
+      if (event !== null && event.stopPropagation) event.stopPropagation()
+      if (event !== null && event.preventDefault) event.preventDefault()
+      dismiss()
+      try {
+        onOpen()
+      } catch {
+        void 0
+      }
+    })
+  }
+  timer = setTimeout(dismiss, duration)
+}
+function showToast(notice, onOpen) {
+  if (typeof document === 'undefined') return
+  loadRuntimeConfig()
+  const config = toastConfigNow()
+  if (!prefOn(LS.toast, true)) return
+  if (config.enabled === false) return
+  const box = ensureToastBox()
+  const item = buildToastItem(notice)
+  attachToastEvents(item, onOpen, config.durationMs)
+  box.appendChild(item)
+  let guard = 0
+  while (box.children.length > config.maxStack && box.children.length > 0 && guard < 20) {
+    box.removeChild(box.firstChild)
+    guard += 1
+  }
+}
+function removeToastBox() {
+  try {
+    const box = document.getElementById('dsh-my-notify-toast-box')
+    if (box !== null && box.parentNode !== null) box.parentNode.removeChild(box)
+  } catch {
+    void 0
+  }
+}
+
+    'use strict'
 function isNoticeKind(kind) {
   return kind === 'end' || kind === 'ask' || kind === 'approval' || kind === 'remote'
 }
-// ── 通知去重（issue #70）：本地窗口 + 跨标签页协调 ─────────────────
-// 服务端已按 kind:sessionId 在 dedupeMs（默认 3000ms）内去重；客户端再做
-// 双保险：① 本标签页内存窗口（快速路径 + localStorage 不可用时的兜底）；
-// ② 跨标签页互斥（Web Locks，Chrome 69+/Firefox 96+/Safari 15.4+）——
-// 同一通知只由一个标签页弹系统通知 + 响铃，其余标签页静默。窗口
-// 2000ms，覆盖多标签页帧到达时间差与服务端窗口外的偶发重复帧。
-//
-// 为什么不用 localStorage 做锁：get→check→set 三个步骤非原子（TOCTOU），
-// 两个标签页几乎同时收到同一帧时都会读到「未过期」而各自弹通知（真实
-// 浏览器复现双弹；单元测试串行调用测不出来）。navigator.locks.request
-// 为同名锁提供浏览器级跨标签页互斥：回调串行执行，后到的标签页在回调
-// 里读到的锁时间戳已在窗口内 → 静默。无 Web Locks（旧浏览器）时降级为
-// 原 localStorage 快速路径（尽力而为，保留历史行为）。
 const CLIENT_DEDUPE_MS = 2000
 const DEDUPE_LS_PREFIX = 'dsh-notify:dedupe:'
-const localRecent = new Map() // `${kind}:${sessionId}` -> lastTime
-/** 锁内检查窗口并登记；返回 true = 本标签页应处理（调用方需已持有锁或降级）。 */
+const localRecent = new Map()
 function claimLocked(key, now) {
   try {
     const lockKey = DEDUPE_LS_PREFIX + key
@@ -989,7 +1296,7 @@ function claimLocked(key, now) {
     }
     window.localStorage.setItem(lockKey, String(now))
   } catch {
-    // localStorage 不可用（隐私模式等）：仅本地窗口去重
+    void 0
   }
   localRecent.set(key, now)
   if (localRecent.size > 256) {
@@ -999,18 +1306,14 @@ function claimLocked(key, now) {
   }
   return true
 }
-/** 通知帧是否在去重窗口内已处理（本标签页或其他标签页）；未处理则登记并返回 true。
- *  返回 Promise（Web Locks 互斥异步；无 Web Locks 时立即 resolve，接口统一）。 */
 function claimNotice(key) {
   const now = Date.now()
   const lastLocal = localRecent.get(key)
   if (lastLocal !== undefined && now - lastLocal < CLIENT_DEDUPE_MS) return Promise.resolve(false)
   const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
   if (locks !== undefined && locks !== null && typeof locks.request === 'function') {
-    // 跨标签页互斥：同名锁回调串行执行，后到者读到窗口内时间戳 → 静默。
     return locks.request(DEDUPE_LS_PREFIX + key, () => claimLocked(key, Date.now()))
   }
-  // 降级：无 Web Locks（旧浏览器）→ 原 localStorage 快速路径。
   return Promise.resolve(claimLocked(key, now))
 }
 function openSessionFor(sessionId, sessionsSvc) {
@@ -1018,7 +1321,7 @@ function openSessionFor(sessionId, sessionsSvc) {
     try {
       window.focus()
     } catch {
-      // ignore
+      void 0
     }
     if (
       sessionId !== '' &&
@@ -1029,7 +1332,7 @@ function openSessionFor(sessionId, sessionsSvc) {
       try {
         sessionsSvc.open(sessionId)
       } catch {
-        // opening is best-effort
+        void 0
       }
     }
   }
@@ -1041,8 +1344,6 @@ function dispatchByPermission(notice, sessionId, openSession) {
       return
     }
     if (Notification.permission === 'default') {
-      // 第一次收到通知时请求权限（用户此刻正需要它）；请求期间先以
-      // toast + 声音保证提醒，授权成功后本次已不重复弹系统通知。
       void Notification.requestPermission()
         .then((permission) => {
           if (permission === 'granted') {
@@ -1064,22 +1365,22 @@ function handleNotice(notice, sessionsSvc) {
   const sessionId = typeof notice.sessionId === 'string' ? notice.sessionId : ''
   const key = `${notice.kind}:${sessionId}`
   return claimNotice(key).then((claimed) => {
-    if (!claimed) return // 窗口内已处理（本标签页或其他标签页）→ 静默
+    if (!claimed) return
     const openSession = openSessionFor(sessionId, sessionsSvc)
     dispatchByPermission(notice, sessionId, openSession)
     if (prefOn(LS.sound, true)) beep()
   })
 }
-// ── SSE 订阅（server 事件 → 浏览器通知）─────────────────────────────
 function subscribeStream(sessionsSvc) {
   if (typeof window === 'undefined' || typeof EventSource !== 'function') return () => {}
+  loadRuntimeConfig()
   const source = new EventSource('/notify/api/stream')
   source.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data)
       void handleNotice(data, sessionsSvc)
     } catch {
-      // one bad frame must never kill the stream handler
+      void 0
     }
   }
   return () => {
@@ -1087,45 +1388,1406 @@ function subscribeStream(sessionsSvc) {
     removeToastBox()
   }
 }
-// ── 插件体 ──────────────────────────────────────────────────────────
 exports.apply = function apply(ctx) {
-  // strict=false：首屏加载时 sessions 服务的提供者 fiber 可能尚未 active，
-  // cordis 的 ctx.get(name, strict = true) 在 strict 模式下会返回 undefined，
-  // 导致点击通知无法跳转会话（降级为仅聚焦窗口，直到 HMR/重启才恢复）；
-  // 取到实例即可——openSessionFor 内部仍按 typeof open === 'function' 判空降级。
   const sessionsSvc = ctx.get('sessions', false)
-  // 样式注入（与 fiber 同生命周期）。
   ctx.effect(() => injectStyles(), 'dsh-my-notify: styles')
-  // 音频解锁：首次用户交互后 resume（浏览器自动播放策略）。
   ctx.effect(() => armAudioUnlock(), 'dsh-my-notify: audio unlock')
-  // SSE 订阅：server 事件 → 浏览器通知。
   ctx.effect(() => subscribeStream(sessionsSvc), 'dsh-my-notify: event stream')
-  // 设置页 tab（官方 slots 扩展点，issue #27 配置可视化）。
   attachSettingsTab(ctx)
 }
 
 
-    // ── 设置页：出站 webhook 可视化编辑（issue #92）────────────────────
-    // （src/client/parts/webhook-settings.ts）
-    // 拼接顺序：webhook-settings.ts 必须先于 settings.ts——settings.ts 顶层
-    // `SETTINGS_STYLES = ... + WEBHOOK_STYLES` 引用 webhook-settings.ts 声明的
-    // WEBHOOK_STYLES，顺序颠倒会 TDZ（#92 引入，0.3.6 客户端在真实浏览器
-    // 挂载失败：Cannot access 'WEBHOOK_STYLES' before initialization）。
+    // ── 飞书卡片渲染 + 文案数据模型（纯逻辑）──────────────────────────
     'use strict'
-// ── 出站 Webhook 设置（issue #92）：列表 + 编辑表单 + 失败记录 ──────
-const WEBHOOK_STYLES = `
-.dsh-my-notify-webhook-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
-.dsh-my-notify-webhook-editor{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
-.dsh-my-notify-webhook-field{display:flex;flex-direction:column;gap:4px}
-.dsh-my-notify-webhook-field-label{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary)}
-.dsh-my-notify-webhook-input{height:28px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}
-.dsh-my-notify-webhook-select{height:28px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}
-.dsh-my-notify-webhook-events{display:flex;flex-wrap:wrap;gap:6px}
-.dsh-my-notify-webhook-event{display:flex;align-items:center;gap:4px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-primary)}
-.dsh-my-notify-webhook-failures{display:flex;flex-direction:column;gap:4px}
-.dsh-my-notify-webhook-failure{display:flex;flex-direction:column;gap:2px;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-2)}
-.dsh-my-notify-webhook-failure-time{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
-.dsh-my-notify-webhook-failure-msg{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}
+const CARD_PREVIEW_STYLES = `.dsh-my-notify-fcard{--fcard-bg:#ffffff;--fcard-fg:#1f2329;--fcard-fg2:#646a73;--fcard-line:#dee0e3;--fcard-btn:#2c62e0;--fcard-green:#1e7a12;--fcard-blue:#2c62e0;--fcard-orange:#a35a00;--fcard-grey:#5c626b;--fcard-accent:var(--fcard-grey);background:var(--fcard-bg);color:var(--fcard-fg);border:1px solid var(--fcard-line);border-radius:12px;overflow:hidden;box-shadow:var(--dsw-shadow-lv2);font:var(--dsw-font-xxs-12);line-height:1.6;max-width:340px}.dsh-my-notify-fcard[data-accent="green"]{--fcard-accent:var(--fcard-green)}.dsh-my-notify-fcard[data-accent="blue"]{--fcard-accent:var(--fcard-blue)}.dsh-my-notify-fcard[data-accent="orange"]{--fcard-accent:var(--fcard-orange)}.dsh-my-notify-fcard[data-accent="grey"]{--fcard-accent:var(--fcard-grey)}.dsh-my-notify-fcard-hd{display:flex;align-items:center;gap:6px;padding:6px 12px;border-top:3px solid var(--fcard-accent);background:color-mix(in srgb, var(--fcard-accent) 8%, var(--fcard-bg));min-height:24px}.dsh-my-notify-fcard-mark{width:8px;height:8px;border-radius:50%;background:var(--fcard-accent);flex:none}.dsh-my-notify-fcard-app{font:var(--dsw-font-xxs-12);color:var(--fcard-fg2)}.dsh-my-notify-fcard-title{padding:10px 12px 0;font:var(--dsw-font-s-strong-14);color:var(--fcard-fg)}.dsh-my-notify-fcard-bd{display:flex;flex-direction:column;gap:8px;padding:8px 12px 12px}.dsh-my-notify-fcard-p{color:var(--fcard-fg);word-break:break-word}.dsh-my-notify-fcard-p strong{font-weight:600}.dsh-my-notify-fcard-at{color:var(--fcard-btn);margin-right:4px}.dsh-my-notify-fcard-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}.dsh-my-notify-fcard-field{display:flex;flex-direction:column;gap:1px;min-width:0}.dsh-my-notify-fcard-field-label{color:var(--fcard-fg2);font:var(--dsw-font-xxs-12)}.dsh-my-notify-fcard-field-value{color:var(--fcard-fg);font:var(--dsw-font-xxs-12);word-break:break-word}.dsh-my-notify-fcard-acts{display:flex;flex-wrap:wrap;gap:6px}.dsh-my-notify-fcard-btn{display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 14px;border-radius:4px;border:1px solid var(--fcard-line);background:var(--fcard-bg);color:var(--fcard-fg);font:var(--dsw-font-xxs-12)}.dsh-my-notify-fcard-btn[data-primary="true"]{border-color:var(--fcard-btn);background:var(--fcard-btn);color:var(--fcard-bg)}.dsh-my-notify-fcard-note{font:var(--dsw-font-xxs-12);color:var(--fcard-fg2);border-top:1px solid var(--fcard-line);padding-top:6px}.dsh-my-notify-fcard-hr{height:1px;background:var(--fcard-line)}
+`
+const CARD_PALETTE = {
+  '--fcard-bg': '#ffffff',
+  '--fcard-fg': '#1f2329',
+  '--fcard-fg2': '#646a73',
+  '--fcard-line': '#dee0e3',
+  '--fcard-btn': '#2c62e0',
+  '--fcard-green': '#1e7a12',
+  '--fcard-blue': '#2c62e0',
+  '--fcard-orange': '#a35a00',
+  '--fcard-grey': '#5c626b',
+}
+const CARD_ACCENTS = [
+  { value: 'green', label: () => strings.accentGreen() },
+  { value: 'blue', label: () => strings.accentBlue() },
+  { value: 'orange', label: () => strings.accentOrange() },
+  { value: 'grey', label: () => strings.accentGrey() },
+]
+const CARD_FIELD_OPTIONS = [
+  { value: 'tokens.text', label: () => strings.fieldTokens() },
+  { value: 'session.durationText', label: () => strings.fieldDuration() },
+  { value: 'tool.name', label: () => strings.fieldTool() },
+  { value: 'ask.question', label: () => strings.fieldQuestion() },
+  { value: 'session.url', label: () => strings.fieldLink() },
+  { value: 'event.time', label: () => strings.fieldTime() },
+]
+function cardFieldLabel(name) {
+  const option = CARD_FIELD_OPTIONS.find((o) => o.value === name)
+  return option !== undefined ? option.label() : name
+}
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+function cardAccentOf(card) {
+  const template = card !== null && typeof card === 'object' ? card.header?.template : undefined
+  const hit = CARD_ACCENTS.find((option) => option.value === template)
+  return hit !== undefined ? hit.value : 'grey'
+}
+function cardTitleOf(card) {
+  const title = card !== null && typeof card === 'object' ? card.header?.title?.content : undefined
+  return typeof title === 'string' ? title : ''
+}
+function cardElementsOf(card) {
+  if (card === null || typeof card !== 'object') return []
+  const list = Array.isArray(card.body?.elements) ? card.body.elements : card.elements
+  return Array.isArray(list) ? list : []
+}
+function larkMdHtml(text) {
+  const safe = escapeHtml(text)
+  const withAt = safe.replace(
+    /&lt;at id=([\w-]+)&gt;&lt;\/at&gt;/g,
+    (_m, id) => `<span class="dsh-my-notify-fcard-at">@${id === 'all' ? strings.fcardMentionAll() : id}</span>`,
+  )
+  return withAt.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')
+}
+function cardFieldHtml(text) {
+  const raw = typeof text?.content === 'string' ? text.content : ''
+  const match = /^\*\*([^*]+)\*\*[：:]?\s*([\s\S]*)$/.exec(raw)
+  const label = match !== null ? match[1] : ''
+  const value = match !== null ? match[2] : raw
+  const labelHtml = label !== '' ? `<span class="dsh-my-notify-fcard-field-label">${escapeHtml(label)}</span>` : ''
+  return `<div class="dsh-my-notify-fcard-field">${labelHtml}<span class="dsh-my-notify-fcard-field-value">${escapeHtml(value)}</span></div>`
+}
+function cardDivHtml(element) {
+  if (Array.isArray(element.fields) && element.fields.length > 0) {
+    const cells = element.fields.map((field) => cardFieldHtml(field?.text)).join('')
+    return `<div class="dsh-my-notify-fcard-fields">${cells}</div>`
+  }
+  const content = element.text?.content
+  if (typeof content !== 'string' || content === '') return ''
+  return `<div class="dsh-my-notify-fcard-p">${larkMdHtml(content)}</div>`
+}
+function cardActionHtml(element) {
+  const actions = Array.isArray(element.actions) ? element.actions : []
+  const buttons = actions
+    .map((action) => {
+      const label = typeof action?.text?.content === 'string' ? action.text.content : ''
+      if (label === '') return ''
+      const primary = action.type === 'primary' ? 'true' : 'false'
+      return `<span class="dsh-my-notify-fcard-btn" data-primary="${primary}">${escapeHtml(label)}</span>`
+    })
+    .join('')
+  return buttons === '' ? '' : `<div class="dsh-my-notify-fcard-acts">${buttons}</div>`
+}
+function cardNoteHtml(element) {
+  const parts = Array.isArray(element.elements) ? element.elements : []
+  const text = parts
+    .map((part) => (typeof part?.content === 'string' ? part.content : ''))
+    .filter((part) => part !== '')
+    .join(' · ')
+  return text === '' ? '' : `<div class="dsh-my-notify-fcard-note">${escapeHtml(text)}</div>`
+}
+function cardElementHtml(element) {
+  if (element === null || typeof element !== 'object') return ''
+  if (element.tag === 'div') return cardDivHtml(element)
+  if (element.tag === 'action') return cardActionHtml(element)
+  if (element.tag === 'note') return cardNoteHtml(element)
+  if (element.tag === 'hr') return '<div class="dsh-my-notify-fcard-hr"></div>'
+  return ''
+}
+function renderFeishuCardHtml(card) {
+  const accent = cardAccentOf(card)
+  const title = cardTitleOf(card)
+  const body = cardElementsOf(card)
+    .map((element) => cardElementHtml(element))
+    .filter((html) => html !== '')
+    .join('')
+  const titleHtml = title !== '' ? `<div class="dsh-my-notify-fcard-title">${escapeHtml(title)}</div>` : ''
+  return (
+    `<div class="dsh-my-notify-fcard" data-accent="${accent}" role="img" aria-label="${escapeHtml(title)}">` +
+    `<div class="dsh-my-notify-fcard-hd"><span class="dsh-my-notify-fcard-mark"></span>` +
+    `<span class="dsh-my-notify-fcard-app">${escapeHtml(strings.fcardApp())}</span></div>` +
+    titleHtml +
+    `<div class="dsh-my-notify-fcard-bd">${body}</div></div>`
+  )
+}
+function cardMetaOf(card) {
+  const elements = cardElementsOf(card)
+  let fields = 0
+  let buttons = 0
+  for (const element of elements) {
+    if (element?.tag === 'div' && Array.isArray(element.fields)) fields += element.fields.length
+    if (element?.tag === 'action' && Array.isArray(element.actions)) buttons += element.actions.length
+  }
+  const accentOption = CARD_ACCENTS.find((option) => option.value === cardAccentOf(card))
+  const accentLabel = accentOption !== undefined ? accentOption.label() : cardAccentOf(card)
+  return strings.dzMeta(fields, accentLabel, buttons)
+}
+
+    'use strict'
+const EVENT_KEYS = ['end', 'ask', 'approval', 'subagentEnd', 'remote']
+function eventDotOf(key) {
+  if (key === 'end') return 'ok'
+  if (key === 'ask') return 'warn'
+  if (key === 'approval') return 'err'
+  return ''
+}
+function defaultMessages() {
+  const base = (body) => ({ title: '{{session.title}}', body })
+  return {
+    end: base('{{event.note}}'),
+    ask: base('{{ask.summary}}'),
+    approval: base('{{approval.reason}}'),
+    subagentEnd: base('{{event.note}}'),
+    remote: base('{{event.note}}'),
+  }
+}
+function messageOf(messages, key) {
+  const defaults = defaultMessages()
+  const fallback = defaults[key] ?? defaults.end
+  const item = messages !== undefined && messages !== null ? messages[key] : undefined
+  if (item === null || typeof item !== 'object') return { title: fallback.title, body: fallback.body }
+  return {
+    title: typeof item.title === 'string' && item.title !== '' ? item.title : fallback.title,
+    body: typeof item.body === 'string' && item.body !== '' ? item.body : fallback.body,
+  }
+}
+function previewPayload(kind, messages, card, channel) {
+  const template = messageOf(messages, kind)
+  const payload = {
+    kind,
+    channel: typeof channel === 'string' && channel !== '' ? channel : 'feishu',
+    titleTemplate: template.title,
+    bodyTemplate: template.body,
+  }
+  if (card !== undefined && card !== null) payload.card = card
+  return payload
+}
+function requestPreview(payload) {
+  if (typeof fetch !== 'function') return Promise.resolve(null)
+  return fetch('/notify/api/preview', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+    .then((res) => res.json())
+    .then((body) => (body !== null && body !== undefined && body.ok === true ? body.value : null))
+    .catch(() => null)
+}
+function createPreviewScheduler(run, delayMs) {
+  const delay = typeof delayMs === 'number' && Number.isFinite(delayMs) && delayMs >= 0 ? delayMs : 300
+  let timer = null
+  return {
+    schedule(payload) {
+      if (timer !== null) clearTimeout(timer)
+      timer = setTimeout(() => {
+        timer = null
+        run(payload)
+      }, delay)
+    },
+    cancel() {
+      if (timer !== null) clearTimeout(timer)
+      timer = null
+    },
+  }
+}
+function optionLabelOf(options, value) {
+  const hit = options.find((option) => option.value === value)
+  return hit !== undefined ? hit.label() : value
+}
+function previewNoticeOf(status) {
+  if (status === 'error') return { text: strings.previewFailed(), retry: true, kind: 'error' }
+  if (status === 'loading') return { text: strings.previewLoading(), retry: false, kind: 'status' }
+  if (status === 'ready') return { text: '', retry: false, kind: 'none' }
+  return { text: strings.previewEmpty(), retry: false, kind: 'status' }
+}
+function previewFormOptions() {
+  return [
+    { value: 'sys', label: () => strings.formSys() },
+    { value: 'toast', label: () => strings.formToast() },
+    { value: 'feishu', label: () => strings.formFeishu() },
+    { value: 'wecom', label: () => strings.formWecom() },
+    { value: 'ding', label: () => strings.formDing() },
+  ]
+}
+function plainTextOf(text) {
+  return String(text ?? '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/^#+\s*/gm, '')
+}
+function renderPreviewFrame(form, preview) {
+  if (preview === null) return ''
+  const title = cardTitleOf(preview.card)
+  const text = typeof preview.text === 'string' ? preview.text : ''
+  if (form === 'feishu') return renderFeishuCardHtml(preview.card)
+  const time = preview.vars !== undefined && preview.vars.time !== undefined ? preview.vars.time : ''
+  if (form === 'sys') {
+    return (
+      '<div class="dsh-my-notify-pv-sys"><span class="dsh-my-notify-pv-sys-ico">D</span>' +
+      '<div><div class="dsh-my-notify-pv-sys-title">' +
+      escapeHtml(title) +
+      '</div><div class="dsh-my-notify-pv-sys-body">' +
+      escapeHtml(plainTextOf(text)) +
+      '</div></div><span class="dsh-my-notify-pv-sys-time">' +
+      escapeHtml(time) +
+      '</span></div>'
+    )
+  }
+  if (form === 'toast') {
+    return (
+      '<div class="dsh-my-notify-pv-toast"><span class="dsh-my-notify-pv-toast-bar"></span>' +
+      '<div><div class="dsh-my-notify-pv-sys-title">' +
+      escapeHtml(title) +
+      '</div><div class="dsh-my-notify-pv-sys-body">' +
+      escapeHtml(plainTextOf(text)) +
+      '</div></div></div>'
+    )
+  }
+  const brand = form === 'wecom' ? 'wecom' : 'ding'
+  const label = brand === 'wecom' ? strings.channelWecom() : strings.channelDingtalk()
+  return (
+    '<div class="dsh-my-notify-pv-wx" data-brand="' +
+    brand +
+    '">' +
+    '<div class="dsh-my-notify-pv-wx-hd"><i></i>' +
+    escapeHtml(label) +
+    '</div><div class="dsh-my-notify-pv-wx-bd">' +
+    escapeHtml(plainTextOf(text)) +
+    '</div></div>'
+  )
+}
+
+
+    // ── 文案工作台（事件列表 / 编辑器 / 变量树 / 预览带）───────────────
+    'use strict'
+function varToken(name) {
+  return '{{' + name + '}}'
+}
+function insertVar(text, caret, name) {
+  const source = typeof text === 'string' ? text : ''
+  const token = varToken(name)
+  const at = Number.isFinite(caret) ? Math.min(Math.max(0, Math.trunc(caret)), source.length) : source.length
+  return { value: source.slice(0, at) + token + source.slice(at), caret: at + token.length }
+}
+function normalizeVarItem(item) {
+  if (item === null || typeof item !== 'object') return null
+  const raw = item
+  const name = typeof raw.name === 'string' ? raw.name : ''
+  if (name === '') return null
+  const description =
+    typeof raw.description === 'string' ? raw.description : typeof raw.desc === 'string' ? raw.desc : name
+  const example = typeof raw.example === 'string' ? raw.example : typeof raw.sample === 'string' ? raw.sample : ''
+  return { name, description, example }
+}
+function normalizeVarGroup(raw) {
+  if (raw === null || typeof raw !== 'object') return null
+  const group = raw
+  const rawItems = Array.isArray(group.items) ? group.items : Array.isArray(group.vars) ? group.vars : []
+  const items = rawItems.map(normalizeVarItem).filter((item) => item !== null)
+  if (items.length === 0) return null
+  return {
+    group: typeof group.group === 'string' ? group.group : typeof group.name === 'string' ? group.name : '',
+    label: typeof group.label === 'string' ? group.label : '',
+    items,
+  }
+}
+function normalizeVarGroups(value) {
+  const source = value
+  const list = Array.isArray(value) ? value : source !== null && source !== undefined ? source.groups : undefined
+  if (!Array.isArray(list)) return []
+  return list.map(normalizeVarGroup).filter((item) => item !== null)
+}
+function varCountOf(groups) {
+  return groups.reduce((sum, group) => sum + group.items.length, 0)
+}
+function VariableLibrary(props) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-vars', role: 'group', 'aria-label': strings.varLibrary() },
+    props.groups.map((group) =>
+      createElement(
+        'div',
+        { key: group.group, className: 'dsh-my-notify-vargroup' },
+        createElement('div', { className: 'dsh-my-notify-vargroup-title' }, group.label),
+        createElement(
+          'div',
+          { className: 'dsh-my-notify-varlist' },
+          group.items.map((item) =>
+            createElement(
+              'button',
+              {
+                key: item.name,
+                type: 'button',
+                className: 'dsh-my-notify-vitem',
+                title: item.example !== '' ? item.description + ' · ' + item.example : item.description,
+                'aria-label': strings.varInsertDesc() + ' ' + item.name,
+                onClick: () => props.onInsert(item.name),
+              },
+              item.name,
+              createElement('em', null, item.description),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+function templateEditor(ctx) {
+  const { active, template, resetTemplate, insert, groups, patch, setTarget, setCaret } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-editor' },
+    { className: 'dsh-my-notify-editor' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-editor-hd' },
+      createElement('b', null, eventLabelOf(active)),
+      createElement('span', { className: 'dsh-my-notify-badge' }, active),
+      createElement('span', { className: 'dsh-my-notify-grow' }),
+      createElement(
+        'button',
+        { type: 'button', className: 'dsh-my-notify-btn', onClick: resetTemplate },
+        strings.resetDefaults(),
+      ),
+    ),
+    createElement(
+      'label',
+      { className: 'dsh-my-notify-field' },
+      createElement(
+        'span',
+        { className: 'dsh-my-notify-field-label' },
+        strings.tplTitle(),
+        createElement('span', { className: 'dsh-my-notify-field-count' }, template.title.length + ' / 52'),
+      ),
+      createElement('input', {
+        className: 'dsh-my-notify-input-full',
+        value: template.title,
+        'aria-label': strings.tplTitle(),
+        onFocus: () => setTarget('title'),
+        onChange: (event) => {
+          setTarget('title')
+          setCaret(event.target.selectionStart ?? event.target.value.length)
+          patch({ title: event.target.value, body: template.body })
+        },
+      }),
+    ),
+    createElement(
+      'label',
+      { className: 'dsh-my-notify-field' },
+      createElement(
+        'span',
+        { className: 'dsh-my-notify-field-label' },
+        strings.tplBody(),
+        createElement('span', { className: 'dsh-my-notify-field-count' }, template.body.length + ' / 180'),
+      ),
+      createElement('textarea', {
+        className: 'dsh-my-notify-textarea',
+        value: template.body,
+        'aria-label': strings.tplBody(),
+        onFocus: () => setTarget('body'),
+        onChange: (event) => {
+          setTarget('body')
+          setCaret(event.target.selectionStart ?? event.target.value.length)
+          patch({ title: template.title, body: event.target.value })
+        },
+      }),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-field-label' },
+      strings.varLibrary(),
+      createElement('span', { className: 'dsh-my-notify-field-count' }, strings.varCount(varCountOf(groups))),
+    ),
+    createElement(VariableLibrary, { groups, onInsert: insert }),
+  )
+}
+
+    'use strict'
+function varHintOf(item) {
+  const example = item.example !== '' ? ' · 例：' + item.example : ''
+  return item.name + ' — ' + item.description + example
+}
+function filterVarGroups(groups, query) {
+  const q = String(query ?? '')
+    .trim()
+    .toLowerCase()
+  if (q === '') return groups
+  const out = []
+  for (const group of groups) {
+    const items = group.items.filter(
+      (item) => item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q),
+    )
+    if (items.length > 0) out.push({ group: group.group, label: group.label, items })
+  }
+  return out
+}
+function variableTreeBody(props) {
+  const [query, setQuery] = useState('')
+  const visible = filterVarGroups(props.groups, query)
+  return [
+    createElement('input', {
+      className: 'dsh-my-notify-varq',
+      value: query,
+      placeholder: strings.varSearchPlaceholder(),
+      'aria-label': strings.varSearch(),
+      onChange: (event) => setQuery(event.target.value),
+    }),
+    visible.length === 0
+      ? createElement('div', { className: 'dsh-my-notify-hint' }, strings.varNoMatch())
+      : visible.map((group) =>
+          createElement(
+            'div',
+            { key: group.group, className: 'dsh-my-notify-vgroup' },
+            createElement('div', { className: 'dsh-my-notify-vgroup-hd' }, group.label),
+            createElement(
+              'div',
+              { className: 'dsh-my-notify-vlist' },
+              group.items.map((item) =>
+                createElement(
+                  'button',
+                  {
+                    key: item.name,
+                    type: 'button',
+                    className: 'dsh-my-notify-vchip',
+                    title: varHintOf(item),
+                    'aria-label': strings.varInsertDesc() + ' ' + item.name,
+                    onClick: () => props.onInsert(item.name),
+                  },
+                  createElement('span', { className: 'dsh-my-notify-vname' }, item.name),
+                  createElement('em', { className: 'dsh-my-notify-vdesc' }, item.description),
+                ),
+              ),
+            ),
+          ),
+        ),
+  ]
+}
+function VariableTree(props) {
+  return createElement(
+    'aside',
+    { className: 'dsh-my-notify-col dsh-my-notify-col-vars', 'aria-label': strings.varTree() },
+    createElement('div', { className: 'dsh-my-notify-col-hd' }, strings.varTree()),
+    createElement('div', { className: 'dsh-my-notify-vars' }, variableTreeBody(props)),
+  )
+}
+function VarDrawer(props) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-drawer-vars', role: 'dialog', 'aria-label': strings.varTree() },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-ed-hd' },
+      createElement('b', null, strings.varTree()),
+      createElement('span', { className: 'dsh-my-notify-grow' }),
+      createElement(
+        'button',
+        { type: 'button', className: 'dsh-my-notify-btn', onClick: props.onClose },
+        strings.close(),
+      ),
+    ),
+    createElement('div', { className: 'dsh-my-notify-vars' }, variableTreeBody(props)),
+  )
+}
+
+    'use strict'
+function EventList(props) {
+  return createElement(
+    'nav',
+    { className: 'dsh-my-notify-col dsh-my-notify-col-evlist', 'aria-label': strings.copyEvent() },
+    createElement('div', { className: 'dsh-my-notify-col-hd' }, strings.evTemplates()),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-evlist', role: 'tablist', 'aria-label': strings.copyEvent() },
+      EVENT_KEYS.map((key) =>
+        createElement(
+          'button',
+          {
+            key,
+            type: 'button',
+            className: 'dsh-my-notify-evbtn',
+            role: 'tab',
+            'aria-current': String(key === props.active),
+            onClick: () => props.onPick(key),
+          },
+          createElement('span', { className: 'dsh-my-notify-evd', 'data-kind': eventDotOf(key) }),
+          createElement(
+            'span',
+            null,
+            createElement('span', { className: 'dsh-my-notify-evname' }, eventLabelOf(key)),
+            createElement(
+              'span',
+              { className: 'dsh-my-notify-evmeta' },
+              props.enabledOf(key) ? strings.eventEnabled() : strings.eventDisabled(),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+function EventSelect(props) {
+  return createElement(
+    'select',
+    {
+      className: 'dsh-my-notify-evselect',
+      value: props.active,
+      'aria-label': strings.copyEvent(),
+      onChange: (event) => props.onPick(event.target.value),
+    },
+    EVENT_KEYS.map((key) => createElement('option', { key, value: key }, eventLabelOf(key))),
+  )
+}
+
+    'use strict'
+const BAND_FORMS = ['sys', 'toast', 'feishu', 'wecom', 'ding']
+function bandFormLabel(form) {
+  if (form === 'sys') return strings.formSys()
+  if (form === 'toast') return strings.formToast()
+  if (form === 'feishu') return strings.formFeishu()
+  if (form === 'wecom') return strings.formWecom()
+  return strings.formDing()
+}
+function bandColumn(props) {
+  const html = props.preview !== null ? renderPreviewFrame(props.form, props.preview) : ''
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-pcol' },
+    createElement('div', { className: 'dsh-my-notify-pcol-hd' }, bandFormLabel(props.form)),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-pstage' },
+      html !== ''
+        ? createElement('div', { dangerouslySetInnerHTML: { __html: html } })
+        : createElement('span', { className: 'dsh-my-notify-status' }, props.title),
+    ),
+  )
+}
+function PreviewBand(props) {
+  return createElement(
+    'section',
+    { className: 'dsh-my-notify-band', 'data-open': String(props.open), 'aria-label': strings.bandTitle() },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-band-hd' },
+      createElement('b', { className: 'dsh-my-notify-label' }, strings.bandTitle()),
+      createElement('span', { className: 'dsh-my-notify-hint' }, strings.bandHint()),
+      props.feishuIndependent
+        ? createElement(
+            'span',
+            { className: 'dsh-my-notify-badge', 'data-kind': 'accent' },
+            strings.bandFeishuIndependent(),
+          )
+        : null,
+      createElement('span', { className: 'dsh-my-notify-grow' }),
+      props.status !== 'ready'
+        ? createElement(
+            'span',
+            { className: props.notice.kind === 'error' ? 'dsh-my-notify-error' : 'dsh-my-notify-status' },
+            props.notice.text,
+          )
+        : null,
+      props.notice.retry
+        ? createElement(
+            'button',
+            { type: 'button', className: 'dsh-my-notify-btn', onClick: props.onRetry },
+            strings.previewRetry(),
+          )
+        : null,
+      createElement(
+        'button',
+        {
+          type: 'button',
+          className: 'dsh-my-notify-btn',
+          'aria-expanded': String(props.open),
+          onClick: props.onToggle,
+        },
+        props.open ? strings.bandCollapse() : strings.bandExpand(),
+      ),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-band-cols' },
+      BAND_FORMS.map((form) => bandColumn({ form, preview: props.preview, title: props.title })),
+    ),
+  )
+}
+
+    'use strict'
+function useVariables(setGroups) {
+  useEffect(() => {
+    if (typeof fetch !== 'function') return
+    fetch('/notify/api/variables')
+      .then((res) => res.json())
+      .then((body) => {
+        if (body !== null && body !== undefined && body.ok === true) setGroups(normalizeVarGroups(body.value))
+      })
+      .catch(() => {})
+  }, [])
+}
+function usePreview(props, active, template, attempt, setPreview, setStatus) {
+  useEffect(() => {
+    setStatus('loading')
+    const scheduler = createPreviewScheduler((payload) => {
+      void requestPreview(payload).then((value) => {
+        setPreview(value)
+        setStatus(value === null ? 'error' : 'ready')
+      })
+    }, 300)
+    scheduler.schedule(previewPayload(active, props.messages, props.card))
+    return () => scheduler.cancel()
+  }, [active, template.title, template.body, props.card, attempt])
+}
+function makeInsert(props, active, template, target, caret, setCaret) {
+  return (name) => {
+    const field = target === 'title' ? template.title : template.body
+    const next = insertVar(field, caret, name)
+    props.onPatchMessage(
+      active,
+      target === 'title' ? { title: next.value, body: template.body } : { title: template.title, body: next.value },
+    )
+    setCaret(next.caret)
+  }
+}
+function askModeControl(props) {
+  const options = [
+    { value: 'full', label: () => strings.askModeFull() },
+    { value: 'summary', label: () => strings.askModeSummary() },
+  ]
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-ed', 'data-role': 'ask-mode' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-lbl' },
+      createElement('span', null, strings.askModeTitle()),
+      createElement('span', null, props.askMode),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-segmented', role: 'tablist', 'aria-label': strings.askModeTitle() },
+      options.map((option) =>
+        createElement(
+          'button',
+          {
+            key: option.value,
+            type: 'button',
+            className: 'dsh-my-notify-seg',
+            role: 'tab',
+            'aria-selected': String(option.value === props.askMode),
+            onClick: () => props.onChange(option.value),
+          },
+          option.label(),
+        ),
+      ),
+    ),
+    createElement('div', { className: 'dsh-my-notify-hint' }, strings.askModeHint()),
+  )
+}
+function copyEditorColumn(props) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-col' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-ed' },
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-ed-hd' },
+        createElement('h2', null, eventLabelOf(props.active)),
+        createElement('span', { className: 'dsh-my-notify-badge' }, props.active),
+        createElement('span', { className: 'dsh-my-notify-grow' }),
+        createElement(
+          'button',
+          { type: 'button', className: 'dsh-my-notify-btn', onClick: props.onOpenVars },
+          strings.varOpen(),
+        ),
+        createElement(
+          'button',
+          { type: 'button', className: 'dsh-my-notify-btn', onClick: props.onReset },
+          strings.resetDefaults(),
+        ),
+      ),
+      createElement(SwitchRow, {
+        label: strings.editorEnabled(),
+        hint: strings.editorEnabledHint(),
+        on: props.enabled,
+        onChange: props.onToggle,
+      }),
+      props.active === 'ask' ? askModeControl({ askMode: props.askMode, onChange: props.onAskMode }) : null,
+      copyEditorFields(props),
+      createElement('div', { className: 'dsh-my-notify-hint' }, strings.varCount(props.varCount)),
+      props.saveError
+        ? createElement(
+            'div',
+            { className: 'dsh-my-notify-errbox', role: 'alert' },
+            createElement('span', null, strings.saveFailed()),
+            createElement(
+              'button',
+              { type: 'button', className: 'dsh-my-notify-btn', onClick: props.onRetrySave },
+              strings.previewRetry(),
+            ),
+          )
+        : null,
+    ),
+  )
+}
+function CopyEditorPane(props) {
+  const [active, setActive] = useState('end')
+  const [groups, setGroups] = useState([])
+  const [preview, setPreview] = useState(null)
+  const [status, setStatus] = useState('idle')
+  const [attempt, setAttempt] = useState(0)
+  const [bandOpen, setBandOpen] = useState(true)
+  const [varsOpen, setVarsOpen] = useState(false)
+  const [target, setTarget] = useState('body')
+  const [caret, setCaret] = useState(0)
+  const template = messageOf(props.messages, active)
+  useVariables(setGroups)
+  usePreview(props, active, template, attempt, setPreview, setStatus)
+  const insert = makeInsert(props, active, template, target, caret, setCaret)
+  const notice = previewNoticeOf(status)
+  const groupsTotal = varCountOf(groups)
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-wb' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-cols' },
+      createElement(EventList, {
+        active,
+        onPick: (key) => {
+          setActive(key)
+          setCaret(0)
+        },
+        enabledOf: props.enabledOf,
+      }),
+      copyEditorColumn({
+        active,
+        template,
+        enabled: props.enabledOf(active),
+        onToggle: (on) => props.onToggleEvent(active, on),
+        onReset: () => props.onPatchMessage(active, defaultMessageFor(active)),
+        onTitle: (v, at) => {
+          setTarget('title')
+          setCaret(at)
+          props.onPatchMessage(active, { title: v, body: template.body })
+        },
+        onBody: (v, at) => {
+          setTarget('body')
+          setCaret(at)
+          props.onPatchMessage(active, { title: template.title, body: v })
+        },
+        askMode: props.askMode ?? 'full',
+        onAskMode: (v) => props.onAskMode?.(v),
+        onOpenVars: () => setVarsOpen(!varsOpen),
+        varCount: groupsTotal,
+        saveError: props.saveError === true,
+        onRetrySave: props.onRetrySave ?? (() => {}),
+      }),
+      createElement(VariableTree, { groups, onInsert: insert }),
+      varsOpen ? createElement(VarDrawer, { groups, onInsert: insert, onClose: () => setVarsOpen(false) }) : null,
+    ),
+    createElement(PreviewBand, {
+      preview,
+      status,
+      notice,
+      attempt,
+      onRetry: () => setAttempt(attempt + 1),
+      open: bandOpen,
+      onToggle: () => setBandOpen(!bandOpen),
+      feishuIndependent: props.card !== undefined && props.card !== null,
+      title: strings.previewLoading(),
+    }),
+  )
+}
+function defaultMessageFor(key) {
+  const defaults = defaultMessages()
+  const fallback = defaults[key] ?? defaults.end
+  return { title: fallback.title, body: fallback.body }
+}
+function copyEditorHead(props) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-ed-hd' },
+    createElement('h2', null, eventLabelOf(props.active)),
+    createElement('span', { className: 'dsh-my-notify-badge' }, props.active),
+    createElement('span', { className: 'dsh-my-notify-grow' }),
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-btn', onClick: props.onOpenVars },
+      strings.varOpen(),
+    ),
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-btn', onClick: props.onReset },
+      strings.resetDefaults(),
+    ),
+  )
+}
+function copyEditorFields(props) {
+  return [
+    createElement(
+      'div',
+      { key: 'title' },
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-lbl' },
+        createElement('span', null, strings.tplTitle()),
+        createElement('span', null, props.template.title.length + ' / 52'),
+      ),
+      createElement('input', {
+        className: 'dsh-my-notify-inp2',
+        value: props.template.title,
+        'aria-label': strings.tplTitle(),
+        onFocus: () => props.onTitle(props.template.title, props.template.title.length),
+        onChange: (event) => props.onTitle(event.target.value, event.target.selectionStart ?? 0),
+      }),
+    ),
+    createElement(
+      'div',
+      { key: 'body' },
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-lbl' },
+        createElement('span', null, strings.tplBody()),
+        createElement('span', null, props.template.body.length + ' / 180'),
+      ),
+      createElement('textarea', {
+        className: 'dsh-my-notify-ta2',
+        value: props.template.body,
+        'aria-label': strings.tplBody(),
+        onFocus: () => props.onBody(props.template.body, props.template.body.length),
+        onChange: (event) => props.onBody(event.target.value, event.target.selectionStart ?? 0),
+      }),
+    ),
+  ]
+}
+
+
+    // ── 渠道（列表 + 详情抽屉 + 卡片设计器）───────────────────────────
+    'use strict'
+function defaultCard() {
+  return {
+    schemaVersion: '2.0',
+    template: '',
+    fields: CARD_FIELD_OPTIONS.filter((option) => option.value !== 'event.time').map((option) => option.value),
+    buttonText: strings.dzButtonDefault(),
+    mentionOpenIds: [],
+    mentionAll: false,
+    accentByKind: true,
+  }
+}
+function cardFieldsOf(card) {
+  const allowed = CARD_FIELD_OPTIONS.map((option) => option.value)
+  const raw = card !== null && card !== undefined && Array.isArray(card.fields) ? card.fields : []
+  const fields = []
+  for (const name of raw) {
+    if (allowed.includes(name) && !fields.includes(name)) fields.push(name)
+  }
+  return fields
+}
+function cardOf(webhook) {
+  const base = defaultCard()
+  const card = webhook.card
+  if (card === null || card === undefined || typeof card !== 'object') return base
+  return {
+    schemaVersion: typeof card.schemaVersion === 'string' ? card.schemaVersion : base.schemaVersion,
+    template: typeof card.template === 'string' ? card.template : base.template,
+    fields: cardFieldsOf(card),
+    buttonText: typeof card.buttonText === 'string' && card.buttonText !== '' ? card.buttonText : base.buttonText,
+    mentionOpenIds: Array.isArray(card.mentionOpenIds) ? card.mentionOpenIds : [],
+    mentionAll: card.mentionAll === true,
+    accentByKind: card.accentByKind !== false,
+  }
+}
+function WebhookDesigner(props) {
+  const card = cardOf(props.draft)
+  const [view, setView] = useState('design')
+  const [preview, setPreview] = useState(null)
+  const [failed, setFailed] = useState(false)
+  const patchCard = (key, value) => {
+    props.onChange({ ...props.draft, card: { ...card, [key]: value } })
+  }
+  const toggleField = (name) => {
+    const fields = card.fields ?? []
+    patchCard('fields', fields.includes(name) ? fields.filter((f) => f !== name) : [...fields, name])
+  }
+  useEffect(() => {
+    const scheduler = createPreviewScheduler((payload) => {
+      void requestPreview(payload).then((value) => {
+        setPreview(value)
+        setFailed(value === null)
+      })
+    }, 300)
+    scheduler.schedule({
+      kind: 'end',
+      channel: 'feishu',
+      sample: { question: strings.sampleQuestion() },
+      titleTemplate: props.draft.titleTemplate ?? '',
+      bodyTemplate: props.draft.bodyTemplate ?? '',
+      card,
+    })
+    return () => scheduler.cancel()
+  }, [props.draft.card, props.draft.titleTemplate, props.draft.bodyTemplate])
+  const ctx = { draft: props.draft, card, patchCard, toggleField, onChange: props.onChange, preview, failed }
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-design' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-design-hd' },
+      createElement('b', null, strings.designerTitle()),
+      createElement('span', { className: 'dsh-my-notify-badge', 'data-kind': 'accent' }, 'interactive'),
+      createElement('span', { className: 'dsh-my-notify-grow' }),
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-segmented', role: 'tablist', 'aria-label': strings.designerView() },
+        ['design', 'json'].map((item) =>
+          createElement(
+            'button',
+            {
+              key: item,
+              type: 'button',
+              className: 'dsh-my-notify-seg',
+              role: 'tab',
+              'aria-selected': String(item === view),
+              onClick: () => setView(item),
+            },
+            item === 'design' ? strings.designerView() : strings.viewJson(),
+          ),
+        ),
+      ),
+    ),
+    view === 'json'
+      ? createElement(
+          'pre',
+          { className: 'dsh-my-notify-pv-json' },
+          JSON.stringify(preview !== null ? preview.card : { schema: '2.0', card }, null, 2),
+        )
+      : createElement('div', { className: 'dsh-my-notify-design-grid' }, designerControls(ctx), designerPreview(ctx)),
+  )
+}
+function designerControls(ctx) {
+  const { draft, card, patchCard, onChange } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-copy-stack' },
+    createElement(
+      'label',
+      { className: 'dsh-my-notify-webhook-field' },
+      createElement('span', { className: 'dsh-my-notify-webhook-field-label' }, strings.dzCardTitle()),
+      textInput(draft.titleTemplate ?? '', '{{session.title}}', (v) => onChange({ ...draft, titleTemplate: v })),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-webhook-field' },
+      createElement(
+        'span',
+        { className: 'dsh-my-notify-webhook-field-label' },
+        strings.dzAccent(),
+        createElement('span', { className: 'dsh-my-notify-hint' }, '· ' + strings.dzAccentAuto()),
+      ),
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-swatches' },
+        CARD_ACCENTS.map((option) =>
+          createElement(
+            'button',
+            {
+              key: option.value,
+              type: 'button',
+              className: 'dsh-my-notify-swatch',
+              'data-c': option.value,
+              'aria-pressed': String(card.accentByKind !== true && card.template === option.value),
+              'aria-label': option.label(),
+              onClick: () => onChange({ ...draft, card: { ...card, template: option.value, accentByKind: false } }),
+            },
+            createElement('i'),
+          ),
+        ),
+        createElement(
+          'label',
+          { className: 'dsh-my-notify-cbx' },
+          createElement('input', {
+            type: 'checkbox',
+            checked: card.accentByKind !== false,
+            onChange: (event) => patchCard('accentByKind', event.target.checked),
+          }),
+          strings.dzAccentAuto(),
+        ),
+      ),
+    ),
+    designerOptionFields(ctx),
+  )
+}
+function designerOptionFields(ctx) {
+  const { card, patchCard, toggleField } = ctx
+  return [
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-webhook-field' },
+      createElement('span', { className: 'dsh-my-notify-webhook-field-label' }, strings.dzFields()),
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-dz-fields' },
+        CARD_FIELD_OPTIONS.map((option) =>
+          createElement(
+            'label',
+            { key: option.value, className: 'dsh-my-notify-cbx' },
+            createElement('input', {
+              type: 'checkbox',
+              checked: cardFieldsOf(card).includes(option.value),
+              onChange: () => toggleField(option.value),
+            }),
+            option.label(),
+          ),
+        ),
+      ),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-grid2' },
+      createElement(
+        'label',
+        { className: 'dsh-my-notify-webhook-field' },
+        createElement('span', { className: 'dsh-my-notify-webhook-field-label' }, strings.dzButton()),
+        textInput(card.buttonText ?? '', strings.dzButton(), (v) => patchCard('buttonText', v)),
+      ),
+      createElement(
+        'label',
+        { className: 'dsh-my-notify-webhook-field' },
+        createElement('span', { className: 'dsh-my-notify-webhook-field-label' }, strings.dzMention()),
+        textInput((card.mentionOpenIds ?? []).join(','), 'ou_xxxxxxxx', (v) =>
+          patchCard(
+            'mentionOpenIds',
+            v
+              .split(',')
+              .map((item) => item.trim())
+              .filter((item) => item !== ''),
+          ),
+        ),
+      ),
+    ),
+    createElement(
+      'label',
+      { className: 'dsh-my-notify-cbx' },
+      createElement('input', {
+        type: 'checkbox',
+        checked: card.mentionAll === true,
+        onChange: (event) => patchCard('mentionAll', event.target.checked),
+      }),
+      strings.dzMentionAll(),
+    ),
+  ]
+}
+function designerPreview(ctx) {
+  const { preview, failed } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-copy-stack' },
+    createElement('span', { className: 'dsh-my-notify-webhook-field-label' }, strings.dzPreviewLabel()),
+    createElement('div', {
+      className: 'dsh-my-notify-pv-stage',
+      dangerouslySetInnerHTML: { __html: preview !== null ? renderFeishuCardHtml(preview.card) : '' },
+    }),
+    createElement(
+      'span',
+      { className: 'dsh-my-notify-hint' },
+      failed ? strings.previewFailed() : preview !== null ? cardMetaOf(preview.card) : strings.previewLoading(),
+    ),
+  )
+}
+
+    'use strict'
+function editorField(label, control) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-webhook-field' },
+    createElement('div', { className: 'dsh-my-notify-webhook-field-label' }, label),
+    control,
+  )
+}
+function textInput(value, placeholder, onChange) {
+  return createElement('input', {
+    className: 'dsh-my-notify-webhook-input',
+    value,
+    placeholder,
+    onChange: (event) => onChange(event.target.value),
+  })
+}
+function selectInput(value, options, onChange) {
+  return createElement(
+    'select',
+    { className: 'dsh-my-notify-webhook-select', value, onChange: (event) => onChange(event.target.value) },
+    options.map((option) => createElement('option', { key: option.value, value: option.value }, option.label())),
+  )
+}
+function testStateSetter(set) {
+  return (ok) => set(ok ? 'ok' : 'fail')
+}
+function WebhookEditor(props) {
+  const draft = props.draft
+  const patch = (key, value) => props.onChange({ ...draft, [key]: value })
+  const [secretShown, setSecretShown] = useState(false)
+  const [testState, setTestState] = useState('')
+  const events = Array.isArray(draft.events) ? draft.events : []
+  const toggleEvent = (event) => {
+    patch('events', events.includes(event) ? events.filter((e) => e !== event) : [...events, event])
+  }
+  const ctx = {
+    draft,
+    patch,
+    secretShown,
+    setSecretShown,
+    events,
+    toggleEvent,
+    card: cardOf(draft),
+    testState,
+    setTestState,
+    onTest: props.onTest,
+    onChange: props.onChange,
+    onCancel: props.onCancel,
+    onSave: props.onSave,
+    onDelete: props.onDelete,
+  }
+  return createElement(
+    'div',
+    {
+      className: 'dsh-my-notify-drawer',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-label': strings.channelEditTitle(),
+    },
+    createElement('div', { className: 'dsh-my-notify-drawer-scrim', onClick: props.onCancel }),
+    createElement(
+      'div',
+      {
+        className: 'dsh-my-notify-drawer-panel',
+        tabIndex: -1,
+        onKeyDown: (event) => {
+          if (event !== null && event.key === 'Escape') {
+            if (typeof event.stopPropagation === 'function') event.stopPropagation()
+            props.onCancel()
+          }
+        },
+      },
+      editorHead(ctx),
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-drawer-bd' },
+        editorBasicsFields(ctx),
+        editorChannelFields(ctx),
+        editorContentFields(ctx),
+      ),
+      editorFooter(ctx),
+    ),
+  )
+}
+function editorHead(ctx) {
+  const { draft, onCancel } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-drawer-hd' },
+    createElement(
+      'span',
+      { className: 'dsh-my-notify-ch-mark', 'data-brand': draft.channel },
+      brandMarkOf(draft.channel),
+    ),
+    createElement('h3', { className: 'dsh-my-notify-label' }, draft.name !== '' ? draft.name : strings.channelAddNew()),
+    createElement(
+      'span',
+      { className: 'dsh-my-notify-badge', 'data-kind': 'accent' },
+      msgTypeLabel(draft.channel, draft.msgType),
+    ),
+    createElement('span', { className: 'dsh-my-notify-grow' }),
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-btn', 'aria-label': strings.closeToast(), onClick: onCancel },
+      '×',
+    ),
+  )
+}
+function editorFooter(ctx) {
+  const { onDelete, onCancel, onSave } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-drawer-ft' },
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-btn dsh-my-notify-btn-danger', onClick: onDelete },
+      strings.channelDelete(),
+    ),
+    createElement('span', { className: 'dsh-my-notify-grow' }),
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-btn', onClick: onCancel },
+      strings.webhookCancel(),
+    ),
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-btn dsh-my-notify-btn-primary', onClick: onSave },
+      strings.channelSave(),
+    ),
+  )
+}
+function editorBasicsFields(ctx) {
+  const { draft, patch, secretShown, setSecretShown } = ctx
+  return [
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-grid2' },
+      editorField(
+        strings.channelName(),
+        textInput(draft.name, strings.webhookNamePlaceholder(), (v) => patch('name', v)),
+      ),
+      editorField(
+        strings.channelType(),
+        selectInput(draft.channel, CHANNEL_OPTIONS, (v) => {
+          const options = msgTypeOptions(v)
+          const keep = options.some((o) => o.value === draft.msgType) ? draft.msgType : options[0].value
+          ctx.onChange({ ...draft, channel: v, msgType: keep })
+        }),
+      ),
+    ),
+    editorField(
+      strings.webhookUrl(),
+      textInput(draft.url, strings.webhookUrlPlaceholder(), (v) => patch('url', v)),
+    ),
+    editorField(
+      strings.channelSecret() + ' ' + strings.channelSecretHint(),
+      createElement(
+        'span',
+        { className: 'dsh-my-notify-inp-group' },
+        createElement('input', {
+          className: 'dsh-my-notify-webhook-input',
+          type: secretShown ? 'text' : 'password',
+          value: draft.secret ?? '',
+          placeholder: strings.webhookSecretPlaceholder(),
+          'aria-label': strings.channelSecret(),
+          onChange: (event) => patch('secret', event.target.value),
+        }),
+        createElement(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-my-notify-btn',
+            'aria-pressed': String(secretShown),
+            onClick: () => setSecretShown(!secretShown),
+          },
+          secretShown ? strings.secureHide() : strings.secureShow(),
+        ),
+      ),
+    ),
+  ]
+}
+function editorChannelFields(ctx) {
+  const { draft, events, toggleEvent, patch } = ctx
+  return [
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-webhook-field' },
+      createElement('span', { className: 'dsh-my-notify-webhook-field-label' }, strings.channelEventsSubscribe()),
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-webhook-events' },
+        EVENT_OPTIONS.map((option) =>
+          createElement(
+            'button',
+            {
+              key: option.value,
+              type: 'button',
+              className: 'dsh-my-notify-chip',
+              'aria-pressed': String(events.includes(option.value)),
+              'aria-label': option.label(),
+              onClick: () => toggleEvent(option.value),
+            },
+            option.label(),
+          ),
+        ),
+      ),
+    ),
+    editorField(
+      strings.webhookMsgType(),
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-segmented', role: 'tablist', 'aria-label': strings.webhookMsgType() },
+        msgTypeOptions(draft.channel).map((option) =>
+          createElement(
+            'button',
+            {
+              key: option.value,
+              type: 'button',
+              className: 'dsh-my-notify-seg',
+              role: 'tab',
+              'aria-selected': String(option.value === draft.msgType),
+              onClick: () => patch('msgType', option.value),
+            },
+            option.label(),
+          ),
+        ),
+      ),
+    ),
+  ]
+}
+function editorContentFields(ctx) {
+  const { draft, patch, testState, setTestState, onTest } = ctx
+  return [
+    draft.channel === 'feishu' && draft.msgType === 'interactive'
+      ? createElement(WebhookDesigner, { draft, onChange: ctx.onChange })
+      : null,
+    editorField(
+      strings.webhookTemplate(),
+      createElement('textarea', {
+        className: 'dsh-my-notify-webhook-input dsh-my-notify-textarea',
+        value: draft.bodyTemplate ?? draft.template ?? '',
+        placeholder: strings.webhookTemplatePlaceholder(),
+        'aria-label': strings.webhookTemplate(),
+        onChange: (event) => patch('bodyTemplate', event.target.value),
+      }),
+    ),
+    editorField(
+      strings.retryAttempts(),
+      textInput(String(draft.retry?.attempts ?? 3), '3', (v) =>
+        patch('retry', { ...(draft.retry ?? {}), attempts: Number(v) || 0 }),
+      ),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-actions' },
+      createElement(
+        'button',
+        {
+          type: 'button',
+          className: 'dsh-my-notify-btn',
+          onClick: () => {
+            setTestState('sending')
+            void onTest(testStateSetter(setTestState))
+          },
+        },
+        strings.channelTestSend(),
+      ),
+      testState === 'ok'
+        ? createElement('span', { className: 'dsh-my-notify-saved' }, strings.secureRemoteOk())
+        : testState === 'fail'
+          ? createElement('span', { className: 'dsh-my-notify-error' }, strings.secureRemoteFail())
+          : null,
+      createElement('span', { className: 'dsh-my-notify-hint' }, strings.channelTestHint()),
+    ),
+  ]
+}
+
+    'use strict'
+const WEBHOOK_STYLES = `.dsh-my-notify-ch-list{display:flex;flex-direction:column;gap:6px}.dsh-my-notify-ch-card{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);cursor:pointer;transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}.dsh-my-notify-ch-card:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-ch-mark{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;flex:none;font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary-foreground);background:var(--dsw-alias-accent)}.dsh-my-notify-ch-mark[data-brand="wecom"]{background:var(--dsw-alias-state-success-primary)}.dsh-my-notify-ch-mark[data-brand="dingtalk"]{background:var(--dsw-alias-state-warn-primary)}.dsh-my-notify-ch-mark[data-brand="generic"]{background:var(--dsw-alias-label-tertiary)}.dsh-my-notify-ch-main{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}.dsh-my-notify-ch-name{display:flex;align-items:center;gap:6px;font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}.dsh-my-notify-ch-sub{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}.dsh-my-notify-ch-evs{display:flex;flex-wrap:wrap;gap:4px}.dsh-my-notify-ch-chip{height:18px;padding:0 6px;border-radius:4px;display:inline-flex;align-items:center;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg)}.dsh-my-notify-ch-ctl{display:flex;align-items:center;gap:8px;flex:none}.dsh-my-notify-drawer{position:fixed;inset:0;z-index:3200;display:flex;justify-content:flex-end}.dsh-my-notify-drawer-scrim{position:absolute;inset:0;background:color-mix(in srgb, var(--dsw-alias-label-primary) 28%, transparent)}.dsh-my-notify-drawer-panel{position:relative;display:flex;flex-direction:column;width:min(560px,100%);height:100%;overflow:auto;background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l2);box-shadow:var(--dsw-shadow-lv2)}.dsh-my-notify-drawer-hd{display:flex;align-items:center;gap:8px;padding:12px;border-bottom:1px solid var(--dsw-alias-border-l2);position:sticky;top:0;background:var(--dsw-alias-bg-layer-1);z-index:1}.dsh-my-notify-drawer-bd{display:flex;flex-direction:column;gap:10px;padding:12px}.dsh-my-notify-drawer-ft{display:flex;align-items:center;gap:8px;padding:12px;border-top:1px solid var(--dsw-alias-border-l2);position:sticky;bottom:0;background:var(--dsw-alias-bg-layer-1)}.dsh-my-notify-webhook-editor{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}.dsh-my-notify-webhook-field{display:flex;flex-direction:column;gap:4px;min-width:0}.dsh-my-notify-webhook-field-label{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary)}.dsh-my-notify-webhook-input{width:100%;height:28px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-webhook-select{height:28px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-webhook-events{display:flex;flex-wrap:wrap;gap:6px}.dsh-my-notify-webhook-event{display:flex;align-items:center;gap:4px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-primary)}.dsh-my-notify-chip{height:24px;padding:0 8px;border-radius:6px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-chip[aria-pressed="true"]{border-color:var(--dsw-alias-accent);color:var(--dsw-alias-accent);background:color-mix(in srgb, var(--dsw-alias-accent) 10%, transparent)}.dsh-my-notify-inp-group{display:flex;align-items:center;gap:6px}.dsh-my-notify-inp-group input{flex:1;min-width:0}.dsh-my-notify-design{display:flex;flex-direction:column;gap:10px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.dsh-my-notify-design-hd{display:flex;align-items:center;gap:8px}.dsh-my-notify-design-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}.dsh-my-notify-swatches{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.dsh-my-notify-swatch{width:20px;height:20px;padding:0;border-radius:50%;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-label-tertiary)}.dsh-my-notify-swatch i{display:block;width:100%;height:100%;border-radius:50%}.dsh-my-notify-swatch[data-c="green"] i{background:var(--dsw-alias-state-success-primary)}.dsh-my-notify-swatch[data-c="blue"] i{background:var(--dsw-alias-accent)}.dsh-my-notify-swatch[data-c="orange"] i{background:var(--dsw-alias-state-warn-primary)}.dsh-my-notify-swatch[data-c="grey"] i{background:var(--dsw-alias-label-tertiary)}.dsh-my-notify-swatch[aria-pressed="true"]{border-color:var(--dsw-alias-label-primary);border-width:2px}.dsh-my-notify-cbx{display:inline-flex;align-items:center;gap:4px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-primary)}.dsh-my-notify-dz-fields{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}.dsh-my-notify-fail-list{display:flex;flex-direction:column;gap:4px}.dsh-my-notify-fail-row{display:grid;grid-template-columns:80px 60px minmax(0,1fr) 56px;align-items:center;gap:8px;padding:4px 0;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary)}.dsh-my-notify-fail-row[data-head="true"]{color:var(--dsw-alias-label-tertiary)}.dsh-my-notify-fail-time{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}.dsh-my-notify-fail-err{color:var(--dsw-alias-state-error-primary);word-break:break-word}
 `
 const CHANNEL_OPTIONS = [
   { value: 'wecom', label: () => strings.channelWecom() },
@@ -1137,9 +2799,9 @@ const EVENT_OPTIONS = [
   { value: 'end', label: () => strings.eventEnd() },
   { value: 'ask', label: () => strings.eventAsk() },
   { value: 'approval', label: () => strings.eventApproval() },
+  { value: 'subagentEnd', label: () => strings.eventSubagentEnd() },
   { value: 'remote', label: () => strings.eventRemote() },
 ]
-/** 空 webhook 模板（添加时使用）。 */
 function emptyWebhook() {
   return {
     name: '',
@@ -1150,14 +2812,22 @@ function emptyWebhook() {
     enabled: true,
     msgType: 'text',
     template: '',
+    titleTemplate: '',
+    bodyTemplate: '',
+    card: defaultCard(),
+    retry: { attempts: 3, backoffMs: 1000 },
   }
 }
-/** 渠道中文标签。 */
 function channelLabel(channel) {
   const option = CHANNEL_OPTIONS.find((o) => o.value === channel)
   return option !== undefined ? option.label() : channel
 }
-/** 事件选择中文标签（空数组 = 全部）。 */
+function brandMarkOf(channel) {
+  if (channel === 'feishu') return '飞'
+  if (channel === 'wecom') return '企'
+  if (channel === 'dingtalk') return '钉'
+  return '通'
+}
 function eventsLabel(events) {
   if (!Array.isArray(events) || events.length === 0) return strings.eventAll()
   return events
@@ -1167,251 +2837,227 @@ function eventsLabel(events) {
     })
     .join(' / ')
 }
-/** 消息类型选项（按渠道：wecom/dingtalk → text/markdown，feishu → text/post）。 */
 function msgTypeOptions(channel) {
   if (channel === 'feishu') {
     return [
       { value: 'text', label: () => strings.msgTypeText() },
       { value: 'post', label: () => strings.msgTypePost() },
+      { value: 'interactive', label: () => strings.msgTypeInteractive() },
     ]
   }
   return [
     { value: 'text', label: () => strings.msgTypeText() },
     { value: 'markdown', label: () => strings.msgTypeMarkdown() },
+    { value: 'post', label: () => strings.msgTypePost() },
   ]
 }
-/** 单条 webhook 显示行：名称/渠道/事件 + 启用开关 + 编辑/删除。 */
+function msgTypeLabel(channel, msgType) {
+  const option = msgTypeOptions(channel).find((o) => o.value === msgType)
+  return option !== undefined ? option.label() : msgType
+}
 function WebhookRow({ webhook, onEdit, onDelete, onToggle }) {
   const enabled = webhook.enabled !== false
+  const events = Array.isArray(webhook.events) ? webhook.events : []
   return createElement(
     'div',
-    { className: 'dsh-my-notify-webhook-row' },
+    {
+      className: 'dsh-my-notify-webhook-row dsh-my-notify-ch-card',
+      role: 'button',
+      tabIndex: 0,
+      onClick: onEdit,
+      onKeyDown: (event) => {
+        if (event !== null && (event.key === 'Enter' || event.key === ' ')) {
+          if (typeof event.preventDefault === 'function') event.preventDefault()
+          onEdit()
+        }
+      },
+    },
     createElement(
-      'div',
-      { className: 'dsh-my-notify-info' },
-      createElement('div', { className: 'dsh-my-notify-label' }, webhook.name),
+      'span',
+      { className: 'dsh-my-notify-ch-mark', 'data-brand': webhook.channel },
+      brandMarkOf(webhook.channel),
+    ),
+    createElement(
+      'span',
+      { className: 'dsh-my-notify-ch-main' },
       createElement(
-        'div',
-        { className: 'dsh-my-notify-hint' },
-        `${channelLabel(webhook.channel)} · ${eventsLabel(webhook.events)}`,
+        'span',
+        { className: 'dsh-my-notify-ch-name' },
+        createElement('span', { className: 'dsh-my-notify-label' }, webhook.name),
+        createElement(
+          'span',
+          { className: 'dsh-my-notify-badge', 'data-kind': 'accent' },
+          msgTypeLabel(webhook.channel, webhook.msgType),
+        ),
       ),
-    ),
-    createElement(
-      'div',
-      { className: 'dsh-my-notify-actions' },
-      createElement('div', {
-        className: 'dsh-my-notify-toggle',
-        'data-on': String(enabled),
-        role: 'switch',
-        'aria-checked': String(enabled),
-        onClick: () => onToggle(!enabled),
-      }),
-      createElement('button', { className: 'dsh-my-notify-btn', onClick: onEdit }, strings.webhookEdit()),
-      createElement('button', { className: 'dsh-my-notify-btn', onClick: onDelete }, strings.webhookDelete()),
-    ),
-  )
-}
-/** 编辑表单字段容器（label + control）。 */
-function editorField(label, control) {
-  return createElement(
-    'div',
-    { className: 'dsh-my-notify-webhook-field' },
-    createElement('div', { className: 'dsh-my-notify-webhook-field-label' }, label),
-    control,
-  )
-}
-/** 文本输入控件。 */
-function textInput(value, placeholder, onChange) {
-  return createElement('input', {
-    className: 'dsh-my-notify-webhook-input',
-    value,
-    placeholder,
-    onChange: (event) => onChange(event.target.value),
-  })
-}
-/** 下拉选择控件。 */
-function selectInput(value, options, onChange) {
-  return createElement(
-    'select',
-    { className: 'dsh-my-notify-webhook-select', value, onChange: (event) => onChange(event.target.value) },
-    options.map((option) => createElement('option', { key: option.value, value: option.value }, option.label())),
-  )
-}
-/** 编辑表单：名称/渠道/URL/secret/事件多选/消息类型 + 保存/取消。 */
-function WebhookEditor({ draft, onChange, onSave, onCancel }) {
-  const patch = (key, value) => onChange({ ...draft, [key]: value })
-  const toggleEvent = (event) => {
-    const events = draft.events.includes(event) ? draft.events.filter((e) => e !== event) : [...draft.events, event]
-    patch('events', events)
-  }
-  return createElement(
-    'div',
-    { className: 'dsh-my-notify-webhook-editor' },
-    editorField(
-      strings.webhookName(),
-      textInput(draft.name, strings.webhookNamePlaceholder(), (v) => patch('name', v)),
-    ),
-    editorField(
-      strings.webhookChannel(),
-      selectInput(draft.channel, CHANNEL_OPTIONS, (v) => patch('channel', v)),
-    ),
-    editorField(
-      strings.webhookUrl(),
-      textInput(draft.url, strings.webhookUrlPlaceholder(), (v) => patch('url', v)),
-    ),
-    editorField(
-      strings.webhookSecret(),
-      textInput(draft.secret, strings.webhookSecretPlaceholder(), (v) => patch('secret', v)),
-    ),
-    editorField(
-      strings.webhookEvents(),
       createElement(
-        'div',
-        { className: 'dsh-my-notify-webhook-events' },
-        EVENT_OPTIONS.map((option) =>
-          createElement(
-            'label',
-            { key: option.value, className: 'dsh-my-notify-webhook-event' },
-            createElement('input', {
-              type: 'checkbox',
-              checked: draft.events.includes(option.value),
-              onChange: () => toggleEvent(option.value),
-            }),
-            option.label(),
-          ),
+        'span',
+        { className: 'dsh-my-notify-ch-sub dsh-my-notify-hint' },
+        channelLabel(webhook.channel) + ' · ' + eventsLabel(events),
+      ),
+      createElement(
+        'span',
+        { className: 'dsh-my-notify-ch-evs' },
+        (events.length > 0 ? events : ['end', 'ask', 'approval', 'remote']).map((event) =>
+          createElement('span', { key: event, className: 'dsh-my-notify-ch-chip' }, eventLabelOf(event)),
         ),
       ),
     ),
-    editorField(
-      strings.webhookMsgType(),
-      selectInput(draft.msgType, msgTypeOptions(draft.channel), (v) => patch('msgType', v)),
-    ),
-    editorField(
-      strings.webhookTemplate(),
-      createElement('textarea', {
-        className: 'dsh-my-notify-webhook-input',
-        style: { height: 'auto', minHeight: '56px', resize: 'vertical', padding: '6px 8px' },
-        value: draft.template ?? '',
-        placeholder: strings.webhookTemplatePlaceholder(),
-        onChange: (event) => patch('template', event.target.value),
-      }),
-    ),
-    createElement(
-      'div',
-      { className: 'dsh-my-notify-actions' },
-      createElement('button', { className: 'dsh-my-notify-btn', onClick: onSave }, strings.webhookSave()),
-      createElement('button', { className: 'dsh-my-notify-btn', onClick: onCancel }, strings.webhookCancel()),
-    ),
+    webhookRowControls({ webhook, enabled, onToggle }),
   )
 }
-/** 失败记录条目。 */
-function FailureRow({ failure }) {
+function webhookRowControls({ webhook, enabled, onToggle }) {
+  return createElement(
+    'span',
+    { className: 'dsh-my-notify-ch-ctl' },
+    createElement(
+      'span',
+      { className: 'dsh-my-notify-badge', 'data-kind': enabled ? 'ok' : undefined },
+      enabled ? strings.channelEnabled() : strings.channelDisabled(),
+    ),
+    createElement('div', {
+      className: 'dsh-my-notify-toggle',
+      'data-on': String(enabled),
+      role: 'switch',
+      'aria-checked': String(enabled),
+      'aria-label': webhook.name,
+      tabIndex: 0,
+      onClick: (event) => {
+        if (event !== null && typeof event.stopPropagation === 'function') event.stopPropagation()
+        onToggle(!enabled)
+      },
+    }),
+  )
+}
+function FailureRow({ failure, onRetry }) {
   const time = new Date(failure.time).toLocaleString()
   return createElement(
     'div',
-    { className: 'dsh-my-notify-webhook-failure' },
+    { className: 'dsh-my-notify-fail-row' },
+    createElement('span', { className: 'dsh-my-notify-fail-time dsh-my-notify-webhook-failure-time' }, time),
+    createElement('span', null, channelLabel(failure.channel)),
     createElement(
-      'div',
-      { className: 'dsh-my-notify-webhook-failure-time' },
-      `${time} · ${failure.webhookName}（${channelLabel(failure.channel)}）· ${failure.attempts} 次尝试`,
+      'span',
+      { className: 'dsh-my-notify-fail-err dsh-my-notify-webhook-failure-msg' },
+      failure.error + ' · ' + strings.retryAttemptsUsed(failure.attempts),
     ),
-    createElement('div', { className: 'dsh-my-notify-webhook-failure-msg' }, failure.error),
+    onRetry !== undefined
+      ? createElement(
+          'button',
+          { type: 'button', className: 'dsh-my-notify-btn', onClick: onRetry },
+          strings.webhookEdit(),
+        )
+      : createElement('span'),
   )
 }
-/** 出站 Webhook 区块：列表 + 添加/编辑 + 失败记录。 */
-function WebhookSection({ webhooks, failures, onPatchWebhooks }) {
+function WebhookSection({ webhooks, failures, onPatchWebhooks, apiToken }) {
+  const list = Array.isArray(webhooks) ? webhooks : []
   const [editing, setEditing] = useState(-1)
   const [editorDraft, setEditorDraft] = useState(null)
   const startAdd = () => {
     setEditorDraft(emptyWebhook())
-    setEditing(webhooks.length)
+    setEditing(list.length)
   }
   const startEdit = (index) => {
-    setEditorDraft({ ...webhooks[index] })
+    setEditorDraft({ ...list[index], card: cardOf(list[index]) })
     setEditing(index)
   }
   const saveEditor = () => {
-    const next = [...webhooks]
+    const next = [...list]
     if (editing >= next.length) next.push(editorDraft)
     else next[editing] = editorDraft
     onPatchWebhooks(next)
     setEditing(-1)
+    setEditorDraft(null)
   }
-  const removeAt = (index) => onPatchWebhooks(webhooks.filter((_, i) => i !== index))
+  const removeAt = (index) => {
+    onPatchWebhooks(list.filter((_, i) => i !== index))
+    setEditing(-1)
+    setEditorDraft(null)
+  }
   const toggleAt = (index, enabled) => {
-    const next = webhooks.map((webhook, i) => (i === index ? { ...webhook, enabled } : webhook))
-    onPatchWebhooks(next)
+    onPatchWebhooks(list.map((webhook, i) => (i === index ? { ...webhook, enabled } : webhook)))
+  }
+  const testSend = (done) => {
+    if (typeof fetch !== 'function') {
+      done(false)
+      return
+    }
+    fetch('/notify/api/trigger', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-notify-token': typeof apiToken === 'string' ? apiToken : '' },
+      body: JSON.stringify({ title: strings.channelTestSend(), body: editorDraft !== null ? editorDraft.name : '' }),
+    })
+      .then((res) => res.json())
+      .then((body) => done(body !== null && body !== undefined && body.ok === true))
+      .catch(() => done(false))
   }
   return createElement(
     'div',
-    { className: 'dsh-my-notify-section' },
-    createElement('div', { className: 'dsh-my-notify-section-title' }, strings.settingsWebhooks()),
-    (webhooks ?? []).map((webhook, index) =>
-      createElement(WebhookRow, {
-        key: `${index}-${webhook.name}`,
-        webhook,
-        onEdit: () => startEdit(index),
-        onDelete: () => removeAt(index),
-        onToggle: (enabled) => toggleAt(index, enabled),
-      }),
-    ),
-    editing >= 0
-      ? createElement(WebhookEditor, {
-          draft: editorDraft,
-          onChange: setEditorDraft,
-          onSave: saveEditor,
-          onCancel: () => setEditing(-1),
-        })
-      : null,
+    { className: 'dsh-my-notify-section', role: 'tabpanel', 'aria-label': strings.paneChannel() },
+    webhookList({ list, onEdit: startEdit, onToggle: toggleAt }),
+    list.length === 0 ? createElement('div', { className: 'dsh-my-notify-hint' }, strings.channelNoWebhooks()) : null,
     createElement(
       'div',
       { className: 'dsh-my-notify-actions' },
-      createElement('button', { className: 'dsh-my-notify-btn', onClick: startAdd }, strings.webhookAdd()),
+      createElement(
+        'button',
+        { type: 'button', className: 'dsh-my-notify-btn', onClick: startAdd },
+        strings.webhookAdd(),
+      ),
     ),
-    createElement('div', { className: 'dsh-my-notify-section-title' }, strings.webhookFailures()),
-    failures !== undefined && failures.length > 0
-      ? createElement(
-          'div',
-          { className: 'dsh-my-notify-webhook-failures' },
-          failures.map((failure, index) => createElement(FailureRow, { key: index, failure })),
-        )
-      : createElement('div', { className: 'dsh-my-notify-hint' }, strings.webhookNoFailures()),
+    webhookDrawer({ editing, editorDraft, setEditorDraft, saveEditor, removeAt, testSend }),
+    webhookFailuresBlock(failures),
   )
+}
+function webhookList(props) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-ch-list' },
+    props.list.map((webhook, index) =>
+      createElement(WebhookRow, {
+        key: index,
+        webhook,
+        onEdit: () => props.onEdit(index),
+        onDelete: () => {},
+        onToggle: (enabled) => props.onToggle(index, enabled),
+      }),
+    ),
+  )
+}
+function webhookFailuresBlock(failures) {
+  const title = createElement('div', { className: 'dsh-my-notify-section-title' }, strings.webhookFailures())
+  if (failures === undefined || failures.length === 0) {
+    return [title, createElement('div', { className: 'dsh-my-notify-hint' }, strings.webhookNoFailures())]
+  }
+  return [
+    title,
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-fail-list' },
+      failures.map((failure, index) => createElement(FailureRow, { key: index, failure })),
+    ),
+  ]
+}
+function webhookDrawer(ctx) {
+  const { editing, editorDraft, setEditorDraft, saveEditor, removeAt, testSend } = ctx
+  if (editing < 0 || editorDraft === null) return null
+  return createElement(WebhookEditor, {
+    draft: editorDraft,
+    onChange: setEditorDraft,
+    onSave: saveEditor,
+    onCancel: () => {
+      setEditorDraft(null)
+      return removeAt(-1)
+    },
+    onDelete: () => removeAt(editing),
+    onTest: testSend,
+  })
 }
 
 
-    // ── 设置页视图：配置可视化（issue #27，官方 slots 扩展点）───────────
-    // （src/client/parts/settings.ts）
+    // ── 设置分区（呈现 / 高级）+ 行控件 + 样式 ────────────────────────
     'use strict'
-// ── 设置页视图：配置可视化（issue #27，官方 slots 扩展点）──────────
-const SETTINGS_STYLES =
-  `
-.dsh-my-notify-settings{display:flex;flex-direction:column;gap:10px;padding:12px}
-.dsh-my-notify-section{display:flex;flex-direction:column;gap:8px}
-.dsh-my-notify-section-title{font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-secondary)}
-.dsh-my-notify-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
-.dsh-my-notify-info{display:flex;flex-direction:column;gap:2px;min-width:0}
-.dsh-my-notify-label{font:var(--dsw-font-xs-strong-13)}
-.dsh-my-notify-hint{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);line-height:1.5}
-/* issue #58: toggle 开关开/关一眼可分——关态用灰色轨道（tertiary 混合，
-   浅色主题下不再白底融入设置面板背景），开态圆点换对比墨色（foreground），
-   强化视觉差异；样式与 dsh-my-skill-manager-switch 的轨道/圆点方案一致 */
-.dsh-my-notify-toggle{flex:none;width:34px;height:20px;border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--dsw-alias-label-tertiary) 30%, transparent);position:relative;cursor:pointer;transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out),border-color var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-my-notify-toggle[data-on="true"]{background:var(--dsw-alias-state-success-primary);border-color:transparent}
-.dsh-my-notify-toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-primary);transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}
-.dsh-my-notify-toggle[data-on="true"]::after{transform:translateX(12px);background:var(--dsw-alias-label-primary-foreground)}
-.dsh-my-notify-input{flex:none;width:180px;height:28px;padding:0 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}
-/* issue #71: 音量滑杆（range）——细轨道 + 主色填充，与设置面板风格一致 */
-.dsh-my-notify-range{flex:none;width:140px;accent-color:var(--dsw-alias-state-success-primary);cursor:pointer}
-.dsh-my-notify-range-value{flex:none;min-width:40px;text-align:right;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary)}
-.dsh-my-notify-actions{display:flex;align-items:center;gap:8px}
-.dsh-my-notify-btn{height:28px;padding:0 14px;border-radius:6px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}
-.dsh-my-notify-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.dsh-my-notify-saved{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-success-primary)}
-.dsh-my-notify-error{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}
-.dsh-my-notify-status{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}
-` + WEBHOOK_STYLES
-/** 开关行（布尔配置项）。 */
 function SwitchRow({ label, hint, on, onChange }) {
   return createElement(
     'div',
@@ -1427,11 +3073,18 @@ function SwitchRow({ label, hint, on, onChange }) {
       'data-on': String(on),
       role: 'switch',
       'aria-checked': String(on),
+      'aria-label': label,
+      tabIndex: 0,
       onClick: () => onChange(!on),
+      onKeyDown: (event) => {
+        if (event !== null && (event.key === 'Enter' || event.key === ' ')) {
+          if (typeof event.preventDefault === 'function') event.preventDefault()
+          onChange(!on)
+        }
+      },
     }),
   )
 }
-/** 输入行（文本/数字配置项）。 */
 function TextRow({ label, hint, value, onChange, type }) {
   return createElement(
     'div',
@@ -1446,11 +3099,33 @@ function TextRow({ label, hint, value, onChange, type }) {
       className: 'dsh-my-notify-input',
       type: type ?? 'text',
       value,
+      'aria-label': label,
       onChange: (event) => onChange(event.target.value),
     }),
   )
 }
-/** 音量滑杆行（0~1，issue #71：音量走 localStorage，不走 server config）。 */
+function SelectRow({ label, hint, value, options, onChange }) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-row' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-info' },
+      createElement('div', { className: 'dsh-my-notify-label' }, label),
+      createElement('div', { className: 'dsh-my-notify-hint' }, hint),
+    ),
+    createElement(
+      'select',
+      {
+        className: 'dsh-my-notify-webhook-select',
+        value,
+        'aria-label': label,
+        onChange: (event) => onChange(event.target.value),
+      },
+      options.map((option) => createElement('option', { key: option.value, value: option.value }, option.label())),
+    ),
+  )
+}
 function VolumeRow({ label, hint, value, onChange }) {
   return createElement(
     'div',
@@ -1471,120 +3146,675 @@ function VolumeRow({ label, hint, value, onChange }) {
       'aria-label': label,
       onChange: (event) => onChange(Number(event.target.value)),
     }),
-    createElement('div', { className: 'dsh-my-notify-range-value' }, `${Math.round(value * 100)}%`),
+    createElement('div', { className: 'dsh-my-notify-range-value' }, Math.round(value * 100) + '%'),
   )
 }
-/** 触发开关区块（end/ask/approval/subagentEnd + 音量）。 */
-function renderTriggersSection(draft, patch, volume, onVolumeChange) {
-  return createElement(
-    'div',
-    { className: 'dsh-my-notify-section' },
-    createElement('div', { className: 'dsh-my-notify-section-title' }, strings.settingsTriggers()),
-    createElement(SwitchRow, {
-      label: strings.settingsEnd(),
-      hint: strings.settingsEndHint(),
-      on: draft.end === true,
-      onChange: (v) => patch('end', v),
-    }),
-    createElement(SwitchRow, {
-      label: strings.settingsAsk(),
-      hint: strings.settingsAskHint(),
-      on: draft.ask === true,
-      onChange: (v) => patch('ask', v),
-    }),
-    createElement(SwitchRow, {
-      label: strings.settingsApproval(),
-      hint: strings.settingsApprovalHint(),
-      on: draft.approval === true,
-      onChange: (v) => patch('approval', v),
-    }),
-    createElement(SwitchRow, {
-      label: strings.settingsSubagentEnd(),
-      hint: strings.settingsSubagentEndHint(),
-      on: draft.subagentEnd === true,
-      onChange: (v) => patch('subagentEnd', v),
-    }),
-    createElement(VolumeRow, {
-      label: strings.settingsVolume(),
-      hint: strings.settingsVolumeHint(),
-      value: volume,
-      onChange: onVolumeChange,
-    }),
-  )
+function optionTextOf(options, value) {
+  const hit = options.find((option) => option.value === value)
+  return hit !== undefined ? hit.label() : value
 }
-/** 高级区块（apiToken + dedupeMs）。 */
-function renderAdvancedSection(draft, patch) {
-  return createElement(
-    'div',
-    { className: 'dsh-my-notify-section' },
-    createElement('div', { className: 'dsh-my-notify-section-title' }, strings.settingsAdvanced()),
-    createElement(TextRow, {
-      label: strings.settingsApiToken(),
-      hint: strings.settingsApiTokenHint(),
-      value: draft.apiToken ?? '',
-      onChange: (v) => patch('apiToken', v),
-    }),
-    createElement(TextRow, {
-      label: strings.settingsDedupeMs(),
-      hint: strings.settingsDedupeMsHint(),
-      value: String(draft.dedupeMs ?? 3000),
-      type: 'number',
-      onChange: (v) => patch('dedupeMs', Number(v)),
-    }),
-  )
+function defaultConfig() {
+  return {
+    end: true,
+    ask: true,
+    approval: true,
+    subagentEnd: false,
+    askMode: 'full',
+    apiToken: '',
+    webBaseUrl: '',
+    dedupeMs: 3000,
+    webhooks: [],
+    quietHours: { enabled: false, start: '23:00', end: '08:00' },
+    sound: { enabled: true, preset: 'chime', volume: 0.6 },
+    toast: { enabled: true, durationMs: 4000, position: 'bottom-right', maxStack: 3 },
+    system: { enabled: true, requireInteraction: false },
+    messages: defaultMessages(),
+  }
 }
-/** 免打扰区块（quietHours 开关 + 开始/结束时间）。 */
-function renderQuietHoursSection(draft, patch) {
-  const qh = draft.quietHours ?? { enabled: false, start: '23:00', end: '08:00' }
-  const patchQh = (key, value) => patch('quietHours', { ...qh, [key]: value })
-  return createElement(
-    'div',
-    { className: 'dsh-my-notify-section' },
-    createElement('div', { className: 'dsh-my-notify-section-title' }, strings.settingsQuietHours()),
-    createElement(SwitchRow, {
-      label: strings.settingsQuietHoursEnabled(),
-      hint: strings.settingsQuietHoursEnabledHint(),
-      on: qh.enabled === true,
-      onChange: (v) => patchQh('enabled', v),
-    }),
-    createElement(TextRow, {
-      label: strings.settingsQuietHoursStart(),
-      hint: strings.settingsQuietHoursStartHint(),
-      value: qh.start ?? '23:00',
-      onChange: (v) => patchQh('start', v),
-    }),
-    createElement(TextRow, {
-      label: strings.settingsQuietHoursEnd(),
-      hint: strings.settingsQuietHoursEndHint(),
-      value: qh.end ?? '08:00',
-      onChange: (v) => patchQh('end', v),
-    }),
-  )
+function permissionBadge() {
+  try {
+    if (typeof Notification === 'undefined') return { text: strings.permDefault(), kind: 'warn' }
+    if (Notification.permission === 'granted') return { text: strings.permGranted(), kind: 'ok' }
+    if (Notification.permission === 'denied') return { text: strings.permDenied(), kind: 'err' }
+    return { text: strings.permDefault(), kind: 'warn' }
+  } catch {
+    return { text: strings.permDefault(), kind: 'warn' }
+  }
 }
-/** 设置表单渲染（触发开关 + 免打扰 + 出站 webhook + 高级项 + 保存动作）。 */
-function renderSettingsForm(draft, patch, save, saved, error, volume, onVolumeChange, webhookProps) {
+function configOf(draft) {
+  return draft !== null && draft !== undefined ? draft : defaultConfig()
+}
+function syncPrefsFromConfig(config) {
+  seedRuntimePrefs(config)
+}
+
+    'use strict'
+function renderPresentPane(draft, patch, volume, onVolumeChange) {
+  const toast = draft.toast ?? defaultConfig().toast
+  const sound = draft.sound ?? defaultConfig().sound
+  const system = draft.system ?? defaultConfig().system
+  const quiet = draft.quietHours ?? { enabled: false, start: '23:00', end: '08:00' }
+  const perm = permissionBadge()
+  const patchToast = (key, value) => patch('toast', { ...toast, [key]: value })
+  const patchSound = (key, value) => patch('sound', { ...sound, [key]: value })
+  const patchSystem = (key, value) => patch('system', { ...system, [key]: value })
+  const patchQuiet = (key, value) => patch('quietHours', { ...quiet, [key]: value })
+  const { positions, durations, stacks, tones } = presentOptions()
+  const ctx = {
+    system,
+    patchSystem,
+    perm,
+    toast,
+    patchToast,
+    positions,
+    durations,
+    stacks,
+    sound,
+    patchSound,
+    tones,
+    quiet,
+    patchQuiet,
+    draft,
+    patch,
+    volume,
+    onVolumeChange,
+  }
   return createElement(
     'div',
-    { className: 'dsh-my-notify-settings' },
-    renderTriggersSection(draft, patch, volume, onVolumeChange),
-    renderQuietHoursSection(draft, patch),
-    createElement(WebhookSection, {
-      webhooks: draft.webhooks ?? [],
-      failures: webhookProps.failures,
-      onPatchWebhooks: (webhooks) => patch('webhooks', webhooks),
-    }),
-    renderAdvancedSection(draft, patch),
+    { className: 'dsh-my-notify-pane', role: 'tabpanel', 'aria-label': strings.panePresent() },
     createElement(
       'div',
-      { className: 'dsh-my-notify-actions' },
-      createElement('button', { className: 'dsh-my-notify-btn', onClick: save }, strings.save()),
-      saved ? createElement('span', { className: 'dsh-my-notify-saved' }, strings.saved()) : null,
-      error ? createElement('span', { className: 'dsh-my-notify-error' }, strings.saveFailed()) : null,
+      { className: 'dsh-my-notify-pane-hd' },
+      createElement('h2', null, strings.panePresent()),
+      createElement('span', { className: 'dsh-my-notify-hint' }, strings.presentHint()),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-grid2' },
+      presentSystemCard(ctx),
+      presentToastCard(ctx),
+      presentSoundCard(ctx),
+      presentQuietCard(ctx),
+      presentSelfCheckCard(ctx),
     ),
   )
 }
-/** 保存配置（PUT /notify/api/config），成功/失败更新状态。 */
-function saveConfig(draft, setSaved, setError) {
+function presentSystemCard(ctx) {
+  const { system, patchSystem, perm } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-card' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-hd' },
+      createElement('h3', null, strings.systemTitle()),
+      createElement('span', { className: 'dsh-my-notify-badge', 'data-kind': perm.kind }, perm.text),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-bd' },
+      createElement(SwitchRow, {
+        label: strings.systemEnable(),
+        hint: strings.systemEnableHint(),
+        on: prefOn(LS.notify, system.enabled !== false),
+        onChange: (v) => {
+          patchSystem('enabled', v)
+          writePref(LS.notify, v)
+        },
+      }),
+      createElement(SwitchRow, {
+        label: strings.systemPersist(),
+        hint: strings.systemPersistHint(),
+        on: system.requireInteraction === true,
+        onChange: (v) => patchSystem('requireInteraction', v),
+      }),
+    ),
+  )
+}
+function presentToastCard(ctx) {
+  const { toast, patchToast, positions, durations, stacks } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-card' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-hd' },
+      createElement('h3', null, strings.toastTitle2()),
+      createElement('span', { className: 'dsh-my-notify-hint' }, strings.toastEnableHint()),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-bd' },
+      createElement(SwitchRow, {
+        label: strings.toastTitle2(),
+        hint: strings.toastEnableHint(),
+        on: prefOn(LS.toast, toast.enabled !== false),
+        onChange: (v) => {
+          patchToast('enabled', v)
+          writePref(LS.toast, v)
+        },
+      }),
+      createElement(SelectRow, {
+        label: strings.toastPosition(),
+        hint: strings.toastEnableHint(),
+        value: toast.position,
+        options: positions,
+        onChange: (v) => patchToast('position', v),
+      }),
+      createElement(SelectRow, {
+        label: strings.toastDuration(),
+        hint: strings.ms(),
+        value: String(toast.durationMs),
+        options: durations,
+        onChange: (v) => patchToast('durationMs', Number(v)),
+      }),
+      createElement(SelectRow, {
+        label: strings.toastMaxStack(),
+        hint: strings.toastHoverPause(),
+        value: String(toast.maxStack),
+        options: stacks,
+        onChange: (v) => patchToast('maxStack', Number(v)),
+      }),
+    ),
+  )
+}
+function presentSoundCard(ctx) {
+  const { sound, patchSound, tones, onVolumeChange } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-card' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-hd' },
+      createElement('h3', null, strings.soundTitle()),
+      createElement('span', { className: 'dsh-my-notify-badge' }, optionTextOf(tones, sound.preset)),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-bd' },
+      createElement(SwitchRow, {
+        label: strings.soundEnable(),
+        hint: strings.soundEnableHint(),
+        on: prefOn(LS.sound, sound.enabled !== false),
+        onChange: (v) => {
+          patchSound('enabled', v)
+          writePref(LS.sound, v)
+        },
+      }),
+      soundToneRow({ sound, patchSound, tones }),
+      createElement(VolumeRow, {
+        label: strings.settingsVolume(),
+        hint: strings.settingsVolumeHint(),
+        value: prefNum(LS.volume, sound.volume),
+        onChange: (v) => {
+          patchSound('volume', v)
+          writePrefNum(LS.volume, v)
+          onVolumeChange(v)
+        },
+      }),
+    ),
+  )
+}
+function presentQuietCard(ctx) {
+  const { quiet, patchQuiet, draft, patch } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-card' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-hd' },
+      createElement('h3', null, strings.quietDedupeTitle()),
+      createElement(
+        'span',
+        {
+          className: 'dsh-my-notify-badge',
+          'data-kind': quiet.enabled === true ? 'warn' : 'ok',
+        },
+        quiet.enabled === true ? strings.settingsQuietHoursEnabled() : strings.channelDisabled(),
+      ),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-bd' },
+      createElement(SwitchRow, {
+        label: strings.quietEnable(),
+        hint: strings.quietEnableHint(),
+        on: quiet.enabled === true,
+        onChange: (v) => patchQuiet('enabled', v),
+      }),
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-grid2' },
+        createElement(TextRow, {
+          label: strings.quietStart(),
+          hint: '23:00',
+          value: quiet.start,
+          type: 'time',
+          onChange: (v) => patchQuiet('start', v),
+        }),
+        createElement(TextRow, {
+          label: strings.quietEnd(),
+          hint: '08:00',
+          value: quiet.end,
+          type: 'time',
+          onChange: (v) => patchQuiet('end', v),
+        }),
+      ),
+      createElement('div', { className: 'dsh-my-notify-divider' }),
+      createElement(TextRow, {
+        label: strings.dedupeWindow(),
+        hint: strings.dedupeWindowHint(),
+        value: String(draft.dedupeMs ?? 3000),
+        type: 'number',
+        onChange: (v) => patch('dedupeMs', Number(v) || 0),
+      }),
+    ),
+  )
+}
+function presentSelfCheckCard(ctx) {
+  const { perm } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-card' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-hd' },
+      createElement('h3', null, strings.permSelfCheck()),
+      createElement('span', { className: 'dsh-my-notify-badge', 'data-kind': perm.kind }, perm.text),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-bd' },
+      createElement('div', { className: 'dsh-my-notify-status-line' }, strings.systemTitle() + ' · ' + perm.text),
+      createElement('div', { className: 'dsh-my-notify-status-line' }, strings.soundAvailable()),
+      createElement('div', { className: 'dsh-my-notify-status-line' }, strings.toastHoverPause()),
+    ),
+  )
+}
+function presentOptions() {
+  const positions = [
+    { value: 'top-right', label: () => strings.posTopRight() },
+    { value: 'top-left', label: () => strings.posTopLeft() },
+    { value: 'bottom-right', label: () => strings.posBottomRight() },
+    { value: 'bottom-left', label: () => strings.posBottomLeft() },
+    { value: 'top', label: () => strings.posTop() },
+    { value: 'bottom', label: () => strings.posBottom() },
+  ]
+  const durations = [
+    { value: '3000', label: () => strings.dur3s() },
+    { value: '5000', label: () => strings.dur5s() },
+    { value: '8000', label: () => strings.dur8s() },
+  ]
+  const stacks = [
+    { value: '1', label: () => strings.stack1() },
+    { value: '3', label: () => strings.stack3() },
+    { value: '5', label: () => strings.stack5() },
+  ]
+  const tones = [
+    { value: 'chime', label: () => strings.toneChime() },
+    { value: 'drop', label: () => strings.toneDrop() },
+    { value: 'deep', label: () => strings.toneDeep() },
+  ]
+  return { positions, durations, stacks, tones }
+}
+function soundToneRow(props) {
+  const { sound, patchSound, tones } = props
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-form-row' },
+    createElement('span', { className: 'dsh-my-notify-label' }, strings.soundTone()),
+    createElement(
+      'select',
+      {
+        className: 'dsh-my-notify-webhook-select',
+        value: sound.preset,
+        'aria-label': strings.soundTone(),
+        onChange: (event) => {
+          patchSound('preset', event.target.value)
+          try {
+            window.localStorage.setItem(LS.tone, event.target.value)
+          } catch {
+            void 0
+          }
+        },
+      },
+      tones.map((option) => createElement('option', { key: option.value, value: option.value }, option.label())),
+    ),
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-btn', onClick: () => beep(sound.preset) },
+      strings.soundTest(),
+    ),
+  )
+}
+
+    'use strict'
+function remoteSampleJson() {
+  return JSON.stringify({ title: strings.sampleTitle(), body: strings.sampleBody() }, null, 2)
+}
+function renderSecurePane(draft, patch, apiToken, onTest) {
+  const [shown, setShown] = useState(false)
+  const [testState, setTestState] = useState('unsent')
+  const [testError, setTestError] = useState('')
+  const [sample, setSample] = useState(() => remoteSampleJson())
+  const [imported, setImported] = useState('')
+  const token = typeof draft.apiToken === 'string' ? draft.apiToken : ''
+  const regenerate = () => {
+    const next = 'ntf_' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10)
+    patch('apiToken', next)
+  }
+  const ctx = {
+    draft,
+    patch,
+    apiToken,
+    shown,
+    setShown,
+    token,
+    regenerate,
+    testState,
+    setTestState,
+    testError,
+    setTestError,
+    sample,
+    setSample,
+    imported,
+    setImported,
+    onTest,
+  }
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-pane', role: 'tabpanel', 'aria-label': strings.paneSecure() },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-pane-hd' },
+      createElement('h2', null, strings.paneSecure()),
+      createElement('span', { className: 'dsh-my-notify-hint' }, strings.secureHint()),
+    ),
+    secureTokenCard(ctx),
+    createElement('div', { className: 'dsh-my-notify-grid2' }, secureRemoteCard(ctx), secureImportCard(ctx)),
+    createElement('div', { className: 'dsh-my-notify-status' }, apiToken !== '' ? strings.settingsApiTokenHint() : ''),
+  )
+}
+function secureTokenCard(ctx) {
+  const { draft, patch, shown, setShown, token, regenerate } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-card' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-hd' },
+      createElement('h3', null, strings.secureApiToken()),
+      createElement(
+        'span',
+        { className: 'dsh-my-notify-badge', 'data-kind': 'warn' },
+        token !== '' ? strings.settingsApiToken() : strings.channelDisabled(),
+      ),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-bd' },
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-inp-group' },
+        createElement('input', {
+          className: 'dsh-my-notify-webhook-input',
+          type: shown ? 'text' : 'password',
+          value: token,
+          placeholder: 'ntf_…',
+          'aria-label': strings.secureApiToken(),
+          onChange: (event) => patch('apiToken', event.target.value),
+        }),
+        createElement(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-my-notify-btn',
+            'aria-pressed': String(shown),
+            onClick: () => setShown(!shown),
+          },
+          shown ? strings.secureHide() : strings.secureShow(),
+        ),
+        createElement(
+          'button',
+          { type: 'button', className: 'dsh-my-notify-btn', onClick: regenerate },
+          strings.secureRegenerate(),
+        ),
+      ),
+      createElement(TextRow, {
+        label: strings.secureBaseUrl(),
+        hint: strings.secureBaseUrlHint(),
+        value: typeof draft.webBaseUrl === 'string' ? draft.webBaseUrl : '',
+        onChange: (v) => patch('webBaseUrl', v),
+      }),
+      createElement('div', { className: 'dsh-my-notify-hint' }, strings.settingsApiTokenHint()),
+    ),
+  )
+}
+function testLineOf(state, error) {
+  if (state === 'sending') return strings.secureRemoteSending()
+  if (state === 'ok') return strings.secureRemoteOk()
+  if (state === 'fail') return strings.secureRemoteFail() + (error !== '' ? '：' + error : '')
+  if (state === 'timeout') return strings.secureRemoteTimeout()
+  return strings.secureRemoteUnsent()
+}
+function runRemoteTest(sample, setState, setError, onTest) {
+  setState('sending')
+  setError('')
+  let settled = false
+  const finish = (state, reason) => {
+    if (settled) return
+    settled = true
+    clearTimeout(timer)
+    setState(state)
+    setError(reason)
+  }
+  const timer = setTimeout(() => finish('timeout', ''), 8000)
+  onTest('remote', sample, (ok, reason) => finish(ok ? 'ok' : 'fail', ok ? '' : (reason ?? '')))
+}
+function secureRemoteCard(ctx) {
+  const { sample, setSample, testState, setTestState, testError, setTestError, onTest } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-card' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-hd' },
+      createElement('h3', null, strings.secureRemoteTitle()),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-bd' },
+      createElement('span', { className: 'dsh-my-notify-webhook-field-label' }, strings.secureRemoteSample()),
+      createElement('textarea', {
+        className: 'dsh-my-notify-webhook-input dsh-my-notify-textarea',
+        value: sample,
+        'aria-label': strings.secureRemoteSample(),
+        onChange: (event) => setSample(event.target.value),
+      }),
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-actions' },
+        createElement(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-my-notify-btn dsh-my-notify-btn-primary',
+            disabled: testState === 'sending',
+            onClick: () => runRemoteTest(sample, setTestState, setTestError, onTest),
+          },
+          testState === 'sending' ? strings.secureRemoteSending() : strings.secureRemoteSend(),
+        ),
+        createElement('span', { className: 'dsh-my-notify-hint' }, strings.channelTestHint()),
+      ),
+      createElement(
+        'div',
+        {
+          className:
+            testState === 'ok'
+              ? 'dsh-my-notify-saved'
+              : testState === 'fail' || testState === 'timeout'
+                ? 'dsh-my-notify-error'
+                : 'dsh-my-notify-status',
+          role: 'status',
+        },
+        testLineOf(testState, testError),
+      ),
+    ),
+  )
+}
+function secureImportCard(ctx) {
+  const { draft, patch, imported, setImported, testState, setTestState } = ctx
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-card' },
+    createElement('div', { className: 'dsh-my-notify-card-hd' }, createElement('h3', null, strings.secureExport())),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-card-bd' },
+      createElement('pre', { className: 'dsh-my-notify-code' }, JSON.stringify(draft, null, 2)),
+      createElement('span', { className: 'dsh-my-notify-webhook-field-label' }, strings.secureImport()),
+      createElement('textarea', {
+        className: 'dsh-my-notify-webhook-input dsh-my-notify-textarea',
+        value: imported,
+        placeholder: '{ "dedupeMs": 60000 }',
+        'aria-label': strings.secureImport(),
+        onChange: (event) => setImported(event.target.value),
+      }),
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-actions' },
+        createElement(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-my-notify-btn',
+            onClick: () => {
+              try {
+                const parsed = JSON.parse(imported)
+                if (parsed !== null && typeof parsed === 'object') patch('__import__', parsed)
+              } catch {
+                setTestState('fail')
+              }
+            },
+          },
+          strings.secureImport(),
+        ),
+      ),
+    ),
+  )
+}
+
+    'use strict'
+const WORKBENCH_STYLES = `.dsh-my-notify-settings{container-type:inline-size;display:flex;flex-direction:column;gap:8px;padding:10px;min-height:0;height:100%}/* 顶栏：标题 + 视图分段 + 状态 + 主操作 */.dsh-my-notify-tool{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dsh-my-notify-tool h1{margin:0;font:var(--dsw-font-s-strong-14);color:var(--dsw-alias-label-primary)}.dsh-my-notify-views{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-interactive-bg)}.dsh-my-notify-view{height:26px;padding:0 10px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);cursor:pointer}.dsh-my-notify-view:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-view[aria-selected="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xs-strong-13)}.dsh-my-notify-tool .dsh-my-notify-actions{margin-left:auto}/* 文案工作台：三列 + 底部预览带 */.dsh-my-notify-wb{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}.dsh-my-notify-cols{display:grid;grid-template-columns:168px minmax(0,1fr) 208px;gap:8px;flex:1;min-height:0}.dsh-my-notify-col{min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px}.dsh-my-notify-col-hd{display:flex;align-items:center;gap:6px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);padding:2px 4px}.dsh-my-notify-panel{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);padding:8px}/* 事件列表 */.dsh-my-notify-evlist{display:flex;flex-direction:column;gap:3px}.dsh-my-notify-evbtn{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px;align-items:start;width:100%;padding:7px 8px;border:1px solid transparent;border-radius:8px;background:transparent;text-align:left;cursor:pointer;color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-evbtn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-evbtn[aria-current="true"]{background:var(--dsw-alias-interactive-bg);border-color:var(--dsw-alias-border-l2)}.dsh-my-notify-evd{width:7px;height:7px;border-radius:50%;margin-top:4px;background:var(--dsw-alias-label-tertiary)}.dsh-my-notify-evd[data-kind="ok"]{background:var(--dsw-alias-state-success-primary)}.dsh-my-notify-evd[data-kind="warn"]{background:var(--dsw-alias-state-warn-primary)}.dsh-my-notify-evd[data-kind="err"]{background:var(--dsw-alias-state-error-primary)}.dsh-my-notify-evname{font:var(--dsw-font-xs-strong-13)}.dsh-my-notify-evmeta{display:block;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);margin-top:1px}/* 编辑器 */.dsh-my-notify-ed{display:flex;flex-direction:column;gap:9px}.dsh-my-notify-ed-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dsh-my-notify-ed-hd h2{margin:0;font:var(--dsw-font-s-strong-14);color:var(--dsw-alias-label-primary)}.dsh-my-notify-lbl{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);margin-bottom:3px}.dsh-my-notify-inp2{width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-ta2{width:100%;min-height:96px;padding:7px 9px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);line-height:1.65;resize:vertical}.dsh-my-notify-errbox{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;border:1px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);font:var(--dsw-font-xxs-12)}/* 变量树 */.dsh-my-notify-vars{display:flex;flex-direction:column;gap:7px}.dsh-my-notify-varq{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-vgroup{display:flex;flex-direction:column;gap:4px}.dsh-my-notify-vgroup-hd{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);padding:2px 3px}.dsh-my-notify-vlist{display:flex;flex-wrap:wrap;gap:4px}.dsh-my-notify-vchip{display:inline-flex;align-items:center;height:24px;padding:0 6px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dsh-my-notify-vchip:hover{border-color:var(--dsw-alias-accent);color:var(--dsw-alias-accent)}.dsh-my-notify-vchip em{font-style:normal;color:var(--dsw-alias-label-tertiary);margin-left:4px}/* 五形态预览带 */.dsh-my-notify-band{border-top:1px solid var(--dsw-alias-border-l2);padding-top:7px;display:flex;flex-direction:column;gap:6px}.dsh-my-notify-band-hd{display:flex;align-items:center;gap:8px}.dsh-my-notify-band-cols{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:8px;overflow-x:auto;padding-bottom:2px}.dsh-my-notify-band[data-open="false"] .dsh-my-notify-band-cols{display:none}.dsh-my-notify-pcol{display:flex;flex-direction:column;gap:4px;min-width:0}.dsh-my-notify-pcol-hd{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}.dsh-my-notify-pstage{min-height:96px;display:flex;align-items:flex-start;justify-content:center;padding:6px;border-radius:8px;background:var(--dsw-alias-bg-layer-1);border:1px dashed var(--dsw-alias-border-l2);overflow:auto}/* 渠道视图：列表 + 详情 */.dsh-my-notify-chview{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:8px;flex:1;min-height:0}.dsh-my-notify-chlist{display:flex;flex-direction:column;gap:7px}.dsh-my-notify-chrow{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:9px;align-items:center;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);text-align:left;width:100%;cursor:pointer}.dsh-my-notify-chrow:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-chrow[aria-current="true"]{border-color:var(--dsw-alias-accent)}.dsh-my-notify-detail{display:flex;flex-direction:column;gap:9px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);overflow:auto;min-height:0}/* 卡片（呈现 / 高级 / 失败记录） */.dsh-my-notify-pane{display:flex;flex-direction:column;gap:9px}.dsh-my-notify-pane-hd{display:flex;align-items:baseline;gap:8px}.dsh-my-notify-pane-hd h2{margin:0;font:var(--dsw-font-s-strong-14);color:var(--dsw-alias-label-primary)}.dsh-my-notify-card{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.dsh-my-notify-card-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dsh-my-notify-card-hd h3{margin:0;font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}.dsh-my-notify-card-bd{display:flex;flex-direction:column;gap:8px}.dsh-my-notify-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:9px}.dsh-my-notify-cardbox{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.dsh-my-notify-cardbox h3{margin:0;font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}.dsh-my-notify-frow{display:grid;grid-template-columns:118px minmax(0,1fr);gap:9px;align-items:center}.dsh-my-notify-srow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:8px;background:var(--dsw-alias-bg-layer-1)}/* 窄容器（设置页 tab 内容区 <860px）：变量树进抽屉、事件改下拉、预览带 3 列 */@container (max-width: 859px){.dsh-my-notify-cols{grid-template-columns:minmax(0,1fr)}.dsh-my-notify-col-evlist,.dsh-my-notify-col-vars{display:none}.dsh-my-notify-evselect{display:block}.dsh-my-notify-band-cols{grid-template-columns:repeat(3,minmax(150px,1fr))}.dsh-my-notify-chview{grid-template-columns:minmax(0,1fr)}.dsh-my-notify-chrow{min-height:44px}}.dsh-my-notify-evselect{display:none;height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-drawer-vars{position:absolute;right:0;top:0;bottom:0;width:min(260px,80%);z-index:5;background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l2);padding:10px;overflow:auto;box-shadow:var(--dsw-shadow-lv2)}.dsh-my-notify-inp2,.dsh-my-notify-ta2,.dsh-my-notify-varq,.dsh-my-notify-evselect{min-height:44px}}/* 行控件（开关 / 输入 / 下拉 / 按钮 / 徽标）——沿用组件类名，尺寸按工作台密度 */.dsh-my-notify-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;background:var(--dsw-alias-bg-layer-1)}.dsh-my-notify-info{display:flex;flex-direction:column;gap:2px;min-width:0}.dsh-my-notify-label{font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}.dsh-my-notify-hint{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);line-height:1.55}.dsh-my-notify-toggle{flex:none;min-width:36px;height:20px;border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--dsw-alias-label-tertiary) 30%, transparent);position:relative;cursor:pointer;transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}.dsh-my-notify-toggle[data-on="true"]{background:var(--dsw-alias-state-success-primary);border-color:transparent}.dsh-my-notify-toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-primary);transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out)}.dsh-my-notify-toggle[data-on="true"]::after{transform:translateX(14px);background:var(--dsw-alias-label-primary-foreground)}.dsh-my-notify-input{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);min-width:0}.dsh-my-notify-select{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-range{flex:none;width:120px;accent-color:var(--dsw-alias-state-success-primary);cursor:pointer}.dsh-my-notify-range-value{flex:none;min-width:38px;text-align:right;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary)}.dsh-my-notify-actions{display:flex;align-items:center;gap:6px}.dsh-my-notify-btn{min-height:26px;padding:0 10px;border-radius:7px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-btn-primary{border-color:transparent;background:var(--dsw-alias-accent);color:var(--dsw-alias-label-primary-foreground)}.dsh-my-notify-btn-danger{color:var(--dsw-alias-state-error-primary)}.dsh-my-notify-saved{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-success-primary)}.dsh-my-notify-error{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}.dsh-my-notify-status{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}.dsh-my-notify-badge{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg)}.dsh-my-notify-badge[data-kind="ok"]{color:var(--dsw-alias-state-success-primary)}.dsh-my-notify-badge[data-kind="warn"]{color:var(--dsw-alias-state-warn-primary)}.dsh-my-notify-badge[data-kind="err"]{color:var(--dsw-alias-state-error-primary)}.dsh-my-notify-badge[data-kind="accent"]{color:var(--dsw-alias-accent)}.dsh-my-notify-grow{flex:1;min-width:0}.dsh-my-notify-divider{height:1px;background:var(--dsw-alias-border-l2)}.dsh-my-notify-segmented{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-interactive-bg);flex-wrap:wrap}.dsh-my-notify-seg{min-height:24px;padding:0 8px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);cursor:pointer}.dsh-my-notify-seg[aria-selected="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xs-strong-13)}/* 触达：窄容器 ≥44，桌面 ≥24 */@media (max-width: 900px){.dsh-my-notify-toggle{min-height:44px}/* 预览带内三种非飞书形态（HTML 由 copy-model 的 renderPreviewFrame 产出） */.dsh-my-notify-pv-sys{display:flex;align-items:flex-start;gap:8px;width:100%;padding:8px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2)}.dsh-my-notify-pv-sys-ico{display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;flex:none;background:var(--dsw-alias-accent);color:var(--dsw-alias-label-primary-foreground);font:var(--dsw-font-xxxs-strong-11)}.dsh-my-notify-pv-sys-title{font:var(--dsw-font-xxs-strong-12);color:var(--dsw-alias-label-primary);-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis}.dsh-my-notify-pv-sys-body{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.55;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;word-break:break-word}.dsh-my-notify-pv-sys-time{font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary);flex:none}.dsh-my-notify-pv-toast{display:flex;align-items:flex-start;gap:8px;width:100%;padding:8px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2)}.dsh-my-notify-pv-toast-bar{width:3px;align-self:stretch;border-radius:2px;flex:none;background:var(--dsw-alias-accent)}.dsh-my-notify-pv-wx{width:100%;padding:8px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2)}.dsh-my-notify-pv-wx-hd{display:flex;align-items:center;gap:6px;font:var(--dsw-font-xxs-strong-12);color:var(--dsw-alias-label-primary)}.dsh-my-notify-pv-wx-hd i{width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-accent)}.dsh-my-notify-pv-wx-bd{margin-top:5px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.55;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;word-break:break-word}/* 变量树：名字 12 / 说明 11（名字不得比说明小），超长省略 + title 全名 */.dsh-my-notify-vchip{gap:3px}.dsh-my-notify-vname{font:var(--dsw-font-xxs-strong-12);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.dsh-my-notify-vdesc{font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}@container (max-width: 859px){.dsh-my-notify-varq{min-height:44px}}
+`
+const SETTINGS_STYLES = WORKBENCH_STYLES + WEBHOOK_STYLES
+
+
+    // ── 设置页外壳（工具栏 + 四视图装配）──────────────────────────────
+    'use strict'
+const VIEWS = [
+  { value: 'copy', label: () => strings.viewCopy() },
+  { value: 'channel', label: () => strings.viewChannel() },
+  { value: 'present', label: () => strings.viewPresent() },
+  { value: 'secure', label: () => strings.viewSecure() },
+]
+function workbenchToolbar(props, perm) {
+  return createElement(
+    'header',
+    { className: 'dsh-my-notify-tool' },
+    createElement('h1', null, strings.settingsTitle()),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-views', role: 'tablist', 'aria-label': strings.navLabel() },
+      VIEWS.map((option) =>
+        createElement(
+          'button',
+          {
+            key: option.value,
+            type: 'button',
+            className: 'dsh-my-notify-view',
+            role: 'tab',
+            'aria-selected': String(option.value === props.pane),
+            onClick: () => props.onPane(option.value),
+          },
+          option.label(),
+        ),
+      ),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-actions' },
+      createElement('span', { className: 'dsh-my-notify-badge', 'data-kind': perm.kind }, perm.text),
+      props.saved
+        ? createElement('span', { className: 'dsh-my-notify-badge', 'data-kind': 'ok' }, strings.saved())
+        : null,
+      props.dirty
+        ? createElement('span', { className: 'dsh-my-notify-badge', 'data-kind': 'warn' }, strings.dirty())
+        : null,
+      props.error ? createElement('span', { className: 'dsh-my-notify-error' }, strings.saveFailed()) : null,
+      createElement(
+        'button',
+        { type: 'button', className: 'dsh-my-notify-btn', onClick: props.onReset },
+        strings.resetDefaults(),
+      ),
+      createElement(
+        'button',
+        { type: 'button', className: 'dsh-my-notify-btn dsh-my-notify-btn-primary', onClick: props.save },
+        strings.save(),
+      ),
+    ),
+  )
+}
+function copyView(props) {
+  const enabledOf = (key) => {
+    if (key === 'subagentEnd') return props.draft.subagentEnd === true
+    if (key === 'remote') return true
+    return props.draft[key] === true
+  }
+  const onToggleEvent = (key, on) => {
+    if (key === 'remote') return
+    props.patch(key, on)
+  }
+  return createElement(CopyEditorPane, {
+    messages: props.draft.messages,
+    card: props.feishuCard,
+    enabledOf,
+    onToggleEvent,
+    askMode: props.draft.askMode === 'summary' ? 'summary' : 'full',
+    onAskMode: (mode) => props.patch('askMode', mode),
+    saveError: props.error,
+    onRetrySave: props.save,
+    onPatchMessage: (key, template) => {
+      const messages = { ...(props.draft.messages ?? defaultMessages()) }
+      messages[key] = template
+      props.patch('messages', messages)
+    },
+  })
+}
+function channelView(props) {
+  return createElement(WebhookSection, {
+    webhooks: props.draft.webhooks ?? [],
+    failures: props.failures,
+    apiToken: props.apiToken,
+    onPatchWebhooks: (next) => props.patch('webhooks', next),
+  })
+}
+function workbenchBody(props) {
+  if (props.pane === 'channel') return channelView(props)
+  if (props.pane === 'present') return renderPresentPane(props.draft, props.patch, props.volume, props.onVolumeChange)
+  if (props.pane === 'secure') return renderSecurePane(props.draft, props.patch, props.apiToken, props.onTest)
+  return copyView(props)
+}
+function renderSettingsForm(props) {
+  const perm = permissionBadge()
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-settings' },
+    workbenchToolbar(props, perm),
+    workbenchBody(props),
+  )
+}
+function saveConfig(draft, setSaved, setError, onSaved) {
   setSaved(false)
   setError(false)
   fetch('/notify/api/config', {
@@ -1596,35 +3826,29 @@ function saveConfig(draft, setSaved, setError) {
     .then((body) => {
       if (body === null || body.ok !== true) throw new Error('save failed')
       setSaved(true)
+      if (typeof onSaved === 'function') onSaved()
     })
     .catch(() => setError(true))
 }
-/** 设置页主视图：加载当前配置 → 表单编辑 → 保存（PUT /notify/api/config）。 */
-function NotifySettingsView() {
-  const [config, setConfig] = useState(null)
-  const [draft, setDraft] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-  const [saved, setSaved] = useState(false)
-  // issue #92: 出站 webhook 推送失败记录（GET /notify/api/webhooks）
-  const [failures, setFailures] = useState([])
-  // issue #71: 音量走 localStorage（纯 client 端偏好，不随 server config 保存）
-  const [volume, setVolume] = useState(() => prefVolume())
+function useNotifyConfig(state) {
   useEffect(() => {
     fetch('/notify/api/config')
       .then((res) => res.json())
       .then((body) => {
         if (body === null || body.ok !== true) throw new Error('bad config response')
-        setConfig(body.value)
-        setDraft(body.value)
-        setLoading(false)
+        state.setConfig(body.value)
+        state.setDraft(body.value)
+        syncPrefsFromConfig(body.value)
+        state.setVolume(prefNum(LS.volume, prefVolume()))
+        state.setLoading(false)
       })
       .catch(() => {
-        setLoading(false)
-        setError(true)
+        state.setLoading(false)
+        state.setError(true)
       })
   }, [])
-  // 出站 webhook 失败记录（issue #92：面板可见）
+}
+function useNotifyFailures(setFailures) {
   useEffect(() => {
     fetch('/notify/api/webhooks')
       .then((res) => res.json())
@@ -1632,10 +3856,28 @@ function NotifySettingsView() {
         if (body === null || body.ok !== true) throw new Error('bad webhooks response')
         setFailures(body.value.failures ?? [])
       })
-      .catch(() => {
-        // failures are best-effort; the section renders empty
-      })
+      .catch(() => {})
   }, [])
+}
+function parseSamplePayload(sample) {
+  try {
+    const parsed = JSON.parse(sample)
+    return parsed !== null && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+function NotifySettingsView() {
+  const [config, setConfig] = useState(null)
+  const [draft, setDraft] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [pane, setPane] = useState('copy')
+  const [failures, setFailures] = useState([])
+  const [volume, setVolume] = useState(() => prefVolume())
+  useNotifyConfig({ setConfig, setDraft, setLoading, setError, setVolume })
+  useNotifyFailures(setFailures)
   if (loading) {
     return createElement(
       'div',
@@ -1643,39 +3885,77 @@ function NotifySettingsView() {
       createElement('div', { className: 'dsh-my-notify-status' }, strings.loading()),
     )
   }
-  if (config === null) {
+  if (config === null || draft === null) {
     return createElement(
       'div',
       { className: 'dsh-my-notify-settings' },
-      createElement('div', { className: 'dsh-my-notify-error' }, strings.loadError()),
+      createElement('div', { className: 'dsh-my-notify-errbox' }, strings.loadError()),
     )
   }
-  const patch = (key, value) => setDraft({ ...draft, [key]: value })
-  const save = () => saveConfig(draft, setSaved, setError)
-  const onVolumeChange = (v) => {
-    setVolume(v)
-    try {
-      window.localStorage.setItem(LS.volume, String(v))
-    } catch {
-      // storage unavailable: volume stays in-memory for this session
-    }
-  }
-  return renderSettingsForm(draft, patch, save, saved, error, volume, onVolumeChange, { failures })
+  return createElement(NotifySettingsLoaded, {
+    config,
+    draft,
+    setDraft,
+    saved,
+    setSaved,
+    error,
+    setError,
+    pane,
+    setPane,
+    failures,
+    volume,
+    setVolume,
+  })
 }
-/** 设置页 tab 注册（官方 slots 扩展点；服务缺省时静默跳过）。 */
+function NotifySettingsLoaded(props) {
+  const current = configOf(props.draft)
+  const patch = (key, value) => {
+    if (key === '__import__') {
+      props.setDraft({ ...current, ...value })
+      return
+    }
+    props.setDraft({ ...current, [key]: value })
+  }
+  const feishuCard = (current.webhooks ?? []).find((w) => w.channel === 'feishu' && w.msgType === 'interactive')
+  const formProps = {
+    draft: current,
+    patch,
+    pane: props.pane,
+    onPane: props.setPane,
+    save: () => saveConfig(current, props.setSaved, props.setError, invalidateRuntimeConfig),
+    saved: props.saved,
+    error: props.error,
+    dirty: JSON.stringify(current) !== JSON.stringify(props.config),
+    volume: props.volume,
+    onVolumeChange: props.setVolume,
+    failures: props.failures,
+    apiToken: typeof current.apiToken === 'string' ? current.apiToken : '',
+    feishuCard: feishuCard !== undefined ? cardOf(feishuCard) : defaultCard(),
+    onTest: (kind, sample, done) => {
+      fetch('/notify/api/trigger', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-notify-token': current.apiToken ?? '' },
+        body: JSON.stringify({ ...parseSamplePayload(sample), kind }),
+      })
+        .then((res) => res.json())
+        .then((body) => done(body !== null && body !== undefined && body.ok === true))
+        .catch(() => done(false, strings.secureRemoteFail()))
+    },
+    onReset: () => {
+      props.setDraft(defaultConfig())
+      props.setSaved(false)
+    },
+  }
+  return renderSettingsForm(formProps)
+}
 function attachSettingsTab(ctx) {
-  // strict=false：首屏加载时 slots 服务（由 @deepseek-ai/dsh-client-ui-renderer
-  // 提供）的提供者 fiber 尚未 active，cordis 的 ctx.get(name, strict = true)
-  // 在 strict 模式下会返回 undefined，注册代码会静默 return（设置页看不到
-  // tab，HMR 重载后才出现）；取到实例即可——注册本身由 slots.inject 等待
-  // 槽位声明，实际渲染发生在之后，安全。
   const slots = ctx.get('slots', false)
   if (slots === undefined) return
   ctx.effect(() => {
     if (typeof document === 'undefined' || typeof document.head === 'undefined') return () => {}
     const style = document.createElement('style')
     style.setAttribute('data-dsh-my-notify-settings', 'styles')
-    style.textContent = SETTINGS_STYLES
+    style.textContent = SETTINGS_STYLES + CARD_PREVIEW_STYLES
     document.head.appendChild(style)
     return () => {
       if (style.parentNode !== null) style.parentNode.removeChild(style)
@@ -1685,12 +3965,7 @@ function attachSettingsTab(ctx) {
     () =>
       slots.inject('settings.plugins.tab', () =>
         slots.register(
-          {
-            name: 'settings.plugins.tab',
-            id: 'notify-settings',
-            order: 91,
-            label: () => strings.settingsTitle(),
-          },
+          { name: 'settings.plugins.tab', id: 'notify-settings', order: 91, label: () => strings.settingsTitle() },
           NotifySettingsView,
         ),
       ),

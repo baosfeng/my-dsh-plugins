@@ -6,6 +6,7 @@ function isZh(): boolean {
     if (host !== '') return host.startsWith('zh')
   } catch {
     /* 非浏览器环境（node 渲染）无 document */
+    void 0
   }
   try {
     return (navigator.language || 'en').toLowerCase().startsWith('zh')
@@ -25,55 +26,32 @@ const strings = {
   closeToast: () => (isZh() ? '关闭通知' : 'Dismiss notification'),
   // 设置页（issue #27 配置可视化）
   settingsTitle: () => (isZh() ? '通知提醒' : 'Notifications'),
-  settingsTriggers: () => (isZh() ? '触发开关' : 'Triggers'),
-  settingsEnd: () => (isZh() ? '会话结束提醒' : 'Session end'),
-  settingsEndHint: () => (isZh() ? '本轮对话结束后弹通知' : 'Notify when a session finishes'),
-  settingsAsk: () => (isZh() ? '询问提醒' : 'Ask'),
-  settingsAskHint: () => (isZh() ? 'agent 询问问题时弹通知' : 'Notify when the agent asks you'),
-  settingsApproval: () => (isZh() ? '审批提醒' : 'Approval'),
-  settingsApprovalHint: () => (isZh() ? '等待批准时弹通知' : 'Notify when approval is needed'),
-  settingsSubagentEnd: () => (isZh() ? '子代理完成提醒' : 'Subagent end'),
   settingsSubagentEndHint: () =>
     isZh() ? '子代理完成时也弹通知（默认关闭）' : 'Also notify when a subagent finishes (off by default)',
-  settingsAdvanced: () => (isZh() ? '高级' : 'Advanced'),
   settingsApiToken: () => (isZh() ? '远程触发 Token' : 'Remote trigger token'),
   settingsApiTokenHint: () =>
     isZh() ? '配置后远程 hook 需携带 x-notify-token 头' : 'Remote hooks must send x-notify-token when set',
-  settingsDedupeMs: () => (isZh() ? '去重窗口（毫秒）' : 'Dedupe window (ms)'),
-  settingsDedupeMsHint: () => (isZh() ? '同类通知在窗口内只推一次' : 'Same-kind notices are deduped within the window'),
   settingsVolume: () => (isZh() ? '提示音音量' : 'Sound volume'),
   settingsVolumeHint: () => (isZh() ? '调节提示音大小（0~100%）' : 'Adjust the beep volume (0-100%)'),
   // 免打扰（quiet hours）
-  settingsQuietHours: () => (isZh() ? '免打扰' : 'Do Not Disturb'),
   settingsQuietHoursHint: () =>
     isZh() ? '在指定时段内静默所有通知' : 'Silence all notifications during the specified time window',
   settingsQuietHoursEnabled: () => (isZh() ? '启用免打扰' : 'Enable DND'),
   settingsQuietHoursEnabledHint: () =>
     isZh() ? '开启后在指定时段内不弹通知' : 'When on, notifications are silenced during quiet hours',
-  settingsQuietHoursStart: () => (isZh() ? '开始时间' : 'Start time'),
-  settingsQuietHoursStartHint: () => (isZh() ? '免打扰开始时间（如 23:00）' : 'Quiet hours start (e.g. 23:00)'),
-  settingsQuietHoursEnd: () => (isZh() ? '结束时间' : 'End time'),
-  settingsQuietHoursEndHint: () => (isZh() ? '免打扰结束时间（如 08:00）' : 'Quiet hours end (e.g. 08:00)'),
   // 出站 webhook（issue #92）
-  settingsWebhooks: () => (isZh() ? '出站 Webhook' : 'Outbound webhooks'),
   settingsWebhooksHint: () =>
     isZh() ? '事件发生时推送到企微/飞书/钉钉机器人（手机可收）' : 'Push events to WeCom/Feishu/DingTalk bots',
-  webhookName: () => (isZh() ? '名称' : 'Name'),
   webhookNamePlaceholder: () => (isZh() ? '如：企微-工作群' : 'e.g. WeCom group'),
-  webhookChannel: () => (isZh() ? '渠道' : 'Channel'),
   webhookUrl: () => (isZh() ? 'Webhook URL' : 'Webhook URL'),
   webhookUrlPlaceholder: () => (isZh() ? '机器人 webhook 地址' : 'Bot webhook URL'),
-  webhookSecret: () => (isZh() ? '签名密钥（可选）' : 'Secret (optional)'),
   webhookSecretPlaceholder: () => (isZh() ? '机器人签名密钥' : 'Bot signing secret'),
-  webhookEvents: () => (isZh() ? '触发事件' : 'Trigger events'),
   webhookMsgType: () => (isZh() ? '消息类型' : 'Message type'),
   webhookTemplate: () => (isZh() ? '自定义模板（可选）' : 'Content template (optional)'),
   webhookTemplatePlaceholder: () =>
     isZh() ? '如 {title} {kind} {note} {tokens} {question} {sessionUrl} {time}' : 'e.g. {title} {kind} {note} {tokens}',
   webhookAdd: () => (isZh() ? '添加 Webhook' : 'Add webhook'),
   webhookEdit: () => (isZh() ? '编辑' : 'Edit'),
-  webhookDelete: () => (isZh() ? '删除' : 'Delete'),
-  webhookSave: () => (isZh() ? '保存' : 'Save'),
   webhookCancel: () => (isZh() ? '取消' : 'Cancel'),
   webhookFailures: () => (isZh() ? '推送失败记录' : 'Push failures'),
   webhookNoFailures: () => (isZh() ? '暂无失败记录' : 'No failures yet'),
@@ -94,35 +72,215 @@ const strings = {
   saveFailed: () => (isZh() ? '保存失败' : 'Save failed'),
   loading: () => (isZh() ? '加载中…' : 'Loading…'),
   loadError: () => (isZh() ? '加载失败' : 'Load failed'),
+
+  // ── 设置面板 v2：分区导航 + 状态条 ───────────────────────────────
+  viewCopy: () => (isZh() ? '文案' : 'Copy'),
+  viewChannel: () => (isZh() ? '渠道' : 'Channels'),
+  viewPresent: () => (isZh() ? '呈现' : 'Delivery'),
+  viewSecure: () => (isZh() ? '高级' : 'Advanced'),
+  evTemplates: () => (isZh() ? '事件模板' : 'Event templates'),
+  eventEnabled: () => (isZh() ? '已启用' : 'Enabled'),
+  eventDisabled: () => (isZh() ? '已关闭' : 'Off'),
+  editorEnabled: () => (isZh() ? '发送该事件通知' : 'Notify on this event'),
+  editorEnabledHint: () => (isZh() ? '关闭后仍记录投递历史，只是不弹窗、不推送' : 'History is kept; no popup or push'),
+  varTree: () => (isZh() ? '变量树' : 'Variables'),
+  varSearch: () => (isZh() ? '搜索变量' : 'Search variables'),
+  varSearchPlaceholder: () => (isZh() ? '搜索变量，如 duration / 耗时' : 'Search e.g. duration'),
+  varNoMatch: () => (isZh() ? '没有匹配的变量' : 'No matching variable'),
+  varOpen: () => (isZh() ? '变量…' : 'Variables…'),
+  close: () => (isZh() ? '关闭' : 'Close'),
+  bandTitle: () => (isZh() ? '五形态预览' : 'Five-form preview'),
+  bandHint: () =>
+    isZh()
+      ? '正文五处联动，「标题」进四处（企业微信无标题字段）'
+      : 'Body updates all five; title reaches four (WeCom has none)',
+  bandCollapse: () => (isZh() ? '折叠' : 'Collapse'),
+  bandExpand: () => (isZh() ? '展开' : 'Expand'),
+  bandFeishuIndependent: () => (isZh() ? '独立模板 · 设计器控制' : 'Custom template'),
+  panePresent: () => (isZh() ? '呈现' : 'Delivery'),
+  paneChannel: () => (isZh() ? '渠道推送' : 'Channels'),
+  paneSecure: () => (isZh() ? '高级与安全' : 'Advanced'),
+  navLabel: () => (isZh() ? '通知设置分区' : 'Notification settings sections'),
+  panelSubtitle: () =>
+    isZh()
+      ? '五类事件、五个分区；文案与卡片外观都在这里改完即预览'
+      : 'Five events, five sections; copy and card appearance preview live',
+  resetDefaults: () => (isZh() ? '恢复默认' : 'Reset defaults'),
+  dirty: () => (isZh() ? '未保存' : 'Unsaved'),
+  // ── 呈现分区 ────────────────────────────────────────────────────
+  presentHint: () =>
+    isZh() ? '通知怎么送到你眼前 —— 系统通知、页面 toast、提示音、免打扰。' : 'How notices reach you.',
+  systemTitle: () => (isZh() ? '系统通知' : 'System notification'),
+  systemEnable: () => (isZh() ? '桌面通知' : 'Desktop notification'),
+  systemEnableHint: () => (isZh() ? '窗口在后台时也弹出系统级通知' : 'Also pop a OS-level notice in background'),
+  systemPersist: () => (isZh() ? '常驻通知' : 'Sticky notice'),
+  systemPersistHint: () =>
+    isZh()
+      ? '需要浏览器「常驻」权限；未授权时降级为普通通知'
+      : 'Needs the sticky permission; falls back to a normal notice',
+  permGranted: () => (isZh() ? '已授权' : 'Granted'),
+  permDenied: () => (isZh() ? '已拒绝' : 'Denied'),
+  permDefault: () => (isZh() ? '未授权' : 'Not granted'),
+  toastTitle2: () => (isZh() ? '页面 toast' : 'Page toast'),
+  toastEnableHint: () => (isZh() ? '应用在前台时用 toast 代替系统通知' : 'Use a toast while the app is focused'),
+  toastPosition: () => (isZh() ? '位置' : 'Position'),
+  toastDuration: () => (isZh() ? '显示时长' : 'Duration'),
+  toastMaxStack: () => (isZh() ? '最大堆叠' : 'Max stack'),
+  toastHoverPause: () => (isZh() ? '暂停倒计时' : 'Pause the countdown'),
+  posTopRight: () => (isZh() ? '右上' : 'Top right'),
+  posTopLeft: () => (isZh() ? '左上' : 'Top left'),
+  posBottomRight: () => (isZh() ? '右下' : 'Bottom right'),
+  posBottomLeft: () => (isZh() ? '左下' : 'Bottom left'),
+  posTop: () => (isZh() ? '顶部居中' : 'Top center'),
+  posBottom: () => (isZh() ? '底部居中' : 'Bottom center'),
+  dur3s: () => (isZh() ? '3 秒' : '3s'),
+  dur5s: () => (isZh() ? '5 秒' : '5s'),
+  dur8s: () => (isZh() ? '8 秒' : '8s'),
+  stack1: () => (isZh() ? '1 条' : '1'),
+  stack3: () => (isZh() ? '3 条' : '3'),
+  stack5: () => (isZh() ? '5 条' : '5'),
+  soundTitle: () => (isZh() ? '提示音' : 'Sound'),
+  soundEnable: () => (isZh() ? '启用提示音' : 'Enable sound'),
+  soundEnableHint: () => (isZh() ? '只在窗口可见时播放' : 'Plays only while the window is visible'),
+  soundTone: () => (isZh() ? '音色' : 'Tone'),
+  soundTest: () => (isZh() ? '试听' : 'Preview'),
+  toneChime: () => (isZh() ? '清脆 · chime' : 'Chime'),
+  toneDrop: () => (isZh() ? '柔和水滴 · drop' : 'Drop'),
+  toneDeep: () => (isZh() ? '低沉提示 · deep' : 'Deep'),
+  quietDedupeTitle: () => (isZh() ? '免打扰与去重' : 'DND & dedupe'),
+  quietEnable: () => (isZh() ? '免打扰时段' : 'Do not disturb'),
+  quietEnableHint: () => (isZh() ? '时段内只记录到侧边活动，不弹窗' : 'Silence during the window'),
+  quietStart: () => (isZh() ? '开始' : 'Start'),
+  quietEnd: () => (isZh() ? '结束' : 'End'),
+  dedupeWindow: () => (isZh() ? '去重窗口' : 'Dedupe window'),
+  dedupeWindowHint: () =>
+    isZh() ? '同会话同事件在此窗口内只推一次' : 'One notice per session+event inside the window',
+  ms: () => (isZh() ? '毫秒' : 'milliseconds'),
+  // ── 触发分区 ────────────────────────────────────────────────────
+  askModeTitle: () => (isZh() ? '询问呈现' : 'Ask rendering'),
+  askModeFull: () => (isZh() ? '完整问题 + 选项' : 'Full question + options'),
+  askModeSummary: () => (isZh() ? '仅摘要' : 'Summary only'),
+  askModeHint: () =>
+    isZh()
+      ? '完整模式会把问题全文与选项按钮带进通知；摘要模式只发首行，适合问题很长的会话。'
+      : 'Full mode carries the whole question and option buttons; summary only sends the first line.',
+  // ── 文案分区 ────────────────────────────────────────────────────
+  copyHint: () =>
+    isZh()
+      ? '每类事件独立配标题与正文；右侧五种形态改字即变。'
+      : 'One template per event; the preview follows your edits.',
+  copyEvent: () => (isZh() ? '事件' : 'Event'),
+  evSubagentEnd: () => (isZh() ? '子代理结束' : 'Subagent end'),
+  // 别名：渠道事件多选与文案事件列表共用同一文案（避免两处不一致）
+  eventSubagentEnd: () => (isZh() ? '子代理结束' : 'Subagent end'),
+  dzButtonDefault: () => (isZh() ? '查看会话' : 'View session'),
+  retryAttemptsUsed: (n: number) => (isZh() ? `${n} 次尝试` : `${n} attempts`),
+  sampleTitle: () => (isZh() ? '构建完成' : 'Build finished'),
+  sampleBody: () => (isZh() ? '耗时 3m12s' : 'Took 3m12s'),
+  sampleQuestion: () => (isZh() ? '确认部署到生产环境？' : 'Deploy to production?'),
+  previewLoading: () => (isZh() ? '预览生成中…' : 'Rendering preview…'),
+  previewFailed: () =>
+    isZh() ? '预览生成失败：确认本地服务在运行后重试' : 'Preview failed — check the local server and retry',
+  previewRetry: () => (isZh() ? '重试' : 'Retry'),
+  previewEmpty: () => (isZh() ? '改标题或正文后这里会实时出现效果' : 'Edit the template to see the preview'),
+  tplTitle: () => (isZh() ? '通知标题' : 'Title'),
+  tplBody: () => (isZh() ? '通知正文' : 'Body'),
+  varLibrary: () => (isZh() ? '变量库 · 点击插入光标处' : 'Variables · click to insert at the caret'),
+  varCount: (n: number) => (isZh() ? `${n} 个变量` : `${n} variables`),
+  varInsertDesc: () => (isZh() ? '点击插入变量' : 'Insert variable'),
+  formSys: () => (isZh() ? '系统通知' : 'System'),
+  formToast: () => (isZh() ? 'toast' : 'Toast'),
+  formFeishu: () => (isZh() ? '飞书' : 'Feishu'),
+  formWecom: () => (isZh() ? '企微' : 'WeCom'),
+  formDing: () => (isZh() ? '钉钉' : 'DingTalk'),
+  viewJson: () => (isZh() ? 'JSON' : 'JSON'),
+  previewTip: (feishu: boolean) =>
+    feishu
+      ? isZh()
+        ? '卡片字段 / 配色 / 按钮在「渠道推送 → 飞书」里改，这里同步。'
+        : 'Card fields / accent / button are edited under Channels → Feishu.'
+      : isZh()
+        ? '改标题或正文，右侧立刻变；点变量插入到光标处。'
+        : 'Editing the template updates the preview; click a variable to insert it.',
+  // ── 渠道分区 / 卡片设计器 ────────────────────────────────────────
+  channelHint: () =>
+    isZh()
+      ? '一个渠道一套消息类型与模板；点卡片改细节，飞书可进卡片设计器。'
+      : 'One message type and template per channel.',
+  channelAddNew: () => (isZh() ? '添加渠道' : 'Add channel'),
+  channelEditTitle: () => (isZh() ? '编辑渠道' : 'Edit channel'),
+  channelSecret: () => (isZh() ? '加签 secret' : 'Signing secret'),
+  msgTypeInteractive: () => (isZh() ? 'interactive 卡片' : 'interactive card'),
+  channelName: () => (isZh() ? '渠道名称' : 'Channel name'),
+  channelType: () => (isZh() ? '渠道类型' : 'Channel type'),
+  channelSecretHint: () => (isZh() ? '（可选，与 URL 同时配置才生效）' : '(optional, only with a URL)'),
+  channelEventsSubscribe: () => (isZh() ? '订阅事件' : 'Subscribed events'),
+  channelTestSend: () => (isZh() ? '测试发送' : 'Send test'),
+  channelTestHint: () =>
+    isZh() ? '使用上方模板与卡片配置构造一条真实请求' : 'Sends a real request built from the fields above',
+  channelSave: () => (isZh() ? '保存渠道' : 'Save channel'),
+  channelDelete: () => (isZh() ? '删除渠道' : 'Delete channel'),
+  channelEnabled: () => (isZh() ? '已启用' : 'Enabled'),
+  channelDisabled: () => (isZh() ? '已停用' : 'Disabled'),
+  channelNoWebhooks: () => (isZh() ? '还没有渠道，点「添加渠道」开始' : 'No channel yet'),
+  designerTitle: () => (isZh() ? '飞书卡片设计器' : 'Feishu card designer'),
+  designerView: () => (isZh() ? '设计器视图' : 'Designer view'),
+  dzCardTitle: () => (isZh() ? '卡片标题模板' : 'Card title template'),
+  dzAccent: () => (isZh() ? '主题色' : 'Header accent'),
+  dzAccentAuto: () => (isZh() ? '按事件自动' : 'Auto by event'),
+  dzFields: () => (isZh() ? '显示字段' : 'Fields'),
+  dzButton: () => (isZh() ? '按钮文案' : 'Button label'),
+  dzMention: () => (isZh() ? '@ 提醒' : 'Mentions'),
+  dzMentionAll: () => (isZh() ? '@所有人' : '@all'),
+  dzPreviewLabel: () => (isZh() ? '卡片预览（飞书客户端）' : 'Card preview (Feishu client)'),
+  dzMeta: (fields: number, accent: string, buttons: number) =>
+    isZh()
+      ? `${fields} 个字段 · ${accent} header · ${buttons} 个按钮`
+      : `${fields} fields · ${accent} header · ${buttons} buttons`,
+  retryAttempts: () => (isZh() ? '重试次数' : 'Retries'),
+  // ── 高级与安全 ──────────────────────────────────────────────────
+  secureHint: () =>
+    isZh() ? '回调鉴权、站点根、远程触发、配置搬迁。' : 'Auth, base URL, remote trigger, config portability.',
+  secureApiToken: () => (isZh() ? '回调 apiToken' : 'Callback apiToken'),
+  secureShow: () => (isZh() ? '显示' : 'Show'),
+  secureHide: () => (isZh() ? '隐藏' : 'Hide'),
+  secureRegenerate: () => (isZh() ? '重新生成' : 'Regenerate'),
+  secureBaseUrl: () => (isZh() ? '站点根 webBaseUrl' : 'Site root webBaseUrl'),
+  secureBaseUrlHint: () => (isZh() ? '用于会话链接拼接' : 'Used to build session links'),
+  secureRemoteTitle: () => (isZh() ? '远程触发测试' : 'Remote trigger test'),
+  secureRemoteSample: () => (isZh() ? '样例数据（JSON）' : 'Sample payload (JSON)'),
+  secureRemoteSend: () => (isZh() ? '发送测试' : 'Send'),
+  secureRemoteUnsent: () => (isZh() ? '未发送' : 'Not sent yet'),
+  secureRemoteSending: () => (isZh() ? '发送中…' : 'Sending…'),
+  secureRemoteTimeout: () => (isZh() ? '发送超时（8s）' : 'Timed out after 8s'),
+  secureRemoteOk: () => (isZh() ? '已发送' : 'Sent'),
+  secureRemoteFail: () => (isZh() ? '发送失败' : 'Send failed'),
+  secureExport: () => (isZh() ? '导出配置' : 'Export config'),
+  secureImport: () => (isZh() ? '导入配置…' : 'Import config…'),
+  permSelfCheck: () => (isZh() ? '权限与自检' : 'Permission & self-check'),
+  soundAvailable: () => (isZh() ? '提示音可用（WebAudio 合成，无音频文件）' : 'Sound available (WebAudio, no asset)'),
+  fieldTokens: () => (isZh() ? 'token 用量' : 'Token usage'),
+  fieldDuration: () => (isZh() ? '耗时' : 'Duration'),
+  fieldTool: () => (isZh() ? '工具' : 'Tool'),
+  fieldQuestion: () => (isZh() ? '问题' : 'Question'),
+  fieldLink: () => (isZh() ? '会话链接' : 'Session link'),
+  fieldTime: () => (isZh() ? '时间' : 'Time'),
+  fcardApp: () => (isZh() ? 'DeepSeek Harness · 通知' : 'DeepSeek Harness · Notice'),
+  fcardMentionAll: () => (isZh() ? '@所有人' : '@all'),
+  accentGreen: () => (isZh() ? '绿色' : 'Green'),
+  accentBlue: () => (isZh() ? '蓝色' : 'Blue'),
+  accentOrange: () => (isZh() ? '橙色' : 'Orange'),
+  accentGrey: () => (isZh() ? '灰色' : 'Grey'),
+}
+
+/** 事件中文名（未知键原样回显；webhook 行与文案工作台共用）。 */
+function eventLabelOf(key: string): string {
+  if (key === 'end') return strings.eventEnd()
+  if (key === 'ask') return strings.eventAsk()
+  if (key === 'approval') return strings.eventApproval()
+  if (key === 'subagentEnd') return strings.evSubagentEnd()
+  if (key === 'remote') return strings.eventRemote()
+  return key
 }
 
 // ── 本地开关（localStorage 覆盖，默认全开）──────────────────────────
-const LS = {
-  notify: 'dsh-notify:notify',
-  sound: 'dsh-notify:sound',
-  toast: 'dsh-notify:toast',
-  volume: 'dsh-notify:volume',
-}
-
-function prefOn(key: string, def: boolean): boolean {
-  try {
-    const v = window.localStorage.getItem(key)
-    if (v === null) return def
-    return v === '1'
-  } catch {
-    return def
-  }
-}
-
-/** 提示音音量（0~1，默认 0.6；issue #71：0.18 太小听不见）。 */
-function prefVolume(): number {
-  try {
-    const raw = window.localStorage.getItem(LS.volume)
-    if (raw === null) return 0.6
-    const v = Number(raw)
-    if (Number.isFinite(v) && v >= 0 && v <= 1) return v
-  } catch {
-    // fall through to default
-  }
-  return 0.6
-}

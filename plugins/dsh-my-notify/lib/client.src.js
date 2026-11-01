@@ -37,26 +37,44 @@ window.__ModuleLoader__.load({
     /*__PART_I18N__*/
 
     // ── 共享图标（dsh-shared/client-parts/icons.part.js，issue #54）────
+    /*__PART_PREFS__*/
+
     /*__PART_ICONS__*/
 
-    // ── 通知渲染：内容构造 / 提示音 / toast / 系统通知 / 样式 ───────────
-    // （src/client/parts/render.ts）
+    // ── 通知内容构造 / 系统通知（render.ts）────────────────────────────
     /*__PART_NOTIFY_RENDER__*/
 
-    // ── SSE 客户端：通知分发 / EventSource 订阅 / 插件体 ─────────────────
-    // （src/client/parts/stream.ts）
+    // ── 运行时配置（server config → localStorage 播种 / toast / 音量）──
+    /*__PART_RUNTIME_CONFIG__*/
+
+    // ── 提示音 / 页面 toast / SSE 客户端 ──────────────────────────────
+    /*__PART_AUDIO__*/
+    /*__PART_TOAST__*/
     /*__PART_STREAM__*/
 
-    // ── 设置页：出站 webhook 可视化编辑（issue #92）────────────────────
-    // （src/client/parts/webhook-settings.ts）
-    // 拼接顺序：webhook-settings.ts 必须先于 settings.ts——settings.ts 顶层
-    // `SETTINGS_STYLES = ... + WEBHOOK_STYLES` 引用 webhook-settings.ts 声明的
-    // WEBHOOK_STYLES，顺序颠倒会 TDZ（#92 引入，0.3.6 客户端在真实浏览器
-    // 挂载失败：Cannot access 'WEBHOOK_STYLES' before initialization）。
+    // ── 飞书卡片渲染 + 文案数据模型（纯逻辑）──────────────────────────
+    /*__PART_CARD_PREVIEW__*/
+    /*__PART_COPY_MODEL__*/
+
+    // ── 文案工作台（事件列表 / 编辑器 / 变量树 / 预览带）───────────────
+    /*__PART_TEMPLATE_EDITOR__*/
+    /*__PART_VAR_TREE__*/
+    /*__PART_COPY_EVENTS__*/
+    /*__PART_PREVIEW_BAND__*/
+    /*__PART_COPY_EDITOR__*/
+
+    // ── 渠道（列表 + 详情抽屉 + 卡片设计器）───────────────────────────
+    /*__PART_CARD_DESIGNER__*/
+    /*__PART_WEBHOOK_EDITOR__*/
     /*__PART_WEBHOOK_SETTINGS__*/
 
-    // ── 设置页视图：配置可视化（issue #27，官方 slots 扩展点）───────────
-    // （src/client/parts/settings.ts）
+    // ── 设置分区（呈现 / 高级）+ 行控件 + 样式 ────────────────────────
+    /*__PART_SETTINGS_ROWS__*/
+    /*__PART_PRESENT_PANE__*/
+    /*__PART_SECURE_PANE__*/
+    /*__PART_SETTINGS_STYLES__*/
+
+    // ── 设置页外壳（工具栏 + 四视图装配）──────────────────────────────
     /*__PART_SETTINGS__*/
 
     return module.exports

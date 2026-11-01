@@ -47,10 +47,27 @@ execSync('npx tsc -p tsconfig.client.json', { cwd: root, stdio: 'inherit' })
  *  opts.shared: true 从 dsh-shared/client-parts 读取（不经本插件 TS 编译）。 */
 const pieces = [
   ['/*__PART_I18N__*/', 'i18n'],
+  ['/*__PART_PREFS__*/', 'prefs'],
   ['/*__PART_ICONS__*/', 'icons.part', { shared: true }],
+  ['/*__PART_RUNTIME_CONFIG__*/', 'runtime-config'],
   ['/*__PART_NOTIFY_RENDER__*/', 'render'],
+  ['/*__PART_AUDIO__*/', 'audio'],
+  ['/*__PART_TOAST__*/', 'toast'],
   ['/*__PART_STREAM__*/', 'stream'],
+  ['/*__PART_CARD_PREVIEW__*/', 'card-preview'],
+  ['/*__PART_COPY_MODEL__*/', 'copy-model'],
+  ['/*__PART_TEMPLATE_EDITOR__*/', 'template-editor'],
+  ['/*__PART_VAR_TREE__*/', 'var-tree'],
+  ['/*__PART_COPY_EVENTS__*/', 'copy-events'],
+  ['/*__PART_PREVIEW_BAND__*/', 'preview-band'],
+  ['/*__PART_COPY_EDITOR__*/', 'copy-editor'],
+  ['/*__PART_CARD_DESIGNER__*/', 'card-designer'],
+  ['/*__PART_WEBHOOK_EDITOR__*/', 'webhook-editor'],
   ['/*__PART_WEBHOOK_SETTINGS__*/', 'webhook-settings'],
+  ['/*__PART_SETTINGS_ROWS__*/', 'settings-rows'],
+  ['/*__PART_PRESENT_PANE__*/', 'present-pane'],
+  ['/*__PART_SECURE_PANE__*/', 'secure-pane'],
+  ['/*__PART_SETTINGS_STYLES__*/', 'settings-styles'],
   ['/*__PART_SETTINGS__*/', 'settings'],
 ]
 

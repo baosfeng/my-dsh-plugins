@@ -72,10 +72,17 @@ interface NotifyConfig {
   ask?: boolean
   approval?: boolean
   subagentEnd?: boolean
+  /** 询问呈现模式：完整问题 / 仅摘要。 */
+  askMode?: string
   apiToken?: string
+  webBaseUrl?: string
   dedupeMs?: number
   webhooks?: WebhookEntry[]
   quietHours?: { enabled: boolean; start: string; end: string }
+  sound?: SoundConfig
+  toast?: ToastConfig
+  system?: SystemConfig
+  messages?: MessagesConfig
 }
 
 /** 单条出站 webhook 配置（issue #92）。 */
@@ -86,8 +93,17 @@ interface WebhookEntry {
   secret: string
   events: string[]
   enabled?: boolean
+  /** text / markdown / post / interactive（interactive 仅飞书）。 */
   msgType: string
   template?: string
+  /** 标题模板（为空回退会话标题）。 */
+  titleTemplate?: string
+  /** 正文模板（为空回退默认富格式正文）。 */
+  bodyTemplate?: string
+  /** 飞书卡片配置（msgType = interactive 时生效）。 */
+  card?: CardConfig
+  /** 重试配置。 */
+  retry?: RetryConfig
 }
 
 /** webhook 推送失败记录（GET /notify/api/webhooks 的 value.failures）。 */
@@ -150,11 +166,131 @@ interface WebhookEditorProps {
   onChange: (webhook: WebhookEntry) => void
   onSave: () => void
   onCancel: () => void
+  /** 抽屉底部「删除渠道」（可选：新增流程不传）。 */
+  onDelete?: () => void
+  /** 测试发送（done 回调标记成功 / 失败）。 */
+  onTest: (done: (ok: boolean) => void) => void
 }
 
 /** 出站 webhook 区块（WebhookSection）入参。 */
 interface WebhookSectionProps {
   webhooks: WebhookEntry[]
   failures?: WebhookFailure[]
+  /** 远程触发 token（测试发送时带 x-notify-token 头）。 */
+  apiToken?: string
   onPatchWebhooks: (webhooks: WebhookEntry[]) => void
+}
+// ── 高级配置契约（GET /notify/api/config 的 value.sound / toast / system /
+// messages；与 src/types.d.ts 的 SoundConfig / ToastConfig / SystemConfig /
+// MessagesConfig 对齐，client 端只读不写类型源以保持两半独立）───────────
+
+/** 提示音配置（preset 由 client 端解释为音色）。 */
+interface SoundConfig {
+  enabled: boolean
+  preset: string
+  volume: number
+}
+
+/** 页面 toast 配置（位置 / 时长 / 最大堆叠）。 */
+interface ToastConfig {
+  enabled: boolean
+  durationMs: number
+  position: string
+  maxStack: number
+}
+
+/** 系统通知配置。 */
+interface SystemConfig {
+  enabled: boolean
+  requireInteraction: boolean
+}
+
+/** 单条事件文案模板。 */
+interface MessageTemplate {
+  title: string
+  body: string
+}
+
+/** 五类事件的文案模板（服务端已填默认值）。 */
+interface MessagesConfig {
+  end?: MessageTemplate
+  ask?: MessageTemplate
+  approval?: MessageTemplate
+  subagentEnd?: MessageTemplate
+  remote?: MessageTemplate
+}
+
+/** 飞书卡片配置（msgType = interactive 时生效）。 */
+interface CardConfig {
+  schemaVersion?: string
+  template?: string
+  fields?: string[]
+  buttonText?: string
+  mentionOpenIds?: string[]
+  mentionAll?: boolean
+  accentByKind?: boolean
+}
+
+/** 推送重试配置。 */
+interface RetryConfig {
+  attempts?: number
+  backoffMs?: number
+}
+
+/** 模板变量目录条目（GET /notify/api/variables 的 value[].items[]）。 */
+interface VarItem {
+  name: string
+  description: string
+  example: string
+}
+
+/** 模板变量分组。 */
+interface VarGroup {
+  group: string
+  label: string
+  items: VarItem[]
+}
+
+/** 预览结果（POST /notify/api/preview 的 value）。 */
+interface PreviewResult {
+  card: Record<string, any>
+  text: string
+  vars: Record<string, string>
+}
+
+/** 设置面板表单装配入参（分隔 / 状态条 / 分区内容共用）。 */
+interface SettingsFormProps {
+  draft: NotifyConfig
+  patch: PatchFn
+  pane: string
+  onPane: (pane: string) => void
+  save: () => void
+  saved: boolean
+  error: boolean
+  dirty: boolean
+  volume: number
+  onVolumeChange: (v: number) => void
+  failures: WebhookFailure[]
+  apiToken: string
+  /** 文案分区的卡片外观来源（飞书 interactive 渠道）。 */
+  feishuCard: CardConfig
+  onTest: (kind: string, sample: string, done: (ok: boolean) => void) => void
+  onReset: () => void
+}
+
+/** 文案与变量分区入参。 */
+interface CopyEditorPaneProps {
+  messages: MessagesConfig | undefined
+  card: CardConfig | undefined
+  /** 事件是否启用（映射 config.end/ask/approval/subagentEnd；remote 恒为开）。 */
+  enabledOf: (key: string) => boolean
+  /** 切换事件启用态。 */
+  onToggleEvent: (key: string, on: boolean) => void
+  /** 询问模式（config.askMode：full / summary，仅 ask 事件显示分段控件）。 */
+  askMode?: string
+  onAskMode?: (mode: string) => void
+  /** 保存失败态（编辑器顶部错误条 + 重试）。 */
+  saveError?: boolean
+  onRetrySave?: () => void
+  onPatchMessage: (key: string, template: MessageTemplate) => void
 }

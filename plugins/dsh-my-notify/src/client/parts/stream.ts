@@ -32,6 +32,7 @@ function claimLocked(key: string, now: number): boolean {
     window.localStorage.setItem(lockKey, String(now))
   } catch {
     // localStorage 不可用（隐私模式等）：仅本地窗口去重
+    void 0
   }
   localRecent.set(key, now)
   if (localRecent.size > 256) {
@@ -63,6 +64,7 @@ function openSessionFor(sessionId: string, sessionsSvc: any): () => void {
       window.focus()
     } catch {
       // ignore
+      void 0
     }
     if (
       sessionId !== '' &&
@@ -74,6 +76,7 @@ function openSessionFor(sessionId: string, sessionsSvc: any): () => void {
         sessionsSvc.open(sessionId)
       } catch {
         // opening is best-effort
+        void 0
       }
     }
   }
@@ -120,6 +123,10 @@ function handleNotice(notice: NotifyNotice | null, sessionsSvc: any): Promise<vo
 // ── SSE 订阅（server 事件 → 浏览器通知）─────────────────────────────
 function subscribeStream(sessionsSvc: any): () => void {
   if (typeof window === 'undefined' || typeof EventSource !== 'function') return () => {}
+  // 启动即拉一次 /notify/api/config：把服务端 system.enabled / sound.enabled /
+  // toast.enabled / sound.volume 播种到 localStorage（只写缺失键），之后所有
+  // 运行时 gate 统一读本地键——避免「新浏览器 + 服务端关着却照弹照响」。
+  loadRuntimeConfig()
   const source = new EventSource('/notify/api/stream')
   source.onmessage = (event) => {
     try {
@@ -127,6 +134,7 @@ function subscribeStream(sessionsSvc: any): () => void {
       void handleNotice(data, sessionsSvc)
     } catch {
       // one bad frame must never kill the stream handler
+      void 0
     }
   }
   return () => {

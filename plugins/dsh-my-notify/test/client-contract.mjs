@@ -27,10 +27,27 @@ const read = (rel) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8')
 /** 已发布片段（build.mjs 的 pieces 顺序：i18n 先于 render，webhook 先于 settings）。 */
 const PIECES = [
   ['/*__PART_I18N__*/', 'lib/parts/i18n.js'],
+  ['/*__PART_PREFS__*/', 'lib/parts/prefs.js'],
   ['/*__PART_ICONS__*/', '../dsh-shared/client-parts/icons.part.js'],
+  ['/*__PART_RUNTIME_CONFIG__*/', 'lib/parts/runtime-config.js'],
   ['/*__PART_NOTIFY_RENDER__*/', 'lib/parts/render.js'],
+  ['/*__PART_AUDIO__*/', 'lib/parts/audio.js'],
+  ['/*__PART_TOAST__*/', 'lib/parts/toast.js'],
   ['/*__PART_STREAM__*/', 'lib/parts/stream.js'],
+  ['/*__PART_CARD_PREVIEW__*/', 'lib/parts/card-preview.js'],
+  ['/*__PART_COPY_MODEL__*/', 'lib/parts/copy-model.js'],
+  ['/*__PART_TEMPLATE_EDITOR__*/', 'lib/parts/template-editor.js'],
+  ['/*__PART_VAR_TREE__*/', 'lib/parts/var-tree.js'],
+  ['/*__PART_COPY_EVENTS__*/', 'lib/parts/copy-events.js'],
+  ['/*__PART_PREVIEW_BAND__*/', 'lib/parts/preview-band.js'],
+  ['/*__PART_COPY_EDITOR__*/', 'lib/parts/copy-editor.js'],
+  ['/*__PART_CARD_DESIGNER__*/', 'lib/parts/card-designer.js'],
+  ['/*__PART_WEBHOOK_EDITOR__*/', 'lib/parts/webhook-editor.js'],
   ['/*__PART_WEBHOOK_SETTINGS__*/', 'lib/parts/webhook-settings.js'],
+  ['/*__PART_SETTINGS_ROWS__*/', 'lib/parts/settings-rows.js'],
+  ['/*__PART_PRESENT_PANE__*/', 'lib/parts/present-pane.js'],
+  ['/*__PART_SECURE_PANE__*/', 'lib/parts/secure-pane.js'],
+  ['/*__PART_SETTINGS_STYLES__*/', 'lib/parts/settings-styles.js'],
   ['/*__PART_SETTINGS__*/', 'lib/parts/settings.js'],
 ]
 
@@ -115,8 +132,8 @@ function loadWebhookPanel(navigatorMock) {
     'useState',
     'navigator',
     'window',
-    `${read('../lib/parts/i18n.js')}\n${read('../lib/parts/webhook-settings.js')}\n` +
-      'return { emptyWebhook, channelLabel, eventsLabel, msgTypeOptions, WebhookSection, WebhookEditor, FailureRow, CHANNEL_OPTIONS, EVENT_OPTIONS, strings }',
+    `${read('../lib/parts/i18n.js')}\n${read('../lib/parts/card-preview.js')}\n${read('../lib/parts/card-designer.js')}\n${read('../lib/parts/webhook-editor.js')}\n${read('../lib/parts/webhook-settings.js')}\n` +
+      'return { emptyWebhook, channelLabel, eventsLabel, msgTypeOptions, brandMarkOf, WebhookSection, WebhookEditor, FailureRow, CHANNEL_OPTIONS, EVENT_OPTIONS, strings }',
   )
   const api = factory(createElement, harness.useState, navigatorMock, { localStorage: {} })
   return { ...api, harness }
@@ -159,7 +176,13 @@ test('构建契约：产物零未解析占位符，且每个片段都有对应 T
     )
     assert.ok(ts.includes('function') || ts.includes('const'), `${name}.ts 应为纯声明片段`)
   }
-  assert.deepEqual(OWN_PARTS.slice().sort(), ['i18n', 'render', 'settings', 'stream', 'webhook-settings'].sort())
+  assert.deepEqual(
+    OWN_PARTS.slice().sort(),
+    PIECES.filter(([, file]) => file.startsWith('lib/parts/'))
+      .map(([, file]) => file.replace('lib/parts/', '').replace('.js', ''))
+      .sort(),
+    'OWN_PARTS 应与 build.mjs 的 pieces 一一对应',
+  )
 })
 
 // ── 2. i18n 文案契约 ──────────────────────────────────────────────────
@@ -187,30 +210,39 @@ test('i18n 契约：中文/英文两套文案 + 未知语言回退英文', () =>
   assert.equal(none.strings.openSession(), 'Open session')
 })
 
-// ── 3. 出站 webhook 设置面板契约（issue #92）────────────────────────────
+// ── 3. 渠道推送面板契约（v2：卡片列表 + 抽屉 + 设计器默认值）─────────────
 
-test('webhook 面板：空模板默认值与渠道/事件/消息类型标签', () => {
-  const { emptyWebhook, channelLabel, eventsLabel, msgTypeOptions, CHANNEL_OPTIONS, EVENT_OPTIONS } = loadWebhookPanel({
-    language: 'zh-CN',
-  })
+test('webhook 面板：空模板默认值（含卡片 / 模板 / 重试默认）与渠道标签', () => {
+  const { emptyWebhook, channelLabel, eventsLabel, msgTypeOptions, CHANNEL_OPTIONS, EVENT_OPTIONS, brandMarkOf } =
+    loadWebhookPanel({ language: 'zh-CN' })
 
-  assert.deepEqual(emptyWebhook(), {
-    name: '',
-    channel: 'wecom',
-    url: '',
-    secret: '',
-    events: ['end', 'ask', 'approval'],
-    enabled: true,
-    msgType: 'text',
-    template: '',
-  })
+  const blank = emptyWebhook()
+  assert.equal(blank.name, '')
+  assert.equal(blank.channel, 'wecom')
+  assert.equal(blank.url, '')
+  assert.deepEqual(blank.events, ['end', 'ask', 'approval'])
+  assert.equal(blank.enabled, true)
+  assert.equal(blank.msgType, 'text')
+  assert.equal(blank.template, '')
+  assert.equal(blank.titleTemplate, '')
+  assert.equal(blank.bodyTemplate, '')
+  assert.equal(blank.card.schemaVersion, '2.0')
+  assert.equal(blank.card.accentByKind, true)
+  assert.deepEqual(
+    blank.card.fields,
+    ['tokens.text', 'session.durationText', 'tool.name', 'ask.question', 'session.url'],
+    '卡片默认勾选 5 个字段',
+  )
+  assert.deepEqual(blank.retry, { attempts: 3, backoffMs: 1000 })
+
   assert.deepEqual(
     CHANNEL_OPTIONS.map((o) => o.value),
     ['wecom', 'feishu', 'dingtalk', 'generic'],
   )
   assert.deepEqual(
     EVENT_OPTIONS.map((o) => o.value),
-    ['end', 'ask', 'approval', 'remote'],
+    ['end', 'ask', 'approval', 'subagentEnd', 'remote'],
+    '五类事件（必修 1：补齐 subagentEnd）',
   )
   assert.equal(channelLabel('wecom'), '企业微信')
   assert.equal(channelLabel('feishu'), '飞书')
@@ -219,64 +251,55 @@ test('webhook 面板：空模板默认值与渠道/事件/消息类型标签', (
   assert.equal(channelLabel('unknown-channel'), 'unknown-channel', '未知渠道原样回显')
   assert.equal(eventsLabel([]), '全部事件', '空数组 = 全部事件')
   assert.equal(eventsLabel(['end', 'ask']), '会话结束 / 询问')
-  assert.equal(eventsLabel(['approval', 'nope']), '审批 / nope', '未知事件原样回显')
+  assert.equal(brandMarkOf('feishu'), '飞')
+  assert.equal(brandMarkOf('wecom'), '企')
+  assert.equal(brandMarkOf('dingtalk'), '钉')
+  assert.equal(brandMarkOf('generic'), '通')
   assert.deepEqual(
     msgTypeOptions('feishu').map((o) => o.value),
-    ['text', 'post'],
-    '飞书支持 text/post',
+    ['text', 'post', 'interactive'],
+    '飞书支持 interactive 卡片',
   )
   assert.deepEqual(
     msgTypeOptions('wecom').map((o) => o.value),
-    ['text', 'markdown'],
-    '企微/钉钉支持 text/markdown',
+    ['text', 'markdown', 'post'],
+    '企微 / 钉钉走 text / markdown / post',
   )
 })
 
-test('webhook 面板：列表渲染（名称 + 渠道·事件）与失败记录', () => {
+test('webhook 面板：渠道卡片列表（徽标 + 名称 + 渠道·事件 + 启用开关）', () => {
   const { WebhookSection, harness } = loadWebhookPanel({ language: 'zh-CN' })
   const tree = harness.render(WebhookSection, {
     webhooks: [
       { name: '企微-工作群', channel: 'wecom', url: 'https://x', secret: '', events: ['end'], msgType: 'text' },
-      { name: '飞书-私聊', channel: 'feishu', url: 'https://y', secret: '', events: [], msgType: 'post' },
+      { name: '飞书-私聊', channel: 'feishu', url: 'https://y', secret: '', events: [], msgType: 'interactive' },
     ],
-    failures: [
-      { time: 1_700_000_000_000, webhookName: '企微-工作群', channel: 'wecom', attempts: 3, error: 'ECONNREFUSED' },
-    ],
+    failures: [],
     onPatchWebhooks: () => {},
   })
-
-  const rows = collect(tree).filter((el) => el.props?.className === 'dsh-my-notify-webhook-row')
-  assert.equal(rows.length, 2, '两条 webhook 各渲染一行')
-  assert.ok(textOf(byClass(tree, 'dsh-my-notify-section-title')).includes('出站 Webhook'), '区块标题')
-  const labels = collect(tree)
+  const rows = collect(tree).filter((el) => el.props?.className?.includes('dsh-my-notify-webhook-row'))
+  assert.equal(rows.length, 2, '两条渠道各渲染一张卡片')
+  const marks = collect(tree)
+    .filter((el) => el.props?.className === 'dsh-my-notify-ch-mark')
+    .map(textOf)
+  assert.deepEqual(marks, ['企', '飞'], '品牌徽标字')
+  const names = collect(tree)
     .filter((el) => el.props?.className === 'dsh-my-notify-label')
     .map((el) => el.props.children)
-  assert.deepEqual(labels, ['企微-工作群', '飞书-私聊'], '行内显示 webhook 名称')
-  const hints = collect(tree)
-    .filter((el) => el.props?.className === 'dsh-my-notify-hint')
+  assert.deepEqual(names.slice(0, 2), ['企微-工作群', '飞书-私聊'], '卡片显示渠道名称')
+  const subs = collect(tree)
+    .filter((el) => el.props?.className === 'dsh-my-notify-ch-sub dsh-my-notify-hint')
     .map((el) => el.props.children)
-  assert.equal(hints[0], '企业微信 · 会话结束', '行内显示「渠道 · 事件」')
-  assert.equal(hints[1], '飞书 · 全部事件', '空事件数组显示「全部事件」')
-
-  const failureMsg = byClass(tree, 'dsh-my-notify-webhook-failure-msg')
-  assert.equal(failureMsg.props.children, 'ECONNREFUSED', '失败原因渲染')
-  const failureTime = byClass(tree, 'dsh-my-notify-webhook-failure-time').props.children
-  assert.ok(failureTime.includes('企微-工作群'), '失败记录含 webhook 名称')
-  assert.ok(failureTime.includes('企业微信'), '失败记录含渠道中文标签')
-  assert.ok(failureTime.includes('3 次尝试'), '失败记录含尝试次数')
+  assert.equal(subs[0], '企业微信 · 会话结束', '副行显示「渠道 · 事件」')
+  assert.equal(subs[1], '飞书 · 全部事件', '空事件数组显示「全部事件」')
+  const toggles = collect(tree).filter((el) => el.props?.className === 'dsh-my-notify-toggle')
+  assert.equal(toggles.length, 2, '每张卡片一个启用开关')
+  assert.equal(toggles[0].props.role, 'switch')
+  assert.equal(toggles[0].props['aria-checked'], 'true')
+  assert.equal(toggles[0].props['aria-label'], '企微-工作群', '开关带 aria-label')
 })
 
-test('webhook 面板：无失败记录时提示占位文案', () => {
-  const { WebhookSection, harness } = loadWebhookPanel({ language: 'zh-CN' })
-  const tree = harness.render(WebhookSection, { webhooks: [], failures: [], onPatchWebhooks: () => {} })
-  const hints = collect(tree)
-    .filter((el) => el.props?.className === 'dsh-my-notify-hint')
-    .map((el) => el.props.children)
-  assert.ok(hints.includes('暂无失败记录'), '无失败记录显示占位文案')
-  assert.equal(buttonByText(tree, '添加 Webhook') !== undefined, true, '提供「添加 Webhook」按钮')
-})
-
-test('webhook 面板：添加流程（编辑空模板 → 保存 → onPatchWebhooks 追加）', () => {
+test('webhook 面板：添加流程（点添加 → 抽屉出现 → 输入名称 → 保存追加）', () => {
   const { WebhookSection, harness } = loadWebhookPanel({ language: 'zh-CN' })
   const existing = {
     name: '企微-工作群',
@@ -295,52 +318,38 @@ test('webhook 面板：添加流程（编辑空模板 → 保存 → onPatchWebh
         patched = next
       },
     })
-
-  // 初始：无编辑器
-  assert.equal(byClass(render(), 'dsh-my-notify-webhook-editor'), undefined, '初始不渲染编辑器')
-
-  // 点「添加 Webhook」→ 编辑器出现，草稿为空模板
+  assert.equal(byClass(render(), 'dsh-my-notify-drawer'), undefined, '初始不渲染抽屉')
   buttonByText(render(), '添加 Webhook').props.onClick()
-  const editor = byClass(render(), 'dsh-my-notify-webhook-editor')
-  assert.ok(editor !== undefined, '点击后渲染编辑器')
-  const inputs = collect(editor).filter((el) => el.props?.className === 'dsh-my-notify-webhook-input')
+  const drawer = byClass(render(), 'dsh-my-notify-drawer')
+  assert.ok(drawer !== undefined, '点击后渲染抽屉')
+  assert.equal(drawer.props.role, 'dialog', '抽屉是 dialog 语义')
+  assert.equal(drawer.props['aria-modal'], 'true')
+  const inputs = collect(drawer).filter((el) => el.props?.className === 'dsh-my-notify-webhook-input')
   assert.equal(inputs[0].props.value, '', '新草稿名称为空')
   assert.equal(inputs[0].props.placeholder, '如：企微-工作群', '名称占位文案')
+  const chips = collect(drawer).filter((el) => el.props?.className === 'dsh-my-notify-chip')
+  assert.deepEqual(chips.map(textOf), ['会话结束', '询问', '审批', '子代理结束', '远程触发'], '事件多选五项')
   assert.deepEqual(
-    collect(editor)
-      .filter((el) => el.props?.className === 'dsh-my-notify-webhook-event')
-      .map((el) => textOf(el)),
-    ['会话结束', '询问', '审批', '远程触发'],
-    '事件多选四项',
+    chips.map((el) => el.props['aria-pressed']),
+    ['true', 'true', 'true', 'false', 'false'],
+    '默认勾选 end/ask/approval',
   )
-  assert.deepEqual(
-    collect(editor)
-      .filter((el) => el.props?.type === 'checkbox')
-      .map((el) => el.props.checked),
-    [true, true, true, false],
-    '默认勾选 end/ask/approval（与 emptyWebhook 一致）',
-  )
-
-  // 输入名称 → 保存 → 追加到列表末尾
   inputs[0].props.onChange({ target: { value: '企微-工作群2' } })
-  const afterTyping = byClass(render(), 'dsh-my-notify-webhook-editor')
-  const nameInput = collect(afterTyping).filter((el) => el.props?.className === 'dsh-my-notify-webhook-input')[0]
+  const after = byClass(render(), 'dsh-my-notify-drawer')
+  const nameInput = collect(after).filter((el) => el.props?.className === 'dsh-my-notify-webhook-input')[0]
   assert.equal(nameInput.props.value, '企微-工作群2', '名称输入写回草稿')
-  assert.ok(buttonByText(afterTyping, '取消') !== undefined, '编辑器提供「取消」')
-
-  buttonByText(render(), '保存').props.onClick()
+  assert.ok(buttonByText(after, '取消') !== undefined, '抽屉提供「取消」')
+  buttonByText(render(), '保存渠道').props.onClick()
   assert.ok(Array.isArray(patched), '保存调用 onPatchWebhooks')
-  assert.equal(patched.length, 2, '新 webhook 追加到列表末尾')
+  assert.equal(patched.length, 2, '新渠道追加到列表末尾')
   assert.equal(patched[0], existing, '已有项不被修改')
   assert.equal(patched[1].name, '企微-工作群2')
   assert.equal(patched[1].channel, 'wecom', '沿用空模板默认渠道')
   assert.deepEqual(patched[1].events, ['end', 'ask', 'approval'])
-
-  // 保存后编辑器关闭（setEditing(-1)）
-  assert.equal(byClass(render(), 'dsh-my-notify-webhook-editor'), undefined, '保存后关闭编辑器')
+  assert.equal(byClass(render(), 'dsh-my-notify-drawer'), undefined, '保存后关闭抽屉')
 })
 
-test('webhook 面板：删除与启用开关（onPatchWebhooks 收到更新后的列表）', () => {
+test('webhook 面板：删除渠道与启用开关', () => {
   const { WebhookSection, harness } = loadWebhookPanel({ language: 'zh-CN' })
   const a = { name: 'A', channel: 'wecom', url: 'https://a', secret: '', events: ['end'], msgType: 'text' }
   const b = { name: 'B', channel: 'feishu', url: 'https://b', secret: '', events: ['ask'], msgType: 'text' }
@@ -353,24 +362,60 @@ test('webhook 面板：删除与启用开关（onPatchWebhooks 收到更新后�
         patched = next
       },
     })
-
-  // 删除第一条
+  // 打开第一张卡片的抽屉 → 删除渠道
   collect(render())
-    .filter((el) => el.type === 'button' && textOf(el) === '删除')[0]
+    .find((el) => el.props?.className?.includes('dsh-my-notify-ch-card'))
     .props.onClick()
+  const drawer = byClass(render(), 'dsh-my-notify-drawer')
+  assert.ok(drawer !== undefined, '点卡片打开抽屉')
+  buttonByText(drawer, '删除渠道').props.onClick()
   assert.deepEqual(
     patched.map((w) => w.name),
     ['B'],
     '删除第一条后只剩 B',
   )
 
-  // 切换第一条启用状态（默认 enabled 未显式给出 → 视为启用）
+  // 启用开关：默认启用，点击置为关闭
   patched = null
   const toggles = collect(render()).filter((el) => el.props?.className === 'dsh-my-notify-toggle')
-  assert.equal(toggles.length, 2, '每行一个启用开关')
-  assert.equal(toggles[0].props['aria-checked'], 'true', '未显式 enabled 时视为启用')
-  assert.equal(toggles[0].props.role, 'switch', '开关具备 switch 语义')
-  toggles[1].props.onClick()
+  assert.equal(toggles.length, 2, '每张卡片一个开关')
+  toggles[1].props.onClick({ stopPropagation() {} })
   assert.equal(patched[1].enabled, false, '点击开关把该项置为关闭')
   assert.deepEqual(patched[0], a, '其他项保持不变')
+})
+
+test('webhook 面板：失败记录与空态占位', () => {
+  const { WebhookSection, harness } = loadWebhookPanel({ language: 'zh-CN' })
+  const tree = harness.render(WebhookSection, {
+    webhooks: [],
+    failures: [
+      { time: 1_700_000_000_000, webhookName: '企微-工作群', channel: 'wecom', attempts: 3, error: 'ECONNREFUSED' },
+    ],
+    onPatchWebhooks: () => {},
+  })
+  const err = byClass(tree, 'dsh-my-notify-fail-err dsh-my-notify-webhook-failure-msg')
+  assert.ok(err !== undefined, '失败原因渲染')
+  assert.ok(err.props.children.includes('ECONNREFUSED'))
+  assert.ok(err.props.children.includes('3 次尝试'), '失败记录含尝试次数')
+  const time = byClass(tree, 'dsh-my-notify-fail-time dsh-my-notify-webhook-failure-time')
+  assert.ok(time.props.children.length > 0, '失败记录含时间')
+
+  const empty = harness.render(WebhookSection, { webhooks: [], failures: [], onPatchWebhooks: () => {} })
+  const hints = collect(empty)
+    .filter((el) => el.props?.className === 'dsh-my-notify-hint')
+    .map((el) => el.props.children)
+  assert.ok(hints.includes('暂无失败记录'), '无失败记录显示占位文案')
+  assert.ok(hints.includes('还没有渠道，点「添加渠道」开始'), '无渠道时给空态引导')
+})
+
+test('i18n 契约：v2 分区与渠道文案中英双语', () => {
+  const zh = loadI18n({ language: 'zh-CN' })
+  assert.equal(zh.strings.viewCopy(), '文案')
+  assert.equal(zh.strings.viewChannel(), '渠道')
+  assert.equal(zh.strings.resetDefaults(), '恢复默认')
+  assert.equal(zh.strings.channelTestSend(), '测试发送')
+  assert.equal(typeof zh.strings.dzButtonDefault(), 'string')
+  const en = loadI18n({ language: 'en-US' })
+  assert.equal(en.strings.viewCopy(), 'Copy')
+  assert.equal(en.strings.resetDefaults(), 'Reset defaults')
 })

@@ -33,7 +33,11 @@ function createStorageStub(initial = {}) {
 /** Eval the i18n + render parts in a factory scope and return internals. */
 function loadParts(storage, audioCtxFactory) {
   const i18nSrc = fs.readFileSync(new URL('../lib/parts/i18n.js', import.meta.url), 'utf8')
+  const runtimeconfigSrc = fs.readFileSync(new URL('../lib/parts/runtime-config.js', import.meta.url), 'utf8')
   const renderSrc = fs.readFileSync(new URL('../lib/parts/render.js', import.meta.url), 'utf8')
+  const audioSrc = fs.readFileSync(new URL('../lib/parts/audio.js', import.meta.url), 'utf8')
+  const toastSrc = fs.readFileSync(new URL('../lib/parts/toast.js', import.meta.url), 'utf8')
+  const prefsSrc = fs.readFileSync(new URL('../lib/parts/prefs.js', import.meta.url), 'utf8')
   const windowObj = { localStorage: storage }
   if (audioCtxFactory !== undefined) windowObj.AudioContext = audioCtxFactory
   const factory = new Function(
@@ -41,22 +45,43 @@ function loadParts(storage, audioCtxFactory) {
     'document',
     'navigator',
     'window',
-    `${i18nSrc}\n${renderSrc}\nreturn { prefVolume, prefOn, LS, beep, baseAudio }`,
+    `${i18nSrc}\n${prefsSrc}\n${runtimeconfigSrc}\n${renderSrc}\n${audioSrc}\n${toastSrc}\nreturn { prefVolume, prefOn, LS, beep, baseAudio }`,
   )
   return factory(createElement, {}, { language: 'zh-CN' }, windowObj)
 }
 
-/** Eval the settings part and return VolumeRow. */
+/** Eval the settings part and return VolumeRow（片段序与 build.mjs 一致）。 */
 function loadSettings(storage) {
-  const i18nSrc = fs.readFileSync(new URL('../lib/parts/i18n.js', import.meta.url), 'utf8')
-  const webhookSrc = fs.readFileSync(new URL('../lib/parts/webhook-settings.js', import.meta.url), 'utf8')
-  const settingsSrc = fs.readFileSync(new URL('../lib/parts/settings.js', import.meta.url), 'utf8')
+  const order = [
+    'i18n',
+    'prefs',
+    'runtime-config',
+    'render',
+    'audio',
+    'toast',
+    'card-preview',
+    'copy-model',
+    'template-editor',
+    'var-tree',
+    'copy-events',
+    'preview-band',
+    'copy-editor',
+    'card-designer',
+    'webhook-editor',
+    'webhook-settings',
+    'settings-rows',
+    'present-pane',
+    'secure-pane',
+    'settings-styles',
+    'settings',
+  ]
+  const sources = order.map((name) => fs.readFileSync(new URL(`../lib/parts/${name}.js`, import.meta.url), 'utf8'))
   const factory = new Function(
     'createElement',
     'document',
     'navigator',
     'window',
-    `${i18nSrc}\n${webhookSrc}\n${settingsSrc}\nreturn { VolumeRow }`,
+    `${sources.join('\n')}\nreturn { VolumeRow }`,
   )
   return factory(createElement, {}, { language: 'zh-CN' }, { localStorage: storage })
 }

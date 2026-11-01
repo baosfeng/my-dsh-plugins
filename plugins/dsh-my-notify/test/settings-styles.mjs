@@ -16,9 +16,32 @@ import fs from 'node:fs'
 
 /** Eval the settings part source in a factory scope and return SETTINGS_STYLES. */
 function loadSettingsStyles() {
-  const webhookSrc = fs.readFileSync(new URL('../lib/parts/webhook-settings.js', import.meta.url), 'utf8')
-  const src = fs.readFileSync(new URL('../lib/parts/settings.js', import.meta.url), 'utf8')
-  const factory = new Function(`${webhookSrc}\n${src}\nreturn { SETTINGS_STYLES }`)
+  // 片段按 build.mjs 顺序求值：i18n（含 eventLabelOf）→ card-preview →
+  // copy-editor → webhook-settings → settings（settings 顶层引用 WEBHOOK_STYLES）
+  const order = [
+    'i18n',
+    'runtime-config',
+    'render',
+    'audio',
+    'toast',
+    'card-preview',
+    'copy-model',
+    'template-editor',
+    'var-tree',
+    'copy-events',
+    'preview-band',
+    'copy-editor',
+    'card-designer',
+    'webhook-editor',
+    'webhook-settings',
+    'settings-rows',
+    'present-pane',
+    'secure-pane',
+    'settings-styles',
+    'settings',
+  ]
+  const sources = order.map((name) => fs.readFileSync(new URL(`../lib/parts/${name}.js`, import.meta.url), 'utf8'))
+  const factory = new Function(`${sources.join('\n')}\nreturn { SETTINGS_STYLES }`)
   return factory().SETTINGS_STYLES
 }
 
@@ -57,7 +80,7 @@ test('thumb sits on the left in off state with primary ink (issue #58)', () => {
 test('on-state thumb slides right and switches to contrast ink (issue #58)', () => {
   const start = CSS.indexOf(TOGGLE_ON_AFTER)
   const block = CSS.slice(start, CSS.indexOf('}', start) + 1)
-  assert.ok(block.includes('translateX(12px)'), 'on thumb must slide right 12px')
+  assert.ok(block.includes('translateX(14px)'), 'on thumb must slide right 14px（36×20 轨道）')
   assert.ok(
     block.includes('var(--dsw-alias-label-primary-foreground)'),
     'on thumb must use foreground ink for contrast on the accent fill',

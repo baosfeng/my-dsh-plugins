@@ -91,7 +91,11 @@ function createNotificationStub() {
 function loadParts({ storage, audio, notification, locks }) {
   const iconsSrc = fs.readFileSync(new URL('../../dsh-shared/client-parts/icons.part.js', import.meta.url), 'utf8')
   const i18nSrc = fs.readFileSync(new URL('../lib/parts/i18n.js', import.meta.url), 'utf8')
+  const prefsSrc = fs.readFileSync(new URL('../lib/parts/prefs.js', import.meta.url), 'utf8')
+  const runtimeconfigSrc = fs.readFileSync(new URL('../lib/parts/runtime-config.js', import.meta.url), 'utf8')
   const renderSrc = fs.readFileSync(new URL('../lib/parts/render.js', import.meta.url), 'utf8')
+  const audioSrc = fs.readFileSync(new URL('../lib/parts/audio.js', import.meta.url), 'utf8')
+  const toastSrc = fs.readFileSync(new URL('../lib/parts/toast.js', import.meta.url), 'utf8')
   const streamSrc = fs.readFileSync(new URL('../lib/parts/stream.js', import.meta.url), 'utf8')
   const windowMock = {
     localStorage: storage,
@@ -107,7 +111,7 @@ function loadParts({ storage, audio, notification, locks }) {
     'window',
     'Notification',
     'exports',
-    `${iconsSrc}\n${i18nSrc}\n${renderSrc}\n${streamSrc}\nreturn { handleNotice, claimNotice }`,
+    `${iconsSrc}\n${i18nSrc}\n${prefsSrc}\n${runtimeconfigSrc}\n${renderSrc}\n${audioSrc}\n${toastSrc}\n${streamSrc}\nreturn { handleNotice, claimNotice }`,
   )
   return factory(createElement, undefined, navigatorMock, windowMock, notification.MockNotification, {})
 }

@@ -40,6 +40,9 @@
  *       Pure judgement in lib/pack-hygiene.mjs, IO (one npm pack, ~300ms) in
  *       scripts/check-pack-hygiene.mjs; runs concurrently with 1a/3 so the static
  *       fast-fail path (~6ms) is unaffected.
+ *   0.  --bump: bump version + generate the CHANGELOG section from git log, and **consume
+ *       the existing "## [Unreleased]" section** into it (手写细节优先，已被覆盖的 git 摘要不重复，
+ *       见 lib/changelog-merge.mjs / 单测 scripts/test/changelog-merge.test.mjs)
  *   2.  validate CHANGELOG.md has a "## [<version>]" section at the top
  *   3.  run the plugin's tests (npm test)
  *   3b. validate README screenshot references under assets/
@@ -91,6 +94,7 @@ import { mapWithConcurrency, normalizeConcurrency, DEFAULT_CONCURRENCY } from '.
 import { pushTagsIndividually, confirmTagTriggered, retriggerHint } from './lib/release-tag-push.mjs'
 import { npmLatestGate, prefetchNpmVersions, createIsPublished } from './lib/npm-registry.mjs'
 import { checkPlugin as checkPackHygiene } from './check-pack-hygiene.mjs'
+import { mergeUnreleasedIntoVersion } from './lib/changelog-merge.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -392,23 +396,26 @@ async function processPlugin(name, ctx) {
       return fail()
     }
     const date = new Date().toISOString().slice(0, 10)
-    const section = [
-      `## [${next}] - ${date}`,
-      '',
-      '### 变更',
-      '',
-      ...logLines.map((l) => `- ${l.replace(/^\w+\s+/, '')}`),
-      '',
-    ].join('\n')
+    // 生成新版本段并**消费既有 `## [Unreleased]` 段**（旧写法只找第一个 `## [` 插到前面，
+    // 手写细节会滞留在文件中间——dsh-my-memory 0.3.0 的真实事故）。判据与边界见
+    // lib/changelog-merge.mjs；无 Unreleased 段时输出与旧写法逐字节一致（回归不退化）。
     const changelogPath = join(pluginDir, 'CHANGELOG.md')
     const changelog = readFileSync(changelogPath, 'utf8')
-    const idx = changelog.indexOf('## [')
-    writeFileSync(changelogPath, changelog.slice(0, idx) + section + '\n' + changelog.slice(idx))
+    const merged = mergeUnreleasedIntoVersion(changelog, { version: next, date, logLines })
+    writeFileSync(changelogPath, merged.text)
     pkg.version = next
     writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
     version = next
     bumped = true
-    say(`✓ --bump ${bump}: ${prevTag ?? '(无 tag)'} → ${next}（CHANGELOG 已生成 ${logLines.length} 条提交记录）`)
+    const changelogNote = merged.stats.consumedUnreleased
+      ? `并入 Unreleased 的 ${merged.stats.handwrittenBullets} 条手写条目，git 摘要 ${merged.stats.keptGitBullets} 条保留 / ${merged.stats.droppedGitBullets} 条已被手写覆盖`
+      : `CHANGELOG 已生成 ${logLines.length} 条提交记录（无 Unreleased 段）`
+    say(`✓ --bump ${bump}: ${prevTag ?? '(无 tag)'} → ${next}（${changelogNote}）`)
+    if (merged.stats.staleUnreleased > 0) {
+      say(
+        `! CHANGELOG 另有 ${merged.stats.staleUnreleased} 个未被消费的 ## [Unreleased] 段（归属不可推断，原样保留；需要时手工并入对应版本）`,
+      )
+    }
   }
 
   // 1. version from package.json

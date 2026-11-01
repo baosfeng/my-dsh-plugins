@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>通知 · 原型</title>
+<style>
+  :root {
+    --paper: #f6f4ef;
+    --ink: #1d1d1b;
+    --muted: #6e6a63;
+    --line: #e3ded5;
+    --line-strong: #d5cfc4;
+    --field: #fbfaf7;
+    --accent: #33544a;
+    --accent-soft: #e7ede9;
+    --card: #ffffff;
+    --white: #ffffff;
+    --faint: #918c82;
+    --chip: #efede7;
+    --chip-ink: #444a46;
+    --chip-hover: #e7e4dc;
+    --c-moss: #33544a;
+    --c-slate: #3a4a63;
+    --c-clay: #7a5344;
+    --c-ink: #3c3c39;
+    --focus-ring: #8f8a80;
+    --line-soft: #eeebe4;
+    --toggle-off: #d8d3c9;
+    --preview-note: #a09a90;
+    --card-line: #e8e3d9;
+    --card-text: #33312d;
+    --card-sep: #f0ece4;
+    --meta-label: #9a948a;
+    --meta-value: #43403a;
+    --radius: 12px;
+    --shadow: 0 14px 34px rgba(35, 31, 24, .07), 0 2px 6px rgba(35, 31, 24, .04);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    padding: 36px 24px 34px;
+    display: flex;
+    justify-content: center;
+    -webkit-font-smoothing: antialiased;
+  }
+  .shell { width: min(100%, 872px); }
+
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+  .eyebrow {
+    margin: 0 0 10px;
+    font-size: 12px;
+    letter-spacing: .14em;
+    color: var(--muted);
+  }
+  h1 {
+    margin: 0;
+    font-size: 32px;
+    line-height: 1.1;
+    font-weight: 650;
+    letter-spacing: -.02em;
+  }
+  .lede {
+    margin: 8px 0 0;
+    max-width: 430px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+  .count {
+    flex: none;
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--muted);
+    text-align: right;
+  }
+
+  .events {
+    display: flex;
+    gap: 26px;
+    margin: 28px 0 0;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .events::-webkit-scrollbar { display: none; }
+  .event {
+    position: relative;
+    flex: none;
+    min-height: 42px;
+    padding: 0 1px 12px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 13.5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .event::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 2px;
+    background: transparent;
+    border-radius: 2px;
+  }
+  .event[aria-selected="true"] { color: var(--ink); }
+  .event[aria-selected="true"]::after { background: var(--ink); }
+  .event:hover { color: var(--ink); }
+  .event:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 348px;
+    gap: 44px;
+    padding: 26px 0 4px;
+  }
+
+  .field { margin-bottom: 18px; }
+  .field label, .block-title {
+    display: block;
+    margin-bottom: 9px;
+    font-size: 12px;
+    letter-spacing: .04em;
+    color: var(--muted);
+  }
+  .label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .label-row label { margin-bottom: 9px; }
+  .hint { font-size: 11.5px; color: var(--faint); }
+
+  input[type="text"], textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--field);
+    border-radius: 9px;
+    padding: 12px 13px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.55;
+    transition: border-color .16s ease, background .16s ease;
+  }
+  input[type="text"] { height: 44px; }
+  textarea { min-height: 84px; resize: vertical; }
+  input[type="text"]:hover, textarea:hover { border-color: var(--line-strong); }
+  input[type="text"]:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--white);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .vars { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 22px; }
+  .vars-label { font-size: 11.5px; color: var(--faint); margin-right: 2px; }
+  .var {
+    min-height: 32px;
+    padding: 6px 9px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--chip);
+    color: var(--chip-ink);
+    font: 11.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    cursor: pointer;
+    transition: background .16s ease, border-color .16s ease;
+  }
+  .var:hover { background: var(--chip-hover); border-color: var(--line-strong); }
+  .var:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .delivery { border-top: 1px solid var(--line); padding-top: 16px; }
+  .delivery-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .delivery-head .block-title { margin-bottom: 9px; }
+  .channels { display: flex; flex-wrap: wrap; gap: 8px; }
+  .channel {
+    display: inline-flex; align-items: center; gap: 8px;
+    min-height: 44px; padding: 0 14px;
+    border: 1px solid var(--line); border-radius: 9px;
+    background: transparent; color: var(--muted);
+    font: inherit; font-size: 13px; cursor: pointer;
+    transition: background .16s ease, border-color .16s ease, color .16s ease;
+  }
+  .channel i {
+    width: 7px; height: 7px; border-radius: 50%;
+    border: 1.5px solid currentColor;
+  }
+  .channel[aria-pressed="true"] { color: var(--ink); border-color: var(--line-strong); background: var(--white); }
+  .channel[aria-pressed="true"] i { background: var(--accent); border-color: var(--accent); }
+  .channel:hover { border-color: var(--line-strong); }
+  .channel:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .preview-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin: 3px 0 12px; font-size: 12px; color: var(--muted);
+  }
+  .preview-note { font-size: 11px; color: var(--preview-note); }
+
+  .card {
+    width: 100%;
+    overflow: hidden;
+    background: var(--card);
+    border: 1px solid var(--card-line);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    transition: opacity .2s ease, filter .2s ease;
+  }
+  .card-head {
+    background: var(--c-moss);
+    padding: 16px 18px 15px;
+    transition: background .2s ease;
+  }
+  .card-head span {
+    display: block;
+    color: var(--white);
+    font-size: 14.5px;
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: .005em;
+    word-break: break-word;
+  }
+  .card-body { padding: 16px 18px 15px; }
+  .card-text {
+    margin: 0 0 14px;
+    font-size: 13px;
+    line-height: 1.68;
+    color: var(--card-text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .card-meta { border-top: 1px solid var(--card-sep); padding-top: 12px; display: grid; gap: 7px; }
+  .meta-row { display: flex; gap: 12px; font-size: 12px; line-height: 1.5; }
+  .meta-row dt { flex: none; width: 40px; color: var(--meta-label); }
+  .meta-row dd { margin: 0; color: var(--meta-value); }
+  .card-foot {
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--card-sep);
+    display: flex; align-items: center; justify-content: space-between;
+    color: var(--c-moss); font-size: 12px; font-weight: 550;
+  }
+  .card-foot .arrow { font-size: 13px; }
+
+  .theme-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; font-size: 11.5px; color: var(--muted); }
+  .dot {
+    width: 18px; height: 18px; padding: 0; border-radius: 50%;
+    border: 1px solid rgba(0,0,0,.08); cursor: pointer;
+  }
+  .dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .dot[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--focus-ring); }
+  .dot[data-tone="moss"] { background: var(--c-moss); }
+  .dot[data-tone="slate"] { background: var(--c-slate); }
+  .dot[data-tone="clay"] { background: var(--c-clay); }
+  .dot[data-tone="ink"] { background: var(--c-ink); }
+
+  .off-note {
+    display: none;
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--faint);
+  }
+  .preview.is-off .card { opacity: .45; filter: saturate(.4); }
+  .preview.is-off .off-note { display: block; }
+
+  .actions {
+    display: flex; align-items: center; justify-content: flex-end; gap: 18px;
+    margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line);
+  }
+  .saved { margin: 0; font-size: 12px; color: var(--accent); opacity: 0; transition: opacity .2s ease; }
+  .saved.show { opacity: 1; }
+  .btn {
+    min-height: 44px; padding: 0 22px;
+    border: 0; border-radius: 9px;
+    background: var(--ink); color: #fff;
+    font: inherit; font-size: 13.5px; font-weight: 550;
+    cursor: pointer;
+    transition: transform .12s ease, background .16s ease;
+  }
+  .btn:hover { background: #000; }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  @media (max-width: 760px) {
+    body { padding: 28px 18px 32px; }
+    h1 { font-size: 28px; }
+    .grid { grid-template-columns: 1fr; gap: 30px; }
+    .count { display: none; }
+    .events { gap: 20px; }
+    .preview { order: -1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <header class="head">
+      <div>
+        <p class="eyebrow">设置</p>
+        <h1>通知</h1>
+        <p class="lede">挑出真正值得打断你的时刻，写一句话，选择它落在哪里。</p>
+      </div>
+      <p class="count">5 个事件<br>3 个渠道</p>
+    </header>
+
+    <nav class="events" role="tablist" aria-label="通知事件">
+      <button class="event" role="tab" aria-selected="true" aria-controls="panel" data-event="ask">需要你回答</button>
+      <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="turn">回合完成</button>
+      <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="session">会话结束</button>
+      <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="subagent">子会话结束</button>
+      <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="error">运行出错</button>
+    </nav>
+
+    <main class="grid" id="panel" role="tabpanel">
+      <section class="compose" data-od-id="compose" aria-label="消息内容">
+        <div class="field">
+          <label for="title">标题</label>
+          <input id="title" type="text" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="field">
+          <div class="label-row">
+            <label for="body">正文</label>
+            <span class="hint">未识别的变量会原样保留</span>
+          </div>
+          <textarea id="body" spellcheck="false"></textarea>
+        </div>
+
+        <div class="vars" aria-label="插入变量">
+          <span class="vars-label">插入</span>
+          <button class="var" type="button" data-var="{{session.title}}">会话标题</button>
+          <button class="var" type="button" data-var="{{session.project}}">项目</button>
+          <button class="var" type="button" data-var="{{ask.question}}">提问</button>
+          <button class="var" type="button" data-var="{{turn.duration}}">耗时</button>
+          <button class="var" type="button" data-var="{{error.message}}">错误</button>
+          <button class="var" type="button" data-var="{{time.now}}">时间</button>
+        </div>
+
+        <div class="delivery">
+          <div class="delivery-head">
+            <span class="block-title">送达</span>
+            <span class="hint">点选即切换</span>
+          </div>
+          <div class="channels">
+            <button class="channel" type="button" data-channel="feishu" aria-pressed="true"><i></i>飞书群消息</button>
+            <button class="channel" type="button" data-channel="system" aria-pressed="true"><i></i>系统通知</button>
+            <button class="channel" type="button" data-channel="sound" aria-pressed="false"><i></i>提示音</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="preview" id="preview" aria-label="飞书卡片预览">
+        <div class="preview-head"><span>飞书 · 群消息</span><span class="preview-note">即时预览</span></div>
+        <article class="card">
+          <div class="card-head" id="cardHead"><span id="cardTitle"></span></div>
+          <div class="card-body">
+            <p class="card-text" id="cardText"></p>
+            <dl class="card-meta">
+              <div class="meta-row"><dt>会话</dt><dd id="metaSession"></dd></div>
+              <div class="meta-row"><dt>项目</dt><dd id="metaProject"></dd></div>
+              <div class="meta-row"><dt>时间</dt><dd id="metaTime"></dd></div>
+            </dl>
+            <div class="card-foot"><span>打开会话</span><span class="arrow">→</span></div>
+          </div>
+        </article>
+        <p class="off-note">飞书群消息已关闭；点一下「飞书群消息」即可恢复预览。</p>
+        <div class="theme-row">
+          <span>卡片颜色</span>
+          <button class="dot" type="button" data-color="#33544a" data-tone="moss" aria-label="墨绿" aria-pressed="true"></button>
+          <button class="dot" type="button" data-color="#3a4a63" data-tone="slate" aria-label="鸦青" aria-pressed="false"></button>
+          <button class="dot" type="button" data-color="#7a5344" data-tone="clay" aria-label="陶土" aria-pressed="false"></button>
+          <button class="dot" type="button" data-color="#3c3c39" data-tone="ink" aria-label="墨黑" aria-pressed="false"></button>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="actions">
+      <p class="saved" id="saved" role="status" aria-live="polite">已保存</p>
+      <button class="btn" id="save" type="button">保存更改</button>
+    </footer>
+  </div>
+
+<script>
+  const samples = {
+    sessionTitle: "支付面板重构",
+    project: "my-dsh-plugins",
+    askQuestion: "是否把「通知中心」整块删掉？",
+    duration: "3 分 12 秒",
+    error: "Webhook 请求超时",
+    time: "刚刚"
+  };
+
+  const events = {
+    ask: {
+      title: "{{session.title}} 需要你确认",
+      body: "我在等你确认：{{ask.question}}"
+    },
+    turn: {
+      title: "{{session.title}} 有新进展",
+      body: "这一回合用了 {{turn.duration}}，点开继续。"
+    },
+    session: {
+      title: "{{session.title}} 已结束",
+      body: "会话收尾完成。需要的话，下次从这里接着聊。"
+    },
+    subagent: {
+      title: "子任务已完成",
+      body: "「{{session.title}}」的子任务跑完了，用时 {{turn.duration}}。"
+    },
+    error: {
+      title: "{{session.title}} 运行失败",
+      body: "{{error.message}}，点开查看可以怎么处理。"
+    }
+  };
+
+  const state = { event: "ask", color: "#33544a", feishu: true };
+  const $ = (id) => document.getElementById(id);
+  const titleInput = $("title");
+  const bodyInput = $("body");
+  let lastField = titleInput;
+
+  const fill = (text) => text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (raw, key) => {
+    const map = {
+      "session.title": samples.sessionTitle,
+      "session.project": samples.project,
+      "ask.question": samples.askQuestion,
+      "turn.duration": samples.duration,
+      "error.message": samples.error,
+      "time.now": samples.time
+    };
+    return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : raw;
+  });
+
+  function render() {
+    $("cardTitle").textContent = fill(titleInput.value).trim() || "（还没有标题）";
+    $("cardText").textContent = fill(bodyInput.value).trim() || "（还没有正文）";
+    $("metaSession").textContent = samples.sessionTitle;
+    $("metaProject").textContent = samples.project;
+    $("metaTime").textContent = samples.time;
+    $("cardHead").style.background = state.color;
+    document.querySelectorAll(".dot").forEach((dot) => {
+      dot.setAttribute("aria-pressed", String(dot.dataset.color === state.color));
+    });
+    $("preview").classList.toggle("is-off", !state.feishu);
+  }
+
+  function selectEvent(key) {
+    state.event = key;
+    document.querySelectorAll(".event").forEach((tab) => {
+      tab.setAttribute("aria-selected", String(tab.dataset.event === key));
+    });
+    titleInput.value = events[key].title;
+    bodyInput.value = events[key].body;
+    render();
+  }
+
+  document.querySelectorAll(".event").forEach((tab) => {
+    tab.addEventListener("click", () => selectEvent(tab.dataset.event));
+  });
+
+  document.querySelectorAll(".var").forEach((button) => {
+    button.addEventListener("click", () => {
+      const field = lastField || titleInput;
+      const start = field.selectionStart ?? field.value.length;
+      const end = field.selectionEnd ?? start;
+      const token = button.dataset.var;
+      field.setRangeText(token, start, end, "end");
+      field.focus();
+      render();
+    });
+  });
+
+  [titleInput, bodyInput].forEach((field) => {
+    field.addEventListener("focus", () => { lastField = field; });
+    field.addEventListener("input", render);
+  });
+
+  document.querySelectorAll(".dot").forEach((dot) => {
+    dot.addEventListener("click", () => {
+      state.color = dot.dataset.color;
+      render();
+    });
+  });
+
+  document.querySelectorAll(".channel").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const next = chip.getAttribute("aria-pressed") !== "true";
+      chip.setAttribute("aria-pressed", String(next));
+      if (chip.dataset.channel === "feishu") state.feishu = next;
+      render();
+    });
+  });
+
+  $("save").addEventListener("click", () => {
+    const saved = $("saved");
+    saved.classList.add("show");
+    clearTimeout(window.__savedTimer);
+    window.__savedTimer = setTimeout(() => saved.classList.remove("show"), 1600);
+  });
+
+  selectEvent("ask");
+</script>
+</body>
+</html>

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 修复
 
 - fix(guardian): **依赖预检识别 npm 全局 dsh web 宿主安装目录**（#503 / #505）——host-inventory 增加第四级探测：从 `argv[1]` / `execPath` 向上找 `@deepseek-ai/dsh` 包根，或由 `DSH_HOST_ROOT` 直指（npm 全局 dsh web 的宿主包在 `<prefix>/lib/node_modules/@deepseek-ai/dsh/node_modules`）；安装目录清单只认 `@deepseek-ai/*`——宿主树里的 yaml / ws / zod 不算宿主供给，否则「插件真缺 yaml」会被掩盖成漏报；缺失项带 `missingHostNamespace` 标注，文案与判定同源，不再用前缀断言「由宿主供给、无需安装」（#503 的三重矛盾）。出口层拆出 `dep-hints.ts`，给 `dep-precheck.ts` 腾出 TS 尺寸余量。
+- fix(guardian): **桌面 App 形态的宿主清单按命名空间过滤**（#508）——asar 清单（`DSH_APP_RESOURCES` → `desktop-runtime.json`）原先只按文件名 `has()` 判定，宿主树里的 yaml / ws / zod 被当成宿主供给，导致桌面形态下插件真缺 yaml 时被判「由宿主供给、无需安装」而**静默漏报**。现在两条清单构建路径口径统一（只认 `@deepseek-ai/*`），并补了「两种形态同一断言」的用例防止再次分叉。
 
 ### 变更
 

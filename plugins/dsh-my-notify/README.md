@@ -16,8 +16,8 @@
 - **通道渲染**（server）：SSE 广播前统一渲染，系统通知与页面 toast 直接显示最终文本；webhook 按渠道组装 `text` / `markdown` / `post` / `interactive`。
 - **飞书卡片**（server）：interactive 卡片 schema 2.0 / 1.0，按事件配色、字段区、跳转按钮、@提醒，正文超限按 UTF-8 截断并带续行提示。
 - **呈现控制**（client）：系统通知、页面 toast（位置 / 时长 / 堆叠）、提示音（chime / drop / deep 三音色 + 音量 + 试听）；通知权限被拒时 toast 兜底。
-- **设置页 v2**（client）：五分区（呈现 / 触发与时机 / 文案与变量 / 渠道推送 / 高级与安全）；文案工作台支持 5 事件独立标题正文 + 变量库点击插入 + 五形态实时预览；渠道抽屉含卡片设计器与 JSON 双态。
-- **出站 webhook**（server）：多 webhook、按事件订阅、每条独立标题正文模板 / 卡片 / 重试；失败记录在设置页可见。
+- **设置页**（client）：单页「事件 → 文案 → 飞书卡片 → 送达」——五事件 tabs、标题/正文 + 常用变量 chips、飞书卡片实时预览与配色、送达开关；渠道 / 呈现 / 高级收进「更多设置」抽屉，渠道抽屉含卡片设计器与 JSON 双态。
+- **出站 webhook**（server）：多 webhook、按事件订阅、每条独立标题正文模板 / 卡片 / 重试；失败记录持久化在 `<profile>/notify-webhooks.json`（设置页不展示投递成败，排障走该文件）。
 - **远程触发**（server）：`POST /notify/api/trigger` 受 loopback 信任围栏 + 可选 token 保护，任何本机进程、cron、CI、其他插件都能推送通知。
 
 ## 配置
@@ -166,4 +166,4 @@ dsh plugin --profile web add link:<仓库路径>/plugins/dsh-my-notify
 
 ## 相关文档
 
-→ [通知提醒模块文档](../../docs/通知提醒/概述.md) · [CHANGELOG](CHANGELOG.md) · [面板 v2 原型](../../docs/原型重构/dsh-my-notify-v2.html)
+→ [通知提醒模块文档](../../docs/通知提醒/概述.md) · [CHANGELOG](CHANGELOG.md) · [设置页简版原型 v1](../../docs/原型重构/notify-simple-v1.html) · [面板 v2 原型（历史存档）](../../docs/原型重构/dsh-my-notify-v2.html)

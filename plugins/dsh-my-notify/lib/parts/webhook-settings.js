@@ -219,7 +219,7 @@ function WebhookSection({ webhooks, failures, onPatchWebhooks, apiToken }) {
       ),
     ),
     webhookDrawer({ editing, editorDraft, setEditorDraft, saveEditor, removeAt, testSend }),
-    webhookFailuresBlock(failures),
+    Array.isArray(failures) && failures.length > 0 ? webhookFailuresBlock(failures) : null,
   )
 }
 function webhookList(props) {

@@ -257,6 +257,59 @@ const strings = {
   accentBlue: () => (isZh() ? '蓝色' : 'Blue'),
   accentOrange: () => (isZh() ? '橙色' : 'Orange'),
   accentGrey: () => (isZh() ? '灰色' : 'Grey'),
+  panelKicker: () => (isZh() ? '设置' : 'Settings'),
+  panelTabLabel: () => (isZh() ? '通知' : 'Notifications'),
+  panelTitle: () => (isZh() ? '通知' : 'Notifications'),
+  panelLede: () =>
+    isZh()
+      ? '挑出真正值得打断你的时刻，写一句话，选择它落在哪里。'
+      : 'Pick the moments worth interrupting you, write one line, choose where it lands.',
+  panelMeta: (events, channels) =>
+    isZh() ? `${events} 个事件 · ${channels} 个渠道` : `${events} events · ${channels} channels`,
+  panelMore: () => (isZh() ? '更多设置' : 'More settings'),
+  panelSave: () => (isZh() ? '保存更改' : 'Save changes'),
+  panelResetCopy: () => (isZh() ? '恢复默认文案' : 'Reset copy'),
+  panelEventNotify: () => (isZh() ? '发送该事件通知' : 'Notify on this event'),
+  panelEventAlways: () => (isZh() ? '远程触发始终开启' : 'Remote triggers always notify'),
+  panelInsert: () => (isZh() ? '插入' : 'Insert'),
+  panelAllVars: () => (isZh() ? '全部变量' : 'All variables'),
+  panelDelivery: () => (isZh() ? '送达' : 'Delivery'),
+  panelDeliveryHint: () => (isZh() ? '点选切换；飞书点开配置' : 'Click to toggle; Feishu opens its channel'),
+  panelFeishu: () => (isZh() ? '飞书' : 'Feishu'),
+  panelSystem: () => (isZh() ? '系统通知' : 'System'),
+  panelToast: () => (isZh() ? '页面提示' : 'Toast'),
+  panelSound: () => (isZh() ? '提示音' : 'Sound'),
+  panelPreview: () => (isZh() ? '飞书 · 群消息' : 'Feishu · Group message'),
+  panelPreviewLive: () => (isZh() ? '即时预览' : 'Live preview'),
+  panelCardColor: () => (isZh() ? '卡片颜色' : 'Card colour'),
+  panelCardAuto: () => (isZh() ? '自动' : 'Auto'),
+  panelCardNoChannel: () =>
+    isZh()
+      ? '在「更多设置 → 渠道」里添加飞书卡片后可换色。'
+      : 'Add a Feishu card channel under More settings → Channels to recolour.',
+  panelCardHint: () =>
+    isZh()
+      ? '字段 / 按钮 / @ 在「更多设置 → 渠道」里改。'
+      : 'Fields, buttons and mentions live under More settings → Channels.',
+  panelMoreTitle: () => (isZh() ? '更多设置' : 'More settings'),
+  panelClose: () => (isZh() ? '关闭' : 'Close'),
+  panelFeishuOn: () => (isZh() ? '已配置' : 'Configured'),
+  panelFeishuOff: () => (isZh() ? '未配置' : 'Not configured'),
+  panelSystemHint: () => (isZh() ? '窗口在后台时提醒' : 'When the window is in the background'),
+  panelToastHint: () => (isZh() ? '应用在前台时轻提示' : 'A small heads-up while the app is focused'),
+  panelSoundHint: () => (isZh() ? '轻柔的完成音' : 'A soft completion sound'),
+  panelSubagentEnd: () => (isZh() ? '子会话结束' : 'Subagent finished'),
+  panelRemote: () => (isZh() ? '远程提示' : 'Remote notice'),
+  panelTemplateHint: () => (isZh() ? '未识别的变量原样保留' : 'Unknown variables stay literal'),
+  panelEventDesc: (key) => {
+    if (key === 'ask') return isZh() ? '我停下来等你回答时' : 'When I stop and wait for you'
+    if (key === 'approval') return isZh() ? '需要你批准某个操作时' : 'When an action needs your approval'
+    if (key === 'subagentEnd') return isZh() ? '子代理跑完时' : 'When a subagent finishes'
+    if (key === 'remote') return isZh() ? '外部钩子触发时' : 'When an external hook fires'
+    return isZh() ? '会话结束时提醒一次' : 'Once when the session ends'
+  },
+  panelNoVars: () => (isZh() ? '变量加载中…' : 'Loading variables…'),
+  panelPreviewEmpty: () => (isZh() ? '改标题或正文，卡片会即时更新' : 'Edit the title or body and the card follows'),
 }
 function eventLabelOf(key) {
   if (key === 'end') return strings.eventEnd()

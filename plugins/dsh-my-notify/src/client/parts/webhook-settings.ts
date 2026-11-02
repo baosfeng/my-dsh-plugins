@@ -259,7 +259,8 @@ function WebhookSection({ webhooks, failures, onPatchWebhooks, apiToken }: Webho
       ),
     ),
     webhookDrawer({ editing, editorDraft, setEditorDraft, saveEditor, removeAt, testSend }),
-    webhookFailuresBlock(failures),
+    // 失败记录按用户要求不进入设置页：只有调用方显式传入非空列表时才渲染（测试/诊断用）
+    Array.isArray(failures) && failures.length > 0 ? webhookFailuresBlock(failures) : null,
   )
 }
 

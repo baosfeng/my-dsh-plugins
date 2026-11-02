@@ -293,6 +293,59 @@ const strings = {
   accentBlue: () => (isZh() ? '蓝色' : 'Blue'),
   accentOrange: () => (isZh() ? '橙色' : 'Orange'),
   accentGrey: () => (isZh() ? '灰色' : 'Grey'),
+  panelKicker: () => (isZh() ? '设置' : 'Settings'),
+  panelTabLabel: () => (isZh() ? '通知' : 'Notifications'),
+  panelTitle: () => (isZh() ? '通知' : 'Notifications'),
+  panelLede: () =>
+    isZh()
+      ? '挑出真正值得打断你的时刻，写一句话，选择它落在哪里。'
+      : 'Pick the moments worth interrupting you, write one line, choose where it lands.',
+  panelMeta: (events, channels) =>
+    isZh() ? `${events} 个事件 · ${channels} 个渠道` : `${events} events · ${channels} channels`,
+  panelMore: () => (isZh() ? '更多设置' : 'More settings'),
+  panelSave: () => (isZh() ? '保存更改' : 'Save changes'),
+  panelResetCopy: () => (isZh() ? '恢复默认文案' : 'Reset copy'),
+  panelEventNotify: () => (isZh() ? '发送该事件通知' : 'Notify on this event'),
+  panelEventAlways: () => (isZh() ? '远程触发始终开启' : 'Remote triggers always notify'),
+  panelInsert: () => (isZh() ? '插入' : 'Insert'),
+  panelAllVars: () => (isZh() ? '全部变量' : 'All variables'),
+  panelDelivery: () => (isZh() ? '送达' : 'Delivery'),
+  panelDeliveryHint: () => (isZh() ? '点选切换；飞书点开配置' : 'Click to toggle; Feishu opens its channel'),
+  panelFeishu: () => (isZh() ? '飞书' : 'Feishu'),
+  panelSystem: () => (isZh() ? '系统通知' : 'System'),
+  panelToast: () => (isZh() ? '页面提示' : 'Toast'),
+  panelSound: () => (isZh() ? '提示音' : 'Sound'),
+  panelPreview: () => (isZh() ? '飞书 · 群消息' : 'Feishu · Group message'),
+  panelPreviewLive: () => (isZh() ? '即时预览' : 'Live preview'),
+  panelCardColor: () => (isZh() ? '卡片颜色' : 'Card colour'),
+  panelCardAuto: () => (isZh() ? '自动' : 'Auto'),
+  panelCardNoChannel: () =>
+    isZh()
+      ? '在「更多设置 → 渠道」里添加飞书卡片后可换色。'
+      : 'Add a Feishu card channel under More settings → Channels to recolour.',
+  panelCardHint: () =>
+    isZh()
+      ? '字段 / 按钮 / @ 在「更多设置 → 渠道」里改。'
+      : 'Fields, buttons and mentions live under More settings → Channels.',
+  panelMoreTitle: () => (isZh() ? '更多设置' : 'More settings'),
+  panelClose: () => (isZh() ? '关闭' : 'Close'),
+  panelFeishuOn: () => (isZh() ? '已配置' : 'Configured'),
+  panelFeishuOff: () => (isZh() ? '未配置' : 'Not configured'),
+  panelSystemHint: () => (isZh() ? '窗口在后台时提醒' : 'When the window is in the background'),
+  panelToastHint: () => (isZh() ? '应用在前台时轻提示' : 'A small heads-up while the app is focused'),
+  panelSoundHint: () => (isZh() ? '轻柔的完成音' : 'A soft completion sound'),
+  panelSubagentEnd: () => (isZh() ? '子会话结束' : 'Subagent finished'),
+  panelRemote: () => (isZh() ? '远程提示' : 'Remote notice'),
+  panelTemplateHint: () => (isZh() ? '未识别的变量原样保留' : 'Unknown variables stay literal'),
+  panelEventDesc: (key) => {
+    if (key === 'ask') return isZh() ? '我停下来等你回答时' : 'When I stop and wait for you'
+    if (key === 'approval') return isZh() ? '需要你批准某个操作时' : 'When an action needs your approval'
+    if (key === 'subagentEnd') return isZh() ? '子代理跑完时' : 'When a subagent finishes'
+    if (key === 'remote') return isZh() ? '外部钩子触发时' : 'When an external hook fires'
+    return isZh() ? '会话结束时提醒一次' : 'Once when the session ends'
+  },
+  panelNoVars: () => (isZh() ? '变量加载中…' : 'Loading variables…'),
+  panelPreviewEmpty: () => (isZh() ? '改标题或正文，卡片会即时更新' : 'Edit the title or body and the card follows'),
 }
 function eventLabelOf(key) {
   if (key === 'end') return strings.eventEnd()
@@ -1399,7 +1452,37 @@ exports.apply = function apply(ctx) {
 
     // ── 飞书卡片渲染 + 文案数据模型（纯逻辑）──────────────────────────
     'use strict'
-const CARD_PREVIEW_STYLES = `.dsh-my-notify-fcard{--fcard-bg:#ffffff;--fcard-fg:#1f2329;--fcard-fg2:#646a73;--fcard-line:#dee0e3;--fcard-btn:#2c62e0;--fcard-green:#1e7a12;--fcard-blue:#2c62e0;--fcard-orange:#a35a00;--fcard-grey:#5c626b;--fcard-accent:var(--fcard-grey);background:var(--fcard-bg);color:var(--fcard-fg);border:1px solid var(--fcard-line);border-radius:12px;overflow:hidden;box-shadow:var(--dsw-shadow-lv2);font:var(--dsw-font-xxs-12);line-height:1.6;max-width:340px}.dsh-my-notify-fcard[data-accent="green"]{--fcard-accent:var(--fcard-green)}.dsh-my-notify-fcard[data-accent="blue"]{--fcard-accent:var(--fcard-blue)}.dsh-my-notify-fcard[data-accent="orange"]{--fcard-accent:var(--fcard-orange)}.dsh-my-notify-fcard[data-accent="grey"]{--fcard-accent:var(--fcard-grey)}.dsh-my-notify-fcard-hd{display:flex;align-items:center;gap:6px;padding:6px 12px;border-top:3px solid var(--fcard-accent);background:color-mix(in srgb, var(--fcard-accent) 8%, var(--fcard-bg));min-height:24px}.dsh-my-notify-fcard-mark{width:8px;height:8px;border-radius:50%;background:var(--fcard-accent);flex:none}.dsh-my-notify-fcard-app{font:var(--dsw-font-xxs-12);color:var(--fcard-fg2)}.dsh-my-notify-fcard-title{padding:10px 12px 0;font:var(--dsw-font-s-strong-14);color:var(--fcard-fg)}.dsh-my-notify-fcard-bd{display:flex;flex-direction:column;gap:8px;padding:8px 12px 12px}.dsh-my-notify-fcard-p{color:var(--fcard-fg);word-break:break-word}.dsh-my-notify-fcard-p strong{font-weight:600}.dsh-my-notify-fcard-at{color:var(--fcard-btn);margin-right:4px}.dsh-my-notify-fcard-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}.dsh-my-notify-fcard-field{display:flex;flex-direction:column;gap:1px;min-width:0}.dsh-my-notify-fcard-field-label{color:var(--fcard-fg2);font:var(--dsw-font-xxs-12)}.dsh-my-notify-fcard-field-value{color:var(--fcard-fg);font:var(--dsw-font-xxs-12);word-break:break-word}.dsh-my-notify-fcard-acts{display:flex;flex-wrap:wrap;gap:6px}.dsh-my-notify-fcard-btn{display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 14px;border-radius:4px;border:1px solid var(--fcard-line);background:var(--fcard-bg);color:var(--fcard-fg);font:var(--dsw-font-xxs-12)}.dsh-my-notify-fcard-btn[data-primary="true"]{border-color:var(--fcard-btn);background:var(--fcard-btn);color:var(--fcard-bg)}.dsh-my-notify-fcard-note{font:var(--dsw-font-xxs-12);color:var(--fcard-fg2);border-top:1px solid var(--fcard-line);padding-top:6px}.dsh-my-notify-fcard-hr{height:1px;background:var(--fcard-line)}
+const CARD_PREVIEW_STYLES = `
+.dsh-my-notify-fcard{--fcard-bg:#ffffff;--fcard-fg:#1f2329;--fcard-fg2:#646a73;--fcard-line:#e8e3d9;--fcard-btn:#2c62e0;--fcard-accent:#3f4448;width:100%;max-width:none;background:var(--fcard-bg);color:var(--fcard-fg);border:1px solid var(--fcard-line);border-radius:14px;overflow:hidden;box-shadow:0 14px 34px rgba(35,31,24,.07),0 2px 6px rgba(35,31,24,.04);font:var(--dsw-font-xxs-12);line-height:1.6}
+.dsh-my-notify-fcard[data-accent="green"]{--fcard-accent:#33544a}
+.dsh-my-notify-fcard[data-accent="blue"]{--fcard-accent:#2f5570}
+.dsh-my-notify-fcard[data-accent="wathet"]{--fcard-accent:#3f657e}
+.dsh-my-notify-fcard[data-accent="turquoise"]{--fcard-accent:#2c6660}
+.dsh-my-notify-fcard[data-accent="yellow"]{--fcard-accent:#736224}
+.dsh-my-notify-fcard[data-accent="orange"]{--fcard-accent:#7a4f2e}
+.dsh-my-notify-fcard[data-accent="red"]{--fcard-accent:#7d3b36}
+.dsh-my-notify-fcard[data-accent="carmine"]{--fcard-accent:#77384c}
+.dsh-my-notify-fcard[data-accent="violet"]{--fcard-accent:#55416b}
+.dsh-my-notify-fcard[data-accent="purple"]{--fcard-accent:#5a3f68}
+.dsh-my-notify-fcard[data-accent="indigo"]{--fcard-accent:#3d4770}
+.dsh-my-notify-fcard[data-accent="grey"]{--fcard-accent:#3f4448}
+.dsh-my-notify-fcard[data-accent="default"]{--fcard-accent:#3c3c39}
+.dsh-my-notify-fcard-hd{display:flex;flex-direction:column;gap:4px;padding:14px 16px 13px;background:var(--fcard-accent)}
+.dsh-my-notify-fcard-app{color:rgba(255,255,255,.72);font:var(--dsw-font-xxs-12);letter-spacing:.04em}
+.dsh-my-notify-fcard-title{color:#fff;font:var(--dsw-font-s-strong-14);line-height:1.5;word-break:break-word}
+.dsh-my-notify-fcard-bd{display:flex;flex-direction:column;gap:10px;padding:14px 16px}
+.dsh-my-notify-fcard-p{color:var(--fcard-fg);font:var(--dsw-font-xs-13);line-height:1.65;word-break:break-word}
+.dsh-my-notify-fcard-p strong{font-weight:600}
+.dsh-my-notify-fcard-at{color:var(--fcard-btn);margin-right:4px}
+.dsh-my-notify-fcard-fields{display:grid;grid-template-columns:1fr;gap:6px;padding-top:10px;border-top:1px solid #f0ece4}
+.dsh-my-notify-fcard-field{display:flex;align-items:baseline;gap:12px;min-width:0}
+.dsh-my-notify-fcard-field-label{flex:none;width:56px;color:var(--fcard-fg2);font:var(--dsw-font-xxs-12)}
+.dsh-my-notify-fcard-field-value{color:#43403a;font:var(--dsw-font-xxs-12);word-break:break-word}
+.dsh-my-notify-fcard-acts{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding-top:10px;border-top:1px solid #f0ece4}
+.dsh-my-notify-fcard-btn{color:var(--fcard-accent);font:var(--dsw-font-xxs-strong-12);cursor:default}
+.dsh-my-notify-fcard-btn[data-primary="true"]{font:var(--dsw-font-xxs-strong-12)}
+.dsh-my-notify-fcard-note{color:var(--fcard-fg2);font:var(--dsw-font-xxxs-11);line-height:1.6}
+.dsh-my-notify-fcard-hr{height:1px;background:#f0ece4}
 `
 const CARD_PALETTE = {
   '--fcard-bg': '#ffffff',
@@ -1407,11 +1490,22 @@ const CARD_PALETTE = {
   '--fcard-fg2': '#646a73',
   '--fcard-line': '#dee0e3',
   '--fcard-btn': '#2c62e0',
-  '--fcard-green': '#1e7a12',
-  '--fcard-blue': '#2c62e0',
-  '--fcard-orange': '#a35a00',
-  '--fcard-grey': '#5c626b',
 }
+const CARD_COLORS = [
+  'blue',
+  'wathet',
+  'turquoise',
+  'green',
+  'yellow',
+  'orange',
+  'red',
+  'carmine',
+  'violet',
+  'purple',
+  'indigo',
+  'grey',
+  'default',
+]
 const CARD_ACCENTS = [
   { value: 'green', label: () => strings.accentGreen() },
   { value: 'blue', label: () => strings.accentBlue() },
@@ -1440,8 +1534,7 @@ function escapeHtml(value) {
 }
 function cardAccentOf(card) {
   const template = card !== null && typeof card === 'object' ? card.header?.template : undefined
-  const hit = CARD_ACCENTS.find((option) => option.value === template)
-  return hit !== undefined ? hit.value : 'grey'
+  return typeof template === 'string' && CARD_COLORS.includes(template) ? template : 'grey'
 }
 function cardTitleOf(card) {
   const title = card !== null && typeof card === 'object' ? card.header?.title?.content : undefined
@@ -1484,7 +1577,7 @@ function cardActionHtml(element) {
       const label = typeof action?.text?.content === 'string' ? action.text.content : ''
       if (label === '') return ''
       const primary = action.type === 'primary' ? 'true' : 'false'
-      return `<span class="dsh-my-notify-fcard-btn" data-primary="${primary}">${escapeHtml(label)}</span>`
+      return `<span class="dsh-my-notify-fcard-btn" data-primary="${primary}">${escapeHtml(label)} →</span>`
     })
     .join('')
   return buttons === '' ? '' : `<div class="dsh-my-notify-fcard-acts">${buttons}</div>`
@@ -1515,10 +1608,9 @@ function renderFeishuCardHtml(card) {
   const titleHtml = title !== '' ? `<div class="dsh-my-notify-fcard-title">${escapeHtml(title)}</div>` : ''
   return (
     `<div class="dsh-my-notify-fcard" data-accent="${accent}" role="img" aria-label="${escapeHtml(title)}">` +
-    `<div class="dsh-my-notify-fcard-hd"><span class="dsh-my-notify-fcard-mark"></span>` +
-    `<span class="dsh-my-notify-fcard-app">${escapeHtml(strings.fcardApp())}</span></div>` +
+    `<div class="dsh-my-notify-fcard-hd"><span class="dsh-my-notify-fcard-app">${escapeHtml(strings.fcardApp())}</span>` +
     titleHtml +
-    `<div class="dsh-my-notify-fcard-bd">${body}</div></div>`
+    `</div><div class="dsh-my-notify-fcard-bd">${body}</div></div>`
   )
 }
 function cardMetaOf(card) {
@@ -3007,7 +3099,7 @@ function WebhookSection({ webhooks, failures, onPatchWebhooks, apiToken }) {
       ),
     ),
     webhookDrawer({ editing, editorDraft, setEditorDraft, saveEditor, removeAt, testSend }),
-    webhookFailuresBlock(failures),
+    Array.isArray(failures) && failures.length > 0 ? webhookFailuresBlock(failures) : null,
   )
 }
 function webhookList(props) {
@@ -3704,116 +3796,780 @@ function secureImportCard(ctx) {
   )
 }
 
+
+    // ── 简版面板（事件 → 文案 → 飞书卡片 → 送达）──────────────────────
     'use strict'
-const WORKBENCH_STYLES = `.dsh-my-notify-settings{container-type:inline-size;display:flex;flex-direction:column;gap:8px;padding:10px;min-height:0;height:100%}/* 顶栏：标题 + 视图分段 + 状态 + 主操作 */.dsh-my-notify-tool{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dsh-my-notify-tool h1{margin:0;font:var(--dsw-font-s-strong-14);color:var(--dsw-alias-label-primary)}.dsh-my-notify-views{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-interactive-bg)}.dsh-my-notify-view{height:26px;padding:0 10px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);cursor:pointer}.dsh-my-notify-view:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-view[aria-selected="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xs-strong-13)}.dsh-my-notify-tool .dsh-my-notify-actions{margin-left:auto}/* 文案工作台：三列 + 底部预览带 */.dsh-my-notify-wb{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}.dsh-my-notify-cols{display:grid;grid-template-columns:168px minmax(0,1fr) 208px;gap:8px;flex:1;min-height:0}.dsh-my-notify-col{min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px}.dsh-my-notify-col-hd{display:flex;align-items:center;gap:6px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);padding:2px 4px}.dsh-my-notify-panel{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);padding:8px}/* 事件列表 */.dsh-my-notify-evlist{display:flex;flex-direction:column;gap:3px}.dsh-my-notify-evbtn{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px;align-items:start;width:100%;padding:7px 8px;border:1px solid transparent;border-radius:8px;background:transparent;text-align:left;cursor:pointer;color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-evbtn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-evbtn[aria-current="true"]{background:var(--dsw-alias-interactive-bg);border-color:var(--dsw-alias-border-l2)}.dsh-my-notify-evd{width:7px;height:7px;border-radius:50%;margin-top:4px;background:var(--dsw-alias-label-tertiary)}.dsh-my-notify-evd[data-kind="ok"]{background:var(--dsw-alias-state-success-primary)}.dsh-my-notify-evd[data-kind="warn"]{background:var(--dsw-alias-state-warn-primary)}.dsh-my-notify-evd[data-kind="err"]{background:var(--dsw-alias-state-error-primary)}.dsh-my-notify-evname{font:var(--dsw-font-xs-strong-13)}.dsh-my-notify-evmeta{display:block;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);margin-top:1px}/* 编辑器 */.dsh-my-notify-ed{display:flex;flex-direction:column;gap:9px}.dsh-my-notify-ed-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dsh-my-notify-ed-hd h2{margin:0;font:var(--dsw-font-s-strong-14);color:var(--dsw-alias-label-primary)}.dsh-my-notify-lbl{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);margin-bottom:3px}.dsh-my-notify-inp2{width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-ta2{width:100%;min-height:96px;padding:7px 9px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);line-height:1.65;resize:vertical}.dsh-my-notify-errbox{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;border:1px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);font:var(--dsw-font-xxs-12)}/* 变量树 */.dsh-my-notify-vars{display:flex;flex-direction:column;gap:7px}.dsh-my-notify-varq{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-vgroup{display:flex;flex-direction:column;gap:4px}.dsh-my-notify-vgroup-hd{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);padding:2px 3px}.dsh-my-notify-vlist{display:flex;flex-wrap:wrap;gap:4px}.dsh-my-notify-vchip{display:inline-flex;align-items:center;height:24px;padding:0 6px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dsh-my-notify-vchip:hover{border-color:var(--dsw-alias-accent);color:var(--dsw-alias-accent)}.dsh-my-notify-vchip em{font-style:normal;color:var(--dsw-alias-label-tertiary);margin-left:4px}/* 五形态预览带 */.dsh-my-notify-band{border-top:1px solid var(--dsw-alias-border-l2);padding-top:7px;display:flex;flex-direction:column;gap:6px}.dsh-my-notify-band-hd{display:flex;align-items:center;gap:8px}.dsh-my-notify-band-cols{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:8px;overflow-x:auto;padding-bottom:2px}.dsh-my-notify-band[data-open="false"] .dsh-my-notify-band-cols{display:none}.dsh-my-notify-pcol{display:flex;flex-direction:column;gap:4px;min-width:0}.dsh-my-notify-pcol-hd{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}.dsh-my-notify-pstage{min-height:96px;display:flex;align-items:flex-start;justify-content:center;padding:6px;border-radius:8px;background:var(--dsw-alias-bg-layer-1);border:1px dashed var(--dsw-alias-border-l2);overflow:auto}/* 渠道视图：列表 + 详情 */.dsh-my-notify-chview{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:8px;flex:1;min-height:0}.dsh-my-notify-chlist{display:flex;flex-direction:column;gap:7px}.dsh-my-notify-chrow{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:9px;align-items:center;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);text-align:left;width:100%;cursor:pointer}.dsh-my-notify-chrow:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-chrow[aria-current="true"]{border-color:var(--dsw-alias-accent)}.dsh-my-notify-detail{display:flex;flex-direction:column;gap:9px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);overflow:auto;min-height:0}/* 卡片（呈现 / 高级 / 失败记录） */.dsh-my-notify-pane{display:flex;flex-direction:column;gap:9px}.dsh-my-notify-pane-hd{display:flex;align-items:baseline;gap:8px}.dsh-my-notify-pane-hd h2{margin:0;font:var(--dsw-font-s-strong-14);color:var(--dsw-alias-label-primary)}.dsh-my-notify-card{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.dsh-my-notify-card-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dsh-my-notify-card-hd h3{margin:0;font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}.dsh-my-notify-card-bd{display:flex;flex-direction:column;gap:8px}.dsh-my-notify-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:9px}.dsh-my-notify-cardbox{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.dsh-my-notify-cardbox h3{margin:0;font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}.dsh-my-notify-frow{display:grid;grid-template-columns:118px minmax(0,1fr);gap:9px;align-items:center}.dsh-my-notify-srow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:8px;background:var(--dsw-alias-bg-layer-1)}/* 窄容器（设置页 tab 内容区 <860px）：变量树进抽屉、事件改下拉、预览带 3 列 */@container (max-width: 859px){.dsh-my-notify-cols{grid-template-columns:minmax(0,1fr)}.dsh-my-notify-col-evlist,.dsh-my-notify-col-vars{display:none}.dsh-my-notify-evselect{display:block}.dsh-my-notify-band-cols{grid-template-columns:repeat(3,minmax(150px,1fr))}.dsh-my-notify-chview{grid-template-columns:minmax(0,1fr)}.dsh-my-notify-chrow{min-height:44px}}.dsh-my-notify-evselect{display:none;height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-drawer-vars{position:absolute;right:0;top:0;bottom:0;width:min(260px,80%);z-index:5;background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l2);padding:10px;overflow:auto;box-shadow:var(--dsw-shadow-lv2)}.dsh-my-notify-inp2,.dsh-my-notify-ta2,.dsh-my-notify-varq,.dsh-my-notify-evselect{min-height:44px}}/* 行控件（开关 / 输入 / 下拉 / 按钮 / 徽标）——沿用组件类名，尺寸按工作台密度 */.dsh-my-notify-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;background:var(--dsw-alias-bg-layer-1)}.dsh-my-notify-info{display:flex;flex-direction:column;gap:2px;min-width:0}.dsh-my-notify-label{font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}.dsh-my-notify-hint{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);line-height:1.55}.dsh-my-notify-toggle{flex:none;min-width:36px;height:20px;border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--dsw-alias-label-tertiary) 30%, transparent);position:relative;cursor:pointer;transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}.dsh-my-notify-toggle[data-on="true"]{background:var(--dsw-alias-state-success-primary);border-color:transparent}.dsh-my-notify-toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-primary);transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out)}.dsh-my-notify-toggle[data-on="true"]::after{transform:translateX(14px);background:var(--dsw-alias-label-primary-foreground)}.dsh-my-notify-input{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);min-width:0}.dsh-my-notify-select{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-range{flex:none;width:120px;accent-color:var(--dsw-alias-state-success-primary);cursor:pointer}.dsh-my-notify-range-value{flex:none;min-width:38px;text-align:right;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary)}.dsh-my-notify-actions{display:flex;align-items:center;gap:6px}.dsh-my-notify-btn{min-height:26px;padding:0 10px;border-radius:7px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-btn-primary{border-color:transparent;background:var(--dsw-alias-accent);color:var(--dsw-alias-label-primary-foreground)}.dsh-my-notify-btn-danger{color:var(--dsw-alias-state-error-primary)}.dsh-my-notify-saved{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-success-primary)}.dsh-my-notify-error{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}.dsh-my-notify-status{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}.dsh-my-notify-badge{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg)}.dsh-my-notify-badge[data-kind="ok"]{color:var(--dsw-alias-state-success-primary)}.dsh-my-notify-badge[data-kind="warn"]{color:var(--dsw-alias-state-warn-primary)}.dsh-my-notify-badge[data-kind="err"]{color:var(--dsw-alias-state-error-primary)}.dsh-my-notify-badge[data-kind="accent"]{color:var(--dsw-alias-accent)}.dsh-my-notify-grow{flex:1;min-width:0}.dsh-my-notify-divider{height:1px;background:var(--dsw-alias-border-l2)}.dsh-my-notify-segmented{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-interactive-bg);flex-wrap:wrap}.dsh-my-notify-seg{min-height:24px;padding:0 8px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);cursor:pointer}.dsh-my-notify-seg[aria-selected="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xs-strong-13)}/* 触达：窄容器 ≥44，桌面 ≥24 */@media (max-width: 900px){.dsh-my-notify-toggle{min-height:44px}/* 预览带内三种非飞书形态（HTML 由 copy-model 的 renderPreviewFrame 产出） */.dsh-my-notify-pv-sys{display:flex;align-items:flex-start;gap:8px;width:100%;padding:8px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2)}.dsh-my-notify-pv-sys-ico{display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;flex:none;background:var(--dsw-alias-accent);color:var(--dsw-alias-label-primary-foreground);font:var(--dsw-font-xxxs-strong-11)}.dsh-my-notify-pv-sys-title{font:var(--dsw-font-xxs-strong-12);color:var(--dsw-alias-label-primary);-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis}.dsh-my-notify-pv-sys-body{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.55;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;word-break:break-word}.dsh-my-notify-pv-sys-time{font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary);flex:none}.dsh-my-notify-pv-toast{display:flex;align-items:flex-start;gap:8px;width:100%;padding:8px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2)}.dsh-my-notify-pv-toast-bar{width:3px;align-self:stretch;border-radius:2px;flex:none;background:var(--dsw-alias-accent)}.dsh-my-notify-pv-wx{width:100%;padding:8px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2)}.dsh-my-notify-pv-wx-hd{display:flex;align-items:center;gap:6px;font:var(--dsw-font-xxs-strong-12);color:var(--dsw-alias-label-primary)}.dsh-my-notify-pv-wx-hd i{width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-accent)}.dsh-my-notify-pv-wx-bd{margin-top:5px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.55;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;word-break:break-word}/* 变量树：名字 12 / 说明 11（名字不得比说明小），超长省略 + title 全名 */.dsh-my-notify-vchip{gap:3px}.dsh-my-notify-vname{font:var(--dsw-font-xxs-strong-12);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.dsh-my-notify-vdesc{font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}@container (max-width: 859px){.dsh-my-notify-varq{min-height:44px}}
+const PANEL_STYLES = `
+.dsh-my-notify-panel{container-type:inline-size;display:flex;flex-direction:column;height:100%;min-height:0;padding:2px 2px 0;color:var(--dsw-alias-label-primary)}
+.dsh-my-notify-p-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding:2px 2px 0}
+.dsh-my-notify-p-kicker{margin:0 0 6px;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);letter-spacing:.14em}
+.dsh-my-notify-p-title{margin:0;font:var(--dsw-font-l-20);letter-spacing:-.01em}
+.dsh-my-notify-p-lede{margin:6px 0 0;max-width:46ch;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);line-height:1.7}
+.dsh-my-notify-p-head-side{display:flex;flex:none;flex-direction:column;align-items:flex-end;gap:8px}
+.dsh-my-notify-p-meta{margin:0;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);line-height:1.7;text-align:right}
+.dsh-my-notify-p-ghost{min-height:36px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);cursor:pointer}
+.dsh-my-notify-p-ghost:hover{border-color:var(--dsw-alias-border-l3);color:var(--dsw-alias-label-primary)}
+.dsh-my-notify-p-ghost:focus-visible{outline:2px solid var(--dsw-alias-accent);outline-offset:3px}
+.dsh-my-notify-p-tabs{display:flex;gap:26px;margin:22px 2px 0;border-bottom:1px solid var(--dsw-alias-border-l1);overflow-x:auto;scrollbar-width:none}
+.dsh-my-notify-p-tabs::-webkit-scrollbar{display:none}
+.dsh-my-notify-p-tab{position:relative;flex:none;min-height:44px;padding:0 1px 11px;border:0;background:none;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);cursor:pointer;white-space:nowrap}
+.dsh-my-notify-p-tab::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;border-radius:2px;background:transparent}
+.dsh-my-notify-p-tab[aria-selected="true"]{color:var(--dsw-alias-label-primary)}
+.dsh-my-notify-p-tab[aria-selected="true"]::after{background:var(--dsw-alias-label-primary)}
+.dsh-my-notify-p-tab:hover{color:var(--dsw-alias-label-primary)}
+.dsh-my-notify-p-tab:focus-visible{outline:2px solid var(--dsw-alias-accent);outline-offset:4px;border-radius:4px}
+.dsh-my-notify-p-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:28px;flex:1;min-height:0;padding:20px 2px 0}
+.dsh-my-notify-p-compose{min-width:0;min-height:0;overflow:auto;padding-right:4px}
+.dsh-my-notify-p-preview{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:auto}
+.dsh-my-notify-p-compose-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}
+.dsh-my-notify-p-event{margin:0;font:var(--dsw-font-s-strong-14)}
+.dsh-my-notify-p-event-sub{margin:3px 0 0;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12)}
+.dsh-my-notify-p-switch{display:inline-flex;align-items:center;gap:9px;min-height:44px;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);cursor:pointer}
+.dsh-my-notify-p-switch[data-static="true"]{cursor:default;color:var(--dsw-alias-label-tertiary)}
+.dsh-my-notify-p-switch input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.dsh-my-notify-p-switch i{display:block;width:38px;height:22px;border-radius:999px;background:var(--dsw-alias-border-l3);transition:background .16s ease}
+.dsh-my-notify-p-switch i::after{content:"";display:block;width:18px;height:18px;margin:2px;border-radius:50%;background:var(--dsw-alias-switch-thumb);box-shadow:0 1px 2px rgba(0,0,0,.18);transition:transform .16s ease}
+.dsh-my-notify-p-switch input:checked+i{background:var(--dsw-alias-accent)}
+.dsh-my-notify-p-switch input:checked+i::after{transform:translateX(16px)}
+.dsh-my-notify-p-switch input:focus-visible+i{outline:2px solid var(--dsw-alias-accent);outline-offset:3px}
+.dsh-my-notify-p-field{margin-bottom:14px}
+.dsh-my-notify-p-label-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}
+.dsh-my-notify-p-label{display:block;margin-bottom:8px;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12)}
+.dsh-my-notify-p-label-row .dsh-my-notify-p-label{margin-bottom:0}
+.dsh-my-notify-p-hint{color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxxs-11)}
+.dsh-my-notify-p-input,.dsh-my-notify-p-textarea{width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:var(--dsw-font-s-14);padding:0 12px;transition:border-color .16s ease,box-shadow .16s ease}
+.dsh-my-notify-p-input{height:44px}
+.dsh-my-notify-p-textarea{min-height:80px;padding:10px 12px;resize:vertical;font:var(--dsw-font-xs-13);line-height:1.65}
+.dsh-my-notify-p-input:hover,.dsh-my-notify-p-textarea:hover{border-color:var(--dsw-alias-border-l3)}
+.dsh-my-notify-p-input:focus,.dsh-my-notify-p-textarea:focus{outline:none;border-color:var(--dsw-alias-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-accent) 16%,transparent)}
+.dsh-my-notify-p-vars{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px}
+.dsh-my-notify-p-vars-label{color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);margin-right:2px}
+.dsh-my-notify-p-var{min-height:36px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);cursor:pointer;transition:border-color .16s ease,color .16s ease}
+.dsh-my-notify-p-var:hover{border-color:var(--dsw-alias-border-l3);color:var(--dsw-alias-label-primary)}
+.dsh-my-notify-p-var:focus-visible{outline:2px solid var(--dsw-alias-accent);outline-offset:2px}
+.dsh-my-notify-p-var-more{min-height:36px;padding:0 6px;border:0;background:none;color:var(--dsw-alias-link);font:var(--dsw-font-xxs-12);cursor:pointer}
+.dsh-my-notify-p-var-sheet{margin:-8px 0 18px;max-height:220px;overflow:auto;padding:12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1)}
+.dsh-my-notify-p-delivery{margin-top:2px;padding-top:12px;border-top:1px solid var(--dsw-alias-border-l1)}
+.dsh-my-notify-p-delivery-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:9px}
+.dsh-my-notify-p-chips{display:flex;flex-wrap:wrap;gap:8px}
+.dsh-my-notify-p-chip{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:transparent;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);cursor:pointer;transition:background .16s ease,border-color .16s ease,color .16s ease}
+.dsh-my-notify-p-chip i{width:7px;height:7px;border-radius:50%;border:1.5px solid currentColor}
+.dsh-my-notify-p-chip[aria-pressed="true"]{border-color:var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.dsh-my-notify-p-chip[aria-pressed="true"] i{background:var(--dsw-alias-accent);border-color:var(--dsw-alias-accent)}
+.dsh-my-notify-p-chip:hover{border-color:var(--dsw-alias-border-l3)}
+.dsh-my-notify-p-chip:focus-visible{outline:2px solid var(--dsw-alias-accent);outline-offset:3px}
+.dsh-my-notify-p-ask{margin-top:14px;padding-top:14px;border-top:1px solid var(--dsw-alias-border-l1)}
+.dsh-my-notify-p-ask-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.dsh-my-notify-p-seg{min-height:36px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:transparent;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);cursor:pointer}
+.dsh-my-notify-p-seg[aria-selected="true"]{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-border-l3);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-strong-12)}
+.dsh-my-notify-p-preview-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 10px;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12)}
+.dsh-my-notify-p-card-stage{width:100%}
+.dsh-my-notify-p-card-skeleton{min-height:280px;display:grid;place-items:center;padding:16px;border:1px dashed var(--dsw-alias-border-l2);border-radius:14px;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);text-align:center}
+.dsh-my-notify-p-preview-status{margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);line-height:1.6}
+.dsh-my-notify-p-preview-status[data-kind="error"]{color:var(--dsw-alias-state-error-primary)}
+.dsh-my-notify-p-dots{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:14px;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12)}
+.dsh-my-notify-p-dot{width:20px;height:20px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:50%;cursor:pointer}
+.dsh-my-notify-p-dot[data-tone="green"]{background:#33544a}
+.dsh-my-notify-p-dot[data-tone="blue"]{background:#3a4a63}
+.dsh-my-notify-p-dot[data-tone="orange"]{background:#7a5344}
+.dsh-my-notify-p-dot[data-tone="grey"]{background:#3c3c39}
+.dsh-my-notify-p-dot[aria-pressed="true"]{box-shadow:0 0 0 2px var(--dsw-alias-bg-layer-1),0 0 0 3.5px var(--dsw-alias-label-tertiary)}
+.dsh-my-notify-p-dot:focus-visible{outline:2px solid var(--dsw-alias-accent);outline-offset:3px}
+.dsh-my-notify-p-auto{min-height:32px;padding:0 4px;border:0;background:none;color:var(--dsw-alias-link);font:var(--dsw-font-xxs-12);cursor:pointer}
+.dsh-my-notify-p-card-hint{margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxxs-11);line-height:1.6}
+.dsh-my-notify-p-actions{display:flex;align-items:center;gap:14px;flex:none;margin-top:6px;padding:12px 2px 2px;border-top:1px solid var(--dsw-alias-border-l1)}
+.dsh-my-notify-p-reset{min-height:36px;padding:0 4px;border:0;background:none;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);cursor:pointer}
+.dsh-my-notify-p-reset:hover{color:var(--dsw-alias-label-primary)}
+.dsh-my-notify-p-status{margin:0 auto 0 0;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12)}
+.dsh-my-notify-p-status[data-kind="error"]{color:var(--dsw-alias-state-error-primary)}
+.dsh-my-notify-p-status[data-kind="ok"]{color:var(--dsw-alias-state-success-primary)}
+.dsh-my-notify-p-btn{min-height:44px;padding:0 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:transparent;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);cursor:pointer}
+.dsh-my-notify-p-btn:hover{border-color:var(--dsw-alias-border-l3);color:var(--dsw-alias-label-primary)}
+.dsh-my-notify-p-btn-primary{padding:0 22px;border-color:transparent;background:var(--dsw-alias-label-primary);color:var(--dsw-alias-label-primary-foreground);font:var(--dsw-font-xs-strong-13)}
+.dsh-my-notify-p-btn-primary:hover{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-label-primary-foreground);opacity:.88}
+.dsh-my-notify-p-btn:focus-visible{outline:2px solid var(--dsw-alias-accent);outline-offset:3px}
+.dsh-my-notify-p-drawer{position:fixed;inset:0;z-index:3000;display:flex;justify-content:flex-end}
+.dsh-my-notify-p-drawer-scrim{position:absolute;inset:0;background:color-mix(in srgb,var(--dsw-alias-label-primary) 30%,transparent)}
+.dsh-my-notify-p-drawer-panel{position:relative;display:flex;flex-direction:column;width:min(640px,100%);height:100%;background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l2);box-shadow:-18px 0 48px rgba(0,0,0,.16)}
+.dsh-my-notify-p-drawer-head{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.dsh-my-notify-p-drawer-title{margin:0;font:var(--dsw-font-s-strong-14)}
+.dsh-my-notify-p-drawer-tabs{display:flex;gap:4px;padding:8px 18px 0;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.dsh-my-notify-p-drawer-tab{min-height:40px;padding:0 12px;border:0;border-bottom:2px solid transparent;background:none;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);cursor:pointer}
+.dsh-my-notify-p-drawer-tab[aria-selected="true"]{border-bottom-color:var(--dsw-alias-label-primary);color:var(--dsw-alias-label-primary)}
+.dsh-my-notify-p-drawer-body{flex:1;min-height:0;overflow:auto;padding:14px 18px 24px}
+.dsh-my-notify-p-drawer-body .dsh-my-notify-toggle{width:38px;min-width:38px;height:22px;min-height:22px;border-radius:999px}
+.dsh-my-notify-p-drawer-body .dsh-my-notify-toggle::after{top:3px;left:3px;width:16px;height:16px}
+.dsh-my-notify-p-drawer-body .dsh-my-notify-toggle[data-on="true"]::after{transform:translateX(16px)}
+.dsh-my-notify-p-drawer-close{margin-left:auto;min-height:40px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);cursor:pointer}
+@media (prefers-reduced-motion:reduce){.dsh-my-notify-panel *{transition:none!important}}
+@container (max-width: 719px){
+.dsh-my-notify-p-grid{grid-template-columns:minmax(0,1fr);gap:22px}
+.dsh-my-notify-p-head-side{flex-direction:row;align-items:center}
+.dsh-my-notify-p-preview{order:-1}
+.dsh-my-notify-p-lede{max-width:none}
+.dsh-my-notify-p-meta{display:none}
+}
 `
-const SETTINGS_STYLES = WORKBENCH_STYLES + WEBHOOK_STYLES
 
-
-    // ── 设置页外壳（工具栏 + 四视图装配）──────────────────────────────
     'use strict'
-const VIEWS = [
-  { value: 'copy', label: () => strings.viewCopy() },
-  { value: 'channel', label: () => strings.viewChannel() },
-  { value: 'present', label: () => strings.viewPresent() },
-  { value: 'secure', label: () => strings.viewSecure() },
+const PANEL_EVENT_VARS = {
+  end: ['session.title', 'session.durationText', 'tokens.text', 'event.time'],
+  ask: ['session.title', 'ask.summary', 'event.time'],
+  approval: ['session.title', 'approval.reason', 'tool.name', 'event.time'],
+  subagentEnd: ['session.title', 'session.durationText', 'event.note', 'event.time'],
+  remote: ['session.title', 'event.note', 'event.time'],
+}
+function panelEventLabel(key) {
+  if (key === 'ask') return strings.kindAsk()
+  if (key === 'approval') return strings.kindApproval()
+  if (key === 'subagentEnd') return strings.panelSubagentEnd()
+  if (key === 'remote') return strings.panelRemote()
+  return strings.eventEnd()
+}
+const PANEL_VAR_LABELS = {
+  'session.title': '会话标题',
+  'session.project': '项目',
+  'session.durationText': '耗时',
+  'session.url': '链接',
+  'tokens.text': 'Token',
+  'event.time': '时间',
+  'event.note': '备注',
+  'ask.summary': '提问',
+  'ask.question': '完整提问',
+  'approval.reason': '审批',
+  'tool.name': '工具',
+}
+function panelVarLabel(item) {
+  const fixed = PANEL_VAR_LABELS[item.name]
+  if (fixed !== undefined) return fixed
+  const base = typeof item.description === 'string' && item.description !== '' ? item.description : item.name
+  const cut = base.split(/[（(·,，]/)[0].trim()
+  return cut.length > 8 ? cut.slice(0, 8) : cut
+}
+const PANEL_FILL_VARS = [
+  'session.project',
+  'session.durationText',
+  'tokens.text',
+  'event.note',
+  'approval.reason',
+  'tool.name',
+  'session.url',
 ]
-function workbenchToolbar(props, perm) {
+function panelPickVars(groups, active) {
+  const all = []
+  for (const group of groups) for (const item of group.items) all.push(item)
+  const picked = []
+  const add = (name) => {
+    if (picked.length >= 6) return
+    const hit = all.find((item) => item.name === name)
+    if (hit !== undefined && !picked.includes(hit)) picked.push(hit)
+  }
+  for (const name of PANEL_EVENT_VARS[active] ?? []) add(name)
+  for (const name of PANEL_FILL_VARS) add(name)
+  for (const item of all) {
+    if (picked.length >= 6) break
+    if (!picked.includes(item)) picked.push(item)
+  }
+  return picked.slice(0, 6)
+}
+function PanelCompose(props) {
   return createElement(
-    'header',
-    { className: 'dsh-my-notify-tool' },
-    createElement('h1', null, strings.settingsTitle()),
+    'section',
+    { className: 'dsh-my-notify-p-compose', 'aria-label': panelEventLabel(props.active) },
+    panelComposeHead(props),
+    panelComposeFields(props),
+    panelVarRow(props),
+    props.varsOpen ? panelVarSheet(props) : null,
+    panelDelivery(props),
+    props.active === 'ask' ? panelAskMode(props) : null,
+  )
+}
+function panelComposeHead(props) {
+  const staticRemote = props.active === 'remote'
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-p-compose-head' },
     createElement(
       'div',
-      { className: 'dsh-my-notify-views', role: 'tablist', 'aria-label': strings.navLabel() },
-      VIEWS.map((option) =>
+      null,
+      createElement('h2', { className: 'dsh-my-notify-p-event' }, panelEventLabel(props.active)),
+      createElement('p', { className: 'dsh-my-notify-p-event-sub' }, strings.panelEventDesc(props.active)),
+    ),
+    staticRemote
+      ? createElement(
+          'span',
+          { className: 'dsh-my-notify-p-switch', 'data-static': 'true' },
+          strings.panelEventAlways(),
+        )
+      : createElement(
+          'label',
+          { className: 'dsh-my-notify-p-switch' },
+          createElement('span', null, strings.panelEventNotify()),
+          createElement('input', {
+            type: 'checkbox',
+            checked: props.enabled,
+            'aria-label': strings.panelEventNotify(),
+            onChange: (event) => props.onToggle(event.target.checked),
+          }),
+          createElement('i'),
+        ),
+  )
+}
+function panelComposeFields(props) {
+  return [
+    createElement(
+      'div',
+      { key: 'title', className: 'dsh-my-notify-p-field' },
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-p-label-row' },
+        createElement(
+          'label',
+          { className: 'dsh-my-notify-p-label', htmlFor: 'dsh-my-notify-title' },
+          strings.tplTitle(),
+        ),
+      ),
+      createElement('input', {
+        id: 'dsh-my-notify-title',
+        className: 'dsh-my-notify-p-input',
+        type: 'text',
+        value: props.template.title,
+        spellCheck: false,
+        'aria-label': strings.tplTitle(),
+        onFocus: (event) => props.onTarget('title', event.target.selectionStart ?? 0),
+        onSelect: (event) => props.onTarget('title', event.target.selectionStart ?? 0),
+        onChange: (event) => {
+          props.onTarget('title', event.target.selectionStart ?? event.target.value.length)
+          props.onPatch({ title: event.target.value, body: props.template.body })
+        },
+      }),
+    ),
+    createElement(
+      'div',
+      { key: 'body', className: 'dsh-my-notify-p-field' },
+      createElement(
+        'div',
+        { className: 'dsh-my-notify-p-label-row' },
+        createElement(
+          'label',
+          { className: 'dsh-my-notify-p-label', htmlFor: 'dsh-my-notify-body' },
+          strings.tplBody(),
+        ),
+        createElement('span', { className: 'dsh-my-notify-p-hint' }, strings.panelTemplateHint()),
+      ),
+      createElement('textarea', {
+        id: 'dsh-my-notify-body',
+        className: 'dsh-my-notify-p-textarea',
+        value: props.template.body,
+        spellCheck: false,
+        'aria-label': strings.tplBody(),
+        onFocus: (event) => props.onTarget('body', event.target.selectionStart ?? 0),
+        onSelect: (event) => props.onTarget('body', event.target.selectionStart ?? 0),
+        onChange: (event) => {
+          props.onTarget('body', event.target.selectionStart ?? event.target.value.length)
+          props.onPatch({ title: props.template.title, body: event.target.value })
+        },
+      }),
+    ),
+  ]
+}
+function panelVarRow(props) {
+  const picked = panelPickVars(props.groups, props.active)
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-p-vars' },
+    createElement('span', { className: 'dsh-my-notify-p-vars-label' }, strings.panelInsert()),
+    picked.length === 0
+      ? createElement('span', { className: 'dsh-my-notify-p-hint' }, strings.panelNoVars())
+      : picked.map((item) =>
+          createElement(
+            'button',
+            {
+              key: item.name,
+              type: 'button',
+              className: 'dsh-my-notify-p-var',
+              title: '{{' + item.name + '}} · ' + item.description,
+              onClick: () => props.onInsert(item.name),
+            },
+            panelVarLabel(item),
+          ),
+        ),
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-p-var-more', onClick: props.onToggleVars },
+      props.varsOpen ? strings.panelClose() : strings.panelAllVars(),
+    ),
+  )
+}
+function panelVarSheet(props) {
+  return createElement(
+    'div',
+    { key: 'sheet', className: 'dsh-my-notify-p-var-sheet' },
+    createElement(VariableLibrary, { groups: props.groups, onInsert: props.onInsert }),
+  )
+}
+function panelDelivery(props) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-p-delivery' },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-p-delivery-head' },
+      createElement('span', { className: 'dsh-my-notify-p-label' }, strings.panelDelivery()),
+      createElement('span', { className: 'dsh-my-notify-p-hint' }, strings.panelDeliveryHint()),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-p-chips' },
+      panelFeishuChip(props),
+      panelPrefChip(props, 'system', strings.panelSystem(), strings.panelSystemHint(), LS.notify, 'system'),
+      panelPrefChip(props, 'toast', strings.panelToast(), strings.panelToastHint(), LS.toast, 'toast'),
+      panelPrefChip(props, 'sound', strings.panelSound(), strings.panelSoundHint(), LS.sound, 'sound'),
+    ),
+  )
+}
+function panelFeishuChip(props) {
+  const configured = panelFeishuConfigured(props.draft)
+  return createElement(
+    'button',
+    {
+      type: 'button',
+      className: 'dsh-my-notify-p-chip',
+      'aria-pressed': String(configured),
+      'aria-haspopup': 'dialog',
+      title: configured ? strings.panelFeishuOn() : strings.panelFeishuOff(),
+      onClick: props.onOpenChannel,
+    },
+    createElement('i'),
+    strings.panelFeishu(),
+  )
+}
+function panelFeishuConfigured(draft) {
+  const list = Array.isArray(draft.webhooks) ? draft.webhooks : []
+  return list.some((webhook) => webhook.channel === 'feishu')
+}
+function panelPrefChip(props, key, label, hint, lsKey, configKey) {
+  const config = props.draft[configKey] ?? defaultConfig()[configKey] ?? { enabled: true }
+  const on = prefOn(lsKey, config.enabled !== false)
+  const toggle = () => {
+    const next = !on
+    props.patch(configKey, { ...config, enabled: next })
+    writePref(lsKey, next)
+  }
+  return createElement(
+    'button',
+    {
+      type: 'button',
+      className: 'dsh-my-notify-p-chip',
+      'aria-pressed': String(on),
+      title: hint,
+      onClick: toggle,
+    },
+    createElement('i'),
+    label,
+  )
+}
+function panelAskMode(props) {
+  const mode = props.draft.askMode === 'summary' ? 'summary' : 'full'
+  const options = [
+    { value: 'full', label: strings.askModeFull() },
+    { value: 'summary', label: strings.askModeSummary() },
+  ]
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-p-ask' },
+    createElement('span', { className: 'dsh-my-notify-p-label' }, strings.askModeTitle()),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-p-ask-row' },
+      options.map((option) =>
         createElement(
           'button',
           {
             key: option.value,
             type: 'button',
-            className: 'dsh-my-notify-view',
-            role: 'tab',
-            'aria-selected': String(option.value === props.pane),
-            onClick: () => props.onPane(option.value),
+            className: 'dsh-my-notify-p-seg',
+            'aria-selected': String(option.value === mode),
+            onClick: () => props.patch('askMode', option.value),
           },
-          option.label(),
+          option.label,
         ),
-      ),
-    ),
-    createElement(
-      'div',
-      { className: 'dsh-my-notify-actions' },
-      createElement('span', { className: 'dsh-my-notify-badge', 'data-kind': perm.kind }, perm.text),
-      props.saved
-        ? createElement('span', { className: 'dsh-my-notify-badge', 'data-kind': 'ok' }, strings.saved())
-        : null,
-      props.dirty
-        ? createElement('span', { className: 'dsh-my-notify-badge', 'data-kind': 'warn' }, strings.dirty())
-        : null,
-      props.error ? createElement('span', { className: 'dsh-my-notify-error' }, strings.saveFailed()) : null,
-      createElement(
-        'button',
-        { type: 'button', className: 'dsh-my-notify-btn', onClick: props.onReset },
-        strings.resetDefaults(),
-      ),
-      createElement(
-        'button',
-        { type: 'button', className: 'dsh-my-notify-btn dsh-my-notify-btn-primary', onClick: props.save },
-        strings.save(),
       ),
     ),
   )
 }
-function copyView(props) {
-  const enabledOf = (key) => {
-    if (key === 'subagentEnd') return props.draft.subagentEnd === true
-    if (key === 'remote') return true
-    return props.draft[key] === true
-  }
-  const onToggleEvent = (key, on) => {
-    if (key === 'remote') return
-    props.patch(key, on)
-  }
-  return createElement(CopyEditorPane, {
-    messages: props.draft.messages,
-    card: props.feishuCard,
-    enabledOf,
-    onToggleEvent,
-    askMode: props.draft.askMode === 'summary' ? 'summary' : 'full',
-    onAskMode: (mode) => props.patch('askMode', mode),
-    saveError: props.error,
-    onRetrySave: props.save,
-    onPatchMessage: (key, template) => {
-      const messages = { ...(props.draft.messages ?? defaultMessages()) }
-      messages[key] = template
-      props.patch('messages', messages)
-    },
-  })
+
+    'use strict'
+function panelCardTone(card) {
+  const tone = card !== null && card !== undefined && typeof card.template === 'string' ? card.template : ''
+  return CARD_ACCENTS.some((option) => option.value === tone) ? tone : ''
 }
-function channelView(props) {
+function PanelPreview(props) {
+  return createElement(
+    'aside',
+    { className: 'dsh-my-notify-p-preview', 'aria-label': strings.panelPreview() },
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-p-preview-head' },
+      createElement('span', null, strings.panelPreview()),
+      createElement('span', { className: 'dsh-my-notify-p-hint' }, strings.panelPreviewLive()),
+    ),
+    panelPreviewStage(props),
+    panelCardColors(props),
+    createElement(
+      'p',
+      { className: 'dsh-my-notify-p-card-hint' },
+      props.hasChannel ? strings.panelCardHint() : strings.panelCardNoChannel(),
+    ),
+  )
+}
+function panelPreviewStage(props) {
+  if (props.preview !== null && props.status === 'ready') {
+    return createElement('div', {
+      className: 'dsh-my-notify-p-card-stage',
+      dangerouslySetInnerHTML: { __html: renderFeishuCardHtml(props.preview.card) },
+    })
+  }
+  return [
+    createElement(
+      'div',
+      { key: 'stage', className: 'dsh-my-notify-p-card-skeleton' },
+      props.status === 'loading'
+        ? strings.previewLoading()
+        : props.status === 'idle'
+          ? strings.panelPreviewEmpty()
+          : strings.previewFailed(),
+    ),
+    props.notice.text !== '' && props.notice.kind !== 'status'
+      ? createElement(
+          'p',
+          { key: 'notice', className: 'dsh-my-notify-p-preview-status', 'data-kind': props.notice.kind },
+          props.notice.text,
+          props.notice.retry
+            ? createElement(
+                'button',
+                { type: 'button', className: 'dsh-my-notify-p-auto', onClick: props.onRetry },
+                strings.previewRetry(),
+              )
+            : null,
+        )
+      : null,
+  ]
+}
+function panelCardColors(props) {
+  const active = props.hasChannel ? panelCardTone(props.card) : ''
+  const disable = props.hasChannel ? undefined : true
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-p-dots' },
+    createElement('span', null, strings.panelCardColor()),
+    CARD_ACCENTS.map((option) =>
+      createElement('button', {
+        key: option.value,
+        type: 'button',
+        className: 'dsh-my-notify-p-dot',
+        'data-tone': option.value,
+        'aria-label': option.label(),
+        'aria-pressed': String(active === option.value),
+        disabled: disable,
+        title: props.hasChannel ? option.label() : strings.panelCardNoChannel(),
+        onClick: () => props.onPatchCard({ ...props.card, template: option.value }),
+      }),
+    ),
+    createElement(
+      'button',
+      {
+        type: 'button',
+        className: 'dsh-my-notify-p-auto',
+        'aria-pressed': String(active === ''),
+        disabled: disable,
+        title: props.hasChannel ? strings.panelCardAuto() : strings.panelCardNoChannel(),
+        onClick: () => props.onPatchCard({ ...props.card, template: '', accentByKind: true }),
+      },
+      strings.panelCardAuto(),
+    ),
+  )
+}
+
+    'use strict'
+function PanelDrawer(props) {
+  useEffect(() => {
+    if (props.open === null) return
+    const onKey = (event) => {
+      if (event.key === 'Escape') props.onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [props.open])
+  if (props.open === null) return null
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-p-drawer' },
+    createElement('div', { className: 'dsh-my-notify-p-drawer-scrim', onClick: props.onClose }),
+    createElement(
+      'div',
+      {
+        className: 'dsh-my-notify-p-drawer-panel',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': strings.panelMoreTitle(),
+        onClick: (event) => event.stopPropagation(),
+      },
+      panelDrawerHead(props),
+      panelDrawerTabs(props),
+      createElement('div', { className: 'dsh-my-notify-p-drawer-body' }, panelDrawerPane(props)),
+    ),
+  )
+}
+function panelDrawerHead(props) {
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-p-drawer-head' },
+    createElement('h2', { className: 'dsh-my-notify-p-drawer-title' }, strings.panelMoreTitle()),
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-p-drawer-close', onClick: props.onClose },
+      strings.panelClose(),
+    ),
+  )
+}
+function panelDrawerTabs(props) {
+  const tabs = [
+    { value: 'channel', label: strings.paneChannel() },
+    { value: 'present', label: strings.panePresent() },
+    { value: 'secure', label: strings.paneSecure() },
+  ]
+  return createElement(
+    'div',
+    { className: 'dsh-my-notify-p-drawer-tabs', role: 'tablist', 'aria-label': strings.panelMoreTitle() },
+    tabs.map((tab) =>
+      createElement(
+        'button',
+        {
+          key: tab.value,
+          type: 'button',
+          className: 'dsh-my-notify-p-drawer-tab',
+          role: 'tab',
+          'aria-selected': String(props.open === tab.value),
+          onClick: () => props.onOpen(tab.value),
+        },
+        tab.label,
+      ),
+    ),
+  )
+}
+function panelDrawerPane(props) {
+  if (props.open === 'present') return createElement(PanelPresentPane, props)
+  if (props.open === 'secure') return createElement(PanelSecurePane, props)
+  return createElement(PanelChannelPane, props)
+}
+function PanelChannelPane(props) {
   return createElement(WebhookSection, {
     webhooks: props.draft.webhooks ?? [],
-    failures: props.failures,
     apiToken: props.apiToken,
     onPatchWebhooks: (next) => props.patch('webhooks', next),
   })
 }
-function workbenchBody(props) {
-  if (props.pane === 'channel') return channelView(props)
-  if (props.pane === 'present') return renderPresentPane(props.draft, props.patch, props.volume, props.onVolumeChange)
-  if (props.pane === 'secure') return renderSecurePane(props.draft, props.patch, props.apiToken, props.onTest)
-  return copyView(props)
+function PanelPresentPane(props) {
+  return renderPresentPane(props.draft, props.patch, props.volume, props.onVolumeChange)
 }
-function renderSettingsForm(props) {
-  const perm = permissionBadge()
+function PanelSecurePane(props) {
+  return renderSecurePane(props.draft, props.patch, props.apiToken, props.onTest)
+}
+
+    'use strict'
+const PANEL_EVENTS = ['ask', 'approval', 'end', 'subagentEnd', 'remote']
+function NotifyPanel(props) {
+  const [active, setActive] = useState('ask')
+  const [drawer, setDrawer] = useState(null)
+  const [groups, setGroups] = useState([])
+  const [preview, setPreview] = useState(null)
+  const [status, setStatus] = useState('idle')
+  const [attempt, setAttempt] = useState(0)
+  const [target, setTarget] = useState('body')
+  const [caret, setCaret] = useState(0)
+  const [varsOpen, setVarsOpen] = useState(false)
+  const template = messageOf(props.draft.messages, active)
+  useVariables(setGroups)
+  usePreview(
+    { messages: props.draft.messages, card: props.feishuCard },
+    active,
+    template,
+    attempt,
+    setPreview,
+    setStatus,
+  )
+  const insert = makePanelInsert(props, active, template, target, caret, setCaret)
+  const notice = previewNoticeOf(status)
+  const view = { active, template, groups, preview, status, notice, target, caret, varsOpen, attempt }
+  const actions = { setActive, setDrawer, setVarsOpen, setTarget, setCaret, setAttempt, insert }
   return createElement(
     'div',
-    { className: 'dsh-my-notify-settings' },
-    workbenchToolbar(props, perm),
-    workbenchBody(props),
+    { className: 'dsh-my-notify-panel' },
+    panelHead(props, () => setDrawer('channel')),
+    panelTabs(active, (key) => {
+      setActive(key)
+      setCaret(0)
+      setVarsOpen(false)
+    }),
+    panelMain(props, view, actions),
+    panelFoot(props),
+    createElement(PanelDrawer, {
+      open: drawer,
+      onOpen: setDrawer,
+      onClose: () => setDrawer(null),
+      draft: props.draft,
+      patch: props.patch,
+      volume: props.volume,
+      onVolumeChange: props.onVolumeChange,
+      apiToken: props.apiToken,
+      onTest: props.onTest,
+    }),
   )
 }
+function panelMain(props, view, actions) {
+  return createElement(
+    'main',
+    { className: 'dsh-my-notify-p-grid' },
+    createElement(PanelCompose, {
+      active: view.active,
+      template: view.template,
+      enabled: panelEventEnabled(props.draft, view.active),
+      onToggle: (on) => {
+        if (view.active !== 'remote') props.patch(view.active, on)
+      },
+      onPatch: (next) => panelPatchMessage(props.draft, props.patch, view.active, next),
+      onReset: () => panelPatchMessage(props.draft, props.patch, view.active, defaultMessageFor(view.active)),
+      groups: view.groups,
+      varsOpen: view.varsOpen,
+      onToggleVars: () => actions.setVarsOpen(!view.varsOpen),
+      onInsert: actions.insert,
+      onTarget: (nextTarget, at) => {
+        actions.setTarget(nextTarget)
+        actions.setCaret(at)
+      },
+      draft: props.draft,
+      patch: props.patch,
+      onOpenChannel: () => actions.setDrawer('channel'),
+    }),
+    createElement(PanelPreview, {
+      preview: view.preview,
+      status: view.status,
+      notice: view.notice,
+      onRetry: () => actions.setAttempt(view.attempt + 1),
+      card: props.feishuCard,
+      hasChannel: props.hasFeishuCard,
+      onPatchCard: props.onPatchFeishuCard,
+    }),
+  )
+}
+function panelHead(props, onOpenMore) {
+  const channels = panelChannelCount(props.draft)
+  return createElement(
+    'header',
+    { className: 'dsh-my-notify-p-head' },
+    createElement(
+      'div',
+      null,
+      createElement('p', { className: 'dsh-my-notify-p-kicker' }, strings.panelKicker()),
+      createElement('h1', { className: 'dsh-my-notify-p-title' }, strings.panelTitle()),
+      createElement('p', { className: 'dsh-my-notify-p-lede' }, strings.panelLede()),
+    ),
+    createElement(
+      'div',
+      { className: 'dsh-my-notify-p-head-side' },
+      createElement('p', { className: 'dsh-my-notify-p-meta' }, strings.panelMeta(PANEL_EVENTS.length, channels)),
+      createElement(
+        'button',
+        { type: 'button', className: 'dsh-my-notify-p-ghost', 'aria-haspopup': 'dialog', onClick: onOpenMore },
+        strings.panelMore(),
+      ),
+    ),
+  )
+}
+function panelTabs(active, onPick) {
+  return createElement(
+    'nav',
+    { className: 'dsh-my-notify-p-tabs', role: 'tablist', 'aria-label': strings.panelTitle() },
+    PANEL_EVENTS.map((key) =>
+      createElement(
+        'button',
+        {
+          key,
+          type: 'button',
+          role: 'tab',
+          className: 'dsh-my-notify-p-tab',
+          'aria-selected': String(key === active),
+          onClick: () => onPick(key),
+        },
+        panelEventLabel(key),
+      ),
+    ),
+  )
+}
+function panelFoot(props) {
+  const kind = props.error ? 'error' : props.dirty ? 'idle' : props.saved ? 'ok' : 'idle'
+  const text = props.error ? strings.saveFailed() : props.dirty ? strings.dirty() : props.saved ? strings.saved() : ''
+  return createElement(
+    'footer',
+    { className: 'dsh-my-notify-p-actions' },
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-p-reset', onClick: props.onReset },
+      strings.panelResetCopy(),
+    ),
+    createElement('p', { className: 'dsh-my-notify-p-status', 'data-kind': kind, 'aria-live': 'polite' }, text),
+    createElement(
+      'button',
+      { type: 'button', className: 'dsh-my-notify-p-btn dsh-my-notify-p-btn-primary', onClick: props.save },
+      strings.panelSave(),
+    ),
+  )
+}
+function panelPatchMessage(draft, patch, key, template) {
+  const messages = { ...(draft.messages ?? defaultMessages()) }
+  messages[key] = template
+  patch('messages', messages)
+}
+function panelEventEnabled(draft, key) {
+  if (key === 'remote') return true
+  return draft[key] === true
+}
+function panelChannelCount(draft) {
+  const list = Array.isArray(draft.webhooks) ? draft.webhooks : []
+  return list.filter((webhook) => webhook.enabled !== false).length
+}
+function makePanelInsert(props, active, template, target, caret, setCaret) {
+  return (name) => {
+    const field = target === 'title' ? template.title : template.body
+    const next = insertVar(field, caret, name)
+    panelPatchMessage(
+      props.draft,
+      props.patch,
+      active,
+      target === 'title' ? { title: next.value, body: template.body } : { title: template.title, body: next.value },
+    )
+    setCaret(next.caret)
+    if (typeof window === 'undefined') return
+    window.setTimeout(() => {
+      const id = target === 'title' ? 'dsh-my-notify-title' : 'dsh-my-notify-body'
+      const node = document.getElementById(id)
+      if (node !== null && typeof node.setSelectionRange === 'function') {
+        node.focus()
+        node.setSelectionRange(next.caret, next.caret)
+      }
+    }, 0)
+  }
+}
+
+    'use strict'
+const WORKBENCH_STYLES = `.dsh-my-notify-settings{container-type:inline-size;display:flex;flex-direction:column;gap:8px;padding:10px;min-height:0;height:100%}/* 顶栏：标题 + 视图分段 + 状态 + 主操作 */.dsh-my-notify-tool{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dsh-my-notify-tool h1{margin:0;font:var(--dsw-font-s-strong-14);color:var(--dsw-alias-label-primary)}.dsh-my-notify-views{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-interactive-bg)}.dsh-my-notify-view{height:26px;padding:0 10px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);cursor:pointer}.dsh-my-notify-view:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-view[aria-selected="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xs-strong-13)}.dsh-my-notify-tool .dsh-my-notify-actions{margin-left:auto}/* 文案工作台：三列 + 底部预览带 */.dsh-my-notify-wb{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}.dsh-my-notify-cols{display:grid;grid-template-columns:168px minmax(0,1fr) 208px;gap:8px;flex:1;min-height:0}.dsh-my-notify-col{min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px}.dsh-my-notify-col-hd{display:flex;align-items:center;gap:6px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);padding:2px 4px}.dsh-my-notify-panel{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);padding:8px}/* 事件列表 */.dsh-my-notify-evlist{display:flex;flex-direction:column;gap:3px}.dsh-my-notify-evbtn{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px;align-items:start;width:100%;padding:7px 8px;border:1px solid transparent;border-radius:8px;background:transparent;text-align:left;cursor:pointer;color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-evbtn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-evbtn[aria-current="true"]{background:var(--dsw-alias-interactive-bg);border-color:var(--dsw-alias-border-l2)}.dsh-my-notify-evd{width:7px;height:7px;border-radius:50%;margin-top:4px;background:var(--dsw-alias-label-tertiary)}.dsh-my-notify-evd[data-kind="ok"]{background:var(--dsw-alias-state-success-primary)}.dsh-my-notify-evd[data-kind="warn"]{background:var(--dsw-alias-state-warn-primary)}.dsh-my-notify-evd[data-kind="err"]{background:var(--dsw-alias-state-error-primary)}.dsh-my-notify-evname{font:var(--dsw-font-xs-strong-13)}.dsh-my-notify-evmeta{display:block;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);margin-top:1px}/* 编辑器 */.dsh-my-notify-ed{display:flex;flex-direction:column;gap:9px}.dsh-my-notify-ed-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dsh-my-notify-ed-hd h2{margin:0;font:var(--dsw-font-s-strong-14);color:var(--dsw-alias-label-primary)}.dsh-my-notify-lbl{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);margin-bottom:3px}.dsh-my-notify-inp2{width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-ta2{width:100%;min-height:96px;padding:7px 9px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);line-height:1.65;resize:vertical}.dsh-my-notify-errbox{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;border:1px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);font:var(--dsw-font-xxs-12)}/* 变量树 */.dsh-my-notify-vars{display:flex;flex-direction:column;gap:7px}.dsh-my-notify-varq{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-vgroup{display:flex;flex-direction:column;gap:4px}.dsh-my-notify-vgroup-hd{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);padding:2px 3px}.dsh-my-notify-vlist{display:flex;flex-wrap:wrap;gap:4px}.dsh-my-notify-vchip{display:inline-flex;align-items:center;height:24px;padding:0 6px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dsh-my-notify-vchip:hover{border-color:var(--dsw-alias-accent);color:var(--dsw-alias-accent)}.dsh-my-notify-vchip em{font-style:normal;color:var(--dsw-alias-label-tertiary);margin-left:4px}/* 五形态预览带 */.dsh-my-notify-band{border-top:1px solid var(--dsw-alias-border-l2);padding-top:7px;display:flex;flex-direction:column;gap:6px}.dsh-my-notify-band-hd{display:flex;align-items:center;gap:8px}.dsh-my-notify-band-cols{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:8px;overflow-x:auto;padding-bottom:2px}.dsh-my-notify-band[data-open="false"] .dsh-my-notify-band-cols{display:none}.dsh-my-notify-pcol{display:flex;flex-direction:column;gap:4px;min-width:0}.dsh-my-notify-pcol-hd{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}.dsh-my-notify-pstage{min-height:96px;display:flex;align-items:flex-start;justify-content:center;padding:6px;border-radius:8px;background:var(--dsw-alias-bg-layer-1);border:1px dashed var(--dsw-alias-border-l2);overflow:auto}/* 渠道视图：列表 + 详情 */.dsh-my-notify-chview{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:8px;flex:1;min-height:0}.dsh-my-notify-chlist{display:flex;flex-direction:column;gap:7px}.dsh-my-notify-chrow{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:9px;align-items:center;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);text-align:left;width:100%;cursor:pointer}.dsh-my-notify-chrow:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-chrow[aria-current="true"]{border-color:var(--dsw-alias-accent)}.dsh-my-notify-detail{display:flex;flex-direction:column;gap:9px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);overflow:auto;min-height:0}/* 卡片（呈现 / 高级 / 失败记录） */.dsh-my-notify-pane{display:flex;flex-direction:column;gap:9px}.dsh-my-notify-pane-hd{display:flex;align-items:baseline;gap:8px}.dsh-my-notify-pane-hd h2{margin:0;font:var(--dsw-font-s-strong-14);color:var(--dsw-alias-label-primary)}.dsh-my-notify-card{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.dsh-my-notify-card-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dsh-my-notify-card-hd h3{margin:0;font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}.dsh-my-notify-card-bd{display:flex;flex-direction:column;gap:8px}.dsh-my-notify-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:9px}.dsh-my-notify-cardbox{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.dsh-my-notify-cardbox h3{margin:0;font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}.dsh-my-notify-frow{display:grid;grid-template-columns:118px minmax(0,1fr);gap:9px;align-items:center}.dsh-my-notify-srow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:8px;background:var(--dsw-alias-bg-layer-1)}/* 窄容器（设置页 tab 内容区 <860px）：变量树进抽屉、事件改下拉、预览带 3 列 */@container (max-width: 859px){.dsh-my-notify-cols{grid-template-columns:minmax(0,1fr)}.dsh-my-notify-col-evlist,.dsh-my-notify-col-vars{display:none}.dsh-my-notify-evselect{display:block}.dsh-my-notify-band-cols{grid-template-columns:repeat(3,minmax(150px,1fr))}.dsh-my-notify-chview{grid-template-columns:minmax(0,1fr)}.dsh-my-notify-chrow{min-height:44px}}.dsh-my-notify-evselect{display:none;height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-drawer-vars{position:absolute;right:0;top:0;bottom:0;width:min(260px,80%);z-index:5;background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l2);padding:10px;overflow:auto;box-shadow:var(--dsw-shadow-lv2)}.dsh-my-notify-inp2,.dsh-my-notify-ta2,.dsh-my-notify-varq,.dsh-my-notify-evselect{min-height:44px}/* 行控件（开关 / 输入 / 下拉 / 按钮 / 徽标）——沿用组件类名，尺寸按工作台密度 */.dsh-my-notify-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;background:var(--dsw-alias-bg-layer-1)}.dsh-my-notify-info{display:flex;flex-direction:column;gap:2px;min-width:0}.dsh-my-notify-label{font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary)}.dsh-my-notify-hint{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);line-height:1.55}.dsh-my-notify-toggle{flex:none;min-width:36px;height:20px;border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--dsw-alias-label-tertiary) 30%, transparent);position:relative;cursor:pointer;transition:background var(--ds-transition-duration-slow) var(--ds-ease-in-out)}.dsh-my-notify-toggle[data-on="true"]{background:var(--dsw-alias-state-success-primary);border-color:transparent}.dsh-my-notify-toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-primary);transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out)}.dsh-my-notify-toggle[data-on="true"]::after{transform:translateX(14px);background:var(--dsw-alias-label-primary-foreground)}.dsh-my-notify-input{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12);min-width:0}.dsh-my-notify-select{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-range{flex:none;width:120px;accent-color:var(--dsw-alias-state-success-primary);cursor:pointer}.dsh-my-notify-range-value{flex:none;min-width:38px;text-align:right;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary)}.dsh-my-notify-actions{display:flex;align-items:center;gap:6px}.dsh-my-notify-btn{min-height:26px;padding:0 10px;border-radius:7px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xxs-12)}.dsh-my-notify-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dsh-my-notify-btn-primary{border-color:transparent;background:var(--dsw-alias-accent);color:var(--dsw-alias-label-primary-foreground)}.dsh-my-notify-btn-danger{color:var(--dsw-alias-state-error-primary)}.dsh-my-notify-saved{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-success-primary)}.dsh-my-notify-error{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-error-primary)}.dsh-my-notify-status{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary)}.dsh-my-notify-badge{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg)}.dsh-my-notify-badge[data-kind="ok"]{color:var(--dsw-alias-state-success-primary)}.dsh-my-notify-badge[data-kind="warn"]{color:var(--dsw-alias-state-warn-primary)}.dsh-my-notify-badge[data-kind="err"]{color:var(--dsw-alias-state-error-primary)}.dsh-my-notify-badge[data-kind="accent"]{color:var(--dsw-alias-accent)}.dsh-my-notify-grow{flex:1;min-width:0}.dsh-my-notify-divider{height:1px;background:var(--dsw-alias-border-l2)}.dsh-my-notify-segmented{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-interactive-bg);flex-wrap:wrap}.dsh-my-notify-seg{min-height:24px;padding:0 8px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xxs-12);cursor:pointer}.dsh-my-notify-seg[aria-selected="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xs-strong-13)}/* 触达：窄容器 ≥44，桌面 ≥24 */@media (max-width: 900px){.dsh-my-notify-toggle{min-height:44px}/* 预览带内三种非飞书形态（HTML 由 copy-model 的 renderPreviewFrame 产出） */.dsh-my-notify-pv-sys{display:flex;align-items:flex-start;gap:8px;width:100%;padding:8px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2)}.dsh-my-notify-pv-sys-ico{display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;flex:none;background:var(--dsw-alias-accent);color:var(--dsw-alias-label-primary-foreground);font:var(--dsw-font-xxxs-strong-11)}.dsh-my-notify-pv-sys-title{font:var(--dsw-font-xxs-strong-12);color:var(--dsw-alias-label-primary);-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis}.dsh-my-notify-pv-sys-body{font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.55;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;word-break:break-word}.dsh-my-notify-pv-sys-time{font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary);flex:none}.dsh-my-notify-pv-toast{display:flex;align-items:flex-start;gap:8px;width:100%;padding:8px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2)}.dsh-my-notify-pv-toast-bar{width:3px;align-self:stretch;border-radius:2px;flex:none;background:var(--dsw-alias-accent)}.dsh-my-notify-pv-wx{width:100%;padding:8px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2)}.dsh-my-notify-pv-wx-hd{display:flex;align-items:center;gap:6px;font:var(--dsw-font-xxs-strong-12);color:var(--dsw-alias-label-primary)}.dsh-my-notify-pv-wx-hd i{width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-accent)}.dsh-my-notify-pv-wx-bd{margin-top:5px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary);line-height:1.55;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;word-break:break-word}/* 变量树：名字 12 / 说明 11（名字不得比说明小），超长省略 + title 全名 */.dsh-my-notify-vchip{gap:3px}.dsh-my-notify-vname{font:var(--dsw-font-xxs-strong-12);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.dsh-my-notify-vdesc{font:var(--dsw-font-xxxs-11);color:var(--dsw-alias-label-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}@container (max-width: 859px){.dsh-my-notify-varq{min-height:44px}}
+`
+const SETTINGS_STYLES = WORKBENCH_STYLES + WEBHOOK_STYLES + (typeof PANEL_STYLES !== 'undefined' ? PANEL_STYLES : '')
+
+
+    // ── 设置页外壳（简版面板 + 更多设置抽屉）──────────────────────────
+    'use strict'
 function saveConfig(draft, setSaved, setError, onSaved) {
   setSaved(false)
   setError(false)
@@ -3848,17 +4604,6 @@ function useNotifyConfig(state) {
       })
   }, [])
 }
-function useNotifyFailures(setFailures) {
-  useEffect(() => {
-    fetch('/notify/api/webhooks')
-      .then((res) => res.json())
-      .then((body) => {
-        if (body === null || body.ok !== true) throw new Error('bad webhooks response')
-        setFailures(body.value.failures ?? [])
-      })
-      .catch(() => {})
-  }, [])
-}
 function parseSamplePayload(sample) {
   try {
     const parsed = JSON.parse(sample)
@@ -3873,11 +4618,8 @@ function NotifySettingsView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [pane, setPane] = useState('copy')
-  const [failures, setFailures] = useState([])
   const [volume, setVolume] = useState(() => prefVolume())
   useNotifyConfig({ setConfig, setDraft, setLoading, setError, setVolume })
-  useNotifyFailures(setFailures)
   if (loading) {
     return createElement(
       'div',
@@ -3895,14 +4637,12 @@ function NotifySettingsView() {
   return createElement(NotifySettingsLoaded, {
     config,
     draft,
+    setConfig,
     setDraft,
     saved,
     setSaved,
     error,
     setError,
-    pane,
-    setPane,
-    failures,
     volume,
     setVolume,
   })
@@ -3916,21 +4656,31 @@ function NotifySettingsLoaded(props) {
     }
     props.setDraft({ ...current, [key]: value })
   }
-  const feishuCard = (current.webhooks ?? []).find((w) => w.channel === 'feishu' && w.msgType === 'interactive')
-  const formProps = {
+  const webhooks = Array.isArray(current.webhooks) ? current.webhooks : []
+  const feishuIndex = webhooks.findIndex((webhook) => webhook.channel === 'feishu' && webhook.msgType === 'interactive')
+  const feishuCard = feishuIndex >= 0 ? cardOf(webhooks[feishuIndex]) : defaultCard()
+  const panelProps = {
     draft: current,
     patch,
-    pane: props.pane,
-    onPane: props.setPane,
-    save: () => saveConfig(current, props.setSaved, props.setError, invalidateRuntimeConfig),
+    save: () =>
+      saveConfig(current, props.setSaved, props.setError, () => {
+        props.setConfig(current)
+        invalidateRuntimeConfig()
+      }),
     saved: props.saved,
     error: props.error,
     dirty: JSON.stringify(current) !== JSON.stringify(props.config),
     volume: props.volume,
     onVolumeChange: props.setVolume,
-    failures: props.failures,
     apiToken: typeof current.apiToken === 'string' ? current.apiToken : '',
-    feishuCard: feishuCard !== undefined ? cardOf(feishuCard) : defaultCard(),
+    feishuCard,
+    hasFeishuCard: feishuIndex >= 0,
+    onPatchFeishuCard: (card) => {
+      if (feishuIndex < 0) return
+      const next = webhooks.slice()
+      next[feishuIndex] = { ...next[feishuIndex], card }
+      patch('webhooks', next)
+    },
     onTest: (kind, sample, done) => {
       fetch('/notify/api/trigger', {
         method: 'POST',
@@ -3942,11 +4692,11 @@ function NotifySettingsLoaded(props) {
         .catch(() => done(false, strings.secureRemoteFail()))
     },
     onReset: () => {
-      props.setDraft(defaultConfig())
+      props.setDraft({ ...current, messages: defaultMessages(), askMode: 'full' })
       props.setSaved(false)
     },
   }
-  return renderSettingsForm(formProps)
+  return createElement(NotifyPanel, panelProps)
 }
 function attachSettingsTab(ctx) {
   const slots = ctx.get('slots', false)
@@ -3965,7 +4715,7 @@ function attachSettingsTab(ctx) {
     () =>
       slots.inject('settings.plugins.tab', () =>
         slots.register(
-          { name: 'settings.plugins.tab', id: 'notify-settings', order: 91, label: () => strings.settingsTitle() },
+          { name: 'settings.plugins.tab', id: 'notify-settings', order: 91, label: () => strings.panelTabLabel() },
           NotifySettingsView,
         ),
       ),

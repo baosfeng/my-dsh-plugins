@@ -67,6 +67,11 @@ const pieces = [
   ['/*__PART_SETTINGS_ROWS__*/', 'settings-rows'],
   ['/*__PART_PRESENT_PANE__*/', 'present-pane'],
   ['/*__PART_SECURE_PANE__*/', 'secure-pane'],
+  ['/*__PART_PANEL_STYLES__*/', 'panel-styles'],
+  ['/*__PART_PANEL_COMPOSE__*/', 'panel-compose'],
+  ['/*__PART_PANEL_PREVIEW__*/', 'panel-preview'],
+  ['/*__PART_PANEL_DRAWER__*/', 'panel-drawer'],
+  ['/*__PART_PANEL__*/', 'panel'],
   ['/*__PART_SETTINGS_STYLES__*/', 'settings-styles'],
   ['/*__PART_SETTINGS__*/', 'settings'],
 ]

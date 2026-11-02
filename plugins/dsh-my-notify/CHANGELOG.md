@@ -11,7 +11,8 @@
 - feat(notify/server): 飞书 interactive 卡片（schema 2.0 / 1.0，按事件配色、字段区、@ open_id / user_id、open_url 按钮、19.6KB UTF-8 截断 + 续行提示、元素上限 200）
 - feat(notify/server): `POST /notify/api/preview` 返回 `{ card, text, vars }`，支持 kind / channel / sample / card 覆盖，供文案工作台五形态实时预览
 - feat(notify/config): 配置模型扩展 `sound` / `toast` / `system` / `messages` 与 webhook `titleTemplate` / `bodyTemplate` / `msgType: interactive` / `card` / `retry`，全部 fail-open（坏字段回退默认值，旧配置继续生效）
-- feat(notify/client): 设置页 v2 五分区（呈现 / 触发与时机 / 文案与变量 / 渠道推送 / 高级与安全），文案工作台支持 5 事件独立标题正文 + 变量库点击插入 + 五形态实时预览，渠道抽屉含卡片设计器与 JSON 双态
+- feat(notify/client): 设置页改为「事件 → 文案 → 飞书卡片 → 送达」简版单页：五事件 tabs、标题/正文 + 常用变量 chips、飞书卡片实时预览与 4 色主题、送达开关；渠道 / 呈现 / 高级收进「更多设置」抽屉，不再展示投递历史与失败记录
+- feat(notify/client): 飞书卡片预览改为实色 header + 单列字段 + 文字链按钮，13 种官方主题色按事件或显式配置渲染；主面板可直接切换卡片配色
 
 ### 变更
 
@@ -25,6 +26,7 @@
 - fix(notify/webhook): 重试次数与退避基数改由每条 webhook 的 `retry` 配置控制（默认仍为 3 次 / 1s 指数退避）
 - fix(notify/card): `card.template` 空串保留为「未指定配色」（不再写成 `default`），按事件自动配色（end 绿 / ask 蓝 / approval 橙 / subagentEnd 紫 / remote 灰）在保存前后一致；`sessionUrl` 补齐到 ask / approval / 远程触发（卡片「查看会话」按钮不再缺失）；`sound.preset` 默认值与白名单统一为 chime|drop|deep
 - fix(notify/config): webhook 配置保存不再丢弃 `titleTemplate` / `bodyTemplate` / `card` / `retry`，坏字段逐项 fail-open 回退默认值
+- fix(notify/client): 旧样式表多一个右花括号，导致浏览器丢弃其后的行控件 / 开关规则（抽屉里的开关曾渲染成整行色块）；删除多余括号后规则恢复
 
 ### 文档
 

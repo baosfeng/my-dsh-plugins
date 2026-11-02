@@ -72,9 +72,16 @@ window.__ModuleLoader__.load({
     /*__PART_SETTINGS_ROWS__*/
     /*__PART_PRESENT_PANE__*/
     /*__PART_SECURE_PANE__*/
+
+    // ── 简版面板（事件 → 文案 → 飞书卡片 → 送达）──────────────────────
+    /*__PART_PANEL_STYLES__*/
+    /*__PART_PANEL_COMPOSE__*/
+    /*__PART_PANEL_PREVIEW__*/
+    /*__PART_PANEL_DRAWER__*/
+    /*__PART_PANEL__*/
     /*__PART_SETTINGS_STYLES__*/
 
-    // ── 设置页外壳（工具栏 + 四视图装配）──────────────────────────────
+    // ── 设置页外壳（简版面板 + 更多设置抽屉）──────────────────────────
     /*__PART_SETTINGS__*/
 
     return module.exports

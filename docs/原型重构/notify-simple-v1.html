@@ -306,10 +306,10 @@
 
     <nav class="events" role="tablist" aria-label="通知事件">
       <button class="event" role="tab" aria-selected="true" aria-controls="panel" data-event="ask">需要你回答</button>
-      <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="turn">回合完成</button>
-      <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="session">会话结束</button>
+      <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="approval">等待你的批准</button>
+      <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="end">会话结束</button>
       <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="subagent">子会话结束</button>
-      <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="error">运行出错</button>
+      <button class="event" role="tab" aria-selected="false" aria-controls="panel" data-event="remote">远程提示</button>
     </nav>
 
     <main class="grid" id="panel" role="tabpanel">
@@ -331,8 +331,9 @@
           <button class="var" type="button" data-var="{{session.title}}">会话标题</button>
           <button class="var" type="button" data-var="{{session.project}}">项目</button>
           <button class="var" type="button" data-var="{{ask.question}}">提问</button>
-          <button class="var" type="button" data-var="{{turn.duration}}">耗时</button>
-          <button class="var" type="button" data-var="{{error.message}}">错误</button>
+          <button class="var" type="button" data-var="{{approval.reason}}">审批</button>
+          <button class="var" type="button" data-var="{{session.durationText}}">耗时</button>
+          <button class="var" type="button" data-var="{{event.note}}">备注</button>
           <button class="var" type="button" data-var="{{time.now}}">时间</button>
         </div>
 
@@ -344,6 +345,7 @@
           <div class="channels">
             <button class="channel" type="button" data-channel="feishu" aria-pressed="true"><i></i>飞书群消息</button>
             <button class="channel" type="button" data-channel="system" aria-pressed="true"><i></i>系统通知</button>
+            <button class="channel" type="button" data-channel="toast" aria-pressed="true"><i></i>页面提示</button>
             <button class="channel" type="button" data-channel="sound" aria-pressed="false"><i></i>提示音</button>
           </div>
         </div>
@@ -385,8 +387,9 @@
     sessionTitle: "支付面板重构",
     project: "my-dsh-plugins",
     askQuestion: "是否把「通知中心」整块删掉？",
+    approvalReason: "把改动推送到 main",
     duration: "3 分 12 秒",
-    error: "Webhook 请求超时",
+    note: "会话收尾完成",
     time: "刚刚"
   };
 
@@ -395,21 +398,21 @@
       title: "{{session.title}} 需要你确认",
       body: "我在等你确认：{{ask.question}}"
     },
-    turn: {
-      title: "{{session.title}} 有新进展",
-      body: "这一回合用了 {{turn.duration}}，点开继续。"
+    approval: {
+      title: "{{session.title}} 等待批准",
+      body: "需要你批准：{{approval.reason}}"
     },
-    session: {
+    end: {
       title: "{{session.title}} 已结束",
-      body: "会话收尾完成。需要的话，下次从这里接着聊。"
+      body: "本次会话用了 {{session.durationText}}。需要的话，下次从这里接着聊。"
     },
     subagent: {
       title: "子任务已完成",
-      body: "「{{session.title}}」的子任务跑完了，用时 {{turn.duration}}。"
+      body: "「{{session.title}}」的子任务跑完了，用时 {{session.durationText}}。"
     },
-    error: {
-      title: "{{session.title}} 运行失败",
-      body: "{{error.message}}，点开查看可以怎么处理。"
+    remote: {
+      title: "{{session.title}} 有提醒",
+      body: "{{event.note}}"
     }
   };
 
@@ -424,8 +427,9 @@
       "session.title": samples.sessionTitle,
       "session.project": samples.project,
       "ask.question": samples.askQuestion,
-      "turn.duration": samples.duration,
-      "error.message": samples.error,
+      "approval.reason": samples.approvalReason,
+      "session.durationText": samples.duration,
+      "event.note": samples.note,
       "time.now": samples.time
     };
     return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : raw;

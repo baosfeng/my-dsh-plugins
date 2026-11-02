@@ -47,6 +47,11 @@ const PIECES = [
   ['/*__PART_SETTINGS_ROWS__*/', 'lib/parts/settings-rows.js'],
   ['/*__PART_PRESENT_PANE__*/', 'lib/parts/present-pane.js'],
   ['/*__PART_SECURE_PANE__*/', 'lib/parts/secure-pane.js'],
+  ['/*__PART_PANEL_STYLES__*/', 'lib/parts/panel-styles.js'],
+  ['/*__PART_PANEL_COMPOSE__*/', 'lib/parts/panel-compose.js'],
+  ['/*__PART_PANEL_PREVIEW__*/', 'lib/parts/panel-preview.js'],
+  ['/*__PART_PANEL_DRAWER__*/', 'lib/parts/panel-drawer.js'],
+  ['/*__PART_PANEL__*/', 'lib/parts/panel.js'],
   ['/*__PART_SETTINGS_STYLES__*/', 'lib/parts/settings-styles.js'],
   ['/*__PART_SETTINGS__*/', 'lib/parts/settings.js'],
 ]
@@ -384,7 +389,7 @@ test('webhook 面板：删除渠道与启用开关', () => {
   assert.deepEqual(patched[0], a, '其他项保持不变')
 })
 
-test('webhook 面板：失败记录与空态占位', () => {
+test('webhook 面板：失败记录仅在显式传入时渲染，空列表不占位', () => {
   const { WebhookSection, harness } = loadWebhookPanel({ language: 'zh-CN' })
   const tree = harness.render(WebhookSection, {
     webhooks: [],
@@ -404,7 +409,7 @@ test('webhook 面板：失败记录与空态占位', () => {
   const hints = collect(empty)
     .filter((el) => el.props?.className === 'dsh-my-notify-hint')
     .map((el) => el.props.children)
-  assert.ok(hints.includes('暂无失败记录'), '无失败记录显示占位文案')
+  assert.ok(!hints.includes('暂无失败记录'), '失败记录区块默认不进入设置页（用户不关心投递成败）')
   assert.ok(hints.includes('还没有渠道，点「添加渠道」开始'), '无渠道时给空态引导')
 })
 

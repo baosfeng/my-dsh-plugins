@@ -1,19 +1,43 @@
-// ── 飞书卡片渲染器：preview 返回的 card JSON → 近似飞书客户端外观的 HTML ──
+// ── 飞书卡片渲染器：preview 返回的 card JSON → 与原型一致的卡片 HTML ──
 //
 // 契约：输入是 server 端 buildFeishuCard 的产物（schema 2.0 的
 // { schema, header, body.elements } 或 1.0 的 { config, header, elements }），
 // 输出是转义后的 HTML 字符串（调用方用 dangerouslySetInnerHTML 注入）。
 //
-// 元素支持（server 只会产出这几种）：
-//  - div + text.lark_md → 正文段落（**粗体** / 换行 / <at id=…> 简化渲染）
-//  - div + fields[]      → 两列字段
-//  - action + actions[]  → 主按钮
-//  - note + elements[]   → 页脚注脚
-//  - hr                  → 分隔线
-//
-// 未知标签一律忽略（绝不抛错）；所有文本先转义再套标记，杜绝注入。
+// 结构：实色 header（标题白字）+ 正文段落 + 单列字段 + 文字链按钮 + 注脚。
+// 未知标签一律忽略；所有文本先转义再套标记，杜绝注入。
 
-const CARD_PREVIEW_STYLES: string = `.dsh-my-notify-fcard{--fcard-bg:#ffffff;--fcard-fg:#1f2329;--fcard-fg2:#646a73;--fcard-line:#dee0e3;--fcard-btn:#2c62e0;--fcard-green:#1e7a12;--fcard-blue:#2c62e0;--fcard-orange:#a35a00;--fcard-grey:#5c626b;--fcard-accent:var(--fcard-grey);background:var(--fcard-bg);color:var(--fcard-fg);border:1px solid var(--fcard-line);border-radius:12px;overflow:hidden;box-shadow:var(--dsw-shadow-lv2);font:var(--dsw-font-xxs-12);line-height:1.6;max-width:340px}.dsh-my-notify-fcard[data-accent="green"]{--fcard-accent:var(--fcard-green)}.dsh-my-notify-fcard[data-accent="blue"]{--fcard-accent:var(--fcard-blue)}.dsh-my-notify-fcard[data-accent="orange"]{--fcard-accent:var(--fcard-orange)}.dsh-my-notify-fcard[data-accent="grey"]{--fcard-accent:var(--fcard-grey)}.dsh-my-notify-fcard-hd{display:flex;align-items:center;gap:6px;padding:6px 12px;border-top:3px solid var(--fcard-accent);background:color-mix(in srgb, var(--fcard-accent) 8%, var(--fcard-bg));min-height:24px}.dsh-my-notify-fcard-mark{width:8px;height:8px;border-radius:50%;background:var(--fcard-accent);flex:none}.dsh-my-notify-fcard-app{font:var(--dsw-font-xxs-12);color:var(--fcard-fg2)}.dsh-my-notify-fcard-title{padding:10px 12px 0;font:var(--dsw-font-s-strong-14);color:var(--fcard-fg)}.dsh-my-notify-fcard-bd{display:flex;flex-direction:column;gap:8px;padding:8px 12px 12px}.dsh-my-notify-fcard-p{color:var(--fcard-fg);word-break:break-word}.dsh-my-notify-fcard-p strong{font-weight:600}.dsh-my-notify-fcard-at{color:var(--fcard-btn);margin-right:4px}.dsh-my-notify-fcard-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}.dsh-my-notify-fcard-field{display:flex;flex-direction:column;gap:1px;min-width:0}.dsh-my-notify-fcard-field-label{color:var(--fcard-fg2);font:var(--dsw-font-xxs-12)}.dsh-my-notify-fcard-field-value{color:var(--fcard-fg);font:var(--dsw-font-xxs-12);word-break:break-word}.dsh-my-notify-fcard-acts{display:flex;flex-wrap:wrap;gap:6px}.dsh-my-notify-fcard-btn{display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 14px;border-radius:4px;border:1px solid var(--fcard-line);background:var(--fcard-bg);color:var(--fcard-fg);font:var(--dsw-font-xxs-12)}.dsh-my-notify-fcard-btn[data-primary="true"]{border-color:var(--fcard-btn);background:var(--fcard-btn);color:var(--fcard-bg)}.dsh-my-notify-fcard-note{font:var(--dsw-font-xxs-12);color:var(--fcard-fg2);border-top:1px solid var(--fcard-line);padding-top:6px}.dsh-my-notify-fcard-hr{height:1px;background:var(--fcard-line)}
+const CARD_PREVIEW_STYLES: string = `
+.dsh-my-notify-fcard{--fcard-bg:#ffffff;--fcard-fg:#1f2329;--fcard-fg2:#646a73;--fcard-line:#e8e3d9;--fcard-btn:#2c62e0;--fcard-accent:#3f4448;width:100%;max-width:none;background:var(--fcard-bg);color:var(--fcard-fg);border:1px solid var(--fcard-line);border-radius:14px;overflow:hidden;box-shadow:0 14px 34px rgba(35,31,24,.07),0 2px 6px rgba(35,31,24,.04);font:var(--dsw-font-xxs-12);line-height:1.6}
+.dsh-my-notify-fcard[data-accent="green"]{--fcard-accent:#33544a}
+.dsh-my-notify-fcard[data-accent="blue"]{--fcard-accent:#2f5570}
+.dsh-my-notify-fcard[data-accent="wathet"]{--fcard-accent:#3f657e}
+.dsh-my-notify-fcard[data-accent="turquoise"]{--fcard-accent:#2c6660}
+.dsh-my-notify-fcard[data-accent="yellow"]{--fcard-accent:#736224}
+.dsh-my-notify-fcard[data-accent="orange"]{--fcard-accent:#7a4f2e}
+.dsh-my-notify-fcard[data-accent="red"]{--fcard-accent:#7d3b36}
+.dsh-my-notify-fcard[data-accent="carmine"]{--fcard-accent:#77384c}
+.dsh-my-notify-fcard[data-accent="violet"]{--fcard-accent:#55416b}
+.dsh-my-notify-fcard[data-accent="purple"]{--fcard-accent:#5a3f68}
+.dsh-my-notify-fcard[data-accent="indigo"]{--fcard-accent:#3d4770}
+.dsh-my-notify-fcard[data-accent="grey"]{--fcard-accent:#3f4448}
+.dsh-my-notify-fcard[data-accent="default"]{--fcard-accent:#3c3c39}
+.dsh-my-notify-fcard-hd{display:flex;flex-direction:column;gap:4px;padding:14px 16px 13px;background:var(--fcard-accent)}
+.dsh-my-notify-fcard-app{color:rgba(255,255,255,.72);font:var(--dsw-font-xxs-12);letter-spacing:.04em}
+.dsh-my-notify-fcard-title{color:#fff;font:var(--dsw-font-s-strong-14);line-height:1.5;word-break:break-word}
+.dsh-my-notify-fcard-bd{display:flex;flex-direction:column;gap:10px;padding:14px 16px}
+.dsh-my-notify-fcard-p{color:var(--fcard-fg);font:var(--dsw-font-xs-13);line-height:1.65;word-break:break-word}
+.dsh-my-notify-fcard-p strong{font-weight:600}
+.dsh-my-notify-fcard-at{color:var(--fcard-btn);margin-right:4px}
+.dsh-my-notify-fcard-fields{display:grid;grid-template-columns:1fr;gap:6px;padding-top:10px;border-top:1px solid #f0ece4}
+.dsh-my-notify-fcard-field{display:flex;align-items:baseline;gap:12px;min-width:0}
+.dsh-my-notify-fcard-field-label{flex:none;width:56px;color:var(--fcard-fg2);font:var(--dsw-font-xxs-12)}
+.dsh-my-notify-fcard-field-value{color:#43403a;font:var(--dsw-font-xxs-12);word-break:break-word}
+.dsh-my-notify-fcard-acts{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding-top:10px;border-top:1px solid #f0ece4}
+.dsh-my-notify-fcard-btn{color:var(--fcard-accent);font:var(--dsw-font-xxs-strong-12);cursor:default}
+.dsh-my-notify-fcard-btn[data-primary="true"]{font:var(--dsw-font-xxs-strong-12)}
+.dsh-my-notify-fcard-note{color:var(--fcard-fg2);font:var(--dsw-font-xxxs-11);line-height:1.6}
+.dsh-my-notify-fcard-hr{height:1px;background:#f0ece4}
 `
 
 /** 飞书卡片品牌色（唯一出现原始 hex 的地方；文字色均满足 ≥4.5:1）。 */
@@ -23,13 +47,26 @@ const CARD_PALETTE: Record<string, string> = {
   '--fcard-fg2': '#646a73',
   '--fcard-line': '#dee0e3',
   '--fcard-btn': '#2c62e0',
-  '--fcard-green': '#1e7a12',
-  '--fcard-blue': '#2c62e0',
-  '--fcard-orange': '#a35a00',
-  '--fcard-grey': '#5c626b',
 }
 
-/** 卡片主题色（与 server 端 13 色的常用 4 色 + 事件自动配色对齐）。 */
+/** 飞书 header.template 的 13 种官方配色（与服务端 CARD_COLORS 对齐）。 */
+const CARD_COLORS = [
+  'blue',
+  'wathet',
+  'turquoise',
+  'green',
+  'yellow',
+  'orange',
+  'red',
+  'carmine',
+  'violet',
+  'purple',
+  'indigo',
+  'grey',
+  'default',
+]
+
+/** 卡片主题色（面板给 4 个显式色；其余官方色照实渲染）。 */
 const CARD_ACCENTS: SelectOption[] = [
   { value: 'green', label: () => strings.accentGreen() },
   { value: 'blue', label: () => strings.accentBlue() },
@@ -63,11 +100,10 @@ function escapeHtml(value: unknown): string {
     .replace(/'/g, '&#39;')
 }
 
-/** 卡片主题色（非法 / 缺失回退 grey）。 */
+/** 卡片主题色（13 种官方色；非法 / 缺失回退 grey）。 */
 function cardAccentOf(card: any): string {
   const template = card !== null && typeof card === 'object' ? card.header?.template : undefined
-  const hit = CARD_ACCENTS.find((option) => option.value === template)
-  return hit !== undefined ? hit.value : 'grey'
+  return typeof template === 'string' && CARD_COLORS.includes(template) ? template : 'grey'
 }
 
 /** 卡片标题（header.title.content；缺失回退空串）。 */
@@ -104,7 +140,7 @@ function cardFieldHtml(text: any): string {
   return `<div class="dsh-my-notify-fcard-field">${labelHtml}<span class="dsh-my-notify-fcard-field-value">${escapeHtml(value)}</span></div>`
 }
 
-/** div 元素（正文段落 / 两列字段）。 */
+/** div 元素（正文段落 / 字段）。 */
 function cardDivHtml(element: any): string {
   if (Array.isArray(element.fields) && element.fields.length > 0) {
     const cells = element.fields.map((field: any) => cardFieldHtml(field?.text)).join('')
@@ -115,7 +151,7 @@ function cardDivHtml(element: any): string {
   return `<div class="dsh-my-notify-fcard-p">${larkMdHtml(content)}</div>`
 }
 
-/** action 元素（主 / 次按钮）。 */
+/** action 元素（主 / 次按钮，渲染成文字链）。 */
 function cardActionHtml(element: any): string {
   const actions = Array.isArray(element.actions) ? element.actions : []
   const buttons = actions
@@ -123,7 +159,7 @@ function cardActionHtml(element: any): string {
       const label = typeof action?.text?.content === 'string' ? action.text.content : ''
       if (label === '') return ''
       const primary = action.type === 'primary' ? 'true' : 'false'
-      return `<span class="dsh-my-notify-fcard-btn" data-primary="${primary}">${escapeHtml(label)}</span>`
+      return `<span class="dsh-my-notify-fcard-btn" data-primary="${primary}">${escapeHtml(label)} →</span>`
     })
     .join('')
   return buttons === '' ? '' : `<div class="dsh-my-notify-fcard-acts">${buttons}</div>`
@@ -149,7 +185,7 @@ function cardElementHtml(element: any): string {
   return ''
 }
 
-/** 卡片 JSON → 近似飞书客户端外观的 HTML（header 彩色条 + 标题 + 正文 + 字段 + 按钮 + 注脚）。 */
+/** 卡片 JSON → 原型卡片 HTML（实色 header + 标题 + 正文 + 字段 + 文字链 + 注脚）。 */
 function renderFeishuCardHtml(card: any): string {
   const accent = cardAccentOf(card)
   const title = cardTitleOf(card)
@@ -160,10 +196,9 @@ function renderFeishuCardHtml(card: any): string {
   const titleHtml = title !== '' ? `<div class="dsh-my-notify-fcard-title">${escapeHtml(title)}</div>` : ''
   return (
     `<div class="dsh-my-notify-fcard" data-accent="${accent}" role="img" aria-label="${escapeHtml(title)}">` +
-    `<div class="dsh-my-notify-fcard-hd"><span class="dsh-my-notify-fcard-mark"></span>` +
-    `<span class="dsh-my-notify-fcard-app">${escapeHtml(strings.fcardApp())}</span></div>` +
+    `<div class="dsh-my-notify-fcard-hd"><span class="dsh-my-notify-fcard-app">${escapeHtml(strings.fcardApp())}</span>` +
     titleHtml +
-    `<div class="dsh-my-notify-fcard-bd">${body}</div></div>`
+    `</div><div class="dsh-my-notify-fcard-bd">${body}</div></div>`
   )
 }
 

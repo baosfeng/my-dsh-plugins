@@ -42,6 +42,11 @@ const TEST_PARTS = [
   'settings-rows',
   'present-pane',
   'secure-pane',
+  'panel-styles',
+  'panel-compose',
+  'panel-preview',
+  'panel-drawer',
+  'panel',
   'settings-styles',
   'settings',
 ]
@@ -77,6 +82,7 @@ function collect(node, out = []) {
     return out
   }
   const el = typeof node.type === 'function' ? node.type(node.props) : node
+  if (el === null || el === undefined) return out
   out.push(el)
   collect(el.props?.children, out)
   return out
@@ -123,50 +129,54 @@ function loadParts(names, harness, extra, windowObj, fetchImpl) {
 
 // ── 1. 分区导航 ────────────────────────────────────────────────────────
 
-test('工作台 1：顶栏四视图 + 状态条 + 保存/恢复默认', () => {
+test('简版面板 1：标题 + 五事件 tabs + 保存/恢复默认', () => {
   const harness = createHookHarness()
-  const { renderSettingsForm, defaultConfig } = loadParts([], harness, '{ renderSettingsForm, defaultConfig }')
-  const tree = harness.render(renderSettingsForm, {
+  const { NotifyPanel, defaultConfig } = loadParts([], harness, '{ NotifyPanel, defaultConfig }')
+  const tree = harness.render(NotifyPanel, {
     draft: defaultConfig(),
     patch: () => {},
-    pane: 'copy',
-    onPane: () => {},
     save: () => {},
     saved: false,
     error: false,
     dirty: true,
     volume: 0.6,
     onVolumeChange: () => {},
-    failures: [],
     apiToken: '',
-    feishuCard: defaultConfig().webhooks[0]?.card,
+    feishuCard: defaultConfig().webhooks?.[0]?.card,
+    hasFeishuCard: false,
+    onPatchFeishuCard: () => {},
     onTest: () => {},
     onReset: () => {},
   })
-  const tool = byClass(tree, 'dsh-my-notify-tool')
-  assert.ok(tool !== undefined, '顶栏渲染')
+  const head = byClass(tree, 'dsh-my-notify-p-head')
+  assert.ok(head !== undefined, '新面板顶栏渲染')
   assert.equal(
-    collect(tool)
+    collect(head)
       .filter((el) => el.type === 'h1')
       .map(textOf)[0],
-    '通知提醒',
+    '通知',
     '标题',
   )
-  const views = byClass(tree, 'dsh-my-notify-views')
-  const tabs = collect(views).filter((el) => el.type === 'button')
-  assert.deepEqual(tabs.map(textOf), ['文案', '渠道', '呈现', '高级'], '四视图分段')
+  const tabs = collect(byClass(tree, 'dsh-my-notify-p-tabs')).filter((el) => el.type === 'button')
+  assert.deepEqual(
+    tabs.map(textOf),
+    ['需要你回答', '等待你的批准', '会话结束', '子会话结束', '远程提示'],
+    '五事件 tabs',
+  )
   assert.deepEqual(
     tabs.map((el) => el.props['aria-selected']),
-    ['true', 'false', 'false', 'false'],
+    ['true', 'false', 'false', 'false', 'false'],
   )
-  const buttons = collect(tool)
+  const buttons = collect(byClass(tree, 'dsh-my-notify-p-actions'))
     .filter((el) => el.type === 'button')
     .map(textOf)
-  assert.ok(buttons.includes('恢复默认') && buttons.includes('保存'), '主操作')
+  assert.deepEqual(buttons, ['恢复默认文案', '保存更改'], '底栏主操作')
   assert.ok(
-    collect(tool).some((el) => textOf(el) === '未保存'),
-    '未保存徽标',
+    collect(tree).some((el) => el.props?.className === 'dsh-my-notify-p-status' && textOf(el) === '未保存'),
+    '未保存状态',
   )
+  assert.ok(byClass(tree, 'dsh-my-notify-p-compose') !== undefined, '编辑区渲染')
+  assert.ok(byClass(tree, 'dsh-my-notify-p-preview') !== undefined, '卡片预览区渲染')
 })
 
 test('工作台 2：文案视图三列结构（事件列表 / 编辑器 / 变量树）+ 底部预览带', () => {
@@ -285,7 +295,8 @@ test('飞书卡片预览：给定 card JSON 输出 header / 标题 / 字段 / �
   assert.ok(html.includes('data-primary="true"'), '主按钮')
   assert.ok(html.includes('查看会话'), '按钮文案')
   assert.ok(html.includes('dsh-my-notify-fcard-note'), '注脚')
-  assert.equal(cardAccentOf({ header: { template: 'red' } }), 'grey', '非法配色回退 grey')
+  assert.equal(cardAccentOf({ header: { template: 'red' } }), 'red', '官方 13 色照实渲染')
+  assert.equal(cardAccentOf({ header: { template: 'not-a-color' } }), 'grey', '非法配色回退 grey')
   assert.ok(cardMetaOf(SAMPLE_CARD).includes('2 个字段'), '设计器页脚统计字段数')
 })
 
@@ -401,29 +412,19 @@ function createStorageStub(initial) {
 /** 渲染呈现分区（含 window.localStorage 桩），返回 { tree, patched }。 */
 function renderPresent(storage) {
   const harness = createHookHarness()
-  const { renderSettingsForm, defaultConfig } = loadParts(
+  const { renderPresentPane, defaultConfig } = loadParts(
     ['card-preview', 'copy-editor', 'webhook-settings', 'settings'],
     harness,
-    '{ renderSettingsForm, defaultConfig }',
+    '{ renderPresentPane, defaultConfig }',
     { localStorage: storage },
   )
   const patched = []
-  const tree = harness.render(renderSettingsForm, {
-    draft: defaultConfig(),
-    patch: (key, value) => patched.push([key, value]),
-    pane: 'present',
-    onPane: () => {},
-    save: () => {},
-    saved: false,
-    error: false,
-    dirty: false,
-    volume: 0.6,
-    onVolumeChange: () => {},
-    failures: [],
-    apiToken: '',
-    onTest: () => {},
-    onReset: () => {},
-  })
+  const tree = renderPresentPane(
+    defaultConfig(),
+    (key, value) => patched.push([key, value]),
+    0.6,
+    () => {},
+  )
   const toggles = collect(tree).filter((el) => el.props?.className === 'dsh-my-notify-toggle')
   return { tree, patched, toggles, byLabel: (label) => toggles.find((el) => el.props['aria-label'] === label) }
 }

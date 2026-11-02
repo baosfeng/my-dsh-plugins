@@ -1,5 +1,35 @@
 'use strict'
-const CARD_PREVIEW_STYLES = `.dsh-my-notify-fcard{--fcard-bg:#ffffff;--fcard-fg:#1f2329;--fcard-fg2:#646a73;--fcard-line:#dee0e3;--fcard-btn:#2c62e0;--fcard-green:#1e7a12;--fcard-blue:#2c62e0;--fcard-orange:#a35a00;--fcard-grey:#5c626b;--fcard-accent:var(--fcard-grey);background:var(--fcard-bg);color:var(--fcard-fg);border:1px solid var(--fcard-line);border-radius:12px;overflow:hidden;box-shadow:var(--dsw-shadow-lv2);font:var(--dsw-font-xxs-12);line-height:1.6;max-width:340px}.dsh-my-notify-fcard[data-accent="green"]{--fcard-accent:var(--fcard-green)}.dsh-my-notify-fcard[data-accent="blue"]{--fcard-accent:var(--fcard-blue)}.dsh-my-notify-fcard[data-accent="orange"]{--fcard-accent:var(--fcard-orange)}.dsh-my-notify-fcard[data-accent="grey"]{--fcard-accent:var(--fcard-grey)}.dsh-my-notify-fcard-hd{display:flex;align-items:center;gap:6px;padding:6px 12px;border-top:3px solid var(--fcard-accent);background:color-mix(in srgb, var(--fcard-accent) 8%, var(--fcard-bg));min-height:24px}.dsh-my-notify-fcard-mark{width:8px;height:8px;border-radius:50%;background:var(--fcard-accent);flex:none}.dsh-my-notify-fcard-app{font:var(--dsw-font-xxs-12);color:var(--fcard-fg2)}.dsh-my-notify-fcard-title{padding:10px 12px 0;font:var(--dsw-font-s-strong-14);color:var(--fcard-fg)}.dsh-my-notify-fcard-bd{display:flex;flex-direction:column;gap:8px;padding:8px 12px 12px}.dsh-my-notify-fcard-p{color:var(--fcard-fg);word-break:break-word}.dsh-my-notify-fcard-p strong{font-weight:600}.dsh-my-notify-fcard-at{color:var(--fcard-btn);margin-right:4px}.dsh-my-notify-fcard-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}.dsh-my-notify-fcard-field{display:flex;flex-direction:column;gap:1px;min-width:0}.dsh-my-notify-fcard-field-label{color:var(--fcard-fg2);font:var(--dsw-font-xxs-12)}.dsh-my-notify-fcard-field-value{color:var(--fcard-fg);font:var(--dsw-font-xxs-12);word-break:break-word}.dsh-my-notify-fcard-acts{display:flex;flex-wrap:wrap;gap:6px}.dsh-my-notify-fcard-btn{display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 14px;border-radius:4px;border:1px solid var(--fcard-line);background:var(--fcard-bg);color:var(--fcard-fg);font:var(--dsw-font-xxs-12)}.dsh-my-notify-fcard-btn[data-primary="true"]{border-color:var(--fcard-btn);background:var(--fcard-btn);color:var(--fcard-bg)}.dsh-my-notify-fcard-note{font:var(--dsw-font-xxs-12);color:var(--fcard-fg2);border-top:1px solid var(--fcard-line);padding-top:6px}.dsh-my-notify-fcard-hr{height:1px;background:var(--fcard-line)}
+const CARD_PREVIEW_STYLES = `
+.dsh-my-notify-fcard{--fcard-bg:#ffffff;--fcard-fg:#1f2329;--fcard-fg2:#646a73;--fcard-line:#e8e3d9;--fcard-btn:#2c62e0;--fcard-accent:#3f4448;width:100%;max-width:none;background:var(--fcard-bg);color:var(--fcard-fg);border:1px solid var(--fcard-line);border-radius:14px;overflow:hidden;box-shadow:0 14px 34px rgba(35,31,24,.07),0 2px 6px rgba(35,31,24,.04);font:var(--dsw-font-xxs-12);line-height:1.6}
+.dsh-my-notify-fcard[data-accent="green"]{--fcard-accent:#33544a}
+.dsh-my-notify-fcard[data-accent="blue"]{--fcard-accent:#2f5570}
+.dsh-my-notify-fcard[data-accent="wathet"]{--fcard-accent:#3f657e}
+.dsh-my-notify-fcard[data-accent="turquoise"]{--fcard-accent:#2c6660}
+.dsh-my-notify-fcard[data-accent="yellow"]{--fcard-accent:#736224}
+.dsh-my-notify-fcard[data-accent="orange"]{--fcard-accent:#7a4f2e}
+.dsh-my-notify-fcard[data-accent="red"]{--fcard-accent:#7d3b36}
+.dsh-my-notify-fcard[data-accent="carmine"]{--fcard-accent:#77384c}
+.dsh-my-notify-fcard[data-accent="violet"]{--fcard-accent:#55416b}
+.dsh-my-notify-fcard[data-accent="purple"]{--fcard-accent:#5a3f68}
+.dsh-my-notify-fcard[data-accent="indigo"]{--fcard-accent:#3d4770}
+.dsh-my-notify-fcard[data-accent="grey"]{--fcard-accent:#3f4448}
+.dsh-my-notify-fcard[data-accent="default"]{--fcard-accent:#3c3c39}
+.dsh-my-notify-fcard-hd{display:flex;flex-direction:column;gap:4px;padding:14px 16px 13px;background:var(--fcard-accent)}
+.dsh-my-notify-fcard-app{color:rgba(255,255,255,.72);font:var(--dsw-font-xxs-12);letter-spacing:.04em}
+.dsh-my-notify-fcard-title{color:#fff;font:var(--dsw-font-s-strong-14);line-height:1.5;word-break:break-word}
+.dsh-my-notify-fcard-bd{display:flex;flex-direction:column;gap:10px;padding:14px 16px}
+.dsh-my-notify-fcard-p{color:var(--fcard-fg);font:var(--dsw-font-xs-13);line-height:1.65;word-break:break-word}
+.dsh-my-notify-fcard-p strong{font-weight:600}
+.dsh-my-notify-fcard-at{color:var(--fcard-btn);margin-right:4px}
+.dsh-my-notify-fcard-fields{display:grid;grid-template-columns:1fr;gap:6px;padding-top:10px;border-top:1px solid #f0ece4}
+.dsh-my-notify-fcard-field{display:flex;align-items:baseline;gap:12px;min-width:0}
+.dsh-my-notify-fcard-field-label{flex:none;width:56px;color:var(--fcard-fg2);font:var(--dsw-font-xxs-12)}
+.dsh-my-notify-fcard-field-value{color:#43403a;font:var(--dsw-font-xxs-12);word-break:break-word}
+.dsh-my-notify-fcard-acts{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding-top:10px;border-top:1px solid #f0ece4}
+.dsh-my-notify-fcard-btn{color:var(--fcard-accent);font:var(--dsw-font-xxs-strong-12);cursor:default}
+.dsh-my-notify-fcard-btn[data-primary="true"]{font:var(--dsw-font-xxs-strong-12)}
+.dsh-my-notify-fcard-note{color:var(--fcard-fg2);font:var(--dsw-font-xxxs-11);line-height:1.6}
+.dsh-my-notify-fcard-hr{height:1px;background:#f0ece4}
 `
 const CARD_PALETTE = {
   '--fcard-bg': '#ffffff',
@@ -7,11 +37,22 @@ const CARD_PALETTE = {
   '--fcard-fg2': '#646a73',
   '--fcard-line': '#dee0e3',
   '--fcard-btn': '#2c62e0',
-  '--fcard-green': '#1e7a12',
-  '--fcard-blue': '#2c62e0',
-  '--fcard-orange': '#a35a00',
-  '--fcard-grey': '#5c626b',
 }
+const CARD_COLORS = [
+  'blue',
+  'wathet',
+  'turquoise',
+  'green',
+  'yellow',
+  'orange',
+  'red',
+  'carmine',
+  'violet',
+  'purple',
+  'indigo',
+  'grey',
+  'default',
+]
 const CARD_ACCENTS = [
   { value: 'green', label: () => strings.accentGreen() },
   { value: 'blue', label: () => strings.accentBlue() },
@@ -40,8 +81,7 @@ function escapeHtml(value) {
 }
 function cardAccentOf(card) {
   const template = card !== null && typeof card === 'object' ? card.header?.template : undefined
-  const hit = CARD_ACCENTS.find((option) => option.value === template)
-  return hit !== undefined ? hit.value : 'grey'
+  return typeof template === 'string' && CARD_COLORS.includes(template) ? template : 'grey'
 }
 function cardTitleOf(card) {
   const title = card !== null && typeof card === 'object' ? card.header?.title?.content : undefined
@@ -84,7 +124,7 @@ function cardActionHtml(element) {
       const label = typeof action?.text?.content === 'string' ? action.text.content : ''
       if (label === '') return ''
       const primary = action.type === 'primary' ? 'true' : 'false'
-      return `<span class="dsh-my-notify-fcard-btn" data-primary="${primary}">${escapeHtml(label)}</span>`
+      return `<span class="dsh-my-notify-fcard-btn" data-primary="${primary}">${escapeHtml(label)} →</span>`
     })
     .join('')
   return buttons === '' ? '' : `<div class="dsh-my-notify-fcard-acts">${buttons}</div>`
@@ -115,10 +155,9 @@ function renderFeishuCardHtml(card) {
   const titleHtml = title !== '' ? `<div class="dsh-my-notify-fcard-title">${escapeHtml(title)}</div>` : ''
   return (
     `<div class="dsh-my-notify-fcard" data-accent="${accent}" role="img" aria-label="${escapeHtml(title)}">` +
-    `<div class="dsh-my-notify-fcard-hd"><span class="dsh-my-notify-fcard-mark"></span>` +
-    `<span class="dsh-my-notify-fcard-app">${escapeHtml(strings.fcardApp())}</span></div>` +
+    `<div class="dsh-my-notify-fcard-hd"><span class="dsh-my-notify-fcard-app">${escapeHtml(strings.fcardApp())}</span>` +
     titleHtml +
-    `<div class="dsh-my-notify-fcard-bd">${body}</div></div>`
+    `</div><div class="dsh-my-notify-fcard-bd">${body}</div></div>`
   )
 }
 function cardMetaOf(card) {

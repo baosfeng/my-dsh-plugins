@@ -37,6 +37,7 @@ function loadSettingsStyles() {
     'settings-rows',
     'present-pane',
     'secure-pane',
+    'panel-styles',
     'settings-styles',
     'settings',
   ]
@@ -85,4 +86,75 @@ test('on-state thumb slides right and switches to contrast ink (issue #58)', () 
     block.includes('var(--dsw-alias-label-primary-foreground)'),
     'on thumb must use foreground ink for contrast on the accent fill',
   )
+})
+
+/**
+ * 防复发：样式表结构完整性（真实事故，提交 ae5b9085 引入）。
+ *
+ * 简版面板改造时删掉了结尾的一个 }，浏览器把其后大量规则当成未闭合块内部
+ * 内容；实测 CSSOM：修复前 97 条规则、@media 内 167 条、.dsh-my-notify-p-head
+ * 计算样式退回 display:block（整页无样式）；修复后 249 条规则、@media 内 16 条、
+ * head 恢复 display:flex;gap:24px。
+ *
+ * 既有 4 条断言只查单条规则内容（indexOf + slice），少一个 } 时全绿，
+ * 所以「整段被吞」必须靠结构级断言守。
+ */
+test('样式表花括号严格配平，且没有多余的 }', () => {
+  const styles = loadSettingsStyles().replace(/\/\*[\s\S]*?\*\//g, '')
+  const stack = []
+  for (let i = 0; i < styles.length; i += 1) {
+    if (styles[i] === '{') stack.push(i)
+    else if (styles[i] === '}') {
+      assert.ok(stack.length > 0, `第 ${i} 个字符处出现多余的 }，其后的规则会被吞进上一个块`)
+      stack.pop()
+    }
+  }
+  assert.equal(stack.length, 0, `有 ${stack.length} 个未闭合的 {，样式会被浏览器截断`)
+  assert.equal((styles.match(/{/g) ?? []).length, (styles.match(/}/g) ?? []).length, '{ 与 } 数量必须相等')
+})
+
+test('每个 @media / @container 块都能在样式表内闭合', () => {
+  const styles = loadSettingsStyles().replace(/\/\*[\s\S]*?\*\//g, '')
+  const atRules = [...styles.matchAll(/@(media|container)\b[^{]*/g)].map((m) => ({ at: m.index, head: m[0].trim() }))
+  assert.ok(atRules.length > 0, '样式表里应当有 at-rule 块')
+  for (const { at, head } of atRules) {
+    let inner = 0
+    let closed = -1
+    for (let i = at; i < styles.length; i += 1) {
+      if (styles[i] === '{') inner += 1
+      else if (styles[i] === '}') {
+        inner -= 1
+        if (inner === 0) {
+          closed = i
+          break
+        }
+      }
+    }
+    assert.ok(closed > at, `${head} 未在样式表内闭合（后续规则会被全部吞进该块）`)
+  }
+})
+
+test('简版面板关键规则位于顶层（没被未闭合的 at-rule 吞掉）', () => {
+  const styles = loadSettingsStyles().replace(/\/\*[\s\S]*?\*\//g, '')
+  // 事故特征：这些顶层规则曾被吞进 @media(max-width:900px) 内部
+  const wanted = [
+    '.dsh-my-notify-p-head{',
+    '.dsh-my-notify-p-tabs{',
+    '.dsh-my-notify-p-grid{',
+    '.dsh-my-notify-p-preview{',
+    '.dsh-my-notify-p-actions{',
+    '.dsh-my-notify-row{',
+    '.dsh-my-notify-btn{',
+    '.dsh-my-notify-toggle{',
+  ]
+  for (const sel of wanted) {
+    const at = styles.indexOf(sel)
+    assert.ok(at >= 0, `${sel} 必须存在于样式表`)
+    let depth = 0
+    for (let i = 0; i < at; i += 1) {
+      if (styles[i] === '{') depth += 1
+      else if (styles[i] === '}') depth -= 1
+    }
+    assert.equal(depth, 0, `${sel} 必须位于顶层（实际深度 ${depth}，说明被前面的 at-rule 吞了）`)
+  }
 })

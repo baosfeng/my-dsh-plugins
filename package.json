@@ -53,7 +53,7 @@
     "dsh-shared": "file:plugins/dsh-shared"
   },
   "devDependencies": {
-    "@babel/core": "^8.0.9",
+    "@babel/core": "^8.0.10",
     "@babel/parser": "^8.0.8",
     "@babel/preset-typescript": "^8.0.7",
     "@commitlint/cli": "^21.2.4",
@@ -62,7 +62,7 @@
     "@commitlint/load": "^21.2.2",
     "@cucumber/cucumber": "^13.3.0",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/tmp": "^0.2.6",
@@ -73,7 +73,7 @@
     "globals": "^17.13.0",
     "husky": "^9.1.7",
     "jscpd": "^5.4.2",
-    "knip": "^6.43.0",
+    "knip": "^6.44.0",
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.10",
     "react": "^19.3.1",

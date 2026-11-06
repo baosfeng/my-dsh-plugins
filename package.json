@@ -53,7 +53,7 @@
     "dsh-shared": "file:plugins/dsh-shared"
   },
   "devDependencies": {
-    "@babel/core": "^8.0.10",
+    "@babel/core": "^8.1.0",
     "@babel/parser": "^8.0.8",
     "@babel/preset-typescript": "^8.0.7",
     "@commitlint/cli": "^21.2.4",
@@ -66,8 +66,8 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/tmp": "^0.2.6",
-    "@vitest/coverage-v8": "^5.0.5",
-    "dependency-cruiser": "^18.7.1",
+    "@vitest/coverage-v8": "^5.1.0",
+    "dependency-cruiser": "^18.7.2",
     "eslint": "^10.14.0",
     "eslint-plugin-import": "^2.32.0",
     "globals": "^17.14.0",

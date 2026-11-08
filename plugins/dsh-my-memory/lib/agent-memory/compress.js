@@ -11,7 +11,7 @@
  *  - 压缩结果必须与原条目**数量一致、顺序一致、每条更短且非空**，否则整体放弃。
  */
 /** 默认压缩阈值：短于这个长度的条目不压（压了也省不了多少）。 */
-export const DEFAULT_COMPRESS_MIN_CHARS = 60;
+const DEFAULT_COMPRESS_MIN_CHARS = 60;
 /**
  * 选出可压缩的条目：`- ` 开头且正文长度 > minChars。
  * 标题、空行、规则文字一律不动。

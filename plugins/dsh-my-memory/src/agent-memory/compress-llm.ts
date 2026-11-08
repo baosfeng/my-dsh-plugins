@@ -8,7 +8,7 @@
 import { parseCompressedBlock } from './compress.js'
 
 /** 压缩器的系统提示：只删解释、保命令，行数必须一致。 */
-export const COMPRESS_SYSTEM_PROMPT = [
+const COMPRESS_SYSTEM_PROMPT = [
   '你在为一份「跨会话记忆」做写入前压缩。输入是多条记忆条目（每行一条，已带 "- " 前缀）。',
   '对每一条：保留结论、约束、命令、路径、数字、专有名词与适用条件；删掉解释、举例、背景、语气词与重复表述。',
   '输出要求：行数与输入**完全一致**，一行一条，不要编号、不要解释、不要空行、不要代码围栏。',
@@ -16,7 +16,7 @@ export const COMPRESS_SYSTEM_PROMPT = [
 ].join('\n')
 
 /** 压缩超时（毫秒）：超时按原文写入，绝不让记忆写入卡在模型上。 */
-export const DEFAULT_COMPRESS_TIMEOUT_MS = 8000
+const DEFAULT_COMPRESS_TIMEOUT_MS = 8000
 
 /** 最小 llm 服务形状（只用到 stream）。 */
 export interface LlmStreamLike {

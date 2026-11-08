@@ -20,7 +20,7 @@ export interface CompressCandidate {
 }
 
 /** 默认压缩阈值：短于这个长度的条目不压（压了也省不了多少）。 */
-export const DEFAULT_COMPRESS_MIN_CHARS = 60
+const DEFAULT_COMPRESS_MIN_CHARS = 60
 
 /**
  * 选出可压缩的条目：`- ` 开头且正文长度 > minChars。

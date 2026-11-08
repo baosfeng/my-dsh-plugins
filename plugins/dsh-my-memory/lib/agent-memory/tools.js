@@ -15,6 +15,7 @@
  * 顺带把「路径逃逸 / 尺寸 / 敏感信息」三道硬门禁关在插件侧。
  */
 import { basename } from 'node:path';
+import { compressContentForWrite } from './compress.js';
 import { createIndexStore } from './index-store.js';
 import { createAgentMemoryStore } from './store.js';
 import { DEFAULT_ARCHIVE_MS } from './paths.js';
@@ -200,7 +201,7 @@ function searchTool({ store, resolveProjectPrefix }) {
     };
 }
 /** agent_memory_write：整份覆盖写入（成功只回 ok）。 */
-function writeTool({ store, resolveProjectPrefix, rememberProject }) {
+function writeTool({ store, resolveProjectPrefix, rememberProject, compress, compressMinChars }) {
     return {
         name: 'agent_memory_write',
         description: '写入一份跨会话记忆（整份覆盖）。写入前先用 agent_memory_read 读，已有同主题就合并或替换，绝不新增重复条目。',
@@ -219,7 +220,9 @@ function writeTool({ store, resolveProjectPrefix, rememberProject }) {
             const rejected = globalScopeReject(name, params.content, cwdOf(exec));
             if (rejected !== null)
                 return rejected;
-            const result = await store.write(name, params.content);
+            // 写入前压缩长条目（agent 记忆专属）：失败一律按原文写，绝不阻塞。
+            const content = await compressContentForWrite(String(params.content ?? ''), compress === undefined ? undefined : (lines) => compress(lines, exec), compressMinChars);
+            const result = await store.write(name, content);
             if (result.ok)
                 rememberProjectOf(name, exec, rememberProject);
             return result.ok ? 'ok' : result.error;
@@ -271,7 +274,7 @@ export function createAgentMemoryTools(deps) {
     return [listTool(deps), readTool(deps), searchTool(deps), writeTool(deps), deleteTool(deps)];
 }
 /** 注册四个工具 + 启动时归档冷记忆；返回 disposer 集合。 */
-export function registerAgentMemoryTools(ctx, { config, resolveProjectPrefix, runtime, }) {
+export function registerAgentMemoryTools(ctx, { config, resolveProjectPrefix, runtime, compress, compressMinChars, }) {
     if (config?.enabled === false)
         return () => { };
     const { index, store } = runtime ?? createAgentMemoryRuntime({ logger: ctx.logger });
@@ -279,7 +282,13 @@ export function registerAgentMemoryTools(ctx, { config, resolveProjectPrefix, ru
         ? config.archiveDays * 24 * 60 * 60 * 1000
         : DEFAULT_ARCHIVE_MS;
     const rememberProject = (id, label) => void index.rememberProject(id, label);
-    const disposers = createAgentMemoryTools({ store, resolveProjectPrefix, rememberProject }).map((tool) => ctx.tools?.register(tool));
+    const disposers = createAgentMemoryTools({
+        store,
+        resolveProjectPrefix,
+        rememberProject,
+        compress,
+        compressMinChars,
+    }).map((tool) => ctx.tools?.register(tool));
     // 启动时归档一次冷记忆（不阻塞启动：失败只 warn）。
     void index
         .load()

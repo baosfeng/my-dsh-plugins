@@ -19,6 +19,8 @@
  *    自定义确认 UI：删除红色、保存绿色）。
  */
 import { createAgentMemorySection } from './agent-memory/prompt.js'
+import { createLlmCompressor } from './agent-memory/compress-llm.js'
+import type { LlmStreamLike } from './agent-memory/compress-llm.js'
 import { createAgentMemoryCatalog } from './agent-memory/catalog.js'
 import type { AgentMemoryCatalog } from './agent-memory/catalog.js'
 import { createAgentMemoryRuntime, registerAgentMemoryTools } from './agent-memory/tools.js'
@@ -63,7 +65,14 @@ export interface MemoryConfig {
   /** 单条提示词正文上限（字符，默认 1000，超出截断 + warn；issue #465）。 */
   maxPromptLength?: number
   /** agent 记忆开关（默认开启；issue #502）。 */
-  agentMemory?: { enabled?: boolean; archiveDays?: number }
+  agentMemory?: {
+    enabled?: boolean
+    archiveDays?: number
+    /** 写入时是否用 LLM 压缩长条目（默认开；失败按原文写）。 */
+    compress?: boolean
+    /** 压缩阈值（字符，默认 60）。 */
+    compressMinChars?: number
+  }
 }
 
 /** maxEntryLength 配置（issue #105 精简引导）；非法值回落默认 50。 */
@@ -255,6 +264,13 @@ function registerAgentMemory(
         config: config?.agentMemory,
         resolveProjectPrefix: async (cwd: string) => `projects/${projectIdOf(await findProjectRoot(cwd || '.'))}/`,
         runtime,
+        // 压缩只作用于 agent 记忆（模型自己维护、条目长、目录有硬预算）：
+        // 走当前会话的模型路由，任何失败都按原文写。
+        compress:
+          config?.agentMemory?.compress === false
+            ? undefined
+            : createLlmCompressor({ llm: () => ctx.get<LlmStreamLike>('llm') }),
+        compressMinChars: config?.agentMemory?.compressMinChars,
       }),
     'dsh-my-memory: agent memory tools',
   )

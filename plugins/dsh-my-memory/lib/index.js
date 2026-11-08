@@ -19,6 +19,7 @@
  *    自定义确认 UI：删除红色、保存绿色）。
  */
 import { createAgentMemorySection } from './agent-memory/prompt.js';
+import { createLlmCompressor } from './agent-memory/compress-llm.js';
 import { createAgentMemoryCatalog } from './agent-memory/catalog.js';
 import { createAgentMemoryRuntime, registerAgentMemoryTools } from './agent-memory/tools.js';
 import { createAgentMemoryRouteDeps } from './agent-memory/route.js';
@@ -176,6 +177,12 @@ function registerAgentMemory(ctx, config, runtime, catalog) {
         config: config?.agentMemory,
         resolveProjectPrefix: async (cwd) => `projects/${projectIdOf(await findProjectRoot(cwd || '.'))}/`,
         runtime,
+        // 压缩只作用于 agent 记忆（模型自己维护、条目长、目录有硬预算）：
+        // 走当前会话的模型路由，任何失败都按原文写。
+        compress: config?.agentMemory?.compress === false
+            ? undefined
+            : createLlmCompressor({ llm: () => ctx.get('llm') }),
+        compressMinChars: config?.agentMemory?.compressMinChars,
     }), 'dsh-my-memory: agent memory tools');
 }
 /** 插件状态查询（#155 聚合层）：返回全局/项目记忆条目数 + 启动日志。 */

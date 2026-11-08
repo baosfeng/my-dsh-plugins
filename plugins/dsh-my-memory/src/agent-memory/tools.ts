@@ -16,6 +16,7 @@
  */
 import { basename } from 'node:path'
 
+import { compressContentForWrite } from './compress.js'
 import { createIndexStore } from './index-store.js'
 import { createAgentMemoryStore } from './store.js'
 import { DEFAULT_ARCHIVE_MS } from './paths.js'
@@ -148,6 +149,10 @@ export interface AgentMemoryToolDeps {
    * 写入时顺手从会话 cwd 记下名字，目录就能显示 `my-dsh-plugins/坑`。
    */
   rememberProject?: (id: string, label: string) => void
+  /** 写入前的条目压缩（由 index.ts 注入 LLM 实现；缺省 = 不压缩）。 */
+  compress?: (lines: string[], exec: unknown) => Promise<string[] | null>
+  /** 压缩阈值（字符），默认 60；短条目不动。 */
+  compressMinChars?: number
 }
 
 /** 写入后记录项目名（只在项目层文件、且 cwd 可用时）。 */
@@ -248,7 +253,13 @@ function searchTool({ store, resolveProjectPrefix }: AgentMemoryToolDeps): ToolD
 }
 
 /** agent_memory_write：整份覆盖写入（成功只回 ok）。 */
-function writeTool({ store, resolveProjectPrefix, rememberProject }: AgentMemoryToolDeps): ToolDefinition {
+function writeTool({
+  store,
+  resolveProjectPrefix,
+  rememberProject,
+  compress,
+  compressMinChars,
+}: AgentMemoryToolDeps): ToolDefinition {
   return {
     name: 'agent_memory_write',
     description:
@@ -267,7 +278,13 @@ function writeTool({ store, resolveProjectPrefix, rememberProject }: AgentMemory
       const name = await resolveAlias(params.name, exec, resolveProjectPrefix)
       const rejected = globalScopeReject(name, params.content, cwdOf(exec))
       if (rejected !== null) return rejected
-      const result = await store.write(name, params.content)
+      // 写入前压缩长条目（agent 记忆专属）：失败一律按原文写，绝不阻塞。
+      const content = await compressContentForWrite(
+        String(params.content ?? ''),
+        compress === undefined ? undefined : (lines) => compress(lines, exec),
+        compressMinChars,
+      )
+      const result = await store.write(name, content)
       if (result.ok) rememberProjectOf(name, exec, rememberProject)
       return result.ok ? 'ok' : result.error
     },
@@ -341,10 +358,14 @@ export function registerAgentMemoryTools(
     config,
     resolveProjectPrefix,
     runtime,
+    compress,
+    compressMinChars,
   }: {
     config?: AgentMemoryConfig
     resolveProjectPrefix: (cwd: string) => Promise<string>
     runtime?: AgentMemoryRuntime
+    compress?: (lines: string[], exec: unknown) => Promise<string[] | null>
+    compressMinChars?: number
   },
 ): () => void {
   if (config?.enabled === false) return () => {}
@@ -355,9 +376,13 @@ export function registerAgentMemoryTools(
       : DEFAULT_ARCHIVE_MS
 
   const rememberProject = (id: string, label: string): void => void index.rememberProject(id, label)
-  const disposers = createAgentMemoryTools({ store, resolveProjectPrefix, rememberProject }).map((tool) =>
-    ctx.tools?.register(tool as never),
-  )
+  const disposers = createAgentMemoryTools({
+    store,
+    resolveProjectPrefix,
+    rememberProject,
+    compress,
+    compressMinChars,
+  }).map((tool) => ctx.tools?.register(tool as never))
 
   // 启动时归档一次冷记忆（不阻塞启动：失败只 warn）。
   void index

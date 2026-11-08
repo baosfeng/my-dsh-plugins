@@ -281,10 +281,11 @@ test('route POST promote：建议过期（文本对不上）时 400', async () =
 
 test('route POST promote：全局层写满时 400，项目层回滚不丢数据', async () => {
   await freshHome()
-  const { createIndexStore, createAgentMemoryStore } = await deps()
+  const { createIndexStore, createAgentMemoryStore, MAX_ENTRIES } = await deps()
   const index = createIndexStore({})
   const store = createAgentMemoryStore({ index })
-  const full = Array.from({ length: 60 }, (_, i) => '- 全局条目 ' + i).join('\n')
+  // 用常量推导条目数：上限放宽后写死的 60 就不再是「满」的状态
+  const full = Array.from({ length: MAX_ENTRIES }, (_, i) => '- 全局条目 ' + i).join('\n')
   assert.deepEqual(await store.write('user.md', full), { ok: true })
   await index.load()
   await seedBody('projects/r1/pitfalls.md', '- ' + DUPLICATED)
@@ -292,7 +293,7 @@ test('route POST promote：全局层写满时 400，项目层回滚不丢数据'
   const rejected = await routeCall({ index, store }, { action: 'promote', text: DUPLICATED })
   assert.equal(rejected.status, 400)
   assert.match(rejected.json.error.message, /已满/, '把 store 的尺寸红线原样告诉用户')
-  assert.equal((await store.readForPanel('user.md')).split('\n').length, 60, '全局层没有被追加')
+  assert.equal((await store.readForPanel('user.md')).split('\n').length, MAX_ENTRIES, '全局层没有被追加')
   assert.match(
     await bodyOf('projects/r1/pitfalls.md'),
     new RegExp(DUPLICATED),

@@ -131,7 +131,7 @@ function renderRead(result: { ok: true; content: string } | { ok: false; error: 
  * 渲染 list 结果：**一条记忆一行**，不是「一个文件一行」。
  *
  * 文件级概要等于让 agent 读文件名猜内容——它只能二选一：不读（猜错）或
- * 整份读（付 4 KB）。条目级才能「先扫一遍，只读命中的那一份」。
+ * 整份读（付一份正文）。条目级才能「先扫一遍，只读命中的那一份」。
  */
 function renderList(items: Array<{ name: string; lines: string[] }>): string {
   if (items.length === 0) return '（空）'
@@ -218,7 +218,7 @@ function renderHits(hits: MemoryHit[]): string {
 
 /** agent_memory_search：按关键词在**条目级**搜索（只读）。
  *
- *  渐进式加载的中间层——目录只给 30 字摘要、read 一次要整份（≤4 KB）；
+ *  渐进式加载的中间层——目录只给 30 字摘要、read 一次要整份（≤16 KB）；
  *  记忆一多，「这条在不在、在哪份文件」靠猜不准，靠 read 太贵。搜索一次就
  *  拿到「文件 + 行号 + 原文」，再决定要不要 read 全文。
  */

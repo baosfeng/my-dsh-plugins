@@ -508,7 +508,11 @@ function fetchMemory(scope, cwd) {
         return normalizeMemory(body.value);
     });
 }
-/** POST /my-memory/api/memory — a write gated on the user-consent marker. */
+/** POST /my-memory/api/memory — a write gated on the user-consent marker.
+ *
+ *  失败时必须把**服务端给的原因**抛出去：容量超限、字数超限、刚被别处合并掉
+ *  都会返回可操作的中文原因，而面板只渲染一句「操作失败」——用户根本不知道
+ *  该删哪条、改哪里，只会得出「连记忆都存不进去了」的结论。 */
 function writeMemory({ action, scope, cwd, id, desc, }) {
     return fetch(`${API_BASE}/memory`, {
         method: 'POST',
@@ -518,9 +522,14 @@ function writeMemory({ action, scope, cwd, id, desc, }) {
         .then((res) => res.json())
         .then((body) => {
         if (body === null || body.ok !== true)
-            throw new Error('write failed');
+            throw new Error(writeErrorOf(body));
         return normalizeMemory({ ...body.value, scope });
     });
+}
+/** 写失败的可读原因（服务端 message 优先，缺失才退回通用文案）。 */
+function writeErrorOf(body) {
+    const message = body?.error?.message;
+    return typeof message === 'string' && message !== '' ? message : strings.saveFailed();
 }
 /** POST /my-memory/api/memory action=update，只翻转 pinned（issue #518）。
  *  不带 desc：服务端按 id 定位后只改恒定标记，正文原样保留。 */
@@ -533,7 +542,7 @@ function updatePinned({ scope, id, pinned, cwd, }) {
         .then((res) => res.json())
         .then((body) => {
         if (body === null || body.ok !== true)
-            throw new Error('pin write failed');
+            throw new Error(writeErrorOf(body));
         return normalizeMemory({ ...body.value, scope });
     });
 }

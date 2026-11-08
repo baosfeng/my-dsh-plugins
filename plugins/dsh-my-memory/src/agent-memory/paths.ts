@@ -18,14 +18,29 @@ import { join } from 'node:path'
 
 import { dshHome } from '../store.js'
 
-/** 单文件字节上限（4 KB）：约 1k token，超限 memory_write 报错要求先整理。 */
-export const MAX_FILE_BYTES = 4096
+/**
+ * 单文件字节上限（16 KB）。
+ *
+ * 原为 4 KB。这套记忆是 **agent 自己的**，一个活跃项目写两周就能顶满——
+ * 实测 norvels/pitfalls.md 3941 B、android-monitor/decisions.md 3897 B，余量
+ * 都小于一条中位长度（133 B）的记忆，于是「再也存不进去」，只能被迫删旧条目。
+ *
+ * 上限放宽不增加常驻开销：目录按项目分组、项目层只展开头部（最近活跃 12 条 /
+ * 其余 4 条），文件变大只影响「展开前 12 条之后的条目要靠 search/read 取」，
+ * 不会让系统提示词变长。正文本身仍然零常驻。
+ */
+export const MAX_FILE_BYTES = 16384
 
-/** 单文件条目上限（60 条）。 */
-export const MAX_ENTRIES = 60
+/** 单文件条目上限（120 条）：与 16 KB 配套——中位长度约 133 B/条，120 条约 16 KB。 */
+export const MAX_ENTRIES = 120
 
-/** 单条正文长度上限（字符，一句话原则的硬兜底）。 */
-export const MAX_ENTRY_CHARS = 100
+/**
+ * 单条正文长度上限（字符，一句话原则的硬兜底）。
+ *
+ * 原为 100。实测本库最长条目 250 字节 ≈ 83 字符，已经贴着上限——一条带命令的
+ * 踩坑记忆很正常就超。放宽到 200 后仍能挡住「一次写一大段」的失控写入。
+ */
+export const MAX_ENTRY_CHARS = 200
 
 /** 冷记忆归档阈值（毫秒，默认 180 天未读）。 */
 export const DEFAULT_ARCHIVE_MS = 180 * 24 * 60 * 60 * 1000

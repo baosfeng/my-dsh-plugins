@@ -71,14 +71,14 @@ test('normalizeName rejects path escape and non-whitelisted names', async () => 
 })
 
 test('validateContent enforces the size red lines', async () => {
-  const { MAX_ENTRY_CHARS } = await mods()
+  const { MAX_ENTRY_CHARS, MAX_ENTRIES } = await mods()
   const validateContent = (await fenceOf()).validate
   assert.equal(validateContent('- 短条目'), null)
-  // 单条超长
-  assert.match(validateContent('- ' + 'x'.repeat(MAX_ENTRY_CHARS + 10)), /超过 100 字上限/)
+  // 单条超长（阈值从常量推导，避免把数值写死在断言里）
+  assert.match(validateContent('- ' + 'x'.repeat(MAX_ENTRY_CHARS + 10)), new RegExp(`超过 ${MAX_ENTRY_CHARS} 字上限`))
   // 条目数超限
-  const many = Array.from({ length: 61 }, (_, i) => `- 条目 ${i}`).join('\n')
-  assert.match(validateContent(many), /已满（61\/60 条）/)
+  const many = Array.from({ length: MAX_ENTRIES + 1 }, (_, i) => `- 条目 ${i}`).join('\n')
+  assert.match(validateContent(many), new RegExp(`已满（${MAX_ENTRIES + 1}/${MAX_ENTRIES} 条）`))
 })
 
 test('validateContent rejects secrets', async () => {

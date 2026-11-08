@@ -309,3 +309,22 @@ test('目录跨进程自愈：用户手改已有文件（只有 mtime 变）同�
   assert.match(catalog.text(), /手改之后/, '内容按磁盘重建')
   assert.doesNotMatch(catalog.text(), /手改之前/)
 })
+
+test('目录求值遇到磁盘故障时退回旧值，绝不抛错拖垮提示词组装', async () => {
+  const { createAgentMemoryCatalog } = await import('../lib/agent-memory/catalog.js')
+  let broken = false
+  const catalog = createAgentMemoryCatalog(async () => [], {
+    stamp: () => {
+      if (broken) throw new Error('模拟磁盘读失败')
+      return { 'user.md': 1 }
+    },
+    now: () => Date.now(),
+  })
+  catalog.prime()
+  const before = catalog.text()
+  broken = true
+  // text() 在系统提示词组装里求值：抛错会让整个回合起不来（模型连话都说不出）。
+  assert.equal(catalog.text(), before, '故障时退回上一次的目录')
+  // prime 同样不能抛：启动失败会让插件挂载失败。
+  assert.doesNotThrow(() => catalog.prime())
+})

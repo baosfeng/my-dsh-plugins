@@ -276,11 +276,18 @@ function writeTool({
     output: TEXT_OUTPUT,
     async execute(params, exec) {
       const name = await resolveAlias(params.name, exec, resolveProjectPrefix)
+      // 整份覆盖写入最危险的一种失败：参数缺失 / 被截断时，`String(undefined)`
+      // 会变成空串，于是「校验通过、文件被清空、工具回 ok」——30 条真实记忆
+      // 一秒钟归零，而 agent 以为写成功了（实测复现，见 test 的回归用例）。
+      // 所以类型不对一律拒绝，绝不强转。
+      if (typeof params.content !== 'string') {
+        return '写入被拒绝：content 必须是完整的正文字符串（本次调用没有拿到 content，可能被截断）。请先用 agent_memory_read 读回原文，确认后再整份写。'
+      }
       const rejected = globalScopeReject(name, params.content, cwdOf(exec))
       if (rejected !== null) return rejected
       // 写入前压缩长条目（agent 记忆专属）：失败一律按原文写，绝不阻塞。
       const content = await compressContentForWrite(
-        String(params.content ?? ''),
+        params.content,
         compress === undefined ? undefined : (lines) => compress(lines, exec),
         compressMinChars,
       )

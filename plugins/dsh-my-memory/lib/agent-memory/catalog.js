@@ -106,11 +106,23 @@ export function createAgentMemoryCatalog(source, options = {}) {
     };
     return {
         text: () => {
-            revalidate(now());
+            // 目录求值发生在系统提示词组装里，抛错会拖垮整轮组装（模型连话都说不出）。
+            // 任何异常都退回上一份目录——宁可目录略旧，也不能让一轮对话起不来。
+            try {
+                revalidate(now());
+            }
+            catch {
+                // 自愈失败：保留缓存，下次求值再试
+            }
             return cached;
         },
         prime() {
-            reloadFromDisk();
+            try {
+                reloadFromDisk();
+            }
+            catch {
+                // 启动时读不到磁盘：留空目录，等第一次 refresh 或下次自愈
+            }
         },
         async refresh() {
             try {

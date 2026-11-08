@@ -72,3 +72,28 @@ test('MEMORY.md 不进入条目列表（目录已由系统按条目自动生成�
   assert.match(text, /projects\/hash123\/pitfalls\.md · 坑二/)
   assert.ok(!text.includes('MEMORY.md'), '索引文件不再自我描述（目录是系统自动生成的）')
 })
+
+test('content 缺失 / 非字符串时拒绝写入，绝不把记忆清空', async () => {
+  const { call, store } = await fixture()
+  const original = '- 原有记忆一\n- 原有记忆二\n- 原有记忆三'
+  assert.equal(await call('write', { name: 'user.md', content: original }), 'ok')
+
+  // 模型漏传 content（参数被截断 / 生成中断）时，旧实现走 String(undefined ?? '')
+  // → 空串 → 校验通过 → 整份覆盖成空文件且返回 ok。实测 30 条真实记忆一秒钟归零。
+  for (const bad of [undefined, null, 123, { text: '内容' }]) {
+    const params = bad === undefined ? { name: 'user.md' } : { name: 'user.md', content: bad }
+    const reply = await call('write', params)
+    assert.notEqual(reply, 'ok', `content=${String(bad)} 不该写成功`)
+    assert.match(reply, /content 必须是完整的正文字符串/, '给出可操作原因，而不是静默清空')
+    const current = await store.readForPanel('user.md')
+    assert.equal(current, original, `content=${String(bad)} 之后原文必须一字不动`)
+  }
+})
+
+test('空串写入是合法的显式清空（与参数缺失区分开）', async () => {
+  const { call, store } = await fixture()
+  assert.equal(await call('write', { name: 'user.md', content: '- 待清空' }), 'ok')
+  // 空串是「我确实要清空这份文件」的显式意图，工具层不拦——拦的是拿不到 content。
+  assert.equal(await call('write', { name: 'user.md', content: '' }), 'ok')
+  assert.equal(await store.readForPanel('user.md'), '')
+})

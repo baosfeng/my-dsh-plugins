@@ -3,6 +3,13 @@
 本文件记录 dsh-my-context 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [0.1.10] - 2026-11-08
+
+### 变更
+
+- feat(dsh-my-memory): agent 自主维护的跨会话记忆（#502） (#504)
+- docs(release): 修正 0.1.9/0.3.8 的 CHANGELOG 与人工自测清单（去掉未发布的空版本段）
+
 ## [0.1.9] - 2026-10-29
 
 ### 变更

@@ -2,7 +2,7 @@
 
 本文件记录 dsh-my-notify 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.4.4] - 2026-11-08
 
 ### 新增
 
@@ -32,6 +32,16 @@
 
 - docs(notify): README 补齐 v2 配置表（含 webhook / card / retry 子字段）、32 变量分组表、飞书卡片约束、variables / preview 接口形状与 localStorage 开关说明
 - docs(notify): 模块概述更新到 v2 架构（模块职责 / 配置落点 / 路由 / 渠道能力矩阵），文档索引登记面板 v2 原型
+
+### 变更
+
+- fix(notify): 补回简版面板样式缺失的 }，恢复设置页全部样式
+- docs(notify): 文档对齐简版设置页（原型入口 / 失败记录落点）
+- chore(notify): client 产物编译去掉注释（体积 −13KB，注释保留在 TS 源码）
+- docs(notify): 通知面板 v2 文档、原型定稿与索引 (#512)
+- feat(notify): 通知工作台前端重做（三列编辑 + 五形态预览带 + 卡片设计器）(#512)
+- feat(dsh-my-memory): agent 自主维护的跨会话记忆（#502） (#504)
+- refactor(md-render): 拆出 CodeHead/CodeBody 守住函数尺寸门禁
 
 ## [0.4.3] - 2026-10-17
 

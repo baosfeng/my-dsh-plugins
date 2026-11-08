@@ -3,6 +3,14 @@
 本文件记录 dsh-file-activity 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [0.5.16] - 2026-11-08
+
+### 变更
+
+- feat(dsh-my-memory): agent 自主维护的跨会话记忆（#502） (#504)
+- fix(ci): 修好 mutation 沙箱导入与 qs 中等漏洞（两个长期红的 job） (#501)
+- refactor(md-render): 拆出 CodeHead/CodeBody 守住函数尺寸门禁
+
 ## [0.5.15] - 2026-10-17
 
 ### 变更

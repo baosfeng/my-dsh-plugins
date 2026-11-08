@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.1] - 2026-11-08
 
 ### 新功能
 
@@ -27,6 +27,21 @@
 ### 修复
 
 - fix(prompt): 全局记忆 / 全局提示词 / agent 记忆目录三个注入段统一关闭宿主变量插值（`interpolate: false`）。此前一条含双花括号占位符的记忆会让整个 prompt 组装抛错、所有回合连败；现在这类正文按字面量进入上下文，不再被模板解析器当作变量。新增 3 条回归测试。
+
+### 变更
+
+- feat(dsh-my-memory): adopt salute/derive-state lessons from Anthropic agent memory article
+- refactor(memory): 拆出 scope-guard 守住 400 行门禁 + 目录求值异常兜底收敛
+- fix(memory): 写入失败不再静默清空记忆，目录求值失败不再拖垮整轮
+- fix(memory): agent 记忆容量红线放宽 + 面板显示真实失败原因
+- feat(memory): 预算放宽，目录全量展示不再强行压低
+- fix(memory): 去掉压缩模块未使用的导出（knip 门禁）
+- chore(memory): 重建 tsc 产物并登记 ctx.llm 宿主能力
+- feat(memory): 注入只给结论，剥解释性括号 + 默认 80 字
+- feat(memory): 目录尾注点名剩余文件，写入原则强调重要靠前
+- docs(memory): 补 43770745 的 Unreleased 条目
+- fix(dsh-my-memory): 注入段关闭宿主变量插值，含 {{...}} 的记忆不再拖垮整轮
+- fix(guardian): #508 桌面 asar 宿主清单按 @deepseek-ai/* 过滤，两形态同口径 (#511)
 
 ## [0.3.0] - 2026-11-01
 

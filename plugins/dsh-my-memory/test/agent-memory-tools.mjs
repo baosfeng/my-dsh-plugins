@@ -84,7 +84,7 @@ test('content 缺失 / 非字符串时拒绝写入，绝不把记忆清空', asy
     const params = bad === undefined ? { name: 'user.md' } : { name: 'user.md', content: bad }
     const reply = await call('write', params)
     assert.notEqual(reply, 'ok', `content=${String(bad)} 不该写成功`)
-    assert.match(reply, /content 必须是完整的正文字符串/, '给出可操作原因，而不是静默清空')
+    assert.match(reply, /content 必须是完整正文字符串/, '给出可操作原因，而不是静默清空')
     const current = await store.readForPanel('user.md')
     assert.equal(current, original, `content=${String(bad)} 之后原文必须一字不动`)
   }

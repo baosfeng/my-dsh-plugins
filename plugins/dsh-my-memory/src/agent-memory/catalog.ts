@@ -111,6 +111,21 @@ export interface AgentMemoryCatalogOptions {
 }
 
 /**
+ * 跑一次可失败的重建，异常一律吞掉。
+ *
+ * 目录求值嵌在系统提示词组装里：任何抛出都会让整轮对话起不来（用户看到的是
+ * 「会话失败」）。所以这里的原则是**宁可目录略旧，也不能让回合挂掉**——
+ * 失败时保留上一次的缓存，等下次求值再试。
+ */
+function swallow(run: () => void): void {
+  try {
+    run()
+  } catch {
+    // 保留上一次的目录 / 空库状态
+  }
+}
+
+/**
  * 构造目录缓存。
  *
  * @param source - 提供「文件 → 条目行」的函数；由 store 实现（已含 index 加载与归档过滤）。
@@ -162,33 +177,21 @@ export function createAgentMemoryCatalog(
 
   return {
     text: () => {
-      // 目录求值发生在系统提示词组装里，抛错会拖垮整轮组装（模型连话都说不出）。
-      // 任何异常都退回上一份目录——宁可目录略旧，也不能让一轮对话起不来。
-      try {
-        revalidate(now())
-      } catch {
-        // 自愈失败：保留缓存，下次求值再试
-      }
+      swallow(() => revalidate(now()))
       return cached
     },
 
-    prime() {
-      try {
-        reloadFromDisk()
-      } catch {
-        // 启动时读不到磁盘：留空目录，等第一次 refresh 或下次自愈
-      }
-    },
+    prime: () => swallow(reloadFromDisk),
 
     async refresh() {
+      // 同 reloadFromDisk：先取指纹再读正文，写入竞态只会导致多扫一次。
       try {
-        // 同 reloadFromDisk：先取指纹再读正文，写入竞态只会导致多扫一次。
         const stamp = readStamp()
         rebuild(await source(), stamp)
         snapshot = stampKey(stamp)
         checkedAt = now()
       } catch {
-        // 目录重建失败不覆盖旧值：宁可展示上一次的目录，也不要把「读不到」当空库。
+        // 失败不覆盖旧值：宁可展示上一次的目录，也不要把「读不到」当空库。
       }
     },
   }

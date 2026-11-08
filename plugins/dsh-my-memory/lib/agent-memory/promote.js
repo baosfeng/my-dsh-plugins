@@ -16,14 +16,14 @@
  *  1. 追加该条进 user.md（全局层）；
  *  2. 从涉及的每个项目文件里**删掉**这条（整份覆盖重写）；
  *  3. 写入前先过 store 的校验（16 KB / 120 条 / 200 字 / 敏感信息），并复用
- *     tools.globalScopeReject 的护栏——含路径 / IP / 端口 / 仓库名的条目
+ *     scope-guard.globalScopeReject 的护栏——含路径 / IP / 端口 / 仓库名的条目
  *     **不许进全局**，拒绝原因原样返回给面板展示；
  *  4. 先删项目层再写全局层：这样追加进 user.md 时不会撞上「与 projects/…
  *     重复」的去重护栏；写 user.md 失败则把已删文件回滚。
  */
 import { DUPLICATE_THRESHOLD, similarity } from './duplicates.js';
 import { entryLinesOf } from './paths.js';
-import { globalScopeReject } from './tools.js';
+import { globalScopeReject } from './scope-guard.js';
 /** 全局层文件（晋升的写入目标）。 */
 const GLOBAL_FILE = 'user.md';
 /** 项目层路径前缀。 */
@@ -159,7 +159,7 @@ function sourceOf({ name, projectId, projectName, line }) {
     return { name, projectId, projectName, line };
 }
 /**
- * 进全局层的护栏：复用 tools.globalScopeReject（**不改它的判据**）。
+ * 进全局层的护栏：复用 scope-guard.globalScopeReject（**不改它的判据**）。
  *
  * 面板没有会话 cwd，但这条内容恰恰出自那几个项目——把 /<项目名> 当 cwd
  * 传进去，globalScopeReject 的 basename 判据就变成「是否点名了涉及的项目」，

@@ -199,7 +199,7 @@ test('index.json 丢了条目键，正文还在磁盘上时依旧可见（多进
 })
 
 test('全局护栏：含项目路径 / IP / 端口 / 当前仓库名一律拒写全局', async () => {
-  const { globalScopeReject } = await import('../lib/agent-memory/tools.js')
+  const { globalScopeReject } = await import('../lib/agent-memory/scope-guard.js')
   const cwd = '/Users/me/IdeaProjects/android-monitor'
 
   assert.ok(globalScopeReject('user.md', '- 手机测试走 scripts/debug-cli.sh ui', cwd) !== null)

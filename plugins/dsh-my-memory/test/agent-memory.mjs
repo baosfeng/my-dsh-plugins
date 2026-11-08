@@ -221,7 +221,7 @@ test('目录为空时给「还没有记忆」而不是一片空白', async () =>
   assert.match(text, /还没有记忆/)
 })
 
-test('four tools are constructed with the documented faces', async () => {
+test('five tools are constructed with the documented faces', async () => {
   const { createAgentMemoryTools } = await import('../lib/agent-memory/tools.js')
   const { createIndexStore, createAgentMemoryStore } = await mods()
   const index = createIndexStore({})
@@ -229,7 +229,7 @@ test('four tools are constructed with the documented faces', async () => {
   const tools = createAgentMemoryTools({ store, resolveProjectPrefix: async () => 'projects/abc/' })
   assert.deepEqual(
     tools.map((t) => t.name),
-    ['agent_memory_list', 'agent_memory_read', 'agent_memory_write', 'agent_memory_delete'],
+    ['agent_memory_list', 'agent_memory_read', 'agent_memory_search', 'agent_memory_write', 'agent_memory_delete'],
   )
   for (const tool of tools) {
     assert.equal(typeof tool.execute, 'function')

@@ -66,11 +66,7 @@ function assertHostRegisterable(tool) {
 
 test('插件注册的每个工具都满足宿主 tools.register 的必需契约', () => {
   const tools = pluginTools()
-  assert.equal(
-    tools.length,
-    7,
-    '4 个旧工具 + 4 个 agent 记忆工具中的 7 个（query/save/delete + list/read/write/delete）',
-  )
+  assert.equal(tools.length, 8, '3 个旧工具 + 5 个 agent 记忆工具（query/save/delete + list/read/search/write/delete）')
   for (const tool of tools) assertHostRegisterable(tool)
 })
 

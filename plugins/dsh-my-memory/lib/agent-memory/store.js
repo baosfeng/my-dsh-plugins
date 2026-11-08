@@ -15,6 +15,7 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { MAX_ENTRIES, MAX_ENTRY_CHARS, MAX_FILE_BYTES, absoluteFileOf, archiveDir, archivedAbsoluteOf, entryLinesOf, listExistingFiles, normalizeName, } from './paths.js';
 import { duplicateError } from './duplicates.js';
+import { searchEntries } from './search.js';
 /** 名字非法时的统一原因（四个入口复用，措辞与提示词里的文件分工一致）。 */
 const INVALID_NAME = '无效的文件名，可选：MEMORY.md / user.md / feedback.md / projects/<id>/*.md';
 /** 敏感信息模式：API key / token / 密码 / 私钥。 */
@@ -254,6 +255,20 @@ async function listEntryLines(index, prefix) {
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
 }
+/**
+ * 条目级搜索的 store 侧门面：过滤归档 / MEMORY.md / 项目前缀，读全文后交给
+ * 纯函数匹配（渐进式加载的中间层：目录只给摘要、read 要给整份）。
+ */
+async function searchInStore(index, read, needle, options) {
+    await index.load();
+    const prefix = options.prefix ?? '';
+    const usable = (name) => index.metaOf(name)?.archivedAt === undefined && name !== 'MEMORY.md' && (prefix === '' || name.startsWith(prefix));
+    const files = (await listExistingFiles()).filter(usable);
+    const texts = new Map();
+    for (const name of files)
+        texts.set(name, await read(name));
+    return searchEntries(files, (name) => texts.get(name) ?? null, needle, options.limit ?? 20);
+}
 /** 正文首行（列表展示用）。 */
 function firstLineOf(text) {
     return (text
@@ -293,6 +308,7 @@ export function createAgentMemoryStore({ index, logger, onChange, }) {
         },
         list: (prefix = '') => listEntries(index, prefix),
         entries: (prefix = '') => listEntryLines(index, prefix),
+        search: (needle, options = {}) => searchInStore(index, readText, needle, options),
         archiveCold: (archiveMs, now) => archiveColdEntries(index, archiveMs, now ?? Date.now(), logger),
         // 面板读取**不计 readCount**：热度只应由 agent 的真实取用产生，
         // 用户翻看一眼不该让死记忆续命（否则遗忘机制被人肉浏览废掉）。

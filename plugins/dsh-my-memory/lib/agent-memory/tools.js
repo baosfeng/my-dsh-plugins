@@ -158,6 +158,47 @@ function readTool({ store, resolveProjectPrefix }) {
         },
     };
 }
+/** 渲染搜索结果：一条一行 `文件:行号 · 原文`（行号便于复核）。 */
+function renderHits(hits) {
+    if (hits.length === 0)
+        return '（没有匹配的条目）';
+    return hits.map((hit) => `${hit.name}:${hit.line} · ${hit.text}`).join('\n');
+}
+/** agent_memory_search：按关键词在**条目级**搜索（只读）。
+ *
+ *  渐进式加载的中间层——目录只给 30 字摘要、read 一次要整份（≤4 KB）；
+ *  记忆一多，「这条在不在、在哪份文件」靠猜不准，靠 read 太贵。搜索一次就
+ *  拿到「文件 + 行号 + 原文」，再决定要不要 read 全文。
+ */
+function searchTool({ store, resolveProjectPrefix }) {
+    return {
+        name: 'agent_memory_search',
+        description: '按关键词搜索跨会话记忆的条目（只读）。返回命中的文件、行号与条目原文，比整份 read 省；不确定细节时先搜再决定 read 哪份。',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: '关键词；多个词以空格分隔时全部命中才算（不区分大小写）' },
+                scope: {
+                    type: 'string',
+                    enum: ['all', 'project'],
+                    description: 'all（默认，全部文件）或 project（仅当前项目文件）',
+                },
+                limit: { type: 'number', description: '最多返回几条（默认 20，上限 50）' },
+            },
+            required: ['query'],
+            additionalProperties: false,
+        },
+        output: TEXT_OUTPUT,
+        async execute(params, exec) {
+            const query = typeof params.query === 'string' ? params.query.trim() : '';
+            if (query === '')
+                return 'query 不能为空';
+            const prefix = params.scope === 'project' ? await resolveProjectPrefix(cwdOf(exec)) : '';
+            const limit = Number.isInteger(params.limit) ? Math.min(50, params.limit) : 20;
+            return renderHits(await store.search(query, { prefix, limit }));
+        },
+    };
+}
 /** agent_memory_write：整份覆盖写入（成功只回 ok）。 */
 function writeTool({ store, resolveProjectPrefix, rememberProject }) {
     return {
@@ -225,9 +266,9 @@ export function createAgentMemoryRuntime({ logger, onChange, } = {}) {
     const index = createIndexStore({ logger });
     return { index, store: createAgentMemoryStore({ index, logger, onChange }) };
 }
-/** 构造四个工具定义（不含注册副作用，便于单测）。 */
+/** 构造五个工具定义（不含注册副作用，便于单测）。 */
 export function createAgentMemoryTools(deps) {
-    return [listTool(deps), readTool(deps), writeTool(deps), deleteTool(deps)];
+    return [listTool(deps), readTool(deps), searchTool(deps), writeTool(deps), deleteTool(deps)];
 }
 /** 注册四个工具 + 启动时归档冷记忆；返回 disposer 集合。 */
 export function registerAgentMemoryTools(ctx, { config, resolveProjectPrefix, runtime, }) {

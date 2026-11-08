@@ -201,7 +201,7 @@ function searchTool({ store, resolveProjectPrefix }) {
     };
 }
 /** agent_memory_write：整份覆盖写入（成功只回 ok）。 */
-function writeTool({ store, resolveProjectPrefix, rememberProject, compress, compressMinChars }) {
+function writeTool({ store, resolveProjectPrefix, rememberProject, compress, compressMinChars, }) {
     return {
         name: 'agent_memory_write',
         description: '写入一份跨会话记忆（整份覆盖）。写入前先用 agent_memory_read 读，已有同主题就合并或替换，绝不新增重复条目。',

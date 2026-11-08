@@ -54,8 +54,14 @@ function normalizeCompressed(raw) {
     let value = String(raw ?? '').trim();
     if (value === '')
         return null;
-    value = value.replace(/^[-*•]\s+/, '').replace(/^\d+[.)]\s+/, '').trim();
-    value = value.replace(/^["'「『]/, '').replace(/["'」』]$/, '').trim();
+    value = value
+        .replace(/^[-*•]\s+/, '')
+        .replace(/^\d+[.)]\s+/, '')
+        .trim();
+    value = value
+        .replace(/^["'「『]/, '')
+        .replace(/["'」』]$/, '')
+        .trim();
     return value === '' ? null : value;
 }
 /**

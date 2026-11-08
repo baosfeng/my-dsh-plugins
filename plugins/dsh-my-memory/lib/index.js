@@ -179,9 +179,11 @@ function registerAgentMemory(ctx, config, runtime, catalog) {
         runtime,
         // 压缩只作用于 agent 记忆（模型自己维护、条目长、目录有硬预算）：
         // 走当前会话的模型路由，任何失败都按原文写。
-        compress: config?.agentMemory?.compress === false
-            ? undefined
-            : createLlmCompressor({ llm: () => ctx.get('llm') }),
+        // 默认**不压缩**：条目平均 63 字、目录预算 20KB，没必要为了省 token
+        // 牺牲信息；需要时配置 agentMemory.compress: true 才启用。
+        compress: config?.agentMemory?.compress === true
+            ? createLlmCompressor({ llm: () => ctx.get('llm') })
+            : undefined,
         compressMinChars: config?.agentMemory?.compressMinChars,
     }), 'dsh-my-memory: agent memory tools');
 }

@@ -89,7 +89,7 @@
   场景: 面板拉取条目长度精简引导配置（issue #105）
     当 查询记忆 API 配置
     那么 返回精简单条长度上限 50
-    并且 返回单条注入长度上限 80
+    并且 返回单条注入长度上限 200
 
   场景: danger-full-access（approval policy=never）下 memory_save 免确认写入并标记来源（issue #208/#209）
     当 会话 "auto-session" 的审批策略为 "never" 且 saveApproval 为 "auto"

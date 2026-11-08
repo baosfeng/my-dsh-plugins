@@ -15,8 +15,10 @@
 /** 建议单条记忆长度上限（字符）。超过即提示精简（issue #105，「>50 字提示」）。 */
 export const DEFAULT_MAX_ENTRY_LENGTH = 50
 
-/** 单条记忆注入系统提示词的长度上限（字符，issue #38 原有默认）。 */
-export const DEFAULT_MAX_DESC_LENGTH = 80
+/** 单条记忆注入系统提示词的长度上限（字符）。
+ *  不做「强行压低」：200 字 × 5 条 ≈ 700 token，预算完全够；
+ *  注入侧只负责剥掉解释性括号，不砍信息。 */
+export const DEFAULT_MAX_DESC_LENGTH = 200
 
 /** 句子边界字符（中英文句末标点 + 分号 + 换行；省略号吸收入前一句）。 */
 const SENTENCE_BOUNDARY = /[。！？!?；;\n….]+/u

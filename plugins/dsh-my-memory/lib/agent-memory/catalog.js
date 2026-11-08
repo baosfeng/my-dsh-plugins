@@ -21,10 +21,12 @@
  */
 import { readFileSync, statSync } from 'node:fs';
 import { absoluteFileOf, entryLinesOf, indexFile, listExistingFilesSync } from './paths.js';
-/** 目录最多展示的行数（超出按「全局优先 + 项目轮转」丢弃，末尾给剩余条数）。 */
-export const MAX_CATALOG_LINES = 100;
-/** 目录正文的字节上限（UTF-8，约 2.7k 汉字）。 */
-export const MAX_CATALOG_BYTES = 8192;
+/** 目录最多展示的行数（超出按「全局优先 + 项目轮转」丢弃，末尾给剩余条数）。
+ *  实测：本机 214 条全部展示约 17.8 KB / 6.5k token，远低于 1 万 token 预算，
+ *  所以不再为省 token 截断——能全看见就不该让人去猜。 */
+export const MAX_CATALOG_LINES = 300;
+/** 目录正文的字节上限（UTF-8，约 20 KB ≈ 7.4k token）。 */
+export const MAX_CATALOG_BYTES = 20480;
 /** 单行摘要的字符上限（超出截断，避免一条长记忆把整份目录吃掉）。 */
 const CATALOG_LINE_CHARS = 30;
 /** 项目名在目录里的最大长度（超出截断，防止长仓库名吃掉预算）。 */

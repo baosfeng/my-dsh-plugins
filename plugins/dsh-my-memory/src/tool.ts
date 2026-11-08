@@ -256,7 +256,8 @@ const SAVE_PARAMETERS = {
     scope: {
       type: 'string',
       enum: ['global', 'project'],
-      description: '保存范围：global（全局记忆）或 project（当前项目记忆）',
+      description:
+        '保存范围：global（全局记忆，按评分注入 top-N，pinned 可设为每轮必注入）或 project（当前项目记忆，不注入系统提示词、只能 memory_query 查）',
     },
     desc: {
       type: 'string',

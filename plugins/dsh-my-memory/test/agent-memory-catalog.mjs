@@ -91,6 +91,19 @@ test('项目层轮转：一个项目条目再多，也不会让另一个项目�
   assert.match(text, /bbb\/坑 · 小项目唯一一条/, '排在后面的项目必须有代表')
 })
 
+test('尾注点名「哪份文件还剩多少条」，而不是只给总数', async () => {
+  const { renderCatalog, MAX_CATALOG_LINES } = await import('../lib/agent-memory/catalog.js')
+  const big = (prefix) => Array.from({ length: MAX_CATALOG_LINES }, (_, i) => prefix + ' 条目 ' + (i + 1))
+  const text = renderCatalog([
+    { name: 'projects/aaa/pitfalls.md', lines: big('甲') },
+    { name: 'projects/bbb/pitfalls.md', lines: big('乙') },
+  ])
+  const note = text.split('\n').pop()
+  assert.match(note, /另有 \d+ 条未展开/)
+  assert.match(note, /aaa\/坑 \d+/, '点名 aaa/pitfalls.md 剩余条数，agent 才知道该 read 哪份')
+  assert.match(note, /bbb\/坑 \d+/, '点名 bbb/pitfalls.md 剩余条数')
+})
+
 test('字节上限先于行数生效时也照样截断', async () => {
   const { renderCatalog, MAX_CATALOG_LINES, MAX_CATALOG_BYTES } = await import('../lib/agent-memory/catalog.js')
   const heavy = '字'.repeat(30)

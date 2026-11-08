@@ -114,21 +114,46 @@ function orderEntries(entries: CatalogEntry[]): Array<{ name: string; line: stri
  * @param projectNames - 项目 id → 可读名（缺失时退回 id 前 6 位）。
  * @returns 一行一条的目录；空库返回空串（调用方给「还没有记忆」的说明）。
  */
+/** 尾注里最多点名几份文件（再多就没有指向性，只剩噪音）。 */
+const MAX_OVERFLOW_FILES = 4
+
+/**
+ * 超预算尾注：给出**每份文件**还剩多少条，让 agent 知道该去 read 哪一份。
+ *
+ * 旧的单一「另有 N 条」只给总数——agent 只能 agent_memory_list 拉全量（一次
+ * 多付几 KB 且仍然只是摘要）。实测本机 199 条只显示 100 行、99 条不可见，
+ * 而 list 全量的成本正好抵消了「正文零常驻」的设计收益。
+ */
+function overflowNote(
+  dropped: number,
+  droppedByFile: Map<string, number>,
+  projectNames: Record<string, string>,
+): string {
+  const parts = [...droppedByFile.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, MAX_OVERFLOW_FILES)
+    .map(([name, count]) => catalogPrefix(name, projectNames) + ' ' + count)
+  const more = droppedByFile.size > MAX_OVERFLOW_FILES ? ' 等' : ''
+  return '（另有 ' + dropped + ' 条未展开：' + parts.join('、') + more + '，用 agent_memory_list 看全量）'
+}
+
 export function renderCatalog(entries: CatalogEntry[], projectNames: Record<string, string> = {}): string {
   const rows: string[] = []
   let bytes = 0
   let dropped = 0
+  const droppedByFile = new Map<string, number>()
   for (const { name, line } of orderEntries(entries)) {
     const row = catalogPrefix(name, projectNames) + ' · ' + truncateEntry(line)
     const size = Buffer.byteLength(row, 'utf8') + 1
     if (rows.length >= MAX_CATALOG_LINES || bytes + size > MAX_CATALOG_BYTES) {
       dropped += 1
+      droppedByFile.set(name, (droppedByFile.get(name) ?? 0) + 1)
       continue
     }
     rows.push(row)
     bytes += size
   }
-  if (dropped > 0) rows.push('（另有 ' + dropped + ' 条未展开，用 agent_memory_list 看全量）')
+  if (dropped > 0) rows.push(overflowNote(dropped, droppedByFile, projectNames))
   return rows.join('\n')
 }
 

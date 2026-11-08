@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import { dirSync } from 'tmp'
 import { apply, inject } from '../lib/index.js'
+import { DEFAULT_MAX_DESC_LENGTH } from '../lib/memory-text.js'
 import { projectMemoryDir, projectIdOf, resolveProjectMemory } from '../lib/store.js'
 import { waitForFile } from '../../dsh-shared/test-kit/wait.mjs'
 
@@ -219,7 +220,7 @@ test('GET /config exposes the entry-length guidance (issue #105)', async () => {
   assert.equal(r.status, 200)
   assert.equal(r.json.ok, true)
   assert.equal(r.json.value.maxEntryLength, 50, 'default entry-length guidance (issue #105 suggestion)')
-  assert.equal(r.json.value.maxDescLength, 200, 'default injection cap preserved')
+  assert.equal(r.json.value.maxDescLength, DEFAULT_MAX_DESC_LENGTH, 'default injection cap follows the shared constant')
 })
 
 test('POST /memory keeps the FULL desc in storage even when it exceeds maxEntryLength (issue #105)', async () => {

@@ -261,7 +261,7 @@ const SAVE_PARAMETERS = {
     },
     desc: {
       type: 'string',
-      description: '要保存的记忆内容（用户偏好、项目约定、技术决策等）',
+      description: '要保存的记忆内容：只写结论（≤60 字、一句话），不写理由、举例与操作步骤；细节留到需要时再查',
     },
     category: {
       type: 'string',
@@ -317,9 +317,9 @@ export function renderSaveResult(value: SaveResult): string {
  */
 export function saveToolDescription(proactivePropose?: boolean): string {
   if (proactivePropose === true) {
-    return '保存记忆（写操作，需用户确认）：将一条值得记住的信息保存为全局或项目记忆。内容建议浓缩为 1-2 句话概括（用「；」或「。」切分要点），不要长篇解释性话语。发现值得记住的信息时，可主动向用户提议保存；用户同意后调用本工具。保存后 memory_query 立即可查、后续会话注入生效。'
+    return '保存记忆（写操作，需用户确认）：将一条值得记住的信息保存为全局或项目记忆。内容只写结论（≤60 字、一句话），不写理由、举例与操作步骤——注入时只带结论，细节留到需要时 memory_query。发现值得记住的信息时，可主动向用户提议保存；用户同意后调用本工具。保存后 memory_query 立即可查、后续会话注入生效。'
   }
-  return '保存记忆（写操作，需用户确认）：按用户要求将一条信息保存为全局或项目记忆。内容建议浓缩为 1-2 句话概括（用「；」或「。」切分要点），不要长篇解释性话语。调用后需用户确认才会真正写入。保存后 memory_query 立即可查、后续会话注入生效。'
+  return '保存记忆（写操作，需用户确认）：按用户要求将一条信息保存为全局或项目记忆。内容只写结论（≤60 字、一句话），不写理由、举例与操作步骤——注入时只带结论，细节留到需要时 memory_query。调用后需用户确认才会真正写入。保存后 memory_query 立即可查、后续会话注入生效。'
 }
 
 /** The memory_save tool definition (write; gated by the approval listener). */

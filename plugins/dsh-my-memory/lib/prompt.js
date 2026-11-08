@@ -14,7 +14,7 @@
  * saved mid-session is visible to the agent on the very next turn without a
  * restart.
  */
-import { DEFAULT_MAX_DESC_LENGTH, summarizeDesc } from './memory-text.js';
+import { DEFAULT_MAX_DESC_LENGTH, summarizeDesc, summarizeForInjection } from './memory-text.js';
 import { DEFAULT_PINNED_MAX, decayConfidence, pickForInjection } from './memory-scoring.js';
 /** Default cap on how many global memories are injected. */
 const DEFAULT_MAX_ITEMS = 5;
@@ -34,12 +34,14 @@ export function truncateDesc(desc, maxLength) {
  */
 export function renderMemorySection({ pinned, scored }, { maxItems, maxDescLength }) {
     const picked = scored.slice(0, maxItems);
-    const pinnedLines = pinned.map((item) => `- ${truncateDesc(item.desc, maxDescLength)}`);
-    const lines = picked.map((item) => `- ${truncateDesc(item.desc, maxDescLength)}`);
+    // 注入只给结论：剥掉解释性括号 + 取首句 + 限长（正文仍完整存在存储里）。
+    const injectLine = (item) => `- ${summarizeForInjection(item.desc, maxDescLength)}`;
+    const pinnedLines = pinned.map(injectLine);
+    const lines = picked.map(injectLine);
     if (pinnedLines.length === 0 && lines.length === 0)
         return '';
-    const head = `## 用户记忆（全局）
-以下是你需要始终携带的用户长期偏好与关键约定（来自 dsh-my-memory 插件）：`;
+    // 标题即说明：不再写「以下是你需要始终携带…」这类前言，省下的预算留给条目。
+    const head = '## 用户记忆（全局 · dsh-my-memory）';
     if (pinnedLines.length === 0)
         return `${head}\n${lines.join('\n')}`;
     const pinnedBlock = `### 恒定（每轮必生效）\n${pinnedLines.join('\n')}`;

@@ -14,7 +14,7 @@
 /** 建议单条记忆长度上限（字符）。超过即提示精简（issue #105，「>50 字提示」）。 */
 export const DEFAULT_MAX_ENTRY_LENGTH = 50;
 /** 单条记忆注入系统提示词的长度上限（字符，issue #38 原有默认）。 */
-export const DEFAULT_MAX_DESC_LENGTH = 200;
+export const DEFAULT_MAX_DESC_LENGTH = 80;
 /** 句子边界字符（中英文句末标点 + 分号 + 换行；省略号吸收入前一句）。 */
 const SENTENCE_BOUNDARY = /[。！？!?；;\n….]+/u;
 /**
@@ -51,6 +51,35 @@ export function summarizeDesc(desc, maxLength) {
     if (first.length <= maxLength)
         return first;
     return `${first.slice(0, maxLength)}…`;
+}
+/** 解释性括号的长度阈值：超过即视为解释（如「（例如对比度 4.39 与阈值 4.5…）」），
+ *  注入时剥掉；短括号（命令 / 简称，如「（monkey）」「（K/M/B）」）保留。 */
+const PAREN_MAX_CHARS = 15;
+/** 命令 / 路径特征：长括号里带这些就说明它是**可执行信息**，不能当解释剥掉
+ *  （「（macOS: pmset -g … caffeinate -dimsu -w $$ 包住）」剥了 agent 就只会干瞪眼）。 */
+const COMMAND_LIKE = /(^|\s)--?[a-zA-Z]|\/[\w.-]+\/|\$\$|`[^`]+`|[\w-]+\.(sh|mjs|js|py|md|json)/;
+/** 剥掉**解释性**括号（中英文）：短括号保留，含命令 / 路径的长括号也保留。 */
+function stripLongParens(text) {
+    const cut = (value, pattern) => value.replace(pattern, (match, inner) => {
+        if (match.length <= PAREN_MAX_CHARS)
+            return match;
+        return COMMAND_LIKE.test(inner) ? match : '';
+    });
+    const withoutCn = cut(text, /（([^）]*)）/gu);
+    const withoutAll = cut(withoutCn, /\(([^)]*)\)/g);
+    return withoutAll.replace(/\s+/g, ' ').trim();
+}
+/**
+ * 注入用摘要（渐进式注入）：**只给结论，不给解释**。
+ *
+ * 与 summarizeDesc 的差别是先剥掉长括号（解释性举例 / 背景），再取首句并限长。
+ * 完整正文永远留在存储里——需要细节时 memory_query / agent_memory_read 拿全文，
+ * 注入只负责「让 agent 想起有这条」，不该被例子与理由占掉预算。
+ */
+export function summarizeForInjection(desc, maxLength) {
+    const value = String(desc ?? '').trim();
+    const stripped = stripLongParens(value);
+    return summarizeDesc(stripped === '' ? value : stripped, maxLength);
 }
 /** 是否超过建议长度上限（用于保存/输入时的精简提示）。 */
 export function isOverEntryLimit(desc, maxLength = DEFAULT_MAX_ENTRY_LENGTH) {

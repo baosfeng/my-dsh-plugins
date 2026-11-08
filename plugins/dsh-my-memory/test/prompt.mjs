@@ -6,6 +6,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { createMemorySection, renderMemorySection, truncateDesc } from '../lib/prompt.js'
+import { DEFAULT_MAX_DESC_LENGTH } from '../lib/memory-text.js'
 
 /** A fake global store with a fixed item list. */
 function fakeStore(items) {
@@ -38,7 +39,7 @@ test('injected text carries the global memories the agent must carry', () => {
     {},
   )
   const text = section.text({})
-  assert.ok(text.includes('用户记忆（全局）'), 'section header present')
+  assert.ok(text.includes('用户记忆（全局'), 'section header present')
   assert.ok(text.includes('回复使用中文'), 'first memory injected')
   assert.ok(text.includes('代码注释用中文'), 'second memory injected')
   assert.ok(text.includes('dsh-my-memory'), 'plugin attribution present')
@@ -76,8 +77,9 @@ test('invalid config values fall back to the defaults', () => {
     maxDescLength: -1,
   })
   const text = section.text({})
-  assert.ok(text.includes('y'.repeat(200)), 'default 200-char cap applied')
-  assert.ok(!text.includes('y'.repeat(201)), 'beyond the default cap is cut')
+  // 上限取常量而不是硬编码数字：改默认值时测试必须跟着动，而不是静默漂移。
+  assert.ok(text.includes('y'.repeat(DEFAULT_MAX_DESC_LENGTH)), 'default cap applied')
+  assert.ok(!text.includes('y'.repeat(DEFAULT_MAX_DESC_LENGTH + 1)), 'beyond the default cap is cut')
 })
 
 test('truncateDesc keeps short descs untouched', () => {

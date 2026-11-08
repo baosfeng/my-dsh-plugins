@@ -63,3 +63,37 @@ test('isOverEntryLimit flags text beyond the cap and allows a custom cap', () =>
 test('DEFAULT_MAX_ENTRY_LENGTH is 50 as suggested by issue #105', () => {
   assert.equal(DEFAULT_MAX_ENTRY_LENGTH, 50)
 })
+
+// ── 注入专用摘要：只给结论，不给解释（渐进式注入）────────────────────
+
+test('summarizeForInjection 剥掉长括号（解释性举例），保留短括号（命令/简称）', async () => {
+  const { summarizeForInjection } = await import('../lib/memory-text.js')
+  assert.equal(
+    summarizeForInjection('禁止用 adb 操作手机界面（monkey 启动 App、input swipe、keyevent 等一律不行）', 200),
+    '禁止用 adb 操作手机界面',
+    '长括号是解释，剥掉',
+  )
+  assert.equal(
+    summarizeForInjection('数值单位用 K/M/B（万/亿）', 200),
+    '数值单位用 K/M/B（万/亿）',
+    '短括号是信息，保留',
+  )
+})
+
+test('summarizeForInjection 只取首句并受长度上限约束', async () => {
+  const { summarizeForInjection } = await import('../lib/memory-text.js')
+  assert.equal(
+    summarizeForInjection('项目统一放 IdeaProjects；历史仓库不用迁。补充说明很长很长。', 200),
+    '项目统一放 IdeaProjects；',
+    '取首句（分号也是边界）',
+  )
+  assert.equal(summarizeForInjection('甲'.repeat(50), 10), '甲'.repeat(10) + '…', '无句边界 → 字符截断 + 省略号')
+})
+
+test('summarizeForInjection 剥完为空时回退原文（不能把条目注成空行）', async () => {
+  const { summarizeForInjection } = await import('../lib/memory-text.js')
+  assert.equal(
+    summarizeForInjection('（这是一段很长的纯解释性括注内容，不该让条目变空）', 200),
+    '（这是一段很长的纯解释性括注内容，不该让条目变空）',
+  )
+})

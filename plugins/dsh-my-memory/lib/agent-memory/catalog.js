@@ -126,21 +126,65 @@ function overflowNote(dropped, droppedByFile, projectNames) {
     const more = droppedByFile.size > MAX_OVERFLOW_FILES ? ' 等' : '';
     return '（另有 ' + dropped + ' 条未展开：' + parts.join('、') + more + '，用 agent_memory_list 看全量）';
 }
+/** 组内短前缀：项目名已在分组标题上，行里不再重复（每行省约 13 字节）。 */
+function shortPrefixOf(name) {
+    if (name === 'user.md')
+        return 'u';
+    if (name === 'feedback.md')
+        return 'f';
+    return fileMark(name.split('/').pop() ?? '');
+}
+/** 分组标签：全局层统一「全局」，项目层用可读项目名。 */
+function groupLabelOf(name, projectNames) {
+    const parts = name.split('/');
+    if (parts.length !== 3 || parts[0] !== 'projects')
+        return '全局';
+    const id = parts[1] ?? '';
+    return (projectNames[id] ?? id.slice(0, 6)).slice(0, MAX_LABEL_CHARS);
+}
+/** 按「全局 / 项目」分组；组内顺序保持文件与条目原序。 */
+function groupEntries(entries, projectNames) {
+    const map = new Map();
+    for (const entry of entries) {
+        const label = groupLabelOf(entry.name, projectNames);
+        const group = map.get(label) ?? { label, isProject: entry.name.startsWith('projects/'), items: [] };
+        for (const line of entry.lines)
+            group.items.push({ name: entry.name, mark: shortPrefixOf(entry.name), line });
+        map.set(label, group);
+    }
+    // 全局组永远在前；项目组按条目数降序（条目多的项目先露头）
+    return [...map.values()].sort((a, b) => Number(a.isProject) - Number(b.isProject) || b.items.length - a.items.length || a.label.localeCompare(b.label));
+}
 export function renderCatalog(entries, projectNames = {}) {
     const rows = [];
     let bytes = 0;
     let dropped = 0;
     const droppedByFile = new Map();
-    for (const { name, line } of orderEntries(entries)) {
-        const row = catalogPrefix(name, projectNames) + ' · ' + truncateEntry(line);
-        const size = Buffer.byteLength(row, 'utf8') + 1;
-        if (rows.length >= MAX_CATALOG_LINES || bytes + size > MAX_CATALOG_BYTES) {
-            dropped += 1;
-            droppedByFile.set(name, (droppedByFile.get(name) ?? 0) + 1);
+    const drop = (name) => {
+        dropped += 1;
+        droppedByFile.set(name, (droppedByFile.get(name) ?? 0) + 1);
+    };
+    for (const group of groupEntries(entries, projectNames)) {
+        const heading = '## ' + group.label + '（' + group.items.length + ' 条）';
+        const headingSize = Buffer.byteLength(heading, 'utf8') + 1;
+        // 标题放不下时整组丢弃：半个分组比没有分组更容易误读。
+        if (rows.length >= MAX_CATALOG_LINES || bytes + headingSize > MAX_CATALOG_BYTES) {
+            for (const item of group.items)
+                drop(item.name);
             continue;
         }
-        rows.push(row);
-        bytes += size;
+        rows.push(heading);
+        bytes += headingSize;
+        for (const item of group.items) {
+            const row = item.mark + ' · ' + truncateEntry(item.line);
+            const size = Buffer.byteLength(row, 'utf8') + 1;
+            if (rows.length >= MAX_CATALOG_LINES || bytes + size > MAX_CATALOG_BYTES) {
+                drop(item.name);
+                continue;
+            }
+            rows.push(row);
+            bytes += size;
+        }
     }
     if (dropped > 0)
         rows.push(overflowNote(dropped, droppedByFile, projectNames));

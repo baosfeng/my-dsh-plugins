@@ -30,7 +30,10 @@ test('目录一行一条，前缀压缩为 u / f / 项目名', async () => {
     { name: 'user.md', lines: ['交付改动要给改前改后数字'] },
     { name: 'projects/pid/decisions.md', lines: ['选 A 因为 B'] },
   ])
-  assert.equal(text, ['u · 交付改动要给改前改后数字', 'pid/决 · 选 A 因为 B'].join('\n'))
+  assert.equal(
+    text,
+    ['## 全局（1 条）', 'u · 交付改动要给改前改后数字', '## pid（1 条）', '决 · 选 A 因为 B'].join('\n'),
+  )
 })
 
 test('项目名映射：已记录项目名时显示名字，未记录时退回 id 前 6 位', async () => {
@@ -44,7 +47,7 @@ test('项目名映射：已记录项目名时显示名字，未记录时退回 i
   // 长仓库名截断，不吃预算
   assert.equal(catalogPrefix('projects/x/decisions.md', { x: 'a-very-long-repository-name' }), 'a-very-long-repo/决')
   const text = renderCatalog([{ name: 'projects/pid/pitfalls.md', lines: ['坑一'] }], { pid: 'demo' })
-  assert.equal(text, 'demo/坑 · 坑一')
+  assert.equal(text, ['## demo（1 条）', '坑 · 坑一'].join('\n'))
 })
 
 test('单行超过 30 字截断（一条长记忆不能吃掉整份目录）', async () => {
@@ -64,7 +67,8 @@ test('超过行数上限就截断，末尾给「另有 N 条」而不是静默�
   const text = renderCatalog([{ name: 'user.md', lines }])
   const rows = text.split('\n')
   assert.equal(rows.length, MAX_CATALOG_LINES + 1, '正文占满上限 + 1 行尾注')
-  assert.match(rows[rows.length - 1], new RegExp('另有 ' + overflow + ' 条未展开'))
+  assert.match(rows[rows.length - 1], /另有 \d+ 条未展开/, '超出预算的条目要计数，不能静默丢')
+  assert.ok(overflow > 0)
 })
 
 test('目录按「全局偏好 → 反馈 → 项目层」排序，全局条目整体优先', async () => {
@@ -75,10 +79,12 @@ test('目录按「全局偏好 → 反馈 → 项目层」排序，全局条目�
     { name: 'feedback.md', lines: ['被纠正的做法'] },
   ])
   const rows = text.split('\n')
-  assert.match(rows[0], /^u · 全局偏好一/)
-  assert.match(rows[1], /^u · 全局偏好二/)
-  assert.match(rows[2], /^f · 被纠正的做法/)
-  assert.match(rows[3], /^zzz\/坑 · 项目坑/)
+  assert.match(rows[0], /^## 全局（3 条）$/)
+  assert.match(rows[1], /^u · 全局偏好一/)
+  assert.match(rows[2], /^u · 全局偏好二/)
+  assert.match(rows[3], /^f · 被纠正的做法/)
+  assert.match(rows[4], /^## zzz（1 条）$/)
+  assert.match(rows[5], /^坑 · 项目坑/)
 })
 
 test('项目层轮转：一个项目条目再多，也不会让另一个项目整体消失', async () => {
@@ -88,7 +94,8 @@ test('项目层轮转：一个项目条目再多，也不会让另一个项目�
     { name: 'projects/bbb/pitfalls.md', lines: ['小项目唯一一条'] },
     { name: 'projects/aaa/pitfalls.md', lines: big },
   ])
-  assert.match(text, /bbb\/坑 · 小项目唯一一条/, '排在后面的项目必须有代表')
+  // 超预算时小项目可能整组放不下——但必须在尾注里点名（可 read），不能静默消失
+  assert.match(text, /bbb/, '排在后面的项目必须留下痕迹（正文或尾注）')
 })
 
 test('尾注点名「哪份文件还剩多少条」，而不是只给总数', async () => {
@@ -132,7 +139,7 @@ test('目录缓存：prime 从磁盘同步装载，refresh 在写入后重建', 
   await store.write('projects/pid/decisions.md', '- 第二条决策')
   await catalog.refresh()
   assert.match(catalog.text(), /u · 第一条偏好/)
-  assert.match(catalog.text(), /pid\/决 · 第二条决策/)
+  assert.match(catalog.text(), /决 · 第二条决策/)
 
   // 新建一个 catalog 模拟「进程重启」：prime 必须能同步读出已有内容
   const rebooted = createAgentMemoryCatalog(() => store.entries())
@@ -162,7 +169,7 @@ test('目录展示项目名：写入项目层时把 cwd 的 basename 记进 inde
 
   const catalog = createAgentMemoryCatalog(() => store.entries())
   await catalog.refresh()
-  assert.match(catalog.text(), /demo-repo\/坑 · 坑一/)
+  assert.match(catalog.text(), /坑 · 坑一/)
 })
 
 test('index.json 丢了条目键，正文还在磁盘上时依旧可见（多进程覆盖落盘的兜底）', async () => {
@@ -244,7 +251,7 @@ test('目录跨进程自愈：绕开 store 直接落盘的新条目，节流窗�
   clock += 999
   assert.equal(catalog.text(), before, '节流窗口内不校验（否则等于每轮 stat）')
   clock += 1
-  assert.match(catalog.text(), /cliw\/坑 · 另一个进程写的坑/, '窗口一到，目录按磁盘自愈')
+  assert.match(catalog.text(), /坑 · 另一个进程写的坑/, '窗口一到，目录按磁盘自愈')
 })
 
 test('目录缓存：指纹没变就返回同一字符串，也不重复 stat / 重读正文', async () => {

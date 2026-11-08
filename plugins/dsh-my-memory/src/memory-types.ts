@@ -17,6 +17,8 @@ export interface MemoryItem {
   category: Category
   source: { sessionId: string; at: number }
   confidence: number
+  /** 恒定标记（issue #518）：true = 不参与评分、每轮恒注入。 */
+  pinned: boolean
   relatedIds: string[]
   history: Array<{
     at: number
@@ -24,6 +26,15 @@ export interface MemoryItem {
     desc: string
   }>
   status: 'active' | 'conflict-pending'
+}
+
+/** memory_save 入参（工具 execute 与 executeSave 共用，避免两处签名漂移）。 */
+export interface SaveArgs {
+  scope: string
+  desc: string
+  category?: string
+  pinned?: boolean
+  cwd?: string
 }
 
 /** 记忆存储结构。 */

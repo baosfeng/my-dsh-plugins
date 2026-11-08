@@ -176,21 +176,33 @@ async function applyWrite(store, payload) {
         return applyDelete(store, payload);
     return { status: 400, message: 'action must be "add", "update" or "delete"' };
 }
-/** Add one memory item (desc required). */
+/** Add one memory item (desc required; pinned optional, issue #518). */
 async function applyAdd(store, payload) {
     const desc = typeof payload.desc === 'string' ? payload.desc.trim() : '';
     if (desc === '')
         return { status: 400, message: 'add requires a non-empty desc' };
-    await store.add(desc);
+    await store.add({ desc, pinned: payload.pinned === true });
     return null;
 }
-/** Update one memory item (id + desc required). */
+/**
+ * Update one memory item (id required; desc 与 pinned 至少给一个)。
+ *
+ * issue #518：切换恒定是纯元数据变更，允许只传 pinned（desc 省略）——
+ * 否则面板每次切换都得原样回传正文，既啰嗦又容易把编辑中的草稿写回去。
+ */
 async function applyUpdate(store, payload) {
     const id = typeof payload.id === 'string' ? payload.id : '';
     const desc = typeof payload.desc === 'string' ? payload.desc.trim() : '';
-    if (id === '' || desc === '')
-        return { status: 400, message: 'update requires id and a non-empty desc' };
-    if ((await store.update(id, desc)) === null)
+    const hasPinned = typeof payload.pinned === 'boolean';
+    if (id === '' || (desc === '' && !hasPinned)) {
+        return { status: 400, message: 'update requires id and a non-empty desc or a boolean pinned' };
+    }
+    const changes = {};
+    if (desc !== '')
+        changes.desc = desc;
+    if (hasPinned)
+        changes.pinned = payload.pinned === true;
+    if ((await store.update(id, changes)) === null)
         return { status: 404, message: 'memory item not found' };
     return null;
 }

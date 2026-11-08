@@ -14,6 +14,8 @@ interface MemoryItemWithMeta {
   status?: string
   /** 来源会话（issue #209）：agent 自动保存的条目带 sessionId，手动新增为空。 */
   source?: { sessionId?: string }
+  /** 恒定（issue #518）：每轮恒注入、不参与评分的硬约束。 */
+  pinned?: boolean
 }
 
 /** 描述即展开开关：整段内容可点击，展开后显示全文（原型的信息层级）。 */
@@ -38,19 +40,34 @@ function MemoryRowDesc({
   )
 }
 
-/** 条目操作图标组（编辑 / 删除）。 */
+/** 条目操作图标组（恒定切换 / 编辑 / 删除）。 */
 function MemoryRowActions({
   id,
+  pinned,
+  onTogglePin,
   onEdit,
   onDelete,
 }: {
   id: string
+  pinned: boolean
+  onTogglePin: () => void
   onEdit: () => void
   onDelete: () => void
 }): ReactNode {
   return createElement(
     'div',
     { className: 'dsh-my-memory-actions' },
+    // issue #518：恒定是独立动作（需二次确认），图标表达当前状态：
+    // 已恒定 = ✓（点了取消），未恒定 = +（点了设为恒定）。
+    createElement(
+      IconButton,
+      {
+        className: 'dsh-my-memory-iconbtn',
+        label: `${pinned ? strings.pinOff() : strings.pinOn()} ${id}`,
+        onClick: onTogglePin,
+      },
+      pinned ? icon.check(14) : icon.plus(14),
+    ),
     createElement(
       IconButton,
       { className: 'dsh-my-memory-iconbtn', label: `${strings.edit()} ${id}`, onClick: onEdit },
@@ -102,6 +119,8 @@ function MetadataRow({ item }: { item: MemoryItemWithMeta }): ReactNode {
     'div',
     { className: 'dsh-my-memory-meta' },
     createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(item.category)),
+    // issue #518：恒定徽标紧跟分类——扫一眼就知道这条每轮都会注入。
+    item.pinned === true ? createElement('span', { className: 'dsh-my-memory-pin-badge' }, strings.pinBadge()) : null,
     confidence === null
       ? null
       : createElement(

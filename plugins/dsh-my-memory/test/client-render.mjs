@@ -398,6 +398,7 @@ assert.equal(countSections(tree2), 1, 'exactly one tab panel visible at a time (
 assert.ok(joined.includes('回复使用中文'), 'global memory desc rendered')
 assert.ok(joined.includes('偏好'), 'category badge rendered')
 assert.ok(joined.includes('3/5'), 'confidence dots + ratio rendered')
+assert.equal(countByClass(tree2, 'dsh-my-memory-pin-badge'), 0, '非恒定条目不渲染恒定徽标（默认 pinned=false）')
 // 来源会话与演进历史移入展开详情（列表行只留内容 / 分类 / 置信度 / 时间）
 const expandBtns0 = []
 collectButtons(tree2, expandBtns0)
@@ -750,6 +751,119 @@ assert.ok(
   promptWrites.every((c) => c.url === '/my-memory/api/prompts'),
   'prompt writes never hit the memory endpoint',
 )
+
+// ── 恒定（pinned）：徽标 + 切换按钮 + 二次确认 + POST（issue #518）─────────
+const pinnedGlobal = {
+  ok: true,
+  value: {
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    items: [
+      {
+        id: 'p1',
+        desc: '每轮必注入的硬约束',
+        category: 'workflow',
+        confidence: 5,
+        pinned: true,
+        createdAt: 10,
+        updatedAt: 10,
+      },
+      { id: 'p2', desc: '普通条目', category: 'fact', confidence: 2, pinned: false, createdAt: 20, updatedAt: 20 },
+    ],
+  },
+}
+cannedResponses.push(pinnedGlobal)
+remountView()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const pinnedTree = renderView()
+const pinnedJoined = joinedText(pinnedTree)
+assert.equal(countByClass(pinnedTree, 'dsh-my-memory-pin-badge'), 1, '只有 pinned 条目带恒定徽标')
+const pinBadgeNode = findByClassContaining(pinnedTree, 'dsh-my-memory-pin-badge')
+assert.equal(pinBadgeNode.props.children, '恒定', '恒定徽标文案走 strings.pinBadge()')
+assert.ok(pinnedJoined.includes('恒定：这些条目每轮必注入'), '区块顶部说明恒定条目的注入语义与独立名额')
+
+// 切换按钮：pinned 行给「取消恒定」，未 pinned 行给「设为恒定」
+const pinButtons = []
+collectButtons(pinnedTree, pinButtons)
+const unpinBtn = pinButtons.find((b) => b.label.includes('取消恒定') && b.label.includes('p1'))
+assert.ok(unpinBtn, 'pinned 行渲染取消恒定按钮')
+const pinBtn = pinButtons.find((b) => b.label.includes('设为恒定') && b.label.includes('p2'))
+assert.ok(pinBtn, '未 pinned 行渲染设为恒定按钮')
+
+// 草稿不该被恒定切换清掉
+const pinDraftInputs = []
+collectInputs(pinnedTree, pinDraftInputs)
+const pinComposer = pinDraftInputs.find((i) => i.tag === 'textarea' && String(i.placeholder).includes('记住'))
+assert.ok(pinComposer, 'global composer rendered')
+pinComposer.onChange({ target: { value: '写到一半的草稿' } })
+
+unpinBtn.onClick()
+const unpinConfirmJoined = joinedText(renderView())
+assert.ok(unpinConfirmJoined.includes('确认取消这条记忆的恒定'), '取消恒定走二次确认')
+const unpinOk = collectByClass(renderView(), 'dsh-my-memory-confirm-ok')
+assert.ok(unpinOk, '取消恒定的确认按钮渲染')
+cannedResponses.push({
+  ok: true,
+  value: {
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    items: [{ ...pinnedGlobal.value.items[0], pinned: false }, pinnedGlobal.value.items[1]],
+  },
+})
+unpinOk.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const unpinCall = fetchCalls.find(
+  (c) =>
+    c.options !== undefined &&
+    String(c.options.body).includes('"pinned":false') &&
+    JSON.parse(c.options.body).id === 'p1',
+)
+assert.ok(unpinCall, '取消恒定打到 /my-memory/api/memory')
+const unpinPayload = JSON.parse(unpinCall.options.body)
+assert.equal(unpinPayload.action, 'update', '恒定切换复用 update 动作')
+assert.equal(unpinPayload.pinned, false)
+assert.equal(unpinPayload.confirmed, true, '恒定切换仍带用户确认标记')
+assert.equal(unpinPayload.desc, undefined, '只改 pinned 时不传 desc（正文原样保留）')
+assert.ok(joinedText(renderView()).includes('已保存'), '切换成功后给出与保存一致的反馈')
+const afterUnpinInputs = []
+collectInputs(renderView(), afterUnpinInputs)
+const draftAfterUnpin = afterUnpinInputs.find((i) => i.tag === 'textarea' && String(i.placeholder).includes('记住'))
+assert.equal(draftAfterUnpin.value, '写到一半的草稿', '恒定切换不清空未提交的草稿')
+
+// 反向：把未恒定条目设为恒定
+const pinOnButtons = []
+collectButtons(renderView(), pinOnButtons)
+const pinOnBtn = pinOnButtons.find((b) => b.label.includes('设为恒定') && b.label.includes('p2'))
+assert.ok(pinOnBtn, '取消后仍未恒定行仍可设为恒定')
+pinOnBtn.onClick()
+assert.ok(joinedText(renderView()).includes('确认把这条记忆设为恒定'), '设为恒定走二次确认（每轮注入要说清后果）')
+const pinOk = collectByClass(renderView(), 'dsh-my-memory-confirm-ok')
+assert.ok(pinOk, '设为恒定的确认按钮渲染')
+cannedResponses.push({
+  ok: true,
+  value: {
+    scope: 'global',
+    cwd: '',
+    projectRoot: '',
+    items: [
+      { ...pinnedGlobal.value.items[0], pinned: false },
+      { ...pinnedGlobal.value.items[1], pinned: true },
+    ],
+  },
+})
+pinOk.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+const pinCall = fetchCalls.find(
+  (c) =>
+    c.options !== undefined &&
+    String(c.options.body).includes('"pinned":true') &&
+    JSON.parse(c.options.body).id === 'p2',
+)
+assert.ok(pinCall, '设为恒定打到 /my-memory/api/memory')
+assert.equal(JSON.parse(pinCall.options.body).confirmed, true)
+assert.equal(countByClass(renderView(), 'dsh-my-memory-pin-badge'), 1, '设为恒定后徽标移到 p2')
 
 // ── 纯函数导出 ────────────────────────────────────────────────────────────
 assert.equal(typeof exportsObj.sortMemories, 'function', 'sortMemories helper exported')

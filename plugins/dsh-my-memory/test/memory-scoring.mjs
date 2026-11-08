@@ -301,3 +301,60 @@ test('DEFAULT_DECAY_MS and DEFAULT_HALF_LIFE_MS are sane', () => {
   assert.equal(DEFAULT_DECAY_MS, 90 * 24 * 60 * 60 * 1000, '90-day decay threshold')
   assert.equal(DEFAULT_HALF_LIFE_MS, 7 * 24 * 60 * 60 * 1000, '7-day recency half-life')
 })
+
+// ── issue #518：恒定（pinned）通道 ───────────────────────────────────
+
+test('withDefaults defaults pinned to false and preserves an explicit true (issue #518)', () => {
+  assert.equal(withDefaults({ id: 'a', desc: 'x' }, NOW).pinned, false, 'legacy items are not pinned')
+  assert.equal(withDefaults({ id: 'b', desc: 'y', pinned: true }, NOW).pinned, true, 'explicit pin preserved')
+})
+
+test('pickForInjection routes pinned items into their own channel, out of the scored top-N (issue #518)', () => {
+  const old = NOW - 90 * 24 * 60 * 60 * 1000
+  const items = [
+    { id: 'pin', desc: '禁止创建 goal 任务', pinned: true, confidence: 1, createdAt: old, updatedAt: old },
+    ...Array.from({ length: 3 }, (_, index) => ({
+      id: 's' + index,
+      desc: '普通' + index,
+      confidence: 1,
+      createdAt: NOW,
+      updatedAt: NOW - index * 1000,
+    })),
+  ]
+  const { picked, pinned, pinnedDropped } = pickForInjection(items, {}, { now: NOW, maxItems: 2 })
+  assert.deepEqual(
+    picked.map((item) => item.id),
+    ['s0', 's1'],
+    'scored channel ignores the pinned item',
+  )
+  assert.deepEqual(
+    pinned.map((item) => item.id),
+    ['pin'],
+    'pinned item still injected although it is 90 days old (the real failure this fixes)',
+  )
+  assert.equal(pinnedDropped, 0)
+})
+
+test('pinned channel has its own cap and reports the overflow (issue #518)', () => {
+  const items = [1, 2, 3].map((n) => ({
+    id: 'p' + n,
+    desc: '恒定' + n,
+    pinned: true,
+    createdAt: NOW,
+    updatedAt: NOW - n,
+  }))
+  const { pinned, pinnedDropped } = pickForInjection(items, {}, { now: NOW, pinnedMax: 2 })
+  assert.deepEqual(
+    pinned.map((item) => item.id),
+    ['p1', 'p2'],
+    'newest pinned first, capped at 2',
+  )
+  assert.equal(pinnedDropped, 1, 'overflow counted, never silent')
+})
+
+test('pinned: false behaves exactly like a legacy item (no channel split)', () => {
+  const items = [{ id: 'a', desc: 'x', pinned: false, confidence: 1, createdAt: NOW, updatedAt: NOW }]
+  const { picked, pinned } = pickForInjection(items, {}, { now: NOW, maxItems: 5 })
+  assert.equal(picked.length, 1)
+  assert.equal(pinned.length, 0)
+})

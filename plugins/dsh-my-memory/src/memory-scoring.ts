@@ -39,6 +39,10 @@ export const DEFAULT_DECAY_MS = 90 * 24 * 60 * 60 * 1000
 /** 默认时效半衰期：7 天（issue #78「时效性」语义）。 */
 export const DEFAULT_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000
 
+/** 恒定（pinned）条目的默认注入上限（issue #518）：独立于 maxItems 的
+ *  名额，超出的 pinned 条目按 updatedAt 倒序截断（见 pickForInjection）。 */
+export const DEFAULT_PINNED_MAX = 3
+
 /** 同主题大意描述（供主题归一化比较）。 */
 function normalizeText(text: unknown): string {
   return String(text ?? '')
@@ -68,6 +72,13 @@ const CATEGORY_LABELS: Record<Category, string> = {
 /** 取分类的中文标签（非法/缺失回退默认分类的标签；issue #192 工具输出用）。 */
 export function categoryLabelOf(value: unknown): string {
   return CATEGORY_LABELS[normalizeCategory(value)]
+}
+
+/** 恒定标记（issue #518）：恒定条目在分类标签后追加「·恒定」，让 agent 从
+ *  工具结果就能分辨「必须每轮生效」与「按评分选入」。用 ·（U+00B7）与既有
+ *  〔分类〕 的窄间隔风格一致；非恒定条目返回空串（渲染处直接拼接）。 */
+export function pinMarkOf(item: Partial<MemoryItem> | null | undefined): string {
+  return item?.pinned === true ? '·恒定' : ''
 }
 
 /** 取条目的分类（缺省回退默认）。 */
@@ -127,6 +138,7 @@ export function withDefaults(item: Partial<MemoryItem> | null | undefined, now: 
     updatedAt: finiteOr(item?.updatedAt, now),
     category: categoryOf(item),
     confidence: confidenceOf(item),
+    pinned: item?.pinned === true,
     status: statusOf(item),
     source: sourceOf(item?.source),
     relatedIds: stringListOf(item?.relatedIds),
@@ -313,29 +325,48 @@ export function relevanceOf(desc: unknown, keywords: string[]): number {
 }
 
 /**
- * 智能注入选择（issue #78 替代简单 top-N）：
- * 按 scoreForInjection 对全部条目评分，取最高分的 maxItems 条（含来源元
- * 数据），返回 { picked }（新数组，不修改原列表）。条目列表应为全局记忆
- * （decay 已应用时效果最佳）。
+ * 智能注入选择（issue #78 替代简单 top-N；issue #518 起**分流恒定条目**）：
+ *
+ * - **pinned（恒定）**：不参与评分，按 updatedAt 倒序取前 `pinnedMax` 条恒注入
+ *   ——「必须每轮生效」的硬约束不会因时效衰减被挤出（实测过的真实失效：
+ *   两条 fact 硬约束因 44/51 天未更新而落选）；
+ * - **其余条目**：照旧按 scoreForInjection 取最高分的 maxItems 条。
+ *
+ * 两条通道**互斥**（一条只会出现一次），容量互不挤占。`pinnedDropped` 是
+ * 因超出 pinnedMax 而没进注入的恒定条目数（调用方据此 warn，绝不静默丢）。
+ * 返回新数组，不修改原列表；decay 已应用时效果最佳。
  */
 export function pickForInjection(
   items: Array<Partial<MemoryItem>>,
   context: InjectionContext,
-  opts?: InjectionOptions & { maxItems?: number },
-): { picked: MemoryItem[] } {
+  opts?: InjectionOptions & { maxItems?: number; pinnedMax?: number },
+): { picked: MemoryItem[]; pinned: MemoryItem[]; pinnedDropped: number } {
   const options = opts ?? {}
   const maxItems = Number.isInteger(options.maxItems) && options.maxItems! > 0 ? options.maxItems! : 5
+  const pinnedMax =
+    Number.isInteger(options.pinnedMax) && options.pinnedMax! >= 0 ? options.pinnedMax! : DEFAULT_PINNED_MAX
   const list = Array.isArray(items) ? items : []
   // 只考虑格式良好的条目（id + desc 齐全）——junk 输入（null/字符串）直接跳过
   const wellFormed = list.filter((item) => item !== null && typeof item === 'object' && descOf(item) !== '')
+  const pinnedAll = wellFormed
+    .filter((item) => item.pinned === true)
+    .map((item) => withDefaults(item, options.now))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  const pinned = pinnedAll.slice(0, pinnedMax)
+  // 置信度归一化只在评分通道内做：恒定条目不参与评分，不该影响分母。
+  const scoredPool = wellFormed.filter((item) => item.pinned !== true)
   const maxConfidence = Math.max(
     1,
-    ...wellFormed.map((item) => (Number.isFinite(item?.confidence) ? item.confidence! : 1)),
+    ...scoredPool.map((item) => (Number.isFinite(item?.confidence) ? item.confidence! : 1)),
   )
-  const scored = wellFormed
+  const scored = scoredPool
     .map((item) => scoreForInjection(item, context, { ...options, maxConfidence }))
     .sort((a, b) => b.score - a.score)
-  return { picked: scored.slice(0, maxItems).map((entry) => entry.item) }
+  return {
+    picked: scored.slice(0, maxItems).map((entry) => entry.item),
+    pinned,
+    pinnedDropped: Math.max(0, pinnedAll.length - pinned.length),
+  }
 }
 
 /** 分类的展示标签（zh；供工具/测试使用）。 */

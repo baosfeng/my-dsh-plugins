@@ -39,6 +39,7 @@ const pieces = [
   ['__PART_UI_FALLBACK__', 'ui-fallback.js'],
   ['__PART_UTILS__', 'utils.js'],
   ['__PART_CONFIRM_UI__', 'confirm-ui.js'],
+  ['__PART_CONFIRM_PANEL__', 'confirm-panel.js'],
   ['__PART_VIEW_ROWS__', 'view-rows.js'],
   ['__PART_ROWS__', 'rows.js'],
   ['__PART_PROMPTS_STATE__', 'prompts-state.js'],

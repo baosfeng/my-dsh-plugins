@@ -120,15 +120,6 @@ interface EditingState {
   desc: string
 }
 
-/** 确认状态 */
-interface ConfirmingState {
-  kind: 'add' | 'update' | 'delete'
-  scope: string
-  id?: string
-  desc?: string
-  category?: string
-}
-
 /** 记忆条目类型 */
 interface MemoryItem {
   id: string
@@ -140,6 +131,8 @@ interface MemoryItem {
   history?: Array<{ action: string; at: number }>
   status?: string
   source?: { sessionId?: string }
+  /** 恒定（issue #518）：每轮恒注入、不参与评分的硬约束。 */
+  pinned?: boolean
 }
 
 function buildRows(
@@ -168,6 +161,16 @@ function buildRows(
       onCancelEdit,
       onSaveEdit: () => onConfirm({ kind: 'update', scope, id: item.id, desc: editing.desc, category: item.category }),
       onDelete: () => onConfirm({ kind: 'delete', scope, id: item.id, desc: item.desc, category: item.category }),
+      // 恒定切换也走确认弹层：每轮注入是硬约束，翻转必须由用户明确点头。
+      onTogglePin: () =>
+        onConfirm({
+          kind: 'pin',
+          scope,
+          id: item.id,
+          desc: item.desc,
+          category: item.category,
+          pinned: item.pinned !== true,
+        }),
       onToggle: () => onToggle(key),
       entryLimit,
     })
@@ -267,6 +270,7 @@ function MemoryRow({
   onCancelEdit,
   onSaveEdit,
   onDelete,
+  onTogglePin,
   onToggle,
   entryLimit,
 }: {
@@ -279,6 +283,7 @@ function MemoryRow({
   onCancelEdit: () => void
   onSaveEdit: () => void
   onDelete: () => void
+  onTogglePin: () => void
   onToggle: () => void
   entryLimit: number
 }): ReactNode {
@@ -297,7 +302,13 @@ function MemoryRow({
         isExpanded,
         onToggle,
       }),
-      createElement(MemoryRowActions, { id: item.id, onEdit, onDelete }),
+      createElement(MemoryRowActions, {
+        id: item.id,
+        pinned: item.pinned === true,
+        onTogglePin,
+        onEdit,
+        onDelete,
+      }),
     ),
     createElement(MetadataRow, { item }),
     isExpanded ? createElement(MemoryDetail, { item }) : null,
@@ -343,56 +354,6 @@ function MemoryDetail({ item }: { item: MemoryItem }): ReactNode {
       ),
     ),
     createElement(HistoryList, { item }),
-  )
-}
-
-/** 概要预览行（issue #105）：add/update 内容超长时提示「完整内容保存 + 显示概要」。 */
-function SummaryPreview({ desc }: { desc: string }): ReactNode {
-  const summary = truncateText(desc, TRUNCATE_LEN)
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-confirm-summary' },
-    createElement('span', { className: 'dsh-my-memory-confirm-summary-label' }, strings.summaryPreview()),
-    createElement('span', { className: 'dsh-my-memory-confirm-summary-text' }, summary.text),
-  )
-}
-
-/** 确认面板标题文案（按 kind 取；未知 kind 回落删除文案）。 */
-const CONFIRM_TEXTS: Record<string, () => string> = {
-  add: () => strings.confirmAdd(),
-  update: () => strings.confirmUpdate(),
-  delete: () => strings.confirmDelete(),
-}
-
-/** 记忆写操作确认：居中弹层 + 共用 ask 范式卡（保存绿 / 删除红）。 */
-function ConfirmPanel({
-  confirm,
-  onCancel,
-  onOk,
-  entryLimit,
-}: {
-  confirm: ConfirmingState
-  onCancel: () => void
-  onOk: () => void
-  entryLimit: number
-}): ReactNode {
-  const isDelete = confirm.kind === 'delete'
-  return createElement(
-    'div',
-    { className: 'dsh-my-memory-overlay', role: 'presentation' },
-    createElement(AskConfirmCard, {
-      variant: isDelete ? 'delete' : 'save',
-      title: CONFIRM_TEXTS[confirm.kind](),
-      scope: confirm.scope,
-      category: confirm.category ?? '',
-      content: confirm.desc ?? '',
-      showSummary: !isDelete && isOverEntryLimit(confirm.desc, entryLimit),
-      note: strings.confirmHint(),
-      allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
-      showOptions: false,
-      onAllow: onOk,
-      onReject: onCancel,
-    }),
   )
 }
 

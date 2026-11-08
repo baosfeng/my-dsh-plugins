@@ -279,6 +279,8 @@ function ScopePanel(props: ScopePanelProps): ReactNode {
     entryLimit,
   )
   const emptyHint = isProject && data.cwd === '' ? strings.projectEmptyHint() : undefined
+  // 恒定是「独立名额 + 每轮必注入」的强语义，只要本区有恒定条目就把规则写在列表上方。
+  const pinnedCount = items.filter((item) => item.pinned === true).length
   return createElement(
     'section',
     { className: `dsh-my-memory-section${isProject ? ' dsh-my-memory-section-project' : ''}` },
@@ -288,6 +290,9 @@ function ScopePanel(props: ScopePanelProps): ReactNode {
       createElement('p', { className: 'dsh-my-memory-note' }, isProject ? strings.projectNote() : strings.globalNote()),
       createElement(SortToggle, { scope, order, onSort: props.onSort }),
     ),
+    pinnedCount === 0
+      ? null
+      : createElement('p', { className: 'dsh-my-memory-pin-note' }, `${strings.pinLabel()}：${strings.pinnedNote()}`),
     rows.length === 0
       ? createElement(EmptyState, { hint: emptyHint })
       : createElement('div', { className: 'dsh-my-memory-list' }, rows),
@@ -328,7 +333,15 @@ function ErrorBanner({ kind, onRetry }: { kind: 'load' | 'save'; onRetry: () => 
   return kind === 'save' ? createElement('div', { className: 'dsh-my-memory-error' }, strings.saveFailed()) : null
 }
 
-/** One confirmed write (add / update / delete) → POST + refresh the scope. */
+/** 一次确认后的写操作分流：恒定切换只打 pinned（issue #518），其余走通用写端点。 */
+function sendConfirmedWrite(confirm: ConfirmingState, cwd: string): Promise<Required<MemoryValue>> {
+  if (confirm.kind === 'pin') {
+    return updatePinned({ scope: confirm.scope, id: confirm.id ?? '', pinned: confirm.pinned === true, cwd })
+  }
+  return writeMemory({ action: confirm.kind, scope: confirm.scope, cwd, id: confirm.id, desc: confirm.desc })
+}
+
+/** One confirmed write (add / update / delete / pin) → POST + refresh the scope. */
 function createCommitHandler({
   data,
   setData,
@@ -349,16 +362,11 @@ function createCommitHandler({
   return (confirm: ConfirmingState) => {
     setSaved(false)
     setError(null)
-    writeMemory({
-      action: confirm.kind,
-      scope: confirm.scope,
-      cwd: confirm.scope === 'project' && data !== null ? data.project.cwd : '',
-      id: confirm.id,
-      desc: confirm.desc,
-    })
+    sendConfirmedWrite(confirm, confirm.scope === 'project' && data !== null ? data.project.cwd : '')
       .then((value) => {
         setSaved(true)
-        setDrafts((d) => ({ ...d, [confirm.scope]: '' }))
+        // 恒定切换不该清掉输入框里没提交的草稿（用户可能正写到一半）。
+        if (confirm.kind !== 'pin') setDrafts((d) => ({ ...d, [confirm.scope]: '' }))
         setEditing(null)
         setConfirming(null)
         setData((d) => mergeScope(d, confirm.scope, value))

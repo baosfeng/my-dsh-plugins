@@ -47,6 +47,7 @@ const REAL_ITEM_FIELDS = [
   'desc',
   'history',
   'id',
+  'pinned',
   'relatedIds',
   'source',
   'status',
@@ -664,4 +665,23 @@ test('renderSaveResult shows the saved category (#192)', () => {
 
 test('cleanup', () => {
   rmSync(dir, { recursive: true, force: true })
+})
+
+// ── issue #518：memory_save 的恒定参数 ───────────────────────────────
+
+test('memory_save carries pinned into the stored item; query/render mark it (#518)', async () => {
+  const { tool, queryTool } = realSaveTool()
+  const saved = await tool.execute({ scope: 'global', desc: '禁止创建 goal 任务', category: 'fact', pinned: true }, {})
+  assert.equal(saved.item.pinned, true, 'pinned persisted on the item')
+  const query = await queryTool.execute({ scope: 'global' }, {})
+  const queryText = queryTool.output.render({ scope: 'global' }, query)[0].text
+  assert.ok(queryText.includes('·恒定'), 'query render marks pinned items: ' + queryText)
+  const saveText = tool.output.render({ scope: 'global' }, saved)[0].text
+  assert.ok(saveText.includes('·恒定'), 'save render marks pinned items: ' + saveText)
+})
+
+test('memory_save defaults pinned to false', async () => {
+  const { tool } = realSaveTool()
+  const saved = await tool.execute({ scope: 'global', desc: '普通偏好' }, {})
+  assert.equal(saved.item.pinned, false, 'plain memories are not pinned')
 })

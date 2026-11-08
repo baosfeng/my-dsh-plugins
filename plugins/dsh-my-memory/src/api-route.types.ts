@@ -87,6 +87,8 @@ export interface WritePayload {
   action?: 'add' | 'update' | 'delete'
   id?: string
   desc?: string
+  /** 恒定标记（issue #518）：update 可只改它，desc 省略。 */
+  pinned?: boolean
   [key: string]: unknown
 }
 

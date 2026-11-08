@@ -46,6 +46,7 @@ window.__ModuleLoader__.load({
     __PART_UI_FALLBACK__
     __PART_UTILS__
     __PART_CONFIRM_UI__
+    __PART_CONFIRM_PANEL__
     __PART_VIEW_ROWS__
     __PART_ROWS__
     __PART_PROMPTS_STATE__

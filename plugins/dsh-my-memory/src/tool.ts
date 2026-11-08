@@ -26,8 +26,8 @@
  * saving memories it notices; off, the agent saves on request.
  */
 import { findProjectRoot } from 'dsh-shared'
-import { CATEGORIES, categoryLabelOf, makeSource, normalizeCategory } from './memory-scoring.js'
-import type { MemoryItem, StoreInstance } from './memory-types.js'
+import { CATEGORIES, categoryLabelOf, makeSource, normalizeCategory, pinMarkOf } from './memory-scoring.js'
+import type { MemoryItem, SaveArgs, StoreInstance } from './memory-types.js'
 
 /** 查询结果接口。 */
 export interface QueryResult {
@@ -94,7 +94,7 @@ export function renderQueryResult(value: QueryResult): string {
         : ''
   if (value.items.length === 0) return `没有找到${scopeLabel}记忆${where}。`
   const lines = value.items.map(
-    (item) => `- [${item.id}]〔${categoryLabelOf(item.category)}〕${item.desc}${sourceLabelOf(item)}`,
+    (item) => `- [${item.id}]〔${categoryLabelOf(item.category)}${pinMarkOf(item)}〕${item.desc}${sourceLabelOf(item)}`,
   )
   return `${scopeLabel}记忆${where}（${value.items.length} 条）：\n${lines.join('\n')}`
 }
@@ -162,6 +162,7 @@ const MEMORY_ITEM_PROPERTIES = {
     required: ['sessionId', 'at'],
   },
   confidence: { type: 'number' },
+  pinned: { type: 'boolean' },
   relatedIds: { type: 'array', items: { type: 'string' } },
   history: {
     type: 'array',
@@ -267,6 +268,10 @@ const SAVE_PARAMETERS = {
       description:
         '可选：记忆类型——preference（用户偏好）/fact（事实）/project（项目约定）/stack（技术栈）/workflow（工作流），默认 fact',
     },
+    pinned: {
+      type: 'boolean',
+      description: '可选：恒定（默认 false）——不参与评分、每轮必注入，用于必须始终生效的硬约束；普通偏好不要设恒',
+    },
     cwd: {
       type: 'string',
       description: '可选：项目记忆的项目目录（默认取当前会话的工作目录）',
@@ -298,7 +303,9 @@ export function renderSaveResult(value: SaveResult): string {
       : value.scope === 'project'
         ? '（项目目录未知）'
         : ''
-  return `已保存${scopeLabel}记忆${where}〔${categoryLabelOf(value.item.category)}〕：${value.item.desc} [${value.item.id}]`
+  return `已保存${scopeLabel}记忆${where}〔${categoryLabelOf(value.item.category)}${pinMarkOf(
+    value.item,
+  )}〕：${value.item.desc} [${value.item.id}]`
 }
 
 /**
@@ -329,7 +336,7 @@ export function createMemorySaveTool({
       schema: SAVE_OUTPUT,
       render: (_args: unknown, value: SaveResult) => [{ type: 'text', text: renderSaveResult(value) }],
     },
-    async execute(args: { scope: string; desc: string; category?: string; cwd?: string }, exec: ExecContext) {
+    async execute(args: SaveArgs, exec: ExecContext) {
       return executeSave(args, exec, { globalStore, getProjectStore, logger })
     },
   }
@@ -337,7 +344,7 @@ export function createMemorySaveTool({
 
 /** Run one memory_save call; lands only after the pre-execute approval gate. */
 async function executeSave(
-  args: { scope: string; desc: string; category?: string; cwd?: string },
+  args: SaveArgs,
   exec: ExecContext,
   { globalStore, getProjectStore, logger }: StoreDeps & { logger?: Logger },
 ): Promise<SaveResult> {
@@ -350,7 +357,7 @@ async function executeSave(
   }
   const at = Date.now()
   const category = normalizeCategory(args.category)
-  const entry = { desc, category, source: makeSource(sessionId, at) }
+  const entry = { desc, category, pinned: args.pinned === true, source: makeSource(sessionId, at) }
   if (scope === 'global') {
     const item = await globalStore.add(entry, at)
     infoSave(logger, `记忆已保存（scope=global，itemId=${item.id}，sessionId=${sessionId}）`)

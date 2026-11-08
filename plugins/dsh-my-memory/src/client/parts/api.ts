@@ -15,6 +15,8 @@ interface MemoryItem {
   history?: Array<{ action: string; at: number }>
   status?: string
   source?: { sessionId?: string }
+  /** 恒定（issue #518）：每轮恒注入、不参与评分；旧数据为 false。 */
+  pinned?: boolean
 }
 
 /** 记忆响应值类型 */
@@ -74,6 +76,31 @@ function writeMemory({
     .then((res) => res.json())
     .then((body: ApiResponse<MemoryValue>) => {
       if (body === null || body.ok !== true) throw new Error('write failed')
+      return normalizeMemory({ ...body.value, scope })
+    })
+}
+
+/** POST /my-memory/api/memory action=update，只翻转 pinned（issue #518）。
+ *  不带 desc：服务端按 id 定位后只改恒定标记，正文原样保留。 */
+function updatePinned({
+  scope,
+  id,
+  pinned,
+  cwd,
+}: {
+  scope: string
+  id: string
+  pinned: boolean
+  cwd: string
+}): Promise<Required<MemoryValue>> {
+  return fetch(`${API_BASE}/memory`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'update', scope, cwd, id, pinned, confirmed: true }),
+  })
+    .then((res) => res.json())
+    .then((body: ApiResponse<MemoryValue>) => {
+      if (body === null || body.ok !== true) throw new Error('pin write failed')
       return normalizeMemory({ ...body.value, scope })
     })
 }

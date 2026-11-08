@@ -567,3 +567,41 @@ test('API write logs an info line with action/scope (issue #155)', async () => {
   assert.ok(writeLog.includes('action=add'), 'write log carries the action')
   assert.ok(writeLog.includes('scope=global'), 'write log carries the scope')
 })
+
+// ── issue #518：API 侧的恒定写入 ─────────────────────────────────────
+
+test('API add accepts pinned, and update can flip it without touching desc (#518)', async () => {
+  const { getRoute } = await boot()
+  const add = makeResponse()
+  await getRoute().handler(
+    makeRequest('POST', '/my-memory/api/memory', {
+      action: 'add',
+      scope: 'global',
+      desc: '禁止创建 goal 任务',
+      pinned: true,
+      confirmed: true,
+    }),
+    add,
+  )
+  assert.equal(add._status, 200, 'pinned add accepted')
+  const list = makeResponse()
+  await getRoute().handler(makeRequest('GET', '/my-memory/api/memory?scope=global'), list)
+  const added = JSON.parse(list._body).value.items
+  assert.equal(added.length, 1)
+  assert.equal(added[0].pinned, true, 'pinned persisted through the API')
+  const flip = makeResponse()
+  await getRoute().handler(
+    makeRequest('POST', '/my-memory/api/memory', {
+      action: 'update',
+      scope: 'global',
+      id: added[0].id,
+      pinned: false,
+      confirmed: true,
+    }),
+    flip,
+  )
+  assert.equal(flip._status, 200, 'pin-only update accepted (desc omitted)')
+  const updated = JSON.parse(flip._body).value.items[0]
+  assert.equal(updated.pinned, false, 'pin flipped off')
+  assert.equal(updated.desc, '禁止创建 goal 任务', 'desc untouched by a pin-only update')
+})

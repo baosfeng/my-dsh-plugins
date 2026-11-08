@@ -70,6 +70,10 @@ const STYLES: string = `
 .dsh-my-memory-conf b { margin-left:3px; font-weight:500; color:#6b7280; }
 .dsh-my-memory-conflict-badge { display:inline-flex; align-items:center; height:20px; padding:0 7px; border-radius:5px;
   background:#fdf0ee; color:#b42318; font-size:11.5px; font-weight:500; }
+/* 恒定（issue #518）：与灰底分类徽标同量级，用金色系 + 细描边区分「每轮必注入」 */
+.dsh-my-memory-pin-badge { display:inline-flex; align-items:center; height:20px; padding:0 7px; border-radius:5px;
+  background:#fdf4d8; box-shadow:inset 0 0 0 1px #f1dda6; color:#8a5a00; font-size:11.5px; font-weight:500; }
+.dsh-my-memory-pin-note { margin:0 0 8px; color:#8a5a00; font-size:12px; line-height:1.6; }
 /* ── 展开详情 ── */
 .dsh-my-memory-detail { display:flex; flex-direction:column; gap:10px; margin-top:10px; padding-top:10px;
   border-top:1px dashed #e8eaee; }

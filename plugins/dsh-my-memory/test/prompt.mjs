@@ -105,10 +105,77 @@ test('injection prefers the summary (first sentence) for long multi-sentence des
 })
 
 test('renderMemorySection renders the picked items directly', () => {
-  const text = renderMemorySection([{ id: 'a', desc: '第一条', createdAt: 1, updatedAt: 2 }], {
-    maxItems: 5,
-    maxDescLength: 200,
-  })
+  const text = renderMemorySection(
+    { pinned: [], scored: [{ id: 'a', desc: '第一条', createdAt: 1, updatedAt: 2 }] },
+    { maxItems: 5, maxDescLength: 200 },
+  )
   assert.ok(text.includes('第一条'))
-  assert.equal(renderMemorySection([], { maxItems: 5, maxDescLength: 200 }), '', 'empty list → empty text')
+  assert.equal(
+    renderMemorySection({ pinned: [], scored: [] }, { maxItems: 5, maxDescLength: 200 }),
+    '',
+    'empty list → empty text',
+  )
+})
+
+// ── issue #518：恒定（pinned）条目走独立通道 ─────────────────────────
+
+test('pinned entries are injected in their own section, ahead of scored ones (issue #518)', () => {
+  const section = createMemorySection(
+    fakeStore([
+      { id: 'pin', desc: '禁止创建 goal 任务', pinned: true, createdAt: 1, updatedAt: 2 },
+      { id: 'a', desc: '回复使用中文', createdAt: 1, updatedAt: 3 },
+    ]),
+    {},
+  )
+  const text = section.text({})
+  assert.ok(text.includes('### 恒定（每轮必生效）'), 'pinned section heading present')
+  assert.ok(text.includes('### 相关记忆'), 'scored section heading present')
+  assert.ok(
+    text.indexOf('禁止创建 goal 任务') < text.indexOf('回复使用中文'),
+    'pinned entries are listed before scored ones',
+  )
+})
+
+test('pinned entries do not consume the maxItems budget (issue #518)', () => {
+  // maxItems=1 → 评分通道只能进 1 条；恒定条目额外计入，不被挤掉
+  const items = [
+    { id: 'p1', desc: '恒定约束一', pinned: true, createdAt: 1, updatedAt: 10 },
+    { id: 'p2', desc: '恒定约束二', pinned: true, createdAt: 1, updatedAt: 9 },
+    ...Array.from({ length: 4 }, (_, index) => ({
+      id: 's' + index,
+      desc: '普通记忆' + index,
+      createdAt: 1,
+      updatedAt: 8 - index,
+    })),
+  ]
+  const text = createMemorySection(fakeStore(items), { maxItems: 1 }).text({})
+  assert.ok(text.includes('恒定约束一'), 'pinned one injected')
+  assert.ok(text.includes('恒定约束二'), 'pinned two injected')
+  const scoredLines = text.split('### 相关记忆')[1].trim().split('\n')
+  assert.equal(scoredLines.length, 1, 'scored channel still capped by maxItems=1')
+})
+
+test('without pinned entries the section keeps its historical shape (no pinned heading)', () => {
+  const text = createMemorySection(fakeStore([{ id: 'a', desc: '回复使用中文', createdAt: 1, updatedAt: 2 }]), {}).text(
+    {},
+  )
+  assert.ok(!text.includes('### 恒定'), 'no pinned heading when nothing is pinned')
+  assert.ok(!text.includes('### 相关记忆'), 'no scored heading when nothing is pinned')
+})
+
+test('pinnedMaxItems caps the pinned channel and warns about the overflow (issue #518)', () => {
+  const warnings = []
+  const items = [
+    { id: 'p1', desc: '恒定一', pinned: true, createdAt: 1, updatedAt: 10 },
+    { id: 'p2', desc: '恒定二', pinned: true, createdAt: 1, updatedAt: 9 },
+    { id: 'p3', desc: '恒定三', pinned: true, createdAt: 1, updatedAt: 8 },
+  ]
+  const text = createMemorySection(fakeStore(items), {
+    pinnedMaxItems: 2,
+    logger: { warn: (message) => warnings.push(message) },
+  }).text({})
+  assert.ok(text.includes('恒定一') && text.includes('恒定二'), 'newest two pinned entries injected')
+  assert.ok(!text.includes('恒定三'), 'oldest pinned entry dropped by pinnedMaxItems=2')
+  assert.equal(warnings.length, 1, 'overflow is warned once, never silent')
+  assert.ok(warnings[0].includes('恒定记忆超出注入名额'), 'warning explains what was dropped')
 })

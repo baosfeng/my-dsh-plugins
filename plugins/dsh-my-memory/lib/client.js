@@ -214,6 +214,20 @@ const strings = {
     confirmUpdatePrompt: () => (isZh() ? '确认保存这条提示词的修改？' : 'Save this prompt change?'),
     confirmDeletePrompt: () => isZh() ? '确定删除这条提示词？此操作不可撤销。' : 'Delete this prompt? This cannot be undone.',
     promptCount: (n) => (isZh() ? `${n} 条` : `${n}`),
+    // ── issue #518 恒定（pinned）记忆：每轮恒注入的硬约束 ──
+    pinLabel: () => (isZh() ? '恒定' : 'Pinned'),
+    pinOn: () => (isZh() ? '设为恒定（每轮必注入）' : 'Pin (always injected)'),
+    pinOff: () => (isZh() ? '取消恒定' : 'Unpin'),
+    pinBadge: () => (isZh() ? '恒定' : 'Pinned'),
+    pinnedNote: () => isZh()
+        ? '这些条目每轮必注入，不参与评分，占用独立名额（默认 3 条）'
+        : 'Pinned entries are injected every turn, are never scored, and occupy a separate allowance (3 by default)',
+    confirmPin: () => isZh()
+        ? '确认把这条记忆设为恒定？恒定条目每轮都会注入系统提示词。'
+        : 'Pin this memory? Pinned entries are injected into the system prompt every turn.',
+    confirmUnpin: () => isZh()
+        ? '确认取消这条记忆的恒定？取消后它重新参与评分注入。'
+        : 'Unpin this memory? It rejoins score-based injection.',
 };
 // 导出给其他 part 文件使用
 
@@ -290,6 +304,10 @@ const STYLES = `
 .dsh-my-memory-conf b { margin-left:3px; font-weight:500; color:#6b7280; }
 .dsh-my-memory-conflict-badge { display:inline-flex; align-items:center; height:20px; padding:0 7px; border-radius:5px;
   background:#fdf0ee; color:#b42318; font-size:11.5px; font-weight:500; }
+/* 恒定（issue #518）：与灰底分类徽标同量级，用金色系 + 细描边区分「每轮必注入」 */
+.dsh-my-memory-pin-badge { display:inline-flex; align-items:center; height:20px; padding:0 7px; border-radius:5px;
+  background:#fdf4d8; box-shadow:inset 0 0 0 1px #f1dda6; color:#8a5a00; font-size:11.5px; font-weight:500; }
+.dsh-my-memory-pin-note { margin:0 0 8px; color:#8a5a00; font-size:12px; line-height:1.6; }
 /* ── 展开详情 ── */
 .dsh-my-memory-detail { display:flex; flex-direction:column; gap:10px; margin-top:10px; padding-top:10px;
   border-top:1px dashed #e8eaee; }
@@ -501,6 +519,21 @@ function writeMemory({ action, scope, cwd, id, desc, }) {
         .then((body) => {
         if (body === null || body.ok !== true)
             throw new Error('write failed');
+        return normalizeMemory({ ...body.value, scope });
+    });
+}
+/** POST /my-memory/api/memory action=update，只翻转 pinned（issue #518）。
+ *  不带 desc：服务端按 id 定位后只改恒定标记，正文原样保留。 */
+function updatePinned({ scope, id, pinned, cwd, }) {
+    return fetch(`${API_BASE}/memory`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'update', scope, cwd, id, pinned, confirmed: true }),
+    })
+        .then((res) => res.json())
+        .then((body) => {
+        if (body === null || body.ok !== true)
+            throw new Error('pin write failed');
         return normalizeMemory({ ...body.value, scope });
     });
 }
@@ -1364,6 +1397,39 @@ function AskConfirmCard(props) {
 // 导出给其他 part 文件使用
 
     "use strict";
+/** 概要预览行（issue #105）：add/update 内容超长时提示「完整内容保存 + 显示概要」。 */
+function SummaryPreview({ desc }) {
+    const summary = truncateText(desc, TRUNCATE_LEN);
+    return createElement('div', { className: 'dsh-my-memory-confirm-summary' }, createElement('span', { className: 'dsh-my-memory-confirm-summary-label' }, strings.summaryPreview()), createElement('span', { className: 'dsh-my-memory-confirm-summary-text' }, summary.text));
+}
+/** 确认面板标题文案（按 kind 取；未知 kind 回落删除文案）。 */
+const CONFIRM_TEXTS = {
+    add: () => strings.confirmAdd(),
+    update: () => strings.confirmUpdate(),
+    delete: () => strings.confirmDelete(),
+    // 恒定切换按**目标值**取文案：设恒定的后果（每轮注入）与取消的后果不同。
+    pin: (confirm) => (confirm.pinned === true ? strings.confirmPin() : strings.confirmUnpin()),
+};
+/** 记忆写操作确认：居中弹层 + 共用 ask 范式卡（保存绿 / 删除红）。 */
+function ConfirmPanel({ confirm, onCancel, onOk, entryLimit, }) {
+    const isDelete = confirm.kind === 'delete';
+    return createElement('div', { className: 'dsh-my-memory-overlay', role: 'presentation' }, createElement(AskConfirmCard, {
+        variant: isDelete ? 'delete' : 'save',
+        title: CONFIRM_TEXTS[confirm.kind](confirm),
+        scope: confirm.scope,
+        category: confirm.category ?? '',
+        content: confirm.desc ?? '',
+        showSummary: !isDelete && isOverEntryLimit(confirm.desc, entryLimit),
+        note: strings.confirmHint(),
+        allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
+        showOptions: false,
+        onAllow: onOk,
+        onReject: onCancel,
+    }));
+}
+// 导出给其他 part 文件使用
+
+    "use strict";
 // ── view-rows: row / composer / confirm modal widgets for the Memory tab ──
 // 条目卡片、空状态、排序开关、新增输入区（自适应高度 textarea）与确认弹层。
 // 纯渲染组件，共用 view 工厂作用域内的 strings/icon/ui/utils。
@@ -1431,6 +1497,15 @@ function buildRows(items, scope, editing, onEdit, onEditDesc, onCancelEdit, onCo
             onCancelEdit,
             onSaveEdit: () => onConfirm({ kind: 'update', scope, id: item.id, desc: editing.desc, category: item.category }),
             onDelete: () => onConfirm({ kind: 'delete', scope, id: item.id, desc: item.desc, category: item.category }),
+            // 恒定切换也走确认弹层：每轮注入是硬约束，翻转必须由用户明确点头。
+            onTogglePin: () => onConfirm({
+                kind: 'pin',
+                scope,
+                id: item.id,
+                desc: item.desc,
+                category: item.category,
+                pinned: item.pinned !== true,
+            }),
             onToggle: () => onToggle(key),
             entryLimit,
         });
@@ -1460,7 +1535,7 @@ function MemoryRowEdit({ editingDesc, onEditDesc, onSaveEdit, onCancelEdit, entr
 }
 /** 一条记忆卡片：描述（概要/展开）+ 操作图标组 + 元数据（分类/置信度/
  *  冲突/演进历史）+ 更新时间。 */
-function MemoryRow({ item, isEditing, isExpanded, editingDesc, onEdit, onEditDesc, onCancelEdit, onSaveEdit, onDelete, onToggle, entryLimit, }) {
+function MemoryRow({ item, isEditing, isExpanded, editingDesc, onEdit, onEditDesc, onCancelEdit, onSaveEdit, onDelete, onTogglePin, onToggle, entryLimit, }) {
     if (isEditing) {
         return createElement(MemoryRowEdit, { editingDesc, onEditDesc, onSaveEdit, onCancelEdit, entryLimit });
     }
@@ -1469,7 +1544,13 @@ function MemoryRow({ item, isEditing, isExpanded, editingDesc, onEdit, onEditDes
         shown: isExpanded ? item.desc : cut.text,
         isExpanded,
         onToggle,
-    }), createElement(MemoryRowActions, { id: item.id, onEdit, onDelete })), createElement(MetadataRow, { item }), isExpanded ? createElement(MemoryDetail, { item }) : null);
+    }), createElement(MemoryRowActions, {
+        id: item.id,
+        pinned: item.pinned === true,
+        onTogglePin,
+        onEdit,
+        onDelete,
+    })), createElement(MetadataRow, { item }), isExpanded ? createElement(MemoryDetail, { item }) : null);
 }
 /** 展开详情：矛盾提示 + 来源会话/分类/置信度 + 演进历史（原型的信息层级）。 */
 function MemoryDetail({ item }) {
@@ -1479,34 +1560,6 @@ function MemoryDetail({ item }) {
     return createElement('div', { className: 'dsh-my-memory-detail' }, item.status === 'conflict-pending'
         ? createElement('div', { className: 'dsh-my-memory-conflict-note' }, strings.conflictNote())
         : null, createElement('div', { className: 'dsh-my-memory-detail-grid' }, createElement('div', null, createElement('div', { className: 'dsh-my-memory-detail-label' }, strings.sourceLabel()), createElement('div', { className: 'dsh-my-memory-detail-value' }, item.source?.sessionId ? strings.sourceAgentLabel(item.source.sessionId) : '—')), createElement('div', null, createElement('div', { className: 'dsh-my-memory-detail-label' }, strings.askCategoryLabel()), createElement('div', { className: 'dsh-my-memory-detail-value' }, strings.categoryLabel(item.category))), createElement('div', null, createElement('div', { className: 'dsh-my-memory-detail-label' }, strings.confidenceLabel(confidence)), createElement('div', { className: 'dsh-my-memory-detail-value' }, `${confidence}/5`))), createElement(HistoryList, { item }));
-}
-/** 概要预览行（issue #105）：add/update 内容超长时提示「完整内容保存 + 显示概要」。 */
-function SummaryPreview({ desc }) {
-    const summary = truncateText(desc, TRUNCATE_LEN);
-    return createElement('div', { className: 'dsh-my-memory-confirm-summary' }, createElement('span', { className: 'dsh-my-memory-confirm-summary-label' }, strings.summaryPreview()), createElement('span', { className: 'dsh-my-memory-confirm-summary-text' }, summary.text));
-}
-/** 确认面板标题文案（按 kind 取；未知 kind 回落删除文案）。 */
-const CONFIRM_TEXTS = {
-    add: () => strings.confirmAdd(),
-    update: () => strings.confirmUpdate(),
-    delete: () => strings.confirmDelete(),
-};
-/** 记忆写操作确认：居中弹层 + 共用 ask 范式卡（保存绿 / 删除红）。 */
-function ConfirmPanel({ confirm, onCancel, onOk, entryLimit, }) {
-    const isDelete = confirm.kind === 'delete';
-    return createElement('div', { className: 'dsh-my-memory-overlay', role: 'presentation' }, createElement(AskConfirmCard, {
-        variant: isDelete ? 'delete' : 'save',
-        title: CONFIRM_TEXTS[confirm.kind](),
-        scope: confirm.scope,
-        category: confirm.category ?? '',
-        content: confirm.desc ?? '',
-        showSummary: !isDelete && isOverEntryLimit(confirm.desc, entryLimit),
-        note: strings.confirmHint(),
-        allowLabel: isDelete ? strings.confirmDeleteBtn() : strings.confirmSave(),
-        showOptions: false,
-        onAllow: onOk,
-        onReject: onCancel,
-    }));
 }
 // 导出给其他 part 文件使用
 
@@ -1524,9 +1577,16 @@ function MemoryRowDesc({ shown, isExpanded, onToggle, }) {
         onClick: onToggle,
     }, shown);
 }
-/** 条目操作图标组（编辑 / 删除）。 */
-function MemoryRowActions({ id, onEdit, onDelete, }) {
-    return createElement('div', { className: 'dsh-my-memory-actions' }, createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: `${strings.edit()} ${id}`, onClick: onEdit }, icon.pencil(14)), createElement(IconButton, {
+/** 条目操作图标组（恒定切换 / 编辑 / 删除）。 */
+function MemoryRowActions({ id, pinned, onTogglePin, onEdit, onDelete, }) {
+    return createElement('div', { className: 'dsh-my-memory-actions' }, 
+    // issue #518：恒定是独立动作（需二次确认），图标表达当前状态：
+    // 已恒定 = ✓（点了取消），未恒定 = +（点了设为恒定）。
+    createElement(IconButton, {
+        className: 'dsh-my-memory-iconbtn',
+        label: `${pinned ? strings.pinOff() : strings.pinOn()} ${id}`,
+        onClick: onTogglePin,
+    }, pinned ? icon.check(14) : icon.plus(14)), createElement(IconButton, { className: 'dsh-my-memory-iconbtn', label: `${strings.edit()} ${id}`, onClick: onEdit }, icon.pencil(14)), createElement(IconButton, {
         className: 'dsh-my-memory-iconbtn dsh-my-memory-iconbtn-danger',
         label: `${strings.delete()} ${id}`,
         onClick: onDelete,
@@ -1545,7 +1605,9 @@ function MetadataRow({ item }) {
     const confidence = typeof item.confidence === 'number' && Number.isFinite(item.confidence) && item.confidence >= 0
         ? Math.min(5, Math.round(item.confidence))
         : null;
-    return createElement('div', { className: 'dsh-my-memory-meta' }, createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(item.category)), confidence === null
+    return createElement('div', { className: 'dsh-my-memory-meta' }, createElement('span', { className: 'dsh-my-memory-ct-badge' }, strings.categoryLabel(item.category)), 
+    // issue #518：恒定徽标紧跟分类——扫一眼就知道这条每轮都会注入。
+    item.pinned === true ? createElement('span', { className: 'dsh-my-memory-pin-badge' }, strings.pinBadge()) : null, confidence === null
         ? null
         : createElement('span', { className: 'dsh-my-memory-conf', 'aria-label': strings.confidenceLabel(confidence) }, [1, 2, 3, 4, 5].map((n) => createElement('i', { key: n, className: n <= confidence ? 'on' : '' })), createElement('b', null, `${confidence}/5`)), item.status === 'conflict-pending'
         ? createElement('span', { className: 'dsh-my-memory-conflict-badge' }, strings.statusConflict())
@@ -2406,7 +2468,11 @@ function ScopePanel(props) {
     const items = sortMemories(data.items, order);
     const rows = buildRows(items, scope, props.editing, props.onEdit, props.onEditDesc, props.onCancelEdit, props.onConfirm, props.expanded, props.onToggle, entryLimit);
     const emptyHint = isProject && data.cwd === '' ? strings.projectEmptyHint() : undefined;
-    return createElement('section', { className: `dsh-my-memory-section${isProject ? ' dsh-my-memory-section-project' : ''}` }, createElement('div', { className: 'dsh-my-memory-note-row' }, createElement('p', { className: 'dsh-my-memory-note' }, isProject ? strings.projectNote() : strings.globalNote()), createElement(SortToggle, { scope, order, onSort: props.onSort })), rows.length === 0
+    // 恒定是「独立名额 + 每轮必注入」的强语义，只要本区有恒定条目就把规则写在列表上方。
+    const pinnedCount = items.filter((item) => item.pinned === true).length;
+    return createElement('section', { className: `dsh-my-memory-section${isProject ? ' dsh-my-memory-section-project' : ''}` }, createElement('div', { className: 'dsh-my-memory-note-row' }, createElement('p', { className: 'dsh-my-memory-note' }, isProject ? strings.projectNote() : strings.globalNote()), createElement(SortToggle, { scope, order, onSort: props.onSort })), pinnedCount === 0
+        ? null
+        : createElement('p', { className: 'dsh-my-memory-pin-note' }, `${strings.pinLabel()}：${strings.pinnedNote()}`), rows.length === 0
         ? createElement(EmptyState, { hint: emptyHint })
         : createElement('div', { className: 'dsh-my-memory-list' }, rows), createElement(AddBar, {
         scope,
@@ -2432,21 +2498,24 @@ function ErrorBanner({ kind, onRetry }) {
     }
     return kind === 'save' ? createElement('div', { className: 'dsh-my-memory-error' }, strings.saveFailed()) : null;
 }
-/** One confirmed write (add / update / delete) → POST + refresh the scope. */
+/** 一次确认后的写操作分流：恒定切换只打 pinned（issue #518），其余走通用写端点。 */
+function sendConfirmedWrite(confirm, cwd) {
+    if (confirm.kind === 'pin') {
+        return updatePinned({ scope: confirm.scope, id: confirm.id ?? '', pinned: confirm.pinned === true, cwd });
+    }
+    return writeMemory({ action: confirm.kind, scope: confirm.scope, cwd, id: confirm.id, desc: confirm.desc });
+}
+/** One confirmed write (add / update / delete / pin) → POST + refresh the scope. */
 function createCommitHandler({ data, setData, setSaved, setError, setDrafts, setEditing, setConfirming, }) {
     return (confirm) => {
         setSaved(false);
         setError(null);
-        writeMemory({
-            action: confirm.kind,
-            scope: confirm.scope,
-            cwd: confirm.scope === 'project' && data !== null ? data.project.cwd : '',
-            id: confirm.id,
-            desc: confirm.desc,
-        })
+        sendConfirmedWrite(confirm, confirm.scope === 'project' && data !== null ? data.project.cwd : '')
             .then((value) => {
             setSaved(true);
-            setDrafts((d) => ({ ...d, [confirm.scope]: '' }));
+            // 恒定切换不该清掉输入框里没提交的草稿（用户可能正写到一半）。
+            if (confirm.kind !== 'pin')
+                setDrafts((d) => ({ ...d, [confirm.scope]: '' }));
             setEditing(null);
             setConfirming(null);
             setData((d) => mergeScope(d, confirm.scope, value));

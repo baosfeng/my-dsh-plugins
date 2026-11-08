@@ -200,6 +200,23 @@ const strings = {
   confirmDeletePrompt: (): string =>
     isZh() ? '确定删除这条提示词？此操作不可撤销。' : 'Delete this prompt? This cannot be undone.',
   promptCount: (n: number): string => (isZh() ? `${n} 条` : `${n}`),
+  // ── issue #518 恒定（pinned）记忆：每轮恒注入的硬约束 ──
+  pinLabel: (): string => (isZh() ? '恒定' : 'Pinned'),
+  pinOn: (): string => (isZh() ? '设为恒定（每轮必注入）' : 'Pin (always injected)'),
+  pinOff: (): string => (isZh() ? '取消恒定' : 'Unpin'),
+  pinBadge: (): string => (isZh() ? '恒定' : 'Pinned'),
+  pinnedNote: (): string =>
+    isZh()
+      ? '这些条目每轮必注入，不参与评分，占用独立名额（默认 3 条）'
+      : 'Pinned entries are injected every turn, are never scored, and occupy a separate allowance (3 by default)',
+  confirmPin: (): string =>
+    isZh()
+      ? '确认把这条记忆设为恒定？恒定条目每轮都会注入系统提示词。'
+      : 'Pin this memory? Pinned entries are injected into the system prompt every turn.',
+  confirmUnpin: (): string =>
+    isZh()
+      ? '确认取消这条记忆的恒定？取消后它重新参与评分注入。'
+      : 'Unpin this memory? It rejoins score-based injection.',
 }
 
 // 导出给其他 part 文件使用

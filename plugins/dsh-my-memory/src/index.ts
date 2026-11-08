@@ -52,6 +52,8 @@ export interface MemoryConfig {
   maxDescLength?: number
   /** 降权阈值（毫秒，默认 90 天）。 */
   decayMs?: number
+  /** 恒定（pinned）条目的独立注入名额（默认 3；issue #518）。 */
+  pinnedMaxItems?: number
   /** 主动提议开关（默认关闭）。 */
   proactivePropose?: boolean
   /** 保存确认策略（'auto' | 'always' | 'never'，默认 'auto'；issue #208）。 */
@@ -113,7 +115,16 @@ export function apply(ctx: DshContext, config: MemoryConfig): void {
 
   // ── 系统提示词注入（每次组装求值，记忆变更即时生效）────────────────
   ctx.effect(
-    () => ctx.systemPrompt?.section(createMemorySection(globalStore, config)),
+    () =>
+      ctx.systemPrompt?.section(
+        createMemorySection(globalStore, {
+          maxItems: config?.maxItems,
+          maxDescLength: config?.maxDescLength,
+          decayMs: config?.decayMs,
+          pinnedMaxItems: config?.pinnedMaxItems,
+          logger: ctx.logger,
+        }),
+      ),
     'dsh-my-memory: system prompt section',
   )
 

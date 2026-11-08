@@ -78,7 +78,13 @@ export function apply(ctx, config) {
         };
     }, 'dsh-my-memory: store lifecycle');
     // ── 系统提示词注入（每次组装求值，记忆变更即时生效）────────────────
-    ctx.effect(() => ctx.systemPrompt?.section(createMemorySection(globalStore, config)), 'dsh-my-memory: system prompt section');
+    ctx.effect(() => ctx.systemPrompt?.section(createMemorySection(globalStore, {
+        maxItems: config?.maxItems,
+        maxDescLength: config?.maxDescLength,
+        decayMs: config?.decayMs,
+        pinnedMaxItems: config?.pinnedMaxItems,
+        logger: ctx.logger,
+    })), 'dsh-my-memory: system prompt section');
     registerPromptsSection(ctx, promptsStore, config);
     // ── agent 记忆（issue #502）：第四套独立体系，零常驻注入 ──────────────
     // runtime（index + store）全进程只建一份：工具与面板路由共用，避免两份

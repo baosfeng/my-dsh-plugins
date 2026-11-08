@@ -2,6 +2,14 @@
 
 本文件记录 dsh-shared 的所有版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.8] - 2026-11-08
+
+### 变更
+
+- feat(dsh-my-memory): agent 自主维护的跨会话记忆（#502） (#504)
+- fix(ci): 修好 mutation 沙箱导入与 qs 中等漏洞（两个长期红的 job） (#501)
+- feat(md-render): 代码块行号切换; 任务列表/列表标记对齐原型
+
 ## [0.1.7] - 2026-10-17
 
 ### 变更

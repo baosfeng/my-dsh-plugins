@@ -98,17 +98,23 @@ test('项目层轮转：一个项目条目再多，也不会让另一个项目�
   assert.match(text, /bbb/, '排在后面的项目必须留下痕迹（正文或尾注）')
 })
 
-test('尾注点名「哪份文件还剩多少条」，而不是只给总数', async () => {
+test('项目组只展开头部，其余折叠成「…另有 N 条」', async () => {
+  const { renderCatalog } = await import('../lib/agent-memory/catalog.js')
+  const lines = Array.from({ length: 20 }, (_, i) => '条目 ' + (i + 1))
+  const text = renderCatalog([{ name: 'projects/aaa/pitfalls.md', lines }])
+  const rows = text.split('\n')
+  assert.match(rows[0], /^## aaa（20 条）$/)
+  assert.equal(rows.length, 1 + 12 + 1, '最近活跃项目展开 12 条 + 1 行折叠说明')
+  assert.equal(rows[rows.length - 1], '…另有 8 条')
+})
+
+test('全局预算超限时仍给「另有 N 条未展开」尾注，不静默丢', async () => {
   const { renderCatalog, MAX_CATALOG_LINES } = await import('../lib/agent-memory/catalog.js')
-  const big = (prefix) => Array.from({ length: MAX_CATALOG_LINES }, (_, i) => prefix + ' 条目 ' + (i + 1))
-  const text = renderCatalog([
-    { name: 'projects/aaa/pitfalls.md', lines: big('甲') },
-    { name: 'projects/bbb/pitfalls.md', lines: big('乙') },
-  ])
-  const note = text.split('\n').pop()
-  assert.match(note, /另有 \d+ 条未展开/)
-  assert.match(note, /aaa\/坑 \d+/, '点名 aaa/pitfalls.md 剩余条数，agent 才知道该 read 哪份')
-  assert.match(note, /bbb\/坑 \d+/, '点名 bbb/pitfalls.md 剩余条数')
+  const lines = Array.from({ length: MAX_CATALOG_LINES + 20 }, (_, i) => '条目内容 ' + (i + 1))
+  const text = renderCatalog([{ name: 'user.md', lines }])
+  const rows = text.split('\n')
+  assert.equal(rows.length, MAX_CATALOG_LINES + 1, '正文占满上限 + 1 行尾注')
+  assert.match(rows[rows.length - 1], /另有 \d+ 条未展开/)
 })
 
 test('字节上限先于行数生效时也照样截断', async () => {

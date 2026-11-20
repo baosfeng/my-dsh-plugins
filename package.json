@@ -67,7 +67,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/tmp": "^0.2.6",
     "@vitest/coverage-v8": "^5.1.0",
-    "dependency-cruiser": "^18.7.2",
+    "dependency-cruiser": "^18.8.0",
     "eslint": "^10.15.0",
     "eslint-plugin-import": "^2.32.0",
     "globals": "^17.14.0",

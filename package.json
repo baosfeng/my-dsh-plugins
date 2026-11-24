@@ -53,7 +53,7 @@
     "dsh-shared": "file:plugins/dsh-shared"
   },
   "devDependencies": {
-    "@babel/core": "^8.1.2",
+    "@babel/core": "^8.1.3",
     "@babel/parser": "^8.0.8",
     "@babel/preset-typescript": "^8.0.7",
     "@commitlint/cli": "^21.2.4",
@@ -73,7 +73,7 @@
     "globals": "^17.14.0",
     "husky": "^9.1.7",
     "jscpd": "^5.4.3",
-    "knip": "^6.46.1",
+    "knip": "^6.47.0",
     "lint-staged": "^17.6.1",
     "prettier": "^3.10.1",
     "react": "^19.3.1",
